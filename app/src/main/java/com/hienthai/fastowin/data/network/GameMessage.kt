@@ -19,7 +19,12 @@ sealed class GameMessage {
 
     @Serializable
     @SerialName("move")
-    data class Move(val number: Int, val score: Int, val currentTarget: Int) : GameMessage()
+    data class Move(
+        val playerName: String,
+        val number: Int,
+        val score: Int,
+        val currentTarget: Int
+    ) : GameMessage()
 
     @Serializable
     @SerialName("sync_state")

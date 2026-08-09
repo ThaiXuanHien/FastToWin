@@ -156,14 +156,36 @@ class GameViewModel : ViewModel() {
             }
 
             is GameMessage.Move -> {
+                if (message.playerName == myName) {
+                    Log.d(TAG, "Ignoring own Move echo")
+                    return
+                }
+
                 _uiState.update {
+                    // Only the player who reaches the current shared target first advances
+                    // the board. A duplicate move can still carry the opponent's latest
+                    // score, but must not advance the target a second time.
+                    val nextSharedTarget = if (
+                        message.number == it.currentTarget &&
+                        message.currentTarget == it.currentTarget + 1
+                    ) {
+                        message.currentTarget
+                    } else {
+                        it.currentTarget
+                    }
+
                     it.copy(
+                        currentTarget = nextSharedTarget,
+                        isGameOver = it.isGameOver || nextSharedTarget > 100,
+                        player = it.player.copy(currentTarget = nextSharedTarget),
                         opponent = it.opponent.copy(
-                            score = message.score,
-                            currentTarget = message.currentTarget
+                            score = maxOf(it.opponent.score, message.score),
+                            currentTarget = nextSharedTarget
                         )
                     )
                 }
+
+                if (_uiState.value.isGameOver) timerJob?.cancel()
             }
 
             else -> Log.d(TAG, "Unhandled: ${message::class.simpleName}")
@@ -226,12 +248,20 @@ class GameViewModel : ViewModel() {
                     score = nextScore,
                     currentTarget = nextTarget,
                     isGameOver = finished,
-                    player = it.player.copy(score = nextScore, currentTarget = nextTarget)
+                    player = it.player.copy(score = nextScore, currentTarget = nextTarget),
+                    opponent = it.opponent.copy(currentTarget = nextTarget)
                 )
             }
 
             viewModelScope.launch {
-                socket.sendMessage(GameMessage.Move(number, nextScore, nextTarget))
+                socket.sendMessage(
+                    GameMessage.Move(
+                        playerName = state.player.name,
+                        number = number,
+                        score = nextScore,
+                        currentTarget = nextTarget
+                    )
+                )
             }
 
             if (finished) timerJob?.cancel()
