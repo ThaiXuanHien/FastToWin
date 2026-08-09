@@ -51,8 +51,83 @@ fun LobbyScreen(
                 LobbyStage.SELECT_MODE -> ModeSelection(onModeSelected)
                 LobbyStage.ENTER_NAME -> NameEntry(onStartSearching, onBackToMode)
                 LobbyStage.SEARCHING -> MatchmakingStatus(state, onReadyUp, onRetry = { onStartSearching(state.player.name) })
+                LobbyStage.MATCHED -> MatchedStatus(state)
             }
         }
+    }
+}
+
+@Composable
+private fun MatchedStatus(state: GameState) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(40.dp),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Text(
+            text = "Match Found!",
+            style = MaterialTheme.typography.displaySmall,
+            fontWeight = FontWeight.Black,
+            color = MaterialTheme.colorScheme.primary
+        )
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceEvenly,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            PlayerMatchedCard(state.player, isLocal = true)
+            Text(
+                text = "VS",
+                style = MaterialTheme.typography.displaySmall,
+                fontWeight = FontWeight.Black,
+                color = MaterialTheme.colorScheme.outlineVariant
+            )
+            PlayerMatchedCard(state.opponent, isLocal = false)
+        }
+
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text(
+                text = "Starting in",
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.secondary
+            )
+            Text(
+                text = "${state.countdown ?: 3}",
+                style = MaterialTheme.typography.displayLarge.copy(
+                    fontSize = 120.sp,
+                    fontWeight = FontWeight.Black
+                ),
+                color = MaterialTheme.colorScheme.primary
+            )
+        }
+    }
+}
+
+@Composable
+private fun PlayerMatchedCard(player: PlayerState, isLocal: Boolean) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        Surface(
+            modifier = Modifier.size(120.dp),
+            shape = CircleShape,
+            color = if (isLocal) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.secondaryContainer,
+            tonalElevation = 8.dp
+        ) {
+            Icon(
+                imageVector = Icons.Default.Person,
+                contentDescription = null,
+                modifier = Modifier.padding(32.dp).fillMaxSize(),
+                tint = if (isLocal) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSecondaryContainer
+            )
+        }
+        Text(
+            text = player.name,
+            style = MaterialTheme.typography.headlineSmall,
+            fontWeight = FontWeight.Bold
+        )
     }
 }
 
@@ -202,75 +277,66 @@ private fun MatchmakingStatus(state: GameState, onReadyUp: () -> Unit, onRetry: 
         verticalArrangement = Arrangement.spacedBy(32.dp),
         modifier = Modifier.fillMaxWidth()
     ) {
-        if (state.countdown != null) {
-            Text(
-                text = "${state.countdown}",
-                style = MaterialTheme.typography.displayLarge.copy(fontSize = 120.sp, fontWeight = FontWeight.Black),
-                color = MaterialTheme.colorScheme.primary
-            )
-            Text(text = "Match Starting!", style = MaterialTheme.typography.headlineMedium)
-        } else {
-            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                if (state.error != null) {
-                    Icon(
-                        imageVector = Icons.Rounded.Bolt, // Using Bolt as error-ish icon or could use Warning
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.error,
-                        modifier = Modifier.size(48.dp)
-                    )
-                    Text(
-                        text = state.error,
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.error,
-                        textAlign = TextAlign.Center
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Button(onClick = onRetry) {
-                        Text("Retry Connection")
-                    }
-                } else if (state.isSearching && state.opponent.name == "Opponent") {
-                    CircularProgressIndicator(modifier = Modifier.size(48.dp))
-                    Text(
-                        text = "Searching for Opponent...",
-                        style = MaterialTheme.typography.headlineSmall,
-                        textAlign = TextAlign.Center
-                    )
-                } else {
-                    Text(
-                        text = "Opponent Found!",
-                        style = MaterialTheme.typography.headlineSmall,
-                        textAlign = TextAlign.Center,
-                        color = MaterialTheme.colorScheme.primary,
-                        fontWeight = FontWeight.Bold
-                    )
+        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            if (state.error != null) {
+                Icon(
+                    imageVector = Icons.Rounded.Bolt,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.size(48.dp)
+                )
+                Text(
+                    text = state.error,
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.error,
+                    textAlign = TextAlign.Center
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Button(onClick = onRetry) {
+                    Text("Retry Connection")
                 }
+            } else if (state.isSearching && state.opponent.name == "Opponent") {
+                CircularProgressIndicator(modifier = Modifier.size(48.dp))
+                Text(
+                    text = "Searching for Opponent...",
+                    style = MaterialTheme.typography.headlineSmall,
+                    textAlign = TextAlign.Center
+                )
+            } else {
+                Text(
+                    text = "Opponent Found!",
+                    style = MaterialTheme.typography.headlineSmall,
+                    textAlign = TextAlign.Center,
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        }
+
+        if (state.error == null) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceEvenly
+            ) {
+                PlayerStatusCard(state.player, isLocal = true)
+                PlayerStatusCard(state.opponent, isLocal = false)
             }
 
-            if (state.error == null) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceEvenly
+            if (!state.player.isReady && state.opponent.name != "Opponent") {
+                Button(
+                    onClick = onReadyUp,
+                    modifier = Modifier.fillMaxWidth(0.8f).height(64.dp),
+                    shape = RoundedCornerShape(20.dp)
                 ) {
-                    PlayerStatusCard(state.player, isLocal = true)
-                    PlayerStatusCard(state.opponent, isLocal = false)
+                    Text("Ready Up", style = MaterialTheme.typography.titleLarge)
                 }
-
-                if (!state.player.isReady && state.opponent.name != "Opponent") {
-                    Button(
-                        onClick = onReadyUp,
-                        modifier = Modifier.fillMaxWidth(0.8f).height(64.dp),
-                        shape = RoundedCornerShape(20.dp)
-                    ) {
-                        Text("Ready Up", style = MaterialTheme.typography.titleLarge)
-                    }
-                } else if (state.player.isReady && !state.opponent.isReady) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(16.dp)
-                    ) {
-                        LinearProgressIndicator(modifier = Modifier.width(200.dp))
-                        Text("Waiting for opponent to ready up...", style = MaterialTheme.typography.bodyLarge)
-                    }
+            } else if (state.player.isReady && !state.opponent.isReady) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    LinearProgressIndicator(modifier = Modifier.width(200.dp))
+                    Text("Waiting for opponent to ready up...", style = MaterialTheme.typography.bodyLarge)
                 }
             }
         }
@@ -355,6 +421,24 @@ fun SearchingPreview() {
     FastToWinTheme {
         LobbyScreen(
             state = GameState(lobbyStage = LobbyStage.SEARCHING, isSearching = true),
+            onModeSelected = {},
+            onStartSearching = {},
+            onBackToMode = {},
+            onReadyUp = {}
+        )
+    }
+}
+
+@Preview(showBackground = true)
+@Composable
+fun MatchedPreview() {
+    FastToWinTheme {
+        LobbyScreen(
+            state = GameState(
+                lobbyStage = LobbyStage.MATCHED,
+                opponent = PlayerState("Hien Thái"),
+                countdown = 3
+            ),
             onModeSelected = {},
             onStartSearching = {},
             onBackToMode = {},

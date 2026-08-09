@@ -5,7 +5,8 @@ import com.hienthai.fastowin.navigation.GameMode
 enum class LobbyStage {
     SELECT_MODE,
     ENTER_NAME,
-    SEARCHING
+    SEARCHING,
+    MATCHED
 }
 
 data class PlayerState(

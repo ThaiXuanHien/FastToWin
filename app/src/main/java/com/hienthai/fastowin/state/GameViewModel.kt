@@ -64,8 +64,7 @@ class GameViewModel : ViewModel() {
                     }
                     is GameMessage.StartGame -> {
                         Log.d(TAG, "Game Starting with grid size: ${message.grid.size}")
-                        _uiState.update { it.copy(isSearching = false) }
-                        startGameWithGrid(message.grid)
+                        startMatchCountdown(message.grid)
                     }
                     is GameMessage.Move -> {
                         _uiState.update { it.copy(
@@ -150,6 +149,23 @@ class GameViewModel : ViewModel() {
                     }
                 }
             }
+        }
+    }
+
+    private fun startMatchCountdown(grid: List<Int>) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(
+                lobbyStage = LobbyStage.MATCHED,
+                isSearching = false,
+                countdown = 3
+            ) }
+            
+            for (i in 3 downTo 1) {
+                _uiState.update { it.copy(countdown = i) }
+                delay(1000)
+            }
+            
+            startGameWithGrid(grid)
         }
     }
 
