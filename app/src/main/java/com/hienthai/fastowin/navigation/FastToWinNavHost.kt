@@ -51,7 +51,15 @@ fun FastToWinNavHost(
                     LobbyScreen(
                         state = uiState,
                         onModeSelected = { mode -> gameViewModel.selectMode(mode) },
-                        onStartSearching = { name -> gameViewModel.startSearching(name) },
+                        onOpenRoomBrowser = { name -> gameViewModel.openRoomBrowser(name) },
+                        onCreateRoom = { roomName, password ->
+                            gameViewModel.createRoom(roomName, password)
+                        },
+                        onJoinRoom = { roomId, password ->
+                            gameViewModel.joinRoom(roomId, password)
+                        },
+                        onLeaveRoom = { gameViewModel.leaveRoom() },
+                        onRefreshRooms = { gameViewModel.requestRoomList() },
                         onBackToMode = { gameViewModel.backToModeSelection() }
                     )
                 }

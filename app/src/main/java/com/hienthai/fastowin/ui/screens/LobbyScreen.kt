@@ -1,34 +1,75 @@
 package com.hienthai.fastowin.ui.screens
 
 import androidx.compose.animation.AnimatedContent
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.rounded.Bolt
 import androidx.compose.material.icons.rounded.Timer
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ElevatedCard
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.TextFieldDefaults
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.hienthai.fastowin.navigation.GameMode
+import com.hienthai.fastowin.state.AvailableRoom
 import com.hienthai.fastowin.state.GameState
 import com.hienthai.fastowin.state.LobbyStage
 import com.hienthai.fastowin.state.PlayerState
-import com.hienthai.fastowin.ui.theme.FastToWinTheme
 
 @Composable
 fun LobbyScreen(
     state: GameState,
     onModeSelected: (GameMode) -> Unit,
-    onStartSearching: (String) -> Unit,
+    onOpenRoomBrowser: (String) -> Unit,
+    onCreateRoom: (String, String) -> Unit,
+    onJoinRoom: (String, String) -> Unit,
+    onLeaveRoom: () -> Unit,
+    onRefreshRooms: () -> Unit,
     onBackToMode: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -46,85 +87,18 @@ fun LobbyScreen(
         ) { stage ->
             when (stage) {
                 LobbyStage.SELECT_MODE -> ModeSelection(onModeSelected)
-                LobbyStage.ENTER_NAME -> NameEntry(onStartSearching, onBackToMode)
-                LobbyStage.SEARCHING -> MatchmakingStatus(state, onRetry = { onStartSearching(state.player.name) })
+                LobbyStage.ENTER_NAME -> NameEntry(onOpenRoomBrowser, onBackToMode)
+                LobbyStage.ROOM_BROWSER -> RoomBrowser(
+                    state = state,
+                    onCreateRoom = onCreateRoom,
+                    onJoinRoom = onJoinRoom,
+                    onRefreshRooms = onRefreshRooms,
+                    onBack = onBackToMode
+                )
+                LobbyStage.ROOM_WAITING -> RoomWaiting(state, onLeaveRoom)
                 LobbyStage.MATCHED -> MatchedStatus(state)
             }
         }
-    }
-}
-
-@Composable
-private fun MatchedStatus(state: GameState) {
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(40.dp),
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Text(
-            text = "Match Found!",
-            style = MaterialTheme.typography.displaySmall,
-            fontWeight = FontWeight.Black,
-            color = MaterialTheme.colorScheme.primary
-        )
-
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceEvenly,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            PlayerMatchedCard(state.player, isLocal = true)
-            Text(
-                text = "VS",
-                style = MaterialTheme.typography.displaySmall,
-                fontWeight = FontWeight.Black,
-                color = MaterialTheme.colorScheme.outlineVariant
-            )
-            PlayerMatchedCard(state.opponent, isLocal = false)
-        }
-
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Text(
-                text = "Starting in",
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.secondary
-            )
-            Text(
-                text = "${state.countdown ?: 3}",
-                style = MaterialTheme.typography.displayLarge.copy(
-                    fontSize = 120.sp,
-                    fontWeight = FontWeight.Black
-                ),
-                color = MaterialTheme.colorScheme.primary
-            )
-        }
-    }
-}
-
-@Composable
-private fun PlayerMatchedCard(player: PlayerState, isLocal: Boolean) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        Surface(
-            modifier = Modifier.size(120.dp),
-            shape = CircleShape,
-            color = if (isLocal) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.secondaryContainer,
-            tonalElevation = 8.dp
-        ) {
-            Icon(
-                imageVector = Icons.Default.Person,
-                contentDescription = null,
-                modifier = Modifier.padding(32.dp).fillMaxSize(),
-                tint = if (isLocal) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSecondaryContainer
-            )
-        }
-        Text(
-            text = player.name,
-            style = MaterialTheme.typography.headlineSmall,
-            fontWeight = FontWeight.Bold
-        )
     }
 }
 
@@ -151,21 +125,17 @@ private fun ModeSelection(onModeSelected: (GameMode) -> Unit) {
         }
 
         Spacer(modifier = Modifier.height(32.dp))
-
         ModeCard(
             title = "Order Mode",
             subtitle = "Race from 1 to 100",
             icon = Icons.Rounded.Bolt,
-            onClick = { onModeSelected(GameMode.ORDER) },
-            containerColor = MaterialTheme.colorScheme.primaryContainer
+            onClick = { onModeSelected(GameMode.ORDER) }
         )
-
         ModeCard(
             title = "Time Attack",
             subtitle = "60s Scoring Frenzy",
             icon = Icons.Rounded.Timer,
-            onClick = { onModeSelected(GameMode.TIME_ATTACK) },
-            containerColor = MaterialTheme.colorScheme.secondaryContainer
+            onClick = { onModeSelected(GameMode.TIME_ATTACK) }
         )
     }
 }
@@ -175,69 +145,48 @@ private fun ModeCard(
     title: String,
     subtitle: String,
     icon: ImageVector,
-    onClick: () -> Unit,
-    containerColor: androidx.compose.ui.graphics.Color
+    onClick: () -> Unit
 ) {
     ElevatedCard(
         onClick = onClick,
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(28.dp),
-        colors = CardDefaults.elevatedCardColors(containerColor = containerColor)
+        shape = RoundedCornerShape(28.dp)
     ) {
         Row(
-            modifier = Modifier
-                .padding(24.dp)
-                .fillMaxWidth(),
+            modifier = Modifier.padding(24.dp).fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             Surface(
                 shape = CircleShape,
-                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.5f),
+                color = MaterialTheme.colorScheme.primaryContainer,
                 modifier = Modifier.size(56.dp)
             ) {
-                Icon(
-                    imageVector = icon,
-                    contentDescription = null,
-                    modifier = Modifier
-                        .padding(12.dp)
-                        .fillMaxSize(),
-                    tint = MaterialTheme.colorScheme.onSurface
-                )
+                Icon(icon, null, modifier = Modifier.padding(12.dp).fillMaxSize())
             }
             Column {
-                Text(text = title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-                Text(text = subtitle, style = MaterialTheme.typography.bodyMedium)
+                Text(title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                Text(subtitle, style = MaterialTheme.typography.bodyMedium)
             }
         }
     }
 }
 
 @Composable
-private fun NameEntry(
-    onStartSearching: (String) -> Unit,
-    onBack: () -> Unit
-) {
+private fun NameEntry(onContinue: (String) -> Unit, onBack: () -> Unit) {
     var name by remember { mutableStateOf("") }
-    
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(24.dp),
         modifier = Modifier.fillMaxWidth()
     ) {
+        Text("Ready to play?", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold)
         Text(
-            text = "Ready to play?",
-            style = MaterialTheme.typography.headlineLarge,
-            fontWeight = FontWeight.Bold
-        )
-        
-        Text(
-            text = "Enter your nickname to start finding opponents.",
+            "Enter your nickname, then create a private room or join an available room.",
             style = MaterialTheme.typography.bodyLarge,
             textAlign = TextAlign.Center,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
-
         OutlinedTextField(
             value = name,
             onValueChange = { name = it },
@@ -245,160 +194,266 @@ private fun NameEntry(
             modifier = Modifier.fillMaxWidth(),
             singleLine = true,
             shape = RoundedCornerShape(16.dp),
-            leadingIcon = { Icon(Icons.Default.Person, contentDescription = null) },
+            leadingIcon = { Icon(Icons.Default.Person, null) },
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
             colors = TextFieldDefaults.colors(
                 focusedContainerColor = MaterialTheme.colorScheme.surface,
-                unfocusedContainerColor = MaterialTheme.colorScheme.surface,
+                unfocusedContainerColor = MaterialTheme.colorScheme.surface
             )
         )
-        
         Button(
-            onClick = { if (name.isNotBlank()) onStartSearching(name) },
+            onClick = { onContinue(name) },
             enabled = name.isNotBlank(),
             modifier = Modifier.fillMaxWidth().height(64.dp),
             shape = RoundedCornerShape(20.dp)
         ) {
-            Text("Find Match", style = MaterialTheme.typography.titleLarge)
+            Text("Browse Rooms", style = MaterialTheme.typography.titleLarge)
         }
-        
-        TextButton(onClick = onBack) {
+        TextButton(onClick = onBack) { Text("Back to Mode Selection") }
+    }
+}
+
+@Composable
+private fun RoomBrowser(
+    state: GameState,
+    onCreateRoom: (String, String) -> Unit,
+    onJoinRoom: (String, String) -> Unit,
+    onRefreshRooms: () -> Unit,
+    onBack: () -> Unit
+) {
+    var roomName by remember { mutableStateOf("") }
+    var roomPassword by remember { mutableStateOf("") }
+    var selectedRoom by remember { mutableStateOf<AvailableRoom?>(null) }
+
+    selectedRoom?.let { room ->
+        JoinRoomDialog(
+            room = room,
+            onDismiss = { selectedRoom = null },
+            onJoin = { password ->
+                selectedRoom = null
+                onJoinRoom(room.id, password)
+            }
+        )
+    }
+
+    Column(
+        modifier = Modifier.fillMaxSize(),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Column {
+                Text("Game Rooms", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold)
+                Text(
+                    "${state.player.name} • ${state.gameMode.displayName()}",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            IconButton(onClick = onRefreshRooms, enabled = !state.isSearching) {
+                Icon(Icons.Default.Refresh, contentDescription = "Refresh rooms")
+            }
+        }
+
+        state.error?.let {
+            Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium)
+        }
+
+        ElevatedCard(modifier = Modifier.fillMaxWidth()) {
+            Column(
+                modifier = Modifier.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Text("Create a room", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                OutlinedTextField(
+                    value = roomName,
+                    onValueChange = { roomName = it },
+                    label = { Text("Room name") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                OutlinedTextField(
+                    value = roomPassword,
+                    onValueChange = { roomPassword = it },
+                    label = { Text("Room password") },
+                    singleLine = true,
+                    visualTransformation = PasswordVisualTransformation(),
+                    leadingIcon = { Icon(Icons.Default.Lock, null) },
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Button(
+                    onClick = { onCreateRoom(roomName, roomPassword) },
+                    enabled = roomName.isNotBlank() && roomPassword.isNotEmpty() && !state.isSearching,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(Icons.Default.Add, null)
+                    Text(" Create Room")
+                }
+            }
+        }
+
+        Text("Available rooms", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+        when {
+            state.isSearching -> {
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    CircularProgressIndicator(modifier = Modifier.size(24.dp))
+                    Text("Connecting...")
+                }
+            }
+            state.availableRooms.isEmpty() -> {
+                Text(
+                    "No rooms are waiting. Create one or tap refresh.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            else -> LazyColumn(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                items(state.availableRooms, key = { it.id }) { room ->
+                    RoomCard(room = room, onClick = { selectedRoom = room })
+                }
+            }
+        }
+
+        TextButton(onClick = onBack, modifier = Modifier.align(Alignment.CenterHorizontally)) {
             Text("Back to Mode Selection")
         }
     }
 }
 
 @Composable
-private fun MatchmakingStatus(state: GameState, onRetry: () -> Unit) {
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(32.dp),
-        modifier = Modifier.fillMaxWidth()
+private fun RoomCard(room: AvailableRoom, onClick: () -> Unit) {
+    ElevatedCard(
+        onClick = onClick,
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.elevatedCardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainer
+        )
     ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            if (state.error != null) {
-                Icon(
-                    imageVector = Icons.Rounded.Bolt,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.error,
-                    modifier = Modifier.size(48.dp)
-                )
-                Text(
-                    text = state.error,
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.error,
-                    textAlign = TextAlign.Center
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                Button(onClick = onRetry) {
-                    Text("Retry Connection")
-                }
-            } else if (state.isSearching && state.opponent.name == "Opponent") {
-                CircularProgressIndicator(modifier = Modifier.size(48.dp))
-                Text(
-                    text = "Searching for Opponent...",
-                    style = MaterialTheme.typography.headlineSmall,
-                    textAlign = TextAlign.Center
-                )
-            } else {
-                CircularProgressIndicator(modifier = Modifier.size(48.dp))
-                Text(
-                    text = "Opponent Found! Starting soon...",
-                    style = MaterialTheme.typography.headlineSmall,
-                    textAlign = TextAlign.Center,
-                    color = MaterialTheme.colorScheme.primary,
-                    fontWeight = FontWeight.Bold
-                )
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(room.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text("Host: ${room.hostName} • ${room.gameMode.displayName()}")
             }
-        }
-
-        if (state.error == null) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceEvenly
-            ) {
-                PlayerStatusCard(state.player, isLocal = true)
-                PlayerStatusCard(state.opponent, isLocal = false)
-            }
+            if (room.requiresPassword) Icon(Icons.Default.Lock, contentDescription = "Password protected")
+            Text("  Join", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
         }
     }
 }
 
 @Composable
-private fun PlayerStatusCard(player: PlayerState, isLocal: Boolean) {
+private fun JoinRoomDialog(
+    room: AvailableRoom,
+    onDismiss: () -> Unit,
+    onJoin: (String) -> Unit
+) {
+    var password by remember(room.id) { mutableStateOf("") }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Join ${room.name}") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text("Hosted by ${room.hostName}")
+                if (room.requiresPassword) {
+                    OutlinedTextField(
+                        value = password,
+                        onValueChange = { password = it },
+                        label = { Text("Room password") },
+                        visualTransformation = PasswordVisualTransformation(),
+                        singleLine = true
+                    )
+                } else {
+                    Text("This room does not require a password.")
+                }
+            }
+        },
+        confirmButton = { Button(onClick = { onJoin(password) }) { Text("Join") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+    )
+}
+
+@Composable
+private fun RoomWaiting(state: GameState, onLeaveRoom: () -> Unit) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(24.dp),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Text(
+            state.currentRoomName ?: "Room",
+            style = MaterialTheme.typography.headlineLarge,
+            fontWeight = FontWeight.Bold
+        )
+        CircularProgressIndicator(modifier = Modifier.size(48.dp))
+        Text(
+            if (state.isRoomHost) "Waiting for a player to join..." else "Requesting to join the room...",
+            style = MaterialTheme.typography.titleMedium,
+            textAlign = TextAlign.Center
+        )
+        Text(
+            if (state.isRoomHost) "Only a player with the correct password will be accepted."
+            else "The host is verifying the room password.",
+            textAlign = TextAlign.Center,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+        OutlinedButton(onClick = onLeaveRoom) { Text("Leave Room") }
+    }
+}
+
+@Composable
+private fun MatchedStatus(state: GameState) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(40.dp),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Text(
+            "Match Found!",
+            style = MaterialTheme.typography.displaySmall,
+            fontWeight = FontWeight.Black,
+            color = MaterialTheme.colorScheme.primary
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceEvenly,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            PlayerMatchedCard(state.player, true)
+            Text("VS", style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.Black)
+            PlayerMatchedCard(state.opponent, false)
+        }
+        Text(
+            "${state.countdown ?: 3}",
+            style = MaterialTheme.typography.displayLarge.copy(fontSize = 120.sp, fontWeight = FontWeight.Black),
+            color = MaterialTheme.colorScheme.primary
+        )
+    }
+}
+
+@Composable
+private fun PlayerMatchedCard(player: PlayerState, isLocal: Boolean) {
     Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Surface(
             modifier = Modifier.size(100.dp),
             shape = CircleShape,
-            color = if (isLocal) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.secondaryContainer,
-            tonalElevation = 4.dp
+            color = if (isLocal) MaterialTheme.colorScheme.primaryContainer
+            else MaterialTheme.colorScheme.secondaryContainer
         ) {
-            Icon(
-                imageVector = Icons.Default.Person,
-                contentDescription = null,
-                modifier = Modifier.padding(24.dp).fillMaxSize(),
-                tint = if (isLocal) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSecondaryContainer
-            )
+            Icon(Icons.Default.Person, null, modifier = Modifier.padding(24.dp).fillMaxSize())
         }
-        Text(
-            text = player.name,
-            style = MaterialTheme.typography.titleLarge,
-            fontWeight = FontWeight.Bold
-        )
+        Text(player.name, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
     }
 }
 
-@Preview(showBackground = true)
-@Composable
-fun LobbyScreenPreview() {
-    FastToWinTheme {
-        LobbyScreen(
-            state = GameState(lobbyStage = LobbyStage.SELECT_MODE),
-            onModeSelected = {},
-            onStartSearching = {},
-            onBackToMode = {}
-        )
-    }
-}
-
-@Preview(showBackground = true)
-@Composable
-fun NameEntryPreview() {
-    FastToWinTheme {
-        LobbyScreen(
-            state = GameState(lobbyStage = LobbyStage.ENTER_NAME),
-            onModeSelected = {},
-            onStartSearching = {},
-            onBackToMode = {}
-        )
-    }
-}
-
-@Preview(showBackground = true)
-@Composable
-fun SearchingPreview() {
-    FastToWinTheme {
-        LobbyScreen(
-            state = GameState(lobbyStage = LobbyStage.SEARCHING, isSearching = true),
-            onModeSelected = {},
-            onStartSearching = {},
-            onBackToMode = {}
-        )
-    }
-}
-
-@Preview(showBackground = true)
-@Composable
-fun MatchedPreview() {
-    FastToWinTheme {
-        LobbyScreen(
-            state = GameState(
-                lobbyStage = LobbyStage.MATCHED,
-                opponent = PlayerState("Hien Thái"),
-                countdown = 3
-            ),
-            onModeSelected = {},
-            onStartSearching = {},
-            onBackToMode = {}
-        )
-    }
+private fun GameMode.displayName(): String = when (this) {
+    GameMode.ORDER -> "Order"
+    GameMode.TIME_ATTACK -> "Time Attack"
 }

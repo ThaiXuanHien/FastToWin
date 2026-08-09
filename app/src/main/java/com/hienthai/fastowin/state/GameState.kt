@@ -5,9 +5,19 @@ import com.hienthai.fastowin.navigation.GameMode
 enum class LobbyStage {
     SELECT_MODE,
     ENTER_NAME,
-    SEARCHING,
+    ROOM_BROWSER,
+    ROOM_WAITING,
     MATCHED
 }
+
+data class AvailableRoom(
+    val id: String,
+    val name: String,
+    val hostName: String,
+    val gameMode: GameMode,
+    val requiresPassword: Boolean,
+    val lastSeenAtMillis: Long
+)
 
 data class PlayerState(
     val name: String,
@@ -33,6 +43,10 @@ data class GameState(
     val player: PlayerState = PlayerState("You"),
     val opponent: PlayerState = PlayerState("Opponent"),
     val isSearching: Boolean = false,
+    val availableRooms: List<AvailableRoom> = emptyList(),
+    val currentRoomId: String? = null,
+    val currentRoomName: String? = null,
+    val isRoomHost: Boolean = false,
     val countdown: Int? = null,
     val isMatchStarted: Boolean = false
 )

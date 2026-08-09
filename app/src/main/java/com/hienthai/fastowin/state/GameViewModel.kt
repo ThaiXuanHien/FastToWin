@@ -6,6 +6,9 @@ import androidx.lifecycle.viewModelScope
 import com.hienthai.fastowin.data.network.GameMessage
 import com.hienthai.fastowin.data.network.GameSocketClient
 import com.hienthai.fastowin.navigation.GameMode
+import java.security.MessageDigest
+import java.util.UUID
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -21,178 +24,441 @@ class GameViewModel : ViewModel() {
     val uiState: StateFlow<GameState> = _uiState.asStateFlow()
 
     private val socket = GameSocketClient()
+    private val playerId = UUID.randomUUID().toString()
 
-    private var sessionJob: Job? = null   // owns: connect + beacon + message collector
+    private var sessionJob: Job? = null
+    private var messageJob: Job? = null
+    private var roomAdvertiseJob: Job? = null
+    private var roomCleanupJob: Job? = null
+    private var pendingJoinJob: Job? = null
     private var timerJob: Job? = null
 
-    // True once StartGame has been processed — prevents duplicate game starts
-    @Volatile private var gameStarted = false
+    private var roomPasswordHash = ""
+    private var pendingRoomId: String? = null
 
-    private val TAG = "GameViewModel"
+    @Volatile
+    private var gameStarted = false
 
-    // ── Mode / name selection ────────────────────────────────────────────────
+    private val tag = "GameViewModel"
 
     fun selectMode(mode: GameMode) {
         _uiState.update { it.copy(gameMode = mode, lobbyStage = LobbyStage.ENTER_NAME) }
     }
 
     fun backToModeSelection() {
-        _uiState.update { it.copy(lobbyStage = LobbyStage.SELECT_MODE) }
+        _uiState.update { it.copy(lobbyStage = LobbyStage.SELECT_MODE, error = null) }
     }
 
-    // ── Matchmaking ──────────────────────────────────────────────────────────
+    fun openRoomBrowser(playerName: String) {
+        val normalizedName = playerName.trim()
+        if (normalizedName.isEmpty()) return
 
-    fun startSearching(playerName: String) {
-        Log.d(TAG, "startSearching: $playerName")
+        gameStarted = false
+        _uiState.update {
+            it.copy(
+                player = it.player.copy(name = normalizedName),
+                opponent = PlayerState("Opponent"),
+                lobbyStage = LobbyStage.ROOM_BROWSER,
+                isSearching = true,
+                availableRooms = emptyList(),
+                currentRoomId = null,
+                currentRoomName = null,
+                isRoomHost = false,
+                error = null
+            )
+        }
+        ensureSocketSession()
+    }
+
+    private fun ensureSocketSession() {
+        if (sessionJob?.isActive == true) {
+            requestRoomList()
+            return
+        }
+
+        messageJob?.cancel()
+        roomCleanupJob?.cancel()
+
+        messageJob = viewModelScope.launch {
+            socket.messages.collect { message -> handleMessage(message) }
+        }
+
+        roomCleanupJob = viewModelScope.launch {
+            while (true) {
+                delay(2_000)
+                val oldestAllowed = System.currentTimeMillis() - ROOM_TTL_MILLIS
+                _uiState.update { state ->
+                    state.copy(
+                        availableRooms = state.availableRooms.filter {
+                            it.lastSeenAtMillis >= oldestAllowed
+                        }
+                    )
+                }
+            }
+        }
+
+        sessionJob = viewModelScope.launch {
+            val connectedJob = launch {
+                socket.isConnected.first { it }
+                _uiState.update { it.copy(isSearching = false, error = null) }
+                socket.sendMessage(GameMessage.RoomListRequest(playerId))
+            }
+
+            try {
+                socket.connect()
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                Log.e(tag, "Connection error: ${error.message}")
+                _uiState.update {
+                    it.copy(
+                        isSearching = false,
+                        error = "Connection failed: ${error.message}"
+                    )
+                }
+            } finally {
+                connectedJob.cancel()
+            }
+        }
+    }
+
+    fun requestRoomList() {
+        if (!socket.isConnected.value) {
+            _uiState.update { it.copy(isSearching = true, error = null) }
+            ensureSocketSession()
+            return
+        }
+        viewModelScope.launch {
+            socket.sendMessage(GameMessage.RoomListRequest(playerId))
+        }
+    }
+
+    fun createRoom(roomName: String, password: String) {
+        val normalizedRoomName = roomName.trim()
+        if (normalizedRoomName.isEmpty()) return
+        if (password.isEmpty()) {
+            _uiState.update { it.copy(error = "Room password is required.") }
+            return
+        }
+        if (!socket.isConnected.value) {
+            _uiState.update { it.copy(error = "Not connected. Please try again.") }
+            return
+        }
+
+        val roomId = UUID.randomUUID().toString()
+        roomPasswordHash = hashPassword(password)
+        pendingRoomId = null
         gameStarted = false
 
         _uiState.update {
             it.copy(
-                player = it.player.copy(name = playerName),
                 opponent = PlayerState("Opponent"),
-                lobbyStage = LobbyStage.SEARCHING,
+                lobbyStage = LobbyStage.ROOM_WAITING,
+                currentRoomId = roomId,
+                currentRoomName = normalizedRoomName,
+                isRoomHost = true,
                 isSearching = true,
                 error = null
             )
         }
+        startRoomAdvertising(roomId)
+    }
 
-        // Cancel any previous session cleanly before starting a new one
-        sessionJob?.cancel()
-        sessionJob = viewModelScope.launch {
-
-            // 1. Message collector — runs for the lifetime of this session
-            launch {
-                socket.messages.collect { message ->
-                    handleMessage(message, playerName)
-                }
-            }
-
-            // 2. Beacon — sends Join every 2 s until we match or game starts
-            launch {
-                // Wait for the socket to be connected first
-                socket.isConnected.first { it }
-                Log.d(TAG, "Beacon started")
-
-                // Always announce this player at least once. The other player's Join can
-                // arrive immediately after connecting and mark us as matched before this
-                // coroutine gets scheduled; without this first send, matchmaking becomes
-                // one-sided because the other device never learns our name.
-                Log.d(TAG, "Beacon → Join($playerName)")
-                socket.sendMessage(GameMessage.Join(playerName))
-
-                while (!gameStarted && _uiState.value.opponent.name == "Opponent") {
-                    delay(2_000)
-                    if (gameStarted || _uiState.value.opponent.name != "Opponent") break
-                    Log.d(TAG, "Beacon → Join($playerName)")
-                    socket.sendMessage(GameMessage.Join(playerName))
-                }
-                Log.d(TAG, "Beacon stopped")
-            }
-
-            // 3. WebSocket connection — suspends until disconnected
-            try {
-                socket.connect()
-            } catch (e: Exception) {
-                Log.e(TAG, "Connection error: ${e.message}")
-                _uiState.update {
-                    it.copy(
-                        isSearching = false,
-                        error = "Connection failed: ${e.message}",
-                        lobbyStage = LobbyStage.SEARCHING
-                    )
-                }
+    private fun startRoomAdvertising(roomId: String) {
+        roomAdvertiseJob?.cancel()
+        roomAdvertiseJob = viewModelScope.launch {
+            while (
+                !gameStarted &&
+                _uiState.value.currentRoomId == roomId &&
+                _uiState.value.isRoomHost
+            ) {
+                advertiseCurrentRoom()
+                delay(2_000)
             }
         }
     }
 
-    // ── Message handling ─────────────────────────────────────────────────────
+    private suspend fun advertiseCurrentRoom() {
+        val state = _uiState.value
+        val roomId = state.currentRoomId ?: return
+        val roomName = state.currentRoomName ?: return
+        if (!state.isRoomHost || gameStarted || !socket.isConnected.value) return
 
-    private suspend fun handleMessage(message: GameMessage, myName: String) {
-        Log.d(TAG, "handleMessage: $message")
+        socket.sendMessage(
+            GameMessage.RoomAdvertise(
+                roomId = roomId,
+                roomName = roomName,
+                hostId = playerId,
+                hostName = state.player.name,
+                gameMode = state.gameMode.name,
+                requiresPassword = true
+            )
+        )
+    }
+
+    fun joinRoom(roomId: String, password: String) {
+        val room = _uiState.value.availableRooms.firstOrNull { it.id == roomId }
+        if (room == null) {
+            _uiState.update { it.copy(error = "Room is no longer available.") }
+            return
+        }
+        if (!socket.isConnected.value) {
+            _uiState.update { it.copy(error = "Not connected. Please try again.") }
+            return
+        }
+
+        pendingRoomId = roomId
+        gameStarted = false
+        _uiState.update {
+            it.copy(
+                gameMode = room.gameMode,
+                lobbyStage = LobbyStage.ROOM_WAITING,
+                currentRoomId = room.id,
+                currentRoomName = room.name,
+                isRoomHost = false,
+                isSearching = true,
+                opponent = PlayerState("Opponent"),
+                error = null
+            )
+        }
+
+        viewModelScope.launch {
+            socket.sendMessage(
+                GameMessage.RoomJoin(
+                    roomId = roomId,
+                    playerId = playerId,
+                    playerName = _uiState.value.player.name,
+                    passwordHash = hashPassword(password)
+                )
+            )
+        }
+
+        pendingJoinJob?.cancel()
+        pendingJoinJob = viewModelScope.launch {
+            delay(JOIN_TIMEOUT_MILLIS)
+            if (pendingRoomId != roomId) return@launch
+            pendingRoomId = null
+            _uiState.update {
+                it.copy(
+                    lobbyStage = LobbyStage.ROOM_BROWSER,
+                    currentRoomId = null,
+                    currentRoomName = null,
+                    isRoomHost = false,
+                    isSearching = false,
+                    error = "The room did not respond. Please refresh and try again."
+                )
+            }
+            requestRoomList()
+        }
+    }
+
+    fun leaveRoom() {
+        val state = _uiState.value
+        val roomId = state.currentRoomId
+        roomAdvertiseJob?.cancel()
+        pendingJoinJob?.cancel()
+        pendingRoomId = null
+        gameStarted = false
+
+        if (state.isRoomHost && roomId != null) {
+            viewModelScope.launch {
+                socket.sendMessage(GameMessage.RoomClosed(roomId, playerId))
+            }
+        }
+
+        _uiState.update {
+            it.copy(
+                opponent = PlayerState("Opponent"),
+                lobbyStage = LobbyStage.ROOM_BROWSER,
+                currentRoomId = null,
+                currentRoomName = null,
+                isRoomHost = false,
+                isSearching = false,
+                error = null
+            )
+        }
+        requestRoomList()
+    }
+
+    private suspend fun handleMessage(message: GameMessage) {
+        Log.d(tag, "handleMessage: $message")
         when (message) {
-            is GameMessage.Join -> {
-                if (message.playerName == myName) {
-                    Log.d(TAG, "Ignoring own Join echo")
+            is GameMessage.RoomListRequest -> {
+                if (message.requesterId != playerId) advertiseCurrentRoom()
+            }
+
+            is GameMessage.RoomAdvertise -> {
+                if (message.hostId == playerId || _uiState.value.lobbyStage != LobbyStage.ROOM_BROWSER) {
                     return
                 }
-                // If we are already matched (or game already started) ignore further Joins
-                if (_uiState.value.opponent.name != "Opponent" || gameStarted) {
-                    Log.d(TAG, "Already matched, ignoring Join from ${message.playerName}")
+                val mode = runCatching { GameMode.valueOf(message.gameMode) }.getOrDefault(GameMode.ORDER)
+                val room = AvailableRoom(
+                    id = message.roomId,
+                    name = message.roomName,
+                    hostName = message.hostName,
+                    gameMode = mode,
+                    requiresPassword = message.requiresPassword,
+                    lastSeenAtMillis = System.currentTimeMillis()
+                )
+                _uiState.update { state ->
+                    state.copy(
+                        availableRooms = (state.availableRooms.filterNot { it.id == room.id } + room)
+                            .sortedBy { it.name.lowercase() }
+                    )
+                }
+            }
+
+            is GameMessage.RoomJoin -> handleRoomJoin(message)
+
+            is GameMessage.RoomJoined -> {
+                if (
+                    message.guestId != playerId ||
+                    pendingRoomId != message.roomId ||
+                    _uiState.value.currentRoomId != message.roomId
+                ) {
                     return
                 }
+                pendingJoinJob?.cancel()
+                pendingRoomId = null
+                _uiState.update {
+                    it.copy(
+                        opponent = PlayerState(message.hostName),
+                        isSearching = false,
+                        error = null
+                    )
+                }
+            }
 
-                // A Join is not retained by the broadcast server. If this device joined
-                // first, its last beacon may have been sent before the opponent connected.
-                // Reply before marking the match complete so both devices learn each
-                // other's name even when they connect between beacon intervals.
-                Log.d(TAG, "Join acknowledged → Join($myName)")
-                socket.sendMessage(GameMessage.Join(myName))
+            is GameMessage.RoomJoinRejected -> {
+                if (message.playerId != playerId || pendingRoomId != message.roomId) return
+                pendingJoinJob?.cancel()
+                pendingRoomId = null
+                _uiState.update {
+                    it.copy(
+                        lobbyStage = LobbyStage.ROOM_BROWSER,
+                        currentRoomId = null,
+                        currentRoomName = null,
+                        isRoomHost = false,
+                        isSearching = false,
+                        error = message.reason
+                    )
+                }
+            }
 
-                Log.d(TAG, "Matched with ${message.playerName}")
-                _uiState.update { it.copy(opponent = it.opponent.copy(name = message.playerName)) }
-
-                // Host election: lexicographically smaller name drives the game
-                if (myName < message.playerName) {
-                    if (gameStarted) return          // double-check under fast scheduling
-                    gameStarted = true
-                    Log.d(TAG, "I am Host → sending StartGame")
-                    val grid = (1..100).shuffled()
-                    socket.sendMessage(GameMessage.StartGame(grid))
-                    // Host also starts its own countdown directly
-                    startMatchCountdown(grid)
-                } else {
-                    Log.d(TAG, "I am Guest → waiting for StartGame")
+            is GameMessage.RoomClosed -> {
+                _uiState.update { state ->
+                    state.copy(availableRooms = state.availableRooms.filterNot { it.id == message.roomId })
+                }
+                if (
+                    !_uiState.value.isRoomHost &&
+                    _uiState.value.currentRoomId == message.roomId &&
+                    !gameStarted
+                ) {
+                    pendingJoinJob?.cancel()
+                    pendingRoomId = null
+                    _uiState.update {
+                        it.copy(
+                            lobbyStage = LobbyStage.ROOM_BROWSER,
+                            currentRoomId = null,
+                            currentRoomName = null,
+                            isSearching = false,
+                            error = "The room was closed by its host."
+                        )
+                    }
                 }
             }
 
             is GameMessage.StartGame -> {
-                if (gameStarted) {
-                    Log.d(TAG, "Duplicate StartGame ignored")
-                    return
-                }
+                if (message.roomId != _uiState.value.currentRoomId || gameStarted) return
                 gameStarted = true
-                Log.d(TAG, "StartGame received, grid size=${message.grid.size}")
                 startMatchCountdown(message.grid)
             }
 
-            is GameMessage.Move -> {
-                if (message.playerName == myName) {
-                    Log.d(TAG, "Ignoring own Move echo")
-                    return
-                }
+            is GameMessage.Move -> handleMove(message)
 
-                _uiState.update {
-                    // Only the player who reaches the current shared target first advances
-                    // the board. A duplicate move can still carry the opponent's latest
-                    // score, but must not advance the target a second time.
-                    val nextSharedTarget = if (
-                        message.number == it.currentTarget &&
-                        message.currentTarget == it.currentTarget + 1
-                    ) {
-                        message.currentTarget
-                    } else {
-                        it.currentTarget
-                    }
-
-                    it.copy(
-                        currentTarget = nextSharedTarget,
-                        isGameOver = it.isGameOver || nextSharedTarget > 100,
-                        player = it.player.copy(currentTarget = nextSharedTarget),
-                        opponent = it.opponent.copy(
-                            score = maxOf(it.opponent.score, message.score),
-                            currentTarget = nextSharedTarget
-                        )
-                    )
-                }
-
-                if (_uiState.value.isGameOver) timerJob?.cancel()
-            }
-
-            else -> Log.d(TAG, "Unhandled: ${message::class.simpleName}")
+            // Messages from pre-room app versions are deliberately ignored.
+            is GameMessage.Join,
+            is GameMessage.Ready,
+            is GameMessage.SyncState -> Unit
         }
     }
 
-    // ── Game lifecycle ───────────────────────────────────────────────────────
+    private suspend fun handleRoomJoin(message: GameMessage.RoomJoin) {
+        val state = _uiState.value
+        if (
+            !state.isRoomHost ||
+            state.currentRoomId != message.roomId ||
+            state.lobbyStage != LobbyStage.ROOM_WAITING
+        ) {
+            return
+        }
+
+        val rejectionReason = when {
+            gameStarted || state.opponent.name != "Opponent" -> "Room is already full."
+            message.passwordHash != roomPasswordHash -> "Incorrect room password."
+            else -> null
+        }
+
+        if (rejectionReason != null) {
+            socket.sendMessage(
+                GameMessage.RoomJoinRejected(message.roomId, message.playerId, rejectionReason)
+            )
+            return
+        }
+
+        roomAdvertiseJob?.cancel()
+        _uiState.update {
+            it.copy(opponent = PlayerState(message.playerName), isSearching = false, error = null)
+        }
+
+        socket.sendMessage(
+            GameMessage.RoomJoined(
+                roomId = message.roomId,
+                hostId = playerId,
+                hostName = state.player.name,
+                guestId = message.playerId,
+                guestName = message.playerName
+            )
+        )
+
+        gameStarted = true
+        val grid = (1..100).shuffled()
+        socket.sendMessage(GameMessage.StartGame(message.roomId, grid))
+        startMatchCountdown(grid)
+    }
+
+    private fun handleMove(message: GameMessage.Move) {
+        if (
+            message.roomId != _uiState.value.currentRoomId ||
+            message.playerId == playerId ||
+            !gameStarted
+        ) {
+            return
+        }
+
+        _uiState.update {
+            val nextSharedTarget = if (
+                message.number == it.currentTarget &&
+                message.currentTarget == it.currentTarget + 1
+            ) {
+                message.currentTarget
+            } else {
+                it.currentTarget
+            }
+
+            it.copy(
+                currentTarget = nextSharedTarget,
+                isGameOver = it.isGameOver || nextSharedTarget > 100,
+                player = it.player.copy(currentTarget = nextSharedTarget),
+                opponent = it.opponent.copy(
+                    score = maxOf(it.opponent.score, message.score),
+                    currentTarget = nextSharedTarget
+                )
+            )
+        }
+
+        if (_uiState.value.isGameOver) timerJob?.cancel()
+    }
 
     private fun startMatchCountdown(grid: List<Int>) {
         viewModelScope.launch {
@@ -236,7 +502,8 @@ class GameViewModel : ViewModel() {
 
     fun onNumberClicked(number: Int) {
         val state = _uiState.value
-        if (state.isGameOver) return
+        val roomId = state.currentRoomId ?: return
+        if (state.isGameOver || !gameStarted) return
 
         if (number == state.currentTarget) {
             val nextTarget = state.currentTarget + 1
@@ -256,6 +523,8 @@ class GameViewModel : ViewModel() {
             viewModelScope.launch {
                 socket.sendMessage(
                     GameMessage.Move(
+                        roomId = roomId,
+                        playerId = playerId,
                         playerName = state.player.name,
                         number = number,
                         score = nextScore,
@@ -274,22 +543,46 @@ class GameViewModel : ViewModel() {
         }
     }
 
-    // ── Reset ────────────────────────────────────────────────────────────────
-
     fun resetGame() {
+        val state = _uiState.value
         timerJob?.cancel()
-        sessionJob?.cancel()
+        roomAdvertiseJob?.cancel()
+        pendingJoinJob?.cancel()
         gameStarted = false
-        viewModelScope.launch { socket.disconnect() }
+        pendingRoomId = null
+
+        viewModelScope.launch {
+            if (state.isRoomHost && state.currentRoomId != null) {
+                socket.sendMessage(GameMessage.RoomClosed(state.currentRoomId, playerId))
+            }
+            socket.disconnect()
+        }
+
+        sessionJob?.cancel()
+        messageJob?.cancel()
+        roomCleanupJob?.cancel()
         _uiState.value = GameState()
     }
-
-    // ── Cleanup ──────────────────────────────────────────────────────────────
 
     override fun onCleared() {
         super.onCleared()
         timerJob?.cancel()
+        roomAdvertiseJob?.cancel()
+        pendingJoinJob?.cancel()
+        roomCleanupJob?.cancel()
+        messageJob?.cancel()
         sessionJob?.cancel()
         socket.close()
+    }
+
+    private fun hashPassword(password: String): String {
+        return MessageDigest.getInstance("SHA-256")
+            .digest(password.toByteArray(Charsets.UTF_8))
+            .joinToString("") { byte -> "%02x".format(byte) }
+    }
+
+    private companion object {
+        const val ROOM_TTL_MILLIS = 7_000L
+        const val JOIN_TIMEOUT_MILLIS = 8_000L
     }
 }
