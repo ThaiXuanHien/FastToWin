@@ -2,6 +2,9 @@ package com.hienthai.fastowin.state
 
 import com.hienthai.fastowin.navigation.GameMode
 
+const val GAME_NUMBER_COUNT = 50
+const val DEFAULT_OPPONENT_NAME = "Đối thủ"
+
 enum class LobbyStage {
     SELECT_MODE,
     ENTER_NAME,
@@ -40,8 +43,8 @@ data class GameState(
     val lobbyStage: LobbyStage = LobbyStage.SELECT_MODE,
     
     // Multiplayer simulation
-    val player: PlayerState = PlayerState("You"),
-    val opponent: PlayerState = PlayerState("Opponent"),
+    val player: PlayerState = PlayerState("Bạn"),
+    val opponent: PlayerState = PlayerState(DEFAULT_OPPONENT_NAME),
     val isSearching: Boolean = false,
     val availableRooms: List<AvailableRoom> = emptyList(),
     val currentRoomId: String? = null,

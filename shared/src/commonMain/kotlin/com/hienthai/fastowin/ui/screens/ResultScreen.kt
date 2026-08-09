@@ -32,7 +32,8 @@ fun ResultScreen(
     onRestart: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val isWinner = state.player.score >= state.opponent.score
+    val isDraw = state.player.score == state.opponent.score
+    val isWinner = state.player.score > state.opponent.score
     val winScale by animateFloatAsState(
         targetValue = 1f,
         animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow),
@@ -52,20 +53,28 @@ fun ResultScreen(
         ) {
             Spacer(modifier = Modifier.height(48.dp))
 
-            VictoryHeader(isWinner, winScale)
+            VictoryHeader(isWinner || isDraw, winScale)
 
             Text(
-                text = if (isWinner) "VICTORY!" else "DEFEAT",
+                text = when {
+                    isDraw -> "HÒA!"
+                    isWinner -> "CHIẾN THẮNG!"
+                    else -> "THUA CUỘC"
+                },
                 style = MaterialTheme.typography.displayMedium.copy(
                     fontWeight = FontWeight.Black,
                     letterSpacing = 4.sp
                 ),
-                color = if (isWinner) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
+                color = when {
+                    isDraw -> MaterialTheme.colorScheme.secondary
+                    isWinner -> MaterialTheme.colorScheme.primary
+                    else -> MaterialTheme.colorScheme.error
+                }
             )
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            ScoreBoard(state.player, state.opponent)
+            ScoreBoard(state.player, state.opponent, isDraw)
 
             Spacer(modifier = Modifier.weight(1f))
 
@@ -79,7 +88,7 @@ fun ResultScreen(
             ) {
                 Icon(Icons.Rounded.Refresh, contentDescription = null)
                 Spacer(modifier = Modifier.width(8.dp))
-                Text(text = "Back to Lobby", style = MaterialTheme.typography.titleMedium)
+                Text(text = "Về sảnh chờ", style = MaterialTheme.typography.titleMedium)
             }
             
             Spacer(modifier = Modifier.height(24.dp))
@@ -108,7 +117,7 @@ private fun VictoryHeader(isWinner: Boolean, scale: Float) {
 }
 
 @Composable
-private fun ScoreBoard(player: PlayerState, opponent: PlayerState) {
+private fun ScoreBoard(player: PlayerState, opponent: PlayerState, isDraw: Boolean) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -117,14 +126,24 @@ private fun ScoreBoard(player: PlayerState, opponent: PlayerState) {
             .padding(24.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        ScoreRow(name = "YOU", score = player.score, isWinner = player.score >= opponent.score)
+        ScoreRow(
+            name = "${player.name} (Bạn)",
+            score = player.score,
+            result = if (isDraw) "Hòa" else if (player.score > opponent.score) "Thắng" else "Thua",
+            isWinner = !isDraw && player.score > opponent.score
+        )
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-        ScoreRow(name = "OPPONENT", score = opponent.score, isWinner = opponent.score > player.score)
+        ScoreRow(
+            name = opponent.name,
+            score = opponent.score,
+            result = if (isDraw) "Hòa" else if (opponent.score > player.score) "Thắng" else "Thua",
+            isWinner = !isDraw && opponent.score > player.score
+        )
     }
 }
 
 @Composable
-private fun ScoreRow(name: String, score: Int, isWinner: Boolean) {
+private fun ScoreRow(name: String, score: Int, result: String, isWinner: Boolean) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
@@ -137,7 +156,7 @@ private fun ScoreRow(name: String, score: Int, isWinner: Boolean) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             Text(
-                text = if (isWinner) "Winner" else "Runner up",
+                text = result,
                 style = MaterialTheme.typography.bodySmall,
                 color = if (isWinner) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline
             )
@@ -155,8 +174,8 @@ fun ResultScreenPreview() {
     FastToWinTheme {
         ResultScreen(
             state = GameState(
-                player = PlayerState("You", score = 950),
-                opponent = PlayerState("Opponent", score = 800)
+                player = PlayerState("Hiền", score = 320),
+                opponent = PlayerState("Hiếu", score = 180)
             ),
             onRestart = {}
         )

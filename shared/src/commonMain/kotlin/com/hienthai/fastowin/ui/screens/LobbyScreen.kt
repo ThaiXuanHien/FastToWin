@@ -118,7 +118,7 @@ private fun ModeSelection(onModeSelected: (GameMode) -> Unit) {
                 color = MaterialTheme.colorScheme.primary
             )
             Text(
-                text = "Multiplayer Speed Battle",
+                text = "Đấu tốc độ cùng bạn bè",
                 style = MaterialTheme.typography.titleMedium,
                 color = MaterialTheme.colorScheme.secondary
             )
@@ -126,14 +126,14 @@ private fun ModeSelection(onModeSelected: (GameMode) -> Unit) {
 
         Spacer(modifier = Modifier.height(32.dp))
         ModeCard(
-            title = "Order Mode",
-            subtitle = "Race from 1 to 100",
+            title = "Đua thứ tự",
+            subtitle = "Tìm thật nhanh các số từ 1 đến 50",
             icon = Icons.Rounded.Bolt,
             onClick = { onModeSelected(GameMode.ORDER) }
         )
         ModeCard(
-            title = "Time Attack",
-            subtitle = "60s Scoring Frenzy",
+            title = "Đua 60 giây",
+            subtitle = "Giành nhiều điểm nhất trong 60 giây",
             icon = Icons.Rounded.Timer,
             onClick = { onModeSelected(GameMode.TIME_ATTACK) }
         )
@@ -180,9 +180,9 @@ private fun NameEntry(onContinue: (String) -> Unit, onBack: () -> Unit) {
         verticalArrangement = Arrangement.spacedBy(24.dp),
         modifier = Modifier.fillMaxWidth()
     ) {
-        Text("Ready to play?", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold)
+        Text("Sẵn sàng chơi?", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold)
         Text(
-            "Enter your nickname, then create a private room or join an available room.",
+            "Nhập biệt danh, sau đó tạo phòng riêng hoặc tham gia một phòng đang chờ.",
             style = MaterialTheme.typography.bodyLarge,
             textAlign = TextAlign.Center,
             color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -190,7 +190,7 @@ private fun NameEntry(onContinue: (String) -> Unit, onBack: () -> Unit) {
         OutlinedTextField(
             value = name,
             onValueChange = { name = it },
-            label = { Text("Your Nickname") },
+            label = { Text("Biệt danh của bạn") },
             modifier = Modifier.fillMaxWidth(),
             singleLine = true,
             shape = RoundedCornerShape(16.dp),
@@ -207,9 +207,9 @@ private fun NameEntry(onContinue: (String) -> Unit, onBack: () -> Unit) {
             modifier = Modifier.fillMaxWidth().height(64.dp),
             shape = RoundedCornerShape(20.dp)
         ) {
-            Text("Browse Rooms", style = MaterialTheme.typography.titleLarge)
+            Text("Xem danh sách phòng", style = MaterialTheme.typography.titleLarge)
         }
-        TextButton(onClick = onBack) { Text("Back to Mode Selection") }
+        TextButton(onClick = onBack) { Text("Quay lại chọn chế độ") }
     }
 }
 
@@ -246,14 +246,14 @@ private fun RoomBrowser(
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Column {
-                Text("Game Rooms", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold)
+                Text("Danh sách phòng", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold)
                 Text(
                     "${state.player.name} • ${state.gameMode.displayName()}",
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
             IconButton(onClick = onRefreshRooms, enabled = !state.isSearching) {
-                Icon(Icons.Default.Refresh, contentDescription = "Refresh rooms")
+                Icon(Icons.Default.Refresh, contentDescription = "Làm mới danh sách phòng")
             }
         }
 
@@ -266,18 +266,18 @@ private fun RoomBrowser(
                 modifier = Modifier.padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                Text("Create a room", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                Text("Tạo phòng mới", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                 OutlinedTextField(
                     value = roomName,
                     onValueChange = { roomName = it },
-                    label = { Text("Room name") },
+                    label = { Text("Tên phòng") },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
                 OutlinedTextField(
                     value = roomPassword,
                     onValueChange = { roomPassword = it },
-                    label = { Text("Room password") },
+                    label = { Text("Mật khẩu phòng") },
                     singleLine = true,
                     visualTransformation = PasswordVisualTransformation(),
                     leadingIcon = { Icon(Icons.Default.Lock, null) },
@@ -289,22 +289,22 @@ private fun RoomBrowser(
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Icon(Icons.Default.Add, null)
-                    Text(" Create Room")
+                    Text(" Tạo phòng")
                 }
             }
         }
 
-        Text("Available rooms", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+        Text("Phòng đang chờ", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
         when {
             state.isSearching -> {
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
                     CircularProgressIndicator(modifier = Modifier.size(24.dp))
-                    Text("Connecting...")
+                    Text("Đang kết nối...")
                 }
             }
             state.availableRooms.isEmpty() -> {
                 Text(
-                    "No rooms are waiting. Create one or tap refresh.",
+                    "Chưa có phòng nào đang chờ. Hãy tạo phòng mới hoặc làm mới danh sách.",
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
@@ -319,7 +319,7 @@ private fun RoomBrowser(
         }
 
         TextButton(onClick = onBack, modifier = Modifier.align(Alignment.CenterHorizontally)) {
-            Text("Back to Mode Selection")
+            Text("Quay lại chọn chế độ")
         }
     }
 }
@@ -340,10 +340,10 @@ private fun RoomCard(room: AvailableRoom, onClick: () -> Unit) {
         ) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(room.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                Text("Host: ${room.hostName} • ${room.gameMode.displayName()}")
+                Text("Chủ phòng: ${room.hostName} • ${room.gameMode.displayName()}")
             }
-            if (room.requiresPassword) Icon(Icons.Default.Lock, contentDescription = "Password protected")
-            Text("  Join", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+            if (room.requiresPassword) Icon(Icons.Default.Lock, contentDescription = "Phòng có mật khẩu")
+            Text("  Tham gia", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
         }
     }
 }
@@ -357,25 +357,25 @@ private fun JoinRoomDialog(
     var password by remember(room.id) { mutableStateOf("") }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Join ${room.name}") },
+        title = { Text("Tham gia ${room.name}") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text("Hosted by ${room.hostName}")
+                Text("Chủ phòng: ${room.hostName}")
                 if (room.requiresPassword) {
                     OutlinedTextField(
                         value = password,
                         onValueChange = { password = it },
-                        label = { Text("Room password") },
+                        label = { Text("Mật khẩu phòng") },
                         visualTransformation = PasswordVisualTransformation(),
                         singleLine = true
                     )
                 } else {
-                    Text("This room does not require a password.")
+                    Text("Phòng này không yêu cầu mật khẩu.")
                 }
             }
         },
-        confirmButton = { Button(onClick = { onJoin(password) }) { Text("Join") } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+        confirmButton = { Button(onClick = { onJoin(password) }) { Text("Tham gia") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Hủy") } }
     )
 }
 
@@ -387,24 +387,24 @@ private fun RoomWaiting(state: GameState, onLeaveRoom: () -> Unit) {
         modifier = Modifier.fillMaxWidth()
     ) {
         Text(
-            state.currentRoomName ?: "Room",
+            state.currentRoomName ?: "Phòng",
             style = MaterialTheme.typography.headlineLarge,
             fontWeight = FontWeight.Bold
         )
         CircularProgressIndicator(modifier = Modifier.size(48.dp))
         Text(
-            if (state.isRoomHost) "Waiting for a player to join..." else "Requesting to join the room...",
+            if (state.isRoomHost) "Đang chờ người chơi tham gia..." else "Đang gửi yêu cầu tham gia phòng...",
             style = MaterialTheme.typography.titleMedium,
             textAlign = TextAlign.Center
         )
         Text(
-            if (state.isRoomHost) "Only a player with the correct password will be accepted."
-            else "The host is verifying the room password.",
+            if (state.isRoomHost) "Chỉ người nhập đúng mật khẩu mới có thể vào phòng."
+            else "Chủ phòng đang kiểm tra mật khẩu.",
             textAlign = TextAlign.Center,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
         state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-        OutlinedButton(onClick = onLeaveRoom) { Text("Leave Room") }
+        OutlinedButton(onClick = onLeaveRoom) { Text("Rời phòng") }
     }
 }
 
@@ -416,7 +416,7 @@ private fun MatchedStatus(state: GameState) {
         modifier = Modifier.fillMaxWidth()
     ) {
         Text(
-            "Match Found!",
+            "Đã tìm thấy đối thủ!",
             style = MaterialTheme.typography.displaySmall,
             fontWeight = FontWeight.Black,
             color = MaterialTheme.colorScheme.primary
@@ -427,7 +427,7 @@ private fun MatchedStatus(state: GameState) {
             verticalAlignment = Alignment.CenterVertically
         ) {
             PlayerMatchedCard(state.player, true)
-            Text("VS", style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.Black)
+            Text("ĐẤU", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Black)
             PlayerMatchedCard(state.opponent, false)
         }
         Text(
@@ -454,6 +454,6 @@ private fun PlayerMatchedCard(player: PlayerState, isLocal: Boolean) {
 }
 
 private fun GameMode.displayName(): String = when (this) {
-    GameMode.ORDER -> "Order"
-    GameMode.TIME_ATTACK -> "Time Attack"
+    GameMode.ORDER -> "Đua thứ tự"
+    GameMode.TIME_ATTACK -> "Đua 60 giây"
 }

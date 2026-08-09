@@ -56,7 +56,7 @@ class GameController {
         _uiState.update {
             it.copy(
                 player = it.player.copy(name = normalizedName),
-                opponent = PlayerState("Opponent"),
+                opponent = PlayerState(DEFAULT_OPPONENT_NAME),
                 lobbyStage = LobbyStage.ROOM_BROWSER,
                 isSearching = true,
                 availableRooms = emptyList(),
@@ -112,7 +112,7 @@ class GameController {
                 _uiState.update {
                     it.copy(
                         isSearching = false,
-                        error = "Connection failed: ${error.message}"
+                        error = "Không thể kết nối: ${error.message}"
                     )
                 }
             } finally {
@@ -136,11 +136,11 @@ class GameController {
         val normalizedRoomName = roomName.trim()
         if (normalizedRoomName.isEmpty()) return
         if (password.isEmpty()) {
-            _uiState.update { it.copy(error = "Room password is required.") }
+            _uiState.update { it.copy(error = "Vui lòng nhập mật khẩu phòng.") }
             return
         }
         if (!socket.isConnected.value) {
-            _uiState.update { it.copy(error = "Not connected. Please try again.") }
+            _uiState.update { it.copy(error = "Chưa kết nối máy chủ. Vui lòng thử lại.") }
             return
         }
 
@@ -151,7 +151,7 @@ class GameController {
 
         _uiState.update {
             it.copy(
-                opponent = PlayerState("Opponent"),
+                opponent = PlayerState(DEFAULT_OPPONENT_NAME),
                 lobbyStage = LobbyStage.ROOM_WAITING,
                 currentRoomId = roomId,
                 currentRoomName = normalizedRoomName,
@@ -198,11 +198,11 @@ class GameController {
     fun joinRoom(roomId: String, password: String) {
         val room = _uiState.value.availableRooms.firstOrNull { it.id == roomId }
         if (room == null) {
-            _uiState.update { it.copy(error = "Room is no longer available.") }
+            _uiState.update { it.copy(error = "Phòng không còn khả dụng.") }
             return
         }
         if (!socket.isConnected.value) {
-            _uiState.update { it.copy(error = "Not connected. Please try again.") }
+            _uiState.update { it.copy(error = "Chưa kết nối máy chủ. Vui lòng thử lại.") }
             return
         }
 
@@ -216,7 +216,7 @@ class GameController {
                 currentRoomName = room.name,
                 isRoomHost = false,
                 isSearching = true,
-                opponent = PlayerState("Opponent"),
+                opponent = PlayerState(DEFAULT_OPPONENT_NAME),
                 error = null
             )
         }
@@ -244,7 +244,7 @@ class GameController {
                     currentRoomName = null,
                     isRoomHost = false,
                     isSearching = false,
-                    error = "The room did not respond. Please refresh and try again."
+                    error = "Phòng không phản hồi. Hãy làm mới và thử lại."
                 )
             }
             requestRoomList()
@@ -267,7 +267,7 @@ class GameController {
 
         _uiState.update {
             it.copy(
-                opponent = PlayerState("Opponent"),
+                opponent = PlayerState(DEFAULT_OPPONENT_NAME),
                 lobbyStage = LobbyStage.ROOM_BROWSER,
                 currentRoomId = null,
                 currentRoomName = null,
@@ -361,7 +361,7 @@ class GameController {
                             currentRoomId = null,
                             currentRoomName = null,
                             isSearching = false,
-                            error = "The room was closed by its host."
+                            error = "Chủ phòng đã đóng phòng."
                         )
                     }
                 }
@@ -393,8 +393,8 @@ class GameController {
         }
 
         val rejectionReason = when {
-            gameStarted || state.opponent.name != "Opponent" -> "Room is already full."
-            message.passwordHash != roomPasswordHash -> "Incorrect room password."
+            gameStarted || state.opponent.name != DEFAULT_OPPONENT_NAME -> "Phòng đã đủ người."
+            message.passwordHash != roomPasswordHash -> "Mật khẩu phòng không đúng."
             else -> null
         }
 
@@ -421,7 +421,7 @@ class GameController {
         )
 
         gameStarted = true
-        val grid = (1..100).shuffled()
+        val grid = (1..GAME_NUMBER_COUNT).shuffled()
         socket.sendMessage(GameMessage.StartGame(message.roomId, grid))
         startMatchCountdown(grid)
     }
@@ -447,7 +447,7 @@ class GameController {
 
             it.copy(
                 currentTarget = nextSharedTarget,
-                isGameOver = it.isGameOver || nextSharedTarget > 100,
+                isGameOver = it.isGameOver || nextSharedTarget > GAME_NUMBER_COUNT,
                 player = it.player.copy(currentTarget = nextSharedTarget),
                 opponent = it.opponent.copy(
                     score = maxOf(it.opponent.score, message.score),
@@ -507,7 +507,7 @@ class GameController {
         if (number == state.currentTarget) {
             val nextTarget = state.currentTarget + 1
             val nextScore = state.score + 10
-            val finished = nextTarget > 100
+            val finished = nextTarget > GAME_NUMBER_COUNT
 
             _uiState.update {
                 it.copy(
@@ -534,7 +534,7 @@ class GameController {
 
             if (finished) timerJob?.cancel()
         } else {
-            _uiState.update { it.copy(message = "Wrong number!") }
+            _uiState.update { it.copy(message = "Chưa đúng số, thử lại nhé!") }
             scope.launch {
                 delay(1_000)
                 _uiState.update { it.copy(message = null) }
