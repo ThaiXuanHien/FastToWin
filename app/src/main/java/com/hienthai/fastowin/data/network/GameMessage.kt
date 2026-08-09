@@ -6,23 +6,23 @@ import kotlinx.serialization.Serializable
 @Serializable
 sealed class GameMessage {
     @Serializable
-    @SerialName("com.hienthai.fastowin.data.network.GameMessage.Join")
+    @SerialName("join")
     data class Join(val playerName: String) : GameMessage()
 
     @Serializable
-    @SerialName("com.hienthai.fastowin.data.network.GameMessage.Ready")
+    @SerialName("ready")
     data class Ready(val isReady: Boolean) : GameMessage()
 
     @Serializable
-    @SerialName("com.hienthai.fastowin.data.network.GameMessage.StartGame")
+    @SerialName("start_game")
     data class StartGame(val grid: List<Int>) : GameMessage()
 
     @Serializable
-    @SerialName("com.hienthai.fastowin.data.network.GameMessage.Move")
+    @SerialName("move")
     data class Move(val number: Int, val score: Int, val currentTarget: Int) : GameMessage()
 
     @Serializable
-    @SerialName("com.hienthai.fastowin.data.network.GameMessage.SyncState")
+    @SerialName("sync_state")
     data class SyncState(
         val opponentName: String,
         val opponentScore: Int,

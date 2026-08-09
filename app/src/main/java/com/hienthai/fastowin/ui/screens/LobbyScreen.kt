@@ -1,12 +1,10 @@
 package com.hienthai.fastowin.ui.screens
 
 import androidx.compose.animation.AnimatedContent
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.rounded.Bolt
 import androidx.compose.material.icons.rounded.Timer
@@ -303,8 +301,9 @@ private fun MatchmakingStatus(state: GameState, onReadyUp: () -> Unit, onRetry: 
                     textAlign = TextAlign.Center
                 )
             } else {
+                CircularProgressIndicator(modifier = Modifier.size(48.dp))
                 Text(
-                    text = "Opponent Found!",
+                    text = "Opponent Found! Starting soon...",
                     style = MaterialTheme.typography.headlineSmall,
                     textAlign = TextAlign.Center,
                     color = MaterialTheme.colorScheme.primary,
@@ -321,24 +320,6 @@ private fun MatchmakingStatus(state: GameState, onReadyUp: () -> Unit, onRetry: 
                 PlayerStatusCard(state.player, isLocal = true)
                 PlayerStatusCard(state.opponent, isLocal = false)
             }
-
-            if (!state.player.isReady && state.opponent.name != "Opponent") {
-                Button(
-                    onClick = onReadyUp,
-                    modifier = Modifier.fillMaxWidth(0.8f).height(64.dp),
-                    shape = RoundedCornerShape(20.dp)
-                ) {
-                    Text("Ready Up", style = MaterialTheme.typography.titleLarge)
-                }
-            } else if (state.player.isReady && !state.opponent.isReady) {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
-                ) {
-                    LinearProgressIndicator(modifier = Modifier.width(200.dp))
-                    Text("Waiting for opponent to ready up...", style = MaterialTheme.typography.bodyLarge)
-                }
-            }
         }
     }
 }
@@ -346,44 +327,24 @@ private fun MatchmakingStatus(state: GameState, onReadyUp: () -> Unit, onRetry: 
 @Composable
 private fun PlayerStatusCard(player: PlayerState, isLocal: Boolean) {
     Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Box(contentAlignment = Alignment.BottomEnd) {
-            Surface(
-                modifier = Modifier.size(100.dp),
-                shape = CircleShape,
-                color = if (isLocal) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.secondaryContainer,
-                tonalElevation = 4.dp
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Person,
-                    contentDescription = null,
-                    modifier = Modifier.padding(24.dp).fillMaxSize(),
-                    tint = if (isLocal) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSecondaryContainer
-                )
-            }
-            if (player.isReady) {
-                Icon(
-                    imageVector = Icons.Default.CheckCircle,
-                    contentDescription = "Ready",
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier
-                        .size(32.dp)
-                        .background(MaterialTheme.colorScheme.surface, CircleShape)
-                        .padding(2.dp)
-                )
-            }
-        }
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(
-                text = player.name,
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Bold
-            )
-            Text(
-                text = if (player.isReady) "READY" else "WAITING",
-                style = MaterialTheme.typography.labelLarge,
-                color = if (player.isReady) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline
+        Surface(
+            modifier = Modifier.size(100.dp),
+            shape = CircleShape,
+            color = if (isLocal) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.secondaryContainer,
+            tonalElevation = 4.dp
+        ) {
+            Icon(
+                imageVector = Icons.Default.Person,
+                contentDescription = null,
+                modifier = Modifier.padding(24.dp).fillMaxSize(),
+                tint = if (isLocal) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSecondaryContainer
             )
         }
+        Text(
+            text = player.name,
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.Bold
+        )
     }
 }
 

@@ -37,18 +37,33 @@ class GameViewModel : ViewModel() {
                 when (message) {
                     is GameMessage.Join -> {
                         val myName = _uiState.value.player.name
-                        if (message.playerName != myName) {
-                            Log.d(TAG, "Opponent joined: ${message.playerName}")
-                            _uiState.update { it.copy(
-                                opponent = it.opponent.copy(name = message.playerName)
-                            ) }
-                            
-                            // Host logic: The player with lexicographically smaller name is Host
-                            if (myName.isNotEmpty() && myName < message.playerName) {
-                                Log.d(TAG, "I am Host ($myName < ${message.playerName}). Generating grid...")
-                                val shuffledNumbers = (1..100).shuffled()
-                                socketClient.sendMessage(GameMessage.StartGame(shuffledNumbers))
-                            }
+                        val alreadyMatched = _uiState.value.opponent.name != "Opponent"
+                        Log.d(TAG, "Join received: ${message.playerName}, my name: $myName, alreadyMatched: $alreadyMatched")
+
+                        if (message.playerName == myName) {
+                            Log.d(TAG, "Ignoring own Join echo")
+                            return@collect
+                        }
+
+                        Log.d(TAG, "Opponent joined: ${message.playerName}")
+                        _uiState.update { it.copy(
+                            opponent = it.opponent.copy(name = message.playerName)
+                        ) }
+
+                        // Re-announce ourselves so the late-joiner knows we exist.
+                        // Only do this once (when we haven't matched yet) to avoid ping-pong loop.
+                        if (myName.isNotEmpty() && !alreadyMatched) {
+                            Log.d(TAG, "Re-announcing myself: $myName")
+                            socketClient.sendMessage(GameMessage.Join(myName))
+                        }
+
+                        // Host election: lexicographically smaller name sends StartGame.
+                        if (myName.isNotEmpty() && myName < message.playerName) {
+                            Log.d(TAG, "I am Host ($myName < ${message.playerName}). Generating grid...")
+                            val shuffledNumbers = (1..100).shuffled()
+                            socketClient.sendMessage(GameMessage.StartGame(shuffledNumbers))
+                        } else {
+                            Log.d(TAG, "I am Guest (${myName} >= ${message.playerName}), waiting for StartGame...")
                         }
                     }
                     is GameMessage.SyncState -> {
@@ -92,31 +107,28 @@ class GameViewModel : ViewModel() {
 
     fun startSearching(playerName: String) {
         Log.d(TAG, "Starting search for $playerName")
+        // Update state FIRST so player.name is set before any message arrives
         _uiState.update { it.copy(
             player = it.player.copy(name = playerName),
+            opponent = PlayerState("Opponent"), // reset opponent
             lobbyStage = LobbyStage.SEARCHING,
             isSearching = true,
             error = null
         ) }
-        
+
         connectionJob?.cancel()
         connectionJob = viewModelScope.launch {
-            // Wait for connection then send Join
-            launch {
-                socketClient.isConnected.collect { connected ->
-                    if (connected) {
+            try {
+                socketClient.connect(
+                    onConnected = {
                         Log.d(TAG, "Socket connected, sending Join for $playerName")
                         socketClient.sendMessage(GameMessage.Join(playerName))
                     }
-                }
-            }
-
-            try {
-                socketClient.connect()
+                )
             } catch (e: Exception) {
                 Log.e(TAG, "Connection error: ${e.message}")
                 _uiState.update { it.copy(
-                    isSearching = false, 
+                    isSearching = false,
                     error = "Connection failed: ${e.message}",
                     lobbyStage = LobbyStage.SEARCHING
                 ) }

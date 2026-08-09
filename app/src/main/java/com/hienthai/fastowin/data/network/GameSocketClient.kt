@@ -37,26 +37,33 @@ class GameSocketClient {
     private val _isConnected = MutableSharedFlow<Boolean>(replay = 1)
     val isConnected: Flow<Boolean> = _isConnected.asSharedFlow()
 
-    suspend fun connect(url: String = "wss://free.blr2.piesocket.com/v3/1?api_key=AqHVyHSHRahKcy3ymhsW6ILmEEpU2HHGINdyO9TN&notify_self=1") {
+    suspend fun connect(
+        url: String = "wss://free.blr2.piesocket.com/v3/1?api_key=AqHVyHSHRahKcy3ymhsW6ILmEEpU2HHGINdyO9TN",
+        onConnected: (suspend () -> Unit)? = null
+    ) {
         Log.d(TAG, "Connecting to $url")
         try {
             client.webSocket(url) {
                 session = this
                 _isConnected.emit(true)
                 Log.d(TAG, "Connected successfully")
+                onConnected?.invoke()
                 try {
-                    while (true) {
-                        val frame = incoming.receive()
+                    for (frame in incoming) {
                         if (frame is Frame.Text) {
                             val text = frame.readText()
                             Log.d(TAG, "Received raw: $text")
+                            // Skip PieSocket system messages (they don't have our "type" field)
+                            if (!text.contains("\"type\"")) {
+                                Log.d(TAG, "Skipping non-game message")
+                                continue
+                            }
                             try {
                                 val message = json.decodeFromString<GameMessage>(text)
                                 Log.d(TAG, "Decoded message: $message")
                                 _messages.emit(message)
                             } catch (e: Exception) {
                                 Log.e(TAG, "Failed to decode message: ${e.message}")
-                                e.printStackTrace()
                             }
                         }
                     }
