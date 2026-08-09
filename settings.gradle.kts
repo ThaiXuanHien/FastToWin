@@ -24,3 +24,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "Fast To Win"
 include(":app")
+include(":shared")
