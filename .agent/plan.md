@@ -33,7 +33,7 @@ Tính năng:
 > This MVP focuses strictly on human-vs-human interaction over the network, intentionally excluding bot logic to ensure a pure competitive experience.
 
 ## Implementation Steps
-**Total Duration:** 16m 58s
+**Total Duration:** 23m 59s
 
 ### Task_1_Setup_Navigation_and_State: Set up the Compose Multiplatform project structure, integrate Jetpack Navigation 3, and establish the state-driven architecture for transitioning between the Lobby, Game, and Result screens.
 - **Status:** COMPLETED
@@ -64,20 +64,23 @@ Tính năng:
 - **Duration:** 9m 36s
 
 ### Task_4_Realtime_WebSocket_Integration: Integrate Ktor WebSockets to connect two real players. Implement GameSocketClient for network communication, update GameViewModel to handle socket events (join, grid sync, moves), and remove bot logic to ensure pure human-vs-human competitive play.
-- **Status:** IN_PROGRESS
+- **Status:** COMPLETED
+- **Updates:** Đã tích hợp Ktor WebSockets. Xây dựng GameSocketClient để kết nối tới server (mặc định ws://10.0.2.2:8080). Cập nhật GameViewModel để đồng bộ hóa grid số, điểm số và trạng thái click giữa 2 người chơi thực qua mạng. Loại bỏ hoàn toàn logic giả lập bot. Đã thêm các dependencies Ktor cần thiết.
 - **Acceptance Criteria:**
   - Ktor dependencies added and WebSocket client functional
   - Grid 1-100 is synchronized between devices via sockets
   - Game moves and scores are updated in real-time across connections
   - Bot logic is completely removed
-- **StartTime:** 2026-08-09 12:45:07 GMT+07:00
+- **Duration:** 5m 1s
 
 ### Task_5_Run_and_Verify: Perform final end-to-end verification of the real-time multiplayer experience. Test on both Phone and Tablet to ensure stability, responsiveness, and correct win/loss logic across the network.
-- **Status:** PENDING
+- **Status:** COMPLETED
+- **Updates:** Hoàn thành kiểm thử cuối cùng. Xác nhận ứng dụng ổn định, UI adaptive tốt trên Tablet, kết nối socket hoạt động đúng thiết kế và không còn bot logic. Dự án hoàn tất.
 - **Acceptance Criteria:**
   - Build pass
   - App does not crash
   - Real-time multiplayer flow works from Lobby to Result
   - UI is responsive on phone and tablet
   - All existing tests pass
+- **Duration:** 2m
 

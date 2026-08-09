@@ -1,7 +1,6 @@
 package com.hienthai.fastowin.ui.screens
 
 import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
@@ -15,7 +14,6 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -24,34 +22,42 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.hienthai.fastowin.navigation.GameMode
 import com.hienthai.fastowin.state.GameState
+import com.hienthai.fastowin.state.LobbyStage
 import com.hienthai.fastowin.state.PlayerState
 import com.hienthai.fastowin.ui.theme.FastToWinTheme
 
 @Composable
 fun LobbyScreen(
     state: GameState,
-    onFindMatch: (GameMode) -> Unit,
+    onModeSelected: (GameMode) -> Unit,
+    onStartSearching: (String) -> Unit,
+    onBackToMode: () -> Unit,
     onReadyUp: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Box(
         modifier = modifier
             .fillMaxSize()
+            .windowInsetsPadding(WindowInsets.safeDrawing)
             .padding(24.dp),
         contentAlignment = Alignment.Center
     ) {
-        AnimatedContent(targetState = state.isSearching || state.opponent.isReady || state.player.isReady, label = "LobbyContent") { isInMatchmaking ->
-            if (!isInMatchmaking) {
-                ModeSelection(onFindMatch)
-            } else {
-                MatchmakingStatus(state, onReadyUp)
+        AnimatedContent(
+            targetState = state.lobbyStage,
+            label = "LobbyContent",
+            modifier = Modifier.widthIn(max = 600.dp) // Adaptive constraint for large screens
+        ) { stage ->
+            when (stage) {
+                LobbyStage.SELECT_MODE -> ModeSelection(onModeSelected)
+                LobbyStage.ENTER_NAME -> NameEntry(onStartSearching, onBackToMode)
+                LobbyStage.SEARCHING -> MatchmakingStatus(state, onReadyUp, onRetry = { onStartSearching(state.player.name) })
             }
         }
     }
 }
 
 @Composable
-private fun ModeSelection(onFindMatch: (GameMode) -> Unit) {
+private fun ModeSelection(onModeSelected: (GameMode) -> Unit) {
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(24.dp)
@@ -78,7 +84,7 @@ private fun ModeSelection(onFindMatch: (GameMode) -> Unit) {
             title = "Order Mode",
             subtitle = "Race from 1 to 100",
             icon = Icons.Rounded.Bolt,
-            onClick = { onFindMatch(GameMode.ORDER) },
+            onClick = { onModeSelected(GameMode.ORDER) },
             containerColor = MaterialTheme.colorScheme.primaryContainer
         )
 
@@ -86,7 +92,7 @@ private fun ModeSelection(onFindMatch: (GameMode) -> Unit) {
             title = "Time Attack",
             subtitle = "60s Scoring Frenzy",
             icon = Icons.Rounded.Timer,
-            onClick = { onFindMatch(GameMode.TIME_ATTACK) },
+            onClick = { onModeSelected(GameMode.TIME_ATTACK) },
             containerColor = MaterialTheme.colorScheme.secondaryContainer
         )
     }
@@ -136,7 +142,61 @@ private fun ModeCard(
 }
 
 @Composable
-private fun MatchmakingStatus(state: GameState, onReadyUp: () -> Unit) {
+private fun NameEntry(
+    onStartSearching: (String) -> Unit,
+    onBack: () -> Unit
+) {
+    var name by remember { mutableStateOf("") }
+    
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(24.dp),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Text(
+            text = "Ready to play?",
+            style = MaterialTheme.typography.headlineLarge,
+            fontWeight = FontWeight.Bold
+        )
+        
+        Text(
+            text = "Enter your nickname to start finding opponents.",
+            style = MaterialTheme.typography.bodyLarge,
+            textAlign = TextAlign.Center,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+
+        OutlinedTextField(
+            value = name,
+            onValueChange = { name = it },
+            label = { Text("Your Nickname") },
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true,
+            shape = RoundedCornerShape(16.dp),
+            leadingIcon = { Icon(Icons.Default.Person, contentDescription = null) },
+            colors = TextFieldDefaults.colors(
+                focusedContainerColor = MaterialTheme.colorScheme.surface,
+                unfocusedContainerColor = MaterialTheme.colorScheme.surface,
+            )
+        )
+        
+        Button(
+            onClick = { if (name.isNotBlank()) onStartSearching(name) },
+            enabled = name.isNotBlank(),
+            modifier = Modifier.fillMaxWidth().height(64.dp),
+            shape = RoundedCornerShape(20.dp)
+        ) {
+            Text("Find Match", style = MaterialTheme.typography.titleLarge)
+        }
+        
+        TextButton(onClick = onBack) {
+            Text("Back to Mode Selection")
+        }
+    }
+}
+
+@Composable
+private fun MatchmakingStatus(state: GameState, onReadyUp: () -> Unit, onRetry: () -> Unit) {
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(32.dp),
@@ -150,31 +210,68 @@ private fun MatchmakingStatus(state: GameState, onReadyUp: () -> Unit) {
             )
             Text(text = "Match Starting!", style = MaterialTheme.typography.headlineMedium)
         } else {
-            Text(
-                text = if (state.isSearching) "Searching for Opponent..." else "Opponent Found!",
-                style = MaterialTheme.typography.headlineSmall,
-                textAlign = TextAlign.Center
-            )
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceEvenly
-            ) {
-                PlayerStatusCard(state.player, isLocal = true)
-                PlayerStatusCard(state.opponent, isLocal = false)
+            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (state.error != null) {
+                    Icon(
+                        imageVector = Icons.Rounded.Bolt, // Using Bolt as error-ish icon or could use Warning
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.size(48.dp)
+                    )
+                    Text(
+                        text = state.error,
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.error,
+                        textAlign = TextAlign.Center
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Button(onClick = onRetry) {
+                        Text("Retry Connection")
+                    }
+                } else if (state.isSearching && state.opponent.name == "Opponent") {
+                    CircularProgressIndicator(modifier = Modifier.size(48.dp))
+                    Text(
+                        text = "Searching for Opponent...",
+                        style = MaterialTheme.typography.headlineSmall,
+                        textAlign = TextAlign.Center
+                    )
+                } else {
+                    Text(
+                        text = "Opponent Found!",
+                        style = MaterialTheme.typography.headlineSmall,
+                        textAlign = TextAlign.Center,
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
             }
 
-            if (!state.player.isReady && !state.isSearching) {
-                Button(
-                    onClick = onReadyUp,
-                    modifier = Modifier.fillMaxWidth(0.6f).height(56.dp),
-                    shape = RoundedCornerShape(16.dp)
+            if (state.error == null) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceEvenly
                 ) {
-                    Text("Ready Up", style = MaterialTheme.typography.titleMedium)
+                    PlayerStatusCard(state.player, isLocal = true)
+                    PlayerStatusCard(state.opponent, isLocal = false)
                 }
-            } else if (state.player.isReady && !state.opponent.isReady) {
-                CircularProgressIndicator()
-                Text("Waiting for opponent...")
+
+                if (!state.player.isReady && state.opponent.name != "Opponent") {
+                    Button(
+                        onClick = onReadyUp,
+                        modifier = Modifier.fillMaxWidth(0.8f).height(64.dp),
+                        shape = RoundedCornerShape(20.dp)
+                    ) {
+                        Text("Ready Up", style = MaterialTheme.typography.titleLarge)
+                    }
+                } else if (state.player.isReady && !state.opponent.isReady) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
+                        LinearProgressIndicator(modifier = Modifier.width(200.dp))
+                        Text("Waiting for opponent to ready up...", style = MaterialTheme.typography.bodyLarge)
+                    }
+                }
             }
         }
     }
@@ -182,17 +279,19 @@ private fun MatchmakingStatus(state: GameState, onReadyUp: () -> Unit) {
 
 @Composable
 private fun PlayerStatusCard(player: PlayerState, isLocal: Boolean) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Box(contentAlignment = Alignment.BottomEnd) {
             Surface(
-                modifier = Modifier.size(80.dp),
+                modifier = Modifier.size(100.dp),
                 shape = CircleShape,
-                color = if (isLocal) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.secondaryContainer
+                color = if (isLocal) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.secondaryContainer,
+                tonalElevation = 4.dp
             ) {
                 Icon(
                     imageVector = Icons.Default.Person,
                     contentDescription = null,
-                    modifier = Modifier.padding(16.dp).fillMaxSize()
+                    modifier = Modifier.padding(24.dp).fillMaxSize(),
+                    tint = if (isLocal) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSecondaryContainer
                 )
             }
             if (player.isReady) {
@@ -201,22 +300,24 @@ private fun PlayerStatusCard(player: PlayerState, isLocal: Boolean) {
                     contentDescription = "Ready",
                     tint = MaterialTheme.colorScheme.primary,
                     modifier = Modifier
-                        .size(24.dp)
+                        .size(32.dp)
                         .background(MaterialTheme.colorScheme.surface, CircleShape)
                         .padding(2.dp)
                 )
             }
         }
-        Text(
-            text = player.name,
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.Bold
-        )
-        Text(
-            text = if (player.isReady) "READY" else "WAITING",
-            style = MaterialTheme.typography.labelLarge,
-            color = if (player.isReady) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline
-        )
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(
+                text = player.name,
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold
+            )
+            Text(
+                text = if (player.isReady) "READY" else "WAITING",
+                style = MaterialTheme.typography.labelLarge,
+                color = if (player.isReady) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline
+            )
+        }
     }
 }
 
@@ -225,8 +326,38 @@ private fun PlayerStatusCard(player: PlayerState, isLocal: Boolean) {
 fun LobbyScreenPreview() {
     FastToWinTheme {
         LobbyScreen(
-            state = GameState(isSearching = true),
-            onFindMatch = {},
+            state = GameState(lobbyStage = LobbyStage.SELECT_MODE),
+            onModeSelected = {},
+            onStartSearching = {},
+            onBackToMode = {},
+            onReadyUp = {}
+        )
+    }
+}
+
+@Preview(showBackground = true)
+@Composable
+fun NameEntryPreview() {
+    FastToWinTheme {
+        LobbyScreen(
+            state = GameState(lobbyStage = LobbyStage.ENTER_NAME),
+            onModeSelected = {},
+            onStartSearching = {},
+            onBackToMode = {},
+            onReadyUp = {}
+        )
+    }
+}
+
+@Preview(showBackground = true)
+@Composable
+fun SearchingPreview() {
+    FastToWinTheme {
+        LobbyScreen(
+            state = GameState(lobbyStage = LobbyStage.SEARCHING, isSearching = true),
+            onModeSelected = {},
+            onStartSearching = {},
+            onBackToMode = {},
             onReadyUp = {}
         )
     }

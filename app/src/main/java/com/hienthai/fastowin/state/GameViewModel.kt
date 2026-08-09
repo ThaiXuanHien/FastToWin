@@ -1,5 +1,6 @@
 package com.hienthai.fastowin.state
 
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.hienthai.fastowin.data.network.GameMessage
@@ -19,18 +20,40 @@ class GameViewModel : ViewModel() {
 
     private val socketClient = GameSocketClient()
     private var timerJob: Job? = null
-    private var socketJob: Job? = null
+    private var connectionJob: Job? = null
+    private var messageJob: Job? = null
+
+    private val TAG = "GameViewModel"
 
     init {
         observeSocketMessages()
     }
 
     private fun observeSocketMessages() {
-        socketJob = viewModelScope.launch {
+        messageJob?.cancel()
+        messageJob = viewModelScope.launch {
             socketClient.messages.collect { message ->
+                Log.d(TAG, "Observed message: $message")
                 when (message) {
+                    is GameMessage.Join -> {
+                        val myName = _uiState.value.player.name
+                        if (message.playerName != myName) {
+                            Log.d(TAG, "Opponent joined: ${message.playerName}")
+                            _uiState.update { it.copy(
+                                opponent = it.opponent.copy(name = message.playerName)
+                            ) }
+                            
+                            // Host logic: The player with lexicographically smaller name is Host
+                            if (myName.isNotEmpty() && myName < message.playerName) {
+                                Log.d(TAG, "I am Host ($myName < ${message.playerName}). Generating grid...")
+                                val shuffledNumbers = (1..100).shuffled()
+                                socketClient.sendMessage(GameMessage.StartGame(shuffledNumbers))
+                            }
+                        }
+                    }
                     is GameMessage.SyncState -> {
                         _uiState.update { it.copy(
+                            isSearching = false,
                             opponent = it.opponent.copy(
                                 name = message.opponentName,
                                 score = message.opponentScore,
@@ -40,6 +63,8 @@ class GameViewModel : ViewModel() {
                         ) }
                     }
                     is GameMessage.StartGame -> {
+                        Log.d(TAG, "Game Starting with grid size: ${message.grid.size}")
+                        _uiState.update { it.copy(isSearching = false) }
                         startGameWithGrid(message.grid)
                     }
                     is GameMessage.Move -> {
@@ -50,21 +75,52 @@ class GameViewModel : ViewModel() {
                             )
                         ) }
                     }
-                    else -> {}
+                    else -> {
+                        Log.d(TAG, "Unhandled message type: ${message::class.simpleName}")
+                    }
                 }
             }
         }
     }
 
-    fun findMatch(mode: GameMode) {
-        _uiState.update { it.copy(isSearching = true, gameMode = mode) }
-        viewModelScope.launch {
+    fun selectMode(mode: GameMode) {
+        _uiState.update { it.copy(gameMode = mode, lobbyStage = LobbyStage.ENTER_NAME) }
+    }
+
+    fun backToModeSelection() {
+        _uiState.update { it.copy(lobbyStage = LobbyStage.SELECT_MODE) }
+    }
+
+    fun startSearching(playerName: String) {
+        Log.d(TAG, "Starting search for $playerName")
+        _uiState.update { it.copy(
+            player = it.player.copy(name = playerName),
+            lobbyStage = LobbyStage.SEARCHING,
+            isSearching = true,
+            error = null
+        ) }
+        
+        connectionJob?.cancel()
+        connectionJob = viewModelScope.launch {
+            // Wait for connection then send Join
+            launch {
+                socketClient.isConnected.collect { connected ->
+                    if (connected) {
+                        Log.d(TAG, "Socket connected, sending Join for $playerName")
+                        socketClient.sendMessage(GameMessage.Join(playerName))
+                    }
+                }
+            }
+
             try {
                 socketClient.connect()
-                socketClient.sendMessage(GameMessage.Join("Player ${System.currentTimeMillis() % 1000}"))
-                _uiState.update { it.copy(isSearching = false) }
             } catch (e: Exception) {
-                _uiState.update { it.copy(isSearching = false, message = "Connection failed") }
+                Log.e(TAG, "Connection error: ${e.message}")
+                _uiState.update { it.copy(
+                    isSearching = false, 
+                    error = "Connection failed: ${e.message}",
+                    lobbyStage = LobbyStage.SEARCHING
+                ) }
             }
         }
     }
@@ -72,7 +128,11 @@ class GameViewModel : ViewModel() {
     fun readyUp() {
         _uiState.update { it.copy(player = it.player.copy(isReady = true)) }
         viewModelScope.launch {
-            socketClient.sendMessage(GameMessage.Ready(true))
+            try {
+                socketClient.sendMessage(GameMessage.Ready(true))
+            } catch (e: Exception) {
+                _uiState.update { it.copy(error = "Failed to send ready status") }
+            }
         }
         checkAutoStart()
     }
@@ -80,12 +140,14 @@ class GameViewModel : ViewModel() {
     private fun checkAutoStart() {
         val state = _uiState.value
         if (state.player.isReady && state.opponent.isReady && state.countdown == null) {
-            // First player to be ready generates the grid (simplified logic)
-            // In a real app, the server should do this.
             if (state.numbers.isEmpty()) {
                 val shuffledNumbers = (1..100).shuffled()
                 viewModelScope.launch {
-                    socketClient.sendMessage(GameMessage.StartGame(shuffledNumbers))
+                    try {
+                        socketClient.sendMessage(GameMessage.StartGame(shuffledNumbers))
+                    } catch (e: Exception) {
+                        _uiState.update { it.copy(error = "Failed to start game") }
+                    }
                 }
             }
         }
@@ -101,7 +163,8 @@ class GameViewModel : ViewModel() {
             player = it.player.copy(score = 0, currentTarget = 1),
             opponent = it.opponent.copy(score = 0, currentTarget = 1),
             isMatchStarted = true,
-            countdown = null
+            countdown = null,
+            error = null
         ) }
 
         if (_uiState.value.gameMode == GameMode.TIME_ATTACK) {
@@ -137,7 +200,11 @@ class GameViewModel : ViewModel() {
             ) }
 
             viewModelScope.launch {
-                socketClient.sendMessage(GameMessage.Move(number, nextScore, nextTarget))
+                try {
+                    socketClient.sendMessage(GameMessage.Move(number, nextScore, nextTarget))
+                } catch (e: Exception) {
+                    // Non-fatal error for move
+                }
             }
 
             if (isFinished) {
@@ -154,8 +221,11 @@ class GameViewModel : ViewModel() {
 
     fun resetGame() {
         timerJob?.cancel()
-        socketJob?.cancel()
-        socketClient.close()
+        connectionJob?.cancel()
+        messageJob?.cancel()
+        viewModelScope.launch {
+            socketClient.disconnect()
+        }
         _uiState.value = GameState(isMatchStarted = false)
         observeSocketMessages()
     }
@@ -163,7 +233,8 @@ class GameViewModel : ViewModel() {
     override fun onCleared() {
         super.onCleared()
         timerJob?.cancel()
-        socketJob?.cancel()
+        connectionJob?.cancel()
+        messageJob?.cancel()
         socketClient.close()
     }
 }

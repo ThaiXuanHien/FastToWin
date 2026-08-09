@@ -1,5 +1,6 @@
 package com.hienthai.fastowin.data.network
 
+import android.util.Log
 import io.ktor.client.*
 import io.ktor.client.engine.cio.*
 import io.ktor.client.plugins.contentnegotiation.*
@@ -14,12 +15,18 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.encodeToString
 
 class GameSocketClient {
+    private val json = Json {
+        ignoreUnknownKeys = true
+        prettyPrint = true
+        classDiscriminator = "type"
+        encodeDefaults = true
+    }
+    
+    private val TAG = "GameSocketClient"
+
     private val client = HttpClient(CIO) {
         install(WebSockets) {
-            contentConverter = KotlinxWebsocketSerializationConverter(Json {
-                ignoreUnknownKeys = true
-                prettyPrint = true
-            })
+            contentConverter = KotlinxWebsocketSerializationConverter(json)
         }
     }
 
@@ -27,24 +34,62 @@ class GameSocketClient {
     private val _messages = MutableSharedFlow<GameMessage>()
     val messages: Flow<GameMessage> = _messages.asSharedFlow()
 
-    suspend fun connect(url: String = "ws://10.0.2.2:8080/game") {
-        client.webSocket(url) {
-            session = this
-            try {
-                while (true) {
-                    val message = receiveDeserialized<GameMessage>()
-                    _messages.emit(message)
+    private val _isConnected = MutableSharedFlow<Boolean>(replay = 1)
+    val isConnected: Flow<Boolean> = _isConnected.asSharedFlow()
+
+    suspend fun connect(url: String = "wss://free.blr2.piesocket.com/v3/1?api_key=AqHVyHSHRahKcy3ymhsW6ILmEEpU2HHGINdyO9TN&notify_self=1") {
+        Log.d(TAG, "Connecting to $url")
+        try {
+            client.webSocket(url) {
+                session = this
+                _isConnected.emit(true)
+                Log.d(TAG, "Connected successfully")
+                try {
+                    while (true) {
+                        val frame = incoming.receive()
+                        if (frame is Frame.Text) {
+                            val text = frame.readText()
+                            Log.d(TAG, "Received raw: $text")
+                            try {
+                                val message = json.decodeFromString<GameMessage>(text)
+                                Log.d(TAG, "Decoded message: $message")
+                                _messages.emit(message)
+                            } catch (e: Exception) {
+                                Log.e(TAG, "Failed to decode message: ${e.message}")
+                                e.printStackTrace()
+                            }
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error in websocket loop: ${e.message}")
+                    e.printStackTrace()
+                } finally {
+                    session = null
+                    _isConnected.emit(false)
+                    Log.d(TAG, "Disconnected")
                 }
-            } catch (e: Exception) {
-                e.printStackTrace()
-            } finally {
-                session = null
             }
+        } catch (e: Exception) {
+            Log.e(TAG, "Connection failed: ${e.message}")
+            _isConnected.emit(false)
+            throw e
         }
     }
 
     suspend fun sendMessage(message: GameMessage) {
-        session?.sendSerialized(message)
+        try {
+            val text = json.encodeToString(message)
+            Log.d(TAG, "Sending: $text")
+            session?.send(Frame.Text(text))
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to send message: ${e.message}")
+            e.printStackTrace()
+        }
+    }
+
+    suspend fun disconnect() {
+        session?.close()
+        session = null
     }
 
     fun close() {

@@ -2,6 +2,12 @@ package com.hienthai.fastowin.state
 
 import com.hienthai.fastowin.navigation.GameMode
 
+enum class LobbyStage {
+    SELECT_MODE,
+    ENTER_NAME,
+    SEARCHING
+}
+
 data class PlayerState(
     val name: String,
     val isReady: Boolean = false,
@@ -17,6 +23,10 @@ data class GameState(
     val isGameOver: Boolean = false,
     val gameMode: GameMode = GameMode.ORDER,
     val message: String? = null,
+    val error: String? = null,
+    
+    // Lobby flow
+    val lobbyStage: LobbyStage = LobbyStage.SELECT_MODE,
     
     // Multiplayer simulation
     val player: PlayerState = PlayerState("You"),

@@ -50,7 +50,9 @@ fun FastToWinNavHost(
                 is FastToWinNavKey.Lobby -> androidx.navigation3.runtime.NavEntry(key) {
                     LobbyScreen(
                         state = uiState,
-                        onFindMatch = { mode -> gameViewModel.findMatch(mode) },
+                        onModeSelected = { mode -> gameViewModel.selectMode(mode) },
+                        onStartSearching = { name -> gameViewModel.startSearching(name) },
+                        onBackToMode = { gameViewModel.backToModeSelection() },
                         onReadyUp = { gameViewModel.readyUp() }
                     )
                 }
