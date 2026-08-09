@@ -30,7 +30,6 @@ fun LobbyScreen(
     onModeSelected: (GameMode) -> Unit,
     onStartSearching: (String) -> Unit,
     onBackToMode: () -> Unit,
-    onReadyUp: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Box(
@@ -43,12 +42,12 @@ fun LobbyScreen(
         AnimatedContent(
             targetState = state.lobbyStage,
             label = "LobbyContent",
-            modifier = Modifier.widthIn(max = 600.dp) // Adaptive constraint for large screens
+            modifier = Modifier.widthIn(max = 600.dp)
         ) { stage ->
             when (stage) {
                 LobbyStage.SELECT_MODE -> ModeSelection(onModeSelected)
                 LobbyStage.ENTER_NAME -> NameEntry(onStartSearching, onBackToMode)
-                LobbyStage.SEARCHING -> MatchmakingStatus(state, onReadyUp, onRetry = { onStartSearching(state.player.name) })
+                LobbyStage.SEARCHING -> MatchmakingStatus(state, onRetry = { onStartSearching(state.player.name) })
                 LobbyStage.MATCHED -> MatchedStatus(state)
             }
         }
@@ -269,7 +268,7 @@ private fun NameEntry(
 }
 
 @Composable
-private fun MatchmakingStatus(state: GameState, onReadyUp: () -> Unit, onRetry: () -> Unit) {
+private fun MatchmakingStatus(state: GameState, onRetry: () -> Unit) {
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(32.dp),
@@ -356,8 +355,7 @@ fun LobbyScreenPreview() {
             state = GameState(lobbyStage = LobbyStage.SELECT_MODE),
             onModeSelected = {},
             onStartSearching = {},
-            onBackToMode = {},
-            onReadyUp = {}
+            onBackToMode = {}
         )
     }
 }
@@ -370,8 +368,7 @@ fun NameEntryPreview() {
             state = GameState(lobbyStage = LobbyStage.ENTER_NAME),
             onModeSelected = {},
             onStartSearching = {},
-            onBackToMode = {},
-            onReadyUp = {}
+            onBackToMode = {}
         )
     }
 }
@@ -384,8 +381,7 @@ fun SearchingPreview() {
             state = GameState(lobbyStage = LobbyStage.SEARCHING, isSearching = true),
             onModeSelected = {},
             onStartSearching = {},
-            onBackToMode = {},
-            onReadyUp = {}
+            onBackToMode = {}
         )
     }
 }
@@ -402,8 +398,7 @@ fun MatchedPreview() {
             ),
             onModeSelected = {},
             onStartSearching = {},
-            onBackToMode = {},
-            onReadyUp = {}
+            onBackToMode = {}
         )
     }
 }

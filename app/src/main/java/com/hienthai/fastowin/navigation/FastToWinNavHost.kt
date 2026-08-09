@@ -52,8 +52,7 @@ fun FastToWinNavHost(
                         state = uiState,
                         onModeSelected = { mode -> gameViewModel.selectMode(mode) },
                         onStartSearching = { name -> gameViewModel.startSearching(name) },
-                        onBackToMode = { gameViewModel.backToModeSelection() },
-                        onReadyUp = { gameViewModel.readyUp() }
+                        onBackToMode = { gameViewModel.backToModeSelection() }
                     )
                 }
                 is FastToWinNavKey.Game -> androidx.navigation3.runtime.NavEntry(key) {

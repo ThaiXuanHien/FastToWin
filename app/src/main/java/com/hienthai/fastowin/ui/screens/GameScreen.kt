@@ -204,7 +204,7 @@ private fun PlayerScoreCard(
                 modifier = Modifier.fillMaxWidth()
             )
             Text(
-                text = "Next: $currentTarget",
+                text = "Bấm: $currentTarget",
                 style = MaterialTheme.typography.bodySmall,
                 color = onContainerColor.copy(alpha = 0.75f),
                 textAlign = textAlign,
