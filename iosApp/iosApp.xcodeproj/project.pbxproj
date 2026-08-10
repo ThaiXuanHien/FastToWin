@@ -188,6 +188,8 @@
 		F10000000000000000000021 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				FASTTOWIN_ENV = dev;
+				GAME_SERVER_URL = "ws://127.0.0.1:8080/game";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = "";
@@ -209,7 +211,7 @@
 					"-framework",
 					Shared,
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.hienthai.fastowin;
+				PRODUCT_BUNDLE_IDENTIFIER = com.hienthai.fastowin.dev;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -221,6 +223,8 @@
 		F10000000000000000000022 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				FASTTOWIN_ENV = prod;
+				GAME_SERVER_URL = "wss://configure-production-server.invalid/game";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = "";

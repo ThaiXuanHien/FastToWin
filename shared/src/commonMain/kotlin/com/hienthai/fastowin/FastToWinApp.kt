@@ -15,8 +15,8 @@ import com.hienthai.fastowin.ui.screens.ResultScreen
 import com.hienthai.fastowin.ui.theme.FastToWinTheme
 
 @Composable
-fun FastToWinApp() {
-    val controller = remember { GameController() }
+fun FastToWinApp(serverUrl: String) {
+    val controller = remember(serverUrl) { GameController(serverUrl) }
     val state by controller.uiState.collectAsState()
 
     DisposableEffect(controller) {

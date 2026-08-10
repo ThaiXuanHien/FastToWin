@@ -18,8 +18,17 @@
     <string>1.0</string>
     <key>CFBundleVersion</key>
     <string>1</string>
+    <key>FASTTOWIN_ENV</key>
+    <string>$(FASTTOWIN_ENV)</string>
+    <key>GAME_SERVER_URL</key>
+    <string>$(GAME_SERVER_URL)</string>
     <key>LSRequiresIPhoneOS</key>
     <true/>
+    <key>NSAppTransportSecurity</key>
+    <dict>
+        <key>NSAllowsLocalNetworking</key>
+        <true/>
+    </dict>
     <key>CADisableMinimumFrameDurationOnPhone</key>
     <true/>
     <key>UILaunchScreen</key>

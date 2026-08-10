@@ -1,110 +1,96 @@
 package com.hienthai.fastowin.data.network
 
-import io.ktor.client.*
-import io.ktor.client.plugins.websocket.*
-import io.ktor.websocket.*
+import com.hienthai.fastowin.protocol.ClientMessage
+import com.hienthai.fastowin.protocol.ProtocolJson
+import com.hienthai.fastowin.protocol.ServerMessage
+import io.ktor.client.HttpClient
+import io.ktor.client.plugins.websocket.DefaultClientWebSocketSession
+import io.ktor.client.plugins.websocket.WebSockets
+import io.ktor.client.plugins.websocket.webSocket
+import io.ktor.websocket.Frame
+import io.ktor.websocket.close
+import io.ktor.websocket.readText
+import io.ktor.websocket.send
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.receiveAsFlow
-import kotlinx.serialization.json.Json
+import kotlinx.coroutines.isActive
+import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 
-class GameSocketClient {
-
-    private val json = Json {
-        ignoreUnknownKeys = true
-        classDiscriminator = "type"
-        encodeDefaults = true
-    }
-
-    private val client = HttpClient {
-        install(WebSockets)
-    }
-
+class GameSocketClient(private val serverUrl: String) {
+    private val client = HttpClient { install(WebSockets) }
     private var session: DefaultClientWebSocketSession? = null
+    private var resumeToken: String? = null
+    private var reconnectEnabled = true
 
-    // Channel with buffer so fast messages are never dropped
-    private val _messages = Channel<GameMessage>(capacity = Channel.UNLIMITED)
-    val messages: Flow<GameMessage> = _messages.receiveAsFlow()
+    private val _messages = Channel<ServerMessage>(Channel.UNLIMITED)
+    val messages: Flow<ServerMessage> = _messages.receiveAsFlow()
 
     private val _isConnected = MutableStateFlow(false)
     val isConnected: StateFlow<Boolean> = _isConnected.asStateFlow()
 
-    /**
-     * Opens the WebSocket connection and suspends until it closes.
-     * Call this from a dedicated coroutine; cancel that coroutine to disconnect.
-     */
-    suspend fun connect(
-        url: String = "wss://free.blr2.piesocket.com/v3/1?api_key=AqHVyHSHRahKcy3ymhsW6ILmEEpU2HHGINdyO9TN"
-    ) {
-        println("GameSocketClient: Connecting to $url")
-        try {
-            client.webSocket(url) {
-                session = this
-                _isConnected.value = true
-                println("GameSocketClient: Connected")
+    suspend fun connect(displayName: String) {
+        reconnectEnabled = true
+        var retryDelayMillis = INITIAL_RETRY_MILLIS
 
-                try {
+        while (currentCoroutineContext().isActive && reconnectEnabled) {
+            try {
+                client.webSocket(serverUrl) {
+                    session = this
+                    _isConnected.value = true
+                    retryDelayMillis = INITIAL_RETRY_MILLIS
+                    sendMessage(ClientMessage.ConnectGuest(displayName, resumeToken))
+
                     for (frame in incoming) {
                         if (frame !is Frame.Text) continue
-                        val text = frame.readText()
-                        println("GameSocketClient: Raw: $text")
-
-                        // PieSocket sends system events like {"event":"..."}; skip them
-                        if (!text.contains("\"type\"")) {
-                            println("GameSocketClient: Skipping system message")
-                            continue
-                        }
-
-                        try {
-                            val msg = json.decodeFromString<GameMessage>(text)
-                            println("GameSocketClient: Decoded: $msg")
-                            _messages.send(msg)
-                        } catch (e: Exception) {
-                            println("GameSocketClient: Decode error: ${e.message}")
-                        }
+                        val message = runCatching {
+                            ProtocolJson.decodeFromString<ServerMessage>(frame.readText())
+                        }.getOrNull() ?: continue
+                        if (message is ServerMessage.SessionReady) resumeToken = message.resumeToken
+                        _messages.send(message)
                     }
-                } finally {
-                    session = null
-                    _isConnected.value = false
-                    println("GameSocketClient: Session ended")
                 }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                // A reconnect below will restore the server snapshot.
+            } finally {
+                session = null
+                _isConnected.value = false
             }
-        } catch (e: Exception) {
-            println("GameSocketClient: Connection failed: ${e.message}")
-            session = null
-            _isConnected.value = false
-            throw e
+
+            if (reconnectEnabled && currentCoroutineContext().isActive) {
+                delay(retryDelayMillis)
+                retryDelayMillis = (retryDelayMillis * 2).coerceAtMost(MAX_RETRY_MILLIS)
+            }
         }
     }
 
-    suspend fun sendMessage(message: GameMessage) {
-        val s = session
-        if (s == null) {
-            println("GameSocketClient: sendMessage called but no active session")
-            return
-        }
-        try {
-            val text = json.encodeToString(message)
-            println("GameSocketClient: Sending: $text")
-            s.send(Frame.Text(text))
-        } catch (e: Exception) {
-            println("GameSocketClient: Send failed: ${e.message}")
-        }
+    suspend fun sendMessage(message: ClientMessage) {
+        session?.send(Frame.Text(ProtocolJson.encodeToString<ClientMessage>(message)))
     }
 
     suspend fun disconnect() {
-        try {
-            session?.close()
-        } catch (_: Exception) {}
+        reconnectEnabled = false
+        runCatching { session?.close() }
         session = null
         _isConnected.value = false
     }
 
     fun close() {
+        reconnectEnabled = false
         client.close()
+    }
+
+    private companion object {
+        const val INITIAL_RETRY_MILLIS = 1_000L
+        const val MAX_RETRY_MILLIS = 15_000L
     }
 }
