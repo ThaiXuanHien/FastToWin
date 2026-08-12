@@ -33,6 +33,7 @@ class DatabaseRuntime private constructor(
     val identityRepository: GuestIdentityRepository,
     val matchResultRepository: MatchResultRepository,
     val playerProfileRepository: PlayerProfileRepository,
+    val leaderboardRepository: LeaderboardRepository,
     private val dataSource: HikariDataSource
 ) : AutoCloseable {
     override fun close() = dataSource.close()
@@ -60,6 +61,7 @@ class DatabaseRuntime private constructor(
                     identityRepository = PostgresGuestIdentityRepository(dataSource),
                     matchResultRepository = PostgresMatchResultRepository(dataSource),
                     playerProfileRepository = PostgresPlayerProfileRepository(dataSource),
+                    leaderboardRepository = PostgresLeaderboardRepository(dataSource),
                     dataSource = dataSource
                 )
             } catch (error: Throwable) {

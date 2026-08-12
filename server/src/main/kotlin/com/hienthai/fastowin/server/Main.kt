@@ -14,12 +14,18 @@ fun main() {
     val identityRepository = database?.identityRepository ?: InMemoryGuestIdentityRepository()
     val matchResultRepository = database?.matchResultRepository ?: NoOpMatchResultRepository
     val playerProfileRepository = database?.playerProfileRepository ?: NoOpPlayerProfileRepository
+    val leaderboardRepository = database?.leaderboardRepository ?: NoOpLeaderboardRepository
     val storage = if (database == null) "memory" else "postgresql"
 
     println("Starting Fast To Win server: environment=$environment, host=$host, port=$port, storage=$storage")
     try {
         embeddedServer(Netty, host = host, port = port) {
-            gameModule(GameEngine(identityRepository, matchResultRepository, playerProfileRepository))
+            gameModule(GameEngine(
+                identityRepository,
+                matchResultRepository,
+                playerProfileRepository,
+                leaderboardRepository
+            ))
         }.start(wait = true)
     } finally {
         database?.close()

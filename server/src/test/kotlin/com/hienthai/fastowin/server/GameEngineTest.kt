@@ -52,6 +52,20 @@ class GameEngineTest {
     }
 
     @Test
+    fun `leaderboard request returns an empty safe response without database`() = runTest {
+        val engine = GameEngine()
+        val guest = engine.connectGuest("Hiền", null)
+
+        val response = engine.handle(guest.playerId, ClientMessage.GetLeaderboard)
+            .map(Delivery::message)
+            .filterIsInstance<ServerMessage.LeaderboardData>()
+            .single()
+
+        assertTrue(response.leaderboard.topPlayers.isEmpty())
+        assertEquals(null, response.leaderboard.currentPlayer)
+    }
+
+    @Test
     fun `wrong password cannot join room`() = runTest {
         val fixture = createRoomFixture()
         val deliveries = fixture.engine.handle(

@@ -132,6 +132,19 @@ class GameController(serverUrl: String, resumeTokenStore: ResumeTokenStore) {
         _uiState.update { it.copy(isProfileOpen = false, isProfileLoading = false) }
     }
 
+    fun openLeaderboard() {
+        if (sessionJob?.isActive != true || playerId == null) {
+            _uiState.update { it.copy(error = "Chưa kết nối được máy chủ.") }
+            return
+        }
+        _uiState.update { it.copy(isLeaderboardOpen = true, isLeaderboardLoading = true, error = null) }
+        scope.launch { socket.sendMessage(ClientMessage.GetLeaderboard) }
+    }
+
+    fun closeLeaderboard() {
+        _uiState.update { it.copy(isLeaderboardOpen = false, isLeaderboardLoading = false) }
+    }
+
     fun createRoom(roomName: String, password: String) {
         if (roomName.isBlank() || password.isEmpty()) {
             _uiState.update { it.copy(error = "Vui lòng nhập tên và mật khẩu phòng.") }
@@ -210,6 +223,12 @@ class GameController(serverUrl: String, resumeTokenStore: ResumeTokenStore) {
             is ServerMessage.ProfileData -> {
                 _uiState.update {
                     it.copy(profile = message.profile, isProfileLoading = false, error = null)
+                }
+            }
+
+            is ServerMessage.LeaderboardData -> {
+                _uiState.update {
+                    it.copy(leaderboard = message.leaderboard, isLeaderboardLoading = false, error = null)
                 }
             }
 

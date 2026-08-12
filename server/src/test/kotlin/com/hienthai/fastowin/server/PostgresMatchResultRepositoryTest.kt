@@ -21,6 +21,7 @@ class PostgresMatchResultRepositoryTest {
             val identityRepository = PostgresGuestIdentityRepository(dataSource)
             val matchRepository = PostgresMatchResultRepository(dataSource)
             val profileRepository = PostgresPlayerProfileRepository(dataSource)
+            val leaderboardRepository = PostgresLeaderboardRepository(dataSource)
             val host = identityRepository.resolveGuest("Test host", null, 1_000L)
             val guest = identityRepository.resolveGuest("Test guest", null, 1_000L)
             val matchId = UUID.randomUUID().toString()
@@ -88,6 +89,10 @@ class PostgresMatchResultRepositoryTest {
                 assertEquals(0, guestProfile.statistics.correctSelections)
                 assertEquals(1, guestProfile.statistics.wrongSelections)
                 assertEquals(0L, guestProfile.statistics.averageReactionMillis)
+                val leaderboard = leaderboardRepository.load(host.playerId, 100)
+                assertEquals(host.displayName, leaderboard.currentPlayer?.displayName)
+                assertEquals(1, leaderboard.currentPlayer?.wins)
+                assertEquals(host.displayName, leaderboard.topPlayers.first { it.displayName == host.displayName }.displayName)
             } finally {
                 dataSource.connection.use { connection ->
                     connection.prepareStatement("DELETE FROM matches WHERE id = ?").use { statement ->

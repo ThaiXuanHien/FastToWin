@@ -24,6 +24,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.rounded.Bolt
 import androidx.compose.material.icons.rounded.Timer
@@ -72,6 +73,7 @@ fun LobbyScreen(
     onLeaveRoom: () -> Unit,
     onRefreshRooms: () -> Unit,
     onOpenProfile: () -> Unit,
+    onOpenLeaderboard: () -> Unit,
     onBackToMode: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -96,6 +98,7 @@ fun LobbyScreen(
                     onJoinRoom = onJoinRoom,
                     onRefreshRooms = onRefreshRooms,
                     onOpenProfile = onOpenProfile,
+                    onOpenLeaderboard = onOpenLeaderboard,
                     onBack = onBackToMode
                 )
                 LobbyStage.ROOM_WAITING -> RoomWaiting(state, onLeaveRoom)
@@ -223,6 +226,7 @@ private fun RoomBrowser(
     onJoinRoom: (String, String) -> Unit,
     onRefreshRooms: () -> Unit,
     onOpenProfile: () -> Unit,
+    onOpenLeaderboard: () -> Unit,
     onBack: () -> Unit
 ) {
     var roomName by remember { mutableStateOf("") }
@@ -259,6 +263,9 @@ private fun RoomBrowser(
             Row {
                 IconButton(onClick = onOpenProfile, enabled = state.connectionStatus == ConnectionStatus.CONNECTED) {
                     Icon(Icons.Default.Person, contentDescription = "Mở hồ sơ")
+                }
+                IconButton(onClick = onOpenLeaderboard, enabled = state.connectionStatus == ConnectionStatus.CONNECTED) {
+                    Icon(Icons.Default.EmojiEvents, contentDescription = "Mở bảng xếp hạng")
                 }
                 IconButton(onClick = onRefreshRooms, enabled = !state.isSearching) {
                     Icon(Icons.Default.Refresh, contentDescription = "Làm mới danh sách phòng")

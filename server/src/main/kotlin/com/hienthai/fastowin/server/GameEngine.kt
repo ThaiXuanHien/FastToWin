@@ -31,6 +31,7 @@ class GameEngine(
     private val identityRepository: GuestIdentityRepository = InMemoryGuestIdentityRepository(),
     private val matchResultRepository: MatchResultRepository = NoOpMatchResultRepository,
     private val playerProfileRepository: PlayerProfileRepository = NoOpPlayerProfileRepository,
+    private val leaderboardRepository: LeaderboardRepository = NoOpLeaderboardRepository,
     private val timeAttackMillis: Long = DEFAULT_TIME_ATTACK_MILLIS,
     private val nowMillis: () -> Long = System::currentTimeMillis
 ) {
@@ -66,6 +67,7 @@ class GameEngine(
 
     suspend fun handle(playerId: String, message: ClientMessage): List<Delivery> {
         if (message is ClientMessage.GetProfile) return loadProfile(playerId)
+        if (message is ClientMessage.GetLeaderboard) return loadLeaderboard(playerId)
         val result = mutex.withLock {
             val player = sessionsByPlayerId[playerId]
                 ?: return@withLock HandleResult(
@@ -81,6 +83,7 @@ class GameEngine(
                     listOf(Delivery(ServerMessage.RoomList(publicRooms()), setOf(playerId)))
                 )
                 ClientMessage.GetProfile -> HandleResult(emptyList())
+                ClientMessage.GetLeaderboard -> HandleResult(emptyList())
                 is ClientMessage.CreateRoom -> HandleResult(createRoom(player, message))
                 is ClientMessage.JoinRoom -> HandleResult(joinRoom(player, message))
                 is ClientMessage.LeaveRoom -> HandleResult(leaveRoom(player, message))
@@ -105,6 +108,21 @@ class GameEngine(
             playerCode = playerId.replace("-", "").take(10).uppercase()
         )
         return listOf(Delivery(ServerMessage.ProfileData(profile), setOf(playerId)))
+    }
+
+    private suspend fun loadLeaderboard(playerId: String): List<Delivery> {
+        val sessionExists = mutex.withLock { playerId in sessionsByPlayerId }
+        if (!sessionExists) {
+            return listOf(error(playerId, "SESSION_NOT_FOUND", "Phiên chơi không còn hợp lệ."))
+        }
+        val leaderboard = runCatching {
+            leaderboardRepository.load(playerId, LEADERBOARD_SIZE)
+        }.onFailure {
+            System.err.println("Could not load leaderboard $playerId: ${it.message}")
+        }.getOrElse {
+            return listOf(error(playerId, "LEADERBOARD_UNAVAILABLE", "Chưa tải được bảng xếp hạng."))
+        }
+        return listOf(Delivery(ServerMessage.LeaderboardData(leaderboard), setOf(playerId)))
     }
 
     suspend fun roomList(): ServerMessage.RoomList = mutex.withLock {
@@ -477,6 +495,7 @@ class GameEngine(
         const val SCORE_PER_NUMBER = 10
         const val MAX_REQUEST_ID_LENGTH = 64
         const val MAX_REQUESTS_PER_MATCH = 2_000
+        const val LEADERBOARD_SIZE = 100
         const val DEFAULT_TIME_ATTACK_MILLIS = 60_000L
         const val ROOM_RECONNECT_GRACE_MILLIS = 30_000L
         const val IDLE_SESSION_TTL_MILLIS = 5 * 60_000L

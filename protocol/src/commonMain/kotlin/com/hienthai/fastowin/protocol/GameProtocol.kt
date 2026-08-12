@@ -84,6 +84,22 @@ data class PlayerProfileSnapshot(
 )
 
 @Serializable
+data class LeaderboardEntrySnapshot(
+    val rank: Int,
+    val displayName: String,
+    val playerCode: String,
+    val wins: Int,
+    val totalMatches: Int,
+    val highestScore: Int
+)
+
+@Serializable
+data class LeaderboardSnapshot(
+    val topPlayers: List<LeaderboardEntrySnapshot> = emptyList(),
+    val currentPlayer: LeaderboardEntrySnapshot? = null
+)
+
+@Serializable
 data class GameSnapshot(
     val roomId: String,
     val roomName: String,
@@ -115,6 +131,10 @@ sealed class ClientMessage {
     @Serializable
     @SerialName("get_profile")
     data object GetProfile : ClientMessage()
+
+    @Serializable
+    @SerialName("get_leaderboard")
+    data object GetLeaderboard : ClientMessage()
 
     @Serializable
     @SerialName("create_room")
@@ -159,6 +179,10 @@ sealed class ServerMessage {
     @Serializable
     @SerialName("profile_data")
     data class ProfileData(val profile: PlayerProfileSnapshot) : ServerMessage()
+
+    @Serializable
+    @SerialName("leaderboard_data")
+    data class LeaderboardData(val leaderboard: LeaderboardSnapshot) : ServerMessage()
 
     @Serializable
     @SerialName("room_created")

@@ -73,6 +73,10 @@ class GameWebSocketTest {
             assertEquals("Hiền", profile.displayName)
             assertTrue(profile.playerCode.isNotBlank())
 
+            host.sendMessage(ClientMessage.GetLeaderboard)
+            val leaderboard = host.receiveMessage<ServerMessage.LeaderboardData>().leaderboard
+            assertTrue(leaderboard.topPlayers.isEmpty())
+
             host.sendMessage(
                 ClientMessage.CreateRoom("Phòng E2E", PASSWORD, ProtocolGameMode.ORDER)
             )

@@ -13,6 +13,7 @@ import com.hienthai.fastowin.data.network.ResumeTokenStore
 import com.hienthai.fastowin.ui.screens.GameScreen
 import com.hienthai.fastowin.ui.screens.LobbyScreen
 import com.hienthai.fastowin.ui.screens.ProfileScreen
+import com.hienthai.fastowin.ui.screens.LeaderboardScreen
 import com.hienthai.fastowin.ui.screens.ResultScreen
 import com.hienthai.fastowin.ui.theme.FastToWinTheme
 
@@ -30,6 +31,12 @@ fun FastToWinApp(serverUrl: String, resumeTokenStore: ResumeTokenStore) {
     FastToWinTheme {
         Surface(modifier = Modifier.fillMaxSize()) {
             when {
+                state.isLeaderboardOpen -> LeaderboardScreen(
+                    state = state,
+                    onBack = controller::closeLeaderboard,
+                    onRefresh = controller::openLeaderboard
+                )
+
                 state.isProfileOpen -> ProfileScreen(
                     state = state,
                     onBack = controller::closeProfile,
@@ -56,6 +63,7 @@ fun FastToWinApp(serverUrl: String, resumeTokenStore: ResumeTokenStore) {
                     onLeaveRoom = controller::leaveRoom,
                     onRefreshRooms = controller::requestRoomList,
                     onOpenProfile = controller::openProfile,
+                    onOpenLeaderboard = controller::openLeaderboard,
                     onBackToMode = controller::backToModeSelection
                 )
             }

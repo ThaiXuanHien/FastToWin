@@ -77,6 +77,8 @@ Backend giữ audit log tối đa 2.000 request cho mỗi trận và ghi hàng l
 
 Từ audit log, server cộng dồn tổng lượt đúng/sai và thời gian phản ứng cho từng người chơi. Thời gian phản ứng của một lượt đúng được tính từ lúc target đó xuất hiện trên server đến lúc server nhận lượt chọn đúng. Hồ sơ hiển thị tỷ lệ chính xác, tổng đúng/sai và thời gian phản ứng trung bình; số liệu client tự khai báo không được sử dụng.
 
+Màn hình **Bảng xếp hạng** hiển thị tối đa 100 người chơi có trận hoàn thành. Thứ tự ưu tiên số trận thắng, tỷ lệ thắng, điểm cao nhất rồi thời điểm cập nhật; người chơi hiện tại vẫn nhận được thứ hạng cá nhân kể cả khi nằm ngoài top 100.
+
 Kiểm tra server:
 
 ```text
