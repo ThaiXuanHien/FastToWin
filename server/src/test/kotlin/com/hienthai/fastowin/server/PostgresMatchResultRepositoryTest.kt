@@ -37,9 +37,24 @@ class PostgresMatchResultRepositoryTest {
                         CompletedMatchPlayer(host.playerId, host.displayName, 500, MatchOutcome.WIN),
                         CompletedMatchPlayer(guest.playerId, guest.displayName, 0, MatchOutcome.LOSS)
                     ),
-                    events = listOf(
-                        MatchSelectionEvent(host.playerId, "accepted-1", 1, 1, SelectionResult.ACCEPTED, 1_100L, 1),
-                        MatchSelectionEvent(guest.playerId, "rejected-1", 9, 2, SelectionResult.REJECTED, 1_200L, 2)
+                    events = (1..50).map { number ->
+                        MatchSelectionEvent(
+                            host.playerId,
+                            "accepted-$number",
+                            number,
+                            number,
+                            SelectionResult.ACCEPTED,
+                            1_090L + number * 10L,
+                            number
+                        )
+                    } + MatchSelectionEvent(
+                        guest.playerId,
+                        "rejected-1",
+                        99,
+                        50,
+                        SelectionResult.REJECTED,
+                        1_595L,
+                        51
                     )
                 )
 
@@ -66,9 +81,9 @@ class PostgresMatchResultRepositoryTest {
                 assertEquals(1, profile.statistics.totalMatches)
                 assertEquals(1, profile.statistics.wins)
                 assertEquals(500, profile.statistics.highestScore)
-                assertEquals(1, profile.statistics.correctSelections)
+                assertEquals(50, profile.statistics.correctSelections)
                 assertEquals(0, profile.statistics.wrongSelections)
-                assertEquals(100L, profile.statistics.averageReactionMillis)
+                assertEquals(11L, profile.statistics.averageReactionMillis)
                 assertEquals(1016, profile.statistics.eloRating)
                 assertEquals(1, profile.recentMatches.size)
                 assertEquals(guest.displayName, profile.recentMatches.single().opponentName)
@@ -82,7 +97,7 @@ class PostgresMatchResultRepositoryTest {
                             val counts = buildMap {
                                 while (result.next()) put(result.getString("result"), result.getInt("count"))
                             }
-                            assertEquals(mapOf("ACCEPTED" to 1, "REJECTED" to 1), counts)
+                            assertEquals(mapOf("ACCEPTED" to 50, "REJECTED" to 1), counts)
                         }
                     }
                 }
@@ -93,6 +108,11 @@ class PostgresMatchResultRepositoryTest {
                 assertEquals(984, guestProfile.statistics.eloRating)
                 assertEquals(16, profile.recentMatches.single().eloChange)
                 assertEquals(-16, guestProfile.recentMatches.single().eloChange)
+                assertEquals(
+                    setOf("FIRST_WIN", "PERFECT_GAME", "SPEED_50"),
+                    profile.achievements.map { it.code }.toSet()
+                )
+                assertEquals(0, guestProfile.achievements.size)
                 val leaderboard = leaderboardRepository.load(host.playerId, 100)
                 assertEquals(host.displayName, leaderboard.currentPlayer?.displayName)
                 assertEquals(1, leaderboard.currentPlayer?.wins)

@@ -82,7 +82,16 @@ data class PlayerProfileSnapshot(
     val displayName: String,
     val playerCode: String,
     val statistics: PlayerStatisticsSnapshot = PlayerStatisticsSnapshot(),
-    val recentMatches: List<MatchHistorySnapshot> = emptyList()
+    val recentMatches: List<MatchHistorySnapshot> = emptyList(),
+    val achievements: List<AchievementSnapshot> = emptyList()
+)
+
+@Serializable
+data class AchievementSnapshot(
+    val code: String,
+    val title: String,
+    val description: String,
+    val unlockedAtEpochMillis: Long
 )
 
 @Serializable

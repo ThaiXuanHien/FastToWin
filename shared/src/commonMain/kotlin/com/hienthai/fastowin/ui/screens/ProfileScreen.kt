@@ -114,6 +114,33 @@ fun ProfileScreen(
             StatCard("Phản ứng TB", "${stats.averageReactionMillis} ms", Modifier.weight(1f))
         }
 
+        Text("Thành tích", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+        if (profile.achievements.isEmpty()) {
+            Text("Chưa mở khóa thành tích nào.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        } else {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                profile.achievements.forEach { achievement ->
+                    ElevatedCard(modifier = Modifier.fillMaxWidth()) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(14.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            Text("🏆", style = MaterialTheme.typography.headlineSmall)
+                            Column {
+                                Text(achievement.title, fontWeight = FontWeight.Bold)
+                                Text(
+                                    achievement.description,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         Text("Trận gần đây", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
         if (profile.recentMatches.isEmpty()) {
             Text("Bạn chưa có trận đấu hoàn thành.", color = MaterialTheme.colorScheme.onSurfaceVariant)

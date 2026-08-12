@@ -2,6 +2,7 @@ package com.hienthai.fastowin.server
 
 import com.hienthai.fastowin.protocol.MatchHistoryOutcome
 import com.hienthai.fastowin.protocol.MatchHistorySnapshot
+import com.hienthai.fastowin.protocol.AchievementSnapshot
 import com.hienthai.fastowin.protocol.PlayerProfileSnapshot
 import com.hienthai.fastowin.protocol.PlayerStatisticsSnapshot
 import com.hienthai.fastowin.protocol.ProtocolGameMode
@@ -59,7 +60,7 @@ class PostgresPlayerProfileRepository(
                 }
             }
 
-            base.copy(recentMatches = connection.prepareStatement(
+            val recentMatches = connection.prepareStatement(
                 """
                 SELECT m.id, m.room_name, m.game_mode, m.ended_at,
                        mine.score AS player_score, mine.outcome,
@@ -93,7 +94,31 @@ class PostgresPlayerProfileRepository(
                         )
                     }
                 }
-            })
+            }
+            val achievements = connection.prepareStatement(
+                """
+                SELECT a.code, a.title, a.description, ua.unlocked_at
+                FROM user_achievements ua
+                JOIN achievements a ON a.code = ua.achievement_code
+                WHERE ua.user_id = ?
+                ORDER BY a.sort_order
+                """.trimIndent()
+            ).use { statement ->
+                statement.setObject(1, userId)
+                statement.executeQuery().use { result ->
+                    buildList {
+                        while (result.next()) add(
+                            AchievementSnapshot(
+                                code = result.getString("code"),
+                                title = result.getString("title"),
+                                description = result.getString("description"),
+                                unlockedAtEpochMillis = result.getTimestamp("unlocked_at").time
+                            )
+                        )
+                    }
+                }
+            }
+            base.copy(recentMatches = recentMatches, achievements = achievements)
         }
     }
 }

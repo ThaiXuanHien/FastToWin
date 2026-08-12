@@ -21,6 +21,7 @@ class PostgresMatchResultRepository(
                     insertEvents(connection, match)
                     updateEloRatings(connection, match)
                     updateStats(connection, match)
+                    unlockAchievements(connection, match)
                 }
                 connection.commit()
             } catch (error: Throwable) {
@@ -242,6 +243,47 @@ class PostgresMatchResultRepository(
         return metrics
     }
 
+    private fun unlockAchievements(connection: Connection, match: CompletedMatch) {
+        val metricsByPlayer = calculateSelectionMetrics(match)
+        val matchDuration = (match.endedAtMillis - match.startedAtMillis).coerceAtLeast(0L)
+        connection.prepareStatement(
+            "SELECT wins, current_win_streak FROM player_stats WHERE user_id = ?"
+        ).use { statsStatement ->
+            connection.prepareStatement(
+                """
+                INSERT INTO user_achievements (user_id, achievement_code, unlocked_at, match_id)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT (user_id, achievement_code) DO NOTHING
+                """.trimIndent()
+            ).use { insertStatement ->
+                match.players.forEach { player ->
+                    val playerId = UUID.fromString(player.playerId)
+                    statsStatement.setObject(1, playerId)
+                    val (wins, streak) = statsStatement.executeQuery().use { result ->
+                        check(result.next()) { "Missing player stats for ${player.playerId}" }
+                        result.getInt("wins") to result.getInt("current_win_streak")
+                    }
+                    val metrics = metricsByPlayer[player.playerId] ?: SelectionMetrics()
+                    val unlocked = buildSet {
+                        if (wins >= 1) add("FIRST_WIN")
+                        if (wins >= 10) add("WIN_10")
+                        if (streak >= 5) add("STREAK_5")
+                        if (metrics.correct > 0 && metrics.wrong == 0) add("PERFECT_GAME")
+                        if (metrics.correct >= 50 && matchDuration <= SPEED_50_LIMIT_MILLIS) add("SPEED_50")
+                    }
+                    unlocked.forEach { achievementCode ->
+                        insertStatement.setObject(1, playerId)
+                        insertStatement.setString(2, achievementCode)
+                        insertStatement.setTimestamp(3, match.endedAtMillis.toTimestamp())
+                        insertStatement.setObject(4, UUID.fromString(match.matchId))
+                        insertStatement.addBatch()
+                    }
+                }
+                insertStatement.executeBatch()
+            }
+        }
+    }
+
     private data class SelectionMetrics(
         var correct: Int = 0,
         var wrong: Int = 0,
@@ -254,5 +296,6 @@ class PostgresMatchResultRepository(
     private companion object {
         const val ELO_K_FACTOR = 32.0
         const val MIN_ELO = 100
+        const val SPEED_50_LIMIT_MILLIS = 30_000L
     }
 }
