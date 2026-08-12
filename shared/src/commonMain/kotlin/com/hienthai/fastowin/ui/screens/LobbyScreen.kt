@@ -57,6 +57,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.hienthai.fastowin.navigation.GameMode
 import com.hienthai.fastowin.state.AvailableRoom
+import com.hienthai.fastowin.state.ConnectionStatus
 import com.hienthai.fastowin.state.GameState
 import com.hienthai.fastowin.state.LobbyStage
 import com.hienthai.fastowin.state.PlayerState
@@ -70,6 +71,7 @@ fun LobbyScreen(
     onJoinRoom: (String, String) -> Unit,
     onLeaveRoom: () -> Unit,
     onRefreshRooms: () -> Unit,
+    onOpenProfile: () -> Unit,
     onBackToMode: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -93,6 +95,7 @@ fun LobbyScreen(
                     onCreateRoom = onCreateRoom,
                     onJoinRoom = onJoinRoom,
                     onRefreshRooms = onRefreshRooms,
+                    onOpenProfile = onOpenProfile,
                     onBack = onBackToMode
                 )
                 LobbyStage.ROOM_WAITING -> RoomWaiting(state, onLeaveRoom)
@@ -219,6 +222,7 @@ private fun RoomBrowser(
     onCreateRoom: (String, String) -> Unit,
     onJoinRoom: (String, String) -> Unit,
     onRefreshRooms: () -> Unit,
+    onOpenProfile: () -> Unit,
     onBack: () -> Unit
 ) {
     var roomName by remember { mutableStateOf("") }
@@ -252,8 +256,13 @@ private fun RoomBrowser(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
-            IconButton(onClick = onRefreshRooms, enabled = !state.isSearching) {
-                Icon(Icons.Default.Refresh, contentDescription = "Làm mới danh sách phòng")
+            Row {
+                IconButton(onClick = onOpenProfile, enabled = state.connectionStatus == ConnectionStatus.CONNECTED) {
+                    Icon(Icons.Default.Person, contentDescription = "Mở hồ sơ")
+                }
+                IconButton(onClick = onRefreshRooms, enabled = !state.isSearching) {
+                    Icon(Icons.Default.Refresh, contentDescription = "Làm mới danh sách phòng")
+                }
             }
         }
 
@@ -299,7 +308,13 @@ private fun RoomBrowser(
             state.isSearching -> {
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
                     CircularProgressIndicator(modifier = Modifier.size(24.dp))
-                    Text("Đang kết nối...")
+                    Text(
+                        when (state.connectionStatus) {
+                            ConnectionStatus.RECONNECTING -> "Đang kết nối lại..."
+                            ConnectionStatus.AUTHENTICATING -> "Đang xác thực phiên chơi..."
+                            else -> "Đang kết nối..."
+                        }
+                    )
                 }
             }
             state.availableRooms.isEmpty() -> {

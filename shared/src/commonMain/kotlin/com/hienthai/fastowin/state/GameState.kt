@@ -1,6 +1,7 @@
 package com.hienthai.fastowin.state
 
 import com.hienthai.fastowin.navigation.GameMode
+import com.hienthai.fastowin.protocol.PlayerProfileSnapshot
 
 const val GAME_NUMBER_COUNT = 50
 const val DEFAULT_OPPONENT_NAME = "Đối thủ"
@@ -11,6 +12,14 @@ enum class LobbyStage {
     ROOM_BROWSER,
     ROOM_WAITING,
     MATCHED
+}
+
+enum class ConnectionStatus {
+    DISCONNECTED,
+    CONNECTING,
+    AUTHENTICATING,
+    CONNECTED,
+    RECONNECTING
 }
 
 data class AvailableRoom(
@@ -46,10 +55,14 @@ data class GameState(
     val player: PlayerState = PlayerState("Bạn"),
     val opponent: PlayerState = PlayerState(DEFAULT_OPPONENT_NAME),
     val isSearching: Boolean = false,
+    val connectionStatus: ConnectionStatus = ConnectionStatus.DISCONNECTED,
     val availableRooms: List<AvailableRoom> = emptyList(),
     val currentRoomId: String? = null,
     val currentRoomName: String? = null,
     val isRoomHost: Boolean = false,
     val countdown: Int? = null,
-    val isMatchStarted: Boolean = false
+    val isMatchStarted: Boolean = false,
+    val isProfileOpen: Boolean = false,
+    val isProfileLoading: Boolean = false,
+    val profile: PlayerProfileSnapshot? = null
 )

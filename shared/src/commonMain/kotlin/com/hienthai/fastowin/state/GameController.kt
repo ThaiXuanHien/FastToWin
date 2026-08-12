@@ -1,6 +1,8 @@
 package com.hienthai.fastowin.state
 
 import com.hienthai.fastowin.data.network.GameSocketClient
+import com.hienthai.fastowin.data.network.ResumeTokenStore
+import com.hienthai.fastowin.data.network.SocketConnectionState
 import com.hienthai.fastowin.navigation.GameMode
 import com.hienthai.fastowin.platform.epochMillis
 import com.hienthai.fastowin.protocol.ClientMessage
@@ -21,16 +23,17 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlin.random.Random
 
-class GameController(serverUrl: String) {
+class GameController(serverUrl: String, resumeTokenStore: ResumeTokenStore) {
     private val _uiState = MutableStateFlow(GameState())
     val uiState: StateFlow<GameState> = _uiState.asStateFlow()
 
-    private val socket = GameSocketClient(serverUrl)
+    private val socket = GameSocketClient(serverUrl, resumeTokenStore)
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
     private var playerId: String? = null
     private var sessionJob: Job? = null
     private var messageJob: Job? = null
+    private var connectionJob: Job? = null
     private var timerJob: Job? = null
     private var countdownJob: Job? = null
     private var gameStarted = false
@@ -73,8 +76,37 @@ class GameController(serverUrl: String) {
         messageJob = scope.launch {
             socket.messages.collect(::handleMessage)
         }
+        connectionJob?.cancel()
+        connectionJob = scope.launch {
+            socket.connectionState.collect(::handleConnectionState)
+        }
         sessionJob = scope.launch {
             socket.connect(displayName)
+        }
+    }
+
+    private fun handleConnectionState(socketState: SocketConnectionState) {
+        val status = when (socketState) {
+            SocketConnectionState.DISCONNECTED -> ConnectionStatus.DISCONNECTED
+            SocketConnectionState.CONNECTING -> ConnectionStatus.CONNECTING
+            SocketConnectionState.AUTHENTICATING -> ConnectionStatus.AUTHENTICATING
+            SocketConnectionState.CONNECTED -> ConnectionStatus.CONNECTED
+            SocketConnectionState.RECONNECTING -> ConnectionStatus.RECONNECTING
+        }
+        _uiState.update { state ->
+            val waitingForConnection = status != ConnectionStatus.CONNECTED &&
+                state.lobbyStage in setOf(LobbyStage.ROOM_BROWSER, LobbyStage.ROOM_WAITING)
+            val reconnectMessage = when {
+                status == ConnectionStatus.RECONNECTING && state.isMatchStarted ->
+                    "Mất kết nối. Đang kết nối lại..."
+                status == ConnectionStatus.CONNECTED && state.message == "Mất kết nối. Đang kết nối lại..." -> null
+                else -> state.message
+            }
+            state.copy(
+                connectionStatus = status,
+                isSearching = waitingForConnection,
+                message = reconnectMessage
+            )
         }
     }
 
@@ -85,6 +117,19 @@ class GameController(serverUrl: String) {
             return
         }
         scope.launch { socket.sendMessage(ClientMessage.ListRooms) }
+    }
+
+    fun openProfile() {
+        if (sessionJob?.isActive != true || playerId == null) {
+            _uiState.update { it.copy(error = "Chưa kết nối được máy chủ.") }
+            return
+        }
+        _uiState.update { it.copy(isProfileOpen = true, isProfileLoading = true, error = null) }
+        scope.launch { socket.sendMessage(ClientMessage.GetProfile) }
+    }
+
+    fun closeProfile() {
+        _uiState.update { it.copy(isProfileOpen = false, isProfileLoading = false) }
     }
 
     fun createRoom(roomName: String, password: String) {
@@ -159,6 +204,12 @@ class GameController(serverUrl: String) {
                             )
                         }
                     )
+                }
+            }
+
+            is ServerMessage.ProfileData -> {
+                _uiState.update {
+                    it.copy(profile = message.profile, isProfileLoading = false, error = null)
                 }
             }
 
@@ -325,6 +376,7 @@ class GameController(serverUrl: String) {
         timerJob?.cancel()
         countdownJob?.cancel()
         messageJob?.cancel()
+        connectionJob?.cancel()
         sessionJob?.cancel()
         socket.close()
         scope.cancel()

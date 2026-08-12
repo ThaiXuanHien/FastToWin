@@ -1,6 +1,6 @@
 # Fast To Win backend MVP
 
-Backend hiện tại là Ktor WebSocket server chạy JVM và giữ dữ liệu trong bộ nhớ. Server là nơi duy nhất tạo phòng, xác minh mật khẩu, sinh bàn 50 số, kiểm tra lượt bấm và tính điểm.
+Backend hiện tại là Ktor WebSocket server chạy JVM. Server là nơi duy nhất tạo phòng, xác minh mật khẩu, sinh bàn 50 số, kiểm tra lượt bấm và tính điểm. Guest identity và resume session có thể được lưu trong PostgreSQL; phòng và trạng thái trận đấu hiện vẫn nằm trong bộ nhớ.
 
 ## Môi trường
 
@@ -14,12 +14,62 @@ Development dùng `ws://` để chạy trong mạng local. Production tắt clea
 
 ## Chạy local
 
-Yêu cầu JDK 11 trở lên. Từ thư mục gốc project:
+Yêu cầu JDK 17 trở lên. Từ thư mục gốc project:
 
 ```powershell
 $env:FASTTOWIN_ENV="dev"
 .\gradlew.bat :server:run
 ```
+
+Nếu dùng CMD, có thể chạy file hỗ trợ. File này tự thiết lập `JAVA_HOME`, cấu hình `adb reverse` cho tất cả emulator/thiết bị đang kết nối rồi khởi động server:
+
+```bat
+start-dev-server.cmd
+```
+
+Phải mở emulator trước khi chạy file trên. Nếu emulator được khởi động lại trong lúc server vẫn đang chạy, mở một cửa sổ CMD khác và chạy:
+
+```bat
+connect-dev-device.cmd
+```
+
+`adb reverse` không được giữ lại sau khi emulator/thiết bị restart.
+
+## Chạy cùng PostgreSQL
+
+Yêu cầu Docker Desktop. Lệnh sau khởi động PostgreSQL, tự chạy Flyway migration, cấu hình `adb reverse` cho mọi emulator và chạy backend:
+
+```bat
+start-dev-server-with-db.cmd
+```
+
+Database development dùng các giá trị trong `compose.yaml`:
+
+```text
+database: fasttowin
+user: fasttowin
+password: fasttowin
+port: 5432
+```
+
+Nếu chưa cài Docker, tiếp tục dùng `start-dev-server.cmd`; backend sẽ dùng bộ nhớ và game vẫn hoạt động bình thường.
+
+Để chạy thủ công bằng PowerShell:
+
+```powershell
+docker compose up -d --wait database
+$env:FASTTOWIN_ENV="dev"
+$env:DATABASE_URL="jdbc:postgresql://localhost:5432/fasttowin"
+$env:DATABASE_USER="fasttowin"
+$env:DATABASE_PASSWORD="fasttowin"
+.\gradlew.bat :server:run
+```
+
+Flyway tự tạo các bảng `users`, `profiles`, `sessions`, `matches`, `match_players` và `player_stats`. Resume token chỉ được lưu dưới dạng SHA-256 hash, không lưu token gốc.
+
+Khi trận kết thúc, backend lưu kết quả đúng một lần theo `roomId`, gồm điểm từng người, thắng/thua/hòa, tổng số trận, điểm cao nhất và chuỗi thắng. Việc bấm số trong trận vẫn được xử lý trong bộ nhớ để giữ độ trễ thấp.
+
+Từ màn hình danh sách phòng, người chơi có thể mở **Hồ sơ** để xem mã người chơi, tổng trận, thắng/thua/hòa, điểm cao nhất, chuỗi thắng và tối đa 20 trận gần nhất. Dữ liệu được lấy qua WebSocket của phiên hiện tại nên client không thể yêu cầu hồ sơ riêng tư của player ID khác.
 
 Kiểm tra server:
 
@@ -31,12 +81,19 @@ Kết quả mong đợi là `OK`.
 
 ## Địa chỉ client
 
-- Android flavor `dev`: `ws://10.0.2.2:8080/game`
+- Android flavor `dev`: `ws://127.0.0.1:8080/game` qua `adb reverse`
 - iOS Debug: `ws://127.0.0.1:8080/game`
 
 Android truyền URL từ `BuildConfig` vào shared module. iOS đọc URL từ `Info.plist` rồi truyền vào shared module.
 
-Để thử Android trên điện thoại thật, truyền địa chỉ IPv4 LAN của máy chạy server:
+Khi không dùng `start-dev-server.cmd`, cần tự cấu hình từng emulator/thiết bị:
+
+```bat
+adb -s emulator-5554 reverse tcp:8080 tcp:8080
+adb -s emulator-5556 reverse tcp:8080 tcp:8080
+```
+
+Để thử Android qua Wi-Fi mà không dùng cáp/ADB, truyền địa chỉ IPv4 LAN của máy chạy server:
 
 ```powershell
 .\gradlew.bat :app:assembleDevDebug -PFASTTOWIN_DEV_WS_URL=ws://192.168.1.10:8080/game
@@ -59,6 +116,9 @@ Backend production:
 ```powershell
 $env:FASTTOWIN_ENV="prod"
 $env:PORT="8080"
+$env:DATABASE_URL="jdbc:postgresql://database-host:5432/fasttowin"
+$env:DATABASE_USER="fasttowin_app"
+$env:DATABASE_PASSWORD="mat-khau-bi-mat"
 .\gradlew.bat :server:run
 ```
 
@@ -71,6 +131,15 @@ Giá trị `configure-production-server.invalid` chỉ là placeholder an toàn 
 .\gradlew.bat :app:compileDevDebugKotlin
 ```
 
+Để chạy thêm integration test với PostgreSQL development:
+
+```powershell
+$env:TEST_DATABASE_URL="jdbc:postgresql://localhost:5432/fasttowin"
+$env:TEST_DATABASE_USER="fasttowin"
+$env:TEST_DATABASE_PASSWORD="fasttowin"
+.\gradlew.bat :server:test --rerun-tasks
+```
+
 Test backend bao gồm:
 
 - Khôi phục đúng guest session bằng resume token.
@@ -79,7 +148,16 @@ Test backend bao gồm:
 
 ## Giới hạn của MVP
 
-- Phòng và session bị mất khi server restart.
-- Resume token mới chỉ được giữ trong bộ nhớ của tiến trình app.
-- Chưa có PostgreSQL, tài khoản, JWT và lịch sử trận.
+- Phòng và trạng thái trận đấu vẫn bị mất khi server restart.
+- Guest identity và session tồn tại qua restart khi bật PostgreSQL.
+- Chưa có tài khoản email/Google/Apple, JWT và lịch sử trận.
 - Cấu hình local dùng `ws://`; môi trường production phải dùng `wss://`.
+
+## Reconnect hiện tại
+
+- Resume token được lưu bằng SharedPreferences trên Android và NSUserDefaults trên iOS.
+- Client tự kết nối lại với exponential backoff tối đa 15 giây giữa các lần thử.
+- Server giữ phòng trong 30 giây sau khi người chơi mất kết nối.
+- Reconnect trong thời gian này nhận lại cùng player ID và snapshot trận đấu.
+- Quá 30 giây, server đóng phòng và thông báo cho người chơi còn lại.
+- Guest session không ở trong phòng được dọn sau 5 phút offline.

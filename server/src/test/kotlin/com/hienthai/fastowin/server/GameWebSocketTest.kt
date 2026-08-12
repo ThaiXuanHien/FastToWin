@@ -1,0 +1,112 @@
+package com.hienthai.fastowin.server
+
+import com.hienthai.fastowin.protocol.ClientMessage
+import com.hienthai.fastowin.protocol.ProtocolGameMode
+import com.hienthai.fastowin.protocol.ProtocolJson
+import com.hienthai.fastowin.protocol.ServerMessage
+import io.ktor.client.plugins.websocket.DefaultClientWebSocketSession
+import io.ktor.client.plugins.websocket.WebSockets
+import io.ktor.client.plugins.websocket.webSocketSession
+import io.ktor.server.testing.testApplication
+import io.ktor.websocket.Frame
+import io.ktor.websocket.close
+import io.ktor.websocket.readText
+import io.ktor.websocket.send
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.serialization.decodeFromString
+import kotlinx.serialization.encodeToString
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
+import kotlin.test.assertTrue
+
+class GameWebSocketTest {
+    @Test
+    fun `two websocket clients can play and host can resume snapshot`() = testApplication {
+        application { gameModule(GameEngine()) }
+        val webSocketClient = createClient { install(WebSockets) }
+        val host = webSocketClient.webSocketSession("/game")
+        val guest = webSocketClient.webSocketSession("/game")
+
+        try {
+            host.sendMessage(ClientMessage.ConnectGuest("Hiền"))
+            guest.sendMessage(ClientMessage.ConnectGuest("Hiếu"))
+            val hostSession = host.receiveMessage<ServerMessage.SessionReady>()
+            val guestSession = guest.receiveMessage<ServerMessage.SessionReady>()
+            host.receiveMessage<ServerMessage.RoomList>()
+            guest.receiveMessage<ServerMessage.RoomList>()
+
+            host.sendMessage(ClientMessage.GetProfile)
+            val profile = host.receiveMessage<ServerMessage.ProfileData>().profile
+            assertEquals("Hiền", profile.displayName)
+            assertTrue(profile.playerCode.isNotBlank())
+
+            host.sendMessage(
+                ClientMessage.CreateRoom("Phòng E2E", PASSWORD, ProtocolGameMode.ORDER)
+            )
+            val room = host.receiveMessage<ServerMessage.RoomCreated>().game
+            assertEquals("Phòng E2E", room.roomName)
+
+            guest.sendMessage(ClientMessage.JoinRoom(room.roomId, PASSWORD))
+            val hostStarted = host.receiveMessage<ServerMessage.GameStarted>().game
+            val guestStarted = guest.receiveMessage<ServerMessage.GameStarted>().game
+            assertEquals(hostStarted.numbers, guestStarted.numbers)
+            assertEquals(50, hostStarted.numbers.size)
+
+            coroutineScope {
+                launch {
+                    host.sendMessage(ClientMessage.SelectNumber(room.roomId, 1, "host-e2e-request"))
+                }
+                launch {
+                    guest.sendMessage(ClientMessage.SelectNumber(room.roomId, 1, "guest-e2e-request"))
+                }
+            }
+
+            val hostUpdate = host.receiveMessage<ServerMessage.GameStateUpdated>().game
+            val guestUpdate = guest.receiveMessage<ServerMessage.GameStateUpdated>().game
+            assertEquals(2, hostUpdate.currentTarget)
+            assertEquals(hostUpdate, guestUpdate)
+            assertEquals(10, hostUpdate.players.sumOf { it.score })
+
+            host.close()
+            delay(100)
+
+            val resumedHost = webSocketClient.webSocketSession("/game")
+            try {
+                resumedHost.sendMessage(
+                    ClientMessage.ConnectGuest("Hiền", resumeToken = hostSession.resumeToken)
+                )
+                val resumed = resumedHost.receiveMessage<ServerMessage.SessionReady>()
+                assertEquals(hostSession.playerId, resumed.playerId)
+                val snapshot = assertNotNull(resumed.currentGame)
+                assertEquals(room.roomId, snapshot.roomId)
+                assertEquals(2, snapshot.currentTarget)
+                assertTrue(snapshot.selectedNumbers.contains(1))
+                assertEquals(guestSession.playerId, snapshot.players.first { it.id != resumed.playerId }.id)
+            } finally {
+                resumedHost.close()
+            }
+        } finally {
+            host.close()
+            guest.close()
+        }
+    }
+
+    private suspend fun DefaultClientWebSocketSession.sendMessage(message: ClientMessage) {
+        send(Frame.Text(ProtocolJson.encodeToString<ClientMessage>(message)))
+    }
+
+    private suspend inline fun <reified T : ServerMessage> DefaultClientWebSocketSession.receiveMessage(): T {
+        while (true) {
+            val frame = incoming.receive() as? Frame.Text ?: continue
+            val message = ProtocolJson.decodeFromString<ServerMessage>(frame.readText())
+            if (message is T) return message
+        }
+    }
+
+    private companion object {
+        const val PASSWORD = "123456"
+    }
+}

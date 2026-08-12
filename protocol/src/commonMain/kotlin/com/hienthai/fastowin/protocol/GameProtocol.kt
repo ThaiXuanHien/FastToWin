@@ -43,6 +43,44 @@ data class PlayerSnapshot(
 )
 
 @Serializable
+enum class MatchHistoryOutcome {
+    WIN,
+    LOSS,
+    DRAW
+}
+
+@Serializable
+data class PlayerStatisticsSnapshot(
+    val totalMatches: Int = 0,
+    val wins: Int = 0,
+    val losses: Int = 0,
+    val draws: Int = 0,
+    val highestScore: Int = 0,
+    val currentWinStreak: Int = 0,
+    val bestWinStreak: Int = 0
+)
+
+@Serializable
+data class MatchHistorySnapshot(
+    val matchId: String,
+    val roomName: String,
+    val gameMode: ProtocolGameMode,
+    val opponentName: String,
+    val playerScore: Int,
+    val opponentScore: Int,
+    val outcome: MatchHistoryOutcome,
+    val endedAtEpochMillis: Long
+)
+
+@Serializable
+data class PlayerProfileSnapshot(
+    val displayName: String,
+    val playerCode: String,
+    val statistics: PlayerStatisticsSnapshot = PlayerStatisticsSnapshot(),
+    val recentMatches: List<MatchHistorySnapshot> = emptyList()
+)
+
+@Serializable
 data class GameSnapshot(
     val roomId: String,
     val roomName: String,
@@ -70,6 +108,10 @@ sealed class ClientMessage {
     @Serializable
     @SerialName("list_rooms")
     data object ListRooms : ClientMessage()
+
+    @Serializable
+    @SerialName("get_profile")
+    data object GetProfile : ClientMessage()
 
     @Serializable
     @SerialName("create_room")
@@ -110,6 +152,10 @@ sealed class ServerMessage {
     @Serializable
     @SerialName("room_list")
     data class RoomList(val rooms: List<RoomSummary>) : ServerMessage()
+
+    @Serializable
+    @SerialName("profile_data")
+    data class ProfileData(val profile: PlayerProfileSnapshot) : ServerMessage()
 
     @Serializable
     @SerialName("room_created")

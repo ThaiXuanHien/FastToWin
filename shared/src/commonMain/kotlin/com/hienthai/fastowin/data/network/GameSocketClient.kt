@@ -4,6 +4,7 @@ import com.hienthai.fastowin.protocol.ClientMessage
 import com.hienthai.fastowin.protocol.ProtocolJson
 import com.hienthai.fastowin.protocol.ServerMessage
 import io.ktor.client.HttpClient
+import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.plugins.websocket.DefaultClientWebSocketSession
 import io.ktor.client.plugins.websocket.WebSockets
 import io.ktor.client.plugins.websocket.webSocket
@@ -24,11 +25,28 @@ import kotlinx.coroutines.isActive
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 
-class GameSocketClient(private val serverUrl: String) {
-    private val client = HttpClient { install(WebSockets) }
+enum class SocketConnectionState {
+    DISCONNECTED,
+    CONNECTING,
+    AUTHENTICATING,
+    CONNECTED,
+    RECONNECTING
+}
+
+class GameSocketClient(
+    private val serverUrl: String,
+    private val tokenStore: ResumeTokenStore
+) {
+    private val client = HttpClient {
+        install(WebSockets)
+        install(HttpTimeout) {
+            connectTimeoutMillis = CONNECT_TIMEOUT_MILLIS
+        }
+    }
     private var session: DefaultClientWebSocketSession? = null
-    private var resumeToken: String? = null
+    private var resumeToken: String? = tokenStore.load(serverUrl)
     private var reconnectEnabled = true
+    private var hasConnected = false
 
     private val _messages = Channel<ServerMessage>(Channel.UNLIMITED)
     val messages: Flow<ServerMessage> = _messages.receiveAsFlow()
@@ -36,34 +54,68 @@ class GameSocketClient(private val serverUrl: String) {
     private val _isConnected = MutableStateFlow(false)
     val isConnected: StateFlow<Boolean> = _isConnected.asStateFlow()
 
+    private val _connectionState = MutableStateFlow(SocketConnectionState.DISCONNECTED)
+    val connectionState: StateFlow<SocketConnectionState> = _connectionState.asStateFlow()
+
     suspend fun connect(displayName: String) {
         reconnectEnabled = true
         var retryDelayMillis = INITIAL_RETRY_MILLIS
 
         while (currentCoroutineContext().isActive && reconnectEnabled) {
+            _connectionState.value = if (hasConnected) {
+                SocketConnectionState.RECONNECTING
+            } else {
+                SocketConnectionState.CONNECTING
+            }
             try {
                 client.webSocket(serverUrl) {
                     session = this
                     _isConnected.value = true
+                    _connectionState.value = SocketConnectionState.AUTHENTICATING
                     retryDelayMillis = INITIAL_RETRY_MILLIS
-                    sendMessage(ClientMessage.ConnectGuest(displayName, resumeToken))
+                    val hello = ProtocolJson.encodeToString<ClientMessage>(
+                        ClientMessage.ConnectGuest(displayName, resumeToken)
+                    )
+                    send(
+                        Frame.Text(hello)
+                    )
 
                     for (frame in incoming) {
                         if (frame !is Frame.Text) continue
-                        val message = runCatching {
-                            ProtocolJson.decodeFromString<ServerMessage>(frame.readText())
-                        }.getOrNull() ?: continue
-                        if (message is ServerMessage.SessionReady) resumeToken = message.resumeToken
+                        val rawMessage = frame.readText()
+                        val message = try {
+                            ProtocolJson.decodeFromString<ServerMessage>(rawMessage)
+                        } catch (error: Exception) {
+                            _messages.send(
+                                ServerMessage.Error(
+                                    code = "PROTOCOL_DECODE_FAILED",
+                                    message = "Không đọc được phản hồi máy chủ: ${error.message}"
+                                )
+                            )
+                            continue
+                        }
+                        if (message is ServerMessage.SessionReady) {
+                            resumeToken = message.resumeToken
+                            tokenStore.save(serverUrl, message.resumeToken)
+                            hasConnected = true
+                            _connectionState.value = SocketConnectionState.CONNECTED
+                        }
                         _messages.send(message)
                     }
                 }
             } catch (cancelled: CancellationException) {
                 throw cancelled
-            } catch (_: Exception) {
-                // A reconnect below will restore the server snapshot.
+            } catch (error: Exception) {
+                _messages.send(
+                    ServerMessage.Error(
+                        code = "CONNECTION_FAILED",
+                        message = "Không thể kết nối $serverUrl: ${error.message}. Đang thử lại..."
+                    )
+                )
             } finally {
                 session = null
                 _isConnected.value = false
+                if (!reconnectEnabled) _connectionState.value = SocketConnectionState.DISCONNECTED
             }
 
             if (reconnectEnabled && currentCoroutineContext().isActive) {
@@ -74,7 +126,26 @@ class GameSocketClient(private val serverUrl: String) {
     }
 
     suspend fun sendMessage(message: ClientMessage) {
-        session?.send(Frame.Text(ProtocolJson.encodeToString<ClientMessage>(message)))
+        val activeSession = session
+        if (activeSession == null) {
+            _messages.send(
+                ServerMessage.Error(
+                    code = "CONNECTION_NOT_READY",
+                    message = "Chưa kết nối được máy chủ. Vui lòng đợi hoặc thử lại."
+                )
+            )
+            return
+        }
+        try {
+            activeSession.send(Frame.Text(ProtocolJson.encodeToString<ClientMessage>(message)))
+        } catch (error: Exception) {
+            _messages.send(
+                ServerMessage.Error(
+                    code = "SEND_FAILED",
+                    message = "Không gửi được dữ liệu: ${error.message}"
+                )
+            )
+        }
     }
 
     suspend fun disconnect() {
@@ -82,6 +153,7 @@ class GameSocketClient(private val serverUrl: String) {
         runCatching { session?.close() }
         session = null
         _isConnected.value = false
+        _connectionState.value = SocketConnectionState.DISCONNECTED
     }
 
     fun close() {
@@ -92,5 +164,6 @@ class GameSocketClient(private val serverUrl: String) {
     private companion object {
         const val INITIAL_RETRY_MILLIS = 1_000L
         const val MAX_RETRY_MILLIS = 15_000L
+        const val CONNECT_TIMEOUT_MILLIS = 7_000L
     }
 }

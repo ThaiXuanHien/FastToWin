@@ -9,6 +9,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertNotEquals
+import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 class GameEngineTest {
@@ -20,6 +21,34 @@ class GameEngineTest {
 
         assertEquals(first.playerId, resumed.playerId)
         assertEquals(first.resumeToken, resumed.resumeToken)
+    }
+
+    @Test
+    fun `guest identity survives a game engine restart when repository is persistent`() = runTest {
+        val repository = InMemoryGuestIdentityRepository()
+        val first = GameEngine(identityRepository = repository).connectGuest("Hiền", null)
+
+        val resumed = GameEngine(identityRepository = repository)
+            .connectGuest("Hiền mới", first.resumeToken)
+
+        assertEquals(first.playerId, resumed.playerId)
+        assertEquals(first.resumeToken, resumed.resumeToken)
+    }
+
+    @Test
+    fun `profile request returns safe empty statistics without database`() = runTest {
+        val engine = GameEngine()
+        val guest = engine.connectGuest("Hiền", null)
+
+        val response = engine.handle(guest.playerId, ClientMessage.GetProfile)
+            .map(Delivery::message)
+            .filterIsInstance<ServerMessage.ProfileData>()
+            .single()
+
+        assertEquals("Hiền", response.profile.displayName)
+        assertTrue(response.profile.playerCode.isNotBlank())
+        assertEquals(0, response.profile.statistics.totalMatches)
+        assertTrue(response.profile.recentMatches.isEmpty())
     }
 
     @Test
@@ -63,6 +92,86 @@ class GameEngineTest {
         assertEquals(10, accepted.game.players.sumOf { it.score })
         assertEquals("WRONG_NUMBER", rejected.code)
         assertNotEquals(accepted.selectedByPlayerId, "")
+    }
+
+    @Test
+    fun `waiting room is hidden while host disconnects and restored on resume`() = runTest {
+        var now = 1_000L
+        val engine = GameEngine { now }
+        val host = engine.connectGuest("Hiền", null)
+        engine.handle(
+            host.playerId,
+            ClientMessage.CreateRoom("Phòng reconnect", PASSWORD, ProtocolGameMode.ORDER)
+        )
+
+        assertEquals(1, engine.roomList().rooms.size)
+        engine.markDisconnected(host.playerId)
+        assertTrue(engine.roomList().rooms.isEmpty())
+
+        now += 10_000L
+        val resumed = engine.connectGuest("Hiền", host.resumeToken)
+        assertEquals(host.playerId, resumed.playerId)
+        assertEquals(1, engine.roomList().rooms.size)
+        assertEquals("Phòng reconnect", resumed.currentGame?.roomName)
+    }
+
+    @Test
+    fun `room closes after disconnected player exceeds reconnect grace period`() = runTest {
+        var now = 1_000L
+        val engine = GameEngine { now }
+        val host = engine.connectGuest("Hiền", null)
+        val guest = engine.connectGuest("Hiếu", null)
+        val created = engine.handle(
+            host.playerId,
+            ClientMessage.CreateRoom("Phòng hết hạn", PASSWORD, ProtocolGameMode.ORDER)
+        ).map(Delivery::message).filterIsInstance<ServerMessage.RoomCreated>().single()
+        engine.handle(guest.playerId, ClientMessage.JoinRoom(created.game.roomId, PASSWORD))
+
+        engine.markDisconnected(host.playerId)
+        now += 29_999L
+        assertTrue(engine.cleanupExpiredSessions().isEmpty())
+
+        now += 1L
+        val cleanupMessages = engine.cleanupExpiredSessions().map(Delivery::message)
+        assertEquals(1, cleanupMessages.filterIsInstance<ServerMessage.RoomClosed>().size)
+
+        val result = engine.handle(
+            guest.playerId,
+            ClientMessage.SelectNumber(created.game.roomId, 1, "after-expiry")
+        )
+        assertEquals("ROOM_NOT_FOUND", assertIs<ServerMessage.Error>(result.single().message).code)
+    }
+
+    @Test
+    fun `completed match is persisted once with winner and statistics outcome`() = runTest {
+        val savedMatches = mutableListOf<CompletedMatch>()
+        val repository = MatchResultRepository { match -> savedMatches += match }
+        val engine = GameEngine(matchResultRepository = repository)
+        val host = engine.connectGuest("Hiền", null)
+        val guest = engine.connectGuest("Hiếu", null)
+        val room = engine.handle(
+            host.playerId,
+            ClientMessage.CreateRoom("Phòng lịch sử", PASSWORD, ProtocolGameMode.ORDER)
+        ).map(Delivery::message).filterIsInstance<ServerMessage.RoomCreated>().single().game
+        engine.handle(guest.playerId, ClientMessage.JoinRoom(room.roomId, PASSWORD))
+
+        repeat(50) { index ->
+            engine.handle(
+                host.playerId,
+                ClientMessage.SelectNumber(room.roomId, index + 1, "finish-$index")
+            )
+        }
+        engine.handle(
+            host.playerId,
+            ClientMessage.SelectNumber(room.roomId, 50, "finish-49")
+        )
+
+        val saved = assertNotNull(savedMatches.singleOrNull())
+        assertEquals(room.roomId, saved.matchId)
+        assertEquals(host.playerId, saved.winnerPlayerId)
+        assertEquals(MatchOutcome.WIN, saved.players.single { it.playerId == host.playerId }.outcome)
+        assertEquals(MatchOutcome.LOSS, saved.players.single { it.playerId == guest.playerId }.outcome)
+        assertEquals(500, saved.players.single { it.playerId == host.playerId }.score)
     }
 
     private suspend fun createRoomFixture(): Fixture {

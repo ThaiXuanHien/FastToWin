@@ -25,7 +25,7 @@ android {
             buildConfigField(
                 "String",
                 "GAME_SERVER_URL",
-                "\"${providers.gradleProperty("FASTTOWIN_DEV_WS_URL").orElse("ws://10.0.2.2:8080/game").get()}\""
+                "\"${providers.gradleProperty("FASTTOWIN_DEV_WS_URL").orElse("ws://127.0.0.1:8080/game").get()}\""
             )
             resValue("string", "app_name", "Fast To Win Dev")
         }

@@ -12,10 +12,15 @@ import io.ktor.server.routing.routing
 import io.ktor.server.websocket.WebSockets
 import io.ktor.server.websocket.webSocket
 import io.ktor.websocket.Frame
+import io.ktor.websocket.CloseReason
+import io.ktor.websocket.close
 import io.ktor.websocket.readText
 import io.ktor.websocket.send
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import java.util.concurrent.ConcurrentHashMap
@@ -30,7 +35,20 @@ fun Application.gameModule(engine: GameEngine = GameEngine()) {
     suspend fun deliver(deliveries: List<Delivery>) {
         deliveries.forEach { delivery ->
             val targets = delivery.recipients?.mapNotNull(connections::get) ?: connections.values.toList()
-            targets.forEach { it.send(delivery.message) }
+            targets.forEach { connection ->
+                try {
+                    connection.send(delivery.message)
+                } catch (_: Exception) {
+                    // The connection cleanup path will remove stale sockets.
+                }
+            }
+        }
+    }
+
+    launch {
+        while (isActive) {
+            delay(SESSION_CLEANUP_INTERVAL_MILLIS)
+            deliver(engine.cleanupExpiredSessions())
         }
     }
 
@@ -74,15 +92,16 @@ fun Application.gameModule(engine: GameEngine = GameEngine()) {
                             continue
                         }
                         playerId = guest.playerId
-                        connections[guest.playerId] = SocketConnection(this)
-                        connections.getValue(guest.playerId).send(
+                        val connection = SocketConnection(this)
+                        connections.put(guest.playerId, connection)?.closeForReplacement()
+                        connection.send(
                             ServerMessage.SessionReady(
                                 playerId = guest.playerId,
                                 resumeToken = guest.resumeToken,
                                 currentGame = guest.currentGame
                             )
                         )
-                        connections.getValue(guest.playerId).send(engine.roomList())
+                        deliver(listOf(Delivery(engine.roomList())))
                         continue
                     }
 
@@ -90,8 +109,9 @@ fun Application.gameModule(engine: GameEngine = GameEngine()) {
                 }
             } finally {
                 playerId?.let { id ->
-                    connections.computeIfPresent(id) { _, connection ->
-                        if (connection.session === this) null else connection
+                    val connection = connections[id]
+                    if (connection?.session === this && connections.remove(id, connection)) {
+                        deliver(engine.markDisconnected(id))
                     }
                 }
             }
@@ -105,4 +125,10 @@ private class SocketConnection(val session: io.ktor.server.websocket.DefaultWebS
     suspend fun send(message: ServerMessage) = sendMutex.withLock {
         session.send(ProtocolJson.encodeToString<ServerMessage>(message))
     }
+
+    suspend fun closeForReplacement() {
+        session.close(CloseReason(CloseReason.Codes.NORMAL, "Session resumed elsewhere"))
+    }
 }
+
+private const val SESSION_CLEANUP_INTERVAL_MILLIS = 5_000L
