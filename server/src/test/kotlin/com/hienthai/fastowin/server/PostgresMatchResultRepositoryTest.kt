@@ -65,6 +65,9 @@ class PostgresMatchResultRepositoryTest {
                 assertEquals(1, profile.statistics.totalMatches)
                 assertEquals(1, profile.statistics.wins)
                 assertEquals(500, profile.statistics.highestScore)
+                assertEquals(1, profile.statistics.correctSelections)
+                assertEquals(0, profile.statistics.wrongSelections)
+                assertEquals(100L, profile.statistics.averageReactionMillis)
                 assertEquals(1, profile.recentMatches.size)
                 assertEquals(guest.displayName, profile.recentMatches.single().opponentName)
                 assertEquals(500, profile.recentMatches.single().playerScore)
@@ -81,6 +84,10 @@ class PostgresMatchResultRepositoryTest {
                         }
                     }
                 }
+                val guestProfile = profileRepository.findByPlayerId(guest.playerId)!!
+                assertEquals(0, guestProfile.statistics.correctSelections)
+                assertEquals(1, guestProfile.statistics.wrongSelections)
+                assertEquals(0L, guestProfile.statistics.averageReactionMillis)
             } finally {
                 dataSource.connection.use { connection ->
                     connection.prepareStatement("DELETE FROM matches WHERE id = ?").use { statement ->

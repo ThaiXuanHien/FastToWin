@@ -57,7 +57,10 @@ data class PlayerStatisticsSnapshot(
     val draws: Int = 0,
     val highestScore: Int = 0,
     val currentWinStreak: Int = 0,
-    val bestWinStreak: Int = 0
+    val bestWinStreak: Int = 0,
+    val correctSelections: Int = 0,
+    val wrongSelections: Int = 0,
+    val averageReactionMillis: Long = 0
 )
 
 @Serializable

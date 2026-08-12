@@ -25,7 +25,11 @@ class PostgresPlayerProfileRepository(
                        COALESCE(s.draws, 0) AS draws,
                        COALESCE(s.highest_score, 0) AS highest_score,
                        COALESCE(s.current_win_streak, 0) AS current_win_streak,
-                       COALESCE(s.best_win_streak, 0) AS best_win_streak
+                       COALESCE(s.best_win_streak, 0) AS best_win_streak,
+                       COALESCE(s.correct_selections, 0) AS correct_selections,
+                       COALESCE(s.wrong_selections, 0) AS wrong_selections,
+                       CASE WHEN COALESCE(s.reaction_samples, 0) = 0 THEN 0
+                            ELSE s.reaction_time_total_ms / s.reaction_samples END AS average_reaction_ms
                 FROM profiles p
                 LEFT JOIN player_stats s ON s.user_id = p.user_id
                 WHERE p.user_id = ?
@@ -44,7 +48,10 @@ class PostgresPlayerProfileRepository(
                             draws = result.getInt("draws"),
                             highestScore = result.getInt("highest_score"),
                             currentWinStreak = result.getInt("current_win_streak"),
-                            bestWinStreak = result.getInt("best_win_streak")
+                            bestWinStreak = result.getInt("best_win_streak"),
+                            correctSelections = result.getInt("correct_selections"),
+                            wrongSelections = result.getInt("wrong_selections"),
+                            averageReactionMillis = result.getLong("average_reaction_ms")
                         )
                     )
                 }

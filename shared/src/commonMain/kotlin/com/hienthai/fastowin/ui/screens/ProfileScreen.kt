@@ -105,6 +105,13 @@ fun ProfileScreen(
             StatCard("Chuỗi hiện tại", stats.currentWinStreak, Modifier.weight(1f))
             StatCard("Chuỗi tốt nhất", stats.bestWinStreak, Modifier.weight(1f))
         }
+        val totalSelections = stats.correctSelections + stats.wrongSelections
+        val accuracy = if (totalSelections == 0) 0 else stats.correctSelections * 100 / totalSelections
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            StatCard("Chính xác", "$accuracy%", Modifier.weight(1f))
+            StatCard("Đúng / Sai", "${stats.correctSelections} / ${stats.wrongSelections}", Modifier.weight(1f))
+            StatCard("Phản ứng TB", "${stats.averageReactionMillis} ms", Modifier.weight(1f))
+        }
 
         Text("Trận gần đây", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
         if (profile.recentMatches.isEmpty()) {
@@ -119,9 +126,14 @@ fun ProfileScreen(
 
 @Composable
 private fun StatCard(label: String, value: Int, modifier: Modifier = Modifier) {
+    StatCard(label, value.toString(), modifier)
+}
+
+@Composable
+private fun StatCard(label: String, value: String, modifier: Modifier = Modifier) {
     ElevatedCard(modifier = modifier) {
         Column(Modifier.fillMaxWidth().padding(12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(value.toString(), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
+            Text(value, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black)
             Text(label, style = MaterialTheme.typography.labelSmall)
         }
     }

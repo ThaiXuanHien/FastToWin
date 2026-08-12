@@ -89,13 +89,15 @@ class PostgresMatchResultRepository(
     }
 
     private fun updateStats(connection: Connection, match: CompletedMatch) {
+        val metricsByPlayer = calculateSelectionMetrics(match)
         connection.prepareStatement(
             """
             INSERT INTO player_stats (
                 user_id, total_matches, wins, losses, draws, highest_score,
-                current_win_streak, best_win_streak, updated_at
+                current_win_streak, best_win_streak, correct_selections, wrong_selections,
+                reaction_time_total_ms, reaction_samples, updated_at
             )
-            VALUES (?, 1, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT (user_id) DO UPDATE SET
                 total_matches = player_stats.total_matches + 1,
                 wins = player_stats.wins + EXCLUDED.wins,
@@ -113,11 +115,16 @@ class PostgresMatchResultRepository(
                     )
                     ELSE player_stats.best_win_streak
                 END,
+                correct_selections = player_stats.correct_selections + EXCLUDED.correct_selections,
+                wrong_selections = player_stats.wrong_selections + EXCLUDED.wrong_selections,
+                reaction_time_total_ms = player_stats.reaction_time_total_ms + EXCLUDED.reaction_time_total_ms,
+                reaction_samples = player_stats.reaction_samples + EXCLUDED.reaction_samples,
                 updated_at = EXCLUDED.updated_at
             """.trimIndent()
         ).use { statement ->
             match.players.forEach { player ->
                 val won = if (player.outcome == MatchOutcome.WIN) 1 else 0
+                val metrics = metricsByPlayer[player.playerId] ?: SelectionMetrics()
                 statement.setObject(1, UUID.fromString(player.playerId))
                 statement.setInt(2, won)
                 statement.setInt(3, if (player.outcome == MatchOutcome.LOSS) 1 else 0)
@@ -125,12 +132,42 @@ class PostgresMatchResultRepository(
                 statement.setInt(5, player.score)
                 statement.setInt(6, won)
                 statement.setInt(7, won)
-                statement.setTimestamp(8, match.endedAtMillis.toTimestamp())
+                statement.setLong(8, metrics.correct.toLong())
+                statement.setLong(9, metrics.wrong.toLong())
+                statement.setLong(10, metrics.reactionTimeTotalMillis)
+                statement.setLong(11, metrics.reactionSamples.toLong())
+                statement.setTimestamp(12, match.endedAtMillis.toTimestamp())
                 statement.addBatch()
             }
             statement.executeBatch()
         }
     }
+
+    private fun calculateSelectionMetrics(match: CompletedMatch): Map<String, SelectionMetrics> {
+        val metrics = match.players.associate { it.playerId to SelectionMetrics() }.toMutableMap()
+        var targetAvailableAtMillis = match.startedAtMillis
+        match.events.sortedBy(MatchSelectionEvent::sequence).forEach { event ->
+            val current = metrics.getOrPut(event.playerId) { SelectionMetrics() }
+            when (event.result) {
+                SelectionResult.REJECTED -> current.wrong++
+                SelectionResult.ACCEPTED -> {
+                    current.correct++
+                    current.reactionTimeTotalMillis +=
+                        (event.occurredAtMillis - targetAvailableAtMillis).coerceAtLeast(0L)
+                    current.reactionSamples++
+                    targetAvailableAtMillis = event.occurredAtMillis
+                }
+            }
+        }
+        return metrics
+    }
+
+    private data class SelectionMetrics(
+        var correct: Int = 0,
+        var wrong: Int = 0,
+        var reactionTimeTotalMillis: Long = 0,
+        var reactionSamples: Int = 0
+    )
 
     private fun Long.toTimestamp(): Timestamp = Timestamp.from(Instant.ofEpochMilli(this))
 }
