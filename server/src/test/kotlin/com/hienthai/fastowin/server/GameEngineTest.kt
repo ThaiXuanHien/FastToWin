@@ -155,6 +155,16 @@ class GameEngineTest {
         ).map(Delivery::message).filterIsInstance<ServerMessage.RoomCreated>().single().game
         engine.handle(guest.playerId, ClientMessage.JoinRoom(room.roomId, PASSWORD))
 
+        val firstWrong = engine.handle(
+            host.playerId,
+            ClientMessage.SelectNumber(room.roomId, 50, "same-wrong-request")
+        )
+        val duplicateWrong = engine.handle(
+            host.playerId,
+            ClientMessage.SelectNumber(room.roomId, 50, "same-wrong-request")
+        )
+        assertEquals(firstWrong.map(Delivery::message), duplicateWrong.map(Delivery::message))
+
         repeat(50) { index ->
             engine.handle(
                 host.playerId,
@@ -172,6 +182,10 @@ class GameEngineTest {
         assertEquals(MatchOutcome.WIN, saved.players.single { it.playerId == host.playerId }.outcome)
         assertEquals(MatchOutcome.LOSS, saved.players.single { it.playerId == guest.playerId }.outcome)
         assertEquals(500, saved.players.single { it.playerId == host.playerId }.score)
+        assertEquals(51, saved.events.size)
+        assertEquals(50, saved.events.count { it.result == SelectionResult.ACCEPTED })
+        assertEquals(1, saved.events.count { it.result == SelectionResult.REJECTED })
+        assertEquals(1, saved.events.single { it.result == SelectionResult.REJECTED }.expectedNumber)
     }
 
     @Test

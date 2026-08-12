@@ -15,6 +15,21 @@ data class CompletedMatchPlayer(
     val outcome: MatchOutcome
 )
 
+enum class SelectionResult {
+    ACCEPTED,
+    REJECTED
+}
+
+data class MatchSelectionEvent(
+    val playerId: String,
+    val requestId: String,
+    val number: Int,
+    val expectedNumber: Int,
+    val result: SelectionResult,
+    val occurredAtMillis: Long,
+    val sequence: Int
+)
+
 data class CompletedMatch(
     val matchId: String,
     val roomName: String,
@@ -22,7 +37,8 @@ data class CompletedMatch(
     val startedAtMillis: Long,
     val endedAtMillis: Long,
     val winnerPlayerId: String?,
-    val players: List<CompletedMatchPlayer>
+    val players: List<CompletedMatchPlayer>,
+    val events: List<MatchSelectionEvent> = emptyList()
 )
 
 fun interface MatchResultRepository {

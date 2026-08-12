@@ -73,6 +73,8 @@ Từ màn hình danh sách phòng, người chơi có thể mở **Hồ sơ** đ
 
 Với chế độ **Đua 60 giây**, đồng hồ kết thúc do backend quyết định. Server kiểm tra timer mỗi 250 ms, phát `game_finished` cho cả hai người chơi và lưu kết quả đúng một lần; client chỉ hiển thị đồng hồ, không tự quyết định kết quả trận.
 
+Backend giữ audit log tối đa 2.000 request cho mỗi trận và ghi hàng loạt vào `match_events` khi trận hoàn thành. Mỗi event gồm người bấm, số đã bấm, target tại thời điểm đó, đúng/sai, request ID, thứ tự và thời gian server nhận. Request ID trùng của cùng người chơi trả lại kết quả cũ và không tạo event hay cộng điểm lần hai.
+
 Kiểm tra server:
 
 ```text

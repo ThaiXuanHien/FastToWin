@@ -264,8 +264,15 @@ class GameEngine(
         if (player.playerId !in room.playerIds()) {
             return HandleResult(listOf(error(player.playerId, "NOT_IN_ROOM", "Bạn không ở trong phòng này.", command.requestId)))
         }
-        room.processedRequests[command.requestId]?.let { previous ->
+        if (command.requestId.isBlank() || command.requestId.length > MAX_REQUEST_ID_LENGTH) {
+            return HandleResult(listOf(error(player.playerId, "INVALID_REQUEST_ID", "Mã yêu cầu không hợp lệ.")))
+        }
+        val requestKey = "${player.playerId}:${command.requestId}"
+        room.processedRequests[requestKey]?.let { previous ->
             return HandleResult(listOf(Delivery(previous, setOf(player.playerId))))
+        }
+        if (room.processedRequests.size >= MAX_REQUESTS_PER_MATCH) {
+            return HandleResult(listOf(error(player.playerId, "TOO_MANY_REQUESTS", "Trận đấu có quá nhiều lượt gửi.")))
         }
         room.refreshTimedState()
         if (room.phase != RoomPhase.PLAYING) {
@@ -275,9 +282,13 @@ class GameEngine(
             )
         }
         if (command.number != room.currentTarget) {
-            return HandleResult(listOf(error(player.playerId, "WRONG_NUMBER", "Chưa đúng số, thử lại nhé!", command.requestId)))
+            val rejected = error(player.playerId, "WRONG_NUMBER", "Chưa đúng số, thử lại nhé!", command.requestId)
+            room.processedRequests[requestKey] = rejected.message
+            room.recordSelection(player.playerId, command, SelectionResult.REJECTED)
+            return HandleResult(listOf(rejected))
         }
 
+        room.recordSelection(player.playerId, command, SelectionResult.ACCEPTED)
         room.selectedNumbers += command.number
         room.scores[player.playerId] = room.scores.getValue(player.playerId) + SCORE_PER_NUMBER
         room.currentTarget++
@@ -289,7 +300,7 @@ class GameEngine(
             acceptedNumber = command.number,
             selectedByPlayerId = player.playerId
         )
-        room.processedRequests[command.requestId] = event
+        room.processedRequests[requestKey] = event
         return HandleResult(
             deliveries = listOf(Delivery(event, room.playerIds())),
             completedMatch = room.takeCompletedMatch()
@@ -377,7 +388,24 @@ class GameEngine(
                         }
                     )
                 }
-            }
+            },
+            events = selectionEvents.toList()
+        )
+    }
+
+    private fun Room.recordSelection(
+        playerId: String,
+        command: ClientMessage.SelectNumber,
+        result: SelectionResult
+    ) {
+        selectionEvents += MatchSelectionEvent(
+            playerId = playerId,
+            requestId = command.requestId,
+            number = command.number,
+            expectedNumber = currentTarget,
+            result = result,
+            occurredAtMillis = nowMillis(),
+            sequence = selectionEvents.size + 1
         )
     }
 
@@ -421,7 +449,8 @@ class GameEngine(
         var sequence: Long = 0,
         var startedAtEpochMillis: Long? = null,
         var resultQueued: Boolean = false,
-        val processedRequests: MutableMap<String, ServerMessage.GameStateUpdated> = mutableMapOf()
+        val processedRequests: MutableMap<String, ServerMessage> = mutableMapOf(),
+        val selectionEvents: MutableList<MatchSelectionEvent> = mutableListOf()
     ) {
         fun playerIds(): Set<String> = setOfNotNull(hostId, guestId)
     }
@@ -446,6 +475,8 @@ class GameEngine(
         const val MAX_PLAYER_NAME_LENGTH = 32
         const val MAX_ROOM_NAME_LENGTH = 48
         const val SCORE_PER_NUMBER = 10
+        const val MAX_REQUEST_ID_LENGTH = 64
+        const val MAX_REQUESTS_PER_MATCH = 2_000
         const val DEFAULT_TIME_ATTACK_MILLIS = 60_000L
         const val ROOM_RECONNECT_GRACE_MILLIS = 30_000L
         const val IDLE_SESSION_TTL_MILLIS = 5 * 60_000L

@@ -17,6 +17,7 @@ class PostgresMatchResultRepository(
             try {
                 if (insertMatch(connection, match)) {
                     insertPlayers(connection, match)
+                    insertEvents(connection, match)
                     updateStats(connection, match)
                 }
                 connection.commit()
@@ -57,6 +58,30 @@ class PostgresMatchResultRepository(
                 statement.setString(3, player.displayName)
                 statement.setInt(4, player.score)
                 statement.setString(5, player.outcome.name)
+                statement.addBatch()
+            }
+            statement.executeBatch()
+        }
+    }
+
+    private fun insertEvents(connection: Connection, match: CompletedMatch) {
+        if (match.events.isEmpty()) return
+        connection.prepareStatement(
+            """
+            INSERT INTO match_events (
+                match_id, user_id, request_id, number, expected_number, result, occurred_at, sequence
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """.trimIndent()
+        ).use { statement ->
+            match.events.forEach { event ->
+                statement.setObject(1, UUID.fromString(match.matchId))
+                statement.setObject(2, UUID.fromString(event.playerId))
+                statement.setString(3, event.requestId)
+                statement.setInt(4, event.number)
+                statement.setInt(5, event.expectedNumber)
+                statement.setString(6, event.result.name)
+                statement.setTimestamp(7, event.occurredAtMillis.toTimestamp())
+                statement.setInt(8, event.sequence)
                 statement.addBatch()
             }
             statement.executeBatch()

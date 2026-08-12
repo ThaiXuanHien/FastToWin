@@ -35,6 +35,10 @@ class PostgresMatchResultRepositoryTest {
                     players = listOf(
                         CompletedMatchPlayer(host.playerId, host.displayName, 500, MatchOutcome.WIN),
                         CompletedMatchPlayer(guest.playerId, guest.displayName, 0, MatchOutcome.LOSS)
+                    ),
+                    events = listOf(
+                        MatchSelectionEvent(host.playerId, "accepted-1", 1, 1, SelectionResult.ACCEPTED, 1_100L, 1),
+                        MatchSelectionEvent(guest.playerId, "rejected-1", 9, 2, SelectionResult.REJECTED, 1_200L, 2)
                     )
                 )
 
@@ -64,6 +68,19 @@ class PostgresMatchResultRepositoryTest {
                 assertEquals(1, profile.recentMatches.size)
                 assertEquals(guest.displayName, profile.recentMatches.single().opponentName)
                 assertEquals(500, profile.recentMatches.single().playerScore)
+                dataSource.connection.use { connection ->
+                    connection.prepareStatement(
+                        "SELECT result, COUNT(*) AS count FROM match_events WHERE match_id = ? GROUP BY result"
+                    ).use { statement ->
+                        statement.setObject(1, UUID.fromString(matchId))
+                        statement.executeQuery().use { result ->
+                            val counts = buildMap {
+                                while (result.next()) put(result.getString("result"), result.getInt("count"))
+                            }
+                            assertEquals(mapOf("ACCEPTED" to 1, "REJECTED" to 1), counts)
+                        }
+                    }
+                }
             } finally {
                 dataSource.connection.use { connection ->
                     connection.prepareStatement("DELETE FROM matches WHERE id = ?").use { statement ->
