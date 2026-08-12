@@ -69,6 +69,7 @@ class PostgresMatchResultRepositoryTest {
                 assertEquals(1, profile.statistics.correctSelections)
                 assertEquals(0, profile.statistics.wrongSelections)
                 assertEquals(100L, profile.statistics.averageReactionMillis)
+                assertEquals(1016, profile.statistics.eloRating)
                 assertEquals(1, profile.recentMatches.size)
                 assertEquals(guest.displayName, profile.recentMatches.single().opponentName)
                 assertEquals(500, profile.recentMatches.single().playerScore)
@@ -89,9 +90,14 @@ class PostgresMatchResultRepositoryTest {
                 assertEquals(0, guestProfile.statistics.correctSelections)
                 assertEquals(1, guestProfile.statistics.wrongSelections)
                 assertEquals(0L, guestProfile.statistics.averageReactionMillis)
+                assertEquals(984, guestProfile.statistics.eloRating)
+                assertEquals(16, profile.recentMatches.single().eloChange)
+                assertEquals(-16, guestProfile.recentMatches.single().eloChange)
                 val leaderboard = leaderboardRepository.load(host.playerId, 100)
                 assertEquals(host.displayName, leaderboard.currentPlayer?.displayName)
                 assertEquals(1, leaderboard.currentPlayer?.wins)
+                assertEquals(1016, leaderboard.currentPlayer?.eloRating)
+                assertEquals(host.displayName, leaderboard.topPlayers.first().displayName)
                 assertEquals(host.displayName, leaderboard.topPlayers.first { it.displayName == host.displayName }.displayName)
             } finally {
                 dataSource.connection.use { connection ->

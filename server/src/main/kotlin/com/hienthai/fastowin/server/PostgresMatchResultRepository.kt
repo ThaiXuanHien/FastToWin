@@ -7,6 +7,7 @@ import java.sql.Timestamp
 import java.time.Instant
 import java.util.UUID
 import javax.sql.DataSource
+import kotlin.math.pow
 
 class PostgresMatchResultRepository(
     private val dataSource: DataSource
@@ -18,6 +19,7 @@ class PostgresMatchResultRepository(
                 if (insertMatch(connection, match)) {
                     insertPlayers(connection, match)
                     insertEvents(connection, match)
+                    updateEloRatings(connection, match)
                     updateStats(connection, match)
                 }
                 connection.commit()
@@ -143,6 +145,84 @@ class PostgresMatchResultRepository(
         }
     }
 
+    private fun updateEloRatings(connection: Connection, match: CompletedMatch) {
+        if (match.players.size != 2) return
+        val now = match.endedAtMillis.toTimestamp()
+        connection.prepareStatement(
+            "INSERT INTO player_stats (user_id, updated_at) VALUES (?, ?) ON CONFLICT (user_id) DO NOTHING"
+        ).use { statement ->
+            match.players.forEach { player ->
+                statement.setObject(1, UUID.fromString(player.playerId))
+                statement.setTimestamp(2, now)
+                statement.addBatch()
+            }
+            statement.executeBatch()
+        }
+
+        val ratings = mutableMapOf<String, Int>()
+        val sortedPlayerIds = match.players.map { it.playerId }.sorted()
+        connection.prepareStatement(
+            "SELECT user_id, elo_rating FROM player_stats WHERE user_id IN (?, ?) ORDER BY user_id FOR UPDATE"
+        ).use { statement ->
+            statement.setObject(1, UUID.fromString(sortedPlayerIds[0]))
+            statement.setObject(2, UUID.fromString(sortedPlayerIds[1]))
+            statement.executeQuery().use { result ->
+                while (result.next()) {
+                    ratings[result.getObject("user_id", UUID::class.java).toString()] = result.getInt("elo_rating")
+                }
+            }
+        }
+
+        val first = match.players[0]
+        val second = match.players[1]
+        val firstBefore = ratings.getValue(first.playerId)
+        val secondBefore = ratings.getValue(second.playerId)
+        val firstScore = first.outcome.toEloScore()
+        val firstExpected = expectedScore(firstBefore, secondBefore)
+        val firstChange = kotlin.math.round(ELO_K_FACTOR * (firstScore - firstExpected)).toInt()
+        val firstAfter = (firstBefore + firstChange).coerceAtLeast(MIN_ELO)
+        val secondAfter = (secondBefore - (firstAfter - firstBefore)).coerceAtLeast(MIN_ELO)
+
+        connection.prepareStatement("UPDATE player_stats SET elo_rating = ?, updated_at = ? WHERE user_id = ?").use { statement ->
+            listOf(first.playerId to firstAfter, second.playerId to secondAfter).forEach { (playerId, rating) ->
+                statement.setInt(1, rating)
+                statement.setTimestamp(2, now)
+                statement.setObject(3, UUID.fromString(playerId))
+                statement.addBatch()
+            }
+            statement.executeBatch()
+        }
+        connection.prepareStatement(
+            """
+            INSERT INTO rating_history (match_id, user_id, rating_before, rating_after, rating_change, created_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """.trimIndent()
+        ).use { statement ->
+            listOf(
+                Triple(first, firstBefore, firstAfter),
+                Triple(second, secondBefore, secondAfter)
+            ).forEach { (player, before, after) ->
+                statement.setObject(1, UUID.fromString(match.matchId))
+                statement.setObject(2, UUID.fromString(player.playerId))
+                statement.setInt(3, before)
+                statement.setInt(4, after)
+                statement.setInt(5, after - before)
+                statement.setTimestamp(6, now)
+                statement.addBatch()
+            }
+            statement.executeBatch()
+        }
+    }
+
+    private fun MatchOutcome.toEloScore(): Double = when (this) {
+        MatchOutcome.WIN -> 1.0
+        MatchOutcome.DRAW -> 0.5
+        MatchOutcome.LOSS -> 0.0
+    }
+
+    private fun expectedScore(rating: Int, opponentRating: Int): Double =
+        1.0 / (1.0 + 10.0.pow((opponentRating - rating) / 400.0))
+
     private fun calculateSelectionMetrics(match: CompletedMatch): Map<String, SelectionMetrics> {
         val metrics = match.players.associate { it.playerId to SelectionMetrics() }.toMutableMap()
         var targetAvailableAtMillis = match.startedAtMillis
@@ -170,4 +250,9 @@ class PostgresMatchResultRepository(
     )
 
     private fun Long.toTimestamp(): Timestamp = Timestamp.from(Instant.ofEpochMilli(this))
+
+    private companion object {
+        const val ELO_K_FACTOR = 32.0
+        const val MIN_ELO = 100
+    }
 }

@@ -20,9 +20,10 @@ class PostgresLeaderboardRepository(
                     """
                     WITH ranked AS (
                         SELECT p.user_id, p.display_name, p.player_code,
-                               s.wins, s.total_matches, s.highest_score,
+                               s.wins, s.total_matches, s.highest_score, s.elo_rating,
                                ROW_NUMBER() OVER (
-                                   ORDER BY s.wins DESC,
+                                   ORDER BY s.elo_rating DESC,
+                                            s.wins DESC,
                                             (s.wins::NUMERIC / NULLIF(s.total_matches, 0)) DESC NULLS LAST,
                                             s.highest_score DESC,
                                             s.updated_at ASC,
@@ -46,7 +47,8 @@ class PostgresLeaderboardRepository(
                                 playerCode = result.getString("player_code"),
                                 wins = result.getInt("wins"),
                                 totalMatches = result.getInt("total_matches"),
-                                highestScore = result.getInt("highest_score")
+                                highestScore = result.getInt("highest_score"),
+                                eloRating = result.getInt("elo_rating")
                             )
                             if (result.getObject("user_id", UUID::class.java) == currentId) currentPlayer = entry
                             if (entry.rank <= limit) topPlayers += entry

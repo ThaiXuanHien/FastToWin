@@ -89,6 +89,7 @@ fun ProfileScreen(
                 Column {
                     Text(profile.displayName, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
                     Text("Mã người chơi: ${profile.playerCode}", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("Elo ${profile.statistics.eloRating}", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
                 }
             }
         }
@@ -159,6 +160,8 @@ private fun MatchHistoryCard(match: MatchHistorySnapshot) {
             Column(horizontalAlignment = Alignment.End) {
                 Text(result, color = color, fontWeight = FontWeight.Bold)
                 Text("${match.playerScore} – ${match.opponentScore}")
+                val eloText = if (match.eloChange >= 0) "+${match.eloChange}" else match.eloChange.toString()
+                Text("Elo $eloText", color = if (match.eloChange >= 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error)
             }
         }
     }

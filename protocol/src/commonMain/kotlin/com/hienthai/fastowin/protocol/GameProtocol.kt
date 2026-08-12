@@ -60,7 +60,8 @@ data class PlayerStatisticsSnapshot(
     val bestWinStreak: Int = 0,
     val correctSelections: Int = 0,
     val wrongSelections: Int = 0,
-    val averageReactionMillis: Long = 0
+    val averageReactionMillis: Long = 0,
+    val eloRating: Int = 1000
 )
 
 @Serializable
@@ -72,7 +73,8 @@ data class MatchHistorySnapshot(
     val playerScore: Int,
     val opponentScore: Int,
     val outcome: MatchHistoryOutcome,
-    val endedAtEpochMillis: Long
+    val endedAtEpochMillis: Long,
+    val eloChange: Int = 0
 )
 
 @Serializable
@@ -90,7 +92,8 @@ data class LeaderboardEntrySnapshot(
     val playerCode: String,
     val wins: Int,
     val totalMatches: Int,
-    val highestScore: Int
+    val highestScore: Int,
+    val eloRating: Int = 1000
 )
 
 @Serializable

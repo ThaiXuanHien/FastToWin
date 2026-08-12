@@ -77,7 +77,9 @@ Backend giữ audit log tối đa 2.000 request cho mỗi trận và ghi hàng l
 
 Từ audit log, server cộng dồn tổng lượt đúng/sai và thời gian phản ứng cho từng người chơi. Thời gian phản ứng của một lượt đúng được tính từ lúc target đó xuất hiện trên server đến lúc server nhận lượt chọn đúng. Hồ sơ hiển thị tỷ lệ chính xác, tổng đúng/sai và thời gian phản ứng trung bình; số liệu client tự khai báo không được sử dụng.
 
-Màn hình **Bảng xếp hạng** hiển thị tối đa 100 người chơi có trận hoàn thành. Thứ tự ưu tiên số trận thắng, tỷ lệ thắng, điểm cao nhất rồi thời điểm cập nhật; người chơi hiện tại vẫn nhận được thứ hạng cá nhân kể cả khi nằm ngoài top 100.
+Màn hình **Bảng xếp hạng** hiển thị tối đa 100 người chơi có trận hoàn thành. Thứ tự ưu tiên Elo, số trận thắng, tỷ lệ thắng, điểm cao nhất rồi thời điểm cập nhật; người chơi hiện tại vẫn nhận được thứ hạng cá nhân kể cả khi nằm ngoài top 100.
+
+Mỗi người chơi bắt đầu với **1000 Elo**. Sau mỗi trận hai người, server dùng công thức Elo với K=32 để cộng/trừ dựa trên kết quả và chênh lệch rating; hòa cũng có thể tăng hoặc giảm nếu rating hai bên khác nhau. Rating tối thiểu là 100. Mọi thay đổi được lưu trong `rating_history`, hiển thị ở lịch sử trận và bảng xếp hạng ưu tiên Elo trước các tiêu chí phụ.
 
 Kiểm tra server:
 

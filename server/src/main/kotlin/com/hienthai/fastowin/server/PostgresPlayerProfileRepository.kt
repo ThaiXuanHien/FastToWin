@@ -28,6 +28,7 @@ class PostgresPlayerProfileRepository(
                        COALESCE(s.best_win_streak, 0) AS best_win_streak,
                        COALESCE(s.correct_selections, 0) AS correct_selections,
                        COALESCE(s.wrong_selections, 0) AS wrong_selections,
+                       COALESCE(s.elo_rating, 1000) AS elo_rating,
                        CASE WHEN COALESCE(s.reaction_samples, 0) = 0 THEN 0
                             ELSE s.reaction_time_total_ms / s.reaction_samples END AS average_reaction_ms
                 FROM profiles p
@@ -51,7 +52,8 @@ class PostgresPlayerProfileRepository(
                             bestWinStreak = result.getInt("best_win_streak"),
                             correctSelections = result.getInt("correct_selections"),
                             wrongSelections = result.getInt("wrong_selections"),
-                            averageReactionMillis = result.getLong("average_reaction_ms")
+                            averageReactionMillis = result.getLong("average_reaction_ms"),
+                            eloRating = result.getInt("elo_rating")
                         )
                     )
                 }
@@ -61,10 +63,12 @@ class PostgresPlayerProfileRepository(
                 """
                 SELECT m.id, m.room_name, m.game_mode, m.ended_at,
                        mine.score AS player_score, mine.outcome,
+                       COALESCE(rh.rating_change, 0) AS elo_change,
                        COALESCE(opponent.display_name, 'Đối thủ') AS opponent_name,
                        COALESCE(opponent.score, 0) AS opponent_score
                 FROM match_players mine
                 JOIN matches m ON m.id = mine.match_id
+                LEFT JOIN rating_history rh ON rh.match_id = mine.match_id AND rh.user_id = mine.user_id
                 LEFT JOIN match_players opponent ON opponent.match_id = mine.match_id AND opponent.user_id <> mine.user_id
                 WHERE mine.user_id = ?
                 ORDER BY m.ended_at DESC
@@ -83,7 +87,8 @@ class PostgresPlayerProfileRepository(
                                 playerScore = result.getInt("player_score"),
                                 opponentScore = result.getInt("opponent_score"),
                                 outcome = MatchHistoryOutcome.valueOf(result.getString("outcome")),
-                                endedAtEpochMillis = result.getTimestamp("ended_at").time
+                                endedAtEpochMillis = result.getTimestamp("ended_at").time,
+                                eloChange = result.getInt("elo_change")
                             )
                         )
                     }

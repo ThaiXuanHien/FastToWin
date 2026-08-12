@@ -57,7 +57,7 @@ fun LeaderboardScreen(
         }
 
         Text(
-            "Xếp theo số trận thắng, tỷ lệ thắng và điểm cao nhất.",
+            "Xếp theo Elo, sau đó số trận thắng, tỷ lệ thắng và điểm cao nhất.",
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
 
@@ -112,6 +112,7 @@ private fun LeaderboardCard(entry: LeaderboardEntrySnapshot, highlighted: Boolea
                 Text(entry.playerCode, style = MaterialTheme.typography.bodySmall)
             }
             Column(horizontalAlignment = Alignment.End) {
+                Text("Elo ${entry.eloRating}", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
                 Text("${entry.wins} thắng", fontWeight = FontWeight.Bold)
                 Text("$winRate% • ${entry.highestScore} điểm", style = MaterialTheme.typography.bodySmall)
             }
