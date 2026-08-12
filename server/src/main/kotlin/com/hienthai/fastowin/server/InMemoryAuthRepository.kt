@@ -58,6 +58,9 @@ class InMemoryAuthRepository : AuthRepository {
         AuthenticatedAccount(session.userId, displayName)
     }
 
+    override suspend fun upgradeGuest(upgrade: GuestUpgrade): GuestUpgradeResult =
+        GuestUpgradeResult.Unsupported
+
     private fun store(userId: UUID, session: NewAuthSession) {
         val stored = StoredSession(
             sessionId = session.sessionId,

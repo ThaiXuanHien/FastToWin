@@ -7,6 +7,7 @@ import com.hienthai.fastowin.protocol.LogoutRequest
 import com.hienthai.fastowin.protocol.ProtocolJson
 import com.hienthai.fastowin.protocol.RefreshTokenRequest
 import com.hienthai.fastowin.protocol.RegisterRequest
+import com.hienthai.fastowin.protocol.UpgradeGuestRequest
 import com.hienthai.fastowin.protocol.ServerMessage
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.ApplicationCall
@@ -97,6 +98,18 @@ fun Application.gameModule(
             val request = call.receiveOrReject<LoginRequest>() ?: return@post
             call.respondAuthResult(
                 authService.login(request.email, request.password, request.devicePlatform)
+            )
+        }
+
+        post("/auth/upgrade-guest") {
+            val request = call.receiveOrReject<UpgradeGuestRequest>() ?: return@post
+            call.respondAuthResult(
+                authService.upgradeGuest(
+                    request.resumeToken,
+                    request.email,
+                    request.password,
+                    request.devicePlatform
+                )
             )
         }
 
@@ -217,7 +230,9 @@ private suspend fun ApplicationCall.respondAuthResult(
         is AuthResult.Failure -> respond(
             when (result.code) {
                 "EMAIL_ALREADY_EXISTS" -> HttpStatusCode.Conflict
-                "INVALID_CREDENTIALS", "INVALID_REFRESH_TOKEN" -> HttpStatusCode.Unauthorized
+                "INVALID_CREDENTIALS", "INVALID_REFRESH_TOKEN", "INVALID_GUEST_SESSION" ->
+                    HttpStatusCode.Unauthorized
+                "DATABASE_REQUIRED" -> HttpStatusCode.ServiceUnavailable
                 else -> HttpStatusCode.BadRequest
             },
             AuthErrorResponse(result.code, result.message)

@@ -57,6 +57,7 @@ class GameEngine(
     ): ConnectedPlayer = mutex.withLock {
             val session = sessionsByPlayerId[identityPlayerId]?.also { existing ->
                 existing.displayName = identityDisplayName
+                existing.resumeToken = resumeToken
             } ?: GuestSession(
                 playerId = identityPlayerId,
                 resumeToken = resumeToken,
@@ -448,7 +449,7 @@ class GameEngine(
 
     private data class GuestSession(
         val playerId: String,
-        val resumeToken: String?,
+        var resumeToken: String?,
         var displayName: String,
         var isConnected: Boolean = true,
         var disconnectedAtMillis: Long? = null

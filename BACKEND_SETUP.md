@@ -91,6 +91,7 @@ Backend hỗ trợ tài khoản email/mật khẩu qua JSON API:
 |---|---|---|
 | `POST` | `/auth/register` | Tạo tài khoản và phiên đăng nhập |
 | `POST` | `/auth/login` | Đăng nhập trên một thiết bị |
+| `POST` | `/auth/upgrade-guest` | Chuyển guest hiện tại thành tài khoản email |
 | `POST` | `/auth/refresh` | Xoay vòng refresh token và cấp access token mới |
 | `POST` | `/auth/logout` | Thu hồi phiên của thiết bị hiện tại |
 
@@ -110,6 +111,8 @@ Access token có hiệu lực 15 phút, refresh token có hiệu lực 30 ngày.
 Compose Multiplatform có màn hình đăng nhập, đăng ký và lựa chọn chơi khách. Android mã hóa phiên bằng AES-GCM với khóa trong Android Keystore; iOS lưu phiên trong Keychain. Ứng dụng tự refresh access token trước khi hết hạn và tài khoản dùng `connect_account` để xác thực WebSocket. Server tự lấy player ID và biệt danh từ phiên đăng nhập, không nhận các giá trị này từ client. Chế độ khách vẫn dùng `connect_guest` và resume token cũ.
 
 Protocol WebSocket hiện tại là phiên bản 2. Sau khi cập nhật ứng dụng, cần khởi động lại backend để client và server dùng cùng phiên bản.
+
+Khi nâng cấp guest, client gửi resume token hiện tại cùng email và mật khẩu. Backend khóa phiên guest và cập nhật chính user hiện tại trong một transaction, sau đó thu hồi toàn bộ resume token khách và tạo phiên tài khoản mới. `user_id` không đổi nên hồ sơ, player code, Elo, lịch sử, thống kê và thành tích được giữ nguyên. Chức năng này yêu cầu PostgreSQL; server chạy thuần bộ nhớ trả lỗi `DATABASE_REQUIRED`.
 
 Kiểm tra server:
 
@@ -191,7 +194,6 @@ Test backend bao gồm:
 - Phòng và trạng thái trận đấu vẫn bị mất khi server restart.
 - Guest identity và session tồn tại qua restart khi bật PostgreSQL.
 - Chưa có khôi phục mật khẩu, xác minh email và đăng xuất khỏi tất cả thiết bị.
-- Chưa hỗ trợ nâng cấp dữ liệu của một guest hiện tại thành tài khoản email.
 - Cấu hình local dùng `ws://`; môi trường production phải dùng `wss://`.
 
 ## Reconnect hiện tại

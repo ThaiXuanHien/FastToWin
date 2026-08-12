@@ -164,6 +164,88 @@ class PostgresAuthRepository(private val dataSource: DataSource) : AuthRepositor
         }
     }
 
+    override suspend fun upgradeGuest(upgrade: GuestUpgrade): GuestUpgradeResult =
+        withContext(Dispatchers.IO) {
+            dataSource.connection.use { connection ->
+                connection.autoCommit = false
+                try {
+                    val guest = findGuestForUpgrade(connection, upgrade)
+                    if (guest == null) {
+                        connection.rollback()
+                        return@withContext GuestUpgradeResult.InvalidGuestSession
+                    }
+
+                    connection.prepareStatement(
+                        """
+                        UPDATE users
+                        SET account_type = 'REGISTERED', email_normalized = ?, password_hash = ?, updated_at = ?
+                        WHERE id = ? AND account_type = 'GUEST' AND status = 'ACTIVE'
+                        """.trimIndent()
+                    ).use { statement ->
+                        statement.setString(1, upgrade.emailNormalized)
+                        statement.setString(2, upgrade.passwordHash)
+                        statement.setTimestamp(3, upgrade.session.nowMillis.toTimestamp())
+                        statement.setObject(4, guest.userId)
+                        if (statement.executeUpdate() != 1) {
+                            connection.rollback()
+                            return@withContext GuestUpgradeResult.InvalidGuestSession
+                        }
+                    }
+
+                    connection.prepareStatement(
+                        """
+                        UPDATE sessions
+                        SET revoked_at = ?, last_seen_at = ?
+                        WHERE user_id = ? AND resume_token_hash IS NOT NULL AND revoked_at IS NULL
+                        """.trimIndent()
+                    ).use { statement ->
+                        statement.setTimestamp(1, upgrade.session.nowMillis.toTimestamp())
+                        statement.setTimestamp(2, upgrade.session.nowMillis.toTimestamp())
+                        statement.setObject(3, guest.userId)
+                        statement.executeUpdate()
+                    }
+                    insertSession(connection, guest.userId, upgrade.devicePlatform, upgrade.session)
+                    connection.commit()
+                    GuestUpgradeResult.Success(guest.userId, guest.displayName)
+                } catch (error: SQLException) {
+                    connection.rollback()
+                    if (error.sqlState == UNIQUE_VIOLATION_SQL_STATE) {
+                        GuestUpgradeResult.EmailAlreadyExists
+                    } else {
+                        throw error
+                    }
+                } catch (error: Throwable) {
+                    connection.rollback()
+                    throw error
+                }
+            }
+        }
+
+    private fun findGuestForUpgrade(connection: Connection, upgrade: GuestUpgrade): UpgradeGuestIdentity? =
+        connection.prepareStatement(
+            """
+            SELECT u.id, p.display_name
+            FROM sessions s
+            JOIN users u ON u.id = s.user_id
+            JOIN profiles p ON p.user_id = u.id
+            WHERE s.resume_token_hash = ?
+              AND s.revoked_at IS NULL
+              AND s.expires_at > ?
+              AND u.account_type = 'GUEST'
+              AND u.status = 'ACTIVE'
+            FOR UPDATE OF s, u
+            """.trimIndent()
+        ).use { statement ->
+            statement.setString(1, upgrade.resumeTokenHash)
+            statement.setTimestamp(2, upgrade.session.nowMillis.toTimestamp())
+            statement.executeQuery().use { result ->
+                if (!result.next()) null else UpgradeGuestIdentity(
+                    userId = result.getObject("id", UUID::class.java),
+                    displayName = result.getString("display_name")
+                )
+            }
+        }
+
     private fun insertUser(connection: Connection, account: NewAccount) {
         connection.prepareStatement(
             """
@@ -225,6 +307,7 @@ class PostgresAuthRepository(private val dataSource: DataSource) : AuthRepositor
     }
 
     private data class CurrentSession(val sessionId: UUID, val userId: UUID)
+    private data class UpgradeGuestIdentity(val userId: UUID, val displayName: String)
 
     private companion object {
         const val UNIQUE_VIOLATION_SQL_STATE = "23505"

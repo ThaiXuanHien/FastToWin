@@ -4,6 +4,7 @@ import com.hienthai.fastowin.data.network.AuthApiClient
 import com.hienthai.fastowin.data.network.AuthApiException
 import com.hienthai.fastowin.data.network.AuthSessionStore
 import com.hienthai.fastowin.data.network.StoredAuthSession
+import com.hienthai.fastowin.data.network.ResumeTokenStore
 import com.hienthai.fastowin.platform.epochMillis
 import com.hienthai.fastowin.protocol.AuthSessionResponse
 import kotlinx.coroutines.CoroutineScope
@@ -16,7 +17,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
-enum class AuthStage { WELCOME, LOGIN, REGISTER, PLAYING }
+enum class AuthStage { WELCOME, LOGIN, REGISTER, UPGRADE_GUEST, PLAYING }
 
 data class AuthState(
     val stage: AuthStage = AuthStage.WELCOME,
@@ -29,6 +30,7 @@ data class AuthState(
 class AuthController(
     private val serverUrl: String,
     private val store: AuthSessionStore,
+    private val resumeTokenStore: ResumeTokenStore,
     private val devicePlatform: String,
     private val api: AuthApiClient = AuthApiClient(serverUrl)
 ) {
@@ -51,6 +53,16 @@ class AuthController(
     fun openRegister() = _state.update { it.copy(stage = AuthStage.REGISTER, error = null) }
     fun backToWelcome() = _state.update { AuthState() }
     fun playAsGuest() = _state.update { AuthState(stage = AuthStage.PLAYING, isGuest = true) }
+    fun openGuestUpgrade() = _state.update {
+        if (it.isGuest) it.copy(stage = AuthStage.UPGRADE_GUEST, error = null) else it
+    }
+    fun cancelGuestUpgrade() = _state.update {
+        if (it.stage == AuthStage.UPGRADE_GUEST) {
+            AuthState(stage = AuthStage.PLAYING, isGuest = true)
+        } else {
+            it
+        }
+    }
 
     fun login(email: String, password: String) {
         if (_state.value.isLoading) return
@@ -73,6 +85,25 @@ class AuthController(
                 persist(email, displayName.trim(), response)
             }
                 .onFailure(::showError)
+        }
+    }
+
+    fun upgradeGuest(email: String, password: String) {
+        if (_state.value.isLoading) return
+        val resumeToken = resumeTokenStore.load(serverUrl)
+        if (resumeToken == null) {
+            _state.update {
+                it.copy(error = "Chưa có phiên khách để lưu. Hãy vào danh sách phòng rồi thử lại.")
+            }
+            return
+        }
+        _state.update { it.copy(isLoading = true, error = null) }
+        scope.launch {
+            runCatching {
+                val response = api.upgradeGuest(resumeToken, email, password, devicePlatform)
+                persist(email, response.displayName, response)
+                resumeTokenStore.clear(serverUrl)
+            }.onFailure(::showError)
         }
     }
 

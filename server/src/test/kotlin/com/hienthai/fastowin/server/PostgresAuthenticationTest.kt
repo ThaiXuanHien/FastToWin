@@ -12,6 +12,100 @@ import kotlin.test.assertNotEquals
 
 class PostgresAuthenticationTest {
     @Test
+    fun `guest upgrade preserves identity statistics and profile`() = runTest {
+        val url = System.getenv("TEST_DATABASE_URL") ?: return@runTest
+        HikariDataSource(HikariConfig().apply {
+            jdbcUrl = url
+            username = System.getenv("TEST_DATABASE_USER") ?: "fasttowin"
+            password = System.getenv("TEST_DATABASE_PASSWORD") ?: "fasttowin"
+            maximumPoolSize = 2
+        }).use { dataSource ->
+            Flyway.configure()
+                .dataSource(dataSource)
+                .locations("classpath:db/migration")
+                .load()
+                .migrate()
+
+            val identityRepository = PostgresGuestIdentityRepository(dataSource)
+            val guest = identityRepository.resolveGuest("Guest upgrade", null, NOW_MILLIS)
+            val userId = UUID.fromString(guest.playerId)
+            val email = "guest-upgrade-${UUID.randomUUID()}@example.com"
+            val playerCode = dataSource.connection.use { connection ->
+                connection.prepareStatement(
+                    "INSERT INTO player_stats (user_id, total_matches, wins, highest_score, updated_at) VALUES (?, 7, 4, 480, NOW())"
+                ).use { statement ->
+                    statement.setObject(1, userId)
+                    statement.executeUpdate()
+                }
+                connection.prepareStatement("SELECT player_code FROM profiles WHERE user_id = ?").use { statement ->
+                    statement.setObject(1, userId)
+                    statement.executeQuery().use { result -> result.next(); result.getString("player_code") }
+                }
+            }
+            val service = AuthenticationService(
+                repository = PostgresAuthRepository(dataSource),
+                passwordHasher = PasswordHasher(iterations = 1_000),
+                nowMillis = { NOW_MILLIS + 1_000 }
+            )
+            try {
+                val upgraded = assertIs<AuthResult.Success>(
+                    service.upgradeGuest(guest.resumeToken, email, PASSWORD, "android")
+                ).session
+                assertEquals(guest.playerId, upgraded.userId)
+                assertEquals(guest.displayName, upgraded.displayName)
+                assertEquals(userId, service.authenticateAccessToken(upgraded.accessToken)?.userId)
+
+                dataSource.connection.use { connection ->
+                    connection.prepareStatement(
+                        """
+                        SELECT u.account_type, u.email_normalized, p.player_code,
+                               ps.total_matches, ps.wins, ps.highest_score
+                        FROM users u
+                        JOIN profiles p ON p.user_id = u.id
+                        JOIN player_stats ps ON ps.user_id = u.id
+                        WHERE u.id = ?
+                        """.trimIndent()
+                    ).use { statement ->
+                        statement.setObject(1, userId)
+                        statement.executeQuery().use { result ->
+                            result.next()
+                            assertEquals("REGISTERED", result.getString("account_type"))
+                            assertEquals(email, result.getString("email_normalized"))
+                            assertEquals(playerCode, result.getString("player_code"))
+                            assertEquals(7, result.getInt("total_matches"))
+                            assertEquals(4, result.getInt("wins"))
+                            assertEquals(480, result.getInt("highest_score"))
+                        }
+                    }
+                    connection.prepareStatement(
+                        "SELECT revoked_at FROM sessions WHERE resume_token_hash = ?"
+                    ).use { statement ->
+                        statement.setString(1, hashToken(guest.resumeToken))
+                        statement.executeQuery().use { result ->
+                            result.next()
+                            assertNotEquals(null, result.getTimestamp("revoked_at"))
+                        }
+                    }
+                }
+
+                val reused = assertIs<AuthResult.Failure>(
+                    service.upgradeGuest(guest.resumeToken, "other-$email", PASSWORD, "ios")
+                )
+                assertEquals("INVALID_GUEST_SESSION", reused.code)
+                val login = assertIs<AuthResult.Success>(service.login(email, PASSWORD, "ios")).session
+                assertEquals(guest.playerId, login.userId)
+            } finally {
+                dataSource.connection.use { connection ->
+                    connection.prepareStatement("DELETE FROM users WHERE id = ?").use { statement ->
+                        statement.setObject(1, userId)
+                        statement.executeUpdate()
+                    }
+                }
+            }
+        }
+    }
+
+    @Test
     fun `registered session persists rotates and revokes in PostgreSQL`() = runTest {
         val url = System.getenv("TEST_DATABASE_URL") ?: return@runTest
         HikariDataSource(HikariConfig().apply {

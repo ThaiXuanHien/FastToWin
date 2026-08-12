@@ -50,7 +50,9 @@ fun AuthScreen(
     onPlayAsGuest: () -> Unit,
     onLogin: (String, String) -> Unit,
     onRegister: (String, String, String) -> Unit,
-    onBack: () -> Unit
+    onUpgradeGuest: (String, String) -> Unit,
+    onBack: () -> Unit,
+    onCancelUpgrade: () -> Unit
 ) {
     Box(
         modifier = Modifier.fillMaxSize()
@@ -62,6 +64,7 @@ fun AuthScreen(
             AuthStage.WELCOME -> WelcomeContent(state, onOpenLogin, onOpenRegister, onPlayAsGuest)
             AuthStage.LOGIN -> LoginContent(state, onLogin, onBack)
             AuthStage.REGISTER -> RegisterContent(state, onRegister, onBack)
+            AuthStage.UPGRADE_GUEST -> UpgradeGuestContent(state, onUpgradeGuest, onCancelUpgrade)
             AuthStage.PLAYING -> Unit
         }
     }
@@ -154,6 +157,39 @@ private fun RegisterContent(
         ) {
             if (state.isLoading) CircularProgressIndicator(strokeWidth = 2.dp)
             else Text("Tạo tài khoản")
+        }
+    }
+}
+
+@Composable
+private fun UpgradeGuestContent(
+    state: AuthState,
+    onUpgradeGuest: (String, String) -> Unit,
+    onBack: () -> Unit
+) {
+    var email by remember { mutableStateOf("") }
+    var password by remember { mutableStateOf("") }
+    var confirmPassword by remember { mutableStateOf("") }
+    val passwordsMatch = password == confirmPassword
+    AuthForm(title = "Lưu tài khoản khách", state = state, onBack = onBack) {
+        Text(
+            "Elo, lịch sử, thống kê và thành tích hiện tại sẽ được giữ nguyên.",
+            textAlign = TextAlign.Center,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        EmailField(email) { email = it }
+        PasswordField(password, "Mật khẩu (ít nhất 8 ký tự)") { password = it }
+        PasswordField(confirmPassword, "Nhập lại mật khẩu") { confirmPassword = it }
+        if (confirmPassword.isNotEmpty() && !passwordsMatch) {
+            Text("Mật khẩu nhập lại chưa khớp.", color = MaterialTheme.colorScheme.error)
+        }
+        Button(
+            onClick = { onUpgradeGuest(email, password) },
+            enabled = email.isNotBlank() && password.length >= 8 && passwordsMatch && !state.isLoading,
+            modifier = Modifier.fillMaxWidth().height(56.dp)
+        ) {
+            if (state.isLoading) CircularProgressIndicator(strokeWidth = 2.dp)
+            else Text("Lưu và tạo tài khoản")
         }
     }
 }

@@ -77,6 +77,8 @@ fun LobbyScreen(
     onOpenLeaderboard: () -> Unit,
     onBackToMode: () -> Unit,
     onLogout: () -> Unit,
+    isGuest: Boolean,
+    onUpgradeGuest: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Box(
@@ -102,7 +104,9 @@ fun LobbyScreen(
                     onOpenProfile = onOpenProfile,
                     onOpenLeaderboard = onOpenLeaderboard,
                     onBack = onBackToMode,
-                    onLogout = onLogout
+                    onLogout = onLogout,
+                    isGuest = isGuest,
+                    onUpgradeGuest = onUpgradeGuest
                 )
                 LobbyStage.ROOM_WAITING -> RoomWaiting(state, onLeaveRoom)
                 LobbyStage.MATCHED -> MatchedStatus(state)
@@ -232,7 +236,9 @@ private fun RoomBrowser(
     onOpenProfile: () -> Unit,
     onOpenLeaderboard: () -> Unit,
     onBack: () -> Unit,
-    onLogout: () -> Unit
+    onLogout: () -> Unit,
+    isGuest: Boolean,
+    onUpgradeGuest: () -> Unit
 ) {
     var roomName by remember { mutableStateOf("") }
     var roomPassword by remember { mutableStateOf("") }
@@ -283,6 +289,17 @@ private fun RoomBrowser(
 
         state.error?.let {
             Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium)
+        }
+
+        if (isGuest) {
+            OutlinedButton(
+                onClick = onUpgradeGuest,
+                enabled = state.connectionStatus == ConnectionStatus.CONNECTED,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Icon(Icons.Default.Person, null)
+                Text("  Lưu tiến trình bằng tài khoản email")
+            }
         }
 
         ElevatedCard(modifier = Modifier.fillMaxWidth()) {

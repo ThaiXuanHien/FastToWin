@@ -29,7 +29,7 @@ fun FastToWinApp(
     devicePlatform: String
 ) {
     val authController = remember(serverUrl, authSessionStore, devicePlatform) {
-        AuthController(serverUrl, authSessionStore, devicePlatform)
+        AuthController(serverUrl, authSessionStore, resumeTokenStore, devicePlatform)
     }
     val authState by authController.state.collectAsState()
 
@@ -47,7 +47,9 @@ fun FastToWinApp(
                     onPlayAsGuest = authController::playAsGuest,
                     onLogin = authController::login,
                     onRegister = authController::register,
-                    onBack = authController::backToWelcome
+                    onUpgradeGuest = authController::upgradeGuest,
+                    onBack = authController::backToWelcome,
+                    onCancelUpgrade = authController::cancelGuestUpgrade
                 )
             } else {
                 GameContent(
@@ -57,6 +59,8 @@ fun FastToWinApp(
                     accountDisplayName = authState.session?.displayName,
                     accessTokenProvider = authState.session?.let { { authController.validAccessToken() } },
                     onLogout = authController::logout,
+                    isGuest = authState.isGuest,
+                    onUpgradeGuest = authController::openGuestUpgrade,
                     onSessionExpired = { authController.expireSession() }
                 )
             }
@@ -72,6 +76,8 @@ private fun GameContent(
     accountDisplayName: String?,
     accessTokenProvider: (suspend () -> String?)?,
     onLogout: () -> Unit,
+    isGuest: Boolean,
+    onUpgradeGuest: () -> Unit,
     onSessionExpired: () -> Unit
 ) {
     val controller = remember(serverUrl, resumeTokenStore, accountUserId) {
@@ -124,7 +130,9 @@ private fun GameContent(
                     onOpenProfile = controller::openProfile,
                     onOpenLeaderboard = controller::openLeaderboard,
                     onBackToMode = controller::backToModeSelection,
-                    onLogout = onLogout
+                    onLogout = onLogout,
+                    isGuest = isGuest,
+                    onUpgradeGuest = onUpgradeGuest
                 )
     }
 }

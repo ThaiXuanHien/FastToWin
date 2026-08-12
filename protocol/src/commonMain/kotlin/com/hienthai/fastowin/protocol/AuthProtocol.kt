@@ -18,6 +18,14 @@ data class LoginRequest(
 )
 
 @Serializable
+data class UpgradeGuestRequest(
+    val resumeToken: String,
+    val email: String,
+    val password: String,
+    val devicePlatform: String? = null
+)
+
+@Serializable
 data class RefreshTokenRequest(val refreshToken: String)
 
 @Serializable

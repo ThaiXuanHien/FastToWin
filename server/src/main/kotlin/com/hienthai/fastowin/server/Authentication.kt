@@ -32,6 +32,20 @@ data class NewAuthSession(
 
 data class AccountCredentials(val userId: UUID, val passwordHash: String, val displayName: String)
 data class AuthenticatedAccount(val userId: UUID, val displayName: String)
+data class GuestUpgrade(
+    val resumeTokenHash: String,
+    val emailNormalized: String,
+    val passwordHash: String,
+    val devicePlatform: String?,
+    val session: NewAuthSession
+)
+
+sealed interface GuestUpgradeResult {
+    data class Success(val userId: UUID, val displayName: String) : GuestUpgradeResult
+    data object InvalidGuestSession : GuestUpgradeResult
+    data object EmailAlreadyExists : GuestUpgradeResult
+    data object Unsupported : GuestUpgradeResult
+}
 
 interface AuthRepository {
     suspend fun createAccount(account: NewAccount): Boolean
@@ -40,6 +54,7 @@ interface AuthRepository {
     suspend fun rotateSession(refreshTokenHash: String, replacement: NewAuthSession): UUID?
     suspend fun revokeSession(refreshTokenHash: String, nowMillis: Long): Boolean
     suspend fun findActiveSession(accessTokenHash: String, nowMillis: Long): AuthenticatedAccount?
+    suspend fun upgradeGuest(upgrade: GuestUpgrade): GuestUpgradeResult
 }
 
 sealed interface AuthResult {
@@ -102,6 +117,49 @@ class AuthenticationService(
         val issued = issueTokens(account.userId, account.displayName, nowMillis())
         repository.createSession(account.userId, normalizeDevicePlatform(devicePlatform), issued.record)
         return AuthResult.Success(issued.response)
+    }
+
+    suspend fun upgradeGuest(
+        resumeToken: String,
+        email: String,
+        password: String,
+        devicePlatform: String?
+    ): AuthResult {
+        if (!isValidTokenShape(resumeToken)) return invalidGuestSession()
+        val normalizedEmail = normalizeEmail(email)
+            ?: return AuthResult.Failure("INVALID_EMAIL", "Email không hợp lệ.")
+        val passwordError = validatePassword(password)
+        if (passwordError != null) return AuthResult.Failure("INVALID_PASSWORD", passwordError)
+
+        val now = nowMillis()
+        val placeholderUserId = UUID.randomUUID()
+        val issued = issueTokens(placeholderUserId, "", now)
+        val passwordHash = withContext(Dispatchers.Default) { passwordHasher.hash(password) }
+        return when (val result = repository.upgradeGuest(
+            GuestUpgrade(
+                resumeTokenHash = hashToken(resumeToken),
+                emailNormalized = normalizedEmail,
+                passwordHash = passwordHash,
+                devicePlatform = normalizeDevicePlatform(devicePlatform),
+                session = issued.record
+            )
+        )) {
+            is GuestUpgradeResult.Success -> AuthResult.Success(
+                issued.response.copy(
+                    userId = result.userId.toString(),
+                    displayName = result.displayName
+                )
+            )
+            GuestUpgradeResult.InvalidGuestSession -> invalidGuestSession()
+            GuestUpgradeResult.EmailAlreadyExists -> AuthResult.Failure(
+                "EMAIL_ALREADY_EXISTS",
+                "Email này đã được sử dụng."
+            )
+            GuestUpgradeResult.Unsupported -> AuthResult.Failure(
+                "DATABASE_REQUIRED",
+                "Cần chạy server cùng PostgreSQL để lưu tài khoản khách."
+            )
+        }
     }
 
     suspend fun refresh(refreshToken: String): AuthResult {
@@ -174,6 +232,11 @@ class AuthenticationService(
     private fun invalidRefreshToken() = AuthResult.Failure(
         "INVALID_REFRESH_TOKEN",
         "Phiên đăng nhập không hợp lệ hoặc đã hết hạn."
+    )
+
+    private fun invalidGuestSession() = AuthResult.Failure(
+        "INVALID_GUEST_SESSION",
+        "Phiên khách không hợp lệ hoặc đã hết hạn."
     )
 
     private fun playerCode(userId: UUID): String = userId.toString().replace("-", "").take(10).uppercase()

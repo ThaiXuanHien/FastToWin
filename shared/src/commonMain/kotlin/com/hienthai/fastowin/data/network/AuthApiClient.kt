@@ -7,6 +7,7 @@ import com.hienthai.fastowin.protocol.LogoutRequest
 import com.hienthai.fastowin.protocol.ProtocolJson
 import com.hienthai.fastowin.protocol.RefreshTokenRequest
 import com.hienthai.fastowin.protocol.RegisterRequest
+import com.hienthai.fastowin.protocol.UpgradeGuestRequest
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
 import io.ktor.client.plugins.HttpTimeout
@@ -41,6 +42,16 @@ class AuthApiClient(serverUrl: String) {
 
     suspend fun login(email: String, password: String, devicePlatform: String): AuthSessionResponse =
         execute("$baseUrl/auth/login", LoginRequest(email, password, devicePlatform))
+
+    suspend fun upgradeGuest(
+        resumeToken: String,
+        email: String,
+        password: String,
+        devicePlatform: String
+    ): AuthSessionResponse = execute(
+        "$baseUrl/auth/upgrade-guest",
+        UpgradeGuestRequest(resumeToken, email, password, devicePlatform)
+    )
 
     suspend fun refresh(refreshToken: String): AuthSessionResponse =
         execute("$baseUrl/auth/refresh", RefreshTokenRequest(refreshToken))

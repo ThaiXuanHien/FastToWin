@@ -11,8 +11,23 @@ import kotlin.test.assertIs
 import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
+import java.util.UUID
 
 class GameEngineTest {
+    @Test
+    fun `connecting upgraded account clears guest resume token in memory`() = runTest {
+        val repository = InMemoryGuestIdentityRepository()
+        val engine = GameEngine(identityRepository = repository)
+        val guest = engine.connectGuest("Guest", null)
+
+        val account = engine.connectAccount(
+            AuthenticatedAccount(UUID.fromString(guest.playerId), "Guest")
+        )
+
+        assertEquals(guest.playerId, account.playerId)
+        assertEquals(null, account.resumeToken)
+    }
+
     @Test
     fun `guest can resume the same server identity`() = runTest {
         val engine = GameEngine()
