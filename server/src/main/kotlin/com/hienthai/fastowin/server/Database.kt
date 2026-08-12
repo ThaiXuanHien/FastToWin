@@ -30,6 +30,7 @@ data class DatabaseSettings(
 }
 
 class DatabaseRuntime private constructor(
+    val authRepository: AuthRepository,
     val identityRepository: GuestIdentityRepository,
     val matchResultRepository: MatchResultRepository,
     val playerProfileRepository: PlayerProfileRepository,
@@ -58,6 +59,7 @@ class DatabaseRuntime private constructor(
                     .load()
                     .migrate()
                 return DatabaseRuntime(
+                    authRepository = PostgresAuthRepository(dataSource),
                     identityRepository = PostgresGuestIdentityRepository(dataSource),
                     matchResultRepository = PostgresMatchResultRepository(dataSource),
                     playerProfileRepository = PostgresPlayerProfileRepository(dataSource),

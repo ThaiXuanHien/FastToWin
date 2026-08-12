@@ -1,14 +1,26 @@
 package com.hienthai.fastowin.server
 
 import com.hienthai.fastowin.protocol.ClientMessage
+import com.hienthai.fastowin.protocol.AuthErrorResponse
+import com.hienthai.fastowin.protocol.LoginRequest
+import com.hienthai.fastowin.protocol.LogoutRequest
 import com.hienthai.fastowin.protocol.ProtocolJson
+import com.hienthai.fastowin.protocol.RefreshTokenRequest
+import com.hienthai.fastowin.protocol.RegisterRequest
 import com.hienthai.fastowin.protocol.ServerMessage
+import io.ktor.http.HttpStatusCode
+import io.ktor.server.application.ApplicationCall
 import io.ktor.server.application.Application
 import io.ktor.server.application.call
 import io.ktor.server.application.install
+import io.ktor.server.plugins.contentnegotiation.ContentNegotiation
+import io.ktor.server.request.receive
+import io.ktor.server.response.respond
 import io.ktor.server.response.respondText
+import io.ktor.server.routing.post
 import io.ktor.server.routing.get
 import io.ktor.server.routing.routing
+import io.ktor.serialization.kotlinx.json.json
 import io.ktor.server.websocket.WebSockets
 import io.ktor.server.websocket.webSocket
 import io.ktor.websocket.Frame
@@ -25,7 +37,13 @@ import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import java.util.concurrent.ConcurrentHashMap
 
-fun Application.gameModule(engine: GameEngine = GameEngine()) {
+fun Application.gameModule(
+    engine: GameEngine = GameEngine(),
+    authService: AuthenticationService = AuthenticationService(InMemoryAuthRepository())
+) {
+    install(ContentNegotiation) {
+        json(ProtocolJson)
+    }
     install(WebSockets) {
         maxFrameSize = 64 * 1024
     }
@@ -61,6 +79,37 @@ fun Application.gameModule(engine: GameEngine = GameEngine()) {
 
     routing {
         get("/health") { call.respondText("OK") }
+
+        post("/auth/register") {
+            val request = call.receiveOrReject<RegisterRequest>() ?: return@post
+            call.respondAuthResult(
+                authService.register(
+                    request.email,
+                    request.password,
+                    request.displayName,
+                    request.devicePlatform
+                ),
+                successStatus = HttpStatusCode.Created
+            )
+        }
+
+        post("/auth/login") {
+            val request = call.receiveOrReject<LoginRequest>() ?: return@post
+            call.respondAuthResult(
+                authService.login(request.email, request.password, request.devicePlatform)
+            )
+        }
+
+        post("/auth/refresh") {
+            val request = call.receiveOrReject<RefreshTokenRequest>() ?: return@post
+            call.respondAuthResult(authService.refresh(request.refreshToken))
+        }
+
+        post("/auth/logout") {
+            val request = call.receiveOrReject<LogoutRequest>() ?: return@post
+            authService.logout(request.refreshToken)
+            call.respond(HttpStatusCode.NoContent)
+        }
 
         webSocket("/game") {
             var playerId: String? = null
@@ -123,6 +172,32 @@ fun Application.gameModule(engine: GameEngine = GameEngine()) {
                 }
             }
         }
+    }
+}
+
+private suspend inline fun <reified T : Any> ApplicationCall.receiveOrReject(): T? =
+    runCatching { receive<T>() }.getOrElse {
+        respond(
+            HttpStatusCode.BadRequest,
+            AuthErrorResponse("INVALID_REQUEST", "Dữ liệu gửi lên không hợp lệ.")
+        )
+        null
+    }
+
+private suspend fun ApplicationCall.respondAuthResult(
+    result: AuthResult,
+    successStatus: HttpStatusCode = HttpStatusCode.OK
+) {
+    when (result) {
+        is AuthResult.Success -> respond(successStatus, result.session)
+        is AuthResult.Failure -> respond(
+            when (result.code) {
+                "EMAIL_ALREADY_EXISTS" -> HttpStatusCode.Conflict
+                "INVALID_CREDENTIALS", "INVALID_REFRESH_TOKEN" -> HttpStatusCode.Unauthorized
+                else -> HttpStatusCode.BadRequest
+            },
+            AuthErrorResponse(result.code, result.message)
+        )
     }
 }
 

@@ -83,6 +83,32 @@ Mỗi người chơi bắt đầu với **1000 Elo**. Sau mỗi trận hai ngư�
 
 Server tự xét và lưu thành tích, không dựa vào dữ liệu client. Bộ thành tích đầu tiên gồm: chiến thắng đầu tiên, 10 chiến thắng, chuỗi thắng 5, có lượt đúng và không bấm sai trong cả trận, và tự chọn đủ 50 số trong tối đa 30 giây. Khóa chính `(user_id, achievement_code)` bảo đảm mỗi thành tích chỉ được mở một lần.
 
+## API tài khoản email
+
+Backend hỗ trợ tài khoản email/mật khẩu qua JSON API:
+
+| Phương thức | Endpoint | Công dụng |
+|---|---|---|
+| `POST` | `/auth/register` | Tạo tài khoản và phiên đăng nhập |
+| `POST` | `/auth/login` | Đăng nhập trên một thiết bị |
+| `POST` | `/auth/refresh` | Xoay vòng refresh token và cấp access token mới |
+| `POST` | `/auth/logout` | Thu hồi phiên của thiết bị hiện tại |
+
+Ví dụ đăng ký:
+
+```json
+{
+  "email": "player@example.com",
+  "password": "mat-khau-toi-thieu-8-ky-tu",
+  "displayName": "Người chơi",
+  "devicePlatform": "android"
+}
+```
+
+Access token có hiệu lực 15 phút, refresh token có hiệu lực 30 ngày. Token gốc không được lưu trong database; server chỉ lưu SHA-256 hash. Refresh token được thay mới sau mỗi lần sử dụng và token cũ lập tức mất hiệu lực. Mật khẩu được dẫn xuất bằng PBKDF2-HMAC-SHA256 với salt ngẫu nhiên riêng cho từng tài khoản.
+
+Phần này mới cung cấp API backend. Compose Multiplatform chưa có màn hình đăng ký/đăng nhập và WebSocket vẫn dùng guest session cho đến giai đoạn tích hợp tiếp theo.
+
 Kiểm tra server:
 
 ```text
@@ -162,7 +188,8 @@ Test backend bao gồm:
 
 - Phòng và trạng thái trận đấu vẫn bị mất khi server restart.
 - Guest identity và session tồn tại qua restart khi bật PostgreSQL.
-- Chưa có tài khoản email/Google/Apple, JWT và lịch sử trận.
+- Chưa tích hợp tài khoản email vào giao diện Compose Multiplatform và WebSocket.
+- Chưa có khôi phục mật khẩu, xác minh email và đăng xuất khỏi tất cả thiết bị.
 - Cấu hình local dùng `ws://`; môi trường production phải dùng `wss://`.
 
 ## Reconnect hiện tại
