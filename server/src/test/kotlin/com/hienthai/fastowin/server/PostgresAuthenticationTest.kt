@@ -40,6 +40,10 @@ class PostgresAuthenticationTest {
                     service.login(email.uppercase(), PASSWORD, "ios")
                 ).session
                 assertEquals(registration.userId, login.userId)
+                assertEquals("Postgres player", login.displayName)
+                val authenticated = service.authenticateAccessToken(login.accessToken)
+                assertEquals(login.userId, authenticated?.userId.toString())
+                assertEquals("Postgres player", authenticated?.displayName)
 
                 val refreshed = assertIs<AuthResult.Success>(
                     service.refresh(login.refreshToken)

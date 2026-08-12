@@ -21,9 +21,9 @@ data class Delivery(
     val recipients: Set<String>? = null
 )
 
-data class ConnectedGuest(
+data class ConnectedPlayer(
     val playerId: String,
-    val resumeToken: String,
+    val resumeToken: String?,
     val currentGame: GameSnapshot?
 )
 
@@ -39,31 +39,40 @@ class GameEngine(
     private val sessionsByPlayerId = mutableMapOf<String, GuestSession>()
     private val rooms = mutableMapOf<String, Room>()
 
-    suspend fun connectGuest(displayName: String, resumeToken: String?): ConnectedGuest {
+    suspend fun connectGuest(displayName: String, resumeToken: String?): ConnectedPlayer {
         val safeName = displayName.trim().take(MAX_PLAYER_NAME_LENGTH)
         require(safeName.isNotEmpty()) { "Tên người chơi không được để trống." }
         val identity = identityRepository.resolveGuest(safeName, resumeToken, nowMillis())
 
-        return mutex.withLock {
-            val session = sessionsByPlayerId[identity.playerId]?.also { existing ->
-                existing.displayName = identity.displayName
+        return connectIdentity(identity.playerId, identity.displayName, identity.resumeToken)
+    }
+
+    suspend fun connectAccount(account: AuthenticatedAccount): ConnectedPlayer =
+        connectIdentity(account.userId.toString(), account.displayName, null)
+
+    private suspend fun connectIdentity(
+        identityPlayerId: String,
+        identityDisplayName: String,
+        resumeToken: String?
+    ): ConnectedPlayer = mutex.withLock {
+            val session = sessionsByPlayerId[identityPlayerId]?.also { existing ->
+                existing.displayName = identityDisplayName
             } ?: GuestSession(
-                playerId = identity.playerId,
-                resumeToken = identity.resumeToken,
-                displayName = identity.displayName
+                playerId = identityPlayerId,
+                resumeToken = resumeToken,
+                displayName = identityDisplayName
             ).also { created ->
                 sessionsByPlayerId[created.playerId] = created
             }
             session.isConnected = true
             session.disconnectedAtMillis = null
 
-            ConnectedGuest(
+            ConnectedPlayer(
                 playerId = session.playerId,
                 resumeToken = session.resumeToken,
                 currentGame = roomFor(session.playerId)?.snapshot()
             )
         }
-    }
 
     suspend fun handle(playerId: String, message: ClientMessage): List<Delivery> {
         if (message is ClientMessage.GetProfile) return loadProfile(playerId)
@@ -76,6 +85,9 @@ class GameEngine(
 
             when (message) {
                 is ClientMessage.ConnectGuest -> HandleResult(listOf(
+                    error(playerId, "ALREADY_CONNECTED", "Phiên WebSocket đã được xác thực.")
+                ))
+                is ClientMessage.ConnectAccount -> HandleResult(listOf(
                     error(playerId, "ALREADY_CONNECTED", "Phiên WebSocket đã được xác thực.")
                 ))
 
@@ -436,7 +448,7 @@ class GameEngine(
 
     private data class GuestSession(
         val playerId: String,
-        val resumeToken: String,
+        val resumeToken: String?,
         var displayName: String,
         var isConnected: Boolean = true,
         var disconnectedAtMillis: Long? = null

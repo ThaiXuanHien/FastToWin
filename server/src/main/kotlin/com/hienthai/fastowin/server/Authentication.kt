@@ -30,7 +30,8 @@ data class NewAuthSession(
     val nowMillis: Long
 )
 
-data class AccountCredentials(val userId: UUID, val passwordHash: String)
+data class AccountCredentials(val userId: UUID, val passwordHash: String, val displayName: String)
+data class AuthenticatedAccount(val userId: UUID, val displayName: String)
 
 interface AuthRepository {
     suspend fun createAccount(account: NewAccount): Boolean
@@ -38,6 +39,7 @@ interface AuthRepository {
     suspend fun createSession(userId: UUID, devicePlatform: String?, session: NewAuthSession)
     suspend fun rotateSession(refreshTokenHash: String, replacement: NewAuthSession): UUID?
     suspend fun revokeSession(refreshTokenHash: String, nowMillis: Long): Boolean
+    suspend fun findActiveSession(accessTokenHash: String, nowMillis: Long): AuthenticatedAccount?
 }
 
 sealed interface AuthResult {
@@ -70,7 +72,7 @@ class AuthenticationService(
 
         val now = nowMillis()
         val userId = UUID.randomUUID()
-        val issued = issueTokens(userId, now)
+        val issued = issueTokens(userId, safeName, now)
         val passwordHash = withContext(Dispatchers.Default) { passwordHasher.hash(password) }
         val created = repository.createAccount(
             NewAccount(
@@ -97,7 +99,7 @@ class AuthenticationService(
         }
         if (!passwordMatches) return invalidCredentials()
 
-        val issued = issueTokens(account.userId, nowMillis())
+        val issued = issueTokens(account.userId, account.displayName, nowMillis())
         repository.createSession(account.userId, normalizeDevicePlatform(devicePlatform), issued.record)
         return AuthResult.Success(issued.response)
     }
@@ -106,7 +108,7 @@ class AuthenticationService(
         if (!isValidTokenShape(refreshToken)) return invalidRefreshToken()
         val now = nowMillis()
         val placeholderUserId = UUID.randomUUID()
-        val replacement = issueTokens(placeholderUserId, now)
+        val replacement = issueTokens(placeholderUserId, "", now)
         val userId = repository.rotateSession(hashToken(refreshToken), replacement.record)
             ?: return invalidRefreshToken()
         return AuthResult.Success(replacement.response.copy(userId = userId.toString()))
@@ -116,7 +118,12 @@ class AuthenticationService(
         if (isValidTokenShape(refreshToken)) repository.revokeSession(hashToken(refreshToken), nowMillis())
     }
 
-    private fun issueTokens(userId: UUID, now: Long): IssuedTokens {
+    suspend fun authenticateAccessToken(accessToken: String): AuthenticatedAccount? {
+        if (!isValidTokenShape(accessToken)) return null
+        return repository.findActiveSession(hashToken(accessToken), nowMillis())
+    }
+
+    private fun issueTokens(userId: UUID, displayName: String, now: Long): IssuedTokens {
         val accessToken = newToken()
         val refreshToken = newToken()
         val accessExpiry = now + ACCESS_TOKEN_TTL_MILLIS
@@ -132,6 +139,7 @@ class AuthenticationService(
             ),
             response = AuthSessionResponse(
                 userId = userId.toString(),
+                displayName = displayName,
                 accessToken = accessToken,
                 refreshToken = refreshToken,
                 accessExpiresAtEpochMillis = accessExpiry,

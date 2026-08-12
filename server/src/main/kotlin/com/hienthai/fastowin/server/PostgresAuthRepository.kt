@@ -34,16 +34,18 @@ class PostgresAuthRepository(private val dataSource: DataSource) : AuthRepositor
             dataSource.connection.use { connection ->
                 connection.prepareStatement(
                     """
-                    SELECT id, password_hash
-                    FROM users
-                    WHERE email_normalized = ? AND account_type = 'REGISTERED' AND status = 'ACTIVE'
+                    SELECT u.id, u.password_hash, p.display_name
+                    FROM users u
+                    JOIN profiles p ON p.user_id = u.id
+                    WHERE u.email_normalized = ? AND u.account_type = 'REGISTERED' AND u.status = 'ACTIVE'
                     """.trimIndent()
                 ).use { statement ->
                     statement.setString(1, emailNormalized)
                     statement.executeQuery().use { result ->
                         if (!result.next()) null else AccountCredentials(
                             userId = result.getObject("id", UUID::class.java),
-                            passwordHash = result.getString("password_hash")
+                            passwordHash = result.getString("password_hash"),
+                            displayName = result.getString("display_name")
                         )
                     }
                 }
@@ -131,6 +133,36 @@ class PostgresAuthRepository(private val dataSource: DataSource) : AuthRepositor
                 }
             }
         }
+
+    override suspend fun findActiveSession(
+        accessTokenHash: String,
+        nowMillis: Long
+    ): AuthenticatedAccount? = withContext(Dispatchers.IO) {
+        dataSource.connection.use { connection ->
+            connection.prepareStatement(
+                """
+                SELECT u.id, p.display_name
+                FROM sessions s
+                JOIN users u ON u.id = s.user_id
+                JOIN profiles p ON p.user_id = u.id
+                WHERE s.access_token_hash = ?
+                  AND s.access_expires_at > ?
+                  AND s.revoked_at IS NULL
+                  AND u.account_type = 'REGISTERED'
+                  AND u.status = 'ACTIVE'
+                """.trimIndent()
+            ).use { statement ->
+                statement.setString(1, accessTokenHash)
+                statement.setTimestamp(2, nowMillis.toTimestamp())
+                statement.executeQuery().use { result ->
+                    if (!result.next()) null else AuthenticatedAccount(
+                        userId = result.getObject("id", UUID::class.java),
+                        displayName = result.getString("display_name")
+                    )
+                }
+            }
+        }
+    }
 
     private fun insertUser(connection: Connection, account: NewAccount) {
         connection.prepareStatement(

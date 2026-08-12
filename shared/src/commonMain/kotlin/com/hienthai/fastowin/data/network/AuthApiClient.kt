@@ -1,0 +1,89 @@
+package com.hienthai.fastowin.data.network
+
+import com.hienthai.fastowin.protocol.AuthErrorResponse
+import com.hienthai.fastowin.protocol.AuthSessionResponse
+import com.hienthai.fastowin.protocol.LoginRequest
+import com.hienthai.fastowin.protocol.LogoutRequest
+import com.hienthai.fastowin.protocol.ProtocolJson
+import com.hienthai.fastowin.protocol.RefreshTokenRequest
+import com.hienthai.fastowin.protocol.RegisterRequest
+import io.ktor.client.HttpClient
+import io.ktor.client.call.body
+import io.ktor.client.plugins.HttpTimeout
+import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
+import io.ktor.client.request.post
+import io.ktor.client.request.setBody
+import io.ktor.http.ContentType
+import io.ktor.http.isSuccess
+import io.ktor.http.contentType
+import io.ktor.serialization.kotlinx.json.json
+
+class AuthApiClient(serverUrl: String) {
+    private val baseUrl = serverUrl.toHttpBaseUrl()
+    private val client = HttpClient {
+        install(ContentNegotiation) { json(ProtocolJson) }
+        install(HttpTimeout) {
+            connectTimeoutMillis = REQUEST_TIMEOUT_MILLIS
+            requestTimeoutMillis = REQUEST_TIMEOUT_MILLIS
+            socketTimeoutMillis = REQUEST_TIMEOUT_MILLIS
+        }
+    }
+
+    suspend fun register(
+        email: String,
+        password: String,
+        displayName: String,
+        devicePlatform: String
+    ): AuthSessionResponse = execute(
+        "$baseUrl/auth/register",
+        RegisterRequest(email, password, displayName, devicePlatform)
+    )
+
+    suspend fun login(email: String, password: String, devicePlatform: String): AuthSessionResponse =
+        execute("$baseUrl/auth/login", LoginRequest(email, password, devicePlatform))
+
+    suspend fun refresh(refreshToken: String): AuthSessionResponse =
+        execute("$baseUrl/auth/refresh", RefreshTokenRequest(refreshToken))
+
+    suspend fun logout(refreshToken: String) {
+        val response = client.post("$baseUrl/auth/logout") {
+            contentType(ContentType.Application.Json)
+            setBody(LogoutRequest(refreshToken))
+        }
+        if (!response.status.isSuccess()) throw response.toAuthException()
+    }
+
+    fun close() = client.close()
+
+    private suspend inline fun <reified T : Any> execute(url: String, request: T): AuthSessionResponse {
+        val response = client.post(url) {
+            contentType(ContentType.Application.Json)
+            setBody(request)
+        }
+        if (!response.status.isSuccess()) throw response.toAuthException()
+        return response.body()
+    }
+
+    private suspend fun io.ktor.client.statement.HttpResponse.toAuthException(): AuthApiException {
+        val error = runCatching { body<AuthErrorResponse>() }.getOrNull()
+        return AuthApiException(
+            code = error?.code ?: "NETWORK_ERROR",
+            message = error?.message ?: "Máy chủ không xử lý được yêu cầu đăng nhập."
+        )
+    }
+
+    private fun String.toHttpBaseUrl(): String {
+        val httpUrl = when {
+            startsWith("wss://") -> "https://${removePrefix("wss://")}"
+            startsWith("ws://") -> "http://${removePrefix("ws://")}"
+            else -> this
+        }
+        return httpUrl.removeSuffix("/game").trimEnd('/')
+    }
+
+    private companion object {
+        const val REQUEST_TIMEOUT_MILLIS = 10_000L
+    }
+}
+
+class AuthApiException(val code: String, override val message: String) : Exception(message)

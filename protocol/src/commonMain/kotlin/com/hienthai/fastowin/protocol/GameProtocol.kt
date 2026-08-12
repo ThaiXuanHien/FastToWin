@@ -4,7 +4,7 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
-const val PROTOCOL_VERSION = 1
+const val PROTOCOL_VERSION = 2
 const val GAME_NUMBER_COUNT = 50
 
 val ProtocolJson = Json {
@@ -137,6 +137,13 @@ sealed class ClientMessage {
     ) : ClientMessage()
 
     @Serializable
+    @SerialName("connect_account")
+    data class ConnectAccount(
+        val accessToken: String,
+        val protocolVersion: Int = PROTOCOL_VERSION
+    ) : ClientMessage()
+
+    @Serializable
     @SerialName("list_rooms")
     data object ListRooms : ClientMessage()
 
@@ -179,7 +186,7 @@ sealed class ServerMessage {
     @SerialName("session_ready")
     data class SessionReady(
         val playerId: String,
-        val resumeToken: String,
+        val resumeToken: String? = null,
         val currentGame: GameSnapshot? = null,
         val protocolVersion: Int = PROTOCOL_VERSION
     ) : ServerMessage()

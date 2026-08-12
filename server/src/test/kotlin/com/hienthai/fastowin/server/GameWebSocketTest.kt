@@ -20,9 +20,54 @@ import kotlinx.serialization.encodeToString
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
+import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
 class GameWebSocketTest {
+    @Test
+    fun `registered account authenticates websocket with access token`() = testApplication {
+        val authService = AuthenticationService(
+            repository = InMemoryAuthRepository(),
+            passwordHasher = PasswordHasher(iterations = 1_000)
+        )
+        val authSession = assertIs<AuthResult.Success>(
+            authService.register(
+                email = "socket@example.com",
+                password = "strong-password-123",
+                displayName = "Người chơi tài khoản",
+                devicePlatform = "android"
+            )
+        ).session
+        application { gameModule(authService = authService) }
+        val webSocketClient = createClient { install(WebSockets) }
+
+        val authenticated = webSocketClient.webSocketSession("/game")
+        try {
+            authenticated.sendMessage(ClientMessage.ConnectAccount(authSession.accessToken))
+            val ready = authenticated.receiveMessage<ServerMessage.SessionReady>()
+            assertEquals(authSession.userId, ready.playerId)
+            assertEquals(null, ready.resumeToken)
+            authenticated.receiveMessage<ServerMessage.RoomList>()
+            authenticated.sendMessage(ClientMessage.GetProfile)
+            assertEquals(
+                "Người chơi tài khoản",
+                authenticated.receiveMessage<ServerMessage.ProfileData>().profile.displayName
+            )
+        } finally {
+            authenticated.close()
+        }
+
+        authService.logout(authSession.refreshToken)
+        val revoked = webSocketClient.webSocketSession("/game")
+        try {
+            revoked.sendMessage(ClientMessage.ConnectAccount(authSession.accessToken))
+            val error = revoked.receiveMessage<ServerMessage.Error>()
+            assertEquals("INVALID_ACCESS_TOKEN", error.code)
+        } finally {
+            revoked.close()
+        }
+    }
+
     @Test
     fun `server broadcasts time attack finish without another player action`() = testApplication {
         application { gameModule(GameEngine(timeAttackMillis = 50L)) }

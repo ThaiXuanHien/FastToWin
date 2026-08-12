@@ -23,11 +23,22 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlin.random.Random
 
-class GameController(serverUrl: String, resumeTokenStore: ResumeTokenStore) {
+class GameController(
+    serverUrl: String,
+    resumeTokenStore: ResumeTokenStore,
+    private val accountDisplayName: String? = null,
+    accessTokenProvider: (suspend () -> String?)? = null,
+    onAccountSessionExpired: (() -> Unit)? = null
+) {
     private val _uiState = MutableStateFlow(GameState())
     val uiState: StateFlow<GameState> = _uiState.asStateFlow()
 
-    private val socket = GameSocketClient(serverUrl, resumeTokenStore)
+    private val socket = GameSocketClient(
+        serverUrl,
+        resumeTokenStore,
+        accessTokenProvider,
+        onAccountSessionExpired
+    )
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
     private var playerId: String? = null
@@ -39,7 +50,12 @@ class GameController(serverUrl: String, resumeTokenStore: ResumeTokenStore) {
     private var gameStarted = false
 
     fun selectMode(mode: GameMode) {
-        _uiState.update { it.copy(gameMode = mode, lobbyStage = LobbyStage.ENTER_NAME) }
+        if (accountDisplayName == null) {
+            _uiState.update { it.copy(gameMode = mode, lobbyStage = LobbyStage.ENTER_NAME) }
+        } else {
+            _uiState.update { it.copy(gameMode = mode) }
+            enterRoomBrowser(accountDisplayName)
+        }
     }
 
     fun backToModeSelection() {
@@ -49,6 +65,11 @@ class GameController(serverUrl: String, resumeTokenStore: ResumeTokenStore) {
     fun openRoomBrowser(playerName: String) {
         val normalizedName = playerName.trim()
         if (normalizedName.isEmpty()) return
+
+        enterRoomBrowser(normalizedName)
+    }
+
+    private fun enterRoomBrowser(normalizedName: String) {
 
         _uiState.update {
             it.copy(

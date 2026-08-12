@@ -107,7 +107,9 @@ Ví dụ đăng ký:
 
 Access token có hiệu lực 15 phút, refresh token có hiệu lực 30 ngày. Token gốc không được lưu trong database; server chỉ lưu SHA-256 hash. Refresh token được thay mới sau mỗi lần sử dụng và token cũ lập tức mất hiệu lực. Mật khẩu được dẫn xuất bằng PBKDF2-HMAC-SHA256 với salt ngẫu nhiên riêng cho từng tài khoản.
 
-Phần này mới cung cấp API backend. Compose Multiplatform chưa có màn hình đăng ký/đăng nhập và WebSocket vẫn dùng guest session cho đến giai đoạn tích hợp tiếp theo.
+Compose Multiplatform có màn hình đăng nhập, đăng ký và lựa chọn chơi khách. Android mã hóa phiên bằng AES-GCM với khóa trong Android Keystore; iOS lưu phiên trong Keychain. Ứng dụng tự refresh access token trước khi hết hạn và tài khoản dùng `connect_account` để xác thực WebSocket. Server tự lấy player ID và biệt danh từ phiên đăng nhập, không nhận các giá trị này từ client. Chế độ khách vẫn dùng `connect_guest` và resume token cũ.
+
+Protocol WebSocket hiện tại là phiên bản 2. Sau khi cập nhật ứng dụng, cần khởi động lại backend để client và server dùng cùng phiên bản.
 
 Kiểm tra server:
 
@@ -188,8 +190,8 @@ Test backend bao gồm:
 
 - Phòng và trạng thái trận đấu vẫn bị mất khi server restart.
 - Guest identity và session tồn tại qua restart khi bật PostgreSQL.
-- Chưa tích hợp tài khoản email vào giao diện Compose Multiplatform và WebSocket.
 - Chưa có khôi phục mật khẩu, xác minh email và đăng xuất khỏi tất cả thiết bị.
+- Chưa hỗ trợ nâng cấp dữ liệu của một guest hiện tại thành tài khoản email.
 - Cấu hình local dùng `ws://`; môi trường production phải dùng `wss://`.
 
 ## Reconnect hiện tại

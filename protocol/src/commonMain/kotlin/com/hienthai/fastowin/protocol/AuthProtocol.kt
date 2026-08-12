@@ -26,6 +26,7 @@ data class LogoutRequest(val refreshToken: String)
 @Serializable
 data class AuthSessionResponse(
     val userId: String,
+    val displayName: String = "",
     val accessToken: String,
     val refreshToken: String,
     val accessExpiresAtEpochMillis: Long,

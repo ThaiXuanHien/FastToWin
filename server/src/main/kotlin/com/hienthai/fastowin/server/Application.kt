@@ -126,35 +126,57 @@ fun Application.gameModule(
                     }
 
                     if (playerId == null) {
-                        if (message !is ClientMessage.ConnectGuest) {
+                        if (message !is ClientMessage.ConnectGuest && message !is ClientMessage.ConnectAccount) {
                             send(ProtocolJson.encodeToString<ServerMessage>(
                                 ServerMessage.Error("AUTH_REQUIRED", "Hãy khởi tạo phiên chơi trước.")
                             ))
                             continue
                         }
-                        if (message.protocolVersion != com.hienthai.fastowin.protocol.PROTOCOL_VERSION) {
+                        val protocolVersion = when (message) {
+                            is ClientMessage.ConnectGuest -> message.protocolVersion
+                            is ClientMessage.ConnectAccount -> message.protocolVersion
+                        }
+                        if (protocolVersion != com.hienthai.fastowin.protocol.PROTOCOL_VERSION) {
                             send(ProtocolJson.encodeToString<ServerMessage>(
                                 ServerMessage.Error("PROTOCOL_MISMATCH", "Phiên bản ứng dụng không tương thích.")
                             ))
                             continue
                         }
 
-                        val guest = runCatching {
-                            engine.connectGuest(message.displayName, message.resumeToken)
-                        }.getOrElse {
+                        val connected = runCatching {
+                            when (message) {
+                                is ClientMessage.ConnectGuest ->
+                                    engine.connectGuest(message.displayName, message.resumeToken)
+                                is ClientMessage.ConnectAccount -> {
+                                    val account = authService.authenticateAccessToken(message.accessToken)
+                                        ?: throw InvalidAccessTokenException()
+                                    engine.connectAccount(account)
+                                }
+                            }
+                        }.getOrElse { error ->
                             send(ProtocolJson.encodeToString<ServerMessage>(
-                                ServerMessage.Error("INVALID_NAME", it.message ?: "Tên người chơi không hợp lệ.")
+                                if (error is InvalidAccessTokenException) {
+                                    ServerMessage.Error(
+                                        "INVALID_ACCESS_TOKEN",
+                                        "Phiên đăng nhập không hợp lệ hoặc đã hết hạn."
+                                    )
+                                } else {
+                                    ServerMessage.Error(
+                                        "INVALID_NAME",
+                                        error.message ?: "Tên người chơi không hợp lệ."
+                                    )
+                                }
                             ))
                             continue
                         }
-                        playerId = guest.playerId
+                        playerId = connected.playerId
                         val connection = SocketConnection(this)
-                        connections.put(guest.playerId, connection)?.closeForReplacement()
+                        connections.put(connected.playerId, connection)?.closeForReplacement()
                         connection.send(
                             ServerMessage.SessionReady(
-                                playerId = guest.playerId,
-                                resumeToken = guest.resumeToken,
-                                currentGame = guest.currentGame
+                                playerId = connected.playerId,
+                                resumeToken = connected.resumeToken,
+                                currentGame = connected.currentGame
                             )
                         )
                         deliver(listOf(Delivery(engine.roomList())))
@@ -174,6 +196,8 @@ fun Application.gameModule(
         }
     }
 }
+
+private class InvalidAccessTokenException : RuntimeException()
 
 private suspend inline fun <reified T : Any> ApplicationCall.receiveOrReject(): T? =
     runCatching { receive<T>() }.getOrElse {

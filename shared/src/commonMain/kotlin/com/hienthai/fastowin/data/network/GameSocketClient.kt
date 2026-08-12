@@ -35,7 +35,9 @@ enum class SocketConnectionState {
 
 class GameSocketClient(
     private val serverUrl: String,
-    private val tokenStore: ResumeTokenStore
+    private val tokenStore: ResumeTokenStore,
+    private val accessTokenProvider: (suspend () -> String?)? = null,
+    private val onAccountSessionExpired: (() -> Unit)? = null
 ) {
     private val client = HttpClient {
         install(WebSockets)
@@ -73,9 +75,18 @@ class GameSocketClient(
                     _isConnected.value = true
                     _connectionState.value = SocketConnectionState.AUTHENTICATING
                     retryDelayMillis = INITIAL_RETRY_MILLIS
-                    val hello = ProtocolJson.encodeToString<ClientMessage>(
+                    val helloMessage: ClientMessage = if (accessTokenProvider == null) {
                         ClientMessage.ConnectGuest(displayName, resumeToken)
-                    )
+                    } else {
+                        val accessToken = accessTokenProvider()
+                        if (accessToken == null) {
+                            reconnectEnabled = false
+                            onAccountSessionExpired?.invoke()
+                            return@webSocket
+                        }
+                        ClientMessage.ConnectAccount(accessToken)
+                    }
+                    val hello = ProtocolJson.encodeToString<ClientMessage>(helloMessage)
                     send(
                         Frame.Text(hello)
                     )
@@ -95,10 +106,17 @@ class GameSocketClient(
                             continue
                         }
                         if (message is ServerMessage.SessionReady) {
-                            resumeToken = message.resumeToken
-                            tokenStore.save(serverUrl, message.resumeToken)
+                            message.resumeToken?.let { newResumeToken ->
+                                resumeToken = newResumeToken
+                                tokenStore.save(serverUrl, newResumeToken)
+                            }
                             hasConnected = true
                             _connectionState.value = SocketConnectionState.CONNECTED
+                        }
+                        if (message is ServerMessage.Error && message.code == "INVALID_ACCESS_TOKEN") {
+                            reconnectEnabled = false
+                            onAccountSessionExpired?.invoke()
+                            close()
                         }
                         _messages.send(message)
                     }

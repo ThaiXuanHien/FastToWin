@@ -21,6 +21,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ExitToApp
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Person
@@ -75,6 +76,7 @@ fun LobbyScreen(
     onOpenProfile: () -> Unit,
     onOpenLeaderboard: () -> Unit,
     onBackToMode: () -> Unit,
+    onLogout: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Box(
@@ -90,7 +92,7 @@ fun LobbyScreen(
             modifier = Modifier.widthIn(max = 600.dp)
         ) { stage ->
             when (stage) {
-                LobbyStage.SELECT_MODE -> ModeSelection(onModeSelected)
+                LobbyStage.SELECT_MODE -> ModeSelection(onModeSelected, onLogout)
                 LobbyStage.ENTER_NAME -> NameEntry(onOpenRoomBrowser, onBackToMode)
                 LobbyStage.ROOM_BROWSER -> RoomBrowser(
                     state = state,
@@ -99,7 +101,8 @@ fun LobbyScreen(
                     onRefreshRooms = onRefreshRooms,
                     onOpenProfile = onOpenProfile,
                     onOpenLeaderboard = onOpenLeaderboard,
-                    onBack = onBackToMode
+                    onBack = onBackToMode,
+                    onLogout = onLogout
                 )
                 LobbyStage.ROOM_WAITING -> RoomWaiting(state, onLeaveRoom)
                 LobbyStage.MATCHED -> MatchedStatus(state)
@@ -109,7 +112,7 @@ fun LobbyScreen(
 }
 
 @Composable
-private fun ModeSelection(onModeSelected: (GameMode) -> Unit) {
+private fun ModeSelection(onModeSelected: (GameMode) -> Unit, onLogout: () -> Unit) {
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(24.dp)
@@ -143,6 +146,7 @@ private fun ModeSelection(onModeSelected: (GameMode) -> Unit) {
             icon = Icons.Rounded.Timer,
             onClick = { onModeSelected(GameMode.TIME_ATTACK) }
         )
+        TextButton(onClick = onLogout) { Text("Đổi tài khoản hoặc chơi khách") }
     }
 }
 
@@ -227,7 +231,8 @@ private fun RoomBrowser(
     onRefreshRooms: () -> Unit,
     onOpenProfile: () -> Unit,
     onOpenLeaderboard: () -> Unit,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    onLogout: () -> Unit
 ) {
     var roomName by remember { mutableStateOf("") }
     var roomPassword by remember { mutableStateOf("") }
@@ -269,6 +274,9 @@ private fun RoomBrowser(
                 }
                 IconButton(onClick = onRefreshRooms, enabled = !state.isSearching) {
                     Icon(Icons.Default.Refresh, contentDescription = "Làm mới danh sách phòng")
+                }
+                IconButton(onClick = onLogout) {
+                    Icon(Icons.AutoMirrored.Filled.ExitToApp, contentDescription = "Đăng xuất")
                 }
             }
         }
