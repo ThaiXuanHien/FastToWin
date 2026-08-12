@@ -174,6 +174,36 @@ class GameEngineTest {
         assertEquals(500, saved.players.single { it.playerId == host.playerId }.score)
     }
 
+    @Test
+    fun `server finishes time attack and persists a draw exactly once`() = runTest {
+        var now = 10_000L
+        val savedMatches = mutableListOf<CompletedMatch>()
+        val engine = GameEngine(
+            matchResultRepository = MatchResultRepository { savedMatches += it },
+            nowMillis = { now }
+        )
+        val host = engine.connectGuest("Hiền", null)
+        val guest = engine.connectGuest("Hiếu", null)
+        val room = engine.handle(
+            host.playerId,
+            ClientMessage.CreateRoom("Phòng 60 giây", PASSWORD, ProtocolGameMode.TIME_ATTACK)
+        ).map(Delivery::message).filterIsInstance<ServerMessage.RoomCreated>().single().game
+        engine.handle(guest.playerId, ClientMessage.JoinRoom(room.roomId, PASSWORD))
+
+        now += 59_999L
+        assertTrue(engine.advanceTimedGames().isEmpty())
+        now += 1L
+        val finished = engine.advanceTimedGames().map(Delivery::message)
+            .filterIsInstance<ServerMessage.GameFinished>()
+            .single()
+
+        assertEquals(com.hienthai.fastowin.protocol.RoomPhase.FINISHED, finished.game.phase)
+        assertEquals(2, savedMatches.single().players.size)
+        assertTrue(savedMatches.single().players.all { it.outcome == MatchOutcome.DRAW })
+        assertTrue(engine.advanceTimedGames().isEmpty())
+        assertEquals(1, savedMatches.size)
+    }
+
     private suspend fun createRoomFixture(): Fixture {
         val engine = GameEngine()
         val host = engine.connectGuest("Hiền", null)

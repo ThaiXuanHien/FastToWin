@@ -71,6 +71,8 @@ Khi trận kết thúc, backend lưu kết quả đúng một lần theo `roomId
 
 Từ màn hình danh sách phòng, người chơi có thể mở **Hồ sơ** để xem mã người chơi, tổng trận, thắng/thua/hòa, điểm cao nhất, chuỗi thắng và tối đa 20 trận gần nhất. Dữ liệu được lấy qua WebSocket của phiên hiện tại nên client không thể yêu cầu hồ sơ riêng tư của player ID khác.
 
+Với chế độ **Đua 60 giây**, đồng hồ kết thúc do backend quyết định. Server kiểm tra timer mỗi 250 ms, phát `game_finished` cho cả hai người chơi và lưu kết quả đúng một lần; client chỉ hiển thị đồng hồ, không tự quyết định kết quả trận.
+
 Kiểm tra server:
 
 ```text

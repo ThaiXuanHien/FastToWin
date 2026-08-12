@@ -31,6 +31,7 @@ class GameEngine(
     private val identityRepository: GuestIdentityRepository = InMemoryGuestIdentityRepository(),
     private val matchResultRepository: MatchResultRepository = NoOpMatchResultRepository,
     private val playerProfileRepository: PlayerProfileRepository = NoOpPlayerProfileRepository,
+    private val timeAttackMillis: Long = DEFAULT_TIME_ATTACK_MILLIS,
     private val nowMillis: () -> Long = System::currentTimeMillis
 ) {
     private val mutex = Mutex()
@@ -108,6 +109,30 @@ class GameEngine(
 
     suspend fun roomList(): ServerMessage.RoomList = mutex.withLock {
         ServerMessage.RoomList(publicRooms())
+    }
+
+    suspend fun advanceTimedGames(): List<Delivery> {
+        val advances = mutex.withLock {
+            rooms.values.mapNotNull { room ->
+                if (
+                    room.gameMode != com.hienthai.fastowin.protocol.ProtocolGameMode.TIME_ATTACK ||
+                    room.phase != RoomPhase.PLAYING ||
+                    nowMillis() - (room.startedAtEpochMillis ?: return@mapNotNull null) < timeAttackMillis
+                ) return@mapNotNull null
+
+                room.phase = RoomPhase.FINISHED
+                room.sequence++
+                TimedAdvance(
+                    delivery = Delivery(ServerMessage.GameFinished(room.snapshot()), room.playerIds()),
+                    completedMatch = room.takeCompletedMatch()
+                )
+            }
+        }
+        advances.mapNotNull(TimedAdvance::completedMatch).forEach { completed ->
+            runCatching { matchResultRepository.save(completed) }
+                .onFailure { System.err.println("Could not persist timed match ${completed.matchId}: ${it.message}") }
+        }
+        return advances.map(TimedAdvance::delivery)
     }
 
     suspend fun markDisconnected(playerId: String): List<Delivery> {
@@ -318,7 +343,7 @@ class GameEngine(
         if (
             gameMode == com.hienthai.fastowin.protocol.ProtocolGameMode.TIME_ATTACK &&
             phase == RoomPhase.PLAYING &&
-            nowMillis() - startedAt >= TIME_ATTACK_MILLIS
+            nowMillis() - startedAt >= timeAttackMillis
         ) {
             phase = RoomPhase.FINISHED
             sequence++
@@ -376,6 +401,11 @@ class GameEngine(
         val completedMatch: CompletedMatch? = null
     )
 
+    private data class TimedAdvance(
+        val delivery: Delivery,
+        val completedMatch: CompletedMatch?
+    )
+
     private data class Room(
         val id: String,
         val name: String,
@@ -416,7 +446,7 @@ class GameEngine(
         const val MAX_PLAYER_NAME_LENGTH = 32
         const val MAX_ROOM_NAME_LENGTH = 48
         const val SCORE_PER_NUMBER = 10
-        const val TIME_ATTACK_MILLIS = 60_000L
+        const val DEFAULT_TIME_ATTACK_MILLIS = 60_000L
         const val ROOM_RECONNECT_GRACE_MILLIS = 30_000L
         const val IDLE_SESSION_TTL_MILLIS = 5 * 60_000L
         val secureRandom = SecureRandom()

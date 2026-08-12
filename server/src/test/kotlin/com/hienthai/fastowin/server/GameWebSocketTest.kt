@@ -24,6 +24,36 @@ import kotlin.test.assertTrue
 
 class GameWebSocketTest {
     @Test
+    fun `server broadcasts time attack finish without another player action`() = testApplication {
+        application { gameModule(GameEngine(timeAttackMillis = 50L)) }
+        val webSocketClient = createClient { install(WebSockets) }
+        val host = webSocketClient.webSocketSession("/game")
+        val guest = webSocketClient.webSocketSession("/game")
+        try {
+            host.sendMessage(ClientMessage.ConnectGuest("Hiền"))
+            guest.sendMessage(ClientMessage.ConnectGuest("Hiếu"))
+            host.receiveMessage<ServerMessage.SessionReady>()
+            guest.receiveMessage<ServerMessage.SessionReady>()
+            host.receiveMessage<ServerMessage.RoomList>()
+            guest.receiveMessage<ServerMessage.RoomList>()
+
+            host.sendMessage(ClientMessage.CreateRoom("Phòng timer", PASSWORD, ProtocolGameMode.TIME_ATTACK))
+            val room = host.receiveMessage<ServerMessage.RoomCreated>().game
+            guest.sendMessage(ClientMessage.JoinRoom(room.roomId, PASSWORD))
+            host.receiveMessage<ServerMessage.GameStarted>()
+            guest.receiveMessage<ServerMessage.GameStarted>()
+
+            val hostFinished = host.receiveMessage<ServerMessage.GameFinished>().game
+            val guestFinished = guest.receiveMessage<ServerMessage.GameFinished>().game
+            assertEquals(com.hienthai.fastowin.protocol.RoomPhase.FINISHED, hostFinished.phase)
+            assertEquals(hostFinished, guestFinished)
+        } finally {
+            host.close()
+            guest.close()
+        }
+    }
+
+    @Test
     fun `two websocket clients can play and host can resume snapshot`() = testApplication {
         application { gameModule(GameEngine()) }
         val webSocketClient = createClient { install(WebSockets) }

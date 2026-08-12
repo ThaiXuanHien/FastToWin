@@ -174,6 +174,10 @@ sealed class ServerMessage {
     ) : ServerMessage()
 
     @Serializable
+    @SerialName("game_finished")
+    data class GameFinished(val game: GameSnapshot) : ServerMessage()
+
+    @Serializable
     @SerialName("room_closed")
     data class RoomClosed(val roomId: String, val reason: String) : ServerMessage()
 

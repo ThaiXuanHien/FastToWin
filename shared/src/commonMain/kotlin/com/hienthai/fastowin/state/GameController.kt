@@ -216,6 +216,7 @@ class GameController(serverUrl: String, resumeTokenStore: ResumeTokenStore) {
             is ServerMessage.RoomCreated -> applyWaitingSnapshot(message.game)
             is ServerMessage.GameStarted -> startMatchCountdown(message.game)
             is ServerMessage.GameStateUpdated -> applyGameSnapshot(message.game)
+            is ServerMessage.GameFinished -> applyGameSnapshot(message.game)
             is ServerMessage.RoomClosed -> {
                 if (_uiState.value.currentRoomId == message.roomId) {
                     returnToRoomBrowser(message.reason)
@@ -298,6 +299,7 @@ class GameController(serverUrl: String, resumeTokenStore: ResumeTokenStore) {
                 isSearching = false,
                 isMatchStarted = forceStart || state.isMatchStarted,
                 countdown = null,
+                message = if (finished) null else state.message,
                 error = null
             )
         }
@@ -332,8 +334,7 @@ class GameController(serverUrl: String, resumeTokenStore: ResumeTokenStore) {
                 val remaining = (60_000L - elapsed).coerceAtLeast(0L)
                 _uiState.update { it.copy(timeLeftMillis = remaining) }
                 if (remaining == 0L) {
-                    gameStarted = false
-                    _uiState.update { it.copy(isGameOver = true) }
+                    _uiState.update { it.copy(message = "Đang chờ kết quả từ máy chủ...") }
                     break
                 }
                 delay(250)

@@ -52,6 +52,13 @@ fun Application.gameModule(engine: GameEngine = GameEngine()) {
         }
     }
 
+    launch {
+        while (isActive) {
+            delay(GAME_TIMER_INTERVAL_MILLIS)
+            deliver(engine.advanceTimedGames())
+        }
+    }
+
     routing {
         get("/health") { call.respondText("OK") }
 
@@ -132,3 +139,4 @@ private class SocketConnection(val session: io.ktor.server.websocket.DefaultWebS
 }
 
 private const val SESSION_CLEANUP_INTERVAL_MILLIS = 5_000L
+private const val GAME_TIMER_INTERVAL_MILLIS = 250L
