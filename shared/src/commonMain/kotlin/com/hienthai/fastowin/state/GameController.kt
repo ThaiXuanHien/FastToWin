@@ -29,7 +29,7 @@ class GameController(
     serverUrl: String,
     resumeTokenStore: ResumeTokenStore,
     accountDisplayName: String? = null,
-    accessTokenProvider: (suspend () -> String?)? = null,
+    accessTokenProvider: (suspend (forceRefresh: Boolean) -> String?)? = null,
     onAccountSessionExpired: (() -> Unit)? = null,
     private val onProfileDisplayNameChanged: (String) -> Unit = {}
 ) {
@@ -131,8 +131,8 @@ class GameController(
                 state.lobbyStage in setOf(LobbyStage.ROOM_BROWSER, LobbyStage.ROOM_WAITING)
             val reconnectMessage = when {
                 status == ConnectionStatus.RECONNECTING && state.isMatchStarted ->
-                    "Mất kết nối. Đang kết nối lại..."
-                status == ConnectionStatus.CONNECTED && state.message == "Mất kết nối. Đang kết nối lại..." -> null
+                    RECONNECTING_MATCH_MESSAGE
+                status == ConnectionStatus.CONNECTED && state.message == RECONNECTING_MATCH_MESSAGE -> null
                 else -> state.message
             }
             state.copy(
@@ -317,6 +317,7 @@ class GameController(
     private suspend fun handleMessage(message: ServerMessage) {
         when (message) {
             is ServerMessage.SessionReady -> {
+                val wasRecoveringRoom = _uiState.value.currentRoomId != null
                 playerId = message.playerId
                 _uiState.update { it.copy(isSearching = false, error = null) }
                 if (accountDisplayName != null) {
@@ -327,12 +328,16 @@ class GameController(
                         socket.sendMessage(ClientMessage.GetLeaderboard)
                     }
                 }
-                message.currentGame?.let { game ->
+                val currentGame = message.currentGame
+                if (currentGame != null) {
+                    val game = currentGame
                     if (game.phase == RoomPhase.PLAYING || game.phase == RoomPhase.FINISHED) {
                         startGameWithSnapshot(game)
                     } else {
                         applyWaitingSnapshot(game)
                     }
+                } else if (wasRecoveringRoom) {
+                    returnToRoomBrowser("Phòng đã đóng vì quá thời gian kết nối lại.")
                 }
             }
 
@@ -529,7 +534,7 @@ class GameController(
     fun onNumberClicked(number: Int) {
         val state = _uiState.value
         val roomId = state.currentRoomId ?: return
-        if (!gameStarted || state.isGameOver) return
+        if (!gameStarted || state.isGameOver || state.connectionStatus != ConnectionStatus.CONNECTED) return
         scope.launch {
             socket.sendMessage(
                 ClientMessage.SelectNumber(
@@ -602,5 +607,10 @@ class GameController(
 
     private fun randomId(): String = buildString {
         repeat(2) { append(Random.nextLong().toULong().toString(16).padStart(16, '0')) }
+    }
+
+    private companion object {
+        const val RECONNECTING_MATCH_MESSAGE =
+            "Mất kết nối. Đang khôi phục trận, phòng được giữ tối đa 30 giây..."
     }
 }

@@ -112,9 +112,9 @@ class AuthController(
         }
     }
 
-    suspend fun validAccessToken(): String? {
+    suspend fun validAccessToken(forceRefresh: Boolean = false): String? {
         val session = _state.value.session ?: return null
-        if (session.accessExpiresAtEpochMillis > epochMillis() + REFRESH_EARLY_MILLIS) {
+        if (!forceRefresh && session.accessExpiresAtEpochMillis > epochMillis() + REFRESH_EARLY_MILLIS) {
             return session.accessToken
         }
         return runCatching { api.refresh(session.refreshToken) }

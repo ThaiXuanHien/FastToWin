@@ -37,6 +37,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.hienthai.fastowin.state.GAME_NUMBER_COUNT
+import com.hienthai.fastowin.state.ConnectionStatus
 import com.hienthai.fastowin.state.GameState
 import com.hienthai.fastowin.state.PlayerState
 import com.hienthai.fastowin.ui.theme.FastToWinTheme
@@ -107,6 +108,7 @@ fun GameScreen(
             NumberGrid(
                 numbers = state.numbers,
                 currentTarget = state.currentTarget,
+                enabled = state.connectionStatus == ConnectionStatus.CONNECTED,
                 onNumberClick = onNumberClick,
                 modifier = Modifier.weight(1f)
             )
@@ -267,6 +269,7 @@ private fun TargetPanel(currentTarget: Int) {
 fun NumberGrid(
     numbers: List<Int>,
     currentTarget: Int,
+    enabled: Boolean = true,
     onNumberClick: (Int) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -281,6 +284,7 @@ fun NumberGrid(
             NumberCell(
                 number = number,
                 isCompleted = number < currentTarget,
+                enabled = enabled,
                 onClick = { onNumberClick(number) }
             )
         }
@@ -288,12 +292,12 @@ fun NumberGrid(
 }
 
 @Composable
-fun NumberCell(number: Int, isCompleted: Boolean, onClick: () -> Unit) {
+fun NumberCell(number: Int, isCompleted: Boolean, enabled: Boolean = true, onClick: () -> Unit) {
     Surface(
         modifier = Modifier
             .aspectRatio(1f)
             .clip(RoundedCornerShape(16.dp))
-            .clickable(enabled = !isCompleted, onClick = onClick),
+            .clickable(enabled = enabled && !isCompleted, onClick = onClick),
         color = if (isCompleted) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
         else MaterialTheme.colorScheme.surface,
         shape = RoundedCornerShape(16.dp),

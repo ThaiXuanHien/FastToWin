@@ -69,7 +69,9 @@ fun FastToWinApp(
                     resumeTokenStore = resumeTokenStore,
                     accountUserId = authState.session?.userId,
                     accountDisplayName = authState.session?.displayName,
-                    accessTokenProvider = authState.session?.let { { authController.validAccessToken() } },
+                    accessTokenProvider = authState.session?.let {
+                        { forceRefresh -> authController.validAccessToken(forceRefresh) }
+                    },
                     onLogout = authController::logout,
                     isGuest = authState.isGuest,
                     onUpgradeGuest = authController::openGuestUpgrade,
@@ -90,7 +92,7 @@ private fun GameContent(
     resumeTokenStore: ResumeTokenStore,
     accountUserId: String?,
     accountDisplayName: String?,
-    accessTokenProvider: (suspend () -> String?)?,
+    accessTokenProvider: (suspend (forceRefresh: Boolean) -> String?)?,
     onLogout: () -> Unit,
     isGuest: Boolean,
     onUpgradeGuest: () -> Unit,

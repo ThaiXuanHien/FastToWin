@@ -105,6 +105,66 @@ class GameWebSocketTest {
     }
 
     @Test
+    fun `registered account reconnects to the same active game snapshot`() = testApplication {
+        val authService = AuthenticationService(
+            repository = InMemoryAuthRepository(),
+            passwordHasher = PasswordHasher(iterations = 1_000)
+        )
+        val authSession = assertIs<AuthResult.Success>(
+            authService.register(
+                email = "account-reconnect@example.com",
+                password = "strong-password-123",
+                displayName = "Chủ phòng tài khoản",
+                devicePlatform = "android"
+            )
+        ).session
+        application { gameModule(authService = authService) }
+        val webSocketClient = createClient { install(WebSockets) }
+        val host = webSocketClient.webSocketSession("/game")
+        val guest = webSocketClient.webSocketSession("/game")
+
+        try {
+            host.sendMessage(ClientMessage.ConnectAccount(authSession.accessToken))
+            guest.sendMessage(ClientMessage.ConnectGuest("Khách reconnect"))
+            val hostReady = host.receiveMessage<ServerMessage.SessionReady>()
+            val guestReady = guest.receiveMessage<ServerMessage.SessionReady>()
+            host.receiveMessage<ServerMessage.RoomList>()
+            guest.receiveMessage<ServerMessage.RoomList>()
+
+            host.sendMessage(
+                ClientMessage.CreateRoom("Phòng account reconnect", PASSWORD, ProtocolGameMode.ORDER)
+            )
+            val room = host.receiveMessage<ServerMessage.RoomCreated>().game
+            guest.sendMessage(ClientMessage.JoinRoom(room.roomId, PASSWORD))
+            host.receiveMessage<ServerMessage.GameStarted>()
+            guest.receiveMessage<ServerMessage.GameStarted>()
+
+            host.sendMessage(ClientMessage.SelectNumber(room.roomId, 1, "account-reconnect-select"))
+            host.receiveMessage<ServerMessage.GameStateUpdated>()
+            guest.receiveMessage<ServerMessage.GameStateUpdated>()
+            host.close()
+            delay(100)
+
+            val resumedHost = webSocketClient.webSocketSession("/game")
+            try {
+                resumedHost.sendMessage(ClientMessage.ConnectAccount(authSession.accessToken))
+                val resumed = resumedHost.receiveMessage<ServerMessage.SessionReady>()
+                assertEquals(hostReady.playerId, resumed.playerId)
+                val snapshot = assertNotNull(resumed.currentGame)
+                assertEquals(room.roomId, snapshot.roomId)
+                assertEquals(2, snapshot.currentTarget)
+                assertTrue(1 in snapshot.selectedNumbers)
+                assertEquals(guestReady.playerId, snapshot.players.first { it.id != resumed.playerId }.id)
+            } finally {
+                resumedHost.close()
+            }
+        } finally {
+            host.close()
+            guest.close()
+        }
+    }
+
+    @Test
     fun `server broadcasts time attack finish without another player action`() = testApplication {
         application { gameModule(GameEngine(timeAttackMillis = 50L)) }
         val webSocketClient = createClient { install(WebSockets) }

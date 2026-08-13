@@ -9,6 +9,7 @@ import io.ktor.client.plugins.websocket.DefaultClientWebSocketSession
 import io.ktor.client.plugins.websocket.WebSockets
 import io.ktor.client.plugins.websocket.webSocket
 import io.ktor.websocket.Frame
+import io.ktor.websocket.CloseReason
 import io.ktor.websocket.close
 import io.ktor.websocket.readText
 import io.ktor.websocket.send
@@ -24,6 +25,7 @@ import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.isActive
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
+import kotlin.random.Random
 
 enum class SocketConnectionState {
     DISCONNECTED,
@@ -36,7 +38,7 @@ enum class SocketConnectionState {
 class GameSocketClient(
     private val serverUrl: String,
     private val tokenStore: ResumeTokenStore,
-    private val accessTokenProvider: (suspend () -> String?)? = null,
+    private val accessTokenProvider: (suspend (forceRefresh: Boolean) -> String?)? = null,
     private val onAccountSessionExpired: (() -> Unit)? = null
 ) {
     private val client = HttpClient {
@@ -49,6 +51,7 @@ class GameSocketClient(
     private var resumeToken: String? = tokenStore.load(serverUrl)
     private var reconnectEnabled = true
     private var hasConnected = false
+    private var forceAccessTokenRefresh = false
 
     private val _messages = Channel<ServerMessage>(Channel.UNLIMITED)
     val messages: Flow<ServerMessage> = _messages.receiveAsFlow()
@@ -78,7 +81,8 @@ class GameSocketClient(
                     val helloMessage: ClientMessage = if (accessTokenProvider == null) {
                         ClientMessage.ConnectGuest(displayName, resumeToken)
                     } else {
-                        val accessToken = accessTokenProvider()
+                        val accessToken = accessTokenProvider(forceAccessTokenRefresh)
+                        forceAccessTokenRefresh = false
                         if (accessToken == null) {
                             reconnectEnabled = false
                             onAccountSessionExpired?.invoke()
@@ -111,12 +115,20 @@ class GameSocketClient(
                                 tokenStore.save(serverUrl, newResumeToken)
                             }
                             hasConnected = true
+                            forceAccessTokenRefresh = false
                             _connectionState.value = SocketConnectionState.CONNECTED
                         }
                         if (message is ServerMessage.Error && message.code == "INVALID_ACCESS_TOKEN") {
-                            reconnectEnabled = false
-                            onAccountSessionExpired?.invoke()
-                            close()
+                            if (accessTokenProvider != null) {
+                                forceAccessTokenRefresh = true
+                                this.close(
+                                    CloseReason(
+                                        CloseReason.Codes.NORMAL,
+                                        "Refreshing account session"
+                                    )
+                                )
+                                break
+                            }
                         }
                         _messages.send(message)
                     }
@@ -133,11 +145,15 @@ class GameSocketClient(
             } finally {
                 session = null
                 _isConnected.value = false
-                if (!reconnectEnabled) _connectionState.value = SocketConnectionState.DISCONNECTED
+                _connectionState.value = when {
+                    !reconnectEnabled -> SocketConnectionState.DISCONNECTED
+                    hasConnected -> SocketConnectionState.RECONNECTING
+                    else -> SocketConnectionState.CONNECTING
+                }
             }
 
             if (reconnectEnabled && currentCoroutineContext().isActive) {
-                delay(retryDelayMillis)
+                delay(retryDelayMillis + Random.nextLong(RETRY_JITTER_MILLIS + 1))
                 retryDelayMillis = (retryDelayMillis * 2).coerceAtMost(MAX_RETRY_MILLIS)
             }
         }
@@ -181,7 +197,8 @@ class GameSocketClient(
 
     private companion object {
         const val INITIAL_RETRY_MILLIS = 1_000L
-        const val MAX_RETRY_MILLIS = 15_000L
+        const val MAX_RETRY_MILLIS = 5_000L
+        const val RETRY_JITTER_MILLIS = 750L
         const val CONNECT_TIMEOUT_MILLIS = 7_000L
     }
 }
