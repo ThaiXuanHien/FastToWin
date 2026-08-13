@@ -2,8 +2,13 @@ package com.hienthai.fastowin.data.network
 
 import com.hienthai.fastowin.protocol.AuthErrorResponse
 import com.hienthai.fastowin.protocol.AuthSessionResponse
+import com.hienthai.fastowin.protocol.AccountActionResponse
+import com.hienthai.fastowin.protocol.ChangePasswordRequest
+import com.hienthai.fastowin.protocol.DeleteAccountRequest
 import com.hienthai.fastowin.protocol.LoginRequest
 import com.hienthai.fastowin.protocol.LogoutRequest
+import com.hienthai.fastowin.protocol.PasswordResetConfirmRequest
+import com.hienthai.fastowin.protocol.PasswordResetRequest
 import com.hienthai.fastowin.protocol.ProtocolJson
 import com.hienthai.fastowin.protocol.RefreshTokenRequest
 import com.hienthai.fastowin.protocol.RegisterRequest
@@ -64,9 +69,46 @@ class AuthApiClient(serverUrl: String) {
         if (!response.status.isSuccess()) throw response.toAuthException()
     }
 
+    suspend fun changePassword(
+        accessToken: String,
+        currentPassword: String,
+        newPassword: String
+    ): AccountActionResponse = executeAction(
+        "$baseUrl/auth/change-password",
+        ChangePasswordRequest(accessToken, currentPassword, newPassword)
+    )
+
+    suspend fun requestPasswordReset(email: String): AccountActionResponse = executeAction(
+        "$baseUrl/auth/password-reset/request",
+        PasswordResetRequest(email)
+    )
+
+    suspend fun confirmPasswordReset(
+        email: String,
+        resetToken: String,
+        newPassword: String
+    ): AccountActionResponse = executeAction(
+        "$baseUrl/auth/password-reset/confirm",
+        PasswordResetConfirmRequest(email, resetToken, newPassword)
+    )
+
+    suspend fun deleteAccount(accessToken: String, password: String): AccountActionResponse = executeAction(
+        "$baseUrl/auth/delete-account",
+        DeleteAccountRequest(accessToken, password)
+    )
+
     fun close() = client.close()
 
     private suspend inline fun <reified T : Any> execute(url: String, request: T): AuthSessionResponse {
+        val response = client.post(url) {
+            contentType(ContentType.Application.Json)
+            setBody(request)
+        }
+        if (!response.status.isSuccess()) throw response.toAuthException()
+        return response.body()
+    }
+
+    private suspend inline fun <reified T : Any> executeAction(url: String, request: T): AccountActionResponse {
         val response = client.post(url) {
             contentType(ContentType.Application.Json)
             setBody(request)

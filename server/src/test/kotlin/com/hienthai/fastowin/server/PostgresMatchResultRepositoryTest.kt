@@ -7,6 +7,7 @@ import kotlinx.coroutines.test.runTest
 import java.util.UUID
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 
 class PostgresMatchResultRepositoryTest {
     @Test
@@ -113,12 +114,17 @@ class PostgresMatchResultRepositoryTest {
                     profile.achievements.map { it.code }.toSet()
                 )
                 assertEquals(0, guestProfile.achievements.size)
+                assertTrue(profileRepository.updateProfile(host.playerId, "Updated host", "crown"))
+                val updatedProfile = profileRepository.findByPlayerId(host.playerId)!!
+                assertEquals("Updated host", updatedProfile.displayName)
+                assertEquals("crown", updatedProfile.avatarId)
+                assertEquals(profile.statistics.totalMatches, updatedProfile.statistics.totalMatches)
                 val leaderboard = leaderboardRepository.load(host.playerId, 100)
-                assertEquals(host.displayName, leaderboard.currentPlayer?.displayName)
+                assertEquals("Updated host", leaderboard.currentPlayer?.displayName)
                 assertEquals(1, leaderboard.currentPlayer?.wins)
                 assertEquals(1016, leaderboard.currentPlayer?.eloRating)
-                assertEquals(host.displayName, leaderboard.topPlayers.first().displayName)
-                assertEquals(host.displayName, leaderboard.topPlayers.first { it.displayName == host.displayName }.displayName)
+                assertEquals("Updated host", leaderboard.topPlayers.first().displayName)
+                assertEquals("Updated host", leaderboard.topPlayers.first { it.displayName == "Updated host" }.displayName)
             } finally {
                 dataSource.connection.use { connection ->
                     connection.prepareStatement("DELETE FROM matches WHERE id = ?").use { statement ->

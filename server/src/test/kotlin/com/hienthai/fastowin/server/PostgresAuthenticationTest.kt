@@ -159,8 +159,73 @@ class PostgresAuthenticationTest {
         }
     }
 
+    @Test
+    fun `password reset changes credentials revokes sessions and is single use`() = runTest {
+        val url = System.getenv("TEST_DATABASE_URL") ?: return@runTest
+        HikariDataSource(HikariConfig().apply {
+            jdbcUrl = url
+            username = System.getenv("TEST_DATABASE_USER") ?: "fasttowin"
+            password = System.getenv("TEST_DATABASE_PASSWORD") ?: "fasttowin"
+            maximumPoolSize = 2
+        }).use { dataSource ->
+            Flyway.configure()
+                .dataSource(dataSource)
+                .locations("classpath:db/migration")
+                .load()
+                .migrate()
+
+            var now = NOW_MILLIS
+            val email = "password-reset-${UUID.randomUUID()}@example.com"
+            val service = AuthenticationService(
+                repository = PostgresAuthRepository(dataSource),
+                passwordHasher = PasswordHasher(iterations = 1_000),
+                nowMillis = { now }
+            )
+            try {
+                val registered = assertIs<AuthResult.Success>(
+                    service.register(email, PASSWORD, "Reset player", "android")
+                ).session
+                val request = assertIs<AccountActionResult.Success>(service.requestPasswordReset(email))
+                val resetToken = requireNotNull(request.resetToken)
+                now += 1_000
+                assertIs<AccountActionResult.Success>(
+                    service.resetPassword(email, resetToken, NEW_PASSWORD)
+                )
+                assertIs<AuthResult.Failure>(service.refresh(registered.refreshToken))
+                assertIs<AccountActionResult.Failure>(
+                    service.resetPassword(email, resetToken, "another-password")
+                )
+                val loggedIn = assertIs<AuthResult.Success>(
+                    service.login(email, NEW_PASSWORD, "ios")
+                ).session
+                assertIs<AccountActionResult.Success>(
+                    service.deleteAccount(loggedIn.accessToken, NEW_PASSWORD)
+                )
+                assertIs<AuthResult.Failure>(service.login(email, NEW_PASSWORD, "android"))
+                dataSource.connection.use { connection ->
+                    connection.prepareStatement("SELECT COUNT(*) FROM users WHERE email_normalized = ?").use { statement ->
+                        statement.setString(1, email)
+                        statement.executeQuery().use { result -> result.next(); assertEquals(0, result.getInt(1)) }
+                    }
+                    connection.prepareStatement("SELECT COUNT(*) FROM password_reset_tokens WHERE user_id = ?").use { statement ->
+                        statement.setObject(1, UUID.fromString(registered.userId))
+                        statement.executeQuery().use { result -> result.next(); assertEquals(0, result.getInt(1)) }
+                    }
+                }
+            } finally {
+                dataSource.connection.use { connection ->
+                    connection.prepareStatement("DELETE FROM users WHERE email_normalized = ?").use { statement ->
+                        statement.setString(1, email)
+                        statement.executeUpdate()
+                    }
+                }
+            }
+        }
+    }
+
     private companion object {
         const val PASSWORD = "strong-password-123"
+        const val NEW_PASSWORD = "new-strong-password-456"
         const val NOW_MILLIS = 1_800_000_000_000L
     }
 }

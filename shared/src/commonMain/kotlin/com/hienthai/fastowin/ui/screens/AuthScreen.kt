@@ -47,10 +47,13 @@ fun AuthScreen(
     state: AuthState,
     onOpenLogin: () -> Unit,
     onOpenRegister: () -> Unit,
+    onOpenPasswordReset: () -> Unit,
     onPlayAsGuest: () -> Unit,
     onLogin: (String, String) -> Unit,
     onRegister: (String, String, String) -> Unit,
     onUpgradeGuest: (String, String) -> Unit,
+    onRequestPasswordReset: (String) -> Unit,
+    onConfirmPasswordReset: (String, String, String) -> Unit,
     onBack: () -> Unit,
     onCancelUpgrade: () -> Unit
 ) {
@@ -62,8 +65,14 @@ fun AuthScreen(
     ) {
         when (state.stage) {
             AuthStage.WELCOME -> WelcomeContent(state, onOpenLogin, onOpenRegister, onPlayAsGuest)
-            AuthStage.LOGIN -> LoginContent(state, onLogin, onBack)
+            AuthStage.LOGIN -> LoginContent(state, onLogin, onOpenPasswordReset, onBack)
             AuthStage.REGISTER -> RegisterContent(state, onRegister, onBack)
+            AuthStage.RESET_PASSWORD -> PasswordResetContent(
+                state,
+                onRequestPasswordReset,
+                onConfirmPasswordReset,
+                onBack
+            )
             AuthStage.UPGRADE_GUEST -> UpgradeGuestContent(state, onUpgradeGuest, onCancelUpgrade)
             AuthStage.PLAYING -> Unit
         }
@@ -101,12 +110,18 @@ private fun WelcomeContent(
             Text("Tạo tài khoản")
         }
         TextButton(onClick = onPlayAsGuest) { Text("Chơi với tư cách khách") }
+        state.notice?.let { Text(it, color = MaterialTheme.colorScheme.primary, textAlign = TextAlign.Center) }
         state.error?.let { Text(it, color = MaterialTheme.colorScheme.error, textAlign = TextAlign.Center) }
     }
 }
 
 @Composable
-private fun LoginContent(state: AuthState, onLogin: (String, String) -> Unit, onBack: () -> Unit) {
+private fun LoginContent(
+    state: AuthState,
+    onLogin: (String, String) -> Unit,
+    onOpenPasswordReset: () -> Unit,
+    onBack: () -> Unit
+) {
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     AuthForm(title = "Đăng nhập", state = state, onBack = onBack) {
@@ -119,6 +134,65 @@ private fun LoginContent(state: AuthState, onLogin: (String, String) -> Unit, on
         ) {
             if (state.isLoading) CircularProgressIndicator(strokeWidth = 2.dp)
             else Text("Đăng nhập")
+        }
+        TextButton(onClick = onOpenPasswordReset, enabled = !state.isLoading) {
+            Text("Quên mật khẩu?")
+        }
+    }
+}
+
+@Composable
+private fun PasswordResetContent(
+    state: AuthState,
+    onRequest: (String) -> Unit,
+    onConfirm: (String, String, String) -> Unit,
+    onBack: () -> Unit
+) {
+    var email by remember { mutableStateOf("") }
+    var resetToken by remember { mutableStateOf("") }
+    var newPassword by remember { mutableStateOf("") }
+    var confirmPassword by remember { mutableStateOf("") }
+    val requested = state.devResetToken != null
+    AuthForm(title = "Khôi phục mật khẩu", state = state, onBack = onBack) {
+        Text(
+            "Nhập email để nhận mã khôi phục có hiệu lực trong 15 phút.",
+            textAlign = TextAlign.Center,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        EmailField(email) { email = it }
+        if (!requested) {
+            Button(
+                onClick = { onRequest(email) },
+                enabled = email.isNotBlank() && !state.isLoading,
+                modifier = Modifier.fillMaxWidth().height(56.dp)
+            ) {
+                if (state.isLoading) CircularProgressIndicator(strokeWidth = 2.dp)
+                else Text("Tạo mã khôi phục")
+            }
+        } else {
+            Text(
+                "Môi trường dev – mã khôi phục:\n${state.devResetToken}",
+                color = MaterialTheme.colorScheme.primary,
+                textAlign = TextAlign.Center
+            )
+            OutlinedTextField(
+                value = resetToken,
+                onValueChange = { resetToken = it.trim() },
+                label = { Text("Mã khôi phục") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
+            PasswordField(newPassword, "Mật khẩu mới (ít nhất 8 ký tự)") { newPassword = it }
+            PasswordField(confirmPassword, "Nhập lại mật khẩu mới") { confirmPassword = it }
+            Button(
+                onClick = { onConfirm(email, resetToken, newPassword) },
+                enabled = resetToken.isNotBlank() && newPassword.length >= 8 &&
+                    newPassword == confirmPassword && !state.isLoading,
+                modifier = Modifier.fillMaxWidth().height(56.dp)
+            ) {
+                if (state.isLoading) CircularProgressIndicator(strokeWidth = 2.dp)
+                else Text("Đặt lại mật khẩu")
+            }
         }
     }
 }
@@ -208,6 +282,7 @@ private fun AuthForm(
     ) {
         Text(title, style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold)
         content()
+        state.notice?.let { Text(it, color = MaterialTheme.colorScheme.primary, textAlign = TextAlign.Center) }
         state.error?.let { Text(it, color = MaterialTheme.colorScheme.error, textAlign = TextAlign.Center) }
         TextButton(onClick = onBack, enabled = !state.isLoading) { Text("Quay lại") }
     }

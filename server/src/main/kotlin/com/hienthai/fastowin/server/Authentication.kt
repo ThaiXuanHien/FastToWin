@@ -32,6 +32,12 @@ data class NewAuthSession(
 
 data class AccountCredentials(val userId: UUID, val passwordHash: String, val displayName: String)
 data class AuthenticatedAccount(val userId: UUID, val displayName: String)
+data class NewPasswordReset(
+    val id: UUID,
+    val tokenHash: String,
+    val nowMillis: Long,
+    val expiresAtMillis: Long
+)
 data class GuestUpgrade(
     val resumeTokenHash: String,
     val emailNormalized: String,
@@ -50,16 +56,31 @@ sealed interface GuestUpgradeResult {
 interface AuthRepository {
     suspend fun createAccount(account: NewAccount): Boolean
     suspend fun findActiveAccount(emailNormalized: String): AccountCredentials?
+    suspend fun findActiveAccountById(userId: UUID): AccountCredentials?
     suspend fun createSession(userId: UUID, devicePlatform: String?, session: NewAuthSession)
     suspend fun rotateSession(refreshTokenHash: String, replacement: NewAuthSession): UUID?
     suspend fun revokeSession(refreshTokenHash: String, nowMillis: Long): Boolean
     suspend fun findActiveSession(accessTokenHash: String, nowMillis: Long): AuthenticatedAccount?
     suspend fun upgradeGuest(upgrade: GuestUpgrade): GuestUpgradeResult
+    suspend fun updatePasswordAndRevokeSessions(userId: UUID, passwordHash: String, nowMillis: Long): Boolean
+    suspend fun createPasswordReset(emailNormalized: String, reset: NewPasswordReset): Boolean
+    suspend fun consumePasswordReset(
+        emailNormalized: String,
+        tokenHash: String,
+        passwordHash: String,
+        nowMillis: Long
+    ): Boolean
+    suspend fun deleteAccount(userId: UUID): Boolean
 }
 
 sealed interface AuthResult {
     data class Success(val session: AuthSessionResponse) : AuthResult
     data class Failure(val code: String, val message: String) : AuthResult
+}
+
+sealed interface AccountActionResult {
+    data class Success(val message: String, val resetToken: String? = null) : AccountActionResult
+    data class Failure(val code: String, val message: String) : AccountActionResult
 }
 
 class AuthenticationService(
@@ -181,6 +202,92 @@ class AuthenticationService(
         return repository.findActiveSession(hashToken(accessToken), nowMillis())
     }
 
+    suspend fun changePassword(
+        accessToken: String,
+        currentPassword: String,
+        newPassword: String
+    ): AccountActionResult {
+        val authenticated = authenticateAccessToken(accessToken)
+            ?: return invalidAccountSession()
+        val account = repository.findActiveAccountById(authenticated.userId)
+            ?: return invalidAccountSession()
+        val matches = withContext(Dispatchers.Default) {
+            passwordHasher.verify(currentPassword, account.passwordHash)
+        }
+        if (!matches) return AccountActionResult.Failure(
+            "INVALID_CURRENT_PASSWORD",
+            "Mật khẩu hiện tại không đúng."
+        )
+        val passwordError = validatePassword(newPassword)
+        if (passwordError != null) return AccountActionResult.Failure("INVALID_PASSWORD", passwordError)
+        if (currentPassword == newPassword) return AccountActionResult.Failure(
+            "PASSWORD_UNCHANGED",
+            "Mật khẩu mới phải khác mật khẩu hiện tại."
+        )
+        val passwordHash = withContext(Dispatchers.Default) { passwordHasher.hash(newPassword) }
+        return if (repository.updatePasswordAndRevokeSessions(authenticated.userId, passwordHash, nowMillis())) {
+            AccountActionResult.Success("Đã đổi mật khẩu. Vui lòng đăng nhập lại.")
+        } else invalidAccountSession()
+    }
+
+    suspend fun requestPasswordReset(email: String): AccountActionResult {
+        val normalizedEmail = normalizeEmail(email)
+            ?: return AccountActionResult.Failure("INVALID_EMAIL", "Email không hợp lệ.")
+        val now = nowMillis()
+        val token = newToken()
+        val created = repository.createPasswordReset(
+            normalizedEmail,
+            NewPasswordReset(
+                id = UUID.randomUUID(),
+                tokenHash = hashToken(token),
+                nowMillis = now,
+                expiresAtMillis = now + PASSWORD_RESET_TTL_MILLIS
+            )
+        )
+        return AccountActionResult.Success(
+            "Nếu email tồn tại, hướng dẫn khôi phục mật khẩu đã được tạo.",
+            resetToken = token.takeIf { created }
+        )
+    }
+
+    suspend fun resetPassword(
+        email: String,
+        resetToken: String,
+        newPassword: String
+    ): AccountActionResult {
+        val normalizedEmail = normalizeEmail(email)
+            ?: return invalidPasswordReset()
+        if (!isValidTokenShape(resetToken)) return invalidPasswordReset()
+        val passwordError = validatePassword(newPassword)
+        if (passwordError != null) return AccountActionResult.Failure("INVALID_PASSWORD", passwordError)
+        val passwordHash = withContext(Dispatchers.Default) { passwordHasher.hash(newPassword) }
+        return if (repository.consumePasswordReset(
+                normalizedEmail,
+                hashToken(resetToken),
+                passwordHash,
+                nowMillis()
+            )) {
+            AccountActionResult.Success("Đã đặt lại mật khẩu. Bạn có thể đăng nhập ngay.")
+        } else invalidPasswordReset()
+    }
+
+    suspend fun deleteAccount(accessToken: String, password: String): AccountActionResult {
+        val authenticated = authenticateAccessToken(accessToken)
+            ?: return invalidAccountSession()
+        val account = repository.findActiveAccountById(authenticated.userId)
+            ?: return invalidAccountSession()
+        val matches = withContext(Dispatchers.Default) {
+            passwordHasher.verify(password, account.passwordHash)
+        }
+        if (!matches) return AccountActionResult.Failure(
+            "INVALID_CURRENT_PASSWORD",
+            "Mật khẩu không đúng."
+        )
+        return if (repository.deleteAccount(authenticated.userId)) {
+            AccountActionResult.Success("Tài khoản và dữ liệu cá nhân đã được xóa.")
+        } else invalidAccountSession()
+    }
+
     private fun issueTokens(userId: UUID, displayName: String, now: Long): IssuedTokens {
         val accessToken = newToken()
         val refreshToken = newToken()
@@ -239,6 +346,16 @@ class AuthenticationService(
         "Phiên khách không hợp lệ hoặc đã hết hạn."
     )
 
+    private fun invalidAccountSession() = AccountActionResult.Failure(
+        "INVALID_ACCESS_TOKEN",
+        "Phiên đăng nhập không hợp lệ hoặc đã hết hạn."
+    )
+
+    private fun invalidPasswordReset() = AccountActionResult.Failure(
+        "INVALID_RESET_TOKEN",
+        "Mã khôi phục không hợp lệ hoặc đã hết hạn."
+    )
+
     private fun playerCode(userId: UUID): String = userId.toString().replace("-", "").take(10).uppercase()
 
     private data class IssuedTokens(val record: NewAuthSession, val response: AuthSessionResponse)
@@ -246,6 +363,7 @@ class AuthenticationService(
     companion object {
         const val ACCESS_TOKEN_TTL_MILLIS = 15L * 60 * 1_000
         const val REFRESH_TOKEN_TTL_MILLIS = 30L * 24 * 60 * 60 * 1_000
+        const val PASSWORD_RESET_TTL_MILLIS = 15L * 60 * 1_000
         private const val MIN_PASSWORD_LENGTH = 8
         private const val MAX_PASSWORD_LENGTH = 128
         private const val MAX_DISPLAY_NAME_LENGTH = 32

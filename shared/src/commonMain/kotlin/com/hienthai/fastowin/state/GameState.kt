@@ -3,6 +3,8 @@ package com.hienthai.fastowin.state
 import com.hienthai.fastowin.navigation.GameMode
 import com.hienthai.fastowin.protocol.PlayerProfileSnapshot
 import com.hienthai.fastowin.protocol.LeaderboardSnapshot
+import com.hienthai.fastowin.protocol.FriendsSnapshot
+import com.hienthai.fastowin.protocol.ServerMessage
 
 const val GAME_NUMBER_COUNT = 50
 const val DEFAULT_OPPONENT_NAME = "Đối thủ"
@@ -65,8 +67,15 @@ data class GameState(
     val isMatchStarted: Boolean = false,
     val isProfileOpen: Boolean = false,
     val isProfileLoading: Boolean = false,
+    val isProfileSaving: Boolean = false,
+    val profileNotice: String? = null,
     val profile: PlayerProfileSnapshot? = null,
     val isLeaderboardOpen: Boolean = false,
     val isLeaderboardLoading: Boolean = false,
-    val leaderboard: LeaderboardSnapshot? = null
+    val leaderboard: LeaderboardSnapshot? = null,
+    val isFriendsOpen: Boolean = false,
+    val isFriendsLoading: Boolean = false,
+    val social: FriendsSnapshot = FriendsSnapshot(),
+    val roomInvitation: ServerMessage.RoomInvitation? = null,
+    val socialNotice: String? = null
 )

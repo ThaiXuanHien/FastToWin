@@ -25,6 +25,42 @@ import kotlin.test.assertTrue
 
 class GameWebSocketTest {
     @Test
+    fun `revoked account session cannot continue using an open websocket`() = testApplication {
+        val authService = AuthenticationService(
+            repository = InMemoryAuthRepository(),
+            passwordHasher = PasswordHasher(iterations = 1_000)
+        )
+        val authSession = assertIs<AuthResult.Success>(
+            authService.register(
+                email = "revoked-socket@example.com",
+                password = "strong-password-123",
+                displayName = "Revoked player",
+                devicePlatform = "android"
+            )
+        ).session
+        application { gameModule(authService = authService) }
+        val webSocketClient = createClient { install(WebSockets) }
+        val socket = webSocketClient.webSocketSession("/game")
+        try {
+            socket.sendMessage(ClientMessage.ConnectAccount(authSession.accessToken))
+            socket.receiveMessage<ServerMessage.SessionReady>()
+            socket.receiveMessage<ServerMessage.RoomList>()
+            assertIs<AccountActionResult.Success>(
+                authService.changePassword(
+                    authSession.accessToken,
+                    "strong-password-123",
+                    "new-strong-password-456"
+                )
+            )
+
+            socket.sendMessage(ClientMessage.GetProfile)
+            assertEquals("INVALID_ACCESS_TOKEN", socket.receiveMessage<ServerMessage.Error>().code)
+        } finally {
+            socket.close()
+        }
+    }
+
+    @Test
     fun `registered account authenticates websocket with access token`() = testApplication {
         val authService = AuthenticationService(
             repository = InMemoryAuthRepository(),

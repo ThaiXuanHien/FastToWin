@@ -52,6 +52,29 @@ class PostgresAuthRepository(private val dataSource: DataSource) : AuthRepositor
             }
         }
 
+    override suspend fun findActiveAccountById(userId: UUID): AccountCredentials? =
+        withContext(Dispatchers.IO) {
+            dataSource.connection.use { connection ->
+                connection.prepareStatement(
+                    """
+                    SELECT u.id, u.password_hash, p.display_name
+                    FROM users u
+                    JOIN profiles p ON p.user_id = u.id
+                    WHERE u.id = ? AND u.account_type = 'REGISTERED' AND u.status = 'ACTIVE'
+                    """.trimIndent()
+                ).use { statement ->
+                    statement.setObject(1, userId)
+                    statement.executeQuery().use { result ->
+                        if (!result.next()) null else AccountCredentials(
+                            userId = result.getObject("id", UUID::class.java),
+                            passwordHash = result.getString("password_hash"),
+                            displayName = result.getString("display_name")
+                        )
+                    }
+                }
+            }
+        }
+
     override suspend fun createSession(userId: UUID, devicePlatform: String?, session: NewAuthSession): Unit =
         withContext(Dispatchers.IO) {
             dataSource.connection.use { connection -> insertSession(connection, userId, devicePlatform, session) }
@@ -221,6 +244,167 @@ class PostgresAuthRepository(private val dataSource: DataSource) : AuthRepositor
             }
         }
 
+    override suspend fun updatePasswordAndRevokeSessions(
+        userId: UUID,
+        passwordHash: String,
+        nowMillis: Long
+    ): Boolean = withContext(Dispatchers.IO) {
+        dataSource.connection.use { connection ->
+            connection.autoCommit = false
+            try {
+                val updated = connection.prepareStatement(
+                    """
+                    UPDATE users SET password_hash = ?, updated_at = ?
+                    WHERE id = ? AND account_type = 'REGISTERED' AND status = 'ACTIVE'
+                    """.trimIndent()
+                ).use { statement ->
+                    statement.setString(1, passwordHash)
+                    statement.setTimestamp(2, nowMillis.toTimestamp())
+                    statement.setObject(3, userId)
+                    statement.executeUpdate() == 1
+                }
+                if (updated) revokeAllSessions(connection, userId, nowMillis)
+                connection.commit()
+                updated
+            } catch (error: Throwable) {
+                connection.rollback()
+                throw error
+            }
+        }
+    }
+
+    override suspend fun createPasswordReset(
+        emailNormalized: String,
+        reset: NewPasswordReset
+    ): Boolean = withContext(Dispatchers.IO) {
+        dataSource.connection.use { connection ->
+            connection.autoCommit = false
+            try {
+                val userId = connection.prepareStatement(
+                    """
+                    SELECT id FROM users
+                    WHERE email_normalized = ? AND account_type = 'REGISTERED' AND status = 'ACTIVE'
+                    FOR UPDATE
+                    """.trimIndent()
+                ).use { statement ->
+                    statement.setString(1, emailNormalized)
+                    statement.executeQuery().use { result ->
+                        if (result.next()) result.getObject("id", UUID::class.java) else null
+                    }
+                }
+                if (userId == null) {
+                    connection.rollback()
+                    return@withContext false
+                }
+                connection.prepareStatement(
+                    "DELETE FROM password_reset_tokens WHERE user_id = ? AND used_at IS NULL"
+                ).use { statement ->
+                    statement.setObject(1, userId)
+                    statement.executeUpdate()
+                }
+                connection.prepareStatement(
+                    """
+                    INSERT INTO password_reset_tokens (id, user_id, token_hash, created_at, expires_at)
+                    VALUES (?, ?, ?, ?, ?)
+                    """.trimIndent()
+                ).use { statement ->
+                    statement.setObject(1, reset.id)
+                    statement.setObject(2, userId)
+                    statement.setString(3, reset.tokenHash)
+                    statement.setTimestamp(4, reset.nowMillis.toTimestamp())
+                    statement.setTimestamp(5, reset.expiresAtMillis.toTimestamp())
+                    statement.executeUpdate()
+                }
+                connection.commit()
+                true
+            } catch (error: Throwable) {
+                connection.rollback()
+                throw error
+            }
+        }
+    }
+
+    override suspend fun consumePasswordReset(
+        emailNormalized: String,
+        tokenHash: String,
+        passwordHash: String,
+        nowMillis: Long
+    ): Boolean = withContext(Dispatchers.IO) {
+        dataSource.connection.use { connection ->
+            connection.autoCommit = false
+            try {
+                val reset = connection.prepareStatement(
+                    """
+                    SELECT pr.id, pr.user_id
+                    FROM password_reset_tokens pr
+                    JOIN users u ON u.id = pr.user_id
+                    WHERE u.email_normalized = ? AND pr.token_hash = ?
+                      AND pr.used_at IS NULL AND pr.expires_at > ?
+                      AND u.account_type = 'REGISTERED' AND u.status = 'ACTIVE'
+                    FOR UPDATE OF pr, u
+                    """.trimIndent()
+                ).use { statement ->
+                    statement.setString(1, emailNormalized)
+                    statement.setString(2, tokenHash)
+                    statement.setTimestamp(3, nowMillis.toTimestamp())
+                    statement.executeQuery().use { result ->
+                        if (!result.next()) null else PasswordResetIdentity(
+                            result.getObject("id", UUID::class.java),
+                            result.getObject("user_id", UUID::class.java)
+                        )
+                    }
+                }
+                if (reset == null) {
+                    connection.rollback()
+                    return@withContext false
+                }
+                connection.prepareStatement(
+                    "UPDATE users SET password_hash = ?, updated_at = ? WHERE id = ?"
+                ).use { statement ->
+                    statement.setString(1, passwordHash)
+                    statement.setTimestamp(2, nowMillis.toTimestamp())
+                    statement.setObject(3, reset.userId)
+                    statement.executeUpdate()
+                }
+                connection.prepareStatement(
+                    "UPDATE password_reset_tokens SET used_at = ? WHERE id = ?"
+                ).use { statement ->
+                    statement.setTimestamp(1, nowMillis.toTimestamp())
+                    statement.setObject(2, reset.id)
+                    statement.executeUpdate()
+                }
+                revokeAllSessions(connection, reset.userId, nowMillis)
+                connection.commit()
+                true
+            } catch (error: Throwable) {
+                connection.rollback()
+                throw error
+            }
+        }
+    }
+
+    override suspend fun deleteAccount(userId: UUID): Boolean = withContext(Dispatchers.IO) {
+        dataSource.connection.use { connection ->
+            connection.prepareStatement(
+                "DELETE FROM users WHERE id = ? AND account_type = 'REGISTERED' AND status = 'ACTIVE'"
+            ).use { statement ->
+                statement.setObject(1, userId)
+                statement.executeUpdate() == 1
+            }
+        }
+    }
+
+    private fun revokeAllSessions(connection: Connection, userId: UUID, nowMillis: Long) {
+        connection.prepareStatement(
+            "UPDATE sessions SET revoked_at = ?, last_seen_at = ? WHERE user_id = ? AND revoked_at IS NULL"
+        ).use { statement ->
+            statement.setTimestamp(1, nowMillis.toTimestamp())
+            statement.setTimestamp(2, nowMillis.toTimestamp())
+            statement.setObject(3, userId)
+            statement.executeUpdate()
+        }
+    }
+
     private fun findGuestForUpgrade(connection: Connection, upgrade: GuestUpgrade): UpgradeGuestIdentity? =
         connection.prepareStatement(
             """
@@ -308,6 +492,7 @@ class PostgresAuthRepository(private val dataSource: DataSource) : AuthRepositor
 
     private data class CurrentSession(val sessionId: UUID, val userId: UUID)
     private data class UpgradeGuestIdentity(val userId: UUID, val displayName: String)
+    private data class PasswordResetIdentity(val id: UUID, val userId: UUID)
 
     private companion object {
         const val UNIQUE_VIOLATION_SQL_STATE = "23505"

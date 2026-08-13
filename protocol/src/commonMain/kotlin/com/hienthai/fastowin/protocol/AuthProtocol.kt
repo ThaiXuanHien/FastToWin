@@ -32,6 +32,35 @@ data class RefreshTokenRequest(val refreshToken: String)
 data class LogoutRequest(val refreshToken: String)
 
 @Serializable
+data class ChangePasswordRequest(
+    val accessToken: String,
+    val currentPassword: String,
+    val newPassword: String
+)
+
+@Serializable
+data class PasswordResetRequest(val email: String)
+
+@Serializable
+data class PasswordResetConfirmRequest(
+    val email: String,
+    val resetToken: String,
+    val newPassword: String
+)
+
+@Serializable
+data class DeleteAccountRequest(
+    val accessToken: String,
+    val password: String
+)
+
+@Serializable
+data class AccountActionResponse(
+    val message: String,
+    val devResetToken: String? = null
+)
+
+@Serializable
 data class AuthSessionResponse(
     val userId: String,
     val displayName: String = "",

@@ -2,6 +2,8 @@ package com.hienthai.fastowin.server
 
 import com.hienthai.fastowin.protocol.ClientMessage
 import com.hienthai.fastowin.protocol.ProtocolGameMode
+import com.hienthai.fastowin.protocol.PlayerProfileSnapshot
+import com.hienthai.fastowin.protocol.FriendSnapshot
 import com.hienthai.fastowin.protocol.ServerMessage
 import kotlinx.coroutines.async
 import kotlinx.coroutines.test.runTest
@@ -67,6 +69,50 @@ class GameEngineTest {
     }
 
     @Test
+    fun `profile update persists safe name and avatar`() = runTest {
+        var storedProfile = PlayerProfileSnapshot("Tên cũ", "PLAYER123")
+        val profileRepository = object : PlayerProfileRepository {
+            override suspend fun findByPlayerId(playerId: String) = storedProfile
+
+            override suspend fun updateProfile(
+                playerId: String,
+                displayName: String,
+                avatarId: String?
+            ): Boolean {
+                storedProfile = storedProfile.copy(displayName = displayName, avatarId = avatarId)
+                return true
+            }
+        }
+        val engine = GameEngine(playerProfileRepository = profileRepository)
+        val player = engine.connectAccount(AuthenticatedAccount(UUID.randomUUID(), "Tên cũ"))
+
+        val deliveries = engine.handle(
+            player.playerId,
+            ClientMessage.UpdateProfile("  Tên mới  ", "rocket")
+        )
+        val response = deliveries.map(Delivery::message)
+            .filterIsInstance<ServerMessage.ProfileData>()
+            .single()
+
+        assertEquals("Tên mới", response.profile.displayName)
+        assertEquals("rocket", response.profile.avatarId)
+
+        val invalid = engine.handle(
+            player.playerId,
+            ClientMessage.UpdateProfile("Tên khác", "external-url")
+        )
+        assertEquals("INVALID_AVATAR", assertIs<ServerMessage.Error>(invalid.single().message).code)
+        assertEquals("Tên mới", storedProfile.displayName)
+
+        val guest = engine.connectGuest("Khách", null)
+        val guestUpdate = engine.handle(
+            guest.playerId,
+            ClientMessage.UpdateProfile("Khách mới", "star")
+        )
+        assertEquals("ACCOUNT_REQUIRED", assertIs<ServerMessage.Error>(guestUpdate.single().message).code)
+    }
+
+    @Test
     fun `leaderboard request returns an empty safe response without database`() = runTest {
         val engine = GameEngine()
         val guest = engine.connectGuest("Hiền", null)
@@ -78,6 +124,46 @@ class GameEngineTest {
 
         assertTrue(response.leaderboard.topPlayers.isEmpty())
         assertEquals(null, response.leaderboard.currentPlayer)
+    }
+
+    @Test
+    fun `online friends can invite and join a waiting room without password`() = runTest {
+        val hostId = UUID.randomUUID().toString()
+        val guestId = UUID.randomUUID().toString()
+        val repository = object : FriendRepository {
+            override suspend fun load(userId: String) = StoredFriends(
+                friends = listOf(
+                    if (userId == hostId) FriendSnapshot(guestId, "Guest", "GUEST123")
+                    else FriendSnapshot(hostId, "Host", "HOST123")
+                )
+            )
+            override suspend fun sendRequest(userId: String, playerCode: String, nowMillis: Long) =
+                FriendRequestResult.PlayerNotFound
+            override suspend fun respond(userId: String, requestId: String, accept: Boolean, nowMillis: Long) =
+                FriendResponseResult.NotFound
+            override suspend fun areFriends(firstUserId: String, secondUserId: String) =
+                setOf(firstUserId, secondUserId) == setOf(hostId, guestId)
+        }
+        val engine = GameEngine(friendRepository = repository)
+        engine.connectAccount(AuthenticatedAccount(UUID.fromString(hostId), "Host"))
+        engine.connectAccount(AuthenticatedAccount(UUID.fromString(guestId), "Guest"))
+        val room = engine.handle(
+            hostId,
+            ClientMessage.CreateRoom("Friend room", PASSWORD, ProtocolGameMode.ORDER)
+        ).map(Delivery::message).filterIsInstance<ServerMessage.RoomCreated>().single().game
+
+        val invitation = engine.handle(
+            hostId,
+            ClientMessage.InviteFriend(guestId, room.roomId)
+        ).map(Delivery::message).filterIsInstance<ServerMessage.RoomInvitation>().single()
+        val started = engine.handle(
+            guestId,
+            ClientMessage.RespondRoomInvitation(invitation.invitationId, accept = true)
+        ).map(Delivery::message).filterIsInstance<ServerMessage.GameStarted>()
+
+        assertEquals(1, started.size)
+        assertEquals(setOf(hostId, guestId), started.first().game.players.map { it.id }.toSet())
+        assertEquals(50, started.first().game.numbers.size)
     }
 
     @Test

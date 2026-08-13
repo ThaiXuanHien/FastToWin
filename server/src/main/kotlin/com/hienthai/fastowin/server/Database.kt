@@ -34,6 +34,7 @@ class DatabaseRuntime private constructor(
     val identityRepository: GuestIdentityRepository,
     val matchResultRepository: MatchResultRepository,
     val playerProfileRepository: PlayerProfileRepository,
+    val friendRepository: FriendRepository,
     val leaderboardRepository: LeaderboardRepository,
     private val dataSource: HikariDataSource
 ) : AutoCloseable {
@@ -63,6 +64,7 @@ class DatabaseRuntime private constructor(
                     identityRepository = PostgresGuestIdentityRepository(dataSource),
                     matchResultRepository = PostgresMatchResultRepository(dataSource),
                     playerProfileRepository = PostgresPlayerProfileRepository(dataSource),
+                    friendRepository = PostgresFriendRepository(dataSource),
                     leaderboardRepository = PostgresLeaderboardRepository(dataSource),
                     dataSource = dataSource
                 )

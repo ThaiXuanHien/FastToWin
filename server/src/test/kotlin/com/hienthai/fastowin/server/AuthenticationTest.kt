@@ -2,8 +2,13 @@ package com.hienthai.fastowin.server
 
 import com.hienthai.fastowin.protocol.AuthErrorResponse
 import com.hienthai.fastowin.protocol.AuthSessionResponse
+import com.hienthai.fastowin.protocol.AccountActionResponse
+import com.hienthai.fastowin.protocol.ChangePasswordRequest
+import com.hienthai.fastowin.protocol.DeleteAccountRequest
 import com.hienthai.fastowin.protocol.LoginRequest
 import com.hienthai.fastowin.protocol.LogoutRequest
+import com.hienthai.fastowin.protocol.PasswordResetConfirmRequest
+import com.hienthai.fastowin.protocol.PasswordResetRequest
 import com.hienthai.fastowin.protocol.ProtocolJson
 import com.hienthai.fastowin.protocol.RefreshTokenRequest
 import com.hienthai.fastowin.protocol.RegisterRequest
@@ -115,6 +120,82 @@ class AuthenticationTest {
     }
 
     @Test
+    fun `change reset and delete account revoke sessions safely`() = testApplication {
+        application { gameModule(environment = "dev") }
+        val email = "security@example.com"
+        val registered = client.postJson(
+            "/auth/register",
+            RegisterRequest(email, PASSWORD, "Security player", "android")
+        ).decode<AuthSessionResponse>()
+
+        val wrongChange = client.postJson(
+            "/auth/change-password",
+            ChangePasswordRequest(registered.accessToken, "wrong-password", NEW_PASSWORD)
+        )
+        assertEquals(HttpStatusCode.BadRequest, wrongChange.status)
+        assertEquals("INVALID_CURRENT_PASSWORD", wrongChange.decode<AuthErrorResponse>().code)
+
+        val changed = client.postJson(
+            "/auth/change-password",
+            ChangePasswordRequest(registered.accessToken, PASSWORD, NEW_PASSWORD)
+        )
+        assertEquals(HttpStatusCode.OK, changed.status)
+        assertTrue(changed.decode<AccountActionResponse>().message.isNotBlank())
+        val revokedRefresh = client.postJson(
+            "/auth/refresh",
+            RefreshTokenRequest(registered.refreshToken)
+        )
+        assertEquals(HttpStatusCode.Unauthorized, revokedRefresh.status)
+
+        val loggedIn = client.postJson(
+            "/auth/login",
+            LoginRequest(email, NEW_PASSWORD, "android")
+        ).decode<AuthSessionResponse>()
+        val resetRequested = client.postJson(
+            "/auth/password-reset/request",
+            PasswordResetRequest(email)
+        ).decode<AccountActionResponse>()
+        val resetToken = requireNotNull(resetRequested.devResetToken)
+
+        val reset = client.postJson(
+            "/auth/password-reset/confirm",
+            PasswordResetConfirmRequest(email, resetToken, RESET_PASSWORD)
+        )
+        assertEquals(HttpStatusCode.OK, reset.status)
+        val reusedReset = client.postJson(
+            "/auth/password-reset/confirm",
+            PasswordResetConfirmRequest(email, resetToken, "another-password")
+        )
+        assertEquals(HttpStatusCode.BadRequest, reusedReset.status)
+        assertEquals("INVALID_RESET_TOKEN", reusedReset.decode<AuthErrorResponse>().code)
+        val revokedByReset = client.postJson(
+            "/auth/refresh",
+            RefreshTokenRequest(loggedIn.refreshToken)
+        )
+        assertEquals(HttpStatusCode.Unauthorized, revokedByReset.status)
+
+        val finalSession = client.postJson(
+            "/auth/login",
+            LoginRequest(email, RESET_PASSWORD, "android")
+        ).decode<AuthSessionResponse>()
+        val wrongDelete = client.postJson(
+            "/auth/delete-account",
+            DeleteAccountRequest(finalSession.accessToken, "wrong-password")
+        )
+        assertEquals(HttpStatusCode.BadRequest, wrongDelete.status)
+        val deleted = client.postJson(
+            "/auth/delete-account",
+            DeleteAccountRequest(finalSession.accessToken, RESET_PASSWORD)
+        )
+        assertEquals(HttpStatusCode.OK, deleted.status)
+        val afterDelete = client.postJson(
+            "/auth/login",
+            LoginRequest(email, RESET_PASSWORD, "android")
+        )
+        assertEquals(HttpStatusCode.Unauthorized, afterDelete.status)
+    }
+
+    @Test
     fun `password hashes use unique salts and verify safely`() {
         val hasher = PasswordHasher(iterations = 1_000)
         val first = hasher.hash(PASSWORD)
@@ -137,5 +218,7 @@ class AuthenticationTest {
 
     private companion object {
         const val PASSWORD = "strong-password-123"
+        const val NEW_PASSWORD = "new-strong-password-456"
+        const val RESET_PASSWORD = "reset-strong-password-789"
     }
 }

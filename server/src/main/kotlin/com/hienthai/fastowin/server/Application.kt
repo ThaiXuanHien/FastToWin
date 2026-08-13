@@ -2,8 +2,13 @@ package com.hienthai.fastowin.server
 
 import com.hienthai.fastowin.protocol.ClientMessage
 import com.hienthai.fastowin.protocol.AuthErrorResponse
+import com.hienthai.fastowin.protocol.AccountActionResponse
+import com.hienthai.fastowin.protocol.ChangePasswordRequest
+import com.hienthai.fastowin.protocol.DeleteAccountRequest
 import com.hienthai.fastowin.protocol.LoginRequest
 import com.hienthai.fastowin.protocol.LogoutRequest
+import com.hienthai.fastowin.protocol.PasswordResetConfirmRequest
+import com.hienthai.fastowin.protocol.PasswordResetRequest
 import com.hienthai.fastowin.protocol.ProtocolJson
 import com.hienthai.fastowin.protocol.RefreshTokenRequest
 import com.hienthai.fastowin.protocol.RegisterRequest
@@ -40,7 +45,8 @@ import java.util.concurrent.ConcurrentHashMap
 
 fun Application.gameModule(
     engine: GameEngine = GameEngine(),
-    authService: AuthenticationService = AuthenticationService(InMemoryAuthRepository())
+    authService: AuthenticationService = AuthenticationService(InMemoryAuthRepository()),
+    environment: String = "dev"
 ) {
     install(ContentNegotiation) {
         json(ProtocolJson)
@@ -124,8 +130,47 @@ fun Application.gameModule(
             call.respond(HttpStatusCode.NoContent)
         }
 
+        post("/auth/change-password") {
+            val request = call.receiveOrReject<ChangePasswordRequest>() ?: return@post
+            call.respondAccountAction(
+                authService.changePassword(
+                    request.accessToken,
+                    request.currentPassword,
+                    request.newPassword
+                )
+            )
+        }
+
+        post("/auth/password-reset/request") {
+            if (environment != "dev") {
+                call.respond(
+                    HttpStatusCode.ServiceUnavailable,
+                    AuthErrorResponse(
+                        "PASSWORD_RESET_DELIVERY_UNAVAILABLE",
+                        "Dịch vụ gửi email khôi phục mật khẩu chưa được cấu hình."
+                    )
+                )
+                return@post
+            }
+            val request = call.receiveOrReject<PasswordResetRequest>() ?: return@post
+            call.respondAccountAction(authService.requestPasswordReset(request.email), exposeResetToken = true)
+        }
+
+        post("/auth/password-reset/confirm") {
+            val request = call.receiveOrReject<PasswordResetConfirmRequest>() ?: return@post
+            call.respondAccountAction(
+                authService.resetPassword(request.email, request.resetToken, request.newPassword)
+            )
+        }
+
+        post("/auth/delete-account") {
+            val request = call.receiveOrReject<DeleteAccountRequest>() ?: return@post
+            call.respondAccountAction(authService.deleteAccount(request.accessToken, request.password))
+        }
+
         webSocket("/game") {
             var playerId: String? = null
+            var accountAccessToken: String? = null
             try {
                 for (frame in incoming) {
                     if (frame !is Frame.Text) continue
@@ -163,6 +208,7 @@ fun Application.gameModule(
                                 is ClientMessage.ConnectAccount -> {
                                     val account = authService.authenticateAccessToken(message.accessToken)
                                         ?: throw InvalidAccessTokenException()
+                                    accountAccessToken = message.accessToken
                                     engine.connectAccount(account)
                                 }
                             }
@@ -193,9 +239,23 @@ fun Application.gameModule(
                             )
                         )
                         deliver(listOf(Delivery(engine.roomList())))
+                        deliver(engine.presenceUpdates(connected.playerId))
                         continue
                     }
 
+                    val currentAccountToken = accountAccessToken
+                    if (currentAccountToken != null &&
+                        authService.authenticateAccessToken(currentAccountToken) == null
+                    ) {
+                        send(ProtocolJson.encodeToString<ServerMessage>(
+                            ServerMessage.Error(
+                                "INVALID_ACCESS_TOKEN",
+                                "Phiên đăng nhập không hợp lệ hoặc đã hết hạn."
+                            )
+                        ))
+                        close(CloseReason(CloseReason.Codes.NORMAL, "Account session revoked"))
+                        break
+                    }
                     deliver(engine.handle(playerId, message))
                 }
             } finally {
@@ -233,6 +293,28 @@ private suspend fun ApplicationCall.respondAuthResult(
                 "INVALID_CREDENTIALS", "INVALID_REFRESH_TOKEN", "INVALID_GUEST_SESSION" ->
                     HttpStatusCode.Unauthorized
                 "DATABASE_REQUIRED" -> HttpStatusCode.ServiceUnavailable
+                else -> HttpStatusCode.BadRequest
+            },
+            AuthErrorResponse(result.code, result.message)
+        )
+    }
+}
+
+private suspend fun ApplicationCall.respondAccountAction(
+    result: AccountActionResult,
+    exposeResetToken: Boolean = false
+) {
+    when (result) {
+        is AccountActionResult.Success -> respond(
+            HttpStatusCode.OK,
+            AccountActionResponse(
+                message = result.message,
+                devResetToken = result.resetToken.takeIf { exposeResetToken }
+            )
+        )
+        is AccountActionResult.Failure -> respond(
+            when (result.code) {
+                "INVALID_ACCESS_TOKEN" -> HttpStatusCode.Unauthorized
                 else -> HttpStatusCode.BadRequest
             },
             AuthErrorResponse(result.code, result.message)

@@ -7,6 +7,8 @@ import com.hienthai.fastowin.navigation.GameMode
 import com.hienthai.fastowin.platform.epochMillis
 import com.hienthai.fastowin.protocol.ClientMessage
 import com.hienthai.fastowin.protocol.GameSnapshot
+import com.hienthai.fastowin.protocol.MAX_PROFILE_DISPLAY_NAME_LENGTH
+import com.hienthai.fastowin.protocol.PROFILE_AVATAR_IDS
 import com.hienthai.fastowin.protocol.ProtocolGameMode
 import com.hienthai.fastowin.protocol.RoomPhase
 import com.hienthai.fastowin.protocol.ServerMessage
@@ -26,10 +28,12 @@ import kotlin.random.Random
 class GameController(
     serverUrl: String,
     resumeTokenStore: ResumeTokenStore,
-    private val accountDisplayName: String? = null,
+    accountDisplayName: String? = null,
     accessTokenProvider: (suspend () -> String?)? = null,
-    onAccountSessionExpired: (() -> Unit)? = null
+    onAccountSessionExpired: (() -> Unit)? = null,
+    private val onProfileDisplayNameChanged: (String) -> Unit = {}
 ) {
+    private var accountDisplayName = accountDisplayName
     private val _uiState = MutableStateFlow(GameState())
     val uiState: StateFlow<GameState> = _uiState.asStateFlow()
 
@@ -49,12 +53,20 @@ class GameController(
     private var countdownJob: Job? = null
     private var gameStarted = false
 
+    init {
+        accountDisplayName?.let { displayName ->
+            _uiState.update { it.copy(player = PlayerState(displayName)) }
+            ensureSocketSession(displayName)
+        }
+    }
+
     fun selectMode(mode: GameMode) {
-        if (accountDisplayName == null) {
+        val displayName = accountDisplayName
+        if (displayName == null) {
             _uiState.update { it.copy(gameMode = mode, lobbyStage = LobbyStage.ENTER_NAME) }
         } else {
             _uiState.update { it.copy(gameMode = mode) }
-            enterRoomBrowser(accountDisplayName)
+            enterRoomBrowser(displayName)
         }
     }
 
@@ -141,29 +153,122 @@ class GameController(
     }
 
     fun openProfile() {
-        if (sessionJob?.isActive != true || playerId == null) {
-            _uiState.update { it.copy(error = "Chưa kết nối được máy chủ.") }
+        _uiState.update {
+            it.copy(
+                isProfileOpen = true,
+                isProfileLoading = true,
+                isLeaderboardOpen = false,
+                isFriendsOpen = false,
+                error = null
+            )
+        }
+        if (sessionJob?.isActive != true) {
+            ensureSocketSession(accountDisplayName ?: _uiState.value.player.name)
             return
         }
-        _uiState.update { it.copy(isProfileOpen = true, isProfileLoading = true, error = null) }
+        if (playerId == null) return
         scope.launch { socket.sendMessage(ClientMessage.GetProfile) }
     }
 
     fun closeProfile() {
-        _uiState.update { it.copy(isProfileOpen = false, isProfileLoading = false) }
+        _uiState.update {
+            it.copy(isProfileOpen = false, isProfileLoading = false, isProfileSaving = false, profileNotice = null)
+        }
+    }
+
+    fun updateProfile(displayName: String, avatarId: String?) {
+        val safeName = displayName.trim()
+        if (safeName.isEmpty() || safeName.length > MAX_PROFILE_DISPLAY_NAME_LENGTH) {
+            _uiState.update {
+                it.copy(error = "Biệt danh phải có từ 1 đến $MAX_PROFILE_DISPLAY_NAME_LENGTH ký tự.")
+            }
+            return
+        }
+        if (avatarId != null && avatarId !in PROFILE_AVATAR_IDS) {
+            _uiState.update { it.copy(error = "Ảnh đại diện không hợp lệ.") }
+            return
+        }
+        _uiState.update { it.copy(isProfileSaving = true, profileNotice = null, error = null) }
+        scope.launch { socket.sendMessage(ClientMessage.UpdateProfile(safeName, avatarId)) }
     }
 
     fun openLeaderboard() {
-        if (sessionJob?.isActive != true || playerId == null) {
-            _uiState.update { it.copy(error = "Chưa kết nối được máy chủ.") }
+        _uiState.update {
+            it.copy(
+                isLeaderboardOpen = true,
+                isLeaderboardLoading = true,
+                isProfileOpen = false,
+                isFriendsOpen = false,
+                error = null
+            )
+        }
+        if (sessionJob?.isActive != true) {
+            ensureSocketSession(accountDisplayName ?: _uiState.value.player.name)
             return
         }
-        _uiState.update { it.copy(isLeaderboardOpen = true, isLeaderboardLoading = true, error = null) }
+        if (playerId == null) return
         scope.launch { socket.sendMessage(ClientMessage.GetLeaderboard) }
     }
 
     fun closeLeaderboard() {
         _uiState.update { it.copy(isLeaderboardOpen = false, isLeaderboardLoading = false) }
+    }
+
+    fun openFriends() {
+        _uiState.update {
+            it.copy(
+                isFriendsOpen = true,
+                isFriendsLoading = true,
+                isProfileOpen = false,
+                isLeaderboardOpen = false,
+                error = null
+            )
+        }
+        if (sessionJob?.isActive != true) {
+            ensureSocketSession(accountDisplayName ?: _uiState.value.player.name)
+            return
+        }
+        if (playerId == null) return
+        scope.launch { socket.sendMessage(ClientMessage.GetFriends) }
+    }
+
+    fun closeFriends() {
+        _uiState.update { it.copy(isFriendsOpen = false, isFriendsLoading = false, error = null) }
+    }
+
+    fun openHome() {
+        _uiState.update {
+            it.copy(
+                isProfileOpen = false,
+                isProfileLoading = false,
+                isLeaderboardOpen = false,
+                isLeaderboardLoading = false,
+                isFriendsOpen = false,
+                isFriendsLoading = false,
+                error = null
+            )
+        }
+    }
+
+    fun sendFriendRequest(playerCode: String) {
+        _uiState.update { it.copy(isFriendsLoading = true, error = null, socialNotice = null) }
+        scope.launch { socket.sendMessage(ClientMessage.SendFriendRequest(playerCode)) }
+    }
+
+    fun respondFriendRequest(requestId: String, accept: Boolean) {
+        _uiState.update { it.copy(isFriendsLoading = true, error = null, socialNotice = null) }
+        scope.launch { socket.sendMessage(ClientMessage.RespondFriendRequest(requestId, accept)) }
+    }
+
+    fun inviteFriend(friendUserId: String) {
+        val roomId = _uiState.value.currentRoomId ?: return
+        scope.launch { socket.sendMessage(ClientMessage.InviteFriend(friendUserId, roomId)) }
+    }
+
+    fun respondRoomInvitation(accept: Boolean) {
+        val invitation = _uiState.value.roomInvitation ?: return
+        _uiState.update { it.copy(roomInvitation = null, error = null) }
+        scope.launch { socket.sendMessage(ClientMessage.RespondRoomInvitation(invitation.invitationId, accept)) }
     }
 
     fun createRoom(roomName: String, password: String) {
@@ -214,6 +319,14 @@ class GameController(
             is ServerMessage.SessionReady -> {
                 playerId = message.playerId
                 _uiState.update { it.copy(isSearching = false, error = null) }
+                if (accountDisplayName != null) {
+                    scope.launch {
+                        socket.sendMessage(ClientMessage.ListRooms)
+                        socket.sendMessage(ClientMessage.GetProfile)
+                        socket.sendMessage(ClientMessage.GetFriends)
+                        socket.sendMessage(ClientMessage.GetLeaderboard)
+                    }
+                }
                 message.currentGame?.let { game ->
                     if (game.phase == RoomPhase.PLAYING || game.phase == RoomPhase.FINISHED) {
                         startGameWithSnapshot(game)
@@ -242,8 +355,18 @@ class GameController(
             }
 
             is ServerMessage.ProfileData -> {
+                val wasSaving = _uiState.value.isProfileSaving
+                accountDisplayName = message.profile.displayName
+                onProfileDisplayNameChanged(message.profile.displayName)
                 _uiState.update {
-                    it.copy(profile = message.profile, isProfileLoading = false, error = null)
+                    it.copy(
+                        profile = message.profile,
+                        player = it.player.copy(name = message.profile.displayName),
+                        isProfileLoading = false,
+                        isProfileSaving = false,
+                        profileNotice = if (wasSaving) "Đã lưu hồ sơ." else null,
+                        error = null
+                    )
                 }
             }
 
@@ -251,6 +374,20 @@ class GameController(
                 _uiState.update {
                     it.copy(leaderboard = message.leaderboard, isLeaderboardLoading = false, error = null)
                 }
+            }
+
+            is ServerMessage.FriendsData -> {
+                _uiState.update {
+                    it.copy(social = message.social, isFriendsLoading = false, error = null)
+                }
+            }
+
+            is ServerMessage.RoomInvitation -> {
+                _uiState.update { it.copy(roomInvitation = message, socialNotice = null) }
+            }
+
+            is ServerMessage.SocialNotice -> {
+                _uiState.update { it.copy(socialNotice = message.message, isFriendsLoading = false, error = null) }
             }
 
             is ServerMessage.RoomCreated -> applyWaitingSnapshot(message.game)
@@ -362,7 +499,14 @@ class GameController(
         if (error.code in setOf("WRONG_PASSWORD", "ROOM_NOT_FOUND", "ROOM_FULL", "ALREADY_IN_ROOM")) {
             returnToRoomBrowser(error.message)
         } else {
-            _uiState.update { it.copy(isSearching = false, error = error.message) }
+            _uiState.update {
+                it.copy(
+                    isSearching = false,
+                    isProfileSaving = false,
+                    isFriendsLoading = false,
+                    error = error.message
+                )
+            }
         }
     }
 
@@ -399,17 +543,19 @@ class GameController(
 
     fun resetGame() {
         val roomId = _uiState.value.currentRoomId
+        val displayName = accountDisplayName ?: _uiState.value.player.name
         val activeSession = sessionJob
         timerJob?.cancel()
         countdownJob?.cancel()
         gameStarted = false
-        _uiState.value = GameState()
+        _uiState.value = GameState(player = PlayerState(displayName))
 
         sessionJob = null
         scope.launch {
             if (roomId != null) socket.sendMessage(ClientMessage.LeaveRoom(roomId))
             socket.disconnect()
             activeSession?.cancel()
+            ensureSocketSession(displayName)
         }
     }
 

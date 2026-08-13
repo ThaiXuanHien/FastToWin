@@ -1,8 +1,12 @@
 package com.hienthai.fastowin.server
 
 import com.hienthai.fastowin.protocol.ClientMessage
+import com.hienthai.fastowin.protocol.MAX_PROFILE_DISPLAY_NAME_LENGTH
+import com.hienthai.fastowin.protocol.PROFILE_AVATAR_IDS
 import com.hienthai.fastowin.protocol.GAME_NUMBER_COUNT
 import com.hienthai.fastowin.protocol.GameSnapshot
+import com.hienthai.fastowin.protocol.FriendPresence
+import com.hienthai.fastowin.protocol.FriendsSnapshot
 import com.hienthai.fastowin.protocol.PlayerSnapshot
 import com.hienthai.fastowin.protocol.PlayerProfileSnapshot
 import com.hienthai.fastowin.protocol.RoomPhase
@@ -32,12 +36,14 @@ class GameEngine(
     private val matchResultRepository: MatchResultRepository = NoOpMatchResultRepository,
     private val playerProfileRepository: PlayerProfileRepository = NoOpPlayerProfileRepository,
     private val leaderboardRepository: LeaderboardRepository = NoOpLeaderboardRepository,
+    private val friendRepository: FriendRepository = NoOpFriendRepository,
     private val timeAttackMillis: Long = DEFAULT_TIME_ATTACK_MILLIS,
     private val nowMillis: () -> Long = System::currentTimeMillis
 ) {
     private val mutex = Mutex()
     private val sessionsByPlayerId = mutableMapOf<String, GuestSession>()
     private val rooms = mutableMapOf<String, Room>()
+    private val roomInvitations = mutableMapOf<String, RoomInvitationRecord>()
 
     suspend fun connectGuest(displayName: String, resumeToken: String?): ConnectedPlayer {
         val safeName = displayName.trim().take(MAX_PLAYER_NAME_LENGTH)
@@ -77,7 +83,13 @@ class GameEngine(
 
     suspend fun handle(playerId: String, message: ClientMessage): List<Delivery> {
         if (message is ClientMessage.GetProfile) return loadProfile(playerId)
+        if (message is ClientMessage.UpdateProfile) return updateProfile(playerId, message)
         if (message is ClientMessage.GetLeaderboard) return loadLeaderboard(playerId)
+        if (message is ClientMessage.GetFriends) return loadFriends(playerId)
+        if (message is ClientMessage.SendFriendRequest) return sendFriendRequest(playerId, message.playerCode)
+        if (message is ClientMessage.RespondFriendRequest) return respondFriendRequest(playerId, message)
+        if (message is ClientMessage.InviteFriend) return inviteFriend(playerId, message)
+        if (message is ClientMessage.RespondRoomInvitation) return respondRoomInvitation(playerId, message)
         val result = mutex.withLock {
             val player = sessionsByPlayerId[playerId]
                 ?: return@withLock HandleResult(
@@ -96,7 +108,13 @@ class GameEngine(
                     listOf(Delivery(ServerMessage.RoomList(publicRooms()), setOf(playerId)))
                 )
                 ClientMessage.GetProfile -> HandleResult(emptyList())
+                is ClientMessage.UpdateProfile -> HandleResult(emptyList())
                 ClientMessage.GetLeaderboard -> HandleResult(emptyList())
+                ClientMessage.GetFriends -> HandleResult(emptyList())
+                is ClientMessage.SendFriendRequest -> HandleResult(emptyList())
+                is ClientMessage.RespondFriendRequest -> HandleResult(emptyList())
+                is ClientMessage.InviteFriend -> HandleResult(emptyList())
+                is ClientMessage.RespondRoomInvitation -> HandleResult(emptyList())
                 is ClientMessage.CreateRoom -> HandleResult(createRoom(player, message))
                 is ClientMessage.JoinRoom -> HandleResult(joinRoom(player, message))
                 is ClientMessage.LeaveRoom -> HandleResult(leaveRoom(player, message))
@@ -107,8 +125,170 @@ class GameEngine(
             runCatching { matchResultRepository.save(completed) }
                 .onFailure { System.err.println("Could not persist match ${completed.matchId}: ${it.message}") }
         }
-        return result.deliveries
+        val presenceChanged = message is ClientMessage.CreateRoom ||
+            message is ClientMessage.JoinRoom || message is ClientMessage.LeaveRoom
+        val affectedPlayers = if (presenceChanged) {
+            (result.deliveries.flatMap { it.recipients.orEmpty() } + playerId).toSet()
+        } else emptySet()
+        return result.deliveries + affectedPlayers.flatMap { presenceUpdates(it) }
     }
+
+    private suspend fun loadFriends(playerId: String): List<Delivery> {
+        if (!isAccountSession(playerId)) return listOf(accountRequired(playerId))
+        val stored = runCatching { friendRepository.load(playerId) }.getOrElse {
+            return listOf(error(playerId, "FRIENDS_UNAVAILABLE", "Chưa tải được danh sách bạn bè."))
+        }
+        val presence = mutex.withLock {
+            stored.friends.associate { friend -> friend.userId to presenceOf(friend.userId) }
+        }
+        return listOf(Delivery(
+            ServerMessage.FriendsData(FriendsSnapshot(
+                friends = stored.friends.map { it.copy(presence = presence[it.userId] ?: FriendPresence.OFFLINE) },
+                incomingRequests = stored.incomingRequests,
+                outgoingRequests = stored.outgoingRequests
+            )),
+            setOf(playerId)
+        ))
+    }
+
+    private suspend fun sendFriendRequest(playerId: String, playerCode: String): List<Delivery> {
+        if (!isAccountSession(playerId)) return listOf(accountRequired(playerId))
+        if (playerCode.isBlank() || playerCode.length > 12) {
+            return listOf(error(playerId, "INVALID_PLAYER_CODE", "Mã người chơi không hợp lệ."))
+        }
+        return when (val result = friendRepository.sendRequest(playerId, playerCode, nowMillis())) {
+            is FriendRequestResult.Success ->
+                listOf(Delivery(ServerMessage.SocialNotice("Đã gửi lời mời kết bạn."), setOf(playerId))) +
+                    refreshSocialFor(setOf(playerId, result.recipientId))
+            FriendRequestResult.PlayerNotFound -> listOf(error(playerId, "PLAYER_NOT_FOUND", "Không tìm thấy mã người chơi."))
+            FriendRequestResult.SelfRequest -> listOf(error(playerId, "SELF_FRIEND_REQUEST", "Bạn không thể tự kết bạn với mình."))
+            FriendRequestResult.AlreadyExists -> listOf(error(playerId, "FRIENDSHIP_EXISTS", "Hai người đã là bạn hoặc đang có lời mời."))
+        }
+    }
+
+    private suspend fun respondFriendRequest(
+        playerId: String,
+        command: ClientMessage.RespondFriendRequest
+    ): List<Delivery> {
+        if (!isAccountSession(playerId)) return listOf(accountRequired(playerId))
+        return when (val result = friendRepository.respond(playerId, command.requestId, command.accept, nowMillis())) {
+            is FriendResponseResult.Success -> {
+                val notice = if (command.accept) "Đã chấp nhận lời mời kết bạn." else "Đã từ chối lời mời kết bạn."
+                listOf(Delivery(ServerMessage.SocialNotice(notice), setOf(playerId))) +
+                    refreshSocialFor(setOf(playerId, result.requesterId))
+            }
+            FriendResponseResult.NotFound -> listOf(error(playerId, "FRIEND_REQUEST_NOT_FOUND", "Lời mời không còn tồn tại."))
+        }
+    }
+
+    private suspend fun inviteFriend(playerId: String, command: ClientMessage.InviteFriend): List<Delivery> {
+        if (!isAccountSession(playerId)) return listOf(accountRequired(playerId))
+        if (!friendRepository.areFriends(playerId, command.friendUserId)) {
+            return listOf(error(playerId, "NOT_FRIENDS", "Người chơi này chưa phải bạn bè."))
+        }
+        return mutex.withLock {
+            val inviter = sessionsByPlayerId[playerId]
+                ?: return@withLock listOf(error(playerId, "SESSION_NOT_FOUND", "Phiên chơi không còn hợp lệ."))
+            val room = rooms[command.roomId]
+                ?.takeIf { it.hostId == playerId && it.phase == RoomPhase.WAITING && it.guestId == null }
+                ?: return@withLock listOf(error(playerId, "ROOM_NOT_INVITABLE", "Phòng không còn sẵn sàng để mời bạn."))
+            val friend = sessionsByPlayerId[command.friendUserId]
+                ?.takeIf { it.isConnected && it.resumeToken == null }
+                ?: return@withLock listOf(error(playerId, "FRIEND_OFFLINE", "Bạn bè hiện không online."))
+            if (roomFor(friend.playerId) != null) {
+                return@withLock listOf(error(playerId, "FRIEND_BUSY", "Bạn bè đang ở trong phòng khác."))
+            }
+            val invitation = RoomInvitationRecord(
+                id = UUID.randomUUID().toString(),
+                inviterId = playerId,
+                inviteeId = friend.playerId,
+                roomId = room.id,
+                expiresAtMillis = nowMillis() + ROOM_INVITATION_TTL_MILLIS
+            )
+            roomInvitations.entries.removeAll { it.value.inviterId == playerId && it.value.inviteeId == friend.playerId }
+            roomInvitations[invitation.id] = invitation
+            listOf(
+                Delivery(ServerMessage.RoomInvitation(
+                    invitationId = invitation.id,
+                    fromUserId = playerId,
+                    fromDisplayName = inviter.displayName,
+                    roomId = room.id,
+                    roomName = room.name,
+                    expiresAtEpochMillis = invitation.expiresAtMillis
+                ), setOf(friend.playerId)),
+                Delivery(ServerMessage.SocialNotice("Đã gửi lời mời vào phòng."), setOf(playerId))
+            )
+        }
+    }
+
+    private suspend fun respondRoomInvitation(
+        playerId: String,
+        command: ClientMessage.RespondRoomInvitation
+    ): List<Delivery> {
+        if (!isAccountSession(playerId)) return listOf(accountRequired(playerId))
+        val result = mutex.withLock {
+            val invitation = roomInvitations.remove(command.invitationId)
+                ?.takeIf { it.inviteeId == playerId && it.expiresAtMillis > nowMillis() }
+                ?: return@withLock listOf(error(playerId, "INVITATION_EXPIRED", "Lời mời vào phòng đã hết hạn."))
+            if (!command.accept) {
+                return@withLock listOf(
+                    Delivery(ServerMessage.SocialNotice("Đã từ chối lời mời vào phòng."), setOf(playerId)),
+                    Delivery(ServerMessage.SocialNotice("Bạn bè đã từ chối lời mời vào phòng."), setOf(invitation.inviterId))
+                )
+            }
+            val player = sessionsByPlayerId[playerId]
+                ?: return@withLock listOf(error(playerId, "SESSION_NOT_FOUND", "Phiên chơi không còn hợp lệ."))
+            if (roomFor(playerId) != null) {
+                return@withLock listOf(error(playerId, "ALREADY_IN_ROOM", "Bạn đang ở trong một phòng khác."))
+            }
+            val room = rooms[invitation.roomId]
+                ?.takeIf { it.hostId == invitation.inviterId && it.phase == RoomPhase.WAITING && it.guestId == null }
+                ?: return@withLock listOf(error(playerId, "ROOM_NOT_FOUND", "Phòng được mời không còn sẵn sàng."))
+            room.guestId = player.playerId
+            room.phase = RoomPhase.PLAYING
+            room.numbers = (1..GAME_NUMBER_COUNT).shuffled()
+            room.startedAtEpochMillis = nowMillis()
+            room.sequence++
+            room.scores[player.playerId] = 0
+            listOf(
+                Delivery(ServerMessage.GameStarted(room.snapshot()), room.playerIds()),
+                Delivery(ServerMessage.RoomList(publicRooms()))
+            )
+        }
+        val affectedPlayers = (result.flatMap { it.recipients.orEmpty() } + playerId).toSet()
+        return result + affectedPlayers.flatMap { presenceUpdates(it) }
+    }
+
+    suspend fun presenceUpdates(playerId: String): List<Delivery> {
+        val isAccount = mutex.withLock { sessionsByPlayerId[playerId]?.resumeToken == null }
+        if (!isAccount) return emptyList()
+        val stored = runCatching { friendRepository.load(playerId) }.getOrNull() ?: return emptyList()
+        return refreshSocialFor((stored.friends.map { it.userId } + playerId).toSet())
+    }
+
+    private suspend fun refreshSocialFor(userIds: Set<String>): List<Delivery> {
+        val connectedAccounts = mutex.withLock {
+            userIds.filter { sessionsByPlayerId[it]?.let { session -> session.isConnected && session.resumeToken == null } == true }
+        }
+        return connectedAccounts.flatMap { loadFriends(it) }
+    }
+
+    private suspend fun isAccountSession(playerId: String): Boolean = mutex.withLock {
+        sessionsByPlayerId[playerId]?.let { it.isConnected && it.resumeToken == null } == true
+    }
+
+    private fun presenceOf(playerId: String): FriendPresence {
+        val session = sessionsByPlayerId[playerId]
+        if (session?.isConnected != true || session.resumeToken != null) return FriendPresence.OFFLINE
+        val room = roomFor(playerId) ?: return FriendPresence.ONLINE
+        return if (room.phase == RoomPhase.WAITING) FriendPresence.IN_ROOM else FriendPresence.PLAYING
+    }
+
+    private fun accountRequired(playerId: String) = error(
+        playerId,
+        "ACCOUNT_REQUIRED",
+        "Hãy đăng nhập tài khoản để sử dụng tính năng bạn bè."
+    )
 
     private suspend fun loadProfile(playerId: String): List<Delivery> {
         val session = mutex.withLock { sessionsByPlayerId[playerId]?.copy() }
@@ -121,6 +301,48 @@ class GameEngine(
             playerCode = playerId.replace("-", "").take(10).uppercase()
         )
         return listOf(Delivery(ServerMessage.ProfileData(profile), setOf(playerId)))
+    }
+
+    private suspend fun updateProfile(
+        playerId: String,
+        command: ClientMessage.UpdateProfile
+    ): List<Delivery> {
+        val safeName = command.displayName.trim()
+        if (safeName.isEmpty() || safeName.length > MAX_PROFILE_DISPLAY_NAME_LENGTH) {
+            return listOf(error(
+                playerId,
+                "INVALID_DISPLAY_NAME",
+                "Biệt danh phải có từ 1 đến $MAX_PROFILE_DISPLAY_NAME_LENGTH ký tự."
+            ))
+        }
+        if (command.avatarId != null && command.avatarId !in PROFILE_AVATAR_IDS) {
+            return listOf(error(playerId, "INVALID_AVATAR", "Ảnh đại diện không hợp lệ."))
+        }
+        val session = mutex.withLock { sessionsByPlayerId[playerId]?.copy() }
+        if (session == null) {
+            return listOf(error(playerId, "SESSION_NOT_FOUND", "Phiên chơi không còn hợp lệ."))
+        }
+        if (session.resumeToken != null) {
+            return listOf(error(
+                playerId,
+                "ACCOUNT_REQUIRED",
+                "Hãy lưu tài khoản khách trước khi chỉnh sửa hồ sơ."
+            ))
+        }
+        val updated = runCatching {
+            playerProfileRepository.updateProfile(playerId, safeName, command.avatarId)
+        }.onFailure {
+            System.err.println("Could not update profile $playerId: ${it.message}")
+        }.getOrDefault(false)
+        if (!updated) {
+            return listOf(error(
+                playerId,
+                "PROFILE_UPDATE_UNAVAILABLE",
+                "Chưa thể lưu hồ sơ. Vui lòng thử lại."
+            ))
+        }
+        mutex.withLock { sessionsByPlayerId[playerId]?.displayName = safeName }
+        return loadProfile(playerId) + Delivery(roomList()) + presenceUpdates(playerId)
     }
 
     private suspend fun loadLeaderboard(playerId: String): List<Delivery> {
@@ -181,11 +403,12 @@ class GameEngine(
         }
         runCatching { identityRepository.markDisconnected(playerId, disconnectedAt) }
             .onFailure { System.err.println("Could not persist disconnected session $playerId: ${it.message}") }
-        return deliveries
+        return deliveries + presenceUpdates(playerId)
     }
 
     suspend fun cleanupExpiredSessions(): List<Delivery> = mutex.withLock {
         val now = nowMillis()
+        roomInvitations.entries.removeAll { it.value.expiresAtMillis <= now }
         val expiredPlayerIds = sessionsByPlayerId.values
             .filter { session ->
                 if (session.isConnected) return@filter false
@@ -486,6 +709,14 @@ class GameEngine(
         fun playerIds(): Set<String> = setOfNotNull(hostId, guestId)
     }
 
+    private data class RoomInvitationRecord(
+        val id: String,
+        val inviterId: String,
+        val inviteeId: String,
+        val roomId: String,
+        val expiresAtMillis: Long
+    )
+
     private data class PasswordHash(val salt: ByteArray, val value: ByteArray) {
         fun matches(password: String): Boolean = MessageDigest.isEqual(value, derive(password, salt))
 
@@ -512,6 +743,7 @@ class GameEngine(
         const val DEFAULT_TIME_ATTACK_MILLIS = 60_000L
         const val ROOM_RECONNECT_GRACE_MILLIS = 30_000L
         const val IDLE_SESSION_TTL_MILLIS = 5 * 60_000L
+        const val ROOM_INVITATION_TTL_MILLIS = 60_000L
         val secureRandom = SecureRandom()
     }
 }

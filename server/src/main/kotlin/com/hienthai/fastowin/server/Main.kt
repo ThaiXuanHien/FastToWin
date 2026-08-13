@@ -16,6 +16,7 @@ fun main() {
     val matchResultRepository = database?.matchResultRepository ?: NoOpMatchResultRepository
     val playerProfileRepository = database?.playerProfileRepository ?: NoOpPlayerProfileRepository
     val leaderboardRepository = database?.leaderboardRepository ?: NoOpLeaderboardRepository
+    val friendRepository = database?.friendRepository ?: NoOpFriendRepository
     val storage = if (database == null) "memory" else "postgresql"
 
     println("Starting Fast To Win server: environment=$environment, host=$host, port=$port, storage=$storage")
@@ -26,9 +27,11 @@ fun main() {
                     identityRepository,
                     matchResultRepository,
                     playerProfileRepository,
-                    leaderboardRepository
+                    leaderboardRepository,
+                    friendRepository
                 ),
-                authService = authService
+                authService = authService,
+                environment = environment
             )
         }.start(wait = true)
     } finally {

@@ -17,14 +17,16 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
-enum class AuthStage { WELCOME, LOGIN, REGISTER, UPGRADE_GUEST, PLAYING }
+enum class AuthStage { WELCOME, LOGIN, REGISTER, RESET_PASSWORD, UPGRADE_GUEST, PLAYING }
 
 data class AuthState(
     val stage: AuthStage = AuthStage.WELCOME,
     val isGuest: Boolean = false,
     val session: StoredAuthSession? = null,
     val isLoading: Boolean = false,
-    val error: String? = null
+    val error: String? = null,
+    val notice: String? = null,
+    val devResetToken: String? = null
 )
 
 class AuthController(
@@ -51,6 +53,9 @@ class AuthController(
 
     fun openLogin() = _state.update { it.copy(stage = AuthStage.LOGIN, error = null) }
     fun openRegister() = _state.update { it.copy(stage = AuthStage.REGISTER, error = null) }
+    fun openPasswordReset() = _state.update {
+        it.copy(stage = AuthStage.RESET_PASSWORD, error = null, notice = null, devResetToken = null)
+    }
     fun backToWelcome() = _state.update { AuthState() }
     fun playAsGuest() = _state.update { AuthState(stage = AuthStage.PLAYING, isGuest = true) }
     fun openGuestUpgrade() = _state.update {
@@ -135,9 +140,79 @@ class AuthController(
         }
     }
 
+    fun requestPasswordReset(email: String) {
+        if (_state.value.isLoading) return
+        _state.update { it.copy(isLoading = true, error = null, notice = null) }
+        scope.launch {
+            runCatching { api.requestPasswordReset(email) }
+                .onSuccess { response ->
+                    _state.update {
+                        it.copy(
+                            isLoading = false,
+                            notice = response.message,
+                            devResetToken = response.devResetToken,
+                            error = null
+                        )
+                    }
+                }
+                .onFailure(::showError)
+        }
+    }
+
+    fun confirmPasswordReset(email: String, resetToken: String, newPassword: String) {
+        if (_state.value.isLoading) return
+        _state.update { it.copy(isLoading = true, error = null, notice = null) }
+        scope.launch {
+            runCatching { api.confirmPasswordReset(email, resetToken, newPassword) }
+                .onSuccess { response ->
+                    _state.value = AuthState(stage = AuthStage.LOGIN, notice = response.message)
+                }
+                .onFailure(::showError)
+        }
+    }
+
+    fun changePassword(currentPassword: String, newPassword: String) {
+        if (_state.value.isLoading) return
+        if (_state.value.session == null) return
+        _state.update { it.copy(isLoading = true, error = null, notice = null) }
+        scope.launch {
+            val accessToken = validAccessToken() ?: return@launch
+            runCatching { api.changePassword(accessToken, currentPassword, newPassword) }
+                .onSuccess { response ->
+                    store.clear(serverUrl)
+                    _state.value = AuthState(stage = AuthStage.LOGIN, notice = response.message)
+                }
+                .onFailure(::showError)
+        }
+    }
+
+    fun deleteAccount(password: String) {
+        if (_state.value.isLoading) return
+        if (_state.value.session == null) return
+        _state.update { it.copy(isLoading = true, error = null, notice = null) }
+        scope.launch {
+            val accessToken = validAccessToken() ?: return@launch
+            runCatching { api.deleteAccount(accessToken, password) }
+                .onSuccess { response ->
+                    store.clear(serverUrl)
+                    resumeTokenStore.clear(serverUrl)
+                    _state.value = AuthState(notice = response.message)
+                }
+                .onFailure(::showError)
+        }
+    }
+
     fun expireSession(message: String = "Phiên đăng nhập không còn hợp lệ.") {
         store.clear(serverUrl)
         _state.value = AuthState(error = message)
+    }
+
+    fun updateStoredDisplayName(displayName: String) {
+        val current = _state.value.session ?: return
+        if (current.displayName == displayName) return
+        val updated = current.copy(displayName = displayName)
+        store.save(serverUrl, updated)
+        _state.update { it.copy(session = updated) }
     }
 
     fun close() {

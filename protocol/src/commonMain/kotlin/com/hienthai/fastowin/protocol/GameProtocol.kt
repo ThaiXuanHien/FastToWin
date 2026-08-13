@@ -4,8 +4,11 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
-const val PROTOCOL_VERSION = 2
+const val PROTOCOL_VERSION = 4
 const val GAME_NUMBER_COUNT = 50
+const val MAX_PROFILE_DISPLAY_NAME_LENGTH = 32
+
+val PROFILE_AVATAR_IDS = setOf("bolt", "rocket", "target", "trophy", "crown", "star")
 
 val ProtocolJson = Json {
     classDiscriminator = "type"
@@ -81,6 +84,7 @@ data class MatchHistorySnapshot(
 data class PlayerProfileSnapshot(
     val displayName: String,
     val playerCode: String,
+    val avatarId: String? = null,
     val statistics: PlayerStatisticsSnapshot = PlayerStatisticsSnapshot(),
     val recentMatches: List<MatchHistorySnapshot> = emptyList(),
     val achievements: List<AchievementSnapshot> = emptyList()
@@ -109,6 +113,34 @@ data class LeaderboardEntrySnapshot(
 data class LeaderboardSnapshot(
     val topPlayers: List<LeaderboardEntrySnapshot> = emptyList(),
     val currentPlayer: LeaderboardEntrySnapshot? = null
+)
+
+@Serializable
+enum class FriendPresence { OFFLINE, ONLINE, IN_ROOM, PLAYING }
+
+@Serializable
+data class FriendSnapshot(
+    val userId: String,
+    val displayName: String,
+    val playerCode: String,
+    val avatarId: String? = null,
+    val presence: FriendPresence = FriendPresence.OFFLINE
+)
+
+@Serializable
+data class FriendRequestSnapshot(
+    val requestId: String,
+    val userId: String,
+    val displayName: String,
+    val playerCode: String,
+    val avatarId: String? = null
+)
+
+@Serializable
+data class FriendsSnapshot(
+    val friends: List<FriendSnapshot> = emptyList(),
+    val incomingRequests: List<FriendRequestSnapshot> = emptyList(),
+    val outgoingRequests: List<FriendRequestSnapshot> = emptyList()
 )
 
 @Serializable
@@ -152,8 +184,35 @@ sealed class ClientMessage {
     data object GetProfile : ClientMessage()
 
     @Serializable
+    @SerialName("update_profile")
+    data class UpdateProfile(
+        val displayName: String,
+        val avatarId: String?
+    ) : ClientMessage()
+
+    @Serializable
     @SerialName("get_leaderboard")
     data object GetLeaderboard : ClientMessage()
+
+    @Serializable
+    @SerialName("get_friends")
+    data object GetFriends : ClientMessage()
+
+    @Serializable
+    @SerialName("send_friend_request")
+    data class SendFriendRequest(val playerCode: String) : ClientMessage()
+
+    @Serializable
+    @SerialName("respond_friend_request")
+    data class RespondFriendRequest(val requestId: String, val accept: Boolean) : ClientMessage()
+
+    @Serializable
+    @SerialName("invite_friend")
+    data class InviteFriend(val friendUserId: String, val roomId: String) : ClientMessage()
+
+    @Serializable
+    @SerialName("respond_room_invitation")
+    data class RespondRoomInvitation(val invitationId: String, val accept: Boolean) : ClientMessage()
 
     @Serializable
     @SerialName("create_room")
@@ -202,6 +261,25 @@ sealed class ServerMessage {
     @Serializable
     @SerialName("leaderboard_data")
     data class LeaderboardData(val leaderboard: LeaderboardSnapshot) : ServerMessage()
+
+    @Serializable
+    @SerialName("friends_data")
+    data class FriendsData(val social: FriendsSnapshot) : ServerMessage()
+
+    @Serializable
+    @SerialName("room_invitation")
+    data class RoomInvitation(
+        val invitationId: String,
+        val fromUserId: String,
+        val fromDisplayName: String,
+        val roomId: String,
+        val roomName: String,
+        val expiresAtEpochMillis: Long
+    ) : ServerMessage()
+
+    @Serializable
+    @SerialName("social_notice")
+    data class SocialNotice(val message: String) : ServerMessage()
 
     @Serializable
     @SerialName("room_created")

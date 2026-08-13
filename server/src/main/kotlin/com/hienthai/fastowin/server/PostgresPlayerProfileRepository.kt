@@ -19,7 +19,7 @@ class PostgresPlayerProfileRepository(
             val userId = UUID.fromString(playerId)
             val base = connection.prepareStatement(
                 """
-                SELECT p.display_name, p.player_code,
+                SELECT p.display_name, p.player_code, p.avatar_url,
                        COALESCE(s.total_matches, 0) AS total_matches,
                        COALESCE(s.wins, 0) AS wins,
                        COALESCE(s.losses, 0) AS losses,
@@ -43,6 +43,7 @@ class PostgresPlayerProfileRepository(
                     PlayerProfileSnapshot(
                         displayName = result.getString("display_name"),
                         playerCode = result.getString("player_code"),
+                        avatarId = result.getString("avatar_url"),
                         statistics = PlayerStatisticsSnapshot(
                             totalMatches = result.getInt("total_matches"),
                             wins = result.getInt("wins"),
@@ -119,6 +120,27 @@ class PostgresPlayerProfileRepository(
                 }
             }
             base.copy(recentMatches = recentMatches, achievements = achievements)
+        }
+    }
+
+    override suspend fun updateProfile(
+        playerId: String,
+        displayName: String,
+        avatarId: String?
+    ): Boolean = withContext(Dispatchers.IO) {
+        dataSource.connection.use { connection ->
+            connection.prepareStatement(
+                """
+                UPDATE profiles
+                SET display_name = ?, avatar_url = ?, updated_at = NOW()
+                WHERE user_id = ?
+                """.trimIndent()
+            ).use { statement ->
+                statement.setString(1, displayName)
+                statement.setString(2, avatarId)
+                statement.setObject(3, UUID.fromString(playerId))
+                statement.executeUpdate() == 1
+            }
         }
     }
 }
