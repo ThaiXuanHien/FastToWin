@@ -28,6 +28,8 @@ import io.ktor.server.routing.get
 import io.ktor.server.routing.routing
 import io.ktor.serialization.kotlinx.json.json
 import io.ktor.server.websocket.WebSockets
+import io.ktor.server.websocket.pingPeriod
+import io.ktor.server.websocket.timeout
 import io.ktor.server.websocket.webSocket
 import io.ktor.websocket.Frame
 import io.ktor.websocket.CloseReason
@@ -42,16 +44,22 @@ import kotlinx.coroutines.launch
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import java.util.concurrent.ConcurrentHashMap
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.seconds
 
 fun Application.gameModule(
     engine: GameEngine = GameEngine(),
     authService: AuthenticationService = AuthenticationService(InMemoryAuthRepository()),
-    environment: String = "dev"
+    environment: String = "dev",
+    websocketPingPeriod: Duration = DEFAULT_WEBSOCKET_PING_PERIOD,
+    websocketPongTimeout: Duration = DEFAULT_WEBSOCKET_PONG_TIMEOUT
 ) {
     install(ContentNegotiation) {
         json(ProtocolJson)
     }
     install(WebSockets) {
+        pingPeriod = websocketPingPeriod
+        timeout = websocketPongTimeout
         maxFrameSize = 64 * 1024
     }
 
@@ -336,3 +344,5 @@ private class SocketConnection(val session: io.ktor.server.websocket.DefaultWebS
 
 private const val SESSION_CLEANUP_INTERVAL_MILLIS = 5_000L
 private const val GAME_TIMER_INTERVAL_MILLIS = 250L
+private val DEFAULT_WEBSOCKET_PING_PERIOD = 10.seconds
+private val DEFAULT_WEBSOCKET_PONG_TIMEOUT = 8.seconds

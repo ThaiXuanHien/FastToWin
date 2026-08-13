@@ -17,6 +17,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
+import kotlin.time.Duration.Companion.milliseconds
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
@@ -24,6 +25,30 @@ import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
 class GameWebSocketTest {
+    @Test
+    fun `heartbeat keeps an idle responsive websocket alive`() = testApplication {
+        application {
+            gameModule(
+                websocketPingPeriod = 100.milliseconds,
+                websocketPongTimeout = 500.milliseconds
+            )
+        }
+        val webSocketClient = createClient { install(WebSockets) }
+        val socket = webSocketClient.webSocketSession("/game")
+        try {
+            socket.sendMessage(ClientMessage.ConnectGuest("Heartbeat player"))
+            socket.receiveMessage<ServerMessage.SessionReady>()
+            socket.receiveMessage<ServerMessage.RoomList>()
+
+            delay(1_000)
+
+            socket.sendMessage(ClientMessage.ListRooms)
+            socket.receiveMessage<ServerMessage.RoomList>()
+        } finally {
+            socket.close()
+        }
+    }
+
     @Test
     fun `revoked account session cannot continue using an open websocket`() = testApplication {
         val authService = AuthenticationService(
