@@ -4,6 +4,8 @@ import com.hienthai.fastowin.protocol.ClientMessage
 import com.hienthai.fastowin.protocol.ProtocolGameMode
 import com.hienthai.fastowin.protocol.ProtocolJson
 import com.hienthai.fastowin.protocol.ServerMessage
+import com.zaxxer.hikari.HikariConfig
+import com.zaxxer.hikari.HikariDataSource
 import io.ktor.client.plugins.websocket.DefaultClientWebSocketSession
 import io.ktor.client.plugins.websocket.WebSockets
 import io.ktor.client.plugins.websocket.webSocketSession
@@ -15,8 +17,10 @@ import io.ktor.websocket.send
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
+import org.flywaydb.core.Flyway
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -190,6 +194,113 @@ class GameWebSocketTest {
     }
 
     @Test
+    fun `two websocket clients continue their match after server application restart`() {
+        val identityRepository = InMemoryGuestIdentityRepository()
+        val dataSource = postgresTestDataSource()
+        val activeRoomRepository = dataSource
+            ?.let(::PostgresActiveRoomRepository)
+            ?: InMemoryActiveRoomRepository()
+        lateinit var hostSession: ServerMessage.SessionReady
+        lateinit var guestSession: ServerMessage.SessionReady
+        var roomId = ""
+        var boardBeforeRestart = emptyList<Int>()
+
+        try {
+            testApplication {
+                application {
+                    gameModule(GameEngine(
+                        identityRepository = identityRepository,
+                        activeRoomRepository = activeRoomRepository
+                    ))
+                }
+                val webSocketClient = createClient { install(WebSockets) }
+                val host = webSocketClient.webSocketSession("/game")
+                val guest = webSocketClient.webSocketSession("/game")
+                try {
+                    host.sendMessage(ClientMessage.ConnectGuest("Restart host"))
+                    guest.sendMessage(ClientMessage.ConnectGuest("Restart guest"))
+                    hostSession = host.receiveMessage()
+                    guestSession = guest.receiveMessage()
+                    host.receiveMessage<ServerMessage.RoomList>()
+                    guest.receiveMessage<ServerMessage.RoomList>()
+
+                    host.sendMessage(
+                        ClientMessage.CreateRoom("Restart E2E", PASSWORD, ProtocolGameMode.ORDER)
+                    )
+                    roomId = host.receiveMessage<ServerMessage.RoomCreated>().game.roomId
+                    guest.sendMessage(ClientMessage.JoinRoom(roomId, PASSWORD))
+                    val hostStarted = host.receiveMessage<ServerMessage.GameStarted>().game
+                    val guestStarted = guest.receiveMessage<ServerMessage.GameStarted>().game
+                    assertEquals(hostStarted, guestStarted)
+                    boardBeforeRestart = hostStarted.numbers
+
+                    host.sendMessage(ClientMessage.SelectNumber(roomId, 1, "persisted-websocket-request"))
+                    val hostUpdate = host.receiveMessage<ServerMessage.GameStateUpdated>().game
+                    val guestUpdate = guest.receiveMessage<ServerMessage.GameStateUpdated>().game
+                    assertEquals(hostUpdate, guestUpdate)
+                    assertEquals(2, hostUpdate.currentTarget)
+                } finally {
+                    host.close()
+                    guest.close()
+                    delay(100)
+                }
+            }
+
+            testApplication {
+                application {
+                    gameModule(GameEngine(
+                        identityRepository = identityRepository,
+                        activeRoomRepository = activeRoomRepository
+                    ))
+                }
+                val webSocketClient = createClient { install(WebSockets) }
+                val host = webSocketClient.webSocketSession("/game")
+                val guest = webSocketClient.webSocketSession("/game")
+                try {
+                    host.sendMessage(
+                        ClientMessage.ConnectGuest("Restart host", resumeToken = hostSession.resumeToken)
+                    )
+                    guest.sendMessage(
+                        ClientMessage.ConnectGuest("Restart guest", resumeToken = guestSession.resumeToken)
+                    )
+                    val restoredHost = host.receiveMessage<ServerMessage.SessionReady>()
+                    val restoredGuest = guest.receiveMessage<ServerMessage.SessionReady>()
+                    assertEquals(hostSession.playerId, restoredHost.playerId)
+                    assertEquals(guestSession.playerId, restoredGuest.playerId)
+
+                    val hostGame = assertNotNull(restoredHost.currentGame)
+                    val guestGame = assertNotNull(restoredGuest.currentGame)
+                    assertEquals(roomId, hostGame.roomId)
+                    assertEquals(hostGame, guestGame)
+                    assertEquals(boardBeforeRestart, hostGame.numbers)
+                    assertEquals(listOf(1), hostGame.selectedNumbers)
+                    assertEquals(2, hostGame.currentTarget)
+                    assertEquals(10, hostGame.players.sumOf { it.score })
+
+                    host.sendMessage(ClientMessage.SelectNumber(roomId, 1, "persisted-websocket-request"))
+                    val duplicate = host.receiveMessage<ServerMessage.GameStateUpdated>().game
+                    assertEquals(2, duplicate.currentTarget)
+                    assertEquals(10, duplicate.players.sumOf { it.score })
+
+                    guest.sendMessage(ClientMessage.SelectNumber(roomId, 2, "after-server-restart"))
+                    val hostContinued = host.receiveMessage<ServerMessage.GameStateUpdated>().game
+                    val guestContinued = guest.receiveMessage<ServerMessage.GameStateUpdated>().game
+                    assertEquals(hostContinued, guestContinued)
+                    assertEquals(3, hostContinued.currentTarget)
+                    assertEquals(listOf(1, 2), hostContinued.selectedNumbers)
+                    assertEquals(20, hostContinued.players.sumOf { it.score })
+                } finally {
+                    host.close()
+                    guest.close()
+                }
+            }
+        } finally {
+            if (roomId.isNotBlank()) runBlocking { activeRoomRepository.delete(roomId) }
+            dataSource?.close()
+        }
+    }
+
+    @Test
     fun `server broadcasts time attack finish without another player action`() = testApplication {
         application { gameModule(GameEngine(timeAttackMillis = 50L)) }
         val webSocketClient = createClient { install(WebSockets) }
@@ -303,6 +414,23 @@ class GameWebSocketTest {
             val frame = incoming.receive() as? Frame.Text ?: continue
             val message = ProtocolJson.decodeFromString<ServerMessage>(frame.readText())
             if (message is T) return message
+        }
+    }
+
+    private fun postgresTestDataSource(): HikariDataSource? {
+        val url = System.getenv("TEST_DATABASE_URL") ?: return null
+        val dataSource = HikariDataSource(HikariConfig().apply {
+            jdbcUrl = url
+            username = System.getenv("TEST_DATABASE_USER") ?: "fasttowin"
+            password = System.getenv("TEST_DATABASE_PASSWORD") ?: "fasttowin"
+            maximumPoolSize = 2
+        })
+        return try {
+            Flyway.configure().dataSource(dataSource).locations("classpath:db/migration").load().migrate()
+            dataSource
+        } catch (error: Throwable) {
+            dataSource.close()
+            throw error
         }
     }
 

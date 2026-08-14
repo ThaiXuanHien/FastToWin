@@ -186,7 +186,7 @@ $env:TEST_DATABASE_PASSWORD="fasttowin"
 Test backend bao gồm:
 
 - Khôi phục đúng guest session bằng resume token.
-- Khôi phục phòng, bàn số, target, điểm và request ID chống xử lý trùng sau khi engine restart.
+- Khôi phục phòng, bàn số, target, điểm và request ID qua hai lần khởi động Ktor application với hai WebSocket client thật.
 - Ghi/đọc snapshot phòng qua PostgreSQL và Flyway migration.
 - Từ chối mật khẩu phòng sai.
 - Hai người chọn cùng một target đồng thời nhưng server chỉ chấp nhận một lượt.
