@@ -55,7 +55,7 @@ jobs:
         run: chmod +x gradlew
 
       - name: Install Android SDK 37
-        run: sdkmanager "platforms;android-37" "build-tools;37.0.0"
+        run: "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-37" "build-tools;37.0.0"
 
       - name: Run tests and build dev APK
         run: >-
@@ -108,7 +108,7 @@ jobs:
         run: chmod +x gradlew
 
       - name: Install Android SDK 37
-        run: sdkmanager "platforms;android-37" "build-tools;37.0.0"
+        run: "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-37" "build-tools;37.0.0"
 
       - name: Enable KVM
         run: |
