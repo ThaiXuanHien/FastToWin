@@ -93,10 +93,16 @@ data class GameState(
     val social: FriendsSnapshot = FriendsSnapshot(),
     val roomInvitations: List<ServerMessage.RoomInvitation> = emptyList(),
     val roomInvitationPrompt: ServerMessage.RoomInvitation? = null,
-    val socialNotice: String? = null
+    val socialNotice: String? = null,
+    val isNotificationsOpen: Boolean = false,
+    val notifications: List<AppNotification> = emptyList(),
+    val dismissedNotificationIds: Set<String> = emptySet()
 ) {
     val pendingSocialInvitationCount: Int
         get() = social.incomingRequests.size + roomInvitations.size
+
+    val unreadNotificationCount: Int
+        get() = notifications.count { !it.isRead }
 }
 
 internal fun GameState.prepareForMatchStart(): GameState = copy(
@@ -106,5 +112,6 @@ internal fun GameState.prepareForMatchStart(): GameState = copy(
     isLeaderboardLoading = false,
     isFriendsOpen = false,
     isFriendsLoading = false,
+    isNotificationsOpen = false,
     roomInvitationPrompt = null
 )

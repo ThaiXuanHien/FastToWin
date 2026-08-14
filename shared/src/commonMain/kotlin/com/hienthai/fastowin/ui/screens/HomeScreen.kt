@@ -25,6 +25,7 @@ import androidx.compose.material.icons.filled.FitnessCenter
 import androidx.compose.material.icons.filled.Group
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.MeetingRoom
+import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.SportsEsports
@@ -79,6 +80,7 @@ internal fun HomeDashboard(
     onOpenLeaderboard: () -> Unit,
     onOpenProfile: () -> Unit,
     onOpenSettings: () -> Unit,
+    onOpenNotifications: () -> Unit,
     onOpenPractice: () -> Unit,
     onUpgradeGuest: () -> Unit,
     onLogout: () -> Unit,
@@ -127,6 +129,22 @@ internal fun HomeDashboard(
                 Column(horizontalAlignment = Alignment.End) {
                     Text("THỜI GIAN TRUY CẬP", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     SessionDuration(sessionStartedAtMillis)
+                }
+                IconButton(onClick = onOpenNotifications) {
+                    BadgedBox(
+                        badge = {
+                            if (state.unreadNotificationCount > 0) {
+                                Badge {
+                                    Text(
+                                        if (state.unreadNotificationCount > 99) "99+"
+                                        else state.unreadNotificationCount.toString()
+                                    )
+                                }
+                            }
+                        }
+                    ) {
+                        Icon(Icons.Default.Notifications, contentDescription = "Thông báo")
+                    }
                 }
                 IconButton(onClick = onOpenSettings) {
                     Icon(Icons.Default.Settings, contentDescription = "Cài đặt")

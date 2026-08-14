@@ -86,6 +86,7 @@ fun LobbyScreen(
     isGuest: Boolean,
     onUpgradeGuest: () -> Unit,
     onOpenSettings: () -> Unit,
+    onOpenNotifications: () -> Unit,
     onOpenPractice: () -> Unit,
     sessionStartedAtMillis: Long,
     modifier: Modifier = Modifier
@@ -128,6 +129,7 @@ fun LobbyScreen(
                     onOpenLeaderboard = if (isGuest) onUpgradeGuest else onOpenLeaderboard,
                     onOpenProfile = onOpenProfile,
                     onOpenSettings = onOpenSettings,
+                    onOpenNotifications = onOpenNotifications,
                     onOpenPractice = onOpenPractice,
                     onUpgradeGuest = onUpgradeGuest,
                     onLogout = onLogout,

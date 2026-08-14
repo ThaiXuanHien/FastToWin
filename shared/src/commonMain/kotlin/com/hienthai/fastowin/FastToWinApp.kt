@@ -34,6 +34,7 @@ import com.hienthai.fastowin.ui.screens.MainTab
 import com.hienthai.fastowin.ui.screens.SettingsScreen
 import com.hienthai.fastowin.ui.screens.TutorialScreen
 import com.hienthai.fastowin.ui.screens.PracticeScreen
+import com.hienthai.fastowin.ui.screens.NotificationsScreen
 import com.hienthai.fastowin.ui.theme.FastToWinTheme
 import com.hienthai.fastowin.platform.epochMillis
 import com.hienthai.fastowin.navigation.GameMode
@@ -196,6 +197,15 @@ private fun GameContent(
     }
 
     when {
+                state.isNotificationsOpen -> NotificationsScreen(
+                    notifications = state.notifications,
+                    onBack = controller::closeNotifications,
+                    onOpen = controller::openNotification,
+                    onDismiss = controller::dismissNotification,
+                    onMarkAllRead = controller::markAllNotificationsRead,
+                    onClearAll = controller::clearNotifications
+                )
+
                 state.isFriendsOpen -> TopLevelTabIfNeeded(
                     enabled = showTopLevelNavigation,
                     selected = MainTab.FRIENDS,
@@ -335,6 +345,7 @@ private fun GameContent(
                     isGuest = isGuest,
                     onUpgradeGuest = onUpgradeGuest,
                     onOpenSettings = { showSettings = true },
+                    onOpenNotifications = controller::openNotifications,
                     onOpenPractice = { showPracticeModePicker = true },
                     sessionStartedAtMillis = sessionStartedAtMillis
                 )

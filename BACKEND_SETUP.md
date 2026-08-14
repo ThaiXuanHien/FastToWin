@@ -110,6 +110,8 @@ Mỗi trận cấp 15 XP và cộng thêm 10 XP khi thắng. Hồ sơ hiển th�
 
 Âm thanh, rung, chủ đề, màu bàn số, cỡ chữ, hướng dẫn lần đầu và chế độ luyện tập offline được lưu cục bộ trên thiết bị. Luyện tập không gửi kết quả lên backend và không ảnh hưởng Elo.
 
+Trung tâm **Thông báo** hiện là tính năng nội bộ theo phiên ứng dụng, chưa phải push notification. Client gom lời mời kết bạn/phòng từ WebSocket và so sánh hai lần tải hồ sơ liên tiếp để phát hiện nhiệm vụ vừa hoàn thành, thành tích hoặc vật phẩm vừa mở khóa. Lần tải hồ sơ đầu tiên chỉ tạo mốc nên không báo lại toàn bộ phần thưởng cũ. Invitation ID và mã phần thưởng được dùng để chống trùng sau reconnect; thông báo đã xóa không xuất hiện lại trong cùng phiên ứng dụng.
+
 ## API tài khoản email
 
 Backend hỗ trợ tài khoản email/mật khẩu qua JSON API:
