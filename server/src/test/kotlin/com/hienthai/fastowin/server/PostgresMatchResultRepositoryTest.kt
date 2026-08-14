@@ -4,6 +4,7 @@ import com.hienthai.fastowin.protocol.ProtocolGameMode
 import com.zaxxer.hikari.HikariConfig
 import com.zaxxer.hikari.HikariDataSource
 import kotlinx.coroutines.test.runTest
+import org.flywaydb.core.Flyway
 import java.util.UUID
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -19,6 +20,7 @@ class PostgresMatchResultRepositoryTest {
             password = System.getenv("TEST_DATABASE_PASSWORD") ?: "fasttowin"
             maximumPoolSize = 2
         }).use { dataSource ->
+            Flyway.configure().dataSource(dataSource).locations("classpath:db/migration").load().migrate()
             val identityRepository = PostgresGuestIdentityRepository(dataSource)
             val matchRepository = PostgresMatchResultRepository(dataSource)
             val profileRepository = PostgresPlayerProfileRepository(dataSource)

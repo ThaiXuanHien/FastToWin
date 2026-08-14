@@ -1,0 +1,139 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    name: Build and test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: fasttowin_test
+          POSTGRES_USER: fasttowin
+          POSTGRES_PASSWORD: fasttowin
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U fasttowin -d fasttowin_test"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      TEST_DATABASE_URL: jdbc:postgresql://localhost:5432/fasttowin_test
+      TEST_DATABASE_USER: fasttowin
+      TEST_DATABASE_PASSWORD: fasttowin
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v7
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-provider: basic
+
+      - name: Make Gradle wrapper executable
+        run: chmod +x gradlew
+
+      - name: Install Android SDK 37
+        run: sdkmanager "platforms;android-37" "build-tools;37.0.0"
+
+      - name: Run tests and build dev APK
+        run: >-
+          ./gradlew
+          :server:test
+          :shared:testAndroidHostTest
+          :app:assembleDevDebug
+          --no-daemon
+          --no-configuration-cache
+
+      - name: Upload dev APK
+        uses: actions/upload-artifact@v7
+        with:
+          name: fast-to-win-dev-apk
+          path: app/build/outputs/apk/dev/debug/app-dev-debug.apk
+          if-no-files-found: error
+
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: unit-and-integration-test-reports
+          path: |
+            server/build/reports/tests/test/
+            shared/build/reports/tests/testAndroidHostTest/
+          if-no-files-found: warn
+
+  android-ui-test:
+    name: Android UI test
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v7
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-provider: basic
+
+      - name: Make Gradle wrapper executable
+        run: chmod +x gradlew
+
+      - name: Install Android SDK 37
+        run: sdkmanager "platforms;android-37" "build-tools;37.0.0"
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Run Compose UI tests
+        uses: reactivecircus/android-emulator-runner@v2.38.0
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_7
+          disable-animations: true
+          script: >-
+            ./gradlew
+            :app:connectedDevDebugAndroidTest
+            --no-daemon
+            --no-configuration-cache
+
+      - name: Upload Android UI test report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: android-ui-test-report
+          path: app/build/reports/androidTests/connected/
+          if-no-files-found: warn
