@@ -490,6 +490,17 @@ class GameController(
     private fun startMatchCountdown(game: GameSnapshot) {
         if (gameStarted && _uiState.value.currentRoomId == game.roomId) return
         gameStarted = true
+        _uiState.update {
+            it.copy(
+                isProfileOpen = false,
+                isProfileLoading = false,
+                isLeaderboardOpen = false,
+                isLeaderboardLoading = false,
+                isFriendsOpen = false,
+                isFriendsLoading = false,
+                roomInvitationPrompt = null
+            )
+        }
         countdownJob?.cancel()
         countdownJob = scope.launch {
             applyWaitingSnapshot(game)

@@ -147,7 +147,7 @@ fun FriendsScreen(
                 item {
                     Text("Lời mời vào phòng", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                 }
-                items(state.roomInvitations, key = { it.invitationId }) { invitation ->
+                items(state.roomInvitations, key = { "room:${it.invitationId}" }) { invitation ->
                     ElevatedCard(modifier = Modifier.fillMaxWidth()) {
                         Column(
                             modifier = Modifier.fillMaxWidth().padding(14.dp),
@@ -169,7 +169,7 @@ fun FriendsScreen(
             }
             if (state.social.incomingRequests.isNotEmpty()) {
                 item { Text("Lời mời kết bạn", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold) }
-                items(state.social.incomingRequests, key = { it.requestId }) { request ->
+                items(state.social.incomingRequests, key = { "incoming:${it.requestId}" }) { request ->
                     ElevatedCard(modifier = Modifier.fillMaxWidth()) {
                         Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             Text("${avatarEmoji(request.avatarId)}  ${request.displayName}", fontWeight = FontWeight.Bold)
@@ -187,7 +187,7 @@ fun FriendsScreen(
             }
             if (state.social.outgoingRequests.isNotEmpty()) {
                 item { Text("Đang chờ phản hồi", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold) }
-                items(state.social.outgoingRequests, key = { it.requestId }) { request ->
+                items(state.social.outgoingRequests, key = { "outgoing:${it.requestId}" }) { request ->
                     ElevatedCard(modifier = Modifier.fillMaxWidth()) {
                         Row(
                             modifier = Modifier.fillMaxWidth().padding(14.dp),
@@ -210,7 +210,7 @@ fun FriendsScreen(
             if (state.social.friends.isEmpty()) {
                 item { Text("Chưa có bạn bè. Hãy nhập mã người chơi để gửi lời mời.") }
             } else {
-                items(state.social.friends, key = { it.userId }) { friend ->
+                items(state.social.friends, key = { "friend:${it.userId}" }) { friend ->
                     FriendCard(
                         friend = friend,
                         canInvite = canInvite,
@@ -228,7 +228,7 @@ fun FriendsScreen(
                 item {
                     Text("Vừa thi đấu cùng", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                 }
-                items(visibleRecentPlayers, key = { it.userId }) { player ->
+                items(visibleRecentPlayers, key = { "recent:${it.userId}" }) { player ->
                     val friend = friendsById[player.userId]
                     RecentPlayerCard(
                         player = player,
@@ -248,7 +248,7 @@ fun FriendsScreen(
                 item {
                     Text("Đã chặn", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                 }
-                items(state.social.blockedPlayers, key = { it.userId }) { player ->
+                items(state.social.blockedPlayers, key = { "blocked:${it.userId}" }) { player ->
                     ElevatedCard(modifier = Modifier.fillMaxWidth()) {
                         Row(
                             modifier = Modifier.fillMaxWidth().padding(14.dp),
