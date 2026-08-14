@@ -83,3 +83,13 @@ data class GameState(
     val pendingSocialInvitationCount: Int
         get() = social.incomingRequests.size + roomInvitations.size
 }
+
+internal fun GameState.prepareForMatchStart(): GameState = copy(
+    isProfileOpen = false,
+    isProfileLoading = false,
+    isLeaderboardOpen = false,
+    isLeaderboardLoading = false,
+    isFriendsOpen = false,
+    isFriendsLoading = false,
+    roomInvitationPrompt = null
+)
