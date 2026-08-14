@@ -1,6 +1,6 @@
 # Fast To Win backend MVP
 
-Backend hiện tại là Ktor WebSocket server chạy JVM. Server là nơi duy nhất tạo phòng, xác minh mật khẩu, sinh bàn 50 số, kiểm tra lượt bấm và tính điểm. Guest identity và resume session có thể được lưu trong PostgreSQL; phòng và trạng thái trận đấu hiện vẫn nằm trong bộ nhớ.
+Backend hiện tại là Ktor WebSocket server chạy JVM. Server là nơi duy nhất tạo phòng, xác minh mật khẩu, sinh bàn 50 số, kiểm tra lượt bấm và tính điểm. Khi bật PostgreSQL, guest identity, resume session và trạng thái phòng/trận đang diễn ra đều được lưu để khôi phục sau khi server restart.
 
 ## Môi trường
 
@@ -65,9 +65,9 @@ $env:DATABASE_PASSWORD="fasttowin"
 .\gradlew.bat :server:run
 ```
 
-Flyway tự tạo các bảng `users`, `profiles`, `sessions`, `matches`, `match_players` và `player_stats`. Resume token chỉ được lưu dưới dạng SHA-256 hash, không lưu token gốc.
+Flyway tự tạo các bảng tài khoản, hồ sơ, phiên đăng nhập, kết quả trận, thống kê, xã hội, thành tích và `active_room_snapshots`. Resume token chỉ được lưu dưới dạng SHA-256 hash, không lưu token gốc.
 
-Khi trận kết thúc, backend lưu kết quả đúng một lần theo `roomId`, gồm điểm từng người, thắng/thua/hòa, tổng số trận, điểm cao nhất và chuỗi thắng. Việc bấm số trong trận vẫn được xử lý trong bộ nhớ để giữ độ trễ thấp.
+Khi trận kết thúc, backend lưu kết quả đúng một lần theo `roomId`, gồm điểm từng người, thắng/thua/hòa, tổng số trận, điểm cao nhất và chuỗi thắng. Mỗi thay đổi của một phòng được xử lý trong bộ nhớ rồi UPSERT đúng snapshot của phòng đó vào PostgreSQL; server không ghi lại toàn bộ danh sách phòng sau mỗi lượt bấm.
 
 Từ màn hình danh sách phòng, người chơi có thể mở **Hồ sơ** để xem mã người chơi, tổng trận, thắng/thua/hòa, điểm cao nhất, chuỗi thắng và tối đa 20 trận gần nhất. Dữ liệu được lấy qua WebSocket của phiên hiện tại nên client không thể yêu cầu hồ sơ riêng tư của player ID khác.
 
@@ -110,7 +110,7 @@ Access token có hiệu lực 15 phút, refresh token có hiệu lực 30 ngày.
 
 Compose Multiplatform có màn hình đăng nhập, đăng ký và lựa chọn chơi khách. Android mã hóa phiên bằng AES-GCM với khóa trong Android Keystore; iOS lưu phiên trong Keychain. Ứng dụng tự refresh access token trước khi hết hạn và tài khoản dùng `connect_account` để xác thực WebSocket. Server tự lấy player ID và biệt danh từ phiên đăng nhập, không nhận các giá trị này từ client. Chế độ khách vẫn dùng `connect_guest` và resume token cũ.
 
-Protocol WebSocket hiện tại là phiên bản 2. Sau khi cập nhật ứng dụng, cần khởi động lại backend để client và server dùng cùng phiên bản.
+Protocol WebSocket hiện tại là phiên bản 7. Sau khi cập nhật ứng dụng, cần khởi động lại backend để client và server dùng cùng phiên bản.
 
 Khi nâng cấp guest, client gửi resume token hiện tại cùng email và mật khẩu. Backend khóa phiên guest và cập nhật chính user hiện tại trong một transaction, sau đó thu hồi toàn bộ resume token khách và tạo phiên tài khoản mới. `user_id` không đổi nên hồ sơ, player code, Elo, lịch sử, thống kê và thành tích được giữ nguyên. Chức năng này yêu cầu PostgreSQL; server chạy thuần bộ nhớ trả lỗi `DATABASE_REQUIRED`.
 
@@ -186,14 +186,17 @@ $env:TEST_DATABASE_PASSWORD="fasttowin"
 Test backend bao gồm:
 
 - Khôi phục đúng guest session bằng resume token.
+- Khôi phục phòng, bàn số, target, điểm và request ID chống xử lý trùng sau khi engine restart.
+- Ghi/đọc snapshot phòng qua PostgreSQL và Flyway migration.
 - Từ chối mật khẩu phòng sai.
 - Hai người chọn cùng một target đồng thời nhưng server chỉ chấp nhận một lượt.
 
 ## Giới hạn của MVP
 
-- Phòng và trạng thái trận đấu vẫn bị mất khi server restart.
-- Guest identity và session tồn tại qua restart khi bật PostgreSQL.
-- Chưa có khôi phục mật khẩu, xác minh email và đăng xuất khỏi tất cả thiết bị.
+- Phòng, trận đấu, guest identity và session tồn tại qua restart khi bật PostgreSQL; chế độ chạy thuần bộ nhớ vẫn mất dữ liệu này.
+- Lời mời bạn bè vào phòng chỉ tồn tại trong bộ nhớ và mất khi server restart.
+- Snapshot hiện dành cho một tiến trình backend; khi chạy nhiều instance cần chuyển trạng thái realtime sang Redis hoặc kho trạng thái phân tán.
+- Chưa tích hợp dịch vụ email để gửi mã khôi phục và xác minh email; chưa có đăng xuất khỏi tất cả thiết bị.
 - Cấu hình local dùng `ws://`; môi trường production phải dùng `wss://`.
 
 ## Reconnect hiện tại
@@ -201,6 +204,7 @@ Test backend bao gồm:
 - Resume token được lưu bằng SharedPreferences trên Android và NSUserDefaults trên iOS.
 - Client tự kết nối lại với exponential backoff tối đa 15 giây giữa các lần thử.
 - Server giữ phòng trong 30 giây sau khi người chơi mất kết nối.
+- Sau khi server restart với PostgreSQL, người chơi trong phòng có 30 giây để kết nối lại kể từ lúc server khởi động xong.
 - Reconnect trong thời gian này nhận lại cùng player ID và snapshot trận đấu.
 - Quá 30 giây, server đóng phòng và thông báo cho người chơi còn lại.
 - Guest session không ở trong phòng được dọn sau 5 phút offline.

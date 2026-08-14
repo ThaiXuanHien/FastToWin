@@ -2,6 +2,7 @@ package com.hienthai.fastowin.server
 
 import io.ktor.server.engine.embeddedServer
 import io.ktor.server.netty.Netty
+import kotlinx.coroutines.runBlocking
 
 fun main() {
     val environment = System.getenv("FASTTOWIN_ENV")?.lowercase() ?: "dev"
@@ -17,19 +18,23 @@ fun main() {
     val playerProfileRepository = database?.playerProfileRepository ?: NoOpPlayerProfileRepository
     val leaderboardRepository = database?.leaderboardRepository ?: NoOpLeaderboardRepository
     val friendRepository = database?.friendRepository ?: NoOpFriendRepository
+    val activeRoomRepository = database?.activeRoomRepository ?: NoOpActiveRoomRepository
     val storage = if (database == null) "memory" else "postgresql"
+    val engine = GameEngine(
+        identityRepository,
+        matchResultRepository,
+        playerProfileRepository,
+        leaderboardRepository,
+        friendRepository,
+        activeRoomRepository
+    )
+    runBlocking { engine.restoreActiveRooms() }
 
     println("Starting Fast To Win server: environment=$environment, host=$host, port=$port, storage=$storage")
     try {
         embeddedServer(Netty, host = host, port = port) {
             gameModule(
-                engine = GameEngine(
-                    identityRepository,
-                    matchResultRepository,
-                    playerProfileRepository,
-                    leaderboardRepository,
-                    friendRepository
-                ),
+                engine = engine,
                 authService = authService,
                 environment = environment
             )

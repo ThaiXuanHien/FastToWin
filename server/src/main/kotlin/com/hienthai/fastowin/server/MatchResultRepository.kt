@@ -1,13 +1,16 @@
 package com.hienthai.fastowin.server
 
 import com.hienthai.fastowin.protocol.ProtocolGameMode
+import kotlinx.serialization.Serializable
 
+@Serializable
 enum class MatchOutcome {
     WIN,
     LOSS,
     DRAW
 }
 
+@Serializable
 data class CompletedMatchPlayer(
     val playerId: String,
     val displayName: String,
@@ -15,11 +18,13 @@ data class CompletedMatchPlayer(
     val outcome: MatchOutcome
 )
 
+@Serializable
 enum class SelectionResult {
     ACCEPTED,
     REJECTED
 }
 
+@Serializable
 data class MatchSelectionEvent(
     val playerId: String,
     val requestId: String,
