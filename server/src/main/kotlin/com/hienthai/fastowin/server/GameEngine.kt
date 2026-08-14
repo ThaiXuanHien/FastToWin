@@ -331,14 +331,7 @@ class GameEngine(
                 invitation.expiresAtMillis <= now || room == null ||
                     room.hostId != invitation.inviterId || room.phase != RoomPhase.WAITING || room.guestId != null
             }
-            roomInvitations.values
-                .filter { it.inviteeId == playerId }
-                .sortedByDescending { it.expiresAtMillis }
-                .mapNotNull { invitation ->
-                    val inviter = sessionsByPlayerId[invitation.inviterId] ?: return@mapNotNull null
-                    val room = rooms[invitation.roomId] ?: return@mapNotNull null
-                    invitation.toMessage(inviter.displayName, room.name)
-                }
+            roomInvitationMessagesFor(playerId)
         }
         return listOf(Delivery(ServerMessage.RoomInvitationsData(invitations), setOf(playerId)))
     }
@@ -549,6 +542,9 @@ class GameEngine(
 
     suspend fun cleanupExpiredSessions(): List<Delivery> = mutex.withLock {
         val now = nowMillis()
+        val affectedInvitationRecipients = roomInvitations.values
+            .filter { it.expiresAtMillis <= now }
+            .mapTo(mutableSetOf()) { it.inviteeId }
         roomInvitations.entries.removeAll { it.value.expiresAtMillis <= now }
         val expiredPlayerIds = sessionsByPlayerId.values
             .filter { session ->
@@ -562,8 +558,6 @@ class GameEngine(
                 now - disconnectedAt >= timeout
             }
             .map { it.playerId }
-
-        if (expiredPlayerIds.isEmpty()) return@withLock emptyList()
 
         val deliveries = mutableListOf<Delivery>()
         val removedRoomIds = mutableSetOf<String>()
@@ -583,8 +577,33 @@ class GameEngine(
         if (removedRoomIds.isNotEmpty()) {
             deliveries += Delivery(ServerMessage.RoomList(publicRooms()))
         }
+        if (removedRoomIds.isNotEmpty()) {
+            roomInvitations.values
+                .filter { it.roomId in removedRoomIds }
+                .mapTo(affectedInvitationRecipients) { it.inviteeId }
+            roomInvitations.entries.removeAll { it.value.roomId in removedRoomIds }
+        }
+        affectedInvitationRecipients.forEach { inviteeId ->
+            val session = sessionsByPlayerId[inviteeId]
+            if (session?.isConnected == true && session.resumeToken == null) {
+                deliveries += Delivery(
+                    ServerMessage.RoomInvitationsData(roomInvitationMessagesFor(inviteeId)),
+                    setOf(inviteeId)
+                )
+            }
+        }
         deliveries
     }
+
+    private fun roomInvitationMessagesFor(playerId: String): List<ServerMessage.RoomInvitation> =
+        roomInvitations.values
+            .filter { it.inviteeId == playerId }
+            .sortedByDescending { it.expiresAtMillis }
+            .mapNotNull { invitation ->
+                val inviter = sessionsByPlayerId[invitation.inviterId] ?: return@mapNotNull null
+                val room = rooms[invitation.roomId] ?: return@mapNotNull null
+                invitation.toMessage(inviter.displayName, room.name)
+            }
 
     private fun createRoom(player: GuestSession, command: ClientMessage.CreateRoom): List<Delivery> {
         if (roomFor(player.playerId) != null) {

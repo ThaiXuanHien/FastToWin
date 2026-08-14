@@ -131,6 +131,7 @@ class GameEngineTest {
     fun `online friends can invite and join a waiting room without password`() = runTest {
         val hostId = UUID.randomUUID().toString()
         val guestId = UUID.randomUUID().toString()
+        var currentTimeMillis = 10_000L
         val repository = object : FriendRepository {
             override suspend fun load(userId: String) = StoredFriends(
                 friends = listOf(
@@ -157,7 +158,7 @@ class GameEngineTest {
                 setOf(firstUserId, secondUserId) == setOf(hostId, guestId)
             override suspend fun isBlockedEitherWay(firstUserId: String, secondUserId: String) = false
         }
-        val engine = GameEngine(friendRepository = repository)
+        val engine = GameEngine(friendRepository = repository, nowMillis = { currentTimeMillis })
         engine.connectAccount(AuthenticatedAccount(UUID.fromString(hostId), "Host"))
         engine.connectAccount(AuthenticatedAccount(UUID.fromString(guestId), "Guest"))
         val recentPlayer = engine.handle(hostId, ClientMessage.GetFriends)
@@ -186,9 +187,21 @@ class GameEngineTest {
             .single()
         assertEquals(invitation.invitationId, listedInvitation.invitationId)
 
+        currentTimeMillis += 6 * 60_000L
+        val expiredInvitations = engine.cleanupExpiredSessions()
+            .map(Delivery::message)
+            .filterIsInstance<ServerMessage.RoomInvitationsData>()
+            .single()
+        assertTrue(expiredInvitations.invitations.isEmpty())
+
+        val activeInvitation = engine.handle(
+            hostId,
+            ClientMessage.InviteFriend(guestId, room.roomId)
+        ).map(Delivery::message).filterIsInstance<ServerMessage.RoomInvitation>().single()
+
         val acceptResponse = engine.handle(
             guestId,
-            ClientMessage.RespondRoomInvitation(invitation.invitationId, accept = true)
+            ClientMessage.RespondRoomInvitation(activeInvitation.invitationId, accept = true)
         ).map(Delivery::message)
         val started = acceptResponse.filterIsInstance<ServerMessage.GameStarted>()
 

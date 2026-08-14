@@ -30,6 +30,8 @@ import androidx.compose.material.icons.filled.SportsEsports
 import androidx.compose.material.icons.rounded.Bolt
 import androidx.compose.material.icons.rounded.Timer
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Badge
+import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CardDefaults
@@ -289,6 +291,7 @@ private fun DelayedConnectionNotice(status: ConnectionStatus) {
 @Composable
 internal fun FastToWinBottomBar(
     selected: MainTab,
+    friendNotificationCount: Int,
     onHome: () -> Unit,
     onLeaderboard: () -> Unit,
     onPlay: () -> Unit,
@@ -307,7 +310,14 @@ internal fun FastToWinBottomBar(
             BottomBarItem("Trang chủ", Icons.Default.Home, selected == MainTab.HOME, onHome, Modifier.weight(1f))
             BottomBarItem("Xếp hạng", Icons.Default.EmojiEvents, selected == MainTab.LEADERBOARD, onLeaderboard, Modifier.weight(1f))
             BottomBarItem("Chơi", Icons.Default.SportsEsports, false, onPlay, Modifier.weight(1f))
-            BottomBarItem("Bạn bè", Icons.Default.Group, selected == MainTab.FRIENDS, onFriends, Modifier.weight(1f))
+            BottomBarItem(
+                label = "Bạn bè",
+                icon = Icons.Default.Group,
+                selected = selected == MainTab.FRIENDS,
+                onClick = onFriends,
+                modifier = Modifier.weight(1f),
+                badgeCount = friendNotificationCount
+            )
             BottomBarItem("Tài khoản", Icons.Default.Person, selected == MainTab.ACCOUNT, onAccount, Modifier.weight(1f))
         }
     }
@@ -319,15 +329,24 @@ private fun BottomBarItem(
     icon: ImageVector,
     selected: Boolean,
     onClick: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    badgeCount: Int = 0
 ) {
     TextButton(onClick = onClick, modifier = modifier) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Icon(
-                icon,
-                contentDescription = label,
-                tint = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-            )
+            BadgedBox(
+                badge = {
+                    if (badgeCount > 0) {
+                        Badge { Text(if (badgeCount > 99) "99+" else badgeCount.toString()) }
+                    }
+                }
+            ) {
+                Icon(
+                    icon,
+                    contentDescription = label,
+                    tint = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
             Text(
                 label,
                 style = MaterialTheme.typography.labelSmall,

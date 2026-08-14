@@ -79,4 +79,7 @@ data class GameState(
     val roomInvitations: List<ServerMessage.RoomInvitation> = emptyList(),
     val roomInvitationPrompt: ServerMessage.RoomInvitation? = null,
     val socialNotice: String? = null
-)
+) {
+    val pendingSocialInvitationCount: Int
+        get() = social.incomingRequests.size + roomInvitations.size
+}

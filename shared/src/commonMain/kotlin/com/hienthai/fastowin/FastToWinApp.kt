@@ -157,6 +157,7 @@ private fun GameContent(
                 state.isFriendsOpen -> TopLevelTabIfNeeded(
                     enabled = showTopLevelNavigation,
                     selected = MainTab.FRIENDS,
+                    friendNotificationCount = state.pendingSocialInvitationCount,
                     onHome = openHome,
                     onLeaderboard = openLeaderboardTab,
                     onPlay = { showGameModePicker = true },
@@ -181,6 +182,7 @@ private fun GameContent(
                 state.isLeaderboardOpen -> TopLevelTabIfNeeded(
                     enabled = showTopLevelNavigation,
                     selected = MainTab.LEADERBOARD,
+                    friendNotificationCount = state.pendingSocialInvitationCount,
                     onHome = openHome,
                     onLeaderboard = controller::openLeaderboard,
                     onPlay = { showGameModePicker = true },
@@ -197,6 +199,7 @@ private fun GameContent(
                 state.isProfileOpen -> TopLevelTabIfNeeded(
                     enabled = showTopLevelNavigation,
                     selected = MainTab.ACCOUNT,
+                    friendNotificationCount = state.pendingSocialInvitationCount,
                     onHome = openHome,
                     onLeaderboard = openLeaderboardTab,
                     onPlay = { showGameModePicker = true },
@@ -252,6 +255,7 @@ private fun GameContent(
 private fun TopLevelTabIfNeeded(
     enabled: Boolean,
     selected: MainTab,
+    friendNotificationCount: Int,
     onHome: () -> Unit,
     onLeaderboard: () -> Unit,
     onPlay: () -> Unit,
@@ -267,6 +271,7 @@ private fun TopLevelTabIfNeeded(
         content(Modifier.weight(1f))
         FastToWinBottomBar(
             selected = selected,
+            friendNotificationCount = friendNotificationCount,
             onHome = onHome,
             onLeaderboard = onLeaderboard,
             onPlay = onPlay,

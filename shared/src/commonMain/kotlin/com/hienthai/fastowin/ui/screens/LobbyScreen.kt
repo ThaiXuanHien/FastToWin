@@ -144,6 +144,7 @@ fun LobbyScreen(
         if (state.lobbyStage == LobbyStage.SELECT_MODE) {
             FastToWinBottomBar(
                 selected = MainTab.HOME,
+                friendNotificationCount = state.pendingSocialInvitationCount,
                 onHome = {},
                 onLeaderboard = if (isGuest) onUpgradeGuest else onOpenLeaderboard,
                 onPlay = { showTabModePicker = true },
