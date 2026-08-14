@@ -120,8 +120,12 @@ private fun GameContent(
         onDispose { controller.close() }
     }
 
-    state.roomInvitation?.let { invitation ->
-        RoomInvitationDialog(invitation, controller::respondRoomInvitation)
+    state.roomInvitationPrompt?.let { invitation ->
+        RoomInvitationDialog(
+            invitation = invitation,
+            onRespond = { accept -> controller.respondRoomInvitation(invitation.invitationId, accept) },
+            onDefer = controller::dismissRoomInvitationPrompt
+        )
     }
     if (showGameModePicker) {
         GameModePickerDialog(
@@ -164,7 +168,12 @@ private fun GameContent(
                     onRefresh = controller::openFriends,
                     onSendRequest = controller::sendFriendRequest,
                     onRespondRequest = controller::respondFriendRequest,
+                    onCancelRequest = controller::cancelFriendRequest,
+                    onRemoveFriend = controller::removeFriend,
+                    onBlockPlayer = controller::blockPlayer,
+                    onUnblockPlayer = controller::unblockPlayer,
                     onInviteFriend = controller::inviteFriend,
+                    onRespondRoomInvitation = controller::respondRoomInvitation,
                     showBackButton = !showTopLevelNavigation,
                     modifier = contentModifier
                 ) }

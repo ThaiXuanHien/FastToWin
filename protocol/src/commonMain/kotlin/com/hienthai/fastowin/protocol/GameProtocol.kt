@@ -4,7 +4,7 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
-const val PROTOCOL_VERSION = 4
+const val PROTOCOL_VERSION = 7
 const val GAME_NUMBER_COUNT = 50
 const val MAX_PROFILE_DISPLAY_NAME_LENGTH = 32
 
@@ -137,10 +137,30 @@ data class FriendRequestSnapshot(
 )
 
 @Serializable
+data class BlockedPlayerSnapshot(
+    val userId: String,
+    val displayName: String,
+    val playerCode: String,
+    val avatarId: String? = null
+)
+
+@Serializable
+data class RecentPlayerSnapshot(
+    val userId: String,
+    val displayName: String,
+    val playerCode: String,
+    val avatarId: String? = null,
+    val lastPlayedAtEpochMillis: Long,
+    val matchesPlayed: Int
+)
+
+@Serializable
 data class FriendsSnapshot(
     val friends: List<FriendSnapshot> = emptyList(),
     val incomingRequests: List<FriendRequestSnapshot> = emptyList(),
-    val outgoingRequests: List<FriendRequestSnapshot> = emptyList()
+    val outgoingRequests: List<FriendRequestSnapshot> = emptyList(),
+    val blockedPlayers: List<BlockedPlayerSnapshot> = emptyList(),
+    val recentPlayers: List<RecentPlayerSnapshot> = emptyList()
 )
 
 @Serializable
@@ -207,12 +227,32 @@ sealed class ClientMessage {
     data class RespondFriendRequest(val requestId: String, val accept: Boolean) : ClientMessage()
 
     @Serializable
+    @SerialName("cancel_friend_request")
+    data class CancelFriendRequest(val requestId: String) : ClientMessage()
+
+    @Serializable
+    @SerialName("remove_friend")
+    data class RemoveFriend(val friendUserId: String) : ClientMessage()
+
+    @Serializable
+    @SerialName("block_player")
+    data class BlockPlayer(val playerUserId: String) : ClientMessage()
+
+    @Serializable
+    @SerialName("unblock_player")
+    data class UnblockPlayer(val playerUserId: String) : ClientMessage()
+
+    @Serializable
     @SerialName("invite_friend")
     data class InviteFriend(val friendUserId: String, val roomId: String) : ClientMessage()
 
     @Serializable
     @SerialName("respond_room_invitation")
     data class RespondRoomInvitation(val invitationId: String, val accept: Boolean) : ClientMessage()
+
+    @Serializable
+    @SerialName("get_room_invitations")
+    data object GetRoomInvitations : ClientMessage()
 
     @Serializable
     @SerialName("create_room")
@@ -276,6 +316,10 @@ sealed class ServerMessage {
         val roomName: String,
         val expiresAtEpochMillis: Long
     ) : ServerMessage()
+
+    @Serializable
+    @SerialName("room_invitations_data")
+    data class RoomInvitationsData(val invitations: List<RoomInvitation>) : ServerMessage()
 
     @Serializable
     @SerialName("social_notice")

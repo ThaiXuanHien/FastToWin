@@ -4,6 +4,7 @@ import com.hienthai.fastowin.protocol.ClientMessage
 import com.hienthai.fastowin.protocol.ProtocolGameMode
 import com.hienthai.fastowin.protocol.PlayerProfileSnapshot
 import com.hienthai.fastowin.protocol.FriendSnapshot
+import com.hienthai.fastowin.protocol.RecentPlayerSnapshot
 import com.hienthai.fastowin.protocol.ServerMessage
 import kotlinx.coroutines.async
 import kotlinx.coroutines.test.runTest
@@ -135,18 +136,39 @@ class GameEngineTest {
                 friends = listOf(
                     if (userId == hostId) FriendSnapshot(guestId, "Guest", "GUEST123")
                     else FriendSnapshot(hostId, "Host", "HOST123")
-                )
+                ),
+                recentPlayers = if (userId == hostId) listOf(
+                    RecentPlayerSnapshot(guestId, "Guest", "GUEST123", null, 2_000L, 2)
+                ) else emptyList()
             )
             override suspend fun sendRequest(userId: String, playerCode: String, nowMillis: Long) =
                 FriendRequestResult.PlayerNotFound
             override suspend fun respond(userId: String, requestId: String, accept: Boolean, nowMillis: Long) =
                 FriendResponseResult.NotFound
+            override suspend fun cancelRequest(userId: String, requestId: String) =
+                FriendCancellationResult.NotFound
+            override suspend fun removeFriend(userId: String, friendUserId: String) =
+                SocialMutationResult.NotFound
+            override suspend fun blockPlayer(userId: String, playerUserId: String, nowMillis: Long) =
+                SocialMutationResult.NotFound
+            override suspend fun unblockPlayer(userId: String, playerUserId: String) =
+                SocialMutationResult.NotFound
             override suspend fun areFriends(firstUserId: String, secondUserId: String) =
                 setOf(firstUserId, secondUserId) == setOf(hostId, guestId)
+            override suspend fun isBlockedEitherWay(firstUserId: String, secondUserId: String) = false
         }
         val engine = GameEngine(friendRepository = repository)
         engine.connectAccount(AuthenticatedAccount(UUID.fromString(hostId), "Host"))
         engine.connectAccount(AuthenticatedAccount(UUID.fromString(guestId), "Guest"))
+        val recentPlayer = engine.handle(hostId, ClientMessage.GetFriends)
+            .map(Delivery::message)
+            .filterIsInstance<ServerMessage.FriendsData>()
+            .single()
+            .social
+            .recentPlayers
+            .single()
+        assertEquals(guestId, recentPlayer.userId)
+        assertEquals(2, recentPlayer.matchesPlayed)
         val room = engine.handle(
             hostId,
             ClientMessage.CreateRoom("Friend room", PASSWORD, ProtocolGameMode.ORDER)
@@ -156,14 +178,59 @@ class GameEngineTest {
             hostId,
             ClientMessage.InviteFriend(guestId, room.roomId)
         ).map(Delivery::message).filterIsInstance<ServerMessage.RoomInvitation>().single()
-        val started = engine.handle(
+        val listedInvitation = engine.handle(guestId, ClientMessage.GetRoomInvitations)
+            .map(Delivery::message)
+            .filterIsInstance<ServerMessage.RoomInvitationsData>()
+            .single()
+            .invitations
+            .single()
+        assertEquals(invitation.invitationId, listedInvitation.invitationId)
+
+        val acceptResponse = engine.handle(
             guestId,
             ClientMessage.RespondRoomInvitation(invitation.invitationId, accept = true)
-        ).map(Delivery::message).filterIsInstance<ServerMessage.GameStarted>()
+        ).map(Delivery::message)
+        val started = acceptResponse.filterIsInstance<ServerMessage.GameStarted>()
 
         assertEquals(1, started.size)
         assertEquals(setOf(hostId, guestId), started.first().game.players.map { it.id }.toSet())
         assertEquals(50, started.first().game.numbers.size)
+        assertTrue(acceptResponse.filterIsInstance<ServerMessage.RoomInvitationsData>().single().invitations.isEmpty())
+    }
+
+    @Test
+    fun `blocked players cannot receive room invitations`() = runTest {
+        val hostId = UUID.randomUUID().toString()
+        val guestId = UUID.randomUUID().toString()
+        val repository = object : FriendRepository {
+            override suspend fun load(userId: String) = StoredFriends()
+            override suspend fun sendRequest(userId: String, playerCode: String, nowMillis: Long) =
+                FriendRequestResult.Blocked
+            override suspend fun respond(userId: String, requestId: String, accept: Boolean, nowMillis: Long) =
+                FriendResponseResult.NotFound
+            override suspend fun cancelRequest(userId: String, requestId: String) =
+                FriendCancellationResult.NotFound
+            override suspend fun removeFriend(userId: String, friendUserId: String) =
+                SocialMutationResult.NotFound
+            override suspend fun blockPlayer(userId: String, playerUserId: String, nowMillis: Long) =
+                SocialMutationResult.NotFound
+            override suspend fun unblockPlayer(userId: String, playerUserId: String) =
+                SocialMutationResult.NotFound
+            override suspend fun areFriends(firstUserId: String, secondUserId: String) = true
+            override suspend fun isBlockedEitherWay(firstUserId: String, secondUserId: String) = true
+        }
+        val engine = GameEngine(friendRepository = repository)
+        engine.connectAccount(AuthenticatedAccount(UUID.fromString(hostId), "Host"))
+        engine.connectAccount(AuthenticatedAccount(UUID.fromString(guestId), "Guest"))
+        val room = engine.handle(
+            hostId,
+            ClientMessage.CreateRoom("Blocked room", PASSWORD, ProtocolGameMode.ORDER)
+        ).map(Delivery::message).filterIsInstance<ServerMessage.RoomCreated>().single().game
+
+        val response = engine.handle(hostId, ClientMessage.InviteFriend(guestId, room.roomId))
+
+        val error = assertIs<ServerMessage.Error>(response.single().message)
+        assertEquals("INTERACTION_BLOCKED", error.code)
     }
 
     @Test

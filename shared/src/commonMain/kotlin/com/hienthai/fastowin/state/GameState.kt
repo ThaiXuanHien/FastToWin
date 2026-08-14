@@ -76,6 +76,7 @@ data class GameState(
     val isFriendsOpen: Boolean = false,
     val isFriendsLoading: Boolean = false,
     val social: FriendsSnapshot = FriendsSnapshot(),
-    val roomInvitation: ServerMessage.RoomInvitation? = null,
+    val roomInvitations: List<ServerMessage.RoomInvitation> = emptyList(),
+    val roomInvitationPrompt: ServerMessage.RoomInvitation? = null,
     val socialNotice: String? = null
 )

@@ -229,7 +229,10 @@ class GameController(
             return
         }
         if (playerId == null) return
-        scope.launch { socket.sendMessage(ClientMessage.GetFriends) }
+        scope.launch {
+            socket.sendMessage(ClientMessage.GetFriends)
+            socket.sendMessage(ClientMessage.GetRoomInvitations)
+        }
     }
 
     fun closeFriends() {
@@ -260,15 +263,46 @@ class GameController(
         scope.launch { socket.sendMessage(ClientMessage.RespondFriendRequest(requestId, accept)) }
     }
 
+    fun cancelFriendRequest(requestId: String) {
+        _uiState.update { it.copy(isFriendsLoading = true, error = null, socialNotice = null) }
+        scope.launch { socket.sendMessage(ClientMessage.CancelFriendRequest(requestId)) }
+    }
+
+    fun removeFriend(friendUserId: String) {
+        _uiState.update { it.copy(isFriendsLoading = true, error = null, socialNotice = null) }
+        scope.launch { socket.sendMessage(ClientMessage.RemoveFriend(friendUserId)) }
+    }
+
+    fun blockPlayer(playerUserId: String) {
+        _uiState.update { it.copy(isFriendsLoading = true, error = null, socialNotice = null) }
+        scope.launch { socket.sendMessage(ClientMessage.BlockPlayer(playerUserId)) }
+    }
+
+    fun unblockPlayer(playerUserId: String) {
+        _uiState.update { it.copy(isFriendsLoading = true, error = null, socialNotice = null) }
+        scope.launch { socket.sendMessage(ClientMessage.UnblockPlayer(playerUserId)) }
+    }
+
     fun inviteFriend(friendUserId: String) {
         val roomId = _uiState.value.currentRoomId ?: return
         scope.launch { socket.sendMessage(ClientMessage.InviteFriend(friendUserId, roomId)) }
     }
 
-    fun respondRoomInvitation(accept: Boolean) {
-        val invitation = _uiState.value.roomInvitation ?: return
-        _uiState.update { it.copy(roomInvitation = null, error = null) }
-        scope.launch { socket.sendMessage(ClientMessage.RespondRoomInvitation(invitation.invitationId, accept)) }
+    fun respondRoomInvitation(invitationId: String, accept: Boolean) {
+        val invitationExists = _uiState.value.roomInvitations.any { it.invitationId == invitationId }
+        if (!invitationExists) return
+        _uiState.update { state ->
+            state.copy(
+                roomInvitations = state.roomInvitations.filterNot { it.invitationId == invitationId },
+                roomInvitationPrompt = state.roomInvitationPrompt?.takeUnless { it.invitationId == invitationId },
+                error = null
+            )
+        }
+        scope.launch { socket.sendMessage(ClientMessage.RespondRoomInvitation(invitationId, accept)) }
+    }
+
+    fun dismissRoomInvitationPrompt() {
+        _uiState.update { it.copy(roomInvitationPrompt = null) }
     }
 
     fun createRoom(roomName: String, password: String) {
@@ -325,6 +359,7 @@ class GameController(
                         socket.sendMessage(ClientMessage.ListRooms)
                         socket.sendMessage(ClientMessage.GetProfile)
                         socket.sendMessage(ClientMessage.GetFriends)
+                        socket.sendMessage(ClientMessage.GetRoomInvitations)
                         socket.sendMessage(ClientMessage.GetLeaderboard)
                     }
                 }
@@ -388,7 +423,29 @@ class GameController(
             }
 
             is ServerMessage.RoomInvitation -> {
-                _uiState.update { it.copy(roomInvitation = message, socialNotice = null) }
+                _uiState.update { state ->
+                    state.copy(
+                        roomInvitations = (state.roomInvitations.filterNot {
+                            it.invitationId == message.invitationId || it.fromUserId == message.fromUserId
+                        } + message),
+                        roomInvitationPrompt = state.roomInvitationPrompt?.takeUnless {
+                            it.fromUserId == message.fromUserId
+                        } ?: message,
+                        socialNotice = null
+                    )
+                }
+            }
+
+            is ServerMessage.RoomInvitationsData -> {
+                _uiState.update { state ->
+                    val invitationIds = message.invitations.mapTo(mutableSetOf()) { it.invitationId }
+                    state.copy(
+                        roomInvitations = message.invitations,
+                        roomInvitationPrompt = state.roomInvitationPrompt?.takeIf {
+                            it.invitationId in invitationIds
+                        }
+                    )
+                }
             }
 
             is ServerMessage.SocialNotice -> {
@@ -423,6 +480,8 @@ class GameController(
                 currentRoomName = game.roomName,
                 isRoomHost = game.hostId == playerId,
                 isSearching = false,
+                roomInvitations = emptyList(),
+                roomInvitationPrompt = null,
                 error = null
             )
         }

@@ -2,6 +2,8 @@ package com.hienthai.fastowin.server
 
 import com.hienthai.fastowin.protocol.FriendRequestSnapshot
 import com.hienthai.fastowin.protocol.FriendSnapshot
+import com.hienthai.fastowin.protocol.BlockedPlayerSnapshot
+import com.hienthai.fastowin.protocol.RecentPlayerSnapshot
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.sql.Connection
@@ -40,7 +42,62 @@ class PostgresFriendRepository(private val dataSource: DataSource) : FriendRepos
             }
             val incoming = loadRequests(connection, currentId, incoming = true)
             val outgoing = loadRequests(connection, currentId, incoming = false)
-            StoredFriends(friends, incoming, outgoing)
+            val blockedPlayers = connection.prepareStatement(
+                """
+                SELECT u.id, p.display_name, p.player_code, p.avatar_url
+                FROM player_blocks b
+                JOIN users u ON u.id = b.blocked_id
+                JOIN profiles p ON p.user_id = u.id
+                WHERE b.blocker_id = ? AND u.status = 'ACTIVE'
+                ORDER BY LOWER(p.display_name), p.player_code
+                """.trimIndent()
+            ).use { statement ->
+                statement.setObject(1, currentId)
+                statement.executeQuery().use { result ->
+                    buildList {
+                        while (result.next()) add(BlockedPlayerSnapshot(
+                            userId = result.getObject("id", UUID::class.java).toString(),
+                            displayName = result.getString("display_name"),
+                            playerCode = result.getString("player_code"),
+                            avatarId = result.getString("avatar_url")
+                        ))
+                    }
+                }
+            }
+            val recentPlayers = connection.prepareStatement(
+                """
+                SELECT opponent.id, profile.display_name, profile.player_code, profile.avatar_url,
+                       MAX(m.ended_at) AS last_played_at, COUNT(*) AS matches_played
+                FROM match_players current_player
+                JOIN matches m ON m.id = current_player.match_id
+                JOIN match_players opponent_player
+                  ON opponent_player.match_id = current_player.match_id
+                 AND opponent_player.user_id <> current_player.user_id
+                JOIN users opponent ON opponent.id = opponent_player.user_id
+                JOIN profiles profile ON profile.user_id = opponent.id
+                WHERE current_player.user_id = ?
+                  AND opponent.account_type = 'REGISTERED'
+                  AND opponent.status = 'ACTIVE'
+                GROUP BY opponent.id, profile.display_name, profile.player_code, profile.avatar_url
+                ORDER BY last_played_at DESC
+                LIMIT 20
+                """.trimIndent()
+            ).use { statement ->
+                statement.setObject(1, currentId)
+                statement.executeQuery().use { result ->
+                    buildList {
+                        while (result.next()) add(RecentPlayerSnapshot(
+                            userId = result.getObject("id", UUID::class.java).toString(),
+                            displayName = result.getString("display_name"),
+                            playerCode = result.getString("player_code"),
+                            avatarId = result.getString("avatar_url"),
+                            lastPlayedAtEpochMillis = result.getTimestamp("last_played_at").time,
+                            matchesPlayed = result.getInt("matches_played")
+                        ))
+                    }
+                }
+            }
+            StoredFriends(friends, incoming, outgoing, blockedPlayers, recentPlayers)
         }
     }
 
@@ -63,6 +120,9 @@ class PostgresFriendRepository(private val dataSource: DataSource) : FriendRepos
                 }
             } ?: return@withContext FriendRequestResult.PlayerNotFound
             if (requesterId == addresseeId) return@withContext FriendRequestResult.SelfRequest
+            if (isBlockedEitherWay(connection, requesterId, addresseeId)) {
+                return@withContext FriendRequestResult.Blocked
+            }
             try {
                 connection.prepareStatement(
                     """
@@ -133,6 +193,30 @@ class PostgresFriendRepository(private val dataSource: DataSource) : FriendRepos
         }
     }
 
+    override suspend fun cancelRequest(
+        userId: String,
+        requestId: String
+    ): FriendCancellationResult = withContext(Dispatchers.IO) {
+        val currentId = userId.toUuidOrNull() ?: return@withContext FriendCancellationResult.NotFound
+        val friendshipId = requestId.toUuidOrNull() ?: return@withContext FriendCancellationResult.NotFound
+        dataSource.connection.use { connection ->
+            val recipientId = connection.prepareStatement(
+                """
+                DELETE FROM friendships
+                WHERE id = ? AND requester_id = ? AND status = 'PENDING'
+                RETURNING addressee_id
+                """.trimIndent()
+            ).use { statement ->
+                statement.setObject(1, friendshipId)
+                statement.setObject(2, currentId)
+                statement.executeQuery().use { result ->
+                    if (result.next()) result.getObject("addressee_id", UUID::class.java) else null
+                }
+            } ?: return@withContext FriendCancellationResult.NotFound
+            FriendCancellationResult.Success(recipientId.toString())
+        }
+    }
+
     override suspend fun areFriends(firstUserId: String, secondUserId: String): Boolean =
         withContext(Dispatchers.IO) {
             dataSource.connection.use { connection ->
@@ -152,6 +236,117 @@ class PostgresFriendRepository(private val dataSource: DataSource) : FriendRepos
                     statement.setObject(4, first)
                     statement.executeQuery().use { it.next() }
                 }
+            }
+        }
+
+    override suspend fun removeFriend(
+        userId: String,
+        friendUserId: String
+    ): SocialMutationResult = withContext(Dispatchers.IO) {
+        val currentId = userId.toUuidOrNull() ?: return@withContext SocialMutationResult.NotFound
+        val friendId = friendUserId.toUuidOrNull() ?: return@withContext SocialMutationResult.NotFound
+        if (currentId == friendId) return@withContext SocialMutationResult.SelfAction
+        dataSource.connection.use { connection ->
+            val removed = connection.prepareStatement(
+                """
+                DELETE FROM friendships
+                WHERE ((requester_id = ? AND addressee_id = ?) OR
+                       (requester_id = ? AND addressee_id = ?))
+                  AND status = 'ACCEPTED'
+                """.trimIndent()
+            ).use { statement ->
+                statement.setObject(1, currentId)
+                statement.setObject(2, friendId)
+                statement.setObject(3, friendId)
+                statement.setObject(4, currentId)
+                statement.executeUpdate() == 1
+            }
+            if (removed) SocialMutationResult.Success(friendId.toString())
+            else SocialMutationResult.NotFound
+        }
+    }
+
+    override suspend fun blockPlayer(
+        userId: String,
+        playerUserId: String,
+        nowMillis: Long
+    ): SocialMutationResult = withContext(Dispatchers.IO) {
+        val blockerId = userId.toUuidOrNull() ?: return@withContext SocialMutationResult.NotFound
+        val blockedId = playerUserId.toUuidOrNull() ?: return@withContext SocialMutationResult.NotFound
+        if (blockerId == blockedId) return@withContext SocialMutationResult.SelfAction
+        dataSource.connection.use { connection ->
+            val targetExists = connection.prepareStatement(
+                "SELECT 1 FROM users WHERE id = ? AND account_type = 'REGISTERED' AND status = 'ACTIVE'"
+            ).use { statement ->
+                statement.setObject(1, blockedId)
+                statement.executeQuery().use { it.next() }
+            }
+            if (!targetExists) return@withContext SocialMutationResult.NotFound
+
+            connection.autoCommit = false
+            try {
+                connection.prepareStatement(
+                    """
+                    INSERT INTO player_blocks (blocker_id, blocked_id, created_at)
+                    VALUES (?, ?, ?)
+                    ON CONFLICT (blocker_id, blocked_id) DO NOTHING
+                    """.trimIndent()
+                ).use { statement ->
+                    statement.setObject(1, blockerId)
+                    statement.setObject(2, blockedId)
+                    statement.setTimestamp(3, java.sql.Timestamp(nowMillis))
+                    statement.executeUpdate()
+                }
+                connection.prepareStatement(
+                    """
+                    DELETE FROM friendships
+                    WHERE (requester_id = ? AND addressee_id = ?) OR
+                          (requester_id = ? AND addressee_id = ?)
+                    """.trimIndent()
+                ).use { statement ->
+                    statement.setObject(1, blockerId)
+                    statement.setObject(2, blockedId)
+                    statement.setObject(3, blockedId)
+                    statement.setObject(4, blockerId)
+                    statement.executeUpdate()
+                }
+                connection.commit()
+                SocialMutationResult.Success(blockedId.toString())
+            } catch (error: Throwable) {
+                connection.rollback()
+                throw error
+            } finally {
+                connection.autoCommit = true
+            }
+        }
+    }
+
+    override suspend fun unblockPlayer(
+        userId: String,
+        playerUserId: String
+    ): SocialMutationResult = withContext(Dispatchers.IO) {
+        val blockerId = userId.toUuidOrNull() ?: return@withContext SocialMutationResult.NotFound
+        val blockedId = playerUserId.toUuidOrNull() ?: return@withContext SocialMutationResult.NotFound
+        if (blockerId == blockedId) return@withContext SocialMutationResult.SelfAction
+        dataSource.connection.use { connection ->
+            val removed = connection.prepareStatement(
+                "DELETE FROM player_blocks WHERE blocker_id = ? AND blocked_id = ?"
+            ).use { statement ->
+                statement.setObject(1, blockerId)
+                statement.setObject(2, blockedId)
+                statement.executeUpdate() == 1
+            }
+            if (removed) SocialMutationResult.Success(blockedId.toString())
+            else SocialMutationResult.NotFound
+        }
+    }
+
+    override suspend fun isBlockedEitherWay(firstUserId: String, secondUserId: String): Boolean =
+        withContext(Dispatchers.IO) {
+            val first = firstUserId.toUuidOrNull() ?: return@withContext false
+            val second = secondUserId.toUuidOrNull() ?: return@withContext false
+            dataSource.connection.use { connection ->
+                isBlockedEitherWay(connection, first, second)
             }
         }
 
@@ -184,4 +379,21 @@ class PostgresFriendRepository(private val dataSource: DataSource) : FriendRepos
             }
         }
     }
+
+    private fun isBlockedEitherWay(connection: Connection, first: UUID, second: UUID): Boolean =
+        connection.prepareStatement(
+            """
+            SELECT 1 FROM player_blocks
+            WHERE (blocker_id = ? AND blocked_id = ?) OR
+                  (blocker_id = ? AND blocked_id = ?)
+            """.trimIndent()
+        ).use { statement ->
+            statement.setObject(1, first)
+            statement.setObject(2, second)
+            statement.setObject(3, second)
+            statement.setObject(4, first)
+            statement.executeQuery().use { it.next() }
+        }
+
+    private fun String.toUuidOrNull(): UUID? = runCatching { UUID.fromString(this) }.getOrNull()
 }
