@@ -51,6 +51,7 @@ class GameController(
     private var connectionJob: Job? = null
     private var timerJob: Job? = null
     private var countdownJob: Job? = null
+    private var latencyJob: Job? = null
     private var gameStarted = false
 
     init {
@@ -348,12 +349,73 @@ class GameController(
         returnToRoomBrowser()
     }
 
+    fun requestRematch() {
+        val state = _uiState.value
+        val roomId = state.currentRoomId ?: return
+        if (!state.isGameOver || state.isRematchRequestedByMe) return
+        scope.launch { socket.sendMessage(ClientMessage.RequestRematch(roomId)) }
+    }
+
+    fun openMatchDetail(matchId: String) {
+        _uiState.update { it.copy(matchDetail = null, isMatchDetailLoading = true, error = null) }
+        scope.launch { socket.sendMessage(ClientMessage.GetMatchDetail(matchId)) }
+    }
+
+    fun closeMatchDetail() {
+        _uiState.update { it.copy(matchDetail = null, isMatchDetailLoading = false) }
+    }
+
+    fun equipCosmetics(frameId: String, titleId: String) {
+        _uiState.update { it.copy(isProfileLoading = true, error = null) }
+        scope.launch { socket.sendMessage(ClientMessage.EquipCosmetics(frameId, titleId)) }
+    }
+
+    fun setReady(ready: Boolean) {
+        val roomId = _uiState.value.currentRoomId ?: return
+        scope.launch { socket.sendMessage(ClientMessage.SetReady(roomId, ready)) }
+    }
+
+    fun startMatchmaking(mode: GameMode) {
+        if (accountDisplayName == null) return
+        _uiState.update {
+            it.copy(
+                gameMode = mode,
+                lobbyStage = LobbyStage.MATCHMAKING,
+                isMatchmaking = true,
+                matchmakingStartedAtMillis = epochMillis(),
+                matchmakingRatingRange = 100,
+                error = null
+            )
+        }
+        scope.launch { socket.sendMessage(ClientMessage.JoinMatchmaking(mode.toProtocol())) }
+    }
+
+    fun cancelMatchmaking() {
+        _uiState.update {
+            it.copy(
+                lobbyStage = LobbyStage.SELECT_MODE,
+                isMatchmaking = false,
+                matchmakingStartedAtMillis = null,
+                error = null
+            )
+        }
+        scope.launch { socket.sendMessage(ClientMessage.CancelMatchmaking) }
+    }
+
+    fun kickOpponent() {
+        val state = _uiState.value
+        val roomId = state.currentRoomId ?: return
+        val opponentId = state.opponent.id ?: return
+        scope.launch { socket.sendMessage(ClientMessage.KickPlayer(roomId, opponentId)) }
+    }
+
     private suspend fun handleMessage(message: ServerMessage) {
         when (message) {
             is ServerMessage.SessionReady -> {
                 val wasRecoveringRoom = _uiState.value.currentRoomId != null
                 playerId = message.playerId
                 _uiState.update { it.copy(isSearching = false, error = null) }
+                startLatencyMonitoring()
                 if (accountDisplayName != null) {
                     scope.launch {
                         socket.sendMessage(ClientMessage.ListRooms)
@@ -398,15 +460,29 @@ class GameController(
                 val wasSaving = _uiState.value.isProfileSaving
                 accountDisplayName = message.profile.displayName
                 onProfileDisplayNameChanged(message.profile.displayName)
-                _uiState.update {
-                    it.copy(
+                _uiState.update { state ->
+                    val completedMatch = state.currentMatchId?.takeIf { state.isGameOver }?.let { matchId ->
+                        message.profile.recentMatches.firstOrNull { it.matchId == matchId }
+                    }
+                    state.copy(
                         profile = message.profile,
-                        player = it.player.copy(name = message.profile.displayName),
+                        player = state.player.copy(name = message.profile.displayName),
                         isProfileLoading = false,
                         isProfileSaving = false,
                         profileNotice = if (wasSaving) "Đã lưu hồ sơ." else null,
+                        lastMatchEloChange = completedMatch?.eloChange ?: state.lastMatchEloChange,
+                        lastMatchEloRating = if (completedMatch != null) {
+                            message.profile.statistics.eloRating
+                        } else {
+                            state.lastMatchEloRating
+                        },
                         error = null
                     )
+                }
+            }
+            is ServerMessage.MatchDetailData -> {
+                _uiState.update {
+                    it.copy(matchDetail = message.detail, isMatchDetailLoading = false, error = null)
                 }
             }
 
@@ -453,9 +529,40 @@ class GameController(
             }
 
             is ServerMessage.RoomCreated -> applyWaitingSnapshot(message.game)
+            is ServerMessage.RoomUpdated -> applyWaitingSnapshot(message.game)
             is ServerMessage.GameStarted -> startMatchCountdown(message.game)
-            is ServerMessage.GameStateUpdated -> applyGameSnapshot(message.game)
-            is ServerMessage.GameFinished -> applyGameSnapshot(message.game)
+            is ServerMessage.GameStateUpdated -> {
+                applyGameSnapshot(message.game)
+                if (message.game.phase == RoomPhase.FINISHED && accountDisplayName != null) {
+                    socket.sendMessage(ClientMessage.GetProfile)
+                }
+            }
+            is ServerMessage.GameFinished -> {
+                applyGameSnapshot(message.game)
+                if (accountDisplayName != null) socket.sendMessage(ClientMessage.GetProfile)
+            }
+            is ServerMessage.RematchStatus -> applyGameSnapshot(message.game)
+            is ServerMessage.LatencyPong -> {
+                _uiState.update {
+                    it.copy(latencyMillis = (epochMillis() - message.clientSentAtEpochMillis).coerceAtLeast(0L))
+                }
+            }
+            is ServerMessage.MatchmakingStatus -> {
+                _uiState.update {
+                    it.copy(
+                        lobbyStage = if (message.isSearching) LobbyStage.MATCHMAKING else LobbyStage.SELECT_MODE,
+                        isMatchmaking = message.isSearching,
+                        gameMode = message.gameMode?.toUi() ?: it.gameMode,
+                        matchmakingStartedAtMillis = if (message.isSearching) {
+                            it.matchmakingStartedAtMillis ?: epochMillis()
+                        } else {
+                            null
+                        },
+                        matchmakingRatingRange = message.ratingRange,
+                        error = null
+                    )
+                }
+            }
             is ServerMessage.RoomClosed -> {
                 if (_uiState.value.currentRoomId == message.roomId) {
                     returnToRoomBrowser(message.reason)
@@ -473,8 +580,30 @@ class GameController(
         _uiState.update { state ->
             state.copy(
                 gameMode = game.gameMode.toUi(),
-                player = PlayerState(me?.name ?: state.player.name, score = me?.score ?: 0),
-                opponent = PlayerState(opponent?.name ?: DEFAULT_OPPONENT_NAME, score = opponent?.score ?: 0),
+                player = PlayerState(
+                    name = me?.name ?: state.player.name,
+                    id = me?.id,
+                    isReady = me?.isReady == true,
+                    score = me?.score ?: 0
+                ),
+                opponent = PlayerState(
+                    name = opponent?.name ?: DEFAULT_OPPONENT_NAME,
+                    id = opponent?.id,
+                    isReady = opponent?.isReady == true,
+                    score = opponent?.score ?: 0
+                ),
+                hasOpponent = opponent != null,
+                isMatchmaking = false,
+                matchmakingStartedAtMillis = null,
+                numbers = emptyList(),
+                currentTarget = 1,
+                isGameOver = false,
+                isMatchStarted = false,
+                currentMatchId = game.matchId,
+                isRematchRequestedByMe = false,
+                isRematchRequestedByOpponent = false,
+                lastMatchEloChange = null,
+                lastMatchEloRating = null,
                 lobbyStage = LobbyStage.ROOM_WAITING,
                 currentRoomId = game.roomId,
                 currentRoomName = game.roomName,
@@ -526,11 +655,13 @@ class GameController(
                 gameMode = game.gameMode.toUi(),
                 player = PlayerState(
                     name = me?.name ?: state.player.name,
+                    id = me?.id,
                     score = me?.score ?: 0,
                     currentTarget = game.currentTarget
                 ),
                 opponent = PlayerState(
                     name = opponent?.name ?: DEFAULT_OPPONENT_NAME,
+                    id = opponent?.id,
                     score = opponent?.score ?: 0,
                     currentTarget = game.currentTarget
                 ),
@@ -538,8 +669,16 @@ class GameController(
                 currentRoomId = game.roomId,
                 currentRoomName = game.roomName,
                 isRoomHost = game.hostId == playerId,
+                hasOpponent = opponent != null,
+                isMatchmaking = false,
+                matchmakingStartedAtMillis = null,
                 isSearching = false,
                 isMatchStarted = forceStart || state.isMatchStarted,
+                currentMatchId = game.matchId,
+                isRematchRequestedByMe = playerId?.let { it in game.rematchRequestedPlayerIds } == true,
+                isRematchRequestedByOpponent = game.rematchRequestedPlayerIds.any { it != playerId },
+                lastMatchEloChange = if (finished) state.lastMatchEloChange else null,
+                lastMatchEloRating = if (finished) state.lastMatchEloRating else null,
                 countdown = null,
                 message = if (finished) null else state.message,
                 error = null
@@ -567,7 +706,15 @@ class GameController(
             _uiState.update {
                 it.copy(
                     isSearching = false,
+                    isMatchmaking = false,
+                    matchmakingStartedAtMillis = null,
+                    lobbyStage = if (it.lobbyStage == LobbyStage.MATCHMAKING) {
+                        LobbyStage.SELECT_MODE
+                    } else {
+                        it.lobbyStage
+                    },
                     isProfileSaving = false,
+                    isMatchDetailLoading = false,
                     isFriendsLoading = false,
                     error = error.message
                 )
@@ -627,11 +774,22 @@ class GameController(
     fun close() {
         timerJob?.cancel()
         countdownJob?.cancel()
+        latencyJob?.cancel()
         messageJob?.cancel()
         connectionJob?.cancel()
         sessionJob?.cancel()
         socket.close()
         scope.cancel()
+    }
+
+    private fun startLatencyMonitoring() {
+        latencyJob?.cancel()
+        latencyJob = scope.launch {
+            while (true) {
+                socket.sendMessage(ClientMessage.MeasureLatency(epochMillis()))
+                delay(5_000)
+            }
+        }
     }
 
     private fun returnToRoomBrowser(error: String? = null) {
@@ -646,6 +804,7 @@ class GameController(
                 currentRoomId = null,
                 currentRoomName = null,
                 isRoomHost = false,
+                hasOpponent = false,
                 isSearching = false,
                 isMatchStarted = false,
                 countdown = null,

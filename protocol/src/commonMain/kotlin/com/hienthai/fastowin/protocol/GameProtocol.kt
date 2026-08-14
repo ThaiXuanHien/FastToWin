@@ -4,7 +4,7 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
-const val PROTOCOL_VERSION = 7
+const val PROTOCOL_VERSION = 12
 const val GAME_NUMBER_COUNT = 50
 const val MAX_PROFILE_DISPLAY_NAME_LENGTH = 32
 
@@ -42,7 +42,8 @@ data class RoomSummary(
 data class PlayerSnapshot(
     val id: String,
     val name: String,
-    val score: Int
+    val score: Int,
+    val isReady: Boolean = false
 )
 
 @Serializable
@@ -87,7 +88,50 @@ data class PlayerProfileSnapshot(
     val avatarId: String? = null,
     val statistics: PlayerStatisticsSnapshot = PlayerStatisticsSnapshot(),
     val recentMatches: List<MatchHistorySnapshot> = emptyList(),
-    val achievements: List<AchievementSnapshot> = emptyList()
+    val achievements: List<AchievementSnapshot> = emptyList(),
+    val progression: PlayerProgressionSnapshot = PlayerProgressionSnapshot()
+)
+
+@Serializable
+enum class CosmeticType { FRAME, TITLE }
+
+@Serializable
+data class CosmeticSnapshot(
+    val id: String,
+    val name: String,
+    val type: CosmeticType,
+    val unlocked: Boolean,
+    val equipped: Boolean
+)
+
+@Serializable
+data class MissionSnapshot(
+    val code: String,
+    val title: String,
+    val progress: Int,
+    val target: Int,
+    val completed: Boolean
+)
+
+@Serializable
+data class SeasonSnapshot(
+    val name: String,
+    val tier: String,
+    val rating: Int,
+    val endsAtEpochMillis: Long,
+    val rewardDescription: String
+)
+
+@Serializable
+data class PlayerProgressionSnapshot(
+    val level: Int = 1,
+    val experiencePoints: Int = 0,
+    val currentLevelExperience: Int = 0,
+    val nextLevelExperience: Int = 100,
+    val dailyMissions: List<MissionSnapshot> = emptyList(),
+    val weeklyMissions: List<MissionSnapshot> = emptyList(),
+    val cosmetics: List<CosmeticSnapshot> = emptyList(),
+    val season: SeasonSnapshot? = null
 )
 
 @Serializable
@@ -96,6 +140,24 @@ data class AchievementSnapshot(
     val title: String,
     val description: String,
     val unlockedAtEpochMillis: Long
+)
+
+@Serializable
+data class MatchEventSnapshot(
+    val sequence: Int,
+    val playerName: String,
+    val isCurrentPlayer: Boolean,
+    val number: Int,
+    val expectedNumber: Int,
+    val accepted: Boolean,
+    val occurredAtEpochMillis: Long
+)
+
+@Serializable
+data class MatchDetailSnapshot(
+    val summary: MatchHistorySnapshot,
+    val durationMillis: Long,
+    val events: List<MatchEventSnapshot> = emptyList()
 )
 
 @Serializable
@@ -112,7 +174,10 @@ data class LeaderboardEntrySnapshot(
 @Serializable
 data class LeaderboardSnapshot(
     val topPlayers: List<LeaderboardEntrySnapshot> = emptyList(),
-    val currentPlayer: LeaderboardEntrySnapshot? = null
+    val currentPlayer: LeaderboardEntrySnapshot? = null,
+    val seasonName: String? = null,
+    val seasonTopPlayers: List<LeaderboardEntrySnapshot> = emptyList(),
+    val seasonCurrentPlayer: LeaderboardEntrySnapshot? = null
 )
 
 @Serializable
@@ -166,6 +231,7 @@ data class FriendsSnapshot(
 @Serializable
 data class GameSnapshot(
     val roomId: String,
+    val matchId: String = roomId,
     val roomName: String,
     val hostId: String,
     val gameMode: ProtocolGameMode,
@@ -175,7 +241,8 @@ data class GameSnapshot(
     val selectedNumbers: List<Int> = emptyList(),
     val currentTarget: Int = 1,
     val sequence: Long = 0,
-    val startedAtEpochMillis: Long? = null
+    val startedAtEpochMillis: Long? = null,
+    val rematchRequestedPlayerIds: List<String> = emptyList()
 )
 
 @Serializable
@@ -204,11 +271,19 @@ sealed class ClientMessage {
     data object GetProfile : ClientMessage()
 
     @Serializable
+    @SerialName("get_match_detail")
+    data class GetMatchDetail(val matchId: String) : ClientMessage()
+
+    @Serializable
     @SerialName("update_profile")
     data class UpdateProfile(
         val displayName: String,
         val avatarId: String?
     ) : ClientMessage()
+
+    @Serializable
+    @SerialName("equip_cosmetics")
+    data class EquipCosmetics(val frameId: String, val titleId: String) : ClientMessage()
 
     @Serializable
     @SerialName("get_leaderboard")
@@ -271,6 +346,30 @@ sealed class ClientMessage {
     data class LeaveRoom(val roomId: String) : ClientMessage()
 
     @Serializable
+    @SerialName("set_ready")
+    data class SetReady(val roomId: String, val ready: Boolean) : ClientMessage()
+
+    @Serializable
+    @SerialName("kick_player")
+    data class KickPlayer(val roomId: String, val playerId: String) : ClientMessage()
+
+    @Serializable
+    @SerialName("measure_latency")
+    data class MeasureLatency(val clientSentAtEpochMillis: Long) : ClientMessage()
+
+    @Serializable
+    @SerialName("join_matchmaking")
+    data class JoinMatchmaking(val gameMode: ProtocolGameMode) : ClientMessage()
+
+    @Serializable
+    @SerialName("cancel_matchmaking")
+    data object CancelMatchmaking : ClientMessage()
+
+    @Serializable
+    @SerialName("request_rematch")
+    data class RequestRematch(val roomId: String) : ClientMessage()
+
+    @Serializable
     @SerialName("select_number")
     data class SelectNumber(
         val roomId: String,
@@ -297,6 +396,10 @@ sealed class ServerMessage {
     @Serializable
     @SerialName("profile_data")
     data class ProfileData(val profile: PlayerProfileSnapshot) : ServerMessage()
+
+    @Serializable
+    @SerialName("match_detail_data")
+    data class MatchDetailData(val detail: MatchDetailSnapshot) : ServerMessage()
 
     @Serializable
     @SerialName("leaderboard_data")
@@ -330,6 +433,10 @@ sealed class ServerMessage {
     data class RoomCreated(val game: GameSnapshot) : ServerMessage()
 
     @Serializable
+    @SerialName("room_updated")
+    data class RoomUpdated(val game: GameSnapshot) : ServerMessage()
+
+    @Serializable
     @SerialName("game_started")
     data class GameStarted(val game: GameSnapshot) : ServerMessage()
 
@@ -344,6 +451,22 @@ sealed class ServerMessage {
     @Serializable
     @SerialName("game_finished")
     data class GameFinished(val game: GameSnapshot) : ServerMessage()
+
+    @Serializable
+    @SerialName("rematch_status")
+    data class RematchStatus(val game: GameSnapshot) : ServerMessage()
+
+    @Serializable
+    @SerialName("latency_pong")
+    data class LatencyPong(val clientSentAtEpochMillis: Long) : ServerMessage()
+
+    @Serializable
+    @SerialName("matchmaking_status")
+    data class MatchmakingStatus(
+        val isSearching: Boolean,
+        val gameMode: ProtocolGameMode? = null,
+        val ratingRange: Int = 100
+    ) : ServerMessage()
 
     @Serializable
     @SerialName("room_closed")

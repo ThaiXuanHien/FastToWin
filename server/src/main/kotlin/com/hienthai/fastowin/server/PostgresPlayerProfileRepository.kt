@@ -6,6 +6,13 @@ import com.hienthai.fastowin.protocol.AchievementSnapshot
 import com.hienthai.fastowin.protocol.PlayerProfileSnapshot
 import com.hienthai.fastowin.protocol.PlayerStatisticsSnapshot
 import com.hienthai.fastowin.protocol.ProtocolGameMode
+import com.hienthai.fastowin.protocol.MatchDetailSnapshot
+import com.hienthai.fastowin.protocol.MatchEventSnapshot
+import com.hienthai.fastowin.protocol.CosmeticSnapshot
+import com.hienthai.fastowin.protocol.CosmeticType
+import com.hienthai.fastowin.protocol.MissionSnapshot
+import com.hienthai.fastowin.protocol.PlayerProgressionSnapshot
+import com.hienthai.fastowin.protocol.SeasonSnapshot
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.util.UUID
@@ -119,7 +126,195 @@ class PostgresPlayerProfileRepository(
                     }
                 }
             }
-            base.copy(recentMatches = recentMatches, achievements = achievements)
+            val progressionRow = connection.prepareStatement(
+                """
+                SELECT COALESCE(experience_points, 0) AS experience_points,
+                       COALESCE(equipped_frame_id, 'frame_default') AS equipped_frame_id,
+                       COALESCE(equipped_title_id, 'title_rookie') AS equipped_title_id
+                FROM player_stats
+                WHERE user_id = ?
+                """.trimIndent()
+            ).use { statement ->
+                statement.setObject(1, userId)
+                statement.executeQuery().use { result ->
+                    if (result.next()) {
+                        Triple(
+                            result.getInt("experience_points"),
+                            result.getString("equipped_frame_id"),
+                            result.getString("equipped_title_id")
+                        )
+                    } else {
+                        Triple(0, "frame_default", "title_rookie")
+                    }
+                }
+            }
+            val storedMissions = connection.prepareStatement(
+                """
+                SELECT mission_code, progress, target
+                FROM user_missions
+                WHERE user_id = ?
+                  AND period_start IN (CURRENT_DATE, date_trunc('week', CURRENT_DATE)::date)
+                """.trimIndent()
+            ).use { statement ->
+                statement.setObject(1, userId)
+                statement.executeQuery().use { result ->
+                    buildMap {
+                        while (result.next()) {
+                            put(result.getString("mission_code"), result.getInt("progress") to result.getInt("target"))
+                        }
+                    }
+                }
+            }
+            fun mission(code: String, title: String, target: Int): MissionSnapshot {
+                val stored = storedMissions[code]
+                val progress = (stored?.first ?: 0).coerceAtMost(target)
+                return MissionSnapshot(code, title, progress, target, progress >= target)
+            }
+            val season = connection.prepareStatement(
+                """
+                SELECT s.name, s.ends_at, s.reward_description,
+                       COALESCE(sr.rating, ?) AS rating
+                FROM seasons s
+                LEFT JOIN season_ratings sr ON sr.season_id = s.id AND sr.user_id = ?
+                WHERE CURRENT_TIMESTAMP >= s.starts_at AND CURRENT_TIMESTAMP < s.ends_at
+                ORDER BY s.starts_at DESC
+                LIMIT 1
+                """.trimIndent()
+            ).use { statement ->
+                statement.setInt(1, base.statistics.eloRating)
+                statement.setObject(2, userId)
+                statement.executeQuery().use { result ->
+                    if (!result.next()) null else {
+                        val rating = result.getInt("rating")
+                        SeasonSnapshot(
+                            name = result.getString("name"),
+                            tier = ratingTier(rating),
+                            rating = rating,
+                            endsAtEpochMillis = result.getTimestamp("ends_at").time,
+                            rewardDescription = result.getString("reward_description")
+                        )
+                    }
+                }
+            }
+            val experiencePoints = progressionRow.first
+            val level = experiencePoints / EXPERIENCE_PER_LEVEL + 1
+            val achievementCodes = achievements.mapTo(mutableSetOf()) { it.code }
+            val unlockedFrames = setOf("frame_default") + buildSet {
+                if (level >= 3) add("frame_bronze")
+                if (level >= 10) add("frame_gold")
+                if ("PERFECT_GAME" in achievementCodes) add("frame_perfect")
+            }
+            val unlockedTitles = setOf("title_rookie") + buildSet {
+                if (base.statistics.wins >= 10) add("title_champion")
+                if ("SPEED_50" in achievementCodes) add("title_speed")
+            }
+            fun cosmetic(id: String, name: String, type: CosmeticType, unlocked: Boolean, equippedId: String) =
+                CosmeticSnapshot(id, name, type, unlocked, id == equippedId)
+            val cosmetics = listOf(
+                cosmetic("frame_default", "Khung cơ bản", CosmeticType.FRAME, true, progressionRow.second),
+                cosmetic("frame_bronze", "Khung Đồng", CosmeticType.FRAME, "frame_bronze" in unlockedFrames, progressionRow.second),
+                cosmetic("frame_gold", "Khung Vàng", CosmeticType.FRAME, "frame_gold" in unlockedFrames, progressionRow.second),
+                cosmetic("frame_perfect", "Khung Hoàn hảo", CosmeticType.FRAME, "frame_perfect" in unlockedFrames, progressionRow.second),
+                cosmetic("title_rookie", "Tân binh", CosmeticType.TITLE, true, progressionRow.third),
+                cosmetic("title_champion", "Nhà vô địch", CosmeticType.TITLE, "title_champion" in unlockedTitles, progressionRow.third),
+                cosmetic("title_speed", "Tia chớp", CosmeticType.TITLE, "title_speed" in unlockedTitles, progressionRow.third)
+            )
+            base.copy(
+                recentMatches = recentMatches,
+                achievements = achievements,
+                progression = PlayerProgressionSnapshot(
+                    level = level,
+                    experiencePoints = experiencePoints,
+                    currentLevelExperience = experiencePoints % EXPERIENCE_PER_LEVEL,
+                    nextLevelExperience = EXPERIENCE_PER_LEVEL,
+                    dailyMissions = listOf(
+                        mission("DAILY_PLAY_3", "Chơi 3 trận hôm nay", 3),
+                        mission("DAILY_WIN_1", "Thắng 1 trận hôm nay", 1)
+                    ),
+                    weeklyMissions = listOf(
+                        mission("WEEKLY_CORRECT_100", "Chọn đúng 100 số trong tuần", 100),
+                        mission("WEEKLY_PERFECT_1", "Hoàn thành 1 trận không bấm sai", 1)
+                    ),
+                    cosmetics = cosmetics,
+                    season = season
+                )
+            )
+        }
+    }
+
+    override suspend fun findMatchDetail(playerId: String, matchId: String): MatchDetailSnapshot? {
+        val summary = findByPlayerId(playerId)?.recentMatches?.firstOrNull { it.matchId == matchId }
+            ?: return null
+        return withContext(Dispatchers.IO) {
+            dataSource.connection.use { connection ->
+                val playerUuid = UUID.fromString(playerId)
+                val matchUuid = UUID.fromString(matchId)
+                val durationMillis = connection.prepareStatement(
+                    "SELECT started_at, ended_at FROM matches WHERE id = ?"
+                ).use { statement ->
+                    statement.setObject(1, matchUuid)
+                    statement.executeQuery().use { result ->
+                        if (!result.next()) return@withContext null
+                        (result.getTimestamp("ended_at").time - result.getTimestamp("started_at").time)
+                            .coerceAtLeast(0L)
+                    }
+                }
+                val events = connection.prepareStatement(
+                    """
+                    SELECT e.sequence, e.user_id, mp.display_name, e.number, e.expected_number,
+                           e.result, e.occurred_at
+                    FROM match_events e
+                    JOIN match_players mp ON mp.match_id = e.match_id AND mp.user_id = e.user_id
+                    WHERE e.match_id = ?
+                    ORDER BY e.sequence
+                    """.trimIndent()
+                ).use { statement ->
+                    statement.setObject(1, matchUuid)
+                    statement.executeQuery().use { result ->
+                        buildList {
+                            while (result.next()) {
+                                val eventPlayerId = result.getObject("user_id", UUID::class.java)
+                                add(MatchEventSnapshot(
+                                    sequence = result.getInt("sequence"),
+                                    playerName = result.getString("display_name"),
+                                    isCurrentPlayer = eventPlayerId == playerUuid,
+                                    number = result.getInt("number"),
+                                    expectedNumber = result.getInt("expected_number"),
+                                    accepted = result.getString("result") == "ACCEPTED",
+                                    occurredAtEpochMillis = result.getTimestamp("occurred_at").time
+                                ))
+                            }
+                        }
+                    }
+                }
+                MatchDetailSnapshot(summary = summary, durationMillis = durationMillis, events = events)
+            }
+        }
+    }
+
+    override suspend fun equipCosmetics(playerId: String, frameId: String, titleId: String): Boolean {
+        val profile = findByPlayerId(playerId) ?: return false
+        val unlocked = profile.progression.cosmetics.filter(CosmeticSnapshot::unlocked)
+        if (unlocked.none { it.type == CosmeticType.FRAME && it.id == frameId }) return false
+        if (unlocked.none { it.type == CosmeticType.TITLE && it.id == titleId }) return false
+        return withContext(Dispatchers.IO) {
+            dataSource.connection.use { connection ->
+                connection.prepareStatement(
+                    """
+                    INSERT INTO player_stats (user_id, equipped_frame_id, equipped_title_id, updated_at)
+                    VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+                    ON CONFLICT (user_id) DO UPDATE SET
+                        equipped_frame_id = EXCLUDED.equipped_frame_id,
+                        equipped_title_id = EXCLUDED.equipped_title_id,
+                        updated_at = EXCLUDED.updated_at
+                    """.trimIndent()
+                ).use { statement ->
+                    statement.setObject(1, UUID.fromString(playerId))
+                    statement.setString(2, frameId)
+                    statement.setString(3, titleId)
+                    statement.executeUpdate() == 1
+                }
+            }
         }
     }
 
@@ -142,5 +337,17 @@ class PostgresPlayerProfileRepository(
                 statement.executeUpdate() == 1
             }
         }
+    }
+
+    private fun ratingTier(rating: Int): String = when {
+        rating >= 1_800 -> "Kim cương"
+        rating >= 1_500 -> "Bạch kim"
+        rating >= 1_300 -> "Vàng"
+        rating >= 1_100 -> "Bạc"
+        else -> "Đồng"
+    }
+
+    private companion object {
+        const val EXPERIENCE_PER_LEVEL = 100
     }
 }

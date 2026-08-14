@@ -13,32 +13,52 @@ import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.SentimentVeryDissatisfied
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.hienthai.fastowin.state.GameState
 import com.hienthai.fastowin.state.PlayerState
+import com.hienthai.fastowin.data.preferences.AppPreferences
+import com.hienthai.fastowin.platform.GameFeedbackEffect
+import com.hienthai.fastowin.platform.playFeedbackSound
 import com.hienthai.fastowin.ui.theme.FastToWinTheme
 
 @Composable
 fun ResultScreen(
     state: GameState,
     onRestart: () -> Unit,
+    onRematch: (() -> Unit)? = null,
+    preferences: AppPreferences = AppPreferences(),
     modifier: Modifier = Modifier
 ) {
     val isDraw = state.player.score == state.opponent.score
     val isWinner = state.player.score > state.opponent.score
+    val hapticFeedback = LocalHapticFeedback.current
     val winScale by animateFloatAsState(
         targetValue = 1f,
         animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow),
         label = "WinScale"
     )
+    LaunchedEffect(isWinner, isDraw) {
+        val effect = when {
+            isDraw -> GameFeedbackEffect.CORRECT
+            isWinner -> GameFeedbackEffect.WIN
+            else -> GameFeedbackEffect.LOSS
+        }
+        if (preferences.soundEnabled) playFeedbackSound(effect)
+        if (preferences.vibrationEnabled) {
+            hapticFeedback.performHapticFeedback(HapticFeedbackType.LongPress)
+        }
+    }
 
     Surface(
         modifier = modifier.fillMaxSize(),
@@ -76,10 +96,38 @@ fun ResultScreen(
 
             ScoreBoard(state.player, state.opponent, isDraw)
 
+            state.lastMatchEloChange?.let { eloChange ->
+                Surface(
+                    shape = RoundedCornerShape(18.dp),
+                    color = MaterialTheme.colorScheme.surfaceContainer
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(16.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text("Thay đổi xếp hạng", fontWeight = FontWeight.SemiBold)
+                        Text(
+                            buildString {
+                                append(if (eloChange >= 0) "+$eloChange Elo" else "$eloChange Elo")
+                                state.lastMatchEloRating?.let { append("  •  $it") }
+                            },
+                            color = if (eloChange >= 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
+                            fontWeight = FontWeight.Black
+                        )
+                    }
+                }
+            }
+
+            when {
+                state.isRematchRequestedByMe -> Text("Đã gửi yêu cầu • Đang chờ đối thủ...", color = MaterialTheme.colorScheme.primary)
+                state.isRematchRequestedByOpponent -> Text("Đối thủ muốn đấu lại với bạn.", color = MaterialTheme.colorScheme.primary)
+            }
+
             Spacer(modifier = Modifier.weight(1f))
 
-            Button(
-                onClick = onRestart,
+            if (onRematch != null) Button(
+                onClick = onRematch,
+                enabled = !state.isRematchRequestedByMe,
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(64.dp),
@@ -88,7 +136,14 @@ fun ResultScreen(
             ) {
                 Icon(Icons.Rounded.Refresh, contentDescription = null)
                 Spacer(modifier = Modifier.width(8.dp))
-                Text(text = "Về sảnh chờ", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    text = if (state.isRematchRequestedByOpponent) "Chấp nhận đấu lại" else "Đấu lại",
+                    style = MaterialTheme.typography.titleMedium
+                )
+            }
+
+            OutlinedButton(onClick = onRestart, modifier = Modifier.fillMaxWidth()) {
+                Text("Về sảnh")
             }
             
             Spacer(modifier = Modifier.height(24.dp))

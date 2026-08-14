@@ -5,6 +5,7 @@ import com.hienthai.fastowin.protocol.PlayerProfileSnapshot
 import com.hienthai.fastowin.protocol.LeaderboardSnapshot
 import com.hienthai.fastowin.protocol.FriendsSnapshot
 import com.hienthai.fastowin.protocol.ServerMessage
+import com.hienthai.fastowin.protocol.MatchDetailSnapshot
 
 const val GAME_NUMBER_COUNT = 50
 const val DEFAULT_OPPONENT_NAME = "Đối thủ"
@@ -14,6 +15,7 @@ enum class LobbyStage {
     ENTER_NAME,
     ROOM_BROWSER,
     ROOM_WAITING,
+    MATCHMAKING,
     MATCHED
 }
 
@@ -36,6 +38,7 @@ data class AvailableRoom(
 
 data class PlayerState(
     val name: String,
+    val id: String? = null,
     val isReady: Boolean = false,
     val score: Int = 0,
     val currentTarget: Int = 1
@@ -58,18 +61,30 @@ data class GameState(
     val player: PlayerState = PlayerState("Bạn"),
     val opponent: PlayerState = PlayerState(DEFAULT_OPPONENT_NAME),
     val isSearching: Boolean = false,
+    val isMatchmaking: Boolean = false,
+    val matchmakingStartedAtMillis: Long? = null,
+    val matchmakingRatingRange: Int = 100,
     val connectionStatus: ConnectionStatus = ConnectionStatus.DISCONNECTED,
     val availableRooms: List<AvailableRoom> = emptyList(),
     val currentRoomId: String? = null,
     val currentRoomName: String? = null,
     val isRoomHost: Boolean = false,
+    val hasOpponent: Boolean = false,
+    val latencyMillis: Long? = null,
     val countdown: Int? = null,
     val isMatchStarted: Boolean = false,
+    val currentMatchId: String? = null,
+    val isRematchRequestedByMe: Boolean = false,
+    val isRematchRequestedByOpponent: Boolean = false,
+    val lastMatchEloChange: Int? = null,
+    val lastMatchEloRating: Int? = null,
     val isProfileOpen: Boolean = false,
     val isProfileLoading: Boolean = false,
     val isProfileSaving: Boolean = false,
     val profileNotice: String? = null,
     val profile: PlayerProfileSnapshot? = null,
+    val matchDetail: MatchDetailSnapshot? = null,
+    val isMatchDetailLoading: Boolean = false,
     val isLeaderboardOpen: Boolean = false,
     val isLeaderboardLoading: Boolean = false,
     val leaderboard: LeaderboardSnapshot? = null,

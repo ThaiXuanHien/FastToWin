@@ -101,8 +101,9 @@ class GameWebSocketTest {
 
             now += 500L
             guest.sendMessage(ClientMessage.JoinRoom(room.roomId, PASSWORD))
-            host.receiveMessage<ServerMessage.GameStarted>()
-            guest.receiveMessage<ServerMessage.GameStarted>()
+            host.receiveMessage<ServerMessage.RoomUpdated>()
+            guest.receiveMessage<ServerMessage.RoomUpdated>()
+            readyRoom(host, guest, room.roomId)
 
             host.sendMessage(ClientMessage.SelectNumber(room.roomId, 1, "limited-select-1"))
             host.receiveMessage<ServerMessage.GameStateUpdated>()
@@ -259,9 +260,7 @@ class GameWebSocketTest {
                 ClientMessage.CreateRoom("Phòng account reconnect", PASSWORD, ProtocolGameMode.ORDER)
             )
             val room = host.receiveMessage<ServerMessage.RoomCreated>().game
-            guest.sendMessage(ClientMessage.JoinRoom(room.roomId, PASSWORD))
-            host.receiveMessage<ServerMessage.GameStarted>()
-            guest.receiveMessage<ServerMessage.GameStarted>()
+            joinAndReadyRoom(host, guest, room.roomId)
 
             host.sendMessage(ClientMessage.SelectNumber(room.roomId, 1, "account-reconnect-select"))
             host.receiveMessage<ServerMessage.GameStateUpdated>()
@@ -323,9 +322,7 @@ class GameWebSocketTest {
                         ClientMessage.CreateRoom("Restart E2E", PASSWORD, ProtocolGameMode.ORDER)
                     )
                     roomId = host.receiveMessage<ServerMessage.RoomCreated>().game.roomId
-                    guest.sendMessage(ClientMessage.JoinRoom(roomId, PASSWORD))
-                    val hostStarted = host.receiveMessage<ServerMessage.GameStarted>().game
-                    val guestStarted = guest.receiveMessage<ServerMessage.GameStarted>().game
+                    val (hostStarted, guestStarted) = joinAndReadyRoom(host, guest, roomId)
                     assertEquals(hostStarted, guestStarted)
                     boardBeforeRestart = hostStarted.numbers
 
@@ -411,9 +408,7 @@ class GameWebSocketTest {
 
             host.sendMessage(ClientMessage.CreateRoom("Phòng timer", PASSWORD, ProtocolGameMode.TIME_ATTACK))
             val room = host.receiveMessage<ServerMessage.RoomCreated>().game
-            guest.sendMessage(ClientMessage.JoinRoom(room.roomId, PASSWORD))
-            host.receiveMessage<ServerMessage.GameStarted>()
-            guest.receiveMessage<ServerMessage.GameStarted>()
+            joinAndReadyRoom(host, guest, room.roomId)
 
             val hostFinished = host.receiveMessage<ServerMessage.GameFinished>().game
             val guestFinished = guest.receiveMessage<ServerMessage.GameFinished>().game
@@ -455,9 +450,7 @@ class GameWebSocketTest {
             val room = host.receiveMessage<ServerMessage.RoomCreated>().game
             assertEquals("Phòng E2E", room.roomName)
 
-            guest.sendMessage(ClientMessage.JoinRoom(room.roomId, PASSWORD))
-            val hostStarted = host.receiveMessage<ServerMessage.GameStarted>().game
-            val guestStarted = guest.receiveMessage<ServerMessage.GameStarted>().game
+            val (hostStarted, guestStarted) = joinAndReadyRoom(host, guest, room.roomId)
             assertEquals(hostStarted.numbers, guestStarted.numbers)
             assertEquals(50, hostStarted.numbers.size)
 
@@ -502,6 +495,32 @@ class GameWebSocketTest {
 
     private suspend fun DefaultClientWebSocketSession.sendMessage(message: ClientMessage) {
         send(Frame.Text(ProtocolJson.encodeToString<ClientMessage>(message)))
+    }
+
+    private suspend fun joinAndReadyRoom(
+        host: DefaultClientWebSocketSession,
+        guest: DefaultClientWebSocketSession,
+        roomId: String,
+        password: String = PASSWORD
+    ): Pair<com.hienthai.fastowin.protocol.GameSnapshot, com.hienthai.fastowin.protocol.GameSnapshot> {
+        guest.sendMessage(ClientMessage.JoinRoom(roomId, password))
+        host.receiveMessage<ServerMessage.RoomUpdated>()
+        guest.receiveMessage<ServerMessage.RoomUpdated>()
+        return readyRoom(host, guest, roomId)
+    }
+
+    private suspend fun readyRoom(
+        host: DefaultClientWebSocketSession,
+        guest: DefaultClientWebSocketSession,
+        roomId: String
+    ): Pair<com.hienthai.fastowin.protocol.GameSnapshot, com.hienthai.fastowin.protocol.GameSnapshot> {
+        host.sendMessage(ClientMessage.SetReady(roomId, true))
+        host.receiveMessage<ServerMessage.RoomUpdated>()
+        guest.receiveMessage<ServerMessage.RoomUpdated>()
+        guest.sendMessage(ClientMessage.SetReady(roomId, true))
+        val hostStarted = host.receiveMessage<ServerMessage.GameStarted>().game
+        val guestStarted = guest.receiveMessage<ServerMessage.GameStarted>().game
+        return hostStarted to guestStarted
     }
 
     private suspend inline fun <reified T : ServerMessage> DefaultClientWebSocketSession.receiveMessage(): T {

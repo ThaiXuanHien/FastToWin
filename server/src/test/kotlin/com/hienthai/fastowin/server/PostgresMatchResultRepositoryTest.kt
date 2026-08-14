@@ -28,13 +28,14 @@ class PostgresMatchResultRepositoryTest {
             val host = identityRepository.resolveGuest("Test host", null, 1_000L)
             val guest = identityRepository.resolveGuest("Test guest", null, 1_000L)
             val matchId = UUID.randomUUID().toString()
+            val matchStartedAt = System.currentTimeMillis()
             try {
                 val match = CompletedMatch(
                     matchId = matchId,
                     roomName = "Integration test",
                     gameMode = ProtocolGameMode.ORDER,
-                    startedAtMillis = 1_000L,
-                    endedAtMillis = 2_000L,
+                    startedAtMillis = matchStartedAt,
+                    endedAtMillis = matchStartedAt + 1_000L,
                     winnerPlayerId = host.playerId,
                     players = listOf(
                         CompletedMatchPlayer(host.playerId, host.displayName, 500, MatchOutcome.WIN),
@@ -47,7 +48,7 @@ class PostgresMatchResultRepositoryTest {
                             number,
                             number,
                             SelectionResult.ACCEPTED,
-                            1_090L + number * 10L,
+                            matchStartedAt + 90L + number * 10L,
                             number
                         )
                     } + MatchSelectionEvent(
@@ -56,7 +57,7 @@ class PostgresMatchResultRepositoryTest {
                         99,
                         50,
                         SelectionResult.REJECTED,
-                        1_595L,
+                        matchStartedAt + 595L,
                         51
                     )
                 )
@@ -116,6 +117,24 @@ class PostgresMatchResultRepositoryTest {
                     profile.achievements.map { it.code }.toSet()
                 )
                 assertEquals(0, guestProfile.achievements.size)
+                assertEquals(25, profile.progression.experiencePoints)
+                assertEquals(1, profile.progression.level)
+                assertEquals(1, profile.progression.dailyMissions.first { it.code == "DAILY_PLAY_3" }.progress)
+                assertTrue(profile.progression.dailyMissions.first { it.code == "DAILY_WIN_1" }.completed)
+                assertEquals(50, profile.progression.weeklyMissions.first { it.code == "WEEKLY_CORRECT_100" }.progress)
+                assertTrue(profile.progression.weeklyMissions.first { it.code == "WEEKLY_PERFECT_1" }.completed)
+                assertTrue(profile.progression.cosmetics.first { it.id == "frame_perfect" }.unlocked)
+                assertEquals("Mùa Khởi Đầu", profile.progression.season?.name)
+                assertEquals(1016, profile.progression.season?.rating)
+                val detail = profileRepository.findMatchDetail(host.playerId, matchId)!!
+                assertEquals(1_000L, detail.durationMillis)
+                assertEquals(51, detail.events.size)
+                assertEquals(50, detail.events.count { it.accepted })
+                assertTrue(profileRepository.equipCosmetics(host.playerId, "frame_perfect", "title_rookie"))
+                assertTrue(
+                    profileRepository.findByPlayerId(host.playerId)!!.progression.cosmetics
+                        .first { it.id == "frame_perfect" }.equipped
+                )
                 assertTrue(profileRepository.updateProfile(host.playerId, "Updated host", "crown"))
                 val updatedProfile = profileRepository.findByPlayerId(host.playerId)!!
                 assertEquals("Updated host", updatedProfile.displayName)
@@ -127,6 +146,8 @@ class PostgresMatchResultRepositoryTest {
                 assertEquals(1016, leaderboard.currentPlayer?.eloRating)
                 assertEquals("Updated host", leaderboard.topPlayers.first().displayName)
                 assertEquals("Updated host", leaderboard.topPlayers.first { it.displayName == "Updated host" }.displayName)
+                assertEquals("Mùa Khởi Đầu", leaderboard.seasonName)
+                assertEquals(1016, leaderboard.seasonCurrentPlayer?.eloRating)
             } finally {
                 dataSource.connection.use { connection ->
                     connection.prepareStatement("DELETE FROM matches WHERE id = ?").use { statement ->

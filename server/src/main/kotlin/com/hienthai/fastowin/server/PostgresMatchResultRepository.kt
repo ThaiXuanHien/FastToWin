@@ -22,6 +22,7 @@ class PostgresMatchResultRepository(
                     updateEloRatings(connection, match)
                     updateStats(connection, match)
                     unlockAchievements(connection, match)
+                    updateMissions(connection, match)
                 }
                 connection.commit()
             } catch (error: Throwable) {
@@ -98,9 +99,9 @@ class PostgresMatchResultRepository(
             INSERT INTO player_stats (
                 user_id, total_matches, wins, losses, draws, highest_score,
                 current_win_streak, best_win_streak, correct_selections, wrong_selections,
-                reaction_time_total_ms, reaction_samples, updated_at
+                reaction_time_total_ms, reaction_samples, experience_points, updated_at
             )
-            VALUES (?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT (user_id) DO UPDATE SET
                 total_matches = player_stats.total_matches + 1,
                 wins = player_stats.wins + EXCLUDED.wins,
@@ -122,6 +123,7 @@ class PostgresMatchResultRepository(
                 wrong_selections = player_stats.wrong_selections + EXCLUDED.wrong_selections,
                 reaction_time_total_ms = player_stats.reaction_time_total_ms + EXCLUDED.reaction_time_total_ms,
                 reaction_samples = player_stats.reaction_samples + EXCLUDED.reaction_samples,
+                experience_points = player_stats.experience_points + EXCLUDED.experience_points,
                 updated_at = EXCLUDED.updated_at
             """.trimIndent()
         ).use { statement ->
@@ -139,7 +141,43 @@ class PostgresMatchResultRepository(
                 statement.setLong(9, metrics.wrong.toLong())
                 statement.setLong(10, metrics.reactionTimeTotalMillis)
                 statement.setLong(11, metrics.reactionSamples.toLong())
-                statement.setTimestamp(12, match.endedAtMillis.toTimestamp())
+                statement.setInt(12, BASE_MATCH_EXPERIENCE + if (won == 1) WIN_BONUS_EXPERIENCE else 0)
+                statement.setTimestamp(13, match.endedAtMillis.toTimestamp())
+                statement.addBatch()
+            }
+            statement.executeBatch()
+        }
+    }
+
+    private fun updateSeasonRatings(
+        connection: Connection,
+        match: CompletedMatch,
+        firstAfter: Int,
+        secondAfter: Int
+    ) {
+        val seasonId = connection.prepareStatement(
+            "SELECT id FROM seasons WHERE ? >= starts_at AND ? < ends_at ORDER BY starts_at DESC LIMIT 1"
+        ).use { statement ->
+            val now = match.endedAtMillis.toTimestamp()
+            statement.setTimestamp(1, now)
+            statement.setTimestamp(2, now)
+            statement.executeQuery().use { result -> if (result.next()) result.getObject(1, UUID::class.java) else null }
+        } ?: return
+        connection.prepareStatement(
+            """
+            INSERT INTO season_ratings (season_id, user_id, rating, matches_played, updated_at)
+            VALUES (?, ?, ?, 1, ?)
+            ON CONFLICT (season_id, user_id) DO UPDATE SET
+                rating = EXCLUDED.rating,
+                matches_played = season_ratings.matches_played + 1,
+                updated_at = EXCLUDED.updated_at
+            """.trimIndent()
+        ).use { statement ->
+            listOf(match.players[0].playerId to firstAfter, match.players[1].playerId to secondAfter).forEach { (playerId, rating) ->
+                statement.setObject(1, seasonId)
+                statement.setObject(2, UUID.fromString(playerId))
+                statement.setInt(3, rating)
+                statement.setTimestamp(4, match.endedAtMillis.toTimestamp())
                 statement.addBatch()
             }
             statement.executeBatch()
@@ -213,6 +251,7 @@ class PostgresMatchResultRepository(
             }
             statement.executeBatch()
         }
+        updateSeasonRatings(connection, match, firstAfter, secondAfter)
     }
 
     private fun MatchOutcome.toEloScore(): Double = when (this) {
@@ -284,11 +323,73 @@ class PostgresMatchResultRepository(
         }
     }
 
+    private fun updateMissions(connection: Connection, match: CompletedMatch) {
+        val metricsByPlayer = calculateSelectionMetrics(match)
+        connection.prepareStatement(
+            """
+            INSERT INTO user_missions (user_id, mission_code, period_start, progress, target, completed_at)
+            VALUES (?, ?, ?, ?, ?, CASE WHEN ? >= ? THEN CAST(? AS TIMESTAMPTZ) ELSE NULL END)
+            ON CONFLICT (user_id, mission_code, period_start) DO UPDATE SET
+                progress = LEAST(user_missions.target, user_missions.progress + EXCLUDED.progress),
+                completed_at = CASE
+                    WHEN user_missions.completed_at IS NOT NULL THEN user_missions.completed_at
+                    WHEN user_missions.progress + EXCLUDED.progress >= user_missions.target THEN CURRENT_TIMESTAMP
+                    ELSE NULL
+                END
+            """.trimIndent()
+        ).use { statement ->
+            match.players.forEach { player ->
+                val metrics = metricsByPlayer[player.playerId] ?: SelectionMetrics()
+                val missions = listOf(
+                    MissionProgress("DAILY_PLAY_3", java.sql.Date(match.endedAtMillis), 1, 3),
+                    MissionProgress("DAILY_WIN_1", java.sql.Date(match.endedAtMillis), if (player.outcome == MatchOutcome.WIN) 1 else 0, 1),
+                    MissionProgress(
+                        "WEEKLY_CORRECT_100",
+                        java.sql.Date.valueOf(
+                            Instant.ofEpochMilli(match.endedAtMillis).atZone(java.time.ZoneOffset.UTC).toLocalDate()
+                                .with(java.time.DayOfWeek.MONDAY)
+                        ),
+                        metrics.correct,
+                        100
+                    ),
+                    MissionProgress(
+                        "WEEKLY_PERFECT_1",
+                        java.sql.Date.valueOf(
+                            Instant.ofEpochMilli(match.endedAtMillis).atZone(java.time.ZoneOffset.UTC).toLocalDate()
+                                .with(java.time.DayOfWeek.MONDAY)
+                        ),
+                        if (metrics.correct > 0 && metrics.wrong == 0) 1 else 0,
+                        1
+                    )
+                )
+                missions.filter { it.increment > 0 }.forEach { mission ->
+                    statement.setObject(1, UUID.fromString(player.playerId))
+                    statement.setString(2, mission.code)
+                    statement.setDate(3, mission.periodStart)
+                    statement.setInt(4, mission.increment)
+                    statement.setInt(5, mission.target)
+                    statement.setInt(6, mission.increment)
+                    statement.setInt(7, mission.target)
+                    statement.setTimestamp(8, match.endedAtMillis.toTimestamp())
+                    statement.addBatch()
+                }
+            }
+            statement.executeBatch()
+        }
+    }
+
     private data class SelectionMetrics(
         var correct: Int = 0,
         var wrong: Int = 0,
         var reactionTimeTotalMillis: Long = 0,
         var reactionSamples: Int = 0
+    )
+
+    private data class MissionProgress(
+        val code: String,
+        val periodStart: java.sql.Date,
+        val increment: Int,
+        val target: Int
     )
 
     private fun Long.toTimestamp(): Timestamp = Timestamp.from(Instant.ofEpochMilli(this))
@@ -297,5 +398,7 @@ class PostgresMatchResultRepository(
         const val ELO_K_FACTOR = 32.0
         const val MIN_ELO = 100
         const val SPEED_50_LIMIT_MILLIS = 30_000L
+        const val BASE_MATCH_EXPERIENCE = 15
+        const val WIN_BONUS_EXPERIENCE = 10
     }
 }

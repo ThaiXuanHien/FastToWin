@@ -65,11 +65,15 @@ $env:DATABASE_PASSWORD="fasttowin"
 .\gradlew.bat :server:run
 ```
 
-Flyway tự tạo các bảng tài khoản, hồ sơ, phiên đăng nhập, kết quả trận, thống kê, xã hội, thành tích và `active_room_snapshots`. Resume token chỉ được lưu dưới dạng SHA-256 hash, không lưu token gốc.
+Flyway tự tạo các bảng tài khoản, hồ sơ, phiên đăng nhập, kết quả trận, thống kê, xã hội, thành tích, nhiệm vụ, mùa giải và `active_room_snapshots`. Resume token chỉ được lưu dưới dạng SHA-256 hash, không lưu token gốc. Migration `V13` bổ sung XP/cấp độ, vật phẩm trang trí, nhiệm vụ và Elo theo mùa.
 
 Khi trận kết thúc, backend lưu kết quả đúng một lần theo `roomId`, gồm điểm từng người, thắng/thua/hòa, tổng số trận, điểm cao nhất và chuỗi thắng. Mỗi thay đổi của một phòng được xử lý trong bộ nhớ rồi UPSERT đúng snapshot của phòng đó vào PostgreSQL; server không ghi lại toàn bộ danh sách phòng sau mỗi lượt bấm.
 
-Từ màn hình danh sách phòng, người chơi có thể mở **Hồ sơ** để xem mã người chơi, tổng trận, thắng/thua/hòa, điểm cao nhất, chuỗi thắng và tối đa 20 trận gần nhất. Dữ liệu được lấy qua WebSocket của phiên hiện tại nên client không thể yêu cầu hồ sơ riêng tư của player ID khác.
+Từ màn hình **Hồ sơ**, người chơi có thể xem mã người chơi, tổng trận, thắng/thua/hòa, điểm cao nhất, chuỗi thắng, biểu đồ phong độ và tối đa 20 trận gần nhất. Mỗi trận có màn chi tiết cùng bản phát lại dựa trên event do server lưu. Dữ liệu được lấy qua WebSocket của phiên hiện tại nên client không thể yêu cầu hồ sơ riêng tư của player ID khác.
+
+Phòng có thể đặt công khai hoặc riêng tư bằng mật khẩu. Sau khi tham gia, hai người phải xác nhận sẵn sàng; chủ phòng có thể mời người chơi còn lại ra khỏi phòng. Danh sách phòng hỗ trợ tìm kiếm, lọc chế độ chơi, tự làm mới và hiển thị chất lượng kết nối.
+
+Nút **Chơi nhanh** dành cho tài khoản đã đăng nhập. Hàng chờ ưu tiên đối thủ cùng chế độ và Elo gần nhất, bắt đầu ở khoảng ±100 Elo rồi mở rộng thêm 50 sau mỗi 10 giây, tối đa ±600; cặp người chơi đã chặn nhau không được ghép. Trận được tạo và bắt đầu hoàn toàn từ server.
 
 Với chế độ **Đua 60 giây**, đồng hồ kết thúc do backend quyết định. Server kiểm tra timer mỗi 250 ms, phát `game_finished` cho cả hai người chơi và lưu kết quả đúng một lần; client chỉ hiển thị đồng hồ, không tự quyết định kết quả trận.
 
@@ -96,11 +100,15 @@ Limiter hiện phù hợp một tiến trình backend. Khi chạy nhiều instan
 
 Từ audit log, server cộng dồn tổng lượt đúng/sai và thời gian phản ứng cho từng người chơi. Thời gian phản ứng của một lượt đúng được tính từ lúc target đó xuất hiện trên server đến lúc server nhận lượt chọn đúng. Hồ sơ hiển thị tỷ lệ chính xác, tổng đúng/sai và thời gian phản ứng trung bình; số liệu client tự khai báo không được sử dụng.
 
-Màn hình **Bảng xếp hạng** hiển thị tối đa 100 người chơi có trận hoàn thành. Thứ tự ưu tiên Elo, số trận thắng, tỷ lệ thắng, điểm cao nhất rồi thời điểm cập nhật; người chơi hiện tại vẫn nhận được thứ hạng cá nhân kể cả khi nằm ngoài top 100.
+Màn hình **Bảng xếp hạng** có hai tab mùa hiện tại và toàn thời gian, hiển thị tối đa 100 người chơi có trận hoàn thành. Thứ tự ưu tiên Elo, số trận thắng, tỷ lệ thắng, điểm cao nhất rồi thời điểm cập nhật; người chơi hiện tại vẫn nhận được thứ hạng cá nhân kể cả khi nằm ngoài top 100.
 
 Mỗi người chơi bắt đầu với **1000 Elo**. Sau mỗi trận hai người, server dùng công thức Elo với K=32 để cộng/trừ dựa trên kết quả và chênh lệch rating; hòa cũng có thể tăng hoặc giảm nếu rating hai bên khác nhau. Rating tối thiểu là 100. Mọi thay đổi được lưu trong `rating_history`, hiển thị ở lịch sử trận và bảng xếp hạng ưu tiên Elo trước các tiêu chí phụ.
 
 Server tự xét và lưu thành tích, không dựa vào dữ liệu client. Bộ thành tích đầu tiên gồm: chiến thắng đầu tiên, 10 chiến thắng, chuỗi thắng 5, có lượt đúng và không bấm sai trong cả trận, và tự chọn đủ 50 số trong tối đa 30 giây. Khóa chính `(user_id, achievement_code)` bảo đảm mỗi thành tích chỉ được mở một lần.
+
+Mỗi trận cấp 15 XP và cộng thêm 10 XP khi thắng. Hồ sơ hiển thị cấp độ, tiến trình XP, Elo mùa hiện tại, nhiệm vụ ngày/tuần và vật phẩm đã mở khóa. Người chơi có thể trang bị khung avatar hoặc danh hiệu; backend kiểm tra vật phẩm đã mở trước khi lưu. Mùa khởi đầu được tạo bởi migration `V13`; khi vận hành production cần có tác vụ quản trị tạo mùa mới trước khi mùa hiện tại kết thúc.
+
+Âm thanh, rung, chủ đề, màu bàn số, cỡ chữ, hướng dẫn lần đầu và chế độ luyện tập offline được lưu cục bộ trên thiết bị. Luyện tập không gửi kết quả lên backend và không ảnh hưởng Elo.
 
 ## API tài khoản email
 
@@ -129,7 +137,7 @@ Access token có hiệu lực 15 phút, refresh token có hiệu lực 30 ngày.
 
 Compose Multiplatform có màn hình đăng nhập, đăng ký và lựa chọn chơi khách. Android mã hóa phiên bằng AES-GCM với khóa trong Android Keystore; iOS lưu phiên trong Keychain. Ứng dụng tự refresh access token trước khi hết hạn và tài khoản dùng `connect_account` để xác thực WebSocket. Server tự lấy player ID và biệt danh từ phiên đăng nhập, không nhận các giá trị này từ client. Chế độ khách vẫn dùng `connect_guest` và resume token cũ.
 
-Protocol WebSocket hiện tại là phiên bản 7. Sau khi cập nhật ứng dụng, cần khởi động lại backend để client và server dùng cùng phiên bản.
+Protocol WebSocket hiện tại là phiên bản 12. Sau khi cập nhật ứng dụng, cần khởi động lại backend để client và server dùng cùng phiên bản.
 
 Khi nâng cấp guest, client gửi resume token hiện tại cùng email và mật khẩu. Backend khóa phiên guest và cập nhật chính user hiện tại trong một transaction, sau đó thu hồi toàn bộ resume token khách và tạo phiên tài khoản mới. `user_id` không đổi nên hồ sơ, player code, Elo, lịch sử, thống kê và thành tích được giữ nguyên. Chức năng này yêu cầu PostgreSQL; server chạy thuần bộ nhớ trả lỗi `DATABASE_REQUIRED`.
 
@@ -210,6 +218,9 @@ Test backend bao gồm:
 - Rate limit đăng nhập theo IP/email; rate limit WebSocket tổng và riêng cho create/join/select.
 - Từ chối mật khẩu phòng sai.
 - Hai người chọn cùng một target đồng thời nhưng server chỉ chấp nhận một lượt.
+- Hai người phải cùng sẵn sàng trước khi phòng thủ công bắt đầu và có thể đấu lại bằng đồng thuận.
+- Ghép nhanh theo khoảng Elo, đồng thời loại cặp người chơi đã chặn nhau.
+- Lưu XP, nhiệm vụ, rating mùa, chi tiết event và trang bị vật phẩm sau trận.
 
 ## Giới hạn của MVP
 
@@ -218,6 +229,7 @@ Test backend bao gồm:
 - Snapshot hiện dành cho một tiến trình backend; khi chạy nhiều instance cần chuyển trạng thái realtime sang Redis hoặc kho trạng thái phân tán.
 - Rate limit hiện nằm trong bộ nhớ từng tiến trình và được làm mới khi server restart; nhiều instance cần dùng Redis.
 - Chưa tích hợp dịch vụ email để gửi mã khôi phục và xác minh email; chưa có đăng xuất khỏi tất cả thiết bị.
+- Mùa mới chưa được tạo tự động; quản trị viên cần thêm mùa hoặc xây scheduler trước khi mùa hiện tại kết thúc.
 - Cấu hình local dùng `ws://`; môi trường production phải dùng `wss://`.
 
 ## Reconnect hiện tại

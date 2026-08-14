@@ -21,12 +21,14 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.EmojiEvents
+import androidx.compose.material.icons.filled.FitnessCenter
 import androidx.compose.material.icons.filled.Group
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.MeetingRoom
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.SportsEsports
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.rounded.Bolt
 import androidx.compose.material.icons.rounded.Timer
 import androidx.compose.material3.AlertDialog
@@ -37,6 +39,7 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -70,10 +73,13 @@ internal fun HomeDashboard(
     state: GameState,
     isGuest: Boolean,
     onChooseMode: (GameMode, Boolean) -> Unit,
+    onQuickMatch: (GameMode) -> Unit,
     onOpenRooms: () -> Unit,
     onOpenFriends: () -> Unit,
     onOpenLeaderboard: () -> Unit,
     onOpenProfile: () -> Unit,
+    onOpenSettings: () -> Unit,
+    onOpenPractice: () -> Unit,
     onUpgradeGuest: () -> Unit,
     onLogout: () -> Unit,
     sessionStartedAtMillis: Long,
@@ -86,7 +92,11 @@ internal fun HomeDashboard(
             onDismiss = { launchAction = null },
             onSelect = { mode ->
                 launchAction = null
-                onChooseMode(mode, action == HomeLaunchAction.CREATE_ROOM)
+                if (action == HomeLaunchAction.PLAY) {
+                    onQuickMatch(mode)
+                } else {
+                    onChooseMode(mode, true)
+                }
             }
         )
     }
@@ -113,9 +123,14 @@ internal fun HomeDashboard(
                 )
                 Text("Chào $displayName 👋", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
             }
-            Column(horizontalAlignment = Alignment.End) {
-                Text("THỜI GIAN TRUY CẬP", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                SessionDuration(sessionStartedAtMillis)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(horizontalAlignment = Alignment.End) {
+                    Text("THỜI GIAN TRUY CẬP", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    SessionDuration(sessionStartedAtMillis)
+                }
+                IconButton(onClick = onOpenSettings) {
+                    Icon(Icons.Default.Settings, contentDescription = "Cài đặt")
+                }
             }
         }
 
@@ -140,13 +155,14 @@ internal fun HomeDashboard(
                         },
                         style = MaterialTheme.typography.labelLarge
                     )
-                    Text("Sẵn sàng đấu nhanh?", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+                    Text("Sẵn sàng chơi nhanh?", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
                     Text(
-                        "Chọn một trong hai chế độ và vào danh sách phòng ngay.",
+                        if (isGuest) "Đăng ký tài khoản để ghép đối thủ theo Elo."
+                        else "Tự động tìm đối thủ có Elo gần bạn.",
                         color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.82f)
                     )
                     Button(
-                        onClick = { launchAction = HomeLaunchAction.PLAY },
+                        onClick = if (isGuest) onUpgradeGuest else ({ launchAction = HomeLaunchAction.PLAY }),
                         modifier = Modifier.fillMaxWidth().height(52.dp),
                         colors = ButtonDefaults.buttonColors(
                             containerColor = MaterialTheme.colorScheme.onPrimary,
@@ -154,7 +170,7 @@ internal fun HomeDashboard(
                         )
                     ) {
                         Icon(Icons.Default.PlayArrow, null)
-                        Text("  Chơi ngay", fontWeight = FontWeight.Bold)
+                        Text("  Chơi nhanh", fontWeight = FontWeight.Bold)
                     }
                 }
             }
@@ -193,6 +209,13 @@ internal fun HomeDashboard(
                         Modifier.weight(1f)
                     )
                 }
+                HomeQuickAction(
+                    "Luyện tập offline",
+                    "Rèn tốc độ với bàn 50 số, không ảnh hưởng Elo",
+                    Icons.Default.FitnessCenter,
+                    onOpenPractice,
+                    Modifier.fillMaxWidth()
+                )
             }
 
             state.profile?.recentMatches?.firstOrNull()?.let { match ->

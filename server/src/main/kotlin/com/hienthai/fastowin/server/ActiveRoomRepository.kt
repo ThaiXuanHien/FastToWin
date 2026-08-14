@@ -20,11 +20,12 @@ data class StoredActivePlayer(
 @Serializable
 data class StoredActiveRoom(
     val roomId: String,
+    val matchId: String = roomId,
     val roomName: String,
     val host: StoredActivePlayer,
     val guest: StoredActivePlayer? = null,
-    val passwordSalt: ByteArray,
-    val passwordHash: ByteArray,
+    val passwordSalt: ByteArray? = null,
+    val passwordHash: ByteArray? = null,
     val gameMode: ProtocolGameMode,
     val phase: RoomPhase,
     val numbers: List<Int> = emptyList(),
@@ -34,6 +35,8 @@ data class StoredActiveRoom(
     val sequence: Long = 0,
     val startedAtEpochMillis: Long? = null,
     val resultQueued: Boolean = false,
+    val readyPlayerIds: Set<String> = emptySet(),
+    val rematchRequestedPlayerIds: Set<String> = emptySet(),
     val processedRequests: Map<String, ServerMessage> = emptyMap(),
     val selectionEvents: List<MatchSelectionEvent> = emptyList()
 )

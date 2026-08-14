@@ -16,6 +16,10 @@ import com.hienthai.fastowin.state.AuthController
 import com.hienthai.fastowin.state.AuthStage
 import com.hienthai.fastowin.data.network.AuthSessionStore
 import com.hienthai.fastowin.data.network.ResumeTokenStore
+import com.hienthai.fastowin.data.preferences.AppPreferences
+import com.hienthai.fastowin.data.preferences.AppPreferencesStore
+import com.hienthai.fastowin.platform.GameFeedbackEffect
+import com.hienthai.fastowin.platform.playFeedbackSound
 import com.hienthai.fastowin.ui.screens.AuthScreen
 import com.hienthai.fastowin.ui.screens.GameScreen
 import com.hienthai.fastowin.ui.screens.FriendsScreen
@@ -27,26 +31,38 @@ import com.hienthai.fastowin.ui.screens.ResultScreen
 import com.hienthai.fastowin.ui.screens.FastToWinBottomBar
 import com.hienthai.fastowin.ui.screens.GameModePickerDialog
 import com.hienthai.fastowin.ui.screens.MainTab
+import com.hienthai.fastowin.ui.screens.SettingsScreen
+import com.hienthai.fastowin.ui.screens.TutorialScreen
+import com.hienthai.fastowin.ui.screens.PracticeScreen
 import com.hienthai.fastowin.ui.theme.FastToWinTheme
 import com.hienthai.fastowin.platform.epochMillis
+import com.hienthai.fastowin.navigation.GameMode
 
 @Composable
 fun FastToWinApp(
     serverUrl: String,
     resumeTokenStore: ResumeTokenStore,
     authSessionStore: AuthSessionStore,
+    preferencesStore: AppPreferencesStore,
     devicePlatform: String
 ) {
     val authController = remember(serverUrl, authSessionStore, devicePlatform) {
         AuthController(serverUrl, authSessionStore, resumeTokenStore, devicePlatform)
     }
     val authState by authController.state.collectAsState()
+    var appPreferences by remember(preferencesStore) {
+        mutableStateOf(preferencesStore.load())
+    }
+    val updatePreferences: (AppPreferences) -> Unit = { updated ->
+        preferencesStore.save(updated)
+        appPreferences = updated
+    }
 
     DisposableEffect(authController) {
         onDispose { authController.close() }
     }
 
-    FastToWinTheme {
+    FastToWinTheme(preferences = appPreferences) {
         Surface(modifier = Modifier.fillMaxSize()) {
             if (authState.stage != AuthStage.PLAYING) {
                 AuthScreen(
@@ -79,7 +95,9 @@ fun FastToWinApp(
                     onDeleteAccount = authController::deleteAccount,
                     authState = authState,
                     onSessionExpired = { authController.expireSession() },
-                    onProfileDisplayNameChanged = authController::updateStoredDisplayName
+                    onProfileDisplayNameChanged = authController::updateStoredDisplayName,
+                    appPreferences = appPreferences,
+                    onPreferencesChange = updatePreferences
                 )
             }
         }
@@ -100,7 +118,9 @@ private fun GameContent(
     onDeleteAccount: (String) -> Unit,
     authState: com.hienthai.fastowin.state.AuthState,
     onSessionExpired: () -> Unit,
-    onProfileDisplayNameChanged: (String) -> Unit
+    onProfileDisplayNameChanged: (String) -> Unit,
+    appPreferences: AppPreferences,
+    onPreferencesChange: (AppPreferences) -> Unit
 ) {
     val controller = remember(serverUrl, resumeTokenStore, accountUserId) {
         GameController(
@@ -115,6 +135,10 @@ private fun GameContent(
     val state by controller.uiState.collectAsState()
     val sessionStartedAtMillis = remember { epochMillis() }
     var showGameModePicker by remember { mutableStateOf(false) }
+    var showPracticeModePicker by remember { mutableStateOf(false) }
+    var showSettings by remember { mutableStateOf(false) }
+    var showTutorial by remember { mutableStateOf(!appPreferences.hasCompletedTutorial) }
+    var practiceMode by remember { mutableStateOf<GameMode?>(null) }
 
     DisposableEffect(controller) {
         onDispose { controller.close() }
@@ -135,6 +159,16 @@ private fun GameContent(
                 showGameModePicker = false
                 controller.openHome()
                 controller.selectMode(mode)
+            }
+        )
+    }
+    if (showPracticeModePicker) {
+        GameModePickerDialog(
+            title = "Chọn chế độ luyện tập",
+            onDismiss = { showPracticeModePicker = false },
+            onSelect = { mode ->
+                showPracticeModePicker = false
+                practiceMode = mode
             }
         )
     }
@@ -209,6 +243,9 @@ private fun GameContent(
                     state = state,
                     onBack = controller::closeProfile,
                     onRefresh = controller::openProfile,
+                    onOpenMatchDetail = controller::openMatchDetail,
+                    onCloseMatchDetail = controller::closeMatchDetail,
+                    onEquipCosmetics = controller::equipCosmetics,
                     onSave = controller::updateProfile,
                     canEdit = !isGuest,
                     isAccountLoading = authState.isLoading,
@@ -222,22 +259,58 @@ private fun GameContent(
 
                 state.isGameOver -> ResultScreen(
                     state = state,
-                    onRestart = controller::resetGame
+                    onRestart = controller::resetGame,
+                    onRematch = controller::requestRematch,
+                    preferences = appPreferences
                 )
 
                 state.isMatchStarted -> GameScreen(
                     state = state,
                     onNumberClick = controller::onNumberClicked,
-                    onFinish = {}
+                    onFinish = {},
+                    onExit = controller::leaveRoom,
+                    preferences = appPreferences
+                )
+
+                showTutorial -> TutorialScreen(
+                    onComplete = {
+                        onPreferencesChange(appPreferences.copy(hasCompletedTutorial = true))
+                        showTutorial = false
+                    },
+                    onSkip = {
+                        onPreferencesChange(appPreferences.copy(hasCompletedTutorial = true))
+                        showTutorial = false
+                    }
+                )
+
+                practiceMode != null -> PracticeScreen(
+                    mode = checkNotNull(practiceMode),
+                    preferences = appPreferences,
+                    onBack = { practiceMode = null }
+                )
+
+                showSettings -> SettingsScreen(
+                    preferences = appPreferences,
+                    onPreferencesChange = onPreferencesChange,
+                    onPreviewSound = { playFeedbackSound(GameFeedbackEffect.CORRECT) },
+                    onOpenTutorial = {
+                        showSettings = false
+                        showTutorial = true
+                    },
+                    onBack = { showSettings = false }
                 )
 
                 else -> LobbyScreen(
                     state = state,
                     onModeSelected = controller::selectMode,
+                    onStartMatchmaking = controller::startMatchmaking,
+                    onCancelMatchmaking = controller::cancelMatchmaking,
                     onOpenRoomBrowser = controller::openRoomBrowser,
                     onCreateRoom = controller::createRoom,
                     onJoinRoom = controller::joinRoom,
                     onLeaveRoom = controller::leaveRoom,
+                    onSetReady = controller::setReady,
+                    onKickOpponent = controller::kickOpponent,
                     onRefreshRooms = controller::requestRoomList,
                     onOpenProfile = controller::openProfile,
                     onOpenLeaderboard = controller::openLeaderboard,
@@ -246,6 +319,8 @@ private fun GameContent(
                     onLogout = onLogout,
                     isGuest = isGuest,
                     onUpgradeGuest = onUpgradeGuest,
+                    onOpenSettings = { showSettings = true },
+                    onOpenPractice = { showPracticeModePicker = true },
                     sessionStartedAtMillis = sessionStartedAtMillis
                 )
     }

@@ -1,5 +1,6 @@
 package com.hienthai.fastowin.ui.screens
 
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -8,6 +9,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
@@ -25,6 +27,8 @@ import androidx.compose.material.icons.automirrored.filled.ExitToApp
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -32,6 +36,7 @@ import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -46,20 +51,29 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import com.hienthai.fastowin.protocol.MatchHistoryOutcome
 import com.hienthai.fastowin.protocol.MatchHistorySnapshot
+import com.hienthai.fastowin.protocol.MatchDetailSnapshot
+import com.hienthai.fastowin.protocol.CosmeticType
 import com.hienthai.fastowin.protocol.MAX_PROFILE_DISPLAY_NAME_LENGTH
 import com.hienthai.fastowin.protocol.PROFILE_AVATAR_IDS
 import com.hienthai.fastowin.state.GameState
+import com.hienthai.fastowin.platform.epochMillis
+import kotlinx.coroutines.delay
 
 @Composable
 fun ProfileScreen(
     state: GameState,
     onBack: () -> Unit,
     onRefresh: () -> Unit,
+    onOpenMatchDetail: (String) -> Unit,
+    onCloseMatchDetail: () -> Unit,
+    onEquipCosmetics: (String, String) -> Unit,
     onSave: (String, String?) -> Unit,
     canEdit: Boolean,
     isAccountLoading: Boolean,
@@ -75,6 +89,7 @@ fun ProfileScreen(
     var displayName by remember { mutableStateOf("") }
     var selectedAvatarId by remember { mutableStateOf<String?>(null) }
     var showAccountSecurity by remember { mutableStateOf(false) }
+    var historyFilter by remember { mutableStateOf<MatchHistoryOutcome?>(null) }
     if (showAccountSecurity) {
         AccountSecurityDialog(
             isLoading = isAccountLoading,
@@ -82,6 +97,13 @@ fun ProfileScreen(
             onDismiss = { if (!isAccountLoading) showAccountSecurity = false },
             onChangePassword = onChangePassword,
             onDeleteAccount = onDeleteAccount
+        )
+    }
+    if (state.isMatchDetailLoading || state.matchDetail != null) {
+        MatchDetailDialog(
+            detail = state.matchDetail,
+            isLoading = state.isMatchDetailLoading,
+            onDismiss = onCloseMatchDetail
         )
     }
     LaunchedEffect(profile) {
@@ -149,6 +171,9 @@ fun ProfileScreen(
                 }
                 Column {
                     Text(profile.displayName, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                    profile.progression.cosmetics.firstOrNull {
+                        it.type == CosmeticType.TITLE && it.equipped
+                    }?.let { Text(it.name, color = MaterialTheme.colorScheme.tertiary, fontWeight = FontWeight.SemiBold) }
                     Text("Mã người chơi: ${profile.playerCode}", color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Text("Elo ${profile.statistics.eloRating}", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
                 }
@@ -228,11 +253,103 @@ fun ProfileScreen(
         state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
 
         val stats = profile.statistics
+        val progression = profile.progression
+        Surface(shape = RoundedCornerShape(22.dp), color = MaterialTheme.colorScheme.primaryContainer) {
+            Column(Modifier.fillMaxWidth().padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text("Cấp ${progression.level}", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
+                    Text("${progression.experiencePoints} XP", fontWeight = FontWeight.Bold)
+                }
+                LinearProgressIndicator(
+                    progress = {
+                        progression.currentLevelExperience.toFloat() /
+                            progression.nextLevelExperience.coerceAtLeast(1)
+                    },
+                    modifier = Modifier.fillMaxWidth().height(8.dp)
+                )
+                Text(
+                    "${progression.currentLevelExperience}/${progression.nextLevelExperience} XP tới cấp tiếp theo",
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
+        }
+
+        progression.season?.let { season ->
+            val daysLeft = ((season.endsAtEpochMillis - epochMillis()).coerceAtLeast(0L) / 86_400_000L) + 1L
+            ElevatedCard(modifier = Modifier.fillMaxWidth()) {
+                Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                    Text(season.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black)
+                    Text("${season.tier} • ${season.rating} điểm mùa", color = MaterialTheme.colorScheme.primary)
+                    Text("Còn $daysLeft ngày • ${season.rewardDescription}", style = MaterialTheme.typography.bodySmall)
+                }
+            }
+        }
+
+        Text("Nhiệm vụ", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+        (progression.dailyMissions + progression.weeklyMissions).forEach { mission ->
+            Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surfaceContainer) {
+                Row(
+                    Modifier.fillMaxWidth().padding(14.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Text(if (mission.completed) "✅" else "🎯")
+                    Column(Modifier.weight(1f)) {
+                        Text(mission.title, fontWeight = FontWeight.SemiBold)
+                        LinearProgressIndicator(
+                            progress = { mission.progress.toFloat() / mission.target.coerceAtLeast(1) },
+                            modifier = Modifier.fillMaxWidth().height(6.dp)
+                        )
+                    }
+                    Text("${mission.progress}/${mission.target}", fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+
+        if (progression.cosmetics.isNotEmpty()) {
+            val equippedFrame = progression.cosmetics.firstOrNull { it.type == CosmeticType.FRAME && it.equipped }?.id
+                ?: "frame_default"
+            val equippedTitle = progression.cosmetics.firstOrNull { it.type == CosmeticType.TITLE && it.equipped }?.id
+                ?: "title_rookie"
+            Text("Bộ sưu tập", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            Text("Khung", fontWeight = FontWeight.SemiBold)
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                items(progression.cosmetics.filter { it.type == CosmeticType.FRAME }, key = { it.id }) { cosmetic ->
+                    FilterChip(
+                        selected = cosmetic.equipped,
+                        enabled = cosmetic.unlocked && !state.isProfileLoading,
+                        onClick = { onEquipCosmetics(cosmetic.id, equippedTitle) },
+                        label = { Text(if (cosmetic.unlocked) cosmetic.name else "🔒 ${cosmetic.name}") }
+                    )
+                }
+            }
+            Text("Danh hiệu", fontWeight = FontWeight.SemiBold)
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                items(progression.cosmetics.filter { it.type == CosmeticType.TITLE }, key = { it.id }) { cosmetic ->
+                    FilterChip(
+                        selected = cosmetic.equipped,
+                        enabled = cosmetic.unlocked && !state.isProfileLoading,
+                        onClick = { onEquipCosmetics(equippedFrame, cosmetic.id) },
+                        label = { Text(if (cosmetic.unlocked) cosmetic.name else "🔒 ${cosmetic.name}") }
+                    )
+                }
+            }
+        }
+
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             StatCard("Trận", stats.totalMatches, Modifier.weight(1f))
             StatCard("Thắng", stats.wins, Modifier.weight(1f))
             StatCard("Thua", stats.losses, Modifier.weight(1f))
             StatCard("Hòa", stats.draws, Modifier.weight(1f))
+        }
+
+        if (profile.recentMatches.isNotEmpty()) {
+            val scoreTrend = profile.recentMatches.take(10).asReversed().map { it.playerScore }
+            val eloTrend = remember(profile.statistics.eloRating, profile.recentMatches) {
+                buildEloTrend(profile.statistics.eloRating, profile.recentMatches.take(10))
+            }
+            TrendChart("Phong độ điểm • 10 trận", scoreTrend) { "$it điểm" }
+            TrendChart("Biến động Elo", eloTrend) { "Elo $it" }
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             StatCard("Điểm cao", stats.highestScore, Modifier.weight(1f))
@@ -275,11 +392,29 @@ fun ProfileScreen(
         }
 
         Text("Trận gần đây", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FilterChip(selected = historyFilter == null, onClick = { historyFilter = null }, label = { Text("Tất cả") })
+            FilterChip(
+                selected = historyFilter == MatchHistoryOutcome.WIN,
+                onClick = { historyFilter = MatchHistoryOutcome.WIN },
+                label = { Text("Thắng") }
+            )
+            FilterChip(
+                selected = historyFilter == MatchHistoryOutcome.LOSS,
+                onClick = { historyFilter = MatchHistoryOutcome.LOSS },
+                label = { Text("Thua") }
+            )
+        }
+        val visibleMatches = profile.recentMatches.filter { historyFilter == null || it.outcome == historyFilter }
         if (profile.recentMatches.isEmpty()) {
             Text("Bạn chưa có trận đấu hoàn thành.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        } else if (visibleMatches.isEmpty()) {
+            Text("Không có trận phù hợp với bộ lọc.", color = MaterialTheme.colorScheme.onSurfaceVariant)
         } else {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                profile.recentMatches.forEach { match -> MatchHistoryCard(match) }
+                visibleMatches.forEach { match ->
+                    MatchHistoryCard(match, onClick = { onOpenMatchDetail(match.matchId) })
+                }
             }
         }
 
@@ -379,13 +514,156 @@ private fun StatCard(label: String, value: String, modifier: Modifier = Modifier
 }
 
 @Composable
-private fun MatchHistoryCard(match: MatchHistorySnapshot) {
+private fun TrendChart(title: String, values: List<Int>, valueLabel: (Int) -> String) {
+    if (values.isEmpty()) return
+    val lineColor = MaterialTheme.colorScheme.primary
+    val gridColor = MaterialTheme.colorScheme.outlineVariant
+    Surface(shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surfaceContainer) {
+        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text(title, fontWeight = FontWeight.Bold)
+                Text(valueLabel(values.last()), color = lineColor, fontWeight = FontWeight.Black)
+            }
+            Canvas(Modifier.fillMaxWidth().height(112.dp)) {
+                repeat(3) { index ->
+                    val y = size.height * index / 2f
+                    drawLine(gridColor, Offset(0f, y), Offset(size.width, y), strokeWidth = 1f)
+                }
+                val minValue = values.minOrNull() ?: 0
+                val maxValue = values.maxOrNull() ?: minValue
+                val range = (maxValue - minValue).coerceAtLeast(1)
+                val stepX = if (values.size == 1) 0f else size.width / (values.size - 1)
+                val points = values.mapIndexed { index, value ->
+                    Offset(
+                        x = if (values.size == 1) size.width / 2f else index * stepX,
+                        y = size.height - (value - minValue).toFloat() / range * size.height
+                    )
+                }
+                points.zipWithNext().forEach { (start, end) ->
+                    drawLine(lineColor, start, end, strokeWidth = 6f, cap = StrokeCap.Round)
+                }
+                points.forEach { drawCircle(lineColor, radius = 7f, center = it) }
+            }
+        }
+    }
+}
+
+private fun buildEloTrend(currentElo: Int, recentMatches: List<MatchHistorySnapshot>): List<Int> {
+    var rating = currentElo
+    val newestToOldest = mutableListOf(rating)
+    recentMatches.forEach { match ->
+        rating -= match.eloChange
+        newestToOldest += rating
+    }
+    return newestToOldest.asReversed()
+}
+
+@Composable
+private fun MatchDetailDialog(
+    detail: MatchDetailSnapshot?,
+    isLoading: Boolean,
+    onDismiss: () -> Unit
+) {
+    var replayIndex by remember(detail?.summary?.matchId) { mutableStateOf(0) }
+    var isPlaying by remember(detail?.summary?.matchId) { mutableStateOf(false) }
+    val events = detail?.events.orEmpty()
+    LaunchedEffect(isPlaying, replayIndex, events.size) {
+        if (!isPlaying) return@LaunchedEffect
+        if (replayIndex >= events.lastIndex) {
+            isPlaying = false
+            return@LaunchedEffect
+        }
+        delay(550)
+        replayIndex++
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(if (isLoading) "Đang tải trận đấu" else "Chi tiết trận đấu") },
+        text = {
+            if (isLoading || detail == null) {
+                Box(Modifier.fillMaxWidth().height(120.dp), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator()
+                }
+            } else {
+                val mine = events.filter { it.isCurrentPlayer }
+                val correct = mine.count { it.accepted }
+                val wrong = mine.size - correct
+                Column(
+                    modifier = Modifier.heightIn(max = 520.dp).verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Text(
+                        "${detail.summary.playerScore} – ${detail.summary.opponentScore}  •  ${detail.summary.opponentName}",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Black
+                    )
+                    Text(
+                        "Thời gian ${formatMatchDuration(detail.durationMillis)} • Đúng $correct • Sai $wrong",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    if (events.isEmpty()) {
+                        Text("Trận này chưa có dữ liệu lượt bấm để phát lại.")
+                    } else {
+                        val event = events[replayIndex.coerceIn(events.indices)]
+                        Surface(shape = RoundedCornerShape(18.dp), color = MaterialTheme.colorScheme.primaryContainer) {
+                            Column(
+                                Modifier.fillMaxWidth().padding(16.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Text("Lượt ${replayIndex + 1}/${events.size}", style = MaterialTheme.typography.labelMedium)
+                                Text(event.playerName, fontWeight = FontWeight.Bold)
+                                Text(event.number.toString(), style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Black)
+                                Text(
+                                    if (event.accepted) "Chọn đúng số ${event.expectedNumber}" else "Chọn sai • Cần tìm ${event.expectedNumber}",
+                                    color = if (event.accepted) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
+                                )
+                            }
+                        }
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedButton(
+                                onClick = { replayIndex = (replayIndex - 1).coerceAtLeast(0) },
+                                enabled = replayIndex > 0,
+                                modifier = Modifier.weight(1f)
+                            ) { Text("Trước") }
+                            Button(
+                                onClick = {
+                                    if (replayIndex >= events.lastIndex) replayIndex = 0
+                                    isPlaying = !isPlaying
+                                },
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Icon(if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow, null)
+                                Text(if (isPlaying) " Dừng" else " Phát lại")
+                            }
+                            OutlinedButton(
+                                onClick = { replayIndex = (replayIndex + 1).coerceAtMost(events.lastIndex) },
+                                enabled = replayIndex < events.lastIndex,
+                                modifier = Modifier.weight(1f)
+                            ) { Text("Sau") }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Đóng") } }
+    )
+}
+
+private fun formatMatchDuration(millis: Long): String {
+    val totalSeconds = millis.coerceAtLeast(0L) / 1_000L
+    return "${totalSeconds / 60}:${(totalSeconds % 60).toString().padStart(2, '0')}"
+}
+
+@Composable
+private fun MatchHistoryCard(match: MatchHistorySnapshot, onClick: () -> Unit) {
     val (result, color) = when (match.outcome) {
         MatchHistoryOutcome.WIN -> "Thắng" to MaterialTheme.colorScheme.primary
         MatchHistoryOutcome.LOSS -> "Thua" to MaterialTheme.colorScheme.error
         MatchHistoryOutcome.DRAW -> "Hòa" to MaterialTheme.colorScheme.tertiary
     }
-    ElevatedCard(modifier = Modifier.fillMaxWidth()) {
+    ElevatedCard(onClick = onClick, modifier = Modifier.fillMaxWidth()) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(16.dp),
             verticalAlignment = Alignment.CenterVertically,

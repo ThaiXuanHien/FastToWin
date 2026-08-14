@@ -25,10 +25,12 @@ import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Group
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -36,6 +38,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextFieldDefaults
@@ -54,20 +57,26 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.hienthai.fastowin.navigation.GameMode
+import com.hienthai.fastowin.platform.epochMillis
 import com.hienthai.fastowin.state.AvailableRoom
 import com.hienthai.fastowin.state.ConnectionStatus
 import com.hienthai.fastowin.state.GameState
 import com.hienthai.fastowin.state.LobbyStage
 import com.hienthai.fastowin.state.PlayerState
+import kotlinx.coroutines.delay
 
 @Composable
 fun LobbyScreen(
     state: GameState,
     onModeSelected: (GameMode) -> Unit,
+    onStartMatchmaking: (GameMode) -> Unit,
+    onCancelMatchmaking: () -> Unit,
     onOpenRoomBrowser: (String) -> Unit,
     onCreateRoom: (String, String) -> Unit,
     onJoinRoom: (String, String) -> Unit,
     onLeaveRoom: () -> Unit,
+    onSetReady: (Boolean) -> Unit,
+    onKickOpponent: () -> Unit,
     onRefreshRooms: () -> Unit,
     onOpenProfile: () -> Unit,
     onOpenLeaderboard: () -> Unit,
@@ -76,6 +85,8 @@ fun LobbyScreen(
     onLogout: () -> Unit,
     isGuest: Boolean,
     onUpgradeGuest: () -> Unit,
+    onOpenSettings: () -> Unit,
+    onOpenPractice: () -> Unit,
     sessionStartedAtMillis: Long,
     modifier: Modifier = Modifier
 ) {
@@ -108,6 +119,7 @@ fun LobbyScreen(
                         openCreateAfterModeSelection = openCreateRoom
                         onModeSelected(mode)
                     },
+                    onQuickMatch = onStartMatchmaking,
                     onOpenRooms = {
                         openCreateAfterModeSelection = false
                         onModeSelected(state.gameMode)
@@ -115,6 +127,8 @@ fun LobbyScreen(
                     onOpenFriends = onOpenFriends,
                     onOpenLeaderboard = if (isGuest) onUpgradeGuest else onOpenLeaderboard,
                     onOpenProfile = onOpenProfile,
+                    onOpenSettings = onOpenSettings,
+                    onOpenPractice = onOpenPractice,
                     onUpgradeGuest = onUpgradeGuest,
                     onLogout = onLogout,
                     sessionStartedAtMillis = sessionStartedAtMillis
@@ -136,7 +150,15 @@ fun LobbyScreen(
                     showCreateInitially = openCreateAfterModeSelection,
                     onInitialCreateHandled = { openCreateAfterModeSelection = false }
                 )
-                LobbyStage.ROOM_WAITING -> RoomWaiting(state, onLeaveRoom, onOpenFriends, isGuest)
+                LobbyStage.ROOM_WAITING -> RoomWaiting(
+                    state = state,
+                    onLeaveRoom = onLeaveRoom,
+                    onOpenFriends = onOpenFriends,
+                    onSetReady = onSetReady,
+                    onKickOpponent = onKickOpponent,
+                    isGuest = isGuest
+                )
+                LobbyStage.MATCHMAKING -> MatchmakingScreen(state, onCancelMatchmaking)
                 LobbyStage.MATCHED -> MatchedStatus(state)
                 }
             }
@@ -151,6 +173,44 @@ fun LobbyScreen(
                 onFriends = if (isGuest) onUpgradeGuest else onOpenFriends,
                 onAccount = if (isGuest) onUpgradeGuest else onOpenProfile
             )
+        }
+    }
+}
+
+@Composable
+private fun MatchmakingScreen(state: GameState, onCancel: () -> Unit) {
+    var elapsedSeconds by remember(state.matchmakingStartedAtMillis) { mutableStateOf(0L) }
+    LaunchedEffect(state.matchmakingStartedAtMillis) {
+        while (true) {
+            val startedAt = state.matchmakingStartedAtMillis ?: epochMillis()
+            elapsedSeconds = ((epochMillis() - startedAt) / 1_000L).coerceAtLeast(0L)
+            delay(1_000)
+        }
+    }
+    val expandedRange = (100 + (elapsedSeconds / 10L).toInt() * 50).coerceAtMost(600)
+
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(20.dp)
+    ) {
+        CircularProgressIndicator(modifier = Modifier.size(64.dp))
+        Text("Đang tìm đối thủ", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Black)
+        Text(
+            "${state.gameMode.displayName()} • Elo ±$expandedRange",
+            color = MaterialTheme.colorScheme.primary,
+            fontWeight = FontWeight.Bold
+        )
+        Text(
+            "Đã chờ ${elapsedSeconds}s\nPhạm vi Elo sẽ tự mở rộng sau mỗi 10 giây.",
+            textAlign = TextAlign.Center,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        state.latencyMillis?.let {
+            Text(connectionQualityLabel(it), style = MaterialTheme.typography.bodySmall)
+        }
+        OutlinedButton(onClick = onCancel, modifier = Modifier.fillMaxWidth()) {
+            Text("Hủy tìm trận")
         }
     }
 }
@@ -212,6 +272,22 @@ private fun RoomBrowser(
 ) {
     var selectedRoom by remember { mutableStateOf<AvailableRoom?>(null) }
     var showCreateRoom by remember { mutableStateOf(false) }
+    var searchQuery by remember { mutableStateOf("") }
+    var modeFilter by remember { mutableStateOf<GameMode?>(null) }
+    val visibleRooms = remember(state.availableRooms, searchQuery, modeFilter) {
+        state.availableRooms.filter { room ->
+            (searchQuery.isBlank() || room.name.contains(searchQuery.trim(), ignoreCase = true) ||
+                room.hostName.contains(searchQuery.trim(), ignoreCase = true)) &&
+                (modeFilter == null || room.gameMode == modeFilter)
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(5_000)
+            onRefreshRooms()
+        }
+    }
 
     LaunchedEffect(showCreateInitially) {
         if (showCreateInitially) {
@@ -255,7 +331,10 @@ private fun RoomBrowser(
             Column(modifier = Modifier.weight(1f)) {
                 Text("Phòng chơi", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
                 Text(
-                    "${state.player.name} • ${state.gameMode.displayName()}",
+                    buildString {
+                        append(state.player.name).append(" • ").append(state.gameMode.displayName())
+                        state.latencyMillis?.let { append(" • ").append(it).append(" ms") }
+                    },
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1
@@ -291,9 +370,31 @@ private fun RoomBrowser(
             Text("  Tạo phòng mới", fontWeight = FontWeight.Bold)
         }
 
+        OutlinedTextField(
+            value = searchQuery,
+            onValueChange = { searchQuery = it },
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true,
+            label = { Text("Tìm theo tên phòng hoặc chủ phòng") },
+            leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) }
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FilterChip(selected = modeFilter == null, onClick = { modeFilter = null }, label = { Text("Tất cả") })
+            FilterChip(
+                selected = modeFilter == GameMode.ORDER,
+                onClick = { modeFilter = GameMode.ORDER },
+                label = { Text("Thứ tự") }
+            )
+            FilterChip(
+                selected = modeFilter == GameMode.TIME_ATTACK,
+                onClick = { modeFilter = GameMode.TIME_ATTACK },
+                label = { Text("60 giây") }
+            )
+        }
+
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             Text("Phòng đang chờ", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-            Text("${state.availableRooms.size} phòng", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("${visibleRooms.size} phòng", color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         Box(modifier = Modifier.fillMaxWidth().weight(1f)) {
             when {
@@ -311,8 +412,12 @@ private fun RoomBrowser(
                         }
                     )
                 }
-                state.availableRooms.isEmpty() -> Text(
-                    "Chưa có phòng nào đang chờ. Hãy tạo phòng mới hoặc làm mới danh sách.",
+                visibleRooms.isEmpty() -> Text(
+                    if (searchQuery.isBlank() && modeFilter == null) {
+                        "Chưa có phòng nào đang chờ. Hãy tạo phòng mới hoặc làm mới danh sách."
+                    } else {
+                        "Không tìm thấy phòng phù hợp với bộ lọc."
+                    },
                     modifier = Modifier.align(Alignment.Center),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     textAlign = TextAlign.Center
@@ -321,7 +426,7 @@ private fun RoomBrowser(
                     modifier = Modifier.fillMaxSize(),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    items(state.availableRooms, key = { it.id }) { room ->
+                    items(visibleRooms, key = { it.id }) { room ->
                         RoomCard(room = room, onClick = { selectedRoom = room })
                     }
                 }
@@ -339,6 +444,7 @@ private fun CreateRoomDialog(
 ) {
     var roomName by remember { mutableStateOf("") }
     var roomPassword by remember { mutableStateOf("") }
+    var isPrivate by remember { mutableStateOf(true) }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Tạo phòng mới") },
@@ -351,21 +457,38 @@ private fun CreateRoomDialog(
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
-                OutlinedTextField(
-                    value = roomPassword,
-                    onValueChange = { roomPassword = it },
-                    label = { Text("Mật khẩu phòng") },
-                    singleLine = true,
-                    visualTransformation = PasswordVisualTransformation(),
-                    leadingIcon = { Icon(Icons.Default.Lock, null) },
-                    modifier = Modifier.fillMaxWidth()
-                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Phòng riêng tư", fontWeight = FontWeight.SemiBold)
+                        Text(
+                            if (isPrivate) "Người chơi cần nhập mật khẩu" else "Mọi người có thể tham gia",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Switch(checked = isPrivate, onCheckedChange = { isPrivate = it })
+                }
+                if (isPrivate) {
+                    OutlinedTextField(
+                        value = roomPassword,
+                        onValueChange = { roomPassword = it },
+                        label = { Text("Mật khẩu phòng") },
+                        singleLine = true,
+                        visualTransformation = PasswordVisualTransformation(),
+                        leadingIcon = { Icon(Icons.Default.Lock, null) },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
             }
         },
         confirmButton = {
             Button(
-                onClick = { onCreate(roomName.trim(), roomPassword) },
-                enabled = !isLoading && roomName.isNotBlank() && roomPassword.isNotEmpty()
+                onClick = { onCreate(roomName.trim(), if (isPrivate) roomPassword else "") },
+                enabled = !isLoading && roomName.isNotBlank() && (!isPrivate || roomPassword.isNotEmpty())
             ) { Text("Tạo phòng") }
         },
         dismissButton = { TextButton(onClick = onDismiss, enabled = !isLoading) { Text("Hủy") } }
@@ -432,11 +555,13 @@ private fun RoomWaiting(
     state: GameState,
     onLeaveRoom: () -> Unit,
     onOpenFriends: () -> Unit,
+    onSetReady: (Boolean) -> Unit,
+    onKickOpponent: () -> Unit,
     isGuest: Boolean
 ) {
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(24.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
         modifier = Modifier.fillMaxWidth()
     ) {
         Text(
@@ -444,27 +569,90 @@ private fun RoomWaiting(
             style = MaterialTheme.typography.headlineLarge,
             fontWeight = FontWeight.Bold
         )
-        CircularProgressIndicator(modifier = Modifier.size(48.dp))
         Text(
-            if (state.isRoomHost) "Đang chờ người chơi tham gia..." else "Đang gửi yêu cầu tham gia phòng...",
-            style = MaterialTheme.typography.titleMedium,
+            buildString {
+                append(if (state.isRoomHost) "Bạn là chủ phòng" else "Phòng của ${state.opponent.name}")
+                state.latencyMillis?.let { append(" • ").append(connectionQualityLabel(it)) }
+            },
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center
         )
-        Text(
-            if (state.isRoomHost) "Chỉ người nhập đúng mật khẩu mới có thể vào phòng."
-            else "Chủ phòng đang kiểm tra mật khẩu.",
-            textAlign = TextAlign.Center,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
+
+        RoomWaitingPlayerCard("Bạn", state.player, isLocal = true)
+        RoomWaitingPlayerCard(
+            "Đối thủ",
+            if (state.hasOpponent) state.opponent else PlayerState("Đang chờ người chơi..."),
+            isLocal = false
         )
+
         state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-        if (state.isRoomHost && !isGuest) {
-            Button(onClick = onOpenFriends) {
-                Icon(Icons.Default.Group, null)
-                Text("  Mời bạn bè vào phòng")
+
+        Button(
+            onClick = { onSetReady(!state.player.isReady) },
+            enabled = state.connectionStatus == ConnectionStatus.CONNECTED && state.hasOpponent,
+            modifier = Modifier.fillMaxWidth().height(52.dp)
+        ) {
+            Text(if (state.player.isReady) "Hủy sẵn sàng" else "Sẵn sàng", fontWeight = FontWeight.Bold)
+        }
+        if (state.hasOpponent && state.player.isReady && !state.opponent.isReady) {
+            Text("Đang chờ đối thủ sẵn sàng...", color = MaterialTheme.colorScheme.primary)
+        }
+
+        if (state.isRoomHost) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (!isGuest) {
+                    OutlinedButton(onClick = onOpenFriends, modifier = Modifier.weight(1f)) {
+                        Icon(Icons.Default.Group, null)
+                        Text("  Mời bạn")
+                    }
+                }
+                if (state.hasOpponent) {
+                    OutlinedButton(onClick = onKickOpponent, modifier = Modifier.weight(1f)) {
+                        Text("Mời ra")
+                    }
+                }
             }
         }
-        OutlinedButton(onClick = onLeaveRoom) { Text("Rời phòng") }
+        TextButton(onClick = onLeaveRoom) {
+            Text(if (state.isRoomHost) "Đóng phòng" else "Rời phòng", color = MaterialTheme.colorScheme.error)
+        }
     }
+}
+
+@Composable
+private fun RoomWaitingPlayerCard(label: String, player: PlayerState, isLocal: Boolean) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(20.dp),
+        color = if (isLocal) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainer
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Surface(shape = CircleShape, color = MaterialTheme.colorScheme.surface) {
+                Icon(Icons.Default.Person, contentDescription = null, modifier = Modifier.padding(10.dp).size(28.dp))
+            }
+            Column(modifier = Modifier.weight(1f)) {
+                Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(player.name, fontWeight = FontWeight.Bold)
+            }
+            Text(
+                if (player.isReady) "SẴN SÀNG" else "ĐANG CHỜ",
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.Bold,
+                color = if (player.isReady) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+}
+
+private fun connectionQualityLabel(latencyMillis: Long): String = when {
+    latencyMillis < 80 -> "$latencyMillis ms • Tốt"
+    latencyMillis < 180 -> "$latencyMillis ms • Ổn định"
+    else -> "$latencyMillis ms • Chậm"
 }
 
 @Composable

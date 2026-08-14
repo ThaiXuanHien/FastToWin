@@ -47,6 +47,7 @@ class GameEngine(
     private val sessionsByPlayerId = mutableMapOf<String, GuestSession>()
     private val rooms = mutableMapOf<String, Room>()
     private val roomInvitations = mutableMapOf<String, RoomInvitationRecord>()
+    private val matchmakingEntries = mutableMapOf<String, MatchmakingEntry>()
     private var activeRoomsRestored = false
 
     suspend fun connectGuest(displayName: String, resumeToken: String?): ConnectedPlayer {
@@ -134,7 +135,9 @@ class GameEngine(
     suspend fun handle(playerId: String, message: ClientMessage): List<Delivery> {
         restoreActiveRooms()
         if (message is ClientMessage.GetProfile) return loadProfile(playerId)
+        if (message is ClientMessage.GetMatchDetail) return loadMatchDetail(playerId, message.matchId)
         if (message is ClientMessage.UpdateProfile) return updateProfile(playerId, message)
+        if (message is ClientMessage.EquipCosmetics) return equipCosmetics(playerId, message)
         if (message is ClientMessage.GetLeaderboard) return loadLeaderboard(playerId)
         if (message is ClientMessage.GetFriends) return loadFriends(playerId)
         if (message is ClientMessage.GetRoomInvitations) return loadRoomInvitations(playerId)
@@ -146,6 +149,8 @@ class GameEngine(
         if (message is ClientMessage.UnblockPlayer) return unblockPlayer(playerId, message.playerUserId)
         if (message is ClientMessage.InviteFriend) return inviteFriend(playerId, message)
         if (message is ClientMessage.RespondRoomInvitation) return respondRoomInvitation(playerId, message)
+        if (message is ClientMessage.JoinMatchmaking) return joinMatchmaking(playerId, message)
+        if (message is ClientMessage.CancelMatchmaking) return cancelMatchmaking(playerId)
         val result = mutex.withLock {
             val player = sessionsByPlayerId[playerId]
                 ?: return@withLock HandleResult(
@@ -164,10 +169,17 @@ class GameEngine(
                     listOf(Delivery(ServerMessage.RoomList(publicRooms()), setOf(playerId)))
                 )
                 ClientMessage.GetProfile -> HandleResult(emptyList())
+                is ClientMessage.GetMatchDetail -> HandleResult(emptyList())
                 is ClientMessage.UpdateProfile -> HandleResult(emptyList())
+                is ClientMessage.EquipCosmetics -> HandleResult(emptyList())
                 ClientMessage.GetLeaderboard -> HandleResult(emptyList())
                 ClientMessage.GetFriends -> HandleResult(emptyList())
                 ClientMessage.GetRoomInvitations -> HandleResult(emptyList())
+                is ClientMessage.MeasureLatency -> HandleResult(listOf(
+                    Delivery(ServerMessage.LatencyPong(message.clientSentAtEpochMillis), setOf(playerId))
+                ))
+                is ClientMessage.JoinMatchmaking -> HandleResult(emptyList())
+                ClientMessage.CancelMatchmaking -> HandleResult(emptyList())
                 is ClientMessage.SendFriendRequest -> HandleResult(emptyList())
                 is ClientMessage.RespondFriendRequest -> HandleResult(emptyList())
                 is ClientMessage.CancelFriendRequest -> HandleResult(emptyList())
@@ -198,6 +210,9 @@ class GameEngine(
                             ?.roomId
                     )
                 }
+                is ClientMessage.SetReady -> setReady(player, message)
+                is ClientMessage.KickPlayer -> kickPlayer(player, message)
+                is ClientMessage.RequestRematch -> requestRematch(player, message)
                 is ClientMessage.SelectNumber -> selectNumber(player, message)
             }
         }
@@ -440,20 +455,18 @@ class GameEngine(
                 ?.takeIf { it.hostId == invitation.inviterId && it.phase == RoomPhase.WAITING && it.guestId == null }
                 ?: return@withLock listOf(error(playerId, "ROOM_NOT_FOUND", "Phòng được mời không còn sẵn sàng."))
             room.guestId = player.playerId
-            room.phase = RoomPhase.PLAYING
-            room.numbers = (1..GAME_NUMBER_COUNT).shuffled()
-            room.startedAtEpochMillis = nowMillis()
             room.sequence++
             room.scores[player.playerId] = 0
+            room.readyPlayerIds.clear()
             roomInvitations.entries.removeAll { it.value.inviteeId == playerId }
             listOf(
-                Delivery(ServerMessage.GameStarted(room.snapshot()), room.playerIds()),
+                Delivery(ServerMessage.RoomUpdated(room.snapshot()), room.playerIds()),
                 Delivery(ServerMessage.RoomList(publicRooms()))
             )
         }
         result.asSequence()
             .map(Delivery::message)
-            .filterIsInstance<ServerMessage.GameStarted>()
+            .filterIsInstance<ServerMessage.RoomUpdated>()
             .firstOrNull()
             ?.game
             ?.roomId
@@ -496,10 +509,112 @@ class GameEngine(
         return if (room.phase == RoomPhase.WAITING) FriendPresence.IN_ROOM else FriendPresence.PLAYING
     }
 
+    private suspend fun joinMatchmaking(
+        playerId: String,
+        command: ClientMessage.JoinMatchmaking
+    ): List<Delivery> {
+        if (!isAccountSession(playerId)) {
+            return listOf(error(playerId, "ACCOUNT_REQUIRED", "Hãy đăng nhập để chơi nhanh xếp hạng."))
+        }
+        val rating = playerProfileRepository.findByPlayerId(playerId)?.statistics?.eloRating ?: DEFAULT_ELO_RATING
+        val joinedAt = nowMillis()
+        val candidates = mutex.withLock {
+            if (roomFor(playerId) != null) {
+                return@withLock emptyList<MatchmakingEntry>()
+            }
+            matchmakingEntries.values
+                .filter { it.playerId != playerId && it.gameMode == command.gameMode }
+                .filter { candidate ->
+                    sessionsByPlayerId[candidate.playerId]?.isConnected == true && roomFor(candidate.playerId) == null
+                }
+                .sortedWith(compareBy<MatchmakingEntry> { kotlin.math.abs(it.eloRating - rating) }.thenBy { it.joinedAtMillis })
+        }
+        val candidate = candidates.firstOrNull { queued ->
+            !runCatching { friendRepository.isBlockedEitherWay(playerId, queued.playerId) }
+                .onFailure { System.err.println("Could not check blocked players for matchmaking: ${it.message}") }
+                .getOrDefault(true)
+        }
+
+        var matchedRoomId: String? = null
+        val deliveries = mutex.withLock {
+            val player = sessionsByPlayerId[playerId]
+                ?.takeIf { it.isConnected && it.resumeToken == null }
+                ?: return@withLock listOf(error(playerId, "SESSION_NOT_FOUND", "Phiên chơi không còn hợp lệ."))
+            if (roomFor(playerId) != null) {
+                matchmakingEntries.remove(playerId)
+                return@withLock listOf(error(playerId, "ALREADY_IN_ROOM", "Bạn đang ở trong một phòng khác."))
+            }
+
+            val queuedCandidate = candidate?.let { matchmakingEntries[it.playerId] }?.takeIf { queued ->
+                queued.gameMode == command.gameMode &&
+                    sessionsByPlayerId[queued.playerId]?.isConnected == true &&
+                    roomFor(queued.playerId) == null &&
+                    kotlin.math.abs(queued.eloRating - rating) <= maxOf(
+                        matchmakingRange(joinedAt - queued.joinedAtMillis),
+                        matchmakingRange(0L)
+                    )
+            }
+            if (queuedCandidate == null) {
+                val existing = matchmakingEntries[playerId]
+                matchmakingEntries[playerId] = MatchmakingEntry(
+                    playerId = player.playerId,
+                    gameMode = command.gameMode,
+                    eloRating = rating,
+                    joinedAtMillis = existing?.joinedAtMillis ?: joinedAt
+                )
+                return@withLock listOf(Delivery(
+                    ServerMessage.MatchmakingStatus(
+                        isSearching = true,
+                        gameMode = command.gameMode,
+                        ratingRange = matchmakingRange(joinedAt - (existing?.joinedAtMillis ?: joinedAt))
+                    ),
+                    setOf(playerId)
+                ))
+            }
+
+            val hostId = queuedCandidate.playerId
+            matchmakingEntries.remove(hostId)
+            matchmakingEntries.remove(playerId)
+            val room = Room(
+                id = UUID.randomUUID().toString(),
+                name = "Đấu nhanh",
+                hostId = hostId,
+                guestId = playerId,
+                password = null,
+                gameMode = command.gameMode,
+                phase = RoomPhase.PLAYING,
+                numbers = (1..GAME_NUMBER_COUNT).shuffled(),
+                scores = mutableMapOf(hostId to 0, playerId to 0),
+                startedAtEpochMillis = joinedAt
+            )
+            rooms[room.id] = room
+            matchedRoomId = room.id
+            listOf(
+                Delivery(ServerMessage.GameStarted(room.snapshot()), room.playerIds()),
+                Delivery(ServerMessage.RoomList(publicRooms()))
+            )
+        }
+        matchedRoomId?.let { persistRoom(it) }
+        val affectedPlayers = deliveries.flatMap { it.recipients.orEmpty() }.toSet()
+        return deliveries + affectedPlayers.flatMap { presenceUpdates(it) }
+    }
+
+    private suspend fun cancelMatchmaking(playerId: String): List<Delivery> {
+        mutex.withLock { matchmakingEntries.remove(playerId) }
+        return listOf(Delivery(ServerMessage.MatchmakingStatus(isSearching = false), setOf(playerId))) +
+            presenceUpdates(playerId)
+    }
+
+    private fun matchmakingRange(waitingMillis: Long): Int {
+        val expansions = (waitingMillis.coerceAtLeast(0L) / MATCHMAKING_EXPAND_INTERVAL_MILLIS).toInt()
+        return (MATCHMAKING_INITIAL_RANGE + expansions * MATCHMAKING_EXPAND_STEP)
+            .coerceAtMost(MATCHMAKING_MAX_RANGE)
+    }
+
     private fun accountRequired(playerId: String) = error(
         playerId,
         "ACCOUNT_REQUIRED",
-        "Hãy đăng nhập tài khoản để sử dụng tính năng bạn bè."
+        "Hãy đăng nhập tài khoản để sử dụng tính năng này."
     )
 
     private suspend fun loadProfile(playerId: String): List<Delivery> {
@@ -513,6 +628,27 @@ class GameEngine(
             playerCode = playerId.replace("-", "").take(10).uppercase()
         )
         return listOf(Delivery(ServerMessage.ProfileData(profile), setOf(playerId)))
+    }
+
+    private suspend fun loadMatchDetail(playerId: String, matchId: String): List<Delivery> {
+        if (!isAccountSession(playerId)) return listOf(accountRequired(playerId))
+        val detail = runCatching { playerProfileRepository.findMatchDetail(playerId, matchId) }.getOrNull()
+            ?: return listOf(error(playerId, "MATCH_NOT_FOUND", "Không tìm thấy chi tiết trận đấu."))
+        return listOf(Delivery(ServerMessage.MatchDetailData(detail), setOf(playerId)))
+    }
+
+    private suspend fun equipCosmetics(
+        playerId: String,
+        command: ClientMessage.EquipCosmetics
+    ): List<Delivery> {
+        if (!isAccountSession(playerId)) return listOf(accountRequired(playerId))
+        val updated = runCatching {
+            playerProfileRepository.equipCosmetics(playerId, command.frameId, command.titleId)
+        }.getOrDefault(false)
+        if (!updated) {
+            return listOf(error(playerId, "COSMETIC_LOCKED", "Vật phẩm chưa được mở khóa hoặc không hợp lệ."))
+        }
+        return loadProfile(playerId)
     }
 
     private suspend fun updateProfile(
@@ -619,6 +755,7 @@ class GameEngine(
             val session = sessionsByPlayerId[playerId] ?: return@withLock emptyList()
             session.isConnected = false
             session.disconnectedAtMillis = disconnectedAt
+            matchmakingEntries.remove(playerId)
             val room = roomFor(playerId)
             if (room?.phase == RoomPhase.WAITING && room.hostId == playerId) {
                 listOf(Delivery(ServerMessage.RoomList(publicRooms())))
@@ -709,15 +846,12 @@ class GameEngine(
         if (name.isEmpty()) {
             return listOf(error(player.playerId, "INVALID_ROOM_NAME", "Tên phòng không được để trống."))
         }
-        if (command.password.isEmpty()) {
-            return listOf(error(player.playerId, "INVALID_PASSWORD", "Mật khẩu phòng không được để trống."))
-        }
-
+        matchmakingEntries.remove(player.playerId)
         val room = Room(
             id = UUID.randomUUID().toString(),
             name = name,
             hostId = player.playerId,
-            password = PasswordHash.create(command.password),
+            password = command.password.takeIf(String::isNotBlank)?.let(PasswordHash::create),
             gameMode = command.gameMode
         )
         rooms[room.id] = room
@@ -736,20 +870,71 @@ class GameEngine(
         if (room.phase != RoomPhase.WAITING || room.guestId != null) {
             return listOf(error(player.playerId, "ROOM_FULL", "Phòng đã đủ người."))
         }
-        if (!room.password.matches(command.password)) {
+        if (room.password != null && !room.password.matches(command.password)) {
             return listOf(error(player.playerId, "WRONG_PASSWORD", "Mật khẩu phòng không đúng."))
         }
 
+        matchmakingEntries.remove(player.playerId)
         room.guestId = player.playerId
-        room.phase = RoomPhase.PLAYING
-        room.numbers = (1..GAME_NUMBER_COUNT).shuffled()
-        room.startedAtEpochMillis = nowMillis()
         room.sequence++
         room.scores[player.playerId] = 0
+        room.readyPlayerIds.clear()
         val participants = room.playerIds()
         return listOf(
-            Delivery(ServerMessage.GameStarted(room.snapshot()), participants),
+            Delivery(ServerMessage.RoomUpdated(room.snapshot()), participants),
             Delivery(ServerMessage.RoomList(publicRooms()))
+        )
+    }
+
+    private fun setReady(player: GuestSession, command: ClientMessage.SetReady): HandleResult {
+        val room = rooms[command.roomId]
+            ?: return HandleResult(listOf(error(player.playerId, "ROOM_NOT_FOUND", "Phòng không còn tồn tại.")))
+        if (player.playerId !in room.playerIds()) {
+            return HandleResult(listOf(error(player.playerId, "NOT_IN_ROOM", "Bạn không ở trong phòng này.")))
+        }
+        if (room.phase != RoomPhase.WAITING) {
+            return HandleResult(listOf(error(player.playerId, "ROOM_NOT_WAITING", "Phòng không còn ở trạng thái chờ.")))
+        }
+        if (command.ready) room.readyPlayerIds += player.playerId else room.readyPlayerIds -= player.playerId
+        room.sequence++
+        val participants = room.playerIds()
+        if (participants.size == 2 && room.readyPlayerIds.containsAll(participants)) {
+            room.phase = RoomPhase.PLAYING
+            room.numbers = (1..GAME_NUMBER_COUNT).shuffled()
+            room.startedAtEpochMillis = nowMillis()
+            room.readyPlayerIds.clear()
+            return HandleResult(
+                deliveries = listOf(Delivery(ServerMessage.GameStarted(room.snapshot()), participants)),
+                changedRoomId = room.id
+            )
+        }
+        return HandleResult(
+            deliveries = listOf(Delivery(ServerMessage.RoomUpdated(room.snapshot()), participants)),
+            changedRoomId = room.id
+        )
+    }
+
+    private fun kickPlayer(player: GuestSession, command: ClientMessage.KickPlayer): HandleResult {
+        val room = rooms[command.roomId]
+            ?: return HandleResult(listOf(error(player.playerId, "ROOM_NOT_FOUND", "Phòng không còn tồn tại.")))
+        if (room.hostId != player.playerId) {
+            return HandleResult(listOf(error(player.playerId, "HOST_REQUIRED", "Chỉ chủ phòng mới có thể mời người chơi ra ngoài.")))
+        }
+        if (room.phase != RoomPhase.WAITING || room.guestId != command.playerId) {
+            return HandleResult(listOf(error(player.playerId, "PLAYER_NOT_IN_ROOM", "Người chơi không còn trong phòng.")))
+        }
+        val kickedPlayerId = command.playerId
+        room.guestId = null
+        room.readyPlayerIds.clear()
+        room.scores.remove(kickedPlayerId)
+        room.sequence++
+        return HandleResult(
+            deliveries = listOf(
+                Delivery(ServerMessage.RoomClosed(room.id, "Chủ phòng đã mời bạn ra khỏi phòng."), setOf(kickedPlayerId)),
+                Delivery(ServerMessage.RoomUpdated(room.snapshot()), setOf(room.hostId)),
+                Delivery(ServerMessage.RoomList(publicRooms()))
+            ),
+            changedRoomId = room.id
         )
     }
 
@@ -765,6 +950,49 @@ class GameEngine(
         return listOf(
             Delivery(ServerMessage.RoomClosed(room.id, "Một người chơi đã rời phòng."), participants),
             Delivery(ServerMessage.RoomList(publicRooms()))
+        )
+    }
+
+    private fun requestRematch(
+        player: GuestSession,
+        command: ClientMessage.RequestRematch
+    ): HandleResult {
+        val room = rooms[command.roomId]
+            ?: return HandleResult(listOf(error(player.playerId, "ROOM_NOT_FOUND", "Phòng không còn tồn tại.")))
+        if (player.playerId !in room.playerIds()) {
+            return HandleResult(listOf(error(player.playerId, "NOT_IN_ROOM", "Bạn không ở trong phòng này.")))
+        }
+        if (room.phase != RoomPhase.FINISHED) {
+            return HandleResult(listOf(error(player.playerId, "REMATCH_NOT_AVAILABLE", "Chỉ có thể đấu lại sau khi trận kết thúc.")))
+        }
+        if (room.playerIds().size != 2) {
+            return HandleResult(listOf(error(player.playerId, "OPPONENT_LEFT", "Đối thủ đã rời phòng.")))
+        }
+
+        room.rematchRequestedPlayerIds += player.playerId
+        if (!room.rematchRequestedPlayerIds.containsAll(room.playerIds())) {
+            room.sequence++
+            return HandleResult(
+                deliveries = listOf(Delivery(ServerMessage.RematchStatus(room.snapshot()), room.playerIds())),
+                changedRoomId = room.id
+            )
+        }
+
+        room.matchId = UUID.randomUUID().toString()
+        room.phase = RoomPhase.PLAYING
+        room.numbers = (1..GAME_NUMBER_COUNT).shuffled()
+        room.selectedNumbers.clear()
+        room.currentTarget = 1
+        room.playerIds().forEach { room.scores[it] = 0 }
+        room.sequence++
+        room.startedAtEpochMillis = nowMillis()
+        room.resultQueued = false
+        room.rematchRequestedPlayerIds.clear()
+        room.processedRequests.clear()
+        room.selectionEvents.clear()
+        return HandleResult(
+            deliveries = listOf(Delivery(ServerMessage.GameStarted(room.snapshot()), room.playerIds())),
+            changedRoomId = room.id
         )
     }
 
@@ -853,11 +1081,12 @@ class GameEngine(
 
         return StoredActiveRoom(
             roomId = id,
+            matchId = matchId,
             roomName = name,
             host = storedPlayer(hostId),
             guest = guestId?.let(::storedPlayer),
-            passwordSalt = password.salt.copyOf(),
-            passwordHash = password.value.copyOf(),
+            passwordSalt = password?.salt?.copyOf(),
+            passwordHash = password?.value?.copyOf(),
             gameMode = gameMode,
             phase = phase,
             numbers = numbers.toList(),
@@ -867,6 +1096,8 @@ class GameEngine(
             sequence = sequence,
             startedAtEpochMillis = startedAtEpochMillis,
             resultQueued = resultQueued,
+            readyPlayerIds = readyPlayerIds.toSet(),
+            rematchRequestedPlayerIds = rematchRequestedPlayerIds.toSet(),
             processedRequests = processedRequests.toMap(),
             selectionEvents = selectionEvents.toList()
         )
@@ -874,9 +1105,14 @@ class GameEngine(
 
     private fun StoredActiveRoom.toRoom(): Room = Room(
         id = roomId,
+        matchId = matchId,
         name = roomName,
         hostId = host.playerId,
-        password = PasswordHash(passwordSalt.copyOf(), passwordHash.copyOf()),
+        password = if (passwordSalt != null && passwordHash != null) {
+            PasswordHash(passwordSalt.copyOf(), passwordHash.copyOf())
+        } else {
+            null
+        },
         gameMode = gameMode,
         guestId = guest?.playerId,
         phase = phase,
@@ -890,6 +1126,8 @@ class GameEngine(
         sequence = sequence,
         startedAtEpochMillis = startedAtEpochMillis,
         resultQueued = resultQueued,
+        readyPlayerIds = readyPlayerIds.toMutableSet(),
+        rematchRequestedPlayerIds = rematchRequestedPlayerIds.toMutableSet(),
         processedRequests = processedRequests.toMutableMap(),
         selectionEvents = selectionEvents.toMutableList()
     )
@@ -907,7 +1145,7 @@ class GameEngine(
                 name = room.name,
                 hostName = sessionsByPlayerId[room.hostId]?.displayName.orEmpty(),
                 gameMode = room.gameMode,
-                requiresPassword = true
+                requiresPassword = room.password != null
             )
         }
         .sortedBy { it.name.lowercase() }
@@ -916,20 +1154,27 @@ class GameEngine(
     private fun Room.snapshot(): GameSnapshot {
         return GameSnapshot(
             roomId = id,
+            matchId = matchId,
             roomName = name,
             hostId = hostId,
             gameMode = gameMode,
             phase = phase,
             players = playerIds().mapNotNull { id ->
                 sessionsByPlayerId[id]?.let { session ->
-                    PlayerSnapshot(id = id, name = session.displayName, score = scores[id] ?: 0)
+                    PlayerSnapshot(
+                        id = id,
+                        name = session.displayName,
+                        score = scores[id] ?: 0,
+                        isReady = id in readyPlayerIds
+                    )
                 }
             },
             numbers = numbers,
             selectedNumbers = selectedNumbers.toList(),
             currentTarget = currentTarget,
             sequence = sequence,
-            startedAtEpochMillis = startedAtEpochMillis
+            startedAtEpochMillis = startedAtEpochMillis,
+            rematchRequestedPlayerIds = rematchRequestedPlayerIds.toList()
         )
     }
 
@@ -955,7 +1200,7 @@ class GameEngine(
         val winnerId = leaders.singleOrNull()
         resultQueued = true
         return CompletedMatch(
-            matchId = id,
+            matchId = matchId,
             roomName = name,
             gameMode = gameMode,
             startedAtMillis = startedAt,
@@ -1028,9 +1273,10 @@ class GameEngine(
 
     private data class Room(
         val id: String,
+        var matchId: String = id,
         val name: String,
         val hostId: String,
-        val password: PasswordHash,
+        val password: PasswordHash?,
         val gameMode: com.hienthai.fastowin.protocol.ProtocolGameMode,
         var guestId: String? = null,
         var phase: RoomPhase = RoomPhase.WAITING,
@@ -1041,6 +1287,8 @@ class GameEngine(
         var sequence: Long = 0,
         var startedAtEpochMillis: Long? = null,
         var resultQueued: Boolean = false,
+        val readyPlayerIds: MutableSet<String> = mutableSetOf(),
+        val rematchRequestedPlayerIds: MutableSet<String> = mutableSetOf(),
         val processedRequests: MutableMap<String, ServerMessage> = mutableMapOf(),
         val selectionEvents: MutableList<MatchSelectionEvent> = mutableListOf()
     ) {
@@ -1063,6 +1311,13 @@ class GameEngine(
             expiresAtEpochMillis = expiresAtMillis
         )
     }
+
+    private data class MatchmakingEntry(
+        val playerId: String,
+        val gameMode: com.hienthai.fastowin.protocol.ProtocolGameMode,
+        val eloRating: Int,
+        val joinedAtMillis: Long
+    )
 
     private data class PasswordHash(val salt: ByteArray, val value: ByteArray) {
         fun matches(password: String): Boolean = MessageDigest.isEqual(value, derive(password, salt))
@@ -1091,6 +1346,11 @@ class GameEngine(
         const val ROOM_RECONNECT_GRACE_MILLIS = 30_000L
         const val IDLE_SESSION_TTL_MILLIS = 5 * 60_000L
         const val ROOM_INVITATION_TTL_MILLIS = 60_000L
+        const val DEFAULT_ELO_RATING = 1_000
+        const val MATCHMAKING_INITIAL_RANGE = 100
+        const val MATCHMAKING_EXPAND_STEP = 50
+        const val MATCHMAKING_MAX_RANGE = 600
+        const val MATCHMAKING_EXPAND_INTERVAL_MILLIS = 10_000L
         const val RESTORED_GUEST_RESUME_TOKEN = "restored-guest-session"
         val secureRandom = SecureRandom()
     }

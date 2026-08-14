@@ -19,6 +19,7 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CenterAlignedTopAppBar
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.LinearProgressIndicator
@@ -26,11 +27,22 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Close
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -40,6 +52,10 @@ import com.hienthai.fastowin.state.GAME_NUMBER_COUNT
 import com.hienthai.fastowin.state.ConnectionStatus
 import com.hienthai.fastowin.state.GameState
 import com.hienthai.fastowin.state.PlayerState
+import com.hienthai.fastowin.data.preferences.AppPreferences
+import com.hienthai.fastowin.data.preferences.BoardStyle
+import com.hienthai.fastowin.platform.GameFeedbackEffect
+import com.hienthai.fastowin.platform.playFeedbackSound
 import com.hienthai.fastowin.ui.theme.FastToWinTheme
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -48,8 +64,28 @@ fun GameScreen(
     state: GameState,
     onNumberClick: (Int) -> Unit,
     onFinish: () -> Unit,
+    onExit: () -> Unit = {},
+    preferences: AppPreferences = AppPreferences(),
     modifier: Modifier = Modifier
 ) {
+    val hapticFeedback = LocalHapticFeedback.current
+    var showExitConfirmation by remember { mutableStateOf(false) }
+    if (showExitConfirmation) {
+        AlertDialog(
+            onDismissRequest = { showExitConfirmation = false },
+            title = { Text("Rời trận đấu?") },
+            text = { Text("Trận hiện tại sẽ kết thúc và cả hai người chơi được đưa ra khỏi phòng.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    showExitConfirmation = false
+                    onExit()
+                }) { Text("Rời trận", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = {
+                TextButton(onClick = { showExitConfirmation = false }) { Text("Tiếp tục chơi") }
+            }
+        )
+    }
     LaunchedEffect(state.isGameOver) {
         if (state.isGameOver) onFinish()
     }
@@ -57,6 +93,11 @@ fun GameScreen(
     Scaffold(
         topBar = {
             CenterAlignedTopAppBar(
+                navigationIcon = {
+                    IconButton(onClick = { showExitConfirmation = true }) {
+                        Icon(Icons.Rounded.Close, contentDescription = "Rời trận")
+                    }
+                },
                 title = {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(
@@ -109,7 +150,19 @@ fun GameScreen(
                 numbers = state.numbers,
                 currentTarget = state.currentTarget,
                 enabled = state.connectionStatus == ConnectionStatus.CONNECTED,
-                onNumberClick = onNumberClick,
+                boardStyle = preferences.boardStyle,
+                onNumberClick = { number ->
+                    val effect = if (number == state.currentTarget) {
+                        GameFeedbackEffect.CORRECT
+                    } else {
+                        GameFeedbackEffect.WRONG
+                    }
+                    if (preferences.soundEnabled) playFeedbackSound(effect)
+                    if (preferences.vibrationEnabled) {
+                        hapticFeedback.performHapticFeedback(HapticFeedbackType.LongPress)
+                    }
+                    onNumberClick(number)
+                },
                 modifier = Modifier.weight(1f)
             )
         }
@@ -270,6 +323,7 @@ fun NumberGrid(
     numbers: List<Int>,
     currentTarget: Int,
     enabled: Boolean = true,
+    boardStyle: BoardStyle = BoardStyle.CLASSIC,
     onNumberClick: (Int) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -285,6 +339,7 @@ fun NumberGrid(
                 number = number,
                 isCompleted = number < currentTarget,
                 enabled = enabled,
+                boardStyle = boardStyle,
                 onClick = { onNumberClick(number) }
             )
         }
@@ -292,18 +347,38 @@ fun NumberGrid(
 }
 
 @Composable
-fun NumberCell(number: Int, isCompleted: Boolean, enabled: Boolean = true, onClick: () -> Unit) {
+fun NumberCell(
+    number: Int,
+    isCompleted: Boolean,
+    enabled: Boolean = true,
+    boardStyle: BoardStyle = BoardStyle.CLASSIC,
+    onClick: () -> Unit
+) {
+    val activeColor = when (boardStyle) {
+        BoardStyle.CLASSIC -> MaterialTheme.colorScheme.surface
+        BoardStyle.OCEAN -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.62f)
+        BoardStyle.HIGH_CONTRAST -> MaterialTheme.colorScheme.primaryContainer
+    }
+    val activeContentColor = when (boardStyle) {
+        BoardStyle.CLASSIC -> MaterialTheme.colorScheme.onSurface
+        BoardStyle.OCEAN, BoardStyle.HIGH_CONTRAST -> MaterialTheme.colorScheme.onPrimaryContainer
+    }
+    val activeBorderColor = when (boardStyle) {
+        BoardStyle.CLASSIC -> MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.7f)
+        BoardStyle.OCEAN -> MaterialTheme.colorScheme.primary
+        BoardStyle.HIGH_CONTRAST -> MaterialTheme.colorScheme.outline
+    }
     Surface(
         modifier = Modifier
             .aspectRatio(1f)
             .clip(RoundedCornerShape(16.dp))
             .clickable(enabled = enabled && !isCompleted, onClick = onClick),
         color = if (isCompleted) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
-        else MaterialTheme.colorScheme.surface,
+        else activeColor,
         shape = RoundedCornerShape(16.dp),
         border = if (isCompleted) null else BorderStroke(
             1.dp,
-            MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.7f)
+            activeBorderColor
         ),
         tonalElevation = if (isCompleted) 0.dp else 2.dp,
         shadowElevation = if (isCompleted) 0.dp else 1.dp
@@ -314,7 +389,7 @@ fun NumberCell(number: Int, isCompleted: Boolean, enabled: Boolean = true, onCli
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold,
                 color = if (isCompleted) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.25f)
-                else MaterialTheme.colorScheme.onSurface,
+                else activeContentColor,
                 fontSize = 20.sp
             )
         }
