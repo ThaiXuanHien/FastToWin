@@ -7,6 +7,7 @@ import com.hienthai.fastowin.data.network.StoredAuthSession
 import com.hienthai.fastowin.data.network.ResumeTokenStore
 import com.hienthai.fastowin.platform.epochMillis
 import com.hienthai.fastowin.protocol.AuthSessionResponse
+import com.hienthai.fastowin.protocol.AccountSessionSnapshot
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -27,7 +28,9 @@ data class AuthState(
     val error: String? = null,
     val notice: String? = null,
     val devResetToken: String? = null,
-    val passwordResetEmail: String? = null
+    val passwordResetEmail: String? = null,
+    val accountSessions: List<AccountSessionSnapshot> = emptyList(),
+    val areSessionsLoading: Boolean = false
 )
 
 class AuthController(
@@ -210,6 +213,61 @@ class AuthController(
         }
     }
 
+    fun loadSessions() {
+        if (_state.value.session == null || _state.value.areSessionsLoading) return
+        _state.update { it.copy(areSessionsLoading = true, error = null) }
+        scope.launch {
+            val accessToken = validAccessToken() ?: return@launch
+            runCatching { api.listSessions(accessToken) }
+                .onSuccess { response ->
+                    _state.update {
+                        it.copy(
+                            accountSessions = response.sessions,
+                            areSessionsLoading = false,
+                            error = null
+                        )
+                    }
+                }
+                .onFailure(::showSessionsError)
+        }
+    }
+
+    fun revokeSession(sessionId: String) {
+        val target = _state.value.accountSessions.firstOrNull { it.sessionId == sessionId } ?: return
+        if (_state.value.areSessionsLoading) return
+        _state.update { it.copy(areSessionsLoading = true, error = null, notice = null) }
+        scope.launch {
+            val accessToken = validAccessToken() ?: return@launch
+            runCatching { api.revokeSession(accessToken, sessionId) }
+                .onSuccess { response ->
+                    if (target.isCurrent) {
+                        store.clear(serverUrl)
+                        _state.value = AuthState(stage = AuthStage.LOGIN, notice = response.message)
+                    } else {
+                        _state.update {
+                            it.copy(areSessionsLoading = false, notice = response.message, error = null)
+                        }
+                        loadSessions()
+                    }
+                }
+                .onFailure(::showSessionsError)
+        }
+    }
+
+    fun revokeAllSessions() {
+        if (_state.value.session == null || _state.value.areSessionsLoading) return
+        _state.update { it.copy(areSessionsLoading = true, error = null, notice = null) }
+        scope.launch {
+            val accessToken = validAccessToken() ?: return@launch
+            runCatching { api.revokeAllSessions(accessToken) }
+                .onSuccess { response ->
+                    store.clear(serverUrl)
+                    _state.value = AuthState(stage = AuthStage.LOGIN, notice = response.message)
+                }
+                .onFailure(::showSessionsError)
+        }
+    }
+
     fun expireSession(message: String = "Phiên đăng nhập không còn hợp lệ.") {
         store.clear(serverUrl)
         _state.value = AuthState(error = message)
@@ -250,6 +308,16 @@ class AuthController(
                 isLoading = false,
                 error = (error as? AuthApiException)?.message
                     ?: "Không thể kết nối máy chủ. Vui lòng thử lại."
+            )
+        }
+    }
+
+    private fun showSessionsError(error: Throwable) {
+        _state.update {
+            it.copy(
+                areSessionsLoading = false,
+                error = (error as? AuthApiException)?.message
+                    ?: "Không thể tải danh sách thiết bị. Vui lòng thử lại."
             )
         }
     }

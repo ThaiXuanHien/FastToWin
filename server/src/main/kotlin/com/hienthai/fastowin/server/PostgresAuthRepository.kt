@@ -164,7 +164,7 @@ class PostgresAuthRepository(private val dataSource: DataSource) : AuthRepositor
         dataSource.connection.use { connection ->
             connection.prepareStatement(
                 """
-                SELECT u.id, p.display_name
+                SELECT u.id, p.display_name, s.id AS session_id
                 FROM sessions s
                 JOIN users u ON u.id = s.user_id
                 JOIN profiles p ON p.user_id = u.id
@@ -180,12 +180,93 @@ class PostgresAuthRepository(private val dataSource: DataSource) : AuthRepositor
                 statement.executeQuery().use { result ->
                     if (!result.next()) null else AuthenticatedAccount(
                         userId = result.getObject("id", UUID::class.java),
-                        displayName = result.getString("display_name")
+                        displayName = result.getString("display_name"),
+                        sessionId = result.getObject("session_id", UUID::class.java)
                     )
                 }
             }
         }
     }
+
+    override suspend fun listActiveSessions(
+        userId: UUID,
+        nowMillis: Long
+    ): List<StoredAccountSession> = withContext(Dispatchers.IO) {
+        dataSource.connection.use { connection ->
+            connection.prepareStatement(
+                """
+                SELECT id, device_platform, created_at, last_seen_at, expires_at
+                FROM sessions
+                WHERE user_id = ?
+                  AND access_token_hash IS NOT NULL
+                  AND refresh_token_hash IS NOT NULL
+                  AND revoked_at IS NULL
+                  AND expires_at > ?
+                ORDER BY last_seen_at DESC, created_at DESC
+                """.trimIndent()
+            ).use { statement ->
+                statement.setObject(1, userId)
+                statement.setTimestamp(2, nowMillis.toTimestamp())
+                statement.executeQuery().use { result ->
+                    buildList {
+                        while (result.next()) {
+                            add(StoredAccountSession(
+                                sessionId = result.getObject("id", UUID::class.java),
+                                devicePlatform = result.getString("device_platform"),
+                                createdAtMillis = result.getTimestamp("created_at").time,
+                                lastSeenAtMillis = result.getTimestamp("last_seen_at").time,
+                                expiresAtMillis = result.getTimestamp("expires_at").time
+                            ))
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    override suspend fun revokeSessionById(
+        userId: UUID,
+        sessionId: UUID,
+        nowMillis: Long
+    ): Boolean = withContext(Dispatchers.IO) {
+        dataSource.connection.use { connection ->
+            connection.prepareStatement(
+                """
+                UPDATE sessions
+                SET revoked_at = ?, last_seen_at = ?
+                WHERE id = ? AND user_id = ?
+                  AND access_token_hash IS NOT NULL
+                  AND revoked_at IS NULL
+                """.trimIndent()
+            ).use { statement ->
+                statement.setTimestamp(1, nowMillis.toTimestamp())
+                statement.setTimestamp(2, nowMillis.toTimestamp())
+                statement.setObject(3, sessionId)
+                statement.setObject(4, userId)
+                statement.executeUpdate() == 1
+            }
+        }
+    }
+
+    override suspend fun revokeAllSessions(userId: UUID, nowMillis: Long): Int =
+        withContext(Dispatchers.IO) {
+            dataSource.connection.use { connection ->
+                connection.prepareStatement(
+                    """
+                    UPDATE sessions
+                    SET revoked_at = ?, last_seen_at = ?
+                    WHERE user_id = ?
+                      AND access_token_hash IS NOT NULL
+                      AND revoked_at IS NULL
+                    """.trimIndent()
+                ).use { statement ->
+                    statement.setTimestamp(1, nowMillis.toTimestamp())
+                    statement.setTimestamp(2, nowMillis.toTimestamp())
+                    statement.setObject(3, userId)
+                    statement.executeUpdate()
+                }
+            }
+        }
 
     override suspend fun upgradeGuest(upgrade: GuestUpgrade): GuestUpgradeResult =
         withContext(Dispatchers.IO) {

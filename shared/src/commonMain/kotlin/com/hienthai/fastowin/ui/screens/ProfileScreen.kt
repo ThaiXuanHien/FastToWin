@@ -25,6 +25,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ExitToApp
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Devices
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Visibility
@@ -60,6 +61,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import com.hienthai.fastowin.protocol.MatchHistoryOutcome
+import com.hienthai.fastowin.protocol.AccountSessionSnapshot
 import com.hienthai.fastowin.protocol.MatchHistorySnapshot
 import com.hienthai.fastowin.protocol.MatchDetailSnapshot
 import com.hienthai.fastowin.protocol.CosmeticType
@@ -84,9 +86,15 @@ fun ProfileScreen(
     canEdit: Boolean,
     isAccountLoading: Boolean,
     accountError: String?,
+    accountNotice: String?,
+    accountSessions: List<AccountSessionSnapshot>,
+    areSessionsLoading: Boolean,
     onChangePassword: (String, String) -> Unit,
     onDeleteAccount: (String) -> Unit,
     onClearAccountFeedback: () -> Unit,
+    onLoadSessions: () -> Unit,
+    onRevokeSession: (String) -> Unit,
+    onRevokeAllSessions: () -> Unit,
     onLogout: () -> Unit,
     showBackButton: Boolean = true,
     modifier: Modifier = Modifier
@@ -96,6 +104,7 @@ fun ProfileScreen(
     var displayName by remember { mutableStateOf("") }
     var selectedAvatarId by remember { mutableStateOf<String?>(null) }
     var showAccountSecurity by remember { mutableStateOf(false) }
+    var showAccountSessions by remember { mutableStateOf(false) }
     var historyFilter by remember { mutableStateOf<MatchHistoryOutcome?>(null) }
     if (showAccountSecurity) {
         AccountSecurityDialog(
@@ -109,6 +118,23 @@ fun ProfileScreen(
             },
             onChangePassword = onChangePassword,
             onDeleteAccount = onDeleteAccount
+        )
+    }
+    if (showAccountSessions) {
+        AccountSessionsDialog(
+            sessions = accountSessions,
+            isLoading = areSessionsLoading,
+            error = accountError,
+            notice = accountNotice,
+            onRefresh = onLoadSessions,
+            onRevokeSession = onRevokeSession,
+            onRevokeAllSessions = onRevokeAllSessions,
+            onDismiss = {
+                if (!areSessionsLoading) {
+                    showAccountSessions = false
+                    onClearAccountFeedback()
+                }
+            }
         )
     }
     if (state.isMatchDetailLoading || state.matchDetail != null) {
@@ -194,6 +220,17 @@ fun ProfileScreen(
 
         if (canEdit) {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(
+                    onClick = {
+                        onClearAccountFeedback()
+                        showAccountSessions = true
+                        onLoadSessions()
+                    },
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Icon(Icons.Default.Devices, null)
+                    Text("  Thiết bị")
+                }
                 OutlinedButton(
                     onClick = {
                         onClearAccountFeedback()
@@ -505,6 +542,159 @@ private fun AccountSecurityDialog(
         confirmButton = {},
         dismissButton = { TextButton(onClick = onDismiss, enabled = !isLoading) { Text("Đóng") } }
     )
+}
+
+@Composable
+private fun AccountSessionsDialog(
+    sessions: List<AccountSessionSnapshot>,
+    isLoading: Boolean,
+    error: String?,
+    notice: String?,
+    onRefresh: () -> Unit,
+    onRevokeSession: (String) -> Unit,
+    onRevokeAllSessions: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    var sessionPendingRevoke by remember { mutableStateOf<AccountSessionSnapshot?>(null) }
+    var confirmRevokeAll by remember { mutableStateOf(false) }
+
+    sessionPendingRevoke?.let { session ->
+        AlertDialog(
+            onDismissRequest = { sessionPendingRevoke = null },
+            title = { Text(if (session.isCurrent) "Đăng xuất thiết bị này?" else "Đăng xuất thiết bị?") },
+            text = {
+                Text(
+                    if (session.isCurrent) {
+                        "Bạn sẽ quay về màn đăng nhập trên thiết bị hiện tại."
+                    } else {
+                        "Phiên trên ${sessionDeviceLabel(session.devicePlatform)} sẽ bị thu hồi ngay."
+                    }
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    sessionPendingRevoke = null
+                    onRevokeSession(session.sessionId)
+                }) { Text("Đăng xuất", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = {
+                TextButton(onClick = { sessionPendingRevoke = null }) { Text("Hủy") }
+            }
+        )
+    }
+    if (confirmRevokeAll) {
+        AlertDialog(
+            onDismissRequest = { confirmRevokeAll = false },
+            title = { Text("Đăng xuất tất cả thiết bị?") },
+            text = { Text("Tất cả phiên, bao gồm thiết bị này, sẽ bị thu hồi và bạn cần đăng nhập lại.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmRevokeAll = false
+                    onRevokeAllSessions()
+                }) { Text("Đăng xuất tất cả", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmRevokeAll = false }) { Text("Hủy") }
+            }
+        )
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Thiết bị đăng nhập") },
+        text = {
+            Column(
+                modifier = Modifier.heightIn(max = 560.dp).verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Text(
+                    "Bạn có thể thu hồi những phiên không còn sử dụng.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                if (isLoading && sessions.isEmpty()) {
+                    Box(Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator()
+                    }
+                } else if (sessions.isEmpty()) {
+                    Text("Không tìm thấy phiên đăng nhập đang hoạt động.")
+                } else {
+                    sessions.forEach { session ->
+                        ElevatedCard(modifier = Modifier.fillMaxWidth()) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                Icon(Icons.Default.Devices, contentDescription = null)
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        buildString {
+                                            append(sessionDeviceLabel(session.devicePlatform))
+                                            if (session.isCurrent) append(" • Thiết bị này")
+                                        },
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (session.isCurrent) MaterialTheme.colorScheme.primary
+                                            else MaterialTheme.colorScheme.onSurface
+                                    )
+                                    Text(
+                                        "Hoạt động ${relativeSessionTime(session.lastSeenAtEpochMillis)}",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                    Text(
+                                        sessionExpiryLabel(session.expiresAtEpochMillis),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                                TextButton(
+                                    onClick = { sessionPendingRevoke = session },
+                                    enabled = !isLoading
+                                ) { Text("Đăng xuất") }
+                            }
+                        }
+                    }
+                }
+                notice?.let { Text(it, color = MaterialTheme.colorScheme.primary) }
+                error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                OutlinedButton(
+                    onClick = { confirmRevokeAll = true },
+                    enabled = !isLoading && sessions.isNotEmpty(),
+                    modifier = Modifier.fillMaxWidth()
+                ) { Text("Đăng xuất tất cả thiết bị", color = MaterialTheme.colorScheme.error) }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onRefresh, enabled = !isLoading) { Text("Làm mới") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss, enabled = !isLoading) { Text("Đóng") }
+        }
+    )
+}
+
+private fun sessionDeviceLabel(platform: String?): String = when (platform?.lowercase()) {
+    "android" -> "Android"
+    "ios" -> "iPhone / iPad"
+    else -> "Thiết bị không xác định"
+}
+
+private fun relativeSessionTime(timestampMillis: Long): String {
+    val elapsed = (epochMillis() - timestampMillis).coerceAtLeast(0L)
+    val minutes = elapsed / 60_000L
+    val hours = elapsed / 3_600_000L
+    val days = elapsed / 86_400_000L
+    return when {
+        minutes < 1L -> "vừa xong"
+        hours < 1L -> "$minutes phút trước"
+        days < 1L -> "$hours giờ trước"
+        else -> "$days ngày trước"
+    }
+}
+
+private fun sessionExpiryLabel(expiresAtMillis: Long): String {
+    val remainingDays = ((expiresAtMillis - epochMillis()).coerceAtLeast(0L) / 86_400_000L) + 1L
+    return "Phiên còn hiệu lực khoảng $remainingDays ngày"
 }
 
 @Composable

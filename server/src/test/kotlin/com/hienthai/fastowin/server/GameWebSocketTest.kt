@@ -4,6 +4,7 @@ import com.hienthai.fastowin.protocol.ClientMessage
 import com.hienthai.fastowin.protocol.ProtocolGameMode
 import com.hienthai.fastowin.protocol.ProtocolJson
 import com.hienthai.fastowin.protocol.ServerMessage
+import com.hienthai.fastowin.protocol.SESSION_REPLACED_CLOSE_REASON
 import com.zaxxer.hikari.HikariConfig
 import com.zaxxer.hikari.HikariDataSource
 import io.ktor.client.plugins.websocket.DefaultClientWebSocketSession
@@ -267,7 +268,7 @@ class GameWebSocketTest {
             assertEquals(firstReady.playerId, secondReady.playerId)
 
             val oldCloseReason = withTimeout(2_000) { first.closeReason.await() }
-            assertEquals("Session resumed elsewhere", oldCloseReason?.message)
+            assertEquals(SESSION_REPLACED_CLOSE_REASON, oldCloseReason?.message)
 
             second.sendMessage(ClientMessage.GetProfile)
             assertEquals(

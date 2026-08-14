@@ -3,6 +3,8 @@ package com.hienthai.fastowin.server
 import com.hienthai.fastowin.protocol.ClientMessage
 import com.hienthai.fastowin.protocol.AuthErrorResponse
 import com.hienthai.fastowin.protocol.AccountActionResponse
+import com.hienthai.fastowin.protocol.AccountSessionsRequest
+import com.hienthai.fastowin.protocol.AccountSessionsResponse
 import com.hienthai.fastowin.protocol.ChangePasswordRequest
 import com.hienthai.fastowin.protocol.DeleteAccountRequest
 import com.hienthai.fastowin.protocol.LoginRequest
@@ -11,9 +13,12 @@ import com.hienthai.fastowin.protocol.PasswordResetConfirmRequest
 import com.hienthai.fastowin.protocol.PasswordResetRequest
 import com.hienthai.fastowin.protocol.ProtocolJson
 import com.hienthai.fastowin.protocol.RefreshTokenRequest
+import com.hienthai.fastowin.protocol.RevokeAccountSessionRequest
+import com.hienthai.fastowin.protocol.RevokeAllAccountSessionsRequest
 import com.hienthai.fastowin.protocol.RegisterRequest
 import com.hienthai.fastowin.protocol.UpgradeGuestRequest
 import com.hienthai.fastowin.protocol.ServerMessage
+import com.hienthai.fastowin.protocol.SESSION_REPLACED_CLOSE_REASON
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.ApplicationCall
@@ -155,6 +160,23 @@ fun Application.gameModule(
             val request = call.receiveOrReject<LogoutRequest>() ?: return@post
             authService.logout(request.refreshToken)
             call.respond(HttpStatusCode.NoContent)
+        }
+
+        post("/auth/sessions") {
+            val request = call.receiveOrReject<AccountSessionsRequest>() ?: return@post
+            call.respondAccountSessions(authService.listSessions(request.accessToken))
+        }
+
+        post("/auth/sessions/revoke") {
+            val request = call.receiveOrReject<RevokeAccountSessionRequest>() ?: return@post
+            call.respondAccountAction(
+                authService.revokeSession(request.accessToken, request.sessionId)
+            )
+        }
+
+        post("/auth/sessions/revoke-all") {
+            val request = call.receiveOrReject<RevokeAllAccountSessionsRequest>() ?: return@post
+            call.respondAccountAction(authService.revokeAllSessions(request.accessToken))
         }
 
         post("/auth/change-password") {
@@ -486,6 +508,19 @@ private suspend fun ApplicationCall.respondAccountAction(
     }
 }
 
+private suspend fun ApplicationCall.respondAccountSessions(result: AccountSessionsResult) {
+    when (result) {
+        is AccountSessionsResult.Success -> respond(
+            HttpStatusCode.OK,
+            AccountSessionsResponse(result.sessions)
+        )
+        is AccountSessionsResult.Failure -> respond(
+            HttpStatusCode.Unauthorized,
+            AuthErrorResponse(result.code, result.message)
+        )
+    }
+}
+
 private class SocketConnection(val session: io.ktor.server.websocket.DefaultWebSocketServerSession) {
     private val sendMutex = Mutex()
 
@@ -494,7 +529,7 @@ private class SocketConnection(val session: io.ktor.server.websocket.DefaultWebS
     }
 
     suspend fun closeForReplacement() {
-        session.close(CloseReason(CloseReason.Codes.NORMAL, "Session resumed elsewhere"))
+        session.close(CloseReason(CloseReason.Codes.NORMAL, SESSION_REPLACED_CLOSE_REASON))
     }
 }
 

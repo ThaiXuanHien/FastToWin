@@ -3,6 +3,8 @@ package com.hienthai.fastowin.server
 import com.hienthai.fastowin.protocol.AuthErrorResponse
 import com.hienthai.fastowin.protocol.AuthSessionResponse
 import com.hienthai.fastowin.protocol.AccountActionResponse
+import com.hienthai.fastowin.protocol.AccountSessionsRequest
+import com.hienthai.fastowin.protocol.AccountSessionsResponse
 import com.hienthai.fastowin.protocol.ChangePasswordRequest
 import com.hienthai.fastowin.protocol.DeleteAccountRequest
 import com.hienthai.fastowin.protocol.LoginRequest
@@ -12,6 +14,8 @@ import com.hienthai.fastowin.protocol.PasswordResetRequest
 import com.hienthai.fastowin.protocol.ProtocolJson
 import com.hienthai.fastowin.protocol.RefreshTokenRequest
 import com.hienthai.fastowin.protocol.RegisterRequest
+import com.hienthai.fastowin.protocol.RevokeAccountSessionRequest
+import com.hienthai.fastowin.protocol.RevokeAllAccountSessionsRequest
 import io.ktor.client.statement.HttpResponse
 import io.ktor.client.statement.bodyAsText
 import io.ktor.client.request.post
@@ -29,6 +33,77 @@ import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
 
 class AuthenticationTest {
+    @Test
+    fun `account can list and revoke only its own device sessions`() = testApplication {
+        application { gameModule(environment = "dev") }
+        val email = "sessions@example.com"
+        val registered = client.postJson(
+            "/auth/register",
+            RegisterRequest(email, PASSWORD, "Session player", "android")
+        ).decode<AuthSessionResponse>()
+        val iosLogin = client.postJson(
+            "/auth/login",
+            LoginRequest(email, PASSWORD, "ios")
+        ).decode<AuthSessionResponse>()
+
+        val listed = client.postJson(
+            "/auth/sessions",
+            AccountSessionsRequest(registered.accessToken)
+        ).decode<AccountSessionsResponse>()
+        assertEquals(2, listed.sessions.size)
+        val current = listed.sessions.single { it.isCurrent }
+        val iosSession = listed.sessions.single { it.devicePlatform == "ios" }
+        assertEquals("android", current.devicePlatform)
+
+        val other = client.postJson(
+            "/auth/register",
+            RegisterRequest("other-sessions@example.com", PASSWORD, "Other", "android")
+        ).decode<AuthSessionResponse>()
+        val otherSessionId = client.postJson(
+            "/auth/sessions",
+            AccountSessionsRequest(other.accessToken)
+        ).decode<AccountSessionsResponse>().sessions.single().sessionId
+        val forbidden = client.postJson(
+            "/auth/sessions/revoke",
+            RevokeAccountSessionRequest(registered.accessToken, otherSessionId)
+        )
+        assertEquals(HttpStatusCode.BadRequest, forbidden.status)
+        assertEquals("SESSION_NOT_FOUND", forbidden.decode<AuthErrorResponse>().code)
+
+        val revokedIos = client.postJson(
+            "/auth/sessions/revoke",
+            RevokeAccountSessionRequest(registered.accessToken, iosSession.sessionId)
+        )
+        assertEquals(HttpStatusCode.OK, revokedIos.status)
+        assertEquals(HttpStatusCode.Unauthorized, client.postJson(
+            "/auth/refresh",
+            RefreshTokenRequest(iosLogin.refreshToken)
+        ).status)
+        val afterSingleRevoke = client.postJson(
+            "/auth/sessions",
+            AccountSessionsRequest(registered.accessToken)
+        ).decode<AccountSessionsResponse>()
+        assertEquals(listOf(current.sessionId), afterSingleRevoke.sessions.map { it.sessionId })
+
+        val secondAndroid = client.postJson(
+            "/auth/login",
+            LoginRequest(email, PASSWORD, "android")
+        ).decode<AuthSessionResponse>()
+        val revokedAll = client.postJson(
+            "/auth/sessions/revoke-all",
+            RevokeAllAccountSessionsRequest(registered.accessToken)
+        )
+        assertEquals(HttpStatusCode.OK, revokedAll.status)
+        assertEquals(HttpStatusCode.Unauthorized, client.postJson(
+            "/auth/refresh",
+            RefreshTokenRequest(registered.refreshToken)
+        ).status)
+        assertEquals(HttpStatusCode.Unauthorized, client.postJson(
+            "/auth/refresh",
+            RefreshTokenRequest(secondAndroid.refreshToken)
+        ).status)
+    }
+
     @Test
     fun `login is rate limited by account and client address`() = testApplication {
         var now = 1_000L

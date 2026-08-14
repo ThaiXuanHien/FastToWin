@@ -20,7 +20,7 @@ class InMemoryAuthRepository : AuthRepository {
             account.displayName
         )
         displayNamesByUserId[account.userId] = account.displayName
-        store(account.userId, account.session)
+        store(account.userId, account.devicePlatform, account.session)
         true
     }
 
@@ -33,14 +33,21 @@ class InMemoryAuthRepository : AuthRepository {
     }
 
     override suspend fun createSession(userId: UUID, devicePlatform: String?, session: NewAuthSession) {
-        mutex.withLock { store(userId, session) }
+        mutex.withLock { store(userId, devicePlatform, session) }
     }
 
     override suspend fun rotateSession(refreshTokenHash: String, replacement: NewAuthSession): UUID? = mutex.withLock {
         val current = sessions.remove(refreshTokenHash) ?: return@withLock null
         if (current.revoked || current.expiresAtMillis <= replacement.nowMillis) return@withLock null
         sessionsByAccessToken.entries.removeAll { it.value.sessionId == current.sessionId }
-        store(current.userId, replacement)
+        val rotated = current.copy(
+            accessExpiresAtMillis = replacement.accessExpiresAtMillis,
+            expiresAtMillis = replacement.refreshExpiresAtMillis,
+            lastSeenAtMillis = replacement.nowMillis,
+            revoked = false
+        )
+        sessions[replacement.refreshTokenHash] = rotated
+        sessionsByAccessToken[replacement.accessTokenHash] = rotated
         current.userId
     }
 
@@ -60,7 +67,61 @@ class InMemoryAuthRepository : AuthRepository {
             ?.takeIf { !it.revoked && it.accessExpiresAtMillis > nowMillis }
             ?: return@withLock null
         val displayName = displayNamesByUserId[session.userId] ?: return@withLock null
-        AuthenticatedAccount(session.userId, displayName)
+        AuthenticatedAccount(session.userId, displayName, session.sessionId)
+    }
+
+    override suspend fun listActiveSessions(
+        userId: UUID,
+        nowMillis: Long
+    ): List<StoredAccountSession> = mutex.withLock {
+        sessions.values
+            .filter { it.userId == userId && !it.revoked && it.expiresAtMillis > nowMillis }
+            .distinctBy { it.sessionId }
+            .sortedByDescending { it.lastSeenAtMillis }
+            .map { session ->
+                StoredAccountSession(
+                    sessionId = session.sessionId,
+                    devicePlatform = session.devicePlatform,
+                    createdAtMillis = session.createdAtMillis,
+                    lastSeenAtMillis = session.lastSeenAtMillis,
+                    expiresAtMillis = session.expiresAtMillis
+                )
+            }
+    }
+
+    override suspend fun revokeSessionById(
+        userId: UUID,
+        sessionId: UUID,
+        nowMillis: Long
+    ): Boolean = mutex.withLock {
+        val matching = sessions.entries.filter { (_, session) ->
+            session.userId == userId && session.sessionId == sessionId && !session.revoked
+        }
+        if (matching.isEmpty()) return@withLock false
+        matching.forEach { (token, session) -> sessions[token] = session.copy(revoked = true, lastSeenAtMillis = nowMillis) }
+        sessionsByAccessToken.entries.forEach { entry ->
+            if (entry.value.userId == userId && entry.value.sessionId == sessionId) {
+                entry.setValue(entry.value.copy(revoked = true, lastSeenAtMillis = nowMillis))
+            }
+        }
+        true
+    }
+
+    override suspend fun revokeAllSessions(userId: UUID, nowMillis: Long): Int = mutex.withLock {
+        val activeSessionIds = sessions.values
+            .filter { it.userId == userId && !it.revoked }
+            .mapTo(mutableSetOf()) { it.sessionId }
+        sessions.entries.forEach { entry ->
+            if (entry.value.userId == userId && !entry.value.revoked) {
+                entry.setValue(entry.value.copy(revoked = true, lastSeenAtMillis = nowMillis))
+            }
+        }
+        sessionsByAccessToken.entries.forEach { entry ->
+            if (entry.value.userId == userId && !entry.value.revoked) {
+                entry.setValue(entry.value.copy(revoked = true, lastSeenAtMillis = nowMillis))
+            }
+        }
+        activeSessionIds.size
     }
 
     override suspend fun upgradeGuest(upgrade: GuestUpgrade): GuestUpgradeResult =
@@ -122,10 +183,13 @@ class InMemoryAuthRepository : AuthRepository {
         sessionsByAccessToken.entries.removeAll { it.value.userId == userId }
     }
 
-    private fun store(userId: UUID, session: NewAuthSession) {
+    private fun store(userId: UUID, devicePlatform: String?, session: NewAuthSession) {
         val stored = StoredSession(
             sessionId = session.sessionId,
             userId = userId,
+            devicePlatform = devicePlatform,
+            createdAtMillis = session.nowMillis,
+            lastSeenAtMillis = session.nowMillis,
             accessExpiresAtMillis = session.accessExpiresAtMillis,
             expiresAtMillis = session.refreshExpiresAtMillis
         )
@@ -136,6 +200,9 @@ class InMemoryAuthRepository : AuthRepository {
     private data class StoredSession(
         val sessionId: UUID,
         val userId: UUID,
+        val devicePlatform: String?,
+        val createdAtMillis: Long,
+        val lastSeenAtMillis: Long,
         val accessExpiresAtMillis: Long,
         val expiresAtMillis: Long,
         val revoked: Boolean = false

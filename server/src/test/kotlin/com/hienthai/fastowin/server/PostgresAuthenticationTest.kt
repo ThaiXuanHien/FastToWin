@@ -139,6 +139,17 @@ class PostgresAuthenticationTest {
                 assertEquals(login.userId, authenticated?.userId.toString())
                 assertEquals("Postgres player", authenticated?.displayName)
 
+                val sessions = assertIs<AccountSessionsResult.Success>(
+                    service.listSessions(login.accessToken)
+                ).sessions
+                assertEquals(2, sessions.size)
+                assertEquals("ios", sessions.single { it.isCurrent }.devicePlatform)
+                val registrationSession = sessions.single { !it.isCurrent }
+                assertIs<AccountActionResult.Success>(
+                    service.revokeSession(login.accessToken, registrationSession.sessionId)
+                )
+                assertIs<AuthResult.Failure>(service.refresh(registration.refreshToken))
+
                 val refreshed = assertIs<AuthResult.Success>(
                     service.refresh(login.refreshToken)
                 ).session
@@ -146,7 +157,9 @@ class PostgresAuthenticationTest {
                 assertNotEquals(login.refreshToken, refreshed.refreshToken)
                 assertIs<AuthResult.Failure>(service.refresh(login.refreshToken))
 
-                service.logout(refreshed.refreshToken)
+                assertIs<AccountActionResult.Success>(
+                    service.revokeAllSessions(refreshed.accessToken)
+                )
                 assertIs<AuthResult.Failure>(service.refresh(refreshed.refreshToken))
             } finally {
                 dataSource.connection.use { connection ->

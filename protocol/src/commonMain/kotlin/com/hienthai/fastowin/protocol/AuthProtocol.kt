@@ -2,6 +2,8 @@ package com.hienthai.fastowin.protocol
 
 import kotlinx.serialization.Serializable
 
+const val SESSION_REPLACED_CLOSE_REASON = "Session resumed elsewhere"
+
 @Serializable
 data class RegisterRequest(
     val email: String,
@@ -53,6 +55,31 @@ data class DeleteAccountRequest(
     val accessToken: String,
     val password: String
 )
+
+@Serializable
+data class AccountSessionsRequest(val accessToken: String)
+
+@Serializable
+data class RevokeAccountSessionRequest(
+    val accessToken: String,
+    val sessionId: String
+)
+
+@Serializable
+data class RevokeAllAccountSessionsRequest(val accessToken: String)
+
+@Serializable
+data class AccountSessionSnapshot(
+    val sessionId: String,
+    val devicePlatform: String? = null,
+    val createdAtEpochMillis: Long,
+    val lastSeenAtEpochMillis: Long,
+    val expiresAtEpochMillis: Long,
+    val isCurrent: Boolean
+)
+
+@Serializable
+data class AccountSessionsResponse(val sessions: List<AccountSessionSnapshot>)
 
 @Serializable
 data class AccountActionResponse(

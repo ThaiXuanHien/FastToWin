@@ -121,6 +121,9 @@ Backend hỗ trợ tài khoản email/mật khẩu qua JSON API:
 | `POST` | `/auth/upgrade-guest` | Chuyển guest hiện tại thành tài khoản email |
 | `POST` | `/auth/refresh` | Xoay vòng refresh token và cấp access token mới |
 | `POST` | `/auth/logout` | Thu hồi phiên của thiết bị hiện tại |
+| `POST` | `/auth/sessions` | Liệt kê các phiên đăng nhập còn hoạt động |
+| `POST` | `/auth/sessions/revoke` | Thu hồi một phiên thuộc tài khoản hiện tại |
+| `POST` | `/auth/sessions/revoke-all` | Thu hồi toàn bộ phiên của tài khoản |
 
 Ví dụ đăng ký:
 
@@ -139,7 +142,9 @@ Compose Multiplatform có màn hình đăng nhập, đăng ký và lựa chọn 
 
 Trong màn **Hồ sơ**, tài khoản có thể đổi biệt danh/avatar và mở phần **Bảo mật** để đổi mật khẩu. Đổi mật khẩu thành công thu hồi mọi phiên hiện có và đưa ứng dụng về màn đăng nhập. Luồng **Quên mật khẩu** khóa email sau khi gửi yêu cầu, nhận mã có hiệu lực 15 phút và đặt mật khẩu mới; ở môi trường dev mã được hiển thị và tự điền, còn production vẫn chờ tích hợp dịch vụ email theo giới hạn bên dưới. Client và backend cùng áp dụng giới hạn mật khẩu từ 8 đến 128 ký tự.
 
-Một tài khoản có thể giữ phiên đăng nhập HTTP trên nhiều thiết bị, nhưng chỉ có một kết nối game WebSocket hoạt động tại một thời điểm. Khi thiết bị mới kết nối cùng tài khoản, server đóng WebSocket cũ với lý do `Session resumed elsewhere`; kết nối mới giữ nguyên player ID và snapshot trận hiện tại. Việc thay thế socket không đánh dấu người chơi offline và không làm mất phòng.
+Một tài khoản có thể giữ phiên đăng nhập HTTP trên nhiều thiết bị, nhưng chỉ có một kết nối game WebSocket hoạt động tại một thời điểm. Khi thiết bị mới kết nối cùng tài khoản, server đóng WebSocket cũ với lý do `Session resumed elsewhere`; kết nối mới giữ nguyên player ID và snapshot trận hiện tại. Thiết bị cũ nhận thông báo `SESSION_REPLACED` và dừng tự reconnect để hai máy không liên tục giành kết nối của nhau. Việc thay thế socket không đánh dấu người chơi offline và không làm mất phòng.
+
+Màn **Thiết bị** trong Hồ sơ liệt kê nền tảng, thời gian hoạt động, hạn phiên và đánh dấu thiết bị hiện tại. Người chơi có thể đăng xuất riêng một thiết bị hoặc tất cả thiết bị. Backend luôn kiểm tra session ID thuộc đúng user từ access token; không thể dùng ID đã biết để thu hồi phiên của tài khoản khác. Thu hồi thiết bị hiện tại hoặc toàn bộ phiên đưa app về màn đăng nhập; WebSocket dùng token đã bị thu hồi sẽ bị đóng ở thao tác kế tiếp.
 
 Protocol WebSocket hiện tại là phiên bản 12. Sau khi cập nhật ứng dụng, cần khởi động lại backend để client và server dùng cùng phiên bản.
 
@@ -230,6 +235,7 @@ Test backend bao gồm:
 - Phiếu đấu lại và trạng thái trận được khôi phục đúng sau khi backend restart.
 - Rời phòng chủ động đóng phòng cho cả hai phía và xóa snapshot đã lưu.
 - Kết nối cùng tài khoản từ thiết bị mới thay thế socket cũ mà không làm phiên mới bị đánh dấu offline.
+- Liệt kê/thu hồi session chỉ tác động đúng tài khoản, refresh token của thiết bị bị đăng xuất lập tức mất hiệu lực.
 
 ## Giới hạn của MVP
 

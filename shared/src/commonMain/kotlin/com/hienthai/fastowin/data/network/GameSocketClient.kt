@@ -3,6 +3,7 @@ package com.hienthai.fastowin.data.network
 import com.hienthai.fastowin.protocol.ClientMessage
 import com.hienthai.fastowin.protocol.ProtocolJson
 import com.hienthai.fastowin.protocol.ServerMessage
+import com.hienthai.fastowin.protocol.SESSION_REPLACED_CLOSE_REASON
 import io.ktor.client.HttpClient
 import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.plugins.websocket.DefaultClientWebSocketSession
@@ -132,6 +133,16 @@ class GameSocketClient(
                         }
                         _messages.send(message)
                     }
+                    val reason = closeReason.await()?.message
+                    if (!shouldReconnectAfterSocketClose(reason)) {
+                        reconnectEnabled = false
+                        _messages.send(
+                            ServerMessage.Error(
+                                code = "SESSION_REPLACED",
+                                message = "Kết nối trò chơi đã chuyển sang thiết bị khác. Đóng ứng dụng ở thiết bị kia rồi mở lại nếu bạn muốn chơi tại đây."
+                            )
+                        )
+                    }
                 }
             } catch (cancelled: CancellationException) {
                 throw cancelled
@@ -202,3 +213,6 @@ class GameSocketClient(
         const val CONNECT_TIMEOUT_MILLIS = 7_000L
     }
 }
+
+internal fun shouldReconnectAfterSocketClose(reason: String?): Boolean =
+    reason != SESSION_REPLACED_CLOSE_REASON

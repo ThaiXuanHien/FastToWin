@@ -3,6 +3,8 @@ package com.hienthai.fastowin.data.network
 import com.hienthai.fastowin.protocol.AuthErrorResponse
 import com.hienthai.fastowin.protocol.AuthSessionResponse
 import com.hienthai.fastowin.protocol.AccountActionResponse
+import com.hienthai.fastowin.protocol.AccountSessionsRequest
+import com.hienthai.fastowin.protocol.AccountSessionsResponse
 import com.hienthai.fastowin.protocol.ChangePasswordRequest
 import com.hienthai.fastowin.protocol.DeleteAccountRequest
 import com.hienthai.fastowin.protocol.LoginRequest
@@ -12,6 +14,8 @@ import com.hienthai.fastowin.protocol.PasswordResetRequest
 import com.hienthai.fastowin.protocol.ProtocolJson
 import com.hienthai.fastowin.protocol.RefreshTokenRequest
 import com.hienthai.fastowin.protocol.RegisterRequest
+import com.hienthai.fastowin.protocol.RevokeAccountSessionRequest
+import com.hienthai.fastowin.protocol.RevokeAllAccountSessionsRequest
 import com.hienthai.fastowin.protocol.UpgradeGuestRequest
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
@@ -97,6 +101,21 @@ class AuthApiClient(serverUrl: String) {
         DeleteAccountRequest(accessToken, password)
     )
 
+    suspend fun listSessions(accessToken: String): AccountSessionsResponse = executeResponse(
+        "$baseUrl/auth/sessions",
+        AccountSessionsRequest(accessToken)
+    )
+
+    suspend fun revokeSession(accessToken: String, sessionId: String): AccountActionResponse = executeAction(
+        "$baseUrl/auth/sessions/revoke",
+        RevokeAccountSessionRequest(accessToken, sessionId)
+    )
+
+    suspend fun revokeAllSessions(accessToken: String): AccountActionResponse = executeAction(
+        "$baseUrl/auth/sessions/revoke-all",
+        RevokeAllAccountSessionsRequest(accessToken)
+    )
+
     fun close() = client.close()
 
     private suspend inline fun <reified T : Any> execute(url: String, request: T): AuthSessionResponse {
@@ -109,6 +128,18 @@ class AuthApiClient(serverUrl: String) {
     }
 
     private suspend inline fun <reified T : Any> executeAction(url: String, request: T): AccountActionResponse {
+        val response = client.post(url) {
+            contentType(ContentType.Application.Json)
+            setBody(request)
+        }
+        if (!response.status.isSuccess()) throw response.toAuthException()
+        return response.body()
+    }
+
+    private suspend inline fun <reified Request : Any, reified Response : Any> executeResponse(
+        url: String,
+        request: Request
+    ): Response {
         val response = client.post(url) {
             contentType(ContentType.Application.Json)
             setBody(request)

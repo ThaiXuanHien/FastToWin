@@ -1,6 +1,7 @@
 package com.hienthai.fastowin.server
 
 import com.hienthai.fastowin.protocol.AuthSessionResponse
+import com.hienthai.fastowin.protocol.AccountSessionSnapshot
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.security.MessageDigest
@@ -31,7 +32,18 @@ data class NewAuthSession(
 )
 
 data class AccountCredentials(val userId: UUID, val passwordHash: String, val displayName: String)
-data class AuthenticatedAccount(val userId: UUID, val displayName: String)
+data class AuthenticatedAccount(
+    val userId: UUID,
+    val displayName: String,
+    val sessionId: UUID? = null
+)
+data class StoredAccountSession(
+    val sessionId: UUID,
+    val devicePlatform: String?,
+    val createdAtMillis: Long,
+    val lastSeenAtMillis: Long,
+    val expiresAtMillis: Long
+)
 data class NewPasswordReset(
     val id: UUID,
     val tokenHash: String,
@@ -61,6 +73,9 @@ interface AuthRepository {
     suspend fun rotateSession(refreshTokenHash: String, replacement: NewAuthSession): UUID?
     suspend fun revokeSession(refreshTokenHash: String, nowMillis: Long): Boolean
     suspend fun findActiveSession(accessTokenHash: String, nowMillis: Long): AuthenticatedAccount?
+    suspend fun listActiveSessions(userId: UUID, nowMillis: Long): List<StoredAccountSession>
+    suspend fun revokeSessionById(userId: UUID, sessionId: UUID, nowMillis: Long): Boolean
+    suspend fun revokeAllSessions(userId: UUID, nowMillis: Long): Int
     suspend fun upgradeGuest(upgrade: GuestUpgrade): GuestUpgradeResult
     suspend fun updatePasswordAndRevokeSessions(userId: UUID, passwordHash: String, nowMillis: Long): Boolean
     suspend fun createPasswordReset(emailNormalized: String, reset: NewPasswordReset): Boolean
@@ -81,6 +96,11 @@ sealed interface AuthResult {
 sealed interface AccountActionResult {
     data class Success(val message: String, val resetToken: String? = null) : AccountActionResult
     data class Failure(val code: String, val message: String) : AccountActionResult
+}
+
+sealed interface AccountSessionsResult {
+    data class Success(val sessions: List<AccountSessionSnapshot>) : AccountSessionsResult
+    data class Failure(val code: String, val message: String) : AccountSessionsResult
 }
 
 class AuthenticationService(
@@ -200,6 +220,42 @@ class AuthenticationService(
     suspend fun authenticateAccessToken(accessToken: String): AuthenticatedAccount? {
         if (!isValidTokenShape(accessToken)) return null
         return repository.findActiveSession(hashToken(accessToken), nowMillis())
+    }
+
+    suspend fun listSessions(accessToken: String): AccountSessionsResult {
+        val authenticated = authenticateAccessToken(accessToken)
+            ?: return invalidAccountSessions()
+        val currentSessionId = authenticated.sessionId ?: return invalidAccountSessions()
+        val sessions = repository.listActiveSessions(authenticated.userId, nowMillis()).map { session ->
+            AccountSessionSnapshot(
+                sessionId = session.sessionId.toString(),
+                devicePlatform = session.devicePlatform,
+                createdAtEpochMillis = session.createdAtMillis,
+                lastSeenAtEpochMillis = session.lastSeenAtMillis,
+                expiresAtEpochMillis = session.expiresAtMillis,
+                isCurrent = session.sessionId == currentSessionId
+            )
+        }
+        return AccountSessionsResult.Success(sessions)
+    }
+
+    suspend fun revokeSession(accessToken: String, sessionId: String): AccountActionResult {
+        val authenticated = authenticateAccessToken(accessToken)
+            ?: return invalidAccountSession()
+        val targetSessionId = runCatching { UUID.fromString(sessionId) }.getOrNull()
+            ?: return AccountActionResult.Failure("INVALID_SESSION_ID", "Phiên đăng nhập không hợp lệ.")
+        return if (repository.revokeSessionById(authenticated.userId, targetSessionId, nowMillis())) {
+            AccountActionResult.Success("Đã đăng xuất thiết bị.")
+        } else {
+            AccountActionResult.Failure("SESSION_NOT_FOUND", "Phiên đăng nhập không còn hoạt động.")
+        }
+    }
+
+    suspend fun revokeAllSessions(accessToken: String): AccountActionResult {
+        val authenticated = authenticateAccessToken(accessToken)
+            ?: return invalidAccountSession()
+        repository.revokeAllSessions(authenticated.userId, nowMillis())
+        return AccountActionResult.Success("Đã đăng xuất khỏi tất cả thiết bị.")
     }
 
     suspend fun changePassword(
@@ -347,6 +403,11 @@ class AuthenticationService(
     )
 
     private fun invalidAccountSession() = AccountActionResult.Failure(
+        "INVALID_ACCESS_TOKEN",
+        "Phiên đăng nhập không hợp lệ hoặc đã hết hạn."
+    )
+
+    private fun invalidAccountSessions() = AccountSessionsResult.Failure(
         "INVALID_ACCESS_TOKEN",
         "Phiên đăng nhập không hợp lệ hoặc đã hết hạn."
     )
