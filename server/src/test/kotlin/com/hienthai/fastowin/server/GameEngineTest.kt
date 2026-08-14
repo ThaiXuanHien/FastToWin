@@ -5,6 +5,7 @@ import com.hienthai.fastowin.protocol.ProtocolGameMode
 import com.hienthai.fastowin.protocol.PlayerProfileSnapshot
 import com.hienthai.fastowin.protocol.FriendSnapshot
 import com.hienthai.fastowin.protocol.RecentPlayerSnapshot
+import com.hienthai.fastowin.protocol.RematchEvent
 import com.hienthai.fastowin.protocol.ServerMessage
 import kotlinx.coroutines.async
 import kotlinx.coroutines.test.runTest
@@ -618,6 +619,89 @@ class GameEngineTest {
         assertTrue(restarted.rematchRequestedPlayerIds.isEmpty())
         assertTrue(restarted.players.all { it.score == 0 })
         assertEquals(1, savedMatches.size)
+    }
+
+    @Test
+    fun `player can cancel and opponent can decline a pending rematch`() = runTest {
+        val engine = GameEngine()
+        val host = engine.connectGuest("Host", null)
+        val guest = engine.connectGuest("Guest", null)
+        val room = engine.handle(
+            host.playerId,
+            ClientMessage.CreateRoom("Rematch response", PASSWORD, ProtocolGameMode.ORDER)
+        ).map(Delivery::message).filterIsInstance<ServerMessage.RoomCreated>().single().game
+        startRoom(engine, host.playerId, guest.playerId, room.roomId)
+        repeat(50) { index ->
+            engine.handle(host.playerId, ClientMessage.SelectNumber(room.roomId, index + 1, "finish-$index"))
+        }
+
+        engine.handle(host.playerId, ClientMessage.RespondRematch(room.roomId, accept = true))
+        val cancelled = engine.handle(host.playerId, ClientMessage.RespondRematch(room.roomId, accept = false))
+            .map(Delivery::message).filterIsInstance<ServerMessage.RematchStatus>().single()
+        assertEquals(RematchEvent.CANCELLED, cancelled.event)
+        assertEquals(host.playerId, cancelled.actorPlayerId)
+        assertTrue(cancelled.game.rematchRequestedPlayerIds.isEmpty())
+        assertEquals(null, cancelled.game.rematchExpiresAtEpochMillis)
+
+        engine.handle(host.playerId, ClientMessage.RespondRematch(room.roomId, accept = true))
+        val declined = engine.handle(guest.playerId, ClientMessage.RespondRematch(room.roomId, accept = false))
+            .map(Delivery::message).filterIsInstance<ServerMessage.RematchStatus>().single()
+        assertEquals(RematchEvent.DECLINED, declined.event)
+        assertEquals(guest.playerId, declined.actorPlayerId)
+        assertTrue(declined.game.rematchRequestedPlayerIds.isEmpty())
+    }
+
+    @Test
+    fun `pending rematch expires on the server`() = runTest {
+        var now = 10_000L
+        val engine = GameEngine(rematchTimeoutMillis = 1_000L, nowMillis = { now })
+        val host = engine.connectGuest("Host", null)
+        val guest = engine.connectGuest("Guest", null)
+        val room = engine.handle(
+            host.playerId,
+            ClientMessage.CreateRoom("Expiring rematch", PASSWORD, ProtocolGameMode.ORDER)
+        ).map(Delivery::message).filterIsInstance<ServerMessage.RoomCreated>().single().game
+        startRoom(engine, host.playerId, guest.playerId, room.roomId)
+        repeat(50) { index ->
+            engine.handle(host.playerId, ClientMessage.SelectNumber(room.roomId, index + 1, "finish-$index"))
+        }
+
+        val requested = engine.handle(host.playerId, ClientMessage.RespondRematch(room.roomId, accept = true))
+            .map(Delivery::message).filterIsInstance<ServerMessage.RematchStatus>().single()
+        assertEquals(11_000L, requested.game.rematchExpiresAtEpochMillis)
+
+        now = 11_001L
+        val expired = engine.advanceTimedGames()
+            .map(Delivery::message).filterIsInstance<ServerMessage.RematchStatus>().single()
+        assertEquals(RematchEvent.EXPIRED, expired.event)
+        assertTrue(expired.game.rematchRequestedPlayerIds.isEmpty())
+        assertEquals(null, expired.game.rematchExpiresAtEpochMillis)
+    }
+
+    @Test
+    fun `game snapshot reports per-player accuracy reaction and duration`() = runTest {
+        var now = 1_000L
+        val engine = GameEngine(nowMillis = { now })
+        val host = engine.connectGuest("Host", null)
+        val guest = engine.connectGuest("Guest", null)
+        val room = engine.handle(
+            host.playerId,
+            ClientMessage.CreateRoom("Performance room", PASSWORD, ProtocolGameMode.ORDER)
+        ).map(Delivery::message).filterIsInstance<ServerMessage.RoomCreated>().single().game
+        startRoom(engine, host.playerId, guest.playerId, room.roomId)
+
+        now = 1_100L
+        engine.handle(host.playerId, ClientMessage.SelectNumber(room.roomId, 2, "wrong"))
+        repeat(50) { index ->
+            now += 100L
+            engine.handle(host.playerId, ClientMessage.SelectNumber(room.roomId, index + 1, "correct-$index"))
+        }
+        val finished = assertNotNull(engine.connectGuest("Host", host.resumeToken).currentGame)
+        val hostResult = finished.players.single { it.id == host.playerId }
+        assertEquals(50, hostResult.correctSelections)
+        assertEquals(1, hostResult.wrongSelections)
+        assertEquals(102L, hostResult.averageReactionMillis)
+        assertEquals(5_100L, assertNotNull(finished.finishedAtEpochMillis) - assertNotNull(finished.startedAtEpochMillis))
     }
 
     @Test

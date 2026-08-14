@@ -10,6 +10,7 @@ import com.hienthai.fastowin.protocol.GameSnapshot
 import com.hienthai.fastowin.protocol.MAX_PROFILE_DISPLAY_NAME_LENGTH
 import com.hienthai.fastowin.protocol.PROFILE_AVATAR_IDS
 import com.hienthai.fastowin.protocol.ProtocolGameMode
+import com.hienthai.fastowin.protocol.RematchEvent
 import com.hienthai.fastowin.protocol.RoomPhase
 import com.hienthai.fastowin.protocol.ServerMessage
 import kotlinx.coroutines.CoroutineScope
@@ -428,7 +429,46 @@ class GameController(
         val state = _uiState.value
         val roomId = state.currentRoomId ?: return
         if (!state.isGameOver || state.isRematchRequestedByMe) return
-        scope.launch { socket.sendMessage(ClientMessage.RequestRematch(roomId)) }
+        scope.launch { socket.sendMessage(ClientMessage.RespondRematch(roomId, accept = true)) }
+    }
+
+    fun declineRematch() = respondToRematch(accept = false)
+
+    fun cancelRematch() = respondToRematch(accept = false)
+
+    private fun respondToRematch(accept: Boolean) {
+        val state = _uiState.value
+        val roomId = state.currentRoomId ?: return
+        if (!state.isGameOver || (!state.isRematchRequestedByMe && !state.isRematchRequestedByOpponent)) return
+        scope.launch { socket.sendMessage(ClientMessage.RespondRematch(roomId, accept)) }
+    }
+
+    fun connectWithOpponent() {
+        val state = _uiState.value
+        val opponentId = state.opponent.id ?: return
+        when (state.postMatchFriendStatus) {
+            PostMatchFriendStatus.REQUEST_RECEIVED -> {
+                val request = state.social.incomingRequests.firstOrNull { it.userId == opponentId } ?: return
+                respondFriendRequest(request.requestId, accept = true)
+            }
+            PostMatchFriendStatus.AVAILABLE -> {
+                val recent = state.social.recentPlayers.firstOrNull { it.userId == opponentId } ?: return
+                sendFriendRequest(recent.playerCode)
+            }
+            else -> Unit
+        }
+    }
+
+    fun blockOpponentAfterMatch() {
+        val state = _uiState.value
+        val opponentId = state.opponent.id ?: return
+        val roomId = state.currentRoomId
+        scope.launch {
+            socket.sendMessage(ClientMessage.BlockPlayer(opponentId))
+            if (roomId != null) socket.sendMessage(ClientMessage.LeaveRoom(roomId))
+            returnToRoomBrowser()
+            _uiState.update { it.copy(socialNotice = "Đã chặn người chơi và rời phòng.") }
+        }
     }
 
     fun openMatchDetail(matchId: String) {
@@ -639,13 +679,42 @@ class GameController(
                 applyGameSnapshot(message.game)
                 if (message.game.phase == RoomPhase.FINISHED && accountDisplayName != null) {
                     socket.sendMessage(ClientMessage.GetProfile)
+                    socket.sendMessage(ClientMessage.GetFriends)
                 }
             }
             is ServerMessage.GameFinished -> {
                 applyGameSnapshot(message.game)
-                if (accountDisplayName != null) socket.sendMessage(ClientMessage.GetProfile)
+                if (accountDisplayName != null) {
+                    socket.sendMessage(ClientMessage.GetProfile)
+                    socket.sendMessage(ClientMessage.GetFriends)
+                }
             }
-            is ServerMessage.RematchStatus -> applyGameSnapshot(message.game)
+            is ServerMessage.RematchStatus -> {
+                applyGameSnapshot(message.game)
+                _uiState.update { state ->
+                    val actorIsMe = message.actorPlayerId == playerId
+                    state.copy(
+                        rematchNotice = when (message.event) {
+                            RematchEvent.REQUESTED -> if (actorIsMe) {
+                                "Đã gửi yêu cầu đấu lại."
+                            } else {
+                                "Đối thủ muốn đấu lại với bạn."
+                            }
+                            RematchEvent.CANCELLED -> if (actorIsMe) {
+                                "Bạn đã hủy yêu cầu đấu lại."
+                            } else {
+                                "Đối thủ đã hủy yêu cầu đấu lại."
+                            }
+                            RematchEvent.DECLINED -> if (actorIsMe) {
+                                "Bạn đã từ chối đấu lại."
+                            } else {
+                                "Đối thủ đã từ chối đấu lại."
+                            }
+                            RematchEvent.EXPIRED -> "Yêu cầu đấu lại đã hết thời gian."
+                        }
+                    )
+                }
+            }
             is ServerMessage.LatencyPong -> {
                 _uiState.update {
                     it.copy(latencyMillis = (epochMillis() - message.clientSentAtEpochMillis).coerceAtLeast(0L))
@@ -688,13 +757,19 @@ class GameController(
                     name = me?.name ?: state.player.name,
                     id = me?.id,
                     isReady = me?.isReady == true,
-                    score = me?.score ?: 0
+                    score = me?.score ?: 0,
+                    correctSelections = me?.correctSelections ?: 0,
+                    wrongSelections = me?.wrongSelections ?: 0,
+                    averageReactionMillis = me?.averageReactionMillis ?: 0
                 ),
                 opponent = PlayerState(
                     name = opponent?.name ?: DEFAULT_OPPONENT_NAME,
                     id = opponent?.id,
                     isReady = opponent?.isReady == true,
-                    score = opponent?.score ?: 0
+                    score = opponent?.score ?: 0,
+                    correctSelections = opponent?.correctSelections ?: 0,
+                    wrongSelections = opponent?.wrongSelections ?: 0,
+                    averageReactionMillis = opponent?.averageReactionMillis ?: 0
                 ),
                 hasOpponent = opponent != null,
                 isMatchmaking = false,
@@ -706,6 +781,9 @@ class GameController(
                 currentMatchId = game.matchId,
                 isRematchRequestedByMe = false,
                 isRematchRequestedByOpponent = false,
+                rematchExpiresAtEpochMillis = null,
+                rematchNotice = null,
+                lastMatchDurationMillis = null,
                 lastMatchEloChange = null,
                 lastMatchEloRating = null,
                 lobbyStage = LobbyStage.ROOM_WAITING,
@@ -761,13 +839,19 @@ class GameController(
                     name = me?.name ?: state.player.name,
                     id = me?.id,
                     score = me?.score ?: 0,
-                    currentTarget = game.currentTarget
+                    currentTarget = game.currentTarget,
+                    correctSelections = me?.correctSelections ?: 0,
+                    wrongSelections = me?.wrongSelections ?: 0,
+                    averageReactionMillis = me?.averageReactionMillis ?: 0
                 ),
                 opponent = PlayerState(
                     name = opponent?.name ?: DEFAULT_OPPONENT_NAME,
                     id = opponent?.id,
                     score = opponent?.score ?: 0,
-                    currentTarget = game.currentTarget
+                    currentTarget = game.currentTarget,
+                    correctSelections = opponent?.correctSelections ?: 0,
+                    wrongSelections = opponent?.wrongSelections ?: 0,
+                    averageReactionMillis = opponent?.averageReactionMillis ?: 0
                 ),
                 lobbyStage = LobbyStage.MATCHED,
                 currentRoomId = game.roomId,
@@ -781,6 +865,16 @@ class GameController(
                 currentMatchId = game.matchId,
                 isRematchRequestedByMe = playerId?.let { it in game.rematchRequestedPlayerIds } == true,
                 isRematchRequestedByOpponent = game.rematchRequestedPlayerIds.any { it != playerId },
+                rematchExpiresAtEpochMillis = game.rematchExpiresAtEpochMillis,
+                lastMatchDurationMillis = if (finished) {
+                    val startedAt = game.startedAtEpochMillis
+                    val finishedAt = game.finishedAtEpochMillis
+                    if (startedAt != null && finishedAt != null) {
+                        (finishedAt - startedAt).coerceAtLeast(0L)
+                    } else {
+                        state.lastMatchDurationMillis
+                    }
+                } else null,
                 lastMatchEloChange = if (finished) state.lastMatchEloChange else null,
                 lastMatchEloRating = if (finished) state.lastMatchEloRating else null,
                 countdown = null,
@@ -911,6 +1005,7 @@ class GameController(
                 hasOpponent = false,
                 isSearching = false,
                 isMatchStarted = false,
+                isGameOver = false,
                 countdown = null,
                 error = error
             )

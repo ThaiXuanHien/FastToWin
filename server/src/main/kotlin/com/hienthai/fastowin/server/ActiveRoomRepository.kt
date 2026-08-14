@@ -34,9 +34,11 @@ data class StoredActiveRoom(
     val scores: Map<String, Int> = emptyMap(),
     val sequence: Long = 0,
     val startedAtEpochMillis: Long? = null,
+    val finishedAtEpochMillis: Long? = null,
     val resultQueued: Boolean = false,
     val readyPlayerIds: Set<String> = emptySet(),
     val rematchRequestedPlayerIds: Set<String> = emptySet(),
+    val rematchExpiresAtEpochMillis: Long? = null,
     val processedRequests: Map<String, ServerMessage> = emptyMap(),
     val selectionEvents: List<MatchSelectionEvent> = emptyList()
 )

@@ -41,8 +41,20 @@ data class PlayerState(
     val id: String? = null,
     val isReady: Boolean = false,
     val score: Int = 0,
-    val currentTarget: Int = 1
+    val currentTarget: Int = 1,
+    val correctSelections: Int = 0,
+    val wrongSelections: Int = 0,
+    val averageReactionMillis: Long = 0
 )
+
+enum class PostMatchFriendStatus {
+    UNAVAILABLE,
+    AVAILABLE,
+    REQUEST_SENT,
+    REQUEST_RECEIVED,
+    FRIEND,
+    BLOCKED
+}
 
 data class GameState(
     val numbers: List<Int> = emptyList(),
@@ -76,6 +88,9 @@ data class GameState(
     val currentMatchId: String? = null,
     val isRematchRequestedByMe: Boolean = false,
     val isRematchRequestedByOpponent: Boolean = false,
+    val rematchExpiresAtEpochMillis: Long? = null,
+    val rematchNotice: String? = null,
+    val lastMatchDurationMillis: Long? = null,
     val lastMatchEloChange: Int? = null,
     val lastMatchEloRating: Int? = null,
     val isProfileOpen: Boolean = false,
@@ -103,6 +118,20 @@ data class GameState(
 
     val unreadNotificationCount: Int
         get() = notifications.count { !it.isRead }
+
+    val postMatchFriendStatus: PostMatchFriendStatus
+        get() {
+            if (profile == null) return PostMatchFriendStatus.UNAVAILABLE
+            val opponentId = opponent.id ?: return PostMatchFriendStatus.UNAVAILABLE
+            return when {
+                social.blockedPlayers.any { it.userId == opponentId } -> PostMatchFriendStatus.BLOCKED
+                social.friends.any { it.userId == opponentId } -> PostMatchFriendStatus.FRIEND
+                social.incomingRequests.any { it.userId == opponentId } -> PostMatchFriendStatus.REQUEST_RECEIVED
+                social.outgoingRequests.any { it.userId == opponentId } -> PostMatchFriendStatus.REQUEST_SENT
+                social.recentPlayers.any { it.userId == opponentId } -> PostMatchFriendStatus.AVAILABLE
+                else -> PostMatchFriendStatus.UNAVAILABLE
+            }
+        }
 }
 
 internal fun GameState.prepareForMatchStart(): GameState = copy(

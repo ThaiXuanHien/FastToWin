@@ -286,6 +286,10 @@ private fun GameContent(
                     state = state,
                     onRestart = controller::resetGame,
                     onRematch = controller::requestRematch,
+                    onCancelRematch = controller::cancelRematch,
+                    onDeclineRematch = controller::declineRematch,
+                    onConnectOpponent = controller::connectWithOpponent,
+                    onBlockOpponent = controller::blockOpponentAfterMatch,
                     preferences = appPreferences
                 )
 

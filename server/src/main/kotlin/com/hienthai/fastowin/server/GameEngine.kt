@@ -9,6 +9,7 @@ import com.hienthai.fastowin.protocol.FriendPresence
 import com.hienthai.fastowin.protocol.FriendsSnapshot
 import com.hienthai.fastowin.protocol.PlayerSnapshot
 import com.hienthai.fastowin.protocol.PlayerProfileSnapshot
+import com.hienthai.fastowin.protocol.RematchEvent
 import com.hienthai.fastowin.protocol.RoomPhase
 import com.hienthai.fastowin.protocol.RoomSummary
 import com.hienthai.fastowin.protocol.ServerMessage
@@ -39,6 +40,7 @@ class GameEngine(
     private val friendRepository: FriendRepository = NoOpFriendRepository,
     private val activeRoomRepository: ActiveRoomRepository = NoOpActiveRoomRepository,
     private val timeAttackMillis: Long = DEFAULT_TIME_ATTACK_MILLIS,
+    private val rematchTimeoutMillis: Long = DEFAULT_REMATCH_TIMEOUT_MILLIS,
     private val nowMillis: () -> Long = System::currentTimeMillis
 ) {
     private val mutex = Mutex()
@@ -212,7 +214,8 @@ class GameEngine(
                 }
                 is ClientMessage.SetReady -> setReady(player, message)
                 is ClientMessage.KickPlayer -> kickPlayer(player, message)
-                is ClientMessage.RequestRematch -> requestRematch(player, message)
+                is ClientMessage.RequestRematch -> respondRematch(player, message.roomId, accept = true)
+                is ClientMessage.RespondRematch -> respondRematch(player, message.roomId, message.accept)
                 is ClientMessage.SelectNumber -> selectNumber(player, message)
             }
         }
@@ -720,19 +723,40 @@ class GameEngine(
     suspend fun advanceTimedGames(): List<Delivery> {
         restoreActiveRooms()
         val advances = mutex.withLock {
+            val now = nowMillis()
             rooms.values.mapNotNull { room ->
                 if (
                     room.gameMode != com.hienthai.fastowin.protocol.ProtocolGameMode.TIME_ATTACK ||
                     room.phase != RoomPhase.PLAYING ||
-                    nowMillis() - (room.startedAtEpochMillis ?: return@mapNotNull null) < timeAttackMillis
-                ) return@mapNotNull null
-
-                room.phase = RoomPhase.FINISHED
-                room.sequence++
-                TimedAdvance(
-                    delivery = Delivery(ServerMessage.GameFinished(room.snapshot()), room.playerIds()),
-                    completedMatch = room.takeCompletedMatch()
-                )
+                    now - (room.startedAtEpochMillis ?: return@mapNotNull null) < timeAttackMillis
+                ) {
+                    if (
+                        room.phase == RoomPhase.FINISHED &&
+                        room.rematchRequestedPlayerIds.isNotEmpty() &&
+                        now >= (room.rematchExpiresAtEpochMillis ?: Long.MAX_VALUE)
+                    ) {
+                        room.rematchRequestedPlayerIds.clear()
+                        room.rematchExpiresAtEpochMillis = null
+                        room.sequence++
+                        TimedAdvance(
+                            delivery = Delivery(
+                                ServerMessage.RematchStatus(room.snapshot(), RematchEvent.EXPIRED),
+                                room.playerIds()
+                            ),
+                            completedMatch = null
+                        )
+                    } else {
+                        null
+                    }
+                } else {
+                    room.phase = RoomPhase.FINISHED
+                    room.finishedAtEpochMillis = now
+                    room.sequence++
+                    TimedAdvance(
+                        delivery = Delivery(ServerMessage.GameFinished(room.snapshot()), room.playerIds()),
+                        completedMatch = room.takeCompletedMatch()
+                    )
+                }
             }
         }
         advances.mapNotNull(TimedAdvance::completedMatch).forEach { completed ->
@@ -740,10 +764,11 @@ class GameEngine(
                 .onFailure { System.err.println("Could not persist timed match ${completed.matchId}: ${it.message}") }
         }
         advances.forEach { advance ->
-            (advance.delivery.message as? ServerMessage.GameFinished)
-                ?.game
-                ?.roomId
-                ?.let { persistRoom(it) }
+            when (val message = advance.delivery.message) {
+                is ServerMessage.GameFinished -> message.game.roomId
+                is ServerMessage.RematchStatus -> message.game.roomId
+                else -> null
+            }?.let { persistRoom(it) }
         }
         return advances.map(TimedAdvance::delivery)
     }
@@ -953,11 +978,12 @@ class GameEngine(
         )
     }
 
-    private fun requestRematch(
+    private fun respondRematch(
         player: GuestSession,
-        command: ClientMessage.RequestRematch
+        roomId: String,
+        accept: Boolean
     ): HandleResult {
-        val room = rooms[command.roomId]
+        val room = rooms[roomId]
             ?: return HandleResult(listOf(error(player.playerId, "ROOM_NOT_FOUND", "Phòng không còn tồn tại.")))
         if (player.playerId !in room.playerIds()) {
             return HandleResult(listOf(error(player.playerId, "NOT_IN_ROOM", "Bạn không ở trong phòng này.")))
@@ -969,11 +995,57 @@ class GameEngine(
             return HandleResult(listOf(error(player.playerId, "OPPONENT_LEFT", "Đối thủ đã rời phòng.")))
         }
 
+        if (
+            room.rematchRequestedPlayerIds.isNotEmpty() &&
+            nowMillis() >= (room.rematchExpiresAtEpochMillis ?: Long.MAX_VALUE)
+        ) {
+            room.rematchRequestedPlayerIds.clear()
+            room.rematchExpiresAtEpochMillis = null
+            room.sequence++
+            return HandleResult(
+                deliveries = listOf(
+                    Delivery(ServerMessage.RematchStatus(room.snapshot(), RematchEvent.EXPIRED), room.playerIds())
+                ),
+                changedRoomId = room.id
+            )
+        }
+
+        if (!accept) {
+            if (room.rematchRequestedPlayerIds.isEmpty()) {
+                return HandleResult(listOf(error(player.playerId, "REMATCH_NOT_PENDING", "Không có yêu cầu đấu lại nào đang chờ.")))
+            }
+            val event = if (player.playerId in room.rematchRequestedPlayerIds) {
+                RematchEvent.CANCELLED
+            } else {
+                RematchEvent.DECLINED
+            }
+            room.rematchRequestedPlayerIds.clear()
+            room.rematchExpiresAtEpochMillis = null
+            room.sequence++
+            return HandleResult(
+                deliveries = listOf(
+                    Delivery(
+                        ServerMessage.RematchStatus(room.snapshot(), event, player.playerId),
+                        room.playerIds()
+                    )
+                ),
+                changedRoomId = room.id
+            )
+        }
+
+        if (room.rematchRequestedPlayerIds.isEmpty()) {
+            room.rematchExpiresAtEpochMillis = nowMillis() + rematchTimeoutMillis
+        }
         room.rematchRequestedPlayerIds += player.playerId
         if (!room.rematchRequestedPlayerIds.containsAll(room.playerIds())) {
             room.sequence++
             return HandleResult(
-                deliveries = listOf(Delivery(ServerMessage.RematchStatus(room.snapshot()), room.playerIds())),
+                deliveries = listOf(
+                    Delivery(
+                        ServerMessage.RematchStatus(room.snapshot(), RematchEvent.REQUESTED, player.playerId),
+                        room.playerIds()
+                    )
+                ),
                 changedRoomId = room.id
             )
         }
@@ -986,8 +1058,10 @@ class GameEngine(
         room.playerIds().forEach { room.scores[it] = 0 }
         room.sequence++
         room.startedAtEpochMillis = nowMillis()
+        room.finishedAtEpochMillis = null
         room.resultQueued = false
         room.rematchRequestedPlayerIds.clear()
+        room.rematchExpiresAtEpochMillis = null
         room.processedRequests.clear()
         room.selectionEvents.clear()
         return HandleResult(
@@ -1040,7 +1114,10 @@ class GameEngine(
         room.scores[player.playerId] = room.scores.getValue(player.playerId) + SCORE_PER_NUMBER
         room.currentTarget++
         room.sequence++
-        if (room.currentTarget > GAME_NUMBER_COUNT) room.phase = RoomPhase.FINISHED
+        if (room.currentTarget > GAME_NUMBER_COUNT) {
+            room.phase = RoomPhase.FINISHED
+            room.finishedAtEpochMillis = nowMillis()
+        }
 
         val event = ServerMessage.GameStateUpdated(
             game = room.snapshot(),
@@ -1095,9 +1172,11 @@ class GameEngine(
             scores = scores.toMap(),
             sequence = sequence,
             startedAtEpochMillis = startedAtEpochMillis,
+            finishedAtEpochMillis = finishedAtEpochMillis,
             resultQueued = resultQueued,
             readyPlayerIds = readyPlayerIds.toSet(),
             rematchRequestedPlayerIds = rematchRequestedPlayerIds.toSet(),
+            rematchExpiresAtEpochMillis = rematchExpiresAtEpochMillis,
             processedRequests = processedRequests.toMap(),
             selectionEvents = selectionEvents.toList()
         )
@@ -1125,9 +1204,11 @@ class GameEngine(
         },
         sequence = sequence,
         startedAtEpochMillis = startedAtEpochMillis,
+        finishedAtEpochMillis = finishedAtEpochMillis,
         resultQueued = resultQueued,
         readyPlayerIds = readyPlayerIds.toMutableSet(),
         rematchRequestedPlayerIds = rematchRequestedPlayerIds.toMutableSet(),
+        rematchExpiresAtEpochMillis = rematchExpiresAtEpochMillis,
         processedRequests = processedRequests.toMutableMap(),
         selectionEvents = selectionEvents.toMutableList()
     )
@@ -1152,6 +1233,7 @@ class GameEngine(
         .toList()
 
     private fun Room.snapshot(): GameSnapshot {
+        val metricsByPlayer = selectionMetrics()
         return GameSnapshot(
             roomId = id,
             matchId = matchId,
@@ -1161,11 +1243,15 @@ class GameEngine(
             phase = phase,
             players = playerIds().mapNotNull { id ->
                 sessionsByPlayerId[id]?.let { session ->
+                    val metrics = metricsByPlayer[id] ?: SelectionMetrics()
                     PlayerSnapshot(
                         id = id,
                         name = session.displayName,
                         score = scores[id] ?: 0,
-                        isReady = id in readyPlayerIds
+                        isReady = id in readyPlayerIds,
+                        correctSelections = metrics.correct,
+                        wrongSelections = metrics.wrong,
+                        averageReactionMillis = metrics.averageReactionMillis
                     )
                 }
             },
@@ -1174,8 +1260,29 @@ class GameEngine(
             currentTarget = currentTarget,
             sequence = sequence,
             startedAtEpochMillis = startedAtEpochMillis,
-            rematchRequestedPlayerIds = rematchRequestedPlayerIds.toList()
+            finishedAtEpochMillis = finishedAtEpochMillis,
+            rematchRequestedPlayerIds = rematchRequestedPlayerIds.toList(),
+            rematchExpiresAtEpochMillis = rematchExpiresAtEpochMillis
         )
+    }
+
+    private fun Room.selectionMetrics(): Map<String, SelectionMetrics> {
+        val metrics = playerIds().associateWith { SelectionMetrics() }.toMutableMap()
+        var targetAvailableAtMillis = startedAtEpochMillis ?: return metrics
+        selectionEvents.sortedBy(MatchSelectionEvent::sequence).forEach { event ->
+            val current = metrics.getOrPut(event.playerId) { SelectionMetrics() }
+            when (event.result) {
+                SelectionResult.REJECTED -> current.wrong++
+                SelectionResult.ACCEPTED -> {
+                    current.correct++
+                    current.reactionTimeTotalMillis +=
+                        (event.occurredAtMillis - targetAvailableAtMillis).coerceAtLeast(0L)
+                    current.reactionSamples++
+                    targetAvailableAtMillis = event.occurredAtMillis
+                }
+            }
+        }
+        return metrics
     }
 
     private fun Room.finishIfTimedOut(): Boolean {
@@ -1186,6 +1293,7 @@ class GameEngine(
             nowMillis() - startedAt >= timeAttackMillis
         ) {
             phase = RoomPhase.FINISHED
+            finishedAtEpochMillis = nowMillis()
             sequence++
             return true
         }
@@ -1204,7 +1312,7 @@ class GameEngine(
             roomName = name,
             gameMode = gameMode,
             startedAtMillis = startedAt,
-            endedAtMillis = nowMillis(),
+            endedAtMillis = finishedAtEpochMillis ?: nowMillis(),
             winnerPlayerId = winnerId,
             players = playerIds().mapNotNull { playerId ->
                 sessionsByPlayerId[playerId]?.let { session ->
@@ -1286,9 +1394,11 @@ class GameEngine(
         val scores: MutableMap<String, Int> = mutableMapOf(hostId to 0),
         var sequence: Long = 0,
         var startedAtEpochMillis: Long? = null,
+        var finishedAtEpochMillis: Long? = null,
         var resultQueued: Boolean = false,
         val readyPlayerIds: MutableSet<String> = mutableSetOf(),
         val rematchRequestedPlayerIds: MutableSet<String> = mutableSetOf(),
+        var rematchExpiresAtEpochMillis: Long? = null,
         val processedRequests: MutableMap<String, ServerMessage> = mutableMapOf(),
         val selectionEvents: MutableList<MatchSelectionEvent> = mutableListOf()
     ) {
@@ -1343,6 +1453,7 @@ class GameEngine(
         const val MAX_REQUESTS_PER_MATCH = 2_000
         const val LEADERBOARD_SIZE = 100
         const val DEFAULT_TIME_ATTACK_MILLIS = 60_000L
+        const val DEFAULT_REMATCH_TIMEOUT_MILLIS = 30_000L
         const val ROOM_RECONNECT_GRACE_MILLIS = 30_000L
         const val IDLE_SESSION_TTL_MILLIS = 5 * 60_000L
         const val ROOM_INVITATION_TTL_MILLIS = 60_000L
@@ -1353,5 +1464,15 @@ class GameEngine(
         const val MATCHMAKING_EXPAND_INTERVAL_MILLIS = 10_000L
         const val RESTORED_GUEST_RESUME_TOKEN = "restored-guest-session"
         val secureRandom = SecureRandom()
+    }
+
+    private data class SelectionMetrics(
+        var correct: Int = 0,
+        var wrong: Int = 0,
+        var reactionTimeTotalMillis: Long = 0,
+        var reactionSamples: Int = 0
+    ) {
+        val averageReactionMillis: Long
+            get() = if (reactionSamples == 0) 0L else reactionTimeTotalMillis / reactionSamples
     }
 }

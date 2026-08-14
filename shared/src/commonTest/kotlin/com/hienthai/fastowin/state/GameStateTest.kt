@@ -1,7 +1,10 @@
 package com.hienthai.fastowin.state
 
 import com.hienthai.fastowin.protocol.FriendRequestSnapshot
+import com.hienthai.fastowin.protocol.FriendSnapshot
 import com.hienthai.fastowin.protocol.FriendsSnapshot
+import com.hienthai.fastowin.protocol.PlayerProfileSnapshot
+import com.hienthai.fastowin.protocol.RecentPlayerSnapshot
 import com.hienthai.fastowin.protocol.ServerMessage
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -61,6 +64,51 @@ class GameStateTest {
         assertFalse(prepared.isFriendsOpen)
         assertFalse(prepared.isFriendsLoading)
         assertNull(prepared.roomInvitationPrompt)
+    }
+
+    @Test
+    fun `post match friend action recognizes recent opponent and pending requests`() {
+        val opponentId = "player-2"
+        val recent = RecentPlayerSnapshot(
+            userId = opponentId,
+            displayName = "Opponent",
+            playerCode = "OPPONENT",
+            lastPlayedAtEpochMillis = 1_000L,
+            matchesPlayed = 1
+        )
+        val base = GameState(
+            profile = PlayerProfileSnapshot("Me", "ME000001"),
+            opponent = PlayerState("Opponent", id = opponentId),
+            social = FriendsSnapshot(recentPlayers = listOf(recent))
+        )
+        assertEquals(PostMatchFriendStatus.AVAILABLE, base.postMatchFriendStatus)
+
+        val outgoing = base.copy(
+            social = base.social.copy(outgoingRequests = listOf(friendRequest("request-1", opponentId)))
+        )
+        assertEquals(PostMatchFriendStatus.REQUEST_SENT, outgoing.postMatchFriendStatus)
+
+        val incoming = base.copy(
+            social = base.social.copy(incomingRequests = listOf(friendRequest("request-2", opponentId)))
+        )
+        assertEquals(PostMatchFriendStatus.REQUEST_RECEIVED, incoming.postMatchFriendStatus)
+    }
+
+    @Test
+    fun `friend relationship takes priority over recent opponent`() {
+        val opponentId = "player-2"
+        val state = GameState(
+            profile = PlayerProfileSnapshot("Me", "ME000001"),
+            opponent = PlayerState("Opponent", id = opponentId),
+            social = FriendsSnapshot(
+                friends = listOf(FriendSnapshot(opponentId, "Opponent", "OPPONENT")),
+                recentPlayers = listOf(
+                    RecentPlayerSnapshot(opponentId, "Opponent", "OPPONENT", lastPlayedAtEpochMillis = 1_000L, matchesPlayed = 2)
+                )
+            )
+        )
+
+        assertEquals(PostMatchFriendStatus.FRIEND, state.postMatchFriendStatus)
     }
 
     private fun friendRequest(requestId: String, userId: String) = FriendRequestSnapshot(

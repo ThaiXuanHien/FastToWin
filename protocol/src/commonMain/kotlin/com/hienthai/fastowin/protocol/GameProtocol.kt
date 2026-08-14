@@ -4,7 +4,7 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
-const val PROTOCOL_VERSION = 12
+const val PROTOCOL_VERSION = 13
 const val GAME_NUMBER_COUNT = 50
 const val MAX_PROFILE_DISPLAY_NAME_LENGTH = 32
 
@@ -43,7 +43,10 @@ data class PlayerSnapshot(
     val id: String,
     val name: String,
     val score: Int,
-    val isReady: Boolean = false
+    val isReady: Boolean = false,
+    val correctSelections: Int = 0,
+    val wrongSelections: Int = 0,
+    val averageReactionMillis: Long = 0
 )
 
 @Serializable
@@ -242,8 +245,18 @@ data class GameSnapshot(
     val currentTarget: Int = 1,
     val sequence: Long = 0,
     val startedAtEpochMillis: Long? = null,
-    val rematchRequestedPlayerIds: List<String> = emptyList()
+    val finishedAtEpochMillis: Long? = null,
+    val rematchRequestedPlayerIds: List<String> = emptyList(),
+    val rematchExpiresAtEpochMillis: Long? = null
 )
+
+@Serializable
+enum class RematchEvent {
+    REQUESTED,
+    CANCELLED,
+    DECLINED,
+    EXPIRED
+}
 
 @Serializable
 sealed class ClientMessage {
@@ -370,6 +383,10 @@ sealed class ClientMessage {
     data class RequestRematch(val roomId: String) : ClientMessage()
 
     @Serializable
+    @SerialName("respond_rematch")
+    data class RespondRematch(val roomId: String, val accept: Boolean) : ClientMessage()
+
+    @Serializable
     @SerialName("select_number")
     data class SelectNumber(
         val roomId: String,
@@ -454,7 +471,11 @@ sealed class ServerMessage {
 
     @Serializable
     @SerialName("rematch_status")
-    data class RematchStatus(val game: GameSnapshot) : ServerMessage()
+    data class RematchStatus(
+        val game: GameSnapshot,
+        val event: RematchEvent = RematchEvent.REQUESTED,
+        val actorPlayerId: String? = null
+    ) : ServerMessage()
 
     @Serializable
     @SerialName("latency_pong")
