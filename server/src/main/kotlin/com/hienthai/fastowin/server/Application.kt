@@ -14,6 +14,7 @@ import com.hienthai.fastowin.protocol.RefreshTokenRequest
 import com.hienthai.fastowin.protocol.RegisterRequest
 import com.hienthai.fastowin.protocol.UpgradeGuestRequest
 import com.hienthai.fastowin.protocol.ServerMessage
+import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.ApplicationCall
 import io.ktor.server.application.Application
@@ -21,6 +22,7 @@ import io.ktor.server.application.call
 import io.ktor.server.application.install
 import io.ktor.server.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.server.request.receive
+import io.ktor.server.response.header
 import io.ktor.server.response.respond
 import io.ktor.server.response.respondText
 import io.ktor.server.routing.post
@@ -28,6 +30,7 @@ import io.ktor.server.routing.get
 import io.ktor.server.routing.routing
 import io.ktor.serialization.kotlinx.json.json
 import io.ktor.server.websocket.WebSockets
+import io.ktor.server.websocket.DefaultWebSocketServerSession
 import io.ktor.server.websocket.pingPeriod
 import io.ktor.server.websocket.timeout
 import io.ktor.server.websocket.webSocket
@@ -51,6 +54,8 @@ fun Application.gameModule(
     engine: GameEngine = GameEngine(),
     authService: AuthenticationService = AuthenticationService(InMemoryAuthRepository()),
     environment: String = "dev",
+    rateLimiter: RateLimiter = InMemoryRateLimiter(),
+    rateLimitPolicies: ServerRateLimitPolicies = ServerRateLimitPolicies(),
     websocketPingPeriod: Duration = DEFAULT_WEBSOCKET_PING_PERIOD,
     websocketPongTimeout: Duration = DEFAULT_WEBSOCKET_PONG_TIMEOUT
 ) {
@@ -109,7 +114,21 @@ fun Application.gameModule(
         }
 
         post("/auth/login") {
+            val ipAllowed = call.consumeHttpRateLimit(
+                rateLimiter,
+                RateLimitBuckets.LOGIN_IP,
+                call.clientRateLimitKey(),
+                rateLimitPolicies.loginPerIp
+            )
+            if (!ipAllowed) return@post
             val request = call.receiveOrReject<LoginRequest>() ?: return@post
+            val accountAllowed = call.consumeHttpRateLimit(
+                rateLimiter,
+                RateLimitBuckets.LOGIN_ACCOUNT,
+                stableRateLimitKey(request.email.trim().lowercase()),
+                rateLimitPolicies.loginPerAccount
+            )
+            if (!accountAllowed) return@post
             call.respondAuthResult(
                 authService.login(request.email, request.password, request.devicePlatform)
             )
@@ -177,10 +196,22 @@ fun Application.gameModule(
         }
 
         webSocket("/game") {
+            val clientRateLimitKey = stableRateLimitKey(call.request.local.remoteHost)
             var playerId: String? = null
+            var playerRateLimitKey: String? = null
             var accountAccessToken: String? = null
             try {
                 for (frame in incoming) {
+                    val ipMessageLimit = rateLimiter.consume(
+                        RateLimitBuckets.WEBSOCKET_MESSAGE_IP,
+                        clientRateLimitKey,
+                        rateLimitPolicies.websocketMessagesPerIp
+                    )
+                    if (!ipMessageLimit.allowed) {
+                        sendRateLimited(ipMessageLimit)
+                        close(CloseReason(CloseReason.Codes.VIOLATED_POLICY, "WebSocket rate limit exceeded"))
+                        break
+                    }
                     if (frame !is Frame.Text) continue
                     val message = runCatching {
                         ProtocolJson.decodeFromString<ClientMessage>(frame.readText())
@@ -207,6 +238,17 @@ fun Application.gameModule(
                                 ServerMessage.Error("PROTOCOL_MISMATCH", "Phiên bản ứng dụng không tương thích.")
                             ))
                             continue
+                        }
+
+                        val connectLimit = rateLimiter.consume(
+                            RateLimitBuckets.WEBSOCKET_CONNECT_IP,
+                            clientRateLimitKey,
+                            rateLimitPolicies.websocketConnectPerIp
+                        )
+                        if (!connectLimit.allowed) {
+                            sendRateLimited(connectLimit)
+                            close(CloseReason(CloseReason.Codes.VIOLATED_POLICY, "Connection rate limit exceeded"))
+                            break
                         }
 
                         val connected = runCatching {
@@ -237,6 +279,7 @@ fun Application.gameModule(
                             continue
                         }
                         playerId = connected.playerId
+                        playerRateLimitKey = stableRateLimitKey(connected.playerId)
                         val connection = SocketConnection(this)
                         connections.put(connected.playerId, connection)?.closeForReplacement()
                         connection.send(
@@ -248,6 +291,32 @@ fun Application.gameModule(
                         )
                         deliver(listOf(Delivery(engine.roomList())))
                         deliver(engine.presenceUpdates(connected.playerId))
+                        continue
+                    }
+
+                    val activePlayerId = playerId
+                    val activePlayerRateLimitKey = checkNotNull(playerRateLimitKey)
+                    val playerMessageLimit = rateLimiter.consume(
+                        RateLimitBuckets.WEBSOCKET_MESSAGE_PLAYER,
+                        activePlayerRateLimitKey,
+                        rateLimitPolicies.websocketMessagesPerPlayer
+                    )
+                    if (!playerMessageLimit.allowed) {
+                        sendRateLimited(playerMessageLimit)
+                        close(CloseReason(CloseReason.Codes.VIOLATED_POLICY, "Player rate limit exceeded"))
+                        break
+                    }
+                    val actionLimit = rateLimiter.consumeActionLimit(
+                        clientRateLimitKey,
+                        activePlayerRateLimitKey,
+                        message,
+                        rateLimitPolicies
+                    )
+                    if (actionLimit != null) {
+                        sendRateLimited(
+                            actionLimit,
+                            requestId = (message as? ClientMessage.SelectNumber)?.requestId
+                        )
                         continue
                     }
 
@@ -264,7 +333,7 @@ fun Application.gameModule(
                         close(CloseReason(CloseReason.Codes.NORMAL, "Account session revoked"))
                         break
                     }
-                    deliver(engine.handle(playerId, message))
+                    deliver(engine.handle(activePlayerId, message))
                 }
             } finally {
                 playerId?.let { id ->
@@ -277,6 +346,93 @@ fun Application.gameModule(
         }
     }
 }
+
+private fun ApplicationCall.clientRateLimitKey(): String =
+    stableRateLimitKey(request.local.remoteHost)
+
+private suspend fun ApplicationCall.consumeHttpRateLimit(
+    rateLimiter: RateLimiter,
+    bucket: String,
+    key: String,
+    policy: RateLimitPolicy
+): Boolean {
+    val result = rateLimiter.consume(bucket, key, policy)
+    if (result.allowed) return true
+    val retryAfterSeconds = result.retryAfterSeconds()
+    response.header(HttpHeaders.RetryAfter, retryAfterSeconds.toString())
+    respond(
+        HttpStatusCode.TooManyRequests,
+        AuthErrorResponse(
+            code = "RATE_LIMITED",
+            message = "Bạn thao tác quá nhanh. Vui lòng thử lại sau $retryAfterSeconds giây."
+        )
+    )
+    return false
+}
+
+private suspend fun RateLimiter.consumeActionLimit(
+    clientKey: String,
+    playerKey: String,
+    message: ClientMessage,
+    policies: ServerRateLimitPolicies
+): RateLimitResult? {
+    return when (message) {
+        is ClientMessage.CreateRoom -> consume(
+            RateLimitBuckets.CREATE_ROOM_PLAYER,
+            playerKey,
+            policies.createRoomPerPlayer
+        ).takeUnless(RateLimitResult::allowed) ?: consume(
+            RateLimitBuckets.CREATE_ROOM_IP,
+            clientKey,
+            policies.createRoomPerIp
+        ).takeUnless(RateLimitResult::allowed)
+
+        is ClientMessage.JoinRoom -> {
+            consume(
+                RateLimitBuckets.JOIN_ROOM_PLAYER,
+                playerKey,
+                policies.joinRoomPerPlayer
+            ).takeUnless(RateLimitResult::allowed) ?: consume(
+                RateLimitBuckets.JOIN_ROOM_IP,
+                clientKey,
+                policies.joinRoomPerIp
+            ).takeUnless(RateLimitResult::allowed) ?: consume(
+                RateLimitBuckets.JOIN_ROOM_IP_AND_ROOM,
+                stableRateLimitKey("$clientKey:${message.roomId}"),
+                policies.joinRoomPerIpAndRoom
+            ).takeUnless(RateLimitResult::allowed)
+        }
+
+        is ClientMessage.SelectNumber -> consume(
+            RateLimitBuckets.SELECT_NUMBER_PLAYER,
+            playerKey,
+            policies.selectNumberPerPlayer
+        ).takeUnless(RateLimitResult::allowed) ?: consume(
+            RateLimitBuckets.SELECT_NUMBER_IP,
+            clientKey,
+            policies.selectNumberPerIp
+        ).takeUnless(RateLimitResult::allowed)
+
+        else -> null
+    }
+}
+
+private suspend fun DefaultWebSocketServerSession.sendRateLimited(
+    result: RateLimitResult,
+    requestId: String? = null
+) {
+    val retryAfterSeconds = result.retryAfterSeconds()
+    send(ProtocolJson.encodeToString<ServerMessage>(
+        ServerMessage.Error(
+            code = "RATE_LIMITED",
+            message = "Bạn thao tác quá nhanh. Vui lòng thử lại sau $retryAfterSeconds giây.",
+            requestId = requestId
+        )
+    ))
+}
+
+private fun RateLimitResult.retryAfterSeconds(): Long =
+    ((retryAfterMillis + 999L) / 1_000L).coerceAtLeast(1L)
 
 private class InvalidAccessTokenException : RuntimeException()
 

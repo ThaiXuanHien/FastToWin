@@ -30,6 +30,101 @@ import kotlin.test.assertTrue
 
 class GameWebSocketTest {
     @Test
+    fun `websocket closes after player message burst exceeds limit`() = testApplication {
+        val policies = ServerRateLimitPolicies().copy(
+            websocketMessagesPerPlayer = RateLimitPolicy(capacity = 2, refillWindowMillis = 1_000L)
+        )
+        application {
+            gameModule(
+                rateLimiter = InMemoryRateLimiter(nowMillis = { 1_000L }),
+                rateLimitPolicies = policies
+            )
+        }
+        val webSocketClient = createClient { install(WebSockets) }
+        val socket = webSocketClient.webSocketSession("/game")
+        try {
+            socket.sendMessage(ClientMessage.ConnectGuest("Burst player"))
+            socket.receiveMessage<ServerMessage.SessionReady>()
+            socket.receiveMessage<ServerMessage.RoomList>()
+
+            repeat(2) {
+                socket.sendMessage(ClientMessage.ListRooms)
+                socket.receiveMessage<ServerMessage.RoomList>()
+            }
+            socket.sendMessage(ClientMessage.ListRooms)
+            val limited = socket.receiveMessage<ServerMessage.Error>()
+            assertEquals("RATE_LIMITED", limited.code)
+            assertTrue(limited.message.contains("1 giây"))
+        } finally {
+            socket.close()
+        }
+    }
+
+    @Test
+    fun `room and selection actions are rate limited before game engine work`() = testApplication {
+        var now = 1_000L
+        val policies = ServerRateLimitPolicies().copy(
+            createRoomPerPlayer = RateLimitPolicy(capacity = 1, refillWindowMillis = 1_000L),
+            createRoomPerIp = RateLimitPolicy(capacity = 1, refillWindowMillis = 1_000L),
+            joinRoomPerPlayer = RateLimitPolicy(capacity = 2, refillWindowMillis = 1_000L),
+            joinRoomPerIpAndRoom = RateLimitPolicy(capacity = 2, refillWindowMillis = 1_000L),
+            selectNumberPerPlayer = RateLimitPolicy(capacity = 1, refillWindowMillis = 1_000L)
+        )
+        application {
+            gameModule(
+                rateLimiter = InMemoryRateLimiter(nowMillis = { now }),
+                rateLimitPolicies = policies
+            )
+        }
+        val webSocketClient = createClient { install(WebSockets) }
+        val host = webSocketClient.webSocketSession("/game")
+        val guest = webSocketClient.webSocketSession("/game")
+        try {
+            host.sendMessage(ClientMessage.ConnectGuest("Limited host"))
+            guest.sendMessage(ClientMessage.ConnectGuest("Limited guest"))
+            host.receiveMessage<ServerMessage.SessionReady>()
+            guest.receiveMessage<ServerMessage.SessionReady>()
+            host.receiveMessage<ServerMessage.RoomList>()
+            guest.receiveMessage<ServerMessage.RoomList>()
+
+            host.sendMessage(ClientMessage.CreateRoom("Limited room", PASSWORD, ProtocolGameMode.ORDER))
+            val room = host.receiveMessage<ServerMessage.RoomCreated>().game
+            guest.sendMessage(ClientMessage.CreateRoom("Bypass room", PASSWORD, ProtocolGameMode.ORDER))
+            assertEquals("RATE_LIMITED", guest.receiveMessage<ServerMessage.Error>().code)
+
+            repeat(2) {
+                guest.sendMessage(ClientMessage.JoinRoom(room.roomId, "wrong-password"))
+                assertEquals("WRONG_PASSWORD", guest.receiveMessage<ServerMessage.Error>().code)
+            }
+            guest.sendMessage(ClientMessage.JoinRoom(room.roomId, "wrong-password"))
+            assertEquals("RATE_LIMITED", guest.receiveMessage<ServerMessage.Error>().code)
+
+            now += 500L
+            guest.sendMessage(ClientMessage.JoinRoom(room.roomId, PASSWORD))
+            host.receiveMessage<ServerMessage.GameStarted>()
+            guest.receiveMessage<ServerMessage.GameStarted>()
+
+            host.sendMessage(ClientMessage.SelectNumber(room.roomId, 1, "limited-select-1"))
+            host.receiveMessage<ServerMessage.GameStateUpdated>()
+            guest.receiveMessage<ServerMessage.GameStateUpdated>()
+            host.sendMessage(ClientMessage.SelectNumber(room.roomId, 2, "limited-select-2"))
+            val selectionLimited = host.receiveMessage<ServerMessage.Error>()
+            assertEquals("RATE_LIMITED", selectionLimited.code)
+            assertEquals("limited-select-2", selectionLimited.requestId)
+
+            now += 1_000L
+            host.sendMessage(ClientMessage.SelectNumber(room.roomId, 2, "limited-select-2"))
+            val hostContinued = host.receiveMessage<ServerMessage.GameStateUpdated>().game
+            val guestContinued = guest.receiveMessage<ServerMessage.GameStateUpdated>().game
+            assertEquals(3, hostContinued.currentTarget)
+            assertEquals(hostContinued, guestContinued)
+        } finally {
+            host.close()
+            guest.close()
+        }
+    }
+
+    @Test
     fun `heartbeat keeps an idle responsive websocket alive`() = testApplication {
         application {
             gameModule(

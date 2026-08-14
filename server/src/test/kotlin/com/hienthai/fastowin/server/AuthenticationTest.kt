@@ -17,6 +17,7 @@ import io.ktor.client.statement.bodyAsText
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
 import io.ktor.http.ContentType
+import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.contentType
 import io.ktor.server.testing.testApplication
@@ -28,6 +29,54 @@ import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
 
 class AuthenticationTest {
+    @Test
+    fun `login is rate limited by account and client address`() = testApplication {
+        var now = 1_000L
+        val policies = ServerRateLimitPolicies(
+            loginPerIp = RateLimitPolicy(capacity = 3, refillWindowMillis = 1_000L),
+            loginPerAccount = RateLimitPolicy(capacity = 2, refillWindowMillis = 1_000L)
+        )
+        application {
+            gameModule(
+                rateLimiter = InMemoryRateLimiter(nowMillis = { now }),
+                rateLimitPolicies = policies
+            )
+        }
+
+        repeat(2) { attempt ->
+            val response = client.postJson(
+                "/auth/login",
+                LoginRequest(
+                    email = if (attempt == 0) " Victim@Example.com " else "victim@example.com",
+                    password = "wrong-password",
+                    devicePlatform = "android"
+                )
+            )
+            assertEquals(HttpStatusCode.Unauthorized, response.status)
+        }
+
+        val accountLimited = client.postJson(
+            "/auth/login",
+            LoginRequest("VICTIM@example.com", "wrong-password", "android")
+        )
+        assertEquals(HttpStatusCode.TooManyRequests, accountLimited.status)
+        assertEquals("RATE_LIMITED", accountLimited.decode<AuthErrorResponse>().code)
+        assertEquals("1", accountLimited.headers[HttpHeaders.RetryAfter])
+
+        val ipLimited = client.postJson(
+            "/auth/login",
+            LoginRequest("other@example.com", "wrong-password", "android")
+        )
+        assertEquals(HttpStatusCode.TooManyRequests, ipLimited.status)
+
+        now += 500L
+        val allowedAfterRefill = client.postJson(
+            "/auth/login",
+            LoginRequest("victim@example.com", "wrong-password", "android")
+        )
+        assertEquals(HttpStatusCode.Unauthorized, allowedAfterRefill.status)
+    }
+
     @Test
     fun `register login rotate refresh token and logout`() = testApplication {
         application { gameModule() }

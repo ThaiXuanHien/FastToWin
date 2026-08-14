@@ -75,6 +75,25 @@ Với chế độ **Đua 60 giây**, đồng hồ kết thúc do backend quyết
 
 Backend giữ audit log tối đa 2.000 request cho mỗi trận và ghi hàng loạt vào `match_events` khi trận hoàn thành. Mỗi event gồm người bấm, số đã bấm, target tại thời điểm đó, đúng/sai, request ID, thứ tự và thời gian server nhận. Request ID trùng của cùng người chơi trả lại kết quả cũ và không tạo event hay cộng điểm lần hai.
 
+## Rate limiting
+
+Backend dùng token bucket trong bộ nhớ và khóa định danh SHA-256, không giữ email/IP dạng gốc trong bucket. Giới hạn mặc định:
+
+| Thao tác | Giới hạn |
+|---|---|
+| Đăng nhập theo IP | 20 lần/phút |
+| Đăng nhập theo email chuẩn hóa | 8 lần/5 phút |
+| Khởi tạo WebSocket theo IP | 60 lần/phút |
+| Mọi message WebSocket theo IP | 300 lần/giây |
+| Mọi message WebSocket theo người chơi | 120 lần/giây |
+| Tạo phòng | 5 lần/phút/người chơi và 20 lần/phút/IP |
+| Tham gia phòng | 12 lần/phút/người chơi, 60 lần/phút/IP và 20 lần/phút cho mỗi cặp IP-phòng |
+| Chọn số | 20 lần/giây/người chơi và 80 lần/giây/IP |
+
+HTTP trả `429 Too Many Requests`, mã `RATE_LIMITED` và header `Retry-After`. Create/join/select bị giới hạn sẽ nhận WebSocket error `RATE_LIMITED` nhưng vẫn giữ kết nối; burst vượt giới hạn tổng message sẽ nhận lỗi rồi bị đóng socket. Token được hồi liên tục nên người chơi có thể thử lại sau thời gian được thông báo.
+
+Limiter hiện phù hợp một tiến trình backend. Khi chạy nhiều instance phải thay implementation bằng Redis và bổ sung rate limit tại reverse proxy/API gateway. Backend hiện lấy IP trực tiếp từ socket; khi đặt sau proxy cần giữ backend trong mạng riêng và cấu hình xử lý forwarded header đáng tin cậy, không tin `X-Forwarded-For` trực tiếp từ Internet.
+
 Từ audit log, server cộng dồn tổng lượt đúng/sai và thời gian phản ứng cho từng người chơi. Thời gian phản ứng của một lượt đúng được tính từ lúc target đó xuất hiện trên server đến lúc server nhận lượt chọn đúng. Hồ sơ hiển thị tỷ lệ chính xác, tổng đúng/sai và thời gian phản ứng trung bình; số liệu client tự khai báo không được sử dụng.
 
 Màn hình **Bảng xếp hạng** hiển thị tối đa 100 người chơi có trận hoàn thành. Thứ tự ưu tiên Elo, số trận thắng, tỷ lệ thắng, điểm cao nhất rồi thời điểm cập nhật; người chơi hiện tại vẫn nhận được thứ hạng cá nhân kể cả khi nằm ngoài top 100.
@@ -188,6 +207,7 @@ Test backend bao gồm:
 - Khôi phục đúng guest session bằng resume token.
 - Khôi phục phòng, bàn số, target, điểm và request ID qua hai lần khởi động Ktor application với hai WebSocket client thật.
 - Ghi/đọc snapshot phòng qua PostgreSQL và Flyway migration.
+- Rate limit đăng nhập theo IP/email; rate limit WebSocket tổng và riêng cho create/join/select.
 - Từ chối mật khẩu phòng sai.
 - Hai người chọn cùng một target đồng thời nhưng server chỉ chấp nhận một lượt.
 
@@ -196,6 +216,7 @@ Test backend bao gồm:
 - Phòng, trận đấu, guest identity và session tồn tại qua restart khi bật PostgreSQL; chế độ chạy thuần bộ nhớ vẫn mất dữ liệu này.
 - Lời mời bạn bè vào phòng chỉ tồn tại trong bộ nhớ và mất khi server restart.
 - Snapshot hiện dành cho một tiến trình backend; khi chạy nhiều instance cần chuyển trạng thái realtime sang Redis hoặc kho trạng thái phân tán.
+- Rate limit hiện nằm trong bộ nhớ từng tiến trình và được làm mới khi server restart; nhiều instance cần dùng Redis.
 - Chưa tích hợp dịch vụ email để gửi mã khôi phục và xác minh email; chưa có đăng xuất khỏi tất cả thiết bị.
 - Cấu hình local dùng `ws://`; môi trường production phải dùng `wss://`.
 
