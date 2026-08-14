@@ -35,6 +35,7 @@ class DatabaseRuntime private constructor(
     val matchResultRepository: MatchResultRepository,
     val playerProfileRepository: PlayerProfileRepository,
     val friendRepository: FriendRepository,
+    val notificationRepository: NotificationRepository,
     val leaderboardRepository: LeaderboardRepository,
     val activeRoomRepository: ActiveRoomRepository,
     private val dataSource: HikariDataSource
@@ -66,6 +67,7 @@ class DatabaseRuntime private constructor(
                     matchResultRepository = PostgresMatchResultRepository(dataSource),
                     playerProfileRepository = PostgresPlayerProfileRepository(dataSource),
                     friendRepository = PostgresFriendRepository(dataSource),
+                    notificationRepository = PostgresNotificationRepository(dataSource),
                     leaderboardRepository = PostgresLeaderboardRepository(dataSource),
                     activeRoomRepository = PostgresActiveRoomRepository(dataSource),
                     dataSource = dataSource

@@ -10,6 +10,9 @@ import com.hienthai.fastowin.protocol.FriendsSnapshot
 import com.hienthai.fastowin.protocol.PlayerSnapshot
 import com.hienthai.fastowin.protocol.PlayerProfileSnapshot
 import com.hienthai.fastowin.protocol.RematchEvent
+import com.hienthai.fastowin.protocol.NotificationDestination
+import com.hienthai.fastowin.protocol.NotificationKind
+import com.hienthai.fastowin.protocol.NotificationSnapshot
 import com.hienthai.fastowin.protocol.RoomPhase
 import com.hienthai.fastowin.protocol.RoomSummary
 import com.hienthai.fastowin.protocol.ServerMessage
@@ -39,6 +42,7 @@ class GameEngine(
     private val leaderboardRepository: LeaderboardRepository = NoOpLeaderboardRepository,
     private val friendRepository: FriendRepository = NoOpFriendRepository,
     private val activeRoomRepository: ActiveRoomRepository = NoOpActiveRoomRepository,
+    private val notificationRepository: NotificationRepository = NoOpNotificationRepository,
     private val timeAttackMillis: Long = DEFAULT_TIME_ATTACK_MILLIS,
     private val rematchTimeoutMillis: Long = DEFAULT_REMATCH_TIMEOUT_MILLIS,
     private val nowMillis: () -> Long = System::currentTimeMillis
@@ -101,6 +105,7 @@ class GameEngine(
             if (activeRoomsRestored) return@withLock
             val storedRooms = activeRoomRepository.loadAll()
             val restoredAtMillis = nowMillis()
+            val storedInvitations = notificationRepository.loadActiveRoomInvitations(restoredAtMillis)
             mutex.withLock {
                 if (activeRoomsRestored) return@withLock
                 storedRooms.forEach { stored ->
@@ -118,6 +123,15 @@ class GameEngine(
                         )
                     }
                 }
+                storedInvitations.forEach { stored ->
+                    val room = rooms[stored.roomId]
+                    if (
+                        room != null && room.hostId == stored.inviterId &&
+                        room.phase == RoomPhase.WAITING && room.guestId == null
+                    ) {
+                        roomInvitations[stored.id] = stored.toRecord()
+                    }
+                }
                 activeRoomsRestored = true
             }
         }
@@ -125,9 +139,28 @@ class GameEngine(
 
     private suspend fun persistRoom(roomId: String) {
         persistenceMutex.withLock {
-            val snapshot = mutex.withLock { rooms[roomId]?.toStoredRoom() }
+            val removedInvitations = mutableListOf<RoomInvitationRecord>()
+            val snapshot = mutex.withLock {
+                rooms[roomId]?.toStoredRoom().also { stored ->
+                    if (stored == null) {
+                        roomInvitations.entries.removeAll { entry ->
+                            (entry.value.roomId == roomId).also { removed ->
+                                if (removed) removedInvitations += entry.value
+                            }
+                        }
+                    }
+                }
+            }
             if (snapshot == null) {
                 activeRoomRepository.delete(roomId)
+                notificationRepository.deleteRoomInvitationsForRoom(roomId)
+                removedInvitations.forEach { invitation ->
+                    notificationRepository.dismissNotifications(
+                        invitation.inviteeId,
+                        "room:${invitation.id}",
+                        nowMillis()
+                    )
+                }
             } else {
                 activeRoomRepository.save(snapshot)
             }
@@ -143,6 +176,14 @@ class GameEngine(
         if (message is ClientMessage.GetLeaderboard) return loadLeaderboard(playerId)
         if (message is ClientMessage.GetFriends) return loadFriends(playerId)
         if (message is ClientMessage.GetRoomInvitations) return loadRoomInvitations(playerId)
+        if (message is ClientMessage.GetNotifications) return loadNotifications(playerId)
+        if (message is ClientMessage.SyncNotifications) return syncNotifications(playerId, message.notifications)
+        if (message is ClientMessage.MarkNotificationsRead) {
+            return markNotificationsRead(playerId, message.notificationId)
+        }
+        if (message is ClientMessage.DismissNotifications) {
+            return dismissNotifications(playerId, message.notificationId)
+        }
         if (message is ClientMessage.SendFriendRequest) return sendFriendRequest(playerId, message.playerCode)
         if (message is ClientMessage.RespondFriendRequest) return respondFriendRequest(playerId, message)
         if (message is ClientMessage.CancelFriendRequest) return cancelFriendRequest(playerId, message.requestId)
@@ -177,6 +218,10 @@ class GameEngine(
                 ClientMessage.GetLeaderboard -> HandleResult(emptyList())
                 ClientMessage.GetFriends -> HandleResult(emptyList())
                 ClientMessage.GetRoomInvitations -> HandleResult(emptyList())
+                ClientMessage.GetNotifications -> HandleResult(emptyList())
+                is ClientMessage.SyncNotifications -> HandleResult(emptyList())
+                is ClientMessage.MarkNotificationsRead -> HandleResult(emptyList())
+                is ClientMessage.DismissNotifications -> HandleResult(emptyList())
                 is ClientMessage.MeasureLatency -> HandleResult(listOf(
                     Delivery(ServerMessage.LatencyPong(message.clientSentAtEpochMillis), setOf(playerId))
                 ))
@@ -252,15 +297,102 @@ class GameEngine(
         ))
     }
 
+    private suspend fun loadNotifications(playerId: String): List<Delivery> {
+        if (!isAccountSession(playerId)) return listOf(accountRequired(playerId))
+        val pendingRequests = runCatching { friendRepository.load(playerId).incomingRequests }
+            .getOrElse { return listOf(error(playerId, "NOTIFICATIONS_UNAVAILABLE", "Chưa tải được thông báo.")) }
+        val pendingFriendNotifications = pendingRequests.map { request ->
+            NotificationSnapshot(
+                id = "friend:${request.requestId}",
+                kind = NotificationKind.FRIEND_REQUEST,
+                title = "Lời mời kết bạn",
+                message = "${request.displayName} muốn kết bạn với bạn.",
+                createdAtEpochMillis = nowMillis(),
+                destination = NotificationDestination.FRIENDS
+            )
+        }
+        notificationRepository.createNotifications(playerId, pendingFriendNotifications)
+        val notifications = runCatching { notificationRepository.loadNotifications(playerId) }
+            .getOrElse { return listOf(error(playerId, "NOTIFICATIONS_UNAVAILABLE", "Chưa tải được thông báo.")) }
+        return listOf(Delivery(ServerMessage.NotificationsData(notifications), setOf(playerId)))
+    }
+
+    private suspend fun syncNotifications(
+        playerId: String,
+        notifications: List<NotificationSnapshot>
+    ): List<Delivery> {
+        if (!isAccountSession(playerId)) return listOf(accountRequired(playerId))
+        if (notifications.size > MAX_NOTIFICATION_SYNC_BATCH) {
+            return listOf(error(playerId, "INVALID_NOTIFICATIONS", "Có quá nhiều thông báo cần đồng bộ."))
+        }
+        val allowedKinds = setOf(NotificationKind.MISSION, NotificationKind.ACHIEVEMENT, NotificationKind.COSMETIC)
+        val normalized = notifications.filter { notification ->
+            notification.kind in allowedKinds &&
+                notification.id.length in 1..160 &&
+                notification.title.length in 1..120 &&
+                notification.message.length in 1..300 &&
+                notification.destination == NotificationDestination.PROFILE
+        }.map { it.copy(createdAtEpochMillis = nowMillis(), isRead = false) }
+        if (normalized.size != notifications.size) {
+            return listOf(error(playerId, "INVALID_NOTIFICATIONS", "Dữ liệu thông báo không hợp lệ."))
+        }
+        notificationRepository.createNotifications(playerId, normalized)
+        return loadNotifications(playerId)
+    }
+
+    private suspend fun markNotificationsRead(playerId: String, notificationId: String?): List<Delivery> {
+        if (!isAccountSession(playerId)) return listOf(accountRequired(playerId))
+        if (notificationId != null && notificationId.length !in 1..160) {
+            return listOf(error(playerId, "INVALID_NOTIFICATION_ID", "Mã thông báo không hợp lệ."))
+        }
+        notificationRepository.markNotificationsRead(playerId, notificationId, nowMillis())
+        return loadNotifications(playerId)
+    }
+
+    private suspend fun dismissNotifications(playerId: String, notificationId: String?): List<Delivery> {
+        if (!isAccountSession(playerId)) return listOf(accountRequired(playerId))
+        if (notificationId != null && notificationId.length !in 1..160) {
+            return listOf(error(playerId, "INVALID_NOTIFICATION_ID", "Mã thông báo không hợp lệ."))
+        }
+        notificationRepository.dismissNotifications(playerId, notificationId, nowMillis())
+        return loadNotifications(playerId)
+    }
+
+    private suspend fun refreshNotificationsFor(userIds: Set<String>): List<Delivery> {
+        val connectedAccounts = mutex.withLock {
+            userIds.filter { sessionsByPlayerId[it]?.let { session ->
+                session.isConnected && session.resumeToken == null
+            } == true }
+        }
+        return connectedAccounts.flatMap { loadNotifications(it) }
+    }
+
     private suspend fun sendFriendRequest(playerId: String, playerCode: String): List<Delivery> {
         if (!isAccountSession(playerId)) return listOf(accountRequired(playerId))
         if (playerCode.isBlank() || playerCode.length > 12) {
             return listOf(error(playerId, "INVALID_PLAYER_CODE", "Mã người chơi không hợp lệ."))
         }
         return when (val result = friendRepository.sendRequest(playerId, playerCode, nowMillis())) {
-            is FriendRequestResult.Success ->
+            is FriendRequestResult.Success -> {
+                val request = friendRepository.load(result.recipientId).incomingRequests
+                    .firstOrNull { it.userId == playerId }
+                if (request != null) {
+                    notificationRepository.createNotifications(
+                        result.recipientId,
+                        listOf(NotificationSnapshot(
+                            id = "friend:${request.requestId}",
+                            kind = NotificationKind.FRIEND_REQUEST,
+                            title = "Lời mời kết bạn",
+                            message = "${request.displayName} muốn kết bạn với bạn.",
+                            createdAtEpochMillis = nowMillis(),
+                            destination = NotificationDestination.FRIENDS
+                        ))
+                    )
+                }
                 listOf(Delivery(ServerMessage.SocialNotice("Đã gửi lời mời kết bạn."), setOf(playerId))) +
-                    refreshSocialFor(setOf(playerId, result.recipientId))
+                    refreshSocialFor(setOf(playerId, result.recipientId)) +
+                    refreshNotificationsFor(setOf(result.recipientId))
+            }
             FriendRequestResult.PlayerNotFound -> listOf(error(playerId, "PLAYER_NOT_FOUND", "Không tìm thấy mã người chơi."))
             FriendRequestResult.SelfRequest -> listOf(error(playerId, "SELF_FRIEND_REQUEST", "Bạn không thể tự kết bạn với mình."))
             FriendRequestResult.AlreadyExists -> listOf(error(playerId, "FRIENDSHIP_EXISTS", "Hai người đã là bạn hoặc đang có lời mời."))
@@ -275,9 +407,12 @@ class GameEngine(
     private suspend fun cancelFriendRequest(playerId: String, requestId: String): List<Delivery> {
         if (!isAccountSession(playerId)) return listOf(accountRequired(playerId))
         return when (val result = friendRepository.cancelRequest(playerId, requestId)) {
-            is FriendCancellationResult.Success ->
+            is FriendCancellationResult.Success -> {
+                notificationRepository.dismissNotifications(result.recipientId, "friend:$requestId", nowMillis())
                 listOf(Delivery(ServerMessage.SocialNotice("Đã hủy lời mời kết bạn."), setOf(playerId))) +
-                    refreshSocialFor(setOf(playerId, result.recipientId))
+                    refreshSocialFor(setOf(playerId, result.recipientId)) +
+                    refreshNotificationsFor(setOf(result.recipientId))
+            }
             FriendCancellationResult.NotFound -> listOf(error(
                 playerId,
                 "FRIEND_REQUEST_NOT_FOUND",
@@ -293,9 +428,11 @@ class GameEngine(
         if (!isAccountSession(playerId)) return listOf(accountRequired(playerId))
         return when (val result = friendRepository.respond(playerId, command.requestId, command.accept, nowMillis())) {
             is FriendResponseResult.Success -> {
+                notificationRepository.dismissNotifications(playerId, "friend:${command.requestId}", nowMillis())
                 val notice = if (command.accept) "Đã chấp nhận lời mời kết bạn." else "Đã từ chối lời mời kết bạn."
                 listOf(Delivery(ServerMessage.SocialNotice(notice), setOf(playerId))) +
-                    refreshSocialFor(setOf(playerId, result.requesterId))
+                    refreshSocialFor(setOf(playerId, result.requesterId)) +
+                    refreshNotificationsFor(setOf(playerId))
             }
             FriendResponseResult.NotFound -> listOf(error(playerId, "FRIEND_REQUEST_NOT_FOUND", "Lời mời không còn tồn tại."))
         }
@@ -376,7 +513,9 @@ class GameEngine(
         if (!friendRepository.areFriends(playerId, command.friendUserId)) {
             return listOf(error(playerId, "NOT_FRIENDS", "Người chơi này chưa phải bạn bè."))
         }
-        return mutex.withLock {
+        var createdInvitation: RoomInvitationRecord? = null
+        val replacedInvitationIds = mutableListOf<String>()
+        val deliveries = mutex.withLock {
             val inviter = sessionsByPlayerId[playerId]
                 ?: return@withLock listOf(error(playerId, "SESSION_NOT_FOUND", "Phiên chơi không còn hợp lệ."))
             val room = rooms[command.roomId]
@@ -393,44 +532,84 @@ class GameEngine(
                 inviterId = playerId,
                 inviteeId = friend.playerId,
                 roomId = room.id,
+                inviterDisplayName = inviter.displayName,
+                roomName = room.name,
                 expiresAtMillis = nowMillis() + ROOM_INVITATION_TTL_MILLIS
             )
-            roomInvitations.entries.removeAll { it.value.inviterId == playerId && it.value.inviteeId == friend.playerId }
+            roomInvitations.entries.removeAll { entry ->
+                (entry.value.inviterId == playerId && entry.value.inviteeId == friend.playerId).also { removed ->
+                    if (removed) replacedInvitationIds += entry.key
+                }
+            }
             roomInvitations[invitation.id] = invitation
+            createdInvitation = invitation
             listOf(
-                Delivery(ServerMessage.RoomInvitation(
-                    invitationId = invitation.id,
-                    fromUserId = playerId,
-                    fromDisplayName = inviter.displayName,
-                    roomId = room.id,
-                    roomName = room.name,
-                    expiresAtEpochMillis = invitation.expiresAtMillis
-                ), setOf(friend.playerId)),
+                Delivery(invitation.toMessage(), setOf(friend.playerId)),
                 Delivery(ServerMessage.SocialNotice("Đã gửi lời mời vào phòng."), setOf(playerId))
             )
         }
+        createdInvitation?.let { invitation ->
+            replacedInvitationIds.forEach { replacedId ->
+                notificationRepository.deleteRoomInvitation(replacedId)
+                notificationRepository.dismissNotifications(
+                    invitation.inviteeId,
+                    "room:$replacedId",
+                    nowMillis()
+                )
+            }
+            notificationRepository.saveRoomInvitation(invitation.toStored())
+            notificationRepository.createNotifications(
+                invitation.inviteeId,
+                listOf(NotificationSnapshot(
+                    id = "room:${invitation.id}",
+                    kind = NotificationKind.ROOM_INVITATION,
+                    title = "Lời mời vào phòng",
+                    message = "${invitation.inviterDisplayName} mời bạn vào phòng ${invitation.roomName}.",
+                    createdAtEpochMillis = nowMillis(),
+                    destination = NotificationDestination.FRIENDS
+                ))
+            )
+            return deliveries + refreshNotificationsFor(setOf(invitation.inviteeId))
+        }
+        return deliveries
     }
 
     private suspend fun loadRoomInvitations(playerId: String): List<Delivery> {
         if (!isAccountSession(playerId)) return listOf(accountRequired(playerId))
+        val removedIds = mutableListOf<String>()
         val invitations = mutex.withLock {
             val now = nowMillis()
-            roomInvitations.entries.removeAll { (_, invitation) ->
+            roomInvitations.entries.removeAll { (id, invitation) ->
                 val room = rooms[invitation.roomId]
-                invitation.expiresAtMillis <= now || room == null ||
+                (invitation.expiresAtMillis <= now || room == null ||
                     room.hostId != invitation.inviterId || room.phase != RoomPhase.WAITING || room.guestId != null
+                ).also { removed -> if (removed) removedIds += id }
             }
             roomInvitationMessagesFor(playerId)
+        }
+        removedIds.forEach { id ->
+            notificationRepository.deleteRoomInvitation(id)
+            notificationRepository.dismissNotifications(playerId, "room:$id", nowMillis())
         }
         return listOf(Delivery(ServerMessage.RoomInvitationsData(invitations), setOf(playerId)))
     }
 
     private suspend fun clearRoomInvitationsBetween(firstUserId: String, secondUserId: String) {
+        val removedInvitations = mutableListOf<RoomInvitationRecord>()
         mutex.withLock {
             roomInvitations.entries.removeAll { (_, invitation) ->
-                (invitation.inviterId == firstUserId && invitation.inviteeId == secondUserId) ||
+                ((invitation.inviterId == firstUserId && invitation.inviteeId == secondUserId) ||
                     (invitation.inviterId == secondUserId && invitation.inviteeId == firstUserId)
+                ).also { removed -> if (removed) removedInvitations += invitation }
             }
+        }
+        notificationRepository.deleteRoomInvitationsBetween(firstUserId, secondUserId)
+        removedInvitations.forEach { invitation ->
+            notificationRepository.dismissNotifications(
+                invitation.inviteeId,
+                "room:${invitation.id}",
+                nowMillis()
+            )
         }
     }
 
@@ -439,10 +618,13 @@ class GameEngine(
         command: ClientMessage.RespondRoomInvitation
     ): List<Delivery> {
         if (!isAccountSession(playerId)) return listOf(accountRequired(playerId))
+        var invitationConsumed = false
+        val otherRemovedInvitations = mutableListOf<RoomInvitationRecord>()
         val result = mutex.withLock {
             val invitation = roomInvitations.remove(command.invitationId)
                 ?.takeIf { it.inviteeId == playerId && it.expiresAtMillis > nowMillis() }
                 ?: return@withLock listOf(error(playerId, "INVITATION_EXPIRED", "Lời mời vào phòng đã hết hạn."))
+            invitationConsumed = true
             if (!command.accept) {
                 return@withLock listOf(
                     Delivery(ServerMessage.SocialNotice("Đã từ chối lời mời vào phòng."), setOf(playerId)),
@@ -461,11 +643,29 @@ class GameEngine(
             room.sequence++
             room.scores[player.playerId] = 0
             room.readyPlayerIds.clear()
-            roomInvitations.entries.removeAll { it.value.inviteeId == playerId }
+            roomInvitations.entries.removeAll { entry ->
+                (entry.value.inviteeId == playerId).also { removed ->
+                    if (removed) otherRemovedInvitations += entry.value
+                }
+            }
             listOf(
                 Delivery(ServerMessage.RoomUpdated(room.snapshot()), room.playerIds()),
                 Delivery(ServerMessage.RoomList(publicRooms()))
             )
+        }
+        if (invitationConsumed) {
+            notificationRepository.deleteRoomInvitation(command.invitationId)
+            notificationRepository.dismissNotifications(playerId, "room:${command.invitationId}", nowMillis())
+        }
+        if (result.any { it.message is ServerMessage.RoomUpdated }) {
+            notificationRepository.deleteRoomInvitationsForInvitee(playerId)
+            otherRemovedInvitations.forEach { invitation ->
+                notificationRepository.dismissNotifications(
+                    playerId,
+                    "room:${invitation.id}",
+                    nowMillis()
+                )
+            }
         }
         result.asSequence()
             .map(Delivery::message)
@@ -475,7 +675,8 @@ class GameEngine(
             ?.roomId
             ?.let { persistRoom(it) }
         val affectedPlayers = (result.flatMap { it.recipients.orEmpty() } + playerId).toSet()
-        return result + affectedPlayers.flatMap { presenceUpdates(it) } + loadRoomInvitations(playerId)
+        return result + affectedPlayers.flatMap { presenceUpdates(it) } + loadRoomInvitations(playerId) +
+            refreshNotificationsFor(setOf(playerId))
     }
 
     suspend fun presenceUpdates(playerId: String): List<Delivery> {
@@ -795,10 +996,12 @@ class GameEngine(
 
     suspend fun cleanupExpiredSessions(): List<Delivery> {
         restoreActiveRooms()
+        val removedInvitations = mutableListOf<RoomInvitationRecord>()
         val cleanup = mutex.withLock {
             val now = nowMillis()
             val affectedInvitationRecipients = roomInvitations.values
                 .filter { it.expiresAtMillis <= now }
+                .onEach(removedInvitations::add)
                 .mapTo(mutableSetOf()) { it.inviteeId }
             roomInvitations.entries.removeAll { it.value.expiresAtMillis <= now }
             val expiredPlayerIds = sessionsByPlayerId.values
@@ -835,6 +1038,7 @@ class GameEngine(
             if (removedRoomIds.isNotEmpty()) {
                 roomInvitations.values
                     .filter { it.roomId in removedRoomIds }
+                    .onEach(removedInvitations::add)
                     .mapTo(affectedInvitationRecipients) { it.inviteeId }
                 roomInvitations.entries.removeAll { it.value.roomId in removedRoomIds }
             }
@@ -849,19 +1053,23 @@ class GameEngine(
             }
             CleanupResult(deliveries, removedRoomIds)
         }
+        notificationRepository.deleteExpiredRoomInvitations(nowMillis())
+        removedInvitations.forEach { invitation ->
+            notificationRepository.dismissNotifications(
+                invitation.inviteeId,
+                "room:${invitation.id}",
+                nowMillis()
+            )
+        }
         cleanup.removedRoomIds.forEach { persistRoom(it) }
-        return cleanup.deliveries
+        return cleanup.deliveries + refreshNotificationsFor(removedInvitations.mapTo(mutableSetOf()) { it.inviteeId })
     }
 
     private fun roomInvitationMessagesFor(playerId: String): List<ServerMessage.RoomInvitation> =
         roomInvitations.values
             .filter { it.inviteeId == playerId }
             .sortedByDescending { it.expiresAtMillis }
-            .mapNotNull { invitation ->
-                val inviter = sessionsByPlayerId[invitation.inviterId] ?: return@mapNotNull null
-                val room = rooms[invitation.roomId] ?: return@mapNotNull null
-                invitation.toMessage(inviter.displayName, room.name)
-            }
+            .map(RoomInvitationRecord::toMessage)
 
     private fun createRoom(player: GuestSession, command: ClientMessage.CreateRoom): List<Delivery> {
         if (roomFor(player.playerId) != null) {
@@ -1410,17 +1618,27 @@ class GameEngine(
         val inviterId: String,
         val inviteeId: String,
         val roomId: String,
+        val inviterDisplayName: String,
+        val roomName: String,
         val expiresAtMillis: Long
     ) {
-        fun toMessage(fromDisplayName: String, roomName: String) = ServerMessage.RoomInvitation(
+        fun toMessage() = ServerMessage.RoomInvitation(
             invitationId = id,
             fromUserId = inviterId,
-            fromDisplayName = fromDisplayName,
+            fromDisplayName = inviterDisplayName,
             roomId = roomId,
             roomName = roomName,
             expiresAtEpochMillis = expiresAtMillis
         )
+
+        fun toStored() = StoredRoomInvitation(
+            id, inviterId, inviteeId, roomId, inviterDisplayName, roomName, expiresAtMillis
+        )
     }
+
+    private fun StoredRoomInvitation.toRecord() = RoomInvitationRecord(
+        id, inviterId, inviteeId, roomId, inviterDisplayName, roomName, expiresAtMillis
+    )
 
     private data class MatchmakingEntry(
         val playerId: String,
@@ -1451,6 +1669,7 @@ class GameEngine(
         const val SCORE_PER_NUMBER = 10
         const val MAX_REQUEST_ID_LENGTH = 64
         const val MAX_REQUESTS_PER_MATCH = 2_000
+        const val MAX_NOTIFICATION_SYNC_BATCH = 20
         const val LEADERBOARD_SIZE = 100
         const val DEFAULT_TIME_ATTACK_MILLIS = 60_000L
         const val DEFAULT_REMATCH_TIMEOUT_MILLIS = 30_000L

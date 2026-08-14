@@ -272,6 +272,9 @@ class GameController(
                 error = null
             )
         }
+        if (accountDisplayName != null) {
+            scope.launch { socket.sendMessage(ClientMessage.GetNotifications) }
+        }
     }
 
     fun closeNotifications() {
@@ -282,6 +285,9 @@ class GameController(
         _uiState.update { state ->
             state.copy(notifications = state.notifications.map { it.copy(isRead = true) })
         }
+        if (accountDisplayName != null) {
+            scope.launch { socket.sendMessage(ClientMessage.MarkNotificationsRead()) }
+        }
     }
 
     fun dismissNotification(notificationId: String) {
@@ -291,6 +297,9 @@ class GameController(
                 dismissedNotificationIds = state.dismissedNotificationIds + notificationId
             )
         }
+        if (accountDisplayName != null) {
+            scope.launch { socket.sendMessage(ClientMessage.DismissNotifications(notificationId)) }
+        }
     }
 
     fun clearNotifications() {
@@ -299,6 +308,9 @@ class GameController(
                 notifications = emptyList(),
                 dismissedNotificationIds = state.dismissedNotificationIds + state.notifications.map { it.id }
             )
+        }
+        if (accountDisplayName != null) {
+            scope.launch { socket.sendMessage(ClientMessage.DismissNotifications()) }
         }
     }
 
@@ -311,6 +323,9 @@ class GameController(
                 },
                 isNotificationsOpen = false
             )
+        }
+        if (accountDisplayName != null) {
+            scope.launch { socket.sendMessage(ClientMessage.MarkNotificationsRead(notificationId)) }
         }
         when (notification.destination) {
             AppNotificationDestination.FRIENDS -> openFriends()
@@ -537,6 +552,7 @@ class GameController(
                         socket.sendMessage(ClientMessage.GetProfile)
                         socket.sendMessage(ClientMessage.GetFriends)
                         socket.sendMessage(ClientMessage.GetRoomInvitations)
+                        socket.sendMessage(ClientMessage.GetNotifications)
                         socket.sendMessage(ClientMessage.GetLeaderboard)
                     }
                 }
@@ -573,14 +589,14 @@ class GameController(
 
             is ServerMessage.ProfileData -> {
                 val wasSaving = _uiState.value.isProfileSaving
+                val newNotifications = progressionNotifications(
+                    previous = _uiState.value.profile,
+                    current = message.profile,
+                    nowMillis = epochMillis()
+                )
                 accountDisplayName = message.profile.displayName
                 onProfileDisplayNameChanged(message.profile.displayName)
                 _uiState.update { state ->
-                    val newNotifications = progressionNotifications(
-                        previous = state.profile,
-                        current = message.profile,
-                        nowMillis = epochMillis()
-                    )
                     val completedMatch = state.currentMatchId?.takeIf { state.isGameOver }?.let { matchId ->
                         message.profile.recentMatches.firstOrNull { it.matchId == matchId }
                     }
@@ -604,6 +620,11 @@ class GameController(
                         error = null
                     )
                 }
+                if (newNotifications.isNotEmpty()) {
+                    socket.sendMessage(ClientMessage.SyncNotifications(
+                        newNotifications.map(AppNotification::toNotificationSnapshot)
+                    ))
+                }
             }
             is ServerMessage.MatchDetailData -> {
                 _uiState.update {
@@ -622,11 +643,11 @@ class GameController(
                     state.copy(
                         social = message.social,
                         isFriendsLoading = false,
-                        notifications = mergeNotifications(
+                        notifications = if (accountDisplayName == null) mergeNotifications(
                             state.notifications,
                             friendRequestNotifications(message.social.incomingRequests, epochMillis()),
                             state.dismissedNotificationIds
-                        ),
+                        ) else state.notifications,
                         error = null
                     )
                 }
@@ -656,14 +677,23 @@ class GameController(
                     val invitationIds = message.invitations.mapTo(mutableSetOf()) { it.invitationId }
                     state.copy(
                         roomInvitations = message.invitations,
-                        notifications = mergeNotifications(
+                        notifications = if (accountDisplayName == null) mergeNotifications(
                             state.notifications,
                             message.invitations.map { roomInvitationNotification(it, epochMillis()) },
                             state.dismissedNotificationIds
-                        ),
+                        ) else state.notifications,
                         roomInvitationPrompt = state.roomInvitationPrompt?.takeIf {
                             it.invitationId in invitationIds
                         }
+                    )
+                }
+            }
+
+            is ServerMessage.NotificationsData -> {
+                _uiState.update { state ->
+                    state.copy(
+                        notifications = message.notifications.map { it.toAppNotification() },
+                        dismissedNotificationIds = emptySet()
                     )
                 }
             }

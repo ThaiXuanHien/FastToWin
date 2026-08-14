@@ -2,6 +2,9 @@ package com.hienthai.fastowin.state
 
 import com.hienthai.fastowin.protocol.FriendRequestSnapshot
 import com.hienthai.fastowin.protocol.MissionSnapshot
+import com.hienthai.fastowin.protocol.NotificationDestination
+import com.hienthai.fastowin.protocol.NotificationKind
+import com.hienthai.fastowin.protocol.NotificationSnapshot
 import com.hienthai.fastowin.protocol.PlayerProfileSnapshot
 import com.hienthai.fastowin.protocol.ServerMessage
 
@@ -23,6 +26,26 @@ data class AppNotification(
     val createdAtEpochMillis: Long,
     val isRead: Boolean = false,
     val destination: AppNotificationDestination
+)
+
+internal fun NotificationSnapshot.toAppNotification() = AppNotification(
+    id = id,
+    kind = AppNotificationKind.valueOf(kind.name),
+    title = title,
+    message = message,
+    createdAtEpochMillis = createdAtEpochMillis,
+    isRead = isRead,
+    destination = AppNotificationDestination.valueOf(destination.name)
+)
+
+internal fun AppNotification.toNotificationSnapshot() = NotificationSnapshot(
+    id = id,
+    kind = NotificationKind.valueOf(kind.name),
+    title = title,
+    message = message,
+    createdAtEpochMillis = createdAtEpochMillis,
+    isRead = isRead,
+    destination = NotificationDestination.valueOf(destination.name)
 )
 
 internal fun mergeNotifications(

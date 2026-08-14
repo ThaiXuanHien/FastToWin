@@ -305,6 +305,47 @@ class GameEngineTest {
     }
 
     @Test
+    fun `room invitation and notification survive engine restart`() = runTest {
+        val hostId = UUID.randomUUID().toString()
+        val guestId = UUID.randomUUID().toString()
+        val friendRepository = friendRepositoryForPair(hostId, guestId)
+        val activeRooms = InMemoryActiveRoomRepository()
+        val notifications = InMemoryNotificationRepository()
+        val firstEngine = GameEngine(
+            friendRepository = friendRepository,
+            activeRoomRepository = activeRooms,
+            notificationRepository = notifications,
+            nowMillis = { 10_000L }
+        )
+        firstEngine.connectAccount(AuthenticatedAccount(UUID.fromString(hostId), "Host"))
+        firstEngine.connectAccount(AuthenticatedAccount(UUID.fromString(guestId), "Guest"))
+        val room = firstEngine.handle(
+            hostId,
+            ClientMessage.CreateRoom("Restart invitation", PASSWORD, ProtocolGameMode.ORDER)
+        ).map(Delivery::message).filterIsInstance<ServerMessage.RoomCreated>().single().game
+        val invitation = firstEngine.handle(hostId, ClientMessage.InviteFriend(guestId, room.roomId))
+            .map(Delivery::message).filterIsInstance<ServerMessage.RoomInvitation>().single()
+
+        val restartedEngine = GameEngine(
+            friendRepository = friendRepository,
+            activeRoomRepository = activeRooms,
+            notificationRepository = notifications,
+            nowMillis = { 20_000L }
+        )
+        restartedEngine.connectAccount(AuthenticatedAccount(UUID.fromString(hostId), "Host"))
+        restartedEngine.connectAccount(AuthenticatedAccount(UUID.fromString(guestId), "Guest"))
+
+        val restoredInvitation = restartedEngine.handle(guestId, ClientMessage.GetRoomInvitations)
+            .map(Delivery::message).filterIsInstance<ServerMessage.RoomInvitationsData>()
+            .single().invitations.single()
+        assertEquals(invitation.invitationId, restoredInvitation.invitationId)
+        val restoredNotification = restartedEngine.handle(guestId, ClientMessage.GetNotifications)
+            .map(Delivery::message).filterIsInstance<ServerMessage.NotificationsData>()
+            .single().notifications.single()
+        assertEquals("room:${invitation.invitationId}", restoredNotification.id)
+    }
+
+    @Test
     fun `blocked players cannot receive room invitations`() = runTest {
         val hostId = UUID.randomUUID().toString()
         val guestId = UUID.randomUUID().toString()
@@ -830,6 +871,27 @@ class GameEngineTest {
         val started = engine.handle(guestId, ClientMessage.SetReady(roomId, true))
             .map(Delivery::message).filterIsInstance<ServerMessage.GameStarted>().single().game
         assertEquals(com.hienthai.fastowin.protocol.RoomPhase.PLAYING, started.phase)
+    }
+
+    private fun friendRepositoryForPair(firstId: String, secondId: String) = object : FriendRepository {
+        override suspend fun load(userId: String) = StoredFriends(
+            friends = listOf(
+                if (userId == firstId) FriendSnapshot(secondId, "Guest", "GUEST123")
+                else FriendSnapshot(firstId, "Host", "HOST123")
+            )
+        )
+        override suspend fun sendRequest(userId: String, playerCode: String, nowMillis: Long) =
+            FriendRequestResult.PlayerNotFound
+        override suspend fun respond(userId: String, requestId: String, accept: Boolean, nowMillis: Long) =
+            FriendResponseResult.NotFound
+        override suspend fun cancelRequest(userId: String, requestId: String) = FriendCancellationResult.NotFound
+        override suspend fun removeFriend(userId: String, friendUserId: String) = SocialMutationResult.NotFound
+        override suspend fun blockPlayer(userId: String, playerUserId: String, nowMillis: Long) =
+            SocialMutationResult.NotFound
+        override suspend fun unblockPlayer(userId: String, playerUserId: String) = SocialMutationResult.NotFound
+        override suspend fun areFriends(firstUserId: String, secondUserId: String) =
+            setOf(firstUserId, secondUserId) == setOf(firstId, secondId)
+        override suspend fun isBlockedEitherWay(firstUserId: String, secondUserId: String) = false
     }
 
     private data class Fixture(

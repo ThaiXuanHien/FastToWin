@@ -62,7 +62,7 @@ fun NotificationsScreen(
         AlertDialog(
             onDismissRequest = { confirmClear = false },
             title = { Text("Xóa tất cả thông báo?") },
-            text = { Text("Danh sách thông báo trong phiên ứng dụng này sẽ được xóa.") },
+            text = { Text("Các thông báo đang hiển thị sẽ được xóa. Tài khoản đăng nhập sẽ đồng bộ thay đổi này trên các thiết bị.") },
             confirmButton = {
                 TextButton(onClick = {
                     confirmClear = false

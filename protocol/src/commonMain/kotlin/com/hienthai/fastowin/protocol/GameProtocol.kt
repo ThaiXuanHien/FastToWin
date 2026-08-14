@@ -4,7 +4,7 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
-const val PROTOCOL_VERSION = 13
+const val PROTOCOL_VERSION = 14
 const val GAME_NUMBER_COUNT = 50
 const val MAX_PROFILE_DISPLAY_NAME_LENGTH = 32
 
@@ -259,6 +259,29 @@ enum class RematchEvent {
 }
 
 @Serializable
+enum class NotificationKind {
+    FRIEND_REQUEST,
+    ROOM_INVITATION,
+    MISSION,
+    ACHIEVEMENT,
+    COSMETIC
+}
+
+@Serializable
+enum class NotificationDestination { FRIENDS, PROFILE }
+
+@Serializable
+data class NotificationSnapshot(
+    val id: String,
+    val kind: NotificationKind,
+    val title: String,
+    val message: String,
+    val createdAtEpochMillis: Long,
+    val isRead: Boolean = false,
+    val destination: NotificationDestination
+)
+
+@Serializable
 sealed class ClientMessage {
     @Serializable
     @SerialName("connect_guest")
@@ -341,6 +364,22 @@ sealed class ClientMessage {
     @Serializable
     @SerialName("get_room_invitations")
     data object GetRoomInvitations : ClientMessage()
+
+    @Serializable
+    @SerialName("get_notifications")
+    data object GetNotifications : ClientMessage()
+
+    @Serializable
+    @SerialName("sync_notifications")
+    data class SyncNotifications(val notifications: List<NotificationSnapshot>) : ClientMessage()
+
+    @Serializable
+    @SerialName("mark_notifications_read")
+    data class MarkNotificationsRead(val notificationId: String? = null) : ClientMessage()
+
+    @Serializable
+    @SerialName("dismiss_notifications")
+    data class DismissNotifications(val notificationId: String? = null) : ClientMessage()
 
     @Serializable
     @SerialName("create_room")
@@ -440,6 +479,10 @@ sealed class ServerMessage {
     @Serializable
     @SerialName("room_invitations_data")
     data class RoomInvitationsData(val invitations: List<RoomInvitation>) : ServerMessage()
+
+    @Serializable
+    @SerialName("notifications_data")
+    data class NotificationsData(val notifications: List<NotificationSnapshot>) : ServerMessage()
 
     @Serializable
     @SerialName("social_notice")
