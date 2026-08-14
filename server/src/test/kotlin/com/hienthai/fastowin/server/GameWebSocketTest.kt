@@ -18,6 +18,7 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import org.flywaydb.core.Flyway
@@ -230,6 +231,56 @@ class GameWebSocketTest {
     }
 
     @Test
+    fun `new device connection replaces old account websocket without disconnecting player`() = testApplication {
+        val authService = AuthenticationService(
+            repository = InMemoryAuthRepository(),
+            passwordHasher = PasswordHasher(iterations = 1_000)
+        )
+        val registered = assertIs<AuthResult.Success>(
+            authService.register(
+                email = "multi-device@example.com",
+                password = "strong-password-123",
+                displayName = "Multi device",
+                devicePlatform = "android"
+            )
+        ).session
+        val secondDevice = assertIs<AuthResult.Success>(
+            authService.login(
+                email = "multi-device@example.com",
+                password = "strong-password-123",
+                devicePlatform = "ios"
+            )
+        ).session
+        application { gameModule(authService = authService) }
+        val webSocketClient = createClient { install(WebSockets) }
+        val first = webSocketClient.webSocketSession("/game")
+        val second = webSocketClient.webSocketSession("/game")
+
+        try {
+            first.sendMessage(ClientMessage.ConnectAccount(registered.accessToken))
+            val firstReady = first.receiveMessage<ServerMessage.SessionReady>()
+            first.receiveMessage<ServerMessage.RoomList>()
+
+            second.sendMessage(ClientMessage.ConnectAccount(secondDevice.accessToken))
+            val secondReady = second.receiveMessage<ServerMessage.SessionReady>()
+            second.receiveMessage<ServerMessage.RoomList>()
+            assertEquals(firstReady.playerId, secondReady.playerId)
+
+            val oldCloseReason = withTimeout(2_000) { first.closeReason.await() }
+            assertEquals("Session resumed elsewhere", oldCloseReason?.message)
+
+            second.sendMessage(ClientMessage.GetProfile)
+            assertEquals(
+                "Multi device",
+                second.receiveMessage<ServerMessage.ProfileData>().profile.displayName
+            )
+        } finally {
+            first.close()
+            second.close()
+        }
+    }
+
+    @Test
     fun `registered account reconnects to the same active game snapshot`() = testApplication {
         val authService = AuthenticationService(
             repository = InMemoryAuthRepository(),
@@ -268,6 +319,10 @@ class GameWebSocketTest {
             host.close()
             delay(100)
 
+            guest.sendMessage(ClientMessage.SelectNumber(room.roomId, 2, "guest-while-account-offline"))
+            val offlineUpdate = guest.receiveMessage<ServerMessage.GameStateUpdated>().game
+            assertEquals(3, offlineUpdate.currentTarget)
+
             val resumedHost = webSocketClient.webSocketSession("/game")
             try {
                 resumedHost.sendMessage(ClientMessage.ConnectAccount(authSession.accessToken))
@@ -275,8 +330,8 @@ class GameWebSocketTest {
                 assertEquals(hostReady.playerId, resumed.playerId)
                 val snapshot = assertNotNull(resumed.currentGame)
                 assertEquals(room.roomId, snapshot.roomId)
-                assertEquals(2, snapshot.currentTarget)
-                assertTrue(1 in snapshot.selectedNumbers)
+                assertEquals(3, snapshot.currentTarget)
+                assertEquals(listOf(1, 2), snapshot.selectedNumbers)
                 assertEquals(guestReady.playerId, snapshot.players.first { it.id != resumed.playerId }.id)
             } finally {
                 resumedHost.close()

@@ -450,6 +450,101 @@ class GameEngineTest {
     }
 
     @Test
+    fun `disconnected player resumes current state after opponent continues playing`() = runTest {
+        var now = 1_000L
+        val engine = GameEngine(nowMillis = { now })
+        val host = engine.connectGuest("Host", null)
+        val guest = engine.connectGuest("Guest", null)
+        val room = engine.handle(
+            host.playerId,
+            ClientMessage.CreateRoom("Reconnect during match", PASSWORD, ProtocolGameMode.ORDER)
+        ).map(Delivery::message).filterIsInstance<ServerMessage.RoomCreated>().single().game
+        startRoom(engine, host.playerId, guest.playerId, room.roomId)
+
+        engine.markDisconnected(host.playerId)
+        engine.handle(
+            guest.playerId,
+            ClientMessage.SelectNumber(room.roomId, 1, "guest-while-host-offline")
+        )
+        now += 29_999L
+
+        val resumed = engine.connectGuest("Host", host.resumeToken)
+        val restored = assertNotNull(resumed.currentGame)
+        assertEquals(room.roomId, restored.roomId)
+        assertEquals(2, restored.currentTarget)
+        assertEquals(listOf(1), restored.selectedNumbers)
+
+        val continued = engine.handle(
+            host.playerId,
+            ClientMessage.SelectNumber(room.roomId, 2, "host-after-resume")
+        ).map(Delivery::message).filterIsInstance<ServerMessage.GameStateUpdated>().single().game
+        assertEquals(3, continued.currentTarget)
+        assertEquals(listOf(1, 2), continued.selectedNumbers)
+    }
+
+    @Test
+    fun `cancelled and disconnected matchmaking entries cannot create ghost matches`() = runTest {
+        val firstId = UUID.randomUUID()
+        val secondId = UUID.randomUUID()
+        val thirdId = UUID.randomUUID()
+        val engine = GameEngine()
+        engine.connectAccount(AuthenticatedAccount(firstId, "First"))
+        engine.connectAccount(AuthenticatedAccount(secondId, "Second"))
+        engine.connectAccount(AuthenticatedAccount(thirdId, "Third"))
+
+        engine.handle(firstId.toString(), ClientMessage.JoinMatchmaking(ProtocolGameMode.ORDER))
+        engine.handle(firstId.toString(), ClientMessage.CancelMatchmaking)
+        val secondWaiting = engine.handle(
+            secondId.toString(),
+            ClientMessage.JoinMatchmaking(ProtocolGameMode.ORDER)
+        ).map(Delivery::message)
+        assertTrue(secondWaiting.filterIsInstance<ServerMessage.GameStarted>().isEmpty())
+        assertTrue(secondWaiting.filterIsInstance<ServerMessage.MatchmakingStatus>().single().isSearching)
+        engine.handle(secondId.toString(), ClientMessage.CancelMatchmaking)
+
+        engine.handle(firstId.toString(), ClientMessage.JoinMatchmaking(ProtocolGameMode.ORDER))
+        engine.markDisconnected(firstId.toString())
+        val thirdWaiting = engine.handle(
+            thirdId.toString(),
+            ClientMessage.JoinMatchmaking(ProtocolGameMode.ORDER)
+        ).map(Delivery::message)
+        assertTrue(thirdWaiting.filterIsInstance<ServerMessage.GameStarted>().isEmpty())
+        assertTrue(thirdWaiting.filterIsInstance<ServerMessage.MatchmakingStatus>().single().isSearching)
+
+        engine.connectAccount(AuthenticatedAccount(firstId, "First"))
+        val matched = engine.handle(
+            firstId.toString(),
+            ClientMessage.JoinMatchmaking(ProtocolGameMode.ORDER)
+        ).map(Delivery::message).filterIsInstance<ServerMessage.GameStarted>().single().game
+        assertEquals(setOf(firstId.toString(), thirdId.toString()), matched.players.map { it.id }.toSet())
+    }
+
+    @Test
+    fun `leaving an active room closes it and deletes the persisted snapshot`() = runTest {
+        val repository = InMemoryActiveRoomRepository()
+        val engine = GameEngine(activeRoomRepository = repository)
+        val host = engine.connectGuest("Host", null)
+        val guest = engine.connectGuest("Guest", null)
+        val room = engine.handle(
+            host.playerId,
+            ClientMessage.CreateRoom("Leave active room", PASSWORD, ProtocolGameMode.ORDER)
+        ).map(Delivery::message).filterIsInstance<ServerMessage.RoomCreated>().single().game
+        startRoom(engine, host.playerId, guest.playerId, room.roomId)
+        assertEquals(room.roomId, repository.loadAll().single().roomId)
+
+        val closed = engine.handle(host.playerId, ClientMessage.LeaveRoom(room.roomId))
+            .map(Delivery::message).filterIsInstance<ServerMessage.RoomClosed>().single()
+        assertEquals(room.roomId, closed.roomId)
+        assertTrue(repository.loadAll().isEmpty())
+
+        val rejected = engine.handle(
+            guest.playerId,
+            ClientMessage.SelectNumber(room.roomId, 1, "after-opponent-left")
+        ).map(Delivery::message).filterIsInstance<ServerMessage.Error>().single()
+        assertEquals("ROOM_NOT_FOUND", rejected.code)
+    }
+
+    @Test
     fun `completed match is persisted once with winner and statistics outcome`() = runTest {
         val savedMatches = mutableListOf<CompletedMatch>()
         val repository = MatchResultRepository { match -> savedMatches += match }
@@ -523,6 +618,47 @@ class GameEngineTest {
         assertTrue(restarted.rematchRequestedPlayerIds.isEmpty())
         assertTrue(restarted.players.all { it.score == 0 })
         assertEquals(1, savedMatches.size)
+    }
+
+    @Test
+    fun `rematch vote survives engine restart`() = runTest {
+        val identityRepository = InMemoryGuestIdentityRepository()
+        val activeRoomRepository = InMemoryActiveRoomRepository()
+        val firstEngine = GameEngine(
+            identityRepository = identityRepository,
+            activeRoomRepository = activeRoomRepository
+        )
+        val host = firstEngine.connectGuest("Host", null)
+        val guest = firstEngine.connectGuest("Guest", null)
+        val room = firstEngine.handle(
+            host.playerId,
+            ClientMessage.CreateRoom("Persistent rematch", PASSWORD, ProtocolGameMode.ORDER)
+        ).map(Delivery::message).filterIsInstance<ServerMessage.RoomCreated>().single().game
+        startRoom(firstEngine, host.playerId, guest.playerId, room.roomId)
+        repeat(50) { index ->
+            firstEngine.handle(
+                host.playerId,
+                ClientMessage.SelectNumber(room.roomId, index + 1, "finish-before-restart-$index")
+            )
+        }
+        firstEngine.handle(host.playerId, ClientMessage.RequestRematch(room.roomId))
+
+        val restartedEngine = GameEngine(
+            identityRepository = identityRepository,
+            activeRoomRepository = activeRoomRepository
+        )
+        val resumedHost = restartedEngine.connectGuest("Host", host.resumeToken)
+        restartedEngine.connectGuest("Guest", guest.resumeToken)
+        assertEquals(
+            listOf(host.playerId),
+            assertNotNull(resumedHost.currentGame).rematchRequestedPlayerIds
+        )
+
+        val restarted = restartedEngine.handle(guest.playerId, ClientMessage.RequestRematch(room.roomId))
+            .map(Delivery::message).filterIsInstance<ServerMessage.GameStarted>().single().game
+        assertEquals(com.hienthai.fastowin.protocol.RoomPhase.PLAYING, restarted.phase)
+        assertNotEquals(room.matchId, restarted.matchId)
+        assertTrue(restarted.rematchRequestedPlayerIds.isEmpty())
     }
 
     @Test

@@ -137,6 +137,8 @@ Access token có hiệu lực 15 phút, refresh token có hiệu lực 30 ngày.
 
 Compose Multiplatform có màn hình đăng nhập, đăng ký và lựa chọn chơi khách. Android mã hóa phiên bằng AES-GCM với khóa trong Android Keystore; iOS lưu phiên trong Keychain. Ứng dụng tự refresh access token trước khi hết hạn và tài khoản dùng `connect_account` để xác thực WebSocket. Server tự lấy player ID và biệt danh từ phiên đăng nhập, không nhận các giá trị này từ client. Chế độ khách vẫn dùng `connect_guest` và resume token cũ.
 
+Một tài khoản có thể giữ phiên đăng nhập HTTP trên nhiều thiết bị, nhưng chỉ có một kết nối game WebSocket hoạt động tại một thời điểm. Khi thiết bị mới kết nối cùng tài khoản, server đóng WebSocket cũ với lý do `Session resumed elsewhere`; kết nối mới giữ nguyên player ID và snapshot trận hiện tại. Việc thay thế socket không đánh dấu người chơi offline và không làm mất phòng.
+
 Protocol WebSocket hiện tại là phiên bản 12. Sau khi cập nhật ứng dụng, cần khởi động lại backend để client và server dùng cùng phiên bản.
 
 Khi nâng cấp guest, client gửi resume token hiện tại cùng email và mật khẩu. Backend khóa phiên guest và cập nhật chính user hiện tại trong một transaction, sau đó thu hồi toàn bộ resume token khách và tạo phiên tài khoản mới. `user_id` không đổi nên hồ sơ, player code, Elo, lịch sử, thống kê và thành tích được giữ nguyên. Chức năng này yêu cầu PostgreSQL; server chạy thuần bộ nhớ trả lỗi `DATABASE_REQUIRED`.
@@ -221,6 +223,11 @@ Test backend bao gồm:
 - Hai người phải cùng sẵn sàng trước khi phòng thủ công bắt đầu và có thể đấu lại bằng đồng thuận.
 - Ghép nhanh theo khoảng Elo, đồng thời loại cặp người chơi đã chặn nhau.
 - Lưu XP, nhiệm vụ, rating mùa, chi tiết event và trang bị vật phẩm sau trận.
+- Đối thủ vẫn có thể tiếp tục lượt trong thời gian một máy mất mạng; máy đó resume đúng target và bàn số mới nhất trong thời gian gia hạn.
+- Hủy ghép nhanh hoặc mất kết nối sẽ xóa người chơi khỏi hàng chờ, không tạo trận với người chơi “ma”.
+- Phiếu đấu lại và trạng thái trận được khôi phục đúng sau khi backend restart.
+- Rời phòng chủ động đóng phòng cho cả hai phía và xóa snapshot đã lưu.
+- Kết nối cùng tài khoản từ thiết bị mới thay thế socket cũ mà không làm phiên mới bị đánh dấu offline.
 
 ## Giới hạn của MVP
 
