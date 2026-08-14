@@ -137,6 +137,8 @@ Access token có hiệu lực 15 phút, refresh token có hiệu lực 30 ngày.
 
 Compose Multiplatform có màn hình đăng nhập, đăng ký và lựa chọn chơi khách. Android mã hóa phiên bằng AES-GCM với khóa trong Android Keystore; iOS lưu phiên trong Keychain. Ứng dụng tự refresh access token trước khi hết hạn và tài khoản dùng `connect_account` để xác thực WebSocket. Server tự lấy player ID và biệt danh từ phiên đăng nhập, không nhận các giá trị này từ client. Chế độ khách vẫn dùng `connect_guest` và resume token cũ.
 
+Trong màn **Hồ sơ**, tài khoản có thể đổi biệt danh/avatar và mở phần **Bảo mật** để đổi mật khẩu. Đổi mật khẩu thành công thu hồi mọi phiên hiện có và đưa ứng dụng về màn đăng nhập. Luồng **Quên mật khẩu** khóa email sau khi gửi yêu cầu, nhận mã có hiệu lực 15 phút và đặt mật khẩu mới; ở môi trường dev mã được hiển thị và tự điền, còn production vẫn chờ tích hợp dịch vụ email theo giới hạn bên dưới. Client và backend cùng áp dụng giới hạn mật khẩu từ 8 đến 128 ký tự.
+
 Một tài khoản có thể giữ phiên đăng nhập HTTP trên nhiều thiết bị, nhưng chỉ có một kết nối game WebSocket hoạt động tại một thời điểm. Khi thiết bị mới kết nối cùng tài khoản, server đóng WebSocket cũ với lý do `Session resumed elsewhere`; kết nối mới giữ nguyên player ID và snapshot trận hiện tại. Việc thay thế socket không đánh dấu người chơi offline và không làm mất phòng.
 
 Protocol WebSocket hiện tại là phiên bản 12. Sau khi cập nhật ứng dụng, cần khởi động lại backend để client và server dùng cùng phiên bản.

@@ -18,15 +18,19 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -37,10 +41,14 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.hienthai.fastowin.state.AuthStage
 import com.hienthai.fastowin.state.AuthState
+import com.hienthai.fastowin.state.MAX_ACCOUNT_PASSWORD_LENGTH
+import com.hienthai.fastowin.state.accountPasswordConfirmationError
+import com.hienthai.fastowin.state.accountPasswordError
 
 @Composable
 fun AuthScreen(
@@ -71,6 +79,7 @@ fun AuthScreen(
                 state,
                 onRequestPasswordReset,
                 onConfirmPasswordReset,
+                onOpenPasswordReset,
                 onBack
             )
             AuthStage.UPGRADE_GUEST -> UpgradeGuestContent(state, onUpgradeGuest, onCancelUpgrade)
@@ -146,21 +155,27 @@ private fun PasswordResetContent(
     state: AuthState,
     onRequest: (String) -> Unit,
     onConfirm: (String, String, String) -> Unit,
+    onUseDifferentEmail: () -> Unit,
     onBack: () -> Unit
 ) {
     var email by remember { mutableStateOf("") }
     var resetToken by remember { mutableStateOf("") }
     var newPassword by remember { mutableStateOf("") }
     var confirmPassword by remember { mutableStateOf("") }
-    val requested = state.devResetToken != null
+    val requestedEmail = state.passwordResetEmail
+    val passwordError = accountPasswordError(newPassword)
+    val confirmationError = accountPasswordConfirmationError(newPassword, confirmPassword)
+    LaunchedEffect(state.devResetToken) {
+        state.devResetToken?.let { resetToken = it }
+    }
     AuthForm(title = "Khôi phục mật khẩu", state = state, onBack = onBack) {
         Text(
             "Nhập email để nhận mã khôi phục có hiệu lực trong 15 phút.",
             textAlign = TextAlign.Center,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
-        EmailField(email) { email = it }
-        if (!requested) {
+        EmailField(email, enabled = requestedEmail == null && !state.isLoading) { email = it }
+        if (requestedEmail == null) {
             Button(
                 onClick = { onRequest(email) },
                 enabled = email.isNotBlank() && !state.isLoading,
@@ -170,11 +185,13 @@ private fun PasswordResetContent(
                 else Text("Tạo mã khôi phục")
             }
         } else {
-            Text(
-                "Môi trường dev – mã khôi phục:\n${state.devResetToken}",
-                color = MaterialTheme.colorScheme.primary,
-                textAlign = TextAlign.Center
-            )
+            state.devResetToken?.let { token ->
+                Text(
+                    "Môi trường dev – mã đã được tự điền:\n$token",
+                    color = MaterialTheme.colorScheme.primary,
+                    textAlign = TextAlign.Center
+                )
+            }
             OutlinedTextField(
                 value = resetToken,
                 onValueChange = { resetToken = it.trim() },
@@ -184,14 +201,21 @@ private fun PasswordResetContent(
             )
             PasswordField(newPassword, "Mật khẩu mới (ít nhất 8 ký tự)") { newPassword = it }
             PasswordField(confirmPassword, "Nhập lại mật khẩu mới") { confirmPassword = it }
+            if (newPassword.isNotEmpty() && passwordError != null) {
+                Text(passwordError, color = MaterialTheme.colorScheme.error)
+            }
+            confirmationError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             Button(
-                onClick = { onConfirm(email, resetToken, newPassword) },
-                enabled = resetToken.isNotBlank() && newPassword.length >= 8 &&
-                    newPassword == confirmPassword && !state.isLoading,
+                onClick = { onConfirm(requestedEmail, resetToken, newPassword) },
+                enabled = resetToken.isNotBlank() && passwordError == null &&
+                    confirmationError == null && confirmPassword.isNotEmpty() && !state.isLoading,
                 modifier = Modifier.fillMaxWidth().height(56.dp)
             ) {
                 if (state.isLoading) CircularProgressIndicator(strokeWidth = 2.dp)
                 else Text("Đặt lại mật khẩu")
+            }
+            TextButton(onClick = onUseDifferentEmail, enabled = !state.isLoading) {
+                Text("Dùng email khác")
             }
         }
     }
@@ -207,7 +231,8 @@ private fun RegisterContent(
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var confirmPassword by remember { mutableStateOf("") }
-    val passwordsMatch = password == confirmPassword
+    val passwordError = accountPasswordError(password)
+    val confirmationError = accountPasswordConfirmationError(password, confirmPassword)
     AuthForm(title = "Tạo tài khoản", state = state, onBack = onBack) {
         OutlinedTextField(
             value = displayName,
@@ -220,13 +245,12 @@ private fun RegisterContent(
         EmailField(email) { email = it }
         PasswordField(password, "Mật khẩu (ít nhất 8 ký tự)") { password = it }
         PasswordField(confirmPassword, "Nhập lại mật khẩu") { confirmPassword = it }
-        if (confirmPassword.isNotEmpty() && !passwordsMatch) {
-            Text("Mật khẩu nhập lại chưa khớp.", color = MaterialTheme.colorScheme.error)
-        }
+        if (password.isNotEmpty() && passwordError != null) Text(passwordError, color = MaterialTheme.colorScheme.error)
+        confirmationError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
         Button(
             onClick = { onRegister(email, password, displayName) },
-            enabled = displayName.isNotBlank() && email.isNotBlank() && password.length >= 8 &&
-                passwordsMatch && !state.isLoading,
+            enabled = displayName.isNotBlank() && email.isNotBlank() && passwordError == null &&
+                confirmationError == null && confirmPassword.isNotEmpty() && !state.isLoading,
             modifier = Modifier.fillMaxWidth().height(56.dp)
         ) {
             if (state.isLoading) CircularProgressIndicator(strokeWidth = 2.dp)
@@ -244,7 +268,8 @@ private fun UpgradeGuestContent(
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var confirmPassword by remember { mutableStateOf("") }
-    val passwordsMatch = password == confirmPassword
+    val passwordError = accountPasswordError(password)
+    val confirmationError = accountPasswordConfirmationError(password, confirmPassword)
     AuthForm(title = "Lưu tài khoản khách", state = state, onBack = onBack) {
         Text(
             "Elo, lịch sử, thống kê và thành tích hiện tại sẽ được giữ nguyên.",
@@ -254,12 +279,12 @@ private fun UpgradeGuestContent(
         EmailField(email) { email = it }
         PasswordField(password, "Mật khẩu (ít nhất 8 ký tự)") { password = it }
         PasswordField(confirmPassword, "Nhập lại mật khẩu") { confirmPassword = it }
-        if (confirmPassword.isNotEmpty() && !passwordsMatch) {
-            Text("Mật khẩu nhập lại chưa khớp.", color = MaterialTheme.colorScheme.error)
-        }
+        if (password.isNotEmpty() && passwordError != null) Text(passwordError, color = MaterialTheme.colorScheme.error)
+        confirmationError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
         Button(
             onClick = { onUpgradeGuest(email, password) },
-            enabled = email.isNotBlank() && password.length >= 8 && passwordsMatch && !state.isLoading,
+            enabled = email.isNotBlank() && passwordError == null && confirmationError == null &&
+                confirmPassword.isNotEmpty() && !state.isLoading,
             modifier = Modifier.fillMaxWidth().height(56.dp)
         ) {
             if (state.isLoading) CircularProgressIndicator(strokeWidth = 2.dp)
@@ -289,13 +314,18 @@ private fun AuthForm(
 }
 
 @Composable
-private fun EmailField(value: String, onValueChange: (String) -> Unit) {
+private fun EmailField(
+    value: String,
+    enabled: Boolean = true,
+    onValueChange: (String) -> Unit
+) {
     OutlinedTextField(
         value = value,
         onValueChange = onValueChange,
         label = { Text("Email") },
         leadingIcon = { Icon(Icons.Default.Email, null) },
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email, imeAction = ImeAction.Next),
+        enabled = enabled,
         singleLine = true,
         modifier = Modifier.fillMaxWidth()
     )
@@ -303,12 +333,21 @@ private fun EmailField(value: String, onValueChange: (String) -> Unit) {
 
 @Composable
 private fun PasswordField(value: String, label: String, onValueChange: (String) -> Unit) {
+    var isVisible by remember { mutableStateOf(false) }
     OutlinedTextField(
         value = value,
-        onValueChange = onValueChange,
+        onValueChange = { if (it.length <= MAX_ACCOUNT_PASSWORD_LENGTH) onValueChange(it) },
         label = { Text(label) },
         leadingIcon = { Icon(Icons.Default.Lock, null) },
-        visualTransformation = PasswordVisualTransformation(),
+        visualTransformation = if (isVisible) VisualTransformation.None else PasswordVisualTransformation(),
+        trailingIcon = {
+            IconButton(onClick = { isVisible = !isVisible }) {
+                Icon(
+                    if (isVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                    contentDescription = if (isVisible) "Ẩn mật khẩu" else "Hiện mật khẩu"
+                )
+            }
+        },
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done),
         singleLine = true,
         modifier = Modifier.fillMaxWidth()

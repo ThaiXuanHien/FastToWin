@@ -93,6 +93,7 @@ fun FastToWinApp(
                     onUpgradeGuest = authController::openGuestUpgrade,
                     onChangePassword = authController::changePassword,
                     onDeleteAccount = authController::deleteAccount,
+                    onClearAccountFeedback = authController::clearFeedback,
                     authState = authState,
                     onSessionExpired = { authController.expireSession() },
                     onProfileDisplayNameChanged = authController::updateStoredDisplayName,
@@ -116,6 +117,7 @@ private fun GameContent(
     onUpgradeGuest: () -> Unit,
     onChangePassword: (String, String) -> Unit,
     onDeleteAccount: (String) -> Unit,
+    onClearAccountFeedback: () -> Unit,
     authState: com.hienthai.fastowin.state.AuthState,
     onSessionExpired: () -> Unit,
     onProfileDisplayNameChanged: (String) -> Unit,
@@ -252,6 +254,7 @@ private fun GameContent(
                     accountError = authState.error,
                     onChangePassword = onChangePassword,
                     onDeleteAccount = onDeleteAccount,
+                    onClearAccountFeedback = onClearAccountFeedback,
                     onLogout = onLogout,
                     showBackButton = !showTopLevelNavigation,
                     modifier = contentModifier

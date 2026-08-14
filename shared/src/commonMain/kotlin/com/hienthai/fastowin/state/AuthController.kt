@@ -26,7 +26,8 @@ data class AuthState(
     val isLoading: Boolean = false,
     val error: String? = null,
     val notice: String? = null,
-    val devResetToken: String? = null
+    val devResetToken: String? = null,
+    val passwordResetEmail: String? = null
 )
 
 class AuthController(
@@ -54,7 +55,13 @@ class AuthController(
     fun openLogin() = _state.update { it.copy(stage = AuthStage.LOGIN, error = null) }
     fun openRegister() = _state.update { it.copy(stage = AuthStage.REGISTER, error = null) }
     fun openPasswordReset() = _state.update {
-        it.copy(stage = AuthStage.RESET_PASSWORD, error = null, notice = null, devResetToken = null)
+        it.copy(
+            stage = AuthStage.RESET_PASSWORD,
+            error = null,
+            notice = null,
+            devResetToken = null,
+            passwordResetEmail = null
+        )
     }
     fun backToWelcome() = _state.update { AuthState() }
     fun playAsGuest() = _state.update { AuthState(stage = AuthStage.PLAYING, isGuest = true) }
@@ -151,6 +158,7 @@ class AuthController(
                             isLoading = false,
                             notice = response.message,
                             devResetToken = response.devResetToken,
+                            passwordResetEmail = email.trim().lowercase(),
                             error = null
                         )
                     }
@@ -214,6 +222,8 @@ class AuthController(
         store.save(serverUrl, updated)
         _state.update { it.copy(session = updated) }
     }
+
+    fun clearFeedback() = _state.update { it.copy(error = null, notice = null) }
 
     fun close() {
         api.close()

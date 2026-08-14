@@ -27,6 +27,8 @@ import androidx.compose.material.icons.automirrored.filled.ExitToApp
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material3.AlertDialog
@@ -55,6 +57,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import com.hienthai.fastowin.protocol.MatchHistoryOutcome
 import com.hienthai.fastowin.protocol.MatchHistorySnapshot
@@ -63,6 +66,9 @@ import com.hienthai.fastowin.protocol.CosmeticType
 import com.hienthai.fastowin.protocol.MAX_PROFILE_DISPLAY_NAME_LENGTH
 import com.hienthai.fastowin.protocol.PROFILE_AVATAR_IDS
 import com.hienthai.fastowin.state.GameState
+import com.hienthai.fastowin.state.MAX_ACCOUNT_PASSWORD_LENGTH
+import com.hienthai.fastowin.state.accountPasswordConfirmationError
+import com.hienthai.fastowin.state.accountPasswordError
 import com.hienthai.fastowin.platform.epochMillis
 import kotlinx.coroutines.delay
 
@@ -80,6 +86,7 @@ fun ProfileScreen(
     accountError: String?,
     onChangePassword: (String, String) -> Unit,
     onDeleteAccount: (String) -> Unit,
+    onClearAccountFeedback: () -> Unit,
     onLogout: () -> Unit,
     showBackButton: Boolean = true,
     modifier: Modifier = Modifier
@@ -94,7 +101,12 @@ fun ProfileScreen(
         AccountSecurityDialog(
             isLoading = isAccountLoading,
             error = accountError,
-            onDismiss = { if (!isAccountLoading) showAccountSecurity = false },
+            onDismiss = {
+                if (!isAccountLoading) {
+                    showAccountSecurity = false
+                    onClearAccountFeedback()
+                }
+            },
             onChangePassword = onChangePassword,
             onDeleteAccount = onDeleteAccount
         )
@@ -183,7 +195,10 @@ fun ProfileScreen(
         if (canEdit) {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButton(
-                    onClick = { showAccountSecurity = true },
+                    onClick = {
+                        onClearAccountFeedback()
+                        showAccountSecurity = true
+                    },
                     modifier = Modifier.weight(1f)
                 ) {
                     Icon(Icons.Default.Lock, null)
@@ -434,6 +449,9 @@ private fun AccountSecurityDialog(
     var confirmPassword by remember { mutableStateOf("") }
     var deletePassword by remember { mutableStateOf("") }
     var confirmDelete by remember { mutableStateOf(false) }
+    val passwordError = accountPasswordError(newPassword)
+    val confirmationError = accountPasswordConfirmationError(newPassword, confirmPassword)
+    val passwordUnchanged = currentPassword.isNotEmpty() && currentPassword == newPassword
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Bảo mật tài khoản") },
@@ -446,12 +464,22 @@ private fun AccountSecurityDialog(
                 SecurePasswordField(currentPassword, "Mật khẩu hiện tại") { currentPassword = it }
                 SecurePasswordField(newPassword, "Mật khẩu mới") { newPassword = it }
                 SecurePasswordField(confirmPassword, "Nhập lại mật khẩu mới") { confirmPassword = it }
+                if (newPassword.isNotEmpty() && passwordError != null) {
+                    Text(passwordError, color = MaterialTheme.colorScheme.error)
+                }
+                confirmationError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                if (passwordUnchanged) {
+                    Text("Mật khẩu mới phải khác mật khẩu hiện tại.", color = MaterialTheme.colorScheme.error)
+                }
                 Button(
                     onClick = { onChangePassword(currentPassword, newPassword) },
-                    enabled = !isLoading && currentPassword.isNotBlank() && newPassword.length >= 8 &&
-                        newPassword == confirmPassword,
+                    enabled = !isLoading && currentPassword.isNotBlank() && passwordError == null &&
+                        confirmationError == null && confirmPassword.isNotEmpty() && !passwordUnchanged,
                     modifier = Modifier.fillMaxWidth()
-                ) { Text("Đổi mật khẩu") }
+                ) {
+                    if (isLoading) CircularProgressIndicator(strokeWidth = 2.dp, modifier = Modifier.size(20.dp))
+                    else Text("Đổi mật khẩu")
+                }
                 error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
                 Text("Xóa tài khoản", color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold)
                 Text("Thao tác này xóa vĩnh viễn hồ sơ, Elo, lịch sử và thành tích.")
@@ -467,7 +495,10 @@ private fun AccountSecurityDialog(
                         onClick = { onDeleteAccount(deletePassword) },
                         enabled = !isLoading,
                         modifier = Modifier.fillMaxWidth()
-                    ) { Text("Xác nhận xóa vĩnh viễn") }
+                    ) {
+                        if (isLoading) CircularProgressIndicator(strokeWidth = 2.dp, modifier = Modifier.size(20.dp))
+                        else Text("Xác nhận xóa vĩnh viễn")
+                    }
                 }
             }
         },
@@ -478,12 +509,21 @@ private fun AccountSecurityDialog(
 
 @Composable
 private fun SecurePasswordField(value: String, label: String, onValueChange: (String) -> Unit) {
+    var isVisible by remember { mutableStateOf(false) }
     OutlinedTextField(
         value = value,
-        onValueChange = onValueChange,
+        onValueChange = { if (it.length <= MAX_ACCOUNT_PASSWORD_LENGTH) onValueChange(it) },
         label = { Text(label) },
         leadingIcon = { Icon(Icons.Default.Lock, null) },
-        visualTransformation = PasswordVisualTransformation(),
+        visualTransformation = if (isVisible) VisualTransformation.None else PasswordVisualTransformation(),
+        trailingIcon = {
+            IconButton(onClick = { isVisible = !isVisible }) {
+                Icon(
+                    if (isVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                    contentDescription = if (isVisible) "Ẩn mật khẩu" else "Hiện mật khẩu"
+                )
+            }
+        },
         singleLine = true,
         modifier = Modifier.fillMaxWidth()
     )
