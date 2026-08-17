@@ -307,8 +307,10 @@ class PostgresMatchResultRepository(
                         if (wins >= 1) add("FIRST_WIN")
                         if (wins >= 10) add("WIN_10")
                         if (streak >= 5) add("STREAK_5")
-                        if (metrics.correct > 0 && metrics.wrong == 0) add("PERFECT_GAME")
-                        if (metrics.correct >= 50 && matchDuration <= SPEED_50_LIMIT_MILLIS) add("SPEED_50")
+                        if (player.isPerfectWinner(metrics)) add("PERFECT_GAME")
+                        if (qualifiesForSpeed50(player.outcome, metrics.correct, matchDuration)) {
+                            add("SPEED_50")
+                        }
                     }
                     unlocked.forEach { achievementCode ->
                         insertStatement.setObject(1, playerId)
@@ -358,7 +360,7 @@ class PostgresMatchResultRepository(
                             Instant.ofEpochMilli(match.endedAtMillis).atZone(java.time.ZoneOffset.UTC).toLocalDate()
                                 .with(java.time.DayOfWeek.MONDAY)
                         ),
-                        if (metrics.correct > 0 && metrics.wrong == 0) 1 else 0,
+                        if (player.isPerfectWinner(metrics)) 1 else 0,
                         1
                     )
                 )
@@ -392,13 +394,30 @@ class PostgresMatchResultRepository(
         val target: Int
     )
 
+    private fun CompletedMatchPlayer.isPerfectWinner(metrics: SelectionMetrics): Boolean =
+        qualifiesForPerfectGame(outcome, metrics.correct, metrics.wrong)
+
     private fun Long.toTimestamp(): Timestamp = Timestamp.from(Instant.ofEpochMilli(this))
 
     private companion object {
         const val ELO_K_FACTOR = 32.0
         const val MIN_ELO = 100
-        const val SPEED_50_LIMIT_MILLIS = 30_000L
         const val BASE_MATCH_EXPERIENCE = 15
         const val WIN_BONUS_EXPERIENCE = 10
     }
 }
+
+internal fun qualifiesForPerfectGame(
+    outcome: MatchOutcome,
+    correctSelections: Int,
+    wrongSelections: Int
+): Boolean = outcome == MatchOutcome.WIN && correctSelections > 0 && wrongSelections == 0
+
+internal fun qualifiesForSpeed50(
+    outcome: MatchOutcome,
+    correctSelections: Int,
+    matchDurationMillis: Long
+): Boolean =
+    outcome == MatchOutcome.WIN &&
+        correctSelections >= 50 &&
+        matchDurationMillis <= 30_000L

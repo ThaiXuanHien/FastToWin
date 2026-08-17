@@ -8,6 +8,7 @@ import org.flywaydb.core.Flyway
 import java.util.UUID
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class PostgresMatchResultRepositoryTest {
@@ -53,10 +54,10 @@ class PostgresMatchResultRepositoryTest {
                         )
                     } + MatchSelectionEvent(
                         guest.playerId,
-                        "rejected-1",
-                        99,
-                        50,
-                        SelectionResult.REJECTED,
+                        "accepted-guest",
+                        51,
+                        51,
+                        SelectionResult.ACCEPTED,
                         matchStartedAt + 595L,
                         51
                     )
@@ -101,14 +102,14 @@ class PostgresMatchResultRepositoryTest {
                             val counts = buildMap {
                                 while (result.next()) put(result.getString("result"), result.getInt("count"))
                             }
-                            assertEquals(mapOf("ACCEPTED" to 50, "REJECTED" to 1), counts)
+                            assertEquals(mapOf("ACCEPTED" to 51), counts)
                         }
                     }
                 }
                 val guestProfile = profileRepository.findByPlayerId(guest.playerId)!!
-                assertEquals(0, guestProfile.statistics.correctSelections)
-                assertEquals(1, guestProfile.statistics.wrongSelections)
-                assertEquals(0L, guestProfile.statistics.averageReactionMillis)
+                assertEquals(1, guestProfile.statistics.correctSelections)
+                assertEquals(0, guestProfile.statistics.wrongSelections)
+                assertEquals(5L, guestProfile.statistics.averageReactionMillis)
                 assertEquals(984, guestProfile.statistics.eloRating)
                 assertEquals(16, profile.recentMatches.single().eloChange)
                 assertEquals(-16, guestProfile.recentMatches.single().eloChange)
@@ -117,23 +118,25 @@ class PostgresMatchResultRepositoryTest {
                     profile.achievements.map { it.code }.toSet()
                 )
                 assertEquals(0, guestProfile.achievements.size)
+                assertFalse(guestProfile.progression.weeklyMissions.first { it.code == "WEEKLY_PERFECT_1" }.completed)
                 assertEquals(25, profile.progression.experiencePoints)
                 assertEquals(1, profile.progression.level)
                 assertEquals(1, profile.progression.dailyMissions.first { it.code == "DAILY_PLAY_3" }.progress)
                 assertTrue(profile.progression.dailyMissions.first { it.code == "DAILY_WIN_1" }.completed)
                 assertEquals(50, profile.progression.weeklyMissions.first { it.code == "WEEKLY_CORRECT_100" }.progress)
                 assertTrue(profile.progression.weeklyMissions.first { it.code == "WEEKLY_PERFECT_1" }.completed)
-                assertTrue(profile.progression.cosmetics.first { it.id == "frame_perfect" }.unlocked)
+                assertFalse(profile.progression.cosmetics.first { it.id == "frame_perfect" }.unlocked)
                 assertEquals("Mùa Khởi Đầu", profile.progression.season?.name)
                 assertEquals(1016, profile.progression.season?.rating)
                 val detail = profileRepository.findMatchDetail(host.playerId, matchId)!!
                 assertEquals(1_000L, detail.durationMillis)
                 assertEquals(51, detail.events.size)
-                assertEquals(50, detail.events.count { it.accepted })
-                assertTrue(profileRepository.equipCosmetics(host.playerId, "frame_perfect", "title_rookie"))
+                assertEquals(51, detail.events.count { it.accepted })
+                assertFalse(profileRepository.equipCosmetics(host.playerId, "frame_perfect", "title_rookie"))
+                assertTrue(profileRepository.equipCosmetics(host.playerId, "frame_default", "title_rookie"))
                 assertTrue(
                     profileRepository.findByPlayerId(host.playerId)!!.progression.cosmetics
-                        .first { it.id == "frame_perfect" }.equipped
+                        .first { it.id == "frame_default" }.equipped
                 )
                 assertTrue(profileRepository.updateProfile(host.playerId, "Updated host", "crown"))
                 val updatedProfile = profileRepository.findByPlayerId(host.playerId)!!

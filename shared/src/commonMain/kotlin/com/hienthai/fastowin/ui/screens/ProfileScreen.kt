@@ -68,6 +68,7 @@ import com.hienthai.fastowin.protocol.MatchHistoryOutcome
 import com.hienthai.fastowin.protocol.AccountSessionSnapshot
 import com.hienthai.fastowin.protocol.MatchHistorySnapshot
 import com.hienthai.fastowin.protocol.MatchDetailSnapshot
+import com.hienthai.fastowin.protocol.CosmeticSnapshot
 import com.hienthai.fastowin.protocol.CosmeticType
 import com.hienthai.fastowin.protocol.MAX_PROFILE_DISPLAY_NAME_LENGTH
 import com.hienthai.fastowin.protocol.PROFILE_AVATAR_IDS
@@ -397,7 +398,7 @@ fun ProfileScreen(
                         selected = cosmetic.equipped,
                         enabled = canEdit && cosmetic.unlocked && !isProfileLoading,
                         onClick = { onEquipCosmetics(cosmetic.id, equippedTitle) },
-                        label = { Text(if (cosmetic.unlocked) cosmetic.name else "🔒 ${cosmetic.name}") }
+                        label = { Text(cosmetic.displayLabel()) }
                     )
                 }
             }
@@ -408,7 +409,7 @@ fun ProfileScreen(
                         selected = cosmetic.equipped,
                         enabled = canEdit && cosmetic.unlocked && !isProfileLoading,
                         onClick = { onEquipCosmetics(equippedFrame, cosmetic.id) },
-                        label = { Text(if (cosmetic.unlocked) cosmetic.name else "🔒 ${cosmetic.name}") }
+                        label = { Text(cosmetic.displayLabel()) }
                     )
                 }
             }
@@ -1023,6 +1024,19 @@ private fun MatchDetailDialog(
 private fun formatMatchDuration(millis: Long): String {
     val totalSeconds = millis.coerceAtLeast(0L) / 1_000L
     return "${totalSeconds / 60}:${(totalSeconds % 60).toString().padStart(2, '0')}"
+}
+
+private fun CosmeticSnapshot.displayLabel(): String {
+    if (unlocked) return name
+    val requirement = when (id) {
+        "frame_bronze" -> "Cấp 3"
+        "frame_gold" -> "Cấp 10"
+        "frame_perfect" -> "Cấp 15 + thắng không bấm sai"
+        "title_champion" -> "Thắng 10 trận"
+        "title_speed" -> "Thắng và chọn đủ 50 số trong 30 giây"
+        else -> null
+    }
+    return if (requirement == null) "🔒 $name" else "🔒 $name · $requirement"
 }
 
 @Composable

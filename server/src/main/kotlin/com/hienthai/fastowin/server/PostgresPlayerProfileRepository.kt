@@ -199,25 +199,23 @@ class PostgresPlayerProfileRepository(
             val experiencePoints = progressionRow.first
             val level = experiencePoints / EXPERIENCE_PER_LEVEL + 1
             val achievementCodes = achievements.mapTo(mutableSetOf()) { it.code }
-            val unlockedFrames = setOf("frame_default") + buildSet {
-                if (level >= 3) add("frame_bronze")
-                if (level >= 10) add("frame_gold")
-                if ("PERFECT_GAME" in achievementCodes) add("frame_perfect")
-            }
+            val unlockedFrames = unlockedFrameIds(level, achievementCodes)
             val unlockedTitles = setOf("title_rookie") + buildSet {
                 if (base.statistics.wins >= 10) add("title_champion")
                 if ("SPEED_50" in achievementCodes) add("title_speed")
             }
+            val equippedFrameId = progressionRow.second.takeIf(unlockedFrames::contains) ?: "frame_default"
+            val equippedTitleId = progressionRow.third.takeIf(unlockedTitles::contains) ?: "title_rookie"
             fun cosmetic(id: String, name: String, type: CosmeticType, unlocked: Boolean, equippedId: String) =
-                CosmeticSnapshot(id, name, type, unlocked, id == equippedId)
+                CosmeticSnapshot(id, name, type, unlocked, unlocked && id == equippedId)
             val cosmetics = listOf(
-                cosmetic("frame_default", "Khung cơ bản", CosmeticType.FRAME, true, progressionRow.second),
-                cosmetic("frame_bronze", "Khung Đồng", CosmeticType.FRAME, "frame_bronze" in unlockedFrames, progressionRow.second),
-                cosmetic("frame_gold", "Khung Vàng", CosmeticType.FRAME, "frame_gold" in unlockedFrames, progressionRow.second),
-                cosmetic("frame_perfect", "Khung Hoàn hảo", CosmeticType.FRAME, "frame_perfect" in unlockedFrames, progressionRow.second),
-                cosmetic("title_rookie", "Tân binh", CosmeticType.TITLE, true, progressionRow.third),
-                cosmetic("title_champion", "Nhà vô địch", CosmeticType.TITLE, "title_champion" in unlockedTitles, progressionRow.third),
-                cosmetic("title_speed", "Tia chớp", CosmeticType.TITLE, "title_speed" in unlockedTitles, progressionRow.third)
+                cosmetic("frame_default", "Khung cơ bản", CosmeticType.FRAME, true, equippedFrameId),
+                cosmetic("frame_bronze", "Khung Đồng", CosmeticType.FRAME, "frame_bronze" in unlockedFrames, equippedFrameId),
+                cosmetic("frame_gold", "Khung Vàng", CosmeticType.FRAME, "frame_gold" in unlockedFrames, equippedFrameId),
+                cosmetic("frame_perfect", "Khung Hoàn hảo", CosmeticType.FRAME, "frame_perfect" in unlockedFrames, equippedFrameId),
+                cosmetic("title_rookie", "Tân binh", CosmeticType.TITLE, true, equippedTitleId),
+                cosmetic("title_champion", "Nhà vô địch", CosmeticType.TITLE, "title_champion" in unlockedTitles, equippedTitleId),
+                cosmetic("title_speed", "Tia chớp", CosmeticType.TITLE, "title_speed" in unlockedTitles, equippedTitleId)
             )
             base.copy(
                 recentMatches = recentMatches,
@@ -233,7 +231,7 @@ class PostgresPlayerProfileRepository(
                     ),
                     weeklyMissions = listOf(
                         mission("WEEKLY_CORRECT_100", "Chọn đúng 100 số trong tuần", 100),
-                        mission("WEEKLY_PERFECT_1", "Hoàn thành 1 trận không bấm sai", 1)
+                        mission("WEEKLY_PERFECT_1", "Thắng 1 trận không bấm sai", 1)
                     ),
                     cosmetics = cosmetics,
                     season = season
@@ -350,4 +348,11 @@ class PostgresPlayerProfileRepository(
     private companion object {
         const val EXPERIENCE_PER_LEVEL = 100
     }
+}
+
+internal fun unlockedFrameIds(level: Int, achievementCodes: Set<String>): Set<String> = buildSet {
+    add("frame_default")
+    if (level >= 3) add("frame_bronze")
+    if (level >= 10) add("frame_gold")
+    if (level >= 15 && "PERFECT_GAME" in achievementCodes) add("frame_perfect")
 }
