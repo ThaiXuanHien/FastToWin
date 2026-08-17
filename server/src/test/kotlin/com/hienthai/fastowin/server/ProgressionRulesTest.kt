@@ -31,5 +31,15 @@ class ProgressionRulesTest {
         assertFalse("frame_perfect" in unlockedFrameIds(level = 14, achievementCodes = setOf("PERFECT_GAME")))
         assertFalse("frame_perfect" in unlockedFrameIds(level = 15, achievementCodes = emptySet()))
         assertTrue("frame_perfect" in unlockedFrameIds(level = 15, achievementCodes = setOf("PERFECT_GAME")))
+        assertFalse("frame_persistent" in unlockedFrameIds(level = 20, achievementCodes = emptySet(), totalDailyCheckIns = 99))
+        assertTrue("frame_persistent" in unlockedFrameIds(level = 1, achievementCodes = emptySet(), totalDailyCheckIns = 100))
+    }
+
+    @Test
+    fun `daily check in title and avatar unlock at their exact milestones`() {
+        assertFalse("title_diligent" in unlockedTitleIds(0, emptySet(), bestDailyCheckInStreak = 29))
+        assertTrue("title_diligent" in unlockedTitleIds(0, emptySet(), bestDailyCheckInStreak = 30))
+        assertTrue(unlockedAvatarIds(49).isEmpty())
+        assertTrue("calendar" in unlockedAvatarIds(50))
     }
 }

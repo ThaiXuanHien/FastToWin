@@ -1,0 +1,381 @@
+# Fast To Win
+
+Fast To Win là game tìm số 1–50 theo thời gian thực dành cho Android và iOS. Giao diện và phần lớn logic client dùng Compose Multiplatform; backend là Ktor WebSocket và PostgreSQL.
+
+## Công nghệ và cấu trúc project
+
+| Thư mục | Vai trò |
+| --- | --- |
+| `app/` | Ứng dụng Android và cấu hình flavor `dev`/`prod` |
+| `shared/` | Compose Multiplatform UI, state và WebSocket client dùng chung |
+| `protocol/` | Message model và serialization dùng chung giữa client/server |
+| `server/` | Ktor HTTP/WebSocket server, repository và Flyway migration |
+| `iosApp/` | Ứng dụng iOS, Xcode project và cầu nối Swift–Kotlin |
+
+Cấu hình chính hiện tại:
+
+- JDK 17.
+- Gradle wrapper 9.5.
+- Android `minSdk 29`, `compileSdk 37`, `targetSdk 37`.
+- iOS 14 trở lên, Apple Silicon simulator và thiết bị arm64.
+- PostgreSQL 17 khi chạy qua Docker.
+- Backend HTTP/WebSocket ở cổng `8080`.
+- PostgreSQL development ở cổng `5432`.
+
+## 1. Chuẩn bị môi trường Windows/Android
+
+Cài các công cụ sau:
+
+1. Git.
+2. Android Studio có bundled JDK 17.
+3. Trong Android Studio SDK Manager, cài:
+   - Android SDK Platform 37.
+   - Android SDK Build-Tools.
+   - Android SDK Platform-Tools.
+   - Android Emulator nếu dùng máy ảo.
+4. Docker Desktop nếu cần đăng nhập, lưu hồ sơ, Elo, bạn bè, điểm danh và dữ liệu bền vững.
+
+Docker Desktop cần được khởi động hoàn toàn trước khi chạy server. Sau khi cài mới Docker hoặc Android Studio, nên đóng và mở lại terminal để biến môi trường được cập nhật.
+
+Clone project:
+
+```powershell
+git clone https://github.com/ThaiXuanHien/FastToWin.git
+cd FastToWin
+```
+
+Mở chính thư mục `FastToWin` trong Android Studio và chờ Gradle Sync hoàn tất. Android Studio thường tự tạo `local.properties`. Nếu không, tạo file này ở thư mục gốc:
+
+```properties
+sdk.dir=C\:\\Users\\YOUR_USER\\AppData\\Local\\Android\\Sdk
+```
+
+`local.properties` là cấu hình riêng của máy và không được commit.
+
+## 2. Chạy nhanh Android + backend + PostgreSQL
+
+Đây là cách khuyến nghị cho một developer mới:
+
+1. Mở Docker Desktop.
+2. Mở một Android emulator hoặc kết nối thiết bị đã bật USB debugging.
+3. Mở Terminal trong Android Studio tại thư mục gốc project.
+4. Chạy:
+
+```powershell
+.\start-dev-server-with-db.cmd
+```
+
+Script sẽ:
+
+- Khởi động PostgreSQL bằng Docker Compose.
+- Chờ database healthy.
+- Thiết lập `JAVA_HOME` từ JDK đi kèm Android Studio nếu chưa có.
+- Chạy `adb reverse tcp:8080 tcp:8080` cho mọi thiết bị đang online.
+- Chạy Flyway migration tự động.
+- Khởi động Ktor server ở `0.0.0.0:8080`.
+
+Giữ terminal này mở trong khi phát triển. Khi thấy dòng tương tự sau, server đã chạy:
+
+```text
+Starting Fast To Win server: environment=dev, host=0.0.0.0, port=8080, storage=postgresql
+```
+
+Kiểm tra health endpoint:
+
+```text
+http://127.0.0.1:8080/health
+```
+
+Kết quả mong đợi:
+
+```text
+OK
+```
+
+Trong Android Studio:
+
+1. Chọn run configuration/module `app`.
+2. Chọn build variant `devDebug`.
+3. Chọn emulator/thiết bị.
+4. Nhấn **Run**.
+
+App development kết nối tới:
+
+```text
+ws://127.0.0.1:8080/game
+```
+
+Trên Android, địa chỉ này hoạt động nhờ `adb reverse` do script thiết lập.
+
+## 3. Chạy backend thủ công
+
+### Có PostgreSQL
+
+```powershell
+docker compose up -d --wait database
+
+$env:JAVA_HOME='C:\Program Files\Android\Android Studio\jbr'
+$env:FASTTOWIN_ENV='dev'
+$env:DATABASE_URL='jdbc:postgresql://localhost:5432/fasttowin'
+$env:DATABASE_USER='fasttowin'
+$env:DATABASE_PASSWORD='fasttowin'
+
+.\gradlew.bat :server:run
+```
+
+Flyway tự chạy các migration còn thiếu khi backend khởi động.
+
+### Không có PostgreSQL
+
+```powershell
+.\start-dev-server.cmd
+```
+
+Hoặc:
+
+```powershell
+$env:JAVA_HOME='C:\Program Files\Android\Android Studio\jbr'
+$env:FASTTOWIN_ENV='dev'
+.\gradlew.bat :server:run
+```
+
+Chế độ này dùng bộ nhớ và phù hợp để thử phòng/game cơ bản. Tài khoản, lịch sử, bạn bè, Elo, điểm danh và dữ liệu khác sẽ không được lưu bền vững.
+
+Nếu emulator được khởi động lại trong lúc server vẫn chạy, chạy lại:
+
+```powershell
+.\connect-dev-device.cmd
+```
+
+## 4. Chạy trên điện thoại Android thật
+
+### Qua USB
+
+1. Bật Developer options và USB debugging.
+2. Kết nối điện thoại, chấp nhận khóa RSA.
+3. Chạy:
+
+```powershell
+.\connect-dev-device.cmd
+```
+
+Sau đó Run app từ Android Studio.
+
+### Qua mạng LAN
+
+Máy tính và điện thoại phải cùng mạng. Lấy IPv4 của máy chạy server, mở firewall cho TCP 8080 và build với URL LAN:
+
+```powershell
+.\gradlew.bat :app:assembleDevDebug -PFASTTOWIN_DEV_WS_URL=ws://192.168.1.10:8080/game
+```
+
+Thay `192.168.1.10` bằng IP thật. APK được tạo tại:
+
+```text
+app/build/outputs/apk/dev/debug/app-dev-debug.apk
+```
+
+## 5. Xem PostgreSQL development
+
+Thông tin kết nối mặc định trong `compose.yaml`:
+
+```text
+Host: 127.0.0.1
+Port: 5432
+Database: fasttowin
+User: fasttowin
+Password: fasttowin
+```
+
+Có thể dùng Database Inspector của IntelliJ/Android Studio bản hỗ trợ database, DBeaver hoặc pgAdmin. Hoặc mở `psql` trong container:
+
+```powershell
+docker compose exec database psql -U fasttowin -d fasttowin
+```
+
+Một số lệnh hữu ích trong `psql`:
+
+```sql
+\dt
+SELECT version, description, success FROM flyway_schema_history ORDER BY installed_rank;
+SELECT id, email, created_at FROM users ORDER BY created_at DESC;
+SELECT * FROM daily_check_ins ORDER BY created_at DESC;
+```
+
+Dừng container nhưng giữ dữ liệu:
+
+```powershell
+docker compose stop
+```
+
+Không chạy `docker compose down -v` trừ khi chủ động muốn xóa toàn bộ database local.
+
+## 6. Chạy trên iOS
+
+iOS chỉ build/run trên macOS. Yêu cầu:
+
+- Mac Apple Silicon.
+- Xcode và iOS 14+ simulator hoặc iPhone/iPad đã provisioning.
+- JDK 17.
+- Docker Desktop nếu chạy PostgreSQL trên cùng máy.
+
+Khởi động backend trên macOS:
+
+```bash
+docker compose up -d --wait database
+
+export FASTTOWIN_ENV=dev
+export DATABASE_URL=jdbc:postgresql://localhost:5432/fasttowin
+export DATABASE_USER=fasttowin
+export DATABASE_PASSWORD=fasttowin
+
+./gradlew :server:run
+```
+
+Sau đó:
+
+1. Mở `iosApp/iosApp.xcodeproj` bằng Xcode.
+2. Chọn scheme `iosApp`.
+3. Chọn iOS simulator và nhấn Run.
+
+iOS Simulator dùng mặc định:
+
+```text
+ws://127.0.0.1:8080/game
+```
+
+Với iPhone/iPad thật, thay `GAME_SERVER_URL` trong Debug build settings bằng địa chỉ LAN của Mac, ví dụ `ws://192.168.1.20:8080/game`, đồng thời mở firewall cổng 8080.
+
+Xem thêm [IOS_SETUP.md](IOS_SETUP.md) và [UI_TESTING.md](UI_TESTING.md).
+
+## 7. Build và test
+
+Thiết lập JDK trong PowerShell nếu cần:
+
+```powershell
+$env:JAVA_HOME='C:\Program Files\Android\Android Studio\jbr'
+```
+
+Build APK development:
+
+```powershell
+.\gradlew.bat :app:assembleDevDebug --no-daemon
+```
+
+Chạy unit test backend và shared:
+
+```powershell
+.\gradlew.bat :server:test :shared:testAndroidHostTest --no-daemon
+```
+
+Chạy Compose UI test; cần ít nhất một emulator/thiết bị online:
+
+```powershell
+.\gradlew.bat :app:connectedDevDebugAndroidTest --no-daemon
+```
+
+Chạy integration test PostgreSQL:
+
+```powershell
+$env:TEST_DATABASE_URL='jdbc:postgresql://localhost:5432/fasttowin'
+$env:TEST_DATABASE_USER='fasttowin'
+$env:TEST_DATABASE_PASSWORD='fasttowin'
+.\gradlew.bat :server:test --rerun-tasks --no-daemon
+```
+
+Báo cáo Compose UI test:
+
+```text
+app/build/reports/androidTests/connected/debug/flavors/dev/index.html
+```
+
+## 8. Môi trường dev và production
+
+| Thành phần | Development | Production |
+| --- | --- | --- |
+| Android | Flavor `dev` | Flavor `prod` |
+| iOS | Configuration `Debug` | Configuration `Release` |
+| Backend | `FASTTOWIN_ENV=dev` | `FASTTOWIN_ENV=prod` |
+| WebSocket | Có thể dùng `ws://` local | Bắt buộc cấu hình `wss://` thật |
+
+Build Android production:
+
+```powershell
+.\gradlew.bat :app:assembleProdRelease -PFASTTOWIN_PROD_WS_URL=wss://api.example.com/game
+```
+
+Backend production yêu cầu PostgreSQL và không được dùng mật khẩu development:
+
+```powershell
+$env:FASTTOWIN_ENV='prod'
+$env:PORT='8080'
+$env:DATABASE_URL='jdbc:postgresql://database-host:5432/fasttowin'
+$env:DATABASE_USER='fasttowin_app'
+$env:DATABASE_PASSWORD='replace-with-a-secret'
+.\gradlew.bat :server:run
+```
+
+Endpoint production mặc định trong project chỉ là placeholder và không thể kết nối. Không phát hành app trước khi thay bằng `wss://` hợp lệ.
+
+## 9. Xử lý lỗi thường gặp
+
+### `JAVA_HOME is not set`
+
+Trong Android Studio Terminal:
+
+```powershell
+$env:JAVA_HOME='C:\Program Files\Android\Android Studio\jbr'
+```
+
+Xác nhận:
+
+```powershell
+& "$env:JAVA_HOME\bin\java.exe" -version
+```
+
+### `Address already in use: bind`
+
+Cổng 8080 đang có một server khác sử dụng:
+
+```powershell
+Get-NetTCPConnection -LocalPort 8080 -State Listen
+```
+
+Dừng đúng process cũ sau khi kiểm tra PID:
+
+```powershell
+Stop-Process -Id <PID>
+```
+
+Không chạy hai lệnh `:server:run` cùng lúc.
+
+### App báo không thể kết nối `ws://127.0.0.1:8080`
+
+Kiểm tra theo thứ tự:
+
+1. Mở `http://127.0.0.1:8080/health` và xác nhận trả `OK`.
+2. Xác nhận emulator/thiết bị đang online.
+3. Chạy lại `.\connect-dev-device.cmd`.
+4. Rebuild app nếu vừa thay URL hoặc protocol.
+5. Nếu dùng điện thoại qua Wi-Fi, không dùng `127.0.0.1`; dùng IP LAN của máy chạy server.
+
+### `docker` không được nhận diện
+
+- Mở Docker Desktop và chờ trạng thái Running.
+- Mở terminal mới.
+- Kiểm tra `docker version` và `docker compose version`.
+- Script Windows cũng thử tìm Docker tại thư mục cài mặc định của Docker Desktop.
+
+### Protocol không tương thích
+
+Client và server phải lấy từ cùng commit. Sau khi `git pull`, hãy dừng server cũ, khởi động lại backend rồi rebuild app.
+
+### Cổng PostgreSQL 5432 bị chiếm
+
+Kiểm tra process/container khác đang dùng cổng hoặc đổi port mapping trong `compose.yaml` và cập nhật `DATABASE_URL` tương ứng.
+
+## Tài liệu chi tiết
+
+- [BACKEND_SETUP.md](BACKEND_SETUP.md): kiến trúc backend, API, bảo mật và production.
+- [IOS_SETUP.md](IOS_SETUP.md): chạy ứng dụng iOS.
+- [UI_TESTING.md](UI_TESTING.md): test tự động và ma trận kiểm thử đa thiết bị.

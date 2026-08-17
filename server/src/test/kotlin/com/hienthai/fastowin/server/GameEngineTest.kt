@@ -1,6 +1,9 @@
 package com.hienthai.fastowin.server
 
 import com.hienthai.fastowin.protocol.ClientMessage
+import com.hienthai.fastowin.protocol.CosmeticSnapshot
+import com.hienthai.fastowin.protocol.CosmeticType
+import com.hienthai.fastowin.protocol.DAILY_CHECK_IN_AVATAR_ID
 import com.hienthai.fastowin.protocol.ProtocolGameMode
 import com.hienthai.fastowin.protocol.PlayerProfileSnapshot
 import com.hienthai.fastowin.protocol.DailyCheckInSnapshot
@@ -297,6 +300,36 @@ class GameEngineTest {
         )
         assertEquals("INVALID_AVATAR", assertIs<ServerMessage.Error>(invalid.single().message).code)
         assertEquals("Tên mới", storedProfile.displayName)
+
+        val lockedAvatar = engine.handle(
+            player.playerId,
+            ClientMessage.UpdateProfile("Tên mới", DAILY_CHECK_IN_AVATAR_ID)
+        )
+        assertEquals("AVATAR_LOCKED", assertIs<ServerMessage.Error>(lockedAvatar.single().message).code)
+
+        storedProfile = storedProfile.copy(
+            progression = PlayerProgressionSnapshot(
+                cosmetics = listOf(
+                    CosmeticSnapshot(
+                        DAILY_CHECK_IN_AVATAR_ID,
+                        "Ảnh đại diện Điểm danh",
+                        CosmeticType.AVATAR,
+                        unlocked = true,
+                        equipped = false
+                    )
+                )
+            )
+        )
+        val unlockedAvatar = engine.handle(
+            player.playerId,
+            ClientMessage.UpdateProfile("Tên mới", DAILY_CHECK_IN_AVATAR_ID)
+        )
+        assertEquals(
+            DAILY_CHECK_IN_AVATAR_ID,
+            unlockedAvatar.map(Delivery::message)
+                .filterIsInstance<ServerMessage.ProfileData>()
+                .single().profile.avatarId
+        )
 
         val guest = engine.connectGuest("Khách", null)
         val guestUpdate = engine.handle(

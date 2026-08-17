@@ -11,6 +11,11 @@ import com.hienthai.fastowin.protocol.MatchEventSnapshot
 import com.hienthai.fastowin.protocol.CosmeticSnapshot
 import com.hienthai.fastowin.protocol.CosmeticType
 import com.hienthai.fastowin.protocol.DailyCheckInSnapshot
+import com.hienthai.fastowin.protocol.DAILY_CHECK_IN_AVATAR_ID
+import com.hienthai.fastowin.protocol.DAILY_CHECK_IN_AVATAR_TARGET
+import com.hienthai.fastowin.protocol.DAILY_CHECK_IN_FRAME_TARGET
+import com.hienthai.fastowin.protocol.DAILY_CHECK_IN_STREAK_ACHIEVEMENT_TARGET
+import com.hienthai.fastowin.protocol.DAILY_CHECK_IN_TITLE_TARGET
 import com.hienthai.fastowin.protocol.MissionSnapshot
 import com.hienthai.fastowin.protocol.PlayerProgressionSnapshot
 import com.hienthai.fastowin.protocol.SeasonSnapshot
@@ -215,11 +220,17 @@ class PostgresPlayerProfileRepository(
             val experiencePoints = progressionRow.experiencePoints
             val level = experiencePoints / EXPERIENCE_PER_LEVEL + 1
             val achievementCodes = achievements.mapTo(mutableSetOf()) { it.code }
-            val unlockedFrames = unlockedFrameIds(level, achievementCodes)
-            val unlockedTitles = setOf("title_rookie") + buildSet {
-                if (base.statistics.wins >= 10) add("title_champion")
-                if ("SPEED_50" in achievementCodes) add("title_speed")
-            }
+            val unlockedFrames = unlockedFrameIds(
+                level,
+                achievementCodes,
+                progressionRow.totalDailyCheckIns
+            )
+            val unlockedTitles = unlockedTitleIds(
+                base.statistics.wins,
+                achievementCodes,
+                progressionRow.bestDailyCheckInStreak
+            )
+            val unlockedAvatars = unlockedAvatarIds(progressionRow.totalDailyCheckIns)
             val equippedFrameId = progressionRow.equippedFrameId.takeIf(unlockedFrames::contains) ?: "frame_default"
             val equippedTitleId = progressionRow.equippedTitleId.takeIf(unlockedTitles::contains) ?: "title_rookie"
             val today = currentCheckInDate()
@@ -232,16 +243,25 @@ class PostgresPlayerProfileRepository(
                 today, today.minusDays(1) -> progressionRow.currentDailyCheckInStreak
                 else -> 0
             }
-            fun cosmetic(id: String, name: String, type: CosmeticType, unlocked: Boolean, equippedId: String) =
+            fun cosmetic(id: String, name: String, type: CosmeticType, unlocked: Boolean, equippedId: String?) =
                 CosmeticSnapshot(id, name, type, unlocked, unlocked && id == equippedId)
             val cosmetics = listOf(
                 cosmetic("frame_default", "Khung cơ bản", CosmeticType.FRAME, true, equippedFrameId),
                 cosmetic("frame_bronze", "Khung Đồng", CosmeticType.FRAME, "frame_bronze" in unlockedFrames, equippedFrameId),
                 cosmetic("frame_gold", "Khung Vàng", CosmeticType.FRAME, "frame_gold" in unlockedFrames, equippedFrameId),
                 cosmetic("frame_perfect", "Khung Hoàn hảo", CosmeticType.FRAME, "frame_perfect" in unlockedFrames, equippedFrameId),
+                cosmetic("frame_persistent", "Khung Bền bỉ", CosmeticType.FRAME, "frame_persistent" in unlockedFrames, equippedFrameId),
                 cosmetic("title_rookie", "Tân binh", CosmeticType.TITLE, true, equippedTitleId),
                 cosmetic("title_champion", "Nhà vô địch", CosmeticType.TITLE, "title_champion" in unlockedTitles, equippedTitleId),
-                cosmetic("title_speed", "Tia chớp", CosmeticType.TITLE, "title_speed" in unlockedTitles, equippedTitleId)
+                cosmetic("title_speed", "Tia chớp", CosmeticType.TITLE, "title_speed" in unlockedTitles, equippedTitleId),
+                cosmetic("title_diligent", "Chuyên cần", CosmeticType.TITLE, "title_diligent" in unlockedTitles, equippedTitleId),
+                cosmetic(
+                    DAILY_CHECK_IN_AVATAR_ID,
+                    "Ảnh đại diện Điểm danh",
+                    CosmeticType.AVATAR,
+                    DAILY_CHECK_IN_AVATAR_ID in unlockedAvatars,
+                    base.avatarId
+                )
             )
             base.copy(
                 recentMatches = recentMatches,
@@ -419,6 +439,19 @@ class PostgresPlayerProfileRepository(
                             statement.setInt(5, decision.resultingStreak)
                             statement.executeUpdate()
                         }
+                        if (decision.resultingStreak >= DAILY_CHECK_IN_STREAK_ACHIEVEMENT_TARGET) {
+                            connection.prepareStatement(
+                                """
+                                INSERT INTO user_achievements (
+                                    user_id, achievement_code, unlocked_at, match_id
+                                ) VALUES (?, 'DAILY_STREAK_7', CURRENT_TIMESTAMP, NULL)
+                                ON CONFLICT (user_id, achievement_code) DO NOTHING
+                                """.trimIndent()
+                            ).use { statement ->
+                                statement.setObject(1, userId)
+                                statement.executeUpdate()
+                            }
+                        }
                         connection.commit()
                         DailyCheckInClaimResult(claimed = true, rewardXp = decision.rewardXp)
                     }
@@ -434,6 +467,19 @@ class PostgresPlayerProfileRepository(
         displayName: String,
         avatarId: String?
     ): Boolean = withContext(Dispatchers.IO) {
+        if (avatarId == DAILY_CHECK_IN_AVATAR_ID) {
+            val unlocked = dataSource.connection.use { connection ->
+                connection.prepareStatement(
+                    "SELECT total_daily_check_ins FROM player_stats WHERE user_id = ?"
+                ).use { statement ->
+                    statement.setObject(1, UUID.fromString(playerId))
+                    statement.executeQuery().use { result ->
+                        result.next() && result.getInt("total_daily_check_ins") >= DAILY_CHECK_IN_AVATAR_TARGET
+                    }
+                }
+            }
+            if (!unlocked) return@withContext false
+        }
         dataSource.connection.use { connection ->
             connection.prepareStatement(
                 """
@@ -475,9 +521,29 @@ private data class ProgressionRow(
     val lastDailyCheckInDate: LocalDate? = null
 )
 
-internal fun unlockedFrameIds(level: Int, achievementCodes: Set<String>): Set<String> = buildSet {
+internal fun unlockedFrameIds(
+    level: Int,
+    achievementCodes: Set<String>,
+    totalDailyCheckIns: Int = 0
+): Set<String> = buildSet {
     add("frame_default")
     if (level >= 3) add("frame_bronze")
     if (level >= 10) add("frame_gold")
     if (level >= 15 && "PERFECT_GAME" in achievementCodes) add("frame_perfect")
+    if (totalDailyCheckIns >= DAILY_CHECK_IN_FRAME_TARGET) add("frame_persistent")
+}
+
+internal fun unlockedTitleIds(
+    wins: Int,
+    achievementCodes: Set<String>,
+    bestDailyCheckInStreak: Int = 0
+): Set<String> = buildSet {
+    add("title_rookie")
+    if (wins >= 10) add("title_champion")
+    if ("SPEED_50" in achievementCodes) add("title_speed")
+    if (bestDailyCheckInStreak >= DAILY_CHECK_IN_TITLE_TARGET) add("title_diligent")
+}
+
+internal fun unlockedAvatarIds(totalDailyCheckIns: Int): Set<String> = buildSet {
+    if (totalDailyCheckIns >= DAILY_CHECK_IN_AVATAR_TARGET) add(DAILY_CHECK_IN_AVATAR_ID)
 }

@@ -59,6 +59,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -70,6 +71,11 @@ import com.hienthai.fastowin.protocol.MatchHistorySnapshot
 import com.hienthai.fastowin.protocol.MatchDetailSnapshot
 import com.hienthai.fastowin.protocol.CosmeticSnapshot
 import com.hienthai.fastowin.protocol.CosmeticType
+import com.hienthai.fastowin.protocol.DAILY_CHECK_IN_AVATAR_ID
+import com.hienthai.fastowin.protocol.DAILY_CHECK_IN_AVATAR_TARGET
+import com.hienthai.fastowin.protocol.DAILY_CHECK_IN_FRAME_TARGET
+import com.hienthai.fastowin.protocol.DAILY_CHECK_IN_STREAK_ACHIEVEMENT_TARGET
+import com.hienthai.fastowin.protocol.DAILY_CHECK_IN_TITLE_TARGET
 import com.hienthai.fastowin.protocol.MAX_PROFILE_DISPLAY_NAME_LENGTH
 import com.hienthai.fastowin.protocol.PROFILE_AVATAR_IDS
 import com.hienthai.fastowin.protocol.PlayerProfileSnapshot
@@ -291,12 +297,23 @@ fun ProfileScreen(
                         modifier = Modifier.fillMaxWidth()
                     )
                     Text("Chọn ảnh đại diện", fontWeight = FontWeight.Medium)
+                    val avatarCosmetics = profile.progression.cosmetics
+                        .filter { it.type == CosmeticType.AVATAR }
+                        .associateBy(CosmeticSnapshot::id)
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         items(PROFILE_AVATAR_IDS.toList(), key = { it }) { avatarId ->
+                            val unlocked = avatarId != DAILY_CHECK_IN_AVATAR_ID ||
+                                avatarCosmetics[avatarId]?.unlocked == true
                             FilterChip(
                                 selected = selectedAvatarId == avatarId,
-                                onClick = { selectedAvatarId = avatarId },
-                                label = { Text(avatarEmoji(avatarId), style = MaterialTheme.typography.titleLarge) }
+                                enabled = unlocked,
+                                onClick = { if (unlocked) selectedAvatarId = avatarId },
+                                label = {
+                                    Text(
+                                        (if (unlocked) "" else "🔒 ") + avatarEmoji(avatarId),
+                                        style = MaterialTheme.typography.titleLarge
+                                    )
+                                }
                             )
                         }
                     }
@@ -364,6 +381,11 @@ fun ProfileScreen(
             }
         }
 
+        DailyCheckInMilestones(
+            bestStreak = progression.dailyCheckIn.bestStreak,
+            totalCheckIns = progression.dailyCheckIn.totalCheckIns
+        )
+
         Text("Nhiệm vụ", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
         (progression.dailyMissions + progression.weeklyMissions).forEach { mission ->
             Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surfaceContainer) {
@@ -411,6 +433,20 @@ fun ProfileScreen(
                         onClick = { onEquipCosmetics(equippedFrame, cosmetic.id) },
                         label = { Text(cosmetic.displayLabel()) }
                     )
+                }
+            }
+            val specialAvatars = progression.cosmetics.filter { it.type == CosmeticType.AVATAR }
+            if (specialAvatars.isNotEmpty()) {
+                Text("Ảnh đại diện đặc biệt", fontWeight = FontWeight.SemiBold)
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    items(specialAvatars, key = { it.id }) { cosmetic ->
+                        FilterChip(
+                            selected = cosmetic.equipped,
+                            enabled = canEdit && cosmetic.unlocked && !state.isProfileSaving,
+                            onClick = { onSave(profile.displayName, cosmetic.id) },
+                            label = { Text("${avatarEmoji(cosmetic.id)} ${cosmetic.displayLabel()}") }
+                        )
+                    }
                 }
             }
         }
@@ -865,7 +901,87 @@ private fun avatarEmoji(avatarId: String?): String = when (avatarId) {
     "trophy" -> "🏆"
     "crown" -> "👑"
     "star" -> "⭐"
+    DAILY_CHECK_IN_AVATAR_ID -> "📅"
     else -> "⚡"
+}
+
+private data class DailyCheckInMilestone(
+    val icon: String,
+    val title: String,
+    val reward: String,
+    val progress: Int,
+    val target: Int
+)
+
+@Composable
+private fun DailyCheckInMilestones(bestStreak: Int, totalCheckIns: Int) {
+    val milestones = listOf(
+        DailyCheckInMilestone(
+            icon = "🏆",
+            title = "7 ngày liên tiếp",
+            reward = "Thành tích Khởi đầu đều đặn",
+            progress = bestStreak,
+            target = DAILY_CHECK_IN_STREAK_ACHIEVEMENT_TARGET
+        ),
+        DailyCheckInMilestone(
+            icon = "🎖️",
+            title = "30 ngày liên tiếp",
+            reward = "Danh hiệu Chuyên cần",
+            progress = bestStreak,
+            target = DAILY_CHECK_IN_TITLE_TARGET
+        ),
+        DailyCheckInMilestone(
+            icon = "📅",
+            title = "50 lần điểm danh",
+            reward = "Ảnh đại diện đặc biệt",
+            progress = totalCheckIns,
+            target = DAILY_CHECK_IN_AVATAR_TARGET
+        ),
+        DailyCheckInMilestone(
+            icon = "🛡️",
+            title = "100 lần điểm danh",
+            reward = "Khung Bền bỉ",
+            progress = totalCheckIns,
+            target = DAILY_CHECK_IN_FRAME_TARGET
+        )
+    )
+    Column(
+        modifier = Modifier.fillMaxWidth().testTag("daily_check_in_milestones"),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Text("Mốc điểm danh", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+        Text(
+            "Chuỗi tốt nhất $bestStreak ngày • Tổng $totalCheckIns lần",
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.bodySmall
+        )
+        milestones.forEach { milestone ->
+            val progress = milestone.progress.coerceAtMost(milestone.target)
+            val unlocked = progress >= milestone.target
+            Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surfaceContainer) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(14.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Text(if (unlocked) "✅" else milestone.icon, style = MaterialTheme.typography.titleLarge)
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                        Text(milestone.title, fontWeight = FontWeight.SemiBold)
+                        Text(
+                            milestone.reward,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        LinearProgressIndicator(
+                            progress = { progress.toFloat() / milestone.target },
+                            modifier = Modifier.fillMaxWidth().height(6.dp)
+                        )
+                    }
+                    Text("$progress/${milestone.target}", fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+    }
 }
 
 @Composable
@@ -1032,8 +1148,11 @@ private fun CosmeticSnapshot.displayLabel(): String {
         "frame_bronze" -> "Cấp 3"
         "frame_gold" -> "Cấp 10"
         "frame_perfect" -> "Cấp 15 + thắng không bấm sai"
+        "frame_persistent" -> "Điểm danh 100 lần"
         "title_champion" -> "Thắng 10 trận"
         "title_speed" -> "Thắng và chọn đủ 50 số trong 30 giây"
+        "title_diligent" -> "Điểm danh 30 ngày liên tiếp"
+        DAILY_CHECK_IN_AVATAR_ID -> "Điểm danh 50 lần"
         else -> null
     }
     return if (requirement == null) "🔒 $name" else "🔒 $name · $requirement"

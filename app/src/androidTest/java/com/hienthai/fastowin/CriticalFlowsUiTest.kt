@@ -24,6 +24,7 @@ import com.hienthai.fastowin.state.PlayerState
 import com.hienthai.fastowin.ui.screens.AuthScreen
 import com.hienthai.fastowin.ui.screens.GameScreen
 import com.hienthai.fastowin.ui.screens.LobbyScreen
+import com.hienthai.fastowin.ui.screens.ProfileScreen
 import com.hienthai.fastowin.ui.screens.ResultScreen
 import com.hienthai.fastowin.ui.theme.FastToWinTheme
 import org.junit.Assert.assertEquals
@@ -107,6 +108,53 @@ class CriticalFlowsUiTest {
         composeRule.onNodeWithTag("daily_check_in_claim").performClick()
 
         composeRule.runOnIdle { assertEquals(1, claims) }
+    }
+
+    @Test
+    fun profile_showsDailyCheckInMilestonesInIncreasingDifficulty() {
+        composeRule.setContent {
+            FastToWinTheme {
+                ProfileScreen(
+                    state = GameState(
+                        profile = PlayerProfileSnapshot(
+                            displayName = "Hiền",
+                            playerCode = "HIEN001",
+                            progression = PlayerProgressionSnapshot(
+                                dailyCheckIn = DailyCheckInSnapshot(
+                                    bestStreak = 30,
+                                    totalCheckIns = 50
+                                )
+                            )
+                        )
+                    ),
+                    onBack = {},
+                    onRefresh = {},
+                    onOpenMatchDetail = {},
+                    onCloseMatchDetail = {},
+                    onEquipCosmetics = { _, _ -> },
+                    onSave = { _, _ -> },
+                    canEdit = true,
+                    isAccountLoading = false,
+                    accountError = null,
+                    accountNotice = null,
+                    accountSessions = emptyList(),
+                    areSessionsLoading = false,
+                    onChangePassword = { _, _ -> },
+                    onDeleteAccount = {},
+                    onClearAccountFeedback = {},
+                    onLoadSessions = {},
+                    onRevokeSession = {},
+                    onRevokeAllSessions = {},
+                    onLogout = {}
+                )
+            }
+        }
+
+        composeRule.onNodeWithTag("daily_check_in_milestones").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("7/7").assertIsDisplayed()
+        composeRule.onNodeWithText("30/30").assertIsDisplayed()
+        composeRule.onNodeWithText("50/50").assertIsDisplayed()
+        composeRule.onNodeWithText("50/100").assertIsDisplayed()
     }
 
     @Test

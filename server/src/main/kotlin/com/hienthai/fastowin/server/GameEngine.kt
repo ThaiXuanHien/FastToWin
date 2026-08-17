@@ -1,6 +1,8 @@
 package com.hienthai.fastowin.server
 
 import com.hienthai.fastowin.protocol.ClientMessage
+import com.hienthai.fastowin.protocol.CosmeticType
+import com.hienthai.fastowin.protocol.DAILY_CHECK_IN_AVATAR_ID
 import com.hienthai.fastowin.protocol.MAX_PROFILE_DISPLAY_NAME_LENGTH
 import com.hienthai.fastowin.protocol.PROFILE_AVATAR_IDS
 import com.hienthai.fastowin.protocol.GAME_NUMBER_COUNT
@@ -918,6 +920,19 @@ class GameEngine(
                 "ACCOUNT_REQUIRED",
                 "Hãy lưu tài khoản khách trước khi chỉnh sửa hồ sơ."
             ))
+        }
+        if (command.avatarId == DAILY_CHECK_IN_AVATAR_ID) {
+            val profile = runCatching { playerProfileRepository.findByPlayerId(playerId) }.getOrNull()
+            val isUnlocked = profile?.progression?.cosmetics?.any {
+                it.type == CosmeticType.AVATAR && it.id == DAILY_CHECK_IN_AVATAR_ID && it.unlocked
+            } == true
+            if (!isUnlocked) {
+                return listOf(error(
+                    playerId,
+                    "AVATAR_LOCKED",
+                    "Ảnh đại diện này được mở khóa sau 50 lần điểm danh."
+                ))
+            }
         }
         val updated = runCatching {
             playerProfileRepository.updateProfile(playerId, safeName, command.avatarId)

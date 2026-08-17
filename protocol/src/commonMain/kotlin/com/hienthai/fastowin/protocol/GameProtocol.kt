@@ -4,12 +4,18 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
-const val PROTOCOL_VERSION = 16
+const val PROTOCOL_VERSION = 17
 const val GAME_NUMBER_COUNT = 50
 const val MAX_PROFILE_DISPLAY_NAME_LENGTH = 32
 val DAILY_CHECK_IN_REWARDS_XP = listOf(5, 10, 10, 15, 15, 20, 25)
+const val DAILY_CHECK_IN_STREAK_ACHIEVEMENT_TARGET = 7
+const val DAILY_CHECK_IN_TITLE_TARGET = 30
+const val DAILY_CHECK_IN_AVATAR_TARGET = 50
+const val DAILY_CHECK_IN_FRAME_TARGET = 100
+const val DAILY_CHECK_IN_AVATAR_ID = "calendar"
 
-val PROFILE_AVATAR_IDS = setOf("bolt", "rocket", "target", "trophy", "crown", "star")
+val STANDARD_PROFILE_AVATAR_IDS = listOf("bolt", "rocket", "target", "trophy", "crown", "star")
+val PROFILE_AVATAR_IDS = (STANDARD_PROFILE_AVATAR_IDS + DAILY_CHECK_IN_AVATAR_ID).toSet()
 
 val ProtocolJson = Json {
     classDiscriminator = "type"
@@ -97,7 +103,7 @@ data class PlayerProfileSnapshot(
 )
 
 @Serializable
-enum class CosmeticType { FRAME, TITLE }
+enum class CosmeticType { FRAME, TITLE, AVATAR }
 
 @Serializable
 data class CosmeticSnapshot(
