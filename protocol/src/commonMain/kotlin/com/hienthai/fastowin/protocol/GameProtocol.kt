@@ -4,7 +4,7 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
-const val PROTOCOL_VERSION = 14
+const val PROTOCOL_VERSION = 15
 const val GAME_NUMBER_COUNT = 50
 const val MAX_PROFILE_DISPLAY_NAME_LENGTH = 32
 
@@ -307,6 +307,10 @@ sealed class ClientMessage {
     data object GetProfile : ClientMessage()
 
     @Serializable
+    @SerialName("get_friend_profile")
+    data class GetFriendProfile(val friendUserId: String) : ClientMessage()
+
+    @Serializable
     @SerialName("get_match_detail")
     data class GetMatchDetail(val matchId: String) : ClientMessage()
 
@@ -452,6 +456,13 @@ sealed class ServerMessage {
     @Serializable
     @SerialName("profile_data")
     data class ProfileData(val profile: PlayerProfileSnapshot) : ServerMessage()
+
+    @Serializable
+    @SerialName("friend_profile_data")
+    data class FriendProfileData(
+        val friendUserId: String,
+        val profile: PlayerProfileSnapshot
+    ) : ServerMessage()
 
     @Serializable
     @SerialName("match_detail_data")

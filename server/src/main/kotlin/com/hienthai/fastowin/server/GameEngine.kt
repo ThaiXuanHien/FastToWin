@@ -170,6 +170,7 @@ class GameEngine(
     suspend fun handle(playerId: String, message: ClientMessage): List<Delivery> {
         restoreActiveRooms()
         if (message is ClientMessage.GetProfile) return loadProfile(playerId)
+        if (message is ClientMessage.GetFriendProfile) return loadFriendProfile(playerId, message.friendUserId)
         if (message is ClientMessage.GetMatchDetail) return loadMatchDetail(playerId, message.matchId)
         if (message is ClientMessage.UpdateProfile) return updateProfile(playerId, message)
         if (message is ClientMessage.EquipCosmetics) return equipCosmetics(playerId, message)
@@ -212,6 +213,7 @@ class GameEngine(
                     listOf(Delivery(ServerMessage.RoomList(publicRooms()), setOf(playerId)))
                 )
                 ClientMessage.GetProfile -> HandleResult(emptyList())
+                is ClientMessage.GetFriendProfile -> HandleResult(emptyList())
                 is ClientMessage.GetMatchDetail -> HandleResult(emptyList())
                 is ClientMessage.UpdateProfile -> HandleResult(emptyList())
                 is ClientMessage.EquipCosmetics -> HandleResult(emptyList())
@@ -832,6 +834,24 @@ class GameEngine(
             playerCode = playerId.replace("-", "").take(10).uppercase()
         )
         return listOf(Delivery(ServerMessage.ProfileData(profile), setOf(playerId)))
+    }
+
+    private suspend fun loadFriendProfile(playerId: String, friendUserId: String): List<Delivery> {
+        if (!isAccountSession(playerId)) return listOf(accountRequired(playerId))
+        if (friendUserId.isBlank() || friendUserId.length > 64 || friendUserId == playerId) {
+            return listOf(error(playerId, "INVALID_FRIEND", "Người chơi không hợp lệ."))
+        }
+        val areFriends = runCatching { friendRepository.areFriends(playerId, friendUserId) }
+            .getOrElse {
+                return listOf(error(playerId, "FRIEND_PROFILE_UNAVAILABLE", "Chưa tải được hồ sơ bạn bè."))
+            }
+        if (!areFriends) {
+            return listOf(error(playerId, "FRIEND_PROFILE_FORBIDDEN", "Bạn chỉ có thể xem hồ sơ của bạn bè."))
+        }
+        val profile = runCatching { playerProfileRepository.findByPlayerId(friendUserId) }
+            .getOrNull()
+            ?: return listOf(error(playerId, "FRIEND_PROFILE_NOT_FOUND", "Không tìm thấy hồ sơ người chơi."))
+        return listOf(Delivery(ServerMessage.FriendProfileData(friendUserId, profile), setOf(playerId)))
     }
 
     private suspend fun loadMatchDetail(playerId: String, matchId: String): List<Delivery> {

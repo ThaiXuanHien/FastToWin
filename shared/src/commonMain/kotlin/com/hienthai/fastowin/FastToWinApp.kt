@@ -197,6 +197,32 @@ private fun GameContent(
     }
 
     when {
+                state.isFriendProfileOpen -> ProfileScreen(
+                    state = state,
+                    profileOverride = state.friendProfile,
+                    isExternalProfile = true,
+                    onBack = controller::closeFriendProfile,
+                    onRefresh = controller::refreshFriendProfile,
+                    onOpenMatchDetail = {},
+                    onCloseMatchDetail = {},
+                    onEquipCosmetics = { _, _ -> },
+                    onSave = { _, _ -> },
+                    canEdit = false,
+                    isAccountLoading = false,
+                    accountError = null,
+                    accountNotice = null,
+                    accountSessions = emptyList(),
+                    areSessionsLoading = false,
+                    onChangePassword = { _, _ -> },
+                    onDeleteAccount = {},
+                    onClearAccountFeedback = {},
+                    onLoadSessions = {},
+                    onRevokeSession = {},
+                    onRevokeAllSessions = {},
+                    onLogout = {},
+                    showBackButton = true
+                )
+
                 state.isNotificationsOpen -> NotificationsScreen(
                     notifications = state.notifications,
                     onBack = controller::closeNotifications,
@@ -227,6 +253,7 @@ private fun GameContent(
                     onUnblockPlayer = controller::unblockPlayer,
                     onInviteFriend = controller::inviteFriend,
                     onRespondRoomInvitation = controller::respondRoomInvitation,
+                    onOpenFriendProfile = controller::openFriendProfile,
                     showBackButton = !showTopLevelNavigation,
                     modifier = contentModifier
                 ) }
@@ -244,6 +271,7 @@ private fun GameContent(
                     state = state,
                     onBack = controller::closeLeaderboard,
                     onRefresh = controller::openLeaderboard,
+                    onOpenFriendProfile = controller::openFriendProfile,
                     showBackButton = !showTopLevelNavigation,
                     modifier = contentModifier
                 ) }
@@ -290,6 +318,7 @@ private fun GameContent(
                     onDeclineRematch = controller::declineRematch,
                     onConnectOpponent = controller::connectWithOpponent,
                     onBlockOpponent = controller::blockOpponentAfterMatch,
+                    onOpenFriendProfile = controller::openFriendProfile,
                     preferences = appPreferences
                 )
 
@@ -297,6 +326,7 @@ private fun GameContent(
                     state = state,
                     onNumberClick = controller::onNumberClicked,
                     onFinish = {},
+                    onOpenFriendProfile = controller::openFriendProfile,
                     onExit = controller::leaveRoom,
                     preferences = appPreferences
                 )
@@ -344,6 +374,7 @@ private fun GameContent(
                     onOpenProfile = controller::openProfile,
                     onOpenLeaderboard = controller::openLeaderboard,
                     onOpenFriends = controller::openFriends,
+                    onOpenFriendProfile = controller::openFriendProfile,
                     onBackToMode = controller::backToModeSelection,
                     onLogout = onLogout,
                     isGuest = isGuest,

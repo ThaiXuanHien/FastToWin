@@ -1,6 +1,7 @@
 package com.hienthai.fastowin.ui.screens
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -22,9 +23,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ExitToApp
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Devices
 import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material.icons.filled.PlayArrow
@@ -33,7 +34,9 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ElevatedCard
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -43,6 +46,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -53,6 +57,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
@@ -64,6 +71,7 @@ import com.hienthai.fastowin.protocol.MatchDetailSnapshot
 import com.hienthai.fastowin.protocol.CosmeticType
 import com.hienthai.fastowin.protocol.MAX_PROFILE_DISPLAY_NAME_LENGTH
 import com.hienthai.fastowin.protocol.PROFILE_AVATAR_IDS
+import com.hienthai.fastowin.protocol.PlayerProfileSnapshot
 import com.hienthai.fastowin.state.GameState
 import com.hienthai.fastowin.state.MAX_ACCOUNT_PASSWORD_LENGTH
 import com.hienthai.fastowin.state.accountPasswordConfirmationError
@@ -72,6 +80,7 @@ import com.hienthai.fastowin.platform.epochMillis
 import com.hienthai.fastowin.ui.layout.ResponsiveScreen
 import kotlinx.coroutines.delay
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ProfileScreen(
     state: GameState,
@@ -82,6 +91,8 @@ fun ProfileScreen(
     onEquipCosmetics: (String, String) -> Unit,
     onSave: (String, String?) -> Unit,
     canEdit: Boolean,
+    profileOverride: PlayerProfileSnapshot? = null,
+    isExternalProfile: Boolean = false,
     isAccountLoading: Boolean,
     accountError: String?,
     accountNotice: String?,
@@ -97,14 +108,17 @@ fun ProfileScreen(
     showBackButton: Boolean = true,
     modifier: Modifier = Modifier
 ) {
-    val profile = state.profile
+    val profile = if (isExternalProfile) profileOverride else state.profile
+    val isProfileLoading = if (isExternalProfile) state.isFriendProfileLoading else state.isProfileLoading
+    val clipboardManager = LocalClipboardManager.current
     var isEditing by remember { mutableStateOf(false) }
     var displayName by remember { mutableStateOf("") }
     var selectedAvatarId by remember { mutableStateOf<String?>(null) }
     var showAccountSecurity by remember { mutableStateOf(false) }
     var showAccountSessions by remember { mutableStateOf(false) }
     var historyFilter by remember { mutableStateOf<MatchHistoryOutcome?>(null) }
-    if (showAccountSecurity) {
+    var isPlayerCodeCopied by remember(profile?.playerCode) { mutableStateOf(false) }
+    if (!isExternalProfile && showAccountSecurity) {
         AccountSecurityDialog(
             isLoading = isAccountLoading,
             error = accountError,
@@ -118,7 +132,7 @@ fun ProfileScreen(
             onDeleteAccount = onDeleteAccount
         )
     }
-    if (showAccountSessions) {
+    if (!isExternalProfile && showAccountSessions) {
         AccountSessionsDialog(
             sessions = accountSessions,
             isLoading = areSessionsLoading,
@@ -135,7 +149,7 @@ fun ProfileScreen(
             }
         )
     }
-    if (state.isMatchDetailLoading || state.matchDetail != null) {
+    if (!isExternalProfile && (state.isMatchDetailLoading || state.matchDetail != null)) {
         MatchDetailDialog(
             detail = state.matchDetail,
             isLoading = state.isMatchDetailLoading,
@@ -151,14 +165,29 @@ fun ProfileScreen(
     LaunchedEffect(state.profileNotice) {
         if (state.profileNotice != null) isEditing = false
     }
-    ResponsiveScreen(
-        modifier = modifier,
-        maxContentWidth = 920.dp,
-        includeBottomSafeDrawingInset = showBackButton,
-        avoidKeyboard = isEditing
-    ) { contentModifier ->
-        Column(
+    LaunchedEffect(isPlayerCodeCopied) {
+        if (isPlayerCodeCopied) {
+            delay(2_000)
+            isPlayerCodeCopied = false
+        }
+    }
+    Box(modifier = modifier.fillMaxSize()) {
+        ResponsiveScreen(
+            modifier = Modifier.fillMaxSize(),
+            maxContentWidth = 920.dp,
+            includeBottomSafeDrawingInset = showBackButton,
+            avoidKeyboard = isEditing
+        ) { contentModifier ->
+        PullToRefreshBox(
+            isRefreshing = isProfileLoading,
+            onRefresh = {
+                if (!isProfileLoading && (!canEdit || !state.isProfileSaving)) onRefresh()
+            },
             modifier = contentModifier
+        ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
                 .verticalScroll(rememberScrollState())
                 .padding(vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
@@ -170,20 +199,23 @@ fun ProfileScreen(
         ) {
             if (showBackButton) IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Quay lại") }
             else Spacer(Modifier.size(48.dp))
-            Text("Hồ sơ", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+            Text(
+                if (isExternalProfile) "Hồ sơ bạn bè" else "Hồ sơ",
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold
+            )
             Row {
                 if (profile != null && canEdit) {
                     IconButton(onClick = { isEditing = !isEditing }, enabled = !state.isProfileSaving) {
                         Icon(Icons.Default.Edit, "Chỉnh sửa hồ sơ")
                     }
-                }
-                IconButton(onClick = onRefresh, enabled = !state.isProfileLoading && !state.isProfileSaving) {
-                    Icon(Icons.Default.Refresh, "Làm mới hồ sơ")
+                } else {
+                    Spacer(Modifier.size(48.dp))
                 }
             }
         }
 
-        if (state.isProfileLoading && profile == null) {
+        if (isProfileLoading && profile == null) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator()
             }
@@ -215,38 +247,29 @@ fun ProfileScreen(
                     profile.progression.cosmetics.firstOrNull {
                         it.type == CosmeticType.TITLE && it.equipped
                     }?.let { Text(it.name, color = MaterialTheme.colorScheme.tertiary, fontWeight = FontWeight.SemiBold) }
-                    Text("Mã người chơi: ${profile.playerCode}", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Text(
+                            "Mã người chơi: ${profile.playerCode}",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        IconButton(
+                            onClick = {
+                                clipboardManager.setText(AnnotatedString(profile.playerCode))
+                                isPlayerCodeCopied = true
+                            },
+                            modifier = Modifier.size(36.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.ContentCopy,
+                                contentDescription = "Sao chép mã người chơi",
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    }
                     Text("Elo ${profile.statistics.eloRating}", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
-                }
-            }
-        }
-
-        if (canEdit) {
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(
-                    onClick = {
-                        onClearAccountFeedback()
-                        showAccountSessions = true
-                        onLoadSessions()
-                    },
-                    modifier = Modifier.weight(1f)
-                ) {
-                    Icon(Icons.Default.Devices, null)
-                    Text("  Thiết bị")
-                }
-                OutlinedButton(
-                    onClick = {
-                        onClearAccountFeedback()
-                        showAccountSecurity = true
-                    },
-                    modifier = Modifier.weight(1f)
-                ) {
-                    Icon(Icons.Default.Lock, null)
-                    Text("  Bảo mật")
-                }
-                TextButton(onClick = onLogout) {
-                    Icon(Icons.AutoMirrored.Filled.ExitToApp, null)
-                    Text("  Đăng xuất")
                 }
             }
         }
@@ -302,7 +325,7 @@ fun ProfileScreen(
             }
         }
 
-        state.profileNotice?.let {
+        if (!isExternalProfile) state.profileNotice?.let {
             Text(it, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Medium)
         }
         state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
@@ -372,7 +395,7 @@ fun ProfileScreen(
                 items(progression.cosmetics.filter { it.type == CosmeticType.FRAME }, key = { it.id }) { cosmetic ->
                     FilterChip(
                         selected = cosmetic.equipped,
-                        enabled = cosmetic.unlocked && !state.isProfileLoading,
+                        enabled = canEdit && cosmetic.unlocked && !isProfileLoading,
                         onClick = { onEquipCosmetics(cosmetic.id, equippedTitle) },
                         label = { Text(if (cosmetic.unlocked) cosmetic.name else "🔒 ${cosmetic.name}") }
                     )
@@ -383,7 +406,7 @@ fun ProfileScreen(
                 items(progression.cosmetics.filter { it.type == CosmeticType.TITLE }, key = { it.id }) { cosmetic ->
                     FilterChip(
                         selected = cosmetic.equipped,
-                        enabled = cosmetic.unlocked && !state.isProfileLoading,
+                        enabled = canEdit && cosmetic.unlocked && !isProfileLoading,
                         onClick = { onEquipCosmetics(equippedFrame, cosmetic.id) },
                         label = { Text(if (cosmetic.unlocked) cosmetic.name else "🔒 ${cosmetic.name}") }
                     )
@@ -468,11 +491,123 @@ fun ProfileScreen(
         } else {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 visibleMatches.forEach { match ->
-                    MatchHistoryCard(match, onClick = { onOpenMatchDetail(match.matchId) })
+                    MatchHistoryCard(
+                        match,
+                        onClick = if (isExternalProfile) null else ({ onOpenMatchDetail(match.matchId) })
+                    )
                 }
             }
         }
 
+        if (canEdit) {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    "Tài khoản & bảo mật",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold
+                )
+                ElevatedCard(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(20.dp)
+                ) {
+                    AccountActionRow(
+                        icon = Icons.Default.Devices,
+                        title = "Thiết bị đăng nhập",
+                        subtitle = "Xem và đăng xuất các phiên đang hoạt động",
+                        onClick = {
+                            onClearAccountFeedback()
+                            showAccountSessions = true
+                            onLoadSessions()
+                        }
+                    )
+                    HorizontalDivider(modifier = Modifier.padding(start = 64.dp))
+                    AccountActionRow(
+                        icon = Icons.Default.Lock,
+                        title = "Bảo mật tài khoản",
+                        subtitle = "Đổi mật khẩu hoặc xóa tài khoản",
+                        onClick = {
+                            onClearAccountFeedback()
+                            showAccountSecurity = true
+                        }
+                    )
+                    HorizontalDivider(modifier = Modifier.padding(start = 64.dp))
+                    AccountActionRow(
+                        icon = Icons.AutoMirrored.Filled.ExitToApp,
+                        title = "Đăng xuất",
+                        subtitle = "Kết thúc phiên trên thiết bị này",
+                        isDestructive = true,
+                        onClick = onLogout
+                    )
+                }
+            }
+        }
+
+        }
+        }
+        }
+        if (isPlayerCodeCopied) {
+            Surface(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 32.dp),
+                shape = RoundedCornerShape(999.dp),
+                color = MaterialTheme.colorScheme.inverseSurface
+            ) {
+                Text(
+                    "Đã sao chép mã",
+                    modifier = Modifier.padding(horizontal = 18.dp, vertical = 10.dp),
+                    color = MaterialTheme.colorScheme.inverseOnSurface,
+                    style = MaterialTheme.typography.labelLarge
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun AccountActionRow(
+    icon: ImageVector,
+    title: String,
+    subtitle: String,
+    onClick: () -> Unit,
+    isDestructive: Boolean = false
+) {
+    val contentColor = if (isDestructive) {
+        MaterialTheme.colorScheme.error
+    } else {
+        MaterialTheme.colorScheme.onSurface
+    }
+    Surface(onClick = onClick, color = MaterialTheme.colorScheme.surfaceContainerLow) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            Surface(
+                modifier = Modifier.size(34.dp),
+                shape = CircleShape,
+                color = if (isDestructive) MaterialTheme.colorScheme.errorContainer
+                else MaterialTheme.colorScheme.primaryContainer
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = icon,
+                        contentDescription = null,
+                        modifier = Modifier.size(20.dp),
+                        tint = if (isDestructive) MaterialTheme.colorScheme.onErrorContainer
+                        else MaterialTheme.colorScheme.onPrimaryContainer
+                    )
+                }
+            }
+            Column(modifier = Modifier.weight(1f)) {
+                Text(title, fontWeight = FontWeight.SemiBold, color = contentColor)
+                Text(
+                    subtitle,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (isDestructive) contentColor.copy(alpha = 0.78f)
+                    else MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
         }
     }
 }
@@ -891,13 +1026,17 @@ private fun formatMatchDuration(millis: Long): String {
 }
 
 @Composable
-private fun MatchHistoryCard(match: MatchHistorySnapshot, onClick: () -> Unit) {
+private fun MatchHistoryCard(match: MatchHistorySnapshot, onClick: (() -> Unit)?) {
     val (result, color) = when (match.outcome) {
         MatchHistoryOutcome.WIN -> "Thắng" to MaterialTheme.colorScheme.primary
         MatchHistoryOutcome.LOSS -> "Thua" to MaterialTheme.colorScheme.error
         MatchHistoryOutcome.DRAW -> "Hòa" to MaterialTheme.colorScheme.tertiary
     }
-    ElevatedCard(onClick = onClick, modifier = Modifier.fillMaxWidth()) {
+    ElevatedCard(
+        modifier = Modifier.fillMaxWidth().then(
+            if (onClick == null) Modifier else Modifier.clickable(onClick = onClick)
+        )
+    ) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(16.dp),
             verticalAlignment = Alignment.CenterVertically,

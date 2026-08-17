@@ -11,7 +11,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
-import androidx.compose.material.icons.rounded.Refresh
+import androidx.compose.material.icons.rounded.RestartAlt
 import androidx.compose.material3.Button
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -202,7 +202,7 @@ private fun PracticeResult(
         Text("Kết quả luyện tập không ảnh hưởng Elo.", style = MaterialTheme.typography.bodySmall)
         Spacer(Modifier.weight(1f))
         Button(onClick = onRestart, modifier = Modifier.fillMaxWidth().height(54.dp)) {
-            Icon(Icons.Rounded.Refresh, contentDescription = null)
+            Icon(Icons.Rounded.RestartAlt, contentDescription = null)
             Text("  Luyện tập lại")
         }
         OutlinedButton(onClick = onBack, modifier = Modifier.fillMaxWidth()) { Text("Về trang chủ") }

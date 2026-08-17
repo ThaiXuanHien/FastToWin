@@ -1,5 +1,6 @@
 package com.hienthai.fastowin.ui.screens
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -14,11 +15,16 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Block
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.PersonRemove
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ElevatedCard
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -26,6 +32,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -44,6 +51,7 @@ import com.hienthai.fastowin.state.GameState
 import com.hienthai.fastowin.state.LobbyStage
 import com.hienthai.fastowin.ui.layout.ResponsiveScreen
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FriendsScreen(
     state: GameState,
@@ -57,6 +65,7 @@ fun FriendsScreen(
     onUnblockPlayer: (String) -> Unit,
     onInviteFriend: (String) -> Unit,
     onRespondRoomInvitation: (String, Boolean) -> Unit,
+    onOpenFriendProfile: (String) -> Unit,
     showBackButton: Boolean = true,
     modifier: Modifier = Modifier
 ) {
@@ -99,14 +108,18 @@ fun FriendsScreen(
             dismissButton = { TextButton(onClick = { blockTarget = null }) { Text("Quay lại") } }
         )
     }
-
     ResponsiveScreen(
         modifier = modifier,
         maxContentWidth = 920.dp,
         includeBottomSafeDrawingInset = showBackButton
     ) { contentModifier ->
+        PullToRefreshBox(
+            isRefreshing = state.isFriendsLoading,
+            onRefresh = { if (!state.isFriendsLoading) onRefresh() },
+            modifier = contentModifier
+        ) {
         Column(
-            modifier = contentModifier.padding(vertical = 12.dp),
+            modifier = Modifier.fillMaxSize().padding(vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
         Row(
@@ -117,9 +130,7 @@ fun FriendsScreen(
             if (showBackButton) IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Quay lại") }
             else Spacer(Modifier.size(48.dp))
             Text("Bạn bè", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-            IconButton(onClick = onRefresh, enabled = !state.isFriendsLoading) {
-                Icon(Icons.Default.Refresh, "Làm mới danh sách bạn bè")
-            }
+            Spacer(Modifier.size(48.dp))
         }
         FriendCodeForm(
             playerCode = playerCode,
@@ -173,9 +184,11 @@ fun FriendsScreen(
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 Button(onClick = { onRespondRequest(request.requestId, true) }) { Text("Chấp nhận") }
                                 OutlinedButton(onClick = { onRespondRequest(request.requestId, false) }) { Text("Từ chối") }
-                                TextButton(onClick = {
+                                IconButton(onClick = {
                                     blockTarget = PlayerActionTarget(request.userId, request.displayName)
-                                }) { Text("Chặn") }
+                                }) {
+                                    Icon(Icons.Default.Block, contentDescription = "Chặn ${request.displayName}")
+                                }
                             }
                         }
                     }
@@ -211,6 +224,7 @@ fun FriendsScreen(
                         friend = friend,
                         canInvite = canInvite,
                         onInviteFriend = onInviteFriend,
+                        onViewInfo = { onOpenFriendProfile(friend.userId) },
                         onRemoveFriend = {
                             removeTarget = PlayerActionTarget(friend.userId, friend.displayName)
                         },
@@ -232,8 +246,12 @@ fun FriendsScreen(
                         canInvite = canInvite,
                         nowMillis = recentPlayersNowMillis,
                         actionsEnabled = !state.isFriendsLoading,
+                        onViewInfo = if (friend == null) null else ({ onOpenFriendProfile(friend.userId) }),
                         onAddFriend = { onSendRequest(player.playerCode) },
                         onInviteFriend = { onInviteFriend(player.userId) },
+                        onRemoveFriend = if (friend == null) null else ({
+                            removeTarget = PlayerActionTarget(friend.userId, friend.displayName)
+                        }),
                         onBlockPlayer = {
                             blockTarget = PlayerActionTarget(player.userId, player.displayName)
                         }
@@ -264,6 +282,7 @@ fun FriendsScreen(
                 }
             }
             }
+        }
         }
     }
 }
@@ -315,11 +334,18 @@ private fun RecentPlayerCard(
     canInvite: Boolean,
     nowMillis: Long,
     actionsEnabled: Boolean,
+    onViewInfo: (() -> Unit)?,
     onAddFriend: () -> Unit,
     onInviteFriend: () -> Unit,
+    onRemoveFriend: (() -> Unit)?,
     onBlockPlayer: () -> Unit
 ) {
-    ElevatedCard(modifier = Modifier.fillMaxWidth()) {
+    var showActions by remember(player.userId) { mutableStateOf(false) }
+    ElevatedCard(
+        modifier = Modifier.fillMaxWidth().then(
+            if (onViewInfo == null) Modifier else Modifier.clickable(onClick = onViewInfo)
+        )
+    ) {
         Column(
             modifier = Modifier.fillMaxWidth().padding(14.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -335,19 +361,53 @@ private fun RecentPlayerCard(
                     Text("${player.playerCode} • ${recentPlayedLabel(player, nowMillis)}")
                     if (friend != null) Text("Đã là bạn • ${friend.presence.label()}")
                 }
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                when {
-                    friend == null -> {
-                        Button(onClick = onAddFriend, enabled = actionsEnabled) { Text("Kết bạn") }
-                        TextButton(onClick = onBlockPlayer, enabled = actionsEnabled) { Text("Chặn") }
+                Box {
+                    IconButton(
+                        onClick = { showActions = true },
+                        enabled = actionsEnabled
+                    ) {
+                        Icon(Icons.Default.MoreVert, contentDescription = "Thao tác với ${player.displayName}")
                     }
-                    else -> {
-                        if (canInvite && friend.presence == FriendPresence.ONLINE) {
-                            Button(onClick = onInviteFriend, enabled = actionsEnabled) { Text("Mời vào phòng") }
+                    DropdownMenu(
+                        expanded = showActions,
+                        onDismissRequest = { showActions = false }
+                    ) {
+                        if (onRemoveFriend != null) {
+                            DropdownMenuItem(
+                                text = { Text("Hủy kết bạn") },
+                                leadingIcon = { Icon(Icons.Default.PersonRemove, contentDescription = null) },
+                                onClick = {
+                                    showActions = false
+                                    onRemoveFriend()
+                                }
+                            )
                         }
-                        TextButton(onClick = onBlockPlayer, enabled = actionsEnabled) { Text("Chặn") }
+                        DropdownMenuItem(
+                            text = { Text("Chặn người chơi") },
+                            leadingIcon = { Icon(Icons.Default.Block, contentDescription = null) },
+                            onClick = {
+                                showActions = false
+                                onBlockPlayer()
+                            }
+                        )
                     }
+                }
+            }
+            if (friend == null) {
+                Button(
+                    onClick = onAddFriend,
+                    enabled = actionsEnabled,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("Kết bạn")
+                }
+            } else if (canInvite) {
+                Button(
+                    onClick = onInviteFriend,
+                    enabled = actionsEnabled && friend.presence == FriendPresence.ONLINE,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("Mời vào phòng")
                 }
             }
         }
@@ -359,27 +419,60 @@ private fun FriendCard(
     friend: FriendSnapshot,
     canInvite: Boolean,
     onInviteFriend: (String) -> Unit,
+    onViewInfo: () -> Unit,
     onRemoveFriend: () -> Unit,
     onBlockPlayer: () -> Unit
 ) {
-    ElevatedCard(modifier = Modifier.fillMaxWidth()) {
-        Row(
+    var showActions by remember(friend.userId) { mutableStateOf(false) }
+    ElevatedCard(onClick = onViewInfo, modifier = Modifier.fillMaxWidth()) {
+        Column(
             modifier = Modifier.fillMaxWidth().padding(14.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Text(avatarEmoji(friend.avatarId), style = MaterialTheme.typography.headlineMedium)
-            Column(modifier = Modifier.weight(1f)) {
-                Text(friend.displayName, fontWeight = FontWeight.Bold)
-                Text("${friend.playerCode} • ${friend.presence.label()}")
-            }
-            Column(horizontalAlignment = Alignment.End) {
-                if (canInvite && friend.presence == FriendPresence.ONLINE) {
-                    Button(onClick = { onInviteFriend(friend.userId) }) { Text("Mời") }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Text(avatarEmoji(friend.avatarId), style = MaterialTheme.typography.headlineMedium)
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(friend.displayName, fontWeight = FontWeight.Bold)
+                    Text("${friend.playerCode} • ${friend.presence.label()}")
                 }
-                Row {
-                    TextButton(onClick = onRemoveFriend) { Text("Hủy bạn") }
-                    TextButton(onClick = onBlockPlayer) { Text("Chặn") }
+                Box {
+                    IconButton(onClick = { showActions = true }) {
+                        Icon(Icons.Default.MoreVert, contentDescription = "Thao tác với ${friend.displayName}")
+                    }
+                    DropdownMenu(
+                        expanded = showActions,
+                        onDismissRequest = { showActions = false }
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text("Hủy kết bạn") },
+                            leadingIcon = { Icon(Icons.Default.PersonRemove, contentDescription = null) },
+                            onClick = {
+                                showActions = false
+                                onRemoveFriend()
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Chặn người chơi") },
+                            leadingIcon = { Icon(Icons.Default.Block, contentDescription = null) },
+                            onClick = {
+                                showActions = false
+                                onBlockPlayer()
+                            }
+                        )
+                    }
+                }
+            }
+            if (canInvite) {
+                Button(
+                    onClick = { onInviteFriend(friend.userId) },
+                    enabled = friend.presence == FriendPresence.ONLINE,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("Mời vào phòng")
                 }
             }
         }

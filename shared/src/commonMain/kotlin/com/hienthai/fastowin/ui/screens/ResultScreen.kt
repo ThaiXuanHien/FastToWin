@@ -4,6 +4,7 @@ import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -24,7 +25,7 @@ import androidx.compose.material.icons.rounded.Block
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.EmojiEvents
 import androidx.compose.material.icons.rounded.GroupAdd
-import androidx.compose.material.icons.rounded.Refresh
+import androidx.compose.material.icons.rounded.RestartAlt
 import androidx.compose.material.icons.rounded.SentimentVeryDissatisfied
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -75,6 +76,7 @@ fun ResultScreen(
     onDeclineRematch: () -> Unit,
     onConnectOpponent: () -> Unit,
     onBlockOpponent: () -> Unit,
+    onOpenFriendProfile: (String) -> Unit = {},
     preferences: AppPreferences = AppPreferences(),
     modifier: Modifier = Modifier
 ) {
@@ -87,6 +89,7 @@ fun ResultScreen(
         label = "WinScale"
     )
     var showBlockConfirmation by remember { mutableStateOf(false) }
+    val opponentFriend = state.social.friends.firstOrNull { it.userId == state.opponent.id }
 
     LaunchedEffect(isWinner, isDraw) {
         val effect = when {
@@ -142,7 +145,14 @@ fun ResultScreen(
                 }
             )
 
-            ScoreBoard(state.player, state.opponent, isDraw)
+            ScoreBoard(
+                player = state.player,
+                opponent = state.opponent,
+                isDraw = isDraw,
+                onOpponentInfo = if (opponentFriend == null) null else ({
+                    onOpenFriendProfile(opponentFriend.userId)
+                })
+            )
             EloCard(state)
             MatchSummaryCard(state)
             RematchCard(
@@ -187,7 +197,12 @@ private fun VictoryHeader(isWinner: Boolean, scale: Float) {
 }
 
 @Composable
-private fun ScoreBoard(player: PlayerState, opponent: PlayerState, isDraw: Boolean) {
+private fun ScoreBoard(
+    player: PlayerState,
+    opponent: PlayerState,
+    isDraw: Boolean,
+    onOpponentInfo: (() -> Unit)? = null
+) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -207,15 +222,24 @@ private fun ScoreBoard(player: PlayerState, opponent: PlayerState, isDraw: Boole
             name = opponent.name,
             score = opponent.score,
             result = if (isDraw) "Hòa" else if (opponent.score > player.score) "Thắng" else "Thua",
-            isWinner = !isDraw && opponent.score > player.score
+            isWinner = !isDraw && opponent.score > player.score,
+            onClick = onOpponentInfo
         )
     }
 }
 
 @Composable
-private fun ScoreRow(name: String, score: Int, result: String, isWinner: Boolean) {
+private fun ScoreRow(
+    name: String,
+    score: Int,
+    result: String,
+    isWinner: Boolean,
+    onClick: (() -> Unit)? = null
+) {
     Row(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth().then(
+            if (onClick == null) Modifier else Modifier.clickable(onClick = onClick)
+        ),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -344,7 +368,7 @@ private fun RematchCard(
                     shape = RoundedCornerShape(16.dp),
                     contentPadding = PaddingValues(12.dp)
                 ) {
-                    Icon(Icons.Rounded.Refresh, contentDescription = null)
+                    Icon(Icons.Rounded.RestartAlt, contentDescription = null)
                     Spacer(Modifier.size(8.dp))
                     Text("Mời đấu lại")
                 }

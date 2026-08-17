@@ -66,12 +66,14 @@ fun GameScreen(
     state: GameState,
     onNumberClick: (Int) -> Unit,
     onFinish: () -> Unit,
+    onOpenFriendProfile: (String) -> Unit = {},
     onExit: () -> Unit = {},
     preferences: AppPreferences = AppPreferences(),
     modifier: Modifier = Modifier
 ) {
     val hapticFeedback = LocalHapticFeedback.current
     var showExitConfirmation by remember { mutableStateOf(false) }
+    val opponentFriend = state.social.friends.firstOrNull { it.userId == state.opponent.id }
     if (showExitConfirmation) {
         AlertDialog(
             onDismissRequest = { showExitConfirmation = false },
@@ -130,7 +132,13 @@ fun GameScreen(
             applySafeDrawingInsets = false
         ) { contentModifier ->
             Column(modifier = contentModifier) {
-                PlayerScoreBar(player = state.player, opponent = state.opponent)
+                PlayerScoreBar(
+                    player = state.player,
+                    opponent = state.opponent,
+                    onOpponentInfo = if (opponentFriend == null) null else ({
+                        onOpenFriendProfile(opponentFriend.userId)
+                    })
+                )
 
                 TargetPanel(currentTarget = state.currentTarget)
 
@@ -199,6 +207,7 @@ private fun TimerBadge(timeLeftMillis: Long) {
 private fun PlayerScoreBar(
     player: PlayerState,
     opponent: PlayerState,
+    onOpponentInfo: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     Row(
@@ -222,6 +231,7 @@ private fun PlayerScoreBar(
             label = "ĐỐI THỦ",
             player = opponent,
             isLocal = false,
+            onViewInfo = onOpponentInfo,
             modifier = Modifier.weight(1f)
         )
     }
@@ -232,6 +242,7 @@ private fun PlayerScoreCard(
     label: String,
     player: PlayerState,
     isLocal: Boolean,
+    onViewInfo: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val containerColor = if (isLocal) MaterialTheme.colorScheme.primaryContainer
@@ -240,7 +251,9 @@ private fun PlayerScoreCard(
     else MaterialTheme.colorScheme.onSecondaryContainer
 
     Surface(
-        modifier = modifier,
+        modifier = modifier.then(
+            if (onViewInfo == null) Modifier else Modifier.clickable(onClick = onViewInfo)
+        ),
         shape = RoundedCornerShape(18.dp),
         color = containerColor,
         tonalElevation = 2.dp

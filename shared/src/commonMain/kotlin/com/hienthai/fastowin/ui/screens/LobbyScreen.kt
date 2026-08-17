@@ -1,9 +1,11 @@
 package com.hienthai.fastowin.ui.screens
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -23,7 +25,6 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Group
-import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -31,6 +32,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.ElevatedCard
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -41,11 +43,13 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextFieldDefaults
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -64,6 +68,7 @@ import com.hienthai.fastowin.state.LobbyStage
 import com.hienthai.fastowin.state.PlayerState
 import com.hienthai.fastowin.ui.layout.ResponsiveScreen
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 @Composable
 fun LobbyScreen(
@@ -81,6 +86,7 @@ fun LobbyScreen(
     onOpenProfile: () -> Unit,
     onOpenLeaderboard: () -> Unit,
     onOpenFriends: () -> Unit,
+    onOpenFriendProfile: (String) -> Unit,
     onBackToMode: () -> Unit,
     onLogout: () -> Unit,
     isGuest: Boolean,
@@ -160,10 +166,11 @@ fun LobbyScreen(
                     onOpenFriends = onOpenFriends,
                     onSetReady = onSetReady,
                     onKickOpponent = onKickOpponent,
+                    onOpenFriendProfile = onOpenFriendProfile,
                     isGuest = isGuest
                 )
                 LobbyStage.MATCHMAKING -> MatchmakingScreen(state, onCancelMatchmaking)
-                LobbyStage.MATCHED -> MatchedStatus(state)
+                LobbyStage.MATCHED -> MatchedStatus(state, onOpenFriendProfile)
                 }
             }
         }
@@ -260,6 +267,7 @@ private fun NameEntry(onContinue: (String) -> Unit, onBack: () -> Unit) {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun RoomBrowser(
     state: GameState,
@@ -278,6 +286,8 @@ private fun RoomBrowser(
     var showCreateRoom by remember { mutableStateOf(false) }
     var searchQuery by remember { mutableStateOf("") }
     var modeFilter by remember { mutableStateOf<GameMode?>(null) }
+    var isPullRefreshing by remember { mutableStateOf(false) }
+    val pullRefreshScope = rememberCoroutineScope()
     val visibleRooms = remember(state.availableRooms, searchQuery, modeFilter) {
         state.availableRooms.filter { room ->
             (searchQuery.isBlank() || room.name.contains(searchQuery.trim(), ignoreCase = true) ||
@@ -320,10 +330,24 @@ private fun RoomBrowser(
             }
         )
     }
-    Column(
-        modifier = Modifier.fillMaxSize(),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
+    PullToRefreshBox(
+        isRefreshing = isPullRefreshing,
+        onRefresh = {
+            if (!state.isSearching) {
+                isPullRefreshing = true
+                onRefreshRooms()
+                pullRefreshScope.launch {
+                    delay(800)
+                    isPullRefreshing = false
+                }
+            }
+        },
+        modifier = Modifier.fillMaxSize()
     ) {
+        Column(
+            modifier = Modifier.fillMaxSize(),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
@@ -344,9 +368,7 @@ private fun RoomBrowser(
                     maxLines = 1
                 )
             }
-            IconButton(onClick = onRefreshRooms, enabled = !state.isSearching) {
-                Icon(Icons.Default.Refresh, contentDescription = "Làm mới danh sách phòng")
-            }
+            Spacer(Modifier.size(48.dp))
         }
 
         state.error?.let {
@@ -437,6 +459,7 @@ private fun RoomBrowser(
             }
         }
 
+        }
     }
 }
 
@@ -567,8 +590,10 @@ private fun RoomWaiting(
     onOpenFriends: () -> Unit,
     onSetReady: (Boolean) -> Unit,
     onKickOpponent: () -> Unit,
+    onOpenFriendProfile: (String) -> Unit,
     isGuest: Boolean
 ) {
+    val opponentFriend = state.social.friends.firstOrNull { it.userId == state.opponent.id }
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(16.dp),
@@ -593,7 +618,10 @@ private fun RoomWaiting(
         RoomWaitingPlayerCard(
             "Đối thủ",
             if (state.hasOpponent) state.opponent else PlayerState("Đang chờ người chơi..."),
-            isLocal = false
+            isLocal = false,
+            onViewInfo = if (opponentFriend == null) null else ({
+                onOpenFriendProfile(opponentFriend.userId)
+            })
         )
 
         state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
@@ -631,9 +659,14 @@ private fun RoomWaiting(
 }
 
 @Composable
-private fun RoomWaitingPlayerCard(label: String, player: PlayerState, isLocal: Boolean) {
+private fun RoomWaitingPlayerCard(
+    label: String,
+    player: PlayerState,
+    isLocal: Boolean,
+    onViewInfo: (() -> Unit)? = null
+) {
     Surface(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth().clickable(enabled = onViewInfo != null) { onViewInfo?.invoke() },
         shape = RoundedCornerShape(20.dp),
         color = if (isLocal) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainer
     ) {
@@ -666,7 +699,8 @@ private fun connectionQualityLabel(latencyMillis: Long): String = when {
 }
 
 @Composable
-private fun MatchedStatus(state: GameState) {
+private fun MatchedStatus(state: GameState, onOpenFriendProfile: (String) -> Unit) {
+    val opponentFriend = state.social.friends.firstOrNull { it.userId == state.opponent.id }
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(40.dp),
@@ -685,7 +719,13 @@ private fun MatchedStatus(state: GameState) {
         ) {
             PlayerMatchedCard(state.player, true)
             Text("ĐẤU", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Black)
-            PlayerMatchedCard(state.opponent, false)
+            PlayerMatchedCard(
+                state.opponent,
+                false,
+                onViewInfo = if (opponentFriend == null) null else ({
+                    onOpenFriendProfile(opponentFriend.userId)
+                })
+            )
         }
         Text(
             "${state.countdown ?: 3}",
@@ -696,8 +736,16 @@ private fun MatchedStatus(state: GameState) {
 }
 
 @Composable
-private fun PlayerMatchedCard(player: PlayerState, isLocal: Boolean) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+private fun PlayerMatchedCard(
+    player: PlayerState,
+    isLocal: Boolean,
+    onViewInfo: (() -> Unit)? = null
+) {
+    Column(
+        modifier = Modifier.clickable(enabled = onViewInfo != null) { onViewInfo?.invoke() },
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
         Surface(
             modifier = Modifier.size(100.dp),
             shape = CircleShape,

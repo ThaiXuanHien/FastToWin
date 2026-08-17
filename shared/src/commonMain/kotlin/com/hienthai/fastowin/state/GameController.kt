@@ -179,6 +179,43 @@ class GameController(
         }
     }
 
+    fun openFriendProfile(friendUserId: String) {
+        if (_uiState.value.social.friends.none { it.userId == friendUserId }) return
+        _uiState.update {
+            it.copy(
+                viewedFriendUserId = friendUserId,
+                friendProfile = null,
+                isFriendProfileOpen = true,
+                isFriendProfileLoading = true,
+                error = null
+            )
+        }
+        if (sessionJob?.isActive != true) {
+            ensureSocketSession(accountDisplayName ?: _uiState.value.player.name)
+            return
+        }
+        if (playerId == null) return
+        scope.launch { socket.sendMessage(ClientMessage.GetFriendProfile(friendUserId)) }
+    }
+
+    fun refreshFriendProfile() {
+        val friendUserId = _uiState.value.viewedFriendUserId ?: return
+        _uiState.update { it.copy(isFriendProfileLoading = true, error = null) }
+        scope.launch { socket.sendMessage(ClientMessage.GetFriendProfile(friendUserId)) }
+    }
+
+    fun closeFriendProfile() {
+        _uiState.update {
+            it.copy(
+                viewedFriendUserId = null,
+                friendProfile = null,
+                isFriendProfileOpen = false,
+                isFriendProfileLoading = false,
+                error = null
+            )
+        }
+    }
+
     fun updateProfile(displayName: String, avatarId: String?) {
         val safeName = displayName.trim()
         if (safeName.isEmpty() || safeName.length > MAX_PROFILE_DISPLAY_NAME_LENGTH) {
@@ -554,6 +591,9 @@ class GameController(
                         socket.sendMessage(ClientMessage.GetRoomInvitations)
                         socket.sendMessage(ClientMessage.GetNotifications)
                         socket.sendMessage(ClientMessage.GetLeaderboard)
+                        _uiState.value.viewedFriendUserId?.let { friendUserId ->
+                            socket.sendMessage(ClientMessage.GetFriendProfile(friendUserId))
+                        }
                     }
                 }
                 val currentGame = message.currentGame
@@ -624,6 +664,15 @@ class GameController(
                     socket.sendMessage(ClientMessage.SyncNotifications(
                         newNotifications.map(AppNotification::toNotificationSnapshot)
                     ))
+                }
+            }
+            is ServerMessage.FriendProfileData -> {
+                _uiState.update { state ->
+                    if (state.viewedFriendUserId != message.friendUserId) state else state.copy(
+                        friendProfile = message.profile,
+                        isFriendProfileLoading = false,
+                        error = null
+                    )
                 }
             }
             is ServerMessage.MatchDetailData -> {
@@ -942,6 +991,7 @@ class GameController(
                         it.lobbyStage
                     },
                     isProfileSaving = false,
+                    isFriendProfileLoading = false,
                     isMatchDetailLoading = false,
                     isFriendsLoading = false,
                     error = error.message

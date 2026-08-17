@@ -1,5 +1,6 @@
 package com.hienthai.fastowin.ui.screens
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -14,14 +15,15 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ElevatedCard
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -35,11 +37,13 @@ import com.hienthai.fastowin.protocol.LeaderboardEntrySnapshot
 import com.hienthai.fastowin.state.GameState
 import com.hienthai.fastowin.ui.layout.ResponsiveScreen
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LeaderboardScreen(
     state: GameState,
     onBack: () -> Unit,
     onRefresh: () -> Unit,
+    onOpenFriendProfile: (String) -> Unit,
     showBackButton: Boolean = true,
     modifier: Modifier = Modifier
 ) {
@@ -50,8 +54,13 @@ fun LeaderboardScreen(
         maxContentWidth = 920.dp,
         includeBottomSafeDrawingInset = showBackButton
     ) { contentModifier ->
+        PullToRefreshBox(
+            isRefreshing = state.isLeaderboardLoading,
+            onRefresh = { if (!state.isLeaderboardLoading) onRefresh() },
+            modifier = contentModifier
+        ) {
         Column(
-            modifier = contentModifier.padding(vertical = 12.dp),
+            modifier = Modifier.fillMaxSize().padding(vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
         Row(
@@ -62,9 +71,7 @@ fun LeaderboardScreen(
             if (showBackButton) IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Quay lại") }
             else Spacer(Modifier.size(48.dp))
             Text("Bảng xếp hạng", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-            IconButton(onClick = onRefresh, enabled = !state.isLeaderboardLoading) {
-                Icon(Icons.Default.Refresh, "Làm mới")
-            }
+            Spacer(Modifier.size(48.dp))
         }
 
         Text(
@@ -99,22 +106,31 @@ fun LeaderboardScreen(
         } else {
             LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 items(displayedTop, key = { it.playerCode }) { entry ->
+                    val friend = state.social.friends.firstOrNull { it.playerCode == entry.playerCode }
                     LeaderboardCard(
                         entry = entry,
-                        highlighted = entry.playerCode == displayedCurrent?.playerCode
+                        highlighted = entry.playerCode == displayedCurrent?.playerCode,
+                        onClick = if (friend == null) null else ({ onOpenFriendProfile(friend.userId) })
                     )
                 }
             }
+        }
         }
         }
     }
 }
 
 @Composable
-private fun LeaderboardCard(entry: LeaderboardEntrySnapshot, highlighted: Boolean) {
+private fun LeaderboardCard(
+    entry: LeaderboardEntrySnapshot,
+    highlighted: Boolean,
+    onClick: (() -> Unit)? = null
+) {
     val winRate = if (entry.totalMatches == 0) 0 else entry.wins * 100 / entry.totalMatches
     ElevatedCard(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth().then(
+            if (onClick == null) Modifier else Modifier.clickable(onClick = onClick)
+        ),
         shape = RoundedCornerShape(16.dp)
     ) {
         Row(

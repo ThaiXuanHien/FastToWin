@@ -160,6 +160,53 @@ class GameEngineTest {
     }
 
     @Test
+    fun `account can load full profile of a friend only`() = runTest {
+        val firstId = UUID.randomUUID().toString()
+        val friendId = UUID.randomUUID().toString()
+        val strangerId = UUID.randomUUID().toString()
+        val friendProfile = PlayerProfileSnapshot(
+            displayName = "Bạn thân",
+            playerCode = "FRIEND01",
+            statistics = com.hienthai.fastowin.protocol.PlayerStatisticsSnapshot(
+                totalMatches = 12,
+                wins = 8,
+                eloRating = 1_234
+            ),
+            achievements = listOf(
+                com.hienthai.fastowin.protocol.AchievementSnapshot("FIRST_WIN", "Chiến thắng đầu tiên", "Thắng một trận.", 1L)
+            )
+        )
+        val profileRepository = object : PlayerProfileRepository {
+            override suspend fun findByPlayerId(playerId: String) =
+                if (playerId == friendId) friendProfile else null
+
+            override suspend fun updateProfile(playerId: String, displayName: String, avatarId: String?) = false
+        }
+        val friendRepository = object : FriendRepository by NoOpFriendRepository {
+            override suspend fun areFriends(firstUserId: String, secondUserId: String) =
+                firstUserId == firstId && secondUserId == friendId
+        }
+        val engine = GameEngine(
+            playerProfileRepository = profileRepository,
+            friendRepository = friendRepository
+        )
+        engine.connectAccount(AuthenticatedAccount(UUID.fromString(firstId), "Người chơi"))
+
+        val response = engine.handle(firstId, ClientMessage.GetFriendProfile(friendId))
+            .map(Delivery::message)
+            .filterIsInstance<ServerMessage.FriendProfileData>()
+            .single()
+        assertEquals(friendId, response.friendUserId)
+        assertEquals(friendProfile, response.profile)
+
+        val forbidden = engine.handle(firstId, ClientMessage.GetFriendProfile(strangerId))
+        assertEquals(
+            "FRIEND_PROFILE_FORBIDDEN",
+            assertIs<ServerMessage.Error>(forbidden.single().message).code
+        )
+    }
+
+    @Test
     fun `profile update persists safe name and avatar`() = runTest {
         var storedProfile = PlayerProfileSnapshot("Tên cũ", "PLAYER123")
         val profileRepository = object : PlayerProfileRepository {
