@@ -1,5 +1,6 @@
 package com.hienthai.fastowin.ui.screens
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -24,6 +25,8 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ExitToApp
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.ChevronLeft
+import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Devices
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Visibility
@@ -57,6 +60,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.testTag
@@ -71,6 +75,7 @@ import com.hienthai.fastowin.protocol.MatchHistorySnapshot
 import com.hienthai.fastowin.protocol.MatchDetailSnapshot
 import com.hienthai.fastowin.protocol.CosmeticSnapshot
 import com.hienthai.fastowin.protocol.CosmeticType
+import com.hienthai.fastowin.protocol.DailyCheckInSnapshot
 import com.hienthai.fastowin.protocol.DAILY_CHECK_IN_AVATAR_ID
 import com.hienthai.fastowin.protocol.DAILY_CHECK_IN_AVATAR_TARGET
 import com.hienthai.fastowin.protocol.DAILY_CHECK_IN_FRAME_TARGET
@@ -380,6 +385,8 @@ fun ProfileScreen(
                 }
             }
         }
+
+        DailyCheckInCalendar(progression.dailyCheckIn)
 
         DailyCheckInMilestones(
             bestStreak = progression.dailyCheckIn.bestStreak,
@@ -912,6 +919,172 @@ private data class DailyCheckInMilestone(
     val progress: Int,
     val target: Int
 )
+
+@Composable
+private fun DailyCheckInCalendar(checkIn: DailyCheckInSnapshot) {
+    val today = checkIn.todayDate?.toProfileCalendarDate() ?: return
+    val currentMonth = ProfileCalendarMonth(today.year, today.month)
+    val earliestMonth = currentMonth.shift(-11)
+    var visibleMonth by remember(checkIn.todayDate) { mutableStateOf(currentMonth) }
+    val checkedDates = remember(checkIn.historyDates) { checkIn.historyDates.toSet() }
+    val cells = profileCalendarCells(visibleMonth)
+
+    ElevatedCard(
+        modifier = Modifier.fillMaxWidth().testTag("daily_check_in_calendar"),
+        shape = RoundedCornerShape(22.dp)
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Text("Lịch điểm danh", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            Text(
+                "Theo dõi tối đa 12 tháng gần nhất",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center
+            ) {
+                IconButton(
+                    onClick = { visibleMonth = visibleMonth.shift(-1) },
+                    enabled = visibleMonth > earliestMonth
+                ) {
+                    Icon(Icons.Default.ChevronLeft, "Tháng trước")
+                }
+                Text(
+                    "Tháng ${visibleMonth.month}/${visibleMonth.year}",
+                    fontWeight = FontWeight.Bold
+                )
+                IconButton(
+                    onClick = { visibleMonth = visibleMonth.shift(1) },
+                    enabled = visibleMonth < currentMonth
+                ) {
+                    Icon(Icons.Default.ChevronRight, "Tháng sau")
+                }
+            }
+            Row(Modifier.fillMaxWidth()) {
+                PROFILE_CALENDAR_WEEKDAYS.forEach { label ->
+                    Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                        Text(
+                            label,
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+            cells.chunked(7).forEach { week ->
+                Row(Modifier.fillMaxWidth()) {
+                    week.forEach { day ->
+                        Box(
+                            modifier = Modifier.weight(1f).height(42.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            if (day != null) {
+                                val dateKey = profileCalendarDateKey(visibleMonth, day)
+                                val checked = dateKey in checkedDates
+                                val isToday = visibleMonth == currentMonth && day == today.day
+                                Surface(
+                                    modifier = Modifier.size(36.dp),
+                                    shape = CircleShape,
+                                    color = when {
+                                        checked -> MaterialTheme.colorScheme.primaryContainer
+                                        isToday -> MaterialTheme.colorScheme.secondaryContainer
+                                        else -> Color.Transparent
+                                    },
+                                    border = if (isToday) {
+                                        BorderStroke(1.dp, MaterialTheme.colorScheme.primary)
+                                    } else {
+                                        null
+                                    }
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Text(
+                                            day.toString(),
+                                            fontWeight = if (checked || isToday) FontWeight.Bold else FontWeight.Normal,
+                                            color = if (checked) {
+                                                MaterialTheme.colorScheme.onPrimaryContainer
+                                            } else {
+                                                MaterialTheme.colorScheme.onSurface
+                                            }
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                Text("● Đã điểm danh", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+                Text("Viền: hôm nay", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+    }
+}
+
+internal data class ProfileCalendarDate(val year: Int, val month: Int, val day: Int)
+
+internal data class ProfileCalendarMonth(val year: Int, val month: Int) : Comparable<ProfileCalendarMonth> {
+    override fun compareTo(other: ProfileCalendarMonth): Int = monthIndex.compareTo(other.monthIndex)
+
+    fun shift(months: Int): ProfileCalendarMonth {
+        val shifted = monthIndex + months
+        val shiftedYear = if (shifted >= 0) shifted / 12 else (shifted - 11) / 12
+        return ProfileCalendarMonth(shiftedYear, shifted - shiftedYear * 12 + 1)
+    }
+
+    private val monthIndex: Int get() = year * 12 + month - 1
+}
+
+internal fun String.toProfileCalendarDate(): ProfileCalendarDate? {
+    val parts = split('-')
+    if (parts.size != 3) return null
+    val year = parts[0].toIntOrNull() ?: return null
+    val month = parts[1].toIntOrNull() ?: return null
+    val day = parts[2].toIntOrNull() ?: return null
+    if (month !in 1..12 || day !in 1..profileCalendarDaysInMonth(year, month)) return null
+    return ProfileCalendarDate(year, month, day)
+}
+
+internal fun profileCalendarCells(month: ProfileCalendarMonth): List<Int?> {
+    val leadingEmptyCells = profileCalendarMondayIndex(month.year, month.month, 1)
+    val days = profileCalendarDaysInMonth(month.year, month.month)
+    val cellCount = ((leadingEmptyCells + days + 6) / 7) * 7
+    return List(cellCount) { index ->
+        (index - leadingEmptyCells + 1).takeIf { it in 1..days }
+    }
+}
+
+private fun profileCalendarMondayIndex(year: Int, month: Int, day: Int): Int {
+    var adjustedYear = year
+    var adjustedMonth = month
+    if (adjustedMonth < 3) {
+        adjustedMonth += 12
+        adjustedYear--
+    }
+    val yearInCentury = adjustedYear % 100
+    val century = adjustedYear / 100
+    val saturdayFirst = (
+        day + (13 * (adjustedMonth + 1)) / 5 + yearInCentury + yearInCentury / 4 +
+            century / 4 + 5 * century
+        ) % 7
+    return (saturdayFirst + 5) % 7
+}
+
+private fun profileCalendarDaysInMonth(year: Int, month: Int): Int = when (month) {
+    2 -> if (year % 400 == 0 || (year % 4 == 0 && year % 100 != 0)) 29 else 28
+    4, 6, 9, 11 -> 30
+    else -> 31
+}
+
+private fun profileCalendarDateKey(month: ProfileCalendarMonth, day: Int): String =
+    "${month.year.toString().padStart(4, '0')}-${month.month.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}"
+
+private val PROFILE_CALENDAR_WEEKDAYS = listOf("T2", "T3", "T4", "T5", "T6", "T7", "CN")
 
 @Composable
 private fun DailyCheckInMilestones(bestStreak: Int, totalCheckIns: Int) {

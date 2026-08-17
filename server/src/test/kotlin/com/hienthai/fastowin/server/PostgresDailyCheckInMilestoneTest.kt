@@ -59,6 +59,8 @@ class PostgresDailyCheckInMilestoneTest {
                 assertTrue(repository.claimDailyCheckIn(player.playerId)!!.claimed)
                 val sevenDayProfile = repository.findByPlayerId(player.playerId)!!
                 assertTrue(sevenDayProfile.achievements.any { it.code == "DAILY_STREAK_7" })
+                assertTrue(today.toString() in sevenDayProfile.progression.dailyCheckIn.historyDates)
+                assertTrue(sevenDayProfile.progression.dailyCheckIn.todayDate == today.toString())
 
                 dataSource.connection.use { connection ->
                     connection.prepareStatement(

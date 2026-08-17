@@ -148,7 +148,7 @@ Một tài khoản có thể giữ phiên đăng nhập HTTP trên nhiều thi�
 
 Màn **Thiết bị** trong Hồ sơ liệt kê nền tảng, thời gian hoạt động, hạn phiên và đánh dấu thiết bị hiện tại. Người chơi có thể đăng xuất riêng một thiết bị hoặc tất cả thiết bị. Backend luôn kiểm tra session ID thuộc đúng user từ access token; không thể dùng ID đã biết để thu hồi phiên của tài khoản khác. Thu hồi thiết bị hiện tại hoặc toàn bộ phiên đưa app về màn đăng nhập; WebSocket dùng token đã bị thu hồi sẽ bị đóng ở thao tác kế tiếp.
 
-Protocol WebSocket hiện tại là phiên bản 17. Sau khi cập nhật ứng dụng, cần khởi động lại backend để client và server dùng cùng phiên bản.
+Protocol WebSocket hiện tại là phiên bản 18. Sau khi cập nhật ứng dụng, cần khởi động lại backend để client và server dùng cùng phiên bản.
 
 Sau trận, snapshot từ server chứa thời lượng, số lượt đúng/sai và thời gian phản ứng trung bình của từng người chơi để cả tài khoản lẫn khách đều xem được tóm tắt ngay. Yêu cầu đấu lại có thời hạn 30 giây và hỗ trợ chấp nhận, từ chối hoặc hủy; server là bên quyết định hết hạn và đồng bộ trạng thái cho cả hai máy. Người dùng đã đăng nhập có thể kết bạn, chấp nhận lời mời đang chờ hoặc chặn đối thủ ngay trên màn kết quả; thao tác chặn đồng thời rời phòng hiện tại.
 

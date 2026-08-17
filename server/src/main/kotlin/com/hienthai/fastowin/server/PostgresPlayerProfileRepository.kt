@@ -169,6 +169,26 @@ class PostgresPlayerProfileRepository(
                     }
                 }
             }
+            val today = currentCheckInDate()
+            val recentCheckInDates = connection.prepareStatement(
+                """
+                SELECT check_in_date
+                FROM daily_check_ins
+                WHERE user_id = ?
+                  AND check_in_date >= ?
+                  AND check_in_date <= ?
+                ORDER BY check_in_date
+                """.trimIndent()
+            ).use { statement ->
+                statement.setObject(1, userId)
+                statement.setDate(2, Date.valueOf(today.minusMonths(11).withDayOfMonth(1)))
+                statement.setDate(3, Date.valueOf(today))
+                statement.executeQuery().use { result ->
+                    buildList {
+                        while (result.next()) add(result.getDate("check_in_date").toLocalDate().toString())
+                    }
+                }
+            }
             val storedMissions = connection.prepareStatement(
                 """
                 SELECT mission_code, progress, target
@@ -233,7 +253,6 @@ class PostgresPlayerProfileRepository(
             val unlockedAvatars = unlockedAvatarIds(progressionRow.totalDailyCheckIns)
             val equippedFrameId = progressionRow.equippedFrameId.takeIf(unlockedFrames::contains) ?: "frame_default"
             val equippedTitleId = progressionRow.equippedTitleId.takeIf(unlockedTitles::contains) ?: "title_rookie"
-            val today = currentCheckInDate()
             val checkInDecision = dailyCheckInDecision(
                 progressionRow.currentDailyCheckInStreak,
                 progressionRow.lastDailyCheckInDate,
@@ -287,7 +306,9 @@ class PostgresPlayerProfileRepository(
                         currentStreak = activeCheckInStreak,
                         bestStreak = progressionRow.bestDailyCheckInStreak,
                         totalCheckIns = progressionRow.totalDailyCheckIns,
-                        lastCheckInDate = progressionRow.lastDailyCheckInDate?.toString()
+                        lastCheckInDate = progressionRow.lastDailyCheckInDate?.toString(),
+                        todayDate = today.toString(),
+                        historyDates = recentCheckInDates
                     ),
                     cosmetics = cosmetics,
                     season = season

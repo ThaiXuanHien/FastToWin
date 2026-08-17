@@ -4,6 +4,7 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
@@ -122,7 +123,9 @@ class CriticalFlowsUiTest {
                             progression = PlayerProgressionSnapshot(
                                 dailyCheckIn = DailyCheckInSnapshot(
                                     bestStreak = 30,
-                                    totalCheckIns = 50
+                                    totalCheckIns = 50,
+                                    todayDate = "2026-08-17",
+                                    historyDates = listOf("2026-08-15", "2026-08-16", "2026-08-17")
                                 )
                             )
                         )
@@ -155,6 +158,10 @@ class CriticalFlowsUiTest {
         composeRule.onNodeWithText("30/30").assertIsDisplayed()
         composeRule.onNodeWithText("50/50").assertIsDisplayed()
         composeRule.onNodeWithText("50/100").assertIsDisplayed()
+        composeRule.onNodeWithTag("daily_check_in_calendar").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("Tháng 8/2026").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("Tháng trước").performClick()
+        composeRule.onNodeWithText("Tháng 7/2026").assertIsDisplayed()
     }
 
     @Test

@@ -4,7 +4,7 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
-const val PROTOCOL_VERSION = 17
+const val PROTOCOL_VERSION = 18
 const val GAME_NUMBER_COUNT = 50
 const val MAX_PROFILE_DISPLAY_NAME_LENGTH = 32
 val DAILY_CHECK_IN_REWARDS_XP = listOf(5, 10, 10, 15, 15, 20, 25)
@@ -132,7 +132,9 @@ data class DailyCheckInSnapshot(
     val currentStreak: Int = 0,
     val bestStreak: Int = 0,
     val totalCheckIns: Int = 0,
-    val lastCheckInDate: String? = null
+    val lastCheckInDate: String? = null,
+    val todayDate: String? = null,
+    val historyDates: List<String> = emptyList()
 )
 
 @Serializable
