@@ -53,6 +53,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -109,7 +110,7 @@ fun LobbyScreen(
             }
         )
     }
-    Column(modifier = modifier.fillMaxSize()) {
+    Column(modifier = modifier.fillMaxSize().testTag("lobby_screen")) {
         ResponsiveScreen(
             modifier = Modifier.weight(1f),
             maxContentWidth = 760.dp,
@@ -389,7 +390,7 @@ private fun RoomBrowser(
         Button(
             onClick = { showCreateRoom = true },
             enabled = state.connectionStatus == ConnectionStatus.CONNECTED && !state.isSearching,
-            modifier = Modifier.fillMaxWidth().height(50.dp),
+            modifier = Modifier.fillMaxWidth().height(50.dp).testTag("create_room_open"),
             shape = RoundedCornerShape(16.dp)
         ) {
             Icon(Icons.Default.Add, null)
@@ -485,7 +486,7 @@ private fun CreateRoomDialog(
                     onValueChange = { roomName = it },
                     label = { Text("Tên phòng") },
                     singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth().testTag("create_room_name")
                 )
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -510,7 +511,7 @@ private fun CreateRoomDialog(
                         singleLine = true,
                         visualTransformation = PasswordVisualTransformation(),
                         leadingIcon = { Icon(Icons.Default.Lock, null) },
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier.fillMaxWidth().testTag("create_room_password")
                     )
                 }
             }
@@ -518,7 +519,8 @@ private fun CreateRoomDialog(
         confirmButton = {
             Button(
                 onClick = { onCreate(roomName.trim(), if (isPrivate) roomPassword else "") },
-                enabled = !isLoading && roomName.isNotBlank() && (!isPrivate || roomPassword.isNotEmpty())
+                enabled = !isLoading && roomName.isNotBlank() && (!isPrivate || roomPassword.isNotEmpty()),
+                modifier = Modifier.testTag("create_room_submit")
             ) { Text("Tạo phòng") }
         },
         dismissButton = { TextButton(onClick = onDismiss, enabled = !isLoading) { Text("Hủy") } }
@@ -529,7 +531,7 @@ private fun CreateRoomDialog(
 private fun RoomCard(room: AvailableRoom, onClick: () -> Unit) {
     ElevatedCard(
         onClick = onClick,
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth().testTag("room_item:${room.id}"),
         colors = CardDefaults.elevatedCardColors(
             containerColor = MaterialTheme.colorScheme.surfaceContainer
         )
@@ -571,14 +573,20 @@ private fun JoinRoomDialog(
                         onValueChange = { password = it },
                         label = { Text("Mật khẩu phòng") },
                         visualTransformation = PasswordVisualTransformation(),
-                        singleLine = true
+                        singleLine = true,
+                        modifier = Modifier.testTag("join_room_password")
                     )
                 } else {
                     Text("Phòng này không yêu cầu mật khẩu.")
                 }
             }
         },
-        confirmButton = { Button(onClick = { onJoin(password) }) { Text("Tham gia") } },
+        confirmButton = {
+            Button(
+                onClick = { onJoin(password) },
+                modifier = Modifier.testTag("join_room_submit")
+            ) { Text("Tham gia") }
+        },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Hủy") } }
     )
 }

@@ -41,6 +41,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -95,6 +96,7 @@ fun GameScreen(
     }
 
     Scaffold(
+        modifier = modifier.fillMaxSize().testTag("game_screen"),
         topBar = {
             CenterAlignedTopAppBar(
                 navigationIcon = {
@@ -127,7 +129,7 @@ fun GameScreen(
         }
     ) { paddingValues ->
         ResponsiveScreen(
-            modifier = modifier.padding(paddingValues),
+            modifier = Modifier.padding(paddingValues),
             maxContentWidth = 760.dp,
             applySafeDrawingInsets = false
         ) { contentModifier ->
@@ -351,7 +353,7 @@ fun NumberGrid(
             contentPadding = PaddingValues(12.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
-            modifier = Modifier.fillMaxSize()
+            modifier = Modifier.fillMaxSize().testTag("number_grid")
         ) {
             items(numbers, key = { it }) { number ->
                 NumberCell(
@@ -391,6 +393,7 @@ fun NumberCell(
     Surface(
         modifier = Modifier
             .aspectRatio(1f)
+            .testTag("game_number_$number")
             .clip(RoundedCornerShape(16.dp))
             .clickable(enabled = enabled && !isCompleted, onClick = onClick),
         color = if (isCompleted) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)

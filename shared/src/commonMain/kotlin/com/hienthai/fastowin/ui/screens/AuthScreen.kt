@@ -36,6 +36,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
@@ -141,7 +142,7 @@ private fun LoginContent(
         Button(
             onClick = { onLogin(email, password) },
             enabled = email.isNotBlank() && password.isNotBlank() && !state.isLoading,
-            modifier = Modifier.fillMaxWidth().height(56.dp)
+            modifier = Modifier.fillMaxWidth().height(56.dp).testTag("auth_login_submit")
         ) {
             if (state.isLoading) CircularProgressIndicator(strokeWidth = 2.dp)
             else Text("Đăng nhập")
@@ -329,7 +330,7 @@ private fun EmailField(
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email, imeAction = ImeAction.Next),
         enabled = enabled,
         singleLine = true,
-        modifier = Modifier.fillMaxWidth()
+        modifier = Modifier.fillMaxWidth().testTag("auth_email")
     )
 }
 
@@ -352,6 +353,6 @@ private fun PasswordField(value: String, label: String, onValueChange: (String) 
         },
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done),
         singleLine = true,
-        modifier = Modifier.fillMaxWidth()
+        modifier = Modifier.fillMaxWidth().testTag("auth_password")
     )
 }

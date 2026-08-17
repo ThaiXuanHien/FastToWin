@@ -17,3 +17,5 @@ The shared Compose UI, game state, room protocol, and WebSocket client live in t
 5. Run the app. Xcode invokes `:shared:embedAndSignAppleFrameworkForXcode` automatically.
 
 The project targets `iosArm64` for physical devices and `iosSimulatorArm64` for Apple Silicon simulators.
+
+See [UI_TESTING.md](UI_TESTING.md) for the iPhone/iPad test matrix, local server URL setup, and release verification checklist.

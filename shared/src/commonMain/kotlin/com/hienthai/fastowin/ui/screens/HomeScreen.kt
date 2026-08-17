@@ -54,6 +54,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -111,7 +112,7 @@ internal fun HomeDashboard(
     val onlineFriends = state.social.friends.count { it.presence != FriendPresence.OFFLINE }
     val openSocial = if (isGuest) onUpgradeGuest else onOpenFriends
 
-    BoxWithConstraints(modifier = modifier.fillMaxSize()) {
+    BoxWithConstraints(modifier = modifier.fillMaxSize().testTag("home_screen")) {
         val compactHeight = maxHeight < 600.dp
         Column(modifier = Modifier.fillMaxSize()) {
         BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
@@ -204,7 +205,10 @@ internal fun HomeDashboard(
                     )
                     Button(
                         onClick = if (isGuest) onUpgradeGuest else ({ launchAction = HomeLaunchAction.PLAY }),
-                        modifier = Modifier.fillMaxWidth().height(if (compactHeight) 46.dp else 52.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(if (compactHeight) 46.dp else 52.dp)
+                            .testTag("home_quick_match"),
                         colors = ButtonDefaults.buttonColors(
                             containerColor = MaterialTheme.colorScheme.onPrimary,
                             contentColor = MaterialTheme.colorScheme.primary
@@ -431,7 +435,7 @@ private fun HomeQuickAction(
 ) {
     ElevatedCard(
         onClick = onClick,
-        modifier = modifier.height(92.dp),
+        modifier = modifier.height(92.dp).testTag("home_action:$title"),
         shape = RoundedCornerShape(18.dp),
         colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)
     ) {

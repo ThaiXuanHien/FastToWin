@@ -40,6 +40,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.hienthai.fastowin.protocol.FriendPresence
@@ -344,7 +345,7 @@ private fun RecentPlayerCard(
     ElevatedCard(
         modifier = Modifier.fillMaxWidth().then(
             if (onViewInfo == null) Modifier else Modifier.clickable(onClick = onViewInfo)
-        )
+        ).testTag("recent_player_item:${player.userId}")
     ) {
         Column(
             modifier = Modifier.fillMaxWidth().padding(14.dp),
@@ -364,7 +365,8 @@ private fun RecentPlayerCard(
                 Box {
                     IconButton(
                         onClick = { showActions = true },
-                        enabled = actionsEnabled
+                        enabled = actionsEnabled,
+                        modifier = Modifier.testTag("recent_player_more:${player.userId}")
                     ) {
                         Icon(Icons.Default.MoreVert, contentDescription = "Thao tác với ${player.displayName}")
                     }
@@ -424,7 +426,10 @@ private fun FriendCard(
     onBlockPlayer: () -> Unit
 ) {
     var showActions by remember(friend.userId) { mutableStateOf(false) }
-    ElevatedCard(onClick = onViewInfo, modifier = Modifier.fillMaxWidth()) {
+    ElevatedCard(
+        onClick = onViewInfo,
+        modifier = Modifier.fillMaxWidth().testTag("friend_item:${friend.userId}")
+    ) {
         Column(
             modifier = Modifier.fillMaxWidth().padding(14.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -440,7 +445,10 @@ private fun FriendCard(
                     Text("${friend.playerCode} • ${friend.presence.label()}")
                 }
                 Box {
-                    IconButton(onClick = { showActions = true }) {
+                    IconButton(
+                        onClick = { showActions = true },
+                        modifier = Modifier.testTag("friend_more:${friend.userId}")
+                    ) {
                         Icon(Icons.Default.MoreVert, contentDescription = "Thao tác với ${friend.displayName}")
                     }
                     DropdownMenu(
