@@ -128,6 +128,28 @@ class PostgresMatchResultRepositoryTest {
                 assertFalse(profile.progression.cosmetics.first { it.id == "frame_perfect" }.unlocked)
                 assertEquals("Mùa Khởi Đầu", profile.progression.season?.name)
                 assertEquals(1016, profile.progression.season?.rating)
+                val firstCheckIn = profileRepository.claimDailyCheckIn(host.playerId)!!
+                val duplicateCheckIn = profileRepository.claimDailyCheckIn(host.playerId)!!
+                assertTrue(firstCheckIn.claimed)
+                assertEquals(5, firstCheckIn.rewardXp)
+                assertFalse(duplicateCheckIn.claimed)
+                assertEquals(0, duplicateCheckIn.rewardXp)
+                val checkedInProfile = profileRepository.findByPlayerId(host.playerId)!!
+                assertEquals(30, checkedInProfile.progression.experiencePoints)
+                assertTrue(checkedInProfile.progression.dailyCheckIn.claimedToday)
+                assertEquals(1, checkedInProfile.progression.dailyCheckIn.currentStreak)
+                assertEquals(1, checkedInProfile.progression.dailyCheckIn.totalCheckIns)
+                dataSource.connection.use { connection ->
+                    connection.prepareStatement(
+                        "SELECT COUNT(*) AS count FROM daily_check_ins WHERE user_id = ?"
+                    ).use { statement ->
+                        statement.setObject(1, UUID.fromString(host.playerId))
+                        statement.executeQuery().use { result ->
+                            result.next()
+                            assertEquals(1, result.getInt("count"))
+                        }
+                    }
+                }
                 val detail = profileRepository.findMatchDetail(host.playerId, matchId)!!
                 assertEquals(1_000L, detail.durationMillis)
                 assertEquals(51, detail.events.size)

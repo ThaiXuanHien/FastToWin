@@ -21,6 +21,7 @@ import com.hienthai.fastowin.state.GameState
 import com.hienthai.fastowin.state.LobbyStage
 import com.hienthai.fastowin.state.PlayerState
 import com.hienthai.fastowin.ui.screens.LobbyScreen
+import com.hienthai.fastowin.ui.screens.TutorialScreen
 import com.hienthai.fastowin.ui.theme.FastToWinTheme
 import org.junit.Rule
 import org.junit.Test
@@ -51,9 +52,19 @@ class ResponsiveUiTest {
         composeRule.onNodeWithText("Luyện tập offline").performScrollTo().assertIsDisplayed()
     }
 
+    @Test
+    fun tutorial_keepsContinueButtonVisibleAtBottomOnSmallPhone() {
+        setViewportContent(width = 320.dp, height = 568.dp, fontScale = 1.4f) {
+            TutorialScreen(onComplete = {}, onSkip = {})
+        }
+
+        composeRule.onNodeWithTag("tutorial_continue").assertIsDisplayed()
+    }
+
     private fun assertHomeViewport(width: Dp, height: Dp) {
         setViewportContent(width, height) { TestResponsiveLobby() }
         composeRule.onNodeWithTag("home_screen").assertExists()
+        composeRule.onNodeWithTag("daily_check_in_card").assertExists()
         composeRule.onNodeWithTag("home_quick_match").assertExists()
         composeRule.onNodeWithTag("home_action:Tạo phòng").assertExists()
     }
@@ -108,6 +119,7 @@ private fun TestResponsiveLobby() {
         onOpenSettings = {},
         onOpenNotifications = {},
         onOpenPractice = {},
+        onClaimDailyCheckIn = {},
         sessionStartedAtMillis = 1L
     )
 }

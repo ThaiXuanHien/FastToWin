@@ -10,16 +10,24 @@ import com.hienthai.fastowin.protocol.MatchDetailSnapshot
 import com.hienthai.fastowin.protocol.MatchEventSnapshot
 import com.hienthai.fastowin.protocol.CosmeticSnapshot
 import com.hienthai.fastowin.protocol.CosmeticType
+import com.hienthai.fastowin.protocol.DailyCheckInSnapshot
 import com.hienthai.fastowin.protocol.MissionSnapshot
 import com.hienthai.fastowin.protocol.PlayerProgressionSnapshot
 import com.hienthai.fastowin.protocol.SeasonSnapshot
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.sql.Date
+import java.time.Clock
+import java.time.LocalDate
+import java.time.ZoneId
 import java.util.UUID
 import javax.sql.DataSource
 
+private val DAILY_CHECK_IN_ZONE: ZoneId = ZoneId.of("Asia/Bangkok")
+
 class PostgresPlayerProfileRepository(
-    private val dataSource: DataSource
+    private val dataSource: DataSource,
+    private val clock: Clock = Clock.system(DAILY_CHECK_IN_ZONE)
 ) : PlayerProfileRepository {
     override suspend fun findByPlayerId(playerId: String): PlayerProfileSnapshot? = withContext(Dispatchers.IO) {
         dataSource.connection.use { connection ->
@@ -130,7 +138,11 @@ class PostgresPlayerProfileRepository(
                 """
                 SELECT COALESCE(experience_points, 0) AS experience_points,
                        COALESCE(equipped_frame_id, 'frame_default') AS equipped_frame_id,
-                       COALESCE(equipped_title_id, 'title_rookie') AS equipped_title_id
+                       COALESCE(equipped_title_id, 'title_rookie') AS equipped_title_id,
+                       COALESCE(current_daily_check_in_streak, 0) AS current_daily_check_in_streak,
+                       COALESCE(best_daily_check_in_streak, 0) AS best_daily_check_in_streak,
+                       COALESCE(total_daily_check_ins, 0) AS total_daily_check_ins,
+                       last_daily_check_in_date
                 FROM player_stats
                 WHERE user_id = ?
                 """.trimIndent()
@@ -138,13 +150,17 @@ class PostgresPlayerProfileRepository(
                 statement.setObject(1, userId)
                 statement.executeQuery().use { result ->
                     if (result.next()) {
-                        Triple(
-                            result.getInt("experience_points"),
-                            result.getString("equipped_frame_id"),
-                            result.getString("equipped_title_id")
+                        ProgressionRow(
+                            experiencePoints = result.getInt("experience_points"),
+                            equippedFrameId = result.getString("equipped_frame_id"),
+                            equippedTitleId = result.getString("equipped_title_id"),
+                            currentDailyCheckInStreak = result.getInt("current_daily_check_in_streak"),
+                            bestDailyCheckInStreak = result.getInt("best_daily_check_in_streak"),
+                            totalDailyCheckIns = result.getInt("total_daily_check_ins"),
+                            lastDailyCheckInDate = result.getDate("last_daily_check_in_date")?.toLocalDate()
                         )
                     } else {
-                        Triple(0, "frame_default", "title_rookie")
+                        ProgressionRow()
                     }
                 }
             }
@@ -196,7 +212,7 @@ class PostgresPlayerProfileRepository(
                     }
                 }
             }
-            val experiencePoints = progressionRow.first
+            val experiencePoints = progressionRow.experiencePoints
             val level = experiencePoints / EXPERIENCE_PER_LEVEL + 1
             val achievementCodes = achievements.mapTo(mutableSetOf()) { it.code }
             val unlockedFrames = unlockedFrameIds(level, achievementCodes)
@@ -204,8 +220,18 @@ class PostgresPlayerProfileRepository(
                 if (base.statistics.wins >= 10) add("title_champion")
                 if ("SPEED_50" in achievementCodes) add("title_speed")
             }
-            val equippedFrameId = progressionRow.second.takeIf(unlockedFrames::contains) ?: "frame_default"
-            val equippedTitleId = progressionRow.third.takeIf(unlockedTitles::contains) ?: "title_rookie"
+            val equippedFrameId = progressionRow.equippedFrameId.takeIf(unlockedFrames::contains) ?: "frame_default"
+            val equippedTitleId = progressionRow.equippedTitleId.takeIf(unlockedTitles::contains) ?: "title_rookie"
+            val today = currentCheckInDate()
+            val checkInDecision = dailyCheckInDecision(
+                progressionRow.currentDailyCheckInStreak,
+                progressionRow.lastDailyCheckInDate,
+                today
+            )
+            val activeCheckInStreak = when (progressionRow.lastDailyCheckInDate) {
+                today, today.minusDays(1) -> progressionRow.currentDailyCheckInStreak
+                else -> 0
+            }
             fun cosmetic(id: String, name: String, type: CosmeticType, unlocked: Boolean, equippedId: String) =
                 CosmeticSnapshot(id, name, type, unlocked, unlocked && id == equippedId)
             val cosmetics = listOf(
@@ -232,6 +258,16 @@ class PostgresPlayerProfileRepository(
                     weeklyMissions = listOf(
                         mission("WEEKLY_CORRECT_100", "Chọn đúng 100 số trong tuần", 100),
                         mission("WEEKLY_PERFECT_1", "Thắng 1 trận không bấm sai", 1)
+                    ),
+                    dailyCheckIn = DailyCheckInSnapshot(
+                        claimedToday = checkInDecision.claimedToday,
+                        cycleDay = checkInDecision.cycleDay,
+                        todayRewardXp = checkInDecision.rewardXp,
+                        nextRewardXp = nextDailyCheckInReward(checkInDecision.cycleDay),
+                        currentStreak = activeCheckInStreak,
+                        bestStreak = progressionRow.bestDailyCheckInStreak,
+                        totalCheckIns = progressionRow.totalDailyCheckIns,
+                        lastCheckInDate = progressionRow.lastDailyCheckInDate?.toString()
                     ),
                     cosmetics = cosmetics,
                     season = season
@@ -316,6 +352,83 @@ class PostgresPlayerProfileRepository(
         }
     }
 
+    override suspend fun claimDailyCheckIn(playerId: String): DailyCheckInClaimResult? =
+        withContext(Dispatchers.IO) {
+            dataSource.connection.use { connection ->
+                connection.autoCommit = false
+                try {
+                    val userId = UUID.fromString(playerId)
+                    connection.prepareStatement(
+                        "INSERT INTO player_stats (user_id, updated_at) VALUES (?, CURRENT_TIMESTAMP) " +
+                            "ON CONFLICT (user_id) DO NOTHING"
+                    ).use { statement ->
+                        statement.setObject(1, userId)
+                        statement.executeUpdate()
+                    }
+                    val stored = connection.prepareStatement(
+                        """
+                        SELECT current_daily_check_in_streak, last_daily_check_in_date
+                        FROM player_stats
+                        WHERE user_id = ?
+                        FOR UPDATE
+                        """.trimIndent()
+                    ).use { statement ->
+                        statement.setObject(1, userId)
+                        statement.executeQuery().use { result ->
+                            if (!result.next()) error("Missing player stats for $playerId")
+                            result.getInt("current_daily_check_in_streak") to
+                                result.getDate("last_daily_check_in_date")?.toLocalDate()
+                        }
+                    }
+                    val today = currentCheckInDate()
+                    val decision = dailyCheckInDecision(stored.first, stored.second, today)
+                    if (decision.claimedToday) {
+                        connection.commit()
+                        DailyCheckInClaimResult(claimed = false, rewardXp = 0)
+                    } else {
+                        connection.prepareStatement(
+                            """
+                            UPDATE player_stats
+                            SET experience_points = experience_points + ?,
+                                current_daily_check_in_streak = ?,
+                                best_daily_check_in_streak = GREATEST(best_daily_check_in_streak, ?),
+                                total_daily_check_ins = total_daily_check_ins + 1,
+                                last_daily_check_in_date = ?,
+                                updated_at = CURRENT_TIMESTAMP
+                            WHERE user_id = ?
+                            """.trimIndent()
+                        ).use { statement ->
+                            statement.setInt(1, decision.rewardXp)
+                            statement.setInt(2, decision.resultingStreak)
+                            statement.setInt(3, decision.resultingStreak)
+                            statement.setDate(4, Date.valueOf(today))
+                            statement.setObject(5, userId)
+                            check(statement.executeUpdate() == 1)
+                        }
+                        connection.prepareStatement(
+                            """
+                            INSERT INTO daily_check_ins (
+                                user_id, check_in_date, cycle_day, reward_xp, streak_after
+                            ) VALUES (?, ?, ?, ?, ?)
+                            """.trimIndent()
+                        ).use { statement ->
+                            statement.setObject(1, userId)
+                            statement.setDate(2, Date.valueOf(today))
+                            statement.setInt(3, decision.cycleDay)
+                            statement.setInt(4, decision.rewardXp)
+                            statement.setInt(5, decision.resultingStreak)
+                            statement.executeUpdate()
+                        }
+                        connection.commit()
+                        DailyCheckInClaimResult(claimed = true, rewardXp = decision.rewardXp)
+                    }
+                } catch (error: Throwable) {
+                    connection.rollback()
+                    throw error
+                }
+            }
+        }
+
     override suspend fun updateProfile(
         playerId: String,
         displayName: String,
@@ -345,10 +458,22 @@ class PostgresPlayerProfileRepository(
         else -> "Đồng"
     }
 
+    private fun currentCheckInDate(): LocalDate = LocalDate.now(clock)
+
     private companion object {
         const val EXPERIENCE_PER_LEVEL = 100
     }
 }
+
+private data class ProgressionRow(
+    val experiencePoints: Int = 0,
+    val equippedFrameId: String = "frame_default",
+    val equippedTitleId: String = "title_rookie",
+    val currentDailyCheckInStreak: Int = 0,
+    val bestDailyCheckInStreak: Int = 0,
+    val totalDailyCheckIns: Int = 0,
+    val lastDailyCheckInDate: LocalDate? = null
+)
 
 internal fun unlockedFrameIds(level: Int, achievementCodes: Set<String>): Set<String> = buildSet {
     add("frame_default")

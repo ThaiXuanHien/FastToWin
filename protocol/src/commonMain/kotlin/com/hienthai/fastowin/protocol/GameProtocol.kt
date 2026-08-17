@@ -4,9 +4,10 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
-const val PROTOCOL_VERSION = 15
+const val PROTOCOL_VERSION = 16
 const val GAME_NUMBER_COUNT = 50
 const val MAX_PROFILE_DISPLAY_NAME_LENGTH = 32
+val DAILY_CHECK_IN_REWARDS_XP = listOf(5, 10, 10, 15, 15, 20, 25)
 
 val PROFILE_AVATAR_IDS = setOf("bolt", "rocket", "target", "trophy", "crown", "star")
 
@@ -117,6 +118,18 @@ data class MissionSnapshot(
 )
 
 @Serializable
+data class DailyCheckInSnapshot(
+    val claimedToday: Boolean = false,
+    val cycleDay: Int = 1,
+    val todayRewardXp: Int = 5,
+    val nextRewardXp: Int = 10,
+    val currentStreak: Int = 0,
+    val bestStreak: Int = 0,
+    val totalCheckIns: Int = 0,
+    val lastCheckInDate: String? = null
+)
+
+@Serializable
 data class SeasonSnapshot(
     val name: String,
     val tier: String,
@@ -133,6 +146,7 @@ data class PlayerProgressionSnapshot(
     val nextLevelExperience: Int = 100,
     val dailyMissions: List<MissionSnapshot> = emptyList(),
     val weeklyMissions: List<MissionSnapshot> = emptyList(),
+    val dailyCheckIn: DailyCheckInSnapshot = DailyCheckInSnapshot(),
     val cosmetics: List<CosmeticSnapshot> = emptyList(),
     val season: SeasonSnapshot? = null
 )
@@ -307,6 +321,10 @@ sealed class ClientMessage {
     data object GetProfile : ClientMessage()
 
     @Serializable
+    @SerialName("claim_daily_check_in")
+    data object ClaimDailyCheckIn : ClientMessage()
+
+    @Serializable
     @SerialName("get_friend_profile")
     data class GetFriendProfile(val friendUserId: String) : ClientMessage()
 
@@ -456,6 +474,13 @@ sealed class ServerMessage {
     @Serializable
     @SerialName("profile_data")
     data class ProfileData(val profile: PlayerProfileSnapshot) : ServerMessage()
+
+    @Serializable
+    @SerialName("daily_check_in_result")
+    data class DailyCheckInResult(
+        val claimed: Boolean,
+        val rewardXp: Int
+    ) : ServerMessage()
 
     @Serializable
     @SerialName("friend_profile_data")

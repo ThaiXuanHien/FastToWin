@@ -12,6 +12,8 @@ import androidx.compose.ui.test.performTextInput
 import com.hienthai.fastowin.data.preferences.AppPreferences
 import com.hienthai.fastowin.navigation.GameMode
 import com.hienthai.fastowin.protocol.PlayerProfileSnapshot
+import com.hienthai.fastowin.protocol.DailyCheckInSnapshot
+import com.hienthai.fastowin.protocol.PlayerProgressionSnapshot
 import com.hienthai.fastowin.state.AuthStage
 import com.hienthai.fastowin.state.AuthState
 import com.hienthai.fastowin.state.AvailableRoom
@@ -86,6 +88,25 @@ class CriticalFlowsUiTest {
         composeRule.onNodeWithText("Đua thứ tự").performClick()
 
         composeRule.runOnIdle { assertEquals(GameMode.ORDER, selectedMode) }
+    }
+
+    @Test
+    fun home_dailyCheckInShowsSevenDayRewardsAndClaimsToday() {
+        var claims = 0
+        composeRule.setContent {
+            FastToWinTheme {
+                TestLobby(
+                    state = homeState(),
+                    onClaimDailyCheckIn = { claims++ }
+                )
+            }
+        }
+
+        composeRule.onNodeWithTag("daily_check_in_card").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("Điểm danh ngày 1/7").assertIsDisplayed()
+        composeRule.onNodeWithTag("daily_check_in_claim").performClick()
+
+        composeRule.runOnIdle { assertEquals(1, claims) }
     }
 
     @Test
@@ -181,7 +202,17 @@ class CriticalFlowsUiTest {
         lobbyStage = LobbyStage.SELECT_MODE,
         connectionStatus = ConnectionStatus.CONNECTED,
         player = PlayerState("Hiền"),
-        profile = PlayerProfileSnapshot("Hiền", "HIEN001")
+        profile = PlayerProfileSnapshot(
+            "Hiền",
+            "HIEN001",
+            progression = PlayerProgressionSnapshot(
+                dailyCheckIn = DailyCheckInSnapshot(
+                    claimedToday = false,
+                    cycleDay = 1,
+                    todayRewardXp = 5
+                )
+            )
+        )
     )
 
     private fun roomBrowserState() = GameState(
@@ -228,7 +259,8 @@ private fun TestLobby(
     state: GameState,
     onStartMatchmaking: (GameMode) -> Unit = {},
     onCreateRoom: (String, String) -> Unit = { _, _ -> },
-    onJoinRoom: (String, String) -> Unit = { _, _ -> }
+    onJoinRoom: (String, String) -> Unit = { _, _ -> },
+    onClaimDailyCheckIn: () -> Unit = {}
 ) {
     LobbyScreen(
         state = state,
@@ -253,6 +285,7 @@ private fun TestLobby(
         onOpenSettings = {},
         onOpenNotifications = {},
         onOpenPractice = {},
+        onClaimDailyCheckIn = onClaimDailyCheckIn,
         sessionStartedAtMillis = 1L
     )
 }

@@ -21,6 +21,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.CalendarMonth
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material.icons.filled.FitnessCenter
 import androidx.compose.material.icons.filled.Group
@@ -39,6 +41,7 @@ import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -62,6 +65,8 @@ import androidx.compose.ui.unit.dp
 import com.hienthai.fastowin.navigation.GameMode
 import com.hienthai.fastowin.platform.epochMillis
 import com.hienthai.fastowin.protocol.FriendPresence
+import com.hienthai.fastowin.protocol.DailyCheckInSnapshot
+import com.hienthai.fastowin.protocol.DAILY_CHECK_IN_REWARDS_XP
 import com.hienthai.fastowin.protocol.MatchHistoryOutcome
 import com.hienthai.fastowin.state.ConnectionStatus
 import com.hienthai.fastowin.state.GameState
@@ -84,6 +89,7 @@ internal fun HomeDashboard(
     onOpenSettings: () -> Unit,
     onOpenNotifications: () -> Unit,
     onOpenPractice: () -> Unit,
+    onClaimDailyCheckIn: () -> Unit,
     onUpgradeGuest: () -> Unit,
     onLogout: () -> Unit,
     sessionStartedAtMillis: Long,
@@ -175,6 +181,14 @@ internal fun HomeDashboard(
             modifier = Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(bottom = 16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+            if (!isGuest && profile != null) {
+                DailyCheckInCard(
+                    checkIn = profile.progression.dailyCheckIn,
+                    isClaiming = state.isDailyCheckInClaiming,
+                    onClaim = onClaimDailyCheckIn
+                )
+            }
+
             Surface(
                 shape = RoundedCornerShape(if (compactHeight) 22.dp else 28.dp),
                 color = MaterialTheme.colorScheme.primary,
@@ -310,6 +324,106 @@ internal fun HomeDashboard(
                     }
                 }
             }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DailyCheckInCard(
+    checkIn: DailyCheckInSnapshot,
+    isClaiming: Boolean,
+    onClaim: () -> Unit
+) {
+    ElevatedCard(
+        modifier = Modifier.fillMaxWidth().testTag("daily_check_in_card"),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.elevatedCardColors(
+            containerColor = MaterialTheme.colorScheme.secondaryContainer
+        )
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Row(
+                    modifier = Modifier.weight(1f),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Icon(Icons.Default.CalendarMonth, contentDescription = null)
+                    Column {
+                        Text("Điểm danh ngày ${checkIn.cycleDay}/7", fontWeight = FontWeight.Bold)
+                        Text(
+                            "Chuỗi ${checkIn.currentStreak} ngày • Tốt nhất ${checkIn.bestStreak}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.72f)
+                        )
+                    }
+                }
+                if (checkIn.claimedToday) {
+                    Icon(
+                        Icons.Default.CheckCircle,
+                        contentDescription = "Đã điểm danh",
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                }
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                DAILY_CHECK_IN_REWARDS_XP.forEachIndexed { index, reward ->
+                    val day = index + 1
+                    val completed = day < checkIn.cycleDay || (day == checkIn.cycleDay && checkIn.claimedToday)
+                    val current = day == checkIn.cycleDay
+                    Surface(
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(10.dp),
+                        color = when {
+                            current -> MaterialTheme.colorScheme.primary
+                            completed -> MaterialTheme.colorScheme.primaryContainer
+                            else -> MaterialTheme.colorScheme.surface.copy(alpha = 0.72f)
+                        },
+                        contentColor = if (current) {
+                            MaterialTheme.colorScheme.onPrimary
+                        } else {
+                            MaterialTheme.colorScheme.onSurface
+                        }
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(vertical = 7.dp, horizontal = 2.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Text("N$day", style = MaterialTheme.typography.labelSmall)
+                            Text("+$reward", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
+
+            if (!checkIn.claimedToday) {
+                Button(
+                    onClick = onClaim,
+                    enabled = !isClaiming,
+                    modifier = Modifier.fillMaxWidth().testTag("daily_check_in_claim")
+                ) {
+                    if (isClaiming) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(20.dp),
+                            strokeWidth = 2.dp,
+                            color = MaterialTheme.colorScheme.onPrimary
+                        )
+                    } else {
+                        Text("Nhận ${checkIn.todayRewardXp} XP", fontWeight = FontWeight.Bold)
+                    }
+                }
             }
         }
     }

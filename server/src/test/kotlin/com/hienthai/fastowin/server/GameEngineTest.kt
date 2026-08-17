@@ -3,6 +3,8 @@ package com.hienthai.fastowin.server
 import com.hienthai.fastowin.protocol.ClientMessage
 import com.hienthai.fastowin.protocol.ProtocolGameMode
 import com.hienthai.fastowin.protocol.PlayerProfileSnapshot
+import com.hienthai.fastowin.protocol.DailyCheckInSnapshot
+import com.hienthai.fastowin.protocol.PlayerProgressionSnapshot
 import com.hienthai.fastowin.protocol.FriendSnapshot
 import com.hienthai.fastowin.protocol.RecentPlayerSnapshot
 import com.hienthai.fastowin.protocol.RematchEvent
@@ -11,6 +13,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
@@ -18,6 +21,59 @@ import kotlin.test.assertTrue
 import java.util.UUID
 
 class GameEngineTest {
+    @Test
+    fun `daily check in refreshes profile and duplicate request gives no xp`() = runTest {
+        val playerId = UUID.randomUUID().toString()
+        var profile = PlayerProfileSnapshot(
+            displayName = "Hiền",
+            playerCode = "HIEN001",
+            progression = PlayerProgressionSnapshot(
+                dailyCheckIn = DailyCheckInSnapshot(todayRewardXp = 5)
+            )
+        )
+        var claimed = false
+        val repository = object : PlayerProfileRepository {
+            override suspend fun findByPlayerId(playerId: String) = profile
+            override suspend fun updateProfile(playerId: String, displayName: String, avatarId: String?) = false
+            override suspend fun claimDailyCheckIn(playerId: String): DailyCheckInClaimResult {
+                if (claimed) return DailyCheckInClaimResult(claimed = false, rewardXp = 0)
+                claimed = true
+                profile = profile.copy(
+                    progression = profile.progression.copy(
+                        experiencePoints = 5,
+                        currentLevelExperience = 5,
+                        dailyCheckIn = DailyCheckInSnapshot(
+                            claimedToday = true,
+                            cycleDay = 1,
+                            todayRewardXp = 5,
+                            nextRewardXp = 10,
+                            currentStreak = 1,
+                            bestStreak = 1,
+                            totalCheckIns = 1
+                        )
+                    )
+                )
+                return DailyCheckInClaimResult(claimed = true, rewardXp = 5)
+            }
+        }
+        val engine = GameEngine(playerProfileRepository = repository)
+        engine.connectAccount(AuthenticatedAccount(UUID.fromString(playerId), "Hiền"))
+
+        val first = engine.handle(playerId, ClientMessage.ClaimDailyCheckIn).map(Delivery::message)
+        assertEquals(5, first.filterIsInstance<ServerMessage.ProfileData>().single().profile.progression.experiencePoints)
+        assertEquals(5, first.filterIsInstance<ServerMessage.DailyCheckInResult>().single().rewardXp)
+        assertTrue(first.filterIsInstance<ServerMessage.DailyCheckInResult>().single().claimed)
+
+        val duplicate = engine.handle(playerId, ClientMessage.ClaimDailyCheckIn).map(Delivery::message)
+            .filterIsInstance<ServerMessage.DailyCheckInResult>().single()
+        assertFalse(duplicate.claimed)
+        assertEquals(0, duplicate.rewardXp)
+
+        val guest = engine.connectGuest("Khách", null)
+        val denied = engine.handle(guest.playerId, ClientMessage.ClaimDailyCheckIn)
+        assertEquals("ACCOUNT_REQUIRED", assertIs<ServerMessage.Error>(denied.single().message).code)
+    }
+
     @Test
     fun `matchmaking pairs connected accounts with nearby elo`() = runTest {
         val firstId = UUID.randomUUID().toString()

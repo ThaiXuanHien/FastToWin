@@ -95,6 +95,7 @@ fun LobbyScreen(
     onOpenSettings: () -> Unit,
     onOpenNotifications: () -> Unit,
     onOpenPractice: () -> Unit,
+    onClaimDailyCheckIn: () -> Unit,
     sessionStartedAtMillis: Long,
     modifier: Modifier = Modifier
 ) {
@@ -140,6 +141,7 @@ fun LobbyScreen(
                     onOpenSettings = onOpenSettings,
                     onOpenNotifications = onOpenNotifications,
                     onOpenPractice = onOpenPractice,
+                    onClaimDailyCheckIn = onClaimDailyCheckIn,
                     onUpgradeGuest = onUpgradeGuest,
                     onLogout = onLogout,
                     sessionStartedAtMillis = sessionStartedAtMillis

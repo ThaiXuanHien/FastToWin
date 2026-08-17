@@ -537,6 +537,15 @@ class GameController(
         scope.launch { socket.sendMessage(ClientMessage.EquipCosmetics(frameId, titleId)) }
     }
 
+    fun claimDailyCheckIn() {
+        val checkIn = _uiState.value.profile?.progression?.dailyCheckIn ?: return
+        if (checkIn.claimedToday || _uiState.value.isDailyCheckInClaiming) return
+        _uiState.update {
+            it.copy(isDailyCheckInClaiming = true, error = null)
+        }
+        scope.launch { socket.sendMessage(ClientMessage.ClaimDailyCheckIn) }
+    }
+
     fun setReady(ready: Boolean) {
         val roomId = _uiState.value.currentRoomId ?: return
         scope.launch { socket.sendMessage(ClientMessage.SetReady(roomId, ready)) }
@@ -664,6 +673,14 @@ class GameController(
                     socket.sendMessage(ClientMessage.SyncNotifications(
                         newNotifications.map(AppNotification::toNotificationSnapshot)
                     ))
+                }
+            }
+            is ServerMessage.DailyCheckInResult -> {
+                _uiState.update {
+                    it.copy(
+                        isDailyCheckInClaiming = false,
+                        error = null
+                    )
                 }
             }
             is ServerMessage.FriendProfileData -> {
@@ -994,6 +1011,7 @@ class GameController(
                     isFriendProfileLoading = false,
                     isMatchDetailLoading = false,
                     isFriendsLoading = false,
+                    isDailyCheckInClaiming = false,
                     error = error.message
                 )
             }

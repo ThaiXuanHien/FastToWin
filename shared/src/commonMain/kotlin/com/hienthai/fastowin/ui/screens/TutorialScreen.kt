@@ -32,6 +32,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -78,82 +79,96 @@ fun TutorialScreen(
         ResponsiveScreen(maxContentWidth = 680.dp) { contentModifier ->
             Column(
                 modifier = contentModifier
-                    .verticalScroll(rememberScrollState())
                     .padding(vertical = 16.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text("HƯỚNG DẪN", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
-                TextButton(onClick = onSkip) { Text("Bỏ qua") }
-            }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("HƯỚNG DẪN", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                    TextButton(onClick = onSkip) { Text("Bỏ qua") }
+                }
 
-            Spacer(Modifier.height(24.dp))
-            Surface(
-                modifier = Modifier.size(136.dp),
-                shape = CircleShape,
-                color = MaterialTheme.colorScheme.primaryContainer
-            ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Icon(
-                        page.icon,
-                        contentDescription = null,
-                        modifier = Modifier.size(68.dp),
-                        tint = MaterialTheme.colorScheme.onPrimaryContainer
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth()
+                        .verticalScroll(rememberScrollState()),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Spacer(Modifier.height(24.dp))
+                    Surface(
+                        modifier = Modifier.size(136.dp),
+                        shape = CircleShape,
+                        color = MaterialTheme.colorScheme.primaryContainer
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                page.icon,
+                                contentDescription = null,
+                                modifier = Modifier.size(68.dp),
+                                tint = MaterialTheme.colorScheme.onPrimaryContainer
+                            )
+                        }
+                    }
+                    Spacer(Modifier.height(32.dp))
+                    Text(
+                        page.title,
+                        style = MaterialTheme.typography.headlineMedium,
+                        fontWeight = FontWeight.Black,
+                        textAlign = TextAlign.Center
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    Text(
+                        page.description,
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = TextAlign.Center
+                    )
+                    Spacer(Modifier.height(20.dp))
+                    Surface(
+                        shape = RoundedCornerShape(18.dp),
+                        color = MaterialTheme.colorScheme.surfaceContainer
+                    ) {
+                        Text(
+                            page.hint,
+                            modifier = Modifier.fillMaxWidth().padding(16.dp),
+                            textAlign = TextAlign.Center,
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                    }
+                    Spacer(Modifier.height(32.dp))
+
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        tutorialPages.indices.forEach { index ->
+                            Surface(
+                                modifier = Modifier.size(if (index == pageIndex) 24.dp else 8.dp, 8.dp),
+                                shape = CircleShape,
+                                color = if (index == pageIndex) MaterialTheme.colorScheme.primary
+                                else MaterialTheme.colorScheme.outlineVariant
+                            ) {}
+                        }
+                    }
+                    Spacer(Modifier.height(16.dp))
+                }
+
+                Button(
+                    onClick = {
+                        if (pageIndex == tutorialPages.lastIndex) onComplete() else pageIndex++
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(54.dp)
+                        .testTag("tutorial_continue"),
+                    shape = RoundedCornerShape(18.dp)
+                ) {
+                    Text(
+                        if (pageIndex == tutorialPages.lastIndex) "Bắt đầu chơi" else "Tiếp tục",
+                        fontWeight = FontWeight.Bold
                     )
                 }
-            }
-            Spacer(Modifier.height(32.dp))
-            Text(
-                page.title,
-                style = MaterialTheme.typography.headlineMedium,
-                fontWeight = FontWeight.Black,
-                textAlign = TextAlign.Center
-            )
-            Spacer(Modifier.height(12.dp))
-            Text(
-                page.description,
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                textAlign = TextAlign.Center
-            )
-            Spacer(Modifier.height(20.dp))
-            Surface(
-                shape = RoundedCornerShape(18.dp),
-                color = MaterialTheme.colorScheme.surfaceContainer
-            ) {
-                Text(
-                    page.hint,
-                    modifier = Modifier.fillMaxWidth().padding(16.dp),
-                    textAlign = TextAlign.Center,
-                    style = MaterialTheme.typography.bodyMedium
-                )
-            }
-            Spacer(Modifier.height(32.dp))
-
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                tutorialPages.indices.forEach { index ->
-                    Surface(
-                        modifier = Modifier.size(if (index == pageIndex) 24.dp else 8.dp, 8.dp),
-                        shape = CircleShape,
-                        color = if (index == pageIndex) MaterialTheme.colorScheme.primary
-                        else MaterialTheme.colorScheme.outlineVariant
-                    ) {}
-                }
-            }
-            Spacer(Modifier.height(20.dp))
-            Button(
-                onClick = {
-                    if (pageIndex == tutorialPages.lastIndex) onComplete() else pageIndex++
-                },
-                modifier = Modifier.fillMaxWidth().height(54.dp),
-                shape = RoundedCornerShape(18.dp)
-            ) {
-                Text(if (pageIndex == tutorialPages.lastIndex) "Bắt đầu chơi" else "Tiếp tục", fontWeight = FontWeight.Bold)
-            }
             }
         }
     }

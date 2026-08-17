@@ -170,6 +170,7 @@ class GameEngine(
     suspend fun handle(playerId: String, message: ClientMessage): List<Delivery> {
         restoreActiveRooms()
         if (message is ClientMessage.GetProfile) return loadProfile(playerId)
+        if (message is ClientMessage.ClaimDailyCheckIn) return claimDailyCheckIn(playerId)
         if (message is ClientMessage.GetFriendProfile) return loadFriendProfile(playerId, message.friendUserId)
         if (message is ClientMessage.GetMatchDetail) return loadMatchDetail(playerId, message.matchId)
         if (message is ClientMessage.UpdateProfile) return updateProfile(playerId, message)
@@ -213,6 +214,7 @@ class GameEngine(
                     listOf(Delivery(ServerMessage.RoomList(publicRooms()), setOf(playerId)))
                 )
                 ClientMessage.GetProfile -> HandleResult(emptyList())
+                ClientMessage.ClaimDailyCheckIn -> HandleResult(emptyList())
                 is ClientMessage.GetFriendProfile -> HandleResult(emptyList())
                 is ClientMessage.GetMatchDetail -> HandleResult(emptyList())
                 is ClientMessage.UpdateProfile -> HandleResult(emptyList())
@@ -834,6 +836,22 @@ class GameEngine(
             playerCode = playerId.replace("-", "").take(10).uppercase()
         )
         return listOf(Delivery(ServerMessage.ProfileData(profile), setOf(playerId)))
+    }
+
+    private suspend fun claimDailyCheckIn(playerId: String): List<Delivery> {
+        if (!isAccountSession(playerId)) return listOf(accountRequired(playerId))
+        val result = runCatching { playerProfileRepository.claimDailyCheckIn(playerId) }
+            .onFailure { System.err.println("Could not claim daily check-in for $playerId: ${it.message}") }
+            .getOrNull()
+            ?: return listOf(error(
+                playerId,
+                "DAILY_CHECK_IN_UNAVAILABLE",
+                "Chưa thể điểm danh. Vui lòng thử lại."
+            ))
+        return loadProfile(playerId) + Delivery(
+            ServerMessage.DailyCheckInResult(result.claimed, result.rewardXp),
+            setOf(playerId)
+        )
     }
 
     private suspend fun loadFriendProfile(playerId: String, friendUserId: String): List<Delivery> {

@@ -382,6 +382,7 @@ private fun GameContent(
                     onOpenSettings = { showSettings = true },
                     onOpenNotifications = controller::openNotifications,
                     onOpenPractice = { showPracticeModePicker = true },
+                    onClaimDailyCheckIn = controller::claimDailyCheckIn,
                     sessionStartedAtMillis = sessionStartedAtMillis
                 )
     }

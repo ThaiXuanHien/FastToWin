@@ -8,7 +8,13 @@ interface PlayerProfileRepository {
     suspend fun updateProfile(playerId: String, displayName: String, avatarId: String?): Boolean
     suspend fun findMatchDetail(playerId: String, matchId: String): MatchDetailSnapshot? = null
     suspend fun equipCosmetics(playerId: String, frameId: String, titleId: String): Boolean = false
+    suspend fun claimDailyCheckIn(playerId: String): DailyCheckInClaimResult? = null
 }
+
+data class DailyCheckInClaimResult(
+    val claimed: Boolean,
+    val rewardXp: Int
+)
 
 object NoOpPlayerProfileRepository : PlayerProfileRepository {
     override suspend fun findByPlayerId(playerId: String): PlayerProfileSnapshot? = null
