@@ -4,7 +4,7 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
-const val PROTOCOL_VERSION = 18
+const val PROTOCOL_VERSION = 19
 const val GAME_NUMBER_COUNT = 50
 const val MAX_PROFILE_DISPLAY_NAME_LENGTH = 32
 val DAILY_CHECK_IN_REWARDS_XP = listOf(5, 10, 10, 15, 15, 20, 25)
@@ -120,7 +120,9 @@ data class MissionSnapshot(
     val title: String,
     val progress: Int,
     val target: Int,
-    val completed: Boolean
+    val completed: Boolean,
+    val rewardXp: Int = 0,
+    val rewardClaimed: Boolean = false
 )
 
 @Serializable
@@ -333,6 +335,10 @@ sealed class ClientMessage {
     data object ClaimDailyCheckIn : ClientMessage()
 
     @Serializable
+    @SerialName("claim_mission_reward")
+    data class ClaimMissionReward(val missionCode: String) : ClientMessage()
+
+    @Serializable
     @SerialName("get_friend_profile")
     data class GetFriendProfile(val friendUserId: String) : ClientMessage()
 
@@ -486,6 +492,14 @@ sealed class ServerMessage {
     @Serializable
     @SerialName("daily_check_in_result")
     data class DailyCheckInResult(
+        val claimed: Boolean,
+        val rewardXp: Int
+    ) : ServerMessage()
+
+    @Serializable
+    @SerialName("mission_reward_result")
+    data class MissionRewardResult(
+        val missionCode: String,
         val claimed: Boolean,
         val rewardXp: Int
     ) : ServerMessage()

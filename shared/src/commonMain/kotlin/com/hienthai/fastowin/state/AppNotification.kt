@@ -149,7 +149,7 @@ private fun completedMissionNotifications(
             id = "mission:$periodKey:${mission.code}",
             kind = AppNotificationKind.MISSION,
             title = "Hoàn thành nhiệm vụ",
-            message = mission.title,
+            message = "${mission.title} • Có thể nhận ${mission.rewardXp} XP.",
             createdAtEpochMillis = nowMillis,
             destination = AppNotificationDestination.PROFILE
         )

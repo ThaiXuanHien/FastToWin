@@ -7,6 +7,7 @@ import com.hienthai.fastowin.protocol.DAILY_CHECK_IN_AVATAR_ID
 import com.hienthai.fastowin.protocol.ProtocolGameMode
 import com.hienthai.fastowin.protocol.PlayerProfileSnapshot
 import com.hienthai.fastowin.protocol.DailyCheckInSnapshot
+import com.hienthai.fastowin.protocol.MissionSnapshot
 import com.hienthai.fastowin.protocol.PlayerProgressionSnapshot
 import com.hienthai.fastowin.protocol.FriendSnapshot
 import com.hienthai.fastowin.protocol.RecentPlayerSnapshot
@@ -75,6 +76,50 @@ class GameEngineTest {
         val guest = engine.connectGuest("Khách", null)
         val denied = engine.handle(guest.playerId, ClientMessage.ClaimDailyCheckIn)
         assertEquals("ACCOUNT_REQUIRED", assertIs<ServerMessage.Error>(denied.single().message).code)
+    }
+
+    @Test
+    fun `mission reward refreshes profile and rejects duplicate claim`() = runTest {
+        val playerId = UUID.randomUUID().toString()
+        var claimed = false
+        var profile = PlayerProfileSnapshot(
+            displayName = "Hiền",
+            playerCode = "HIEN001",
+            progression = PlayerProgressionSnapshot(
+                dailyMissions = listOf(
+                    MissionSnapshot("DAILY_WIN_1", "Thắng 1 trận hôm nay", 1, 1, true, 15)
+                )
+            )
+        )
+        val repository = object : PlayerProfileRepository {
+            override suspend fun findByPlayerId(playerId: String) = profile
+            override suspend fun updateProfile(playerId: String, displayName: String, avatarId: String?) = false
+            override suspend fun claimMissionReward(playerId: String, missionCode: String): MissionRewardClaimResult {
+                if (claimed) return MissionRewardClaimResult(MissionRewardClaimStatus.ALREADY_CLAIMED)
+                claimed = true
+                profile = profile.copy(
+                    progression = profile.progression.copy(
+                        experiencePoints = 15,
+                        dailyMissions = profile.progression.dailyMissions.map { it.copy(rewardClaimed = true) }
+                    )
+                )
+                return MissionRewardClaimResult(MissionRewardClaimStatus.CLAIMED, 15)
+            }
+        }
+        val engine = GameEngine(playerProfileRepository = repository)
+        engine.connectAccount(AuthenticatedAccount(UUID.fromString(playerId), "Hiền"))
+
+        val first = engine.handle(playerId, ClientMessage.ClaimMissionReward("DAILY_WIN_1"))
+            .map(Delivery::message)
+        assertEquals(15, first.filterIsInstance<ServerMessage.MissionRewardResult>().single().rewardXp)
+        assertTrue(first.filterIsInstance<ServerMessage.ProfileData>().single()
+            .profile.progression.dailyMissions.single().rewardClaimed)
+
+        val duplicate = engine.handle(playerId, ClientMessage.ClaimMissionReward("DAILY_WIN_1"))
+        assertEquals(
+            "MISSION_ALREADY_CLAIMED",
+            assertIs<ServerMessage.Error>(duplicate.single().message).code
+        )
     }
 
     @Test

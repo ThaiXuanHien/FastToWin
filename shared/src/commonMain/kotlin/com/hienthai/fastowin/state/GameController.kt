@@ -546,6 +546,17 @@ class GameController(
         scope.launch { socket.sendMessage(ClientMessage.ClaimDailyCheckIn) }
     }
 
+    fun claimMissionReward(missionCode: String) {
+        val progression = _uiState.value.profile?.progression ?: return
+        val mission = (progression.dailyMissions + progression.weeklyMissions)
+            .firstOrNull { it.code == missionCode } ?: return
+        if (!mission.completed || mission.rewardClaimed || _uiState.value.claimingMissionCode != null) return
+        _uiState.update {
+            it.copy(claimingMissionCode = missionCode, profileNotice = null, error = null)
+        }
+        scope.launch { socket.sendMessage(ClientMessage.ClaimMissionReward(missionCode)) }
+    }
+
     fun setReady(ready: Boolean) {
         val roomId = _uiState.value.currentRoomId ?: return
         scope.launch { socket.sendMessage(ClientMessage.SetReady(roomId, ready)) }
@@ -679,6 +690,15 @@ class GameController(
                 _uiState.update {
                     it.copy(
                         isDailyCheckInClaiming = false,
+                        error = null
+                    )
+                }
+            }
+            is ServerMessage.MissionRewardResult -> {
+                _uiState.update {
+                    it.copy(
+                        claimingMissionCode = null,
+                        profileNotice = if (message.claimed) "Đã nhận ${message.rewardXp} XP." else null,
                         error = null
                     )
                 }
@@ -1012,6 +1032,7 @@ class GameController(
                     isMatchDetailLoading = false,
                     isFriendsLoading = false,
                     isDailyCheckInClaiming = false,
+                    claimingMissionCode = null,
                     error = error.message
                 )
             }

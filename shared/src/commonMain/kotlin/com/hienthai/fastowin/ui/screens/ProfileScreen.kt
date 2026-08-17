@@ -101,6 +101,7 @@ fun ProfileScreen(
     onOpenMatchDetail: (String) -> Unit,
     onCloseMatchDetail: () -> Unit,
     onEquipCosmetics: (String, String) -> Unit,
+    onClaimMissionReward: (String) -> Unit,
     onSave: (String, String?) -> Unit,
     canEdit: Boolean,
     profileOverride: PlayerProfileSnapshot? = null,
@@ -394,22 +395,50 @@ fun ProfileScreen(
         )
 
         Text("Nhiệm vụ", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-        (progression.dailyMissions + progression.weeklyMissions).forEach { mission ->
-            Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surfaceContainer) {
-                Row(
-                    Modifier.fillMaxWidth().padding(14.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    Text(if (mission.completed) "✅" else "🎯")
-                    Column(Modifier.weight(1f)) {
-                        Text(mission.title, fontWeight = FontWeight.SemiBold)
-                        LinearProgressIndicator(
-                            progress = { mission.progress.toFloat() / mission.target.coerceAtLeast(1) },
-                            modifier = Modifier.fillMaxWidth().height(6.dp)
-                        )
+        listOf(
+            "Hằng ngày" to progression.dailyMissions,
+            "Hằng tuần" to progression.weeklyMissions
+        ).forEach { (sectionTitle, missions) ->
+            if (missions.isNotEmpty()) Text(sectionTitle, fontWeight = FontWeight.SemiBold)
+            missions.forEach { mission ->
+                Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surfaceContainer) {
+                    Row(
+                        Modifier.fillMaxWidth().padding(14.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Text(if (mission.completed) "✅" else "🎯")
+                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                            Text(mission.title, fontWeight = FontWeight.SemiBold)
+                            LinearProgressIndicator(
+                                progress = { mission.progress.toFloat() / mission.target.coerceAtLeast(1) },
+                                modifier = Modifier.fillMaxWidth().height(6.dp)
+                            )
+                            Text(
+                                "${mission.progress}/${mission.target} • +${mission.rewardXp} XP",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        when {
+                            mission.rewardClaimed -> Text("✓", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                            mission.completed && canEdit -> Button(
+                                onClick = { onClaimMissionReward(mission.code) },
+                                enabled = state.claimingMissionCode == null,
+                                modifier = Modifier.testTag("claim_mission:${mission.code}")
+                            ) {
+                                if (state.claimingMissionCode == mission.code) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(18.dp),
+                                        strokeWidth = 2.dp
+                                    )
+                                } else {
+                                    Text("Nhận")
+                                }
+                            }
+                            mission.completed -> Text("Hoàn thành", style = MaterialTheme.typography.bodySmall)
+                        }
                     }
-                    Text("${mission.progress}/${mission.target}", fontWeight = FontWeight.Bold)
                 }
             }
         }

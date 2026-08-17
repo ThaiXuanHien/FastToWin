@@ -1,0 +1,12 @@
+ALTER TABLE user_missions
+    ADD COLUMN reward_xp INTEGER NOT NULL DEFAULT 0 CHECK (reward_xp >= 0),
+    ADD COLUMN claimed_at TIMESTAMPTZ;
+
+UPDATE user_missions
+SET reward_xp = CASE mission_code
+    WHEN 'DAILY_PLAY_3' THEN 20
+    WHEN 'DAILY_WIN_1' THEN 15
+    WHEN 'WEEKLY_CORRECT_100' THEN 50
+    WHEN 'WEEKLY_PERFECT_1' THEN 75
+    ELSE 0
+END;

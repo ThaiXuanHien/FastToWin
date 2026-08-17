@@ -15,6 +15,7 @@ import com.hienthai.fastowin.navigation.GameMode
 import com.hienthai.fastowin.protocol.PlayerProfileSnapshot
 import com.hienthai.fastowin.protocol.DailyCheckInSnapshot
 import com.hienthai.fastowin.protocol.PlayerProgressionSnapshot
+import com.hienthai.fastowin.protocol.MissionSnapshot
 import com.hienthai.fastowin.state.AuthStage
 import com.hienthai.fastowin.state.AuthState
 import com.hienthai.fastowin.state.AvailableRoom
@@ -113,6 +114,7 @@ class CriticalFlowsUiTest {
 
     @Test
     fun profile_showsDailyCheckInMilestonesInIncreasingDifficulty() {
+        var claimedMissionCode: String? = null
         composeRule.setContent {
             FastToWinTheme {
                 ProfileScreen(
@@ -121,6 +123,16 @@ class CriticalFlowsUiTest {
                             displayName = "Hiền",
                             playerCode = "HIEN001",
                             progression = PlayerProgressionSnapshot(
+                                dailyMissions = listOf(
+                                    MissionSnapshot(
+                                        code = "DAILY_PLAY_3",
+                                        title = "Chơi 3 trận hôm nay",
+                                        progress = 3,
+                                        target = 3,
+                                        completed = true,
+                                        rewardXp = 20
+                                    )
+                                ),
                                 dailyCheckIn = DailyCheckInSnapshot(
                                     bestStreak = 30,
                                     totalCheckIns = 50,
@@ -135,6 +147,7 @@ class CriticalFlowsUiTest {
                     onOpenMatchDetail = {},
                     onCloseMatchDetail = {},
                     onEquipCosmetics = { _, _ -> },
+                    onClaimMissionReward = { claimedMissionCode = it },
                     onSave = { _, _ -> },
                     canEdit = true,
                     isAccountLoading = false,
@@ -162,6 +175,8 @@ class CriticalFlowsUiTest {
         composeRule.onNodeWithText("Tháng 8/2026").assertIsDisplayed()
         composeRule.onNodeWithContentDescription("Tháng trước").performClick()
         composeRule.onNodeWithText("Tháng 7/2026").assertIsDisplayed()
+        composeRule.onNodeWithTag("claim_mission:DAILY_PLAY_3").performScrollTo().performClick()
+        composeRule.runOnIdle { assertEquals("DAILY_PLAY_3", claimedMissionCode) }
     }
 
     @Test

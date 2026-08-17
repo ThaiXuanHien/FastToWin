@@ -173,6 +173,7 @@ class GameEngine(
         restoreActiveRooms()
         if (message is ClientMessage.GetProfile) return loadProfile(playerId)
         if (message is ClientMessage.ClaimDailyCheckIn) return claimDailyCheckIn(playerId)
+        if (message is ClientMessage.ClaimMissionReward) return claimMissionReward(playerId, message.missionCode)
         if (message is ClientMessage.GetFriendProfile) return loadFriendProfile(playerId, message.friendUserId)
         if (message is ClientMessage.GetMatchDetail) return loadMatchDetail(playerId, message.matchId)
         if (message is ClientMessage.UpdateProfile) return updateProfile(playerId, message)
@@ -217,6 +218,7 @@ class GameEngine(
                 )
                 ClientMessage.GetProfile -> HandleResult(emptyList())
                 ClientMessage.ClaimDailyCheckIn -> HandleResult(emptyList())
+                is ClientMessage.ClaimMissionReward -> HandleResult(emptyList())
                 is ClientMessage.GetFriendProfile -> HandleResult(emptyList())
                 is ClientMessage.GetMatchDetail -> HandleResult(emptyList())
                 is ClientMessage.UpdateProfile -> HandleResult(emptyList())
@@ -854,6 +856,40 @@ class GameEngine(
             ServerMessage.DailyCheckInResult(result.claimed, result.rewardXp),
             setOf(playerId)
         )
+    }
+
+    private suspend fun claimMissionReward(playerId: String, missionCode: String): List<Delivery> {
+        if (!isAccountSession(playerId)) return listOf(accountRequired(playerId))
+        val result = runCatching {
+            playerProfileRepository.claimMissionReward(playerId, missionCode)
+        }.onFailure {
+            System.err.println("Could not claim mission reward $missionCode for $playerId: ${it.message}")
+        }.getOrNull() ?: return listOf(error(
+            playerId,
+            "MISSION_REWARD_UNAVAILABLE",
+            "Chưa thể nhận thưởng nhiệm vụ. Vui lòng thử lại."
+        ))
+        return when (result.status) {
+            MissionRewardClaimStatus.CLAIMED -> loadProfile(playerId) + Delivery(
+                ServerMessage.MissionRewardResult(missionCode, claimed = true, rewardXp = result.rewardXp),
+                setOf(playerId)
+            )
+            MissionRewardClaimStatus.ALREADY_CLAIMED -> listOf(error(
+                playerId,
+                "MISSION_ALREADY_CLAIMED",
+                "Phần thưởng nhiệm vụ này đã được nhận."
+            ))
+            MissionRewardClaimStatus.NOT_COMPLETED -> listOf(error(
+                playerId,
+                "MISSION_NOT_COMPLETED",
+                "Nhiệm vụ chưa hoàn thành."
+            ))
+            MissionRewardClaimStatus.INVALID_MISSION -> listOf(error(
+                playerId,
+                "INVALID_MISSION",
+                "Nhiệm vụ không hợp lệ."
+            ))
+        }
     }
 
     private suspend fun loadFriendProfile(playerId: String, friendUserId: String): List<Delivery> {

@@ -99,6 +99,7 @@ data class GameState(
     val profileNotice: String? = null,
     val profile: PlayerProfileSnapshot? = null,
     val isDailyCheckInClaiming: Boolean = false,
+    val claimingMissionCode: String? = null,
     val viewedFriendUserId: String? = null,
     val friendProfile: PlayerProfileSnapshot? = null,
     val isFriendProfileOpen: Boolean = false,

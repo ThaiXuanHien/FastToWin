@@ -191,25 +191,45 @@ class PostgresPlayerProfileRepository(
             }
             val storedMissions = connection.prepareStatement(
                 """
-                SELECT mission_code, progress, target
+                SELECT mission_code, progress, target, reward_xp, claimed_at
                 FROM user_missions
-                WHERE user_id = ?
-                  AND period_start IN (CURRENT_DATE, date_trunc('week', CURRENT_DATE)::date)
+                WHERE user_id = ? AND period_start IN (?, ?)
                 """.trimIndent()
             ).use { statement ->
                 statement.setObject(1, userId)
+                statement.setDate(2, Date.valueOf(today))
+                statement.setDate(3, Date.valueOf(missionPeriodStart(
+                    MISSION_DEFINITIONS.first { it.period == MissionPeriod.WEEKLY },
+                    today
+                )))
                 statement.executeQuery().use { result ->
                     buildMap {
                         while (result.next()) {
-                            put(result.getString("mission_code"), result.getInt("progress") to result.getInt("target"))
+                            put(
+                                result.getString("mission_code"),
+                                StoredMission(
+                                    progress = result.getInt("progress"),
+                                    target = result.getInt("target"),
+                                    rewardXp = result.getInt("reward_xp"),
+                                    rewardClaimed = result.getTimestamp("claimed_at") != null
+                                )
+                            )
                         }
                     }
                 }
             }
-            fun mission(code: String, title: String, target: Int): MissionSnapshot {
-                val stored = storedMissions[code]
-                val progress = (stored?.first ?: 0).coerceAtMost(target)
-                return MissionSnapshot(code, title, progress, target, progress >= target)
+            fun mission(definition: MissionDefinition): MissionSnapshot {
+                val stored = storedMissions[definition.code]
+                val progress = (stored?.progress ?: 0).coerceAtMost(definition.target)
+                return MissionSnapshot(
+                    code = definition.code,
+                    title = definition.title,
+                    progress = progress,
+                    target = definition.target,
+                    completed = progress >= definition.target,
+                    rewardXp = stored?.rewardXp?.takeIf { it > 0 } ?: definition.rewardXp,
+                    rewardClaimed = stored?.rewardClaimed == true
+                )
             }
             val season = connection.prepareStatement(
                 """
@@ -290,14 +310,8 @@ class PostgresPlayerProfileRepository(
                     experiencePoints = experiencePoints,
                     currentLevelExperience = experiencePoints % EXPERIENCE_PER_LEVEL,
                     nextLevelExperience = EXPERIENCE_PER_LEVEL,
-                    dailyMissions = listOf(
-                        mission("DAILY_PLAY_3", "Chơi 3 trận hôm nay", 3),
-                        mission("DAILY_WIN_1", "Thắng 1 trận hôm nay", 1)
-                    ),
-                    weeklyMissions = listOf(
-                        mission("WEEKLY_CORRECT_100", "Chọn đúng 100 số trong tuần", 100),
-                        mission("WEEKLY_PERFECT_1", "Thắng 1 trận không bấm sai", 1)
-                    ),
+                    dailyMissions = MISSION_DEFINITIONS.filter { it.period == MissionPeriod.DAILY }.map(::mission),
+                    weeklyMissions = MISSION_DEFINITIONS.filter { it.period == MissionPeriod.WEEKLY }.map(::mission),
                     dailyCheckIn = DailyCheckInSnapshot(
                         claimedToday = checkInDecision.claimedToday,
                         cycleDay = checkInDecision.cycleDay,
@@ -483,6 +497,80 @@ class PostgresPlayerProfileRepository(
             }
         }
 
+    override suspend fun claimMissionReward(
+        playerId: String,
+        missionCode: String
+    ): MissionRewardClaimResult? = withContext(Dispatchers.IO) {
+        val definition = missionDefinition(missionCode)
+            ?: return@withContext MissionRewardClaimResult(MissionRewardClaimStatus.INVALID_MISSION)
+        dataSource.connection.use { connection ->
+            connection.autoCommit = false
+            try {
+                val userId = UUID.fromString(playerId)
+                val periodStart = Date.valueOf(missionPeriodStart(definition, currentCheckInDate()))
+                val stored = connection.prepareStatement(
+                    """
+                    SELECT progress, target, reward_xp, claimed_at
+                    FROM user_missions
+                    WHERE user_id = ? AND mission_code = ? AND period_start = ?
+                    FOR UPDATE
+                    """.trimIndent()
+                ).use { statement ->
+                    statement.setObject(1, userId)
+                    statement.setString(2, definition.code)
+                    statement.setDate(3, periodStart)
+                    statement.executeQuery().use { result ->
+                        if (!result.next()) null else StoredMission(
+                            progress = result.getInt("progress"),
+                            target = result.getInt("target"),
+                            rewardXp = result.getInt("reward_xp"),
+                            rewardClaimed = result.getTimestamp("claimed_at") != null
+                        )
+                    }
+                }
+                val outcome = when {
+                    stored == null || stored.progress < stored.target ->
+                        MissionRewardClaimResult(MissionRewardClaimStatus.NOT_COMPLETED)
+                    stored.rewardClaimed ->
+                        MissionRewardClaimResult(MissionRewardClaimStatus.ALREADY_CLAIMED)
+                    else -> {
+                        val rewardXp = stored.rewardXp.takeIf { it > 0 } ?: definition.rewardXp
+                        connection.prepareStatement(
+                            """
+                            UPDATE user_missions
+                            SET claimed_at = CURRENT_TIMESTAMP
+                            WHERE user_id = ? AND mission_code = ? AND period_start = ?
+                              AND claimed_at IS NULL AND progress >= target
+                            """.trimIndent()
+                        ).use { statement ->
+                            statement.setObject(1, userId)
+                            statement.setString(2, definition.code)
+                            statement.setDate(3, periodStart)
+                            check(statement.executeUpdate() == 1)
+                        }
+                        connection.prepareStatement(
+                            """
+                            UPDATE player_stats
+                            SET experience_points = experience_points + ?, updated_at = CURRENT_TIMESTAMP
+                            WHERE user_id = ?
+                            """.trimIndent()
+                        ).use { statement ->
+                            statement.setInt(1, rewardXp)
+                            statement.setObject(2, userId)
+                            check(statement.executeUpdate() == 1)
+                        }
+                        MissionRewardClaimResult(MissionRewardClaimStatus.CLAIMED, rewardXp)
+                    }
+                }
+                connection.commit()
+                outcome
+            } catch (error: Throwable) {
+                connection.rollback()
+                throw error
+            }
+        }
+    }
+
     override suspend fun updateProfile(
         playerId: String,
         displayName: String,
@@ -540,6 +628,13 @@ private data class ProgressionRow(
     val bestDailyCheckInStreak: Int = 0,
     val totalDailyCheckIns: Int = 0,
     val lastDailyCheckInDate: LocalDate? = null
+)
+
+private data class StoredMission(
+    val progress: Int,
+    val target: Int,
+    val rewardXp: Int,
+    val rewardClaimed: Boolean
 )
 
 internal fun unlockedFrameIds(

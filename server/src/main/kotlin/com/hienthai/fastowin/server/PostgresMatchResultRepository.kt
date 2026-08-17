@@ -329,10 +329,14 @@ class PostgresMatchResultRepository(
         val metricsByPlayer = calculateSelectionMetrics(match)
         connection.prepareStatement(
             """
-            INSERT INTO user_missions (user_id, mission_code, period_start, progress, target, completed_at)
-            VALUES (?, ?, ?, ?, ?, CASE WHEN ? >= ? THEN CAST(? AS TIMESTAMPTZ) ELSE NULL END)
+            INSERT INTO user_missions (
+                user_id, mission_code, period_start, progress, target, reward_xp, completed_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, CASE WHEN ? >= ? THEN CAST(? AS TIMESTAMPTZ) ELSE NULL END)
             ON CONFLICT (user_id, mission_code, period_start) DO UPDATE SET
                 progress = LEAST(user_missions.target, user_missions.progress + EXCLUDED.progress),
+                target = EXCLUDED.target,
+                reward_xp = EXCLUDED.reward_xp,
                 completed_at = CASE
                     WHEN user_missions.completed_at IS NOT NULL THEN user_missions.completed_at
                     WHEN user_missions.progress + EXCLUDED.progress >= user_missions.target THEN CURRENT_TIMESTAMP
@@ -340,39 +344,33 @@ class PostgresMatchResultRepository(
                 END
             """.trimIndent()
         ).use { statement ->
+            val matchDate = missionDateAt(match.endedAtMillis)
             match.players.forEach { player ->
                 val metrics = metricsByPlayer[player.playerId] ?: SelectionMetrics()
-                val missions = listOf(
-                    MissionProgress("DAILY_PLAY_3", java.sql.Date(match.endedAtMillis), 1, 3),
-                    MissionProgress("DAILY_WIN_1", java.sql.Date(match.endedAtMillis), if (player.outcome == MatchOutcome.WIN) 1 else 0, 1),
+                val missions = MISSION_DEFINITIONS.map { definition ->
+                    val increment = when (definition.code) {
+                        "DAILY_PLAY_3" -> 1
+                        "DAILY_WIN_1" -> if (player.outcome == MatchOutcome.WIN) 1 else 0
+                        "WEEKLY_CORRECT_100" -> metrics.correct
+                        "WEEKLY_PERFECT_1" -> if (player.isPerfectWinner(metrics)) 1 else 0
+                        else -> 0
+                    }
                     MissionProgress(
-                        "WEEKLY_CORRECT_100",
-                        java.sql.Date.valueOf(
-                            Instant.ofEpochMilli(match.endedAtMillis).atZone(java.time.ZoneOffset.UTC).toLocalDate()
-                                .with(java.time.DayOfWeek.MONDAY)
-                        ),
-                        metrics.correct,
-                        100
-                    ),
-                    MissionProgress(
-                        "WEEKLY_PERFECT_1",
-                        java.sql.Date.valueOf(
-                            Instant.ofEpochMilli(match.endedAtMillis).atZone(java.time.ZoneOffset.UTC).toLocalDate()
-                                .with(java.time.DayOfWeek.MONDAY)
-                        ),
-                        if (player.isPerfectWinner(metrics)) 1 else 0,
-                        1
+                        definition = definition,
+                        periodStart = java.sql.Date.valueOf(missionPeriodStart(definition, matchDate)),
+                        increment = increment
                     )
-                )
+                }
                 missions.filter { it.increment > 0 }.forEach { mission ->
                     statement.setObject(1, UUID.fromString(player.playerId))
-                    statement.setString(2, mission.code)
+                    statement.setString(2, mission.definition.code)
                     statement.setDate(3, mission.periodStart)
                     statement.setInt(4, mission.increment)
-                    statement.setInt(5, mission.target)
-                    statement.setInt(6, mission.increment)
-                    statement.setInt(7, mission.target)
-                    statement.setTimestamp(8, match.endedAtMillis.toTimestamp())
+                    statement.setInt(5, mission.definition.target)
+                    statement.setInt(6, mission.definition.rewardXp)
+                    statement.setInt(7, mission.increment)
+                    statement.setInt(8, mission.definition.target)
+                    statement.setTimestamp(9, match.endedAtMillis.toTimestamp())
                     statement.addBatch()
                 }
             }
@@ -388,10 +386,9 @@ class PostgresMatchResultRepository(
     )
 
     private data class MissionProgress(
-        val code: String,
+        val definition: MissionDefinition,
         val periodStart: java.sql.Date,
-        val increment: Int,
-        val target: Int
+        val increment: Int
     )
 
     private fun CompletedMatchPlayer.isPerfectWinner(metrics: SelectionMetrics): Boolean =

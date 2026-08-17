@@ -123,6 +123,15 @@ class PostgresMatchResultRepositoryTest {
                 assertEquals(1, profile.progression.level)
                 assertEquals(1, profile.progression.dailyMissions.first { it.code == "DAILY_PLAY_3" }.progress)
                 assertTrue(profile.progression.dailyMissions.first { it.code == "DAILY_WIN_1" }.completed)
+                assertEquals(15, profile.progression.dailyMissions.first { it.code == "DAILY_WIN_1" }.rewardXp)
+                val missionReward = profileRepository.claimMissionReward(host.playerId, "DAILY_WIN_1")!!
+                val duplicateMissionReward = profileRepository.claimMissionReward(host.playerId, "DAILY_WIN_1")!!
+                assertEquals(MissionRewardClaimStatus.CLAIMED, missionReward.status)
+                assertEquals(15, missionReward.rewardXp)
+                assertEquals(MissionRewardClaimStatus.ALREADY_CLAIMED, duplicateMissionReward.status)
+                val rewardedProfile = profileRepository.findByPlayerId(host.playerId)!!
+                assertEquals(40, rewardedProfile.progression.experiencePoints)
+                assertTrue(rewardedProfile.progression.dailyMissions.first { it.code == "DAILY_WIN_1" }.rewardClaimed)
                 assertEquals(50, profile.progression.weeklyMissions.first { it.code == "WEEKLY_CORRECT_100" }.progress)
                 assertTrue(profile.progression.weeklyMissions.first { it.code == "WEEKLY_PERFECT_1" }.completed)
                 assertFalse(profile.progression.cosmetics.first { it.id == "frame_perfect" }.unlocked)
@@ -135,7 +144,7 @@ class PostgresMatchResultRepositoryTest {
                 assertFalse(duplicateCheckIn.claimed)
                 assertEquals(0, duplicateCheckIn.rewardXp)
                 val checkedInProfile = profileRepository.findByPlayerId(host.playerId)!!
-                assertEquals(30, checkedInProfile.progression.experiencePoints)
+                assertEquals(45, checkedInProfile.progression.experiencePoints)
                 assertTrue(checkedInProfile.progression.dailyCheckIn.claimedToday)
                 assertEquals(1, checkedInProfile.progression.dailyCheckIn.currentStreak)
                 assertEquals(1, checkedInProfile.progression.dailyCheckIn.totalCheckIns)
