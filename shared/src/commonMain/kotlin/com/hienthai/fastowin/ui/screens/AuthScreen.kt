@@ -5,15 +5,14 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.Lock
@@ -49,6 +48,7 @@ import com.hienthai.fastowin.state.AuthState
 import com.hienthai.fastowin.state.MAX_ACCOUNT_PASSWORD_LENGTH
 import com.hienthai.fastowin.state.accountPasswordConfirmationError
 import com.hienthai.fastowin.state.accountPasswordError
+import com.hienthai.fastowin.ui.layout.ResponsiveScreen
 
 @Composable
 fun AuthScreen(
@@ -65,25 +65,27 @@ fun AuthScreen(
     onBack: () -> Unit,
     onCancelUpgrade: () -> Unit
 ) {
-    Box(
-        modifier = Modifier.fillMaxSize()
-            .windowInsetsPadding(WindowInsets.safeDrawing)
-            .padding(24.dp),
-        contentAlignment = Alignment.Center
-    ) {
-        when (state.stage) {
-            AuthStage.WELCOME -> WelcomeContent(state, onOpenLogin, onOpenRegister, onPlayAsGuest)
-            AuthStage.LOGIN -> LoginContent(state, onLogin, onOpenPasswordReset, onBack)
-            AuthStage.REGISTER -> RegisterContent(state, onRegister, onBack)
-            AuthStage.RESET_PASSWORD -> PasswordResetContent(
-                state,
-                onRequestPasswordReset,
-                onConfirmPasswordReset,
-                onOpenPasswordReset,
-                onBack
-            )
-            AuthStage.UPGRADE_GUEST -> UpgradeGuestContent(state, onUpgradeGuest, onCancelUpgrade)
-            AuthStage.PLAYING -> Unit
+    ResponsiveScreen(maxContentWidth = 520.dp, avoidKeyboard = true) { contentModifier ->
+        Box(
+            modifier = contentModifier
+                .verticalScroll(rememberScrollState())
+                .padding(vertical = 24.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            when (state.stage) {
+                AuthStage.WELCOME -> WelcomeContent(state, onOpenLogin, onOpenRegister, onPlayAsGuest)
+                AuthStage.LOGIN -> LoginContent(state, onLogin, onOpenPasswordReset, onBack)
+                AuthStage.REGISTER -> RegisterContent(state, onRegister, onBack)
+                AuthStage.RESET_PASSWORD -> PasswordResetContent(
+                    state,
+                    onRequestPasswordReset,
+                    onConfirmPasswordReset,
+                    onOpenPasswordReset,
+                    onBack
+                )
+                AuthStage.UPGRADE_GUEST -> UpgradeGuestContent(state, onUpgradeGuest, onCancelUpgrade)
+                AuthStage.PLAYING -> Unit
+            }
         }
     }
 }

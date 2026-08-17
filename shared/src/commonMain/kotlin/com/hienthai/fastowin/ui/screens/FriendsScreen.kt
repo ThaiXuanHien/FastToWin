@@ -2,16 +2,14 @@ package com.hienthai.fastowin.ui.screens
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
@@ -44,6 +42,7 @@ import com.hienthai.fastowin.protocol.ServerMessage
 import com.hienthai.fastowin.platform.epochMillis
 import com.hienthai.fastowin.state.GameState
 import com.hienthai.fastowin.state.LobbyStage
+import com.hienthai.fastowin.ui.layout.ResponsiveScreen
 
 @Composable
 fun FriendsScreen(
@@ -101,10 +100,15 @@ fun FriendsScreen(
         )
     }
 
-    Column(
-        modifier = modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).padding(20.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp)
-    ) {
+    ResponsiveScreen(
+        modifier = modifier,
+        maxContentWidth = 920.dp,
+        includeBottomSafeDrawingInset = showBackButton
+    ) { contentModifier ->
+        Column(
+            modifier = contentModifier.padding(vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
@@ -117,20 +121,12 @@ fun FriendsScreen(
                 Icon(Icons.Default.Refresh, "Làm mới danh sách bạn bè")
             }
         }
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedTextField(
-                value = playerCode,
-                onValueChange = { playerCode = it.uppercase().take(12) },
-                label = { Text("Mã người chơi") },
-                singleLine = true,
-                modifier = Modifier.weight(1f)
-            )
-            Button(
-                onClick = { onSendRequest(playerCode); playerCode = "" },
-                enabled = playerCode.isNotBlank() && !state.isFriendsLoading,
-                modifier = Modifier.align(Alignment.CenterVertically)
-            ) { Text("Kết bạn") }
-        }
+        FriendCodeForm(
+            playerCode = playerCode,
+            onPlayerCodeChange = { playerCode = it.uppercase().take(12) },
+            onSubmit = { onSendRequest(playerCode); playerCode = "" },
+            enabled = playerCode.isNotBlank() && !state.isFriendsLoading
+        )
         state.socialNotice?.let { Text(it, color = MaterialTheme.colorScheme.primary) }
         state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
         if (
@@ -142,7 +138,7 @@ fun FriendsScreen(
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
             return@Column
         }
-        LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
             if (state.roomInvitations.isNotEmpty()) {
                 item {
                     Text("Lời mời vào phòng", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
@@ -266,6 +262,47 @@ fun FriendsScreen(
                         }
                     }
                 }
+            }
+            }
+        }
+    }
+}
+
+@Composable
+private fun FriendCodeForm(
+    playerCode: String,
+    onPlayerCodeChange: (String) -> Unit,
+    onSubmit: () -> Unit,
+    enabled: Boolean
+) {
+    BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+        if (maxWidth < 420.dp) {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(
+                    value = playerCode,
+                    onValueChange = onPlayerCodeChange,
+                    label = { Text("Mã người chơi") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Button(onClick = onSubmit, enabled = enabled, modifier = Modifier.fillMaxWidth()) {
+                    Text("Kết bạn")
+                }
+            }
+        } else {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(
+                    value = playerCode,
+                    onValueChange = onPlayerCodeChange,
+                    label = { Text("Mã người chơi") },
+                    singleLine = true,
+                    modifier = Modifier.weight(1f)
+                )
+                Button(
+                    onClick = onSubmit,
+                    enabled = enabled,
+                    modifier = Modifier.align(Alignment.CenterVertically)
+                ) { Text("Kết bạn") }
             }
         }
     }

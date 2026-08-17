@@ -10,8 +10,10 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Groups
 import androidx.compose.material.icons.rounded.LooksOne
@@ -33,6 +35,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import com.hienthai.fastowin.ui.layout.ResponsiveScreen
 
 private data class TutorialPage(
     val icon: ImageVector,
@@ -72,10 +75,13 @@ fun TutorialScreen(
     val page = tutorialPages[pageIndex]
 
     Surface(modifier = modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-        Column(
-            modifier = Modifier.fillMaxSize().padding(24.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
+        ResponsiveScreen(maxContentWidth = 680.dp) { contentModifier ->
+            Column(
+                modifier = contentModifier
+                    .verticalScroll(rememberScrollState())
+                    .padding(vertical = 16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -85,7 +91,7 @@ fun TutorialScreen(
                 TextButton(onClick = onSkip) { Text("Bỏ qua") }
             }
 
-            Spacer(Modifier.weight(1f))
+            Spacer(Modifier.height(24.dp))
             Surface(
                 modifier = Modifier.size(136.dp),
                 shape = CircleShape,
@@ -126,7 +132,7 @@ fun TutorialScreen(
                     style = MaterialTheme.typography.bodyMedium
                 )
             }
-            Spacer(Modifier.weight(1f))
+            Spacer(Modifier.height(32.dp))
 
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 tutorialPages.indices.forEach { index ->
@@ -147,6 +153,7 @@ fun TutorialScreen(
                 shape = RoundedCornerShape(18.dp)
             ) {
                 Text(if (pageIndex == tutorialPages.lastIndex) "Bắt đầu chơi" else "Tiếp tục", fontWeight = FontWeight.Bold)
+            }
             }
         }
     }

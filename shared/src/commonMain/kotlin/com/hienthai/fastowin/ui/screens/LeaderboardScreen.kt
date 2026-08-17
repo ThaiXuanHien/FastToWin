@@ -5,13 +5,10 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -36,6 +33,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.hienthai.fastowin.protocol.LeaderboardEntrySnapshot
 import com.hienthai.fastowin.state.GameState
+import com.hienthai.fastowin.ui.layout.ResponsiveScreen
 
 @Composable
 fun LeaderboardScreen(
@@ -47,12 +45,15 @@ fun LeaderboardScreen(
 ) {
     val leaderboard = state.leaderboard
     var showSeason by remember { mutableStateOf(true) }
-    Column(
-        modifier = modifier.fillMaxSize()
-            .windowInsetsPadding(WindowInsets.safeDrawing)
-            .padding(20.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp)
-    ) {
+    ResponsiveScreen(
+        modifier = modifier,
+        maxContentWidth = 920.dp,
+        includeBottomSafeDrawingInset = showBackButton
+    ) { contentModifier ->
+        Column(
+            modifier = contentModifier.padding(vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
@@ -104,6 +105,7 @@ fun LeaderboardScreen(
                     )
                 }
             }
+        }
         }
     }
 }

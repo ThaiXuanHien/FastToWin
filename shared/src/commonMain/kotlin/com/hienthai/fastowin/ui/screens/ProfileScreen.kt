@@ -6,15 +6,12 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -72,6 +69,7 @@ import com.hienthai.fastowin.state.MAX_ACCOUNT_PASSWORD_LENGTH
 import com.hienthai.fastowin.state.accountPasswordConfirmationError
 import com.hienthai.fastowin.state.accountPasswordError
 import com.hienthai.fastowin.platform.epochMillis
+import com.hienthai.fastowin.ui.layout.ResponsiveScreen
 import kotlinx.coroutines.delay
 
 @Composable
@@ -153,13 +151,18 @@ fun ProfileScreen(
     LaunchedEffect(state.profileNotice) {
         if (state.profileNotice != null) isEditing = false
     }
-    Column(
-        modifier = modifier.fillMaxSize()
-            .windowInsetsPadding(WindowInsets.safeDrawing)
-            .verticalScroll(rememberScrollState())
-            .padding(20.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
-    ) {
+    ResponsiveScreen(
+        modifier = modifier,
+        maxContentWidth = 920.dp,
+        includeBottomSafeDrawingInset = showBackButton,
+        avoidKeyboard = isEditing
+    ) { contentModifier ->
+        Column(
+            modifier = contentModifier
+                .verticalScroll(rememberScrollState())
+                .padding(vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
@@ -470,6 +473,7 @@ fun ProfileScreen(
             }
         }
 
+        }
     }
 }
 

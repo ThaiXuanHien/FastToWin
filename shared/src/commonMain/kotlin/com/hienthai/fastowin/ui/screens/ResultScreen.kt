@@ -61,6 +61,7 @@ import com.hienthai.fastowin.platform.playFeedbackSound
 import com.hienthai.fastowin.state.GameState
 import com.hienthai.fastowin.state.PlayerState
 import com.hienthai.fastowin.state.PostMatchFriendStatus
+import com.hienthai.fastowin.ui.layout.ResponsiveScreen
 import com.hienthai.fastowin.ui.theme.FastToWinTheme
 import kotlinx.coroutines.delay
 import kotlin.math.ceil
@@ -115,14 +116,14 @@ fun ResultScreen(
     }
 
     Surface(modifier = modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 20.dp, vertical = 24.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
+        ResponsiveScreen(maxContentWidth = 760.dp) { contentModifier ->
+            Column(
+                modifier = contentModifier
+                    .verticalScroll(rememberScrollState())
+                    .padding(vertical = 20.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
             VictoryHeader(isWinner || isDraw, winScale)
             Text(
                 text = when {
@@ -162,6 +163,7 @@ fun ResultScreen(
                 shape = RoundedCornerShape(16.dp)
             ) { Text("Về sảnh") }
             Spacer(modifier = Modifier.height(12.dp))
+            }
         }
     }
 }

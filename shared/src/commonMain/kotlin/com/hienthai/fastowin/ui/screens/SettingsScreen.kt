@@ -38,11 +38,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.hienthai.fastowin.data.preferences.AppFontScale
 import com.hienthai.fastowin.data.preferences.AppPreferences
 import com.hienthai.fastowin.data.preferences.AppThemeMode
 import com.hienthai.fastowin.data.preferences.BoardStyle
+import com.hienthai.fastowin.ui.layout.ResponsiveScreen
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -67,14 +69,17 @@ fun SettingsScreen(
             )
         }
     ) { paddingValues ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(paddingValues)
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 20.dp, vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
+        ResponsiveScreen(
+            modifier = Modifier.padding(paddingValues),
+            maxContentWidth = 840.dp,
+            applySafeDrawingInsets = false
+        ) { contentModifier ->
+            Column(
+                modifier = contentModifier
+                    .verticalScroll(rememberScrollState())
+                    .padding(vertical = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
             SettingsSection(
                 title = "Phản hồi khi chơi",
                 subtitle = "Áp dụng ngay khi bạn chạm vào bàn số."
@@ -169,6 +174,7 @@ fun SettingsScreen(
                 Spacer(Modifier.width(8.dp))
                 Text("Khôi phục cài đặt mặc định")
             }
+            }
         }
     }
 }
@@ -249,7 +255,8 @@ private fun <T> ChoiceRow(
             FilterChip(
                 selected = entry == selected,
                 onClick = { onSelected(entry) },
-                label = { Text(label(entry)) }
+                label = { Text(label(entry), maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                modifier = Modifier.weight(1f)
             )
         }
     }

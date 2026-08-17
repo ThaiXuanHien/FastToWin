@@ -4,20 +4,19 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
@@ -63,6 +62,7 @@ import com.hienthai.fastowin.state.ConnectionStatus
 import com.hienthai.fastowin.state.GameState
 import com.hienthai.fastowin.state.LobbyStage
 import com.hienthai.fastowin.state.PlayerState
+import com.hienthai.fastowin.ui.layout.ResponsiveScreen
 import kotlinx.coroutines.delay
 
 @Composable
@@ -104,14 +104,16 @@ fun LobbyScreen(
         )
     }
     Column(modifier = modifier.fillMaxSize()) {
-        Box(
-            modifier = Modifier.weight(1f)
-                .fillMaxWidth()
-                .windowInsetsPadding(WindowInsets.safeDrawing)
-                .padding(24.dp),
-            contentAlignment = Alignment.Center
-        ) {
-            Box(modifier = Modifier.widthIn(max = 600.dp)) {
+        ResponsiveScreen(
+            modifier = Modifier.weight(1f),
+            maxContentWidth = 760.dp,
+            includeBottomSafeDrawingInset = state.lobbyStage != LobbyStage.SELECT_MODE,
+            avoidKeyboard = true
+        ) { contentModifier ->
+            Box(
+                modifier = contentModifier.padding(vertical = 16.dp),
+                contentAlignment = Alignment.Center
+            ) {
                 when (state.lobbyStage) {
                 LobbyStage.SELECT_MODE -> HomeDashboard(
                     state = state,
@@ -223,7 +225,7 @@ private fun NameEntry(onContinue: (String) -> Unit, onBack: () -> Unit) {
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(24.dp),
-        modifier = Modifier.fillMaxWidth()
+        modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState())
     ) {
         Text("Sẵn sàng chơi?", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold)
         Text(
@@ -451,7 +453,10 @@ private fun CreateRoomDialog(
         onDismissRequest = onDismiss,
         title = { Text("Tạo phòng mới") },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Column(
+                modifier = Modifier.imePadding().verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
                 OutlinedTextField(
                     value = roomName,
                     onValueChange = { roomName = it },
@@ -532,7 +537,10 @@ private fun JoinRoomDialog(
         onDismissRequest = onDismiss,
         title = { Text("Tham gia ${room.name}") },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Column(
+                modifier = Modifier.imePadding().verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
                 Text("Chủ phòng: ${room.hostName}")
                 if (room.requiresPassword) {
                     OutlinedTextField(
@@ -564,7 +572,7 @@ private fun RoomWaiting(
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(16.dp),
-        modifier = Modifier.fillMaxWidth()
+        modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState())
     ) {
         Text(
             state.currentRoomName ?: "Phòng",

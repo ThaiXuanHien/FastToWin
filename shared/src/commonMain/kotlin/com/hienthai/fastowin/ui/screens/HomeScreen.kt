@@ -2,6 +2,7 @@ package com.hienthai.fastowin.ui.screens
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
@@ -110,44 +111,61 @@ internal fun HomeDashboard(
     val onlineFriends = state.social.friends.count { it.presence != FriendPresence.OFFLINE }
     val openSocial = if (isGuest) onUpgradeGuest else onOpenFriends
 
-    Column(modifier = modifier.fillMaxSize()) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Column {
-                Text(
-                    "FAST TO WIN",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.primary,
-                    fontWeight = FontWeight.Bold
-                )
-                Text("Chào $displayName 👋", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-            }
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Column(horizontalAlignment = Alignment.End) {
-                    Text("THỜI GIAN TRUY CẬP", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    SessionDuration(sessionStartedAtMillis)
+    BoxWithConstraints(modifier = modifier.fillMaxSize()) {
+        val compactHeight = maxHeight < 600.dp
+        Column(modifier = Modifier.fillMaxSize()) {
+        BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+            val compactHeader = maxWidth < 420.dp
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        "FAST TO WIN",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        "Chào $displayName 👋",
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
                 }
-                IconButton(onClick = onOpenNotifications) {
-                    BadgedBox(
-                        badge = {
-                            if (state.unreadNotificationCount > 0) {
-                                Badge {
-                                    Text(
-                                        if (state.unreadNotificationCount > 99) "99+"
-                                        else state.unreadNotificationCount.toString()
-                                    )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(horizontalAlignment = Alignment.End) {
+                        if (!compactHeader) {
+                            Text(
+                                "THỜI GIAN TRUY CẬP",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        SessionDuration(sessionStartedAtMillis)
+                    }
+                    IconButton(onClick = onOpenNotifications) {
+                        BadgedBox(
+                            badge = {
+                                if (state.unreadNotificationCount > 0) {
+                                    Badge {
+                                        Text(
+                                            if (state.unreadNotificationCount > 99) "99+"
+                                            else state.unreadNotificationCount.toString()
+                                        )
+                                    }
                                 }
                             }
+                        ) {
+                            Icon(Icons.Default.Notifications, contentDescription = "Thông báo")
                         }
-                    ) {
-                        Icon(Icons.Default.Notifications, contentDescription = "Thông báo")
                     }
-                }
-                IconButton(onClick = onOpenSettings) {
-                    Icon(Icons.Default.Settings, contentDescription = "Cài đặt")
+                    IconButton(onClick = onOpenSettings) {
+                        Icon(Icons.Default.Settings, contentDescription = "Cài đặt")
+                    }
                 }
             }
         }
@@ -157,13 +175,13 @@ internal fun HomeDashboard(
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             Surface(
-                shape = RoundedCornerShape(28.dp),
+                shape = RoundedCornerShape(if (compactHeight) 22.dp else 28.dp),
                 color = MaterialTheme.colorScheme.primary,
                 contentColor = MaterialTheme.colorScheme.onPrimary
             ) {
                 Column(
-                    modifier = Modifier.fillMaxWidth().padding(22.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                    modifier = Modifier.fillMaxWidth().padding(if (compactHeight) 16.dp else 22.dp),
+                    verticalArrangement = Arrangement.spacedBy(if (compactHeight) 8.dp else 12.dp)
                 ) {
                     Text(
                         if (elo == null) "ĐANG ĐỒNG BỘ DỮ LIỆU"
@@ -173,7 +191,12 @@ internal fun HomeDashboard(
                         },
                         style = MaterialTheme.typography.labelLarge
                     )
-                    Text("Sẵn sàng chơi nhanh?", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+                    Text(
+                        "Sẵn sàng chơi nhanh?",
+                        style = if (compactHeight) MaterialTheme.typography.headlineSmall
+                        else MaterialTheme.typography.headlineMedium,
+                        fontWeight = FontWeight.Bold
+                    )
                     Text(
                         if (isGuest) "Đăng ký tài khoản để ghép đối thủ theo Elo."
                         else "Tự động tìm đối thủ có Elo gần bạn.",
@@ -181,7 +204,7 @@ internal fun HomeDashboard(
                     )
                     Button(
                         onClick = if (isGuest) onUpgradeGuest else ({ launchAction = HomeLaunchAction.PLAY }),
-                        modifier = Modifier.fillMaxWidth().height(52.dp),
+                        modifier = Modifier.fillMaxWidth().height(if (compactHeight) 46.dp else 52.dp),
                         colors = ButtonDefaults.buttonColors(
                             containerColor = MaterialTheme.colorScheme.onPrimary,
                             contentColor = MaterialTheme.colorScheme.primary
@@ -283,8 +306,8 @@ internal fun HomeDashboard(
                     }
                 }
             }
+            }
         }
-
     }
 }
 

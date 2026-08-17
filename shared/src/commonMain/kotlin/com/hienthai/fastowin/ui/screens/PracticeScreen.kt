@@ -43,6 +43,7 @@ import com.hienthai.fastowin.platform.playFeedbackSound
 import com.hienthai.fastowin.state.GAME_NUMBER_COUNT
 import com.hienthai.fastowin.state.PracticeGameState
 import com.hienthai.fastowin.state.createPracticeGame
+import com.hienthai.fastowin.ui.layout.ResponsiveScreen
 import kotlinx.coroutines.delay
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -91,43 +92,49 @@ fun PracticeScreen(
             )
         }
     ) { paddingValues ->
-        if (game.isComplete) {
-            PracticeResult(
-                game = game,
-                onRestart = {
-                    game = createPracticeGame(mode, epochMillis())
-                    feedback = null
-                },
-                onBack = onBack,
-                modifier = Modifier.padding(paddingValues)
-            )
-        } else {
-            Column(modifier = Modifier.fillMaxSize().padding(paddingValues)) {
-                PracticeStatus(game)
-                Text(
-                    feedback ?: "Chạm các số theo thứ tự từ 1 đến $GAME_NUMBER_COUNT",
-                    modifier = Modifier.fillMaxWidth().height(34.dp).padding(horizontal = 16.dp, vertical = 6.dp),
-                    color = if (feedback == null) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.error,
-                    style = MaterialTheme.typography.labelMedium,
-                    textAlign = TextAlign.Center
-                )
-                NumberGrid(
-                    numbers = game.numbers,
-                    currentTarget = game.currentTarget,
-                    enabled = true,
-                    boardStyle = preferences.boardStyle,
-                    onNumberClick = { number ->
-                        val correct = number == game.currentTarget
-                        val effect = if (correct) GameFeedbackEffect.CORRECT else GameFeedbackEffect.WRONG
-                        if (preferences.soundEnabled) playFeedbackSound(effect)
-                        if (preferences.vibrationEnabled) {
-                            hapticFeedback.performHapticFeedback(HapticFeedbackType.LongPress)
-                        }
-                        game = game.select(number, epochMillis())
-                        feedback = if (correct) null else "Chưa đúng số, hãy tìm ${game.currentTarget}"
+        ResponsiveScreen(
+            modifier = Modifier.padding(paddingValues),
+            maxContentWidth = 760.dp,
+            applySafeDrawingInsets = false
+        ) { contentModifier ->
+            if (game.isComplete) {
+                PracticeResult(
+                    game = game,
+                    onRestart = {
+                        game = createPracticeGame(mode, epochMillis())
+                        feedback = null
                     },
-                    modifier = Modifier.weight(1f)
+                    onBack = onBack,
+                    modifier = contentModifier
                 )
+            } else {
+                Column(modifier = contentModifier) {
+                    PracticeStatus(game)
+                    Text(
+                        feedback ?: "Chạm các số theo thứ tự từ 1 đến $GAME_NUMBER_COUNT",
+                        modifier = Modifier.fillMaxWidth().height(34.dp).padding(horizontal = 16.dp, vertical = 6.dp),
+                        color = if (feedback == null) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.labelMedium,
+                        textAlign = TextAlign.Center
+                    )
+                    NumberGrid(
+                        numbers = game.numbers,
+                        currentTarget = game.currentTarget,
+                        enabled = true,
+                        boardStyle = preferences.boardStyle,
+                        onNumberClick = { number ->
+                            val correct = number == game.currentTarget
+                            val effect = if (correct) GameFeedbackEffect.CORRECT else GameFeedbackEffect.WRONG
+                            if (preferences.soundEnabled) playFeedbackSound(effect)
+                            if (preferences.vibrationEnabled) {
+                                hapticFeedback.performHapticFeedback(HapticFeedbackType.LongPress)
+                            }
+                            game = game.select(number, epochMillis())
+                            feedback = if (correct) null else "Chưa đúng số, hãy tìm ${game.currentTarget}"
+                        },
+                        modifier = Modifier.weight(1f)
+                    )
+                }
             }
         }
     }

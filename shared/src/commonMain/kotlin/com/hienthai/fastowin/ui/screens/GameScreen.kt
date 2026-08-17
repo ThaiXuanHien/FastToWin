@@ -4,6 +4,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -56,6 +57,7 @@ import com.hienthai.fastowin.data.preferences.AppPreferences
 import com.hienthai.fastowin.data.preferences.BoardStyle
 import com.hienthai.fastowin.platform.GameFeedbackEffect
 import com.hienthai.fastowin.platform.playFeedbackSound
+import com.hienthai.fastowin.ui.layout.ResponsiveScreen
 import com.hienthai.fastowin.ui.theme.FastToWinTheme
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -122,49 +124,51 @@ fun GameScreen(
             )
         }
     ) { paddingValues ->
-        Column(
-            modifier = modifier
-                .fillMaxSize()
-                .padding(paddingValues)
-        ) {
-            PlayerScoreBar(player = state.player, opponent = state.opponent)
+        ResponsiveScreen(
+            modifier = modifier.padding(paddingValues),
+            maxContentWidth = 760.dp,
+            applySafeDrawingInsets = false
+        ) { contentModifier ->
+            Column(modifier = contentModifier) {
+                PlayerScoreBar(player = state.player, opponent = state.opponent)
 
-            TargetPanel(currentTarget = state.currentTarget)
+                TargetPanel(currentTarget = state.currentTarget)
 
-            Box(modifier = Modifier.fillMaxWidth().height(32.dp), contentAlignment = Alignment.Center) {
-                state.message?.let { message ->
-                    Text(
-                        text = message,
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
-                        color = MaterialTheme.colorScheme.error,
-                        style = MaterialTheme.typography.labelLarge,
-                        textAlign = TextAlign.Center,
-                        fontWeight = FontWeight.SemiBold
-                    )
+                Box(modifier = Modifier.fillMaxWidth().height(32.dp), contentAlignment = Alignment.Center) {
+                    state.message?.let { message ->
+                        Text(
+                            text = message,
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+                            color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.labelLarge,
+                            textAlign = TextAlign.Center,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
                 }
+
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+
+                NumberGrid(
+                    numbers = state.numbers,
+                    currentTarget = state.currentTarget,
+                    enabled = state.connectionStatus == ConnectionStatus.CONNECTED,
+                    boardStyle = preferences.boardStyle,
+                    onNumberClick = { number ->
+                        val effect = if (number == state.currentTarget) {
+                            GameFeedbackEffect.CORRECT
+                        } else {
+                            GameFeedbackEffect.WRONG
+                        }
+                        if (preferences.soundEnabled) playFeedbackSound(effect)
+                        if (preferences.vibrationEnabled) {
+                            hapticFeedback.performHapticFeedback(HapticFeedbackType.LongPress)
+                        }
+                        onNumberClick(number)
+                    },
+                    modifier = Modifier.weight(1f)
+                )
             }
-
-            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
-
-            NumberGrid(
-                numbers = state.numbers,
-                currentTarget = state.currentTarget,
-                enabled = state.connectionStatus == ConnectionStatus.CONNECTED,
-                boardStyle = preferences.boardStyle,
-                onNumberClick = { number ->
-                    val effect = if (number == state.currentTarget) {
-                        GameFeedbackEffect.CORRECT
-                    } else {
-                        GameFeedbackEffect.WRONG
-                    }
-                    if (preferences.soundEnabled) playFeedbackSound(effect)
-                    if (preferences.vibrationEnabled) {
-                        hapticFeedback.performHapticFeedback(HapticFeedbackType.LongPress)
-                    }
-                    onNumberClick(number)
-                },
-                modifier = Modifier.weight(1f)
-            )
         }
     }
 }
@@ -327,21 +331,24 @@ fun NumberGrid(
     onNumberClick: (Int) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    LazyVerticalGrid(
-        columns = GridCells.Adaptive(minSize = 58.dp),
-        contentPadding = PaddingValues(12.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-        modifier = modifier
-    ) {
-        items(numbers, key = { it }) { number ->
-            NumberCell(
-                number = number,
-                isCompleted = number < currentTarget,
-                enabled = enabled,
-                boardStyle = boardStyle,
-                onClick = { onNumberClick(number) }
-            )
+    BoxWithConstraints(modifier = modifier) {
+        val columnCount = if (maxWidth >= 600.dp) 10 else 5
+        LazyVerticalGrid(
+            columns = GridCells.Fixed(columnCount),
+            contentPadding = PaddingValues(12.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.fillMaxSize()
+        ) {
+            items(numbers, key = { it }) { number ->
+                NumberCell(
+                    number = number,
+                    isCompleted = number < currentTarget,
+                    enabled = enabled,
+                    boardStyle = boardStyle,
+                    onClick = { onNumberClick(number) }
+                )
+            }
         }
     }
 }
