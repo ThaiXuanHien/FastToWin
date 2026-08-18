@@ -78,7 +78,7 @@ fun PracticeScreen(
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text("Luyện tập", fontWeight = FontWeight.Bold)
                         Text(
-                            if (mode == GameMode.ORDER) "Đua thứ tự • Offline" else "Đua 60 giây • Offline",
+                            "${mode.title} • Offline",
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -120,6 +120,7 @@ fun PracticeScreen(
                     NumberGrid(
                         numbers = game.numbers,
                         currentTarget = game.currentTarget,
+                        selectedNumbers = game.selectedNumbers,
                         enabled = true,
                         boardStyle = preferences.boardStyle,
                         onNumberClick = { number ->
@@ -149,8 +150,12 @@ private fun PracticeStatus(game: PracticeGameState) {
         PracticeMetric("Cần tìm", game.currentTarget.coerceAtMost(GAME_NUMBER_COUNT).toString(), Modifier.weight(1f))
         PracticeMetric("Điểm", game.score.toString(), Modifier.weight(1f))
         PracticeMetric(
-            if (game.mode == GameMode.TIME_ATTACK) "Còn lại" else "Thời gian",
-            formatPracticeTime(if (game.mode == GameMode.TIME_ATTACK) game.timeLeftMillis else game.elapsedMillis),
+            if (game.mode in setOf(GameMode.TIME_ATTACK, GameMode.TIME_BONUS, GameMode.SPEED_UP)) "Còn lại" else "Thời gian",
+            formatPracticeTime(
+                if (game.mode in setOf(GameMode.TIME_ATTACK, GameMode.TIME_BONUS, GameMode.SPEED_UP)) {
+                    game.timeLeftMillis
+                } else game.elapsedMillis
+            ),
             Modifier.weight(1f)
         )
     }
@@ -181,7 +186,7 @@ private fun PracticeResult(
         Spacer(Modifier.weight(1f))
         Text("HOÀN THÀNH", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Black)
         Text(
-            if (game.mode == GameMode.ORDER && game.currentTarget > GAME_NUMBER_COUNT) {
+            if (game.correctSelections >= GAME_NUMBER_COUNT) {
                 "Bạn đã tìm đủ 50 số"
             } else {
                 "Hết 60 giây"

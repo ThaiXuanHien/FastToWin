@@ -34,6 +34,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.hienthai.fastowin.protocol.LeaderboardEntrySnapshot
+import com.hienthai.fastowin.protocol.rankedTierFor
 import com.hienthai.fastowin.state.GameState
 import com.hienthai.fastowin.ui.layout.ResponsiveScreen
 
@@ -151,7 +152,11 @@ private fun LeaderboardCard(
                 Text(entry.playerCode, style = MaterialTheme.typography.bodySmall)
             }
             Column(horizontalAlignment = Alignment.End) {
-                Text("Elo ${entry.eloRating}", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                Text(
+                    "${rankedTierFor(entry.eloRating).displayName} • Elo ${entry.eloRating}",
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.Bold
+                )
                 Text("${entry.wins} thắng", fontWeight = FontWeight.Bold)
                 Text("$winRate% • ${entry.highestScore} điểm", style = MaterialTheme.typography.bodySmall)
             }

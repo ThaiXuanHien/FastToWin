@@ -60,6 +60,7 @@ import com.hienthai.fastowin.data.preferences.AppPreferences
 import com.hienthai.fastowin.platform.GameFeedbackEffect
 import com.hienthai.fastowin.platform.epochMillis
 import com.hienthai.fastowin.platform.playFeedbackSound
+import com.hienthai.fastowin.protocol.MatchType
 import com.hienthai.fastowin.state.GameState
 import com.hienthai.fastowin.state.PlayerState
 import com.hienthai.fastowin.state.PostMatchFriendStatus
@@ -81,8 +82,9 @@ fun ResultScreen(
     preferences: AppPreferences = AppPreferences(),
     modifier: Modifier = Modifier
 ) {
-    val isDraw = state.player.score == state.opponent.score
-    val isWinner = state.player.score > state.opponent.score
+    val isDraw = state.winnerPlayerId == null && state.player.score == state.opponent.score
+    val isWinner = state.winnerPlayerId?.let { it == state.player.id }
+        ?: (state.player.score > state.opponent.score)
     val hapticFeedback = LocalHapticFeedback.current
     val winScale by animateFloatAsState(
         targetValue = 1f,
@@ -153,12 +155,14 @@ fun ResultScreen(
                 player = state.player,
                 opponent = state.opponent,
                 isDraw = isDraw,
+                isPlayerWinner = isWinner,
                 onOpponentInfo = if (opponentFriend == null) null else ({
                     onOpenFriendProfile(opponentFriend.userId)
                 })
             )
             EloCard(state)
             MatchSummaryCard(state)
+            PaceAnalysisCard(state.player)
             RematchCard(
                 state = state,
                 onRematch = onRematch,
@@ -205,6 +209,7 @@ private fun ScoreBoard(
     player: PlayerState,
     opponent: PlayerState,
     isDraw: Boolean,
+    isPlayerWinner: Boolean,
     onOpponentInfo: (() -> Unit)? = null
 ) {
     Column(
@@ -218,15 +223,15 @@ private fun ScoreBoard(
         ScoreRow(
             name = "${player.name} (Bạn)",
             score = player.score,
-            result = if (isDraw) "Hòa" else if (player.score > opponent.score) "Thắng" else "Thua",
-            isWinner = !isDraw && player.score > opponent.score
+            result = if (isDraw) "Hòa" else if (isPlayerWinner) "Thắng" else "Thua",
+            isWinner = !isDraw && isPlayerWinner
         )
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
         ScoreRow(
             name = opponent.name,
             score = opponent.score,
-            result = if (isDraw) "Hòa" else if (opponent.score > player.score) "Thắng" else "Thua",
-            isWinner = !isDraw && opponent.score > player.score,
+            result = if (isDraw) "Hòa" else if (!isPlayerWinner) "Thắng" else "Thua",
+            isWinner = !isDraw && !isPlayerWinner,
             onClick = onOpponentInfo
         )
     }
@@ -265,22 +270,49 @@ private fun ScoreRow(
 
 @Composable
 private fun EloCard(state: GameState) {
+    if (state.matchType == MatchType.CASUAL) {
+        Surface(shape = RoundedCornerShape(18.dp), color = MaterialTheme.colorScheme.surfaceContainer) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(16.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("Trận thường", fontWeight = FontWeight.SemiBold)
+                Text(
+                    "Không ảnh hưởng Elo",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        }
+        return
+    }
     val eloChange = state.lastMatchEloChange ?: return
+    val season = state.profile?.progression?.season
     Surface(shape = RoundedCornerShape(18.dp), color = MaterialTheme.colorScheme.surfaceContainer) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(16.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text("Thay đổi xếp hạng", fontWeight = FontWeight.SemiBold)
-            Text(
-                buildString {
-                    append(if (eloChange >= 0) "+$eloChange Elo" else "$eloChange Elo")
-                    state.lastMatchEloRating?.let { append("  •  $it") }
-                },
-                color = if (eloChange >= 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
-                fontWeight = FontWeight.Black
-            )
+        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("Trận xếp hạng", fontWeight = FontWeight.SemiBold)
+                Text(
+                    buildString {
+                        append(if (eloChange >= 0) "+$eloChange Elo" else "$eloChange Elo")
+                        state.lastMatchEloRating?.let { append("  •  $it") }
+                    },
+                    color = if (eloChange >= 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
+                    fontWeight = FontWeight.Black
+                )
+            }
+            if (season != null && season.placementMatchesPlayed < season.placementMatchesRequired) {
+                Text(
+                    "Phân hạng ${season.placementMatchesPlayed}/${season.placementMatchesRequired}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
         }
     }
 }
@@ -309,6 +341,75 @@ private fun MatchSummaryCard(state: GameState) {
 }
 
 @Composable
+private fun PaceAnalysisCard(player: PlayerState) {
+    if (player.fastestSegmentAverageMillis <= 0L && player.slowestSegmentAverageMillis <= 0L) return
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)
+    ) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text("Phân tích nhịp chơi", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Text(
+                "Mỗi chặng gồm tối đa 10 số bạn đã tìm.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            SegmentRow(
+                label = "Nhanh nhất",
+                start = player.fastestSegmentStart,
+                end = player.fastestSegmentEnd,
+                averageMillis = player.fastestSegmentAverageMillis,
+                highlight = true
+            )
+            if (
+                player.slowestSegmentStart != player.fastestSegmentStart ||
+                player.slowestSegmentEnd != player.fastestSegmentEnd
+            ) {
+                SegmentRow(
+                    label = "Chậm nhất",
+                    start = player.slowestSegmentStart,
+                    end = player.slowestSegmentEnd,
+                    averageMillis = player.slowestSegmentAverageMillis,
+                    highlight = false
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SegmentRow(
+    label: String,
+    start: Int,
+    end: Int,
+    averageMillis: Long,
+    highlight: Boolean
+) {
+    Surface(
+        shape = RoundedCornerShape(14.dp),
+        color = if (highlight) MaterialTheme.colorScheme.primaryContainer
+        else MaterialTheme.colorScheme.surfaceContainerHighest
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(12.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column {
+                Text(label, fontWeight = FontWeight.Bold)
+                Text(
+                    "Lượt $start–$end",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Text(formatReaction(averageMillis), fontWeight = FontWeight.Black, color = MaterialTheme.colorScheme.primary)
+        }
+    }
+}
+
+@Composable
 private fun SummaryMetric(label: String, value: String, modifier: Modifier = Modifier) {
     Surface(modifier = modifier, shape = RoundedCornerShape(14.dp), color = MaterialTheme.colorScheme.surfaceContainerHighest) {
         Column(Modifier.padding(12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -325,6 +426,16 @@ private fun RematchCard(
     onCancel: () -> Unit,
     onDecline: () -> Unit
 ) {
+    if (state.matchType == MatchType.RANKED) {
+        Surface(shape = RoundedCornerShape(18.dp), color = MaterialTheme.colorScheme.surfaceContainer) {
+            Text(
+                "Trận xếp hạng không hỗ trợ đấu lại. Hãy về sảnh để ghép một đối thủ mới.",
+                modifier = Modifier.fillMaxWidth().padding(16.dp),
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        return
+    }
     var nowMillis by remember { mutableLongStateOf(epochMillis()) }
     val expiresAt = state.rematchExpiresAtEpochMillis
     LaunchedEffect(expiresAt) {

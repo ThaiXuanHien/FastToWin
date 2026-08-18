@@ -29,6 +29,8 @@
         <key>NSAllowsLocalNetworking</key>
         <true/>
     </dict>
+    <key>NSLocalNetworkUsageDescription</key>
+    <string>Fast To Win cần kết nối máy chủ trò chơi trong mạng cục bộ để kiểm thử.</string>
     <key>CADisableMinimumFrameDurationOnPhone</key>
     <true/>
     <key>UILaunchScreen</key>

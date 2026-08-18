@@ -58,8 +58,11 @@ import com.hienthai.fastowin.data.preferences.AppPreferences
 import com.hienthai.fastowin.data.preferences.BoardStyle
 import com.hienthai.fastowin.platform.GameFeedbackEffect
 import com.hienthai.fastowin.platform.playFeedbackSound
+import com.hienthai.fastowin.protocol.MatchType
 import com.hienthai.fastowin.ui.layout.ResponsiveScreen
 import com.hienthai.fastowin.ui.theme.FastToWinTheme
+import kotlinx.coroutines.delay
+import kotlin.math.abs
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -74,7 +77,15 @@ fun GameScreen(
 ) {
     val hapticFeedback = LocalHapticFeedback.current
     var showExitConfirmation by remember { mutableStateOf(false) }
+    var tapFeedback by remember { mutableStateOf<GameFeedbackEffect?>(null) }
+    var tapFeedbackToken by remember { mutableStateOf(0) }
     val opponentFriend = state.social.friends.firstOrNull { it.userId == state.opponent.id }
+    LaunchedEffect(tapFeedbackToken) {
+        if (tapFeedback != null) {
+            delay(420)
+            tapFeedback = null
+        }
+    }
     if (showExitConfirmation) {
         AlertDialog(
             onDismissRequest = { showExitConfirmation = false },
@@ -114,7 +125,10 @@ fun GameScreen(
                             overflow = TextOverflow.Ellipsis
                         )
                         Text(
-                            text = "Chạm các số theo đúng thứ tự",
+                            text = buildString {
+                                append(if (state.matchType == MatchType.RANKED) "Xếp hạng" else "Thường")
+                                append(" • ").append(state.gameMode.description)
+                            },
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -142,7 +156,16 @@ fun GameScreen(
                     })
                 )
 
-                TargetPanel(currentTarget = state.currentTarget)
+                if (preferences.visualEffectsEnabled) {
+                    CloseScoreWarning(state)
+                }
+
+                TargetPanel(
+                    currentTarget = state.currentTarget,
+                    completedCount = state.player.selectedNumbers.size
+                )
+
+                LiveMetricsBar(state)
 
                 Box(modifier = Modifier.fillMaxWidth().height(32.dp), contentAlignment = Alignment.Center) {
                     state.message?.let { message ->
@@ -159,28 +182,130 @@ fun GameScreen(
 
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
 
-                NumberGrid(
-                    numbers = state.numbers,
-                    currentTarget = state.currentTarget,
-                    enabled = state.connectionStatus == ConnectionStatus.CONNECTED,
-                    boardStyle = preferences.boardStyle,
-                    onNumberClick = { number ->
-                        val effect = if (number == state.currentTarget) {
-                            GameFeedbackEffect.CORRECT
-                        } else {
-                            GameFeedbackEffect.WRONG
-                        }
-                        if (preferences.soundEnabled) playFeedbackSound(effect)
-                        if (preferences.vibrationEnabled) {
-                            hapticFeedback.performHapticFeedback(HapticFeedbackType.LongPress)
-                        }
-                        onNumberClick(number)
-                    },
-                    modifier = Modifier.weight(1f)
-                )
+                Box(modifier = Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
+                    NumberGrid(
+                        numbers = state.numbers,
+                        currentTarget = state.currentTarget,
+                        selectedNumbers = state.player.selectedNumbers,
+                        enabled = state.connectionStatus == ConnectionStatus.CONNECTED && !state.player.isFinished,
+                        boardStyle = preferences.boardStyle,
+                        onNumberClick = { number ->
+                            val effect = if (number == state.currentTarget) {
+                                GameFeedbackEffect.CORRECT
+                            } else {
+                                GameFeedbackEffect.WRONG
+                            }
+                            if (preferences.visualEffectsEnabled) {
+                                tapFeedback = effect
+                                tapFeedbackToken++
+                            }
+                            if (preferences.soundEnabled) playFeedbackSound(effect)
+                            if (preferences.vibrationEnabled) {
+                                hapticFeedback.performHapticFeedback(HapticFeedbackType.LongPress)
+                            }
+                            onNumberClick(number)
+                        },
+                        modifier = Modifier.fillMaxSize()
+                    )
+                    tapFeedback?.let { FeedbackBurst(it) }
+                }
             }
         }
     }
+}
+
+@Composable
+private fun CloseScoreWarning(state: GameState) {
+    val difference = abs(state.player.score - state.opponent.score)
+    val enoughProgress = state.player.correctSelections + state.opponent.correctSelections >= 6
+    if (!enoughProgress || difference > 30 || state.player.isFinished || state.opponent.isFinished) return
+    Surface(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 2.dp),
+        shape = RoundedCornerShape(12.dp),
+        color = MaterialTheme.colorScheme.tertiaryContainer
+    ) {
+        Text(
+            text = if (difference == 0) "Đang hòa điểm — lượt tiếp theo rất quan trọng!"
+            else "Bám rất sát — chỉ cách nhau $difference điểm",
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
+            textAlign = TextAlign.Center,
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onTertiaryContainer
+        )
+    }
+}
+
+@Composable
+private fun LiveMetricsBar(state: GameState) {
+    val speed = state.player.averageReactionMillis.takeIf { it > 0 }?.let {
+        (10_000L / it).coerceAtMost(99L) / 10.0
+    }
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 2.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        speed?.let { LiveMetric("Tốc độ", "$it số/s", Modifier.weight(1f)) }
+        when (state.gameMode) {
+            com.hienthai.fastowin.navigation.GameMode.COMBO -> LiveMetric(
+                "Combo",
+                "${state.player.combo} • x${comboMultiplier(state.player.combo)}",
+                Modifier.weight(1f)
+            )
+            com.hienthai.fastowin.navigation.GameMode.SURVIVAL -> LiveMetric(
+                "Sinh tồn",
+                "${state.player.lives} mạng",
+                Modifier.weight(1f)
+            )
+            com.hienthai.fastowin.navigation.GameMode.SPEED_UP -> LiveMetric(
+                "Nhịp",
+                "${state.player.correctSelections + 1}/$GAME_NUMBER_COUNT",
+                Modifier.weight(1f)
+            )
+            else -> Unit
+        }
+    }
+}
+
+@Composable
+private fun LiveMetric(label: String, value: String, modifier: Modifier = Modifier) {
+    Surface(modifier = modifier, shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.surfaceContainer) {
+        Row(
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(value, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Black)
+        }
+    }
+}
+
+@Composable
+private fun FeedbackBurst(effect: GameFeedbackEffect) {
+    val correct = effect == GameFeedbackEffect.CORRECT
+    Surface(
+        modifier = Modifier.size(76.dp),
+        shape = RoundedCornerShape(24.dp),
+        color = if (correct) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.errorContainer,
+        shadowElevation = 8.dp
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            Text(
+                text = if (correct) "✓" else "×",
+                fontSize = 42.sp,
+                fontWeight = FontWeight.Black,
+                color = if (correct) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onErrorContainer
+            )
+        }
+    }
+}
+
+private fun comboMultiplier(combo: Int): Int = when {
+    combo >= 20 -> 4
+    combo >= 10 -> 3
+    combo >= 5 -> 2
+    else -> 1
 }
 
 @Composable
@@ -292,8 +417,8 @@ private fun PlayerScoreCard(
 }
 
 @Composable
-private fun TargetPanel(currentTarget: Int) {
-    val completed = (currentTarget - 1).coerceIn(0, GAME_NUMBER_COUNT)
+private fun TargetPanel(currentTarget: Int, completedCount: Int) {
+    val completed = completedCount.coerceIn(0, GAME_NUMBER_COUNT)
     val displayedTarget = currentTarget.coerceAtMost(GAME_NUMBER_COUNT)
 
     Surface(
@@ -341,6 +466,7 @@ private fun TargetPanel(currentTarget: Int) {
 fun NumberGrid(
     numbers: List<Int>,
     currentTarget: Int,
+    selectedNumbers: List<Int> = emptyList(),
     enabled: Boolean = true,
     boardStyle: BoardStyle = BoardStyle.CLASSIC,
     onNumberClick: (Int) -> Unit,
@@ -358,7 +484,7 @@ fun NumberGrid(
             items(numbers, key = { it }) { number ->
                 NumberCell(
                     number = number,
-                    isCompleted = number < currentTarget,
+                    isCompleted = number in selectedNumbers,
                     enabled = enabled,
                     boardStyle = boardStyle,
                     onClick = { onNumberClick(number) }

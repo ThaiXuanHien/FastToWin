@@ -99,7 +99,7 @@ private fun TestResponsiveLobby() {
             profile = PlayerProfileSnapshot(longName, "PLAYER0001")
         ),
         onModeSelected = {},
-        onStartMatchmaking = {},
+        onStartMatchmaking = { _, _ -> },
         onCancelMatchmaking = {},
         onOpenRoomBrowser = {},
         onCreateRoom = { _, _ -> },

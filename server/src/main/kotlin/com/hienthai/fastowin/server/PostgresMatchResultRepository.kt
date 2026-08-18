@@ -2,6 +2,7 @@ package com.hienthai.fastowin.server
 
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import com.hienthai.fastowin.protocol.MatchType
 import java.sql.Connection
 import java.sql.Timestamp
 import java.time.Instant
@@ -19,7 +20,7 @@ class PostgresMatchResultRepository(
                 if (insertMatch(connection, match)) {
                     insertPlayers(connection, match)
                     insertEvents(connection, match)
-                    updateEloRatings(connection, match)
+                    if (match.matchType == MatchType.RANKED) updateEloRatings(connection, match)
                     updateStats(connection, match)
                     unlockAchievements(connection, match)
                     updateMissions(connection, match)
@@ -35,8 +36,8 @@ class PostgresMatchResultRepository(
     private fun insertMatch(connection: Connection, match: CompletedMatch): Boolean =
         connection.prepareStatement(
             """
-            INSERT INTO matches (id, room_name, game_mode, started_at, ended_at, winner_user_id)
-            VALUES (?, ?, ?, ?, ?, ?)
+            INSERT INTO matches (id, room_name, game_mode, started_at, ended_at, winner_user_id, match_type)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT (id) DO NOTHING
             """.trimIndent()
         ).use { statement ->
@@ -46,6 +47,7 @@ class PostgresMatchResultRepository(
             statement.setTimestamp(4, match.startedAtMillis.toTimestamp())
             statement.setTimestamp(5, match.endedAtMillis.toTimestamp())
             statement.setObject(6, match.winnerPlayerId?.let(UUID::fromString))
+            statement.setString(7, match.matchType.name)
             statement.executeUpdate() == 1
         }
 
@@ -165,11 +167,15 @@ class PostgresMatchResultRepository(
         } ?: return
         connection.prepareStatement(
             """
-            INSERT INTO season_ratings (season_id, user_id, rating, matches_played, updated_at)
-            VALUES (?, ?, ?, 1, ?)
+            INSERT INTO season_ratings (
+                season_id, user_id, rating, matches_played, placement_matches, peak_rating, updated_at
+            )
+            VALUES (?, ?, ?, 1, 1, ?, ?)
             ON CONFLICT (season_id, user_id) DO UPDATE SET
                 rating = EXCLUDED.rating,
                 matches_played = season_ratings.matches_played + 1,
+                placement_matches = LEAST(5, season_ratings.placement_matches + 1),
+                peak_rating = GREATEST(season_ratings.peak_rating, EXCLUDED.rating),
                 updated_at = EXCLUDED.updated_at
             """.trimIndent()
         ).use { statement ->
@@ -177,7 +183,8 @@ class PostgresMatchResultRepository(
                 statement.setObject(1, seasonId)
                 statement.setObject(2, UUID.fromString(playerId))
                 statement.setInt(3, rating)
-                statement.setTimestamp(4, match.endedAtMillis.toTimestamp())
+                statement.setInt(4, rating)
+                statement.setTimestamp(5, match.endedAtMillis.toTimestamp())
                 statement.addBatch()
             }
             statement.executeBatch()

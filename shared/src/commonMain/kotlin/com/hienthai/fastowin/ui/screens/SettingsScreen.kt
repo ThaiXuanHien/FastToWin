@@ -101,6 +101,15 @@ fun SettingsScreen(
                     checked = preferences.vibrationEnabled,
                     onCheckedChange = { onPreferencesChange(preferences.copy(vibrationEnabled = it)) }
                 )
+                SettingsSwitchRow(
+                    icon = Icons.Rounded.ColorLens,
+                    title = "Hiệu ứng hình ảnh",
+                    subtitle = "Hiện phản hồi đúng, sai và cảnh báo bám đuổi",
+                    checked = preferences.visualEffectsEnabled,
+                    onCheckedChange = {
+                        onPreferencesChange(preferences.copy(visualEffectsEnabled = it))
+                    }
+                )
                 OutlinedButton(
                     onClick = onPreviewSound,
                     enabled = preferences.soundEnabled,

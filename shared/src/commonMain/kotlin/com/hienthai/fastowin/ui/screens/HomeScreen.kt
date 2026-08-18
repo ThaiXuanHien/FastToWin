@@ -68,20 +68,21 @@ import com.hienthai.fastowin.protocol.FriendPresence
 import com.hienthai.fastowin.protocol.DailyCheckInSnapshot
 import com.hienthai.fastowin.protocol.DAILY_CHECK_IN_REWARDS_XP
 import com.hienthai.fastowin.protocol.MatchHistoryOutcome
+import com.hienthai.fastowin.protocol.MatchType
 import com.hienthai.fastowin.state.ConnectionStatus
 import com.hienthai.fastowin.state.GameState
 import kotlinx.coroutines.delay
 
 internal enum class MainTab { HOME, LEADERBOARD, FRIENDS, ACCOUNT }
 
-private enum class HomeLaunchAction { PLAY, CREATE_ROOM }
+private enum class HomeLaunchAction { CASUAL, RANKED, CREATE_ROOM }
 
 @Composable
 internal fun HomeDashboard(
     state: GameState,
     isGuest: Boolean,
     onChooseMode: (GameMode, Boolean) -> Unit,
-    onQuickMatch: (GameMode) -> Unit,
+    onQuickMatch: (GameMode, MatchType) -> Unit,
     onOpenRooms: () -> Unit,
     onOpenFriends: () -> Unit,
     onOpenLeaderboard: () -> Unit,
@@ -95,28 +96,32 @@ internal fun HomeDashboard(
     sessionStartedAtMillis: Long,
     modifier: Modifier = Modifier
 ) {
-    var launchAction by remember { mutableStateOf<HomeLaunchAction?>(null) }
-    launchAction?.let { action ->
-        GameModePickerDialog(
-            title = if (action == HomeLaunchAction.CREATE_ROOM) "Tạo phòng mới" else "Chọn chế độ chơi",
-            onDismiss = { launchAction = null },
-            onSelect = { mode ->
-                launchAction = null
-                if (action == HomeLaunchAction.PLAY) {
-                    onQuickMatch(mode)
-                } else {
-                    onChooseMode(mode, true)
-                }
-            }
-        )
-    }
-
     val profile = state.profile
     val displayName = profile?.displayName ?: state.player.name
     val elo = profile?.statistics?.eloRating
     val rank = state.leaderboard?.currentPlayer?.rank
     val onlineFriends = state.social.friends.count { it.presence != FriendPresence.OFFLINE }
     val openSocial = if (isGuest) onUpgradeGuest else onOpenFriends
+    var launchAction by remember { mutableStateOf<HomeLaunchAction?>(null) }
+    launchAction?.let { action ->
+        GameModePickerDialog(
+            title = when (action) {
+                HomeLaunchAction.CREATE_ROOM -> "Tạo phòng mới"
+                HomeLaunchAction.CASUAL -> "Chọn chế độ đấu thường"
+                HomeLaunchAction.RANKED -> "Chọn chế độ xếp hạng"
+            },
+            playerLevel = profile?.progression?.level ?: 1,
+            onDismiss = { launchAction = null },
+            onSelect = { mode ->
+                launchAction = null
+                when (action) {
+                    HomeLaunchAction.CASUAL -> onQuickMatch(mode, MatchType.CASUAL)
+                    HomeLaunchAction.RANKED -> onQuickMatch(mode, MatchType.RANKED)
+                    HomeLaunchAction.CREATE_ROOM -> onChooseMode(mode, true)
+                }
+            }
+        )
+    }
 
     BoxWithConstraints(modifier = modifier.fillMaxSize().testTag("home_screen")) {
         val compactHeight = maxHeight < 600.dp
@@ -198,38 +203,57 @@ internal fun HomeDashboard(
                     modifier = Modifier.fillMaxWidth().padding(if (compactHeight) 16.dp else 22.dp),
                     verticalArrangement = Arrangement.spacedBy(if (compactHeight) 8.dp else 12.dp)
                 ) {
+                    val season = profile?.progression?.season
                     Text(
                         if (elo == null) "ĐANG ĐỒNG BỘ DỮ LIỆU"
                         else buildString {
-                            append("ELO ").append(elo)
+                            if (season != null && season.placementMatchesPlayed < season.placementMatchesRequired) {
+                                append("PHÂN HẠNG ").append(season.placementMatchesPlayed)
+                                    .append('/').append(season.placementMatchesRequired)
+                            } else if (season != null) {
+                                append(season.tier.uppercase())
+                            } else {
+                                append("ELO ").append(elo)
+                            }
                             rank?.let { append("  •  Hạng #").append(it) }
                         },
                         style = MaterialTheme.typography.labelLarge
                     )
                     Text(
-                        "Sẵn sàng chơi nhanh?",
+                        "Chọn cách thi đấu",
                         style = if (compactHeight) MaterialTheme.typography.headlineSmall
                         else MaterialTheme.typography.headlineMedium,
                         fontWeight = FontWeight.Bold
                     )
                     Text(
-                        if (isGuest) "Đăng ký tài khoản để ghép đối thủ theo Elo."
-                        else "Tự động tìm đối thủ có Elo gần bạn.",
+                        if (isGuest) "Đăng ký tài khoản để ghép đối thủ trực tuyến."
+                        else "Đấu thường để luyện tập hoặc xếp hạng để tăng Elo.",
                         color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.82f)
                     )
-                    Button(
-                        onClick = if (isGuest) onUpgradeGuest else ({ launchAction = HomeLaunchAction.PLAY }),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(if (compactHeight) 46.dp else 52.dp)
-                            .testTag("home_quick_match"),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = MaterialTheme.colorScheme.onPrimary,
-                            contentColor = MaterialTheme.colorScheme.primary
-                        )
-                    ) {
-                        Icon(Icons.Default.PlayArrow, null)
-                        Text("  Chơi nhanh", fontWeight = FontWeight.Bold)
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Button(
+                            onClick = if (isGuest) onUpgradeGuest else ({ launchAction = HomeLaunchAction.CASUAL }),
+                            modifier = Modifier.weight(1f).height(if (compactHeight) 46.dp else 52.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.16f),
+                                contentColor = MaterialTheme.colorScheme.onPrimary
+                            )
+                        ) {
+                            Text("Đấu thường", fontWeight = FontWeight.Bold)
+                        }
+                        Button(
+                            onClick = if (isGuest) onUpgradeGuest else ({ launchAction = HomeLaunchAction.RANKED }),
+                            modifier = Modifier.weight(1f)
+                                .height(if (compactHeight) 46.dp else 52.dp)
+                                .testTag("home_quick_match"),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.onPrimary,
+                                contentColor = MaterialTheme.colorScheme.primary
+                            )
+                        ) {
+                            Icon(Icons.Default.PlayArrow, null)
+                            Text(" Xếp hạng", fontWeight = FontWeight.Bold)
+                        }
                     }
                 }
             }
@@ -299,11 +323,15 @@ internal fun HomeDashboard(
                                 overflow = TextOverflow.Ellipsis
                             )
                         }
-                        Text(
-                            if (match.eloChange >= 0) "+${match.eloChange} Elo" else "${match.eloChange} Elo",
-                            color = if (match.eloChange >= 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
-                            fontWeight = FontWeight.Bold
-                        )
+                        if (match.matchType == MatchType.RANKED) {
+                            Text(
+                                if (match.eloChange >= 0) "+${match.eloChange} Elo" else "${match.eloChange} Elo",
+                                color = if (match.eloChange >= 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
+                                fontWeight = FontWeight.Bold
+                            )
+                        } else {
+                            Text("Thường", color = MaterialTheme.colorScheme.onSurfaceVariant, fontWeight = FontWeight.Bold)
+                        }
                     }
                 }
             }
@@ -591,6 +619,7 @@ private fun SectionTitle(title: String, subtitle: String? = null) {
 internal fun GameModePickerDialog(
     title: String,
     onDismiss: () -> Unit,
+    playerLevel: Int = 1,
     onSelect: (GameMode) -> Unit
 ) {
     AlertDialog(
@@ -598,11 +627,18 @@ internal fun GameModePickerDialog(
         title = { Text(title) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                ModeChoice("Đua thứ tự", "Tìm nhanh các số từ 1 đến 50", Icons.Rounded.Bolt) {
-                    onSelect(GameMode.ORDER)
-                }
-                ModeChoice("Đua 60 giây", "Giành nhiều điểm nhất trong 60 giây", Icons.Rounded.Timer) {
-                    onSelect(GameMode.TIME_ATTACK)
+                GameMode.entries.filterNot(GameMode::isLegacy).forEach { mode ->
+                    val unlocked = playerLevel >= mode.unlockLevel
+                    ModeChoice(
+                        title = mode.title,
+                        subtitle = if (unlocked) mode.description else "Mở khóa ở cấp ${mode.unlockLevel}",
+                        icon = if (mode == GameMode.TIME_BONUS || mode == GameMode.SPEED_UP) {
+                            Icons.Rounded.Timer
+                        } else {
+                            Icons.Rounded.Bolt
+                        },
+                        enabled = unlocked
+                    ) { onSelect(mode) }
                 }
             }
         },
@@ -612,8 +648,19 @@ internal fun GameModePickerDialog(
 }
 
 @Composable
-private fun ModeChoice(title: String, subtitle: String, icon: ImageVector, onClick: () -> Unit) {
-    ElevatedCard(onClick = onClick, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp)) {
+private fun ModeChoice(
+    title: String,
+    subtitle: String,
+    icon: ImageVector,
+    enabled: Boolean,
+    onClick: () -> Unit
+) {
+    ElevatedCard(
+        onClick = onClick,
+        enabled = enabled,
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(18.dp)
+    ) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(16.dp),
             verticalAlignment = Alignment.CenterVertically,

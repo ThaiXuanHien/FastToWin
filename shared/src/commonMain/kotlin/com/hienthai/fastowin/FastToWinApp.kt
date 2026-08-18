@@ -163,6 +163,7 @@ private fun GameContent(
     if (showGameModePicker) {
         GameModePickerDialog(
             title = "Chọn chế độ chơi",
+            playerLevel = state.profile?.progression?.level ?: 1,
             onDismiss = { showGameModePicker = false },
             onSelect = { mode ->
                 showGameModePicker = false
@@ -174,6 +175,7 @@ private fun GameContent(
     if (showPracticeModePicker) {
         GameModePickerDialog(
             title = "Chọn chế độ luyện tập",
+            playerLevel = state.profile?.progression?.level ?: 1,
             onDismiss = { showPracticeModePicker = false },
             onSelect = { mode ->
                 showPracticeModePicker = false

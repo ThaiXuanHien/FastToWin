@@ -10,6 +10,7 @@ import com.hienthai.fastowin.protocol.GameSnapshot
 import com.hienthai.fastowin.protocol.MAX_PROFILE_DISPLAY_NAME_LENGTH
 import com.hienthai.fastowin.protocol.PROFILE_AVATAR_IDS
 import com.hienthai.fastowin.protocol.ProtocolGameMode
+import com.hienthai.fastowin.protocol.MatchType
 import com.hienthai.fastowin.protocol.RematchEvent
 import com.hienthai.fastowin.protocol.RoomPhase
 import com.hienthai.fastowin.protocol.ServerMessage
@@ -435,8 +436,8 @@ class GameController(
     }
 
     fun createRoom(roomName: String, password: String) {
-        if (roomName.isBlank() || password.isEmpty()) {
-            _uiState.update { it.copy(error = "Vui lòng nhập tên và mật khẩu phòng.") }
+        if (roomName.isBlank()) {
+            _uiState.update { it.copy(error = "Vui lòng nhập tên phòng.") }
             return
         }
         _uiState.update { it.copy(isSearching = true, error = null) }
@@ -562,19 +563,20 @@ class GameController(
         scope.launch { socket.sendMessage(ClientMessage.SetReady(roomId, ready)) }
     }
 
-    fun startMatchmaking(mode: GameMode) {
+    fun startMatchmaking(mode: GameMode, matchType: MatchType) {
         if (accountDisplayName == null) return
         _uiState.update {
             it.copy(
                 gameMode = mode,
+                matchType = matchType,
                 lobbyStage = LobbyStage.MATCHMAKING,
                 isMatchmaking = true,
                 matchmakingStartedAtMillis = epochMillis(),
-                matchmakingRatingRange = 100,
+                matchmakingRatingRange = if (matchType == MatchType.RANKED) 100 else 0,
                 error = null
             )
         }
-        scope.launch { socket.sendMessage(ClientMessage.JoinMatchmaking(mode.toProtocol())) }
+        scope.launch { socket.sendMessage(ClientMessage.JoinMatchmaking(mode.toProtocol(), matchType)) }
     }
 
     fun cancelMatchmaking() {
@@ -639,6 +641,7 @@ class GameController(
                                 name = room.name,
                                 hostName = room.hostName,
                                 gameMode = room.gameMode.toUi(),
+                                matchType = room.matchType,
                                 requiresPassword = room.requiresPassword,
                                 lastSeenAtMillis = epochMillis()
                             )
@@ -842,6 +845,7 @@ class GameController(
                         lobbyStage = if (message.isSearching) LobbyStage.MATCHMAKING else LobbyStage.SELECT_MODE,
                         isMatchmaking = message.isSearching,
                         gameMode = message.gameMode?.toUi() ?: it.gameMode,
+                        matchType = message.matchType,
                         matchmakingStartedAtMillis = if (message.isSearching) {
                             it.matchmakingStartedAtMillis ?: epochMillis()
                         } else {
@@ -869,6 +873,7 @@ class GameController(
         _uiState.update { state ->
             state.copy(
                 gameMode = game.gameMode.toUi(),
+                matchType = game.matchType,
                 player = PlayerState(
                     name = me?.name ?: state.player.name,
                     id = me?.id,
@@ -895,6 +900,7 @@ class GameController(
                 isGameOver = false,
                 isMatchStarted = false,
                 currentMatchId = game.matchId,
+                winnerPlayerId = game.winnerPlayerId,
                 isRematchRequestedByMe = false,
                 isRematchRequestedByOpponent = false,
                 rematchExpiresAtEpochMillis = null,
@@ -935,9 +941,6 @@ class GameController(
         countdownJob?.cancel()
         gameStarted = game.phase == RoomPhase.PLAYING
         applyGameSnapshot(game, forceStart = true)
-        if (game.gameMode == ProtocolGameMode.TIME_ATTACK && game.phase == RoomPhase.PLAYING) {
-            startTimer(game.startedAtEpochMillis)
-        }
     }
 
     private fun applyGameSnapshot(game: GameSnapshot, forceStart: Boolean = false) {
@@ -947,27 +950,48 @@ class GameController(
         _uiState.update { state ->
             state.copy(
                 numbers = if (game.numbers.isNotEmpty()) game.numbers else state.numbers,
-                currentTarget = game.currentTarget,
+                currentTarget = me?.currentTarget ?: game.currentTarget,
                 score = me?.score ?: 0,
                 isGameOver = finished,
                 gameMode = game.gameMode.toUi(),
+                matchType = game.matchType,
                 player = PlayerState(
                     name = me?.name ?: state.player.name,
                     id = me?.id,
                     score = me?.score ?: 0,
-                    currentTarget = game.currentTarget,
+                    currentTarget = me?.currentTarget ?: game.currentTarget,
                     correctSelections = me?.correctSelections ?: 0,
                     wrongSelections = me?.wrongSelections ?: 0,
-                    averageReactionMillis = me?.averageReactionMillis ?: 0
+                    averageReactionMillis = me?.averageReactionMillis ?: 0,
+                    selectedNumbers = me?.selectedNumbers.orEmpty(),
+                    combo = me?.combo ?: 0,
+                    lives = me?.lives ?: 3,
+                    isFinished = me?.isFinished ?: false,
+                    fastestSegmentStart = me?.fastestSegmentStart ?: 0,
+                    fastestSegmentEnd = me?.fastestSegmentEnd ?: 0,
+                    fastestSegmentAverageMillis = me?.fastestSegmentAverageMillis ?: 0,
+                    slowestSegmentStart = me?.slowestSegmentStart ?: 0,
+                    slowestSegmentEnd = me?.slowestSegmentEnd ?: 0,
+                    slowestSegmentAverageMillis = me?.slowestSegmentAverageMillis ?: 0
                 ),
                 opponent = PlayerState(
                     name = opponent?.name ?: DEFAULT_OPPONENT_NAME,
                     id = opponent?.id,
                     score = opponent?.score ?: 0,
-                    currentTarget = game.currentTarget,
+                    currentTarget = opponent?.currentTarget ?: game.currentTarget,
                     correctSelections = opponent?.correctSelections ?: 0,
                     wrongSelections = opponent?.wrongSelections ?: 0,
-                    averageReactionMillis = opponent?.averageReactionMillis ?: 0
+                    averageReactionMillis = opponent?.averageReactionMillis ?: 0,
+                    selectedNumbers = opponent?.selectedNumbers.orEmpty(),
+                    combo = opponent?.combo ?: 0,
+                    lives = opponent?.lives ?: 3,
+                    isFinished = opponent?.isFinished ?: false,
+                    fastestSegmentStart = opponent?.fastestSegmentStart ?: 0,
+                    fastestSegmentEnd = opponent?.fastestSegmentEnd ?: 0,
+                    fastestSegmentAverageMillis = opponent?.fastestSegmentAverageMillis ?: 0,
+                    slowestSegmentStart = opponent?.slowestSegmentStart ?: 0,
+                    slowestSegmentEnd = opponent?.slowestSegmentEnd ?: 0,
+                    slowestSegmentAverageMillis = opponent?.slowestSegmentAverageMillis ?: 0
                 ),
                 lobbyStage = LobbyStage.MATCHED,
                 currentRoomId = game.roomId,
@@ -979,6 +1003,7 @@ class GameController(
                 isSearching = false,
                 isMatchStarted = forceStart || state.isMatchStarted,
                 currentMatchId = game.matchId,
+                winnerPlayerId = game.winnerPlayerId,
                 isRematchRequestedByMe = playerId?.let { it in game.rematchRequestedPlayerIds } == true,
                 isRematchRequestedByOpponent = game.rematchRequestedPlayerIds.any { it != playerId },
                 rematchExpiresAtEpochMillis = game.rematchExpiresAtEpochMillis,
@@ -997,6 +1022,17 @@ class GameController(
                 message = if (finished) null else state.message,
                 error = null
             )
+        }
+        if (game.phase == RoomPhase.PLAYING && game.gameMode.isTimed()) {
+            val countdownElapsed = if (forceStart) {
+                game.startedAtEpochMillis?.let { (epochMillis() - it).coerceAtLeast(0L) } ?: 0L
+            } else {
+                0L
+            }
+            startTimer(((me?.timeLeftMillis ?: 0L) - countdownElapsed).coerceAtLeast(0L))
+        } else if (!finished) {
+            timerJob?.cancel()
+            _uiState.update { it.copy(timeLeftMillis = 0L) }
         }
         if (finished) {
             gameStarted = false
@@ -1039,12 +1075,12 @@ class GameController(
         }
     }
 
-    private fun startTimer(startedAtEpochMillis: Long?) {
+    private fun startTimer(initialRemainingMillis: Long) {
         timerJob?.cancel()
+        val deadline = epochMillis() + initialRemainingMillis
         timerJob = scope.launch {
             while (gameStarted) {
-                val elapsed = startedAtEpochMillis?.let { epochMillis() - it } ?: 0L
-                val remaining = (60_000L - elapsed).coerceAtLeast(0L)
+                val remaining = (deadline - epochMillis()).coerceAtLeast(0L)
                 _uiState.update { it.copy(timeLeftMillis = remaining) }
                 if (remaining == 0L) {
                     _uiState.update { it.copy(message = "Đang chờ kết quả từ máy chủ...") }
@@ -1125,6 +1161,7 @@ class GameController(
                 isSearching = false,
                 isMatchStarted = false,
                 isGameOver = false,
+                winnerPlayerId = null,
                 countdown = null,
                 error = error
             )
@@ -1134,13 +1171,26 @@ class GameController(
 
     private fun GameMode.toProtocol(): ProtocolGameMode = when (this) {
         GameMode.ORDER -> ProtocolGameMode.ORDER
+        GameMode.RANDOM_TARGET -> ProtocolGameMode.RANDOM_TARGET
+        GameMode.TIME_BONUS -> ProtocolGameMode.TIME_BONUS
+        GameMode.SPEED_UP -> ProtocolGameMode.SPEED_UP
+        GameMode.SURVIVAL -> ProtocolGameMode.SURVIVAL
+        GameMode.COMBO -> ProtocolGameMode.COMBO
         GameMode.TIME_ATTACK -> ProtocolGameMode.TIME_ATTACK
     }
 
     private fun ProtocolGameMode.toUi(): GameMode = when (this) {
         ProtocolGameMode.ORDER -> GameMode.ORDER
+        ProtocolGameMode.RANDOM_TARGET -> GameMode.RANDOM_TARGET
+        ProtocolGameMode.TIME_BONUS -> GameMode.TIME_BONUS
+        ProtocolGameMode.SPEED_UP -> GameMode.SPEED_UP
+        ProtocolGameMode.SURVIVAL -> GameMode.SURVIVAL
+        ProtocolGameMode.COMBO -> GameMode.COMBO
         ProtocolGameMode.TIME_ATTACK -> GameMode.TIME_ATTACK
     }
+
+    private fun ProtocolGameMode.isTimed(): Boolean = this == ProtocolGameMode.TIME_ATTACK ||
+        this == ProtocolGameMode.TIME_BONUS || this == ProtocolGameMode.SPEED_UP
 
     private fun randomId(): String = buildString {
         repeat(2) { append(Random.nextLong().toULong().toString(16).padStart(16, '0')) }

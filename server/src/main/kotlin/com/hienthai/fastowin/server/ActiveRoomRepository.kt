@@ -1,6 +1,7 @@
 package com.hienthai.fastowin.server
 
 import com.hienthai.fastowin.protocol.ProtocolGameMode
+import com.hienthai.fastowin.protocol.MatchType
 import com.hienthai.fastowin.protocol.ProtocolJson
 import com.hienthai.fastowin.protocol.RoomPhase
 import com.hienthai.fastowin.protocol.ServerMessage
@@ -27,6 +28,7 @@ data class StoredActiveRoom(
     val passwordSalt: ByteArray? = null,
     val passwordHash: ByteArray? = null,
     val gameMode: ProtocolGameMode,
+    val matchType: MatchType = MatchType.CASUAL,
     val phase: RoomPhase,
     val numbers: List<Int> = emptyList(),
     val selectedNumbers: List<Int> = emptyList(),
@@ -40,7 +42,15 @@ data class StoredActiveRoom(
     val rematchRequestedPlayerIds: Set<String> = emptySet(),
     val rematchExpiresAtEpochMillis: Long? = null,
     val processedRequests: Map<String, ServerMessage> = emptyMap(),
-    val selectionEvents: List<MatchSelectionEvent> = emptyList()
+    val selectionEvents: List<MatchSelectionEvent> = emptyList(),
+    val targetOrder: List<Int> = emptyList(),
+    val selectedNumbersByPlayer: Map<String, List<Int>> = emptyMap(),
+    val targetIndexes: Map<String, Int> = emptyMap(),
+    val combos: Map<String, Int> = emptyMap(),
+    val lives: Map<String, Int> = emptyMap(),
+    val deadlinesAtEpochMillis: Map<String, Long> = emptyMap(),
+    val finishedPlayerIds: Set<String> = emptySet(),
+    val forcedWinnerId: String? = null
 )
 
 interface ActiveRoomRepository {

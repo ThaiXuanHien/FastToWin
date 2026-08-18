@@ -8,6 +8,7 @@ import com.hienthai.fastowin.protocol.ProtocolGameMode
 import com.hienthai.fastowin.protocol.PlayerProfileSnapshot
 import com.hienthai.fastowin.protocol.DailyCheckInSnapshot
 import com.hienthai.fastowin.protocol.MissionSnapshot
+import com.hienthai.fastowin.protocol.MatchType
 import com.hienthai.fastowin.protocol.PlayerProgressionSnapshot
 import com.hienthai.fastowin.protocol.FriendSnapshot
 import com.hienthai.fastowin.protocol.RecentPlayerSnapshot
@@ -153,7 +154,56 @@ class GameEngineTest {
             .map(Delivery::message).filterIsInstance<ServerMessage.GameStarted>().single()
         assertEquals(setOf(firstId, secondId), matched.game.players.map { it.id }.toSet())
         assertEquals(com.hienthai.fastowin.protocol.RoomPhase.PLAYING, matched.game.phase)
+        assertEquals(MatchType.RANKED, matched.game.matchType)
         assertEquals(50, matched.game.numbers.size)
+    }
+
+    @Test
+    fun `public room can be created and joined without password`() = runTest {
+        val engine = GameEngine()
+        val host = engine.connectGuest("Host", null)
+        val guest = engine.connectGuest("Guest", null)
+
+        val created = engine.handle(
+            host.playerId,
+            ClientMessage.CreateRoom("Public room", "", ProtocolGameMode.ORDER)
+        ).map(Delivery::message).filterIsInstance<ServerMessage.RoomCreated>().single().game
+        val summary = engine.handle(guest.playerId, ClientMessage.ListRooms)
+            .map(Delivery::message).filterIsInstance<ServerMessage.RoomList>().single()
+            .rooms.single { it.id == created.roomId }
+        assertFalse(summary.requiresPassword)
+
+        val joined = engine.handle(guest.playerId, ClientMessage.JoinRoom(created.roomId, ""))
+            .map(Delivery::message).filterIsInstance<ServerMessage.RoomUpdated>().single().game
+        assertEquals(setOf(host.playerId, guest.playerId), joined.players.map { it.id }.toSet())
+    }
+
+    @Test
+    fun `casual and ranked matchmaking queues never cross match`() = runTest {
+        val firstId = UUID.randomUUID()
+        val secondId = UUID.randomUUID()
+        val thirdId = UUID.randomUUID()
+        val engine = GameEngine()
+        engine.connectAccount(AuthenticatedAccount(firstId, "Ranked"))
+        engine.connectAccount(AuthenticatedAccount(secondId, "Casual one"))
+        engine.connectAccount(AuthenticatedAccount(thirdId, "Casual two"))
+
+        engine.handle(
+            firstId.toString(),
+            ClientMessage.JoinMatchmaking(ProtocolGameMode.ORDER, MatchType.RANKED)
+        )
+        val casualWaiting = engine.handle(
+            secondId.toString(),
+            ClientMessage.JoinMatchmaking(ProtocolGameMode.ORDER, MatchType.CASUAL)
+        ).map(Delivery::message)
+        assertTrue(casualWaiting.filterIsInstance<ServerMessage.GameStarted>().isEmpty())
+
+        val matched = engine.handle(
+            thirdId.toString(),
+            ClientMessage.JoinMatchmaking(ProtocolGameMode.ORDER, MatchType.CASUAL)
+        ).map(Delivery::message).filterIsInstance<ServerMessage.GameStarted>().single().game
+        assertEquals(MatchType.CASUAL, matched.matchType)
+        assertEquals(setOf(secondId.toString(), thirdId.toString()), matched.players.map { it.id }.toSet())
     }
 
     @Test
@@ -923,6 +973,13 @@ class GameEngineTest {
         assertEquals(50, hostResult.correctSelections)
         assertEquals(1, hostResult.wrongSelections)
         assertEquals(102L, hostResult.averageReactionMillis)
+        assertEquals(11, hostResult.fastestSegmentStart)
+        assertEquals(20, hostResult.fastestSegmentEnd)
+        assertEquals(100L, hostResult.fastestSegmentAverageMillis)
+        assertEquals(1, hostResult.slowestSegmentStart)
+        assertEquals(10, hostResult.slowestSegmentEnd)
+        assertEquals(110L, hostResult.slowestSegmentAverageMillis)
+        assertEquals(host.playerId, finished.winnerPlayerId)
         assertEquals(5_100L, assertNotNull(finished.finishedAtEpochMillis) - assertNotNull(finished.startedAtEpochMillis))
     }
 
@@ -1025,6 +1082,99 @@ class GameEngineTest {
         assertEquals(1, savedMatches.size)
     }
 
+    @Test
+    fun `locked modes require the configured player level`() = runTest {
+        val engine = GameEngine()
+        val guest = engine.connectGuest("Người mới", null)
+
+        val result = engine.handle(
+            guest.playerId,
+            ClientMessage.CreateRoom("Phòng ngẫu nhiên", PASSWORD, ProtocolGameMode.RANDOM_TARGET)
+        )
+
+        val error = assertIs<ServerMessage.Error>(result.single().message)
+        assertEquals("MODE_LOCKED", error.code)
+        assertTrue(error.message.contains("cấp 3"))
+    }
+
+    @Test
+    fun `time bonus gives each player an independent board and adjusts time`() = runTest {
+        val fixture = createUnlockedRoomFixture(ProtocolGameMode.TIME_BONUS)
+        val started = startRoom(fixture.engine, fixture.hostId, fixture.guestId, fixture.roomId)
+        val hostBefore = started.players.single { it.id == fixture.hostId }
+        val guestBefore = started.players.single { it.id == fixture.guestId }
+
+        val updated = fixture.engine.handle(
+            fixture.hostId,
+            ClientMessage.SelectNumber(fixture.roomId, hostBefore.currentTarget, "bonus-correct")
+        ).map(Delivery::message).filterIsInstance<ServerMessage.GameStateUpdated>().single().game
+        val hostAfter = updated.players.single { it.id == fixture.hostId }
+        val guestAfter = updated.players.single { it.id == fixture.guestId }
+
+        assertEquals(2, hostAfter.currentTarget)
+        assertEquals(guestBefore.currentTarget, guestAfter.currentTarget)
+        assertEquals(listOf(1), hostAfter.selectedNumbers)
+        assertTrue(hostAfter.timeLeftMillis > hostBefore.timeLeftMillis)
+    }
+
+    @Test
+    fun `combo increases multiplier and wrong selection resets it`() = runTest {
+        val fixture = createUnlockedRoomFixture(ProtocolGameMode.COMBO)
+        var snapshot = startRoom(fixture.engine, fixture.hostId, fixture.guestId, fixture.roomId)
+
+        repeat(5) { index ->
+            val target = snapshot.players.single { it.id == fixture.hostId }.currentTarget
+            snapshot = fixture.engine.handle(
+                fixture.hostId,
+                ClientMessage.SelectNumber(fixture.roomId, target, "combo-$index")
+            ).map(Delivery::message).filterIsInstance<ServerMessage.GameStateUpdated>().single().game
+        }
+        val streak = snapshot.players.single { it.id == fixture.hostId }
+        assertEquals(5, streak.combo)
+        assertEquals(60, streak.score)
+
+        val wrongNumber = if (streak.currentTarget == 1) 2 else 1
+        val reset = fixture.engine.handle(
+            fixture.hostId,
+            ClientMessage.SelectNumber(fixture.roomId, wrongNumber, "combo-wrong")
+        ).map(Delivery::message).filterIsInstance<ServerMessage.GameStateUpdated>().single().game
+        assertEquals(0, reset.players.single { it.id == fixture.hostId }.combo)
+    }
+
+    @Test
+    fun `survival ends after three wrong selections`() = runTest {
+        val fixture = createUnlockedRoomFixture(ProtocolGameMode.SURVIVAL)
+        val started = startRoom(fixture.engine, fixture.hostId, fixture.guestId, fixture.roomId)
+        val target = started.players.single { it.id == fixture.hostId }.currentTarget
+        val wrongNumber = if (target == 1) 2 else 1
+        var snapshot = started
+
+        repeat(3) { index ->
+            snapshot = fixture.engine.handle(
+                fixture.hostId,
+                ClientMessage.SelectNumber(fixture.roomId, wrongNumber, "survival-$index")
+            ).map(Delivery::message).filterIsInstance<ServerMessage.GameStateUpdated>().single().game
+        }
+
+        assertEquals(com.hienthai.fastowin.protocol.RoomPhase.FINISHED, snapshot.phase)
+        assertEquals(0, snapshot.players.single { it.id == fixture.hostId }.lives)
+        assertEquals(fixture.guestId, snapshot.winnerPlayerId)
+    }
+
+    @Test
+    fun `speed up ends when target deadline expires`() = runTest {
+        var now = 1_000L
+        val fixture = createUnlockedRoomFixture(ProtocolGameMode.SPEED_UP) { now }
+        startRoom(fixture.engine, fixture.hostId, fixture.guestId, fixture.roomId)
+        now += 5_001L
+
+        val finished = fixture.engine.advanceTimedGames()
+            .map(Delivery::message).filterIsInstance<ServerMessage.GameFinished>().single()
+
+        assertEquals(com.hienthai.fastowin.protocol.RoomPhase.FINISHED, finished.game.phase)
+        assertTrue(finished.game.players.all { it.isFinished })
+    }
+
     private suspend fun createRoomFixture(): Fixture {
         val engine = GameEngine()
         val host = engine.connectGuest("Hiền", null)
@@ -1044,7 +1194,7 @@ class GameEngineTest {
         guestId: String,
         roomId: String,
         password: String = PASSWORD
-    ) {
+    ): com.hienthai.fastowin.protocol.GameSnapshot {
         val joined = engine.handle(guestId, ClientMessage.JoinRoom(roomId, password))
             .map(Delivery::message).filterIsInstance<ServerMessage.RoomUpdated>().single().game
         assertEquals(setOf(hostId, guestId), joined.players.map { it.id }.toSet())
@@ -1052,6 +1202,35 @@ class GameEngineTest {
         val started = engine.handle(guestId, ClientMessage.SetReady(roomId, true))
             .map(Delivery::message).filterIsInstance<ServerMessage.GameStarted>().single().game
         assertEquals(com.hienthai.fastowin.protocol.RoomPhase.PLAYING, started.phase)
+        return started
+    }
+
+    private suspend fun createUnlockedRoomFixture(
+        mode: ProtocolGameMode,
+        nowMillis: () -> Long = System::currentTimeMillis
+    ): Fixture {
+        val hostId = UUID.randomUUID().toString()
+        val guestId = UUID.randomUUID().toString()
+        val profiles = mapOf(
+            hostId to PlayerProfileSnapshot(
+                "Hiền", "HIEN001", progression = PlayerProgressionSnapshot(level = 12)
+            ),
+            guestId to PlayerProfileSnapshot(
+                "Hiếu", "HIEU001", progression = PlayerProgressionSnapshot(level = 12)
+            )
+        )
+        val repository = object : PlayerProfileRepository {
+            override suspend fun findByPlayerId(playerId: String) = profiles[playerId]
+            override suspend fun updateProfile(playerId: String, displayName: String, avatarId: String?) = false
+        }
+        val engine = GameEngine(playerProfileRepository = repository, nowMillis = nowMillis)
+        engine.connectAccount(AuthenticatedAccount(UUID.fromString(hostId), "Hiền"))
+        engine.connectAccount(AuthenticatedAccount(UUID.fromString(guestId), "Hiếu"))
+        val room = engine.handle(
+            hostId,
+            ClientMessage.CreateRoom("Phòng ${mode.name}", PASSWORD, mode)
+        ).map(Delivery::message).filterIsInstance<ServerMessage.RoomCreated>().single().game
+        return Fixture(engine, hostId, guestId, room.roomId)
     }
 
     private fun friendRepositoryForPair(firstId: String, secondId: String) = object : FriendRepository {

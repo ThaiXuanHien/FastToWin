@@ -1,6 +1,7 @@
 package com.hienthai.fastowin.server
 
 import com.hienthai.fastowin.protocol.ProtocolGameMode
+import com.hienthai.fastowin.protocol.MatchType
 import kotlinx.serialization.Serializable
 
 @Serializable
@@ -43,7 +44,8 @@ data class CompletedMatch(
     val endedAtMillis: Long,
     val winnerPlayerId: String?,
     val players: List<CompletedMatchPlayer>,
-    val events: List<MatchSelectionEvent> = emptyList()
+    val events: List<MatchSelectionEvent> = emptyList(),
+    val matchType: MatchType = MatchType.RANKED
 )
 
 fun interface MatchResultRepository {

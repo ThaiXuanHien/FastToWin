@@ -35,7 +35,11 @@ class PostgresLeaderboardRepository(
                         FROM player_stats s
                         JOIN profiles p ON p.user_id = s.user_id
                         JOIN users u ON u.id = s.user_id
-                        WHERE s.total_matches > 0 AND u.status = 'ACTIVE'
+                        WHERE s.total_matches > 0
+                          AND u.status = 'ACTIVE'
+                          AND EXISTS (
+                              SELECT 1 FROM rating_history rh WHERE rh.user_id = s.user_id
+                          )
                     )
                     SELECT * FROM ranked WHERE rank <= ? OR user_id = ? ORDER BY rank
                     """.trimIndent()
@@ -78,7 +82,7 @@ class PostgresLeaderboardRepository(
                                     JOIN profiles p ON p.user_id = sr.user_id
                                     JOIN player_stats ps ON ps.user_id = sr.user_id
                                     JOIN users u ON u.id = sr.user_id
-                                    WHERE sr.season_id = ? AND sr.matches_played > 0 AND u.status = 'ACTIVE'
+                                    WHERE sr.season_id = ? AND sr.placement_matches >= 5 AND u.status = 'ACTIVE'
                                 )
                                 SELECT * FROM ranked WHERE rank <= ? OR user_id = ? ORDER BY rank
                                 """.trimIndent()

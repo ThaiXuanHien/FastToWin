@@ -4,7 +4,7 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
-const val PROTOCOL_VERSION = 19
+const val PROTOCOL_VERSION = 21
 const val GAME_NUMBER_COUNT = 50
 const val MAX_PROFILE_DISPLAY_NAME_LENGTH = 32
 val DAILY_CHECK_IN_REWARDS_XP = listOf(5, 10, 10, 15, 15, 20, 25)
@@ -24,10 +24,34 @@ val ProtocolJson = Json {
 }
 
 @Serializable
-enum class ProtocolGameMode {
-    ORDER,
-    TIME_ATTACK
+enum class ProtocolGameMode(val unlockLevel: Int) {
+    ORDER(1),
+    RANDOM_TARGET(3),
+    TIME_BONUS(5),
+    SPEED_UP(7),
+    SURVIVAL(10),
+    COMBO(12),
+
+    /** Kept so existing match history and active-room snapshots remain readable. */
+    TIME_ATTACK(1)
 }
+
+@Serializable
+enum class MatchType { CASUAL, RANKED }
+
+@Serializable
+enum class RankedTier(val displayName: String, val minimumRating: Int) {
+    BRONZE("Đồng", 0),
+    SILVER("Bạc", 1_100),
+    GOLD("Vàng", 1_300),
+    PLATINUM("Bạch kim", 1_500),
+    DIAMOND("Kim cương", 1_800),
+    MASTER("Cao thủ", 2_100)
+}
+
+fun rankedTierFor(rating: Int): RankedTier = RankedTier.entries
+    .lastOrNull { rating >= it.minimumRating }
+    ?: RankedTier.BRONZE
 
 @Serializable
 enum class RoomPhase {
@@ -42,7 +66,8 @@ data class RoomSummary(
     val name: String,
     val hostName: String,
     val gameMode: ProtocolGameMode,
-    val requiresPassword: Boolean
+    val requiresPassword: Boolean,
+    val matchType: MatchType = MatchType.CASUAL
 )
 
 @Serializable
@@ -53,7 +78,19 @@ data class PlayerSnapshot(
     val isReady: Boolean = false,
     val correctSelections: Int = 0,
     val wrongSelections: Int = 0,
-    val averageReactionMillis: Long = 0
+    val averageReactionMillis: Long = 0,
+    val currentTarget: Int = 1,
+    val selectedNumbers: List<Int> = emptyList(),
+    val combo: Int = 0,
+    val lives: Int = 3,
+    val timeLeftMillis: Long = 0,
+    val isFinished: Boolean = false,
+    val fastestSegmentStart: Int = 0,
+    val fastestSegmentEnd: Int = 0,
+    val fastestSegmentAverageMillis: Long = 0,
+    val slowestSegmentStart: Int = 0,
+    val slowestSegmentEnd: Int = 0,
+    val slowestSegmentAverageMillis: Long = 0
 )
 
 @Serializable
@@ -88,7 +125,8 @@ data class MatchHistorySnapshot(
     val opponentScore: Int,
     val outcome: MatchHistoryOutcome,
     val endedAtEpochMillis: Long,
-    val eloChange: Int = 0
+    val eloChange: Int = 0,
+    val matchType: MatchType = MatchType.CASUAL
 )
 
 @Serializable
@@ -145,7 +183,10 @@ data class SeasonSnapshot(
     val tier: String,
     val rating: Int,
     val endsAtEpochMillis: Long,
-    val rewardDescription: String
+    val rewardDescription: String,
+    val placementMatchesPlayed: Int = 0,
+    val placementMatchesRequired: Int = 5,
+    val peakRating: Int = rating
 )
 
 @Serializable
@@ -264,12 +305,14 @@ data class GameSnapshot(
     val gameMode: ProtocolGameMode,
     val phase: RoomPhase,
     val players: List<PlayerSnapshot>,
+    val matchType: MatchType = MatchType.CASUAL,
     val numbers: List<Int> = emptyList(),
     val selectedNumbers: List<Int> = emptyList(),
     val currentTarget: Int = 1,
     val sequence: Long = 0,
     val startedAtEpochMillis: Long? = null,
     val finishedAtEpochMillis: Long? = null,
+    val winnerPlayerId: String? = null,
     val rematchRequestedPlayerIds: List<String> = emptyList(),
     val rematchExpiresAtEpochMillis: Long? = null
 )
@@ -447,7 +490,10 @@ sealed class ClientMessage {
 
     @Serializable
     @SerialName("join_matchmaking")
-    data class JoinMatchmaking(val gameMode: ProtocolGameMode) : ClientMessage()
+    data class JoinMatchmaking(
+        val gameMode: ProtocolGameMode,
+        val matchType: MatchType = MatchType.RANKED
+    ) : ClientMessage()
 
     @Serializable
     @SerialName("cancel_matchmaking")
@@ -563,7 +609,8 @@ sealed class ServerMessage {
     data class GameStateUpdated(
         val game: GameSnapshot,
         val acceptedNumber: Int,
-        val selectedByPlayerId: String
+        val selectedByPlayerId: String,
+        val selectionAccepted: Boolean = true
     ) : ServerMessage()
 
     @Serializable
@@ -587,6 +634,7 @@ sealed class ServerMessage {
     data class MatchmakingStatus(
         val isSearching: Boolean,
         val gameMode: ProtocolGameMode? = null,
+        val matchType: MatchType = MatchType.RANKED,
         val ratingRange: Int = 100
     ) : ServerMessage()
 

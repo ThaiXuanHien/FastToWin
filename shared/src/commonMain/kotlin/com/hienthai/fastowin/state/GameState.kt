@@ -6,6 +6,7 @@ import com.hienthai.fastowin.protocol.LeaderboardSnapshot
 import com.hienthai.fastowin.protocol.FriendsSnapshot
 import com.hienthai.fastowin.protocol.ServerMessage
 import com.hienthai.fastowin.protocol.MatchDetailSnapshot
+import com.hienthai.fastowin.protocol.MatchType
 
 const val GAME_NUMBER_COUNT = 50
 const val DEFAULT_OPPONENT_NAME = "Đối thủ"
@@ -32,6 +33,7 @@ data class AvailableRoom(
     val name: String,
     val hostName: String,
     val gameMode: GameMode,
+    val matchType: MatchType = MatchType.CASUAL,
     val requiresPassword: Boolean,
     val lastSeenAtMillis: Long
 )
@@ -44,7 +46,17 @@ data class PlayerState(
     val currentTarget: Int = 1,
     val correctSelections: Int = 0,
     val wrongSelections: Int = 0,
-    val averageReactionMillis: Long = 0
+    val averageReactionMillis: Long = 0,
+    val selectedNumbers: List<Int> = emptyList(),
+    val combo: Int = 0,
+    val lives: Int = 3,
+    val isFinished: Boolean = false,
+    val fastestSegmentStart: Int = 0,
+    val fastestSegmentEnd: Int = 0,
+    val fastestSegmentAverageMillis: Long = 0,
+    val slowestSegmentStart: Int = 0,
+    val slowestSegmentEnd: Int = 0,
+    val slowestSegmentAverageMillis: Long = 0
 )
 
 enum class PostMatchFriendStatus {
@@ -63,6 +75,7 @@ data class GameState(
     val timeLeftMillis: Long = 0,
     val isGameOver: Boolean = false,
     val gameMode: GameMode = GameMode.ORDER,
+    val matchType: MatchType = MatchType.CASUAL,
     val message: String? = null,
     val error: String? = null,
     
@@ -86,6 +99,7 @@ data class GameState(
     val countdown: Int? = null,
     val isMatchStarted: Boolean = false,
     val currentMatchId: String? = null,
+    val winnerPlayerId: String? = null,
     val isRematchRequestedByMe: Boolean = false,
     val isRematchRequestedByOpponent: Boolean = false,
     val rematchExpiresAtEpochMillis: Long? = null,

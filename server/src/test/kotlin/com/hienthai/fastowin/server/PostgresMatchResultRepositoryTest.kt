@@ -1,6 +1,7 @@
 package com.hienthai.fastowin.server
 
 import com.hienthai.fastowin.protocol.ProtocolGameMode
+import com.hienthai.fastowin.protocol.MatchType
 import com.zaxxer.hikari.HikariConfig
 import com.zaxxer.hikari.HikariDataSource
 import kotlinx.coroutines.test.runTest
@@ -137,6 +138,8 @@ class PostgresMatchResultRepositoryTest {
                 assertFalse(profile.progression.cosmetics.first { it.id == "frame_perfect" }.unlocked)
                 assertEquals("Mùa Khởi Đầu", profile.progression.season?.name)
                 assertEquals(1016, profile.progression.season?.rating)
+                assertEquals(1, profile.progression.season?.placementMatchesPlayed)
+                assertEquals("Đang phân hạng", profile.progression.season?.tier)
                 val firstCheckIn = profileRepository.claimDailyCheckIn(host.playerId)!!
                 val duplicateCheckIn = profileRepository.claimDailyCheckIn(host.playerId)!!
                 assertTrue(firstCheckIn.claimed)
@@ -181,7 +184,77 @@ class PostgresMatchResultRepositoryTest {
                 assertEquals("Updated host", leaderboard.topPlayers.first().displayName)
                 assertEquals("Updated host", leaderboard.topPlayers.first { it.displayName == "Updated host" }.displayName)
                 assertEquals("Mùa Khởi Đầu", leaderboard.seasonName)
-                assertEquals(1016, leaderboard.seasonCurrentPlayer?.eloRating)
+                assertEquals(null, leaderboard.seasonCurrentPlayer)
+            } finally {
+                dataSource.connection.use { connection ->
+                    connection.prepareStatement("DELETE FROM matches WHERE id = ?").use { statement ->
+                        statement.setObject(1, UUID.fromString(matchId))
+                        statement.executeUpdate()
+                    }
+                    connection.prepareStatement("DELETE FROM users WHERE id IN (?, ?)").use { statement ->
+                        statement.setObject(1, UUID.fromString(host.playerId))
+                        statement.setObject(2, UUID.fromString(guest.playerId))
+                        statement.executeUpdate()
+                    }
+                }
+            }
+        }
+    }
+
+
+    @Test
+    fun `casual match updates history but never changes elo or placement`() = runTest {
+        val url = System.getenv("TEST_DATABASE_URL") ?: return@runTest
+        HikariDataSource(HikariConfig().apply {
+            jdbcUrl = url
+            username = System.getenv("TEST_DATABASE_USER") ?: "fasttowin"
+            password = System.getenv("TEST_DATABASE_PASSWORD") ?: "fasttowin"
+            maximumPoolSize = 2
+        }).use { dataSource ->
+            Flyway.configure().dataSource(dataSource).locations("classpath:db/migration").load().migrate()
+            val identityRepository = PostgresGuestIdentityRepository(dataSource)
+            val matchRepository = PostgresMatchResultRepository(dataSource)
+            val profileRepository = PostgresPlayerProfileRepository(dataSource)
+            val host = identityRepository.resolveGuest("Casual host", null, 1_000L)
+            val guest = identityRepository.resolveGuest("Casual guest", null, 1_000L)
+            val matchId = UUID.randomUUID().toString()
+            val startedAt = System.currentTimeMillis()
+            try {
+                matchRepository.save(
+                    CompletedMatch(
+                        matchId = matchId,
+                        roomName = "Casual test",
+                        gameMode = ProtocolGameMode.ORDER,
+                        startedAtMillis = startedAt,
+                        endedAtMillis = startedAt + 1_000L,
+                        winnerPlayerId = host.playerId,
+                        players = listOf(
+                            CompletedMatchPlayer(host.playerId, host.displayName, 500, MatchOutcome.WIN),
+                            CompletedMatchPlayer(guest.playerId, guest.displayName, 0, MatchOutcome.LOSS)
+                        ),
+                        events = emptyList(),
+                        matchType = MatchType.CASUAL
+                    )
+                )
+
+                val profile = profileRepository.findByPlayerId(host.playerId)!!
+                assertEquals(1, profile.statistics.totalMatches)
+                assertEquals(1, profile.statistics.wins)
+                assertEquals(1000, profile.statistics.eloRating)
+                assertEquals(MatchType.CASUAL, profile.recentMatches.single().matchType)
+                assertEquals(0, profile.recentMatches.single().eloChange)
+                assertEquals(0, profile.progression.season?.placementMatchesPlayed)
+                dataSource.connection.use { connection ->
+                    connection.prepareStatement(
+                        "SELECT COUNT(*) FROM rating_history WHERE match_id = ?"
+                    ).use { statement ->
+                        statement.setObject(1, UUID.fromString(matchId))
+                        statement.executeQuery().use { result ->
+                            result.next()
+                            assertEquals(0, result.getInt(1))
+                        }
+                    }
+                }
             } finally {
                 dataSource.connection.use { connection ->
                     connection.prepareStatement("DELETE FROM matches WHERE id = ?").use { statement ->

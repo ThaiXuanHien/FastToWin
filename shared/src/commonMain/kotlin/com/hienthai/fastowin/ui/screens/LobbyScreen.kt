@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -62,6 +63,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.hienthai.fastowin.navigation.GameMode
 import com.hienthai.fastowin.platform.epochMillis
+import com.hienthai.fastowin.protocol.MatchType
 import com.hienthai.fastowin.state.AvailableRoom
 import com.hienthai.fastowin.state.ConnectionStatus
 import com.hienthai.fastowin.state.GameState
@@ -75,7 +77,7 @@ import kotlinx.coroutines.launch
 fun LobbyScreen(
     state: GameState,
     onModeSelected: (GameMode) -> Unit,
-    onStartMatchmaking: (GameMode) -> Unit,
+    onStartMatchmaking: (GameMode, MatchType) -> Unit,
     onCancelMatchmaking: () -> Unit,
     onOpenRoomBrowser: (String) -> Unit,
     onCreateRoom: (String, String) -> Unit,
@@ -104,6 +106,7 @@ fun LobbyScreen(
     if (showTabModePicker) {
         GameModePickerDialog(
             title = "Chọn chế độ chơi",
+            playerLevel = state.profile?.progression?.level ?: 1,
             onDismiss = { showTabModePicker = false },
             onSelect = { mode ->
                 showTabModePicker = false
@@ -201,7 +204,7 @@ private fun MatchmakingScreen(state: GameState, onCancel: () -> Unit) {
             delay(1_000)
         }
     }
-    val expandedRange = (100 + (elapsedSeconds / 10L).toInt() * 50).coerceAtMost(600)
+    val expandedRange = (100 + (elapsedSeconds / 10L).toInt() * 50).coerceAtMost(300)
 
     Column(
         modifier = Modifier.fillMaxWidth(),
@@ -209,14 +212,26 @@ private fun MatchmakingScreen(state: GameState, onCancel: () -> Unit) {
         verticalArrangement = Arrangement.spacedBy(20.dp)
     ) {
         CircularProgressIndicator(modifier = Modifier.size(64.dp))
-        Text("Đang tìm đối thủ", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Black)
         Text(
-            "${state.gameMode.displayName()} • Elo ±$expandedRange",
+            if (state.matchType == MatchType.RANKED) "Đang tìm trận xếp hạng" else "Đang tìm trận thường",
+            style = MaterialTheme.typography.headlineMedium,
+            fontWeight = FontWeight.Black
+        )
+        Text(
+            if (state.matchType == MatchType.RANKED) {
+                "${state.gameMode.displayName()} • Elo ±$expandedRange"
+            } else {
+                "${state.gameMode.displayName()} • Không ảnh hưởng Elo"
+            },
             color = MaterialTheme.colorScheme.primary,
             fontWeight = FontWeight.Bold
         )
         Text(
-            "Đã chờ ${elapsedSeconds}s\nPhạm vi Elo sẽ tự mở rộng sau mỗi 10 giây.",
+            if (state.matchType == MatchType.RANKED) {
+                "Đã chờ ${elapsedSeconds}s\nPhạm vi Elo mở rộng mỗi 10 giây, tối đa ±300."
+            } else {
+                "Đã chờ ${elapsedSeconds}s\nĐang ghép với người chơi cùng chế độ."
+            },
             textAlign = TextAlign.Center,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
@@ -407,18 +422,18 @@ private fun RoomBrowser(
             label = { Text("Tìm theo tên phòng hoặc chủ phòng") },
             leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) }
         )
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
             FilterChip(selected = modeFilter == null, onClick = { modeFilter = null }, label = { Text("Tất cả") })
-            FilterChip(
-                selected = modeFilter == GameMode.ORDER,
-                onClick = { modeFilter = GameMode.ORDER },
-                label = { Text("Thứ tự") }
-            )
-            FilterChip(
-                selected = modeFilter == GameMode.TIME_ATTACK,
-                onClick = { modeFilter = GameMode.TIME_ATTACK },
-                label = { Text("60 giây") }
-            )
+            GameMode.entries.filterNot(GameMode::isLegacy).forEach { mode ->
+                FilterChip(
+                    selected = modeFilter == mode,
+                    onClick = { modeFilter = mode },
+                    label = { Text(mode.title) }
+                )
+            }
         }
 
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -503,7 +518,11 @@ private fun CreateRoomDialog(
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
-                    Switch(checked = isPrivate, onCheckedChange = { isPrivate = it })
+                    Switch(
+                        checked = isPrivate,
+                        onCheckedChange = { isPrivate = it },
+                        modifier = Modifier.testTag("create_room_privacy_toggle")
+                    )
                 }
                 if (isPrivate) {
                     OutlinedTextField(
@@ -768,7 +787,4 @@ private fun PlayerMatchedCard(
     }
 }
 
-private fun GameMode.displayName(): String = when (this) {
-    GameMode.ORDER -> "Đua thứ tự"
-    GameMode.TIME_ATTACK -> "Đua 60 giây"
-}
+private fun GameMode.displayName(): String = title

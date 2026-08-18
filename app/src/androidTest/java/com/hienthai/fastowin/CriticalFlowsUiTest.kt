@@ -12,6 +12,7 @@ import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextInput
 import com.hienthai.fastowin.data.preferences.AppPreferences
 import com.hienthai.fastowin.navigation.GameMode
+import com.hienthai.fastowin.protocol.MatchType
 import com.hienthai.fastowin.protocol.PlayerProfileSnapshot
 import com.hienthai.fastowin.protocol.DailyCheckInSnapshot
 import com.hienthai.fastowin.protocol.PlayerProgressionSnapshot
@@ -77,20 +78,27 @@ class CriticalFlowsUiTest {
     @Test
     fun home_quickMatchOpensModePickerAndChoosesOrderMode() {
         var selectedMode: GameMode? = null
+        var selectedMatchType: MatchType? = null
         composeRule.setContent {
             FastToWinTheme {
                 TestLobby(
                     state = homeState(),
-                    onStartMatchmaking = { selectedMode = it }
+                    onStartMatchmaking = { mode, matchType ->
+                        selectedMode = mode
+                        selectedMatchType = matchType
+                    }
                 )
             }
         }
 
         composeRule.onNodeWithTag("home_screen").assertIsDisplayed()
         composeRule.onNodeWithTag("home_quick_match").performClick()
-        composeRule.onNodeWithText("Đua thứ tự").performClick()
+        composeRule.onNodeWithText("Cổ điển").performClick()
 
-        composeRule.runOnIdle { assertEquals(GameMode.ORDER, selectedMode) }
+        composeRule.runOnIdle {
+            assertEquals(GameMode.ORDER, selectedMode)
+            assertEquals(MatchType.RANKED, selectedMatchType)
+        }
     }
 
     @Test
@@ -200,6 +208,26 @@ class CriticalFlowsUiTest {
     }
 
     @Test
+    fun roomBrowser_createsPublicRoomWithoutPassword() {
+        var createdRoom: Pair<String, String>? = null
+        composeRule.setContent {
+            FastToWinTheme {
+                TestLobby(
+                    state = roomBrowserState(),
+                    onCreateRoom = { name, password -> createdRoom = name to password }
+                )
+            }
+        }
+
+        composeRule.onNodeWithTag("create_room_open").performClick()
+        composeRule.onNodeWithTag("create_room_name").performTextInput("Phòng công khai")
+        composeRule.onNodeWithTag("create_room_privacy_toggle").performClick()
+        composeRule.onNodeWithTag("create_room_submit").performClick()
+
+        composeRule.runOnIdle { assertEquals("Phòng công khai" to "", createdRoom) }
+    }
+
+    @Test
     fun roomBrowser_joinsPasswordProtectedRoom() {
         var joinedRoom: Pair<String, String>? = null
         composeRule.setContent {
@@ -263,9 +291,35 @@ class CriticalFlowsUiTest {
 
         composeRule.onNodeWithTag("result_screen").assertIsDisplayed()
         composeRule.onNodeWithText("CHIẾN THẮNG!").assertIsDisplayed()
+        composeRule.onNodeWithText("Phân tích nhịp chơi").performScrollTo().assertIsDisplayed()
         composeRule.onNodeWithText("Về sảnh").performScrollTo().performClick()
 
         composeRule.runOnIdle { assertTrue(returnedToLobby) }
+    }
+
+    @Test
+    fun result_unequalScoreNeverDisplaysDrawWhenWinnerIsMissing() {
+        composeRule.setContent {
+            FastToWinTheme {
+                ResultScreen(
+                    state = GameState(
+                        isGameOver = true,
+                        player = PlayerState("Hiền", id = "player-hien", score = 21),
+                        opponent = PlayerState("Hiếu", id = "player-hieu", score = 29),
+                        winnerPlayerId = null
+                    ),
+                    onRestart = {},
+                    onRematch = {},
+                    onCancelRematch = {},
+                    onDeclineRematch = {},
+                    onConnectOpponent = {},
+                    onBlockOpponent = {},
+                    preferences = AppPreferences(soundEnabled = false, vibrationEnabled = false)
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("THUA CUỘC").assertIsDisplayed()
     }
 
     private fun homeState() = GameState(
@@ -318,7 +372,13 @@ class CriticalFlowsUiTest {
             score = 500,
             correctSelections = 50,
             wrongSelections = 0,
-            averageReactionMillis = 650
+            averageReactionMillis = 650,
+            fastestSegmentStart = 21,
+            fastestSegmentEnd = 30,
+            fastestSegmentAverageMillis = 480,
+            slowestSegmentStart = 41,
+            slowestSegmentEnd = 50,
+            slowestSegmentAverageMillis = 820
         ),
         opponent = PlayerState("Hiếu", score = 420)
     )
@@ -327,7 +387,7 @@ class CriticalFlowsUiTest {
 @androidx.compose.runtime.Composable
 private fun TestLobby(
     state: GameState,
-    onStartMatchmaking: (GameMode) -> Unit = {},
+    onStartMatchmaking: (GameMode, MatchType) -> Unit = { _, _ -> },
     onCreateRoom: (String, String) -> Unit = { _, _ -> },
     onJoinRoom: (String, String) -> Unit = { _, _ -> },
     onClaimDailyCheckIn: () -> Unit = {}

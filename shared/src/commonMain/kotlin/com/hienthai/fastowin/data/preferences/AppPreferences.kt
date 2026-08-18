@@ -27,6 +27,7 @@ enum class AppFontScale(val multiplier: Float) {
 data class AppPreferences(
     val soundEnabled: Boolean = true,
     val vibrationEnabled: Boolean = true,
+    val visualEffectsEnabled: Boolean = true,
     val themeMode: AppThemeMode = AppThemeMode.SYSTEM,
     val boardStyle: BoardStyle = BoardStyle.CLASSIC,
     val fontScale: AppFontScale = AppFontScale.STANDARD,

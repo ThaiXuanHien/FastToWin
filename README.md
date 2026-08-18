@@ -210,26 +210,21 @@ docker compose stop
 
 Không chạy `docker compose down -v` trừ khi chủ động muốn xóa toàn bộ database local.
 
-## 6. Chạy trên iOS
+## 6. Cài và chạy trên macOS/iOS
 
-iOS chỉ build/run trên macOS. Yêu cầu:
+iOS chỉ build/run trên macOS. Yêu cầu cơ bản:
 
 - Mac Apple Silicon.
 - Xcode và iOS 14+ simulator hoặc iPhone/iPad đã provisioning.
 - JDK 17.
+- Android Studio/Android SDK vì shared module có Android target.
 - Docker Desktop nếu chạy PostgreSQL trên cùng máy.
 
-Khởi động backend trên macOS:
+Sau khi clone, có thể khởi động PostgreSQL và backend bằng script dành cho macOS:
 
 ```bash
-docker compose up -d --wait database
-
-export FASTTOWIN_ENV=dev
-export DATABASE_URL=jdbc:postgresql://localhost:5432/fasttowin
-export DATABASE_USER=fasttowin
-export DATABASE_PASSWORD=fasttowin
-
-./gradlew :server:run
+chmod +x gradlew start-dev-server-with-db.sh
+./start-dev-server-with-db.sh
 ```
 
 Sau đó:
@@ -246,7 +241,7 @@ ws://127.0.0.1:8080/game
 
 Với iPhone/iPad thật, thay `GAME_SERVER_URL` trong Debug build settings bằng địa chỉ LAN của Mac, ví dụ `ws://192.168.1.20:8080/game`, đồng thời mở firewall cổng 8080.
 
-Xem thêm [IOS_SETUP.md](IOS_SETUP.md) và [UI_TESTING.md](UI_TESTING.md).
+Hướng dẫn đầy đủ từ cài Xcode/JDK/Docker, chạy simulator và thiết bị thật, kiểm thử hai người chơi đến xử lý lỗi nằm trong [IOS_SETUP.md](IOS_SETUP.md). Xem thêm ma trận thiết bị tại [UI_TESTING.md](UI_TESTING.md).
 
 ## 7. Build và test
 

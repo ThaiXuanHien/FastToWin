@@ -72,6 +72,7 @@ import androidx.compose.ui.unit.dp
 import com.hienthai.fastowin.protocol.MatchHistoryOutcome
 import com.hienthai.fastowin.protocol.AccountSessionSnapshot
 import com.hienthai.fastowin.protocol.MatchHistorySnapshot
+import com.hienthai.fastowin.protocol.MatchType
 import com.hienthai.fastowin.protocol.MatchDetailSnapshot
 import com.hienthai.fastowin.protocol.CosmeticSnapshot
 import com.hienthai.fastowin.protocol.CosmeticType
@@ -381,7 +382,16 @@ fun ProfileScreen(
             ElevatedCard(modifier = Modifier.fillMaxWidth()) {
                 Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
                     Text(season.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black)
-                    Text("${season.tier} • ${season.rating} điểm mùa", color = MaterialTheme.colorScheme.primary)
+                    Text(
+                        if (season.placementMatchesPlayed < season.placementMatchesRequired) {
+                            "Phân hạng ${season.placementMatchesPlayed}/${season.placementMatchesRequired} • Elo tạm thời ${season.rating}"
+                        } else {
+                            "${season.tier} • ${season.rating} Elo"
+                        },
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text("Elo cao nhất mùa: ${season.peakRating}", style = MaterialTheme.typography.bodySmall)
                     Text("Còn $daysLeft ngày • ${season.rewardDescription}", style = MaterialTheme.typography.bodySmall)
                 }
             }
@@ -1384,8 +1394,15 @@ private fun MatchHistoryCard(match: MatchHistorySnapshot, onClick: (() -> Unit)?
             Column(horizontalAlignment = Alignment.End) {
                 Text(result, color = color, fontWeight = FontWeight.Bold)
                 Text("${match.playerScore} – ${match.opponentScore}")
-                val eloText = if (match.eloChange >= 0) "+${match.eloChange}" else match.eloChange.toString()
-                Text("Elo $eloText", color = if (match.eloChange >= 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error)
+                if (match.matchType == MatchType.RANKED) {
+                    val eloText = if (match.eloChange >= 0) "+${match.eloChange}" else match.eloChange.toString()
+                    Text(
+                        "Xếp hạng • Elo $eloText",
+                        color = if (match.eloChange >= 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
+                    )
+                } else {
+                    Text("Trận thường", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
             }
         }
     }

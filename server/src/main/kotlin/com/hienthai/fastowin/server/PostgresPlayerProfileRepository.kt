@@ -6,6 +6,8 @@ import com.hienthai.fastowin.protocol.AchievementSnapshot
 import com.hienthai.fastowin.protocol.PlayerProfileSnapshot
 import com.hienthai.fastowin.protocol.PlayerStatisticsSnapshot
 import com.hienthai.fastowin.protocol.ProtocolGameMode
+import com.hienthai.fastowin.protocol.MatchType
+import com.hienthai.fastowin.protocol.rankedTierFor
 import com.hienthai.fastowin.protocol.MatchDetailSnapshot
 import com.hienthai.fastowin.protocol.MatchEventSnapshot
 import com.hienthai.fastowin.protocol.CosmeticSnapshot
@@ -83,7 +85,7 @@ class PostgresPlayerProfileRepository(
 
             val recentMatches = connection.prepareStatement(
                 """
-                SELECT m.id, m.room_name, m.game_mode, m.ended_at,
+                SELECT m.id, m.room_name, m.game_mode, m.match_type, m.ended_at,
                        mine.score AS player_score, mine.outcome,
                        COALESCE(rh.rating_change, 0) AS elo_change,
                        COALESCE(opponent.display_name, 'Đối thủ') AS opponent_name,
@@ -110,7 +112,8 @@ class PostgresPlayerProfileRepository(
                                 opponentScore = result.getInt("opponent_score"),
                                 outcome = MatchHistoryOutcome.valueOf(result.getString("outcome")),
                                 endedAtEpochMillis = result.getTimestamp("ended_at").time,
-                                eloChange = result.getInt("elo_change")
+                                eloChange = result.getInt("elo_change"),
+                                matchType = MatchType.valueOf(result.getString("match_type"))
                             )
                         )
                     }
@@ -234,7 +237,9 @@ class PostgresPlayerProfileRepository(
             val season = connection.prepareStatement(
                 """
                 SELECT s.name, s.ends_at, s.reward_description,
-                       COALESCE(sr.rating, ?) AS rating
+                       COALESCE(sr.rating, ?) AS rating,
+                       COALESCE(sr.placement_matches, 0) AS placement_matches,
+                       COALESCE(sr.peak_rating, ?) AS peak_rating
                 FROM seasons s
                 LEFT JOIN season_ratings sr ON sr.season_id = s.id AND sr.user_id = ?
                 WHERE CURRENT_TIMESTAMP >= s.starts_at AND CURRENT_TIMESTAMP < s.ends_at
@@ -243,16 +248,24 @@ class PostgresPlayerProfileRepository(
                 """.trimIndent()
             ).use { statement ->
                 statement.setInt(1, base.statistics.eloRating)
-                statement.setObject(2, userId)
+                statement.setInt(2, base.statistics.eloRating)
+                statement.setObject(3, userId)
                 statement.executeQuery().use { result ->
                     if (!result.next()) null else {
                         val rating = result.getInt("rating")
+                        val placementMatches = result.getInt("placement_matches")
                         SeasonSnapshot(
                             name = result.getString("name"),
-                            tier = ratingTier(rating),
+                            tier = if (placementMatches < PLACEMENT_MATCHES_REQUIRED) {
+                                "Đang phân hạng"
+                            } else {
+                                ratingTier(rating)
+                            },
                             rating = rating,
                             endsAtEpochMillis = result.getTimestamp("ends_at").time,
-                            rewardDescription = result.getString("reward_description")
+                            rewardDescription = result.getString("reward_description"),
+                            placementMatchesPlayed = placementMatches,
+                            peakRating = result.getInt("peak_rating")
                         )
                     }
                 }
@@ -605,18 +618,13 @@ class PostgresPlayerProfileRepository(
         }
     }
 
-    private fun ratingTier(rating: Int): String = when {
-        rating >= 1_800 -> "Kim cương"
-        rating >= 1_500 -> "Bạch kim"
-        rating >= 1_300 -> "Vàng"
-        rating >= 1_100 -> "Bạc"
-        else -> "Đồng"
-    }
+    private fun ratingTier(rating: Int): String = rankedTierFor(rating).displayName
 
     private fun currentCheckInDate(): LocalDate = LocalDate.now(clock)
 
     private companion object {
         const val EXPERIENCE_PER_LEVEL = 100
+        const val PLACEMENT_MATCHES_REQUIRED = 5
     }
 }
 
