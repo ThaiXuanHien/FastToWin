@@ -6,50 +6,51 @@
 package com.hienthai.fastowin.data.network
 
 import com.hienthai.fastowin.protocol.ProtocolJson
-import kotlinx.cinterop.CPointed
-import kotlinx.cinterop.allocPointerTo
+import kotlinx.cinterop.alloc
+import kotlinx.cinterop.memScoped
 import kotlinx.cinterop.ptr
 import kotlinx.cinterop.reinterpret
 import kotlinx.cinterop.value
-import kotlinx.cinterop.memScoped
-import kotlinx.serialization.decodeFromString
-import kotlinx.serialization.encodeToString
 import platform.CoreFoundation.CFDictionaryRef
-import platform.Foundation.NSData
-import platform.Foundation.NSString
-import platform.Foundation.NSUTF8StringEncoding
+import platform.CoreFoundation.CFDictionarySetValue
+import platform.CoreFoundation.CFRetain
+import platform.CoreFoundation.CFStringRef
+import platform.CoreFoundation.CFTypeRefVar
+import platform.CoreFoundation.kCFBooleanTrue
 import platform.Foundation.CFBridgingRelease
 import platform.Foundation.CFBridgingRetain
+import platform.Foundation.NSCopyingProtocol
+import platform.Foundation.NSData
+import platform.Foundation.NSMutableDictionary
+import platform.Foundation.NSString
+import platform.Foundation.NSUTF8StringEncoding
 import platform.Foundation.create
 import platform.Foundation.dataUsingEncoding
 import platform.Security.SecItemAdd
 import platform.Security.SecItemCopyMatching
 import platform.Security.SecItemDelete
 import platform.Security.errSecSuccess
-import platform.Security.kSecAttrAccount
 import platform.Security.kSecAttrAccessible
 import platform.Security.kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+import platform.Security.kSecAttrAccount
 import platform.Security.kSecAttrService
 import platform.Security.kSecClass
 import platform.Security.kSecClassGenericPassword
-import platform.Security.kSecMatchLimit
-import platform.Security.kSecMatchLimitOne
 import platform.Security.kSecReturnData
 import platform.Security.kSecValueData
 
 class IosAuthSessionStore : AuthSessionStore {
     override fun load(serverUrl: String): StoredAuthSession? {
         val query = mapOf(
-            kSecClass to kSecClassGenericPassword,
-            kSecAttrService to SERVICE,
-            kSecAttrAccount to key(serverUrl),
-            kSecReturnData to true,
-            kSecMatchLimit to kSecMatchLimitOne
+            nsString(kSecClass) to nsString(kSecClassGenericPassword),
+            nsString(kSecAttrService) to SERVICE,
+            nsString(kSecAttrAccount) to key(serverUrl)
         )
         val data = memScoped {
-            val result = allocPointerTo<CPointed>()
+            val result = alloc<CFTypeRefVar>().apply { value = null }
             val status = withCFDictionary(query) { dictionary ->
-                SecItemCopyMatching(dictionary, result.ptr.reinterpret())
+                CFDictionarySetValue(dictionary, kSecReturnData, kCFBooleanTrue)
+                SecItemCopyMatching(dictionary, result.ptr)
             }
             if (status != errSecSuccess) {
                 return@memScoped null
@@ -71,11 +72,11 @@ class IosAuthSessionStore : AuthSessionStore {
             .dataUsingEncoding(NSUTF8StringEncoding)
             ?: return
         val attributes = mapOf(
-            kSecClass to kSecClassGenericPassword,
-            kSecAttrService to SERVICE,
-            kSecAttrAccount to key(serverUrl),
-            kSecAttrAccessible to kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly,
-            kSecValueData to data
+            nsString(kSecClass) to nsString(kSecClassGenericPassword),
+            nsString(kSecAttrService) to SERVICE,
+            nsString(kSecAttrAccount) to key(serverUrl),
+            nsString(kSecAttrAccessible) to nsString(kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly),
+            nsString(kSecValueData) to data
         )
         val status = withCFDictionary(attributes) { SecItemAdd(it, null) }
         check(status == errSecSuccess) {
@@ -85,9 +86,9 @@ class IosAuthSessionStore : AuthSessionStore {
 
     override fun clear(serverUrl: String) {
         val query = mapOf(
-            kSecClass to kSecClassGenericPassword,
-            kSecAttrService to SERVICE,
-            kSecAttrAccount to key(serverUrl)
+            nsString(kSecClass) to nsString(kSecClassGenericPassword),
+            nsString(kSecAttrService) to SERVICE,
+            nsString(kSecAttrAccount) to key(serverUrl)
         )
         withCFDictionary(query, ::SecItemDelete)
     }
@@ -100,10 +101,19 @@ class IosAuthSessionStore : AuthSessionStore {
 }
 
 private inline fun <T> withCFDictionary(values: Map<*, *>, block: (CFDictionaryRef) -> T): T {
-    val retained = checkNotNull(CFBridgingRetain(values))
+    val dictionary = NSMutableDictionary()
+    values.forEach { (key, value) ->
+        if (key != null && value != null) {
+            dictionary.setObject(value, forKey = key as NSCopyingProtocol)
+        }
+    }
+    val retained = checkNotNull(CFBridgingRetain(dictionary))
     return try {
         block(retained.reinterpret())
     } finally {
         CFBridgingRelease(retained)
     }
 }
+
+private fun nsString(value: CFStringRef?): NSString =
+    CFBridgingRelease(CFRetain(checkNotNull(value))) as NSString

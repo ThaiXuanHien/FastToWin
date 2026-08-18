@@ -189,7 +189,8 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				FASTTOWIN_ENV = dev;
-				GAME_SERVER_URL = "ws://127.0.0.1:8080/game";
+				"GAME_SERVER_URL[sdk=iphoneos*]" = "ws://10.0.19.36:8080/game";
+				"GAME_SERVER_URL[sdk=iphonesimulator*]" = "ws://127.0.0.1:8080/game";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = "";
