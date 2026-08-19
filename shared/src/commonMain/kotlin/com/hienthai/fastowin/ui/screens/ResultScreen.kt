@@ -87,9 +87,18 @@ fun ResultScreen(
     preferences: AppPreferences = AppPreferences(),
     modifier: Modifier = Modifier
 ) {
-    val isDraw = state.winnerPlayerId == null && state.player.score == state.opponent.score
-    val isWinner = state.winnerPlayerId?.let { it == state.player.id }
-        ?: (state.player.score > state.opponent.score)
+    val is2v2 = state.gameMode == com.hienthai.fastowin.navigation.GameMode.TEAM_2V2
+    val myScore = if (is2v2) state.player.score + state.teammates.sumOf { it.score } else state.player.score
+    val opponentScore = if (is2v2) state.opponents.sumOf { it.score } else state.opponent.score
+
+    val isDraw = state.winnerPlayerId == null && myScore == opponentScore
+    val isWinner = state.winnerPlayerId?.let { winnerId ->
+        if (is2v2) {
+            winnerId == state.player.id || state.teammates.any { it.id == winnerId }
+        } else {
+            winnerId == state.player.id
+        }
+    } ?: (myScore > opponentScore)
     val hapticFeedback = LocalHapticFeedback.current
     val winScale by animateFloatAsState(
         targetValue = 1f,
@@ -160,10 +169,11 @@ fun ResultScreen(
             )
 
             ScoreBoard(
-                player = state.player,
-                opponent = state.opponent,
+                state = state,
                 isDraw = isDraw,
                 isPlayerWinner = isWinner,
+                myScore = myScore,
+                opponentScore = opponentScore,
                 onOpponentInfo = if (opponentFriend == null) null else ({
                     onOpenFriendProfile(opponentFriend.userId)
                 })
@@ -256,12 +266,14 @@ private fun VictoryHeader(isWinner: Boolean, scale: Float) {
 
 @Composable
 private fun ScoreBoard(
-    player: PlayerState,
-    opponent: PlayerState,
+    state: GameState,
     isDraw: Boolean,
     isPlayerWinner: Boolean,
+    myScore: Int,
+    opponentScore: Int,
     onOpponentInfo: (() -> Unit)? = null
 ) {
+    val is2v2 = state.gameMode == com.hienthai.fastowin.navigation.GameMode.TEAM_2V2
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -270,16 +282,18 @@ private fun ScoreBoard(
             .padding(20.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
+        val myName = if (is2v2) "Đội của bạn" else "${state.player.name} (Bạn)"
+        val oppName = if (is2v2) "Đội đối thủ" else state.opponent.name
         ScoreRow(
-            name = "${player.name} (Bạn)",
-            score = player.score,
+            name = myName,
+            score = myScore,
             result = if (isDraw) "Hòa" else if (isPlayerWinner) "Thắng" else "Thua",
             isWinner = !isDraw && isPlayerWinner
         )
-        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+        HorizontalDivider(color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.2f))
         ScoreRow(
-            name = opponent.name,
-            score = opponent.score,
+            name = oppName,
+            score = opponentScore,
             result = if (isDraw) "Hòa" else if (!isPlayerWinner) "Thắng" else "Thua",
             isWinner = !isDraw && !isPlayerWinner,
             onClick = onOpponentInfo

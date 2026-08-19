@@ -1,4 +1,4 @@
-package com.hienthai.fastowin.ui.screens
+﻿package com.hienthai.fastowin.ui.screens
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
@@ -15,6 +15,12 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.animation.core.*
+import androidx.compose.ui.draw.alpha
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.foundation.layout.defaultMinSize
+import androidx.compose.foundation.layout.offset
+import androidx.compose.runtime.key
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
@@ -73,6 +79,7 @@ fun GameScreen(
     onOpenFriendProfile: (String) -> Unit = {},
     onExit: () -> Unit = {},
     allowExit: Boolean = true,
+    onSendEmoji: (String) -> Unit = {},
     preferences: AppPreferences = AppPreferences(),
     modifier: Modifier = Modifier
 ) {
@@ -90,16 +97,16 @@ fun GameScreen(
     if (showExitConfirmation && allowExit) {
         AlertDialog(
             onDismissRequest = { showExitConfirmation = false },
-            title = { Text("Rời trận đấu?") },
-            text = { Text("Trận hiện tại sẽ kết thúc và cả hai người chơi được đưa ra khỏi phòng.") },
+            title = { Text("Rá»i tráº­n Ä‘áº¥u?") },
+            text = { Text("Tráº­n hiá»‡n táº¡i sáº½ káº¿t thÃºc vÃ  cáº£ hai ngÆ°á»i chÆ¡i Ä‘Æ°á»£c Ä‘Æ°a ra khá»i phÃ²ng.") },
             confirmButton = {
                 TextButton(onClick = {
                     showExitConfirmation = false
                     onExit()
-                }) { Text("Rời trận", color = MaterialTheme.colorScheme.error) }
+                }) { Text("Rá»i tráº­n", color = MaterialTheme.colorScheme.error) }
             },
             dismissButton = {
-                TextButton(onClick = { showExitConfirmation = false }) { Text("Tiếp tục chơi") }
+                TextButton(onClick = { showExitConfirmation = false }) { Text("Tiáº¿p tá»¥c chÆ¡i") }
             }
         )
     }
@@ -114,7 +121,7 @@ fun GameScreen(
                 navigationIcon = {
                     if (allowExit) {
                         IconButton(onClick = { showExitConfirmation = true }) {
-                            Icon(Icons.Rounded.Close, contentDescription = "Rời trận")
+                            Icon(Icons.Rounded.Close, contentDescription = "Rá»i tráº­n")
                         }
                     }
                 },
@@ -129,8 +136,8 @@ fun GameScreen(
                         )
                         Text(
                             text = buildString {
-                                append(if (state.matchType == MatchType.RANKED) "Xếp hạng" else "Thường")
-                                append(" • ").append(state.gameMode.description)
+                                append(if (state.matchType == MatchType.RANKED) "Xáº¿p háº¡ng" else "ThÆ°á»ng")
+                                append(" â€¢ ").append(state.gameMode.description)
                             },
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -138,6 +145,32 @@ fun GameScreen(
                     }
                 },
                 actions = {
+                    var showEmojiMenu by remember { mutableStateOf(false) }
+                    Box {
+                        IconButton(onClick = { showEmojiMenu = true }) {
+                            Text("ðŸ˜€", fontSize = 20.sp)
+                        }
+                        DropdownMenu(
+                            expanded = showEmojiMenu,
+                            onDismissRequest = { showEmojiMenu = false }
+                        ) {
+                            val emojis = listOf("ðŸ˜€", "ðŸ˜‚", "ðŸ˜¡", "ðŸ˜­", "ðŸ‘", "ðŸ‘Ž")
+                            Row(modifier = Modifier.padding(horizontal = 8.dp)) {
+                                emojis.forEach { emoji ->
+                                    TextButton(
+                                        onClick = {
+                                            onSendEmoji(emoji)
+                                            showEmojiMenu = false
+                                        },
+                                        contentPadding = PaddingValues(8.dp),
+                                        modifier = Modifier.defaultMinSize(minWidth = 32.dp)
+                                    ) {
+                                        Text(emoji, fontSize = 24.sp)
+                                    }
+                                }
+                            }
+                        }
+                    }
                     if (state.timeLeftMillis > 0) {
                         TimerBadge(state.timeLeftMillis)
                     }
@@ -152,8 +185,7 @@ fun GameScreen(
         ) { contentModifier ->
             Column(modifier = contentModifier) {
                 PlayerScoreBar(
-                    player = state.player,
-                    opponent = state.opponent,
+                    state = state,
                     onOpponentInfo = if (opponentFriend == null) null else ({
                         onOpenFriendProfile(opponentFriend.userId)
                     })
@@ -213,14 +245,21 @@ fun GameScreen(
                     tapFeedback?.let { FeedbackBurst(it) }
                 }
             }
+            EmojiOverlay(state.activeEmojis)
         }
     }
 }
 
 @Composable
 private fun CloseScoreWarning(state: GameState) {
-    val difference = abs(state.player.score - state.opponent.score)
-    val enoughProgress = state.player.correctSelections + state.opponent.correctSelections >= 6
+    val is2v2 = state.gameMode == com.hienthai.fastowin.navigation.GameMode.TEAM_2V2
+    val myScore = if (is2v2) state.player.score + state.teammates.sumOf { it.score } else state.player.score
+    val opponentScore = if (is2v2) state.opponents.sumOf { it.score } else state.opponent.score
+    val myCorrect = if (is2v2) state.player.correctSelections + state.teammates.sumOf { it.correctSelections } else state.player.correctSelections
+    val oppCorrect = if (is2v2) state.opponents.sumOf { it.correctSelections } else state.opponent.correctSelections
+
+    val difference = abs(myScore - opponentScore)
+    val enoughProgress = myCorrect + oppCorrect >= 6
     if (!enoughProgress || difference > 30 || state.player.isFinished || state.opponent.isFinished) return
     Surface(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 2.dp),
@@ -228,8 +267,8 @@ private fun CloseScoreWarning(state: GameState) {
         color = MaterialTheme.colorScheme.tertiaryContainer
     ) {
         Text(
-            text = if (difference == 0) "Đang hòa điểm — lượt tiếp theo rất quan trọng!"
-            else "Bám rất sát — chỉ cách nhau $difference điểm",
+            text = if (difference == 0) "Äang hÃ²a Ä‘iá»ƒm â€” lÆ°á»£t tiáº¿p theo ráº¥t quan trá»ng!"
+            else "BÃ¡m ráº¥t sÃ¡t â€” chá»‰ cÃ¡ch nhau $difference Ä‘iá»ƒm",
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
             textAlign = TextAlign.Center,
             style = MaterialTheme.typography.labelMedium,
@@ -248,20 +287,20 @@ private fun LiveMetricsBar(state: GameState) {
         modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 2.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        speed?.let { LiveMetric("Tốc độ", "$it số/s", Modifier.weight(1f)) }
+        speed?.let { LiveMetric("Tá»‘c Ä‘á»™", "$it sá»‘/s", Modifier.weight(1f)) }
         when (state.gameMode) {
             com.hienthai.fastowin.navigation.GameMode.COMBO -> LiveMetric(
                 "Combo",
-                "${state.player.combo} • x${comboMultiplier(state.player.combo)}",
+                "${state.player.combo} â€¢ x${comboMultiplier(state.player.combo)}",
                 Modifier.weight(1f)
             )
             com.hienthai.fastowin.navigation.GameMode.SURVIVAL -> LiveMetric(
-                "Sinh tồn",
-                "${state.player.lives} mạng",
+                "Sinh tá»“n",
+                "${state.player.lives} máº¡ng",
                 Modifier.weight(1f)
             )
             com.hienthai.fastowin.navigation.GameMode.SPEED_UP -> LiveMetric(
-                "Nhịp",
+                "Nhá»‹p",
                 "${state.player.correctSelections + 1}/$GAME_NUMBER_COUNT",
                 Modifier.weight(1f)
             )
@@ -295,7 +334,7 @@ private fun FeedbackBurst(effect: GameFeedbackEffect) {
     ) {
         Box(contentAlignment = Alignment.Center) {
             Text(
-                text = if (correct) "✓" else "×",
+                text = if (correct) "âœ“" else "Ã—",
                 fontSize = 42.sp,
                 fontWeight = FontWeight.Black,
                 color = if (correct) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onErrorContainer
@@ -335,31 +374,48 @@ private fun TimerBadge(timeLeftMillis: Long) {
 
 @Composable
 private fun PlayerScoreBar(
-    player: PlayerState,
-    opponent: PlayerState,
+    state: GameState,
     onOpponentInfo: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
+    val is2v2 = state.gameMode == com.hienthai.fastowin.navigation.GameMode.TEAM_2V2
+    val myScore = if (is2v2) {
+        state.player.score + state.teammates.sumOf { it.score }
+    } else {
+        state.player.score
+    }
+    val opponentScore = if (is2v2) {
+        state.opponents.sumOf { it.score }
+    } else {
+        state.opponent.score
+    }
+    val labelMe = if (is2v2) "Äá»˜I Báº N" else "Báº N"
+    val labelOpp = if (is2v2) "Äá»˜I Äá»I THá»¦" else "Äá»I THá»¦"
+    val nameMe = if (is2v2) "(${state.player.name} & ${state.teammates.firstOrNull()?.name ?: "..."})" else state.player.name
+    val nameOpp = if (is2v2) "(${state.opponents.joinToString(" & ") { it.name }})" else state.opponent.name
+
     Row(
         modifier = modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         PlayerScoreCard(
-            label = "BẠN",
-            player = player,
+            label = labelMe,
+            name = nameMe,
+            score = myScore,
             isLocal = true,
             modifier = Modifier.weight(1f)
         )
         Text(
-            text = "ĐẤU",
+            text = "Äáº¤U",
             style = MaterialTheme.typography.labelLarge,
             fontWeight = FontWeight.Black,
             color = MaterialTheme.colorScheme.outline
         )
         PlayerScoreCard(
-            label = "ĐỐI THỦ",
-            player = opponent,
+            label = labelOpp,
+            name = nameOpp,
+            score = opponentScore,
             isLocal = false,
             onViewInfo = onOpponentInfo,
             modifier = Modifier.weight(1f)
@@ -370,7 +426,8 @@ private fun PlayerScoreBar(
 @Composable
 private fun PlayerScoreCard(
     label: String,
-    player: PlayerState,
+    name: String,
+    score: Int,
     isLocal: Boolean,
     onViewInfo: (() -> Unit)? = null,
     modifier: Modifier = Modifier
@@ -401,7 +458,7 @@ private fun PlayerScoreCard(
                     fontWeight = FontWeight.Bold
                 )
                 Text(
-                    text = player.name,
+                    text = name,
                     style = MaterialTheme.typography.labelLarge,
                     color = contentColor,
                     fontWeight = FontWeight.Bold,
@@ -410,7 +467,7 @@ private fun PlayerScoreCard(
                 )
             }
             Text(
-                text = player.score.toString(),
+                text = score.toString(),
                 style = MaterialTheme.typography.headlineSmall,
                 color = contentColor,
                 fontWeight = FontWeight.Black
@@ -436,7 +493,7 @@ private fun TargetPanel(currentTarget: Int, completedCount: Int) {
         ) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Text(
-                    text = "SỐ CẦN TÌM",
+                    text = "Sá» Cáº¦N TÃŒM",
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.75f),
                     fontWeight = FontWeight.Bold
@@ -451,7 +508,7 @@ private fun TargetPanel(currentTarget: Int, completedCount: Int) {
             }
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("Tiến độ", style = MaterialTheme.typography.labelMedium)
+                    Text("Tiáº¿n Ä‘á»™", style = MaterialTheme.typography.labelMedium)
                     Text("$completed/$GAME_NUMBER_COUNT", fontWeight = FontWeight.Bold)
                 }
                 LinearProgressIndicator(
@@ -557,11 +614,40 @@ fun GameScreenMobilePreview() {
                 currentTarget = 12,
                 score = 70,
                 timeLeftMillis = 42_000,
-                player = PlayerState(name = "Hiền", score = 70, currentTarget = 12),
-                opponent = PlayerState(name = "Hiếu", score = 40, currentTarget = 12)
+                player = PlayerState(name = "Hiá»n", score = 70, currentTarget = 12),
+                opponent = PlayerState(name = "Hiáº¿u", score = 40, currentTarget = 12)
             ),
             onNumberClick = {},
             onFinish = {}
         )
+    }
+}
+@Composable
+private fun EmojiOverlay(emojis: List<com.hienthai.fastowin.state.EmojiEvent>) {
+    Box(modifier = Modifier.fillMaxSize()) {
+        emojis.forEach { emoji ->
+            key(emoji.id) {
+                var startAnimation by remember { mutableStateOf(false) }
+                LaunchedEffect(Unit) {
+                    startAnimation = true
+                }
+                val offsetY by animateFloatAsState(
+                    targetValue = if (startAnimation) -300f else 0f,
+                    animationSpec = tween(durationMillis = 2000, easing = LinearOutSlowInEasing)
+                )
+                val alpha by animateFloatAsState(
+                    targetValue = if (startAnimation) 0f else 1f,
+                    animationSpec = tween(durationMillis = 2000, easing = LinearEasing)
+                )
+                Text(
+                    text = emoji.emojiId,
+                    fontSize = 48.sp,
+                    modifier = Modifier
+                        .align(Alignment.BottomStart)
+                        .offset(x = 16.dp, y = offsetY.dp - 32.dp)
+                        .alpha(alpha)
+                )
+            }
+        }
     }
 }

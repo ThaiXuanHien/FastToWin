@@ -664,15 +664,41 @@ private fun RoomWaiting(
             textAlign = TextAlign.Center
         )
 
-        RoomWaitingPlayerCard("Bạn", state.player, isLocal = true)
-        RoomWaitingPlayerCard(
-            "Đối thủ",
-            if (state.hasOpponent) state.opponent else PlayerState("Đang chờ người chơi..."),
-            isLocal = false,
-            onViewInfo = if (opponentFriend == null) null else ({
-                onOpenFriendProfile(opponentFriend.userId)
-            })
-        )
+        if (state.gameMode == GameMode.TEAM_2V2) {
+            val myTeamName = if (state.player.teamId == "TEAM_A") "Đội Xanh" else "Đội Đỏ"
+            val opponentTeamName = if (state.player.teamId == "TEAM_A") "Đội Đỏ" else "Đội Xanh"
+
+            Text(myTeamName, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+            RoomWaitingPlayerCard("Bạn", state.player, isLocal = true)
+            if (state.teammates.isNotEmpty()) {
+                state.teammates.forEachIndexed { index, teammate ->
+                    val friend = state.social.friends.firstOrNull { it.userId == teammate.id }
+                    RoomWaitingPlayerCard("Đồng đội ${index + 1}", teammate, isLocal = false, onViewInfo = if (friend == null) null else ({ onOpenFriendProfile(friend.userId) }))
+                }
+            } else {
+                RoomWaitingPlayerCard("Đồng đội", PlayerState("Đang chờ..."), isLocal = false)
+            }
+
+            Text(opponentTeamName, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 16.dp))
+            val allOpponents = state.opponents.toMutableList()
+            while (allOpponents.size < 2) {
+                allOpponents.add(PlayerState("Đang chờ..."))
+            }
+            allOpponents.forEachIndexed { index, opp ->
+                val friend = state.social.friends.firstOrNull { it.userId == opp.id }
+                RoomWaitingPlayerCard("Đối thủ ${index + 1}", opp, isLocal = false, onViewInfo = if (friend == null) null else ({ onOpenFriendProfile(friend.userId) }))
+            }
+        } else {
+            RoomWaitingPlayerCard("Bạn", state.player, isLocal = true)
+            RoomWaitingPlayerCard(
+                "Đối thủ",
+                if (state.hasOpponent) state.opponent else PlayerState("Đang chờ người chơi..."),
+                isLocal = false,
+                onViewInfo = if (opponentFriend == null) null else ({
+                    onOpenFriendProfile(opponentFriend.userId)
+                })
+            )
+        }
 
         OutlinedButton(
             onClick = {
@@ -701,8 +727,15 @@ private fun RoomWaiting(
         ) {
             Text(if (state.player.isReady) "Hủy sẵn sàng" else "Sẵn sàng", fontWeight = FontWeight.Bold)
         }
-        if (state.hasOpponent && state.player.isReady && !state.opponent.isReady) {
-            Text("Đang chờ đối thủ sẵn sàng...", color = MaterialTheme.colorScheme.primary)
+        if (state.player.isReady) {
+            val waitingForOthers = if (state.gameMode == GameMode.TEAM_2V2) {
+                (state.teammates + state.opponents).any { !it.isReady && it.id != null }
+            } else {
+                state.hasOpponent && !state.opponent.isReady
+            }
+            if (waitingForOthers) {
+                Text("Đang chờ người khác sẵn sàng...", color = MaterialTheme.colorScheme.primary)
+            }
         }
 
         if (state.isRoomHost) {

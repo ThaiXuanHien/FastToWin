@@ -459,6 +459,7 @@ private fun ProtocolGameMode.title(): String = when (this) {
     ProtocolGameMode.SURVIVAL -> "Sinh tồn"
     ProtocolGameMode.COMBO -> "Combo"
     ProtocolGameMode.TIME_ATTACK -> "Đua 60 giây"
+    ProtocolGameMode.TEAM_2V2 -> "Đồng đội 2v2"
 }
 
 private fun TournamentPhase.label(): String = when (this) {

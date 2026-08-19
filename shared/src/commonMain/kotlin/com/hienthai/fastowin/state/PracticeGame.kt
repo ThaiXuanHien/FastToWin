@@ -175,6 +175,7 @@ private fun GameMode.challengeCode(): String = when (this) {
     GameMode.SURVIVAL -> "ST"
     GameMode.COMBO -> "CB"
     GameMode.TIME_ATTACK -> "60"
+    GameMode.TEAM_2V2 -> "2V"
 }
 
 private fun challengeMode(code: String): GameMode? = when (code) {
@@ -185,6 +186,7 @@ private fun challengeMode(code: String): GameMode? = when (code) {
     "ST" -> GameMode.SURVIVAL
     "CB" -> GameMode.COMBO
     "60" -> GameMode.TIME_ATTACK
+    "2V" -> GameMode.TEAM_2V2
     else -> null
 }
 

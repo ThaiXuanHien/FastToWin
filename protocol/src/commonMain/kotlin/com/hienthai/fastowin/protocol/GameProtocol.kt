@@ -31,6 +31,7 @@ enum class ProtocolGameMode(val unlockLevel: Int) {
     SPEED_UP(7),
     SURVIVAL(10),
     COMBO(12),
+    TEAM_2V2(5),
 
     /** Kept so existing match history and active-room snapshots remain readable. */
     TIME_ATTACK(1)
@@ -150,7 +151,8 @@ data class PlayerSnapshot(
     val fastestSegmentAverageMillis: Long = 0,
     val slowestSegmentStart: Int = 0,
     val slowestSegmentEnd: Int = 0,
-    val slowestSegmentAverageMillis: Long = 0
+    val slowestSegmentAverageMillis: Long = 0,
+    val teamId: String? = null
 )
 
 @Serializable
@@ -377,6 +379,7 @@ data class GameSnapshot(
     val gameMode: ProtocolGameMode,
     val phase: RoomPhase,
     val players: List<PlayerSnapshot>,
+    val spectators: List<PlayerSnapshot> = emptyList(),
     val matchType: MatchType = MatchType.CASUAL,
     val numbers: List<Int> = emptyList(),
     val selectedNumbers: List<Int> = emptyList(),
@@ -385,6 +388,7 @@ data class GameSnapshot(
     val startedAtEpochMillis: Long? = null,
     val finishedAtEpochMillis: Long? = null,
     val winnerPlayerId: String? = null,
+    val winnerTeamId: String? = null,
     val rematchRequestedPlayerIds: List<String> = emptyList(),
     val rematchExpiresAtEpochMillis: Long? = null,
     val tournamentId: String? = null,
@@ -578,7 +582,7 @@ sealed class ClientMessage {
 
     @Serializable
     @SerialName("join_room")
-    data class JoinRoom(val roomId: String, val password: String) : ClientMessage()
+    data class JoinRoom(val roomId: String, val password: String, val asSpectator: Boolean = false) : ClientMessage()
 
     @Serializable
     @SerialName("leave_room")
@@ -622,6 +626,10 @@ sealed class ClientMessage {
         val number: Int,
         val requestId: String
     ) : ClientMessage()
+
+    @Serializable
+    @SerialName("send_emoji")
+    data class SendEmoji(val roomId: String, val emojiId: String) : ClientMessage()
 }
 
 @Serializable
@@ -765,6 +773,10 @@ sealed class ServerMessage {
     @Serializable
     @SerialName("room_closed")
     data class RoomClosed(val roomId: String, val reason: String) : ServerMessage()
+
+    @Serializable
+    @SerialName("emoji_broadcast")
+    data class EmojiBroadcast(val senderPlayerId: String, val emojiId: String) : ServerMessage()
 
     @Serializable
     @SerialName("error")

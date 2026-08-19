@@ -317,6 +317,7 @@ class GameEngine(
                 is ClientMessage.RequestRematch -> respondRematch(player, message.roomId, accept = true)
                 is ClientMessage.RespondRematch -> respondRematch(player, message.roomId, message.accept)
                 is ClientMessage.SelectNumber -> selectNumber(player, message)
+                is ClientMessage.SendEmoji -> sendEmoji(player, message)
             }
         }
         result.completedMatch?.let { completed ->
@@ -1554,19 +1555,41 @@ class GameEngine(
         }
         val room = rooms[command.roomId]
             ?: return listOf(error(player.playerId, "ROOM_NOT_FOUND", "Phòng không còn tồn tại."))
-        if (room.phase != RoomPhase.WAITING || room.guestId != null) {
-            return listOf(error(player.playerId, "ROOM_FULL", "Phòng đã đủ người."))
-        }
         if (room.password != null && !room.password.matches(command.password)) {
             return listOf(error(player.playerId, "WRONG_PASSWORD", "Mật khẩu phòng không đúng."))
         }
 
         matchmakingEntries.remove(player.playerId)
-        room.guestId = player.playerId
+        
+        if (command.asSpectator) {
+            room.spectatorIds.add(player.playerId)
+            room.sequence++
+            return listOf(Delivery(ServerMessage.RoomUpdated(room.snapshot()), room.participantIds()))
+        }
+
+        val maxPlayers = if (room.gameMode == com.hienthai.fastowin.protocol.ProtocolGameMode.TEAM_2V2) 4 else 2
+        if (room.phase != RoomPhase.WAITING || room.playerIds().size >= maxPlayers) {
+            return listOf(error(player.playerId, "ROOM_FULL", "Phòng đã đầy hoặc đang chơi."))
+        }
+
+        if (room.guestId == null) {
+            room.guestId = player.playerId
+        } else {
+            room.extraGuestIds.add(player.playerId)
+        }
+        
+        if (room.gameMode == com.hienthai.fastowin.protocol.ProtocolGameMode.TEAM_2V2) {
+            val teams = listOf("TEAM_A", "TEAM_B")
+            val counts = room.teamIds.values.groupingBy { it }.eachCount()
+            room.teamIds[player.playerId] = teams.minByOrNull { counts[it] ?: 0 } ?: "TEAM_A"
+            if (player.playerId == room.guestId && room.hostId !in room.teamIds) {
+                 room.teamIds[room.hostId] = "TEAM_A"
+            }
+        }
         room.sequence++
         room.scores[player.playerId] = 0
         room.readyPlayerIds.clear()
-        val participants = room.playerIds()
+        val participants = room.participantIds()
         return listOf(
             Delivery(ServerMessage.RoomUpdated(room.snapshot()), participants),
             Delivery(ServerMessage.RoomList(publicRooms()))
@@ -1604,11 +1627,16 @@ class GameEngine(
         if (room.hostId != player.playerId) {
             return HandleResult(listOf(error(player.playerId, "HOST_REQUIRED", "Chỉ chủ phòng mới có thể mời người chơi ra ngoài.")))
         }
-        if (room.phase != RoomPhase.WAITING || room.guestId != command.playerId) {
+        if (room.phase != RoomPhase.WAITING || command.playerId !in room.playerIds()) {
             return HandleResult(listOf(error(player.playerId, "PLAYER_NOT_IN_ROOM", "Người chơi không còn trong phòng.")))
         }
         val kickedPlayerId = command.playerId
-        room.guestId = null
+        if (room.guestId == kickedPlayerId) {
+            room.guestId = null
+        } else {
+            room.extraGuestIds.remove(kickedPlayerId)
+        }
+        room.teamIds.remove(kickedPlayerId)
         room.readyPlayerIds.clear()
         room.scores.remove(kickedPlayerId)
         room.sequence++
@@ -1625,19 +1653,43 @@ class GameEngine(
     private fun leaveRoom(player: GuestSession, command: ClientMessage.LeaveRoom): List<Delivery> {
         val room = rooms[command.roomId]
             ?: return listOf(error(player.playerId, "ROOM_NOT_FOUND", "Phòng không còn tồn tại."))
-        if (player.playerId !in room.playerIds()) {
+        if (player.playerId !in room.playerIds() && player.playerId !in room.spectatorIds) {
             return listOf(error(player.playerId, "NOT_IN_ROOM", "Bạn không ở trong phòng này."))
         }
         if (room.tournamentId != null && room.phase == RoomPhase.PLAYING) {
             return listOf(error(player.playerId, "TOURNAMENT_MATCH_ACTIVE", "Không thể rời khi trận đấu giải đang diễn ra."))
         }
 
-        val participants = room.playerIds()
-        rooms.remove(room.id)
-        return listOf(
-            Delivery(ServerMessage.RoomClosed(room.id, "Một người chơi đã rời phòng."), participants),
-            Delivery(ServerMessage.RoomList(publicRooms()))
-        )
+        if (player.playerId in room.spectatorIds) {
+            room.spectatorIds.remove(player.playerId)
+            room.sequence++
+            return listOf(
+                Delivery(ServerMessage.RoomUpdated(room.snapshot()), room.participantIds())
+            )
+        }
+
+        val participants = room.participantIds()
+        if (player.playerId == room.hostId) {
+            rooms.remove(room.id)
+            return listOf(
+                Delivery(ServerMessage.RoomClosed(room.id, "Chủ phòng đã rời phòng."), participants),
+                Delivery(ServerMessage.RoomList(publicRooms()))
+            )
+        } else {
+            if (room.guestId == player.playerId) {
+                room.guestId = null
+            } else {
+                room.extraGuestIds.remove(player.playerId)
+            }
+            room.teamIds.remove(player.playerId)
+            room.scores.remove(player.playerId)
+            room.readyPlayerIds.clear()
+            room.sequence++
+            return listOf(
+                Delivery(ServerMessage.RoomUpdated(room.snapshot()), room.participantIds()),
+                Delivery(ServerMessage.RoomList(publicRooms()))
+            )
+        }
     }
 
     private fun respondRematch(
@@ -1857,10 +1909,23 @@ class GameEngine(
         )
         room.processedRequests[requestKey] = event
         return HandleResult(
-            deliveries = listOf(Delivery(event, room.playerIds())),
+            deliveries = listOf(Delivery(event, room.participantIds())),
             completedMatch = room.takeCompletedMatch(),
             changedRoomId = room.id
         )
+    }
+
+    private fun sendEmoji(player: GuestSession, command: ClientMessage.SendEmoji): HandleResult {
+        val room = rooms[command.roomId]
+            ?: return HandleResult(listOf(error(player.playerId, "ROOM_NOT_FOUND", "Không tìm thấy phòng.")))
+
+        if (player.playerId !in room.playerIds() && player.playerId !in room.spectatorIds) {
+            return HandleResult(listOf(error(player.playerId, "NOT_IN_ROOM", "Bạn không ở trong phòng này.")))
+        }
+
+        val allParticipants = room.participantIds()
+        val delivery = Delivery(ServerMessage.EmojiBroadcast(player.playerId, command.emojiId), allParticipants)
+        return HandleResult(listOf(delivery))
     }
 
     private fun createTournamentRoom(tournament: Tournament, match: TournamentMatch): Room {
@@ -2030,6 +2095,9 @@ class GameEngine(
             roomName = name,
             host = storedPlayer(hostId),
             guest = guestId?.let(::storedPlayer),
+            guests = extraGuestIds.map(::storedPlayer),
+            spectators = spectatorIds.map(::storedPlayer),
+            teamIds = teamIds.toMap(),
             passwordSalt = password?.salt?.copyOf(),
             passwordHash = password?.value?.copyOf(),
             gameMode = gameMode,
@@ -2072,6 +2140,9 @@ class GameEngine(
         gameMode = gameMode,
         matchType = matchType,
         guestId = guest?.playerId,
+        extraGuestIds = guests.map { it.playerId }.toMutableSet(),
+        spectatorIds = spectators.map { it.playerId }.toMutableSet(),
+        teamIds = teamIds.toMutableMap(),
         phase = phase,
         numbers = numbers.toList(),
         selectedNumbers = selectedNumbers.toMutableList(),
@@ -2190,7 +2261,17 @@ class GameEngine(
                         fastestSegmentAverageMillis = fastestSegment?.averageMillis ?: 0,
                         slowestSegmentStart = slowestSegment?.start ?: 0,
                         slowestSegmentEnd = slowestSegment?.end ?: 0,
-                        slowestSegmentAverageMillis = slowestSegment?.averageMillis ?: 0
+                        slowestSegmentAverageMillis = slowestSegment?.averageMillis ?: 0,
+                        teamId = teamIds[id]
+                    )
+                }
+            },
+            spectators = spectatorIds.mapNotNull { id ->
+                sessionsByPlayerId[id]?.let { session ->
+                    PlayerSnapshot(
+                        id = id,
+                        name = session.displayName,
+                        score = 0
                     )
                 }
             },
@@ -2201,6 +2282,7 @@ class GameEngine(
             startedAtEpochMillis = startedAtEpochMillis,
             finishedAtEpochMillis = finishedAtEpochMillis,
             winnerPlayerId = if (phase == RoomPhase.FINISHED) winnerId() else null,
+            winnerTeamId = if (phase == RoomPhase.FINISHED) winnerTeamId() else null,
             rematchRequestedPlayerIds = rematchRequestedPlayerIds.toList(),
             rematchExpiresAtEpochMillis = rematchExpiresAtEpochMillis,
             tournamentId = tournamentId,
@@ -2278,6 +2360,7 @@ class GameEngine(
         val startedAt = startedAtEpochMillis ?: return null
         val winnerId = winnerId()
         resultQueued = true
+        val winnerTeam = winnerTeamId()
         return CompletedMatch(
             matchId = matchId,
             roomName = name,
@@ -2293,9 +2376,20 @@ class GameEngine(
                         displayName = session.displayName,
                         score = scores[playerId] ?: 0,
                         outcome = when {
-                            winnerId == null -> MatchOutcome.DRAW
-                            playerId == winnerId -> MatchOutcome.WIN
-                            else -> MatchOutcome.LOSS
+                            gameMode == com.hienthai.fastowin.protocol.ProtocolGameMode.TEAM_2V2 -> {
+                                when {
+                                    winnerTeam == null -> MatchOutcome.DRAW
+                                    teamIds[playerId] == winnerTeam -> MatchOutcome.WIN
+                                    else -> MatchOutcome.LOSS
+                                }
+                            }
+                            else -> {
+                                when {
+                                    winnerId == null -> MatchOutcome.DRAW
+                                    playerId == winnerId -> MatchOutcome.WIN
+                                    else -> MatchOutcome.LOSS
+                                }
+                            }
                         }
                     )
                 }
@@ -2304,8 +2398,18 @@ class GameEngine(
         )
     }
 
+    private fun Room.winnerTeamId(): String? {
+        if (gameMode != com.hienthai.fastowin.protocol.ProtocolGameMode.TEAM_2V2) return null
+        forcedWinnerId?.let { return teamIds[it] }
+        val teamScores = playerIds().groupBy { teamIds[it] ?: "" }
+            .mapValues { (_, members) -> members.sumOf { scores[it] ?: 0 } }
+        val highestScore = teamScores.values.maxOrNull() ?: 0
+        return teamScores.filterValues { it == highestScore }.keys.singleOrNull()
+    }
+
     private fun Room.winnerId(): String? {
         forcedWinnerId?.let { return it }
+        if (gameMode == com.hienthai.fastowin.protocol.ProtocolGameMode.TEAM_2V2) return null
         val highestScore = scores.values.maxOrNull() ?: 0
         return scores.filterValues { it == highestScore }.keys.singleOrNull()
     }
@@ -2370,6 +2474,9 @@ class GameEngine(
         var tournamentMatchId: String? = null,
         var tournamentRound: Int? = null,
         var guestId: String? = null,
+        val extraGuestIds: MutableSet<String> = mutableSetOf(),
+        val spectatorIds: MutableSet<String> = mutableSetOf(),
+        val teamIds: MutableMap<String, String> = mutableMapOf(),
         var phase: RoomPhase = RoomPhase.WAITING,
         var numbers: List<Int> = emptyList(),
         val selectedNumbers: MutableList<Int> = mutableListOf(),
@@ -2393,7 +2500,8 @@ class GameEngine(
         val processedRequests: MutableMap<String, ServerMessage> = mutableMapOf(),
         val selectionEvents: MutableList<MatchSelectionEvent> = mutableListOf()
     ) {
-        fun playerIds(): Set<String> = setOfNotNull(hostId, guestId)
+        fun playerIds(): Set<String> = setOfNotNull(hostId, guestId) + extraGuestIds
+        fun participantIds(): Set<String> = playerIds() + spectatorIds
 
         fun targetFor(playerId: String): Int {
             val index = targetIndexes[playerId] ?: 0

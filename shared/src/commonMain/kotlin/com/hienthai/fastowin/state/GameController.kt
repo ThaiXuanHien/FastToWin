@@ -419,6 +419,11 @@ class GameController(
         scope.launch { socket.sendMessage(ClientMessage.LeaveTournament(tournamentId)) }
     }
 
+    fun sendEmoji(emojiId: String) {
+        val roomId = _uiState.value.currentRoomId ?: return
+        scope.launch { socket.sendMessage(ClientMessage.SendEmoji(roomId, emojiId)) }
+    }
+
     fun openTournamentAfterMatch() {
         gameStarted = false
         timerJob?.cancel()
@@ -995,6 +1000,22 @@ class GameController(
                     socket.sendMessage(ClientMessage.GetFriends)
                 }
             }
+            is ServerMessage.EmojiBroadcast -> {
+                val emojiEvent = EmojiEvent(
+                    id = epochMillis(),
+                    emojiId = message.emojiId,
+                    playerId = message.senderPlayerId
+                )
+                _uiState.update { state ->
+                    state.copy(activeEmojis = state.activeEmojis + emojiEvent)
+                }
+                scope.launch {
+                    delay(3000)
+                    _uiState.update { state ->
+                        state.copy(activeEmojis = state.activeEmojis.filter { it.id != emojiEvent.id })
+                    }
+                }
+            }
             is ServerMessage.RematchStatus -> {
                 applyGameSnapshot(message.game)
                 _uiState.update { state ->
@@ -1053,33 +1074,49 @@ class GameController(
         }
     }
 
+    private fun com.hienthai.fastowin.protocol.PlayerSnapshot.toState(fallbackName: String, fallbackTarget: Int, isSpectator: Boolean = false): PlayerState = PlayerState(
+        name = name.takeIf { it.isNotBlank() } ?: fallbackName,
+        id = id,
+        teamId = teamId,
+        isReady = isReady,
+        score = score,
+        currentTarget = currentTarget ?: fallbackTarget,
+        correctSelections = correctSelections,
+        wrongSelections = wrongSelections,
+        averageReactionMillis = averageReactionMillis,
+        selectedNumbers = selectedNumbers,
+        combo = combo,
+        lives = lives,
+        isFinished = isFinished,
+        fastestSegmentStart = fastestSegmentStart,
+        fastestSegmentEnd = fastestSegmentEnd,
+        fastestSegmentAverageMillis = fastestSegmentAverageMillis,
+        slowestSegmentStart = slowestSegmentStart,
+        slowestSegmentEnd = slowestSegmentEnd,
+        slowestSegmentAverageMillis = slowestSegmentAverageMillis,
+        isSpectator = isSpectator
+    )
+
     private fun applyWaitingSnapshot(game: GameSnapshot) {
         gameStarted = false
-        val me = game.players.firstOrNull { it.id == playerId }
-        val opponent = game.players.firstOrNull { it.id != playerId }
+        val meSnapshot = game.players.firstOrNull { it.id == playerId }
+            ?: game.spectators.firstOrNull { it.id == playerId }
+        val myTeamId = meSnapshot?.teamId
+        val (teammateSnapshots, opponentSnapshots) = game.players.filter { it.id != playerId }
+            .partition { it.teamId != null && it.teamId == myTeamId }
+        val opponent = opponentSnapshots.firstOrNull()
+        val spectatorSnapshots = game.spectators.filter { it.id != playerId }
+
         _uiState.update { state ->
             state.copy(
                 gameMode = game.gameMode.toUi(),
                 matchType = game.matchType,
-                player = PlayerState(
-                    name = me?.name ?: state.player.name,
-                    id = me?.id,
-                    isReady = me?.isReady == true,
-                    score = me?.score ?: 0,
-                    correctSelections = me?.correctSelections ?: 0,
-                    wrongSelections = me?.wrongSelections ?: 0,
-                    averageReactionMillis = me?.averageReactionMillis ?: 0
-                ),
-                opponent = PlayerState(
-                    name = opponent?.name ?: DEFAULT_OPPONENT_NAME,
-                    id = opponent?.id,
-                    isReady = opponent?.isReady == true,
-                    score = opponent?.score ?: 0,
-                    correctSelections = opponent?.correctSelections ?: 0,
-                    wrongSelections = opponent?.wrongSelections ?: 0,
-                    averageReactionMillis = opponent?.averageReactionMillis ?: 0
-                ),
-                hasOpponent = opponent != null,
+                player = meSnapshot?.toState(state.player.name, 1, isSpectator = meSnapshot in game.spectators) ?: state.player,
+                opponent = opponent?.toState(DEFAULT_OPPONENT_NAME, 1) ?: PlayerState(DEFAULT_OPPONENT_NAME),
+                teammates = teammateSnapshots.map { it.toState("Đồng đội", 1) },
+                opponents = opponentSnapshots.map { it.toState(DEFAULT_OPPONENT_NAME, 1) },
+                spectators = spectatorSnapshots.map { it.toState("Khán giả", 1, isSpectator = true) },
+                hasOpponent = opponentSnapshots.isNotEmpty(),
                 isMatchmaking = false,
                 matchmakingStartedAtMillis = null,
                 numbers = emptyList(),
@@ -1134,55 +1171,28 @@ class GameController(
     }
 
     private fun applyGameSnapshot(game: GameSnapshot, forceStart: Boolean = false) {
-        val me = game.players.firstOrNull { it.id == playerId }
-        val opponent = game.players.firstOrNull { it.id != playerId }
+        val meSnapshot = game.players.firstOrNull { it.id == playerId }
+            ?: game.spectators.firstOrNull { it.id == playerId }
+        val myTeamId = meSnapshot?.teamId
+        val (teammateSnapshots, opponentSnapshots) = game.players.filter { it.id != playerId }
+            .partition { it.teamId != null && it.teamId == myTeamId }
+        val opponent = opponentSnapshots.firstOrNull()
+        val spectatorSnapshots = game.spectators.filter { it.id != playerId }
         val finished = game.phase == RoomPhase.FINISHED
+        
         _uiState.update { state ->
             state.copy(
                 numbers = if (game.numbers.isNotEmpty()) game.numbers else state.numbers,
-                currentTarget = me?.currentTarget ?: game.currentTarget,
-                score = me?.score ?: 0,
+                currentTarget = meSnapshot?.currentTarget ?: game.currentTarget,
+                score = meSnapshot?.score ?: 0,
                 isGameOver = finished,
                 gameMode = game.gameMode.toUi(),
                 matchType = game.matchType,
-                player = PlayerState(
-                    name = me?.name ?: state.player.name,
-                    id = me?.id,
-                    score = me?.score ?: 0,
-                    currentTarget = me?.currentTarget ?: game.currentTarget,
-                    correctSelections = me?.correctSelections ?: 0,
-                    wrongSelections = me?.wrongSelections ?: 0,
-                    averageReactionMillis = me?.averageReactionMillis ?: 0,
-                    selectedNumbers = me?.selectedNumbers.orEmpty(),
-                    combo = me?.combo ?: 0,
-                    lives = me?.lives ?: 3,
-                    isFinished = me?.isFinished ?: false,
-                    fastestSegmentStart = me?.fastestSegmentStart ?: 0,
-                    fastestSegmentEnd = me?.fastestSegmentEnd ?: 0,
-                    fastestSegmentAverageMillis = me?.fastestSegmentAverageMillis ?: 0,
-                    slowestSegmentStart = me?.slowestSegmentStart ?: 0,
-                    slowestSegmentEnd = me?.slowestSegmentEnd ?: 0,
-                    slowestSegmentAverageMillis = me?.slowestSegmentAverageMillis ?: 0
-                ),
-                opponent = PlayerState(
-                    name = opponent?.name ?: DEFAULT_OPPONENT_NAME,
-                    id = opponent?.id,
-                    score = opponent?.score ?: 0,
-                    currentTarget = opponent?.currentTarget ?: game.currentTarget,
-                    correctSelections = opponent?.correctSelections ?: 0,
-                    wrongSelections = opponent?.wrongSelections ?: 0,
-                    averageReactionMillis = opponent?.averageReactionMillis ?: 0,
-                    selectedNumbers = opponent?.selectedNumbers.orEmpty(),
-                    combo = opponent?.combo ?: 0,
-                    lives = opponent?.lives ?: 3,
-                    isFinished = opponent?.isFinished ?: false,
-                    fastestSegmentStart = opponent?.fastestSegmentStart ?: 0,
-                    fastestSegmentEnd = opponent?.fastestSegmentEnd ?: 0,
-                    fastestSegmentAverageMillis = opponent?.fastestSegmentAverageMillis ?: 0,
-                    slowestSegmentStart = opponent?.slowestSegmentStart ?: 0,
-                    slowestSegmentEnd = opponent?.slowestSegmentEnd ?: 0,
-                    slowestSegmentAverageMillis = opponent?.slowestSegmentAverageMillis ?: 0
-                ),
+                player = meSnapshot?.toState(state.player.name, game.currentTarget, isSpectator = meSnapshot in game.spectators) ?: state.player,
+                opponent = opponent?.toState(DEFAULT_OPPONENT_NAME, game.currentTarget) ?: PlayerState(DEFAULT_OPPONENT_NAME),
+                teammates = teammateSnapshots.map { it.toState("Đồng đội", game.currentTarget) },
+                opponents = opponentSnapshots.map { it.toState(DEFAULT_OPPONENT_NAME, game.currentTarget) },
+                spectators = spectatorSnapshots.map { it.toState("Khán giả", game.currentTarget, isSpectator = true) },
                 lobbyStage = LobbyStage.MATCHED,
                 currentRoomId = game.roomId,
                 currentRoomName = game.roomName,
@@ -1222,7 +1232,7 @@ class GameController(
             } else {
                 0L
             }
-            startTimer(((me?.timeLeftMillis ?: 0L) - countdownElapsed).coerceAtLeast(0L))
+            startTimer(((meSnapshot?.timeLeftMillis ?: 0L) - countdownElapsed).coerceAtLeast(0L))
         } else if (!finished) {
             timerJob?.cancel()
             _uiState.update { it.copy(timeLeftMillis = 0L) }
@@ -1371,6 +1381,7 @@ class GameController(
         GameMode.SURVIVAL -> ProtocolGameMode.SURVIVAL
         GameMode.COMBO -> ProtocolGameMode.COMBO
         GameMode.TIME_ATTACK -> ProtocolGameMode.TIME_ATTACK
+        GameMode.TEAM_2V2 -> ProtocolGameMode.TEAM_2V2
     }
 
     private fun ProtocolGameMode.toUi(): GameMode = when (this) {
@@ -1381,10 +1392,11 @@ class GameController(
         ProtocolGameMode.SURVIVAL -> GameMode.SURVIVAL
         ProtocolGameMode.COMBO -> GameMode.COMBO
         ProtocolGameMode.TIME_ATTACK -> GameMode.TIME_ATTACK
+        ProtocolGameMode.TEAM_2V2 -> GameMode.TEAM_2V2
     }
 
     private fun ProtocolGameMode.isTimed(): Boolean = this == ProtocolGameMode.TIME_ATTACK ||
-        this == ProtocolGameMode.TIME_BONUS || this == ProtocolGameMode.SPEED_UP
+        this == ProtocolGameMode.TIME_BONUS || this == ProtocolGameMode.SPEED_UP || this == ProtocolGameMode.TEAM_2V2
 
     private fun randomId(): String = buildString {
         repeat(2) { append(Random.nextLong().toULong().toString(16).padStart(16, '0')) }

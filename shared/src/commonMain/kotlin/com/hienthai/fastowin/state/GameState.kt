@@ -58,7 +58,15 @@ data class PlayerState(
     val fastestSegmentAverageMillis: Long = 0,
     val slowestSegmentStart: Int = 0,
     val slowestSegmentEnd: Int = 0,
-    val slowestSegmentAverageMillis: Long = 0
+    val slowestSegmentAverageMillis: Long = 0,
+    val teamId: String? = null,
+    val isSpectator: Boolean = false
+)
+
+data class EmojiEvent(
+    val id: Long,
+    val emojiId: String,
+    val playerId: String
 )
 
 enum class PostMatchFriendStatus {
@@ -87,6 +95,9 @@ data class GameState(
     // Multiplayer simulation
     val player: PlayerState = PlayerState("Bạn"),
     val opponent: PlayerState = PlayerState(DEFAULT_OPPONENT_NAME),
+    val teammates: List<PlayerState> = emptyList(),
+    val opponents: List<PlayerState> = emptyList(),
+    val spectators: List<PlayerState> = emptyList(),
     val isSearching: Boolean = false,
     val isMatchmaking: Boolean = false,
     val matchmakingStartedAtMillis: Long? = null,
@@ -108,6 +119,7 @@ data class GameState(
     val currentTournamentMatchId: String? = null,
     val currentTournamentRound: Int? = null,
     val winnerPlayerId: String? = null,
+    val winnerTeamId: String? = null,
     val isRematchRequestedByMe: Boolean = false,
     val isRematchRequestedByOpponent: Boolean = false,
     val rematchExpiresAtEpochMillis: Long? = null,
@@ -135,6 +147,7 @@ data class GameState(
     val isFriendsLoading: Boolean = false,
     val social: FriendsSnapshot = FriendsSnapshot(),
     val roomInvitations: List<ServerMessage.RoomInvitation> = emptyList(),
+    val activeEmojis: List<EmojiEvent> = emptyList(),
     val roomInvitationPrompt: ServerMessage.RoomInvitation? = null,
     val socialNotice: String? = null,
     val isNotificationsOpen: Boolean = false,
