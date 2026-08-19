@@ -290,6 +290,15 @@ Checklist kiểm thử đề xuất:
 
 ## 9. Build và test bằng Terminal trên macOS
 
+Kiểm tra liên kết phòng và thử thách trên simulator đang mở:
+
+```bash
+xcrun simctl openurl booted 'fasttowin://room/<ROOM_ID>'
+xcrun simctl openurl booted 'fasttowin://challenge/FTW-CL-12345678-DF'
+```
+
+Nếu app chưa chạy, lệnh sẽ khởi động app. Nếu app đang chạy, liên kết được chuyển vào phiên hiện tại. Phòng riêng tư vẫn yêu cầu nhập mật khẩu trong app. Liên kết thử thách giữ nguyên cơ chế mở khóa chế độ theo cấp độ người chơi.
+
 Unit test backend và shared:
 
 ```bash

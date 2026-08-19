@@ -4,7 +4,7 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
-const val PROTOCOL_VERSION = 21
+const val PROTOCOL_VERSION = 23
 const val GAME_NUMBER_COUNT = 50
 const val MAX_PROFILE_DISPLAY_NAME_LENGTH = 32
 val DAILY_CHECK_IN_REWARDS_XP = listOf(5, 10, 10, 15, 15, 20, 25)
@@ -59,6 +59,66 @@ enum class RoomPhase {
     PLAYING,
     FINISHED
 }
+
+@Serializable
+enum class TournamentPhase { LOBBY, RUNNING, FINISHED, CANCELLED }
+
+@Serializable
+enum class TournamentMatchPhase { PENDING, PLAYING, FINISHED }
+
+@Serializable
+data class TournamentPlayerSnapshot(
+    val playerId: String,
+    val displayName: String,
+    val isHost: Boolean = false,
+    val isOnline: Boolean = false
+)
+
+@Serializable
+data class TournamentMatchSnapshot(
+    val matchId: String,
+    val round: Int,
+    val position: Int,
+    val playerOneId: String? = null,
+    val playerTwoId: String? = null,
+    val winnerPlayerId: String? = null,
+    val roomId: String? = null,
+    val phase: TournamentMatchPhase = TournamentMatchPhase.PENDING
+)
+
+@Serializable
+data class TournamentSnapshot(
+    val tournamentId: String,
+    val name: String,
+    val hostPlayerId: String,
+    val gameMode: ProtocolGameMode,
+    val phase: TournamentPhase,
+    val maxPlayers: Int = 4,
+    val players: List<TournamentPlayerSnapshot> = emptyList(),
+    val matches: List<TournamentMatchSnapshot> = emptyList(),
+    val championPlayerId: String? = null,
+    val createdAtEpochMillis: Long,
+    val startedAtEpochMillis: Long? = null,
+    val finishedAtEpochMillis: Long? = null
+)
+
+@Serializable
+data class TournamentInvitationSnapshot(
+    val invitationId: String,
+    val tournamentId: String,
+    val tournamentName: String,
+    val hostPlayerId: String,
+    val hostDisplayName: String,
+    val gameMode: ProtocolGameMode,
+    val expiresAtEpochMillis: Long
+)
+
+@Serializable
+data class TournamentHubSnapshot(
+    val activeTournament: TournamentSnapshot? = null,
+    val invitations: List<TournamentInvitationSnapshot> = emptyList(),
+    val recentTournaments: List<TournamentSnapshot> = emptyList()
+)
 
 @Serializable
 data class RoomSummary(
@@ -116,6 +176,17 @@ data class PlayerStatisticsSnapshot(
 )
 
 @Serializable
+data class GameModeStatisticsSnapshot(
+    val gameMode: ProtocolGameMode,
+    val totalMatches: Int = 0,
+    val wins: Int = 0,
+    val losses: Int = 0,
+    val draws: Int = 0,
+    val highestScore: Int = 0,
+    val averageScore: Int = 0
+)
+
+@Serializable
 data class MatchHistorySnapshot(
     val matchId: String,
     val roomName: String,
@@ -137,7 +208,8 @@ data class PlayerProfileSnapshot(
     val statistics: PlayerStatisticsSnapshot = PlayerStatisticsSnapshot(),
     val recentMatches: List<MatchHistorySnapshot> = emptyList(),
     val achievements: List<AchievementSnapshot> = emptyList(),
-    val progression: PlayerProgressionSnapshot = PlayerProgressionSnapshot()
+    val progression: PlayerProgressionSnapshot = PlayerProgressionSnapshot(),
+    val modeStatistics: List<GameModeStatisticsSnapshot> = emptyList()
 )
 
 @Serializable
@@ -314,7 +386,10 @@ data class GameSnapshot(
     val finishedAtEpochMillis: Long? = null,
     val winnerPlayerId: String? = null,
     val rematchRequestedPlayerIds: List<String> = emptyList(),
-    val rematchExpiresAtEpochMillis: Long? = null
+    val rematchExpiresAtEpochMillis: Long? = null,
+    val tournamentId: String? = null,
+    val tournamentMatchId: String? = null,
+    val tournamentRound: Int? = null
 )
 
 @Serializable
@@ -447,6 +522,39 @@ sealed class ClientMessage {
     @Serializable
     @SerialName("get_notifications")
     data object GetNotifications : ClientMessage()
+
+    @Serializable
+    @SerialName("get_tournament_hub")
+    data object GetTournamentHub : ClientMessage()
+
+    @Serializable
+    @SerialName("create_tournament")
+    data class CreateTournament(
+        val name: String,
+        val gameMode: ProtocolGameMode
+    ) : ClientMessage()
+
+    @Serializable
+    @SerialName("invite_tournament_player")
+    data class InviteTournamentPlayer(
+        val tournamentId: String,
+        val friendPlayerId: String
+    ) : ClientMessage()
+
+    @Serializable
+    @SerialName("respond_tournament_invitation")
+    data class RespondTournamentInvitation(
+        val invitationId: String,
+        val accept: Boolean
+    ) : ClientMessage()
+
+    @Serializable
+    @SerialName("start_tournament")
+    data class StartTournament(val tournamentId: String) : ClientMessage()
+
+    @Serializable
+    @SerialName("leave_tournament")
+    data class LeaveTournament(val tournamentId: String) : ClientMessage()
 
     @Serializable
     @SerialName("sync_notifications")
@@ -587,6 +695,22 @@ sealed class ServerMessage {
     @Serializable
     @SerialName("notifications_data")
     data class NotificationsData(val notifications: List<NotificationSnapshot>) : ServerMessage()
+
+    @Serializable
+    @SerialName("tournament_hub_data")
+    data class TournamentHubData(val hub: TournamentHubSnapshot) : ServerMessage()
+
+    @Serializable
+    @SerialName("tournament_updated")
+    data class TournamentUpdated(val tournament: TournamentSnapshot) : ServerMessage()
+
+    @Serializable
+    @SerialName("tournament_invitation")
+    data class TournamentInvitation(val invitation: TournamentInvitationSnapshot) : ServerMessage()
+
+    @Serializable
+    @SerialName("tournament_notice")
+    data class TournamentNotice(val message: String) : ServerMessage()
 
     @Serializable
     @SerialName("social_notice")

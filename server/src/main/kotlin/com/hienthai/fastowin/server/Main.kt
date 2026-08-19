@@ -20,6 +20,7 @@ fun main() {
     val friendRepository = database?.friendRepository ?: NoOpFriendRepository
     val notificationRepository = database?.notificationRepository ?: NoOpNotificationRepository
     val activeRoomRepository = database?.activeRoomRepository ?: NoOpActiveRoomRepository
+    val tournamentRepository = database?.tournamentRepository ?: InMemoryTournamentRepository()
     val storage = if (database == null) "memory" else "postgresql"
     val engine = GameEngine(
         identityRepository,
@@ -28,7 +29,8 @@ fun main() {
         leaderboardRepository,
         friendRepository,
         activeRoomRepository,
-        notificationRepository
+        notificationRepository,
+        tournamentRepository
     )
     runBlocking { engine.restoreActiveRooms() }
 

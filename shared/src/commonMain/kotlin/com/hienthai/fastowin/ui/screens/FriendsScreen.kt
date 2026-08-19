@@ -1,6 +1,5 @@
 package com.hienthai.fastowin.ui.screens
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -45,9 +44,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.hienthai.fastowin.protocol.FriendPresence
 import com.hienthai.fastowin.protocol.FriendSnapshot
-import com.hienthai.fastowin.protocol.RecentPlayerSnapshot
 import com.hienthai.fastowin.protocol.ServerMessage
-import com.hienthai.fastowin.platform.epochMillis
 import com.hienthai.fastowin.state.GameState
 import com.hienthai.fastowin.state.LobbyStage
 import com.hienthai.fastowin.ui.layout.ResponsiveScreen
@@ -74,10 +71,6 @@ fun FriendsScreen(
     var removeTarget by remember { mutableStateOf<PlayerActionTarget?>(null) }
     var blockTarget by remember { mutableStateOf<PlayerActionTarget?>(null) }
     val canInvite = state.isRoomHost && state.currentRoomId != null && state.lobbyStage == LobbyStage.ROOM_WAITING
-    val friendsById = state.social.friends.associateBy { it.userId }
-    val blockedPlayerIds = state.social.blockedPlayers.mapTo(mutableSetOf()) { it.userId }
-    val visibleRecentPlayers = state.social.recentPlayers.filterNot { it.userId in blockedPlayerIds }
-    val recentPlayersNowMillis = remember(visibleRecentPlayers) { epochMillis() }
 
     removeTarget?.let { target ->
         AlertDialog(
@@ -144,7 +137,7 @@ fun FriendsScreen(
         if (
             state.isFriendsLoading && state.social.friends.isEmpty() &&
             state.social.incomingRequests.isEmpty() && state.social.outgoingRequests.isEmpty() &&
-            state.social.blockedPlayers.isEmpty() && state.social.recentPlayers.isEmpty() &&
+            state.social.blockedPlayers.isEmpty() &&
             state.roomInvitations.isEmpty()
         ) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
@@ -235,30 +228,6 @@ fun FriendsScreen(
                     )
                 }
             }
-            if (visibleRecentPlayers.isNotEmpty()) {
-                item {
-                    Text("Vừa thi đấu cùng", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                }
-                items(visibleRecentPlayers, key = { "recent:${it.userId}" }) { player ->
-                    val friend = friendsById[player.userId]
-                    RecentPlayerCard(
-                        player = player,
-                        friend = friend,
-                        canInvite = canInvite,
-                        nowMillis = recentPlayersNowMillis,
-                        actionsEnabled = !state.isFriendsLoading,
-                        onViewInfo = if (friend == null) null else ({ onOpenFriendProfile(friend.userId) }),
-                        onAddFriend = { onSendRequest(player.playerCode) },
-                        onInviteFriend = { onInviteFriend(player.userId) },
-                        onRemoveFriend = if (friend == null) null else ({
-                            removeTarget = PlayerActionTarget(friend.userId, friend.displayName)
-                        }),
-                        onBlockPlayer = {
-                            blockTarget = PlayerActionTarget(player.userId, player.displayName)
-                        }
-                    )
-                }
-            }
             if (state.social.blockedPlayers.isNotEmpty()) {
                 item {
                     Text("Đã chặn", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
@@ -323,94 +292,6 @@ private fun FriendCodeForm(
                     enabled = enabled,
                     modifier = Modifier.align(Alignment.CenterVertically)
                 ) { Text("Kết bạn") }
-            }
-        }
-    }
-}
-
-@Composable
-private fun RecentPlayerCard(
-    player: RecentPlayerSnapshot,
-    friend: FriendSnapshot?,
-    canInvite: Boolean,
-    nowMillis: Long,
-    actionsEnabled: Boolean,
-    onViewInfo: (() -> Unit)?,
-    onAddFriend: () -> Unit,
-    onInviteFriend: () -> Unit,
-    onRemoveFriend: (() -> Unit)?,
-    onBlockPlayer: () -> Unit
-) {
-    var showActions by remember(player.userId) { mutableStateOf(false) }
-    ElevatedCard(
-        modifier = Modifier.fillMaxWidth().then(
-            if (onViewInfo == null) Modifier else Modifier.clickable(onClick = onViewInfo)
-        ).testTag("recent_player_item:${player.userId}")
-    ) {
-        Column(
-            modifier = Modifier.fillMaxWidth().padding(14.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                Text(avatarEmoji(player.avatarId), style = MaterialTheme.typography.headlineMedium)
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(player.displayName, fontWeight = FontWeight.Bold)
-                    Text("${player.playerCode} • ${recentPlayedLabel(player, nowMillis)}")
-                    if (friend != null) Text("Đã là bạn • ${friend.presence.label()}")
-                }
-                Box {
-                    IconButton(
-                        onClick = { showActions = true },
-                        enabled = actionsEnabled,
-                        modifier = Modifier.testTag("recent_player_more:${player.userId}")
-                    ) {
-                        Icon(Icons.Default.MoreVert, contentDescription = "Thao tác với ${player.displayName}")
-                    }
-                    DropdownMenu(
-                        expanded = showActions,
-                        onDismissRequest = { showActions = false }
-                    ) {
-                        if (onRemoveFriend != null) {
-                            DropdownMenuItem(
-                                text = { Text("Hủy kết bạn") },
-                                leadingIcon = { Icon(Icons.Default.PersonRemove, contentDescription = null) },
-                                onClick = {
-                                    showActions = false
-                                    onRemoveFriend()
-                                }
-                            )
-                        }
-                        DropdownMenuItem(
-                            text = { Text("Chặn người chơi") },
-                            leadingIcon = { Icon(Icons.Default.Block, contentDescription = null) },
-                            onClick = {
-                                showActions = false
-                                onBlockPlayer()
-                            }
-                        )
-                    }
-                }
-            }
-            if (friend == null) {
-                Button(
-                    onClick = onAddFriend,
-                    enabled = actionsEnabled,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text("Kết bạn")
-                }
-            } else if (canInvite) {
-                Button(
-                    onClick = onInviteFriend,
-                    enabled = actionsEnabled && friend.presence == FriendPresence.ONLINE,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text("Mời vào phòng")
-                }
             }
         }
     }
@@ -488,17 +369,6 @@ private fun FriendCard(
 }
 
 private data class PlayerActionTarget(val userId: String, val displayName: String)
-
-private fun recentPlayedLabel(player: RecentPlayerSnapshot, nowMillis: Long): String {
-    val elapsedMillis = (nowMillis - player.lastPlayedAtEpochMillis).coerceAtLeast(0L)
-    val timeLabel = when {
-        elapsedMillis < 60_000L -> "vừa xong"
-        elapsedMillis < 3_600_000L -> "${elapsedMillis / 60_000L} phút trước"
-        elapsedMillis < 86_400_000L -> "${elapsedMillis / 3_600_000L} giờ trước"
-        else -> "${elapsedMillis / 86_400_000L} ngày trước"
-    }
-    return if (player.matchesPlayed > 1) "${player.matchesPlayed} trận • $timeLabel" else timeLabel
-}
 
 @Composable
 fun RoomInvitationDialog(

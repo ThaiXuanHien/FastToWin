@@ -33,6 +33,7 @@ import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -85,6 +86,8 @@ import com.hienthai.fastowin.protocol.DAILY_CHECK_IN_TITLE_TARGET
 import com.hienthai.fastowin.protocol.MAX_PROFILE_DISPLAY_NAME_LENGTH
 import com.hienthai.fastowin.protocol.PROFILE_AVATAR_IDS
 import com.hienthai.fastowin.protocol.PlayerProfileSnapshot
+import com.hienthai.fastowin.protocol.GameModeStatisticsSnapshot
+import com.hienthai.fastowin.protocol.ProtocolGameMode
 import com.hienthai.fastowin.state.GameState
 import com.hienthai.fastowin.state.MAX_ACCOUNT_PASSWORD_LENGTH
 import com.hienthai.fastowin.state.accountPasswordConfirmationError
@@ -119,6 +122,7 @@ fun ProfileScreen(
     onRevokeSession: (String) -> Unit,
     onRevokeAllSessions: () -> Unit,
     onLogout: () -> Unit,
+    sessionStartedAtMillis: Long? = null,
     showBackButton: Boolean = true,
     modifier: Modifier = Modifier
 ) {
@@ -284,6 +288,9 @@ fun ProfileScreen(
                         }
                     }
                     Text("Elo ${profile.statistics.eloRating}", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                    if (!isExternalProfile && sessionStartedAtMillis != null) {
+                        CurrentSessionDuration(sessionStartedAtMillis)
+                    }
                 }
             }
         }
@@ -504,6 +511,18 @@ fun ProfileScreen(
             StatCard("Hòa", stats.draws, Modifier.weight(1f))
         }
 
+        if (profile.modeStatistics.isNotEmpty()) {
+            Text("Thống kê theo chế độ", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            Column(
+                modifier = Modifier.fillMaxWidth().testTag("mode_statistics"),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                profile.modeStatistics
+                    .sortedWith(compareBy<GameModeStatisticsSnapshot> { it.gameMode.unlockLevel }.thenBy { it.gameMode.name })
+                    .forEach { ModeStatisticsCard(it) }
+            }
+        }
+
         if (profile.recentMatches.isNotEmpty()) {
             val scoreTrend = profile.recentMatches.take(10).asReversed().map { it.playerScore }
             val eloTrend = remember(profile.statistics.eloRating, profile.recentMatches) {
@@ -645,6 +664,42 @@ fun ProfileScreen(
             }
         }
     }
+}
+
+@Composable
+private fun CurrentSessionDuration(sessionStartedAtMillis: Long) {
+    var elapsedSeconds by remember(sessionStartedAtMillis) { mutableStateOf(0L) }
+    LaunchedEffect(sessionStartedAtMillis) {
+        while (true) {
+            elapsedSeconds = ((epochMillis() - sessionStartedAtMillis) / 1_000).coerceAtLeast(0L)
+            delay(1_000)
+        }
+    }
+    Row(
+        modifier = Modifier.padding(top = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        Icon(
+            Icons.Default.Timer,
+            contentDescription = null,
+            modifier = Modifier.size(16.dp),
+            tint = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Text(
+            "Phiên hiện tại ${formatSessionDuration(elapsedSeconds)}",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+}
+
+private fun formatSessionDuration(totalSeconds: Long): String {
+    val hours = totalSeconds / 3_600
+    val minutes = totalSeconds % 3_600 / 60
+    val seconds = totalSeconds % 60
+    fun Long.twoDigits() = toString().padStart(2, '0')
+    return "${hours.twoDigits()}:${minutes.twoDigits()}:${seconds.twoDigits()}"
 }
 
 @Composable
@@ -1209,6 +1264,51 @@ private fun StatCard(label: String, value: String, modifier: Modifier = Modifier
             Text(label, style = MaterialTheme.typography.labelSmall)
         }
     }
+}
+
+@Composable
+private fun ModeStatisticsCard(statistics: GameModeStatisticsSnapshot) {
+    val winRate = if (statistics.totalMatches == 0) 0 else statistics.wins * 100 / statistics.totalMatches
+    ElevatedCard(
+        modifier = Modifier.fillMaxWidth().testTag("mode_statistics:${statistics.gameMode.name}")
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(statistics.gameMode.displayName(), fontWeight = FontWeight.Bold)
+                Text(
+                    "$winRate% thắng",
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+            Text(
+                "${statistics.totalMatches} trận • ${statistics.wins} thắng • ${statistics.losses} thua • ${statistics.draws} hòa",
+                style = MaterialTheme.typography.bodyMedium
+            )
+            Text(
+                "Điểm cao ${statistics.highestScore} • Trung bình ${statistics.averageScore}",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+}
+
+private fun ProtocolGameMode.displayName(): String = when (this) {
+    ProtocolGameMode.ORDER -> "Cổ điển"
+    ProtocolGameMode.RANDOM_TARGET -> "Ngẫu nhiên"
+    ProtocolGameMode.TIME_BONUS -> "Cộng thời gian"
+    ProtocolGameMode.SPEED_UP -> "Tăng tốc"
+    ProtocolGameMode.SURVIVAL -> "Sinh tồn"
+    ProtocolGameMode.COMBO -> "Combo"
+    ProtocolGameMode.TIME_ATTACK -> "Đua 60 giây"
 }
 
 @Composable

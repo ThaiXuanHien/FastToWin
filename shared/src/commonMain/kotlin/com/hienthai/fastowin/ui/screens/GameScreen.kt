@@ -72,6 +72,7 @@ fun GameScreen(
     onFinish: () -> Unit,
     onOpenFriendProfile: (String) -> Unit = {},
     onExit: () -> Unit = {},
+    allowExit: Boolean = true,
     preferences: AppPreferences = AppPreferences(),
     modifier: Modifier = Modifier
 ) {
@@ -86,7 +87,7 @@ fun GameScreen(
             tapFeedback = null
         }
     }
-    if (showExitConfirmation) {
+    if (showExitConfirmation && allowExit) {
         AlertDialog(
             onDismissRequest = { showExitConfirmation = false },
             title = { Text("Rời trận đấu?") },
@@ -111,8 +112,10 @@ fun GameScreen(
         topBar = {
             CenterAlignedTopAppBar(
                 navigationIcon = {
-                    IconButton(onClick = { showExitConfirmation = true }) {
-                        Icon(Icons.Rounded.Close, contentDescription = "Rời trận")
+                    if (allowExit) {
+                        IconButton(onClick = { showExitConfirmation = true }) {
+                            Icon(Icons.Rounded.Close, contentDescription = "Rời trận")
+                        }
                     }
                 },
                 title = {

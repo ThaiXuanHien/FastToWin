@@ -2,6 +2,14 @@
 
 Fast To Win là game tìm số 1–50 theo thời gian thực dành cho Android và iOS. Giao diện và phần lớn logic client dùng Compose Multiplatform; backend là Ktor WebSocket và PostgreSQL.
 
+## Tính năng đấu giải riêng
+
+- Người đã đăng nhập có thể tạo giải loại trực tiếp dành cho 4 người và mời bạn bè đang online.
+- Khi đủ người, server tự tạo 2 trận bán kết; hai người thắng được đưa vào trận chung kết tự động.
+- Trận đấu giải dùng cơ chế phòng 1 đấu 1 hiện có, không ảnh hưởng Elo và không cho rời/rematch giữa nhánh đấu.
+- Màn đấu giải hiển thị người tham gia, trạng thái từng trận, nhánh đấu, nhà vô địch và lịch sử giải gần đây.
+- Dữ liệu được lưu trong bảng `tournaments` khi backend chạy với PostgreSQL. Flyway tạo bảng này qua migration V21.
+
 ## Công nghệ và cấu trúc project
 
 | Thư mục | Vai trò |
@@ -200,6 +208,7 @@ Một số lệnh hữu ích trong `psql`:
 SELECT version, description, success FROM flyway_schema_history ORDER BY installed_rank;
 SELECT id, email, created_at FROM users ORDER BY created_at DESC;
 SELECT * FROM daily_check_ins ORDER BY created_at DESC;
+SELECT tournament_id, status, created_at, finished_at FROM tournaments ORDER BY created_at DESC;
 ```
 
 Dừng container nhưng giữ dữ liệu:
@@ -283,6 +292,31 @@ Báo cáo Compose UI test:
 ```text
 app/build/reports/androidTests/connected/debug/flavors/dev/index.html
 ```
+
+### Kiểm thử liên kết phòng và thử thách trên Android
+
+Cài bản dev rồi gửi một liên kết thử nghiệm vào emulator:
+
+```powershell
+.\gradlew.bat :app:installDevDebug
+& "$env:LOCALAPPDATA\Android\Sdk\platform-tools\adb.exe" shell am start -W `
+  -a android.intent.action.VIEW `
+  -d "fasttowin://room/<ROOM_ID>" `
+  com.hienthai.fastowin.dev
+```
+
+Phòng công khai sẽ được tham gia sau khi danh sách phòng mới tải xong. Phòng riêng tư mở hộp nhập mật khẩu; mật khẩu không được lưu trong liên kết.
+
+Mở trực tiếp một bàn thử thách hợp lệ:
+
+```powershell
+& "$env:LOCALAPPDATA\Android\Sdk\platform-tools\adb.exe" shell am start -W `
+  -a android.intent.action.VIEW `
+  -d "fasttowin://challenge/FTW-CL-12345678-DF" `
+  com.hienthai.fastowin.dev
+```
+
+Nếu chưa đăng nhập, app giữ liên kết qua màn xác thực rồi mở bàn sau đó. Chế độ chưa đạt cấp mở khóa sẽ hiển thị thông báo và không bắt đầu thử thách.
 
 ## 8. Môi trường dev và production
 

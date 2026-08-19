@@ -84,6 +84,41 @@ class GameController(
         enterRoomBrowser(normalizedName)
     }
 
+    fun openRoomLink(roomId: String) {
+        val state = _uiState.value
+        if (state.currentRoomId != null || state.isMatchStarted || state.isGameOver) {
+            _uiState.update { it.copy(error = "Hãy rời phòng hiện tại trước khi mở liên kết phòng khác.") }
+            return
+        }
+        _uiState.update {
+            it.copy(
+                pendingRoomLinkId = roomId,
+                pendingRoomLinkListVersion = it.roomListVersion,
+                isProfileOpen = false,
+                isLeaderboardOpen = false,
+                isFriendsOpen = false,
+                isNotificationsOpen = false,
+                error = null
+            )
+        }
+        val displayName = accountDisplayName
+        if (displayName == null) {
+            _uiState.update { it.copy(lobbyStage = LobbyStage.ENTER_NAME) }
+        } else {
+            enterRoomBrowser(displayName)
+        }
+    }
+
+    fun resolvePendingRoomLink(error: String? = null) {
+        _uiState.update {
+            it.copy(
+                pendingRoomLinkId = null,
+                pendingRoomLinkListVersion = it.roomListVersion,
+                error = error
+            )
+        }
+    }
+
     private fun enterRoomBrowser(normalizedName: String) {
 
         _uiState.update {
@@ -96,6 +131,10 @@ class GameController(
                 currentRoomId = null,
                 currentRoomName = null,
                 isRoomHost = false,
+                isProfileOpen = false,
+                isLeaderboardOpen = false,
+                isFriendsOpen = false,
+                isNotificationsOpen = false,
                 error = null
             )
         }
@@ -317,6 +356,92 @@ class GameController(
 
     fun closeNotifications() {
         _uiState.update { it.copy(isNotificationsOpen = false) }
+    }
+
+    fun openTournament() {
+        _uiState.update {
+            it.copy(
+                isTournamentOpen = true,
+                isTournamentLoading = true,
+                isProfileOpen = false,
+                isLeaderboardOpen = false,
+                isFriendsOpen = false,
+                isNotificationsOpen = false,
+                tournamentNotice = null,
+                error = null
+            )
+        }
+        scope.launch { socket.sendMessage(ClientMessage.GetTournamentHub) }
+    }
+
+    fun closeTournament() {
+        _uiState.update { it.copy(isTournamentOpen = false, isTournamentLoading = false, tournamentNotice = null) }
+    }
+
+    fun createTournament(name: String, mode: GameMode) {
+        _uiState.update { it.copy(isTournamentLoading = true, tournamentNotice = null, error = null) }
+        scope.launch { socket.sendMessage(ClientMessage.CreateTournament(name, mode.toProtocol())) }
+    }
+
+    fun inviteTournamentPlayer(friendPlayerId: String) {
+        val tournamentId = _uiState.value.tournamentHub.activeTournament?.tournamentId ?: return
+        scope.launch { socket.sendMessage(ClientMessage.InviteTournamentPlayer(tournamentId, friendPlayerId)) }
+    }
+
+    fun respondTournamentInvitation(invitationId: String, accept: Boolean) {
+        _uiState.update { state ->
+            state.copy(
+                tournamentInvitationPrompt = state.tournamentInvitationPrompt
+                    ?.takeUnless { it.invitationId == invitationId },
+                tournamentHub = state.tournamentHub.copy(
+                    invitations = state.tournamentHub.invitations.filterNot { it.invitationId == invitationId }
+                ),
+                isTournamentLoading = accept,
+                error = null
+            )
+        }
+        scope.launch { socket.sendMessage(ClientMessage.RespondTournamentInvitation(invitationId, accept)) }
+    }
+
+    fun dismissTournamentInvitationPrompt() {
+        _uiState.update { it.copy(tournamentInvitationPrompt = null) }
+    }
+
+    fun startTournament() {
+        val tournamentId = _uiState.value.tournamentHub.activeTournament?.tournamentId ?: return
+        _uiState.update { it.copy(isTournamentLoading = true, error = null) }
+        scope.launch { socket.sendMessage(ClientMessage.StartTournament(tournamentId)) }
+    }
+
+    fun leaveTournament() {
+        val tournamentId = _uiState.value.tournamentHub.activeTournament?.tournamentId ?: return
+        _uiState.update { it.copy(isTournamentLoading = true, error = null) }
+        scope.launch { socket.sendMessage(ClientMessage.LeaveTournament(tournamentId)) }
+    }
+
+    fun openTournamentAfterMatch() {
+        gameStarted = false
+        timerJob?.cancel()
+        countdownJob?.cancel()
+        _uiState.update {
+            it.copy(
+                numbers = emptyList(),
+                currentTarget = 1,
+                score = 0,
+                timeLeftMillis = 0,
+                isGameOver = false,
+                isMatchStarted = false,
+                lobbyStage = LobbyStage.SELECT_MODE,
+                currentRoomId = null,
+                currentRoomName = null,
+                currentMatchId = null,
+                winnerPlayerId = null,
+                isTournamentOpen = true,
+                isTournamentLoading = true,
+                error = null
+            )
+        }
+        scope.launch { socket.sendMessage(ClientMessage.GetTournamentHub) }
     }
 
     fun markAllNotificationsRead() {
@@ -603,7 +728,13 @@ class GameController(
             is ServerMessage.SessionReady -> {
                 val wasRecoveringRoom = _uiState.value.currentRoomId != null
                 playerId = message.playerId
-                _uiState.update { it.copy(isSearching = false, error = null) }
+                _uiState.update {
+                    it.copy(
+                        player = it.player.copy(id = message.playerId),
+                        isSearching = false,
+                        error = null
+                    )
+                }
                 startLatencyMonitoring()
                 if (accountDisplayName != null) {
                     scope.launch {
@@ -613,6 +744,7 @@ class GameController(
                         socket.sendMessage(ClientMessage.GetRoomInvitations)
                         socket.sendMessage(ClientMessage.GetNotifications)
                         socket.sendMessage(ClientMessage.GetLeaderboard)
+                        socket.sendMessage(ClientMessage.GetTournamentHub)
                         _uiState.value.viewedFriendUserId?.let { friendUserId ->
                             socket.sendMessage(ClientMessage.GetFriendProfile(friendUserId))
                         }
@@ -635,6 +767,7 @@ class GameController(
                 _uiState.update { state ->
                     state.copy(
                         isSearching = false,
+                        roomListVersion = state.roomListVersion + 1,
                         availableRooms = message.rooms.map { room ->
                             AvailableRoom(
                                 id = room.id,
@@ -791,6 +924,60 @@ class GameController(
                 _uiState.update { it.copy(socialNotice = message.message, isFriendsLoading = false, error = null) }
             }
 
+            is ServerMessage.TournamentHubData -> {
+                _uiState.update { state ->
+                    val invitationIds = message.hub.invitations.mapTo(mutableSetOf()) { it.invitationId }
+                    state.copy(
+                        tournamentHub = message.hub,
+                        tournamentInvitationPrompt = state.tournamentInvitationPrompt?.takeIf {
+                            it.invitationId in invitationIds
+                        } ?: message.hub.invitations.firstOrNull(),
+                        isTournamentLoading = false,
+                        error = null
+                    )
+                }
+            }
+
+            is ServerMessage.TournamentUpdated -> {
+                _uiState.update { state ->
+                    val completed = message.tournament.phase == com.hienthai.fastowin.protocol.TournamentPhase.FINISHED ||
+                        message.tournament.phase == com.hienthai.fastowin.protocol.TournamentPhase.CANCELLED
+                    state.copy(
+                        tournamentHub = state.tournamentHub.copy(
+                            activeTournament = message.tournament.takeUnless { completed },
+                            recentTournaments = if (completed) {
+                                (listOf(message.tournament) + state.tournamentHub.recentTournaments)
+                                    .distinctBy { it.tournamentId }
+                                    .take(10)
+                            } else {
+                                state.tournamentHub.recentTournaments
+                            }
+                        ),
+                        isTournamentLoading = false,
+                        tournamentNotice = null,
+                        error = null
+                    )
+                }
+            }
+
+            is ServerMessage.TournamentInvitation -> {
+                _uiState.update { state ->
+                    val invitations = state.tournamentHub.invitations
+                        .filterNot { it.invitationId == message.invitation.invitationId } + message.invitation
+                    state.copy(
+                        tournamentHub = state.tournamentHub.copy(invitations = invitations),
+                        tournamentInvitationPrompt = state.tournamentInvitationPrompt ?: message.invitation,
+                        tournamentNotice = null
+                    )
+                }
+            }
+
+            is ServerMessage.TournamentNotice -> {
+                _uiState.update {
+                    it.copy(tournamentNotice = message.message, isTournamentLoading = false, error = null)
+                }
+            }
+
             is ServerMessage.RoomCreated -> applyWaitingSnapshot(message.game)
             is ServerMessage.RoomUpdated -> applyWaitingSnapshot(message.game)
             is ServerMessage.GameStarted -> startMatchCountdown(message.game)
@@ -900,6 +1087,9 @@ class GameController(
                 isGameOver = false,
                 isMatchStarted = false,
                 currentMatchId = game.matchId,
+                currentTournamentId = game.tournamentId,
+                currentTournamentMatchId = game.tournamentMatchId,
+                currentTournamentRound = game.tournamentRound,
                 winnerPlayerId = game.winnerPlayerId,
                 isRematchRequestedByMe = false,
                 isRematchRequestedByOpponent = false,
@@ -1003,6 +1193,9 @@ class GameController(
                 isSearching = false,
                 isMatchStarted = forceStart || state.isMatchStarted,
                 currentMatchId = game.matchId,
+                currentTournamentId = game.tournamentId,
+                currentTournamentMatchId = game.tournamentMatchId,
+                currentTournamentRound = game.tournamentRound,
                 winnerPlayerId = game.winnerPlayerId,
                 isRematchRequestedByMe = playerId?.let { it in game.rematchRequestedPlayerIds } == true,
                 isRematchRequestedByOpponent = game.rematchRequestedPlayerIds.any { it != playerId },
@@ -1067,6 +1260,7 @@ class GameController(
                     isFriendProfileLoading = false,
                     isMatchDetailLoading = false,
                     isFriendsLoading = false,
+                    isTournamentLoading = false,
                     isDailyCheckInClaiming = false,
                     claimingMissionCode = null,
                     error = error.message

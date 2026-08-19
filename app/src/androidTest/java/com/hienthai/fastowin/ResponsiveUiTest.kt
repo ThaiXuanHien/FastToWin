@@ -119,7 +119,9 @@ private fun TestResponsiveLobby() {
         onOpenSettings = {},
         onOpenNotifications = {},
         onOpenPractice = {},
-        onClaimDailyCheckIn = {},
-        sessionStartedAtMillis = 1L
+        onOpenTournament = {},
+        onShareRoom = { _, _ -> Result.success(Unit) },
+        onResolveRoomLink = {},
+        onClaimDailyCheckIn = {}
     )
 }

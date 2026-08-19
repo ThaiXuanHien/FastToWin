@@ -20,6 +20,13 @@ import com.hienthai.fastowin.protocol.NotificationSnapshot
 import com.hienthai.fastowin.protocol.RoomPhase
 import com.hienthai.fastowin.protocol.RoomSummary
 import com.hienthai.fastowin.protocol.ServerMessage
+import com.hienthai.fastowin.protocol.TournamentHubSnapshot
+import com.hienthai.fastowin.protocol.TournamentInvitationSnapshot
+import com.hienthai.fastowin.protocol.TournamentMatchPhase
+import com.hienthai.fastowin.protocol.TournamentMatchSnapshot
+import com.hienthai.fastowin.protocol.TournamentPhase
+import com.hienthai.fastowin.protocol.TournamentPlayerSnapshot
+import com.hienthai.fastowin.protocol.TournamentSnapshot
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.security.MessageDigest
@@ -47,6 +54,7 @@ class GameEngine(
     private val friendRepository: FriendRepository = NoOpFriendRepository,
     private val activeRoomRepository: ActiveRoomRepository = NoOpActiveRoomRepository,
     private val notificationRepository: NotificationRepository = NoOpNotificationRepository,
+    private val tournamentRepository: TournamentRepository = InMemoryTournamentRepository(),
     private val timeAttackMillis: Long = DEFAULT_TIME_ATTACK_MILLIS,
     private val rematchTimeoutMillis: Long = DEFAULT_REMATCH_TIMEOUT_MILLIS,
     private val nowMillis: () -> Long = System::currentTimeMillis
@@ -58,6 +66,8 @@ class GameEngine(
     private val rooms = mutableMapOf<String, Room>()
     private val roomInvitations = mutableMapOf<String, RoomInvitationRecord>()
     private val matchmakingEntries = mutableMapOf<String, MatchmakingEntry>()
+    private val tournaments = mutableMapOf<String, Tournament>()
+    private val tournamentInvitations = mutableMapOf<String, TournamentInvitationRecord>()
     private var activeRoomsRestored = false
 
     suspend fun connectGuest(displayName: String, resumeToken: String?): ConnectedPlayer {
@@ -110,6 +120,7 @@ class GameEngine(
             val storedRooms = activeRoomRepository.loadAll()
             val restoredAtMillis = nowMillis()
             val storedInvitations = notificationRepository.loadActiveRoomInvitations(restoredAtMillis)
+            val storedTournaments = tournamentRepository.loadActive()
             mutex.withLock {
                 if (activeRoomsRestored) return@withLock
                 storedRooms.forEach { stored ->
@@ -134,6 +145,19 @@ class GameEngine(
                         room.phase == RoomPhase.WAITING && room.guestId == null
                     ) {
                         roomInvitations[stored.id] = stored.toRecord()
+                    }
+                }
+                storedTournaments.forEach { snapshot ->
+                    val tournament = snapshot.toTournament()
+                    tournaments[tournament.id] = tournament
+                    tournament.matches.forEach { tournamentMatch ->
+                        tournamentMatch.roomId?.let { roomId ->
+                            rooms[roomId]?.apply {
+                                tournamentId = tournament.id
+                                tournamentMatchId = tournamentMatch.id
+                                tournamentRound = tournamentMatch.round
+                            }
+                        }
                     }
                 }
                 activeRoomsRestored = true
@@ -184,6 +208,14 @@ class GameEngine(
         if (message is ClientMessage.GetFriends) return loadFriends(playerId)
         if (message is ClientMessage.GetRoomInvitations) return loadRoomInvitations(playerId)
         if (message is ClientMessage.GetNotifications) return loadNotifications(playerId)
+        if (message is ClientMessage.GetTournamentHub) return loadTournamentHub(playerId)
+        if (message is ClientMessage.CreateTournament) return createTournament(playerId, message)
+        if (message is ClientMessage.InviteTournamentPlayer) return inviteTournamentPlayer(playerId, message)
+        if (message is ClientMessage.RespondTournamentInvitation) {
+            return respondTournamentInvitation(playerId, message)
+        }
+        if (message is ClientMessage.StartTournament) return startTournament(playerId, message.tournamentId)
+        if (message is ClientMessage.LeaveTournament) return leaveTournament(playerId, message.tournamentId)
         if (message is ClientMessage.SyncNotifications) return syncNotifications(playerId, message.notifications)
         if (message is ClientMessage.MarkNotificationsRead) {
             return markNotificationsRead(playerId, message.notificationId)
@@ -236,6 +268,12 @@ class GameEngine(
                 ClientMessage.GetFriends -> HandleResult(emptyList())
                 ClientMessage.GetRoomInvitations -> HandleResult(emptyList())
                 ClientMessage.GetNotifications -> HandleResult(emptyList())
+                ClientMessage.GetTournamentHub -> HandleResult(emptyList())
+                is ClientMessage.CreateTournament -> HandleResult(emptyList())
+                is ClientMessage.InviteTournamentPlayer -> HandleResult(emptyList())
+                is ClientMessage.RespondTournamentInvitation -> HandleResult(emptyList())
+                is ClientMessage.StartTournament -> HandleResult(emptyList())
+                is ClientMessage.LeaveTournament -> HandleResult(emptyList())
                 is ClientMessage.SyncNotifications -> HandleResult(emptyList())
                 is ClientMessage.MarkNotificationsRead -> HandleResult(emptyList())
                 is ClientMessage.DismissNotifications -> HandleResult(emptyList())
@@ -286,12 +324,263 @@ class GameEngine(
                 .onFailure { System.err.println("Could not persist match ${completed.matchId}: ${it.message}") }
         }
         result.changedRoomId?.let { persistRoom(it) }
+        val tournamentDeliveries = result.completedMatch
+            ?.let { advanceTournamentAfterMatch(it.matchId) }
+            .orEmpty()
         val presenceChanged = message is ClientMessage.CreateRoom ||
             message is ClientMessage.JoinRoom || message is ClientMessage.LeaveRoom
         val affectedPlayers = if (presenceChanged) {
             (result.deliveries.flatMap { it.recipients.orEmpty() } + playerId).toSet()
         } else emptySet()
-        return result.deliveries + affectedPlayers.flatMap { presenceUpdates(it) }
+        return result.deliveries + tournamentDeliveries + affectedPlayers.flatMap { presenceUpdates(it) }
+    }
+
+    private suspend fun loadTournamentHub(playerId: String): List<Delivery> {
+        if (!isAccountSession(playerId)) return listOf(accountRequired(playerId))
+        val now = nowMillis()
+        val hubState = mutex.withLock {
+            tournamentInvitations.entries.removeAll { (_, invitation) ->
+                invitation.expiresAtMillis <= now ||
+                    tournaments[invitation.tournamentId]?.phase != TournamentPhase.LOBBY
+            }
+            val active = tournaments.values.firstOrNull { tournament ->
+                playerId in tournament.playerIds() &&
+                    tournament.phase in setOf(TournamentPhase.LOBBY, TournamentPhase.RUNNING)
+            }?.snapshot()
+            val invitations = tournamentInvitations.values
+                .filter { it.inviteeId == playerId && it.expiresAtMillis > now }
+                .map(TournamentInvitationRecord::snapshot)
+            active to invitations
+        }
+        val recent = runCatching { tournamentRepository.loadRecent(playerId, TOURNAMENT_HISTORY_LIMIT) }
+            .getOrElse {
+                System.err.println("Could not load tournament history for $playerId: ${it.message}")
+                emptyList()
+            }
+        return listOf(Delivery(
+            ServerMessage.TournamentHubData(
+                TournamentHubSnapshot(
+                    activeTournament = hubState.first,
+                    invitations = hubState.second,
+                    recentTournaments = recent
+                )
+            ),
+            setOf(playerId)
+        ))
+    }
+
+    private suspend fun createTournament(
+        playerId: String,
+        command: ClientMessage.CreateTournament
+    ): List<Delivery> {
+        if (!isAccountSession(playerId)) return listOf(accountRequired(playerId))
+        validateModeAccess(playerId, command.gameMode)?.let { return listOf(it) }
+        val safeName = command.name.trim().take(MAX_TOURNAMENT_NAME_LENGTH)
+        if (safeName.length < 3) {
+            return listOf(error(playerId, "INVALID_TOURNAMENT_NAME", "Tên giải cần có ít nhất 3 ký tự."))
+        }
+        var snapshotToSave: TournamentSnapshot? = null
+        val deliveries = mutex.withLock {
+            val host = sessionsByPlayerId[playerId]
+                ?.takeIf { it.isConnected && it.resumeToken == null }
+                ?: return@withLock listOf(error(playerId, "SESSION_NOT_FOUND", "Phiên chơi không còn hợp lệ."))
+            if (activeTournamentFor(playerId) != null) {
+                return@withLock listOf(error(playerId, "TOURNAMENT_ALREADY_ACTIVE", "Bạn đang tham gia một giải khác."))
+            }
+            if (roomFor(playerId) != null || playerId in matchmakingEntries) {
+                return@withLock listOf(error(playerId, "PLAYER_BUSY", "Hãy rời phòng hoặc hủy ghép trận trước khi tạo giải."))
+            }
+            val tournament = Tournament(
+                id = UUID.randomUUID().toString(),
+                name = safeName,
+                hostId = playerId,
+                gameMode = command.gameMode,
+                participants = mutableListOf(TournamentParticipant(playerId, host.displayName)),
+                matches = mutableListOf(
+                    TournamentMatch(UUID.randomUUID().toString(), round = 1, position = 1),
+                    TournamentMatch(UUID.randomUUID().toString(), round = 1, position = 2),
+                    TournamentMatch(UUID.randomUUID().toString(), round = 2, position = 1)
+                ),
+                createdAtMillis = nowMillis()
+            )
+            tournaments[tournament.id] = tournament
+            val snapshot = tournament.snapshot()
+            snapshotToSave = snapshot
+            listOf(
+                Delivery(ServerMessage.TournamentUpdated(snapshot), setOf(playerId)),
+                Delivery(ServerMessage.TournamentNotice("Đã tạo giải riêng 4 người."), setOf(playerId))
+            )
+        }
+        snapshotToSave?.let { tournamentRepository.save(it) }
+        return deliveries
+    }
+
+    private suspend fun inviteTournamentPlayer(
+        playerId: String,
+        command: ClientMessage.InviteTournamentPlayer
+    ): List<Delivery> {
+        if (!isAccountSession(playerId)) return listOf(accountRequired(playerId))
+        if (friendRepository.isBlockedEitherWay(playerId, command.friendPlayerId)) {
+            return listOf(error(playerId, "INTERACTION_BLOCKED", "Không thể mời người chơi này vào giải."))
+        }
+        if (!friendRepository.areFriends(playerId, command.friendPlayerId)) {
+            return listOf(error(playerId, "NOT_FRIENDS", "Người chơi này chưa phải bạn bè."))
+        }
+        return mutex.withLock {
+            val tournament = tournaments[command.tournamentId]
+                ?.takeIf { it.hostId == playerId && it.phase == TournamentPhase.LOBBY }
+                ?: return@withLock listOf(error(playerId, "TOURNAMENT_NOT_INVITABLE", "Giải không còn nhận lời mời."))
+            if (tournament.participants.size >= TOURNAMENT_PLAYER_COUNT) {
+                return@withLock listOf(error(playerId, "TOURNAMENT_FULL", "Giải đã đủ 4 người."))
+            }
+            if (command.friendPlayerId in tournament.playerIds()) {
+                return@withLock listOf(error(playerId, "PLAYER_ALREADY_JOINED", "Người chơi đã ở trong giải."))
+            }
+            val friend = sessionsByPlayerId[command.friendPlayerId]
+                ?.takeIf { it.isConnected && it.resumeToken == null }
+                ?: return@withLock listOf(error(playerId, "FRIEND_OFFLINE", "Bạn bè hiện không online."))
+            if (activeTournamentFor(friend.playerId) != null || roomFor(friend.playerId) != null) {
+                return@withLock listOf(error(playerId, "FRIEND_BUSY", "Bạn bè đang bận ở phòng hoặc giải khác."))
+            }
+            tournamentInvitations.entries.removeAll { (_, invitation) ->
+                invitation.tournamentId == tournament.id && invitation.inviteeId == friend.playerId
+            }
+            val invitation = TournamentInvitationRecord(
+                id = UUID.randomUUID().toString(),
+                tournamentId = tournament.id,
+                inviteeId = friend.playerId,
+                hostId = playerId,
+                hostDisplayName = sessionsByPlayerId[playerId]?.displayName.orEmpty(),
+                tournamentName = tournament.name,
+                gameMode = tournament.gameMode,
+                expiresAtMillis = nowMillis() + TOURNAMENT_INVITATION_TTL_MILLIS
+            )
+            tournamentInvitations[invitation.id] = invitation
+            listOf(
+                Delivery(ServerMessage.TournamentInvitation(invitation.snapshot()), setOf(friend.playerId)),
+                Delivery(ServerMessage.TournamentNotice("Đã gửi lời mời tham gia giải."), setOf(playerId))
+            )
+        }
+    }
+
+    private suspend fun respondTournamentInvitation(
+        playerId: String,
+        command: ClientMessage.RespondTournamentInvitation
+    ): List<Delivery> {
+        if (!isAccountSession(playerId)) return listOf(accountRequired(playerId))
+        var snapshotToSave: TournamentSnapshot? = null
+        val deliveries = mutex.withLock {
+            val invitation = tournamentInvitations.remove(command.invitationId)
+                ?.takeIf { it.inviteeId == playerId && it.expiresAtMillis > nowMillis() }
+                ?: return@withLock listOf(error(playerId, "TOURNAMENT_INVITATION_EXPIRED", "Lời mời giải đấu đã hết hạn."))
+            if (!command.accept) {
+                return@withLock listOf(
+                    Delivery(ServerMessage.TournamentNotice("Đã từ chối lời mời giải đấu."), setOf(playerId)),
+                    Delivery(ServerMessage.TournamentNotice("Một người bạn đã từ chối lời mời giải đấu."), setOf(invitation.hostId))
+                )
+            }
+            val tournament = tournaments[invitation.tournamentId]
+                ?.takeIf { it.phase == TournamentPhase.LOBBY }
+                ?: return@withLock listOf(error(playerId, "TOURNAMENT_NOT_FOUND", "Giải đấu không còn tồn tại."))
+            if (tournament.participants.size >= TOURNAMENT_PLAYER_COUNT) {
+                return@withLock listOf(error(playerId, "TOURNAMENT_FULL", "Giải đã đủ 4 người."))
+            }
+            if (activeTournamentFor(playerId) != null || roomFor(playerId) != null || playerId in matchmakingEntries) {
+                return@withLock listOf(error(playerId, "PLAYER_BUSY", "Hãy rời phòng hoặc giải hiện tại trước."))
+            }
+            val session = sessionsByPlayerId[playerId]
+                ?.takeIf { it.isConnected && it.resumeToken == null }
+                ?: return@withLock listOf(error(playerId, "SESSION_NOT_FOUND", "Phiên chơi không còn hợp lệ."))
+            tournament.participants += TournamentParticipant(playerId, session.displayName)
+            val snapshot = tournament.snapshot()
+            snapshotToSave = snapshot
+            listOf(
+                Delivery(ServerMessage.TournamentUpdated(snapshot), tournament.playerIds()),
+                Delivery(ServerMessage.TournamentNotice("Đã tham gia giải ${tournament.name}."), setOf(playerId))
+            )
+        }
+        snapshotToSave?.let { tournamentRepository.save(it) }
+        return deliveries
+    }
+
+    private suspend fun startTournament(playerId: String, tournamentId: String): List<Delivery> {
+        if (!isAccountSession(playerId)) return listOf(accountRequired(playerId))
+        var snapshotToSave: TournamentSnapshot? = null
+        var roomIdsToSave = emptyList<String>()
+        val deliveries = mutex.withLock {
+            val tournament = tournaments[tournamentId]
+                ?.takeIf { it.hostId == playerId && it.phase == TournamentPhase.LOBBY }
+                ?: return@withLock listOf(error(playerId, "TOURNAMENT_NOT_STARTABLE", "Bạn không thể bắt đầu giải này."))
+            if (tournament.participants.size != TOURNAMENT_PLAYER_COUNT) {
+                return@withLock listOf(error(playerId, "TOURNAMENT_NOT_FULL", "Cần đủ 4 người để bắt đầu."))
+            }
+            val unavailable = tournament.playerIds().firstOrNull { participantId ->
+                sessionsByPlayerId[participantId]?.let { !it.isConnected || it.resumeToken != null } != false ||
+                    roomFor(participantId) != null || participantId in matchmakingEntries
+            }
+            if (unavailable != null) {
+                return@withLock listOf(error(playerId, "TOURNAMENT_PLAYER_UNAVAILABLE", "Tất cả người chơi phải online và không ở phòng khác."))
+            }
+
+            tournament.phase = TournamentPhase.RUNNING
+            tournament.startedAtMillis = nowMillis()
+            val players = tournament.participants.map(TournamentParticipant::playerId)
+            val semifinalPairs = listOf(players[0] to players[3], players[1] to players[2])
+            val gameDeliveries = mutableListOf<Delivery>()
+            tournament.matches.filter { it.round == 1 }.sortedBy { it.position }
+                .zip(semifinalPairs)
+                .forEach { (match, pair) ->
+                    match.playerOneId = pair.first
+                    match.playerTwoId = pair.second
+                    val room = createTournamentRoom(tournament, match)
+                    gameDeliveries += Delivery(ServerMessage.GameStarted(room.snapshot()), room.playerIds())
+                }
+            tournamentInvitations.entries.removeAll { it.value.tournamentId == tournament.id }
+            val snapshot = tournament.snapshot()
+            snapshotToSave = snapshot
+            roomIdsToSave = tournament.matches.mapNotNull(TournamentMatch::roomId)
+            listOf(Delivery(ServerMessage.TournamentUpdated(snapshot), tournament.playerIds())) + gameDeliveries
+        }
+        snapshotToSave?.let { tournamentRepository.save(it) }
+        roomIdsToSave.forEach { persistRoom(it) }
+        return deliveries + snapshotToSave?.players.orEmpty().flatMap { presenceUpdates(it.playerId) }
+    }
+
+    private suspend fun leaveTournament(playerId: String, tournamentId: String): List<Delivery> {
+        if (!isAccountSession(playerId)) return listOf(accountRequired(playerId))
+        var snapshotToSave: TournamentSnapshot? = null
+        val deliveries = mutex.withLock {
+            val tournament = tournaments[tournamentId]
+                ?.takeIf { playerId in it.playerIds() }
+                ?: return@withLock listOf(error(playerId, "TOURNAMENT_NOT_FOUND", "Bạn không còn ở trong giải này."))
+            if (tournament.phase != TournamentPhase.LOBBY) {
+                return@withLock listOf(error(playerId, "TOURNAMENT_ALREADY_STARTED", "Không thể rời giải sau khi đã bắt đầu."))
+            }
+            if (tournament.hostId == playerId) {
+                tournament.phase = TournamentPhase.CANCELLED
+                tournament.finishedAtMillis = nowMillis()
+                tournamentInvitations.entries.removeAll { it.value.tournamentId == tournament.id }
+                val snapshot = tournament.snapshot()
+                snapshotToSave = snapshot
+                listOf(
+                    Delivery(ServerMessage.TournamentUpdated(snapshot), tournament.playerIds()),
+                    Delivery(ServerMessage.TournamentNotice("Chủ giải đã hủy giải đấu."), tournament.playerIds())
+                )
+            } else {
+                tournament.participants.removeAll { it.playerId == playerId }
+                tournamentInvitations.entries.removeAll {
+                    it.value.tournamentId == tournament.id && it.value.inviteeId == playerId
+                }
+                val snapshot = tournament.snapshot()
+                snapshotToSave = snapshot
+                listOf(
+                    Delivery(ServerMessage.TournamentUpdated(snapshot), tournament.playerIds()),
+                    Delivery(ServerMessage.TournamentNotice("Đã rời giải đấu."), setOf(playerId))
+                )
+            }
+        }
+        snapshotToSave?.let { tournamentRepository.save(it) }
+        return deliveries + loadTournamentHub(playerId)
     }
 
     private suspend fun loadFriends(playerId: String): List<Delivery> {
@@ -750,6 +1039,9 @@ class GameEngine(
         if (!isAccountSession(playerId)) {
             return listOf(error(playerId, "ACCOUNT_REQUIRED", "Hãy đăng nhập để ghép trận trực tuyến."))
         }
+        if (mutex.withLock { activeTournamentFor(playerId) != null }) {
+            return listOf(error(playerId, "TOURNAMENT_ACTIVE", "Hãy rời hoặc hoàn tất giải đấu hiện tại trước."))
+        }
         val profile = playerProfileRepository.findByPlayerId(playerId)
         val level = profile?.progression?.level ?: 1
         if (level < command.gameMode.unlockLevel) {
@@ -1125,7 +1417,9 @@ class GameEngine(
                 else -> null
             }?.let { persistRoom(it) }
         }
-        return advances.map(TimedAdvance::delivery)
+        val tournamentDeliveries = advances.mapNotNull(TimedAdvance::completedMatch)
+            .flatMap { advanceTournamentAfterMatch(it.matchId) }
+        return advances.map(TimedAdvance::delivery) + tournamentDeliveries
     }
 
     suspend fun markDisconnected(playerId: String): List<Delivery> {
@@ -1226,6 +1520,9 @@ class GameEngine(
             .map(RoomInvitationRecord::toMessage)
 
     private fun createRoom(player: GuestSession, command: ClientMessage.CreateRoom): List<Delivery> {
+        if (activeTournamentFor(player.playerId) != null) {
+            return listOf(error(player.playerId, "TOURNAMENT_ACTIVE", "Hãy rời hoặc hoàn tất giải đấu hiện tại trước."))
+        }
         if (roomFor(player.playerId) != null) {
             return listOf(error(player.playerId, "ALREADY_IN_ROOM", "Bạn đang ở trong một phòng khác."))
         }
@@ -1249,6 +1546,9 @@ class GameEngine(
     }
 
     private fun joinRoom(player: GuestSession, command: ClientMessage.JoinRoom): List<Delivery> {
+        if (activeTournamentFor(player.playerId) != null) {
+            return listOf(error(player.playerId, "TOURNAMENT_ACTIVE", "Hãy rời hoặc hoàn tất giải đấu hiện tại trước."))
+        }
         if (roomFor(player.playerId) != null) {
             return listOf(error(player.playerId, "ALREADY_IN_ROOM", "Bạn đang ở trong một phòng khác."))
         }
@@ -1328,6 +1628,9 @@ class GameEngine(
         if (player.playerId !in room.playerIds()) {
             return listOf(error(player.playerId, "NOT_IN_ROOM", "Bạn không ở trong phòng này."))
         }
+        if (room.tournamentId != null && room.phase == RoomPhase.PLAYING) {
+            return listOf(error(player.playerId, "TOURNAMENT_MATCH_ACTIVE", "Không thể rời khi trận đấu giải đang diễn ra."))
+        }
 
         val participants = room.playerIds()
         rooms.remove(room.id)
@@ -1346,6 +1649,9 @@ class GameEngine(
             ?: return HandleResult(listOf(error(player.playerId, "ROOM_NOT_FOUND", "Phòng không còn tồn tại.")))
         if (player.playerId !in room.playerIds()) {
             return HandleResult(listOf(error(player.playerId, "NOT_IN_ROOM", "Bạn không ở trong phòng này.")))
+        }
+        if (room.tournamentId != null) {
+            return HandleResult(listOf(error(player.playerId, "TOURNAMENT_REMATCH_DISABLED", "Trận đấu giải không hỗ trợ đấu lại.")))
         }
         if (room.matchType == MatchType.RANKED) {
             return HandleResult(
@@ -1557,6 +1863,143 @@ class GameEngine(
         )
     }
 
+    private fun createTournamentRoom(tournament: Tournament, match: TournamentMatch): Room {
+        val playerOneId = checkNotNull(match.playerOneId)
+        val playerTwoId = checkNotNull(match.playerTwoId)
+        val roomId = UUID.randomUUID().toString()
+        val roundName = if (match.round == 1) "Bán kết ${match.position}" else "Chung kết"
+        val room = Room(
+            id = roomId,
+            matchId = roomId,
+            name = "${tournament.name} • $roundName",
+            hostId = playerOneId,
+            password = null,
+            gameMode = tournament.gameMode,
+            matchType = MatchType.CASUAL,
+            guestId = playerTwoId,
+            tournamentId = tournament.id,
+            tournamentMatchId = match.id,
+            tournamentRound = match.round
+        )
+        room.scores[playerTwoId] = 0
+        room.startMatch(nowMillis(), timeAttackMillis)
+        rooms[room.id] = room
+        match.roomId = room.id
+        match.phase = TournamentMatchPhase.PLAYING
+        return room
+    }
+
+    private suspend fun advanceTournamentAfterMatch(matchId: String): List<Delivery> {
+        var snapshotToSave: TournamentSnapshot? = null
+        var removedRoomId: String? = null
+        var createdRoomId: String? = null
+        val deliveries = mutex.withLock {
+            val tournament = tournaments.values.firstOrNull { candidate ->
+                candidate.phase == TournamentPhase.RUNNING &&
+                    candidate.matches.any { it.roomId == matchId && it.phase == TournamentMatchPhase.PLAYING }
+            } ?: return@withLock emptyList()
+            val tournamentMatch = tournament.matches.first { it.roomId == matchId }
+            val room = rooms[matchId] ?: return@withLock emptyList()
+            room.snapshot()
+            val winnerId = room.winnerId() ?: return@withLock emptyList()
+
+            tournamentMatch.winnerPlayerId = winnerId
+            tournamentMatch.phase = TournamentMatchPhase.FINISHED
+            removedRoomId = room.id
+            rooms.remove(room.id)
+
+            val gameDeliveries = mutableListOf<Delivery>()
+            if (tournamentMatch.round == 1) {
+                val semifinals = tournament.matches.filter { it.round == 1 }.sortedBy { it.position }
+                if (semifinals.all { it.phase == TournamentMatchPhase.FINISHED }) {
+                    val final = tournament.matches.single { it.round == 2 }
+                    final.playerOneId = semifinals[0].winnerPlayerId
+                    final.playerTwoId = semifinals[1].winnerPlayerId
+                    val finalRoom = createTournamentRoom(tournament, final)
+                    createdRoomId = finalRoom.id
+                    gameDeliveries += Delivery(ServerMessage.GameStarted(finalRoom.snapshot()), finalRoom.playerIds())
+                }
+            } else {
+                tournament.phase = TournamentPhase.FINISHED
+                tournament.championPlayerId = winnerId
+                tournament.finishedAtMillis = nowMillis()
+            }
+
+            val snapshot = tournament.snapshot()
+            snapshotToSave = snapshot
+            listOf(Delivery(ServerMessage.TournamentUpdated(snapshot), tournament.playerIds())) + gameDeliveries
+        }
+        snapshotToSave?.let { tournamentRepository.save(it) }
+        removedRoomId?.let { persistRoom(it) }
+        createdRoomId?.let { persistRoom(it) }
+        return deliveries + snapshotToSave?.players.orEmpty().flatMap { presenceUpdates(it.playerId) }
+    }
+
+    private fun activeTournamentFor(playerId: String): Tournament? = tournaments.values.firstOrNull { tournament ->
+        playerId in tournament.playerIds() &&
+            tournament.phase in setOf(TournamentPhase.LOBBY, TournamentPhase.RUNNING)
+    }
+
+    private fun Tournament.snapshot(): TournamentSnapshot = TournamentSnapshot(
+        tournamentId = id,
+        name = name,
+        hostPlayerId = hostId,
+        gameMode = gameMode,
+        phase = phase,
+        maxPlayers = TOURNAMENT_PLAYER_COUNT,
+        players = participants.map { participant ->
+            TournamentPlayerSnapshot(
+                playerId = participant.playerId,
+                displayName = sessionsByPlayerId[participant.playerId]?.displayName ?: participant.displayName,
+                isHost = participant.playerId == hostId,
+                isOnline = sessionsByPlayerId[participant.playerId]?.let {
+                    it.isConnected && it.resumeToken == null
+                } == true
+            )
+        },
+        matches = matches.sortedWith(compareBy(TournamentMatch::round, TournamentMatch::position)).map { match ->
+            TournamentMatchSnapshot(
+                matchId = match.id,
+                round = match.round,
+                position = match.position,
+                playerOneId = match.playerOneId,
+                playerTwoId = match.playerTwoId,
+                winnerPlayerId = match.winnerPlayerId,
+                roomId = match.roomId,
+                phase = match.phase
+            )
+        },
+        championPlayerId = championPlayerId,
+        createdAtEpochMillis = createdAtMillis,
+        startedAtEpochMillis = startedAtMillis,
+        finishedAtEpochMillis = finishedAtMillis
+    )
+
+    private fun TournamentSnapshot.toTournament(): Tournament = Tournament(
+        id = tournamentId,
+        name = name,
+        hostId = hostPlayerId,
+        gameMode = gameMode,
+        participants = players.mapTo(mutableListOf()) { TournamentParticipant(it.playerId, it.displayName) },
+        matches = matches.mapTo(mutableListOf()) { match ->
+            TournamentMatch(
+                id = match.matchId,
+                round = match.round,
+                position = match.position,
+                playerOneId = match.playerOneId,
+                playerTwoId = match.playerTwoId,
+                winnerPlayerId = match.winnerPlayerId,
+                roomId = match.roomId,
+                phase = match.phase
+            )
+        },
+        phase = phase,
+        championPlayerId = championPlayerId,
+        createdAtMillis = createdAtEpochMillis,
+        startedAtMillis = startedAtEpochMillis,
+        finishedAtMillis = finishedAtEpochMillis
+    )
+
     private fun roomFor(playerId: String): Room? = rooms.values.firstOrNull { playerId in it.playerIds() }
 
     private inline fun <reified T : ServerMessage> List<Delivery>.roomIdFrom(): String? {
@@ -1704,6 +2147,15 @@ class GameEngine(
 
     private fun Room.snapshot(): GameSnapshot {
         val metricsByPlayer = selectionMetrics()
+        if (phase == RoomPhase.FINISHED && tournamentId != null && winnerId() == null) {
+            forcedWinnerId = playerIds().sortedWith(
+                compareByDescending<String> { scores[it] ?: 0 }
+                    .thenByDescending { metricsByPlayer[it]?.correct ?: 0 }
+                    .thenBy { metricsByPlayer[it]?.wrong ?: 0 }
+                    .thenBy { metricsByPlayer[it]?.averageReactionMillis ?: Long.MAX_VALUE }
+                    .thenBy { it }
+            ).firstOrNull()
+        }
         return GameSnapshot(
             roomId = id,
             matchId = matchId,
@@ -1750,7 +2202,10 @@ class GameEngine(
             finishedAtEpochMillis = finishedAtEpochMillis,
             winnerPlayerId = if (phase == RoomPhase.FINISHED) winnerId() else null,
             rematchRequestedPlayerIds = rematchRequestedPlayerIds.toList(),
-            rematchExpiresAtEpochMillis = rematchExpiresAtEpochMillis
+            rematchExpiresAtEpochMillis = rematchExpiresAtEpochMillis,
+            tournamentId = tournamentId,
+            tournamentMatchId = tournamentMatchId,
+            tournamentRound = tournamentRound
         )
     }
 
@@ -1911,6 +2366,9 @@ class GameEngine(
         val password: PasswordHash?,
         val gameMode: com.hienthai.fastowin.protocol.ProtocolGameMode,
         val matchType: MatchType = MatchType.CASUAL,
+        var tournamentId: String? = null,
+        var tournamentMatchId: String? = null,
+        var tournamentRound: Int? = null,
         var guestId: String? = null,
         var phase: RoomPhase = RoomPhase.WAITING,
         var numbers: List<Int> = emptyList(),
@@ -2011,6 +2469,59 @@ class GameEngine(
         id, inviterId, inviteeId, roomId, inviterDisplayName, roomName, expiresAtMillis
     )
 
+    private data class TournamentParticipant(
+        val playerId: String,
+        val displayName: String
+    )
+
+    private data class TournamentMatch(
+        val id: String,
+        val round: Int,
+        val position: Int,
+        var playerOneId: String? = null,
+        var playerTwoId: String? = null,
+        var winnerPlayerId: String? = null,
+        var roomId: String? = null,
+        var phase: TournamentMatchPhase = TournamentMatchPhase.PENDING
+    )
+
+    private data class Tournament(
+        val id: String,
+        val name: String,
+        val hostId: String,
+        val gameMode: ProtocolGameMode,
+        val participants: MutableList<TournamentParticipant>,
+        val matches: MutableList<TournamentMatch>,
+        var phase: TournamentPhase = TournamentPhase.LOBBY,
+        var championPlayerId: String? = null,
+        val createdAtMillis: Long,
+        var startedAtMillis: Long? = null,
+        var finishedAtMillis: Long? = null
+    ) {
+        fun playerIds(): Set<String> = participants.mapTo(linkedSetOf(), TournamentParticipant::playerId)
+    }
+
+    private data class TournamentInvitationRecord(
+        val id: String,
+        val tournamentId: String,
+        val inviteeId: String,
+        val hostId: String,
+        val hostDisplayName: String,
+        val tournamentName: String,
+        val gameMode: ProtocolGameMode,
+        val expiresAtMillis: Long
+    ) {
+        fun snapshot() = TournamentInvitationSnapshot(
+            invitationId = id,
+            tournamentId = tournamentId,
+            tournamentName = tournamentName,
+            hostPlayerId = hostId,
+            hostDisplayName = hostDisplayName,
+            gameMode = gameMode,
+            expiresAtEpochMillis = expiresAtMillis
+        )
+    }
+
     private data class MatchmakingEntry(
         val playerId: String,
         val gameMode: com.hienthai.fastowin.protocol.ProtocolGameMode,
@@ -2043,6 +2554,10 @@ class GameEngine(
         const val MAX_REQUESTS_PER_MATCH = 2_000
         const val MAX_NOTIFICATION_SYNC_BATCH = 20
         const val LEADERBOARD_SIZE = 100
+        const val TOURNAMENT_PLAYER_COUNT = 4
+        const val MAX_TOURNAMENT_NAME_LENGTH = 48
+        const val TOURNAMENT_HISTORY_LIMIT = 10
+        const val TOURNAMENT_INVITATION_TTL_MILLIS = 10 * 60 * 1000L
         const val DEFAULT_TIME_ATTACK_MILLIS = 60_000L
         const val TIME_BONUS_START_MILLIS = 30_000L
         const val TIME_BONUS_CORRECT_MILLIS = 2_000L

@@ -5,6 +5,7 @@ import com.hienthai.fastowin.protocol.MatchHistorySnapshot
 import com.hienthai.fastowin.protocol.AchievementSnapshot
 import com.hienthai.fastowin.protocol.PlayerProfileSnapshot
 import com.hienthai.fastowin.protocol.PlayerStatisticsSnapshot
+import com.hienthai.fastowin.protocol.GameModeStatisticsSnapshot
 import com.hienthai.fastowin.protocol.ProtocolGameMode
 import com.hienthai.fastowin.protocol.MatchType
 import com.hienthai.fastowin.protocol.rankedTierFor
@@ -114,6 +115,38 @@ class PostgresPlayerProfileRepository(
                                 endedAtEpochMillis = result.getTimestamp("ended_at").time,
                                 eloChange = result.getInt("elo_change"),
                                 matchType = MatchType.valueOf(result.getString("match_type"))
+                            )
+                        )
+                    }
+                }
+            }
+            val modeStatistics = connection.prepareStatement(
+                """
+                SELECT m.game_mode,
+                       COUNT(*) AS total_matches,
+                       COUNT(*) FILTER (WHERE mine.outcome = 'WIN') AS wins,
+                       COUNT(*) FILTER (WHERE mine.outcome = 'LOSS') AS losses,
+                       COUNT(*) FILTER (WHERE mine.outcome = 'DRAW') AS draws,
+                       COALESCE(MAX(mine.score), 0) AS highest_score,
+                       COALESCE(ROUND(AVG(mine.score)), 0) AS average_score
+                FROM match_players mine
+                JOIN matches m ON m.id = mine.match_id
+                WHERE mine.user_id = ?
+                GROUP BY m.game_mode
+                """.trimIndent()
+            ).use { statement ->
+                statement.setObject(1, userId)
+                statement.executeQuery().use { result ->
+                    buildList {
+                        while (result.next()) add(
+                            GameModeStatisticsSnapshot(
+                                gameMode = ProtocolGameMode.valueOf(result.getString("game_mode")),
+                                totalMatches = result.getInt("total_matches"),
+                                wins = result.getInt("wins"),
+                                losses = result.getInt("losses"),
+                                draws = result.getInt("draws"),
+                                highestScore = result.getInt("highest_score"),
+                                averageScore = result.getInt("average_score")
                             )
                         )
                     }
@@ -318,6 +351,7 @@ class PostgresPlayerProfileRepository(
             base.copy(
                 recentMatches = recentMatches,
                 achievements = achievements,
+                modeStatistics = modeStatistics,
                 progression = PlayerProgressionSnapshot(
                     level = level,
                     experiencePoints = experiencePoints,

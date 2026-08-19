@@ -2,9 +2,13 @@ package com.hienthai.fastowin
 
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.Column
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -19,6 +23,7 @@ import com.hienthai.fastowin.data.network.ResumeTokenStore
 import com.hienthai.fastowin.data.preferences.AppPreferences
 import com.hienthai.fastowin.data.preferences.AppPreferencesStore
 import com.hienthai.fastowin.platform.GameFeedbackEffect
+import com.hienthai.fastowin.platform.ChallengeDeepLinkRouter
 import com.hienthai.fastowin.platform.playFeedbackSound
 import com.hienthai.fastowin.ui.screens.AuthScreen
 import com.hienthai.fastowin.ui.screens.GameScreen
@@ -34,10 +39,18 @@ import com.hienthai.fastowin.ui.screens.MainTab
 import com.hienthai.fastowin.ui.screens.SettingsScreen
 import com.hienthai.fastowin.ui.screens.TutorialScreen
 import com.hienthai.fastowin.ui.screens.PracticeScreen
+import com.hienthai.fastowin.ui.screens.PracticeLauncherDialog
 import com.hienthai.fastowin.ui.screens.NotificationsScreen
+import com.hienthai.fastowin.ui.screens.TournamentInvitationDialog
+import com.hienthai.fastowin.ui.screens.TournamentScreen
 import com.hienthai.fastowin.ui.theme.FastToWinTheme
 import com.hienthai.fastowin.platform.epochMillis
+import com.hienthai.fastowin.platform.RoomDeepLink
+import com.hienthai.fastowin.platform.RoomDeepLinkRouter
+import com.hienthai.fastowin.platform.buildRoomShareText
+import com.hienthai.fastowin.platform.rememberTextSharer
 import com.hienthai.fastowin.navigation.GameMode
+import com.hienthai.fastowin.state.PracticeChallenge
 
 @Composable
 fun FastToWinApp(
@@ -51,6 +64,8 @@ fun FastToWinApp(
         AuthController(serverUrl, authSessionStore, resumeTokenStore, devicePlatform)
     }
     val authState by authController.state.collectAsState()
+    val pendingRoomLink by RoomDeepLinkRouter.pendingLink.collectAsState()
+    val pendingChallenge by ChallengeDeepLinkRouter.pendingChallenge.collectAsState()
     var appPreferences by remember(preferencesStore) {
         mutableStateOf(preferencesStore.load())
     }
@@ -102,7 +117,11 @@ fun FastToWinApp(
                     onSessionExpired = { authController.expireSession() },
                     onProfileDisplayNameChanged = authController::updateStoredDisplayName,
                     appPreferences = appPreferences,
-                    onPreferencesChange = updatePreferences
+                    onPreferencesChange = updatePreferences,
+                    pendingRoomLink = pendingRoomLink,
+                    onRoomLinkConsumed = RoomDeepLinkRouter::consume,
+                    pendingChallenge = pendingChallenge,
+                    onChallengeLinkConsumed = ChallengeDeepLinkRouter::consume
                 )
             }
         }
@@ -129,7 +148,11 @@ private fun GameContent(
     onSessionExpired: () -> Unit,
     onProfileDisplayNameChanged: (String) -> Unit,
     appPreferences: AppPreferences,
-    onPreferencesChange: (AppPreferences) -> Unit
+    onPreferencesChange: (AppPreferences) -> Unit,
+    pendingRoomLink: RoomDeepLink?,
+    onRoomLinkConsumed: (String) -> Unit,
+    pendingChallenge: PracticeChallenge?,
+    onChallengeLinkConsumed: (String) -> Unit
 ) {
     val controller = remember(serverUrl, resumeTokenStore, accountUserId) {
         GameController(
@@ -142,12 +165,58 @@ private fun GameContent(
         )
     }
     val state by controller.uiState.collectAsState()
+    val textSharer = rememberTextSharer()
     val sessionStartedAtMillis = remember { epochMillis() }
     var showGameModePicker by remember { mutableStateOf(false) }
+    var showPracticeLauncher by remember { mutableStateOf(false) }
     var showPracticeModePicker by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
     var showTutorial by remember { mutableStateOf(!appPreferences.hasCompletedTutorial) }
     var practiceMode by remember { mutableStateOf<GameMode?>(null) }
+    var practiceChallenge by remember { mutableStateOf<PracticeChallenge?>(null) }
+    var challengeLinkError by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(pendingRoomLink?.roomId, controller) {
+        pendingRoomLink?.let { link ->
+            controller.openRoomLink(link.roomId)
+            onRoomLinkConsumed(link.roomId)
+        }
+    }
+
+    LaunchedEffect(
+        pendingChallenge?.code,
+        state.profile?.progression?.level,
+        state.currentRoomId,
+        state.isMatchStarted,
+        state.isGameOver,
+        state.isMatchmaking,
+        isGuest
+    ) {
+        val challenge = pendingChallenge ?: return@LaunchedEffect
+        if (!isGuest && state.profile == null) return@LaunchedEffect
+
+        val playerLevel = state.profile?.progression?.level ?: 1
+        challengeLinkError = when {
+            state.currentRoomId != null || state.isMatchStarted || state.isGameOver || state.isMatchmaking ->
+                "Hãy kết thúc hoặc rời trận hiện tại trước khi mở thử thách."
+            playerLevel < challenge.mode.unlockLevel ->
+                "Chế độ ${challenge.mode.title} mở khóa ở cấp ${challenge.mode.unlockLevel}."
+            else -> null
+        }
+
+        if (challengeLinkError == null) {
+            controller.backToModeSelection()
+            controller.openHome()
+            showGameModePicker = false
+            showPracticeLauncher = false
+            showPracticeModePicker = false
+            showSettings = false
+            showTutorial = false
+            practiceChallenge = challenge
+            practiceMode = challenge.mode
+        }
+        onChallengeLinkConsumed(challenge.code)
+    }
 
     DisposableEffect(controller) {
         onDispose { controller.close() }
@@ -158,6 +227,23 @@ private fun GameContent(
             invitation = invitation,
             onRespond = { accept -> controller.respondRoomInvitation(invitation.invitationId, accept) },
             onDefer = controller::dismissRoomInvitationPrompt
+        )
+    }
+    state.tournamentInvitationPrompt?.let { invitation ->
+        TournamentInvitationDialog(
+            invitation = invitation,
+            onRespond = { accept -> controller.respondTournamentInvitation(invitation.invitationId, accept) },
+            onDefer = controller::dismissTournamentInvitationPrompt
+        )
+    }
+    challengeLinkError?.let { message ->
+        AlertDialog(
+            onDismissRequest = { challengeLinkError = null },
+            title = { Text("Không thể mở thử thách") },
+            text = { Text(message) },
+            confirmButton = {
+                TextButton(onClick = { challengeLinkError = null }) { Text("Đã hiểu") }
+            }
         )
     }
     if (showGameModePicker) {
@@ -179,8 +265,24 @@ private fun GameContent(
             onDismiss = { showPracticeModePicker = false },
             onSelect = { mode ->
                 showPracticeModePicker = false
+                practiceChallenge = null
                 practiceMode = mode
             }
+        )
+    }
+    if (showPracticeLauncher) {
+        PracticeLauncherDialog(
+            onDismiss = { showPracticeLauncher = false },
+            onStartNew = {
+                showPracticeLauncher = false
+                showPracticeModePicker = true
+            },
+            onOpenChallenge = { challenge ->
+                showPracticeLauncher = false
+                practiceChallenge = challenge
+                practiceMode = challenge.mode
+            },
+            playerLevel = state.profile?.progression?.level ?: 1
         )
     }
 
@@ -199,6 +301,17 @@ private fun GameContent(
     }
 
     when {
+                state.isTournamentOpen -> TournamentScreen(
+                    state = state,
+                    onBack = controller::closeTournament,
+                    onCreate = controller::createTournament,
+                    onInvite = controller::inviteTournamentPlayer,
+                    onRespondInvitation = controller::respondTournamentInvitation,
+                    onStart = controller::startTournament,
+                    onLeave = controller::leaveTournament,
+                    onOpenFriendProfile = controller::openFriendProfile
+                )
+
                 state.isFriendProfileOpen -> ProfileScreen(
                     state = state,
                     profileOverride = state.friendProfile,
@@ -310,6 +423,7 @@ private fun GameContent(
                     onRevokeSession = onRevokeSession,
                     onRevokeAllSessions = onRevokeAllSessions,
                     onLogout = onLogout,
+                    sessionStartedAtMillis = sessionStartedAtMillis,
                     showBackButton = !showTopLevelNavigation,
                     modifier = contentModifier
                 ) }
@@ -323,6 +437,7 @@ private fun GameContent(
                     onConnectOpponent = controller::connectWithOpponent,
                     onBlockOpponent = controller::blockOpponentAfterMatch,
                     onOpenFriendProfile = controller::openFriendProfile,
+                    onOpenTournament = controller::openTournamentAfterMatch,
                     preferences = appPreferences
                 )
 
@@ -332,6 +447,7 @@ private fun GameContent(
                     onFinish = {},
                     onOpenFriendProfile = controller::openFriendProfile,
                     onExit = controller::leaveRoom,
+                    allowExit = !state.isTournamentMatch,
                     preferences = appPreferences
                 )
 
@@ -348,8 +464,12 @@ private fun GameContent(
 
                 practiceMode != null -> PracticeScreen(
                     mode = checkNotNull(practiceMode),
+                    challenge = practiceChallenge,
                     preferences = appPreferences,
-                    onBack = { practiceMode = null }
+                    onBack = {
+                        practiceMode = null
+                        practiceChallenge = null
+                    }
                 )
 
                 showSettings -> SettingsScreen(
@@ -385,9 +505,13 @@ private fun GameContent(
                     onUpgradeGuest = onUpgradeGuest,
                     onOpenSettings = { showSettings = true },
                     onOpenNotifications = controller::openNotifications,
-                    onOpenPractice = { showPracticeModePicker = true },
-                    onClaimDailyCheckIn = controller::claimDailyCheckIn,
-                    sessionStartedAtMillis = sessionStartedAtMillis
+                    onOpenPractice = { showPracticeLauncher = true },
+                    onOpenTournament = controller::openTournament,
+                    onShareRoom = { roomId, roomName ->
+                        textSharer.share(buildRoomShareText(roomName, roomId), "Chia sẻ phòng")
+                    },
+                    onResolveRoomLink = controller::resolvePendingRoomLink,
+                    onClaimDailyCheckIn = controller::claimDailyCheckIn
                 )
     }
 }

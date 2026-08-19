@@ -7,6 +7,8 @@ import com.hienthai.fastowin.protocol.FriendsSnapshot
 import com.hienthai.fastowin.protocol.ServerMessage
 import com.hienthai.fastowin.protocol.MatchDetailSnapshot
 import com.hienthai.fastowin.protocol.MatchType
+import com.hienthai.fastowin.protocol.TournamentHubSnapshot
+import com.hienthai.fastowin.protocol.TournamentInvitationSnapshot
 
 const val GAME_NUMBER_COUNT = 50
 const val DEFAULT_OPPONENT_NAME = "Đối thủ"
@@ -91,6 +93,9 @@ data class GameState(
     val matchmakingRatingRange: Int = 100,
     val connectionStatus: ConnectionStatus = ConnectionStatus.DISCONNECTED,
     val availableRooms: List<AvailableRoom> = emptyList(),
+    val roomListVersion: Long = 0,
+    val pendingRoomLinkId: String? = null,
+    val pendingRoomLinkListVersion: Long = 0,
     val currentRoomId: String? = null,
     val currentRoomName: String? = null,
     val isRoomHost: Boolean = false,
@@ -99,6 +104,9 @@ data class GameState(
     val countdown: Int? = null,
     val isMatchStarted: Boolean = false,
     val currentMatchId: String? = null,
+    val currentTournamentId: String? = null,
+    val currentTournamentMatchId: String? = null,
+    val currentTournamentRound: Int? = null,
     val winnerPlayerId: String? = null,
     val isRematchRequestedByMe: Boolean = false,
     val isRematchRequestedByOpponent: Boolean = false,
@@ -130,6 +138,11 @@ data class GameState(
     val roomInvitationPrompt: ServerMessage.RoomInvitation? = null,
     val socialNotice: String? = null,
     val isNotificationsOpen: Boolean = false,
+    val isTournamentOpen: Boolean = false,
+    val isTournamentLoading: Boolean = false,
+    val tournamentHub: TournamentHubSnapshot = TournamentHubSnapshot(),
+    val tournamentInvitationPrompt: TournamentInvitationSnapshot? = null,
+    val tournamentNotice: String? = null,
     val notifications: List<AppNotification> = emptyList(),
     val dismissedNotificationIds: Set<String> = emptySet()
 ) {
@@ -138,6 +151,9 @@ data class GameState(
 
     val unreadNotificationCount: Int
         get() = notifications.count { !it.isRead }
+
+    val isTournamentMatch: Boolean
+        get() = currentTournamentId != null && currentTournamentMatchId != null
 
     val postMatchFriendStatus: PostMatchFriendStatus
         get() {
@@ -166,5 +182,7 @@ internal fun GameState.prepareForMatchStart(): GameState = copy(
     isFriendsOpen = false,
     isFriendsLoading = false,
     isNotificationsOpen = false,
-    roomInvitationPrompt = null
+    isTournamentOpen = false,
+    roomInvitationPrompt = null,
+    tournamentInvitationPrompt = null
 )

@@ -8,6 +8,20 @@ private const val PRACTICE_SCORE_PER_NUMBER = 10
 private const val PRACTICE_CORRECT_BONUS_MILLIS = 2_000L
 private const val PRACTICE_WRONG_PENALTY_MILLIS = 3_000L
 
+data class PracticeChallenge(
+    val mode: GameMode,
+    val seed: Int
+) {
+    val code: String get() = encodeChallengeCode(mode, seed)
+    val numbers: List<Int> get() = deterministicShuffle((1..GAME_NUMBER_COUNT).toList(), seed)
+    val targetOrder: List<Int>
+        get() = if (mode == GameMode.RANDOM_TARGET) {
+            deterministicShuffle((1..GAME_NUMBER_COUNT).toList(), seed xor TARGET_ORDER_SALT)
+        } else {
+            (1..GAME_NUMBER_COUNT).toList()
+        }
+}
+
 data class PracticeGameState(
     val mode: GameMode,
     val numbers: List<Int>,
@@ -24,7 +38,8 @@ data class PracticeGameState(
     val combo: Int = 0,
     val lives: Int = 3,
     val timeAdjustmentMillis: Long = 0L,
-    val targetStartedAtMillis: Long = startedAtMillis
+    val targetStartedAtMillis: Long = startedAtMillis,
+    val challengeCode: String? = null
 ) {
     val elapsedMillis: Long
         get() = (nowMillis - startedAtMillis).coerceAtLeast(0L)
@@ -103,17 +118,92 @@ data class PracticeGameState(
 fun createPracticeGame(
     mode: GameMode,
     nowMillis: Long,
-    numbers: List<Int> = (1..GAME_NUMBER_COUNT).shuffled()
+    numbers: List<Int> = (1..GAME_NUMBER_COUNT).shuffled(),
+    challenge: PracticeChallenge? = null
 ): PracticeGameState {
-    require(numbers.size == GAME_NUMBER_COUNT && numbers.toSet() == (1..GAME_NUMBER_COUNT).toSet()) {
+    val boardNumbers = challenge?.numbers ?: numbers
+    require(boardNumbers.size == GAME_NUMBER_COUNT && boardNumbers.toSet() == (1..GAME_NUMBER_COUNT).toSet()) {
         "Bàn luyện tập phải chứa đủ các số từ 1 đến $GAME_NUMBER_COUNT."
     }
-    val targetOrder = if (mode == GameMode.RANDOM_TARGET) numbers.shuffled() else (1..GAME_NUMBER_COUNT).toList()
+    require(challenge == null || challenge.mode == mode) { "Chế độ chơi không khớp mã thử thách." }
+    val targetOrder = challenge?.targetOrder
+        ?: if (mode == GameMode.RANDOM_TARGET) boardNumbers.shuffled() else (1..GAME_NUMBER_COUNT).toList()
     return PracticeGameState(
         mode = mode,
-        numbers = numbers,
+        numbers = boardNumbers,
         currentTarget = targetOrder.first(),
         startedAtMillis = nowMillis,
-        targetOrder = targetOrder
+        targetOrder = targetOrder,
+        challengeCode = challenge?.code
     )
 }
+
+fun createPracticeChallenge(mode: GameMode, seed: Int): PracticeChallenge = PracticeChallenge(mode, seed)
+
+fun parsePracticeChallenge(code: String): PracticeChallenge? {
+    val parts = code.trim().uppercase().split('-')
+    if (parts.size != 4 || parts[0] != CHALLENGE_PREFIX) return null
+    val mode = challengeMode(parts[1]) ?: return null
+    val seed = parts[2].parseHexUInt()?.toInt() ?: return null
+    if (parts[3] != challengeChecksum(mode, seed)) return null
+    return PracticeChallenge(mode, seed)
+}
+
+private fun encodeChallengeCode(mode: GameMode, seed: Int): String =
+    "$CHALLENGE_PREFIX-${mode.challengeCode()}-${seed.toUInt().toString(16).uppercase().padStart(8, '0')}-${challengeChecksum(mode, seed)}"
+
+private fun challengeChecksum(mode: GameMode, seed: Int): String {
+    val value = ((seed.toUInt() xor (mode.ordinal.toUInt() * 97u) xor CHECKSUM_SALT) % 256u).toInt()
+    return value.toString(16).uppercase().padStart(2, '0')
+}
+
+private fun String.parseHexUInt(): UInt? {
+    if (length != 8) return null
+    var value = 0u
+    for (character in this) {
+        val digit = character.digitToIntOrNull(16) ?: return null
+        value = value * 16u + digit.toUInt()
+    }
+    return value
+}
+
+private fun GameMode.challengeCode(): String = when (this) {
+    GameMode.ORDER -> "CL"
+    GameMode.RANDOM_TARGET -> "NN"
+    GameMode.TIME_BONUS -> "TG"
+    GameMode.SPEED_UP -> "TT"
+    GameMode.SURVIVAL -> "ST"
+    GameMode.COMBO -> "CB"
+    GameMode.TIME_ATTACK -> "60"
+}
+
+private fun challengeMode(code: String): GameMode? = when (code) {
+    "CL" -> GameMode.ORDER
+    "NN" -> GameMode.RANDOM_TARGET
+    "TG" -> GameMode.TIME_BONUS
+    "TT" -> GameMode.SPEED_UP
+    "ST" -> GameMode.SURVIVAL
+    "CB" -> GameMode.COMBO
+    "60" -> GameMode.TIME_ATTACK
+    else -> null
+}
+
+private fun deterministicShuffle(values: List<Int>, seed: Int): List<Int> {
+    var randomState = if (seed == 0) DEFAULT_RANDOM_SEED else seed
+    val shuffled = values.toMutableList()
+    for (index in shuffled.lastIndex downTo 1) {
+        randomState = randomState xor (randomState shl 13)
+        randomState = randomState xor (randomState ushr 17)
+        randomState = randomState xor (randomState shl 5)
+        val target = (randomState.toUInt() % (index + 1).toUInt()).toInt()
+        val value = shuffled[index]
+        shuffled[index] = shuffled[target]
+        shuffled[target] = value
+    }
+    return shuffled
+}
+
+private const val CHALLENGE_PREFIX = "FTW"
+private const val TARGET_ORDER_SALT = 0x51F15EED
+private const val DEFAULT_RANDOM_SEED = 0x6D2B79F5
+private const val CHECKSUM_SALT: UInt = 0xA7u

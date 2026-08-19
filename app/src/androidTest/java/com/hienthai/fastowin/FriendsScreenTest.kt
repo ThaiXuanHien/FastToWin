@@ -2,10 +2,10 @@ package com.hienthai.fastowin
 
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
-import androidx.compose.ui.test.performScrollTo
 import com.hienthai.fastowin.protocol.FriendPresence
 import com.hienthai.fastowin.protocol.FriendSnapshot
 import com.hienthai.fastowin.protocol.FriendsSnapshot
@@ -22,7 +22,7 @@ class FriendsScreenTest {
     val composeRule = createComposeRule()
 
     @Test
-    fun friendAndRecentPlayerWithSameUserIdRenderWithoutDuplicateKeyCrash() {
+    fun recentPlayersAreNotShownInFriendsScreen() {
         val sharedUserId = "player-1"
         val state = GameState(
             social = FriendsSnapshot(
@@ -66,7 +66,8 @@ class FriendsScreenTest {
         }
 
         composeRule.onNodeWithText("Bạn bè Hiếu").assertIsDisplayed()
-        composeRule.onNodeWithText("Đối thủ gần đây Hiếu").performScrollTo().assertIsDisplayed()
+        assertEquals(0, composeRule.onAllNodesWithText("Vừa thi đấu cùng").fetchSemanticsNodes().size)
+        assertEquals(0, composeRule.onAllNodesWithText("Đối thủ gần đây Hiếu").fetchSemanticsNodes().size)
     }
 
     @Test

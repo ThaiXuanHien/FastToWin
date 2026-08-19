@@ -16,5 +16,8 @@ struct ContentView: View {
         ComposeView()
             .ignoresSafeArea(.container, edges: .all)
             .ignoresSafeArea(.keyboard)
+            .onOpenURL { url in
+                AppDeepLinkRouter.shared.openUri(uri: url.absoluteString)
+            }
     }
 }

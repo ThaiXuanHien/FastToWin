@@ -94,6 +94,16 @@ class PostgresMatchResultRepositoryTest {
                 assertEquals(1, profile.recentMatches.size)
                 assertEquals(guest.displayName, profile.recentMatches.single().opponentName)
                 assertEquals(500, profile.recentMatches.single().playerScore)
+                assertEquals(1, profile.modeStatistics.size)
+                with(profile.modeStatistics.single()) {
+                    assertEquals(ProtocolGameMode.ORDER, gameMode)
+                    assertEquals(1, totalMatches)
+                    assertEquals(1, wins)
+                    assertEquals(0, losses)
+                    assertEquals(0, draws)
+                    assertEquals(500, highestScore)
+                    assertEquals(500, averageScore)
+                }
                 dataSource.connection.use { connection ->
                     connection.prepareStatement(
                         "SELECT result, COUNT(*) AS count FROM match_events WHERE match_id = ? GROUP BY result"

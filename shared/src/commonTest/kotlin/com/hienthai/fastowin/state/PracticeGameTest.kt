@@ -5,6 +5,9 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import kotlin.test.assertNull
+import kotlin.test.assertNotNull
+import com.hienthai.fastowin.ui.screens.buildChallengeShareText
 
 class PracticeGameTest {
     private val orderedNumbers = (1..GAME_NUMBER_COUNT).toList()
@@ -95,5 +98,47 @@ class PracticeGameTest {
 
         assertTrue(finished.isComplete)
         assertEquals(0, finished.timeLeftMillis)
+    }
+
+    @Test
+    fun challengeCodeRestoresTheSameModeBoardAndTargets() {
+        val challenge = createPracticeChallenge(GameMode.RANDOM_TARGET, seed = 0x12345678)
+
+        val restored = assertNotNull(parsePracticeChallenge(challenge.code.lowercase()))
+        val first = createPracticeGame(challenge.mode, nowMillis = 0, challenge = challenge)
+        val second = createPracticeGame(restored.mode, nowMillis = 5_000, challenge = restored)
+
+        assertEquals("FTW-NN-12345678-BE", challenge.code)
+        assertEquals(challenge, restored)
+        assertEquals(first.numbers, second.numbers)
+        assertEquals(first.targetOrder, second.targetOrder)
+        assertEquals(challenge.code, second.challengeCode)
+    }
+
+    @Test
+    fun challengeCodeRejectsTypingErrors() {
+        val challenge = createPracticeChallenge(GameMode.ORDER, seed = 1234)
+
+        assertNull(parsePracticeChallenge(challenge.code.dropLast(1) + "0"))
+        assertNull(parsePracticeChallenge("FTW-XX-000004D2-00"))
+        assertNull(parsePracticeChallenge("không hợp lệ"))
+    }
+
+    @Test
+    fun sharedChallengeIncludesCodeModeAndResult() {
+        val challenge = createPracticeChallenge(GameMode.ORDER, seed = 1234)
+        val text = buildChallengeShareText(
+            mode = GameMode.ORDER,
+            code = challenge.code,
+            score = 500,
+            elapsedMillis = 42_300
+        )
+
+        assertTrue(text.contains("Cổ điển"))
+        assertTrue(text.contains("500 điểm"))
+        assertTrue(text.contains("00:42.3"))
+        assertTrue(text.contains(challenge.code))
+        assertTrue(text.contains("fasttowin://challenge/${challenge.code}"))
+        assertTrue(text.contains("Luyện tập offline"))
     }
 }

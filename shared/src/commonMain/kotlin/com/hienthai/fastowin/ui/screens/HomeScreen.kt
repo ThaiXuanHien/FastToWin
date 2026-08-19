@@ -63,7 +63,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.hienthai.fastowin.navigation.GameMode
-import com.hienthai.fastowin.platform.epochMillis
 import com.hienthai.fastowin.protocol.FriendPresence
 import com.hienthai.fastowin.protocol.DailyCheckInSnapshot
 import com.hienthai.fastowin.protocol.DAILY_CHECK_IN_REWARDS_XP
@@ -90,10 +89,10 @@ internal fun HomeDashboard(
     onOpenSettings: () -> Unit,
     onOpenNotifications: () -> Unit,
     onOpenPractice: () -> Unit,
+    onOpenTournament: () -> Unit,
     onClaimDailyCheckIn: () -> Unit,
     onUpgradeGuest: () -> Unit,
     onLogout: () -> Unit,
-    sessionStartedAtMillis: Long,
     modifier: Modifier = Modifier
 ) {
     val profile = state.profile
@@ -126,8 +125,6 @@ internal fun HomeDashboard(
     BoxWithConstraints(modifier = modifier.fillMaxSize().testTag("home_screen")) {
         val compactHeight = maxHeight < 600.dp
         Column(modifier = Modifier.fillMaxSize()) {
-        BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
-            val compactHeader = maxWidth < 420.dp
             Row(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -149,16 +146,6 @@ internal fun HomeDashboard(
                     )
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Column(horizontalAlignment = Alignment.End) {
-                        if (!compactHeader) {
-                            Text(
-                                "THỜI GIAN TRUY CẬP",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                        SessionDuration(sessionStartedAtMillis)
-                    }
                     IconButton(onClick = onOpenNotifications) {
                         BadgedBox(
                             badge = {
@@ -180,7 +167,6 @@ internal fun HomeDashboard(
                     }
                 }
             }
-        }
 
         Column(
             modifier = Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(bottom = 16.dp),
@@ -292,6 +278,13 @@ internal fun HomeDashboard(
                         Modifier.weight(1f)
                     )
                 }
+                HomeQuickAction(
+                    "Đấu giải",
+                    if (isGuest) "Đăng ký để tham gia" else "Giải riêng 4 người loại trực tiếp",
+                    Icons.Default.EmojiEvents,
+                    if (isGuest) onUpgradeGuest else onOpenTournament,
+                    Modifier.fillMaxWidth().testTag("home_tournament")
+                )
                 HomeQuickAction(
                     "Luyện tập offline",
                     "Rèn tốc độ với bàn 50 số, không ảnh hưởng Elo",
@@ -455,23 +448,6 @@ private fun DailyCheckInCard(
             }
         }
     }
-}
-
-@Composable
-private fun SessionDuration(sessionStartedAtMillis: Long) {
-    var elapsedSeconds by remember { mutableStateOf(0L) }
-    LaunchedEffect(sessionStartedAtMillis) {
-        while (true) {
-            elapsedSeconds = ((epochMillis() - sessionStartedAtMillis) / 1_000).coerceAtLeast(0)
-            delay(1_000)
-        }
-    }
-    Text(
-        formatSessionDuration(elapsedSeconds),
-        style = MaterialTheme.typography.titleMedium,
-        color = MaterialTheme.colorScheme.primary,
-        fontWeight = FontWeight.Bold
-    )
 }
 
 @Composable
@@ -689,12 +665,4 @@ private fun connectionLabel(status: ConnectionStatus): String = when (status) {
     ConnectionStatus.AUTHENTICATING -> "Đang xác thực tài khoản..."
     ConnectionStatus.CONNECTED -> "Đã kết nối"
     ConnectionStatus.RECONNECTING -> "Mất kết nối, đang thử lại..."
-}
-
-private fun formatSessionDuration(totalSeconds: Long): String {
-    val hours = totalSeconds / 3_600
-    val minutes = totalSeconds % 3_600 / 60
-    val seconds = totalSeconds % 60
-    fun Long.twoDigits() = toString().padStart(2, '0')
-    return "${hours.twoDigits()}:${minutes.twoDigits()}:${seconds.twoDigits()}"
 }

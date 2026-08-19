@@ -10,10 +10,14 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextInput
+import androidx.test.platform.app.InstrumentationRegistry
 import com.hienthai.fastowin.data.preferences.AppPreferences
 import com.hienthai.fastowin.navigation.GameMode
+import com.hienthai.fastowin.platform.ResultShareContent
 import com.hienthai.fastowin.protocol.MatchType
 import com.hienthai.fastowin.protocol.PlayerProfileSnapshot
+import com.hienthai.fastowin.protocol.GameModeStatisticsSnapshot
+import com.hienthai.fastowin.protocol.ProtocolGameMode
 import com.hienthai.fastowin.protocol.DailyCheckInSnapshot
 import com.hienthai.fastowin.protocol.PlayerProgressionSnapshot
 import com.hienthai.fastowin.protocol.MissionSnapshot
@@ -24,16 +28,21 @@ import com.hienthai.fastowin.state.ConnectionStatus
 import com.hienthai.fastowin.state.GameState
 import com.hienthai.fastowin.state.LobbyStage
 import com.hienthai.fastowin.state.PlayerState
+import com.hienthai.fastowin.state.PracticeChallenge
+import com.hienthai.fastowin.state.createPracticeChallenge
 import com.hienthai.fastowin.ui.screens.AuthScreen
 import com.hienthai.fastowin.ui.screens.GameScreen
 import com.hienthai.fastowin.ui.screens.LobbyScreen
 import com.hienthai.fastowin.ui.screens.ProfileScreen
 import com.hienthai.fastowin.ui.screens.ResultScreen
+import com.hienthai.fastowin.ui.screens.PracticeLauncherDialog
+import com.hienthai.fastowin.ui.screens.TournamentScreen
 import com.hienthai.fastowin.ui.theme.FastToWinTheme
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
+import java.io.File
 
 class CriticalFlowsUiTest {
     @get:Rule
@@ -121,6 +130,89 @@ class CriticalFlowsUiTest {
     }
 
     @Test
+    fun practiceLauncher_opensAValidSharedChallengeCode() {
+        var openedChallenge: PracticeChallenge? = null
+        val expected = createPracticeChallenge(GameMode.RANDOM_TARGET, seed = 0x12345678)
+        composeRule.setContent {
+            FastToWinTheme {
+                PracticeLauncherDialog(
+                    onDismiss = {},
+                    onStartNew = {},
+                    onOpenChallenge = { openedChallenge = it },
+                    playerLevel = 12
+                )
+            }
+        }
+
+        composeRule.onNodeWithTag("challenge_input").performTextInput(expected.code.lowercase())
+        composeRule.onNodeWithTag("challenge_open").performClick()
+
+        composeRule.runOnIdle { assertEquals(expected, openedChallenge) }
+    }
+
+    @Test
+    fun practiceLauncher_keepsDifficultyUnlockProgression() {
+        var openedChallenge: PracticeChallenge? = null
+        val locked = createPracticeChallenge(GameMode.COMBO, seed = 1234)
+        composeRule.setContent {
+            FastToWinTheme {
+                PracticeLauncherDialog(
+                    onDismiss = {},
+                    onStartNew = {},
+                    onOpenChallenge = { openedChallenge = it },
+                    playerLevel = 1
+                )
+            }
+        }
+
+        composeRule.onNodeWithTag("challenge_input").performTextInput(locked.code)
+        composeRule.onNodeWithTag("challenge_open").performClick()
+
+        composeRule.onNodeWithText("Chế độ Combo mở khóa ở cấp 12.").assertIsDisplayed()
+        composeRule.runOnIdle { assertEquals(null, openedChallenge) }
+    }
+
+    @Test
+    fun tournament_createSubmitsNameAndMode() {
+        var submittedName: String? = null
+        var submittedMode: GameMode? = null
+        composeRule.setContent {
+            FastToWinTheme {
+                TournamentScreen(
+                    state = GameState(
+                        connectionStatus = ConnectionStatus.CONNECTED,
+                        player = PlayerState("Hiền", id = "player-hien"),
+                        profile = PlayerProfileSnapshot(
+                            displayName = "Hiền",
+                            playerCode = "HIEN001",
+                            progression = PlayerProgressionSnapshot(level = 20)
+                        )
+                    ),
+                    onBack = {},
+                    onCreate = { name, mode ->
+                        submittedName = name
+                        submittedMode = mode
+                    },
+                    onInvite = {},
+                    onRespondInvitation = { _, _ -> },
+                    onStart = {},
+                    onLeave = {},
+                    onOpenFriendProfile = {}
+                )
+            }
+        }
+
+        composeRule.onNodeWithTag("tournament_screen").assertIsDisplayed()
+        composeRule.onNodeWithTag("tournament_name").performTextInput("Cúp cuối tuần")
+        composeRule.onNodeWithTag("create_tournament").performClick()
+
+        composeRule.runOnIdle {
+            assertEquals("Cúp cuối tuần", submittedName)
+            assertEquals(GameMode.ORDER, submittedMode)
+        }
+    }
+
+    @Test
     fun profile_showsDailyCheckInMilestonesInIncreasingDifficulty() {
         var claimedMissionCode: String? = null
         composeRule.setContent {
@@ -188,6 +280,58 @@ class CriticalFlowsUiTest {
     }
 
     @Test
+    fun profile_showsStatisticsForEachPlayedGameMode() {
+        composeRule.setContent {
+            FastToWinTheme {
+                ProfileScreen(
+                    state = GameState(
+                        profile = PlayerProfileSnapshot(
+                            displayName = "Hiền",
+                            playerCode = "HIEN001",
+                            modeStatistics = listOf(
+                                GameModeStatisticsSnapshot(
+                                    gameMode = ProtocolGameMode.ORDER,
+                                    totalMatches = 10,
+                                    wins = 6,
+                                    losses = 3,
+                                    draws = 1,
+                                    highestScore = 50,
+                                    averageScore = 34
+                                )
+                            )
+                        )
+                    ),
+                    onBack = {},
+                    onRefresh = {},
+                    onOpenMatchDetail = {},
+                    onCloseMatchDetail = {},
+                    onEquipCosmetics = { _, _ -> },
+                    onClaimMissionReward = {},
+                    onSave = { _, _ -> },
+                    canEdit = true,
+                    isAccountLoading = false,
+                    accountError = null,
+                    accountNotice = null,
+                    accountSessions = emptyList(),
+                    areSessionsLoading = false,
+                    onChangePassword = { _, _ -> },
+                    onDeleteAccount = {},
+                    onClearAccountFeedback = {},
+                    onLoadSessions = {},
+                    onRevokeSession = {},
+                    onRevokeAllSessions = {},
+                    onLogout = {}
+                )
+            }
+        }
+
+        composeRule.onNodeWithTag("mode_statistics:ORDER").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("60% thắng").assertIsDisplayed()
+        composeRule.onNodeWithText("10 trận • 6 thắng • 3 thua • 1 hòa").assertIsDisplayed()
+        composeRule.onNodeWithText("Điểm cao 50 • Trung bình 34").assertIsDisplayed()
+    }
+
+    @Test
     fun roomBrowser_createsPrivateRoomFromKeyboardInput() {
         var createdRoom: Pair<String, String>? = null
         composeRule.setContent {
@@ -247,6 +391,74 @@ class CriticalFlowsUiTest {
     }
 
     @Test
+    fun roomLink_joinsPublicRoomAfterFreshRoomListLoads() {
+        var joinedRoom: Pair<String, String>? = null
+        var resolved = false
+        composeRule.setContent {
+            FastToWinTheme {
+                TestLobby(
+                    state = roomBrowserState().copy(
+                        availableRooms = roomBrowserState().availableRooms.map { it.copy(requiresPassword = false) },
+                        roomListVersion = 2,
+                        pendingRoomLinkId = "room-1",
+                        pendingRoomLinkListVersion = 1
+                    ),
+                    onJoinRoom = { roomId, password -> joinedRoom = roomId to password },
+                    onResolveRoomLink = { resolved = true }
+                )
+            }
+        }
+
+        composeRule.waitUntil { joinedRoom != null }
+        composeRule.runOnIdle {
+            assertTrue(resolved)
+            assertEquals("room-1" to "", joinedRoom)
+        }
+    }
+
+    @Test
+    fun roomLink_promptsForPasswordWithoutPuttingItInTheLink() {
+        composeRule.setContent {
+            FastToWinTheme {
+                TestLobby(
+                    state = roomBrowserState().copy(
+                        roomListVersion = 2,
+                        pendingRoomLinkId = "room-1",
+                        pendingRoomLinkListVersion = 1
+                    )
+                )
+            }
+        }
+
+        composeRule.onNodeWithTag("join_room_password").assertIsDisplayed()
+    }
+
+    @Test
+    fun roomWaiting_sharesTheCurrentRoomIdAndName() {
+        var sharedRoom: Pair<String, String>? = null
+        composeRule.setContent {
+            FastToWinTheme {
+                TestLobby(
+                    state = GameState(
+                        lobbyStage = LobbyStage.ROOM_WAITING,
+                        connectionStatus = ConnectionStatus.CONNECTED,
+                        currentRoomId = "room-123",
+                        currentRoomName = "Phòng của Hiền",
+                        player = PlayerState("Hiền")
+                    ),
+                    onShareRoom = { roomId, roomName ->
+                        sharedRoom = roomId to roomName
+                        Result.success(Unit)
+                    }
+                )
+            }
+        }
+
+        composeRule.onNodeWithTag("share_room").performClick()
+        composeRule.runOnIdle { assertEquals("room-123" to "Phòng của Hiền", sharedRoom) }
+    }
+
+    @Test
     fun game_rendersAndScrollsAcrossAllFiftyNumbers() {
         val clickedNumbers = mutableListOf<Int>()
         composeRule.setContent {
@@ -274,6 +486,7 @@ class CriticalFlowsUiTest {
     @Test
     fun result_showsSummaryAndReturnsToLobby() {
         var returnedToLobby = false
+        var sharedResult: ResultShareContent? = null
         composeRule.setContent {
             FastToWinTheme {
                 ResultScreen(
@@ -284,6 +497,7 @@ class CriticalFlowsUiTest {
                     onDeclineRematch = {},
                     onConnectOpponent = {},
                     onBlockOpponent = {},
+                    onShareResult = { sharedResult = it },
                     preferences = AppPreferences(soundEnabled = false, vibrationEnabled = false)
                 )
             }
@@ -292,6 +506,17 @@ class CriticalFlowsUiTest {
         composeRule.onNodeWithTag("result_screen").assertIsDisplayed()
         composeRule.onNodeWithText("CHIẾN THẮNG!").assertIsDisplayed()
         composeRule.onNodeWithText("Phân tích nhịp chơi").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithTag("share_result").performScrollTo().performClick()
+        composeRule.runOnIdle {
+            assertEquals("CHIẾN THẮNG", sharedResult?.result)
+            assertEquals("Hiền", sharedResult?.playerName)
+            assertEquals(500, sharedResult?.playerScore)
+            assertEquals("Hiếu", sharedResult?.opponentName)
+            assertEquals(420, sharedResult?.opponentScore)
+            assertEquals("Cổ điển", sharedResult?.gameMode)
+            assertEquals("42s", sharedResult?.duration)
+            assertEquals("100%", sharedResult?.accuracy)
+        }
         composeRule.onNodeWithText("Về sảnh").performScrollTo().performClick()
 
         composeRule.runOnIdle { assertTrue(returnedToLobby) }
@@ -320,6 +545,34 @@ class CriticalFlowsUiTest {
         }
 
         composeRule.onNodeWithText("THUA CUỘC").assertIsDisplayed()
+    }
+
+    @Test
+    fun result_shareCreatesPngForSystemShareSheet() {
+        val shareDirectory = File(
+            InstrumentationRegistry.getInstrumentation().targetContext.cacheDir,
+            "shared_results"
+        )
+        shareDirectory.listFiles()?.filter { it.isFile }?.forEach(File::delete)
+        composeRule.setContent {
+            FastToWinTheme {
+                ResultScreen(
+                    state = resultState(),
+                    onRestart = {},
+                    onRematch = {},
+                    onCancelRematch = {},
+                    onDeclineRematch = {},
+                    onConnectOpponent = {},
+                    onBlockOpponent = {},
+                    preferences = AppPreferences(soundEnabled = false, vibrationEnabled = false)
+                )
+            }
+        }
+
+        composeRule.onNodeWithTag("share_result").performScrollTo().performClick()
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            shareDirectory.listFiles()?.any { it.extension == "png" && it.length() > 0L } == true
+        }
     }
 
     private fun homeState() = GameState(
@@ -390,7 +643,9 @@ private fun TestLobby(
     onStartMatchmaking: (GameMode, MatchType) -> Unit = { _, _ -> },
     onCreateRoom: (String, String) -> Unit = { _, _ -> },
     onJoinRoom: (String, String) -> Unit = { _, _ -> },
-    onClaimDailyCheckIn: () -> Unit = {}
+    onClaimDailyCheckIn: () -> Unit = {},
+    onShareRoom: (String, String) -> Result<Unit> = { _, _ -> Result.success(Unit) },
+    onResolveRoomLink: (String?) -> Unit = {}
 ) {
     LobbyScreen(
         state = state,
@@ -415,7 +670,9 @@ private fun TestLobby(
         onOpenSettings = {},
         onOpenNotifications = {},
         onOpenPractice = {},
-        onClaimDailyCheckIn = onClaimDailyCheckIn,
-        sessionStartedAtMillis = 1L
+        onOpenTournament = {},
+        onShareRoom = onShareRoom,
+        onResolveRoomLink = onResolveRoomLink,
+        onClaimDailyCheckIn = onClaimDailyCheckIn
     )
 }

@@ -27,6 +27,7 @@ import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Group
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CardDefaults
@@ -97,8 +98,10 @@ fun LobbyScreen(
     onOpenSettings: () -> Unit,
     onOpenNotifications: () -> Unit,
     onOpenPractice: () -> Unit,
+    onOpenTournament: () -> Unit,
+    onShareRoom: (String, String) -> Result<Unit>,
+    onResolveRoomLink: (String?) -> Unit,
     onClaimDailyCheckIn: () -> Unit,
-    sessionStartedAtMillis: Long,
     modifier: Modifier = Modifier
 ) {
     var openCreateAfterModeSelection by remember { mutableStateOf(false) }
@@ -144,10 +147,10 @@ fun LobbyScreen(
                     onOpenSettings = onOpenSettings,
                     onOpenNotifications = onOpenNotifications,
                     onOpenPractice = onOpenPractice,
+                    onOpenTournament = onOpenTournament,
                     onClaimDailyCheckIn = onClaimDailyCheckIn,
                     onUpgradeGuest = onUpgradeGuest,
-                    onLogout = onLogout,
-                    sessionStartedAtMillis = sessionStartedAtMillis
+                    onLogout = onLogout
                 )
                 LobbyStage.ENTER_NAME -> NameEntry(onOpenRoomBrowser, onBackToMode)
                 LobbyStage.ROOM_BROWSER -> RoomBrowser(
@@ -164,7 +167,8 @@ fun LobbyScreen(
                     isGuest = isGuest,
                     onUpgradeGuest = onUpgradeGuest,
                     showCreateInitially = openCreateAfterModeSelection,
-                    onInitialCreateHandled = { openCreateAfterModeSelection = false }
+                    onInitialCreateHandled = { openCreateAfterModeSelection = false },
+                    onResolveRoomLink = onResolveRoomLink
                 )
                 LobbyStage.ROOM_WAITING -> RoomWaiting(
                     state = state,
@@ -173,6 +177,7 @@ fun LobbyScreen(
                     onSetReady = onSetReady,
                     onKickOpponent = onKickOpponent,
                     onOpenFriendProfile = onOpenFriendProfile,
+                    onShareRoom = onShareRoom,
                     isGuest = isGuest
                 )
                 LobbyStage.MATCHMAKING -> MatchmakingScreen(state, onCancelMatchmaking)
@@ -298,7 +303,8 @@ private fun RoomBrowser(
     isGuest: Boolean,
     onUpgradeGuest: () -> Unit,
     showCreateInitially: Boolean,
-    onInitialCreateHandled: () -> Unit
+    onInitialCreateHandled: () -> Unit,
+    onResolveRoomLink: (String?) -> Unit
 ) {
     var selectedRoom by remember { mutableStateOf<AvailableRoom?>(null) }
     var showCreateRoom by remember { mutableStateOf(false) }
@@ -325,6 +331,19 @@ private fun RoomBrowser(
         if (showCreateInitially) {
             showCreateRoom = true
             onInitialCreateHandled()
+        }
+    }
+
+    LaunchedEffect(state.pendingRoomLinkId, state.roomListVersion) {
+        val roomId = state.pendingRoomLinkId ?: return@LaunchedEffect
+        if (state.roomListVersion <= state.pendingRoomLinkListVersion) return@LaunchedEffect
+        val linkedRoom = state.availableRooms.firstOrNull { it.id == roomId }
+        if (linkedRoom == null) {
+            onResolveRoomLink("Phòng trong liên kết không còn tồn tại hoặc đã đủ người.")
+        } else {
+            onResolveRoomLink(null)
+            if (linkedRoom.requiresPassword) selectedRoom = linkedRoom
+            else onJoinRoom(linkedRoom.id, "")
         }
     }
 
@@ -620,9 +639,11 @@ private fun RoomWaiting(
     onSetReady: (Boolean) -> Unit,
     onKickOpponent: () -> Unit,
     onOpenFriendProfile: (String) -> Unit,
+    onShareRoom: (String, String) -> Result<Unit>,
     isGuest: Boolean
 ) {
     val opponentFriend = state.social.friends.firstOrNull { it.userId == state.opponent.id }
+    var shareError by remember(state.currentRoomId) { mutableStateOf<String?>(null) }
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(16.dp),
@@ -652,6 +673,24 @@ private fun RoomWaiting(
                 onOpenFriendProfile(opponentFriend.userId)
             })
         )
+
+        OutlinedButton(
+            onClick = {
+                val roomId = state.currentRoomId ?: return@OutlinedButton
+                shareError = null
+                onShareRoom(roomId, state.currentRoomName ?: "Phòng").onFailure {
+                    shareError = "Không thể mở bảng chia sẻ. Vui lòng thử lại."
+                }
+            },
+            enabled = state.currentRoomId != null,
+            modifier = Modifier.fillMaxWidth().height(50.dp).testTag("share_room")
+        ) {
+            Icon(Icons.Default.Share, contentDescription = null)
+            Text("  Chia sẻ liên kết phòng")
+        }
+        shareError?.let {
+            Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+        }
 
         state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
 

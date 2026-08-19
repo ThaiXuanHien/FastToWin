@@ -27,6 +27,7 @@ import androidx.compose.material.icons.rounded.EmojiEvents
 import androidx.compose.material.icons.rounded.GroupAdd
 import androidx.compose.material.icons.rounded.RestartAlt
 import androidx.compose.material.icons.rounded.SentimentVeryDissatisfied
+import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -60,6 +61,8 @@ import com.hienthai.fastowin.data.preferences.AppPreferences
 import com.hienthai.fastowin.platform.GameFeedbackEffect
 import com.hienthai.fastowin.platform.epochMillis
 import com.hienthai.fastowin.platform.playFeedbackSound
+import com.hienthai.fastowin.platform.ResultShareContent
+import com.hienthai.fastowin.platform.rememberResultImageSharer
 import com.hienthai.fastowin.protocol.MatchType
 import com.hienthai.fastowin.state.GameState
 import com.hienthai.fastowin.state.PlayerState
@@ -79,6 +82,8 @@ fun ResultScreen(
     onConnectOpponent: () -> Unit,
     onBlockOpponent: () -> Unit,
     onOpenFriendProfile: (String) -> Unit = {},
+    onOpenTournament: () -> Unit = {},
+    onShareResult: ((ResultShareContent) -> Unit)? = null,
     preferences: AppPreferences = AppPreferences(),
     modifier: Modifier = Modifier
 ) {
@@ -92,7 +97,10 @@ fun ResultScreen(
         label = "WinScale"
     )
     var showBlockConfirmation by remember { mutableStateOf(false) }
+    var shareError by remember { mutableStateOf<String?>(null) }
     val opponentFriend = state.social.friends.firstOrNull { it.userId == state.opponent.id }
+    val imageSharer = rememberResultImageSharer()
+    val shareContent = resultShareContent(state, isDraw, isWinner)
 
     LaunchedEffect(isWinner, isDraw) {
         val effect = when {
@@ -163,23 +171,65 @@ fun ResultScreen(
             EloCard(state)
             MatchSummaryCard(state)
             PaceAnalysisCard(state.player)
-            RematchCard(
-                state = state,
-                onRematch = onRematch,
-                onCancel = onCancelRematch,
-                onDecline = onDeclineRematch
-            )
+            Button(
+                onClick = {
+                    if (onShareResult != null) {
+                        onShareResult(shareContent)
+                    } else {
+                        imageSharer.share(shareContent).onFailure {
+                            shareError = "Không thể tạo ảnh chia sẻ. Vui lòng thử lại."
+                        }
+                    }
+                },
+                modifier = Modifier.fillMaxWidth().height(52.dp).testTag("share_result"),
+                shape = RoundedCornerShape(16.dp)
+            ) {
+                Icon(Icons.Rounded.Share, contentDescription = null)
+                Spacer(Modifier.size(8.dp))
+                Text("Chia sẻ kết quả")
+            }
+            shareError?.let {
+                Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+            }
+            if (state.isTournamentMatch) {
+                Surface(shape = RoundedCornerShape(18.dp), color = MaterialTheme.colorScheme.tertiaryContainer) {
+                    Column(
+                        modifier = Modifier.fillMaxWidth().padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Text(
+                            if (state.currentTournamentRound == 2) "Trận chung kết" else "Trận bán kết",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text("Nhánh đấu đã được cập nhật. Trận tiếp theo sẽ được tạo tự động.")
+                        Button(
+                            onClick = onOpenTournament,
+                            modifier = Modifier.fillMaxWidth().testTag("open_tournament_bracket")
+                        ) { Text("Xem nhánh đấu") }
+                    }
+                }
+            } else {
+                RematchCard(
+                    state = state,
+                    onRematch = onRematch,
+                    onCancel = onCancelRematch,
+                    onDecline = onDeclineRematch
+                )
+            }
             OpponentActions(
                 state = state,
                 onConnect = onConnectOpponent,
                 onBlock = { showBlockConfirmation = true }
             )
 
-            OutlinedButton(
-                onClick = onRestart,
-                modifier = Modifier.fillMaxWidth().height(52.dp),
-                shape = RoundedCornerShape(16.dp)
-            ) { Text("Về sảnh") }
+            if (!state.isTournamentMatch) {
+                OutlinedButton(
+                    onClick = onRestart,
+                    modifier = Modifier.fillMaxWidth().height(52.dp),
+                    shape = RoundedCornerShape(16.dp)
+                ) { Text("Về sảnh") }
+            }
             Spacer(modifier = Modifier.height(12.dp))
             }
         }
@@ -551,6 +601,29 @@ private fun formatReaction(reactionMillis: Long): String =
     } else {
         "${reactionMillis / 100 / 10.0}s"
     }
+
+private fun resultShareContent(state: GameState, isDraw: Boolean, isWinner: Boolean): ResultShareContent {
+    val attempts = state.player.correctSelections + state.player.wrongSelections
+    val accuracy = if (attempts == 0) 0 else state.player.correctSelections * 100 / attempts
+    return ResultShareContent(
+        result = when {
+            isDraw -> "HÒA"
+            isWinner -> "CHIẾN THẮNG"
+            else -> "THUA CUỘC"
+        },
+        playerName = state.player.name,
+        playerScore = state.player.score,
+        opponentName = state.opponent.name,
+        opponentScore = state.opponent.score,
+        gameMode = state.gameMode.title,
+        matchType = if (state.matchType == MatchType.RANKED) "Trận xếp hạng" else "Trận thường",
+        duration = formatDuration(state.lastMatchDurationMillis),
+        accuracy = "$accuracy%",
+        elo = state.lastMatchEloChange?.takeIf { state.matchType == MatchType.RANKED }?.let {
+            if (it >= 0) "+$it Elo" else "$it Elo"
+        }
+    )
+}
 
 @Composable
 fun ResultScreenPreview() {

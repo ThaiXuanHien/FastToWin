@@ -140,20 +140,21 @@ fun TutorialScreen(
                         )
                     }
                     Spacer(Modifier.height(32.dp))
-
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        tutorialPages.indices.forEach { index ->
-                            Surface(
-                                modifier = Modifier.size(if (index == pageIndex) 24.dp else 8.dp, 8.dp),
-                                shape = CircleShape,
-                                color = if (index == pageIndex) MaterialTheme.colorScheme.primary
-                                else MaterialTheme.colorScheme.outlineVariant
-                            ) {}
-                        }
-                    }
-                    Spacer(Modifier.height(16.dp))
                 }
 
+                Row(
+                    modifier = Modifier.padding(vertical = 14.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    tutorialPages.indices.forEach { index ->
+                        Surface(
+                            modifier = Modifier.size(if (index == pageIndex) 24.dp else 8.dp, 8.dp),
+                            shape = CircleShape,
+                            color = if (index == pageIndex) MaterialTheme.colorScheme.primary
+                            else MaterialTheme.colorScheme.outlineVariant
+                        ) {}
+                    }
+                }
                 Button(
                     onClick = {
                         if (pageIndex == tutorialPages.lastIndex) onComplete() else pageIndex++

@@ -1175,6 +1175,128 @@ class GameEngineTest {
         assertTrue(finished.game.players.all { it.isFinished })
     }
 
+    @Test
+    fun `private four player tournament advances from semifinals to champion`() = runTest {
+        val playerIds = List(4) { UUID.randomUUID().toString() }
+        val names = listOf("Hiền", "Hiếu", "An", "Bình")
+        val profiles = playerIds.mapIndexed { index, playerId ->
+            playerId to PlayerProfileSnapshot(
+                displayName = names[index],
+                playerCode = "PLAYER${index + 1}",
+                progression = PlayerProgressionSnapshot(level = 20)
+            )
+        }.toMap()
+        val profileRepository = object : PlayerProfileRepository {
+            override suspend fun findByPlayerId(playerId: String) = profiles[playerId]
+            override suspend fun updateProfile(
+                playerId: String,
+                displayName: String,
+                avatarId: String?
+            ) = false
+        }
+        val friendRepository = object : FriendRepository {
+            override suspend fun load(userId: String) = StoredFriends(
+                friends = playerIds.filterNot { it == userId }.map { friendId ->
+                    FriendSnapshot(
+                        userId = friendId,
+                        displayName = profiles.getValue(friendId).displayName,
+                        playerCode = profiles.getValue(friendId).playerCode
+                    )
+                }
+            )
+            override suspend fun sendRequest(userId: String, playerCode: String, nowMillis: Long) =
+                FriendRequestResult.PlayerNotFound
+            override suspend fun respond(userId: String, requestId: String, accept: Boolean, nowMillis: Long) =
+                FriendResponseResult.NotFound
+            override suspend fun cancelRequest(userId: String, requestId: String) =
+                FriendCancellationResult.NotFound
+            override suspend fun removeFriend(userId: String, friendUserId: String) =
+                SocialMutationResult.NotFound
+            override suspend fun blockPlayer(userId: String, playerUserId: String, nowMillis: Long) =
+                SocialMutationResult.NotFound
+            override suspend fun unblockPlayer(userId: String, playerUserId: String) =
+                SocialMutationResult.NotFound
+            override suspend fun areFriends(firstUserId: String, secondUserId: String) =
+                firstUserId != secondUserId && firstUserId in playerIds && secondUserId in playerIds
+            override suspend fun isBlockedEitherWay(firstUserId: String, secondUserId: String) = false
+        }
+        val engine = GameEngine(
+            playerProfileRepository = profileRepository,
+            friendRepository = friendRepository
+        )
+        playerIds.forEachIndexed { index, playerId ->
+            engine.connectAccount(AuthenticatedAccount(UUID.fromString(playerId), names[index]))
+        }
+
+        val created = engine.handle(
+            playerIds[0],
+            ClientMessage.CreateTournament("Cúp bạn bè", ProtocolGameMode.SURVIVAL)
+        ).map(Delivery::message).filterIsInstance<ServerMessage.TournamentUpdated>().single().tournament
+        assertEquals(1, created.players.size)
+
+        playerIds.drop(1).forEach { inviteeId ->
+            val invitation = engine.handle(
+                playerIds[0],
+                ClientMessage.InviteTournamentPlayer(created.tournamentId, inviteeId)
+            ).map(Delivery::message).filterIsInstance<ServerMessage.TournamentInvitation>().single().invitation
+            engine.handle(
+                inviteeId,
+                ClientMessage.RespondTournamentInvitation(invitation.invitationId, accept = true)
+            )
+        }
+
+        val startedDeliveries = engine.handle(
+            playerIds[0],
+            ClientMessage.StartTournament(created.tournamentId)
+        ).map(Delivery::message)
+        val semifinals = startedDeliveries.filterIsInstance<ServerMessage.GameStarted>()
+            .map(ServerMessage.GameStarted::game)
+        assertEquals(2, semifinals.size)
+        assertTrue(semifinals.all { it.matchType == MatchType.CASUAL })
+        assertTrue(semifinals.all { it.tournamentId == created.tournamentId && it.tournamentRound == 1 })
+
+        val firstSemifinal = semifinals.single { playerIds[0] in it.players.map { player -> player.id } }
+        loseSurvivalTournamentMatch(engine, firstSemifinal, playerIds[3], "semi-one")
+
+        val secondSemifinal = semifinals.single { playerIds[1] in it.players.map { player -> player.id } }
+        val secondFinish = loseSurvivalTournamentMatch(engine, secondSemifinal, playerIds[2], "semi-two")
+        val finalGame = secondFinish.filterIsInstance<ServerMessage.GameStarted>().single().game
+        assertEquals(2, finalGame.tournamentRound)
+        assertEquals(setOf(playerIds[0], playerIds[1]), finalGame.players.map { it.id }.toSet())
+
+        val finalFinish = loseSurvivalTournamentMatch(engine, finalGame, playerIds[1], "final")
+        val completed = finalFinish.filterIsInstance<ServerMessage.TournamentUpdated>()
+            .last().tournament
+        assertEquals(com.hienthai.fastowin.protocol.TournamentPhase.FINISHED, completed.phase)
+        assertEquals(playerIds[0], completed.championPlayerId)
+        assertTrue(completed.matches.all {
+            it.phase == com.hienthai.fastowin.protocol.TournamentMatchPhase.FINISHED
+        })
+
+        val history = engine.handle(playerIds[0], ClientMessage.GetTournamentHub)
+            .map(Delivery::message).filterIsInstance<ServerMessage.TournamentHubData>().single().hub
+        assertEquals(playerIds[0], history.recentTournaments.single().championPlayerId)
+        assertEquals(null, history.activeTournament)
+    }
+
+    private suspend fun loseSurvivalTournamentMatch(
+        engine: GameEngine,
+        game: com.hienthai.fastowin.protocol.GameSnapshot,
+        loserId: String,
+        requestPrefix: String
+    ): List<ServerMessage> {
+        val target = game.players.single { it.id == loserId }.currentTarget
+        val wrongNumber = if (target == 1) 2 else 1
+        var messages = emptyList<ServerMessage>()
+        repeat(3) { index ->
+            messages = engine.handle(
+                loserId,
+                ClientMessage.SelectNumber(game.roomId, wrongNumber, "$requestPrefix-$index")
+            ).map(Delivery::message)
+        }
+        return messages
+    }
+
     private suspend fun createRoomFixture(): Fixture {
         val engine = GameEngine()
         val host = engine.connectGuest("Hiền", null)
