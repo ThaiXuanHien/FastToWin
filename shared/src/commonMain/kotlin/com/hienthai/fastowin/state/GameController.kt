@@ -1016,6 +1016,23 @@ class GameController(
                     }
                 }
             }
+            
+            is ServerMessage.ClanInfoData -> {
+                _uiState.update { it.copy(currentClan = message.clan) }
+            }
+            is ServerMessage.ClanListData -> {
+                _uiState.update { it.copy(clanList = message.clans) }
+            }
+            is ServerMessage.ClanActionResult -> {
+                if (message.success) {
+                    when (message.action) {
+                        "create_clan", "join_clan" -> {
+                            socket.sendMessage(ClientMessage.GetProfile)
+                        }
+                    }
+                }
+            }
+
             is ServerMessage.RematchStatus -> {
                 applyGameSnapshot(message.game)
                 _uiState.update { state ->
@@ -1400,6 +1417,32 @@ class GameController(
 
     private fun randomId(): String = buildString {
         repeat(2) { append(Random.nextLong().toULong().toString(16).padStart(16, '0')) }
+    }
+
+    fun openClan() {
+        _uiState.update { it.copy(isClanOpen = true) }
+        scope.launch { socket.sendMessage(ClientMessage.GetClanList) }
+    }
+
+    fun closeClan() {
+        _uiState.update { it.copy(isClanOpen = false) }
+    }
+
+    fun createClan(name: String, description: String) {
+        scope.launch { socket.sendMessage(ClientMessage.CreateClan(name, description)) }
+    }
+
+    fun joinClan(clanId: String) {
+        scope.launch { socket.sendMessage(ClientMessage.JoinClan(clanId)) }
+    }
+
+    fun leaveClan() {
+        scope.launch { socket.sendMessage(ClientMessage.LeaveClan) }
+        _uiState.update { it.copy(currentClan = null) }
+    }
+
+    fun viewClan(clanId: String) {
+        scope.launch { socket.sendMessage(ClientMessage.GetClanInfo(clanId)) }
     }
 
     private companion object {

@@ -211,7 +211,9 @@ data class PlayerProfileSnapshot(
     val recentMatches: List<MatchHistorySnapshot> = emptyList(),
     val achievements: List<AchievementSnapshot> = emptyList(),
     val progression: PlayerProgressionSnapshot = PlayerProgressionSnapshot(),
-    val modeStatistics: List<GameModeStatisticsSnapshot> = emptyList()
+    val modeStatistics: List<GameModeStatisticsSnapshot> = emptyList(),
+    val clanId: String? = null,
+    val clanName: String? = null
 )
 
 @Serializable
@@ -597,6 +599,26 @@ sealed class ClientMessage {
     data class KickPlayer(val roomId: String, val playerId: String) : ClientMessage()
 
     @Serializable
+    @SerialName("create_clan")
+    data class CreateClan(val name: String, val description: String) : ClientMessage()
+
+    @Serializable
+    @SerialName("join_clan")
+    data class JoinClan(val clanId: String) : ClientMessage()
+
+    @Serializable
+    @SerialName("leave_clan")
+    data object LeaveClan : ClientMessage()
+
+    @Serializable
+    @SerialName("get_clan_info")
+    data class GetClanInfo(val clanId: String) : ClientMessage()
+
+    @Serializable
+    @SerialName("get_clan_list")
+    data object GetClanList : ClientMessage()
+
+    @Serializable
     @SerialName("measure_latency")
     data class MeasureLatency(val clientSentAtEpochMillis: Long) : ClientMessage()
 
@@ -779,6 +801,18 @@ sealed class ServerMessage {
     data class EmojiBroadcast(val senderPlayerId: String, val emojiId: String) : ServerMessage()
 
     @Serializable
+    @SerialName("clan_info_data")
+    data class ClanInfoData(val clan: ClanSnapshot) : ServerMessage()
+
+    @Serializable
+    @SerialName("clan_list_data")
+    data class ClanListData(val clans: List<ClanSummarySnapshot>) : ServerMessage()
+
+    @Serializable
+    @SerialName("clan_action_result")
+    data class ClanActionResult(val success: Boolean, val message: String, val action: String) : ServerMessage()
+
+    @Serializable
     @SerialName("error")
     data class Error(
         val code: String,
@@ -786,3 +820,33 @@ sealed class ServerMessage {
         val requestId: String? = null
     ) : ServerMessage()
 }
+@Serializable
+enum class ClanRole { LEADER, CO_LEADER, MEMBER }
+
+@Serializable
+data class ClanMemberSnapshot(
+    val userId: String,
+    val displayName: String,
+    val role: ClanRole,
+    val trophies: Int
+)
+
+@Serializable
+data class ClanSnapshot(
+    val id: String,
+    val name: String,
+    val description: String,
+    val ownerId: String,
+    val members: List<ClanMemberSnapshot>,
+    val trophies: Int,
+    val maxMembers: Int = 50
+)
+
+@Serializable
+data class ClanSummarySnapshot(
+    val id: String,
+    val name: String,
+    val memberCount: Int,
+    val maxMembers: Int,
+    val trophies: Int
+)

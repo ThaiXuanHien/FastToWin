@@ -54,9 +54,12 @@ class PostgresPlayerProfileRepository(
                        COALESCE(s.wrong_selections, 0) AS wrong_selections,
                        COALESCE(s.elo_rating, 1000) AS elo_rating,
                        CASE WHEN COALESCE(s.reaction_samples, 0) = 0 THEN 0
-                            ELSE s.reaction_time_total_ms / s.reaction_samples END AS average_reaction_ms
+                            ELSE s.reaction_time_total_ms / s.reaction_samples END AS average_reaction_ms,
+                       cm.clan_id, c.name AS clan_name
                 FROM profiles p
                 LEFT JOIN player_stats s ON s.user_id = p.user_id
+                LEFT JOIN clan_members cm ON cm.user_id = p.user_id
+                LEFT JOIN clans c ON c.id = cm.clan_id
                 WHERE p.user_id = ?
                 """.trimIndent()
             ).use { statement ->
@@ -79,7 +82,9 @@ class PostgresPlayerProfileRepository(
                             wrongSelections = result.getInt("wrong_selections"),
                             averageReactionMillis = result.getLong("average_reaction_ms"),
                             eloRating = result.getInt("elo_rating")
-                        )
+                        ),
+                        clanId = result.getString("clan_id"),
+                        clanName = result.getString("clan_name")
                     )
                 }
             }

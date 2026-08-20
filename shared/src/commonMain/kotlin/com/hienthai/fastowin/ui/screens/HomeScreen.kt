@@ -88,6 +88,7 @@ internal fun HomeDashboard(
     onOpenProfile: () -> Unit,
     onOpenSettings: () -> Unit,
     onOpenNotifications: () -> Unit,
+    onOpenClan: () -> Unit,
     onOpenPractice: () -> Unit,
     onOpenTournament: () -> Unit,
     onClaimDailyCheckIn: () -> Unit,
@@ -161,6 +162,9 @@ internal fun HomeDashboard(
                         ) {
                             Icon(Icons.Default.Notifications, contentDescription = "Thông báo")
                         }
+                    }
+                    IconButton(onClick = onOpenClan) {
+                        Icon(androidx.compose.material.icons.Icons.Default.Group, contentDescription = "Bang hội")
                     }
                     IconButton(onClick = onOpenSettings) {
                         Icon(Icons.Default.Settings, contentDescription = "Cài đặt")

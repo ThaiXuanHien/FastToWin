@@ -1,0 +1,147 @@
+--- a/server/src/main/kotlin/com/hienthai/fastowin/server/GameEngine.kt
++++ b/server/src/main/kotlin/com/hienthai/fastowin/server/GameEngine.kt
+@@ -1857,12 +1858,25 @@ class GameEngine(
+         )
+         room.processedRequests[requestKey] = event
+         return HandleResult(
+-            deliveries = listOf(Delivery(event, room.playerIds())),
++            deliveries = listOf(Delivery(event, room.playerIds() + room.spectatorIds)),
+             completedMatch = room.takeCompletedMatch(),
+             changedRoomId = room.id
+         )
+     }
+ 
++    private fun sendEmoji(player: GuestSession, command: ClientMessage.SendEmoji): HandleResult {
++        val room = rooms[command.roomId]
++            ?: return HandleResult(listOf(error(player.playerId, "ROOM_NOT_FOUND", "Kh?ng t?m th?y ph?ng.")))
++
++        if (player.playerId !in room.playerIds() && player.playerId !in room.spectatorIds) {
++            return HandleResult(listOf(error(player.playerId, "NOT_IN_ROOM", "B?n kh?ng ? trong ph?ng n?y.")))
++        }
++
++        val allParticipants = room.playerIds() + room.spectatorIds
++        val delivery = Delivery(ServerMessage.EmojiBroadcast(player.playerId, command.emojiId), allParticipants)
++        return HandleResult(listOf(delivery))
++    }
++
+     private fun createTournamentRoom(tournament: Tournament, match: TournamentMatch): Room {
+         val playerOneId = checkNotNull(match.playerOneId)
+         val playerTwoId = checkNotNull(match.playerTwoId)
+@@ -2030,6 +2044,9 @@ class GameEngine(
+             roomName = name,
+             host = storedPlayer(hostId),
+             guest = guestId?.let(::storedPlayer),
++            guests = extraGuestIds.map(::storedPlayer),
++            spectators = spectatorIds.map(::storedPlayer),
++            teamIds = teamIds.toMap(),
+             passwordSalt = password?.salt?.copyOf(),
+             passwordHash = password?.value?.copyOf(),
+             gameMode = gameMode,
+@@ -2072,6 +2089,9 @@ class GameEngine(
+         gameMode = gameMode,
+         matchType = matchType,
+         guestId = guest?.playerId,
++        extraGuestIds = guests.map { it.playerId }.toMutableSet(),
++        spectatorIds = spectators.map { it.playerId }.toMutableSet(),
++        teamIds = teamIds.toMutableMap(),
+         phase = phase,
+         numbers = numbers.toList(),
+         selectedNumbers = selectedNumbers.toMutableList(),
+@@ -2190,7 +2210,17 @@ class GameEngine(
+                         fastestSegmentAverageMillis = fastestSegment?.averageMillis ?: 0,
+                         slowestSegmentStart = slowestSegment?.start ?: 0,
+                         slowestSegmentEnd = slowestSegment?.end ?: 0,
+-                        slowestSegmentAverageMillis = slowestSegment?.averageMillis ?: 0
++                        slowestSegmentAverageMillis = slowestSegment?.averageMillis ?: 0,
++                        teamId = teamIds[id]
++                    )
++                }
++            },
++            spectators = spectatorIds.mapNotNull { id ->
++                sessionsByPlayerId[id]?.let { session ->
++                    PlayerSnapshot(
++                        id = id,
++                        name = session.displayName,
++                        score = 0
+                     )
+                 }
+             },
+@@ -2201,6 +2231,7 @@ class GameEngine(
+             startedAtEpochMillis = startedAtEpochMillis,
+             finishedAtEpochMillis = finishedAtEpochMillis,
+             winnerPlayerId = if (phase == RoomPhase.FINISHED) winnerId() else null,
++            winnerTeamId = if (phase == RoomPhase.FINISHED) winnerTeamId() else null,
+             rematchRequestedPlayerIds = rematchRequestedPlayerIds.toList(),
+             rematchExpiresAtEpochMillis = rematchExpiresAtEpochMillis,
+             tournamentId = tournamentId,
+@@ -2278,6 +2309,7 @@ class GameEngine(
+         val startedAt = startedAtEpochMillis ?: return null
+         val winnerId = winnerId()
+         resultQueued = true
++        val winnerTeam = winnerTeamId()
+         return CompletedMatch(
+             matchId = matchId,
+             roomName = name,
+@@ -2293,9 +2325,20 @@ class GameEngine(
+                         displayName = session.displayName,
+                         score = scores[playerId] ?: 0,
+                         outcome = when {
+-                            winnerId == null -> MatchOutcome.DRAW
+-                            playerId == winnerId -> MatchOutcome.WIN
+-                            else -> MatchOutcome.LOSS
++                            gameMode == com.hienthai.fastowin.protocol.ProtocolGameMode.TEAM_2V2 -> {
++                                when {
++                                    winnerTeam == null -> MatchOutcome.DRAW
++                                    teamIds[playerId] == winnerTeam -> MatchOutcome.WIN
++                                    else -> MatchOutcome.LOSS
++                                }
++                            }
++                            else -> {
++                                when {
++                                    winnerId == null -> MatchOutcome.DRAW
++                                    playerId == winnerId -> MatchOutcome.WIN
++                                    else -> MatchOutcome.LOSS
++                                }
++                            }
+                         }
+                     )
+                 }
+@@ -2304,8 +2347,18 @@ class GameEngine(
+         )
+     }
+ 
++    private fun Room.winnerTeamId(): String? {
++        if (gameMode != com.hienthai.fastowin.protocol.ProtocolGameMode.TEAM_2V2) return null
++        forcedWinnerId?.let { return teamIds[it] }
++        val teamScores = playerIds().groupBy { teamIds[it] ?: "" }
++            .mapValues { (_, members) -> members.sumOf { scores[it] ?: 0 } }
++        val highestScore = teamScores.values.maxOrNull() ?: 0
++        return teamScores.filterValues { it == highestScore }.keys.singleOrNull()
++    }
++
+     private fun Room.winnerId(): String? {
+         forcedWinnerId?.let { return it }
++        if (gameMode == com.hienthai.fastowin.protocol.ProtocolGameMode.TEAM_2V2) return null
+         val highestScore = scores.values.maxOrNull() ?: 0
+         return scores.filterValues { it == highestScore }.keys.singleOrNull()
+     }
+@@ -2370,6 +2423,9 @@ class GameEngine(
+         var tournamentMatchId: String? = null,
+         var tournamentRound: Int? = null,
+         var guestId: String? = null,
++        val extraGuestIds: MutableSet<String> = mutableSetOf(),
++        val spectatorIds: MutableSet<String> = mutableSetOf(),
++        val teamIds: MutableMap<String, String> = mutableMapOf(),
+         var phase: RoomPhase = RoomPhase.WAITING,
+         var numbers: List<Int> = emptyList(),
+         val selectedNumbers: MutableList<Int> = mutableListOf(),
+@@ -2393,7 +2449,8 @@ class GameEngine(
+         val processedRequests: MutableMap<String, ServerMessage> = mutableMapOf(),
+         val selectionEvents: MutableList<MatchSelectionEvent> = mutableListOf()
+     ) {
+-        fun playerIds(): Set<String> = setOfNotNull(hostId, guestId)
++        fun playerIds(): Set<String> = setOfNotNull(hostId, guestId) + extraGuestIds
++        fun participantIds(): Set<String> = playerIds() + spectatorIds
+ 
+         fun targetFor(playerId: String): Int {
+             val index = targetIndexes[playerId] ?: 0

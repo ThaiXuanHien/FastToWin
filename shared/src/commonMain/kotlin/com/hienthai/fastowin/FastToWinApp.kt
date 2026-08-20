@@ -27,6 +27,7 @@ import com.hienthai.fastowin.platform.ChallengeDeepLinkRouter
 import com.hienthai.fastowin.platform.playFeedbackSound
 import com.hienthai.fastowin.ui.screens.AuthScreen
 import com.hienthai.fastowin.ui.screens.GameScreen
+import com.hienthai.fastowin.ui.screens.ClanScreen
 import com.hienthai.fastowin.ui.screens.FriendsScreen
 import com.hienthai.fastowin.ui.screens.RoomInvitationDialog
 import com.hienthai.fastowin.ui.screens.LobbyScreen
@@ -427,6 +428,17 @@ private fun GameContent(
                     showBackButton = !showTopLevelNavigation,
                     modifier = contentModifier
                 ) }
+                
+                state.isClanOpen -> ClanScreen(
+                    myClanId = state.profile?.clanId,
+                    clanList = state.clanList,
+                    currentClan = state.currentClan,
+                    onCreateClan = controller::createClan,
+                    onJoinClan = controller::joinClan,
+                    onLeaveClan = controller::leaveClan,
+                    onViewClan = controller::viewClan,
+                    onBack = controller::closeClan
+                )
 
                 state.isGameOver -> ResultScreen(
                     state = state,
@@ -505,6 +517,7 @@ private fun GameContent(
                     onUpgradeGuest = onUpgradeGuest,
                     onOpenSettings = { showSettings = true },
                     onOpenNotifications = controller::openNotifications,
+                    onOpenClan = controller::openClan,
                     onOpenPractice = { showPracticeLauncher = true },
                     onOpenTournament = controller::openTournament,
                     onShareRoom = { roomId, roomName ->
