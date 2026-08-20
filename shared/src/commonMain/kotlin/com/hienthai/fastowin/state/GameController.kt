@@ -267,7 +267,7 @@ class GameController(
             return
         }
         if (avatarId != null && avatarId !in PROFILE_AVATAR_IDS) {
-            _uiState.update { it.copy(error = "Ã¡ÂºÂ¢nh Ã„â€˜Ã¡ÂºÂ¡i diÃ¡Â»â€¡n khÃƒÂ´ng hÃ¡Â»Â£p lÃ¡Â»â€¡.") }
+            _uiState.update { it.copy(error = "Ảnh đại diện không hợp lệ.") }
             return
         }
         _uiState.update { it.copy(isProfileSaving = true, profileNotice = null, error = null) }
@@ -593,7 +593,7 @@ class GameController(
 
     fun createRoom(roomName: String, password: String) {
         if (roomName.isBlank()) {
-            _uiState.update { it.copy(error = "Vui lÃƒÂ²ng nhÃ¡ÂºÂ­p tÃƒÂªn phÃƒÂ²ng.") }
+            _uiState.update { it.copy(error = "Vui lòng nhập tên phòng.") }
             return
         }
         _uiState.update { it.copy(isSearching = true, error = null) }
@@ -611,7 +611,7 @@ class GameController(
     fun joinRoom(roomId: String, password: String) {
         val room = _uiState.value.availableRooms.firstOrNull { it.id == roomId }
         if (room == null) {
-            _uiState.update { it.copy(error = "PhÃƒÂ²ng khÃƒÂ´ng cÃƒÂ²n khÃ¡ÂºÂ£ dÃ¡Â»Â¥ng.") }
+            _uiState.update { it.copy(error = "Phòng không còn khả dụng.") }
             return
         }
         _uiState.update {
@@ -1082,12 +1082,12 @@ class GameController(
                                 "Ã„ÂÃ¡Â»â€˜i thÃ¡Â»Â§ muÃ¡Â»â€˜n Ã„â€˜Ã¡ÂºÂ¥u lÃ¡ÂºÂ¡i vÃ¡Â»â€ºi bÃ¡ÂºÂ¡n."
                             }
                             RematchEvent.CANCELLED -> if (actorIsMe) {
-                                "BÃ¡ÂºÂ¡n Ã„â€˜ÃƒÂ£ hÃ¡Â»Â§y yÃƒÂªu cÃ¡ÂºÂ§u Ã„â€˜Ã¡ÂºÂ¥u lÃ¡ÂºÂ¡i."
+                                "Bạn đã hủy yêu cầu đấu lại."
                             } else {
                                 "Ã„ÂÃ¡Â»â€˜i thÃ¡Â»Â§ Ã„â€˜ÃƒÂ£ hÃ¡Â»Â§y yÃƒÂªu cÃ¡ÂºÂ§u Ã„â€˜Ã¡ÂºÂ¥u lÃ¡ÂºÂ¡i."
                             }
                             RematchEvent.DECLINED -> if (actorIsMe) {
-                                "BÃ¡ÂºÂ¡n Ã„â€˜ÃƒÂ£ tÃ¡Â»Â« chÃ¡Â»â€˜i Ã„â€˜Ã¡ÂºÂ¥u lÃ¡ÂºÂ¡i."
+                                "Bạn đã từ chối đấu lại."
                             } else {
                                 "Ã„ÂÃ¡Â»â€˜i thÃ¡Â»Â§ Ã„â€˜ÃƒÂ£ tÃ¡Â»Â« chÃ¡Â»â€˜i Ã„â€˜Ã¡ÂºÂ¥u lÃ¡ÂºÂ¡i."
                             }
@@ -1169,7 +1169,7 @@ class GameController(
                 opponent = opponent?.toState(DEFAULT_OPPONENT_NAME, 1) ?: PlayerState(DEFAULT_OPPONENT_NAME),
                 teammates = teammateSnapshots.map { it.toState("Ã„ÂÃ¡Â»â€œng Ã„â€˜Ã¡Â»â„¢i", 1) },
                 opponents = opponentSnapshots.map { it.toState(DEFAULT_OPPONENT_NAME, 1) },
-                spectators = spectatorSnapshots.map { it.toState("KhÃƒÂ¡n giÃ¡ÂºÂ£", 1, isSpectator = true) },
+                spectators = spectatorSnapshots.map { it.toState("Khán giả", 1, isSpectator = true) },
                 hasOpponent = opponentSnapshots.isNotEmpty(),
                 isMatchmaking = false,
                 matchmakingStartedAtMillis = null,
@@ -1246,7 +1246,7 @@ class GameController(
                 opponent = opponent?.toState(DEFAULT_OPPONENT_NAME, game.currentTarget) ?: PlayerState(DEFAULT_OPPONENT_NAME),
                 teammates = teammateSnapshots.map { it.toState("Ã„ÂÃ¡Â»â€œng Ã„â€˜Ã¡Â»â„¢i", game.currentTarget) },
                 opponents = opponentSnapshots.map { it.toState(DEFAULT_OPPONENT_NAME, game.currentTarget) },
-                spectators = spectatorSnapshots.map { it.toState("KhÃƒÂ¡n giÃ¡ÂºÂ£", game.currentTarget, isSpectator = true) },
+                spectators = spectatorSnapshots.map { it.toState("Khán giả", game.currentTarget, isSpectator = true) },
                 lobbyStage = LobbyStage.MATCHED,
                 currentRoomId = game.roomId,
                 currentRoomName = game.roomName,

@@ -93,7 +93,7 @@ data class GameState(
     val lobbyStage: LobbyStage = LobbyStage.SELECT_MODE,
     
     // Multiplayer simulation
-    val player: PlayerState = PlayerState("Báº¡n"),
+    val player: PlayerState = PlayerState("Bạn"),
     val opponent: PlayerState = PlayerState(DEFAULT_OPPONENT_NAME),
     val teammates: List<PlayerState> = emptyList(),
     val opponents: List<PlayerState> = emptyList(),

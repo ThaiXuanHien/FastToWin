@@ -107,7 +107,7 @@ internal fun HomeDashboard(
     launchAction?.let { action ->
         GameModePickerDialog(
             title = when (action) {
-                HomeLaunchAction.CREATE_ROOM -> "Táº¡o phÃ²ng má»›i"
+                HomeLaunchAction.CREATE_ROOM -> "Tạo phòng má»›i"
                 HomeLaunchAction.CASUAL -> "Chá»n cháº¿ Ä‘á»™ Ä‘áº¥u thÆ°á»ng"
                 HomeLaunchAction.RANKED -> "Chá»n cháº¿ Ä‘á»™ xáº¿p háº¡ng"
             },
@@ -140,7 +140,7 @@ internal fun HomeDashboard(
                         fontWeight = FontWeight.Bold
                     )
                     Text(
-                        "ChÃ o $displayName ðŸ‘‹",
+                        "Chào $displayName 👋",
                         style = MaterialTheme.typography.headlineSmall,
                         fontWeight = FontWeight.Bold,
                         maxLines = 1,
@@ -161,14 +161,14 @@ internal fun HomeDashboard(
                                 }
                             }
                         ) {
-                            Icon(Icons.Default.Notifications, contentDescription = "ThÃ´ng bÃ¡o")
+                            Icon(Icons.Default.Notifications, contentDescription = "Thông báo")
                         }
                     }
                     IconButton(onClick = onOpenClan) {
-                        Icon(androidx.compose.material.icons.Icons.Default.Group, contentDescription = "Bang há»™i")
+                        Icon(androidx.compose.material.icons.Icons.Default.Group, contentDescription = "Bang hội")
                     }
                     IconButton(onClick = onOpenSettings) {
-                        Icon(Icons.Default.Settings, contentDescription = "CÃ i Ä‘áº·t")
+                        Icon(Icons.Default.Settings, contentDescription = "Cài đặt")
                     }
                 }
             }
@@ -199,14 +199,14 @@ internal fun HomeDashboard(
                         if (elo == null) "ÄANG Äá»’NG Bá»˜ Dá»® LIá»†U"
                         else buildString {
                             if (season != null && season.placementMatchesPlayed < season.placementMatchesRequired) {
-                                append("PHÃ‚N Háº NG ").append(season.placementMatchesPlayed)
+                                append("PHÂN HẠNG ").append(season.placementMatchesPlayed)
                                     .append('/').append(season.placementMatchesRequired)
                             } else if (season != null) {
                                 append(season.tier.uppercase())
                             } else {
                                 append("ELO ").append(elo)
                             }
-                            rank?.let { append("  â€¢  Háº¡ng #").append(it) }
+                            rank?.let { append("  •  Hạng #").append(it) }
                         },
                         style = MaterialTheme.typography.labelLarge
                     )
@@ -243,25 +243,25 @@ internal fun HomeDashboard(
                             )
                         ) {
                             Icon(Icons.Default.PlayArrow, null)
-                            Text(" Xáº¿p háº¡ng", fontWeight = FontWeight.Bold)
+                            Text(" Xếp hạng", fontWeight = FontWeight.Bold)
                         }
                     }
                 }
             }
 
-            SectionTitle("Lá»‘i táº¯t", "Má»i chá»©c nÄƒng chÃ­nh Ä‘á»u á»Ÿ táº§ng Ä‘áº§u")
+            SectionTitle("Lối tắt", "Má»i chá»©c nÄƒng chÃ­nh Ä‘á»u á»Ÿ táº§ng Ä‘áº§u")
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     HomeQuickAction(
-                        "Táº¡o phÃ²ng",
+                        "Tạo phòng",
                         "Chá»n cháº¿ Ä‘á»™ rá»“i táº¡o",
                         Icons.Default.Add,
                         { launchAction = HomeLaunchAction.CREATE_ROOM },
                         Modifier.weight(1f)
                     )
                     HomeQuickAction(
-                        "VÃ o phÃ²ng",
-                        "${state.availableRooms.size} phÃ²ng Ä‘ang má»Ÿ",
+                        "Vào phòng",
+                        "${state.availableRooms.size} phòng Ä‘ang má»Ÿ",
                         Icons.Default.MeetingRoom,
                         onOpenRooms,
                         Modifier.weight(1f)
@@ -269,22 +269,22 @@ internal fun HomeDashboard(
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     HomeQuickAction(
-                        "Báº¡n bÃ¨",
+                        "Bạn bè",
                         if (isGuest) "ÄÄƒng kÃ½ Ä‘á»ƒ káº¿t báº¡n" else "$onlineFriends ngÆ°á»i online",
                         Icons.Default.Group,
                         openSocial,
                         Modifier.weight(1f)
                     )
                     HomeQuickAction(
-                        "Xáº¿p háº¡ng",
-                        rank?.let { "Báº¡n Ä‘ang háº¡ng #$it" } ?: "Xem báº£ng Elo",
+                        "Xếp hạng",
+                        rank?.let { "Bạn đang hạng #$it" } ?: "Xem bảng Elo",
                         Icons.Default.EmojiEvents,
                         onOpenLeaderboard,
                         Modifier.weight(1f)
                     )
                 }
                 HomeQuickAction(
-                    "Cá»­a hÃ ng",
+                    "Cửa hàng",
                     "Mua tháº» bÃ i, skin bÃ n cá», avatar...",
                     Icons.Default.Person,
                     onOpenShop,
@@ -298,8 +298,8 @@ internal fun HomeDashboard(
                     Modifier.fillMaxWidth().testTag("home_tournament")
                 )
                 HomeQuickAction(
-                    "Luyá»‡n táº­p offline",
-                    "RÃ¨n tá»‘c Ä‘á»™ vá»›i bÃ n 50 sá»‘, khÃ´ng áº£nh hÆ°á»Ÿng Elo",
+                    "Luyện tập offline",
+                    "Rèn tốc độ với bàn 50 số, không ảnh hưởng Elo",
                     Icons.Default.FitnessCenter,
                     onOpenPractice,
                     Modifier.fillMaxWidth()
@@ -307,7 +307,7 @@ internal fun HomeDashboard(
             }
 
             state.profile?.recentMatches?.firstOrNull()?.let { match ->
-                SectionTitle("Tráº­n gáº§n nháº¥t")
+                SectionTitle("Trận gần nhất")
                 ElevatedCard(
                     onClick = onOpenProfile,
                     modifier = Modifier.fillMaxWidth(),
@@ -322,7 +322,7 @@ internal fun HomeDashboard(
                         Column(modifier = Modifier.weight(1f)) {
                             Text(match.roomName, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                             Text(
-                                "Äá»‘i thá»§ ${match.opponentName}  â€¢  ${matchOutcomeLabel(match.outcome)}",
+                                "Äá»‘i thá»§ ${match.opponentName}  •  ${matchOutcomeLabel(match.outcome)}",
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
@@ -348,11 +348,11 @@ internal fun HomeDashboard(
             if (isGuest) {
                 Surface(shape = RoundedCornerShape(18.dp), color = MaterialTheme.colorScheme.secondaryContainer) {
                     Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text("LÆ°u tiáº¿n trÃ¬nh cá»§a báº¡n", fontWeight = FontWeight.Bold)
+                        Text("LÆ°u tiáº¿n trÃ¬nh của báº¡n", fontWeight = FontWeight.Bold)
                         Text("ÄÄƒng kÃ½ email Ä‘á»ƒ lÆ°u Elo, lá»‹ch sá»­ vÃ  báº¡n bÃ¨ trÃªn Android/iOS.")
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Button(onClick = onUpgradeGuest) { Text("Táº¡o tÃ i khoáº£n") }
-                            TextButton(onClick = onLogout) { Text("ThoÃ¡t cháº¿ Ä‘á»™ khÃ¡ch") }
+                            Button(onClick = onUpgradeGuest) { Text("Tạo tài khoản") }
+                            TextButton(onClick = onLogout) { Text("Thoát chế độ khách") }
                         }
                     }
                 }
@@ -391,9 +391,9 @@ private fun DailyCheckInCard(
                 ) {
                     Icon(Icons.Default.CalendarMonth, contentDescription = null)
                     Column {
-                        Text("Äiá»ƒm danh ngÃ y ${checkIn.cycleDay}/7", fontWeight = FontWeight.Bold)
+                        Text("Äiá»ƒm danh ngày ${checkIn.cycleDay}/7", fontWeight = FontWeight.Bold)
                         Text(
-                            "Chuá»—i ${checkIn.currentStreak} ngÃ y â€¢ Tá»‘t nháº¥t ${checkIn.bestStreak}",
+                            "Chuỗi ${checkIn.currentStreak} ngày • Tốt nháº¥t ${checkIn.bestStreak}",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.72f)
                         )
@@ -454,7 +454,7 @@ private fun DailyCheckInCard(
                             color = MaterialTheme.colorScheme.onPrimary
                         )
                     } else {
-                        Text("Nháº­n ${checkIn.todayRewardXp} XP", fontWeight = FontWeight.Bold)
+                        Text("Nhận ${checkIn.todayRewardXp} XP", fontWeight = FontWeight.Bold)
                     }
                 }
             }
@@ -505,18 +505,18 @@ internal fun FastToWinBottomBar(
         color = MaterialTheme.colorScheme.surface
     ) {
         Row(modifier = Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
-            BottomBarItem("Trang chá»§", Icons.Default.Home, selected == MainTab.HOME, onHome, Modifier.weight(1f))
-            BottomBarItem("Xáº¿p háº¡ng", Icons.Default.EmojiEvents, selected == MainTab.LEADERBOARD, onLeaderboard, Modifier.weight(1f))
-            BottomBarItem("ChÆ¡i", Icons.Default.SportsEsports, false, onPlay, Modifier.weight(1f))
+            BottomBarItem("Trang chủ", Icons.Default.Home, selected == MainTab.HOME, onHome, Modifier.weight(1f))
+            BottomBarItem("Xếp hạng", Icons.Default.EmojiEvents, selected == MainTab.LEADERBOARD, onLeaderboard, Modifier.weight(1f))
+            BottomBarItem("Chơi", Icons.Default.SportsEsports, false, onPlay, Modifier.weight(1f))
             BottomBarItem(
-                label = "Báº¡n bÃ¨",
+                label = "Bạn bè",
                 icon = Icons.Default.Group,
                 selected = selected == MainTab.FRIENDS,
                 onClick = onFriends,
                 modifier = Modifier.weight(1f),
                 badgeCount = friendNotificationCount
             )
-            BottomBarItem("TÃ i khoáº£n", Icons.Default.Person, selected == MainTab.ACCOUNT, onAccount, Modifier.weight(1f))
+            BottomBarItem("Tài khoản", Icons.Default.Person, selected == MainTab.ACCOUNT, onAccount, Modifier.weight(1f))
         }
     }
 }
@@ -619,7 +619,7 @@ internal fun GameModePickerDialog(
                     val unlocked = playerLevel >= mode.unlockLevel
                     ModeChoice(
                         title = mode.title,
-                        subtitle = if (unlocked) mode.description else "Má»Ÿ khÃ³a á»Ÿ cáº¥p ${mode.unlockLevel}",
+                        subtitle = if (unlocked) mode.description else "Mở khóa ở cấp ${mode.unlockLevel}",
                         icon = if (mode == GameMode.TIME_BONUS || mode == GameMode.SPEED_UP) {
                             Icons.Rounded.Timer
                         } else {
@@ -666,15 +666,15 @@ private fun ModeChoice(
 }
 
 private fun matchOutcomeLabel(outcome: MatchHistoryOutcome): String = when (outcome) {
-    MatchHistoryOutcome.WIN -> "Tháº¯ng"
+    MatchHistoryOutcome.WIN -> "Thắng"
     MatchHistoryOutcome.LOSS -> "Thua"
-    MatchHistoryOutcome.DRAW -> "HÃ²a"
+    MatchHistoryOutcome.DRAW -> "Hòa"
 }
 
 private fun connectionLabel(status: ConnectionStatus): String = when (status) {
-    ConnectionStatus.DISCONNECTED -> "ChÆ°a káº¿t ná»‘i mÃ¡y chá»§"
+    ConnectionStatus.DISCONNECTED -> "Chưa kết nối máy chủ"
     ConnectionStatus.CONNECTING -> "Äang káº¿t ná»‘i mÃ¡y chá»§..."
     ConnectionStatus.AUTHENTICATING -> "Äang xÃ¡c thá»±c tÃ i khoáº£n..."
     ConnectionStatus.CONNECTED -> "ÄÃ£ káº¿t ná»‘i"
-    ConnectionStatus.RECONNECTING -> "Máº¥t káº¿t ná»‘i, Ä‘ang thá»­ láº¡i..."
+    ConnectionStatus.RECONNECTING -> "Mất kết nối, đang thử lại..."
 }

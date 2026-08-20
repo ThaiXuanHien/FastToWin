@@ -250,7 +250,7 @@ private fun GameContent(
     challengeLinkError?.let { message ->
         AlertDialog(
             onDismissRequest = { challengeLinkError = null },
-            title = { Text("KhÃƒÂ´ng thÃ¡Â»Æ’ mÃ¡Â»Å¸ thÃ¡Â»Â­ thÃƒÂ¡ch") },
+            title = { Text("Không thể mở thử thách") },
             text = { Text(message) },
             confirmButton = {
                 TextButton(onClick = { challengeLinkError = null }) { Text("Ã„ÂÃƒÂ£ hiÃ¡Â»Æ’u") }
@@ -548,7 +548,7 @@ private fun GameContent(
                     onOpenTournament = controller::openTournament,
                     onOpenShop = controller::openShop,
                     onShareRoom = { roomId, roomName ->
-                        textSharer.share(buildRoomShareText(roomName, roomId), "Chia sÃ¡ÂºÂ» phÃƒÂ²ng")
+                        textSharer.share(buildRoomShareText(roomName, roomId), "Chia sẻ phòng")
                     },
                     onResolveRoomLink = controller::resolvePendingRoomLink,
                     onClaimDailyCheckIn = controller::claimDailyCheckIn
