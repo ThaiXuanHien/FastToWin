@@ -1,1 +1,1 @@
-﻿ALTER TABLE players ADD COLUMN fcm_token VARCHAR(255);
+ALTER TABLE users ADD COLUMN fcm_token VARCHAR(255);
