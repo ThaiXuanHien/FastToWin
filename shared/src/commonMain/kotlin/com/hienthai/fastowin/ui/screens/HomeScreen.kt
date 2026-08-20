@@ -1,4 +1,4 @@
-﻿package com.hienthai.fastowin.ui.screens
+package com.hienthai.fastowin.ui.screens
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -31,6 +31,7 @@ import androidx.compose.material.icons.filled.MeetingRoom
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.ShoppingCart
 import androidx.compose.material.icons.filled.SportsEsports
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.rounded.Bolt
@@ -107,9 +108,9 @@ internal fun HomeDashboard(
     launchAction?.let { action ->
         GameModePickerDialog(
             title = when (action) {
-                HomeLaunchAction.CREATE_ROOM -> "Tạo phòng má»›i"
-                HomeLaunchAction.CASUAL -> "Chá»n cháº¿ Ä‘á»™ Ä‘áº¥u thÆ°á»ng"
-                HomeLaunchAction.RANKED -> "Chá»n cháº¿ Ä‘á»™ xáº¿p háº¡ng"
+                HomeLaunchAction.CREATE_ROOM -> "Tạo phòng mới"
+                HomeLaunchAction.CASUAL -> "Chọn chế độ đấu thường"
+                HomeLaunchAction.RANKED -> "Chọn chế độ xếp hạng"
             },
             playerLevel = profile?.progression?.level ?: 1,
             onDismiss = { launchAction = null },
@@ -196,7 +197,7 @@ internal fun HomeDashboard(
                 ) {
                     val season = profile?.progression?.season
                     Text(
-                        if (elo == null) "ÄANG Äá»’NG Bá»˜ Dá»® LIá»†U"
+                        if (elo == null) "ĐANG ĐỒNG BỘ DỮ LIỆU"
                         else buildString {
                             if (season != null && season.placementMatchesPlayed < season.placementMatchesRequired) {
                                 append("PHÂN HẠNG ").append(season.placementMatchesPlayed)
@@ -211,14 +212,14 @@ internal fun HomeDashboard(
                         style = MaterialTheme.typography.labelLarge
                     )
                     Text(
-                        "Chá»n cÃ¡ch thi Ä‘áº¥u",
+                        "Chọn cách thi đấu",
                         style = if (compactHeight) MaterialTheme.typography.headlineSmall
                         else MaterialTheme.typography.headlineMedium,
                         fontWeight = FontWeight.Bold
                     )
                     Text(
-                        if (isGuest) "ÄÄƒng kÃ½ tÃ i khoáº£n Ä‘á»ƒ ghÃ©p Ä‘á»‘i thá»§ trá»±c tuyáº¿n."
-                        else "Äáº¥u thÆ°á»ng Ä‘á»ƒ luyá»‡n táº­p hoáº·c xáº¿p háº¡ng Ä‘á»ƒ tÄƒng Elo.",
+                        if (isGuest) "Đăng ký tài khoản để ghép đối thủ trực tuyến."
+                        else "Đấu thường để luyện tập hoặc xếp hạng để tăng Elo.",
                         color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.82f)
                     )
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -230,7 +231,7 @@ internal fun HomeDashboard(
                                 contentColor = MaterialTheme.colorScheme.onPrimary
                             )
                         ) {
-                            Text("Äáº¥u thÆ°á»ng", fontWeight = FontWeight.Bold)
+                            Text("Đấu thường", fontWeight = FontWeight.Bold)
                         }
                         Button(
                             onClick = if (isGuest) onUpgradeGuest else ({ launchAction = HomeLaunchAction.RANKED }),
@@ -249,19 +250,19 @@ internal fun HomeDashboard(
                 }
             }
 
-            SectionTitle("Lối tắt", "Má»i chá»©c nÄƒng chÃ­nh Ä‘á»u á»Ÿ táº§ng Ä‘áº§u")
+            SectionTitle("Lối tắt", "Mọi chức năng chính đều ở tầng đầu")
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     HomeQuickAction(
                         "Tạo phòng",
-                        "Chá»n cháº¿ Ä‘á»™ rá»“i táº¡o",
+                        "Chọn chế độ rồi tạo",
                         Icons.Default.Add,
                         { launchAction = HomeLaunchAction.CREATE_ROOM },
                         Modifier.weight(1f)
                     )
                     HomeQuickAction(
                         "Vào phòng",
-                        "${state.availableRooms.size} phòng Ä‘ang má»Ÿ",
+                        "${state.availableRooms.size} phòng đang mở",
                         Icons.Default.MeetingRoom,
                         onOpenRooms,
                         Modifier.weight(1f)
@@ -270,7 +271,7 @@ internal fun HomeDashboard(
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     HomeQuickAction(
                         "Bạn bè",
-                        if (isGuest) "ÄÄƒng kÃ½ Ä‘á»ƒ káº¿t báº¡n" else "$onlineFriends ngÆ°á»i online",
+                        if (isGuest) "Đăng ký để kết bạn" else "$onlineFriends người online",
                         Icons.Default.Group,
                         openSocial,
                         Modifier.weight(1f)
@@ -284,18 +285,18 @@ internal fun HomeDashboard(
                     )
                 }
                 HomeQuickAction(
-                    "Cửa hàng",
-                    "Mua tháº» bÃ i, skin bÃ n cá», avatar...",
-                    Icons.Default.Person,
-                    onOpenShop,
-                    Modifier.fillMaxWidth().testTag("home_shop")
-                )
-                HomeQuickAction(
-                    "Äáº¥u giáº£i",
-                    if (isGuest) "ÄÄƒng kÃ½ Ä‘á»ƒ tham gia" else "Giáº£i riÃªng 4 ngÆ°á»i loáº¡i trá»±c tiáº¿p",
+                    "Đấu giải",
+                    if (isGuest) "Đăng ký để tham gia" else "Giải riêng 4 người loại trực tiếp",
                     Icons.Default.EmojiEvents,
                     if (isGuest) onUpgradeGuest else onOpenTournament,
                     Modifier.fillMaxWidth().testTag("home_tournament")
+                )
+                HomeQuickAction(
+                    "Cửa hàng",
+                    "Mua thẻ bài, skin bàn cờ, avatar...",
+                    Icons.Default.ShoppingCart,
+                    onOpenShop,
+                    Modifier.fillMaxWidth().testTag("home_shop")
                 )
                 HomeQuickAction(
                     "Luyện tập offline",
@@ -322,7 +323,7 @@ internal fun HomeDashboard(
                         Column(modifier = Modifier.weight(1f)) {
                             Text(match.roomName, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                             Text(
-                                "Äá»‘i thá»§ ${match.opponentName}  •  ${matchOutcomeLabel(match.outcome)}",
+                                "Đối thủ ${match.opponentName}  •  ${matchOutcomeLabel(match.outcome)}",
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
@@ -335,7 +336,7 @@ internal fun HomeDashboard(
                                 fontWeight = FontWeight.Bold
                             )
                         } else {
-                            Text("ThÆ°á»ng", color = MaterialTheme.colorScheme.onSurfaceVariant, fontWeight = FontWeight.Bold)
+                            Text("Thường", color = MaterialTheme.colorScheme.onSurfaceVariant, fontWeight = FontWeight.Bold)
                         }
                     }
                 }
@@ -348,8 +349,8 @@ internal fun HomeDashboard(
             if (isGuest) {
                 Surface(shape = RoundedCornerShape(18.dp), color = MaterialTheme.colorScheme.secondaryContainer) {
                     Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text("LÆ°u tiáº¿n trÃ¬nh của báº¡n", fontWeight = FontWeight.Bold)
-                        Text("ÄÄƒng kÃ½ email Ä‘á»ƒ lÆ°u Elo, lá»‹ch sá»­ vÃ  báº¡n bÃ¨ trÃªn Android/iOS.")
+                        Text("Lưu tiến trình của bạn", fontWeight = FontWeight.Bold)
+                        Text("Đăng ký email để lưu Elo, lịch sử và bạn bè trên Android/iOS.")
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             Button(onClick = onUpgradeGuest) { Text("Tạo tài khoản") }
                             TextButton(onClick = onLogout) { Text("Thoát chế độ khách") }
@@ -391,9 +392,9 @@ private fun DailyCheckInCard(
                 ) {
                     Icon(Icons.Default.CalendarMonth, contentDescription = null)
                     Column {
-                        Text("Äiá»ƒm danh ngày ${checkIn.cycleDay}/7", fontWeight = FontWeight.Bold)
+                        Text("Điểm danh ngày ${checkIn.cycleDay}/7", fontWeight = FontWeight.Bold)
                         Text(
-                            "Chuỗi ${checkIn.currentStreak} ngày • Tốt nháº¥t ${checkIn.bestStreak}",
+                            "Chuỗi ${checkIn.currentStreak} ngày • Tốt nhất ${checkIn.bestStreak}",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.72f)
                         )
@@ -402,7 +403,7 @@ private fun DailyCheckInCard(
                 if (checkIn.claimedToday) {
                     Icon(
                         Icons.Default.CheckCircle,
-                        contentDescription = "ÄÃ£ Ä‘iá»ƒm danh",
+                        contentDescription = "Đã điểm danh",
                         tint = MaterialTheme.colorScheme.primary
                     )
                 }
@@ -631,7 +632,7 @@ internal fun GameModePickerDialog(
             }
         },
         confirmButton = {},
-        dismissButton = { TextButton(onClick = onDismiss) { Text("ÄÃ³ng") } }
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Đóng") } }
     )
 }
 
@@ -673,8 +674,8 @@ private fun matchOutcomeLabel(outcome: MatchHistoryOutcome): String = when (outc
 
 private fun connectionLabel(status: ConnectionStatus): String = when (status) {
     ConnectionStatus.DISCONNECTED -> "Chưa kết nối máy chủ"
-    ConnectionStatus.CONNECTING -> "Äang káº¿t ná»‘i mÃ¡y chá»§..."
-    ConnectionStatus.AUTHENTICATING -> "Äang xÃ¡c thá»±c tÃ i khoáº£n..."
-    ConnectionStatus.CONNECTED -> "ÄÃ£ káº¿t ná»‘i"
+    ConnectionStatus.CONNECTING -> "Đang kết nối máy chủ..."
+    ConnectionStatus.AUTHENTICATING -> "Đang xác thực tài khoản..."
+    ConnectionStatus.CONNECTED -> "Đã kết nối"
     ConnectionStatus.RECONNECTING -> "Mất kết nối, đang thử lại..."
 }

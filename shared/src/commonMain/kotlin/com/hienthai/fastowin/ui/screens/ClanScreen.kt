@@ -1,4 +1,4 @@
-﻿package com.hienthai.fastowin.ui.screens
+package com.hienthai.fastowin.ui.screens
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -45,7 +45,7 @@ fun ClanScreen(
                 title = { Text("Bang Hội") },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.Rounded.ArrowBack, contentDescription = "TrÃ¡Â»Å¸ vÃ¡Â»Â")
+                        Icon(Icons.Rounded.ArrowBack, contentDescription = "Trở về")
                     }
                 }
             )
@@ -169,7 +169,7 @@ fun ClanDetailView(
                 Text(clan.name, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
                 Text(clan.description, style = MaterialTheme.typography.bodyLarge)
                 TextButton(onClick = { showLogoDialog = true }) {
-                    Text("Ã„ÂÃ¡Â»•i logo")
+                    Text("Đổi logo")
                 }
             }
         }
@@ -177,7 +177,7 @@ fun ClanDetailView(
         if (showLogoDialog) {
             AlertDialog(
                 onDismissRequest = { showLogoDialog = false },
-                title = { Text("ChÃ¡Â»Ân Logo") },
+                title = { Text("Chọn Logo") },
                 text = {
                     LazyVerticalGrid(
                         columns = GridCells.Fixed(4),
@@ -201,38 +201,27 @@ fun ClanDetailView(
                     }
                 },
                 confirmButton = {
-                    TextButton(onClick = { showLogoDialog = false }) { Text("ÄÃ³ng") }
+                    TextButton(onClick = { showLogoDialog = false }) { Text("Đóng") }
                 }
             )
         }
+        Text("🏆 Tổng Cúp: ${clan.members.sumOf { it.trophies }}")
 
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text("ðŸ† Tổng Cúp: ${clan.trophies}", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-        }
-
+        // Clan Quest Section
         clan.quest?.let { quest ->
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
-            ) {
+            Card(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Nhiá»‡m vá»¥ tuáº§n: Thắng ${quest.target} tráº­n", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    Text(
+                        "Nhiệm vụ tuần: Thắng ${quest.target} trận",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold
+                    )
                     LinearProgressIndicator(
-                        progress = { if (quest.target > 0) quest.progress.toFloat() / quest.target else 0f },
+                        progress = { (quest.progress.toFloat() / quest.target.coerceAtLeast(1)).coerceIn(0f, 1f) },
                         modifier = Modifier.fillMaxWidth().height(8.dp),
                     )
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text("${quest.progress} / ${quest.target}")
-                        Text("Thưởng: ${quest.rewardGold} VÃ ng", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
-                    }
+                    Text("${quest.progress}/${quest.target}")
+                    Text("Thưởng: ${quest.rewardGold} Vàng", style = MaterialTheme.typography.bodySmall)
                     if (quest.progress >= quest.target) {
                         Button(onClick = onClaimQuest, modifier = Modifier.fillMaxWidth()) {
                             Text("Nhận thưởng")
@@ -251,7 +240,7 @@ fun ClanDetailView(
                     supportingContent = { Text(member.role.name) },
                     trailingContent = { 
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text("Ã°Å¸Ââ€  ${member.trophies}")
+                            Text("🏆 ${member.trophies}")
                             if (clan.ownerId != member.userId) {
                                 // Assume we have currentUserId or just pass an onKick lambda that will fail if not owner
                                 IconButton(onClick = { onKickMember(clan.id, member.userId) }) {
@@ -268,7 +257,7 @@ fun ClanDetailView(
             colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
             modifier = Modifier.fillMaxWidth()
         ) {
-            Text("RÃ¡Â»Âi Bang")
+            Text("Rời Bang")
         }
     }
 }

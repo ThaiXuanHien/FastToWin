@@ -1,4 +1,4 @@
-﻿package com.hienthai.fastowin
+package com.hienthai.fastowin
 
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.Column
@@ -209,9 +209,9 @@ private fun GameContent(
         val playerLevel = state.profile?.progression?.level ?: 1
         challengeLinkError = when {
             state.currentRoomId != null || state.isMatchStarted || state.isGameOver || state.isMatchmaking ->
-                "HÃƒÂ£y kÃ¡ÂºÂ¿t thÃƒÂºc hoÃ¡ÂºÂ·c rÃ¡Â»Âi trÃ¡ÂºÂ­n hiÃ¡Â»â€¡n tÃ¡ÂºÂ¡i trÃ†Â°Ã¡Â»â€ºc khi mÃ¡Â»Å¸ thÃ¡Â»Â­ thÃƒÂ¡ch."
+                "Hãy kết thúc hoặc rời trận hiện tại trước khi mở thử thách."
             playerLevel < challenge.mode.unlockLevel ->
-                "ChÃ¡ÂºÂ¿ Ã„â€˜Ã¡Â»â„¢ ${challenge.mode.title} mÃ¡Â»Å¸ khÃƒÂ³a Ã¡Â»Å¸ cÃ¡ÂºÂ¥p ${challenge.mode.unlockLevel}."
+                "Chế độ ${challenge.mode.title} mở khóa ở cấp ${challenge.mode.unlockLevel}."
             else -> null
         }
 
@@ -253,13 +253,13 @@ private fun GameContent(
             title = { Text("Không thể mở thử thách") },
             text = { Text(message) },
             confirmButton = {
-                TextButton(onClick = { challengeLinkError = null }) { Text("Ã„ÂÃƒÂ£ hiÃ¡Â»Æ’u") }
+                TextButton(onClick = { challengeLinkError = null }) { Text("Đã hiểu") }
             }
         )
     }
     if (showGameModePicker) {
         GameModePickerDialog(
-            title = "ChÃ¡Â»Ân chÃ¡ÂºÂ¿ Ã„â€˜Ã¡Â»â„¢ chÃ†Â¡i",
+            title = "Chọn chế độ chơi",
             playerLevel = state.profile?.progression?.level ?: 1,
             onDismiss = { showGameModePicker = false },
             onSelect = { mode ->
@@ -271,7 +271,7 @@ private fun GameContent(
     }
     if (showPracticeModePicker) {
         GameModePickerDialog(
-            title = "ChÃ¡Â»Ân chÃ¡ÂºÂ¿ Ã„â€˜Ã¡Â»â„¢ luyÃ¡Â»â€¡n tÃ¡ÂºÂ­p",
+            title = "Chọn chế độ luyện tập",
             playerLevel = state.profile?.progression?.level ?: 1,
             onDismiss = { showPracticeModePicker = false },
             onSelect = { mode ->
@@ -450,6 +450,7 @@ private fun GameContent(
                     onEquip = controller::equipCosmetic,
                     onClose = controller::closeShop
                 )
+
                 state.isClanOpen -> ClanScreen(
                     serverUrl = serverUrl,
                     myClanId = state.profile?.clanId,
