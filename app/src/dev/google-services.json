@@ -1,13 +1,13 @@
-﻿{
+{
   "project_info": {
-    "project_number": "123456789012",
+    "project_number": "971269227863",
     "project_id": "fast-to-win",
-    "storage_bucket": "fast-to-win.appspot.com"
+    "storage_bucket": "fast-to-win.firebasestorage.app"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:123456789012:android:abcdef1234567890",
+        "mobilesdk_app_id": "1:971269227863:android:a6953448dc6999a3626a12",
         "android_client_info": {
           "package_name": "com.hienthai.fastowin.dev"
         }
@@ -15,7 +15,7 @@
       "oauth_client": [],
       "api_key": [
         {
-          "current_key": "dummy_api_key_for_build"
+          "current_key": "AIzaSyCOkysTHR-We3NlzCJcgbd7eAvF4dLkdzo"
         }
       ],
       "services": {
