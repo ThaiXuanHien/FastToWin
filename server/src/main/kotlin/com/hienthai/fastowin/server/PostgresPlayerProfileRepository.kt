@@ -741,6 +741,70 @@ class PostgresPlayerProfileRepository(
         const val EXPERIENCE_PER_LEVEL = 100
         const val PLACEMENT_MATCHES_REQUIRED = 5
     }
+    override suspend fun updateGold(playerId: String, amountDelta: Int): Boolean = withContext(Dispatchers.IO) {
+        dataSource.connection.use { connection ->
+            connection.prepareStatement(
+                "UPDATE player_stats SET gold = GREATEST(0, gold + ?) WHERE user_id = ?"
+            ).use { statement ->
+                statement.setInt(1, amountDelta)
+                statement.setObject(2, java.util.UUID.fromString(playerId))
+                statement.executeUpdate() > 0
+            }
+        }
+    }
+
+    override suspend fun buyCosmetic(playerId: String, cosmeticId: String, cosmeticType: String, price: Int): Boolean = withContext(Dispatchers.IO) {
+        dataSource.connection.use { connection ->
+            connection.autoCommit = false
+            try {
+                val updateGold = connection.prepareStatement("UPDATE player_stats SET gold = gold - ? WHERE user_id = ? AND gold >= ?")
+                updateGold.setInt(1, price)
+                updateGold.setObject(2, java.util.UUID.fromString(playerId))
+                updateGold.setInt(3, price)
+                if (updateGold.executeUpdate() == 0) {
+                    connection.rollback()
+                    return@withContext false
+                }
+
+                val insertCosmetic = connection.prepareStatement("INSERT INTO cosmetics (user_id, cosmetic_type, cosmetic_id, unlocked_at) VALUES (?, ?, ?, ?) ON CONFLICT DO NOTHING")
+                insertCosmetic.setObject(1, java.util.UUID.fromString(playerId))
+                insertCosmetic.setString(2, cosmeticType)
+                insertCosmetic.setString(3, cosmeticId)
+                insertCosmetic.setTimestamp(4, java.sql.Timestamp.from(java.time.Instant.now()))
+                if (insertCosmetic.executeUpdate() == 0) {
+                    connection.rollback()
+                    return@withContext false
+                }
+
+                connection.commit()
+                true
+            } catch (e: Exception) {
+                connection.rollback()
+                false
+            } finally {
+                connection.autoCommit = true
+            }
+        }
+    }
+
+    override suspend fun equipCosmetic(playerId: String, cosmeticId: String, cosmeticType: String): Boolean = withContext(Dispatchers.IO) {
+        dataSource.connection.use { connection ->
+            val column = when (cosmeticType) {
+                "FRAME" -> "equipped_frame_id"
+                "TITLE" -> "equipped_title_id"
+                "AVATAR" -> "equipped_avatar_id"
+                "CARD_BACK" -> "equipped_card_back_id"
+                "BOARD_SKIN" -> "equipped_board_skin_id"
+                else -> return@withContext false
+            }
+            connection.prepareStatement("UPDATE player_stats SET $column = ? WHERE user_id = ?").use { statement ->
+                statement.setString(1, cosmeticId)
+                statement.setObject(2, java.util.UUID.fromString(playerId))
+                statement.executeUpdate() > 0
+            }
+        }
+    }
+
 }
 
 private data class ProgressionRow(

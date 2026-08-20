@@ -433,8 +433,8 @@ class GameEngine(
                 return@withLock listOf(error(playerId, "PLAYER_BUSY", "Hãy rời phòng hoặc hủy ghép trận trước khi tạo giải."))
             }
             if (command.entryFee > 0) {
-                val profile = playerProfileRepository.getProfile(playerId)
-                if (profile == null || profile.gold < command.entryFee) {
+                val profile = playerProfileRepository.findByPlayerId(playerId)
+                if (profile == null || profile.progression.gold < command.entryFee) {
                     return@withLock listOf(error(playerId, "NOT_ENOUGH_GOLD", "Bạn không đủ Vàng để tạo giải đấu."))
                 }
                 playerProfileRepository.updateGold(playerId, -command.entryFee)
@@ -549,8 +549,8 @@ class GameEngine(
                 return@withLock listOf(error(playerId, "PLAYER_BUSY", "Hãy rời phòng hoặc giải hiện tại trước."))
             }
             if (tournament.entryFee > 0) {
-                val profile = playerProfileRepository.getProfile(playerId)
-                if (profile == null || profile.gold < tournament.entryFee) {
+                val profile = playerProfileRepository.findByPlayerId(playerId)
+                if (profile == null || profile.progression.gold < tournament.entryFee) {
                     return@withLock listOf(error(playerId, "NOT_ENOUGH_GOLD", "Bạn không đủ Vàng để tham gia giải này."))
                 }
                 playerProfileRepository.updateGold(playerId, -tournament.entryFee)

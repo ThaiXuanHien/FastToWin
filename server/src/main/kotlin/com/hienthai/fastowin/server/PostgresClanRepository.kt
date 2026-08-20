@@ -211,9 +211,7 @@ class PostgresClanRepository(
                 statement.executeUpdate() > 0
             }
         }
-    }
-}
-
+    
     override suspend fun addClanTrophies(clanId: String, amount: Int): Boolean = withContext(Dispatchers.IO) {
         dataSource.connection.use { connection ->
             connection.prepareStatement("UPDATE clans SET trophies = trophies + ? WHERE id = ?").use {
