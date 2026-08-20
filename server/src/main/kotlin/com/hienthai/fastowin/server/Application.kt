@@ -30,6 +30,7 @@ import io.ktor.server.request.receive
 import io.ktor.server.response.header
 import io.ktor.server.response.respond
 import io.ktor.server.response.respondText
+import io.ktor.server.response.respondBytes
 import io.ktor.server.routing.post
 import io.ktor.server.routing.get
 import io.ktor.server.routing.routing
@@ -216,6 +217,24 @@ fun Application.gameModule(
             val request = call.receiveOrReject<DeleteAccountRequest>() ?: return@post
             call.respondAccountAction(authService.deleteAccount(request.accessToken, request.password))
         }
+
+        get("/api/avatar/{playerId}") {
+            val playerId = call.parameters["playerId"] ?: return@get call.respond(HttpStatusCode.BadRequest)
+            val base64Data = engine.getAvatarData(playerId)
+            if (base64Data != null) {
+                val cleanBase64 = base64Data.substringAfter(",")
+                try {
+                    val bytes = java.util.Base64.getDecoder().decode(cleanBase64)
+                    call.respondBytes(bytes, io.ktor.http.ContentType.Image.JPEG)
+                } catch (e: Exception) {
+                    call.respond(HttpStatusCode.InternalServerError)
+                }
+            } else {
+                call.respond(HttpStatusCode.NotFound)
+            }
+        }
+
+
 
         webSocket("/game") {
             val clientRateLimitKey = stableRateLimitKey(call.request.local.remoteHost)

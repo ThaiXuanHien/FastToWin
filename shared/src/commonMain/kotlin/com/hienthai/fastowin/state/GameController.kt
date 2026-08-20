@@ -25,6 +25,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlin.io.encoding.Base64
+import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlin.random.Random
 
 class GameController(
@@ -272,6 +274,18 @@ class GameController(
         scope.launch { socket.sendMessage(ClientMessage.UpdateProfile(safeName, avatarId)) }
     }
 
+    @OptIn(ExperimentalEncodingApi::class)
+    fun updateAvatar(base64: ByteArray) {
+        val base64String = Base64.Default.encode(base64)
+        _uiState.update { it.copy(isProfileSaving = true, profileNotice = null, error = null) }
+        scope.launch { socket.sendMessage(ClientMessage.UpdateAvatar(base64String)) }
+    }
+
+    fun updateClanLogo(clanId: String, logoId: String) {
+        _uiState.update { it.copy(error = null) }
+        scope.launch { socket.sendMessage(ClientMessage.UpdateClanLogo(clanId, logoId)) }
+    }
+
     fun openLeaderboard() {
         _uiState.update {
             it.copy(
@@ -498,6 +512,13 @@ class GameController(
         when (notification.destination) {
             AppNotificationDestination.FRIENDS -> openFriends()
             AppNotificationDestination.PROFILE -> openProfile()
+            AppNotificationDestination.CLAN -> {
+                val clanId = notification.actionData
+                if (clanId != null) {
+                    openClan()
+                    viewClan(clanId)
+                }
+            }
         }
     }
 
@@ -790,6 +811,7 @@ class GameController(
 
             is ServerMessage.ProfileData -> {
                 val wasSaving = _uiState.value.isProfileSaving
+                val previousClanId = _uiState.value.profile?.clanId
                 val newNotifications = progressionNotifications(
                     previous = _uiState.value.profile,
                     current = message.profile,
@@ -825,6 +847,11 @@ class GameController(
                     socket.sendMessage(ClientMessage.SyncNotifications(
                         newNotifications.map(AppNotification::toNotificationSnapshot)
                     ))
+                }
+                // Auto-load clan details when clanId changes while clan screen is open
+                val newClanId = message.profile.clanId
+                if (newClanId != null && newClanId != previousClanId && _uiState.value.isClanOpen) {
+                    socket.sendMessage(ClientMessage.GetClanInfo(newClanId))
                 }
             }
             is ServerMessage.DailyCheckInResult -> {
@@ -1028,6 +1055,11 @@ class GameController(
                     when (message.action) {
                         "create_clan", "join_clan" -> {
                             socket.sendMessage(ClientMessage.GetProfile)
+                            socket.sendMessage(ClientMessage.GetClanList())
+                        }
+                        "leave_clan" -> {
+                            socket.sendMessage(ClientMessage.GetProfile)
+                            socket.sendMessage(ClientMessage.GetClanList())
                         }
                     }
                 }
@@ -1424,7 +1456,7 @@ class GameController(
 
     fun openClan() {
         _uiState.update { it.copy(isClanOpen = true) }
-        scope.launch { socket.sendMessage(ClientMessage.GetClanList) }
+        scope.launch { socket.sendMessage(ClientMessage.GetClanList()) }
     }
 
     fun closeClan() {
@@ -1446,6 +1478,18 @@ class GameController(
 
     fun viewClan(clanId: String) {
         scope.launch { socket.sendMessage(ClientMessage.GetClanInfo(clanId)) }
+    }
+
+    fun searchClan(query: String?) {
+        scope.launch { socket.sendMessage(ClientMessage.GetClanList(query)) }
+    }
+
+    fun inviteToClan(playerCode: String) {
+        scope.launch { socket.sendMessage(ClientMessage.InviteToClan(playerCode)) }
+    }
+
+    fun kickClanMember(clanId: String, memberId: String) {
+        scope.launch { socket.sendMessage(ClientMessage.KickClanMember(clanId, memberId)) }
     }
 
     private companion object {

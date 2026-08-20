@@ -237,7 +237,11 @@ class GameEngine(
         if (message is ClientMessage.JoinClan) return joinClan(playerId, message.clanId)
         if (message is ClientMessage.LeaveClan) return leaveClan(playerId)
         if (message is ClientMessage.GetClanInfo) return getClanInfo(playerId, message.clanId)
-        if (message is ClientMessage.GetClanList) return getClanList(playerId)
+        if (message is ClientMessage.GetClanList) return getClanList(playerId, message.query)
+        if (message is ClientMessage.InviteToClan) return inviteToClan(playerId, message.playerCode)
+        if (message is ClientMessage.KickClanMember) return kickClanMember(playerId, message.clanId, message.memberId)
+        if (message is ClientMessage.UpdateAvatar) return updateAvatar(playerId, message.base64Data)
+        if (message is ClientMessage.UpdateClanLogo) return updateClanLogo(playerId, message.clanId, message.logoId)
         if (message is ClientMessage.JoinMatchmaking) return joinMatchmaking(playerId, message)
         if (message is ClientMessage.CancelMatchmaking) return cancelMatchmaking(playerId)
         if (message is ClientMessage.CreateRoom) {
@@ -284,6 +288,8 @@ class GameEngine(
                 is ClientMessage.SyncNotifications -> HandleResult(emptyList())
                 is ClientMessage.MarkNotificationsRead -> HandleResult(emptyList())
                 is ClientMessage.DismissNotifications -> HandleResult(emptyList())
+                is ClientMessage.UpdateAvatar -> HandleResult(emptyList())
+                is ClientMessage.UpdateClanLogo -> HandleResult(emptyList())
                 is ClientMessage.MeasureLatency -> HandleResult(listOf(
                     Delivery(ServerMessage.LatencyPong(message.clientSentAtEpochMillis), setOf(playerId))
                 ))
@@ -302,6 +308,8 @@ class GameEngine(
                 is ClientMessage.GetClanInfo -> HandleResult(emptyList())
                 is ClientMessage.JoinClan -> HandleResult(emptyList())
                 is ClientMessage.LeaveClan -> HandleResult(emptyList())
+                is ClientMessage.InviteToClan -> HandleResult(emptyList())
+                is ClientMessage.KickClanMember -> HandleResult(emptyList())
                 is ClientMessage.SendFriendRequest -> HandleResult(emptyList())
                 is ClientMessage.RespondFriendRequest -> HandleResult(emptyList())
                 is ClientMessage.CancelFriendRequest -> HandleResult(emptyList())
@@ -1056,7 +1064,7 @@ class GameEngine(
             1
         }
         return if (level < mode.unlockLevel) {
-            error(playerId, "MODE_LOCKED", "Cháº¿ Ä‘á»™ nÃ y má»Ÿ khÃ³a á»Ÿ cáº¥p ${mode.unlockLevel}.")
+            error(playerId, "MODE_LOCKED", "Chế độ này mở khóa ở cấp ${mode.unlockLevel}.")
         } else {
             null
         }
@@ -1224,6 +1232,7 @@ class GameEngine(
             .onFailure { System.err.println("Could not load profile $playerId: ${it.message}") }
             .getOrNull()
         val profile = persisted ?: PlayerProfileSnapshot(
+            userId = playerId,
             displayName = session.displayName,
             playerCode = playerId.replace("-", "").take(10).uppercase()
         )
@@ -2730,10 +2739,81 @@ class GameEngine(
         }
     }
 
-    private suspend fun getClanList(playerId: String): List<Delivery> {
-        val list = clanRepository.getClanList(50, 0)
+    private suspend fun getClanList(playerId: String, query: String? = null): List<Delivery> {
+        val list = clanRepository.getClanList(50, 0, query)
         return listOf(Delivery(ServerMessage.ClanListData(list), setOf(playerId)))
     }
+
+    private suspend fun kickClanMember(playerId: String, clanId: String, memberId: String): List<Delivery> {
+        val clan = clanRepository.getClanById(clanId)
+            ?: return listOf(error(playerId, "CLAN_NOT_FOUND", "Không tìm thấy bang hội."))
+        if (clan.ownerId != playerId) {
+            return listOf(error(playerId, "NOT_CLAN_OWNER", "Chỉ đội trưởng mới có thể kick thành viên."))
+        }
+        val success = clanRepository.kickMember(clanId, playerId, memberId)
+        return if (success) {
+            getClanInfo(playerId, clanId)
+        } else {
+            listOf(error(playerId, "KICK_FAILED", "Không thể kick thành viên này."))
+        }
+    }
+
+    private suspend fun inviteToClan(playerId: String, playerCode: String): List<Delivery> {
+        val inviterProfile = playerProfileRepository.findByPlayerId(playerId)
+        val clanId = inviterProfile?.clanId
+            ?: return listOf(error(playerId, "NOT_IN_CLAN", "Bạn chưa tham gia bang hội nào."))
+        
+        val clan = clanRepository.getClanById(clanId)
+            ?: return listOf(error(playerId, "CLAN_NOT_FOUND", "Không tìm thấy bang hội."))
+
+        val targetPlayer = playerProfileRepository.findByPlayerCode(playerCode)
+            ?: return listOf(error(playerId, "PLAYER_NOT_FOUND", "Không tìm thấy người chơi này."))
+        
+        if (targetPlayer.clanId != null) {
+            return listOf(error(playerId, "ALREADY_IN_CLAN", "Người chơi này đã có bang hội."))
+        }
+
+        val notification = NotificationSnapshot(
+            id = UUID.randomUUID().toString(),
+            kind = NotificationKind.CLAN_INVITATION,
+            title = "Lời mời vào bang",
+            message = "${inviterProfile.displayName} mời bạn vào bang ${clan.name}",
+            createdAtEpochMillis = System.currentTimeMillis(),
+            destination = NotificationDestination.CLAN,
+            actionData = clanId
+        )
+
+        notificationRepository.createNotifications(targetPlayer.userId, listOf(notification))
+        
+        return listOf(
+            Delivery(ServerMessage.NotificationsData(notificationRepository.loadNotifications(targetPlayer.userId)), setOf(targetPlayer.userId)),
+            error(playerId, "INVITE_SENT", "Đã gửi lời mời.")
+        )
+    }
+    suspend fun getAvatarData(playerId: String): String? = playerProfileRepository.getAvatarData(playerId)
+
+
+    private suspend fun updateAvatar(playerId: String, base64: String): List<Delivery> {
+        val success = playerProfileRepository.updateAvatarData(playerId, base64)
+        if (success) {
+            return loadProfile(playerId)
+        }
+        return listOf(error(playerId, "UPLOAD_FAILED", "Không thể tải lên ảnh đại diện."))
+    }
+
+    private suspend fun updateClanLogo(playerId: String, clanId: String, logoId: String): List<Delivery> {
+        val clan = clanRepository.getClanById(clanId)
+            ?: return listOf(error(playerId, "CLAN_NOT_FOUND", "Không tìm thấy bang hội."))
+        if (clan.ownerId != playerId) {
+            return listOf(error(playerId, "NOT_CLAN_OWNER", "Chỉ đội trưởng mới có thể đổi logo."))
+        }
+        val success = clanRepository.updateLogoId(clanId, logoId)
+        if (success) {
+            return getClanInfo(playerId, clanId)
+        }
+        return listOf(error(playerId, "UPLOAD_FAILED", "Không thể cập nhật logo."))
+    }
+
     private companion object {
         const val MAX_PLAYER_NAME_LENGTH = 32
         const val MAX_ROOM_NAME_LENGTH = 48

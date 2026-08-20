@@ -323,6 +323,7 @@ private fun GameContent(
                 )
 
                 state.isFriendProfileOpen -> ProfileScreen(
+                    serverUrl = serverUrl,
                     state = state,
                     profileOverride = state.friendProfile,
                     isExternalProfile = true,
@@ -333,6 +334,8 @@ private fun GameContent(
                     onEquipCosmetics = { _, _ -> },
                     onClaimMissionReward = {},
                     onSave = { _, _ -> },
+                    onUploadAvatar = {},
+                    onInviteToClan = controller::inviteToClan,
                     canEdit = false,
                     isAccountLoading = false,
                     accountError = null,
@@ -412,6 +415,7 @@ private fun GameContent(
                     onFriends = openFriendsTab,
                     onAccount = controller::openProfile
                 ) { contentModifier -> ProfileScreen(
+                    serverUrl = serverUrl,
                     state = state,
                     onBack = controller::closeProfile,
                     onRefresh = controller::openProfile,
@@ -420,6 +424,7 @@ private fun GameContent(
                     onEquipCosmetics = controller::equipCosmetics,
                     onClaimMissionReward = controller::claimMissionReward,
                     onSave = controller::updateProfile,
+                    onUploadAvatar = controller::updateAvatar,
                     canEdit = !isGuest,
                     isAccountLoading = authState.isLoading,
                     accountError = authState.error,
@@ -439,12 +444,16 @@ private fun GameContent(
                 ) }
                 
                 state.isClanOpen -> ClanScreen(
+                    serverUrl = serverUrl,
                     myClanId = state.profile?.clanId,
                     clanList = state.clanList,
                     currentClan = state.currentClan,
                     onCreateClan = controller::createClan,
                     onJoinClan = controller::joinClan,
                     onLeaveClan = controller::leaveClan,
+                    onSearch = controller::searchClan,
+                    onKickMember = controller::kickClanMember,
+                    onUpdateLogo = controller::updateClanLogo,
                     onViewClan = controller::viewClan,
                     onBack = controller::closeClan
                 )

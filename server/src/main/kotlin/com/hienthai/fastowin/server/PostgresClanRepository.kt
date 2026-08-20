@@ -1,4 +1,4 @@
-﻿package com.hienthai.fastowin.server
+package com.hienthai.fastowin.server
 
 import com.hienthai.fastowin.protocol.ClanMemberSnapshot
 import com.hienthai.fastowin.protocol.ClanRole
@@ -115,6 +115,7 @@ class PostgresClanRepository(
                             ownerId = rs.getString("owner_id"),
                             members = emptyList(),
                             trophies = rs.getInt("trophies"),
+                            logoId = rs.getString("logo_id"),
                             maxMembers = 50
                         )
                     }
@@ -149,16 +150,26 @@ class PostgresClanRepository(
         }
     }
 
-    override suspend fun getClanList(limit: Int, offset: Int): List<ClanSummarySnapshot> = withContext(Dispatchers.IO) {
+    override suspend fun getClanList(limit: Int, offset: Int, query: String?): List<ClanSummarySnapshot> = withContext(Dispatchers.IO) {
         val list = mutableListOf<ClanSummarySnapshot>()
         dataSource.connection.use { connection ->
-            connection.prepareStatement(
-                "SELECT c.id, c.name, c.trophies, COUNT(cm.user_id) AS member_count " +
+            val sql = if (query != null && query.isNotBlank()) {
+                "SELECT c.id, c.name, c.trophies, c.logo_id, COUNT(cm.user_id) AS member_count " +
+                "FROM clans c LEFT JOIN clan_members cm ON c.id = cm.clan_id " +
+                "WHERE c.name ILIKE ? " +
+                "GROUP BY c.id ORDER BY c.trophies DESC LIMIT ? OFFSET ?"
+            } else {
+                "SELECT c.id, c.name, c.trophies, c.logo_id, COUNT(cm.user_id) AS member_count " +
                 "FROM clans c LEFT JOIN clan_members cm ON c.id = cm.clan_id " +
                 "GROUP BY c.id ORDER BY c.trophies DESC LIMIT ? OFFSET ?"
-            ).use {
-                it.setInt(1, limit)
-                it.setInt(2, offset)
+            }
+            connection.prepareStatement(sql).use {
+                var index = 1
+                if (query != null && query.isNotBlank()) {
+                    it.setString(index++, "%$query%")
+                }
+                it.setInt(index++, limit)
+                it.setInt(index++, offset)
                 it.executeQuery().use { rs ->
                     while (rs.next()) {
                         list.add(
@@ -167,7 +178,8 @@ class PostgresClanRepository(
                                 name = rs.getString("name"),
                                 memberCount = rs.getInt("member_count"),
                                 maxMembers = 50,
-                                trophies = rs.getInt("trophies")
+                                trophies = rs.getInt("trophies"),
+                                logoId = rs.getString("logo_id")
                             )
                         )
                     }
@@ -187,6 +199,16 @@ class PostgresClanRepository(
                 }
             } catch (e: Exception) {
                 false
+            }
+        }
+    }
+
+    override suspend fun updateLogoId(clanId: String, logoId: String): Boolean = withContext(Dispatchers.IO) {
+        dataSource.connection.use { connection ->
+            connection.prepareStatement("UPDATE clans SET logo_id = ? WHERE id = ?").use { statement ->
+                statement.setString(1, logoId)
+                statement.setObject(2, UUID.fromString(clanId))
+                statement.executeUpdate() > 0
             }
         }
     }

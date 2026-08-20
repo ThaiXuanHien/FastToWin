@@ -13,10 +13,11 @@ enum class AppNotificationKind {
     ROOM_INVITATION,
     MISSION,
     ACHIEVEMENT,
-    COSMETIC
+    COSMETIC,
+    CLAN_INVITATION
 }
 
-enum class AppNotificationDestination { FRIENDS, PROFILE }
+enum class AppNotificationDestination { FRIENDS, PROFILE, CLAN }
 
 data class AppNotification(
     val id: String,
@@ -25,7 +26,8 @@ data class AppNotification(
     val message: String,
     val createdAtEpochMillis: Long,
     val isRead: Boolean = false,
-    val destination: AppNotificationDestination
+    val destination: AppNotificationDestination,
+    val actionData: String? = null
 )
 
 internal fun NotificationSnapshot.toAppNotification() = AppNotification(
@@ -35,7 +37,8 @@ internal fun NotificationSnapshot.toAppNotification() = AppNotification(
     message = message,
     createdAtEpochMillis = createdAtEpochMillis,
     isRead = isRead,
-    destination = AppNotificationDestination.valueOf(destination.name)
+    destination = AppNotificationDestination.valueOf(destination.name),
+    actionData = actionData
 )
 
 internal fun AppNotification.toNotificationSnapshot() = NotificationSnapshot(
@@ -45,7 +48,8 @@ internal fun AppNotification.toNotificationSnapshot() = NotificationSnapshot(
     message = message,
     createdAtEpochMillis = createdAtEpochMillis,
     isRead = isRead,
-    destination = NotificationDestination.valueOf(destination.name)
+    destination = NotificationDestination.valueOf(destination.name),
+    actionData = actionData
 )
 
 internal fun mergeNotifications(

@@ -1,0 +1,1 @@
+ALTER TABLE clans ADD COLUMN logo_id VARCHAR(50);

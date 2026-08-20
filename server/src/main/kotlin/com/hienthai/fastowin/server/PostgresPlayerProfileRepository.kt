@@ -37,6 +37,18 @@ class PostgresPlayerProfileRepository(
     private val dataSource: DataSource,
     private val clock: Clock = Clock.system(DAILY_CHECK_IN_ZONE)
 ) : PlayerProfileRepository {
+    override suspend fun findByPlayerCode(playerCode: String): PlayerProfileSnapshot? = withContext(Dispatchers.IO) {
+        val userId = dataSource.connection.use { connection ->
+            connection.prepareStatement("SELECT user_id FROM profiles WHERE player_code = ?").use { statement ->
+                statement.setString(1, playerCode)
+                statement.executeQuery().use { result ->
+                    if (result.next()) result.getString("user_id") else null
+                }
+            }
+        }
+        if (userId != null) findByPlayerId(userId) else null
+    }
+
     override suspend fun findByPlayerId(playerId: String): PlayerProfileSnapshot? = withContext(Dispatchers.IO) {
         dataSource.connection.use { connection ->
             val userId = UUID.fromString(playerId)
@@ -67,6 +79,7 @@ class PostgresPlayerProfileRepository(
                 statement.executeQuery().use { result ->
                     if (!result.next()) return@withContext null
                     PlayerProfileSnapshot(
+                        userId = playerId,
                         displayName = result.getString("display_name"),
                         playerCode = result.getString("player_code"),
                         avatarId = result.getString("avatar_url"),
@@ -677,6 +690,27 @@ class PostgresPlayerProfileRepository(
             }
         }
     }
+    override suspend fun updateAvatarData(playerId: String, base64: String): Boolean = withContext(Dispatchers.IO) {
+        dataSource.connection.use { connection ->
+            connection.prepareStatement("UPDATE profiles SET avatar_data = ? WHERE user_id = ?").use { statement ->
+                statement.setString(1, base64)
+                statement.setObject(2, UUID.fromString(playerId))
+                statement.executeUpdate() > 0
+            }
+        }
+    }
+
+    override suspend fun getAvatarData(playerId: String): String? = withContext(Dispatchers.IO) {
+        dataSource.connection.use { connection ->
+            connection.prepareStatement("SELECT avatar_data FROM profiles WHERE user_id = ?").use { statement ->
+                statement.setObject(1, UUID.fromString(playerId))
+                statement.executeQuery().use { result ->
+                    if (result.next()) result.getString("avatar_data") else null
+                }
+            }
+        }
+    }
+
 
     private fun ratingTier(rating: Int): String = rankedTierFor(rating).displayName
 
@@ -727,6 +761,7 @@ internal fun unlockedTitleIds(
     if ("SPEED_50" in achievementCodes) add("title_speed")
     if (bestDailyCheckInStreak >= DAILY_CHECK_IN_TITLE_TARGET) add("title_diligent")
 }
+
 
 internal fun unlockedAvatarIds(totalDailyCheckIns: Int): Set<String> = buildSet {
     if (totalDailyCheckIns >= DAILY_CHECK_IN_AVATAR_TARGET) add(DAILY_CHECK_IN_AVATAR_ID)

@@ -183,6 +183,7 @@ private fun notificationIcon(kind: AppNotificationKind): ImageVector = when (kin
     AppNotificationKind.MISSION -> Icons.Default.TaskAlt
     AppNotificationKind.ACHIEVEMENT -> Icons.Default.EmojiEvents
     AppNotificationKind.COSMETIC -> Icons.Default.Redeem
+    AppNotificationKind.CLAN_INVITATION -> Icons.Default.PersonAdd
 }
 
 private fun relativeNotificationTime(createdAtMillis: Long): String {

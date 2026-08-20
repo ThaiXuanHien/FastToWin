@@ -9,9 +9,9 @@
               <option name="connection">
                 <ConnectionSetting>
                   <option name="appId" value="com.hienthai.fastowin.dev" />
-                  <option name="mobileSdkAppId" value="1:123456789012:android:abcdef1234567890" />
+                  <option name="mobileSdkAppId" value="1:971269227863:android:a6953448dc6999a3626a12" />
                   <option name="projectId" value="fast-to-win" />
-                  <option name="projectNumber" value="123456789012" />
+                  <option name="projectNumber" value="971269227863" />
                 </ConnectionSetting>
               </option>
               <option name="signal" value="SIGNAL_UNSPECIFIED" />

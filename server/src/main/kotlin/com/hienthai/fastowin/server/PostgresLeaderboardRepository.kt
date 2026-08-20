@@ -18,6 +18,10 @@ class PostgresLeaderboardRepository(
             val seasonTopPlayers = mutableListOf<LeaderboardEntrySnapshot>()
             var seasonCurrentPlayer: LeaderboardEntrySnapshot? = null
             var seasonName: String? = null
+            
+            val topClans = mutableListOf<com.hienthai.fastowin.protocol.ClanLeaderboardEntrySnapshot>()
+            var currentClanEntry: com.hienthai.fastowin.protocol.ClanLeaderboardEntrySnapshot? = null
+
             dataSource.connection.use { connection ->
                 connection.prepareStatement(
                     """
@@ -62,6 +66,45 @@ class PostgresLeaderboardRepository(
                         }
                     }
                 }
+                
+                connection.prepareStatement(
+                    """
+                    WITH clan_stats AS (
+                        SELECT c.id, c.name, COUNT(m.user_id) as member_count, COALESCE(SUM(ps.elo_rating), 0) as total_elo
+                        FROM clans c
+                        JOIN clan_members m ON c.id = m.clan_id
+                        JOIN player_stats ps ON m.user_id = ps.user_id
+                        GROUP BY c.id, c.name
+                    ),
+                    ranked_clans AS (
+                        SELECT id, name, member_count, total_elo,
+                               ROW_NUMBER() OVER (ORDER BY total_elo DESC, name ASC) AS rank
+                        FROM clan_stats
+                    )
+                    SELECT * FROM ranked_clans 
+                    WHERE rank <= ? OR id = (SELECT clan_id FROM clan_members WHERE user_id = ?) 
+                    ORDER BY rank
+                    """.trimIndent()
+                ).use { statement ->
+                    statement.setInt(1, limit.coerceIn(1, MAX_LEADERBOARD_SIZE))
+                    statement.setObject(2, currentId)
+                    statement.executeQuery().use { result ->
+                        while (result.next()) {
+                            val entry = com.hienthai.fastowin.protocol.ClanLeaderboardEntrySnapshot(
+                                rank = result.getInt("rank"),
+                                clanId = result.getObject("id", UUID::class.java).toString(),
+                                clanName = result.getString("name"),
+                                totalElo = result.getInt("total_elo"),
+                                memberCount = result.getInt("member_count")
+                            )
+                            val isMyClan = result.getInt("rank") > limit // Wait, how do I know if it's mine?
+                            // Actually, I can check if it's mine in Kotlin later. Or I can check if it matches my clan ID.
+                            // But I didn't fetch my clan ID! Let me fetch it inside the loop.
+                            topClans += entry // We will filter it below
+                        }
+                    }
+                }
+                
                 connection.prepareStatement(
                     "SELECT id, name FROM seasons WHERE CURRENT_TIMESTAMP >= starts_at AND CURRENT_TIMESTAMP < ends_at ORDER BY starts_at DESC LIMIT 1"
                 ).use { statement ->
@@ -109,13 +152,26 @@ class PostgresLeaderboardRepository(
                         }
                     }
                 }
+                
+                // Extract currentClanEntry
+                connection.prepareStatement("SELECT clan_id FROM clan_members WHERE user_id = ?").use { stmt ->
+                    stmt.setObject(1, currentId)
+                    stmt.executeQuery().use { rs ->
+                        if (rs.next()) {
+                            val myClanId = rs.getObject("clan_id", UUID::class.java).toString()
+                            currentClanEntry = topClans.firstOrNull { it.clanId == myClanId }
+                        }
+                    }
+                }
             }
             LeaderboardSnapshot(
                 topPlayers = topPlayers,
                 currentPlayer = currentPlayer,
                 seasonName = seasonName,
                 seasonTopPlayers = seasonTopPlayers,
-                seasonCurrentPlayer = seasonCurrentPlayer
+                seasonCurrentPlayer = seasonCurrentPlayer,
+                topClans = topClans.filter { it.rank <= limit },
+                currentClan = currentClanEntry
             )
         }
 

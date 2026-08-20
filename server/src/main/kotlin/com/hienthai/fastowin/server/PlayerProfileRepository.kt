@@ -5,6 +5,7 @@ import com.hienthai.fastowin.protocol.MatchDetailSnapshot
 
 interface PlayerProfileRepository {
     suspend fun findByPlayerId(playerId: String): PlayerProfileSnapshot?
+    suspend fun findByPlayerCode(playerCode: String): PlayerProfileSnapshot? = null
     suspend fun updateProfile(playerId: String, displayName: String, avatarId: String?): Boolean
     suspend fun updateFcmToken(playerId: String, token: String): Boolean = false
     suspend fun findFcmToken(playerId: String): String? = null
@@ -12,6 +13,8 @@ interface PlayerProfileRepository {
     suspend fun equipCosmetics(playerId: String, frameId: String, titleId: String): Boolean = false
     suspend fun claimDailyCheckIn(playerId: String): DailyCheckInClaimResult? = null
     suspend fun claimMissionReward(playerId: String, missionCode: String): MissionRewardClaimResult? = null
+    suspend fun updateAvatarData(playerId: String, base64: String): Boolean = false
+    suspend fun getAvatarData(playerId: String): String? = null
 }
 
 data class DailyCheckInClaimResult(

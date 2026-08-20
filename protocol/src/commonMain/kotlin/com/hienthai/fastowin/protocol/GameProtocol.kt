@@ -16,6 +16,7 @@ const val DAILY_CHECK_IN_AVATAR_ID = "calendar"
 
 val STANDARD_PROFILE_AVATAR_IDS = listOf("bolt", "rocket", "target", "trophy", "crown", "star")
 val PROFILE_AVATAR_IDS = (STANDARD_PROFILE_AVATAR_IDS + DAILY_CHECK_IN_AVATAR_ID).toSet()
+val CLAN_AVATAR_IDS = listOf("shield", "sword", "flag", "dragon", "wolf", "eagle", "crown")
 
 val ProtocolJson = Json {
     classDiscriminator = "type"
@@ -204,6 +205,7 @@ data class MatchHistorySnapshot(
 
 @Serializable
 data class PlayerProfileSnapshot(
+    val userId: String,
     val displayName: String,
     val playerCode: String,
     val avatarId: String? = null,
@@ -316,12 +318,23 @@ data class LeaderboardEntrySnapshot(
 )
 
 @Serializable
+data class ClanLeaderboardEntrySnapshot(
+    val rank: Int,
+    val clanId: String,
+    val clanName: String,
+    val totalElo: Int,
+    val memberCount: Int
+)
+
+@Serializable
 data class LeaderboardSnapshot(
     val topPlayers: List<LeaderboardEntrySnapshot> = emptyList(),
     val currentPlayer: LeaderboardEntrySnapshot? = null,
     val seasonName: String? = null,
     val seasonTopPlayers: List<LeaderboardEntrySnapshot> = emptyList(),
-    val seasonCurrentPlayer: LeaderboardEntrySnapshot? = null
+    val seasonCurrentPlayer: LeaderboardEntrySnapshot? = null,
+    val topClans: List<ClanLeaderboardEntrySnapshot> = emptyList(),
+    val currentClan: ClanLeaderboardEntrySnapshot? = null
 )
 
 @Serializable
@@ -412,11 +425,12 @@ enum class NotificationKind {
     ROOM_INVITATION,
     MISSION,
     ACHIEVEMENT,
-    COSMETIC
+    COSMETIC,
+    CLAN_INVITATION
 }
 
 @Serializable
-enum class NotificationDestination { FRIENDS, PROFILE }
+enum class NotificationDestination { FRIENDS, PROFILE, CLAN }
 
 @Serializable
 data class NotificationSnapshot(
@@ -426,7 +440,8 @@ data class NotificationSnapshot(
     val message: String,
     val createdAtEpochMillis: Long,
     val isRead: Boolean = false,
-    val destination: NotificationDestination
+    val destination: NotificationDestination,
+    val actionData: String? = null
 )
 
 @Serializable
@@ -616,7 +631,15 @@ sealed class ClientMessage {
 
     @Serializable
     @SerialName("get_clan_list")
-    data object GetClanList : ClientMessage()
+    data class GetClanList(val query: String? = null) : ClientMessage()
+
+    @Serializable
+    @SerialName("invite_to_clan")
+    data class InviteToClan(val playerCode: String) : ClientMessage()
+
+    @Serializable
+    @SerialName("kick_clan_member")
+    data class KickClanMember(val clanId: String, val memberId: String) : ClientMessage()
 
     @Serializable
     @SerialName("measure_latency")
@@ -660,6 +683,14 @@ sealed class ClientMessage {
     @Serializable
     @SerialName("send_emoji")
     data class SendEmoji(val roomId: String, val emojiId: String) : ClientMessage()
+
+    @Serializable
+    @SerialName("update_avatar")
+    data class UpdateAvatar(val base64Data: String) : ClientMessage()
+
+    @Serializable
+    @SerialName("update_clan_logo")
+    data class UpdateClanLogo(val clanId: String, val logoId: String) : ClientMessage()
 }
 
 @Serializable
@@ -847,6 +878,7 @@ data class ClanSnapshot(
     val ownerId: String,
     val members: List<ClanMemberSnapshot>,
     val trophies: Int,
+    val logoId: String? = null,
     val maxMembers: Int = 50
 )
 
@@ -856,5 +888,6 @@ data class ClanSummarySnapshot(
     val name: String,
     val memberCount: Int,
     val maxMembers: Int,
-    val trophies: Int
+    val trophies: Int,
+    val logoId: String? = null
 )

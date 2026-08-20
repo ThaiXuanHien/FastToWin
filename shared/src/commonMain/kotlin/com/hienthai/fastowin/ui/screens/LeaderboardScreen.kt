@@ -75,48 +75,125 @@ fun LeaderboardScreen(
             Spacer(Modifier.size(48.dp))
         }
 
-        Text(
-            if (showSeason) "Xếp hạng trong mùa hiện tại, tự làm mới sau mỗi trận."
-            else "Xếp theo Elo, sau đó số trận thắng, tỷ lệ thắng và điểm cao nhất.",
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
+        var selectedMainTab by remember { mutableStateOf(0) } // 0: Cá nhân, 1: Bang hội
+
+        androidx.compose.material3.TabRow(selectedTabIndex = selectedMainTab) {
+            androidx.compose.material3.Tab(
+                selected = selectedMainTab == 0,
+                onClick = { selectedMainTab = 0 },
+                text = { Text("Cá nhân") }
+            )
+            androidx.compose.material3.Tab(
+                selected = selectedMainTab == 1,
+                onClick = { selectedMainTab = 1 },
+                text = { Text("Bang hội") }
+            )
+        }
 
         if (state.isLeaderboardLoading && leaderboard == null) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
             return@Column
         }
 
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            FilterChip(selected = showSeason, onClick = { showSeason = true }, label = {
-                Text(leaderboard?.seasonName ?: "Mùa hiện tại")
-            })
-            FilterChip(selected = !showSeason, onClick = { showSeason = false }, label = { Text("Toàn thời gian") })
-        }
+        if (selectedMainTab == 0) {
+            Text(
+                if (showSeason) "Xếp hạng trong mùa hiện tại, tự làm mới sau mỗi trận."
+                else "Xếp theo Elo, sau đó số trận thắng, tỷ lệ thắng và điểm cao nhất.",
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
 
-        val displayedCurrent = if (showSeason) leaderboard?.seasonCurrentPlayer else leaderboard?.currentPlayer
-        val displayedTop = if (showSeason) leaderboard?.seasonTopPlayers.orEmpty() else leaderboard?.topPlayers.orEmpty()
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FilterChip(selected = showSeason, onClick = { showSeason = true }, label = {
+                    Text(leaderboard?.seasonName ?: "Mùa hiện tại")
+                })
+                FilterChip(selected = !showSeason, onClick = { showSeason = false }, label = { Text("Toàn thời gian") })
+            }
 
-        displayedCurrent?.let { current ->
-            Text("Vị trí của bạn", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-            LeaderboardCard(current, highlighted = true)
-        }
+            val displayedCurrent = if (showSeason) leaderboard?.seasonCurrentPlayer else leaderboard?.currentPlayer
+            val displayedTop = if (showSeason) leaderboard?.seasonTopPlayers.orEmpty() else leaderboard?.topPlayers.orEmpty()
 
-        Text("Top người chơi", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-        if (displayedTop.isEmpty()) {
-            Text(if (showSeason) "Chưa có người chơi nào thi đấu trong mùa này." else "Chưa có người chơi nào hoàn thành trận đấu.")
+            displayedCurrent?.let { current ->
+                Text("Vị trí của bạn", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                LeaderboardCard(current, highlighted = true)
+            }
+
+            Text("Top người chơi", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            if (displayedTop.isEmpty()) {
+                Text(if (showSeason) "Chưa có người chơi nào thi đấu trong mùa này." else "Chưa có người chơi nào hoàn thành trận đấu.")
+            } else {
+                LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    items(displayedTop, key = { it.playerCode }) { entry ->
+                        val friend = state.social.friends.firstOrNull { it.playerCode == entry.playerCode }
+                        LeaderboardCard(
+                            entry = entry,
+                            highlighted = entry.playerCode == displayedCurrent?.playerCode,
+                            onClick = if (friend == null) null else ({ onOpenFriendProfile(friend.userId) })
+                        )
+                    }
+                }
+            }
         } else {
-            LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                items(displayedTop, key = { it.playerCode }) { entry ->
-                    val friend = state.social.friends.firstOrNull { it.playerCode == entry.playerCode }
-                    LeaderboardCard(
-                        entry = entry,
-                        highlighted = entry.playerCode == displayedCurrent?.playerCode,
-                        onClick = if (friend == null) null else ({ onOpenFriendProfile(friend.userId) })
-                    )
+            Text("Xếp hạng Bang hội theo tổng Elo của các thành viên.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            
+            val displayedTopClans = leaderboard?.topClans.orEmpty()
+            
+            leaderboard?.currentClan?.let { currentClan ->
+                Text("Vị trí bang hội của bạn", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                ClanLeaderboardCard(currentClan, highlighted = true)
+            }
+            
+            Text("Top Bang hội", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            if (displayedTopClans.isEmpty()) {
+                Text("Chưa có bang hội nào.")
+            } else {
+                LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    items(displayedTopClans, key = { it.clanId }) { entry ->
+                        ClanLeaderboardCard(
+                            entry = entry,
+                            highlighted = entry.clanId == leaderboard?.currentClan?.clanId
+                        )
+                    }
                 }
             }
         }
         }
+        }
+    }
+}
+
+@Composable
+private fun ClanLeaderboardCard(
+    entry: com.hienthai.fastowin.protocol.ClanLeaderboardEntrySnapshot,
+    highlighted: Boolean
+) {
+    ElevatedCard(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            Text(
+                text = when (entry.rank) { 1 -> "🥇"; 2 -> "🥈"; 3 -> "🥉"; else -> "#${entry.rank}" },
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Black
+            )
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    entry.clanName + if (highlighted) " (Bạn)" else "",
+                    fontWeight = FontWeight.Bold
+                )
+                Text("${entry.memberCount} thành viên", style = MaterialTheme.typography.bodySmall)
+            }
+            Column(horizontalAlignment = Alignment.End) {
+                Text(
+                    "Tổng Elo ${entry.totalElo}",
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.Bold
+                )
+            }
         }
     }
 }

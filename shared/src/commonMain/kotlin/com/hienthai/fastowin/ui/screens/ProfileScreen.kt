@@ -99,6 +99,7 @@ import kotlinx.coroutines.delay
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ProfileScreen(
+    serverUrl: String,
     state: GameState,
     onBack: () -> Unit,
     onRefresh: () -> Unit,
@@ -107,6 +108,7 @@ fun ProfileScreen(
     onEquipCosmetics: (String, String) -> Unit,
     onClaimMissionReward: (String) -> Unit,
     onSave: (String, String?) -> Unit,
+    onUploadAvatar: (ByteArray) -> Unit,
     canEdit: Boolean,
     profileOverride: PlayerProfileSnapshot? = null,
     isExternalProfile: Boolean = false,
@@ -123,6 +125,7 @@ fun ProfileScreen(
     onRevokeAllSessions: () -> Unit,
     onLogout: () -> Unit,
     sessionStartedAtMillis: Long? = null,
+    onInviteToClan: ((String) -> Unit)? = null,
     showBackButton: Boolean = true,
     modifier: Modifier = Modifier
 ) {
@@ -256,9 +259,15 @@ fun ProfileScreen(
                     shape = CircleShape,
                     color = MaterialTheme.colorScheme.primaryContainer
                 ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Text(avatarEmoji(profile.avatarId), style = MaterialTheme.typography.headlineLarge)
-                    }
+                    com.hienthai.fastowin.ui.components.NetworkImage(
+                        url = "$serverUrl/api/avatar/${profile.userId}",
+                        modifier = Modifier.fillMaxSize(),
+                        fallback = {
+                            Box(contentAlignment = Alignment.Center) {
+                                Text(avatarEmoji(profile.avatarId), style = MaterialTheme.typography.headlineLarge)
+                            }
+                        }
+                    )
                 }
                 Column {
                     Text(profile.displayName, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
@@ -288,6 +297,15 @@ fun ProfileScreen(
                         }
                     }
                     Text("Elo ${profile.statistics.eloRating}", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                    
+                    if (isExternalProfile && onInviteToClan != null && state.profile?.clanId != null && profile.clanId == null) {
+                        Button(
+                            onClick = { onInviteToClan.invoke(profile.playerCode) },
+                            modifier = Modifier.padding(top = 8.dp)
+                        ) {
+                            Text("Mời vào bang")
+                        }
+                    }
                     if (!isExternalProfile && sessionStartedAtMillis != null) {
                         CurrentSessionDuration(sessionStartedAtMillis)
                     }
@@ -310,7 +328,23 @@ fun ProfileScreen(
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
                     )
-                    Text("Chọn ảnh đại diện", fontWeight = FontWeight.Medium)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("Chọn ảnh đại diện", fontWeight = FontWeight.Medium)
+                        com.hienthai.fastowin.platform.ImagePicker(
+                            onImageSelected = { bytes ->
+                                if (bytes != null) onUploadAvatar(bytes)
+                            }
+                        ) { onClick ->
+                            TextButton(onClick = onClick) {
+                                Text("Tải ảnh lên")
+                            }
+                        }
+                    }
+                    
                     val avatarCosmetics = profile.progression.cosmetics
                         .filter { it.type == CosmeticType.AVATAR }
                         .associateBy(CosmeticSnapshot::id)

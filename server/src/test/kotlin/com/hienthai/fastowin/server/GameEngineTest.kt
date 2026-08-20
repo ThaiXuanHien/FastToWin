@@ -29,7 +29,7 @@ class GameEngineTest {
     @Test
     fun `daily check in refreshes profile and duplicate request gives no xp`() = runTest {
         val playerId = UUID.randomUUID().toString()
-        var profile = PlayerProfileSnapshot(
+        var profile = PlayerProfileSnapshot(userId = "user1",
             displayName = "Hiền",
             playerCode = "HIEN001",
             progression = PlayerProgressionSnapshot(
@@ -83,7 +83,7 @@ class GameEngineTest {
     fun `mission reward refreshes profile and rejects duplicate claim`() = runTest {
         val playerId = UUID.randomUUID().toString()
         var claimed = false
-        var profile = PlayerProfileSnapshot(
+        var profile = PlayerProfileSnapshot(userId = "user1",
             displayName = "Hiền",
             playerCode = "HIEN001",
             progression = PlayerProgressionSnapshot(
@@ -128,11 +128,11 @@ class GameEngineTest {
         val firstId = UUID.randomUUID().toString()
         val secondId = UUID.randomUUID().toString()
         val profiles = mapOf(
-            firstId to PlayerProfileSnapshot(
+            firstId to PlayerProfileSnapshot(userId = "user1",
                 "First", "FIRST001",
                 statistics = com.hienthai.fastowin.protocol.PlayerStatisticsSnapshot(eloRating = 1_020)
             ),
-            secondId to PlayerProfileSnapshot(
+            secondId to PlayerProfileSnapshot(userId = "user1",
                 "Second", "SECOND01",
                 statistics = com.hienthai.fastowin.protocol.PlayerStatisticsSnapshot(eloRating = 1_080)
             )
@@ -318,7 +318,7 @@ class GameEngineTest {
         val firstId = UUID.randomUUID().toString()
         val friendId = UUID.randomUUID().toString()
         val strangerId = UUID.randomUUID().toString()
-        val friendProfile = PlayerProfileSnapshot(
+        val friendProfile = PlayerProfileSnapshot(userId = "user1",
             displayName = "Bạn thân",
             playerCode = "FRIEND01",
             statistics = com.hienthai.fastowin.protocol.PlayerStatisticsSnapshot(
@@ -362,7 +362,7 @@ class GameEngineTest {
 
     @Test
     fun `profile update persists safe name and avatar`() = runTest {
-        var storedProfile = PlayerProfileSnapshot("Tên cũ", "PLAYER123")
+        var storedProfile = PlayerProfileSnapshot(userId = "user1","Tên cũ", "PLAYER123")
         val profileRepository = object : PlayerProfileRepository {
             override suspend fun findByPlayerId(playerId: String) = storedProfile
 
@@ -1180,7 +1180,7 @@ class GameEngineTest {
         val playerIds = List(4) { UUID.randomUUID().toString() }
         val names = listOf("Hiền", "Hiếu", "An", "Bình")
         val profiles = playerIds.mapIndexed { index, playerId ->
-            playerId to PlayerProfileSnapshot(
+            playerId to PlayerProfileSnapshot(userId = "user1",
                 displayName = names[index],
                 playerCode = "PLAYER${index + 1}",
                 progression = PlayerProgressionSnapshot(level = 20)
@@ -1334,10 +1334,10 @@ class GameEngineTest {
         val hostId = UUID.randomUUID().toString()
         val guestId = UUID.randomUUID().toString()
         val profiles = mapOf(
-            hostId to PlayerProfileSnapshot(
+            hostId to PlayerProfileSnapshot(userId = "user1",
                 "Hiền", "HIEN001", progression = PlayerProgressionSnapshot(level = 12)
             ),
-            guestId to PlayerProfileSnapshot(
+            guestId to PlayerProfileSnapshot(userId = "user1",
                 "Hiếu", "HIEU001", progression = PlayerProgressionSnapshot(level = 12)
             )
         )

@@ -135,7 +135,7 @@ class PostgresNotificationRepository(private val dataSource: DataSource) : Notif
         dataSource.connection.use { connection ->
             connection.prepareStatement(
                 """
-                SELECT notification_id, kind, title, message, destination, created_at, read_at
+                SELECT notification_id, kind, title, message, destination, created_at, read_at, action_data
                 FROM user_notifications
                 WHERE user_id = ? AND dismissed_at IS NULL
                 ORDER BY created_at DESC
@@ -152,7 +152,8 @@ class PostgresNotificationRepository(private val dataSource: DataSource) : Notif
                             message = result.getString("message"),
                             createdAtEpochMillis = result.getTimestamp("created_at").time,
                             isRead = result.getTimestamp("read_at") != null,
-                            destination = NotificationDestination.valueOf(result.getString("destination"))
+                            destination = NotificationDestination.valueOf(result.getString("destination")),
+                            actionData = result.getString("action_data")
                         ))
                     }
                 }
@@ -167,8 +168,8 @@ class PostgresNotificationRepository(private val dataSource: DataSource) : Notif
                 connection.prepareStatement(
                     """
                     INSERT INTO user_notifications(
-                        user_id, notification_id, kind, title, message, destination, created_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                        user_id, notification_id, kind, title, message, destination, created_at, action_data
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT (user_id, notification_id) DO NOTHING
                     """.trimIndent()
                 ).use { statement ->
@@ -180,6 +181,7 @@ class PostgresNotificationRepository(private val dataSource: DataSource) : Notif
                         statement.setString(5, notification.message)
                         statement.setString(6, notification.destination.name)
                         statement.setTimestamp(7, Timestamp(notification.createdAtEpochMillis))
+                        statement.setString(8, notification.actionData)
                         statement.addBatch()
                     }
                     statement.executeBatch()
