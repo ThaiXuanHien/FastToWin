@@ -404,6 +404,57 @@ class PostgresMatchResultRepository(
 
     private fun Long.toTimestamp(): Timestamp = Timestamp.from(Instant.ofEpochMilli(this))
 
+    private fun updateClanWarsAndQuests(connection: Connection, match: CompletedMatch) {
+        if (match.matchType != MatchType.RANKED) return
+        
+        for (player in match.players) {
+            val isWinner = player.outcome == MatchOutcome.WIN
+            val isDraw = player.outcome == MatchOutcome.DRAW
+            
+            if (isDraw) continue
+            
+            val trophiesChange = if (isWinner) 5 else -2
+            val questProgress = if (isWinner) 1 else 0
+
+            val userUuid = UUID.fromString(player.playerId)
+            
+            var clanId: UUID? = null
+            connection.prepareStatement("SELECT clan_id FROM clan_members WHERE user_id = ?").use {
+                it.setObject(1, userUuid)
+                it.executeQuery().use { rs ->
+                    if (rs.next()) {
+                        rs.getString("clan_id")?.let { id -> clanId = UUID.fromString(id) }
+                    }
+                }
+            }
+            
+            if (clanId != null) {
+                // Update Clan Trophies
+                connection.prepareStatement("UPDATE clans SET trophies = GREATEST(0, trophies + ?) WHERE id = ?").use {
+                    it.setInt(1, trophiesChange)
+                    it.setObject(2, clanId)
+                    it.executeUpdate()
+                }
+                
+                // Update Clan Quest
+                if (questProgress > 0) {
+                    connection.prepareStatement("UPDATE clans SET quest_progress = quest_progress + ? WHERE id = ?").use {
+                        it.setInt(1, questProgress)
+                        it.setObject(2, clanId)
+                        it.executeUpdate()
+                    }
+                    
+                    connection.prepareStatement("UPDATE clan_members SET quest_contribution = quest_contribution + ? WHERE clan_id = ? AND user_id = ?").use {
+                        it.setInt(1, questProgress)
+                        it.setObject(2, clanId)
+                        it.setObject(3, userUuid)
+                        it.executeUpdate()
+                    }
+                }
+            }
+        }
+    }
+
     private companion object {
         const val ELO_K_FACTOR = 32.0
         const val MIN_ELO = 100
