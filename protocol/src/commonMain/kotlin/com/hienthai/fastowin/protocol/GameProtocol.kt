@@ -219,7 +219,7 @@ data class PlayerProfileSnapshot(
 )
 
 @Serializable
-enum class CosmeticType { FRAME, TITLE, AVATAR }
+enum class CosmeticType { FRAME, TITLE, AVATAR, CARD_BACK, BOARD_SKIN, EMOJI }
 
 @Serializable
 data class CosmeticSnapshot(
@@ -271,6 +271,8 @@ data class SeasonSnapshot(
 data class PlayerProgressionSnapshot(
     val level: Int = 1,
     val experiencePoints: Int = 0,
+    val gold: Int = 0,
+    val gems: Int = 0,
     val currentLevelExperience: Int = 0,
     val nextLevelExperience: Int = 100,
     val dailyMissions: List<MissionSnapshot> = emptyList(),
@@ -691,6 +693,14 @@ sealed class ClientMessage {
     @Serializable
     @SerialName("update_clan_logo")
     data class UpdateClanLogo(val clanId: String, val logoId: String) : ClientMessage()
+
+    @Serializable
+    @SerialName("buy_cosmetic")
+    data class BuyCosmetic(val cosmeticId: String) : ClientMessage()
+
+    @Serializable
+    @SerialName("equip_cosmetic")
+    data class EquipCosmetic(val cosmeticId: String) : ClientMessage()
 }
 
 @Serializable
@@ -890,4 +900,20 @@ data class ClanSummarySnapshot(
     val maxMembers: Int,
     val trophies: Int,
     val logoId: String? = null
+)
+
+@Serializable
+data class ShopItem(
+    val id: String,
+    val name: String,
+    val type: CosmeticType,
+    val price: Int,
+    val currency: String = "GOLD"
+)
+
+val SHOP_ITEMS = listOf(
+    ShopItem("card_back_gold", "Bài Lung Vàng", CosmeticType.CARD_BACK, 500, "GOLD"),
+    ShopItem("card_back_diamond", "Bài Lung Kim Cuong", CosmeticType.CARD_BACK, 1500, "GOLD"),
+    ShopItem("board_skin_dark", "Bàn C? T?i", CosmeticType.BOARD_SKIN, 1000, "GOLD"),
+    ShopItem("board_skin_forest", "Khu R?ng", CosmeticType.BOARD_SKIN, 1000, "GOLD")
 )

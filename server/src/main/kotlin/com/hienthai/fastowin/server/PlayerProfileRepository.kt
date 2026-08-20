@@ -15,6 +15,9 @@ interface PlayerProfileRepository {
     suspend fun claimMissionReward(playerId: String, missionCode: String): MissionRewardClaimResult? = null
     suspend fun updateAvatarData(playerId: String, base64: String): Boolean = false
     suspend fun getAvatarData(playerId: String): String? = null
+    suspend fun updateGold(playerId: String, amountDelta: Int): Boolean = false
+    suspend fun buyCosmetic(playerId: String, cosmeticId: String, cosmeticType: String, price: Int): Boolean = false
+    suspend fun equipCosmetic(playerId: String, cosmeticId: String, cosmeticType: String): Boolean = false
 }
 
 data class DailyCheckInClaimResult(

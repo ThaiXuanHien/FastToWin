@@ -1,4 +1,4 @@
-package com.hienthai.fastowin.server
+﻿package com.hienthai.fastowin.server
 
 import com.hienthai.fastowin.protocol.MatchHistoryOutcome
 import com.hienthai.fastowin.protocol.MatchHistorySnapshot
@@ -107,7 +107,7 @@ class PostgresPlayerProfileRepository(
                 SELECT m.id, m.room_name, m.game_mode, m.match_type, m.ended_at,
                        mine.score AS player_score, mine.outcome,
                        COALESCE(rh.rating_change, 0) AS elo_change,
-                       COALESCE(opponent.display_name, 'Đối thủ') AS opponent_name,
+                       COALESCE(opponent.display_name, 'Äá»‘i thá»§') AS opponent_name,
                        COALESCE(opponent.score, 0) AS opponent_score
                 FROM match_players mine
                 JOIN matches m ON m.id = mine.match_id
@@ -196,8 +196,12 @@ class PostgresPlayerProfileRepository(
             val progressionRow = connection.prepareStatement(
                 """
                 SELECT COALESCE(experience_points, 0) AS experience_points,
+                       COALESCE(gold, 0) AS gold,
+                       COALESCE(gems, 0) AS gems,
                        COALESCE(equipped_frame_id, 'frame_default') AS equipped_frame_id,
                        COALESCE(equipped_title_id, 'title_rookie') AS equipped_title_id,
+                       COALESCE(equipped_card_back_id, 'card_back_default') AS equipped_card_back_id,
+                       COALESCE(equipped_board_skin_id, 'board_skin_default') AS equipped_board_skin_id,
                        COALESCE(current_daily_check_in_streak, 0) AS current_daily_check_in_streak,
                        COALESCE(best_daily_check_in_streak, 0) AS best_daily_check_in_streak,
                        COALESCE(total_daily_check_ins, 0) AS total_daily_check_ins,
@@ -211,8 +215,12 @@ class PostgresPlayerProfileRepository(
                     if (result.next()) {
                         ProgressionRow(
                             experiencePoints = result.getInt("experience_points"),
+                            gold = result.getInt("gold"),
+                            gems = result.getInt("gems"),
                             equippedFrameId = result.getString("equipped_frame_id"),
                             equippedTitleId = result.getString("equipped_title_id"),
+                            equippedCardBackId = result.getString("equipped_card_back_id"),
+                            equippedBoardSkinId = result.getString("equipped_board_skin_id"),
                             currentDailyCheckInStreak = result.getInt("current_daily_check_in_streak"),
                             bestDailyCheckInStreak = result.getInt("best_daily_check_in_streak"),
                             totalDailyCheckIns = result.getInt("total_daily_check_ins"),
@@ -272,6 +280,19 @@ class PostgresPlayerProfileRepository(
                     }
                 }
             }
+
+            val ownedCosmetics = connection.prepareStatement(
+                """
+                SELECT cosmetic_id FROM player_cosmetics WHERE user_id = ?
+                """.trimIndent()
+            ).use { statement ->
+                statement.setObject(1, userId)
+                statement.executeQuery().use { result ->
+                    buildSet {
+                        while (result.next()) add(result.getString("cosmetic_id"))
+                    }
+                }
+            }
             fun mission(definition: MissionDefinition): MissionSnapshot {
                 val stored = storedMissions[definition.code]
                 val progress = (stored?.progress ?: 0).coerceAtMost(definition.target)
@@ -308,7 +329,7 @@ class PostgresPlayerProfileRepository(
                         SeasonSnapshot(
                             name = result.getString("name"),
                             tier = if (placementMatches < PLACEMENT_MATCHES_REQUIRED) {
-                                "Đang phân hạng"
+                                "Äang phÃ¢n háº¡ng"
                             } else {
                                 ratingTier(rating)
                             },
@@ -349,18 +370,18 @@ class PostgresPlayerProfileRepository(
             fun cosmetic(id: String, name: String, type: CosmeticType, unlocked: Boolean, equippedId: String?) =
                 CosmeticSnapshot(id, name, type, unlocked, unlocked && id == equippedId)
             val cosmetics = listOf(
-                cosmetic("frame_default", "Khung cơ bản", CosmeticType.FRAME, true, equippedFrameId),
-                cosmetic("frame_bronze", "Khung Đồng", CosmeticType.FRAME, "frame_bronze" in unlockedFrames, equippedFrameId),
-                cosmetic("frame_gold", "Khung Vàng", CosmeticType.FRAME, "frame_gold" in unlockedFrames, equippedFrameId),
-                cosmetic("frame_perfect", "Khung Hoàn hảo", CosmeticType.FRAME, "frame_perfect" in unlockedFrames, equippedFrameId),
-                cosmetic("frame_persistent", "Khung Bền bỉ", CosmeticType.FRAME, "frame_persistent" in unlockedFrames, equippedFrameId),
-                cosmetic("title_rookie", "Tân binh", CosmeticType.TITLE, true, equippedTitleId),
-                cosmetic("title_champion", "Nhà vô địch", CosmeticType.TITLE, "title_champion" in unlockedTitles, equippedTitleId),
-                cosmetic("title_speed", "Tia chớp", CosmeticType.TITLE, "title_speed" in unlockedTitles, equippedTitleId),
-                cosmetic("title_diligent", "Chuyên cần", CosmeticType.TITLE, "title_diligent" in unlockedTitles, equippedTitleId),
+                cosmetic("frame_default", "Khung cÆ¡ báº£n", CosmeticType.FRAME, true, equippedFrameId),
+                cosmetic("frame_bronze", "Khung Äá»“ng", CosmeticType.FRAME, "frame_bronze" in unlockedFrames, equippedFrameId),
+                cosmetic("frame_gold", "Khung VÃ ng", CosmeticType.FRAME, "frame_gold" in unlockedFrames, equippedFrameId),
+                cosmetic("frame_perfect", "Khung HoÃ n háº£o", CosmeticType.FRAME, "frame_perfect" in unlockedFrames, equippedFrameId),
+                cosmetic("frame_persistent", "Khung Bá»n bá»‰", CosmeticType.FRAME, "frame_persistent" in unlockedFrames, equippedFrameId),
+                cosmetic("title_rookie", "TÃ¢n binh", CosmeticType.TITLE, true, equippedTitleId),
+                cosmetic("title_champion", "NhÃ  vÃ´ Ä‘á»‹ch", CosmeticType.TITLE, "title_champion" in unlockedTitles, equippedTitleId),
+                cosmetic("title_speed", "Tia chá»›p", CosmeticType.TITLE, "title_speed" in unlockedTitles, equippedTitleId),
+                cosmetic("title_diligent", "ChuyÃªn cáº§n", CosmeticType.TITLE, "title_diligent" in unlockedTitles, equippedTitleId),
                 cosmetic(
                     DAILY_CHECK_IN_AVATAR_ID,
-                    "Ảnh đại diện Điểm danh",
+                    "áº¢nh Ä‘áº¡i diá»‡n Äiá»ƒm danh",
                     CosmeticType.AVATAR,
                     DAILY_CHECK_IN_AVATAR_ID in unlockedAvatars,
                     base.avatarId
@@ -724,8 +745,12 @@ class PostgresPlayerProfileRepository(
 
 private data class ProgressionRow(
     val experiencePoints: Int = 0,
+    val gold: Int = 0,
+    val gems: Int = 0,
     val equippedFrameId: String = "frame_default",
     val equippedTitleId: String = "title_rookie",
+    val equippedCardBackId: String = "card_back_default",
+    val equippedBoardSkinId: String = "board_skin_default",
     val currentDailyCheckInStreak: Int = 0,
     val bestDailyCheckInStreak: Int = 0,
     val totalDailyCheckIns: Int = 0,
@@ -765,4 +790,67 @@ internal fun unlockedTitleIds(
 
 internal fun unlockedAvatarIds(totalDailyCheckIns: Int): Set<String> = buildSet {
     if (totalDailyCheckIns >= DAILY_CHECK_IN_AVATAR_TARGET) add(DAILY_CHECK_IN_AVATAR_ID)
+
+    override suspend fun updateGold(playerId: String, amountDelta: Int): Boolean = withContext(Dispatchers.IO) {
+        dataSource.connection.use { connection ->
+            connection.prepareStatement(
+                "UPDATE player_stats SET gold = GREATEST(0, gold + ?) WHERE user_id = ?"
+            ).use { statement ->
+                statement.setInt(1, amountDelta)
+                statement.setObject(2, java.util.UUID.fromString(playerId))
+                statement.executeUpdate() > 0
+            }
+        }
+    }
+
+    override suspend fun buyCosmetic(playerId: String, cosmeticId: String, cosmeticType: String, price: Int): Boolean = withContext(Dispatchers.IO) {
+        dataSource.connection.use { connection ->
+            connection.autoCommit = false
+            try {
+                val updateGold = connection.prepareStatement("UPDATE player_stats SET gold = gold - ? WHERE user_id = ? AND gold >= ?")
+                updateGold.setInt(1, price)
+                updateGold.setObject(2, java.util.UUID.fromString(playerId))
+                updateGold.setInt(3, price)
+                if (updateGold.executeUpdate() == 0) {
+                    connection.rollback()
+                    return@withContext false
+                }
+
+                val addCosmetic = connection.prepareStatement("INSERT INTO player_cosmetics (user_id, cosmetic_id, cosmetic_type, acquired_at) VALUES (?, ?, ?, ?) ON CONFLICT DO NOTHING")
+                addCosmetic.setObject(1, java.util.UUID.fromString(playerId))
+                addCosmetic.setString(2, cosmeticId)
+                addCosmetic.setString(3, cosmeticType)
+                addCosmetic.setTimestamp(4, java.sql.Timestamp(System.currentTimeMillis()))
+                if (addCosmetic.executeUpdate() == 0) {
+                    connection.rollback()
+                    return@withContext false
+                }
+                
+                connection.commit()
+                true
+            } catch (e: Exception) {
+                connection.rollback()
+                false
+            } finally {
+                connection.autoCommit = true
+            }
+        }
+    }
+
+    override suspend fun equipCosmetic(playerId: String, cosmeticId: String, cosmeticType: String): Boolean = withContext(Dispatchers.IO) {
+        dataSource.connection.use { connection ->
+            val column = when (cosmeticType) {
+                "CARD_BACK" -> "equipped_card_back_id"
+                "BOARD_SKIN" -> "equipped_board_skin_id"
+                "FRAME" -> "equipped_frame_id"
+                "TITLE" -> "equipped_title_id"
+                else -> return@withContext false
+            }
+            connection.prepareStatement("UPDATE player_stats SET $column = ? WHERE user_id = ?").use { statement ->
+                statement.setString(1, cosmeticId)
+                statement.setObject(2, java.util.UUID.fromString(playerId))
+                statement.executeUpdate() > 0
+            }
+        }
+    }
 }
