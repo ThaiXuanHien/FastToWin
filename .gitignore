@@ -20,3 +20,4 @@ server-dev.*.log
 **/*.xcodeproj/project.xcworkspace/
 xcuserdata/
 *.xcuserstate
+server/firebase-adminsdk.json
