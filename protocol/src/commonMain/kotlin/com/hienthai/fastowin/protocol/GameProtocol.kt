@@ -623,6 +623,14 @@ sealed class ClientMessage {
     data class MeasureLatency(val clientSentAtEpochMillis: Long) : ClientMessage()
 
     @Serializable
+    @SerialName("update_latency")
+    data class UpdateLatency(val latencyMillis: Long) : ClientMessage()
+
+    @Serializable
+    @SerialName("update_fcm_token")
+    data class UpdateFcmToken(val token: String) : ClientMessage()
+
+    @Serializable
     @SerialName("join_matchmaking")
     data class JoinMatchmaking(
         val gameMode: ProtocolGameMode,

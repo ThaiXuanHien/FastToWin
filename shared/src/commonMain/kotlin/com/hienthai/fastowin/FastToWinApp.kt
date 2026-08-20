@@ -59,7 +59,8 @@ fun FastToWinApp(
     resumeTokenStore: ResumeTokenStore,
     authSessionStore: AuthSessionStore,
     preferencesStore: AppPreferencesStore,
-    devicePlatform: String
+    devicePlatform: String,
+    fcmToken: String? = null
 ) {
     val authController = remember(serverUrl, authSessionStore, devicePlatform) {
         AuthController(serverUrl, authSessionStore, resumeTokenStore, devicePlatform)
@@ -107,6 +108,7 @@ fun FastToWinApp(
                     },
                     onLogout = authController::logout,
                     isGuest = authState.isGuest,
+                    fcmToken = fcmToken,
                     onUpgradeGuest = authController::openGuestUpgrade,
                     onChangePassword = authController::changePassword,
                     onDeleteAccount = authController::deleteAccount,
@@ -138,6 +140,7 @@ private fun GameContent(
     accessTokenProvider: (suspend (forceRefresh: Boolean) -> String?)?,
     onLogout: () -> Unit,
     isGuest: Boolean,
+    fcmToken: String?,
     onUpgradeGuest: () -> Unit,
     onChangePassword: (String, String) -> Unit,
     onDeleteAccount: (String) -> Unit,
@@ -176,6 +179,12 @@ private fun GameContent(
     var practiceMode by remember { mutableStateOf<GameMode?>(null) }
     var practiceChallenge by remember { mutableStateOf<PracticeChallenge?>(null) }
     var challengeLinkError by remember { mutableStateOf<String?>(null) }
+    
+    LaunchedEffect(fcmToken, state.isConnected) {
+        if (state.isConnected && fcmToken != null) {
+            controller.sendFcmToken(fcmToken)
+        }
+    }
 
     LaunchedEffect(pendingRoomLink?.roomId, controller) {
         pendingRoomLink?.let { link ->

@@ -21,15 +21,7 @@ fun main() {
     val notificationRepository = database?.notificationRepository ?: NoOpNotificationRepository
     val activeRoomRepository = database?.activeRoomRepository ?: NoOpActiveRoomRepository
     val tournamentRepository = database?.tournamentRepository ?: InMemoryTournamentRepository()
-    val clanRepository = database?.clanRepository ?: object : ClanRepository {
-        override suspend fun createClan(ownerId: String, name: String, description: String): String? = null
-        override suspend fun joinClan(userId: String, clanId: String): Boolean = false
-        override suspend fun leaveClan(userId: String): Boolean = false
-        override suspend fun getClanByUserId(userId: String): com.hienthai.fastowin.protocol.ClanSnapshot? = null
-        override suspend fun getClanById(clanId: String): com.hienthai.fastowin.protocol.ClanSnapshot? = null
-        override suspend fun getClanList(limit: Int, offset: Int): List<com.hienthai.fastowin.protocol.ClanSummarySnapshot> = emptyList()
-        override suspend fun kickMember(clanId: String, currentUserId: String, targetUserId: String): Boolean = false
-    }
+    val clanRepository = database?.clanRepository ?: NoOpClanRepository
     val storage = if (database == null) "memory" else "postgresql"
     val engine = GameEngine(
         identityRepository,
@@ -40,7 +32,8 @@ fun main() {
         activeRoomRepository,
         notificationRepository,
         tournamentRepository,
-        clanRepository
+        clanRepository,
+        FirebasePushNotificationService()
     )
     runBlocking { engine.restoreActiveRooms() }
 

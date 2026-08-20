@@ -1060,9 +1060,9 @@ class GameController(
                 }
             }
             is ServerMessage.LatencyPong -> {
-                _uiState.update {
-                    it.copy(latencyMillis = (epochMillis() - message.clientSentAtEpochMillis).coerceAtLeast(0L))
-                }
+                val ping = (epochMillis() - message.clientSentAtEpochMillis).coerceAtLeast(0L)
+                _uiState.update { it.copy(latencyMillis = ping) }
+                scope.launch { socket.sendMessage(ClientMessage.UpdateLatency(ping)) }
             }
             is ServerMessage.MatchmakingStatus -> {
                 _uiState.update {
@@ -1343,6 +1343,9 @@ class GameController(
             activeSession?.cancel()
             ensureSocketSession(displayName)
         }
+    }
+    fun sendFcmToken(token: String) {
+        scope.launch { socket.sendMessage(ClientMessage.UpdateFcmToken(token)) }
     }
 
     fun close() {

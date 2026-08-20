@@ -1,0 +1,14 @@
+﻿package com.hienthai.fastowin.server
+
+import com.hienthai.fastowin.protocol.ClanSnapshot
+import com.hienthai.fastowin.protocol.ClanSummarySnapshot
+
+object NoOpClanRepository : ClanRepository {
+    override suspend fun createClan(ownerId: String, name: String, description: String): String? = null
+    override suspend fun joinClan(userId: String, clanId: String): Boolean = false
+    override suspend fun leaveClan(userId: String): Boolean = false
+    override suspend fun getClanByUserId(userId: String): ClanSnapshot? = null
+    override suspend fun getClanById(clanId: String): ClanSnapshot? = null
+    override suspend fun getClanList(limit: Int, offset: Int): List<ClanSummarySnapshot> = emptyList()
+    override suspend fun kickMember(clanId: String, currentUserId: String, targetUserId: String): Boolean = false
+}

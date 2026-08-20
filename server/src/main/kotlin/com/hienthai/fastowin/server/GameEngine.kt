@@ -1,4 +1,4 @@
-﻿package com.hienthai.fastowin.server
+package com.hienthai.fastowin.server
 
 import com.hienthai.fastowin.protocol.ClientMessage
 import com.hienthai.fastowin.protocol.CosmeticType
@@ -55,7 +55,8 @@ class GameEngine(
     private val activeRoomRepository: ActiveRoomRepository = NoOpActiveRoomRepository,
     private val notificationRepository: NotificationRepository = NoOpNotificationRepository,
     private val tournamentRepository: TournamentRepository = InMemoryTournamentRepository(),
-    private val clanRepository: ClanRepository,
+    private val clanRepository: ClanRepository = NoOpClanRepository,
+    private val pushNotificationService: PushNotificationService = NoOpPushNotificationService,
     private val timeAttackMillis: Long = DEFAULT_TIME_ATTACK_MILLIS,
     private val rematchTimeoutMillis: Long = DEFAULT_REMATCH_TIMEOUT_MILLIS,
     private val nowMillis: () -> Long = System::currentTimeMillis
@@ -286,6 +287,14 @@ class GameEngine(
                 is ClientMessage.MeasureLatency -> HandleResult(listOf(
                     Delivery(ServerMessage.LatencyPong(message.clientSentAtEpochMillis), setOf(playerId))
                 ))
+                is ClientMessage.UpdateLatency -> {
+                    player.latencyMillis = message.latencyMillis
+                    HandleResult(emptyList())
+                }
+                is ClientMessage.UpdateFcmToken -> {
+                    playerProfileRepository.updateFcmToken(playerId, message.token)
+                    HandleResult(emptyList())
+                }
                 is ClientMessage.JoinMatchmaking -> HandleResult(emptyList())
                 ClientMessage.CancelMatchmaking -> HandleResult(emptyList())
                 is ClientMessage.SendFriendRequest -> HandleResult(emptyList())
@@ -443,19 +452,17 @@ class GameEngine(
             if (command.friendPlayerId in tournament.playerIds()) {
                 return@withLock listOf(error(playerId, "PLAYER_ALREADY_JOINED", "NgÆ°á»i chÆ¡i Ä‘Ã£ á»Ÿ trong giáº£i."))
             }
-            val friend = sessionsByPlayerId[command.friendPlayerId]
-                ?.takeIf { it.isConnected && it.resumeToken == null }
-                ?: return@withLock listOf(error(playerId, "FRIEND_OFFLINE", "Báº¡n bÃ¨ hiá»‡n khÃ´ng online."))
-            if (activeTournamentFor(friend.playerId) != null || roomFor(friend.playerId) != null) {
+            val friendId = command.friendPlayerId
+            if (activeTournamentFor(friendId) != null || roomFor(friendId) != null) {
                 return@withLock listOf(error(playerId, "FRIEND_BUSY", "Báº¡n bÃ¨ Ä‘ang báº­n á»Ÿ phÃ²ng hoáº·c giáº£i khÃ¡c."))
             }
             tournamentInvitations.entries.removeAll { (_, invitation) ->
-                invitation.tournamentId == tournament.id && invitation.inviteeId == friend.playerId
+                invitation.tournamentId == tournament.id && invitation.inviteeId == friendId
             }
             val invitation = TournamentInvitationRecord(
                 id = UUID.randomUUID().toString(),
                 tournamentId = tournament.id,
-                inviteeId = friend.playerId,
+                inviteeId = friendId,
                 hostId = playerId,
                 hostDisplayName = sessionsByPlayerId[playerId]?.displayName.orEmpty(),
                 tournamentName = tournament.name,
@@ -463,8 +470,19 @@ class GameEngine(
                 expiresAtMillis = nowMillis() + TOURNAMENT_INVITATION_TTL_MILLIS
             )
             tournamentInvitations[invitation.id] = invitation
+            
+            // Send Push Notification
+            val fcmToken = playerProfileRepository.findFcmToken(friendId)
+            if (fcmToken != null) {
+                pushNotificationService.sendNotification(
+                    fcmToken,
+                    "Lời mời giải đấu",
+                    "${invitation.hostDisplayName} đã mời bạn vào giải đấu ${invitation.tournamentName}"
+                )
+            }
+            
             listOf(
-                Delivery(ServerMessage.TournamentInvitation(invitation.snapshot()), setOf(friend.playerId)),
+                Delivery(ServerMessage.TournamentInvitation(invitation.snapshot()), setOf(friendId)),
                 Delivery(ServerMessage.TournamentNotice("ÄÃ£ gá»­i lá»i má»i tham gia giáº£i."), setOf(playerId))
             )
         }
@@ -833,32 +851,30 @@ class GameEngine(
                 ?: return@withLock listOf(error(playerId, "SESSION_NOT_FOUND", "PhiÃªn chÆ¡i khÃ´ng cÃ²n há»£p lá»‡."))
             val room = rooms[command.roomId]
                 ?.takeIf { it.hostId == playerId && it.phase == RoomPhase.WAITING && it.guestId == null }
-                ?: return@withLock listOf(error(playerId, "ROOM_NOT_INVITABLE", "PhÃ²ng khÃ´ng cÃ²n sáºµn sÃ ng Ä‘á»ƒ má»i báº¡n."))
-            val friend = sessionsByPlayerId[command.friendUserId]
-                ?.takeIf { it.isConnected && it.resumeToken == null }
-                ?: return@withLock listOf(error(playerId, "FRIEND_OFFLINE", "Báº¡n bÃ¨ hiá»‡n khÃ´ng online."))
-            if (roomFor(friend.playerId) != null) {
+                ?: return@withLock listOf(error(playerId, "ROOM_NOT_INVITABLE", "PhÃ²ng khÃ´ng cÃ²n sáºµn sÃ ng Ä‘á»ƒ má» i báº¡n."))
+            val friendId = command.friendUserId
+            if (roomFor(friendId) != null) {
                 return@withLock listOf(error(playerId, "FRIEND_BUSY", "Báº¡n bÃ¨ Ä‘ang á»Ÿ trong phÃ²ng khÃ¡c."))
             }
             val invitation = RoomInvitationRecord(
                 id = UUID.randomUUID().toString(),
                 inviterId = playerId,
-                inviteeId = friend.playerId,
+                inviteeId = friendId,
                 roomId = room.id,
                 inviterDisplayName = inviter.displayName,
                 roomName = room.name,
                 expiresAtMillis = nowMillis() + ROOM_INVITATION_TTL_MILLIS
             )
             roomInvitations.entries.removeAll { entry ->
-                (entry.value.inviterId == playerId && entry.value.inviteeId == friend.playerId).also { removed ->
+                (entry.value.inviterId == playerId && entry.value.inviteeId == friendId).also { removed ->
                     if (removed) replacedInvitationIds += entry.key
                 }
             }
             roomInvitations[invitation.id] = invitation
             createdInvitation = invitation
             listOf(
-                Delivery(invitation.toMessage(), setOf(friend.playerId)),
-                Delivery(ServerMessage.SocialNotice("ÄÃ£ gá»­i lá»i má»i vÃ o phÃ²ng."), setOf(playerId))
+                Delivery(invitation.toMessage(), setOf(friendId)),
+                Delivery(ServerMessage.SocialNotice("Ä Ã£ gá»­i lá» i má» i vÃ o phÃ²ng."), setOf(playerId))
             )
         }
         createdInvitation?.let { invitation ->
@@ -882,6 +898,15 @@ class GameEngine(
                     destination = NotificationDestination.FRIENDS
                 ))
             )
+            
+            val fcmToken = playerProfileRepository.findFcmToken(invitation.inviteeId)
+            if (fcmToken != null) {
+                pushNotificationService.sendNotification(
+                    fcmToken,
+                    "Lời mời chơi game",
+                    "${invitation.inviterDisplayName} đã mời bạn vào phòng ${invitation.roomName}"
+                )
+            }
             return deliveries + refreshNotificationsFor(setOf(invitation.inviteeId))
         }
         return deliveries
@@ -1074,9 +1099,11 @@ class GameEngine(
                 .sortedWith(
                     if (command.matchType == MatchType.RANKED) {
                         compareBy<MatchmakingEntry> { kotlin.math.abs(it.eloRating - rating) }
+                            .thenBy { if (command.gameMode == com.hienthai.fastowin.protocol.ProtocolGameMode.TEAM_2V2) (sessionsByPlayerId[it.playerId]?.latencyMillis ?: 0L) >= 150L else false }
                             .thenBy { it.joinedAtMillis }
                     } else {
-                        compareBy(MatchmakingEntry::joinedAtMillis)
+                        compareBy<MatchmakingEntry> { if (command.gameMode == com.hienthai.fastowin.protocol.ProtocolGameMode.TEAM_2V2) (sessionsByPlayerId[it.playerId]?.latencyMillis ?: 0L) >= 150L else false }
+                            .thenBy { it.joinedAtMillis }
                     }
                 )
         }
@@ -2449,7 +2476,8 @@ class GameEngine(
         var resumeToken: String?,
         var displayName: String,
         var isConnected: Boolean = true,
-        var disconnectedAtMillis: Long? = null
+        var disconnectedAtMillis: Long? = null,
+        var latencyMillis: Long? = null
     )
 
     private data class HandleResult(

@@ -623,6 +623,27 @@ class PostgresPlayerProfileRepository(
         }
     }
 
+    override suspend fun updateFcmToken(playerId: String, token: String): Boolean = withContext(Dispatchers.IO) {
+        dataSource.connection.use { connection ->
+            connection.prepareStatement("UPDATE players SET fcm_token = ? WHERE id = ?").use { statement ->
+                statement.setString(1, token)
+                statement.setObject(2, UUID.fromString(playerId))
+                statement.executeUpdate() > 0
+            }
+        }
+    }
+
+    override suspend fun findFcmToken(playerId: String): String? = withContext(Dispatchers.IO) {
+        dataSource.connection.use { connection ->
+            connection.prepareStatement("SELECT fcm_token FROM players WHERE id = ?").use { statement ->
+                statement.setObject(1, UUID.fromString(playerId))
+                statement.executeQuery().use { result ->
+                    if (result.next()) result.getString("fcm_token") else null
+                }
+            }
+        }
+    }
+
     override suspend fun updateProfile(
         playerId: String,
         displayName: String,

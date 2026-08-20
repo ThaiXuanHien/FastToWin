@@ -24,7 +24,8 @@ class MainActivity : ComponentActivity() {
                 resumeTokenStore = tokenStore,
                 authSessionStore = authSessionStore,
                 preferencesStore = preferencesStore,
-                devicePlatform = "android"
+                devicePlatform = "android",
+                fcmToken = applicationContext.getSharedPreferences("fcm", android.content.Context.MODE_PRIVATE).getString("fcm_token", null)
             )
         }
     }
