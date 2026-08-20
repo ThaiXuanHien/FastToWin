@@ -297,6 +297,11 @@ class GameEngine(
                 }
                 is ClientMessage.JoinMatchmaking -> HandleResult(emptyList())
                 ClientMessage.CancelMatchmaking -> HandleResult(emptyList())
+                is ClientMessage.GetClanList -> HandleResult(emptyList())
+                is ClientMessage.CreateClan -> HandleResult(emptyList())
+                is ClientMessage.GetClanInfo -> HandleResult(emptyList())
+                is ClientMessage.JoinClan -> HandleResult(emptyList())
+                is ClientMessage.LeaveClan -> HandleResult(emptyList())
                 is ClientMessage.SendFriendRequest -> HandleResult(emptyList())
                 is ClientMessage.RespondFriendRequest -> HandleResult(emptyList())
                 is ClientMessage.CancelFriendRequest -> HandleResult(emptyList())
