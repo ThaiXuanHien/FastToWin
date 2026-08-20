@@ -180,8 +180,8 @@ private fun GameContent(
     var practiceChallenge by remember { mutableStateOf<PracticeChallenge?>(null) }
     var challengeLinkError by remember { mutableStateOf<String?>(null) }
     
-    LaunchedEffect(fcmToken, state.isConnected) {
-        if (state.isConnected && fcmToken != null) {
+    LaunchedEffect(fcmToken, state.connectionStatus) {
+        if (state.connectionStatus == com.hienthai.fastowin.state.ConnectionStatus.CONNECTED && fcmToken != null) {
             controller.sendFcmToken(fcmToken)
         }
     }
