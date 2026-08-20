@@ -131,6 +131,7 @@ data class GameState(
     val isProfileLoading: Boolean = false,
     val isProfileSaving: Boolean = false,
     val isClanOpen: Boolean = false,
+    val isShopOpen: Boolean = false,
     val clanList: List<com.hienthai.fastowin.protocol.ClanSummarySnapshot> = emptyList(),
     val currentClan: com.hienthai.fastowin.protocol.ClanSnapshot? = null,
     val profileNotice: String? = null,

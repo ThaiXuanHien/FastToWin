@@ -91,6 +91,7 @@ internal fun HomeDashboard(
     onOpenClan: () -> Unit,
     onOpenPractice: () -> Unit,
     onOpenTournament: () -> Unit,
+    onOpenShop: () -> Unit,
     onClaimDailyCheckIn: () -> Unit,
     onUpgradeGuest: () -> Unit,
     onLogout: () -> Unit,
@@ -282,6 +283,13 @@ internal fun HomeDashboard(
                         Modifier.weight(1f)
                     )
                 }
+                HomeQuickAction(
+                    "Cửa hàng",
+                    "Mua thẻ bài, skin bàn cờ, avatar...",
+                    androidx.compose.material.icons.Icons.Default.ShoppingCart,
+                    onOpenShop,
+                    Modifier.fillMaxWidth().testTag("home_shop")
+                )
                 HomeQuickAction(
                     "Đấu giải",
                     if (isGuest) "Đăng ký để tham gia" else "Giải riêng 4 người loại trực tiếp",

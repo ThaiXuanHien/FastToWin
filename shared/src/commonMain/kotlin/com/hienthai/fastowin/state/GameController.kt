@@ -89,7 +89,7 @@ class GameController(
     fun openRoomLink(roomId: String) {
         val state = _uiState.value
         if (state.currentRoomId != null || state.isMatchStarted || state.isGameOver) {
-            _uiState.update { it.copy(error = "Hãy rời phòng hiện tại trước khi mở liên kết phòng khác.") }
+            _uiState.update { it.copy(error = "HÃ£y rá»i phÃ²ng hiá»‡n táº¡i trÆ°á»›c khi má»Ÿ liÃªn káº¿t phÃ²ng khÃ¡c.") }
             return
         }
         _uiState.update {
@@ -262,12 +262,12 @@ class GameController(
         val safeName = displayName.trim()
         if (safeName.isEmpty() || safeName.length > MAX_PROFILE_DISPLAY_NAME_LENGTH) {
             _uiState.update {
-                it.copy(error = "Biệt danh phải có từ 1 đến $MAX_PROFILE_DISPLAY_NAME_LENGTH ký tự.")
+                it.copy(error = "Biá»‡t danh pháº£i cÃ³ tá»« 1 Ä‘áº¿n $MAX_PROFILE_DISPLAY_NAME_LENGTH kÃ½ tá»±.")
             }
             return
         }
         if (avatarId != null && avatarId !in PROFILE_AVATAR_IDS) {
-            _uiState.update { it.copy(error = "Ảnh đại diện không hợp lệ.") }
+            _uiState.update { it.copy(error = "áº¢nh Ä‘áº¡i diá»‡n khÃ´ng há»£p lá»‡.") }
             return
         }
         _uiState.update { it.copy(isProfileSaving = true, profileNotice = null, error = null) }
@@ -392,9 +392,9 @@ class GameController(
         _uiState.update { it.copy(isTournamentOpen = false, isTournamentLoading = false, tournamentNotice = null) }
     }
 
-    fun createTournament(name: String, mode: GameMode) {
+    fun createTournament(name: String, mode: GameMode, entryFee: Int = 0) {
         _uiState.update { it.copy(isTournamentLoading = true, tournamentNotice = null, error = null) }
-        scope.launch { socket.sendMessage(ClientMessage.CreateTournament(name, mode.toProtocol())) }
+        scope.launch { socket.sendMessage(ClientMessage.CreateTournament(name, mode.toProtocol(), entryFee)) }
     }
 
     fun inviteTournamentPlayer(friendPlayerId: String) {
@@ -588,7 +588,7 @@ class GameController(
 
     fun createRoom(roomName: String, password: String) {
         if (roomName.isBlank()) {
-            _uiState.update { it.copy(error = "Vui lòng nhập tên phòng.") }
+            _uiState.update { it.copy(error = "Vui lÃ²ng nháº­p tÃªn phÃ²ng.") }
             return
         }
         _uiState.update { it.copy(isSearching = true, error = null) }
@@ -606,7 +606,7 @@ class GameController(
     fun joinRoom(roomId: String, password: String) {
         val room = _uiState.value.availableRooms.firstOrNull { it.id == roomId }
         if (room == null) {
-            _uiState.update { it.copy(error = "Phòng không còn khả dụng.") }
+            _uiState.update { it.copy(error = "PhÃ²ng khÃ´ng cÃ²n kháº£ dá»¥ng.") }
             return
         }
         _uiState.update {
@@ -671,7 +671,7 @@ class GameController(
             socket.sendMessage(ClientMessage.BlockPlayer(opponentId))
             if (roomId != null) socket.sendMessage(ClientMessage.LeaveRoom(roomId))
             returnToRoomBrowser()
-            _uiState.update { it.copy(socialNotice = "Đã chặn người chơi và rời phòng.") }
+            _uiState.update { it.copy(socialNotice = "ÄÃ£ cháº·n ngÆ°á»i chÆ¡i vÃ  rá»i phÃ²ng.") }
         }
     }
 
@@ -785,7 +785,7 @@ class GameController(
                         applyWaitingSnapshot(game)
                     }
                 } else if (wasRecoveringRoom) {
-                    returnToRoomBrowser("Phòng đã đóng vì quá thời gian kết nối lại.")
+                    returnToRoomBrowser("PhÃ²ng Ä‘Ã£ Ä‘Ã³ng vÃ¬ quÃ¡ thá»i gian káº¿t ná»‘i láº¡i.")
                 }
             }
 
@@ -828,7 +828,7 @@ class GameController(
                         player = state.player.copy(name = message.profile.displayName),
                         isProfileLoading = false,
                         isProfileSaving = false,
-                        profileNotice = if (wasSaving) "Đã lưu hồ sơ." else null,
+                        profileNotice = if (wasSaving) "ÄÃ£ lÆ°u há»“ sÆ¡." else null,
                         lastMatchEloChange = completedMatch?.eloChange ?: state.lastMatchEloChange,
                         lastMatchEloRating = if (completedMatch != null) {
                             message.profile.statistics.eloRating
@@ -866,7 +866,7 @@ class GameController(
                 _uiState.update {
                     it.copy(
                         claimingMissionCode = null,
-                        profileNotice = if (message.claimed) "Đã nhận ${message.rewardXp} XP." else null,
+                        profileNotice = if (message.claimed) "ÄÃ£ nháº­n ${message.rewardXp} XP." else null,
                         error = null
                     )
                 }
@@ -1072,21 +1072,21 @@ class GameController(
                     state.copy(
                         rematchNotice = when (message.event) {
                             RematchEvent.REQUESTED -> if (actorIsMe) {
-                                "Đã gửi yêu cầu đấu lại."
+                                "ÄÃ£ gá»­i yÃªu cáº§u Ä‘áº¥u láº¡i."
                             } else {
-                                "Đối thủ muốn đấu lại với bạn."
+                                "Äá»‘i thá»§ muá»‘n Ä‘áº¥u láº¡i vá»›i báº¡n."
                             }
                             RematchEvent.CANCELLED -> if (actorIsMe) {
-                                "Bạn đã hủy yêu cầu đấu lại."
+                                "Báº¡n Ä‘Ã£ há»§y yÃªu cáº§u Ä‘áº¥u láº¡i."
                             } else {
-                                "Đối thủ đã hủy yêu cầu đấu lại."
+                                "Äá»‘i thá»§ Ä‘Ã£ há»§y yÃªu cáº§u Ä‘áº¥u láº¡i."
                             }
                             RematchEvent.DECLINED -> if (actorIsMe) {
-                                "Bạn đã từ chối đấu lại."
+                                "Báº¡n Ä‘Ã£ tá»« chá»‘i Ä‘áº¥u láº¡i."
                             } else {
-                                "Đối thủ đã từ chối đấu lại."
+                                "Äá»‘i thá»§ Ä‘Ã£ tá»« chá»‘i Ä‘áº¥u láº¡i."
                             }
-                            RematchEvent.EXPIRED -> "Yêu cầu đấu lại đã hết thời gian."
+                            RematchEvent.EXPIRED -> "YÃªu cáº§u Ä‘áº¥u láº¡i Ä‘Ã£ háº¿t thá»i gian."
                         }
                     )
                 }
@@ -1162,9 +1162,9 @@ class GameController(
                 matchType = game.matchType,
                 player = meSnapshot?.toState(state.player.name, 1, isSpectator = meSnapshot in game.spectators) ?: state.player,
                 opponent = opponent?.toState(DEFAULT_OPPONENT_NAME, 1) ?: PlayerState(DEFAULT_OPPONENT_NAME),
-                teammates = teammateSnapshots.map { it.toState("Đồng đội", 1) },
+                teammates = teammateSnapshots.map { it.toState("Äá»“ng Ä‘á»™i", 1) },
                 opponents = opponentSnapshots.map { it.toState(DEFAULT_OPPONENT_NAME, 1) },
-                spectators = spectatorSnapshots.map { it.toState("Khán giả", 1, isSpectator = true) },
+                spectators = spectatorSnapshots.map { it.toState("KhÃ¡n giáº£", 1, isSpectator = true) },
                 hasOpponent = opponentSnapshots.isNotEmpty(),
                 isMatchmaking = false,
                 matchmakingStartedAtMillis = null,
@@ -1239,9 +1239,9 @@ class GameController(
                 matchType = game.matchType,
                 player = meSnapshot?.toState(state.player.name, game.currentTarget, isSpectator = meSnapshot in game.spectators) ?: state.player,
                 opponent = opponent?.toState(DEFAULT_OPPONENT_NAME, game.currentTarget) ?: PlayerState(DEFAULT_OPPONENT_NAME),
-                teammates = teammateSnapshots.map { it.toState("Đồng đội", game.currentTarget) },
+                teammates = teammateSnapshots.map { it.toState("Äá»“ng Ä‘á»™i", game.currentTarget) },
                 opponents = opponentSnapshots.map { it.toState(DEFAULT_OPPONENT_NAME, game.currentTarget) },
-                spectators = spectatorSnapshots.map { it.toState("Khán giả", game.currentTarget, isSpectator = true) },
+                spectators = spectatorSnapshots.map { it.toState("KhÃ¡n giáº£", game.currentTarget, isSpectator = true) },
                 lobbyStage = LobbyStage.MATCHED,
                 currentRoomId = game.roomId,
                 currentRoomName = game.roomName,
@@ -1336,7 +1336,7 @@ class GameController(
                 val remaining = (deadline - epochMillis()).coerceAtLeast(0L)
                 _uiState.update { it.copy(timeLeftMillis = remaining) }
                 if (remaining == 0L) {
-                    _uiState.update { it.copy(message = "Đang chờ kết quả từ máy chủ...") }
+                    _uiState.update { it.copy(message = "Äang chá» káº¿t quáº£ tá»« mÃ¡y chá»§...") }
                     break
                 }
                 delay(250)
@@ -1454,6 +1454,22 @@ class GameController(
         repeat(2) { append(Random.nextLong().toULong().toString(16).padStart(16, '0')) }
     }
 
+
+    fun openShop() {
+        _uiState.update { it.copy(isShopOpen = true) }
+    }
+
+    fun closeShop() {
+        _uiState.update { it.copy(isShopOpen = false) }
+    }
+
+    fun buyCosmetic(cosmeticId: String) {
+        scope.launch { socket.sendMessage(com.hienthai.fastowin.protocol.ClientMessage.BuyCosmetic(cosmeticId)) }
+    }
+
+    fun equipCosmetic(cosmeticId: String) {
+        scope.launch { socket.sendMessage(com.hienthai.fastowin.protocol.ClientMessage.EquipCosmetic(cosmeticId)) }
+    }
     fun openClan() {
         _uiState.update { it.copy(isClanOpen = true) }
         scope.launch { socket.sendMessage(ClientMessage.GetClanList()) }
@@ -1494,6 +1510,6 @@ class GameController(
 
     private companion object {
         const val RECONNECTING_MATCH_MESSAGE =
-            "Mất kết nối. Đang khôi phục trận, phòng được giữ tối đa 30 giây..."
+            "Máº¥t káº¿t ná»‘i. Äang khÃ´i phá»¥c tráº­n, phÃ²ng Ä‘Æ°á»£c giá»¯ tá»‘i Ä‘a 30 giÃ¢y..."
     }
 }

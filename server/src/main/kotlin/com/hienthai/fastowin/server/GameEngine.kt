@@ -428,13 +428,22 @@ class GameEngine(
                 return@withLock listOf(error(playerId, "TOURNAMENT_ALREADY_ACTIVE", "BÃ¡ÂºÂ¡n Ã„â€˜ang tham gia mÃ¡Â»â„¢t giÃ¡ÂºÂ£i khÃƒÂ¡c."))
             }
             if (roomFor(playerId) != null || playerId in matchmakingEntries) {
-                return@withLock listOf(error(playerId, "PLAYER_BUSY", "HÃƒÂ£y rÃ¡Â»Âi phÃƒÂ²ng hoÃ¡ÂºÂ·c hÃ¡Â»Â§y ghÃƒÂ©p trÃ¡ÂºÂ­n trÃ†Â°Ã¡Â»â€ºc khi tÃ¡ÂºÂ¡o giÃ¡ÂºÂ£i."))
+                return@withLock listOf(error(playerId, "PLAYER_BUSY", "Hãy rời phòng hoặc hủy ghép trận trước khi tạo giải."))
+            }
+            if (command.entryFee > 0) {
+                val profile = playerProfileRepository.getProfile(playerId)
+                if (profile == null || profile.gold < command.entryFee) {
+                    return@withLock listOf(error(playerId, "NOT_ENOUGH_GOLD", "Bạn không đủ Vàng để tạo giải đấu."))
+                }
+                playerProfileRepository.updateGold(playerId, -command.entryFee)
             }
             val tournament = Tournament(
                 id = UUID.randomUUID().toString(),
                 name = safeName,
                 hostId = playerId,
                 gameMode = command.gameMode,
+                entryFee = command.entryFee,
+                prizePool = command.entryFee,
                 participants = mutableListOf(TournamentParticipant(playerId, host.displayName)),
                 matches = mutableListOf(
                     TournamentMatch(UUID.randomUUID().toString(), round = 1, position = 1),
@@ -535,7 +544,15 @@ class GameEngine(
                 return@withLock listOf(error(playerId, "TOURNAMENT_FULL", "GiÃ¡ÂºÂ£i Ã„â€˜ÃƒÂ£ Ã„â€˜Ã¡Â»Â§ 4 ngÃ†Â°Ã¡Â»Âi."))
             }
             if (activeTournamentFor(playerId) != null || roomFor(playerId) != null || playerId in matchmakingEntries) {
-                return@withLock listOf(error(playerId, "PLAYER_BUSY", "HÃƒÂ£y rÃ¡Â»Âi phÃƒÂ²ng hoÃ¡ÂºÂ·c giÃ¡ÂºÂ£i hiÃ¡Â»â€¡n tÃ¡ÂºÂ¡i trÃ†Â°Ã¡Â»â€ºc."))
+                return@withLock listOf(error(playerId, "PLAYER_BUSY", "Hãy rời phòng hoặc giải hiện tại trước."))
+            }
+            if (tournament.entryFee > 0) {
+                val profile = playerProfileRepository.getProfile(playerId)
+                if (profile == null || profile.gold < tournament.entryFee) {
+                    return@withLock listOf(error(playerId, "NOT_ENOUGH_GOLD", "Bạn không đủ Vàng để tham gia giải này."))
+                }
+                playerProfileRepository.updateGold(playerId, -tournament.entryFee)
+                tournament.prizePool += tournament.entryFee
             }
             val session = sessionsByPlayerId[playerId]
                 ?.takeIf { it.isConnected && it.resumeToken == null }
@@ -2046,6 +2063,9 @@ class GameEngine(
                 tournament.phase = TournamentPhase.FINISHED
                 tournament.championPlayerId = winnerId
                 tournament.finishedAtMillis = nowMillis()
+                if (tournament.prizePool > 0) {
+                    playerProfileRepository.updateGold(winnerId, tournament.prizePool)
+                }
             }
 
             val snapshot = tournament.snapshot()
@@ -2070,6 +2090,8 @@ class GameEngine(
         gameMode = gameMode,
         phase = phase,
         maxPlayers = TOURNAMENT_PLAYER_COUNT,
+        entryFee = entryFee,
+        prizePool = prizePool,
         players = participants.map { participant ->
             TournamentPlayerSnapshot(
                 playerId = participant.playerId,
@@ -2657,6 +2679,8 @@ class GameEngine(
         val name: String,
         val hostId: String,
         val gameMode: ProtocolGameMode,
+        val entryFee: Int = 0,
+        var prizePool: Int = 0,
         val participants: MutableList<TournamentParticipant>,
         val matches: MutableList<TournamentMatch>,
         var phase: TournamentPhase = TournamentPhase.LOBBY,

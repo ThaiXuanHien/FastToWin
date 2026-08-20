@@ -1,4 +1,4 @@
-package com.hienthai.fastowin.protocol
+﻿package com.hienthai.fastowin.protocol
 
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
@@ -43,12 +43,12 @@ enum class MatchType { CASUAL, RANKED }
 
 @Serializable
 enum class RankedTier(val displayName: String, val minimumRating: Int) {
-    BRONZE("Đồng", 0),
-    SILVER("Bạc", 1_100),
-    GOLD("Vàng", 1_300),
-    PLATINUM("Bạch kim", 1_500),
-    DIAMOND("Kim cương", 1_800),
-    MASTER("Cao thủ", 2_100)
+    BRONZE("Äá»“ng", 0),
+    SILVER("Báº¡c", 1_100),
+    GOLD("VÃ ng", 1_300),
+    PLATINUM("Báº¡ch kim", 1_500),
+    DIAMOND("Kim cÆ°Æ¡ng", 1_800),
+    MASTER("Cao thá»§", 2_100)
 }
 
 fun rankedTierFor(rating: Int): RankedTier = RankedTier.entries
@@ -96,6 +96,8 @@ data class TournamentSnapshot(
     val gameMode: ProtocolGameMode,
     val phase: TournamentPhase,
     val maxPlayers: Int = 4,
+    val entryFee: Int = 0,
+    val prizePool: Int = 0,
     val players: List<TournamentPlayerSnapshot> = emptyList(),
     val matches: List<TournamentMatchSnapshot> = emptyList(),
     val championPlayerId: String? = null,
@@ -554,7 +556,8 @@ sealed class ClientMessage {
     @SerialName("create_tournament")
     data class CreateTournament(
         val name: String,
-        val gameMode: ProtocolGameMode
+        val gameMode: ProtocolGameMode,
+        val entryFee: Int = 0
     ) : ClientMessage()
 
     @Serializable
@@ -912,8 +915,8 @@ data class ShopItem(
 )
 
 val SHOP_ITEMS = listOf(
-    ShopItem("card_back_gold", "B�i Lung V�ng", CosmeticType.CARD_BACK, 500, "GOLD"),
-    ShopItem("card_back_diamond", "B�i Lung Kim Cuong", CosmeticType.CARD_BACK, 1500, "GOLD"),
-    ShopItem("board_skin_dark", "B�n C? T?i", CosmeticType.BOARD_SKIN, 1000, "GOLD"),
+    ShopItem("card_back_gold", "Bài Lung Vàng", CosmeticType.CARD_BACK, 500, "GOLD"),
+    ShopItem("card_back_diamond", "Bài Lung Kim Cuong", CosmeticType.CARD_BACK, 1500, "GOLD"),
+    ShopItem("board_skin_dark", "Bàn C? T?i", CosmeticType.BOARD_SKIN, 1000, "GOLD"),
     ShopItem("board_skin_forest", "Khu R?ng", CosmeticType.BOARD_SKIN, 1000, "GOLD")
 )

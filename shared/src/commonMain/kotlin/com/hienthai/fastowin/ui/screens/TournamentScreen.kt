@@ -23,6 +23,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -60,7 +61,7 @@ import com.hienthai.fastowin.ui.layout.ResponsiveScreen
 fun TournamentScreen(
     state: GameState,
     onBack: () -> Unit,
-    onCreate: (String, GameMode) -> Unit,
+    onCreate: (String, GameMode, Int) -> Unit,
     onInvite: (String) -> Unit,
     onRespondInvitation: (String, Boolean) -> Unit,
     onStart: () -> Unit,
@@ -162,7 +163,7 @@ fun TournamentInvitationDialog(
 private fun CreateTournamentCard(
     playerLevel: Int,
     enabled: Boolean,
-    onCreate: (String, GameMode) -> Unit
+    onCreate: (String, GameMode, Int) -> Unit
 ) {
     var name by remember { mutableStateOf("") }
     var mode by remember { mutableStateOf(GameMode.ORDER) }
@@ -202,8 +203,22 @@ private fun CreateTournamentCard(
             OutlinedButton(onClick = { showModePicker = true }, modifier = Modifier.fillMaxWidth()) {
                 Text("Chế độ: ${mode.title}")
             }
+
+            var entryFee by remember { mutableStateOf(100) }
+            val entryFeeOptions = listOf(0, 50, 100, 200, 500)
+            Text("Lệ phí tham gia (Vàng):", fontWeight = FontWeight.Bold)
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                entryFeeOptions.forEach { fee ->
+                    FilterChip(
+                        selected = entryFee == fee,
+                        onClick = { entryFee = fee },
+                        label = { Text(if (fee == 0) "Miễn phí" else fee.toString()) }
+                    )
+                }
+            }
+
             Button(
-                onClick = { onCreate(name.trim(), mode) },
+                onClick = { onCreate(name.trim(), mode, entryFee) },
                 enabled = enabled && name.trim().length >= 3,
                 modifier = Modifier.fillMaxWidth().height(52.dp).testTag("create_tournament")
             ) { Text("Tạo giải") }
@@ -235,10 +250,23 @@ private fun ActiveTournamentContent(
         Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Text(tournament.name, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Black)
             Text("${tournament.gameMode.title()} • ${tournament.phase.label()}")
-            Text(
-                "${tournament.players.size}/${tournament.maxPlayers} người",
-                color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.75f)
-            )
+            Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                Text(
+                    "${tournament.players.size}/${tournament.maxPlayers} người",
+                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.75f)
+                )
+                if (tournament.entryFee > 0) {
+                    Text(
+                        "Phí: ${tournament.entryFee} Vàng",
+                        color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.75f)
+                    )
+                    Text(
+                        "Thưởng: ${tournament.prizePool} Vàng",
+                        color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.75f),
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
         }
     }
 

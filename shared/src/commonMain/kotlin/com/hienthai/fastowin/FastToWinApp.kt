@@ -37,6 +37,7 @@ import com.hienthai.fastowin.ui.screens.ResultScreen
 import com.hienthai.fastowin.ui.screens.FastToWinBottomBar
 import com.hienthai.fastowin.ui.screens.GameModePickerDialog
 import com.hienthai.fastowin.ui.screens.MainTab
+import com.hienthai.fastowin.ui.screens.ShopScreen
 import com.hienthai.fastowin.ui.screens.SettingsScreen
 import com.hienthai.fastowin.ui.screens.TutorialScreen
 import com.hienthai.fastowin.ui.screens.PracticeScreen
@@ -208,9 +209,9 @@ private fun GameContent(
         val playerLevel = state.profile?.progression?.level ?: 1
         challengeLinkError = when {
             state.currentRoomId != null || state.isMatchStarted || state.isGameOver || state.isMatchmaking ->
-                "Hãy kết thúc hoặc rời trận hiện tại trước khi mở thử thách."
+                "HÃ£y káº¿t thÃºc hoáº·c rá»i tráº­n hiá»‡n táº¡i trÆ°á»›c khi má»Ÿ thá»­ thÃ¡ch."
             playerLevel < challenge.mode.unlockLevel ->
-                "Chế độ ${challenge.mode.title} mở khóa ở cấp ${challenge.mode.unlockLevel}."
+                "Cháº¿ Ä‘á»™ ${challenge.mode.title} má»Ÿ khÃ³a á»Ÿ cáº¥p ${challenge.mode.unlockLevel}."
             else -> null
         }
 
@@ -249,16 +250,16 @@ private fun GameContent(
     challengeLinkError?.let { message ->
         AlertDialog(
             onDismissRequest = { challengeLinkError = null },
-            title = { Text("Không thể mở thử thách") },
+            title = { Text("KhÃ´ng thá»ƒ má»Ÿ thá»­ thÃ¡ch") },
             text = { Text(message) },
             confirmButton = {
-                TextButton(onClick = { challengeLinkError = null }) { Text("Đã hiểu") }
+                TextButton(onClick = { challengeLinkError = null }) { Text("ÄÃ£ hiá»ƒu") }
             }
         )
     }
     if (showGameModePicker) {
         GameModePickerDialog(
-            title = "Chọn chế độ chơi",
+            title = "Chá»n cháº¿ Ä‘á»™ chÆ¡i",
             playerLevel = state.profile?.progression?.level ?: 1,
             onDismiss = { showGameModePicker = false },
             onSelect = { mode ->
@@ -270,7 +271,7 @@ private fun GameContent(
     }
     if (showPracticeModePicker) {
         GameModePickerDialog(
-            title = "Chọn chế độ luyện tập",
+            title = "Chá»n cháº¿ Ä‘á»™ luyá»‡n táº­p",
             playerLevel = state.profile?.progression?.level ?: 1,
             onDismiss = { showPracticeModePicker = false },
             onSelect = { mode ->
@@ -443,6 +444,12 @@ private fun GameContent(
                     modifier = contentModifier
                 ) }
                 
+                state.isShopOpen -> ShopScreen(
+                    progression = state.profile?.progression,
+                    onBuy = controller::buyCosmetic,
+                    onEquip = controller::equipCosmetic,
+                    onClose = controller::closeShop
+                )
                 state.isClanOpen -> ClanScreen(
                     serverUrl = serverUrl,
                     myClanId = state.profile?.clanId,
@@ -538,8 +545,9 @@ private fun GameContent(
                     onOpenClan = controller::openClan,
                     onOpenPractice = { showPracticeLauncher = true },
                     onOpenTournament = controller::openTournament,
+                    onOpenShop = controller::openShop,
                     onShareRoom = { roomId, roomName ->
-                        textSharer.share(buildRoomShareText(roomName, roomId), "Chia sẻ phòng")
+                        textSharer.share(buildRoomShareText(roomName, roomId), "Chia sáº» phÃ²ng")
                     },
                     onResolveRoomLink = controller::resolvePendingRoomLink,
                     onClaimDailyCheckIn = controller::claimDailyCheckIn
