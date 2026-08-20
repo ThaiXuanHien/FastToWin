@@ -286,6 +286,11 @@ class GameController(
         scope.launch { socket.sendMessage(ClientMessage.UpdateClanLogo(clanId, logoId)) }
     }
 
+    fun claimClanQuestReward(clanId: String) {
+        _uiState.update { it.copy(error = null) }
+        scope.launch { socket.sendMessage(ClientMessage.ClaimClanQuestReward(clanId)) }
+    }
+
     fun openLeaderboard() {
         _uiState.update {
             it.copy(

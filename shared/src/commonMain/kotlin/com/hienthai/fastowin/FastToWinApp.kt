@@ -461,6 +461,7 @@ private fun GameContent(
                     onSearch = controller::searchClan,
                     onKickMember = controller::kickClanMember,
                     onUpdateLogo = controller::updateClanLogo,
+                    onClaimQuest = controller::claimClanQuestReward,
                     onViewClan = controller::viewClan,
                     onBack = controller::closeClan
                 )

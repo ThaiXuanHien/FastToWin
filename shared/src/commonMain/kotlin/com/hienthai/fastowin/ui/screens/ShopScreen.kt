@@ -43,7 +43,7 @@ fun ShopScreen(
     
     // Derived from cosmetics list in progression
     val ownedIds = progression?.cosmetics?.filter { it.unlocked }?.map { it.id }?.toSet() ?: emptySet()
-    val equippedIds = progression?.cosmetics?.mapNotNull { it.equippedId }?.toSet() ?: emptySet()
+    val equippedIds = progression?.cosmetics?.filter { it.equipped }?.map { it.id }?.toSet() ?: emptySet()
 
     Scaffold(
         topBar = {
