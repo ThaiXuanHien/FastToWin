@@ -43,12 +43,13 @@ enum class MatchType { CASUAL, RANKED }
 
 @Serializable
 enum class RankedTier(val displayName: String, val minimumRating: Int) {
-    BRONZE("Äá»“ng", 0),
-    SILVER("Báº¡c", 1_100),
-    GOLD("VÃ ng", 1_300),
-    PLATINUM("Báº¡ch kim", 1_500),
-    DIAMOND("Kim cÆ°Æ¡ng", 1_800),
-    MASTER("Cao thá»§", 2_100)
+    BRONZE("Đồng", 0),
+    SILVER("Bạc", 1_100),
+    GOLD("Vàng", 1_300),
+    PLATINUM("Bạch Kim", 1_500),
+    DIAMOND("Kim Cương", 1_800),
+    MASTER("Cao Thủ", 2_100),
+    CHALLENGER("Thách Đấu", 2_400)
 }
 
 fun rankedTierFor(rating: Int): RankedTier = RankedTier.entries
@@ -929,8 +930,8 @@ data class ShopItem(
 )
 
 val SHOP_ITEMS = listOf(
-    ShopItem("card_back_gold", "Bài Lung Vàng", CosmeticType.CARD_BACK, 500, "GOLD"),
-    ShopItem("card_back_diamond", "Bài Lung Kim Cuong", CosmeticType.CARD_BACK, 1500, "GOLD"),
-    ShopItem("board_skin_dark", "Bàn C? T?i", CosmeticType.BOARD_SKIN, 1000, "GOLD"),
-    ShopItem("board_skin_forest", "Khu R?ng", CosmeticType.BOARD_SKIN, 1000, "GOLD")
+    ShopItem("card_back_gold", "Bài Lưng Vàng", CosmeticType.CARD_BACK, 500, "GOLD"),
+    ShopItem("card_back_diamond", "Bài Lưng Kim Cương", CosmeticType.CARD_BACK, 1500, "GOLD"),
+    ShopItem("board_skin_dark", "Bàn Cờ Tối", CosmeticType.BOARD_SKIN, 1000, "GOLD"),
+    ShopItem("board_skin_forest", "Khu Rừng", CosmeticType.BOARD_SKIN, 1000, "GOLD")
 )

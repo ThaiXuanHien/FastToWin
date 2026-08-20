@@ -98,7 +98,7 @@ fun PracticeScreen(
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text("Luyện tập", fontWeight = FontWeight.Bold)
                         Text(
-                            "${mode.title} • Offline",
+                            "${mode.title} • Ngoại tuyến",
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )

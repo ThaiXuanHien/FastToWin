@@ -292,8 +292,8 @@ private fun ActiveTournamentContent(
                         when {
                             participant == null -> "Trống"
                             participant.isHost -> "Chủ giải"
-                            participant.isOnline -> "Online"
-                            else -> "Offline"
+                            participant.isOnline -> "Trực tuyến"
+                            else -> "Ngoại tuyến"
                         },
                         style = MaterialTheme.typography.labelMedium,
                         color = if (participant?.isOnline == true) MaterialTheme.colorScheme.primary

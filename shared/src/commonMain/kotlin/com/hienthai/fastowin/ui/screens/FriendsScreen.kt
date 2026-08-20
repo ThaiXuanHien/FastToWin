@@ -392,8 +392,8 @@ fun RoomInvitationDialog(
 
 private fun FriendPresence.label(): String = when (this) {
     FriendPresence.OFFLINE -> "Ngoại tuyến"
-    FriendPresence.ONLINE -> "Đang online"
-    FriendPresence.IN_ROOM -> "Đang trong phòng"
+    FriendPresence.ONLINE -> "Trực tuyến"
+    FriendPresence.IN_ROOM -> "Trong phòng"
     FriendPresence.PLAYING -> "Đang thi đấu"
 }
 

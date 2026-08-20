@@ -271,7 +271,7 @@ internal fun HomeDashboard(
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     HomeQuickAction(
                         "Bạn bè",
-                        if (isGuest) "Đăng ký để kết bạn" else "$onlineFriends người online",
+                        if (isGuest) "Đăng ký để kết bạn" else "$onlineFriends người trực tuyến",
                         Icons.Default.Group,
                         openSocial,
                         Modifier.weight(1f)

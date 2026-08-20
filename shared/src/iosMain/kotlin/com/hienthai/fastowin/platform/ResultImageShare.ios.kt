@@ -2,6 +2,7 @@ package com.hienthai.fastowin.platform
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import kotlinx.cinterop.ExperimentalForeignApi
 import platform.CoreGraphics.CGRectMake
 import platform.CoreGraphics.CGSizeMake
 import platform.UIKit.NSTextAlignmentCenter
@@ -14,6 +15,7 @@ import platform.UIKit.UIGraphicsImageRendererFormat
 import platform.UIKit.UILabel
 import platform.UIKit.UIView
 import platform.UIKit.UIViewController
+import platform.UIKit.popoverPresentationController
 
 @Composable
 actual fun rememberResultImageSharer(): ResultImageSharer = remember { IosResultImageSharer() }
@@ -34,23 +36,20 @@ private class IosResultImageSharer : ResultImageSharer {
     }
 }
 
+@OptIn(ExperimentalForeignApi::class)
 private fun presentShareSheet(items: List<Any>) {
     val shareSheet = UIActivityViewController(activityItems = items, applicationActivities = null)
     val presenter = topViewController(
         UIApplication.sharedApplication.keyWindow?.rootViewController
-    ) ?: error("Không tìm thấy màn hình để mở bảng chia sẻ")
+    ) ?: return
     shareSheet.popoverPresentationController?.apply {
         sourceView = presenter.view
-        sourceRect = CGRectMake(
-            presenter.view.bounds.size.width / 2.0,
-            presenter.view.bounds.size.height / 2.0,
-            1.0,
-            1.0
-        )
+        sourceRect = presenter.view.bounds
     }
     presenter.presentViewController(shareSheet, animated = true, completion = null)
 }
 
+@OptIn(ExperimentalForeignApi::class)
 private fun renderResultImage(content: ResultShareContent) =
     UIGraphicsImageRenderer(
         size = CGSizeMake(1080.0, 1350.0),
@@ -58,10 +57,12 @@ private fun renderResultImage(content: ResultShareContent) =
             scale = 1.0
             opaque = true
         }
-    ).imageWithActions { context ->
-        resultCard(content).layer.renderInContext(context.CGContext)
+    ).imageWithActions { _ ->
+        val card = resultCard(content)
+        card.drawViewHierarchyInRect(card.bounds, afterScreenUpdates = true)
     }
 
+@OptIn(ExperimentalForeignApi::class)
 private fun resultCard(content: ResultShareContent): UIView {
     val card = UIView(frame = CGRectMake(0.0, 0.0, 1080.0, 1350.0)).apply {
         backgroundColor = color(9, 24, 43)
@@ -97,11 +98,13 @@ private fun resultCard(content: ResultShareContent): UIView {
     return card
 }
 
+@OptIn(ExperimentalForeignApi::class)
 private fun addMetric(card: UIView, title: String, value: String, x: Double) {
     card.addSubview(label(title, x, 910.0, 310.0, 45.0, 26.0, color(148, 174, 193), true))
     card.addSubview(label(value, x, 975.0, 310.0, 75.0, 48.0, UIColor.whiteColor, true, fit = true))
 }
 
+@OptIn(ExperimentalForeignApi::class)
 private fun label(
     text: String,
     x: Double,

@@ -75,7 +75,7 @@ class GameEngine(
     suspend fun connectGuest(displayName: String, resumeToken: String?): ConnectedPlayer {
         restoreActiveRooms()
         val safeName = displayName.trim().take(MAX_PLAYER_NAME_LENGTH)
-        require(safeName.isNotEmpty()) { "TÃƒÂªn ngÃ†Â°Ã¡Â»Âi chÃ†Â¡i khÃƒÂ´ng Ã„â€˜Ã†Â°Ã¡Â»Â£c Ã„â€˜Ã¡Â»Æ’ trÃ¡Â»â€˜ng." }
+        require(safeName.isNotEmpty()) { "Tên người chơi không được để trống." }
         val identity = identityRepository.resolveGuest(safeName, resumeToken, nowMillis())
 
         return connectIdentity(identity.playerId, identity.displayName, identity.resumeToken)
@@ -257,15 +257,15 @@ class GameEngine(
         val result = mutex.withLock {
             val player = sessionsByPlayerId[playerId]
                 ?: return@withLock HandleResult(
-                    listOf(error(playerId, "SESSION_NOT_FOUND", "PhiÃƒÂªn chÃ†Â¡i khÃƒÂ´ng cÃƒÂ²n hÃ¡Â»Â£p lÃ¡Â»â€¡."))
+                    listOf(error(playerId, "SESSION_NOT_FOUND", "Phiên chơi không còn hợp lệ."))
                 )
 
             when (message) {
                 is ClientMessage.ConnectGuest -> HandleResult(listOf(
-                    error(playerId, "ALREADY_CONNECTED", "PhiÃƒÂªn WebSocket Ã„â€˜ÃƒÂ£ Ã„â€˜Ã†Â°Ã¡Â»Â£c xÃƒÂ¡c thÃ¡Â»Â±c.")
+                    error(playerId, "ALREADY_CONNECTED", "Phiên WebSocket đã được xác thực.")
                 ))
                 is ClientMessage.ConnectAccount -> HandleResult(listOf(
-                    error(playerId, "ALREADY_CONNECTED", "PhiÃƒÂªn WebSocket Ã„â€˜ÃƒÂ£ Ã„â€˜Ã†Â°Ã¡Â»Â£c xÃƒÂ¡c thÃ¡Â»Â±c.")
+                    error(playerId, "ALREADY_CONNECTED", "Phiên WebSocket đã được xác thực.")
                 ))
 
                 ClientMessage.ListRooms -> HandleResult(
@@ -419,15 +419,15 @@ class GameEngine(
         validateModeAccess(playerId, command.gameMode)?.let { return listOf(it) }
         val safeName = command.name.trim().take(MAX_TOURNAMENT_NAME_LENGTH)
         if (safeName.length < 3) {
-            return listOf(error(playerId, "INVALID_TOURNAMENT_NAME", "TÃƒÂªn giÃ¡ÂºÂ£i cÃ¡ÂºÂ§n cÃƒÂ³ ÃƒÂ­t nhÃ¡ÂºÂ¥t 3 kÃƒÂ½ tÃ¡Â»Â±."))
+            return listOf(error(playerId, "INVALID_TOURNAMENT_NAME", "Tên giải cần có ít nhất 3 ký tự."))
         }
         var snapshotToSave: TournamentSnapshot? = null
         val deliveries = mutex.withLock {
             val host = sessionsByPlayerId[playerId]
                 ?.takeIf { it.isConnected && it.resumeToken == null }
-                ?: return@withLock listOf(error(playerId, "SESSION_NOT_FOUND", "PhiÃƒÂªn chÃ†Â¡i khÃƒÂ´ng cÃƒÂ²n hÃ¡Â»Â£p lÃ¡Â»â€¡."))
+                ?: return@withLock listOf(error(playerId, "SESSION_NOT_FOUND", "Phiên chơi không còn hợp lệ."))
             if (activeTournamentFor(playerId) != null) {
-                return@withLock listOf(error(playerId, "TOURNAMENT_ALREADY_ACTIVE", "BÃ¡ÂºÂ¡n Ã„â€˜ang tham gia mÃ¡Â»â„¢t giÃ¡ÂºÂ£i khÃƒÂ¡c."))
+                return@withLock listOf(error(playerId, "TOURNAMENT_ALREADY_ACTIVE", "Bạn đang tham gia một giải khác."))
             }
             if (roomFor(playerId) != null || playerId in matchmakingEntries) {
                 return@withLock listOf(error(playerId, "PLAYER_BUSY", "Hãy rời phòng hoặc hủy ghép trận trước khi tạo giải."))
@@ -459,7 +459,7 @@ class GameEngine(
             snapshotToSave = snapshot
             listOf(
                 Delivery(ServerMessage.TournamentUpdated(snapshot), setOf(playerId)),
-                Delivery(ServerMessage.TournamentNotice("Ã„ÂÃƒÂ£ tÃ¡ÂºÂ¡o giÃ¡ÂºÂ£i riÃƒÂªng 4 ngÃ†Â°Ã¡Â»Âi."), setOf(playerId))
+                Delivery(ServerMessage.TournamentNotice("Đã tạo giải riêng 4 người."), setOf(playerId))
             )
         }
         snapshotToSave?.let { tournamentRepository.save(it) }
@@ -472,24 +472,24 @@ class GameEngine(
     ): List<Delivery> {
         if (!isAccountSession(playerId)) return listOf(accountRequired(playerId))
         if (friendRepository.isBlockedEitherWay(playerId, command.friendPlayerId)) {
-            return listOf(error(playerId, "INTERACTION_BLOCKED", "KhÃƒÂ´ng thÃ¡Â»Æ’ mÃ¡Â»Âi ngÃ†Â°Ã¡Â»Âi chÃ†Â¡i nÃƒÂ y vÃƒÂ o giÃ¡ÂºÂ£i."))
+            return listOf(error(playerId, "INTERACTION_BLOCKED", "Không thể mời người chơi này vào giải."))
         }
         if (!friendRepository.areFriends(playerId, command.friendPlayerId)) {
-            return listOf(error(playerId, "NOT_FRIENDS", "NgÃ†Â°Ã¡Â»Âi chÃ†Â¡i nÃƒÂ y chÃ†Â°a phÃ¡ÂºÂ£i bÃ¡ÂºÂ¡n bÃƒÂ¨."))
+            return listOf(error(playerId, "NOT_FRIENDS", "Người chơi này chưa phải bạn bè."))
         }
         return mutex.withLock {
             val tournament = tournaments[command.tournamentId]
                 ?.takeIf { it.hostId == playerId && it.phase == TournamentPhase.LOBBY }
-                ?: return@withLock listOf(error(playerId, "TOURNAMENT_NOT_INVITABLE", "GiÃ¡ÂºÂ£i khÃƒÂ´ng cÃƒÂ²n nhÃ¡ÂºÂ­n lÃ¡Â»Âi mÃ¡Â»Âi."))
+                ?: return@withLock listOf(error(playerId, "TOURNAMENT_NOT_INVITABLE", "Giải không còn nhận lời mời."))
             if (tournament.participants.size >= TOURNAMENT_PLAYER_COUNT) {
-                return@withLock listOf(error(playerId, "TOURNAMENT_FULL", "GiÃ¡ÂºÂ£i Ã„â€˜ÃƒÂ£ Ã„â€˜Ã¡Â»Â§ 4 ngÃ†Â°Ã¡Â»Âi."))
+                return@withLock listOf(error(playerId, "TOURNAMENT_FULL", "Giải đã đủ 4 người."))
             }
             if (command.friendPlayerId in tournament.playerIds()) {
-                return@withLock listOf(error(playerId, "PLAYER_ALREADY_JOINED", "NgÃ†Â°Ã¡Â»Âi chÃ†Â¡i Ã„â€˜ÃƒÂ£ Ã¡Â»Å¸ trong giÃ¡ÂºÂ£i."))
+                return@withLock listOf(error(playerId, "PLAYER_ALREADY_JOINED", "Người chơi đã ở trong giải."))
             }
             val friendId = command.friendPlayerId
             if (activeTournamentFor(friendId) != null || roomFor(friendId) != null) {
-                return@withLock listOf(error(playerId, "FRIEND_BUSY", "BÃ¡ÂºÂ¡n bÃƒÂ¨ Ã„â€˜ang bÃ¡ÂºÂ­n Ã¡Â»Å¸ phÃƒÂ²ng hoÃ¡ÂºÂ·c giÃ¡ÂºÂ£i khÃƒÂ¡c."))
+                return@withLock listOf(error(playerId, "FRIEND_BUSY", "Bạn bè đang bận ở phòng hoặc giải khác."))
             }
             tournamentInvitations.entries.removeAll { (_, invitation) ->
                 invitation.tournamentId == tournament.id && invitation.inviteeId == friendId
@@ -511,14 +511,14 @@ class GameEngine(
             if (fcmToken != null) {
                 pushNotificationService.sendNotification(
                     fcmToken,
-                    "Lá»i má»i giáº£i Ä‘áº¥u",
-                    "${invitation.hostDisplayName} Ä‘Ã£ má»i báº¡n vÃ o giáº£i Ä‘áº¥u ${invitation.tournamentName}"
+                    "Lời mời giải đấu",
+                    "${invitation.hostDisplayName} đã mời bạn vào giải đấu ${invitation.tournamentName}"
                 )
             }
             
             listOf(
                 Delivery(ServerMessage.TournamentInvitation(invitation.snapshot()), setOf(friendId)),
-                Delivery(ServerMessage.TournamentNotice("Ã„ÂÃƒÂ£ gÃ¡Â»Â­i lÃ¡Â»Âi mÃ¡Â»Âi tham gia giÃ¡ÂºÂ£i."), setOf(playerId))
+                Delivery(ServerMessage.TournamentNotice("Đã gửi lời mời tham gia giải."), setOf(playerId))
             )
         }
     }
@@ -532,18 +532,18 @@ class GameEngine(
         val deliveries = mutex.withLock {
             val invitation = tournamentInvitations.remove(command.invitationId)
                 ?.takeIf { it.inviteeId == playerId && it.expiresAtMillis > nowMillis() }
-                ?: return@withLock listOf(error(playerId, "TOURNAMENT_INVITATION_EXPIRED", "LÃ¡Â»Âi mÃ¡Â»Âi giÃ¡ÂºÂ£i Ã„â€˜Ã¡ÂºÂ¥u Ã„â€˜ÃƒÂ£ hÃ¡ÂºÂ¿t hÃ¡ÂºÂ¡n."))
+                ?: return@withLock listOf(error(playerId, "TOURNAMENT_INVITATION_EXPIRED", "Lời mời giải đấu đã hết hạn."))
             if (!command.accept) {
                 return@withLock listOf(
-                    Delivery(ServerMessage.TournamentNotice("Ã„ÂÃƒÂ£ tÃ¡Â»Â« chÃ¡Â»â€˜i lÃ¡Â»Âi mÃ¡Â»Âi giÃ¡ÂºÂ£i Ã„â€˜Ã¡ÂºÂ¥u."), setOf(playerId)),
-                    Delivery(ServerMessage.TournamentNotice("MÃ¡Â»â„¢t ngÃ†Â°Ã¡Â»Âi bÃ¡ÂºÂ¡n Ã„â€˜ÃƒÂ£ tÃ¡Â»Â« chÃ¡Â»â€˜i lÃ¡Â»Âi mÃ¡Â»Âi giÃ¡ÂºÂ£i Ã„â€˜Ã¡ÂºÂ¥u."), setOf(invitation.hostId))
+                    Delivery(ServerMessage.TournamentNotice("Đã từ chối lời mời giải đấu."), setOf(playerId)),
+                    Delivery(ServerMessage.TournamentNotice("Một người bạn đã từ chối lời mời giải đấu."), setOf(invitation.hostId))
                 )
             }
             val tournament = tournaments[invitation.tournamentId]
                 ?.takeIf { it.phase == TournamentPhase.LOBBY }
-                ?: return@withLock listOf(error(playerId, "TOURNAMENT_NOT_FOUND", "GiÃ¡ÂºÂ£i Ã„â€˜Ã¡ÂºÂ¥u khÃƒÂ´ng cÃƒÂ²n tÃ¡Â»â€œn tÃ¡ÂºÂ¡i."))
+                ?: return@withLock listOf(error(playerId, "TOURNAMENT_NOT_FOUND", "Giải đấu không còn tồn tại."))
             if (tournament.participants.size >= TOURNAMENT_PLAYER_COUNT) {
-                return@withLock listOf(error(playerId, "TOURNAMENT_FULL", "GiÃ¡ÂºÂ£i Ã„â€˜ÃƒÂ£ Ã„â€˜Ã¡Â»Â§ 4 ngÃ†Â°Ã¡Â»Âi."))
+                return@withLock listOf(error(playerId, "TOURNAMENT_FULL", "Giải đã đủ 4 người."))
             }
             if (activeTournamentFor(playerId) != null || roomFor(playerId) != null || playerId in matchmakingEntries) {
                 return@withLock listOf(error(playerId, "PLAYER_BUSY", "Hãy rời phòng hoặc giải hiện tại trước."))
@@ -558,13 +558,13 @@ class GameEngine(
             }
             val session = sessionsByPlayerId[playerId]
                 ?.takeIf { it.isConnected && it.resumeToken == null }
-                ?: return@withLock listOf(error(playerId, "SESSION_NOT_FOUND", "PhiÃƒÂªn chÃ†Â¡i khÃƒÂ´ng cÃƒÂ²n hÃ¡Â»Â£p lÃ¡Â»â€¡."))
+                ?: return@withLock listOf(error(playerId, "SESSION_NOT_FOUND", "Phiên chơi không còn hợp lệ."))
             tournament.participants += TournamentParticipant(playerId, session.displayName)
             val snapshot = tournament.snapshot()
             snapshotToSave = snapshot
             listOf(
                 Delivery(ServerMessage.TournamentUpdated(snapshot), tournament.playerIds()),
-                Delivery(ServerMessage.TournamentNotice("Ã„ÂÃƒÂ£ tham gia giÃ¡ÂºÂ£i ${tournament.name}."), setOf(playerId))
+                Delivery(ServerMessage.TournamentNotice("Đã tham gia giải ${tournament.name}."), setOf(playerId))
             )
         }
         snapshotToSave?.let { tournamentRepository.save(it) }
@@ -578,16 +578,16 @@ class GameEngine(
         val deliveries = mutex.withLock {
             val tournament = tournaments[tournamentId]
                 ?.takeIf { it.hostId == playerId && it.phase == TournamentPhase.LOBBY }
-                ?: return@withLock listOf(error(playerId, "TOURNAMENT_NOT_STARTABLE", "BÃ¡ÂºÂ¡n khÃƒÂ´ng thÃ¡Â»Æ’ bÃ¡ÂºÂ¯t Ã„â€˜Ã¡ÂºÂ§u giÃ¡ÂºÂ£i nÃƒÂ y."))
+                ?: return@withLock listOf(error(playerId, "TOURNAMENT_NOT_STARTABLE", "Bạn không thể bắt đầu giải này."))
             if (tournament.participants.size != TOURNAMENT_PLAYER_COUNT) {
-                return@withLock listOf(error(playerId, "TOURNAMENT_NOT_FULL", "CÃ¡ÂºÂ§n Ã„â€˜Ã¡Â»Â§ 4 ngÃ†Â°Ã¡Â»Âi Ã„â€˜Ã¡Â»Æ’ bÃ¡ÂºÂ¯t Ã„â€˜Ã¡ÂºÂ§u."))
+                return@withLock listOf(error(playerId, "TOURNAMENT_NOT_FULL", "Cần đủ 4 người để bắt đầu."))
             }
             val unavailable = tournament.playerIds().firstOrNull { participantId ->
                 sessionsByPlayerId[participantId]?.let { !it.isConnected || it.resumeToken != null } != false ||
                     roomFor(participantId) != null || participantId in matchmakingEntries
             }
             if (unavailable != null) {
-                return@withLock listOf(error(playerId, "TOURNAMENT_PLAYER_UNAVAILABLE", "TÃ¡ÂºÂ¥t cÃ¡ÂºÂ£ ngÃ†Â°Ã¡Â»Âi chÃ†Â¡i phÃ¡ÂºÂ£i online vÃƒÂ  khÃƒÂ´ng Ã¡Â»Å¸ phÃƒÂ²ng khÃƒÂ¡c."))
+                return@withLock listOf(error(playerId, "TOURNAMENT_PLAYER_UNAVAILABLE", "Tất cả người chơi phải online và không ở phòng khác."))
             }
 
             tournament.phase = TournamentPhase.RUNNING
@@ -620,9 +620,9 @@ class GameEngine(
         val deliveries = mutex.withLock {
             val tournament = tournaments[tournamentId]
                 ?.takeIf { playerId in it.playerIds() }
-                ?: return@withLock listOf(error(playerId, "TOURNAMENT_NOT_FOUND", "BÃ¡ÂºÂ¡n khÃƒÂ´ng cÃƒÂ²n Ã¡Â»Å¸ trong giÃ¡ÂºÂ£i nÃƒÂ y."))
+                ?: return@withLock listOf(error(playerId, "TOURNAMENT_NOT_FOUND", "Bạn không còn ở trong giải này."))
             if (tournament.phase != TournamentPhase.LOBBY) {
-                return@withLock listOf(error(playerId, "TOURNAMENT_ALREADY_STARTED", "KhÃƒÂ´ng thÃ¡Â»Æ’ rÃ¡Â»Âi giÃ¡ÂºÂ£i sau khi Ã„â€˜ÃƒÂ£ bÃ¡ÂºÂ¯t Ã„â€˜Ã¡ÂºÂ§u."))
+                return@withLock listOf(error(playerId, "TOURNAMENT_ALREADY_STARTED", "Không thể rời giải sau khi đã bắt đầu."))
             }
             if (tournament.hostId == playerId) {
                 tournament.phase = TournamentPhase.CANCELLED
@@ -632,7 +632,7 @@ class GameEngine(
                 snapshotToSave = snapshot
                 listOf(
                     Delivery(ServerMessage.TournamentUpdated(snapshot), tournament.playerIds()),
-                    Delivery(ServerMessage.TournamentNotice("ChÃ¡Â»Â§ giÃ¡ÂºÂ£i Ã„â€˜ÃƒÂ£ hÃ¡Â»Â§y giÃ¡ÂºÂ£i Ã„â€˜Ã¡ÂºÂ¥u."), tournament.playerIds())
+                    Delivery(ServerMessage.TournamentNotice("Chủ giải đã hủy giải đấu."), tournament.playerIds())
                 )
             } else {
                 tournament.participants.removeAll { it.playerId == playerId }
@@ -643,7 +643,7 @@ class GameEngine(
                 snapshotToSave = snapshot
                 listOf(
                     Delivery(ServerMessage.TournamentUpdated(snapshot), tournament.playerIds()),
-                    Delivery(ServerMessage.TournamentNotice("Ã„ÂÃƒÂ£ rÃ¡Â»Âi giÃ¡ÂºÂ£i Ã„â€˜Ã¡ÂºÂ¥u."), setOf(playerId))
+                    Delivery(ServerMessage.TournamentNotice("Đã rời giải đấu."), setOf(playerId))
                 )
             }
         }
@@ -654,7 +654,7 @@ class GameEngine(
     private suspend fun loadFriends(playerId: String): List<Delivery> {
         if (!isAccountSession(playerId)) return listOf(accountRequired(playerId))
         val stored = runCatching { friendRepository.load(playerId) }.getOrElse {
-            return listOf(error(playerId, "FRIENDS_UNAVAILABLE", "ChÃ†Â°a tÃ¡ÂºÂ£i Ã„â€˜Ã†Â°Ã¡Â»Â£c danh sÃƒÂ¡ch bÃ¡ÂºÂ¡n bÃƒÂ¨."))
+            return listOf(error(playerId, "FRIENDS_UNAVAILABLE", "Chưa tải được danh sách bạn bè."))
         }
         val presence = mutex.withLock {
             stored.friends.associate { friend -> friend.userId to presenceOf(friend.userId) }
@@ -674,20 +674,20 @@ class GameEngine(
     private suspend fun loadNotifications(playerId: String): List<Delivery> {
         if (!isAccountSession(playerId)) return listOf(accountRequired(playerId))
         val pendingRequests = runCatching { friendRepository.load(playerId).incomingRequests }
-            .getOrElse { return listOf(error(playerId, "NOTIFICATIONS_UNAVAILABLE", "ChÃ†Â°a tÃ¡ÂºÂ£i Ã„â€˜Ã†Â°Ã¡Â»Â£c thÃƒÂ´ng bÃƒÂ¡o.")) }
+            .getOrElse { return listOf(error(playerId, "NOT_NOTIFICATIONS_UNAVAILABLE", "Chưa tải được thông báo.")) }
         val pendingFriendNotifications = pendingRequests.map { request ->
             NotificationSnapshot(
                 id = "friend:${request.requestId}",
                 kind = NotificationKind.FRIEND_REQUEST,
-                title = "LÃ¡Â»Âi mÃ¡Â»Âi kÃ¡ÂºÂ¿t bÃ¡ÂºÂ¡n",
-                message = "${request.displayName} muÃ¡Â»â€˜n kÃ¡ÂºÂ¿t bÃ¡ÂºÂ¡n vÃ¡Â»â€ºi bÃ¡ÂºÂ¡n.",
+                title = "Lời mời kết bạn",
+                message = "${request.displayName} muốn kết bạn với bạn.",
                 createdAtEpochMillis = nowMillis(),
                 destination = NotificationDestination.FRIENDS
             )
         }
         notificationRepository.createNotifications(playerId, pendingFriendNotifications)
         val notifications = runCatching { notificationRepository.loadNotifications(playerId) }
-            .getOrElse { return listOf(error(playerId, "NOTIFICATIONS_UNAVAILABLE", "ChÃ†Â°a tÃ¡ÂºÂ£i Ã„â€˜Ã†Â°Ã¡Â»Â£c thÃƒÂ´ng bÃƒÂ¡o.")) }
+            .getOrElse { return listOf(error(playerId, "NOTIFICATIONS_UNAVAILABLE", "Chưa tải được thông báo.")) }
         return listOf(Delivery(ServerMessage.NotificationsData(notifications), setOf(playerId)))
     }
 
@@ -697,7 +697,7 @@ class GameEngine(
     ): List<Delivery> {
         if (!isAccountSession(playerId)) return listOf(accountRequired(playerId))
         if (notifications.size > MAX_NOTIFICATION_SYNC_BATCH) {
-            return listOf(error(playerId, "INVALID_NOTIFICATIONS", "CÃƒÂ³ quÃƒÂ¡ nhiÃ¡Â»Âu thÃƒÂ´ng bÃƒÂ¡o cÃ¡ÂºÂ§n Ã„â€˜Ã¡Â»â€œng bÃ¡Â»â„¢."))
+            return listOf(error(playerId, "INVALID_NOTIFICATIONS", "Có quá nhiều thông báo cần đồng bộ."))
         }
         val allowedKinds = setOf(NotificationKind.MISSION, NotificationKind.ACHIEVEMENT, NotificationKind.COSMETIC)
         val normalized = notifications.filter { notification ->
@@ -708,7 +708,7 @@ class GameEngine(
                 notification.destination == NotificationDestination.PROFILE
         }.map { it.copy(createdAtEpochMillis = nowMillis(), isRead = false) }
         if (normalized.size != notifications.size) {
-            return listOf(error(playerId, "INVALID_NOTIFICATIONS", "DÃ¡Â»Â¯ liÃ¡Â»â€¡u thÃƒÂ´ng bÃƒÂ¡o khÃƒÂ´ng hÃ¡Â»Â£p lÃ¡Â»â€¡."))
+            return listOf(error(playerId, "INVALID_NOTIFICATIONS", "Dữ liệu thông báo không hợp lệ."))
         }
         notificationRepository.createNotifications(playerId, normalized)
         return loadNotifications(playerId)
@@ -717,7 +717,7 @@ class GameEngine(
     private suspend fun markNotificationsRead(playerId: String, notificationId: String?): List<Delivery> {
         if (!isAccountSession(playerId)) return listOf(accountRequired(playerId))
         if (notificationId != null && notificationId.length !in 1..160) {
-            return listOf(error(playerId, "INVALID_NOTIFICATION_ID", "MÃƒÂ£ thÃƒÂ´ng bÃƒÂ¡o khÃƒÂ´ng hÃ¡Â»Â£p lÃ¡Â»â€¡."))
+            return listOf(error(playerId, "INVALID_NOTIFICATION_ID", "Mã thông báo không hợp lệ."))
         }
         notificationRepository.markNotificationsRead(playerId, notificationId, nowMillis())
         return loadNotifications(playerId)
@@ -726,7 +726,7 @@ class GameEngine(
     private suspend fun dismissNotifications(playerId: String, notificationId: String?): List<Delivery> {
         if (!isAccountSession(playerId)) return listOf(accountRequired(playerId))
         if (notificationId != null && notificationId.length !in 1..160) {
-            return listOf(error(playerId, "INVALID_NOTIFICATION_ID", "MÃƒÂ£ thÃƒÂ´ng bÃƒÂ¡o khÃƒÂ´ng hÃ¡Â»Â£p lÃ¡Â»â€¡."))
+            return listOf(error(playerId, "INVALID_NOTIFICATION_ID", "Mã thông báo không hợp lệ."))
         }
         notificationRepository.dismissNotifications(playerId, notificationId, nowMillis())
         return loadNotifications(playerId)
@@ -744,7 +744,7 @@ class GameEngine(
     private suspend fun sendFriendRequest(playerId: String, playerCode: String): List<Delivery> {
         if (!isAccountSession(playerId)) return listOf(accountRequired(playerId))
         if (playerCode.isBlank() || playerCode.length > 12) {
-            return listOf(error(playerId, "INVALID_PLAYER_CODE", "MÃƒÂ£ ngÃ†Â°Ã¡Â»Âi chÃ†Â¡i khÃƒÂ´ng hÃ¡Â»Â£p lÃ¡Â»â€¡."))
+            return listOf(error(playerId, "INVALID_PLAYER_CODE", "Mã người chơi không hợp lệ."))
         }
         return when (val result = friendRepository.sendRequest(playerId, playerCode, nowMillis())) {
             is FriendRequestResult.Success -> {
@@ -756,24 +756,24 @@ class GameEngine(
                         listOf(NotificationSnapshot(
                             id = "friend:${request.requestId}",
                             kind = NotificationKind.FRIEND_REQUEST,
-                            title = "LÃ¡Â»Âi mÃ¡Â»Âi kÃ¡ÂºÂ¿t bÃ¡ÂºÂ¡n",
-                            message = "${request.displayName} muÃ¡Â»â€˜n kÃ¡ÂºÂ¿t bÃ¡ÂºÂ¡n vÃ¡Â»â€ºi bÃ¡ÂºÂ¡n.",
+                            title = "Lời mời kết bạn",
+                            message = "${request.displayName} muốn kết bạn với bạn.",
                             createdAtEpochMillis = nowMillis(),
                             destination = NotificationDestination.FRIENDS
                         ))
                     )
                 }
-                listOf(Delivery(ServerMessage.SocialNotice("Ã„ÂÃƒÂ£ gÃ¡Â»Â­i lÃ¡Â»Âi mÃ¡Â»Âi kÃ¡ÂºÂ¿t bÃ¡ÂºÂ¡n."), setOf(playerId))) +
+                listOf(Delivery(ServerMessage.SocialNotice("Đã gửi lời mời kết bạn."), setOf(playerId))) +
                     refreshSocialFor(setOf(playerId, result.recipientId)) +
                     refreshNotificationsFor(setOf(result.recipientId))
             }
-            FriendRequestResult.PlayerNotFound -> listOf(error(playerId, "PLAYER_NOT_FOUND", "KhÃƒÂ´ng tÃƒÂ¬m thÃ¡ÂºÂ¥y mÃƒÂ£ ngÃ†Â°Ã¡Â»Âi chÃ†Â¡i."))
-            FriendRequestResult.SelfRequest -> listOf(error(playerId, "SELF_FRIEND_REQUEST", "BÃ¡ÂºÂ¡n khÃƒÂ´ng thÃ¡Â»Æ’ tÃ¡Â»Â± kÃ¡ÂºÂ¿t bÃ¡ÂºÂ¡n vÃ¡Â»â€ºi mÃƒÂ¬nh."))
-            FriendRequestResult.AlreadyExists -> listOf(error(playerId, "FRIENDSHIP_EXISTS", "Hai ngÃ†Â°Ã¡Â»Âi Ã„â€˜ÃƒÂ£ lÃƒÂ  bÃ¡ÂºÂ¡n hoÃ¡ÂºÂ·c Ã„â€˜ang cÃƒÂ³ lÃ¡Â»Âi mÃ¡Â»Âi."))
+            FriendRequestResult.PlayerNotFound -> listOf(error(playerId, "PLAYER_NOT_FOUND", "Không tìm thấy mã người chơi."))
+            FriendRequestResult.SelfRequest -> listOf(error(playerId, "SELF_FRIEND_REQUEST", "Bạn không thể tự kết bạn với mình."))
+            FriendRequestResult.AlreadyExists -> listOf(error(playerId, "FRIENDSHIP_EXISTS", "Hai người đã là bạn hoặc đang có lời mời."))
             FriendRequestResult.Blocked -> listOf(error(
                 playerId,
                 "INTERACTION_BLOCKED",
-                "KhÃƒÂ´ng thÃ¡Â»Æ’ gÃ¡Â»Â­i lÃ¡Â»Âi mÃ¡Â»Âi kÃ¡ÂºÂ¿t bÃ¡ÂºÂ¡n cho ngÃ†Â°Ã¡Â»Âi chÃ†Â¡i nÃƒÂ y."
+                "Không thể gửi lời mời kết bạn cho người chơi này."
             ))
         }
     }
@@ -783,14 +783,14 @@ class GameEngine(
         return when (val result = friendRepository.cancelRequest(playerId, requestId)) {
             is FriendCancellationResult.Success -> {
                 notificationRepository.dismissNotifications(result.recipientId, "friend:$requestId", nowMillis())
-                listOf(Delivery(ServerMessage.SocialNotice("Ã„ÂÃƒÂ£ hÃ¡Â»Â§y lÃ¡Â»Âi mÃ¡Â»Âi kÃ¡ÂºÂ¿t bÃ¡ÂºÂ¡n."), setOf(playerId))) +
+                listOf(Delivery(ServerMessage.SocialNotice("Đã hủy lời mời kết bạn."), setOf(playerId))) +
                     refreshSocialFor(setOf(playerId, result.recipientId)) +
                     refreshNotificationsFor(setOf(result.recipientId))
             }
             FriendCancellationResult.NotFound -> listOf(error(
                 playerId,
                 "FRIEND_REQUEST_NOT_FOUND",
-                "LÃ¡Â»Âi mÃ¡Â»Âi kÃ¡ÂºÂ¿t bÃ¡ÂºÂ¡n khÃƒÂ´ng cÃƒÂ²n tÃ¡Â»â€œn tÃ¡ÂºÂ¡i hoÃ¡ÂºÂ·c khÃƒÂ´ng thuÃ¡Â»â„¢c vÃ¡Â»Â bÃ¡ÂºÂ¡n."
+                "Lời mời kết bạn không còn tồn tại hoặc không thuộc về bạn."
             ))
         }
     }
@@ -803,12 +803,12 @@ class GameEngine(
         return when (val result = friendRepository.respond(playerId, command.requestId, command.accept, nowMillis())) {
             is FriendResponseResult.Success -> {
                 notificationRepository.dismissNotifications(playerId, "friend:${command.requestId}", nowMillis())
-                val notice = if (command.accept) "Ã„ÂÃƒÂ£ chÃ¡ÂºÂ¥p nhÃ¡ÂºÂ­n lÃ¡Â»Âi mÃ¡Â»Âi kÃ¡ÂºÂ¿t bÃ¡ÂºÂ¡n." else "Ã„ÂÃƒÂ£ tÃ¡Â»Â« chÃ¡Â»â€˜i lÃ¡Â»Âi mÃ¡Â»Âi kÃ¡ÂºÂ¿t bÃ¡ÂºÂ¡n."
+                val notice = if (command.accept) "Đã chấp nhận lời mời kết bạn." else "Đã từ chối lời mời kết bạn."
                 listOf(Delivery(ServerMessage.SocialNotice(notice), setOf(playerId))) +
                     refreshSocialFor(setOf(playerId, result.requesterId)) +
                     refreshNotificationsFor(setOf(playerId))
             }
-            FriendResponseResult.NotFound -> listOf(error(playerId, "FRIEND_REQUEST_NOT_FOUND", "LÃ¡Â»Âi mÃ¡Â»Âi khÃƒÂ´ng cÃƒÂ²n tÃ¡Â»â€œn tÃ¡ÂºÂ¡i."))
+            FriendResponseResult.NotFound -> listOf(error(playerId, "FRIEND_REQUEST_NOT_FOUND", "Lời mời không còn tồn tại."))
         }
     }
 
@@ -817,19 +817,19 @@ class GameEngine(
         return when (val result = friendRepository.removeFriend(playerId, friendUserId)) {
             is SocialMutationResult.Success -> {
                 clearRoomInvitationsBetween(playerId, result.otherUserId)
-                listOf(Delivery(ServerMessage.SocialNotice("Ã„ÂÃƒÂ£ hÃ¡Â»Â§y kÃ¡ÂºÂ¿t bÃ¡ÂºÂ¡n."), setOf(playerId))) +
+                listOf(Delivery(ServerMessage.SocialNotice("Đã hủy kết bạn."), setOf(playerId))) +
                     refreshSocialFor(setOf(playerId, result.otherUserId)) +
                     refreshRoomInvitationsFor(setOf(playerId, result.otherUserId))
             }
             SocialMutationResult.NotFound -> listOf(error(
                 playerId,
                 "FRIEND_NOT_FOUND",
-                "Quan hÃ¡Â»â€¡ bÃ¡ÂºÂ¡n bÃƒÂ¨ khÃƒÂ´ng cÃƒÂ²n tÃ¡Â»â€œn tÃ¡ÂºÂ¡i."
+                "Quan hệ bạn bè không còn tồn tại."
             ))
             SocialMutationResult.SelfAction -> listOf(error(
                 playerId,
                 "INVALID_SOCIAL_ACTION",
-                "KhÃƒÂ´ng thÃ¡Â»Æ’ thÃ¡Â»Â±c hiÃ¡Â»â€¡n thao tÃƒÂ¡c nÃƒÂ y vÃ¡Â»â€ºi chÃƒÂ­nh bÃ¡ÂºÂ¡n."
+                "Không thể thực hiện thao tác này với chính bạn."
             ))
         }
     }
@@ -839,19 +839,19 @@ class GameEngine(
         return when (val result = friendRepository.blockPlayer(playerId, playerUserId, nowMillis())) {
             is SocialMutationResult.Success -> {
                 clearRoomInvitationsBetween(playerId, result.otherUserId)
-                listOf(Delivery(ServerMessage.SocialNotice("Ã„ÂÃƒÂ£ chÃ¡ÂºÂ·n ngÃ†Â°Ã¡Â»Âi chÃ†Â¡i."), setOf(playerId))) +
+                listOf(Delivery(ServerMessage.SocialNotice("Đã chặn người chơi."), setOf(playerId))) +
                     refreshSocialFor(setOf(playerId, result.otherUserId)) +
                     refreshRoomInvitationsFor(setOf(playerId, result.otherUserId))
             }
             SocialMutationResult.NotFound -> listOf(error(
                 playerId,
                 "PLAYER_NOT_FOUND",
-                "KhÃƒÂ´ng tÃƒÂ¬m thÃ¡ÂºÂ¥y ngÃ†Â°Ã¡Â»Âi chÃ†Â¡i Ã„â€˜Ã¡Â»Æ’ chÃ¡ÂºÂ·n."
+                "Không tìm thấy người chơi để chặn."
             ))
             SocialMutationResult.SelfAction -> listOf(error(
                 playerId,
                 "INVALID_SOCIAL_ACTION",
-                "BÃ¡ÂºÂ¡n khÃƒÂ´ng thÃ¡Â»Æ’ tÃ¡Â»Â± chÃ¡ÂºÂ·n chÃƒÂ­nh mÃƒÂ¬nh."
+                "Bạn không thể tự chặn chính mình."
             ))
         }
     }
@@ -860,17 +860,17 @@ class GameEngine(
         if (!isAccountSession(playerId)) return listOf(accountRequired(playerId))
         return when (val result = friendRepository.unblockPlayer(playerId, playerUserId)) {
             is SocialMutationResult.Success ->
-                listOf(Delivery(ServerMessage.SocialNotice("Ã„ÂÃƒÂ£ bÃ¡Â»Â chÃ¡ÂºÂ·n ngÃ†Â°Ã¡Â»Âi chÃ†Â¡i."), setOf(playerId))) +
+                listOf(Delivery(ServerMessage.SocialNotice("Đã bỏ chặn người chơi."), setOf(playerId))) +
                     refreshSocialFor(setOf(playerId, result.otherUserId))
             SocialMutationResult.NotFound -> listOf(error(
                 playerId,
                 "BLOCK_NOT_FOUND",
-                "NgÃ†Â°Ã¡Â»Âi chÃ†Â¡i nÃƒÂ y khÃƒÂ´ng cÃƒÂ²n trong danh sÃƒÂ¡ch chÃ¡ÂºÂ·n."
+                "Người chơi này không còn trong danh sách chặn."
             ))
             SocialMutationResult.SelfAction -> listOf(error(
                 playerId,
                 "INVALID_SOCIAL_ACTION",
-                "KhÃƒÂ´ng thÃ¡Â»Æ’ thÃ¡Â»Â±c hiÃ¡Â»â€¡n thao tÃƒÂ¡c nÃƒÂ y vÃ¡Â»â€ºi chÃƒÂ­nh bÃ¡ÂºÂ¡n."
+                "Không thể thực hiện thao tác này với chính bạn."
             ))
         }
     }
@@ -881,7 +881,7 @@ class GameEngine(
             return listOf(error(
                 playerId,
                 "INTERACTION_BLOCKED",
-                "KhÃƒÂ´ng thÃ¡Â»Æ’ mÃ¡Â»Âi ngÃ†Â°Ã¡Â»Âi chÃ†Â¡i nÃƒÂ y vÃƒÂ o phÃƒÂ²ng."
+                "Không thể mời người chơi này vào phòng."
             ))
         }
         if (!friendRepository.areFriends(playerId, command.friendUserId)) {
@@ -891,13 +891,13 @@ class GameEngine(
         val replacedInvitationIds = mutableListOf<String>()
         val deliveries = mutex.withLock {
             val inviter = sessionsByPlayerId[playerId]
-                ?: return@withLock listOf(error(playerId, "SESSION_NOT_FOUND", "PhiÃƒÂªn chÃ†Â¡i khÃƒÂ´ng cÃƒÂ²n hÃ¡Â»Â£p lÃ¡Â»â€¡."))
+                ?: return@withLock listOf(error(playerId, "SESSION_NOT_FOUND", "Phiên chơi không còn hợp lệ."))
             val room = rooms[command.roomId]
                 ?.takeIf { it.hostId == playerId && it.phase == RoomPhase.WAITING && it.guestId == null }
-                ?: return@withLock listOf(error(playerId, "ROOM_NOT_INVITABLE", "PhÃƒÂ²ng khÃƒÂ´ng cÃƒÂ²n sÃ¡ÂºÂµn sÃƒÂ ng Ã„â€˜Ã¡Â»Æ’ mÃ¡Â» i bÃ¡ÂºÂ¡n."))
+                ?: return@withLock listOf(error(playerId, "ROOM_NOT_INVITABLE", "Phòng không còn sẵn sàng để mời bạn."))
             val friendId = command.friendUserId
             if (roomFor(friendId) != null) {
-                return@withLock listOf(error(playerId, "FRIEND_BUSY", "BÃ¡ÂºÂ¡n bÃƒÂ¨ Ã„â€˜ang Ã¡Â»Å¸ trong phÃƒÂ²ng khÃƒÂ¡c."))
+                return@withLock listOf(error(playerId, "FRIEND_BUSY", "Bạn bè đang ở trong phòng khác."))
             }
             val invitation = RoomInvitationRecord(
                 id = UUID.randomUUID().toString(),
@@ -917,7 +917,7 @@ class GameEngine(
             createdInvitation = invitation
             listOf(
                 Delivery(invitation.toMessage(), setOf(friendId)),
-                Delivery(ServerMessage.SocialNotice("Ã„ ÃƒÂ£ gÃ¡Â»Â­i lÃ¡Â» i mÃ¡Â» i vÃƒÂ o phÃƒÂ²ng."), setOf(playerId))
+                Delivery(ServerMessage.SocialNotice("Đã gửi lời mời vào phòng."), setOf(playerId))
             )
         }
         createdInvitation?.let { invitation ->
@@ -935,8 +935,8 @@ class GameEngine(
                 listOf(NotificationSnapshot(
                     id = "room:${invitation.id}",
                     kind = NotificationKind.ROOM_INVITATION,
-                    title = "LÃ¡Â»Âi mÃ¡Â»Âi vÃƒÂ o phÃƒÂ²ng",
-                    message = "${invitation.inviterDisplayName} mÃ¡Â»Âi bÃ¡ÂºÂ¡n vÃƒÂ o phÃƒÂ²ng ${invitation.roomName}.",
+                    title = "Lời mời vào phòng",
+                    message = "${invitation.inviterDisplayName} mời bạn vào phòng ${invitation.roomName}.",
                     createdAtEpochMillis = nowMillis(),
                     destination = NotificationDestination.FRIENDS
                 ))
@@ -946,8 +946,8 @@ class GameEngine(
             if (fcmToken != null) {
                 pushNotificationService.sendNotification(
                     fcmToken,
-                    "Lá»i má»i chÆ¡i game",
-                    "${invitation.inviterDisplayName} Ä‘Ã£ má»i báº¡n vÃ o phÃ²ng ${invitation.roomName}"
+                    "Lời mời chơi game",
+                    "${invitation.inviterDisplayName} đã mời bạn vào phòng ${invitation.roomName}"
                 )
             }
             return deliveries + refreshNotificationsFor(setOf(invitation.inviteeId))
@@ -1013,13 +1013,13 @@ class GameEngine(
                 )
             }
             val player = sessionsByPlayerId[playerId]
-                ?: return@withLock listOf(error(playerId, "SESSION_NOT_FOUND", "PhiÃƒÂªn chÃ†Â¡i khÃƒÂ´ng cÃƒÂ²n hÃ¡Â»Â£p lÃ¡Â»â€¡."))
+                ?: return@withLock listOf(error(playerId, "SESSION_NOT_FOUND", "Phiên chơi không còn hợp lệ."))
             if (roomFor(playerId) != null) {
-                return@withLock listOf(error(playerId, "ALREADY_IN_ROOM", "BÃ¡ÂºÂ¡n Ã„â€˜ang Ã¡Â»Å¸ trong mÃ¡Â»â„¢t phÃƒÂ²ng khÃƒÂ¡c."))
+                return@withLock listOf(error(playerId, "ALREADY_IN_ROOM", "Bạn đang ở trong một phòng khác."))
             }
             val room = rooms[invitation.roomId]
                 ?.takeIf { it.hostId == invitation.inviterId && it.phase == RoomPhase.WAITING && it.guestId == null }
-                ?: return@withLock listOf(error(playerId, "ROOM_NOT_FOUND", "PhÃƒÂ²ng Ã„â€˜Ã†Â°Ã¡Â»Â£c mÃ¡Â»Âi khÃƒÂ´ng cÃƒÂ²n sÃ¡ÂºÂµn sÃƒÂ ng."))
+                ?: return@withLock listOf(error(playerId, "ROOM_NOT_FOUND", "Phòng được mời không còn sẵn sàng."))
             room.guestId = player.playerId
             room.sequence++
             room.scores[player.playerId] = 0
@@ -1094,7 +1094,7 @@ class GameEngine(
             1
         }
         return if (level < mode.unlockLevel) {
-            error(playerId, "MODE_LOCKED", "Cháº¿ Ä‘á»™ nÃ y má»Ÿ khÃ³a á»Ÿ cáº¥p ${mode.unlockLevel}.")
+            error(playerId, "MODE_LOCKED", "Chế độ này mở khóa ở cấp ${mode.unlockLevel}.")
         } else {
             null
         }
@@ -1112,10 +1112,10 @@ class GameEngine(
         command: ClientMessage.JoinMatchmaking
     ): List<Delivery> {
         if (!isAccountSession(playerId)) {
-            return listOf(error(playerId, "ACCOUNT_REQUIRED", "HÃƒÂ£y Ã„â€˜Ã„Æ’ng nhÃ¡ÂºÂ­p Ã„â€˜Ã¡Â»Æ’ ghÃƒÂ©p trÃ¡ÂºÂ­n trÃ¡Â»Â±c tuyÃ¡ÂºÂ¿n."))
+            return listOf(error(playerId, "ACCOUNT_REQUIRED", "Hãy đăng nhập để ghép trận trực tuyến."))
         }
         if (mutex.withLock { activeTournamentFor(playerId) != null }) {
-            return listOf(error(playerId, "TOURNAMENT_ACTIVE", "HÃƒÂ£y rÃ¡Â»Âi hoÃ¡ÂºÂ·c hoÃƒÂ n tÃ¡ÂºÂ¥t giÃ¡ÂºÂ£i Ã„â€˜Ã¡ÂºÂ¥u hiÃ¡Â»â€¡n tÃ¡ÂºÂ¡i trÃ†Â°Ã¡Â»â€ºc."))
+            return listOf(error(playerId, "TOURNAMENT_ACTIVE", "Hãy rời hoặc hoàn tất giải đấu hiện tại trước."))
         }
         val profile = playerProfileRepository.findByPlayerId(playerId)
         val level = profile?.progression?.level ?: 1
@@ -1123,7 +1123,7 @@ class GameEngine(
             return listOf(error(
                 playerId,
                 "MODE_LOCKED",
-                "ChÃ¡ÂºÂ¿ Ã„â€˜Ã¡Â»â„¢ nÃƒÂ y mÃ¡Â»Å¸ khÃƒÂ³a Ã¡Â»Å¸ cÃ¡ÂºÂ¥p ${command.gameMode.unlockLevel}."
+                "Chế độ này mở khóa ở cấp ${command.gameMode.unlockLevel}."
             ))
         }
         val rating = profile?.statistics?.eloRating ?: DEFAULT_ELO_RATING
@@ -1160,10 +1160,10 @@ class GameEngine(
         val deliveries = mutex.withLock {
             val player = sessionsByPlayerId[playerId]
                 ?.takeIf { it.isConnected && it.resumeToken == null }
-                ?: return@withLock listOf(error(playerId, "SESSION_NOT_FOUND", "PhiÃƒÂªn chÃ†Â¡i khÃƒÂ´ng cÃƒÂ²n hÃ¡Â»Â£p lÃ¡Â»â€¡."))
+                ?: return@withLock listOf(error(playerId, "SESSION_NOT_FOUND", "Phiên chơi không còn hợp lệ."))
             if (roomFor(playerId) != null) {
                 matchmakingEntries.remove(playerId)
-                return@withLock listOf(error(playerId, "ALREADY_IN_ROOM", "BÃ¡ÂºÂ¡n Ã„â€˜ang Ã¡Â»Å¸ trong mÃ¡Â»â„¢t phÃƒÂ²ng khÃƒÂ¡c."))
+                return@withLock listOf(error(playerId, "ALREADY_IN_ROOM", "Bạn đang ở trong một phòng khác."))
             }
 
             val queuedCandidate = candidate?.let { matchmakingEntries[it.playerId] }?.takeIf { queued ->
@@ -1206,7 +1206,7 @@ class GameEngine(
             matchmakingEntries.remove(playerId)
             val room = Room(
                 id = UUID.randomUUID().toString(),
-                name = "Ã„ÂÃ¡ÂºÂ¥u nhanh",
+                name = "Đấu nhanh",
                 hostId = hostId,
                 password = null,
                 gameMode = command.gameMode,
@@ -1252,12 +1252,12 @@ class GameEngine(
     private fun accountRequired(playerId: String) = error(
         playerId,
         "ACCOUNT_REQUIRED",
-        "HÃƒÂ£y Ã„â€˜Ã„Æ’ng nhÃ¡ÂºÂ­p tÃƒÂ i khoÃ¡ÂºÂ£n Ã„â€˜Ã¡Â»Æ’ sÃ¡Â»Â­ dÃ¡Â»Â¥ng tÃƒÂ­nh nÃ„Æ’ng nÃƒÂ y."
+        "Hãy đăng nhập tài khoản để sử dụng tính năng này."
     )
 
     private suspend fun loadProfile(playerId: String): List<Delivery> {
         val session = mutex.withLock { sessionsByPlayerId[playerId]?.copy() }
-            ?: return listOf(error(playerId, "SESSION_NOT_FOUND", "PhiÃƒÂªn chÃ†Â¡i khÃƒÂ´ng cÃƒÂ²n hÃ¡Â»Â£p lÃ¡Â»â€¡."))
+            ?: return listOf(error(playerId, "SESSION_NOT_FOUND", "Phiên chơi không còn hợp lệ."))
         val persisted = runCatching { playerProfileRepository.findByPlayerId(playerId) }
             .onFailure { System.err.println("Could not load profile $playerId: ${it.message}") }
             .getOrNull()
@@ -1277,7 +1277,7 @@ class GameEngine(
             ?: return listOf(error(
                 playerId,
                 "DAILY_CHECK_IN_UNAVAILABLE",
-                "ChÃ†Â°a thÃ¡Â»Æ’ Ã„â€˜iÃ¡Â»Æ’m danh. Vui lÃƒÂ²ng thÃ¡Â»Â­ lÃ¡ÂºÂ¡i."
+                "Chưa thể điểm danh. Vui lòng thử lại."
             ))
         return loadProfile(playerId) + Delivery(
             ServerMessage.DailyCheckInResult(result.claimed, result.rewardXp),
@@ -1304,7 +1304,7 @@ class GameEngine(
             MissionRewardClaimStatus.ALREADY_CLAIMED -> listOf(error(
                 playerId,
                 "MISSION_ALREADY_CLAIMED",
-                "PhÃ¡ÂºÂ§n thÃ†Â°Ã¡Â»Å¸ng nhiÃ¡Â»â€¡m vÃ¡Â»Â¥ nÃƒÂ y Ã„â€˜ÃƒÂ£ Ã„â€˜Ã†Â°Ã¡Â»Â£c nhÃ¡ÂºÂ­n."
+                "Phần thưởng nhiệm vụ này đã được nhận."
             ))
             MissionRewardClaimStatus.NOT_COMPLETED -> listOf(error(
                 playerId,
@@ -1371,11 +1371,11 @@ class GameEngine(
             ))
         }
         if (command.avatarId != null && command.avatarId !in PROFILE_AVATAR_IDS) {
-            return listOf(error(playerId, "INVALID_AVATAR", "Ã¡ÂºÂ¢nh Ã„â€˜Ã¡ÂºÂ¡i diÃ¡Â»â€¡n khÃƒÂ´ng hÃ¡Â»Â£p lÃ¡Â»â€¡."))
+            return listOf(error(playerId, "INVALID_AVATAR", "Ảnh đại diện không hợp lệ."))
         }
         val session = mutex.withLock { sessionsByPlayerId[playerId]?.copy() }
         if (session == null) {
-            return listOf(error(playerId, "SESSION_NOT_FOUND", "PhiÃƒÂªn chÃ†Â¡i khÃƒÂ´ng cÃƒÂ²n hÃ¡Â»Â£p lÃ¡Â»â€¡."))
+            return listOf(error(playerId, "SESSION_NOT_FOUND", "Phiên chơi không còn hợp lệ."))
         }
         if (session.resumeToken != null) {
             return listOf(error(
@@ -1420,7 +1420,7 @@ class GameEngine(
     private suspend fun loadLeaderboard(playerId: String): List<Delivery> {
         val sessionExists = mutex.withLock { playerId in sessionsByPlayerId }
         if (!sessionExists) {
-            return listOf(error(playerId, "SESSION_NOT_FOUND", "PhiÃƒÂªn chÃ†Â¡i khÃƒÂ´ng cÃƒÂ²n hÃ¡Â»Â£p lÃ¡Â»â€¡."))
+            return listOf(error(playerId, "SESSION_NOT_FOUND", "Phiên chơi không còn hợp lệ."))
         }
         val leaderboard = runCatching {
             leaderboardRepository.load(playerId, LEADERBOARD_SIZE)
@@ -1551,7 +1551,7 @@ class GameEngine(
                     deliveries += Delivery(
                         ServerMessage.RoomClosed(
                             roomId = room.id,
-                            reason = "NgÃ†Â°Ã¡Â»Âi chÃ†Â¡i Ã„â€˜ÃƒÂ£ mÃ¡ÂºÂ¥t kÃ¡ÂºÂ¿t nÃ¡Â»â€˜i quÃƒÂ¡ lÃƒÂ¢u."
+                            reason = "Người chơi đã mất kết nối quá lâu."
                         ),
                         room.playerIds()
                     )
@@ -1602,11 +1602,11 @@ class GameEngine(
             return listOf(error(player.playerId, "TOURNAMENT_ACTIVE", "HÃƒÂ£y rÃ¡Â»Âi hoÃ¡ÂºÂ·c hoÃƒÂ n tÃ¡ÂºÂ¥t giÃ¡ÂºÂ£i Ã„â€˜Ã¡ÂºÂ¥u hiÃ¡Â»â€¡n tÃ¡ÂºÂ¡i trÃ†Â°Ã¡Â»â€ºc."))
         }
         if (roomFor(player.playerId) != null) {
-            return listOf(error(player.playerId, "ALREADY_IN_ROOM", "BÃ¡ÂºÂ¡n Ã„â€˜ang Ã¡Â»Å¸ trong mÃ¡Â»â„¢t phÃƒÂ²ng khÃƒÂ¡c."))
+            return listOf(error(player.playerId, "ALREADY_IN_ROOM", "Bạn đang ở trong một phòng khác."))
         }
         val name = command.roomName.trim().take(MAX_ROOM_NAME_LENGTH)
         if (name.isEmpty()) {
-            return listOf(error(player.playerId, "INVALID_ROOM_NAME", "TÃƒÂªn phÃƒÂ²ng khÃƒÂ´ng Ã„â€˜Ã†Â°Ã¡Â»Â£c Ã„â€˜Ã¡Â»Æ’ trÃ¡Â»â€˜ng."))
+            return listOf(error(player.playerId, "INVALID_ROOM_NAME", "Tên phòng không được để trống."))
         }
         matchmakingEntries.remove(player.playerId)
         val room = Room(
@@ -1628,12 +1628,12 @@ class GameEngine(
             return listOf(error(player.playerId, "TOURNAMENT_ACTIVE", "HÃƒÂ£y rÃ¡Â»Âi hoÃ¡ÂºÂ·c hoÃƒÂ n tÃ¡ÂºÂ¥t giÃ¡ÂºÂ£i Ã„â€˜Ã¡ÂºÂ¥u hiÃ¡Â»â€¡n tÃ¡ÂºÂ¡i trÃ†Â°Ã¡Â»â€ºc."))
         }
         if (roomFor(player.playerId) != null) {
-            return listOf(error(player.playerId, "ALREADY_IN_ROOM", "BÃ¡ÂºÂ¡n Ã„â€˜ang Ã¡Â»Å¸ trong mÃ¡Â»â„¢t phÃƒÂ²ng khÃƒÂ¡c."))
+            return listOf(error(player.playerId, "ALREADY_IN_ROOM", "Bạn đang ở trong một phòng khác."))
         }
         val room = rooms[command.roomId]
             ?: return listOf(error(player.playerId, "ROOM_NOT_FOUND", "PhÃƒÂ²ng khÃƒÂ´ng cÃƒÂ²n tÃ¡Â»â€œn tÃ¡ÂºÂ¡i."))
         if (room.password != null && !room.password.matches(command.password)) {
-            return listOf(error(player.playerId, "WRONG_PASSWORD", "MÃ¡ÂºÂ­t khÃ¡ÂºÂ©u phÃƒÂ²ng khÃƒÂ´ng Ã„â€˜ÃƒÂºng."))
+            return listOf(error(player.playerId, "WRONG_PASSWORD", "Mật khẩu phòng không đúng."))
         }
 
         matchmakingEntries.remove(player.playerId)
@@ -1646,7 +1646,7 @@ class GameEngine(
 
         val maxPlayers = if (room.gameMode == com.hienthai.fastowin.protocol.ProtocolGameMode.TEAM_2V2) 4 else 2
         if (room.phase != RoomPhase.WAITING || room.playerIds().size >= maxPlayers) {
-            return listOf(error(player.playerId, "ROOM_FULL", "PhÃƒÂ²ng Ã„â€˜ÃƒÂ£ Ã„â€˜Ã¡ÂºÂ§y hoÃ¡ÂºÂ·c Ã„â€˜ang chÃ†Â¡i."))
+            return listOf(error(player.playerId, "ROOM_FULL", "Phòng đã đầy hoặc đang chơi."))
         }
 
         if (room.guestId == null) {
@@ -1675,12 +1675,12 @@ class GameEngine(
 
     private fun setReady(player: GuestSession, command: ClientMessage.SetReady): HandleResult {
         val room = rooms[command.roomId]
-            ?: return HandleResult(listOf(error(player.playerId, "ROOM_NOT_FOUND", "PhÃƒÂ²ng khÃƒÂ´ng cÃƒÂ²n tÃ¡Â»â€œn tÃ¡ÂºÂ¡i.")))
+            ?: return HandleResult(listOf(error(player.playerId, "ROOM_NOT_FOUND", "Phòng không còn tồn tại.")))
         if (player.playerId !in room.playerIds()) {
-            return HandleResult(listOf(error(player.playerId, "NOT_IN_ROOM", "BÃ¡ÂºÂ¡n khÃƒÂ´ng Ã¡Â»Å¸ trong phÃƒÂ²ng nÃƒÂ y.")))
+            return HandleResult(listOf(error(player.playerId, "NOT_IN_ROOM", "Bạn không ở trong phòng này.")))
         }
         if (room.phase != RoomPhase.WAITING) {
-            return HandleResult(listOf(error(player.playerId, "ROOM_NOT_WAITING", "PhÃƒÂ²ng khÃƒÂ´ng cÃƒÂ²n Ã¡Â»Å¸ trÃ¡ÂºÂ¡ng thÃƒÂ¡i chÃ¡Â»Â.")))
+            return HandleResult(listOf(error(player.playerId, "ROOM_NOT_WAITING", "Phòng không còn ở trạng thái chờ.")))
         }
         if (command.ready) room.readyPlayerIds += player.playerId else room.readyPlayerIds -= player.playerId
         room.sequence++
@@ -1700,12 +1700,12 @@ class GameEngine(
 
     private fun kickPlayer(player: GuestSession, command: ClientMessage.KickPlayer): HandleResult {
         val room = rooms[command.roomId]
-            ?: return HandleResult(listOf(error(player.playerId, "ROOM_NOT_FOUND", "PhÃƒÂ²ng khÃƒÂ´ng cÃƒÂ²n tÃ¡Â»â€œn tÃ¡ÂºÂ¡i.")))
+            ?: return HandleResult(listOf(error(player.playerId, "ROOM_NOT_FOUND", "Phòng không còn tồn tại.")))
         if (room.hostId != player.playerId) {
-            return HandleResult(listOf(error(player.playerId, "HOST_REQUIRED", "ChÃ¡Â»â€° chÃ¡Â»Â§ phÃƒÂ²ng mÃ¡Â»â€ºi cÃƒÂ³ thÃ¡Â»Æ’ mÃ¡Â»Âi ngÃ†Â°Ã¡Â»Âi chÃ†Â¡i ra ngoÃƒÂ i.")))
+            return HandleResult(listOf(error(player.playerId, "HOST_REQUIRED", "Chỉ chủ phòng mới có thể mời người chơi ra ngoài.")))
         }
         if (room.phase != RoomPhase.WAITING || command.playerId !in room.playerIds()) {
-            return HandleResult(listOf(error(player.playerId, "PLAYER_NOT_IN_ROOM", "NgÃ†Â°Ã¡Â»Âi chÃ†Â¡i khÃƒÂ´ng cÃƒÂ²n trong phÃƒÂ²ng.")))
+            return HandleResult(listOf(error(player.playerId, "PLAYER_NOT_IN_ROOM", "Người chơi không còn trong phòng.")))
         }
         val kickedPlayerId = command.playerId
         if (room.guestId == kickedPlayerId) {
@@ -1719,7 +1719,7 @@ class GameEngine(
         room.sequence++
         return HandleResult(
             deliveries = listOf(
-                Delivery(ServerMessage.RoomClosed(room.id, "ChÃ¡Â»Â§ phÃƒÂ²ng Ã„â€˜ÃƒÂ£ mÃ¡Â»Âi bÃ¡ÂºÂ¡n ra khÃ¡Â»Âi phÃƒÂ²ng."), setOf(kickedPlayerId)),
+                Delivery(ServerMessage.RoomClosed(room.id, "Chủ phòng đã mời bạn ra khỏi phòng."), setOf(kickedPlayerId)),
                 Delivery(ServerMessage.RoomUpdated(room.snapshot()), setOf(room.hostId)),
                 Delivery(ServerMessage.RoomList(publicRooms()))
             ),
@@ -1729,12 +1729,12 @@ class GameEngine(
 
     private fun leaveRoom(player: GuestSession, command: ClientMessage.LeaveRoom): List<Delivery> {
         val room = rooms[command.roomId]
-            ?: return listOf(error(player.playerId, "ROOM_NOT_FOUND", "PhÃƒÂ²ng khÃƒÂ´ng cÃƒÂ²n tÃ¡Â»â€œn tÃ¡ÂºÂ¡i."))
+            ?: return listOf(error(player.playerId, "ROOM_NOT_FOUND", "Phòng không còn tồn tại."))
         if (player.playerId !in room.playerIds() && player.playerId !in room.spectatorIds) {
-            return listOf(error(player.playerId, "NOT_IN_ROOM", "BÃ¡ÂºÂ¡n khÃƒÂ´ng Ã¡Â»Å¸ trong phÃƒÂ²ng nÃƒÂ y."))
+            return listOf(error(player.playerId, "NOT_IN_ROOM", "Bạn không ở trong phòng này."))
         }
         if (room.tournamentId != null && room.phase == RoomPhase.PLAYING) {
-            return listOf(error(player.playerId, "TOURNAMENT_MATCH_ACTIVE", "KhÃƒÂ´ng thÃ¡Â»Æ’ rÃ¡Â»Âi khi trÃ¡ÂºÂ­n Ã„â€˜Ã¡ÂºÂ¥u giÃ¡ÂºÂ£i Ã„â€˜ang diÃ¡Â»â€¦n ra."))
+            return listOf(error(player.playerId, "TOURNAMENT_MATCH_ACTIVE", "Không thể rời khi trận đấu giải đang diễn ra."))
         }
 
         if (player.playerId in room.spectatorIds) {
@@ -1749,7 +1749,7 @@ class GameEngine(
         if (player.playerId == room.hostId) {
             rooms.remove(room.id)
             return listOf(
-                Delivery(ServerMessage.RoomClosed(room.id, "ChÃ¡Â»Â§ phÃƒÂ²ng Ã„â€˜ÃƒÂ£ rÃ¡Â»Âi phÃƒÂ²ng."), participants),
+                Delivery(ServerMessage.RoomClosed(room.id, "Chủ phòng đã rời phòng."), participants),
                 Delivery(ServerMessage.RoomList(publicRooms()))
             )
         } else {
@@ -1775,12 +1775,12 @@ class GameEngine(
         accept: Boolean
     ): HandleResult {
         val room = rooms[roomId]
-            ?: return HandleResult(listOf(error(player.playerId, "ROOM_NOT_FOUND", "PhÃƒÂ²ng khÃƒÂ´ng cÃƒÂ²n tÃ¡Â»â€œn tÃ¡ÂºÂ¡i.")))
+            ?: return HandleResult(listOf(error(player.playerId, "ROOM_NOT_FOUND", "Phòng không còn tồn tại.")))
         if (player.playerId !in room.playerIds()) {
-            return HandleResult(listOf(error(player.playerId, "NOT_IN_ROOM", "BÃ¡ÂºÂ¡n khÃƒÂ´ng Ã¡Â»Å¸ trong phÃƒÂ²ng nÃƒÂ y.")))
+            return HandleResult(listOf(error(player.playerId, "NOT_IN_ROOM", "Bạn không ở trong phòng này.")))
         }
         if (room.tournamentId != null) {
-            return HandleResult(listOf(error(player.playerId, "TOURNAMENT_REMATCH_DISABLED", "TrÃ¡ÂºÂ­n Ã„â€˜Ã¡ÂºÂ¥u giÃ¡ÂºÂ£i khÃƒÂ´ng hÃ¡Â»â€” trÃ¡Â»Â£ Ã„â€˜Ã¡ÂºÂ¥u lÃ¡ÂºÂ¡i.")))
+            return HandleResult(listOf(error(player.playerId, "TOURNAMENT_REMATCH_DISABLED", "Trận đấu giải không hỗ trợ đấu lại.")))
         }
         if (room.matchType == MatchType.RANKED) {
             return HandleResult(
@@ -1788,16 +1788,16 @@ class GameEngine(
                     error(
                         player.playerId,
                         "RANKED_REMATCH_DISABLED",
-                        "TrÃ¡ÂºÂ­n xÃ¡ÂºÂ¿p hÃ¡ÂºÂ¡ng khÃƒÂ´ng hÃ¡Â»â€” trÃ¡Â»Â£ Ã„â€˜Ã¡ÂºÂ¥u lÃ¡ÂºÂ¡i. HÃƒÂ£y ghÃƒÂ©p mÃ¡Â»â„¢t Ã„â€˜Ã¡Â»â€˜i thÃ¡Â»Â§ mÃ¡Â»â€ºi."
+                        "Trận xếp hạng không hỗ trợ đấu lại. Hãy ghép một đối thủ mới."
                     )
                 )
             )
         }
         if (room.phase != RoomPhase.FINISHED) {
-            return HandleResult(listOf(error(player.playerId, "REMATCH_NOT_AVAILABLE", "ChÃ¡Â»â€° cÃƒÂ³ thÃ¡Â»Æ’ Ã„â€˜Ã¡ÂºÂ¥u lÃ¡ÂºÂ¡i sau khi trÃ¡ÂºÂ­n kÃ¡ÂºÂ¿t thÃƒÂºc.")))
+            return HandleResult(listOf(error(player.playerId, "REMATCH_NOT_AVAILABLE", "Chỉ có thể đấu lại sau khi trận kết thúc.")))
         }
         if (room.playerIds().size != 2) {
-            return HandleResult(listOf(error(player.playerId, "OPPONENT_LEFT", "Ã„ÂÃ¡Â»â€˜i thÃ¡Â»Â§ Ã„â€˜ÃƒÂ£ rÃ¡Â»Âi phÃƒÂ²ng.")))
+            return HandleResult(listOf(error(player.playerId, "OPPONENT_LEFT", "Đối thủ đã rời phòng.")))
         }
 
         if (
@@ -1817,7 +1817,7 @@ class GameEngine(
 
         if (!accept) {
             if (room.rematchRequestedPlayerIds.isEmpty()) {
-                return HandleResult(listOf(error(player.playerId, "REMATCH_NOT_PENDING", "KhÃƒÂ´ng cÃƒÂ³ yÃƒÂªu cÃ¡ÂºÂ§u Ã„â€˜Ã¡ÂºÂ¥u lÃ¡ÂºÂ¡i nÃƒÂ o Ã„â€˜ang chÃ¡Â»Â.")))
+                return HandleResult(listOf(error(player.playerId, "REMATCH_NOT_PENDING", "Không có yêu cầu đấu lại nào đang chờ.")))
             }
             val event = if (player.playerId in room.rematchRequestedPlayerIds) {
                 RematchEvent.CANCELLED
@@ -2009,7 +2009,7 @@ class GameEngine(
         val playerOneId = checkNotNull(match.playerOneId)
         val playerTwoId = checkNotNull(match.playerTwoId)
         val roomId = UUID.randomUUID().toString()
-        val roundName = if (match.round == 1) "BÃƒÂ¡n kÃ¡ÂºÂ¿t ${match.position}" else "Chung kÃ¡ÂºÂ¿t"
+        val roundName = if (match.round == 1) "BÃƒÂ¡n kÃ¡ÂºÂ¿t ${match.position}" else "Chung kết"
         val room = Room(
             id = roomId,
             matchId = roomId,
@@ -2813,8 +2813,8 @@ class GameEngine(
         val notification = NotificationSnapshot(
             id = UUID.randomUUID().toString(),
             kind = NotificationKind.CLAN_INVITATION,
-            title = "Lá»i má»i vÃ o bang",
-            message = "${inviterProfile.displayName} má»i báº¡n vÃ o bang ${clan.name}",
+            title = "Lời mời vào bang",
+            message = "${inviterProfile.displayName} mời bạn vào bang ${clan.name}",
             createdAtEpochMillis = System.currentTimeMillis(),
             destination = NotificationDestination.CLAN,
             actionData = clanId

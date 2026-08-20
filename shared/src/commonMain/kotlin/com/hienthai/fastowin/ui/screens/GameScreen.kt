@@ -97,16 +97,16 @@ fun GameScreen(
     if (showExitConfirmation && allowExit) {
         AlertDialog(
             onDismissRequest = { showExitConfirmation = false },
-            title = { Text("Rá»i tráº­n Ä‘áº¥u?") },
-            text = { Text("Tráº­n hiá»‡n táº¡i sáº½ káº¿t thÃºc vÃ  cáº£ hai ngÆ°á»i chÆ¡i Ä‘Æ°á»£c Ä‘Æ°a ra khá»i phÃ²ng.") },
+            title = { Text("Rời trận đấu?") },
+            text = { Text("Trận hiện tại sẽ kết thúc và cả hai người chơi được đưa ra khỏi phòng.") },
             confirmButton = {
                 TextButton(onClick = {
                     showExitConfirmation = false
                     onExit()
-                }) { Text("Rá»i tráº­n", color = MaterialTheme.colorScheme.error) }
+                }) { Text("Rời trận", color = MaterialTheme.colorScheme.error) }
             },
             dismissButton = {
-                TextButton(onClick = { showExitConfirmation = false }) { Text("Tiáº¿p tá»¥c chÆ¡i") }
+                TextButton(onClick = { showExitConfirmation = false }) { Text("Tiếp tục chơi") }
             }
         )
     }
@@ -121,7 +121,7 @@ fun GameScreen(
                 navigationIcon = {
                     if (allowExit) {
                         IconButton(onClick = { showExitConfirmation = true }) {
-                            Icon(Icons.Rounded.Close, contentDescription = "Rá»i tráº­n")
+                            Icon(Icons.Rounded.Close, contentDescription = "Rời trận")
                         }
                     }
                 },
@@ -136,8 +136,8 @@ fun GameScreen(
                         )
                         Text(
                             text = buildString {
-                                append(if (state.matchType == MatchType.RANKED) "Xáº¿p háº¡ng" else "ThÆ°á»ng")
-                                append(" â€¢ ").append(state.gameMode.description)
+                                append(if (state.matchType == MatchType.RANKED) "Xếp hạng" else "Thường")
+                                append(" • ").append(state.gameMode.description)
                             },
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -148,13 +148,13 @@ fun GameScreen(
                     var showEmojiMenu by remember { mutableStateOf(false) }
                     Box {
                         IconButton(onClick = { showEmojiMenu = true }) {
-                            Text("ðŸ˜€", fontSize = 20.sp)
+                            Text("😀", fontSize = 20.sp)
                         }
                         DropdownMenu(
                             expanded = showEmojiMenu,
                             onDismissRequest = { showEmojiMenu = false }
                         ) {
-                            val emojis = listOf("ðŸ˜€", "ðŸ˜‚", "ðŸ˜¡", "ðŸ˜­", "ðŸ‘", "ðŸ‘Ž")
+                            val emojis = listOf("😀", "😂", "😡", "😭", "👍", "👎")
                             Row(modifier = Modifier.padding(horizontal = 8.dp)) {
                                 emojis.forEach { emoji ->
                                     TextButton(
@@ -267,8 +267,8 @@ private fun CloseScoreWarning(state: GameState) {
         color = MaterialTheme.colorScheme.tertiaryContainer
     ) {
         Text(
-            text = if (difference == 0) "Äang hÃ²a Ä‘iá»ƒm â€” lÆ°á»£t tiáº¿p theo ráº¥t quan trá»ng!"
-            else "BÃ¡m ráº¥t sÃ¡t â€” chá»‰ cÃ¡ch nhau $difference Ä‘iá»ƒm",
+            text = if (difference == 0) "Đang hòa điểm — lượt tiếp theo rất quan trọng!"
+            else "Bám rất sát — chỉ cách nhau $difference điểm",
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
             textAlign = TextAlign.Center,
             style = MaterialTheme.typography.labelMedium,
@@ -287,20 +287,20 @@ private fun LiveMetricsBar(state: GameState) {
         modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 2.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        speed?.let { LiveMetric("Tá»‘c Ä‘á»™", "$it sá»‘/s", Modifier.weight(1f)) }
+        speed?.let { LiveMetric("Tốc độ", "$it số/s", Modifier.weight(1f)) }
         when (state.gameMode) {
             com.hienthai.fastowin.navigation.GameMode.COMBO -> LiveMetric(
                 "Combo",
-                "${state.player.combo} â€¢ x${comboMultiplier(state.player.combo)}",
+                "${state.player.combo} • x${comboMultiplier(state.player.combo)}",
                 Modifier.weight(1f)
             )
             com.hienthai.fastowin.navigation.GameMode.SURVIVAL -> LiveMetric(
-                "Sinh tá»“n",
-                "${state.player.lives} máº¡ng",
+                "Sinh tồn",
+                "${state.player.lives} mạng",
                 Modifier.weight(1f)
             )
             com.hienthai.fastowin.navigation.GameMode.SPEED_UP -> LiveMetric(
-                "Nhá»‹p",
+                "Nhịp",
                 "${state.player.correctSelections + 1}/$GAME_NUMBER_COUNT",
                 Modifier.weight(1f)
             )
@@ -334,7 +334,7 @@ private fun FeedbackBurst(effect: GameFeedbackEffect) {
     ) {
         Box(contentAlignment = Alignment.Center) {
             Text(
-                text = if (correct) "âœ“" else "Ã—",
+                text = if (correct) "✓" else "×",
                 fontSize = 42.sp,
                 fontWeight = FontWeight.Black,
                 color = if (correct) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onErrorContainer
@@ -389,8 +389,8 @@ private fun PlayerScoreBar(
     } else {
         state.opponent.score
     }
-    val labelMe = if (is2v2) "Äá»˜I Báº N" else "Báº N"
-    val labelOpp = if (is2v2) "Äá»˜I Äá»I THá»¦" else "Äá»I THá»¦"
+    val labelMe = if (is2v2) "ĐỘI CỦA BẠN" else "BẠN"
+    val labelOpp = if (is2v2) "ĐỘI ĐỐI THỦ" else "ĐỐI THỦ"
     val nameMe = if (is2v2) "(${state.player.name} & ${state.teammates.firstOrNull()?.name ?: "..."})" else state.player.name
     val nameOpp = if (is2v2) "(${state.opponents.joinToString(" & ") { it.name }})" else state.opponent.name
 
@@ -407,7 +407,7 @@ private fun PlayerScoreBar(
             modifier = Modifier.weight(1f)
         )
         Text(
-            text = "Äáº¤U",
+            text = "ĐẤU",
             style = MaterialTheme.typography.labelLarge,
             fontWeight = FontWeight.Black,
             color = MaterialTheme.colorScheme.outline
@@ -493,7 +493,7 @@ private fun TargetPanel(currentTarget: Int, completedCount: Int) {
         ) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Text(
-                    text = "Sá» Cáº¦N TÃŒM",
+                    text = "SỐ CẦN TÌM",
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.75f),
                     fontWeight = FontWeight.Bold
@@ -508,7 +508,7 @@ private fun TargetPanel(currentTarget: Int, completedCount: Int) {
             }
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("Tiáº¿n Ä‘á»™", style = MaterialTheme.typography.labelMedium)
+                    Text("Tiến độ", style = MaterialTheme.typography.labelMedium)
                     Text("$completed/$GAME_NUMBER_COUNT", fontWeight = FontWeight.Bold)
                 }
                 LinearProgressIndicator(
@@ -614,8 +614,8 @@ fun GameScreenMobilePreview() {
                 currentTarget = 12,
                 score = 70,
                 timeLeftMillis = 42_000,
-                player = PlayerState(name = "Hiá»n", score = 70, currentTarget = 12),
-                opponent = PlayerState(name = "Hiáº¿u", score = 40, currentTarget = 12)
+                player = PlayerState(name = "Hiền", score = 70, currentTarget = 12),
+                opponent = PlayerState(name = "Hiếu", score = 40, currentTarget = 12)
             ),
             onNumberClick = {},
             onFinish = {}

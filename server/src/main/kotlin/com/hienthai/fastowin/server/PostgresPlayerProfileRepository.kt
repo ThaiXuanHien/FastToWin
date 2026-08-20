@@ -107,7 +107,7 @@ class PostgresPlayerProfileRepository(
                 SELECT m.id, m.room_name, m.game_mode, m.match_type, m.ended_at,
                        mine.score AS player_score, mine.outcome,
                        COALESCE(rh.rating_change, 0) AS elo_change,
-                       COALESCE(opponent.display_name, 'Äá»‘i thá»§') AS opponent_name,
+                       COALESCE(opponent.display_name, 'Đối thủ') AS opponent_name,
                        COALESCE(opponent.score, 0) AS opponent_score
                 FROM match_players mine
                 JOIN matches m ON m.id = mine.match_id
@@ -329,7 +329,7 @@ class PostgresPlayerProfileRepository(
                         SeasonSnapshot(
                             name = result.getString("name"),
                             tier = if (placementMatches < PLACEMENT_MATCHES_REQUIRED) {
-                                "Äang phÃ¢n háº¡ng"
+                                "Đang phân hạng"
                             } else {
                                 ratingTier(rating)
                             },
@@ -370,18 +370,18 @@ class PostgresPlayerProfileRepository(
             fun cosmetic(id: String, name: String, type: CosmeticType, unlocked: Boolean, equippedId: String?) =
                 CosmeticSnapshot(id, name, type, unlocked, unlocked && id == equippedId)
             val cosmetics = listOf(
-                cosmetic("frame_default", "Khung cÆ¡ báº£n", CosmeticType.FRAME, true, equippedFrameId),
-                cosmetic("frame_bronze", "Khung Äá»“ng", CosmeticType.FRAME, "frame_bronze" in unlockedFrames, equippedFrameId),
-                cosmetic("frame_gold", "Khung VÃ ng", CosmeticType.FRAME, "frame_gold" in unlockedFrames, equippedFrameId),
-                cosmetic("frame_perfect", "Khung HoÃ n háº£o", CosmeticType.FRAME, "frame_perfect" in unlockedFrames, equippedFrameId),
-                cosmetic("frame_persistent", "Khung Bá»n bá»‰", CosmeticType.FRAME, "frame_persistent" in unlockedFrames, equippedFrameId),
-                cosmetic("title_rookie", "TÃ¢n binh", CosmeticType.TITLE, true, equippedTitleId),
-                cosmetic("title_champion", "NhÃ  vÃ´ Ä‘á»‹ch", CosmeticType.TITLE, "title_champion" in unlockedTitles, equippedTitleId),
-                cosmetic("title_speed", "Tia chá»›p", CosmeticType.TITLE, "title_speed" in unlockedTitles, equippedTitleId),
-                cosmetic("title_diligent", "ChuyÃªn cáº§n", CosmeticType.TITLE, "title_diligent" in unlockedTitles, equippedTitleId),
+                cosmetic("frame_default", "Khung cơ bản", CosmeticType.FRAME, true, equippedFrameId),
+                cosmetic("frame_bronze", "Khung Đồng", CosmeticType.FRAME, "frame_bronze" in unlockedFrames, equippedFrameId),
+                cosmetic("frame_gold", "Khung Vàng", CosmeticType.FRAME, "frame_gold" in unlockedFrames, equippedFrameId),
+                cosmetic("frame_perfect", "Khung Hoàn hảo", CosmeticType.FRAME, "frame_perfect" in unlockedFrames, equippedFrameId),
+                cosmetic("frame_persistent", "Khung Bền bỉ", CosmeticType.FRAME, "frame_persistent" in unlockedFrames, equippedFrameId),
+                cosmetic("title_rookie", "Tân binh", CosmeticType.TITLE, true, equippedTitleId),
+                cosmetic("title_champion", "Nhà vô địch", CosmeticType.TITLE, "title_champion" in unlockedTitles, equippedTitleId),
+                cosmetic("title_speed", "Tia chớp", CosmeticType.TITLE, "title_speed" in unlockedTitles, equippedTitleId),
+                cosmetic("title_diligent", "Chuyên cần", CosmeticType.TITLE, "title_diligent" in unlockedTitles, equippedTitleId),
                 cosmetic(
                     DAILY_CHECK_IN_AVATAR_ID,
-                    "áº¢nh Ä‘áº¡i diá»‡n Äiá»ƒm danh",
+                    "Ảnh đại diện Điểm danh",
                     CosmeticType.AVATAR,
                     DAILY_CHECK_IN_AVATAR_ID in unlockedAvatars,
                     base.avatarId

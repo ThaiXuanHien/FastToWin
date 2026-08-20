@@ -262,12 +262,12 @@ fun ClanDetailView(
     }
 }
 private fun clanEmoji(logoId: String?): String = when (logoId) {
-    "shield" -> "???"
-    "sword" -> "??"
-    "flag" -> "??"
-    "dragon" -> "??"
-    "wolf" -> "??"
-    "eagle" -> "??"
-    "crown" -> "??"
-    else -> "???"
+    "shield" -> "🛡️"
+    "sword" -> "⚔️"
+    "flag" -> "🚩"
+    "dragon" -> "🐉"
+    "wolf" -> "🐺"
+    "eagle" -> "🦅"
+    "crown" -> "👑"
+    else -> "🏰"
 }
