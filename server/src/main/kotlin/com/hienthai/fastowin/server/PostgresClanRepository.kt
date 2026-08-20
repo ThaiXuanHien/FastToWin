@@ -1,4 +1,4 @@
-package com.hienthai.fastowin.server
+﻿package com.hienthai.fastowin.server
 
 import com.hienthai.fastowin.protocol.ClanMemberSnapshot
 import com.hienthai.fastowin.protocol.ClanRole
@@ -209,6 +209,58 @@ class PostgresClanRepository(
                 statement.setString(1, logoId)
                 statement.setObject(2, UUID.fromString(clanId))
                 statement.executeUpdate() > 0
+            }
+        }
+    }
+}
+
+    override suspend fun addClanTrophies(clanId: String, amount: Int): Boolean = withContext(Dispatchers.IO) {
+        dataSource.connection.use { connection ->
+            connection.prepareStatement("UPDATE clans SET trophies = trophies + ? WHERE id = ?").use {
+                it.setInt(1, amount)
+                it.setObject(2, UUID.fromString(clanId))
+                it.executeUpdate() > 0
+            }
+        }
+    }
+
+    override suspend fun addQuestProgress(clanId: String, userId: String, amount: Int): Boolean = withContext(Dispatchers.IO) {
+        dataSource.connection.use { connection ->
+            connection.autoCommit = false
+            try {
+                val clanUuid = UUID.fromString(clanId)
+                val userUuid = UUID.fromString(userId)
+                
+                connection.prepareStatement("UPDATE clans SET quest_progress = quest_progress + ? WHERE id = ?").use {
+                    it.setInt(1, amount)
+                    it.setObject(2, clanUuid)
+                    it.executeUpdate()
+                }
+
+                connection.prepareStatement("UPDATE clan_members SET quest_contribution = quest_contribution + ? WHERE clan_id = ? AND user_id = ?").use {
+                    it.setInt(1, amount)
+                    it.setObject(2, clanUuid)
+                    it.setObject(3, userUuid)
+                    it.executeUpdate()
+                }
+                
+                connection.commit()
+                true
+            } catch (e: Exception) {
+                connection.rollback()
+                false
+            } finally {
+                connection.autoCommit = true
+            }
+        }
+    }
+
+    override suspend fun claimQuestReward(clanId: String, userId: String): Boolean = withContext(Dispatchers.IO) {
+        dataSource.connection.use { connection ->
+            connection.prepareStatement("UPDATE clan_members SET quest_reward_claimed = TRUE WHERE clan_id = ? AND user_id = ? AND quest_reward_claimed = FALSE").use {
+                it.setObject(1, UUID.fromString(clanId))
+                it.setObject(2, UUID.fromString(userId))
+                it.executeUpdate() > 0
             }
         }
     }

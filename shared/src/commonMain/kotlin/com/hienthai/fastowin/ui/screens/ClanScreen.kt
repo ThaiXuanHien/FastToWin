@@ -35,16 +35,17 @@ fun ClanScreen(
     onSearch: (String?) -> Unit,
     onKickMember: (String, String) -> Unit,
     onUpdateLogo: (String, String) -> Unit,
+    onClaimQuest: (String) -> Unit,
     onViewClan: (String) -> Unit,
     onBack: () -> Unit,
 ) {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Bang Hội") },
+                title = { Text("Bang Há»™i") },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.Rounded.ArrowBack, contentDescription = "Trở về")
+                        Icon(Icons.Rounded.ArrowBack, contentDescription = "Trá»Ÿ vá»")
                     }
                 }
             )
@@ -76,12 +77,12 @@ fun ClanScreen(
                     OutlinedTextField(
                         value = searchQuery,
                         onValueChange = { searchQuery = it },
-                        placeholder = { Text("Tìm bang hội...") },
+                        placeholder = { Text("TÃ¬m bang há»™i...") },
                         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
                         singleLine = true,
                         trailingIcon = {
                             IconButton(onClick = { onSearch(searchQuery.takeIf { it.isNotBlank() }) }) {
-                                Icon(Icons.Rounded.Search, contentDescription = "Tìm kiếm")
+                                Icon(Icons.Rounded.Search, contentDescription = "TÃ¬m kiáº¿m")
                             }
                         }
                     )
@@ -91,14 +92,14 @@ fun ClanScreen(
                     ) {
                         Icon(Icons.Rounded.Add, contentDescription = null)
                         Spacer(Modifier.width(8.dp))
-                        Text("Tạo Bang Hội")
+                        Text("Táº¡o Bang Há»™i")
                     }
                     Spacer(Modifier.height(8.dp))
                     LazyColumn(modifier = Modifier.fillMaxSize()) {
                         items(clanList) { clan ->
                             ListItem(
                                 headlineContent = { Text(clan.name, fontWeight = FontWeight.Bold) },
-                                supportingContent = { Text("\uD83C\uDFC6  Cúp") },
+                                supportingContent = { Text("\uD83C\uDFC6  CÃºp") },
                                 trailingContent = {
                                     Button(onClick = { onJoinClan(clan.id) }) {
                                         Text("Tham gia")
@@ -115,21 +116,21 @@ fun ClanScreen(
                     var desc by remember { mutableStateOf("") }
                     AlertDialog(
                         onDismissRequest = { showCreateDialog = false },
-                        title = { Text("Tạo Bang Hội") },
+                        title = { Text("Táº¡o Bang Há»™i") },
                         text = {
                             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Tên Bang") })
-                                OutlinedTextField(value = desc, onValueChange = { desc = it }, label = { Text("Mô tả") })
+                                OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("TÃªn Bang") })
+                                OutlinedTextField(value = desc, onValueChange = { desc = it }, label = { Text("MÃ´ táº£") })
                             }
                         },
                         confirmButton = {
                             Button(onClick = {
                                 onCreateClan(name, desc)
                                 showCreateDialog = false
-                            }) { Text("Tạo") }
+                            }) { Text("Táº¡o") }
                         },
                         dismissButton = {
-                            TextButton(onClick = { showCreateDialog = false }) { Text("Hủy") }
+                            TextButton(onClick = { showCreateDialog = false }) { Text("Há»§y") }
                         }
                     )
                 }
@@ -144,7 +145,8 @@ fun ClanDetailView(
     clan: ClanSnapshot,
     onLeave: () -> Unit,
     onKickMember: (String, String) -> Unit,
-    onUpdateLogo: (String) -> Unit
+    onUpdateLogo: (String) -> Unit,
+    onClaimQuest: () -> Unit
 ) {
     Column(modifier = Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         var showLogoDialog by remember { mutableStateOf(false) }
@@ -166,7 +168,7 @@ fun ClanDetailView(
                 Text(clan.name, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
                 Text(clan.description, style = MaterialTheme.typography.bodyLarge)
                 TextButton(onClick = { showLogoDialog = true }) {
-                    Text("Đổi logo")
+                    Text("Äá»•i logo")
                 }
             }
         }
@@ -174,7 +176,7 @@ fun ClanDetailView(
         if (showLogoDialog) {
             AlertDialog(
                 onDismissRequest = { showLogoDialog = false },
-                title = { Text("Chọn Logo") },
+                title = { Text("Chá»n Logo") },
                 text = {
                     LazyVerticalGrid(
                         columns = GridCells.Fixed(4),
@@ -202,9 +204,45 @@ fun ClanDetailView(
                 }
             )
         }
-        Text("🏆 Tổng Cúp: ")
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text("🏆 Tổng Cúp: ${clan.trophies}", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+        }
+
+        clan.quest?.let { quest ->
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
+            ) {
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Nhiệm vụ tuần: Thắng ${quest.target} trận", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    LinearProgressIndicator(
+                        progress = { if (quest.target > 0) quest.progress.toFloat() / quest.target else 0f },
+                        modifier = Modifier.fillMaxWidth().height(8.dp),
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("${quest.progress} / ${quest.target}")
+                        Text("Thưởng: ${quest.rewardGold} Vàng", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                    }
+                    if (quest.progress >= quest.target) {
+                        Button(onClick = onClaimQuest, modifier = Modifier.fillMaxWidth()) {
+                            Text("Nhận thưởng")
+                        }
+                    }
+                }
+            }
+        }
+
         HorizontalDivider()
-        Text("Thành viên (/)", style = MaterialTheme.typography.titleMedium)
+        Text("Thành viên (${clan.members.size}/${clan.maxMembers})", style = MaterialTheme.typography.titleMedium)
         LazyColumn(modifier = Modifier.weight(1f)) {
             items(clan.members) { member ->
                 ListItem(
@@ -212,11 +250,11 @@ fun ClanDetailView(
                     supportingContent = { Text(member.role.name) },
                     trailingContent = { 
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text("🏆 ${member.trophies}")
+                            Text("ðŸ† ${member.trophies}")
                             if (clan.ownerId != member.userId) {
                                 // Assume we have currentUserId or just pass an onKick lambda that will fail if not owner
                                 IconButton(onClick = { onKickMember(clan.id, member.userId) }) {
-                                    Text("👋", color = MaterialTheme.colorScheme.error)
+                                    Text("ðŸ‘‹", color = MaterialTheme.colorScheme.error)
                                 }
                             }
                         }
@@ -229,7 +267,7 @@ fun ClanDetailView(
             colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
             modifier = Modifier.fillMaxWidth()
         ) {
-            Text("Rời Bang")
+            Text("Rá»i Bang")
         }
     }
 }

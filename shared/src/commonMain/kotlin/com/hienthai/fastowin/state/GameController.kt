@@ -1,4 +1,4 @@
-package com.hienthai.fastowin.state
+﻿package com.hienthai.fastowin.state
 
 import com.hienthai.fastowin.data.network.GameSocketClient
 import com.hienthai.fastowin.data.network.ResumeTokenStore
@@ -89,7 +89,7 @@ class GameController(
     fun openRoomLink(roomId: String) {
         val state = _uiState.value
         if (state.currentRoomId != null || state.isMatchStarted || state.isGameOver) {
-            _uiState.update { it.copy(error = "HÃ£y rá»i phÃ²ng hiá»‡n táº¡i trÆ°á»›c khi má»Ÿ liÃªn káº¿t phÃ²ng khÃ¡c.") }
+            _uiState.update { it.copy(error = "HÃƒÂ£y rÃ¡Â»Âi phÃƒÂ²ng hiÃ¡Â»â€¡n tÃ¡ÂºÂ¡i trÃ†Â°Ã¡Â»â€ºc khi mÃ¡Â»Å¸ liÃƒÂªn kÃ¡ÂºÂ¿t phÃƒÂ²ng khÃƒÂ¡c.") }
             return
         }
         _uiState.update {
@@ -262,12 +262,12 @@ class GameController(
         val safeName = displayName.trim()
         if (safeName.isEmpty() || safeName.length > MAX_PROFILE_DISPLAY_NAME_LENGTH) {
             _uiState.update {
-                it.copy(error = "Biá»‡t danh pháº£i cÃ³ tá»« 1 Ä‘áº¿n $MAX_PROFILE_DISPLAY_NAME_LENGTH kÃ½ tá»±.")
+                it.copy(error = "BiÃ¡Â»â€¡t danh phÃ¡ÂºÂ£i cÃƒÂ³ tÃ¡Â»Â« 1 Ã„â€˜Ã¡ÂºÂ¿n $MAX_PROFILE_DISPLAY_NAME_LENGTH kÃƒÂ½ tÃ¡Â»Â±.")
             }
             return
         }
         if (avatarId != null && avatarId !in PROFILE_AVATAR_IDS) {
-            _uiState.update { it.copy(error = "áº¢nh Ä‘áº¡i diá»‡n khÃ´ng há»£p lá»‡.") }
+            _uiState.update { it.copy(error = "Ã¡ÂºÂ¢nh Ã„â€˜Ã¡ÂºÂ¡i diÃ¡Â»â€¡n khÃƒÂ´ng hÃ¡Â»Â£p lÃ¡Â»â€¡.") }
             return
         }
         _uiState.update { it.copy(isProfileSaving = true, profileNotice = null, error = null) }
@@ -588,7 +588,7 @@ class GameController(
 
     fun createRoom(roomName: String, password: String) {
         if (roomName.isBlank()) {
-            _uiState.update { it.copy(error = "Vui lÃ²ng nháº­p tÃªn phÃ²ng.") }
+            _uiState.update { it.copy(error = "Vui lÃƒÂ²ng nhÃ¡ÂºÂ­p tÃƒÂªn phÃƒÂ²ng.") }
             return
         }
         _uiState.update { it.copy(isSearching = true, error = null) }
@@ -606,7 +606,7 @@ class GameController(
     fun joinRoom(roomId: String, password: String) {
         val room = _uiState.value.availableRooms.firstOrNull { it.id == roomId }
         if (room == null) {
-            _uiState.update { it.copy(error = "PhÃ²ng khÃ´ng cÃ²n kháº£ dá»¥ng.") }
+            _uiState.update { it.copy(error = "PhÃƒÂ²ng khÃƒÂ´ng cÃƒÂ²n khÃ¡ÂºÂ£ dÃ¡Â»Â¥ng.") }
             return
         }
         _uiState.update {
@@ -671,7 +671,7 @@ class GameController(
             socket.sendMessage(ClientMessage.BlockPlayer(opponentId))
             if (roomId != null) socket.sendMessage(ClientMessage.LeaveRoom(roomId))
             returnToRoomBrowser()
-            _uiState.update { it.copy(socialNotice = "ÄÃ£ cháº·n ngÆ°á»i chÆ¡i vÃ  rá»i phÃ²ng.") }
+            _uiState.update { it.copy(socialNotice = "Ã„ÂÃƒÂ£ chÃ¡ÂºÂ·n ngÃ†Â°Ã¡Â»Âi chÃ†Â¡i vÃƒÂ  rÃ¡Â»Âi phÃƒÂ²ng.") }
         }
     }
 
@@ -785,7 +785,7 @@ class GameController(
                         applyWaitingSnapshot(game)
                     }
                 } else if (wasRecoveringRoom) {
-                    returnToRoomBrowser("PhÃ²ng Ä‘Ã£ Ä‘Ã³ng vÃ¬ quÃ¡ thá»i gian káº¿t ná»‘i láº¡i.")
+                    returnToRoomBrowser("PhÃƒÂ²ng Ã„â€˜ÃƒÂ£ Ã„â€˜ÃƒÂ³ng vÃƒÂ¬ quÃƒÂ¡ thÃ¡Â»Âi gian kÃ¡ÂºÂ¿t nÃ¡Â»â€˜i lÃ¡ÂºÂ¡i.")
                 }
             }
 
@@ -828,7 +828,7 @@ class GameController(
                         player = state.player.copy(name = message.profile.displayName),
                         isProfileLoading = false,
                         isProfileSaving = false,
-                        profileNotice = if (wasSaving) "ÄÃ£ lÆ°u há»“ sÆ¡." else null,
+                        profileNotice = if (wasSaving) "Ã„ÂÃƒÂ£ lÃ†Â°u hÃ¡Â»â€œ sÃ†Â¡." else null,
                         lastMatchEloChange = completedMatch?.eloChange ?: state.lastMatchEloChange,
                         lastMatchEloRating = if (completedMatch != null) {
                             message.profile.statistics.eloRating
@@ -866,7 +866,7 @@ class GameController(
                 _uiState.update {
                     it.copy(
                         claimingMissionCode = null,
-                        profileNotice = if (message.claimed) "ÄÃ£ nháº­n ${message.rewardXp} XP." else null,
+                        profileNotice = if (message.claimed) "Ã„ÂÃƒÂ£ nhÃ¡ÂºÂ­n ${message.rewardXp} XP." else null,
                         error = null
                     )
                 }
@@ -1072,21 +1072,21 @@ class GameController(
                     state.copy(
                         rematchNotice = when (message.event) {
                             RematchEvent.REQUESTED -> if (actorIsMe) {
-                                "ÄÃ£ gá»­i yÃªu cáº§u Ä‘áº¥u láº¡i."
+                                "Ã„ÂÃƒÂ£ gÃ¡Â»Â­i yÃƒÂªu cÃ¡ÂºÂ§u Ã„â€˜Ã¡ÂºÂ¥u lÃ¡ÂºÂ¡i."
                             } else {
-                                "Äá»‘i thá»§ muá»‘n Ä‘áº¥u láº¡i vá»›i báº¡n."
+                                "Ã„ÂÃ¡Â»â€˜i thÃ¡Â»Â§ muÃ¡Â»â€˜n Ã„â€˜Ã¡ÂºÂ¥u lÃ¡ÂºÂ¡i vÃ¡Â»â€ºi bÃ¡ÂºÂ¡n."
                             }
                             RematchEvent.CANCELLED -> if (actorIsMe) {
-                                "Báº¡n Ä‘Ã£ há»§y yÃªu cáº§u Ä‘áº¥u láº¡i."
+                                "BÃ¡ÂºÂ¡n Ã„â€˜ÃƒÂ£ hÃ¡Â»Â§y yÃƒÂªu cÃ¡ÂºÂ§u Ã„â€˜Ã¡ÂºÂ¥u lÃ¡ÂºÂ¡i."
                             } else {
-                                "Äá»‘i thá»§ Ä‘Ã£ há»§y yÃªu cáº§u Ä‘áº¥u láº¡i."
+                                "Ã„ÂÃ¡Â»â€˜i thÃ¡Â»Â§ Ã„â€˜ÃƒÂ£ hÃ¡Â»Â§y yÃƒÂªu cÃ¡ÂºÂ§u Ã„â€˜Ã¡ÂºÂ¥u lÃ¡ÂºÂ¡i."
                             }
                             RematchEvent.DECLINED -> if (actorIsMe) {
-                                "Báº¡n Ä‘Ã£ tá»« chá»‘i Ä‘áº¥u láº¡i."
+                                "BÃ¡ÂºÂ¡n Ã„â€˜ÃƒÂ£ tÃ¡Â»Â« chÃ¡Â»â€˜i Ã„â€˜Ã¡ÂºÂ¥u lÃ¡ÂºÂ¡i."
                             } else {
-                                "Äá»‘i thá»§ Ä‘Ã£ tá»« chá»‘i Ä‘áº¥u láº¡i."
+                                "Ã„ÂÃ¡Â»â€˜i thÃ¡Â»Â§ Ã„â€˜ÃƒÂ£ tÃ¡Â»Â« chÃ¡Â»â€˜i Ã„â€˜Ã¡ÂºÂ¥u lÃ¡ÂºÂ¡i."
                             }
-                            RematchEvent.EXPIRED -> "YÃªu cáº§u Ä‘áº¥u láº¡i Ä‘Ã£ háº¿t thá»i gian."
+                            RematchEvent.EXPIRED -> "YÃƒÂªu cÃ¡ÂºÂ§u Ã„â€˜Ã¡ÂºÂ¥u lÃ¡ÂºÂ¡i Ã„â€˜ÃƒÂ£ hÃ¡ÂºÂ¿t thÃ¡Â»Âi gian."
                         }
                     )
                 }
@@ -1162,9 +1162,9 @@ class GameController(
                 matchType = game.matchType,
                 player = meSnapshot?.toState(state.player.name, 1, isSpectator = meSnapshot in game.spectators) ?: state.player,
                 opponent = opponent?.toState(DEFAULT_OPPONENT_NAME, 1) ?: PlayerState(DEFAULT_OPPONENT_NAME),
-                teammates = teammateSnapshots.map { it.toState("Äá»“ng Ä‘á»™i", 1) },
+                teammates = teammateSnapshots.map { it.toState("Ã„ÂÃ¡Â»â€œng Ã„â€˜Ã¡Â»â„¢i", 1) },
                 opponents = opponentSnapshots.map { it.toState(DEFAULT_OPPONENT_NAME, 1) },
-                spectators = spectatorSnapshots.map { it.toState("KhÃ¡n giáº£", 1, isSpectator = true) },
+                spectators = spectatorSnapshots.map { it.toState("KhÃƒÂ¡n giÃ¡ÂºÂ£", 1, isSpectator = true) },
                 hasOpponent = opponentSnapshots.isNotEmpty(),
                 isMatchmaking = false,
                 matchmakingStartedAtMillis = null,
@@ -1239,9 +1239,9 @@ class GameController(
                 matchType = game.matchType,
                 player = meSnapshot?.toState(state.player.name, game.currentTarget, isSpectator = meSnapshot in game.spectators) ?: state.player,
                 opponent = opponent?.toState(DEFAULT_OPPONENT_NAME, game.currentTarget) ?: PlayerState(DEFAULT_OPPONENT_NAME),
-                teammates = teammateSnapshots.map { it.toState("Äá»“ng Ä‘á»™i", game.currentTarget) },
+                teammates = teammateSnapshots.map { it.toState("Ã„ÂÃ¡Â»â€œng Ã„â€˜Ã¡Â»â„¢i", game.currentTarget) },
                 opponents = opponentSnapshots.map { it.toState(DEFAULT_OPPONENT_NAME, game.currentTarget) },
-                spectators = spectatorSnapshots.map { it.toState("KhÃ¡n giáº£", game.currentTarget, isSpectator = true) },
+                spectators = spectatorSnapshots.map { it.toState("KhÃƒÂ¡n giÃ¡ÂºÂ£", game.currentTarget, isSpectator = true) },
                 lobbyStage = LobbyStage.MATCHED,
                 currentRoomId = game.roomId,
                 currentRoomName = game.roomName,
@@ -1336,7 +1336,7 @@ class GameController(
                 val remaining = (deadline - epochMillis()).coerceAtLeast(0L)
                 _uiState.update { it.copy(timeLeftMillis = remaining) }
                 if (remaining == 0L) {
-                    _uiState.update { it.copy(message = "Äang chá» káº¿t quáº£ tá»« mÃ¡y chá»§...") }
+                    _uiState.update { it.copy(message = "Ã„Âang chÃ¡Â»Â kÃ¡ÂºÂ¿t quÃ¡ÂºÂ£ tÃ¡Â»Â« mÃƒÂ¡y chÃ¡Â»Â§...") }
                     break
                 }
                 delay(250)
@@ -1510,6 +1510,6 @@ class GameController(
 
     private companion object {
         const val RECONNECTING_MATCH_MESSAGE =
-            "Máº¥t káº¿t ná»‘i. Äang khÃ´i phá»¥c tráº­n, phÃ²ng Ä‘Æ°á»£c giá»¯ tá»‘i Ä‘a 30 giÃ¢y..."
+            "MÃ¡ÂºÂ¥t kÃ¡ÂºÂ¿t nÃ¡Â»â€˜i. Ã„Âang khÃƒÂ´i phÃ¡Â»Â¥c trÃ¡ÂºÂ­n, phÃƒÂ²ng Ã„â€˜Ã†Â°Ã¡Â»Â£c giÃ¡Â»Â¯ tÃ¡Â»â€˜i Ã„â€˜a 30 giÃƒÂ¢y..."
     }
 }

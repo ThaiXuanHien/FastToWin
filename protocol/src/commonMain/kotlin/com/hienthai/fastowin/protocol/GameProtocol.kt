@@ -647,6 +647,10 @@ sealed class ClientMessage {
     data class KickClanMember(val clanId: String, val memberId: String) : ClientMessage()
 
     @Serializable
+    @SerialName("claim_clan_quest_reward")
+    data class ClaimClanQuestReward(val clanId: String) : ClientMessage()
+
+    @Serializable
     @SerialName("measure_latency")
     data class MeasureLatency(val clientSentAtEpochMillis: Long) : ClientMessage()
 
@@ -880,7 +884,16 @@ data class ClanMemberSnapshot(
     val userId: String,
     val displayName: String,
     val role: ClanRole,
-    val trophies: Int
+    val trophies: Int,
+    val questContribution: Int = 0,
+    val questRewardClaimed: Boolean = false
+)
+
+@Serializable
+data class ClanQuestSnapshot(
+    val progress: Int,
+    val target: Int,
+    val rewardGold: Int
 )
 
 @Serializable
@@ -892,7 +905,8 @@ data class ClanSnapshot(
     val members: List<ClanMemberSnapshot>,
     val trophies: Int,
     val logoId: String? = null,
-    val maxMembers: Int = 50
+    val maxMembers: Int = 50,
+    val quest: ClanQuestSnapshot? = null
 )
 
 @Serializable

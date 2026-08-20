@@ -1,0 +1,8 @@
+﻿ALTER TABLE clans
+    ADD COLUMN quest_progress INTEGER NOT NULL DEFAULT 0,
+    ADD COLUMN quest_target INTEGER NOT NULL DEFAULT 500,
+    ADD COLUMN quest_reward_gold INTEGER NOT NULL DEFAULT 1000;
+
+ALTER TABLE clan_members
+    ADD COLUMN quest_contribution INTEGER NOT NULL DEFAULT 0,
+    ADD COLUMN quest_reward_claimed BOOLEAN NOT NULL DEFAULT FALSE;

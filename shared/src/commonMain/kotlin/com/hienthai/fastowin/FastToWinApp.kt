@@ -1,4 +1,4 @@
-package com.hienthai.fastowin
+﻿package com.hienthai.fastowin
 
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.Column
@@ -209,9 +209,9 @@ private fun GameContent(
         val playerLevel = state.profile?.progression?.level ?: 1
         challengeLinkError = when {
             state.currentRoomId != null || state.isMatchStarted || state.isGameOver || state.isMatchmaking ->
-                "HÃ£y káº¿t thÃºc hoáº·c rá»i tráº­n hiá»‡n táº¡i trÆ°á»›c khi má»Ÿ thá»­ thÃ¡ch."
+                "HÃƒÂ£y kÃ¡ÂºÂ¿t thÃƒÂºc hoÃ¡ÂºÂ·c rÃ¡Â»Âi trÃ¡ÂºÂ­n hiÃ¡Â»â€¡n tÃ¡ÂºÂ¡i trÃ†Â°Ã¡Â»â€ºc khi mÃ¡Â»Å¸ thÃ¡Â»Â­ thÃƒÂ¡ch."
             playerLevel < challenge.mode.unlockLevel ->
-                "Cháº¿ Ä‘á»™ ${challenge.mode.title} má»Ÿ khÃ³a á»Ÿ cáº¥p ${challenge.mode.unlockLevel}."
+                "ChÃ¡ÂºÂ¿ Ã„â€˜Ã¡Â»â„¢ ${challenge.mode.title} mÃ¡Â»Å¸ khÃƒÂ³a Ã¡Â»Å¸ cÃ¡ÂºÂ¥p ${challenge.mode.unlockLevel}."
             else -> null
         }
 
@@ -250,16 +250,16 @@ private fun GameContent(
     challengeLinkError?.let { message ->
         AlertDialog(
             onDismissRequest = { challengeLinkError = null },
-            title = { Text("KhÃ´ng thá»ƒ má»Ÿ thá»­ thÃ¡ch") },
+            title = { Text("KhÃƒÂ´ng thÃ¡Â»Æ’ mÃ¡Â»Å¸ thÃ¡Â»Â­ thÃƒÂ¡ch") },
             text = { Text(message) },
             confirmButton = {
-                TextButton(onClick = { challengeLinkError = null }) { Text("ÄÃ£ hiá»ƒu") }
+                TextButton(onClick = { challengeLinkError = null }) { Text("Ã„ÂÃƒÂ£ hiÃ¡Â»Æ’u") }
             }
         )
     }
     if (showGameModePicker) {
         GameModePickerDialog(
-            title = "Chá»n cháº¿ Ä‘á»™ chÆ¡i",
+            title = "ChÃ¡Â»Ân chÃ¡ÂºÂ¿ Ã„â€˜Ã¡Â»â„¢ chÃ†Â¡i",
             playerLevel = state.profile?.progression?.level ?: 1,
             onDismiss = { showGameModePicker = false },
             onSelect = { mode ->
@@ -271,7 +271,7 @@ private fun GameContent(
     }
     if (showPracticeModePicker) {
         GameModePickerDialog(
-            title = "Chá»n cháº¿ Ä‘á»™ luyá»‡n táº­p",
+            title = "ChÃ¡Â»Ân chÃ¡ÂºÂ¿ Ã„â€˜Ã¡Â»â„¢ luyÃ¡Â»â€¡n tÃ¡ÂºÂ­p",
             playerLevel = state.profile?.progression?.level ?: 1,
             onDismiss = { showPracticeModePicker = false },
             onSelect = { mode ->
@@ -547,7 +547,7 @@ private fun GameContent(
                     onOpenTournament = controller::openTournament,
                     onOpenShop = controller::openShop,
                     onShareRoom = { roomId, roomName ->
-                        textSharer.share(buildRoomShareText(roomName, roomId), "Chia sáº» phÃ²ng")
+                        textSharer.share(buildRoomShareText(roomName, roomId), "Chia sÃ¡ÂºÂ» phÃƒÂ²ng")
                     },
                     onResolveRoomLink = controller::resolvePendingRoomLink,
                     onClaimDailyCheckIn = controller::claimDailyCheckIn

@@ -1,4 +1,4 @@
-package com.hienthai.fastowin.server
+﻿package com.hienthai.fastowin.server
 
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -24,6 +24,7 @@ class PostgresMatchResultRepository(
                     updateStats(connection, match)
                     unlockAchievements(connection, match)
                     updateMissions(connection, match)
+                    if (match.matchType == MatchType.RANKED) updateClanWarsAndQuests(connection, match)
                 }
                 connection.commit()
             } catch (error: Throwable) {

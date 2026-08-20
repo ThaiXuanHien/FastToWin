@@ -240,6 +240,7 @@ class GameEngine(
         if (message is ClientMessage.GetClanList) return getClanList(playerId, message.query)
         if (message is ClientMessage.InviteToClan) return inviteToClan(playerId, message.playerCode)
         if (message is ClientMessage.KickClanMember) return kickClanMember(playerId, message.clanId, message.memberId)
+        if (message is ClientMessage.ClaimClanQuestReward) return claimClanQuestReward(playerId, message.clanId)
         if (message is ClientMessage.UpdateAvatar) return updateAvatar(playerId, message.base64Data)
         if (message is ClientMessage.UpdateClanLogo) return updateClanLogo(playerId, message.clanId, message.logoId)
         if (message is ClientMessage.BuyCosmetic) return buyCosmetic(playerId, message.cosmeticId)
@@ -314,6 +315,7 @@ class GameEngine(
                 is ClientMessage.LeaveClan -> HandleResult(emptyList())
                 is ClientMessage.InviteToClan -> HandleResult(emptyList())
                 is ClientMessage.KickClanMember -> HandleResult(emptyList())
+                is ClientMessage.ClaimClanQuestReward -> HandleResult(emptyList())
                 is ClientMessage.SendFriendRequest -> HandleResult(emptyList())
                 is ClientMessage.RespondFriendRequest -> HandleResult(emptyList())
                 is ClientMessage.CancelFriendRequest -> HandleResult(emptyList())
@@ -2865,6 +2867,33 @@ class GameEngine(
             return getClanInfo(playerId, clanId)
         }
         return listOf(error(playerId, "UPLOAD_FAILED", "KhÃ´ng thá»ƒ cáº­p nháº­t logo."))
+    }
+
+    private suspend fun claimClanQuestReward(playerId: String, clanId: String): List<Delivery> {
+        val clan = clanRepository.getClanById(clanId)
+            ?: return listOf(error(playerId, "CLAN_NOT_FOUND", "Kh\u00f4ng t\u00ecm th\u1ea5y bang h\u1ed9i."))
+        
+        val member = clan.members.find { it.userId == playerId }
+            ?: return listOf(error(playerId, "NOT_IN_CLAN", "B\u1ea1n kh\u00f4ng n\u1eb1m trong bang n\u00e0y."))
+
+        val quest = clan.quest
+            ?: return listOf(error(playerId, "NO_QUEST", "Bang h\u1ed9i kh\u00f4ng c\u00f3 nhi\u1ec7m v\u1ee5."))
+
+        if (quest.progress < quest.target) {
+            return listOf(error(playerId, "QUEST_NOT_FINISHED", "Nhi\u1ec7m v\u1ee5 ch\u01b0a ho\u00e0n th\u00e0nh."))
+        }
+
+        if (member.questRewardClaimed) {
+            return listOf(error(playerId, "ALREADY_CLAIMED", "B\u1ea1n \u0111\u00e3 nh\u1eadn th\u01b0\u1edfng r\u1ed3i."))
+        }
+
+        val claimed = clanRepository.claimQuestReward(clanId, playerId)
+        if (claimed) {
+            playerProfileRepository.updateGold(playerId, quest.rewardGold)
+            return getClanInfo(playerId, clanId) + loadProfile(playerId)
+        }
+        
+        return listOf(error(playerId, "CLAIM_FAILED", "Kh\u00f4ng th\u1ec3 nh\u1eadn th\u01b0\u1edfng."))
     }
 
     private companion object {
