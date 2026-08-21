@@ -43,6 +43,7 @@ import androidx.compose.ui.unit.dp
 import com.hienthai.fastowin.platform.epochMillis
 import com.hienthai.fastowin.state.AppNotification
 import com.hienthai.fastowin.state.AppNotificationKind
+import com.hienthai.fastowin.ui.components.SystemBackHandler
 import com.hienthai.fastowin.ui.layout.ResponsiveScreen
 
 @Composable
@@ -55,6 +56,8 @@ fun NotificationsScreen(
     onClearAll: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    SystemBackHandler(onBack = onBack)
+
     var confirmClear by remember { mutableStateOf(false) }
     if (confirmClear) {
         AlertDialog(

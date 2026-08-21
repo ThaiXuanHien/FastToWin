@@ -21,6 +21,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.shape.CircleShape
 import com.hienthai.fastowin.protocol.ClanSummarySnapshot
 import com.hienthai.fastowin.protocol.ClanSnapshot
+import com.hienthai.fastowin.ui.components.SystemBackHandler
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -39,6 +40,8 @@ fun ClanScreen(
     onViewClan: (String) -> Unit,
     onBack: () -> Unit,
 ) {
+    SystemBackHandler(onBack = onBack)
+
     Scaffold(
         topBar = {
             TopAppBar(

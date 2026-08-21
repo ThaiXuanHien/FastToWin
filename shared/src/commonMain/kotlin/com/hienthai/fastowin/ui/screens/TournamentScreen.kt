@@ -1,9 +1,16 @@
 package com.hienthai.fastowin.ui.screens
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.ui.draw.alpha
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -54,6 +61,7 @@ import com.hienthai.fastowin.protocol.TournamentMatchSnapshot
 import com.hienthai.fastowin.protocol.TournamentPhase
 import com.hienthai.fastowin.protocol.TournamentSnapshot
 import com.hienthai.fastowin.state.GameState
+import com.hienthai.fastowin.ui.components.SystemBackHandler
 import com.hienthai.fastowin.ui.layout.ResponsiveScreen
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -69,6 +77,8 @@ fun TournamentScreen(
     onOpenFriendProfile: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    SystemBackHandler(onBack = onBack)
+
     val tournament = state.tournamentHub.activeTournament
     Scaffold(
         modifier = modifier.fillMaxSize().testTag("tournament_screen"),
@@ -181,52 +191,165 @@ private fun CreateTournamentCard(
     }
     Card(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(22.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surface,
+            contentColor = MaterialTheme.colorScheme.onSurface
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
-        Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                Icon(Icons.Rounded.EmojiEvents, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+        Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Surface(
+                    color = MaterialTheme.colorScheme.primaryContainer,
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Icon(
+                        Icons.Rounded.EmojiEvents,
+                        contentDescription = null,
+                        modifier = Modifier.padding(8.dp),
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                }
                 Column {
-                    Text("Tạo giải riêng 4 người", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                    Text("Loại trực tiếp • 2 bán kết • 1 chung kết", style = MaterialTheme.typography.bodySmall)
+                    Text(
+                        "Tạo giải riêng 4 người",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        "Loại trực tiếp • 2 bán kết • 1 chung kết",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
             }
+
             OutlinedTextField(
                 value = name,
                 onValueChange = { name = it.take(48) },
-                label = { Text("Tên giải") },
-                placeholder = { Text("Cúp cuối tuần") },
+                label = { Text("Tên giải đấu") },
+                placeholder = { Text("VD: Cúp Chiến Thần") },
                 singleLine = true,
+                shape = RoundedCornerShape(16.dp),
                 modifier = Modifier.fillMaxWidth().testTag("tournament_name")
             )
-            OutlinedButton(onClick = { showModePicker = true }, modifier = Modifier.fillMaxWidth()) {
-                Text("Chế độ: ${mode.title}")
+
+            Surface(
+                onClick = { showModePicker = true },
+                shape = RoundedCornerShape(16.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                border = androidx.compose.foundation.BorderStroke(
+                    1.dp,
+                    MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)
+                )
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(16.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column {
+                        Text(
+                            "Chế độ chơi",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            mode.title,
+                            style = MaterialTheme.typography.bodyLarge,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                    Icon(
+                        Icons.Rounded.PlayArrow,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                }
             }
 
             var entryFee by remember { mutableStateOf(100) }
-            val entryFeeOptions = listOf(0, 50, 100, 200, 500)
-            Text("Lệ phí tham gia (Vàng):", fontWeight = FontWeight.Bold)
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                entryFeeOptions.forEach { fee ->
+            val entryFeeOptions = listOf(0, 50, 100, 200, 500, 1000)
+            var isCustomFee by remember { mutableStateOf(false) }
+            var customFeeText by remember { mutableStateOf("") }
+
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(
+                    "Lệ phí tham gia (Vàng)",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold
+                )
+                
+                @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+                FlowRow(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    entryFeeOptions.forEach { fee ->
+                        FilterChip(
+                            selected = !isCustomFee && entryFee == fee,
+                            onClick = {
+                                isCustomFee = false
+                                entryFee = fee
+                            },
+                            label = { Text(if (fee == 0) "Miễn phí" else "$fee") },
+                            shape = RoundedCornerShape(12.dp)
+                        )
+                    }
                     FilterChip(
-                        selected = entryFee == fee,
-                        onClick = { entryFee = fee },
-                        label = { Text(if (fee == 0) "Miễn phí" else fee.toString()) }
+                        selected = isCustomFee,
+                        onClick = { isCustomFee = true },
+                        label = { Text("Tùy chỉnh") },
+                        shape = RoundedCornerShape(12.dp)
+                    )
+                }
+
+                if (isCustomFee) {
+                    OutlinedTextField(
+                        value = customFeeText,
+                        onValueChange = {
+                            if (it.isEmpty() || (it.length <= 6 && it.all { char -> char.isDigit() })) {
+                                customFeeText = it
+                                entryFee = it.toIntOrNull() ?: 0
+                            }
+                        },
+                        label = { Text("Nhập số vàng lệ phí") },
+                        placeholder = { Text("VD: 750") },
+                        singleLine = true,
+                        prefix = { Text("💰 ") },
+                        suffix = { Text("Vàng") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        shape = RoundedCornerShape(16.dp),
+                        modifier = Modifier.fillMaxWidth().padding(top = 4.dp)
                     )
                 }
             }
 
             Button(
                 onClick = { onCreate(name.trim(), mode, entryFee) },
-                enabled = enabled && name.trim().length >= 3,
-                modifier = Modifier.fillMaxWidth().height(52.dp).testTag("create_tournament")
-            ) { Text("Tạo giải") }
-            Text(
-                "Các trận đấu giải không ảnh hưởng Elo.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
+                enabled = enabled && name.trim().length >= 3 && (!isCustomFee || customFeeText.isNotEmpty()),
+                modifier = Modifier.fillMaxWidth().height(56.dp).testTag("create_tournament"),
+                shape = RoundedCornerShape(16.dp)
+            ) {
+                Text("Bắt đầu tạo giải", fontWeight = FontWeight.Bold)
+            }
+            
+            Surface(
+                color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.5f),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Text(
+                    "Các trận đấu giải không ảnh hưởng Elo.",
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                    color = MaterialTheme.colorScheme.onSecondaryContainer
+                )
+            }
         }
     }
 }
@@ -242,63 +365,155 @@ private fun ActiveTournamentContent(
 ) {
     val myId = state.player.id
     val isHost = tournament.hostPlayerId == myId
-    Surface(
+    
+    Card(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(22.dp),
-        color = MaterialTheme.colorScheme.primaryContainer
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.primaryContainer,
+            contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+        )
     ) {
-        Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text(tournament.name, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Black)
-            Text("${tournament.gameMode.title()} • ${tournament.phase.label()}")
-            Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                Text(
-                    "${tournament.players.size}/${tournament.maxPlayers} người",
-                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.75f)
-                )
-                if (tournament.entryFee > 0) {
+        Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.Top
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        "Phí: ${tournament.entryFee} Vàng",
-                        color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.75f)
+                        tournament.name,
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontWeight = FontWeight.Black
                     )
                     Text(
-                        "Thưởng: ${tournament.prizePool} Vàng",
-                        color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.75f),
+                        "${tournament.gameMode.title()} • ${tournament.phase.label()}",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                }
+                Surface(
+                    color = MaterialTheme.colorScheme.primary,
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Text(
+                        "${tournament.players.size}/${tournament.maxPlayers}",
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.onPrimary,
                         fontWeight = FontWeight.Bold
                     )
+                }
+            }
+            
+            if (tournament.entryFee > 0) {
+                HorizontalDivider(color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.2f))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Column {
+                        Text(
+                            "Lệ phí",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.6f)
+                        )
+                        Text("${tournament.entryFee} Vàng", fontWeight = FontWeight.SemiBold)
+                    }
+                    Column(horizontalAlignment = Alignment.End) {
+                        Text(
+                            "Giải thưởng",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.6f)
+                        )
+                        Text(
+                            "${tournament.prizePool} Vàng",
+                            fontWeight = FontWeight.Black,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
                 }
             }
         }
     }
 
     SectionLabel("Người tham gia")
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         repeat(tournament.maxPlayers) { index ->
             val participant = tournament.players.getOrNull(index)
-            Card(
+            val isMe = participant?.playerId == myId
+            
+            Surface(
                 onClick = { participant?.playerId?.takeIf { it != myId }?.let(onOpenFriendProfile) },
                 modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)
+                shape = RoundedCornerShape(16.dp),
+                color = if (isMe) MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.3f) 
+                        else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                border = if (isMe) androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.secondary) else null
             ) {
                 Row(
-                    modifier = Modifier.fillMaxWidth().padding(14.dp),
+                    modifier = Modifier.fillMaxWidth().padding(16.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Text(
-                        participant?.displayName ?: "Đang chờ người chơi…",
-                        fontWeight = if (participant != null) FontWeight.Bold else FontWeight.Normal
-                    )
-                    Text(
-                        when {
-                            participant == null -> "Trống"
-                            participant.isHost -> "Chủ giải"
-                            participant.isOnline -> "Trực tuyến"
-                            else -> "Ngoại tuyến"
-                        },
-                        style = MaterialTheme.typography.labelMedium,
-                        color = if (participant?.isOnline == true) MaterialTheme.colorScheme.primary
-                        else MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Surface(
+                            shape = androidx.compose.foundation.shape.CircleShape,
+                            color = if (participant != null) MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)
+                                    else MaterialTheme.colorScheme.outline.copy(alpha = 0.1f),
+                            modifier = Modifier.size(32.dp)
+                        ) {
+                            Icon(
+                                if (participant != null) Icons.Rounded.EmojiEvents else Icons.Rounded.GroupAdd,
+                                contentDescription = null,
+                                modifier = Modifier.padding(6.dp),
+                                tint = if (participant != null) MaterialTheme.colorScheme.primary 
+                                       else MaterialTheme.colorScheme.outline
+                            )
+                        }
+                        Text(
+                            participant?.displayName ?: "Đang chờ người chơi…",
+                            fontWeight = if (participant != null) FontWeight.Bold else FontWeight.Normal,
+                            color = if (participant != null) MaterialTheme.colorScheme.onSurface 
+                                    else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                        )
+                        if (isMe) {
+                            Text(
+                                "(Bạn)",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.secondary
+                            )
+                        }
+                    }
+                    
+                    if (participant != null) {
+                        Surface(
+                            color = when {
+                                participant.isHost -> MaterialTheme.colorScheme.tertiaryContainer
+                                participant.isOnline -> MaterialTheme.colorScheme.primaryContainer
+                                else -> MaterialTheme.colorScheme.surfaceVariant
+                            },
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Text(
+                                when {
+                                    participant.isHost -> "Chủ giải"
+                                    participant.isOnline -> "Trực tuyến"
+                                    else -> "Ngoại tuyến"
+                                },
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = when {
+                                    participant.isHost -> MaterialTheme.colorScheme.onTertiaryContainer
+                                    participant.isOnline -> MaterialTheme.colorScheme.onPrimaryContainer
+                                    else -> MaterialTheme.colorScheme.onSurfaceVariant
+                                }
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -309,29 +524,45 @@ private fun ActiveTournamentContent(
             friend.presence != FriendPresence.OFFLINE && tournament.players.none { it.playerId == friend.userId }
         }
         if (availableFriends.isNotEmpty() && tournament.players.size < tournament.maxPlayers) {
-            SectionLabel("Mời bạn đang online")
-            availableFriends.forEach { friend ->
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Text(friend.displayName, fontWeight = FontWeight.Medium)
-                    OutlinedButton(onClick = { onInvite(friend.userId) }) {
-                        Icon(Icons.Rounded.GroupAdd, contentDescription = null)
-                        Text(" Mời")
+            SectionLabel("Mời bạn bè")
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                availableFriends.forEach { friend ->
+                    Surface(
+                        shape = RoundedCornerShape(16.dp),
+                        color = MaterialTheme.colorScheme.surface,
+                        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(friend.displayName, fontWeight = FontWeight.Medium)
+                            TextButton(
+                                onClick = { onInvite(friend.userId) },
+                                shape = RoundedCornerShape(12.dp)
+                            ) {
+                                Icon(Icons.Rounded.GroupAdd, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Text(" Mời")
+                            }
+                        }
                     }
                 }
             }
         }
+        
+        Spacer(Modifier.height(8.dp))
+        
         Button(
             onClick = onStart,
             enabled = tournament.players.size == tournament.maxPlayers &&
                 tournament.players.all { it.isOnline } && !state.isTournamentLoading,
-            modifier = Modifier.fillMaxWidth().height(54.dp).testTag("start_tournament")
+            modifier = Modifier.fillMaxWidth().height(56.dp).testTag("start_tournament"),
+            shape = RoundedCornerShape(16.dp)
         ) {
             Icon(Icons.Rounded.PlayArrow, contentDescription = null)
-            Text(" Bắt đầu bán kết")
+            Spacer(Modifier.width(8.dp))
+            Text("BẮT ĐẦU GIẢI ĐẤU", fontWeight = FontWeight.Black)
         }
     }
 
@@ -341,63 +572,25 @@ private fun ActiveTournamentContent(
     }
 
     if (tournament.phase == TournamentPhase.LOBBY) {
-        OutlinedButton(onClick = onLeave, modifier = Modifier.fillMaxWidth(), enabled = !state.isTournamentLoading) {
-            Text(if (isHost) "Hủy giải" else "Rời giải")
+        OutlinedButton(
+            onClick = onLeave, 
+            modifier = Modifier.fillMaxWidth().height(50.dp), 
+            enabled = !state.isTournamentLoading,
+            shape = RoundedCornerShape(16.dp)
+        ) {
+            Text(if (isHost) "Hủy giải đấu" else "Rời khỏi giải", fontWeight = FontWeight.Bold)
         }
     } else if (tournament.phase == TournamentPhase.RUNNING) {
-        Text(
-            "Các trận tiếp theo được tạo tự động. Người thắng bán kết sẽ vào chung kết.",
-            modifier = Modifier.fillMaxWidth(),
-            textAlign = TextAlign.Center,
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-    }
-}
-
-@Composable
-private fun TournamentBracket(tournament: TournamentSnapshot) {
-    val names = tournament.players.associate { it.playerId to it.displayName }
-    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text("BÁN KẾT", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
-        tournament.matches.filter { it.round == 1 }.sortedBy { it.position }.forEach { match ->
-            TournamentMatchCard(match, names)
-        }
-        HorizontalDivider()
-        Text("CHUNG KẾT", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
-        tournament.matches.firstOrNull { it.round == 2 }?.let { TournamentMatchCard(it, names) }
-        tournament.championPlayerId?.let { championId ->
-            Surface(shape = RoundedCornerShape(18.dp), color = MaterialTheme.colorScheme.tertiaryContainer) {
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(18.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.Center
-                ) {
-                    Icon(Icons.Rounded.EmojiEvents, contentDescription = null)
-                    Text("  Vô địch: ${names[championId] ?: "Người chơi"}", fontWeight = FontWeight.Black)
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun TournamentMatchCard(match: TournamentMatchSnapshot, names: Map<String, String>) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)
-    ) {
-        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            TournamentPlayerLine(match.playerOneId, match.winnerPlayerId, names)
-            HorizontalDivider()
-            TournamentPlayerLine(match.playerTwoId, match.winnerPlayerId, names)
+        Surface(
+            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+            shape = RoundedCornerShape(12.dp),
+            modifier = Modifier.fillMaxWidth()
+        ) {
             Text(
-                when (match.phase) {
-                    TournamentMatchPhase.PENDING -> "Chưa bắt đầu"
-                    TournamentMatchPhase.PLAYING -> "Đang thi đấu"
-                    TournamentMatchPhase.FINISHED -> "Đã kết thúc"
-                },
-                style = MaterialTheme.typography.labelSmall,
+                "Các trận đấu được tạo tự động. Người thắng bán kết sẽ vào chung kết.",
+                modifier = Modifier.padding(12.dp),
+                textAlign = TextAlign.Center,
+                style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
@@ -405,11 +598,215 @@ private fun TournamentMatchCard(match: TournamentMatchSnapshot, names: Map<Strin
 }
 
 @Composable
-private fun TournamentPlayerLine(playerId: String?, winnerId: String?, names: Map<String, String>) {
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-        Text(playerId?.let { names[it] } ?: "Đang chờ…")
-        if (playerId != null && playerId == winnerId) {
-            Text("THẮNG", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+private fun TournamentBracket(tournament: TournamentSnapshot) {
+    val names = tournament.players.associate { it.playerId to it.displayName }
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        // Semi-finals
+        Text(
+            "VÒNG BÁN KẾT",
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.primary,
+            fontWeight = FontWeight.Bold
+        )
+        
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            val semiFinals = tournament.matches.filter { it.round == 1 }.sortedBy { it.position }
+            semiFinals.forEach { match ->
+                Box(modifier = Modifier.weight(1f)) {
+                    TournamentMatchCard(match, names, compact = true)
+                }
+            }
+        }
+
+        // Visual connector (simplified for now, can be improved with custom drawing)
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(24.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            androidx.compose.foundation.Canvas(modifier = Modifier.fillMaxSize()) {
+                val color = androidx.compose.ui.graphics.Color.Gray.copy(alpha = 0.3f)
+                val strokeWidth = 2.dp.toPx()
+                
+                // Horizontal line connecting the two semi-finals
+                drawLine(
+                    color = color,
+                    start = androidx.compose.ui.geometry.Offset(size.width * 0.25f, 0f),
+                    end = androidx.compose.ui.geometry.Offset(size.width * 0.75f, 0f),
+                    strokeWidth = strokeWidth
+                )
+                // Vertical line down to final
+                drawLine(
+                    color = color,
+                    start = androidx.compose.ui.geometry.Offset(size.width * 0.5f, 0f),
+                    end = androidx.compose.ui.geometry.Offset(size.width * 0.5f, size.height),
+                    strokeWidth = strokeWidth
+                )
+            }
+        }
+
+        // Final
+        Text(
+            "TRẬN CHUNG KẾT",
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.secondary,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.align(Alignment.CenterHorizontally)
+        )
+        
+        tournament.matches.firstOrNull { it.round == 2 }?.let { finalMatch ->
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth(0.7f)
+                    .align(Alignment.CenterHorizontally)
+            ) {
+                TournamentMatchCard(finalMatch, names, isFinal = true)
+            }
+        }
+
+        // Champion
+        tournament.championPlayerId?.let { championId ->
+            Spacer(Modifier.height(8.dp))
+            ChampionCard(names[championId] ?: "Người chơi")
+        }
+    }
+}
+
+@Composable
+private fun ChampionCard(name: String) {
+    Surface(
+        shape = RoundedCornerShape(24.dp),
+        color = MaterialTheme.colorScheme.tertiaryContainer,
+        border = androidx.compose.foundation.BorderStroke(2.dp, MaterialTheme.colorScheme.tertiary),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(
+            modifier = Modifier.padding(24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Icon(
+                Icons.Rounded.EmojiEvents,
+                contentDescription = null,
+                modifier = Modifier.size(64.dp),
+                tint = MaterialTheme.colorScheme.tertiary
+            )
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(
+                    "NHÀ VÔ ĐỊCH",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.7f),
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    name,
+                    style = MaterialTheme.typography.headlineMedium,
+                    fontWeight = FontWeight.Black,
+                    color = MaterialTheme.colorScheme.onTertiaryContainer,
+                    textAlign = TextAlign.Center
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun TournamentMatchCard(
+    match: TournamentMatchSnapshot, 
+    names: Map<String, String>,
+    compact: Boolean = false,
+    isFinal: Boolean = false
+) {
+    val isPlaying = match.phase == TournamentMatchPhase.PLAYING
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = if (isPlaying) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)
+                            else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+        ),
+        border = if (isPlaying) androidx.compose.foundation.BorderStroke(2.dp, MaterialTheme.colorScheme.primary) else null
+    ) {
+        Column(
+            modifier = Modifier.padding(if (compact) 10.dp else 14.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            TournamentPlayerLine(match.playerOneId, match.winnerPlayerId, names, compact)
+            HorizontalDivider(
+                modifier = Modifier.alpha(0.2f),
+                color = if (isPlaying) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            TournamentPlayerLine(match.playerTwoId, match.winnerPlayerId, names, compact)
+            
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Surface(
+                    color = when (match.phase) {
+                        TournamentMatchPhase.PENDING -> MaterialTheme.colorScheme.surfaceVariant
+                        TournamentMatchPhase.PLAYING -> MaterialTheme.colorScheme.primary
+                        TournamentMatchPhase.FINISHED -> MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)
+                    },
+                    shape = RoundedCornerShape(4.dp)
+                ) {
+                    Text(
+                        when (match.phase) {
+                            TournamentMatchPhase.PENDING -> "CHỜ"
+                            TournamentMatchPhase.PLAYING -> "ĐANG ĐẤU"
+                            TournamentMatchPhase.FINISHED -> "XONG"
+                        },
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = when (match.phase) {
+                            TournamentMatchPhase.PLAYING -> MaterialTheme.colorScheme.onPrimary
+                            else -> MaterialTheme.colorScheme.onSurfaceVariant
+                        }
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun TournamentPlayerLine(
+    playerId: String?, 
+    winnerId: String?, 
+    names: Map<String, String>,
+    compact: Boolean = false
+) {
+    val isWinner = playerId != null && playerId == winnerId
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = playerId?.let { names[it] } ?: "Đang chờ…",
+            style = if (compact) MaterialTheme.typography.bodySmall else MaterialTheme.typography.bodyMedium,
+            fontWeight = if (isWinner) FontWeight.Bold else FontWeight.Normal,
+            maxLines = 1,
+            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f),
+            color = if (isWinner) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+        )
+        if (isWinner) {
+            Icon(
+                Icons.Rounded.EmojiEvents,
+                contentDescription = null,
+                modifier = Modifier.size(if (compact) 14.dp else 18.dp),
+                tint = MaterialTheme.colorScheme.primary
+            )
         }
     }
 }

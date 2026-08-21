@@ -1,4 +1,4 @@
-﻿package com.hienthai.fastowin.ui.screens
+package com.hienthai.fastowin.ui.screens
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -26,6 +26,7 @@ import androidx.compose.ui.unit.dp
 import com.hienthai.fastowin.protocol.ShopItem
 import com.hienthai.fastowin.protocol.SHOP_ITEMS
 import com.hienthai.fastowin.protocol.PlayerProgressionSnapshot
+import com.hienthai.fastowin.ui.components.SystemBackHandler
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -36,7 +37,7 @@ fun ShopScreen(
     onClose: () -> Unit
 ) {
     var selectedTab by remember { mutableStateOf("CARD_BACK") }
-    val tabs = listOf("CARD_BACK" to "Thẻ bài", "BOARD_SKIN" to "Bàn cờ", "AVATAR_FRAME" to "Khung", "EMOJI" to "Biểu cảm")
+    val tabs = listOf("CARD_BACK" to "Ô số", "BOARD_SKIN" to "Bàn chơi", "AVATAR_FRAME" to "Khung avatar", "EMOJI" to "Biểu cảm")
     
     val gold = progression?.gold ?: 0
     val gems = progression?.gems ?: 0
@@ -44,6 +45,8 @@ fun ShopScreen(
     // Derived from cosmetics list in progression
     val ownedIds = progression?.cosmetics?.filter { it.unlocked }?.map { it.id }?.toSet() ?: emptySet()
     val equippedIds = progression?.cosmetics?.filter { it.equipped }?.map { it.id }?.toSet() ?: emptySet()
+
+    SystemBackHandler(onBack = onClose)
 
     Scaffold(
         topBar = {
@@ -149,7 +152,7 @@ private fun ShopItemCard(
                 contentAlignment = Alignment.Center
             ) {
                 if (item.type.name == "CARD_BACK") {
-                    Text("Bài", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("Ô số", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 } else if (item.type.name == "BOARD_SKIN") {
                     Text("Bàn", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }

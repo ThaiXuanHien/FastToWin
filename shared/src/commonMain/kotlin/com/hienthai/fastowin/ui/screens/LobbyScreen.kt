@@ -70,6 +70,7 @@ import com.hienthai.fastowin.state.ConnectionStatus
 import com.hienthai.fastowin.state.GameState
 import com.hienthai.fastowin.state.LobbyStage
 import com.hienthai.fastowin.state.PlayerState
+import com.hienthai.fastowin.ui.components.SystemBackHandler
 import com.hienthai.fastowin.ui.layout.ResponsiveScreen
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -106,6 +107,16 @@ fun LobbyScreen(
     onClaimDailyCheckIn: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    SystemBackHandler(enabled = state.lobbyStage != LobbyStage.SELECT_MODE) {
+        when (state.lobbyStage) {
+            LobbyStage.ENTER_NAME -> onBackToMode()
+            LobbyStage.ROOM_BROWSER -> onBackToMode()
+            LobbyStage.ROOM_WAITING -> onLeaveRoom()
+            LobbyStage.MATCHMAKING -> onCancelMatchmaking()
+            else -> {}
+        }
+    }
+
     var openCreateAfterModeSelection by remember { mutableStateOf(false) }
     var showTabModePicker by remember { mutableStateOf(false) }
     if (showTabModePicker) {

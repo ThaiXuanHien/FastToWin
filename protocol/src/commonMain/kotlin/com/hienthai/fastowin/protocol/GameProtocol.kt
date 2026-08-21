@@ -1,4 +1,4 @@
-﻿package com.hienthai.fastowin.protocol
+package com.hienthai.fastowin.protocol
 
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
@@ -930,8 +930,8 @@ data class ShopItem(
 )
 
 val SHOP_ITEMS = listOf(
-    ShopItem("card_back_gold", "Bài Lưng Vàng", CosmeticType.CARD_BACK, 500, "GOLD"),
-    ShopItem("card_back_diamond", "Bài Lưng Kim Cương", CosmeticType.CARD_BACK, 1500, "GOLD"),
-    ShopItem("board_skin_dark", "Bàn Cờ Tối", CosmeticType.BOARD_SKIN, 1000, "GOLD"),
-    ShopItem("board_skin_forest", "Khu Rừng", CosmeticType.BOARD_SKIN, 1000, "GOLD")
+    ShopItem("card_back_gold", "Ô Vàng", CosmeticType.CARD_BACK, 500, "GOLD"),
+    ShopItem("card_back_diamond", "Ô Kim Cương", CosmeticType.CARD_BACK, 1500, "GOLD"),
+    ShopItem("board_skin_dark", "Bàn Tối", CosmeticType.BOARD_SKIN, 1000, "GOLD"),
+    ShopItem("board_skin_forest", "Rừng Xanh", CosmeticType.BOARD_SKIN, 1000, "GOLD")
 )

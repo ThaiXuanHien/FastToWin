@@ -44,6 +44,7 @@ import com.hienthai.fastowin.data.preferences.AppFontScale
 import com.hienthai.fastowin.data.preferences.AppPreferences
 import com.hienthai.fastowin.data.preferences.AppThemeMode
 import com.hienthai.fastowin.data.preferences.BoardStyle
+import com.hienthai.fastowin.ui.components.SystemBackHandler
 import com.hienthai.fastowin.ui.layout.ResponsiveScreen
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -56,6 +57,8 @@ fun SettingsScreen(
     onBack: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    SystemBackHandler(onBack = onBack)
+
     Scaffold(
         modifier = modifier.fillMaxSize(),
         topBar = {

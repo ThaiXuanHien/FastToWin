@@ -36,6 +36,7 @@ import androidx.compose.ui.unit.dp
 import com.hienthai.fastowin.protocol.LeaderboardEntrySnapshot
 import com.hienthai.fastowin.protocol.rankedTierFor
 import com.hienthai.fastowin.state.GameState
+import com.hienthai.fastowin.ui.components.SystemBackHandler
 import com.hienthai.fastowin.ui.layout.ResponsiveScreen
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -48,6 +49,8 @@ fun LeaderboardScreen(
     showBackButton: Boolean = true,
     modifier: Modifier = Modifier
 ) {
+    SystemBackHandler(enabled = showBackButton, onBack = onBack)
+
     val leaderboard = state.leaderboard
     var showSeason by remember { mutableStateOf(true) }
     ResponsiveScreen(

@@ -1,4 +1,4 @@
-﻿package com.hienthai.fastowin.ui.screens
+package com.hienthai.fastowin.ui.screens
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
@@ -67,6 +67,7 @@ import com.hienthai.fastowin.platform.playFeedbackSound
 import com.hienthai.fastowin.protocol.MatchType
 import com.hienthai.fastowin.ui.layout.ResponsiveScreen
 import com.hienthai.fastowin.ui.theme.FastToWinTheme
+import com.hienthai.fastowin.ui.components.SystemBackHandler
 import kotlinx.coroutines.delay
 import kotlin.math.abs
 
@@ -88,6 +89,11 @@ fun GameScreen(
     var tapFeedback by remember { mutableStateOf<GameFeedbackEffect?>(null) }
     var tapFeedbackToken by remember { mutableStateOf(0) }
     val opponentFriend = state.social.friends.firstOrNull { it.userId == state.opponent.id }
+
+    // Vuốt back từ cạnh màn hình: hiện dialog xác nhận rời trận (nếu cho phép)
+    SystemBackHandler(enabled = allowExit) {
+        showExitConfirmation = true
+    }
     LaunchedEffect(tapFeedbackToken) {
         if (tapFeedback != null) {
             delay(420)

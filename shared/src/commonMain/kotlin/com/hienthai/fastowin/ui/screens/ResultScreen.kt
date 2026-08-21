@@ -69,6 +69,7 @@ import com.hienthai.fastowin.state.PlayerState
 import com.hienthai.fastowin.state.PostMatchFriendStatus
 import com.hienthai.fastowin.ui.layout.ResponsiveScreen
 import com.hienthai.fastowin.ui.theme.FastToWinTheme
+import com.hienthai.fastowin.ui.components.SystemBackHandler
 import kotlinx.coroutines.delay
 import kotlin.math.ceil
 
@@ -110,6 +111,9 @@ fun ResultScreen(
     val opponentFriend = state.social.friends.firstOrNull { it.userId == state.opponent.id }
     val imageSharer = rememberResultImageSharer()
     val shareContent = resultShareContent(state, isDraw, isWinner)
+
+    // Vuốt back từ cạnh màn hình: thoát màn hình kết quả (giống nhấn "Chơi lại")
+    SystemBackHandler(onBack = onRestart)
 
     LaunchedEffect(isWinner, isDraw) {
         val effect = when {

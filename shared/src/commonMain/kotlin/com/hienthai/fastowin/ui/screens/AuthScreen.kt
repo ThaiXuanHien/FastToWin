@@ -49,6 +49,7 @@ import com.hienthai.fastowin.state.AuthState
 import com.hienthai.fastowin.state.MAX_ACCOUNT_PASSWORD_LENGTH
 import com.hienthai.fastowin.state.accountPasswordConfirmationError
 import com.hienthai.fastowin.state.accountPasswordError
+import com.hienthai.fastowin.ui.components.SystemBackHandler
 import com.hienthai.fastowin.ui.layout.ResponsiveScreen
 
 @Composable
@@ -66,6 +67,14 @@ fun AuthScreen(
     onBack: () -> Unit,
     onCancelUpgrade: () -> Unit
 ) {
+    SystemBackHandler(enabled = state.stage != AuthStage.WELCOME && state.stage != AuthStage.PLAYING) {
+        if (state.stage == AuthStage.UPGRADE_GUEST) {
+            onCancelUpgrade()
+        } else {
+            onBack()
+        }
+    }
+
     ResponsiveScreen(maxContentWidth = 520.dp, avoidKeyboard = true) { contentModifier ->
         Box(
             modifier = contentModifier

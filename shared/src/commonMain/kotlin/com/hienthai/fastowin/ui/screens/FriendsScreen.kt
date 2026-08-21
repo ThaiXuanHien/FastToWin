@@ -47,6 +47,7 @@ import com.hienthai.fastowin.protocol.FriendSnapshot
 import com.hienthai.fastowin.protocol.ServerMessage
 import com.hienthai.fastowin.state.GameState
 import com.hienthai.fastowin.state.LobbyStage
+import com.hienthai.fastowin.ui.components.SystemBackHandler
 import com.hienthai.fastowin.ui.layout.ResponsiveScreen
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -67,6 +68,8 @@ fun FriendsScreen(
     showBackButton: Boolean = true,
     modifier: Modifier = Modifier
 ) {
+    SystemBackHandler(enabled = showBackButton, onBack = onBack)
+
     var playerCode by remember { mutableStateOf("") }
     var removeTarget by remember { mutableStateOf<PlayerActionTarget?>(null) }
     var blockTarget by remember { mutableStateOf<PlayerActionTarget?>(null) }

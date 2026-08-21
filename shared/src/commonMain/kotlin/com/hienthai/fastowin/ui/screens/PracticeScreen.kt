@@ -56,6 +56,7 @@ import com.hienthai.fastowin.state.PracticeGameState
 import com.hienthai.fastowin.state.createPracticeChallenge
 import com.hienthai.fastowin.state.createPracticeGame
 import com.hienthai.fastowin.state.parsePracticeChallenge
+import com.hienthai.fastowin.ui.components.SystemBackHandler
 import com.hienthai.fastowin.ui.layout.ResponsiveScreen
 import kotlinx.coroutines.delay
 
@@ -69,6 +70,8 @@ fun PracticeScreen(
     onShareChallenge: ((String) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
+    SystemBackHandler(onBack = onBack)
+
     var currentChallenge by remember(mode, challenge?.code) {
         mutableStateOf(challenge ?: createPracticeChallenge(mode, challengeSeed()))
     }

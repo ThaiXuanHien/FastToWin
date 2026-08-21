@@ -93,6 +93,7 @@ import com.hienthai.fastowin.state.MAX_ACCOUNT_PASSWORD_LENGTH
 import com.hienthai.fastowin.state.accountPasswordConfirmationError
 import com.hienthai.fastowin.state.accountPasswordError
 import com.hienthai.fastowin.platform.epochMillis
+import com.hienthai.fastowin.ui.components.SystemBackHandler
 import com.hienthai.fastowin.ui.layout.ResponsiveScreen
 import kotlinx.coroutines.delay
 
@@ -129,6 +130,8 @@ fun ProfileScreen(
     showBackButton: Boolean = true,
     modifier: Modifier = Modifier
 ) {
+    SystemBackHandler(enabled = showBackButton, onBack = onBack)
+
     val profile = if (isExternalProfile) profileOverride else state.profile
     val isProfileLoading = if (isExternalProfile) state.isFriendProfileLoading else state.isProfileLoading
     val clipboardManager = LocalClipboardManager.current
@@ -500,7 +503,7 @@ fun ProfileScreen(
             val equippedTitle = progression.cosmetics.firstOrNull { it.type == CosmeticType.TITLE && it.equipped }?.id
                 ?: "title_rookie"
             Text("Bộ sưu tập", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-            Text("Khung", fontWeight = FontWeight.SemiBold)
+            Text("Khung avatar", fontWeight = FontWeight.SemiBold)
             LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 items(progression.cosmetics.filter { it.type == CosmeticType.FRAME }, key = { it.id }) { cosmetic ->
                     FilterChip(
