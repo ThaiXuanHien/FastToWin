@@ -23,6 +23,7 @@ fun main() {
     val tournamentRepository = database?.tournamentRepository ?: InMemoryTournamentRepository()
     val clanRepository = database?.clanRepository ?: NoOpClanRepository
     val storage = if (database == null) "memory" else "postgresql"
+    val storePurchaseVerifier = configuredStorePurchaseVerifier(environment)
     val engine = GameEngine(
         identityRepository,
         matchResultRepository,
@@ -33,7 +34,9 @@ fun main() {
         notificationRepository,
         tournamentRepository,
         clanRepository,
-        FirebasePushNotificationService()
+        FirebasePushNotificationService(),
+        storePurchaseVerifier = storePurchaseVerifier,
+        storeSandboxEnabled = environment == "dev"
     )
     runBlocking { engine.restoreActiveRooms() }
 

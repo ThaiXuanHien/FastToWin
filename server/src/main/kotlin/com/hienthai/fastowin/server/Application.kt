@@ -356,7 +356,11 @@ fun Application.gameModule(
                     if (actionLimit != null) {
                         sendRateLimited(
                             actionLimit,
-                            requestId = (message as? ClientMessage.SelectNumber)?.requestId
+                            requestId = when (message) {
+                                is ClientMessage.SelectNumber -> message.requestId
+                                is ClientMessage.VerifyStorePurchase -> message.requestId
+                                else -> null
+                            }
                         )
                         continue
                     }
@@ -452,6 +456,16 @@ private suspend fun RateLimiter.consumeActionLimit(
             RateLimitBuckets.SELECT_NUMBER_IP,
             clientKey,
             policies.selectNumberPerIp
+        ).takeUnless(RateLimitResult::allowed)
+
+        is ClientMessage.VerifyStorePurchase -> consume(
+            RateLimitBuckets.VERIFY_PURCHASE_PLAYER,
+            playerKey,
+            policies.verifyPurchasePerPlayer
+        ).takeUnless(RateLimitResult::allowed) ?: consume(
+            RateLimitBuckets.VERIFY_PURCHASE_IP,
+            clientKey,
+            policies.verifyPurchasePerIp
         ).takeUnless(RateLimitResult::allowed)
 
         else -> null

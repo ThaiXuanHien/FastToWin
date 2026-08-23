@@ -20,6 +20,7 @@ import com.hienthai.fastowin.protocol.NotificationSnapshot
 import com.hienthai.fastowin.protocol.RoomPhase
 import com.hienthai.fastowin.protocol.RoomSummary
 import com.hienthai.fastowin.protocol.ServerMessage
+import com.hienthai.fastowin.protocol.StorePurchaseStatus
 import com.hienthai.fastowin.protocol.TournamentHubSnapshot
 import com.hienthai.fastowin.protocol.TournamentInvitationSnapshot
 import com.hienthai.fastowin.protocol.TournamentMatchPhase
@@ -57,6 +58,8 @@ class GameEngine(
     private val tournamentRepository: TournamentRepository = InMemoryTournamentRepository(),
     private val clanRepository: ClanRepository = NoOpClanRepository,
     private val pushNotificationService: PushNotificationService = NoOpPushNotificationService,
+    private val storePurchaseVerifier: StorePurchaseVerifier = RejectingStorePurchaseVerifier,
+    private val storeSandboxEnabled: Boolean = false,
     private val timeAttackMillis: Long = DEFAULT_TIME_ATTACK_MILLIS,
     private val rematchTimeoutMillis: Long = DEFAULT_REMATCH_TIMEOUT_MILLIS,
     private val nowMillis: () -> Long = System::currentTimeMillis
@@ -200,6 +203,9 @@ class GameEngine(
     suspend fun handle(playerId: String, message: ClientMessage): List<Delivery> {
         restoreActiveRooms()
         if (message is ClientMessage.GetProfile) return loadProfile(playerId)
+        if (message is ClientMessage.GetWalletHistory) return loadWalletHistory(playerId)
+        if (message is ClientMessage.GetGemStoreCatalog) return loadGemStoreCatalog(playerId)
+        if (message is ClientMessage.VerifyStorePurchase) return verifyStorePurchase(playerId, message)
         if (message is ClientMessage.ClaimDailyCheckIn) return claimDailyCheckIn(playerId)
         if (message is ClientMessage.ClaimMissionReward) return claimMissionReward(playerId, message.missionCode)
         if (message is ClientMessage.GetFriendProfile) return loadFriendProfile(playerId, message.friendUserId)
@@ -273,6 +279,9 @@ class GameEngine(
                     listOf(Delivery(ServerMessage.RoomList(publicRooms()), setOf(playerId)))
                 )
                 ClientMessage.GetProfile -> HandleResult(emptyList())
+                ClientMessage.GetWalletHistory -> HandleResult(emptyList())
+                ClientMessage.GetGemStoreCatalog -> HandleResult(emptyList())
+                is ClientMessage.VerifyStorePurchase -> HandleResult(emptyList())
                 ClientMessage.ClaimDailyCheckIn -> HandleResult(emptyList())
                 is ClientMessage.ClaimMissionReward -> HandleResult(emptyList())
                 is ClientMessage.GetFriendProfile -> HandleResult(emptyList())
@@ -408,6 +417,7 @@ class GameEngine(
             return listOf(error(playerId, "INVALID_TOURNAMENT_NAME", "Tên giải cần có ít nhất 3 ký tự."))
         }
         var snapshotToSave: TournamentSnapshot? = null
+        val tournamentId = UUID.randomUUID().toString()
         val deliveries = mutex.withLock {
             val host = sessionsByPlayerId[playerId]
                 ?.takeIf { it.isConnected && it.resumeToken == null }
@@ -419,14 +429,26 @@ class GameEngine(
                 return@withLock listOf(error(playerId, "PLAYER_BUSY", "Hãy rời phòng hoặc hủy ghép trận trước khi tạo giải."))
             }
             if (command.entryFee > 0) {
-                val profile = playerProfileRepository.findByPlayerId(playerId)
-                if (profile == null || profile.progression.gold < command.entryFee) {
-                    return@withLock listOf(error(playerId, "NOT_ENOUGH_GOLD", "Bạn không đủ Vàng để tạo giải đấu."))
+                when (playerProfileRepository.applyWalletTransaction(
+                    playerId = playerId,
+                    sourceType = "TOURNAMENT_ENTRY",
+                    sourceId = tournamentId,
+                    goldDelta = -command.entryFee
+                )) {
+                    WalletMutationStatus.APPLIED -> Unit
+                    WalletMutationStatus.INSUFFICIENT_FUNDS -> return@withLock listOf(
+                        error(playerId, "NOT_ENOUGH_GOLD", "Bạn không đủ Vàng để tạo giải đấu.")
+                    )
+                    WalletMutationStatus.DUPLICATE -> return@withLock listOf(
+                        error(playerId, "TOURNAMENT_ALREADY_CREATED", "Phí tạo giải đã được xử lý.")
+                    )
+                    WalletMutationStatus.PLAYER_NOT_FOUND -> return@withLock listOf(
+                        error(playerId, "PROFILE_NOT_FOUND", "Không tìm thấy hồ sơ tài sản.")
+                    )
                 }
-                playerProfileRepository.updateGold(playerId, -command.entryFee)
             }
             val tournament = Tournament(
-                id = UUID.randomUUID().toString(),
+                id = tournamentId,
                 name = safeName,
                 hostId = playerId,
                 gameMode = command.gameMode,
@@ -449,7 +471,7 @@ class GameEngine(
             )
         }
         snapshotToSave?.let { tournamentRepository.save(it) }
-        return deliveries
+        return deliveries + if (snapshotToSave != null) loadProfile(playerId) else emptyList()
     }
 
     private suspend fun inviteTournamentPlayer(
@@ -535,12 +557,23 @@ class GameEngine(
                 return@withLock listOf(error(playerId, "PLAYER_BUSY", "Hãy rời phòng hoặc giải hiện tại trước."))
             }
             if (tournament.entryFee > 0) {
-                val profile = playerProfileRepository.findByPlayerId(playerId)
-                if (profile == null || profile.progression.gold < tournament.entryFee) {
-                    return@withLock listOf(error(playerId, "NOT_ENOUGH_GOLD", "Bạn không đủ Vàng để tham gia giải này."))
+                when (playerProfileRepository.applyWalletTransaction(
+                    playerId = playerId,
+                    sourceType = "TOURNAMENT_ENTRY",
+                    sourceId = tournament.id,
+                    goldDelta = -tournament.entryFee
+                )) {
+                    WalletMutationStatus.APPLIED -> tournament.prizePool += tournament.entryFee
+                    WalletMutationStatus.INSUFFICIENT_FUNDS -> return@withLock listOf(
+                        error(playerId, "NOT_ENOUGH_GOLD", "Bạn không đủ Vàng để tham gia giải này.")
+                    )
+                    WalletMutationStatus.DUPLICATE -> return@withLock listOf(
+                        error(playerId, "TOURNAMENT_ENTRY_ALREADY_PAID", "Phí tham gia giải đã được xử lý.")
+                    )
+                    WalletMutationStatus.PLAYER_NOT_FOUND -> return@withLock listOf(
+                        error(playerId, "PROFILE_NOT_FOUND", "Không tìm thấy hồ sơ tài sản.")
+                    )
                 }
-                playerProfileRepository.updateGold(playerId, -tournament.entryFee)
-                tournament.prizePool += tournament.entryFee
             }
             val session = sessionsByPlayerId[playerId]
                 ?.takeIf { it.isConnected && it.resumeToken == null }
@@ -554,7 +587,7 @@ class GameEngine(
             )
         }
         snapshotToSave?.let { tournamentRepository.save(it) }
-        return deliveries
+        return deliveries + if (snapshotToSave != null) loadProfile(playerId) else emptyList()
     }
 
     private suspend fun startTournament(playerId: String, tournamentId: String): List<Delivery> {
@@ -1277,6 +1310,110 @@ class GameEngine(
         )
         return listOf(Delivery(ServerMessage.ProfileData(profile), setOf(playerId)))
     }
+
+    private suspend fun loadWalletHistory(playerId: String): List<Delivery> {
+        if (!isAccountSession(playerId)) return listOf(accountRequired(playerId))
+        val transactions = runCatching { playerProfileRepository.loadWalletHistory(playerId) }
+            .onFailure { System.err.println("Could not load wallet history for $playerId: ${it.message}") }
+            .getOrElse {
+                return listOf(error(
+                    playerId,
+                    "WALLET_HISTORY_UNAVAILABLE",
+                    "Chưa thể tải lịch sử tài sản. Vui lòng thử lại."
+                ))
+            }
+        return listOf(Delivery(ServerMessage.WalletHistory(transactions), setOf(playerId)))
+    }
+
+    private suspend fun loadGemStoreCatalog(playerId: String): List<Delivery> {
+        val hasSession = mutex.withLock { sessionsByPlayerId.containsKey(playerId) }
+        if (!hasSession) return listOf(error(playerId, "SESSION_NOT_FOUND", "Phiên chơi không còn hợp lệ."))
+        return listOf(Delivery(
+            ServerMessage.GemStoreCatalog(GEM_STORE_PACKAGES, sandboxEnabled = storeSandboxEnabled),
+            setOf(playerId)
+        ))
+    }
+
+    private suspend fun verifyStorePurchase(
+        playerId: String,
+        message: ClientMessage.VerifyStorePurchase
+    ): List<Delivery> {
+        if (!isAccountSession(playerId)) return listOf(accountRequired(playerId))
+        if (message.requestId.length !in 1..64 || message.purchaseToken.length !in 1..4_096) {
+            return storePurchaseResult(
+                playerId,
+                message,
+                StorePurchaseStatus.INVALID,
+                message = "Dữ liệu giao dịch không hợp lệ."
+            )
+        }
+        val gemPackage = GEM_STORE_PACKAGES.firstOrNull { it.productId == message.productId }
+            ?: return storePurchaseResult(
+                playerId,
+                message,
+                StorePurchaseStatus.INVALID,
+                message = "Gói Gem không tồn tại."
+            )
+        val verification = storePurchaseVerifier.verify(StorePurchaseVerification(
+            userId = playerId,
+            store = message.store,
+            productId = message.productId,
+            purchaseToken = message.purchaseToken
+        ))
+        if (verification.status != StoreVerificationStatus.PURCHASED) {
+            val status = if (verification.status == StoreVerificationStatus.INVALID) {
+                StorePurchaseStatus.INVALID
+            } else {
+                StorePurchaseStatus.UNAVAILABLE
+            }
+            return storePurchaseResult(playerId, message, status, message = verification.message)
+        }
+        val fingerprint = storePurchaseFingerprint(message.store, message.purchaseToken)
+        val grantStatus = playerProfileRepository.grantStorePurchase(
+            playerId = playerId,
+            store = message.store.name,
+            productId = message.productId,
+            transactionId = fingerprint,
+            gems = gemPackage.gems
+        )
+        val result = when (grantStatus) {
+            StorePurchaseGrantStatus.GRANTED -> StorePurchaseStatus.GRANTED to
+                "Đã nhận ${gemPackage.gems} Gem."
+            StorePurchaseGrantStatus.ALREADY_GRANTED -> StorePurchaseStatus.ALREADY_GRANTED to
+                "Giao dịch này đã được nhận trước đó."
+            StorePurchaseGrantStatus.TOKEN_ALREADY_USED -> StorePurchaseStatus.INVALID to
+                "Giao dịch đã thuộc về tài khoản khác."
+            StorePurchaseGrantStatus.PLAYER_NOT_FOUND -> StorePurchaseStatus.FAILED to
+                "Không tìm thấy hồ sơ người chơi."
+            StorePurchaseGrantStatus.FAILED -> StorePurchaseStatus.FAILED to
+                "Chưa thể cộng Gem. Vui lòng thử lại."
+        }
+        val delivery = storePurchaseResult(
+            playerId,
+            message,
+            result.first,
+            gemsGranted = if (result.first == StorePurchaseStatus.GRANTED) gemPackage.gems else 0,
+            message = result.second
+        )
+        return if (result.first == StorePurchaseStatus.GRANTED) delivery + loadProfile(playerId) else delivery
+    }
+
+    private fun storePurchaseResult(
+        playerId: String,
+        request: ClientMessage.VerifyStorePurchase,
+        status: StorePurchaseStatus,
+        gemsGranted: Int = 0,
+        message: String
+    ) = listOf(Delivery(
+        ServerMessage.StorePurchaseResult(
+            requestId = request.requestId,
+            productId = request.productId,
+            status = status,
+            gemsGranted = gemsGranted,
+            message = message
+        ),
+        setOf(playerId)
+    ))
 
     private suspend fun claimDailyCheckIn(playerId: String): List<Delivery> {
         if (!isAccountSession(playerId)) return listOf(accountRequired(playerId))
@@ -2115,6 +2252,7 @@ class GameEngine(
         var snapshotToSave: TournamentSnapshot? = null
         var removedRoomId: String? = null
         var createdRoomId: String? = null
+        var rewardedChampionId: String? = null
         val deliveries = mutex.withLock {
             val tournament = tournaments.values.firstOrNull { candidate ->
                 candidate.phase == TournamentPhase.RUNNING &&
@@ -2146,7 +2284,15 @@ class GameEngine(
                 tournament.championPlayerId = winnerId
                 tournament.finishedAtMillis = nowMillis()
                 if (tournament.prizePool > 0) {
-                    playerProfileRepository.updateGold(winnerId, tournament.prizePool)
+                    val rewardStatus = playerProfileRepository.applyWalletTransaction(
+                        playerId = winnerId,
+                        sourceType = "TOURNAMENT_PRIZE",
+                        sourceId = tournament.id,
+                        goldDelta = tournament.prizePool
+                    )
+                    if (rewardStatus == WalletMutationStatus.APPLIED || rewardStatus == WalletMutationStatus.DUPLICATE) {
+                        rewardedChampionId = winnerId
+                    }
                 }
             }
 
@@ -2157,7 +2303,9 @@ class GameEngine(
         snapshotToSave?.let { tournamentRepository.save(it) }
         removedRoomId?.let { persistRoom(it) }
         createdRoomId?.let { persistRoom(it) }
-        return deliveries + snapshotToSave?.players.orEmpty().flatMap { presenceUpdates(it.playerId) }
+        return deliveries +
+            snapshotToSave?.players.orEmpty().flatMap { presenceUpdates(it.playerId) } +
+            rewardedChampionId?.let { loadProfile(it) }.orEmpty()
     }
 
     private fun activeTournamentFor(playerId: String): Tournament? = tournaments.values.firstOrNull { tournament ->

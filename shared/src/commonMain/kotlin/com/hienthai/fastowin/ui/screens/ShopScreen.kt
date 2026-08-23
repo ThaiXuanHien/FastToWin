@@ -5,6 +5,8 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items as listItems
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
@@ -16,11 +18,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.hienthai.fastowin.protocol.ShopItem
 import com.hienthai.fastowin.protocol.SHOP_ITEMS
 import com.hienthai.fastowin.protocol.PlayerProgressionSnapshot
+import com.hienthai.fastowin.protocol.GemPackageSnapshot
+import com.hienthai.fastowin.platform.StoreBillingState
 import com.hienthai.fastowin.ui.components.SystemBackHandler
 import com.hienthai.fastowin.ui.components.GemColor
 import com.hienthai.fastowin.ui.components.FastToWinHeader
@@ -32,6 +37,11 @@ fun ShopScreen(
     onBuy: (String) -> Unit,
     onEquip: (String) -> Unit,
     onClose: () -> Unit,
+    gemPackages: List<GemPackageSnapshot> = emptyList(),
+    billingState: StoreBillingState = StoreBillingState(com.hienthai.fastowin.protocol.StorePlatform.GOOGLE_PLAY),
+    isCatalogLoading: Boolean = false,
+    isAccount: Boolean = true,
+    onBuyGems: (String) -> Unit = {},
     unreadNotifications: Int = 0,
     onNotifications: () -> Unit = {}
 ) {
@@ -80,7 +90,14 @@ fun ShopScreen(
             }
             
             if (selectedTab == "GEMS") {
-                GemStorePreview(modifier = Modifier.weight(1f))
+                GemStorePreview(
+                    packages = gemPackages,
+                    billingState = billingState,
+                    isCatalogLoading = isCatalogLoading,
+                    isAccount = isAccount,
+                    onBuy = onBuyGems,
+                    modifier = Modifier.weight(1f)
+                )
             } else {
                 val items = SHOP_ITEMS.filter { it.type.name == selectedTab }
                 LazyVerticalGrid(
@@ -109,38 +126,78 @@ fun ShopScreen(
 }
 
 @Composable
-private fun GemStorePreview(modifier: Modifier = Modifier) {
-    val packages = listOf(80 to "Gói Tân binh", 250 to "Gói Bứt tốc", 650 to "Gói Cao thủ")
-    Column(
-        modifier = modifier.fillMaxWidth().padding(16.dp),
+private fun GemStorePreview(
+    packages: List<GemPackageSnapshot>,
+    billingState: StoreBillingState,
+    isCatalogLoading: Boolean,
+    isAccount: Boolean,
+    onBuy: (String) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    LazyColumn(
+        modifier = modifier.fillMaxWidth(),
+        contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Text("Kho Gem", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-        Text(
-            "Dùng Gem để mở khóa vật phẩm hiếm. Giá sẽ hiển thị theo khu vực khi tính năng thanh toán ra mắt.",
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-        packages.forEach { (amount, name) ->
+        item { Text("Kho Gem", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold) }
+        item {
+            Text("Gem mở khóa vật phẩm hiếm. Giá được hiển thị theo tài khoản Store của bạn.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        if (!isAccount) {
+            item { Text("Đăng nhập để mua và đồng bộ Gem trên các thiết bị.", color = MaterialTheme.colorScheme.error) }
+        }
+        if (isCatalogLoading && packages.isEmpty()) {
+            item {
+                Box(Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator()
+                }
+            }
+        }
+        listItems(packages, key = GemPackageSnapshot::productId) { gemPackage ->
+            val price = billingState.prices[gemPackage.productId]?.formattedPrice ?: "Chưa có giá"
+            val isPurchasing = billingState.purchasingProductId == gemPackage.productId
             ElevatedCard(modifier = Modifier.fillMaxWidth()) {
                 Row(
-                    modifier = Modifier.fillMaxWidth().padding(16.dp),
+                    modifier = Modifier.fillMaxWidth().padding(16.dp).testTag("gem_package_${gemPackage.productId}"),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     Icon(Icons.Default.Payments, contentDescription = null, tint = GemColor, modifier = Modifier.size(32.dp))
                     Column(Modifier.weight(1f)) {
-                        Text(name, fontWeight = FontWeight.Bold)
-                        Text("$amount Gem", color = GemColor, fontWeight = FontWeight.SemiBold)
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text(gemPackage.title, fontWeight = FontWeight.Bold)
+                            if (gemPackage.featured) {
+                                SuggestionChip(onClick = {}, enabled = false, label = { Text("Phổ biến") })
+                            }
+                        }
+                        Text("${gemPackage.gems} Gem", color = GemColor, fontWeight = FontWeight.SemiBold)
                     }
-                    Text("Sắp ra mắt", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Button(
+                        onClick = { onBuy(gemPackage.productId) },
+                        enabled = isAccount && billingState.isReady && billingState.purchasingProductId == null
+                    ) {
+                        if (isPurchasing) {
+                            CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
+                            Spacer(Modifier.width(6.dp))
+                        }
+                        Text(if (isPurchasing) "Đang xử lý" else price)
+                    }
                 }
             }
         }
-        Text(
-            "Bạn cũng có thể săn Gem qua điểm danh, nhiệm vụ khó và thành tích đặc biệt.",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
+        billingState.notice?.let { notice ->
+            item { Text(notice, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary) }
+        }
+        billingState.error?.let { error ->
+            item { Text(error, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
+        }
+        item {
+            Text(
+                "Bạn cũng có thể săn Gem qua điểm danh, nhiệm vụ khó và thành tích đặc biệt.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
     }
 }
 

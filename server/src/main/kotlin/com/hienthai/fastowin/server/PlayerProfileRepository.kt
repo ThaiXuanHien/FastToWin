@@ -2,6 +2,7 @@ package com.hienthai.fastowin.server
 
 import com.hienthai.fastowin.protocol.PlayerProfileSnapshot
 import com.hienthai.fastowin.protocol.MatchDetailSnapshot
+import com.hienthai.fastowin.protocol.WalletTransactionSnapshot
 
 interface PlayerProfileRepository {
     suspend fun findByPlayerId(playerId: String): PlayerProfileSnapshot?
@@ -15,7 +16,22 @@ interface PlayerProfileRepository {
     suspend fun claimMissionReward(playerId: String, missionCode: String): MissionRewardClaimResult? = null
     suspend fun updateAvatarData(playerId: String, base64: String): Boolean = false
     suspend fun getAvatarData(playerId: String): String? = null
-    suspend fun updateGold(playerId: String, amountDelta: Int): Boolean = false
+    suspend fun loadWalletHistory(playerId: String, limit: Int = 50): List<WalletTransactionSnapshot> = emptyList()
+    suspend fun applyWalletTransaction(
+        playerId: String,
+        sourceType: String,
+        sourceId: String,
+        goldDelta: Int = 0,
+        gemsDelta: Int = 0,
+        xpDelta: Int = 0
+    ): WalletMutationStatus = WalletMutationStatus.PLAYER_NOT_FOUND
+    suspend fun grantStorePurchase(
+        playerId: String,
+        store: String,
+        productId: String,
+        transactionId: String,
+        gems: Int
+    ): StorePurchaseGrantStatus = StorePurchaseGrantStatus.PLAYER_NOT_FOUND
     suspend fun buyCosmetic(playerId: String, cosmeticId: String, cosmeticType: String, price: Int): Boolean = false
     suspend fun equipCosmetic(playerId: String, cosmeticId: String, cosmeticType: String): Boolean = false
 }
@@ -28,6 +44,16 @@ data class DailyCheckInClaimResult(
 )
 
 enum class MissionRewardClaimStatus { CLAIMED, ALREADY_CLAIMED, NOT_COMPLETED, INVALID_MISSION }
+
+enum class WalletMutationStatus { APPLIED, DUPLICATE, INSUFFICIENT_FUNDS, PLAYER_NOT_FOUND }
+
+enum class StorePurchaseGrantStatus {
+    GRANTED,
+    ALREADY_GRANTED,
+    TOKEN_ALREADY_USED,
+    PLAYER_NOT_FOUND,
+    FAILED
+}
 
 data class MissionRewardClaimResult(
     val status: MissionRewardClaimStatus,

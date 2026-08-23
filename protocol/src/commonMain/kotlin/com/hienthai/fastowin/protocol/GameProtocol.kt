@@ -4,7 +4,7 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
-const val PROTOCOL_VERSION = 26
+const val PROTOCOL_VERSION = 28
 const val GAME_NUMBER_COUNT = 50
 const val MAX_PROFILE_DISPLAY_NAME_LENGTH = 32
 val DAILY_CHECK_IN_REWARDS_XP = listOf(10, 10, 15, 15, 20, 25, 40)
@@ -300,6 +300,31 @@ data class PlayerProgressionSnapshot(
 )
 
 @Serializable
+data class WalletTransactionSnapshot(
+    val id: String,
+    val sourceType: String,
+    val sourceId: String,
+    val goldDelta: Int = 0,
+    val gemsDelta: Int = 0,
+    val xpDelta: Int = 0,
+    val createdAtEpochMillis: Long
+)
+
+@Serializable
+enum class StorePlatform { GOOGLE_PLAY, APP_STORE }
+
+@Serializable
+data class GemPackageSnapshot(
+    val productId: String,
+    val title: String,
+    val gems: Int,
+    val featured: Boolean = false
+)
+
+@Serializable
+enum class StorePurchaseStatus { GRANTED, ALREADY_GRANTED, INVALID, UNAVAILABLE, FAILED }
+
+@Serializable
 data class AchievementSnapshot(
     val code: String,
     val title: String,
@@ -487,6 +512,23 @@ sealed class ClientMessage {
     @Serializable
     @SerialName("get_profile")
     data object GetProfile : ClientMessage()
+
+    @Serializable
+    @SerialName("get_wallet_history")
+    data object GetWalletHistory : ClientMessage()
+
+    @Serializable
+    @SerialName("get_gem_store_catalog")
+    data object GetGemStoreCatalog : ClientMessage()
+
+    @Serializable
+    @SerialName("verify_store_purchase")
+    data class VerifyStorePurchase(
+        val requestId: String,
+        val store: StorePlatform,
+        val productId: String,
+        val purchaseToken: String
+    ) : ClientMessage()
 
     @Serializable
     @SerialName("claim_daily_check_in")
@@ -751,6 +793,27 @@ sealed class ServerMessage {
     @Serializable
     @SerialName("profile_data")
     data class ProfileData(val profile: PlayerProfileSnapshot) : ServerMessage()
+
+    @Serializable
+    @SerialName("wallet_history")
+    data class WalletHistory(val transactions: List<WalletTransactionSnapshot>) : ServerMessage()
+
+    @Serializable
+    @SerialName("gem_store_catalog")
+    data class GemStoreCatalog(
+        val packages: List<GemPackageSnapshot>,
+        val sandboxEnabled: Boolean = false
+    ) : ServerMessage()
+
+    @Serializable
+    @SerialName("store_purchase_result")
+    data class StorePurchaseResult(
+        val requestId: String,
+        val productId: String,
+        val status: StorePurchaseStatus,
+        val gemsGranted: Int = 0,
+        val message: String
+    ) : ServerMessage()
 
     @Serializable
     @SerialName("daily_check_in_result")

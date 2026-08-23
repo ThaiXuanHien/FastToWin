@@ -47,6 +47,7 @@ import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material.icons.filled.Insights
+import androidx.compose.material.icons.filled.AccountBalanceWallet
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -101,6 +102,7 @@ import com.hienthai.fastowin.protocol.PROFILE_AVATAR_IDS
 import com.hienthai.fastowin.protocol.PlayerProfileSnapshot
 import com.hienthai.fastowin.protocol.GameModeStatisticsSnapshot
 import com.hienthai.fastowin.protocol.ProtocolGameMode
+import com.hienthai.fastowin.protocol.WalletTransactionSnapshot
 import com.hienthai.fastowin.state.GameState
 import com.hienthai.fastowin.state.MAX_ACCOUNT_PASSWORD_LENGTH
 import com.hienthai.fastowin.state.accountPasswordConfirmationError
@@ -111,10 +113,12 @@ import com.hienthai.fastowin.ui.layout.ResponsiveScreen
 import com.hienthai.fastowin.ui.components.RewardAmounts
 import com.hienthai.fastowin.ui.components.WalletBalanceRow
 import com.hienthai.fastowin.ui.components.FastToWinHeader
+import com.hienthai.fastowin.ui.components.WalletDeltaAmounts
 import kotlinx.coroutines.delay
 
 enum class ProfileSection {
     STATISTICS,
+    WALLET,
     MISSIONS,
     COLLECTION,
     RECENT_MATCHES
@@ -502,6 +506,16 @@ fun ProfileScreen(
                 modifier = Modifier.testTag("profile_section_statistics")
             )
             HorizontalDivider(modifier = Modifier.padding(start = 64.dp))
+            if (canEdit) {
+                AccountActionRow(
+                    icon = Icons.Default.AccountBalanceWallet,
+                    title = "Lịch sử tài sản",
+                    subtitle = "Các lần nhận và sử dụng Vàng, Gem, XP",
+                    onClick = { onOpenSection(ProfileSection.WALLET) },
+                    modifier = Modifier.testTag("profile_section_wallet")
+                )
+                HorizontalDivider(modifier = Modifier.padding(start = 64.dp))
+            }
             AccountActionRow(
                 icon = Icons.AutoMirrored.Filled.Assignment,
                 title = "Nhiệm vụ",
@@ -618,7 +632,11 @@ fun ProfileSectionScreen(
     onOpenNotifications: () -> Unit
 ) {
     SystemBackHandler(onBack = onBack)
-    val isLoading = if (isExternalProfile) state.isFriendProfileLoading else state.isProfileLoading
+    val isLoading = when {
+        section == ProfileSection.WALLET -> state.isWalletHistoryLoading
+        isExternalProfile -> state.isFriendProfileLoading
+        else -> state.isProfileLoading
+    }
     var historyFilter by remember { mutableStateOf<MatchHistoryOutcome?>(null) }
 
     if (!isExternalProfile && (state.isMatchDetailLoading || state.matchDetail != null)) {
@@ -633,6 +651,7 @@ fun ProfileSectionScreen(
         FastToWinHeader(
             title = when (section) {
                 ProfileSection.STATISTICS -> "Thống kê & thành tích"
+                ProfileSection.WALLET -> "Lịch sử tài sản"
                 ProfileSection.MISSIONS -> "Nhiệm vụ"
                 ProfileSection.COLLECTION -> "Bộ sưu tập"
                 ProfileSection.RECENT_MATCHES -> "Trận gần đây"
@@ -665,6 +684,7 @@ fun ProfileSectionScreen(
                 ) {
                     when (section) {
                         ProfileSection.STATISTICS -> StatisticsAchievementsSectionContent(profile)
+                        ProfileSection.WALLET -> WalletHistorySectionContent(state.walletTransactions)
                         ProfileSection.MISSIONS -> MissionSectionContent(
                             state = state,
                             profile = profile,
@@ -690,6 +710,91 @@ fun ProfileSectionScreen(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun WalletHistorySectionContent(transactions: List<WalletTransactionSnapshot>) {
+    Column(
+        modifier = Modifier.fillMaxWidth().testTag("wallet_history_content"),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        if (transactions.isEmpty()) {
+            ElevatedCard(modifier = Modifier.fillMaxWidth()) {
+                Column(
+                    modifier = Modifier.fillMaxWidth().padding(20.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Icon(Icons.Default.AccountBalanceWallet, contentDescription = null)
+                    Text("Chưa có giao dịch", fontWeight = FontWeight.Bold)
+                    Text(
+                        "Phần thưởng và vật phẩm đã mua sẽ xuất hiện tại đây.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        } else {
+            transactions.forEach { transaction ->
+                ElevatedCard(
+                    modifier = Modifier.fillMaxWidth().testTag("wallet_transaction:${transaction.id}")
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(14.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Surface(
+                            shape = CircleShape,
+                            color = MaterialTheme.colorScheme.primaryContainer
+                        ) {
+                            Icon(
+                                Icons.Default.AccountBalanceWallet,
+                                contentDescription = null,
+                                modifier = Modifier.padding(10.dp),
+                                tint = MaterialTheme.colorScheme.onPrimaryContainer
+                            )
+                        }
+                        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text(walletSourceLabel(transaction.sourceType), fontWeight = FontWeight.Bold)
+                            Text(
+                                walletRelativeTime(transaction.createdAtEpochMillis),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            WalletDeltaAmounts(
+                                gold = transaction.goldDelta,
+                                xp = transaction.xpDelta,
+                                gems = transaction.gemsDelta
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+private fun walletSourceLabel(sourceType: String): String = when (sourceType) {
+    "DAILY_CHECK_IN" -> "Điểm danh hằng ngày"
+    "MISSION" -> "Thưởng nhiệm vụ"
+    "MATCH" -> "Thưởng trận đấu"
+    "CLAN_QUEST" -> "Nhiệm vụ bang hội"
+    "COSMETIC_PURCHASE" -> "Mua vật phẩm"
+    "TOURNAMENT_ENTRY" -> "Phí tham gia giải đấu"
+    "TOURNAMENT_PRIZE" -> "Giải thưởng vô địch"
+    "STORE_PURCHASE" -> "Nạp Gem"
+    else -> "Điều chỉnh tài sản"
+}
+
+private fun walletRelativeTime(createdAtEpochMillis: Long, nowMillis: Long = epochMillis()): String {
+    val elapsed = (nowMillis - createdAtEpochMillis).coerceAtLeast(0L)
+    return when {
+        elapsed < 60_000L -> "Vừa xong"
+        elapsed < 3_600_000L -> "${elapsed / 60_000L} phút trước"
+        elapsed < 86_400_000L -> "${elapsed / 3_600_000L} giờ trước"
+        else -> "${elapsed / 86_400_000L} ngày trước"
     }
 }
 

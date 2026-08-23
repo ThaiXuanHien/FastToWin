@@ -19,6 +19,9 @@ import com.hienthai.fastowin.protocol.FriendSnapshot
 import com.hienthai.fastowin.protocol.RecentPlayerSnapshot
 import com.hienthai.fastowin.protocol.RematchEvent
 import com.hienthai.fastowin.protocol.ServerMessage
+import com.hienthai.fastowin.protocol.WalletTransactionSnapshot
+import com.hienthai.fastowin.protocol.StorePlatform
+import com.hienthai.fastowin.protocol.StorePurchaseStatus
 import kotlinx.coroutines.async
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -126,6 +129,97 @@ class GameEngineTest {
             "MISSION_ALREADY_CLAIMED",
             assertIs<ServerMessage.Error>(duplicate.single().message).code
         )
+    }
+
+    @Test
+    fun `account can load its wallet history while guest is rejected`() = runTest {
+        val playerId = UUID.randomUUID().toString()
+        val transaction = WalletTransactionSnapshot(
+            id = UUID.randomUUID().toString(),
+            sourceType = "MATCH",
+            sourceId = "match-1",
+            goldDelta = 100,
+            xpDelta = 30,
+            createdAtEpochMillis = 1_000L
+        )
+        val repository = object : PlayerProfileRepository {
+            override suspend fun findByPlayerId(playerId: String) = null
+            override suspend fun updateProfile(playerId: String, displayName: String, avatarId: String?) = false
+            override suspend fun loadWalletHistory(playerId: String, limit: Int) = listOf(transaction)
+        }
+        val engine = GameEngine(playerProfileRepository = repository)
+        engine.connectAccount(AuthenticatedAccount(UUID.fromString(playerId), "Hiền"))
+
+        val history = engine.handle(playerId, ClientMessage.GetWalletHistory)
+            .map(Delivery::message)
+            .filterIsInstance<ServerMessage.WalletHistory>()
+            .single()
+        assertEquals(listOf(transaction), history.transactions)
+
+        val guest = engine.connectGuest("Khách", null)
+        val denied = engine.handle(guest.playerId, ClientMessage.GetWalletHistory)
+        assertEquals("ACCOUNT_REQUIRED", assertIs<ServerMessage.Error>(denied.single().message).code)
+    }
+
+    @Test
+    fun `verified store purchase grants gems once and catalog enables sandbox`() = runTest {
+        val playerId = UUID.randomUUID().toString()
+        var profile = PlayerProfileSnapshot(
+            userId = playerId,
+            displayName = "Hiền",
+            playerCode = "HIEN123",
+            progression = PlayerProgressionSnapshot(gems = 5)
+        )
+        val grantedTransactions = mutableSetOf<String>()
+        val repository = object : PlayerProfileRepository {
+            override suspend fun findByPlayerId(playerId: String) = profile
+            override suspend fun updateProfile(playerId: String, displayName: String, avatarId: String?) = false
+            override suspend fun grantStorePurchase(
+                playerId: String,
+                store: String,
+                productId: String,
+                transactionId: String,
+                gems: Int
+            ): StorePurchaseGrantStatus {
+                if (!grantedTransactions.add(transactionId)) return StorePurchaseGrantStatus.ALREADY_GRANTED
+                profile = profile.copy(progression = profile.progression.copy(gems = profile.progression.gems + gems))
+                return StorePurchaseGrantStatus.GRANTED
+            }
+        }
+        val verifier = StorePurchaseVerifier {
+            StoreVerificationResult(StoreVerificationStatus.PURCHASED, "OK")
+        }
+        val engine = GameEngine(
+            playerProfileRepository = repository,
+            storePurchaseVerifier = verifier,
+            storeSandboxEnabled = true
+        )
+        engine.connectAccount(AuthenticatedAccount(UUID.fromString(playerId), "Hiền"))
+
+        val catalog = engine.handle(playerId, ClientMessage.GetGemStoreCatalog)
+            .map(Delivery::message).filterIsInstance<ServerMessage.GemStoreCatalog>().single()
+        assertTrue(catalog.sandboxEnabled)
+        assertEquals(listOf(80, 250, 650), catalog.packages.map { it.gems })
+
+        val request = ClientMessage.VerifyStorePurchase(
+            requestId = "purchase-1",
+            store = StorePlatform.GOOGLE_PLAY,
+            productId = "fasttowin_gems_80",
+            purchaseToken = "dev:GOOGLE_PLAY:fasttowin_gems_80:test"
+        )
+        val first = engine.handle(playerId, request).map(Delivery::message)
+        assertEquals(
+            StorePurchaseStatus.GRANTED,
+            first.filterIsInstance<ServerMessage.StorePurchaseResult>().single().status
+        )
+        assertEquals(85, first.filterIsInstance<ServerMessage.ProfileData>().single().profile.progression.gems)
+
+        val duplicate = engine.handle(playerId, request).map(Delivery::message)
+        assertEquals(
+            StorePurchaseStatus.ALREADY_GRANTED,
+            duplicate.filterIsInstance<ServerMessage.StorePurchaseResult>().single().status
+        )
+        assertEquals(1, grantedTransactions.size)
     }
 
     @Test

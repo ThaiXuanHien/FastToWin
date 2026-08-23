@@ -12,6 +12,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -53,6 +54,9 @@ import com.hienthai.fastowin.platform.RoomDeepLink
 import com.hienthai.fastowin.platform.RoomDeepLinkRouter
 import com.hienthai.fastowin.platform.buildRoomShareText
 import com.hienthai.fastowin.platform.rememberTextSharer
+import com.hienthai.fastowin.platform.rememberStoreBillingGateway
+import com.hienthai.fastowin.platform.PlatformStorePurchase
+import com.hienthai.fastowin.protocol.StorePurchaseStatus
 import com.hienthai.fastowin.navigation.GameMode
 import com.hienthai.fastowin.state.PracticeChallenge
 import com.hienthai.fastowin.ui.components.FastToWinHeader
@@ -173,11 +177,57 @@ private fun GameContent(
         )
     }
     val state by controller.uiState.collectAsState()
+    val storeBillingGateway = rememberStoreBillingGateway()
+    val storeBillingState by storeBillingGateway.state.collectAsState()
+    val pendingStorePurchases = remember { mutableStateMapOf<String, PlatformStorePurchase>() }
     val textSharer = rememberTextSharer()
     val sessionStartedAtMillis = remember { epochMillis() }
     var showPracticeLauncher by remember { mutableStateOf(false) }
     var showPracticeModePicker by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
+
+    DisposableEffect(storeBillingGateway) {
+        onDispose { storeBillingGateway.close() }
+    }
+
+    LaunchedEffect(storeBillingGateway) {
+        storeBillingGateway.purchases.collect { purchase ->
+            pendingStorePurchases[purchase.requestId] = purchase
+            controller.verifyStorePurchase(
+                requestId = purchase.requestId,
+                store = purchase.store,
+                productId = purchase.productId,
+                purchaseToken = purchase.purchaseToken
+            )
+        }
+    }
+
+    LaunchedEffect(state.gemStorePackages, state.storeSandboxEnabled) {
+        if (state.gemStorePackages.isNotEmpty()) {
+            storeBillingGateway.connect(state.gemStorePackages, state.storeSandboxEnabled)
+        }
+    }
+
+    LaunchedEffect(state.storePurchaseResult) {
+        val result = state.storePurchaseResult ?: return@LaunchedEffect
+        val purchase = pendingStorePurchases.remove(result.requestId)
+        if (purchase != null && result.status in setOf(
+                StorePurchaseStatus.GRANTED,
+                StorePurchaseStatus.ALREADY_GRANTED
+            )
+        ) {
+            storeBillingGateway.finishPurchase(purchase.purchaseToken)
+        }
+        controller.clearStorePurchaseResult()
+        pendingStorePurchases.values.firstOrNull()?.let { next ->
+            controller.verifyStorePurchase(
+                requestId = next.requestId,
+                store = next.store,
+                productId = next.productId,
+                purchaseToken = next.purchaseToken
+            )
+        }
+    }
     var profileSection by remember { mutableStateOf<ProfileSection?>(null) }
     var profileSectionExternal by remember { mutableStateOf(false) }
     var showTutorial by remember { mutableStateOf(!appPreferences.hasCompletedTutorial) }
@@ -412,7 +462,11 @@ private fun GameContent(
                             isExternalProfile = profileSectionExternal,
                             canEdit = !profileSectionExternal && !isGuest,
                             onBack = { profileSection = null },
-                            onRefresh = if (profileSectionExternal) controller::refreshFriendProfile else controller::openProfile,
+                            onRefresh = when {
+                                profileSectionExternal -> controller::refreshFriendProfile
+                                profileSection == ProfileSection.WALLET -> controller::refreshWalletHistory
+                                else -> controller::openProfile
+                            },
                             onOpenMatchDetail = controller::openMatchDetail,
                             onCloseMatchDetail = controller::closeMatchDetail,
                             onEquipCosmetics = controller::equipCosmetics,
@@ -525,6 +579,7 @@ private fun GameContent(
                     onOpenSection = { section ->
                         profileSectionExternal = false
                         profileSection = section
+                        if (section == ProfileSection.WALLET) controller.refreshWalletHistory()
                     },
                     showBackButton = !showTopLevelNavigation,
                     modifier = contentModifier
@@ -532,6 +587,13 @@ private fun GameContent(
                 
                 state.isShopOpen -> ShopScreen(
                     progression = state.profile?.progression,
+                    gemPackages = state.gemStorePackages,
+                    billingState = storeBillingState,
+                    isCatalogLoading = state.isGemStoreCatalogLoading,
+                    isAccount = !isGuest,
+                    onBuyGems = { productId ->
+                        storeBillingGateway.purchase(productId, state.profile?.userId)
+                    },
                     onBuy = controller::buyCosmetic,
                     onEquip = controller::equipCosmetic,
                     onClose = controller::closeShop,

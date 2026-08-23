@@ -83,6 +83,38 @@ fun RewardAmounts(
 }
 
 @Composable
+fun WalletDeltaAmounts(
+    gold: Int,
+    xp: Int,
+    gems: Int,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier.semantics {
+            contentDescription = walletDeltaDescription(gold, xp, gems)
+        },
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        if (gold != 0) WalletDeltaAmount(
+            amount = gold,
+            suffix = "",
+            icon = { Icon(Icons.Default.MonetizationOn, null, tint = GoldColor, modifier = Modifier.size(17.dp)) }
+        )
+        if (xp != 0) WalletDeltaAmount(
+            amount = xp,
+            suffix = " XP",
+            icon = { Icon(Icons.Default.Star, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(17.dp)) }
+        )
+        if (gems != 0) WalletDeltaAmount(
+            amount = gems,
+            suffix = "",
+            icon = { Icon(Icons.Default.Payments, null, tint = GemColor, modifier = Modifier.size(17.dp)) }
+        )
+    }
+}
+
+@Composable
 private fun CurrencyPill(
     amount: Int,
     label: String,
@@ -119,8 +151,34 @@ private fun RewardAmount(
     }
 }
 
+@Composable
+private fun WalletDeltaAmount(
+    amount: Int,
+    suffix: String,
+    icon: @Composable () -> Unit
+) {
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(3.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        icon()
+        Text(
+            text = "${if (amount > 0) "+" else ""}$amount$suffix",
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.Bold,
+            color = if (amount < 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
+        )
+    }
+}
+
 private fun rewardDescription(gold: Int, xp: Int, gems: Int): String = buildList {
     if (gold > 0) add("$gold vàng")
     if (xp > 0) add("$xp XP")
     if (gems > 0) add("$gems gem")
+}.joinToString()
+
+private fun walletDeltaDescription(gold: Int, xp: Int, gems: Int): String = buildList {
+    if (gold != 0) add("${if (gold > 0) "nhận" else "dùng"} ${kotlin.math.abs(gold)} vàng")
+    if (xp != 0) add("${if (xp > 0) "nhận" else "dùng"} ${kotlin.math.abs(xp)} XP")
+    if (gems != 0) add("${if (gems > 0) "nhận" else "dùng"} ${kotlin.math.abs(gems)} gem")
 }.joinToString()

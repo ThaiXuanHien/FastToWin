@@ -29,6 +29,7 @@ import com.hienthai.fastowin.protocol.PlayerProfileSnapshot
 import com.hienthai.fastowin.protocol.PlayerProgressionSnapshot
 import com.hienthai.fastowin.protocol.PlayerStatisticsSnapshot
 import com.hienthai.fastowin.protocol.ProtocolGameMode
+import com.hienthai.fastowin.protocol.WalletTransactionSnapshot
 import com.hienthai.fastowin.state.GameState
 import com.hienthai.fastowin.ui.screens.ProfileScreen
 import com.hienthai.fastowin.ui.screens.ProfileSection
@@ -90,6 +91,9 @@ class ProfileSectionsUiTest {
         composeRule.onNodeWithTag("profile_section_statistics").performScrollTo().performClick()
         composeRule.runOnIdle { assertEquals(ProfileSection.STATISTICS, openedSection) }
 
+        composeRule.onNodeWithTag("profile_section_wallet").performScrollTo().performClick()
+        composeRule.runOnIdle { assertEquals(ProfileSection.WALLET, openedSection) }
+
         composeRule.onNodeWithTag("profile_section_missions").performScrollTo().performClick()
         composeRule.runOnIdle { assertEquals(ProfileSection.MISSIONS, openedSection) }
 
@@ -101,6 +105,52 @@ class ProfileSectionsUiTest {
 
         composeRule.onNodeWithTag("profile_settings").performScrollTo().assertIsDisplayed().performClick()
         composeRule.runOnIdle { assertTrue(openedSettings) }
+    }
+
+    @Test
+    fun walletHistory_smallPhoneShowsIncomeAndSpending() {
+        val profile = profileFixture()
+        val transactions = listOf(
+            WalletTransactionSnapshot(
+                id = "reward",
+                sourceType = "MATCH",
+                sourceId = "match-1",
+                goldDelta = 100,
+                xpDelta = 30,
+                createdAtEpochMillis = System.currentTimeMillis()
+            ),
+            WalletTransactionSnapshot(
+                id = "purchase",
+                sourceType = "COSMETIC_PURCHASE",
+                sourceId = "frame-gold",
+                goldDelta = -500,
+                createdAtEpochMillis = System.currentTimeMillis() - 60_000L
+            )
+        )
+
+        setAdaptiveContent(320.dp, 568.dp, fontScale = 1.4f) {
+            ProfileSectionScreen(
+                state = GameState(profile = profile, walletTransactions = transactions),
+                profile = profile,
+                section = ProfileSection.WALLET,
+                isExternalProfile = false,
+                canEdit = true,
+                onBack = {},
+                onRefresh = {},
+                onOpenMatchDetail = {},
+                onCloseMatchDetail = {},
+                onEquipCosmetics = { _, _ -> },
+                onClaimMissionReward = {},
+                onSave = { _, _ -> },
+                onOpenNotifications = {}
+            )
+        }
+
+        composeRule.onNodeWithTag("profile_section_screen:WALLET").assertIsDisplayed()
+        composeRule.onNodeWithText("Thưởng trận đấu").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("nhận 100 vàng, nhận 30 XP").assertIsDisplayed()
+        composeRule.onNodeWithText("Mua vật phẩm").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("dùng 500 vàng").assertIsDisplayed()
     }
 
     @Test

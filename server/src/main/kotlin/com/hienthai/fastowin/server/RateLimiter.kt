@@ -28,7 +28,9 @@ data class ServerRateLimitPolicies(
     val joinRoomPerIp: RateLimitPolicy = RateLimitPolicy(60, 60_000L),
     val joinRoomPerIpAndRoom: RateLimitPolicy = RateLimitPolicy(20, 60_000L),
     val selectNumberPerPlayer: RateLimitPolicy = RateLimitPolicy(20, 1_000L),
-    val selectNumberPerIp: RateLimitPolicy = RateLimitPolicy(80, 1_000L)
+    val selectNumberPerIp: RateLimitPolicy = RateLimitPolicy(80, 1_000L),
+    val verifyPurchasePerPlayer: RateLimitPolicy = RateLimitPolicy(6, 60_000L),
+    val verifyPurchasePerIp: RateLimitPolicy = RateLimitPolicy(20, 60_000L)
 )
 
 data class RateLimitResult(
@@ -136,6 +138,8 @@ internal object RateLimitBuckets {
     const val JOIN_ROOM_IP_AND_ROOM = "join-room-ip-room"
     const val SELECT_NUMBER_PLAYER = "select-number-player"
     const val SELECT_NUMBER_IP = "select-number-ip"
+    const val VERIFY_PURCHASE_PLAYER = "verify-purchase-player"
+    const val VERIFY_PURCHASE_IP = "verify-purchase-ip"
 }
 
 internal fun stableRateLimitKey(value: String): String = MessageDigest.getInstance("SHA-256")

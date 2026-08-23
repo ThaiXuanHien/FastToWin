@@ -42,8 +42,8 @@ Lệnh `connectedDevDebugAndroidTest` chạy bộ UI test trên tất cả thi�
 
 Ngày 23/08/2026, toàn bộ UI test chạy thành công trên hai emulator Android 17:
 
-- Pixel 9 Pro XL: 38/38 test đạt, không skip.
-- Pixel 10a: 38/38 test đạt, không skip.
+- Pixel 9 Pro XL: 39/39 test đạt, không skip.
+- Pixel 10a: 39/39 test đạt, không skip.
 - Shared tests, server tests và APK dev/debug đều build thành công.
 
 Sau khi thay đổi test, luôn chạy lại toàn bộ các lệnh phía trên. Các luồng WebSocket/PostgreSQL thực tế trên hai tài khoản và bản iOS vẫn cần smoke test thủ công trước mỗi bản phát hành.

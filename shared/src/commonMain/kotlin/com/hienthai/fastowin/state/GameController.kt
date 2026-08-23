@@ -710,6 +710,12 @@ class GameController(
         scope.launch { socket.sendMessage(ClientMessage.ClaimMissionReward(missionCode)) }
     }
 
+    fun refreshWalletHistory() {
+        if (accountDisplayName == null || _uiState.value.isWalletHistoryLoading) return
+        _uiState.update { it.copy(isWalletHistoryLoading = true, error = null) }
+        scope.launch { socket.sendMessage(ClientMessage.GetWalletHistory) }
+    }
+
     fun setReady(ready: Boolean) {
         val roomId = _uiState.value.currentRoomId ?: return
         scope.launch { socket.sendMessage(ClientMessage.SetReady(roomId, ready)) }
@@ -853,6 +859,35 @@ class GameController(
                 val newClanId = message.profile.clanId
                 if (newClanId != null && newClanId != previousClanId && _uiState.value.isClanOpen) {
                     socket.sendMessage(ClientMessage.GetClanInfo(newClanId))
+                }
+            }
+            is ServerMessage.WalletHistory -> {
+                _uiState.update {
+                    it.copy(
+                        walletTransactions = message.transactions,
+                        isWalletHistoryLoading = false,
+                        error = null
+                    )
+                }
+            }
+            is ServerMessage.GemStoreCatalog -> {
+                _uiState.update {
+                    it.copy(
+                        gemStorePackages = message.packages,
+                        storeSandboxEnabled = message.sandboxEnabled,
+                        isGemStoreCatalogLoading = false,
+                        error = null
+                    )
+                }
+            }
+            is ServerMessage.StorePurchaseResult -> {
+                _uiState.update {
+                    it.copy(
+                        verifyingStorePurchaseRequestId = null,
+                        storePurchaseResult = message,
+                        profileNotice = message.message,
+                        error = null
+                    )
                 }
             }
             is ServerMessage.DailyCheckInResult -> {
@@ -1355,6 +1390,21 @@ class GameController(
                         it.sendingRoomInviteFriendIds
                     },
                     isTournamentLoading = false,
+                    isWalletHistoryLoading = false,
+                    isGemStoreCatalogLoading = false,
+                    verifyingStorePurchaseRequestId = null,
+                    storePurchaseResult = if (
+                        error.requestId != null && error.requestId == it.verifyingStorePurchaseRequestId
+                    ) {
+                        ServerMessage.StorePurchaseResult(
+                            requestId = error.requestId.orEmpty(),
+                            productId = "",
+                            status = com.hienthai.fastowin.protocol.StorePurchaseStatus.FAILED,
+                            message = error.message
+                        )
+                    } else {
+                        it.storePurchaseResult
+                    },
                     isDailyCheckInClaiming = false,
                     claimingMissionCode = null,
                     error = error.message
@@ -1557,11 +1607,41 @@ class GameController(
     }
 
     fun openShop() {
-        _uiState.update { it.copy(isShopOpen = true) }
+        _uiState.update { it.copy(isShopOpen = true, isGemStoreCatalogLoading = true, error = null) }
+        scope.launch { socket.sendMessage(ClientMessage.GetGemStoreCatalog) }
     }
 
     fun closeShop() {
         _uiState.update { it.copy(isShopOpen = false) }
+    }
+
+    fun verifyStorePurchase(
+        requestId: String,
+        store: com.hienthai.fastowin.protocol.StorePlatform,
+        productId: String,
+        purchaseToken: String
+    ): Boolean {
+        if (_uiState.value.verifyingStorePurchaseRequestId != null) return false
+        _uiState.update {
+            it.copy(
+                verifyingStorePurchaseRequestId = requestId,
+                storePurchaseResult = null,
+                error = null
+            )
+        }
+        scope.launch {
+            socket.sendMessage(ClientMessage.VerifyStorePurchase(
+                requestId = requestId,
+                store = store,
+                productId = productId,
+                purchaseToken = purchaseToken
+            ))
+        }
+        return true
+    }
+
+    fun clearStorePurchaseResult() {
+        _uiState.update { it.copy(storePurchaseResult = null) }
     }
 
     fun buyCosmetic(cosmeticId: String) {

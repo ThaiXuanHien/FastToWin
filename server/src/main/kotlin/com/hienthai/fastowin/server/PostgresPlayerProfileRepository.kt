@@ -21,6 +21,7 @@ import com.hienthai.fastowin.protocol.DAILY_CHECK_IN_STREAK_ACHIEVEMENT_TARGET
 import com.hienthai.fastowin.protocol.DAILY_CHECK_IN_TITLE_TARGET
 import com.hienthai.fastowin.protocol.MissionSnapshot
 import com.hienthai.fastowin.protocol.PlayerProgressionSnapshot
+import com.hienthai.fastowin.protocol.WalletTransactionSnapshot
 import com.hienthai.fastowin.protocol.SeasonSnapshot
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -796,14 +797,230 @@ class PostgresPlayerProfileRepository(
         const val EXPERIENCE_PER_LEVEL = 100
         const val PLACEMENT_MATCHES_REQUIRED = 5
     }
-    override suspend fun updateGold(playerId: String, amountDelta: Int): Boolean = withContext(Dispatchers.IO) {
+    override suspend fun loadWalletHistory(
+        playerId: String,
+        limit: Int
+    ): List<WalletTransactionSnapshot> = withContext(Dispatchers.IO) {
         dataSource.connection.use { connection ->
             connection.prepareStatement(
-                "UPDATE player_stats SET gold = GREATEST(0, gold + ?) WHERE user_id = ?"
+                """
+                SELECT id, source_type, source_id, gold_delta, gems_delta, xp_delta, created_at
+                FROM wallet_transactions
+                WHERE user_id = ?
+                ORDER BY created_at DESC, id DESC
+                LIMIT ?
+                """.trimIndent()
             ).use { statement ->
-                statement.setInt(1, amountDelta)
-                statement.setObject(2, java.util.UUID.fromString(playerId))
-                statement.executeUpdate() > 0
+                statement.setObject(1, UUID.fromString(playerId))
+                statement.setInt(2, limit.coerceIn(1, 100))
+                statement.executeQuery().use { result ->
+                    buildList {
+                        while (result.next()) {
+                            add(
+                                WalletTransactionSnapshot(
+                                    id = result.getObject("id", UUID::class.java).toString(),
+                                    sourceType = result.getString("source_type"),
+                                    sourceId = result.getString("source_id"),
+                                    goldDelta = result.getInt("gold_delta"),
+                                    gemsDelta = result.getInt("gems_delta"),
+                                    xpDelta = result.getInt("xp_delta"),
+                                    createdAtEpochMillis = result.getTimestamp("created_at").toInstant().toEpochMilli()
+                                )
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    override suspend fun applyWalletTransaction(
+        playerId: String,
+        sourceType: String,
+        sourceId: String,
+        goldDelta: Int,
+        gemsDelta: Int,
+        xpDelta: Int
+    ): WalletMutationStatus = withContext(Dispatchers.IO) {
+        require(goldDelta != 0 || gemsDelta != 0 || xpDelta != 0) { "Wallet transaction must change a balance" }
+        require(sourceType.length in 1..32 && sourceId.length in 1..128) { "Invalid wallet transaction source" }
+        dataSource.connection.use { connection ->
+            connection.autoCommit = false
+            try {
+                val userId = UUID.fromString(playerId)
+                val balances = connection.prepareStatement(
+                    "SELECT gold, gems, experience_points FROM player_stats WHERE user_id = ? FOR UPDATE"
+                ).use { statement ->
+                    statement.setObject(1, userId)
+                    statement.executeQuery().use { result ->
+                        if (!result.next()) null else Triple(
+                            result.getInt("gold"),
+                            result.getInt("gems"),
+                            result.getInt("experience_points")
+                        )
+                    }
+                } ?: run {
+                    connection.rollback()
+                    return@withContext WalletMutationStatus.PLAYER_NOT_FOUND
+                }
+                if (
+                    balances.first + goldDelta < 0 ||
+                    balances.second + gemsDelta < 0 ||
+                    balances.third + xpDelta < 0
+                ) {
+                    connection.rollback()
+                    return@withContext WalletMutationStatus.INSUFFICIENT_FUNDS
+                }
+                val inserted = connection.prepareStatement(
+                    """
+                    INSERT INTO wallet_transactions (
+                        id, user_id, source_type, source_id, gold_delta, gems_delta, xp_delta
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT (user_id, source_type, source_id) DO NOTHING
+                    """.trimIndent()
+                ).use { statement ->
+                    statement.setObject(1, UUID.randomUUID())
+                    statement.setObject(2, userId)
+                    statement.setString(3, sourceType)
+                    statement.setString(4, sourceId)
+                    statement.setInt(5, goldDelta)
+                    statement.setInt(6, gemsDelta)
+                    statement.setInt(7, xpDelta)
+                    statement.executeUpdate()
+                }
+                if (inserted == 0) {
+                    connection.rollback()
+                    return@withContext WalletMutationStatus.DUPLICATE
+                }
+                connection.prepareStatement(
+                    """
+                    UPDATE player_stats
+                    SET gold = gold + ?, gems = gems + ?, experience_points = experience_points + ?,
+                        updated_at = CURRENT_TIMESTAMP
+                    WHERE user_id = ?
+                    """.trimIndent()
+                ).use { statement ->
+                    statement.setInt(1, goldDelta)
+                    statement.setInt(2, gemsDelta)
+                    statement.setInt(3, xpDelta)
+                    statement.setObject(4, userId)
+                    check(statement.executeUpdate() == 1)
+                }
+                connection.commit()
+                WalletMutationStatus.APPLIED
+            } catch (error: Throwable) {
+                connection.rollback()
+                throw error
+            } finally {
+                connection.autoCommit = true
+            }
+        }
+    }
+
+    override suspend fun grantStorePurchase(
+        playerId: String,
+        store: String,
+        productId: String,
+        transactionId: String,
+        gems: Int
+    ): StorePurchaseGrantStatus = withContext(Dispatchers.IO) {
+        require(store.length in 1..16 && productId.length in 1..128 && transactionId.length in 1..256)
+        require(gems > 0)
+        dataSource.connection.use { connection ->
+            connection.autoCommit = false
+            try {
+                val userId = UUID.fromString(playerId)
+                val userExists = connection.prepareStatement("SELECT 1 FROM users WHERE id = ? FOR UPDATE").use { statement ->
+                    statement.setObject(1, userId)
+                    statement.executeQuery().use { it.next() }
+                }
+                if (!userExists) {
+                    connection.rollback()
+                    return@withContext StorePurchaseGrantStatus.PLAYER_NOT_FOUND
+                }
+                val insertedPurchase = connection.prepareStatement(
+                    """
+                    INSERT INTO store_purchases (
+                        id, user_id, store, product_id, transaction_id, gems_granted
+                    ) VALUES (?, ?, ?, ?, ?, ?)
+                    ON CONFLICT (store, transaction_id) DO NOTHING
+                    """.trimIndent()
+                ).use { statement ->
+                    statement.setObject(1, UUID.randomUUID())
+                    statement.setObject(2, userId)
+                    statement.setString(3, store)
+                    statement.setString(4, productId)
+                    statement.setString(5, transactionId)
+                    statement.setInt(6, gems)
+                    statement.executeUpdate()
+                }
+                if (insertedPurchase == 0) {
+                    val belongsToPlayer = connection.prepareStatement(
+                        """
+                        SELECT user_id, product_id, gems_granted
+                        FROM store_purchases
+                        WHERE store = ? AND transaction_id = ?
+                        """.trimIndent()
+                    ).use { statement ->
+                        statement.setString(1, store)
+                        statement.setString(2, transactionId)
+                        statement.executeQuery().use { result ->
+                            result.next() &&
+                                result.getObject("user_id", UUID::class.java) == userId &&
+                                result.getString("product_id") == productId &&
+                                result.getInt("gems_granted") == gems
+                        }
+                    }
+                    connection.rollback()
+                    return@withContext if (belongsToPlayer) {
+                        StorePurchaseGrantStatus.ALREADY_GRANTED
+                    } else {
+                        StorePurchaseGrantStatus.TOKEN_ALREADY_USED
+                    }
+                }
+                connection.prepareStatement(
+                    """
+                    INSERT INTO player_stats (user_id, updated_at)
+                    VALUES (?, CURRENT_TIMESTAMP)
+                    ON CONFLICT (user_id) DO NOTHING
+                    """.trimIndent()
+                ).use { statement ->
+                    statement.setObject(1, userId)
+                    statement.executeUpdate()
+                }
+                connection.prepareStatement(
+                    """
+                    INSERT INTO wallet_transactions (
+                        id, user_id, source_type, source_id, gems_delta
+                    ) VALUES (?, ?, 'STORE_PURCHASE', ?, ?)
+                    ON CONFLICT (user_id, source_type, source_id) DO NOTHING
+                    """.trimIndent()
+                ).use { statement ->
+                    statement.setObject(1, UUID.randomUUID())
+                    statement.setObject(2, userId)
+                    statement.setString(3, "$store:$transactionId")
+                    statement.setInt(4, gems)
+                    check(statement.executeUpdate() == 1)
+                }
+                connection.prepareStatement(
+                    """
+                    UPDATE player_stats
+                    SET gems = gems + ?, updated_at = CURRENT_TIMESTAMP
+                    WHERE user_id = ?
+                    """.trimIndent()
+                ).use { statement ->
+                    statement.setInt(1, gems)
+                    statement.setObject(2, userId)
+                    check(statement.executeUpdate() == 1)
+                }
+                connection.commit()
+                StorePurchaseGrantStatus.GRANTED
+            } catch (error: Throwable) {
+                connection.rollback()
+                System.err.println("Could not grant store purchase: ${error.message}")
+                StorePurchaseGrantStatus.FAILED
+            } finally {
+                connection.autoCommit = true
             }
         }
     }

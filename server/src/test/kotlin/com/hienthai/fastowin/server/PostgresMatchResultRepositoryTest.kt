@@ -172,6 +172,85 @@ class PostgresMatchResultRepositoryTest {
                 assertTrue(checkedInProfile.progression.dailyCheckIn.claimedToday)
                 assertEquals(1, checkedInProfile.progression.dailyCheckIn.currentStreak)
                 assertEquals(1, checkedInProfile.progression.dailyCheckIn.totalCheckIns)
+                assertEquals(
+                    WalletMutationStatus.APPLIED,
+                    profileRepository.applyWalletTransaction(
+                        host.playerId,
+                        sourceType = "TOURNAMENT_ENTRY",
+                        sourceId = "tournament-1",
+                        goldDelta = -100
+                    )
+                )
+                assertEquals(
+                    WalletMutationStatus.DUPLICATE,
+                    profileRepository.applyWalletTransaction(
+                        host.playerId,
+                        sourceType = "TOURNAMENT_ENTRY",
+                        sourceId = "tournament-1",
+                        goldDelta = -100
+                    )
+                )
+                assertEquals(
+                    WalletMutationStatus.APPLIED,
+                    profileRepository.applyWalletTransaction(
+                        host.playerId,
+                        sourceType = "TOURNAMENT_PRIZE",
+                        sourceId = "tournament-1",
+                        goldDelta = 250
+                    )
+                )
+                val walletHistory = profileRepository.loadWalletHistory(host.playerId)
+                assertEquals(6, walletHistory.size)
+                assertEquals(
+                    setOf(
+                        "MATCH",
+                        "MISSION",
+                        "DAILY_CHECK_IN",
+                        "TOURNAMENT_ENTRY",
+                        "TOURNAMENT_PRIZE"
+                    ),
+                    walletHistory.map { it.sourceType }.toSet()
+                )
+                assertEquals(1, walletHistory.count { it.sourceType == "TOURNAMENT_ENTRY" })
+                assertEquals(1_050, profileRepository.findByPlayerId(host.playerId)!!.progression.gold)
+                val storeTransaction = storePurchaseFingerprint(
+                    com.hienthai.fastowin.protocol.StorePlatform.GOOGLE_PLAY,
+                    "integration-purchase-token"
+                )
+                assertEquals(
+                    StorePurchaseGrantStatus.GRANTED,
+                    profileRepository.grantStorePurchase(
+                        host.playerId,
+                        store = "GOOGLE_PLAY",
+                        productId = "fasttowin_gems_80",
+                        transactionId = storeTransaction,
+                        gems = 80
+                    )
+                )
+                assertEquals(
+                    StorePurchaseGrantStatus.ALREADY_GRANTED,
+                    profileRepository.grantStorePurchase(
+                        host.playerId,
+                        store = "GOOGLE_PLAY",
+                        productId = "fasttowin_gems_80",
+                        transactionId = storeTransaction,
+                        gems = 80
+                    )
+                )
+                assertEquals(
+                    StorePurchaseGrantStatus.TOKEN_ALREADY_USED,
+                    profileRepository.grantStorePurchase(
+                        guest.playerId,
+                        store = "GOOGLE_PLAY",
+                        productId = "fasttowin_gems_80",
+                        transactionId = storeTransaction,
+                        gems = 80
+                    )
+                )
+                val walletAfterStore = profileRepository.loadWalletHistory(host.playerId)
+                assertEquals(7, walletAfterStore.size)
+                assertEquals(1, walletAfterStore.count { it.sourceType == "STORE_PURCHASE" })
+                assertEquals(82, profileRepository.findByPlayerId(host.playerId)!!.progression.gems)
                 dataSource.connection.use { connection ->
                     connection.prepareStatement(
                         "SELECT COUNT(*) AS count FROM daily_check_ins WHERE user_id = ?"

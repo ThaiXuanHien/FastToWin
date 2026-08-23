@@ -9,6 +9,7 @@ import com.hienthai.fastowin.protocol.MatchDetailSnapshot
 import com.hienthai.fastowin.protocol.MatchType
 import com.hienthai.fastowin.protocol.TournamentHubSnapshot
 import com.hienthai.fastowin.protocol.TournamentInvitationSnapshot
+import com.hienthai.fastowin.protocol.WalletTransactionSnapshot
 
 const val GAME_NUMBER_COUNT = 50
 const val DEFAULT_OPPONENT_NAME = "Đối thủ"
@@ -132,12 +133,19 @@ data class GameState(
     val isProfileSaving: Boolean = false,
     val isClanOpen: Boolean = false,
     val isShopOpen: Boolean = false,
+    val gemStorePackages: List<com.hienthai.fastowin.protocol.GemPackageSnapshot> = emptyList(),
+    val isGemStoreCatalogLoading: Boolean = false,
+    val storeSandboxEnabled: Boolean = false,
+    val verifyingStorePurchaseRequestId: String? = null,
+    val storePurchaseResult: com.hienthai.fastowin.protocol.ServerMessage.StorePurchaseResult? = null,
     val clanList: List<com.hienthai.fastowin.protocol.ClanSummarySnapshot> = emptyList(),
     val pendingClanJoinIds: Set<String> = emptySet(),
     val currentClan: com.hienthai.fastowin.protocol.ClanSnapshot? = null,
     val clanNotice: String? = null,
     val profileNotice: String? = null,
     val profile: PlayerProfileSnapshot? = null,
+    val walletTransactions: List<WalletTransactionSnapshot> = emptyList(),
+    val isWalletHistoryLoading: Boolean = false,
     val isDailyCheckInClaiming: Boolean = false,
     val claimingMissionCode: String? = null,
     val viewedFriendUserId: String? = null,

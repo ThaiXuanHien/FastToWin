@@ -22,6 +22,10 @@ import com.hienthai.fastowin.protocol.ProtocolGameMode
 import com.hienthai.fastowin.protocol.DailyCheckInSnapshot
 import com.hienthai.fastowin.protocol.PlayerProgressionSnapshot
 import com.hienthai.fastowin.protocol.MissionSnapshot
+import com.hienthai.fastowin.protocol.GemPackageSnapshot
+import com.hienthai.fastowin.protocol.StorePlatform
+import com.hienthai.fastowin.platform.StoreBillingState
+import com.hienthai.fastowin.platform.StoreProductPrice
 import com.hienthai.fastowin.state.AuthStage
 import com.hienthai.fastowin.state.AuthState
 import com.hienthai.fastowin.state.AvailableRoom
@@ -331,13 +335,25 @@ class CriticalFlowsUiTest {
 
     @Test
     fun shop_usesGameFriendlyLabelsAndGemCopy() {
+        var purchasedProductId: String? = null
+        val gemPackage = GemPackageSnapshot("fasttowin_gems_80", "Gói Tân binh", 80)
         composeRule.setContent {
             FastToWinTheme {
                 ShopScreen(
                     progression = PlayerProgressionSnapshot(gold = 2_000, gems = 25),
                     onBuy = {},
                     onEquip = {},
-                    onClose = {}
+                    onClose = {},
+                    gemPackages = listOf(gemPackage),
+                    billingState = StoreBillingState(
+                        platform = StorePlatform.GOOGLE_PLAY,
+                        isReady = true,
+                        isSandboxFallback = true,
+                        prices = mapOf(
+                            gemPackage.productId to StoreProductPrice(gemPackage.productId, "Sandbox")
+                        )
+                    ),
+                    onBuyGems = { purchasedProductId = it }
                 )
             }
         }
@@ -347,7 +363,8 @@ class CriticalFlowsUiTest {
         composeRule.onNodeWithText("Gem").performClick()
         composeRule.onNodeWithText("Kho Gem").assertIsDisplayed()
         composeRule.onNodeWithText("Gói Tân binh").assertIsDisplayed()
-        assertTrue(composeRule.onAllNodesWithText("Sắp ra mắt").fetchSemanticsNodes().isNotEmpty())
+        composeRule.onNodeWithText("Sandbox").performClick()
+        composeRule.runOnIdle { assertEquals(gemPackage.productId, purchasedProductId) }
     }
 
     @Test

@@ -267,6 +267,8 @@ Hướng dẫn đầy đủ từ cài Xcode/JDK/Docker, chạy simulator và thi
 
 ## 7. Build và test
 
+Hướng dẫn cấu hình và test mua Gem: [docs/store-billing.md](docs/store-billing.md).
+
 Thiết lập JDK trong PowerShell nếu cần:
 
 ```powershell

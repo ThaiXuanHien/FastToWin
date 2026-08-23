@@ -511,16 +511,20 @@ class PostgresClanRepository(
                 }
                 connection.prepareStatement(
                     """
-                    UPDATE player_stats
-                    SET gold = gold + ?, experience_points = experience_points + ?, gems = gems + ?,
-                        updated_at = CURRENT_TIMESTAMP
-                    WHERE user_id = ?
+                    INSERT INTO player_stats (
+                        user_id, gold, experience_points, gems, updated_at
+                    ) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+                    ON CONFLICT (user_id) DO UPDATE SET
+                        gold = player_stats.gold + EXCLUDED.gold,
+                        experience_points = player_stats.experience_points + EXCLUDED.experience_points,
+                        gems = player_stats.gems + EXCLUDED.gems,
+                        updated_at = EXCLUDED.updated_at
                     """.trimIndent()
                 ).use { statement ->
-                    statement.setInt(1, reward.first)
-                    statement.setInt(2, reward.second)
-                    statement.setInt(3, reward.third)
-                    statement.setObject(4, userUuid)
+                    statement.setObject(1, userUuid)
+                    statement.setInt(2, reward.first)
+                    statement.setInt(3, reward.second)
+                    statement.setInt(4, reward.third)
                     check(statement.executeUpdate() == 1)
                 }
                 connection.prepareStatement(
