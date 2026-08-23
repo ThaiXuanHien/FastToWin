@@ -1,18 +1,14 @@
-package com.hienthai.fastowin.ui.screens
+﻿package com.hienthai.fastowin.ui.screens
 
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Payments
 import androidx.compose.material.icons.filled.MonetizationOn
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -20,13 +16,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.hienthai.fastowin.protocol.ShopItem
 import com.hienthai.fastowin.protocol.SHOP_ITEMS
 import com.hienthai.fastowin.protocol.PlayerProgressionSnapshot
 import com.hienthai.fastowin.ui.components.SystemBackHandler
+import com.hienthai.fastowin.ui.components.GemColor
+import com.hienthai.fastowin.ui.components.FastToWinHeader
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -34,10 +31,19 @@ fun ShopScreen(
     progression: PlayerProgressionSnapshot?,
     onBuy: (String) -> Unit,
     onEquip: (String) -> Unit,
-    onClose: () -> Unit
+    onClose: () -> Unit,
+    unreadNotifications: Int = 0,
+    onNotifications: () -> Unit = {}
 ) {
+    SystemBackHandler(onBack = onClose)
     var selectedTab by remember { mutableStateOf("CARD_BACK") }
-    val tabs = listOf("CARD_BACK" to "Ô số", "BOARD_SKIN" to "Bàn chơi", "AVATAR_FRAME" to "Khung avatar", "EMOJI" to "Biểu cảm")
+    val tabs = listOf(
+        "GEMS" to "Gem",
+        "CARD_BACK" to "Mặt bài",
+        "BOARD_SKIN" to "Bàn số",
+        "FRAME" to "Khung",
+        "EMOJI" to "Biểu cảm"
+    )
     
     val gold = progression?.gold ?: 0
     val gems = progression?.gems ?: 0
@@ -46,37 +52,15 @@ fun ShopScreen(
     val ownedIds = progression?.cosmetics?.filter { it.unlocked }?.map { it.id }?.toSet() ?: emptySet()
     val equippedIds = progression?.cosmetics?.filter { it.equipped }?.map { it.id }?.toSet() ?: emptySet()
 
-    SystemBackHandler(onBack = onClose)
-
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text("Cửa hàng", fontWeight = FontWeight.Bold) },
-                navigationIcon = {
-                    IconButton(onClick = onClose) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Đóng")
-                    }
-                },
-                actions = {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier
-                            .padding(end = 16.dp)
-                            .clip(RoundedCornerShape(16.dp))
-                            .background(MaterialTheme.colorScheme.surfaceVariant)
-                            .padding(horizontal = 12.dp, vertical = 6.dp)
-                    ) {
-                        Icon(Icons.Default.MonetizationOn, contentDescription = null, tint = Color(0xFFFFD700), modifier = Modifier.size(20.dp))
-                        Spacer(Modifier.width(4.dp))
-                        Text(gold.toString(), fontWeight = FontWeight.Bold)
-                        
-                        Spacer(Modifier.width(16.dp))
-                        
-                        Icon(Icons.Default.MonetizationOn, contentDescription = null, tint = Color(0xFF00FFCC), modifier = Modifier.size(20.dp))
-                        Spacer(Modifier.width(4.dp))
-                        Text(gems.toString(), fontWeight = FontWeight.Bold)
-                    }
-                }
+            FastToWinHeader(
+                title = "Cửa hàng",
+                gold = gold,
+                gems = gems,
+                unreadNotifications = unreadNotifications,
+                onNotifications = onNotifications,
+                onBack = onClose
             )
         }
     ) { innerPadding ->
@@ -95,30 +79,68 @@ fun ShopScreen(
                 }
             }
             
-            val items = SHOP_ITEMS.filter { it.type.name == selectedTab }
-            
-            LazyVerticalGrid(
-                columns = GridCells.Adaptive(150.dp),
-                contentPadding = PaddingValues(16.dp),
-                horizontalArrangement = Arrangement.spacedBy(16.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp),
-                modifier = Modifier.weight(1f)
-            ) {
-                items(items) { item ->
-                    val isOwned = item.id in ownedIds
-                    val isEquipped = item.id in equippedIds
-                    
-                    ShopItemCard(
-                        item = item,
-                        isOwned = isOwned,
-                        isEquipped = isEquipped,
-                        canAfford = gold >= item.price,
-                        onBuy = { onBuy(item.id) },
-                        onEquip = { onEquip(item.id) }
-                    )
+            if (selectedTab == "GEMS") {
+                GemStorePreview(modifier = Modifier.weight(1f))
+            } else {
+                val items = SHOP_ITEMS.filter { it.type.name == selectedTab }
+                LazyVerticalGrid(
+                    columns = GridCells.Adaptive(150.dp),
+                    contentPadding = PaddingValues(16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    items(items) { item ->
+                        val isOwned = item.id in ownedIds
+                        val isEquipped = item.id in equippedIds
+                        ShopItemCard(
+                            item = item,
+                            isOwned = isOwned,
+                            isEquipped = isEquipped,
+                            canAfford = gold >= item.price,
+                            onBuy = { onBuy(item.id) },
+                            onEquip = { onEquip(item.id) }
+                        )
+                    }
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun GemStorePreview(modifier: Modifier = Modifier) {
+    val packages = listOf(80 to "Gói Tân binh", 250 to "Gói Bứt tốc", 650 to "Gói Cao thủ")
+    Column(
+        modifier = modifier.fillMaxWidth().padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Text("Kho Gem", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+        Text(
+            "Dùng Gem để mở khóa vật phẩm hiếm. Giá sẽ hiển thị theo khu vực khi tính năng thanh toán ra mắt.",
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        packages.forEach { (amount, name) ->
+            ElevatedCard(modifier = Modifier.fillMaxWidth()) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Icon(Icons.Default.Payments, contentDescription = null, tint = GemColor, modifier = Modifier.size(32.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(name, fontWeight = FontWeight.Bold)
+                        Text("$amount Gem", color = GemColor, fontWeight = FontWeight.SemiBold)
+                    }
+                    Text("Sắp ra mắt", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        }
+        Text(
+            "Bạn cũng có thể săn Gem qua điểm danh, nhiệm vụ khó và thành tích đặc biệt.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
     }
 }
 
@@ -152,9 +174,9 @@ private fun ShopItemCard(
                 contentAlignment = Alignment.Center
             ) {
                 if (item.type.name == "CARD_BACK") {
-                    Text("Ô số", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("Mặt bài", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 } else if (item.type.name == "BOARD_SKIN") {
-                    Text("Bàn", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("Bàn số", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
             

@@ -4,10 +4,18 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
-const val PROTOCOL_VERSION = 23
+const val PROTOCOL_VERSION = 26
 const val GAME_NUMBER_COUNT = 50
 const val MAX_PROFILE_DISPLAY_NAME_LENGTH = 32
-val DAILY_CHECK_IN_REWARDS_XP = listOf(5, 10, 10, 15, 15, 20, 25)
+val DAILY_CHECK_IN_REWARDS_XP = listOf(10, 10, 15, 15, 20, 25, 40)
+val DAILY_CHECK_IN_REWARDS_GOLD = listOf(50, 60, 70, 80, 100, 120, 200)
+val DAILY_CHECK_IN_REWARDS_GEMS = listOf(0, 0, 0, 0, 0, 0, 1)
+const val MATCH_WIN_REWARD_GOLD = 100
+const val MATCH_DRAW_REWARD_GOLD = 70
+const val MATCH_LOSS_REWARD_GOLD = 40
+const val MATCH_WIN_REWARD_XP = 30
+const val MATCH_DRAW_REWARD_XP = 20
+const val MATCH_LOSS_REWARD_XP = 10
 const val DAILY_CHECK_IN_STREAK_ACHIEVEMENT_TARGET = 7
 const val DAILY_CHECK_IN_TITLE_TARGET = 30
 const val DAILY_CHECK_IN_AVATAR_TARGET = 50
@@ -241,6 +249,8 @@ data class MissionSnapshot(
     val target: Int,
     val completed: Boolean,
     val rewardXp: Int = 0,
+    val rewardGold: Int = 0,
+    val rewardGems: Int = 0,
     val rewardClaimed: Boolean = false
 )
 
@@ -248,8 +258,12 @@ data class MissionSnapshot(
 data class DailyCheckInSnapshot(
     val claimedToday: Boolean = false,
     val cycleDay: Int = 1,
-    val todayRewardXp: Int = 5,
+    val todayRewardXp: Int = 10,
+    val todayRewardGold: Int = 50,
+    val todayRewardGems: Int = 0,
     val nextRewardXp: Int = 10,
+    val nextRewardGold: Int = 60,
+    val nextRewardGems: Int = 0,
     val currentStreak: Int = 0,
     val bestStreak: Int = 0,
     val totalCheckIns: Int = 0,
@@ -628,6 +642,14 @@ sealed class ClientMessage {
     data class JoinClan(val clanId: String) : ClientMessage()
 
     @Serializable
+    @SerialName("respond_clan_join_request")
+    data class RespondClanJoinRequest(
+        val clanId: String,
+        val userId: String,
+        val accept: Boolean
+    ) : ClientMessage()
+
+    @Serializable
     @SerialName("leave_clan")
     data object LeaveClan : ClientMessage()
 
@@ -734,7 +756,9 @@ sealed class ServerMessage {
     @SerialName("daily_check_in_result")
     data class DailyCheckInResult(
         val claimed: Boolean,
-        val rewardXp: Int
+        val rewardXp: Int,
+        val rewardGold: Int = 0,
+        val rewardGems: Int = 0
     ) : ServerMessage()
 
     @Serializable
@@ -742,7 +766,9 @@ sealed class ServerMessage {
     data class MissionRewardResult(
         val missionCode: String,
         val claimed: Boolean,
-        val rewardXp: Int
+        val rewardXp: Int,
+        val rewardGold: Int = 0,
+        val rewardGems: Int = 0
     ) : ServerMessage()
 
     @Serializable
@@ -777,7 +803,10 @@ sealed class ServerMessage {
 
     @Serializable
     @SerialName("room_invitations_data")
-    data class RoomInvitationsData(val invitations: List<RoomInvitation>) : ServerMessage()
+    data class RoomInvitationsData(
+        val invitations: List<RoomInvitation>,
+        val outgoingFriendUserIds: List<String> = emptyList()
+    ) : ServerMessage()
 
     @Serializable
     @SerialName("notifications_data")
@@ -863,7 +892,10 @@ sealed class ServerMessage {
 
     @Serializable
     @SerialName("clan_list_data")
-    data class ClanListData(val clans: List<ClanSummarySnapshot>) : ServerMessage()
+    data class ClanListData(
+        val clans: List<ClanSummarySnapshot>,
+        val pendingJoinClanIds: List<String> = emptyList()
+    ) : ServerMessage()
 
     @Serializable
     @SerialName("clan_action_result")
@@ -894,7 +926,17 @@ data class ClanMemberSnapshot(
 data class ClanQuestSnapshot(
     val progress: Int,
     val target: Int,
-    val rewardGold: Int
+    val rewardGold: Int,
+    val rewardXp: Int = 0,
+    val rewardGems: Int = 0
+)
+
+@Serializable
+data class ClanJoinRequestSnapshot(
+    val userId: String,
+    val displayName: String,
+    val playerCode: String,
+    val requestedAtEpochMillis: Long
 )
 
 @Serializable
@@ -907,7 +949,8 @@ data class ClanSnapshot(
     val trophies: Int,
     val logoId: String? = null,
     val maxMembers: Int = 50,
-    val quest: ClanQuestSnapshot? = null
+    val quest: ClanQuestSnapshot? = null,
+    val joinRequests: List<ClanJoinRequestSnapshot> = emptyList()
 )
 
 @Serializable
@@ -930,8 +973,8 @@ data class ShopItem(
 )
 
 val SHOP_ITEMS = listOf(
-    ShopItem("card_back_gold", "Ô Vàng", CosmeticType.CARD_BACK, 500, "GOLD"),
-    ShopItem("card_back_diamond", "Ô Kim Cương", CosmeticType.CARD_BACK, 1500, "GOLD"),
-    ShopItem("board_skin_dark", "Bàn Tối", CosmeticType.BOARD_SKIN, 1000, "GOLD"),
-    ShopItem("board_skin_forest", "Rừng Xanh", CosmeticType.BOARD_SKIN, 1000, "GOLD")
+    ShopItem("card_back_gold", "Mặt bài Hoàng Kim", CosmeticType.CARD_BACK, 500, "GOLD"),
+    ShopItem("card_back_diamond", "Mặt bài Kim Cương", CosmeticType.CARD_BACK, 1500, "GOLD"),
+    ShopItem("board_skin_dark", "Bàn số Bóng Đêm", CosmeticType.BOARD_SKIN, 1000, "GOLD"),
+    ShopItem("board_skin_forest", "Bàn số Rừng Xanh", CosmeticType.BOARD_SKIN, 1000, "GOLD")
 )

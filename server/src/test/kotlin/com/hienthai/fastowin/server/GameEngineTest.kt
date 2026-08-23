@@ -1,6 +1,11 @@
 package com.hienthai.fastowin.server
 
 import com.hienthai.fastowin.protocol.ClientMessage
+import com.hienthai.fastowin.protocol.ClanJoinRequestSnapshot
+import com.hienthai.fastowin.protocol.ClanMemberSnapshot
+import com.hienthai.fastowin.protocol.ClanRole
+import com.hienthai.fastowin.protocol.ClanSnapshot
+import com.hienthai.fastowin.protocol.ClanSummarySnapshot
 import com.hienthai.fastowin.protocol.CosmeticSnapshot
 import com.hienthai.fastowin.protocol.CosmeticType
 import com.hienthai.fastowin.protocol.DAILY_CHECK_IN_AVATAR_ID
@@ -496,10 +501,17 @@ class GameEngineTest {
             ClientMessage.CreateRoom("Friend room", PASSWORD, ProtocolGameMode.ORDER)
         ).map(Delivery::message).filterIsInstance<ServerMessage.RoomCreated>().single().game
 
-        val invitation = engine.handle(
+        val invitationResponse = engine.handle(
             hostId,
             ClientMessage.InviteFriend(guestId, room.roomId)
-        ).map(Delivery::message).filterIsInstance<ServerMessage.RoomInvitation>().single()
+        ).map(Delivery::message)
+        val invitation = invitationResponse.filterIsInstance<ServerMessage.RoomInvitation>().single()
+        assertEquals(
+            listOf(guestId),
+            invitationResponse.filterIsInstance<ServerMessage.RoomInvitationsData>()
+                .single().outgoingFriendUserIds
+        )
+        assertTrue(invitationResponse.filterIsInstance<ServerMessage.SocialNotice>().isEmpty())
         val listedInvitation = engine.handle(guestId, ClientMessage.GetRoomInvitations)
             .map(Delivery::message)
             .filterIsInstance<ServerMessage.RoomInvitationsData>()
@@ -512,8 +524,22 @@ class GameEngineTest {
         val expiredInvitations = engine.cleanupExpiredSessions()
             .map(Delivery::message)
             .filterIsInstance<ServerMessage.RoomInvitationsData>()
-            .single()
-        assertTrue(expiredInvitations.invitations.isEmpty())
+        assertTrue(expiredInvitations.all { it.invitations.isEmpty() })
+        assertTrue(expiredInvitations.all { it.outgoingFriendUserIds.isEmpty() })
+
+        val declinedInvitation = engine.handle(
+            hostId,
+            ClientMessage.InviteFriend(guestId, room.roomId)
+        ).map(Delivery::message).filterIsInstance<ServerMessage.RoomInvitation>().single()
+        val declineResponse = engine.handle(
+            guestId,
+            ClientMessage.RespondRoomInvitation(declinedInvitation.invitationId, accept = false)
+        ).map(Delivery::message)
+        val invitationStatesAfterDecline =
+            declineResponse.filterIsInstance<ServerMessage.RoomInvitationsData>()
+        assertTrue(invitationStatesAfterDecline.size >= 2)
+        assertTrue(invitationStatesAfterDecline.all { it.invitations.isEmpty() })
+        assertTrue(invitationStatesAfterDecline.all { it.outgoingFriendUserIds.isEmpty() })
 
         val activeInvitation = engine.handle(
             hostId,
@@ -532,7 +558,140 @@ class GameEngineTest {
         assertEquals(1, started.size)
         assertEquals(setOf(hostId, guestId), started.first().game.players.map { it.id }.toSet())
         assertEquals(50, started.first().game.numbers.size)
-        assertTrue(acceptResponse.filterIsInstance<ServerMessage.RoomInvitationsData>().single().invitations.isEmpty())
+        assertTrue(
+            acceptResponse.filterIsInstance<ServerMessage.RoomInvitationsData>()
+                .all { it.invitations.isEmpty() }
+        )
+        assertTrue(
+            acceptResponse.filterIsInstance<ServerMessage.RoomInvitationsData>()
+                .all { it.outgoingFriendUserIds.isEmpty() }
+        )
+    }
+
+    @Test
+    fun `guest leaving a waiting room closes it for the host`() = runTest {
+        val repository = InMemoryActiveRoomRepository()
+        val engine = GameEngine(activeRoomRepository = repository)
+        val host = engine.connectGuest("Host", null)
+        val guest = engine.connectGuest("Guest", null)
+        val room = engine.handle(
+            host.playerId,
+            ClientMessage.CreateRoom("Waiting room", PASSWORD, ProtocolGameMode.ORDER)
+        ).map(Delivery::message).filterIsInstance<ServerMessage.RoomCreated>().single().game
+        engine.handle(guest.playerId, ClientMessage.JoinRoom(room.roomId, PASSWORD))
+
+        val leaving = engine.handle(guest.playerId, ClientMessage.LeaveRoom(room.roomId))
+        val closedForHost = leaving.single {
+            it.recipients?.contains(host.playerId) == true && it.message is ServerMessage.RoomClosed
+        }.message as ServerMessage.RoomClosed
+
+        assertEquals(room.roomId, closedForHost.roomId)
+        assertTrue(repository.loadAll().isEmpty())
+        assertTrue(
+            engine.handle(host.playerId, ClientMessage.SetReady(room.roomId, true))
+                .map(Delivery::message)
+                .filterIsInstance<ServerMessage.Error>()
+                .any { it.code == "ROOM_NOT_FOUND" }
+        )
+    }
+
+    @Test
+    fun `clan applicant only becomes a member after owner approval`() = runTest {
+        val ownerId = UUID.randomUUID().toString()
+        val applicantId = UUID.randomUUID().toString()
+        val clanId = UUID.randomUUID().toString()
+        val members = linkedSetOf(ownerId)
+        val pending = linkedSetOf<String>()
+        val profiles = mapOf(
+            ownerId to PlayerProfileSnapshot(ownerId, "Bang chủ", "OWNER01", clanId = clanId, clanName = "Speed"),
+            applicantId to PlayerProfileSnapshot(applicantId, "Tân binh", "NEWBIE01")
+        )
+        val profileRepository = object : PlayerProfileRepository {
+            override suspend fun findByPlayerId(playerId: String): PlayerProfileSnapshot? =
+                profiles[playerId]?.copy(
+                    clanId = clanId.takeIf { playerId in members },
+                    clanName = "Speed".takeIf { playerId in members }
+                )
+            override suspend fun updateProfile(playerId: String, displayName: String, avatarId: String?) = false
+        }
+        val clanRepository = object : ClanRepository {
+            private fun snapshot() = ClanSnapshot(
+                id = clanId,
+                name = "Speed",
+                description = "Nhanh là thắng",
+                ownerId = ownerId,
+                members = members.map { memberId ->
+                    ClanMemberSnapshot(
+                        userId = memberId,
+                        displayName = profiles.getValue(memberId).displayName,
+                        role = if (memberId == ownerId) ClanRole.LEADER else ClanRole.MEMBER,
+                        trophies = 1_000
+                    )
+                },
+                trophies = 1_000,
+                joinRequests = pending.map { userId ->
+                    val profile = profiles.getValue(userId)
+                    ClanJoinRequestSnapshot(userId, profile.displayName, profile.playerCode, 1_000L)
+                }
+            )
+
+            override suspend fun createClan(ownerId: String, name: String, description: String) = null
+            override suspend fun requestJoinClan(userId: String, clanId: String): ClanJoinRequestResult {
+                if (userId in members) return ClanJoinRequestResult.ALREADY_MEMBER
+                pending += userId
+                return ClanJoinRequestResult.REQUESTED
+            }
+            override suspend fun respondJoinRequest(
+                clanId: String,
+                ownerId: String,
+                userId: String,
+                accept: Boolean
+            ): ClanJoinResponseResult {
+                if (!pending.remove(userId)) return ClanJoinResponseResult.REQUEST_NOT_FOUND
+                if (accept) members += userId
+                return if (accept) ClanJoinResponseResult.APPROVED else ClanJoinResponseResult.REJECTED
+            }
+            override suspend fun getPendingJoinClanIds(userId: String) =
+                if (userId in pending) listOf(clanId) else emptyList()
+            override suspend fun leaveClan(userId: String) = members.remove(userId)
+            override suspend fun getClanByUserId(userId: String) = snapshot().takeIf { userId in members }
+            override suspend fun getClanById(clanId: String) = snapshot().takeIf { it.id == clanId }
+            override suspend fun getClanList(limit: Int, offset: Int, query: String?) = listOf(
+                ClanSummarySnapshot(clanId, "Speed", members.size, 50, 1_000)
+            )
+            override suspend fun kickMember(clanId: String, currentUserId: String, targetUserId: String) = false
+            override suspend fun updateLogoId(clanId: String, logoId: String) = false
+            override suspend fun addClanTrophies(clanId: String, amount: Int) = false
+            override suspend fun addQuestProgress(clanId: String, userId: String, amount: Int) = false
+            override suspend fun claimQuestReward(clanId: String, userId: String) = false
+        }
+        val engine = GameEngine(
+            playerProfileRepository = profileRepository,
+            clanRepository = clanRepository
+        )
+        engine.connectAccount(AuthenticatedAccount(UUID.fromString(ownerId), "Bang chủ"))
+        engine.connectAccount(AuthenticatedAccount(UUID.fromString(applicantId), "Tân binh"))
+
+        val request = engine.handle(applicantId, ClientMessage.JoinClan(clanId))
+        assertTrue(applicantId in pending)
+        assertFalse(applicantId in members)
+        assertEquals(
+            "request_join_clan",
+            request.map(Delivery::message).filterIsInstance<ServerMessage.ClanActionResult>().single().action
+        )
+
+        val approval = engine.handle(
+            ownerId,
+            ClientMessage.RespondClanJoinRequest(clanId, applicantId, accept = true)
+        )
+        assertFalse(applicantId in pending)
+        assertTrue(applicantId in members)
+        assertTrue(
+            approval.any {
+                it.recipients == setOf(applicantId) &&
+                    (it.message as? ServerMessage.ClanActionResult)?.action == "join_clan_approved"
+            }
+        )
     }
 
     @Test
@@ -793,9 +952,13 @@ class GameEngineTest {
     }
 
     @Test
-    fun `leaving an active room closes it and deletes the persisted snapshot`() = runTest {
+    fun `leaving an active room counts as a loss and persists the result`() = runTest {
         val repository = InMemoryActiveRoomRepository()
-        val engine = GameEngine(activeRoomRepository = repository)
+        val savedMatches = mutableListOf<CompletedMatch>()
+        val engine = GameEngine(
+            activeRoomRepository = repository,
+            matchResultRepository = MatchResultRepository { savedMatches += it }
+        )
         val host = engine.connectGuest("Host", null)
         val guest = engine.connectGuest("Guest", null)
         val room = engine.handle(
@@ -805,16 +968,23 @@ class GameEngineTest {
         startRoom(engine, host.playerId, guest.playerId, room.roomId)
         assertEquals(room.roomId, repository.loadAll().single().roomId)
 
-        val closed = engine.handle(host.playerId, ClientMessage.LeaveRoom(room.roomId))
-            .map(Delivery::message).filterIsInstance<ServerMessage.RoomClosed>().single()
-        assertEquals(room.roomId, closed.roomId)
-        assertTrue(repository.loadAll().isEmpty())
+        val finished = engine.handle(host.playerId, ClientMessage.LeaveRoom(room.roomId))
+            .map(Delivery::message).filterIsInstance<ServerMessage.GameFinished>().single().game
+        assertEquals(guest.playerId, finished.winnerPlayerId)
+        assertEquals(com.hienthai.fastowin.protocol.RoomPhase.FINISHED, repository.loadAll().single().phase)
+        val saved = savedMatches.single()
+        assertEquals(guest.playerId, saved.winnerPlayerId)
+        assertEquals(MatchOutcome.LOSS, saved.players.single { it.playerId == host.playerId }.outcome)
+        assertEquals(MatchOutcome.WIN, saved.players.single { it.playerId == guest.playerId }.outcome)
 
         val rejected = engine.handle(
             guest.playerId,
             ClientMessage.SelectNumber(room.roomId, 1, "after-opponent-left")
         ).map(Delivery::message).filterIsInstance<ServerMessage.Error>().single()
-        assertEquals("ROOM_NOT_FOUND", rejected.code)
+        assertEquals("GAME_NOT_PLAYING", rejected.code)
+
+        engine.handle(host.playerId, ClientMessage.LeaveRoom(room.roomId))
+        assertTrue(repository.loadAll().isEmpty())
     }
 
     @Test

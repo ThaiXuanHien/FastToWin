@@ -130,19 +130,27 @@ class PostgresMatchResultRepositoryTest {
                 )
                 assertEquals(0, guestProfile.achievements.size)
                 assertFalse(guestProfile.progression.weeklyMissions.first { it.code == "WEEKLY_PERFECT_1" }.completed)
-                assertEquals(25, profile.progression.experiencePoints)
+                assertEquals(30, profile.progression.experiencePoints)
+                assertEquals(100, profile.progression.gold)
                 assertEquals(1, profile.progression.level)
                 assertEquals(1, profile.progression.dailyMissions.first { it.code == "DAILY_PLAY_3" }.progress)
                 assertTrue(profile.progression.dailyMissions.first { it.code == "DAILY_WIN_1" }.completed)
-                assertEquals(15, profile.progression.dailyMissions.first { it.code == "DAILY_WIN_1" }.rewardXp)
+                assertEquals(25, profile.progression.dailyMissions.first { it.code == "DAILY_WIN_1" }.rewardXp)
                 val missionReward = profileRepository.claimMissionReward(host.playerId, "DAILY_WIN_1")!!
                 val duplicateMissionReward = profileRepository.claimMissionReward(host.playerId, "DAILY_WIN_1")!!
                 assertEquals(MissionRewardClaimStatus.CLAIMED, missionReward.status)
-                assertEquals(15, missionReward.rewardXp)
+                assertEquals(25, missionReward.rewardXp)
+                assertEquals(150, missionReward.rewardGold)
                 assertEquals(MissionRewardClaimStatus.ALREADY_CLAIMED, duplicateMissionReward.status)
                 val rewardedProfile = profileRepository.findByPlayerId(host.playerId)!!
-                assertEquals(40, rewardedProfile.progression.experiencePoints)
+                assertEquals(55, rewardedProfile.progression.experiencePoints)
+                assertEquals(250, rewardedProfile.progression.gold)
                 assertTrue(rewardedProfile.progression.dailyMissions.first { it.code == "DAILY_WIN_1" }.rewardClaimed)
+                val perfectReward = profileRepository.claimMissionReward(host.playerId, "WEEKLY_PERFECT_1")!!
+                assertEquals(MissionRewardClaimStatus.CLAIMED, perfectReward.status)
+                assertEquals(120, perfectReward.rewardXp)
+                assertEquals(600, perfectReward.rewardGold)
+                assertEquals(2, perfectReward.rewardGems)
                 assertEquals(50, profile.progression.weeklyMissions.first { it.code == "WEEKLY_CORRECT_100" }.progress)
                 assertTrue(profile.progression.weeklyMissions.first { it.code == "WEEKLY_PERFECT_1" }.completed)
                 assertFalse(profile.progression.cosmetics.first { it.id == "frame_perfect" }.unlocked)
@@ -153,11 +161,14 @@ class PostgresMatchResultRepositoryTest {
                 val firstCheckIn = profileRepository.claimDailyCheckIn(host.playerId)!!
                 val duplicateCheckIn = profileRepository.claimDailyCheckIn(host.playerId)!!
                 assertTrue(firstCheckIn.claimed)
-                assertEquals(5, firstCheckIn.rewardXp)
+                assertEquals(10, firstCheckIn.rewardXp)
+                assertEquals(50, firstCheckIn.rewardGold)
                 assertFalse(duplicateCheckIn.claimed)
                 assertEquals(0, duplicateCheckIn.rewardXp)
                 val checkedInProfile = profileRepository.findByPlayerId(host.playerId)!!
-                assertEquals(45, checkedInProfile.progression.experiencePoints)
+                assertEquals(185, checkedInProfile.progression.experiencePoints)
+                assertEquals(900, checkedInProfile.progression.gold)
+                assertEquals(2, checkedInProfile.progression.gems)
                 assertTrue(checkedInProfile.progression.dailyCheckIn.claimedToday)
                 assertEquals(1, checkedInProfile.progression.dailyCheckIn.currentStreak)
                 assertEquals(1, checkedInProfile.progression.dailyCheckIn.totalCheckIns)

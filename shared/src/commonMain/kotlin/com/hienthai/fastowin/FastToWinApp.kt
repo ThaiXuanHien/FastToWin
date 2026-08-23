@@ -32,6 +32,8 @@ import com.hienthai.fastowin.ui.screens.FriendsScreen
 import com.hienthai.fastowin.ui.screens.RoomInvitationDialog
 import com.hienthai.fastowin.ui.screens.LobbyScreen
 import com.hienthai.fastowin.ui.screens.ProfileScreen
+import com.hienthai.fastowin.ui.screens.ProfileSection
+import com.hienthai.fastowin.ui.screens.ProfileSectionScreen
 import com.hienthai.fastowin.ui.screens.LeaderboardScreen
 import com.hienthai.fastowin.ui.screens.ResultScreen
 import com.hienthai.fastowin.ui.screens.FastToWinBottomBar
@@ -53,6 +55,7 @@ import com.hienthai.fastowin.platform.buildRoomShareText
 import com.hienthai.fastowin.platform.rememberTextSharer
 import com.hienthai.fastowin.navigation.GameMode
 import com.hienthai.fastowin.state.PracticeChallenge
+import com.hienthai.fastowin.ui.components.FastToWinHeader
 
 @Composable
 fun FastToWinApp(
@@ -172,10 +175,11 @@ private fun GameContent(
     val state by controller.uiState.collectAsState()
     val textSharer = rememberTextSharer()
     val sessionStartedAtMillis = remember { epochMillis() }
-    var showGameModePicker by remember { mutableStateOf(false) }
     var showPracticeLauncher by remember { mutableStateOf(false) }
     var showPracticeModePicker by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
+    var profileSection by remember { mutableStateOf<ProfileSection?>(null) }
+    var profileSectionExternal by remember { mutableStateOf(false) }
     var showTutorial by remember { mutableStateOf(!appPreferences.hasCompletedTutorial) }
     var practiceMode by remember { mutableStateOf<GameMode?>(null) }
     var practiceChallenge by remember { mutableStateOf<PracticeChallenge?>(null) }
@@ -191,6 +195,19 @@ private fun GameContent(
         pendingRoomLink?.let { link ->
             controller.openRoomLink(link.roomId)
             onRoomLinkConsumed(link.roomId)
+        }
+    }
+
+    LaunchedEffect(state.currentRoomId) {
+        if (state.currentRoomId != null) {
+            showPracticeLauncher = false
+            showPracticeModePicker = false
+            showSettings = false
+            profileSection = null
+            showTutorial = false
+            practiceMode = null
+            practiceChallenge = null
+            challengeLinkError = null
         }
     }
 
@@ -218,7 +235,6 @@ private fun GameContent(
         if (challengeLinkError == null) {
             controller.backToModeSelection()
             controller.openHome()
-            showGameModePicker = false
             showPracticeLauncher = false
             showPracticeModePicker = false
             showSettings = false
@@ -257,18 +273,6 @@ private fun GameContent(
             }
         )
     }
-    if (showGameModePicker) {
-        GameModePickerDialog(
-            title = "Chọn chế độ chơi",
-            playerLevel = state.profile?.progression?.level ?: 1,
-            onDismiss = { showGameModePicker = false },
-            onSelect = { mode ->
-                showGameModePicker = false
-                controller.openHome()
-                controller.selectMode(mode)
-            }
-        )
-    }
     if (showPracticeModePicker) {
         GameModePickerDialog(
             title = "Chọn chế độ luyện tập",
@@ -298,32 +302,70 @@ private fun GameContent(
     }
 
     val showTopLevelNavigation = state.lobbyStage == com.hienthai.fastowin.state.LobbyStage.SELECT_MODE
-    val openHome = controller::openHome
-    val openLeaderboardTab = controller::openLeaderboard
+    val openHome = {
+        profileSection = null
+        controller.openHome()
+    }
+    val openLeaderboardTab = {
+        profileSection = null
+        controller.openLeaderboard()
+    }
     val openFriendsTab = {
         if (isGuest) onUpgradeGuest() else {
+            profileSection = null
             controller.openFriends()
         }
     }
     val openAccountTab = {
         if (isGuest) onUpgradeGuest() else {
+            profileSection = null
             controller.openProfile()
         }
     }
+    val openClanTab = {
+        if (isGuest) onUpgradeGuest() else {
+            profileSection = null
+            controller.openClan()
+        }
+    }
+    val openSettingsTab = { showSettings = true }
+    val finishTutorial = {
+        onPreferencesChange(appPreferences.copy(hasCompletedTutorial = true))
+        showTutorial = false
+    }
 
     when {
-                state.isTournamentOpen -> TournamentScreen(
-                    state = state,
-                    onBack = controller::closeTournament,
-                    onCreate = controller::createTournament,
-                    onInvite = controller::inviteTournamentPlayer,
-                    onRespondInvitation = controller::respondTournamentInvitation,
-                    onStart = controller::startTournament,
-                    onLeave = controller::leaveTournament,
-                    onOpenFriendProfile = controller::openFriendProfile
+                state.isNotificationsOpen -> NotificationsScreen(
+                    notifications = state.notifications,
+                    onBack = controller::closeNotifications,
+                    onOpen = controller::openNotification,
+                    onDismiss = controller::dismissNotification,
+                    onMarkAllRead = controller::markAllNotificationsRead,
+                    onClearAll = controller::clearNotifications,
+                    gold = state.profile?.progression?.gold ?: 0,
+                    gems = state.profile?.progression?.gems ?: 0
                 )
 
-                state.isFriendProfileOpen -> ProfileScreen(
+                showTutorial -> TutorialScreen(
+                    onComplete = finishTutorial,
+                    onSkip = finishTutorial
+                )
+
+                showSettings -> SettingsScreen(
+                    preferences = appPreferences,
+                    onPreferencesChange = onPreferencesChange,
+                    onPreviewSound = { playFeedbackSound(GameFeedbackEffect.CORRECT) },
+                    onOpenTutorial = {
+                        showTutorial = true
+                    },
+                    onBack = { showSettings = false },
+                    gold = state.profile?.progression?.gold ?: 0,
+                    gems = state.profile?.progression?.gems ?: 0,
+                    unreadNotifications = state.unreadNotificationCount,
+                    onOpenNotifications = controller::openNotifications
+                )
+
+                state.isFriendProfileOpen && profileSection == null && !state.isNotificationsOpen -> ProfileScreen(
                     serverUrl = serverUrl,
                     state = state,
                     profileOverride = state.friendProfile,
@@ -337,6 +379,11 @@ private fun GameContent(
                     onSave = { _, _ -> },
                     onUploadAvatar = {},
                     onInviteToClan = controller::inviteToClan,
+                    onOpenNotifications = controller::openNotifications,
+                    onOpenSection = { section ->
+                        profileSectionExternal = true
+                        profileSection = section
+                    },
                     canEdit = false,
                     isAccountLoading = false,
                     accountError = null,
@@ -353,27 +400,54 @@ private fun GameContent(
                     showBackButton = true
                 )
 
-                state.isNotificationsOpen -> NotificationsScreen(
-                    notifications = state.notifications,
-                    onBack = controller::closeNotifications,
-                    onOpen = controller::openNotification,
-                    onDismiss = controller::dismissNotification,
-                    onMarkAllRead = controller::markAllNotificationsRead,
-                    onClearAll = controller::clearNotifications
+                profileSection != null -> {
+                    val sectionProfile = if (profileSectionExternal) state.friendProfile else state.profile
+                    if (sectionProfile == null) {
+                        profileSection = null
+                    } else {
+                        ProfileSectionScreen(
+                            state = state,
+                            profile = sectionProfile,
+                            section = checkNotNull(profileSection),
+                            isExternalProfile = profileSectionExternal,
+                            canEdit = !profileSectionExternal && !isGuest,
+                            onBack = { profileSection = null },
+                            onRefresh = if (profileSectionExternal) controller::refreshFriendProfile else controller::openProfile,
+                            onOpenMatchDetail = controller::openMatchDetail,
+                            onCloseMatchDetail = controller::closeMatchDetail,
+                            onEquipCosmetics = controller::equipCosmetics,
+                            onClaimMissionReward = controller::claimMissionReward,
+                            onSave = controller::updateProfile,
+                            onOpenNotifications = controller::openNotifications
+                        )
+                    }
+                }
+
+                state.isTournamentOpen -> TournamentScreen(
+                    state = state,
+                    onBack = controller::closeTournament,
+                    onCreate = controller::createTournament,
+                    onInvite = controller::inviteTournamentPlayer,
+                    onRespondInvitation = controller::respondTournamentInvitation,
+                    onStart = controller::startTournament,
+                    onLeave = controller::leaveTournament,
+                    onOpenFriendProfile = controller::openFriendProfile
                 )
 
                 state.isFriendsOpen -> TopLevelTabIfNeeded(
                     enabled = showTopLevelNavigation,
+                    state = state,
                     selected = MainTab.FRIENDS,
                     friendNotificationCount = state.pendingSocialInvitationCount,
                     onHome = openHome,
                     onLeaderboard = openLeaderboardTab,
-                    onPlay = { showGameModePicker = true },
+                    onClan = openClanTab,
                     onFriends = controller::openFriends,
-                    onAccount = openAccountTab
+                    onAccount = openAccountTab,
+                    onNotifications = controller::openNotifications
                 ) { contentModifier -> FriendsScreen(
                     state = state,
-                    onBack = controller::closeFriends,
+                    onBack = if (showTopLevelNavigation) openHome else controller::closeFriends,
                     onRefresh = controller::openFriends,
                     onSendRequest = controller::sendFriendRequest,
                     onRespondRequest = controller::respondFriendRequest,
@@ -384,41 +458,47 @@ private fun GameContent(
                     onInviteFriend = controller::inviteFriend,
                     onRespondRoomInvitation = controller::respondRoomInvitation,
                     onOpenFriendProfile = controller::openFriendProfile,
+                    onOpenNotifications = controller::openNotifications,
                     showBackButton = !showTopLevelNavigation,
                     modifier = contentModifier
                 ) }
 
                 state.isLeaderboardOpen -> TopLevelTabIfNeeded(
                     enabled = showTopLevelNavigation,
+                    state = state,
                     selected = MainTab.LEADERBOARD,
                     friendNotificationCount = state.pendingSocialInvitationCount,
                     onHome = openHome,
                     onLeaderboard = controller::openLeaderboard,
-                    onPlay = { showGameModePicker = true },
+                    onClan = openClanTab,
                     onFriends = openFriendsTab,
-                    onAccount = openAccountTab
+                    onAccount = openAccountTab,
+                    onNotifications = controller::openNotifications
                 ) { contentModifier -> LeaderboardScreen(
                     state = state,
-                    onBack = controller::closeLeaderboard,
+                    onBack = if (showTopLevelNavigation) openHome else controller::closeLeaderboard,
                     onRefresh = controller::openLeaderboard,
                     onOpenFriendProfile = controller::openFriendProfile,
+                    onOpenNotifications = controller::openNotifications,
                     showBackButton = !showTopLevelNavigation,
                     modifier = contentModifier
                 ) }
 
                 state.isProfileOpen -> TopLevelTabIfNeeded(
                     enabled = showTopLevelNavigation,
+                    state = state,
                     selected = MainTab.ACCOUNT,
                     friendNotificationCount = state.pendingSocialInvitationCount,
                     onHome = openHome,
                     onLeaderboard = openLeaderboardTab,
-                    onPlay = { showGameModePicker = true },
+                    onClan = openClanTab,
                     onFriends = openFriendsTab,
-                    onAccount = controller::openProfile
+                    onAccount = controller::openProfile,
+                    onNotifications = controller::openNotifications
                 ) { contentModifier -> ProfileScreen(
                     serverUrl = serverUrl,
                     state = state,
-                    onBack = controller::closeProfile,
+                    onBack = if (showTopLevelNavigation) openHome else controller::closeProfile,
                     onRefresh = controller::openProfile,
                     onOpenMatchDetail = controller::openMatchDetail,
                     onCloseMatchDetail = controller::closeMatchDetail,
@@ -440,6 +520,12 @@ private fun GameContent(
                     onRevokeAllSessions = onRevokeAllSessions,
                     onLogout = onLogout,
                     sessionStartedAtMillis = sessionStartedAtMillis,
+                    onOpenNotifications = controller::openNotifications,
+                    onOpenSettings = openSettingsTab,
+                    onOpenSection = { section ->
+                        profileSectionExternal = false
+                        profileSection = section
+                    },
                     showBackButton = !showTopLevelNavigation,
                     modifier = contentModifier
                 ) }
@@ -448,28 +534,56 @@ private fun GameContent(
                     progression = state.profile?.progression,
                     onBuy = controller::buyCosmetic,
                     onEquip = controller::equipCosmetic,
-                    onClose = controller::closeShop
+                    onClose = controller::closeShop,
+                    unreadNotifications = state.unreadNotificationCount,
+                    onNotifications = controller::openNotifications
                 )
 
-                state.isClanOpen -> ClanScreen(
-                    serverUrl = serverUrl,
-                    myClanId = state.profile?.clanId,
-                    clanList = state.clanList,
-                    currentClan = state.currentClan,
+                state.isClanOpen -> TopLevelTabIfNeeded(
+                    enabled = showTopLevelNavigation,
+                    state = state,
+                    selected = MainTab.CLAN,
+                    friendNotificationCount = state.pendingSocialInvitationCount,
+                    onHome = openHome,
+                    onLeaderboard = openLeaderboardTab,
+                    onClan = controller::openClan,
+                    onFriends = openFriendsTab,
+                    onAccount = openAccountTab,
+                    onNotifications = controller::openNotifications
+                ) { contentModifier -> ClanScreen(
+                     serverUrl = serverUrl,
+                     currentUserId = state.profile?.userId,
+                     myClanId = state.profile?.clanId,
+                     clanList = state.clanList,
+                     pendingJoinClanIds = state.pendingClanJoinIds,
+                     currentClan = state.currentClan,
+                     notice = state.clanNotice ?: state.error,
                     onCreateClan = controller::createClan,
                     onJoinClan = controller::joinClan,
                     onLeaveClan = controller::leaveClan,
                     onSearch = controller::searchClan,
-                    onKickMember = controller::kickClanMember,
+                     onKickMember = controller::kickClanMember,
+                     onRespondJoinRequest = controller::respondClanJoinRequest,
                     onUpdateLogo = controller::updateClanLogo,
                     onClaimQuest = controller::claimClanQuestReward,
                     onViewClan = controller::viewClan,
-                    onBack = controller::closeClan
-                )
+                    onBack = if (showTopLevelNavigation) openHome else controller::closeClan,
+                    gold = state.profile?.progression?.gold ?: 0,
+                    gems = state.profile?.progression?.gems ?: 0,
+                    unreadNotifications = state.unreadNotificationCount,
+                    onOpenNotifications = controller::openNotifications,
+                    showBackButton = !showTopLevelNavigation,
+                    modifier = contentModifier
+                ) }
 
                 state.isGameOver -> ResultScreen(
                     state = state,
                     onRestart = controller::resetGame,
+                    onBack = if (state.isTournamentMatch) {
+                        controller::openTournamentAfterMatch
+                    } else {
+                        controller::resetGame
+                    },
                     onRematch = controller::requestRematch,
                     onCancelRematch = controller::cancelRematch,
                     onDeclineRematch = controller::declineRematch,
@@ -490,17 +604,6 @@ private fun GameContent(
                     preferences = appPreferences
                 )
 
-                showTutorial -> TutorialScreen(
-                    onComplete = {
-                        onPreferencesChange(appPreferences.copy(hasCompletedTutorial = true))
-                        showTutorial = false
-                    },
-                    onSkip = {
-                        onPreferencesChange(appPreferences.copy(hasCompletedTutorial = true))
-                        showTutorial = false
-                    }
-                )
-
                 practiceMode != null -> PracticeScreen(
                     mode = checkNotNull(practiceMode),
                     challenge = practiceChallenge,
@@ -509,17 +612,6 @@ private fun GameContent(
                         practiceMode = null
                         practiceChallenge = null
                     }
-                )
-
-                showSettings -> SettingsScreen(
-                    preferences = appPreferences,
-                    onPreferencesChange = onPreferencesChange,
-                    onPreviewSound = { playFeedbackSound(GameFeedbackEffect.CORRECT) },
-                    onOpenTutorial = {
-                        showSettings = false
-                        showTutorial = true
-                    },
-                    onBack = { showSettings = false }
                 )
 
                 else -> LobbyScreen(
@@ -542,7 +634,6 @@ private fun GameContent(
                     onLogout = onLogout,
                     isGuest = isGuest,
                     onUpgradeGuest = onUpgradeGuest,
-                    onOpenSettings = { showSettings = true },
                     onOpenNotifications = controller::openNotifications,
                     onOpenClan = controller::openClan,
                     onOpenPractice = { showPracticeLauncher = true },
@@ -560,13 +651,15 @@ private fun GameContent(
 @Composable
 private fun TopLevelTabIfNeeded(
     enabled: Boolean,
+    state: com.hienthai.fastowin.state.GameState,
     selected: MainTab,
     friendNotificationCount: Int,
     onHome: () -> Unit,
     onLeaderboard: () -> Unit,
-    onPlay: () -> Unit,
+    onClan: () -> Unit,
     onFriends: () -> Unit,
     onAccount: () -> Unit,
+    onNotifications: () -> Unit,
     content: @Composable (Modifier) -> Unit
 ) {
     if (!enabled) {
@@ -574,13 +667,27 @@ private fun TopLevelTabIfNeeded(
         return
     }
     Column(modifier = Modifier.fillMaxSize()) {
+        FastToWinHeader(
+            title = when (selected) {
+                MainTab.HOME -> ""
+                MainTab.LEADERBOARD -> "Xếp hạng"
+                MainTab.CLAN -> "Bang hội"
+                MainTab.FRIENDS -> "Bạn bè"
+                MainTab.ACCOUNT -> "Tài khoản"
+            },
+            gold = state.profile?.progression?.gold ?: 0,
+            gems = state.profile?.progression?.gems ?: 0,
+            unreadNotifications = state.unreadNotificationCount,
+            onNotifications = onNotifications,
+            onBack = if (selected == MainTab.HOME) null else onHome
+        )
         content(Modifier.weight(1f))
         FastToWinBottomBar(
             selected = selected,
             friendNotificationCount = friendNotificationCount,
             onHome = onHome,
             onLeaderboard = onLeaderboard,
-            onPlay = onPlay,
+            onClan = onClan,
             onFriends = onFriends,
             onAccount = onAccount
         )

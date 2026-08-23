@@ -28,4 +28,5 @@ export DATABASE_URL=jdbc:postgresql://127.0.0.1:5432/fasttowin
 export DATABASE_USER=fasttowin
 export DATABASE_PASSWORD=fasttowin
 
-exec ./gradlew :server:run
+./gradlew :server:installDist
+exec ./server/build/install/server/bin/server

@@ -49,6 +49,7 @@ import com.hienthai.fastowin.state.GameState
 import com.hienthai.fastowin.state.LobbyStage
 import com.hienthai.fastowin.ui.components.SystemBackHandler
 import com.hienthai.fastowin.ui.layout.ResponsiveScreen
+import com.hienthai.fastowin.ui.components.FastToWinHeader
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -65,11 +66,11 @@ fun FriendsScreen(
     onInviteFriend: (String) -> Unit,
     onRespondRoomInvitation: (String, Boolean) -> Unit,
     onOpenFriendProfile: (String) -> Unit,
+    onOpenNotifications: () -> Unit = {},
     showBackButton: Boolean = true,
     modifier: Modifier = Modifier
 ) {
     SystemBackHandler(enabled = showBackButton, onBack = onBack)
-
     var playerCode by remember { mutableStateOf("") }
     var removeTarget by remember { mutableStateOf<PlayerActionTarget?>(null) }
     var blockTarget by remember { mutableStateOf<PlayerActionTarget?>(null) }
@@ -108,6 +109,7 @@ fun FriendsScreen(
     ResponsiveScreen(
         modifier = modifier,
         maxContentWidth = 920.dp,
+        applySafeDrawingInsets = showBackButton,
         includeBottomSafeDrawingInset = showBackButton
     ) { contentModifier ->
         PullToRefreshBox(
@@ -119,15 +121,16 @@ fun FriendsScreen(
             modifier = Modifier.fillMaxSize().padding(vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            if (showBackButton) IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Quay lại") }
-            else Spacer(Modifier.size(48.dp))
-            Text("Bạn bè", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-            Spacer(Modifier.size(48.dp))
+        if (showBackButton) {
+            FastToWinHeader(
+                title = "Bạn bè",
+                gold = state.profile?.progression?.gold ?: 0,
+                gems = state.profile?.progression?.gems ?: 0,
+                unreadNotifications = state.unreadNotificationCount,
+                onNotifications = onOpenNotifications,
+                onBack = onBack,
+                applySafeDrawingInset = false
+            )
         }
         FriendCodeForm(
             playerCode = playerCode,
@@ -220,6 +223,8 @@ fun FriendsScreen(
                     FriendCard(
                         friend = friend,
                         canInvite = canInvite,
+                        isSendingInvitation = friend.userId in state.sendingRoomInviteFriendIds,
+                        isInvited = friend.userId in state.invitedRoomFriendIds,
                         onInviteFriend = onInviteFriend,
                         onViewInfo = { onOpenFriendProfile(friend.userId) },
                         onRemoveFriend = {
@@ -304,6 +309,8 @@ private fun FriendCodeForm(
 private fun FriendCard(
     friend: FriendSnapshot,
     canInvite: Boolean,
+    isSendingInvitation: Boolean,
+    isInvited: Boolean,
     onInviteFriend: (String) -> Unit,
     onViewInfo: () -> Unit,
     onRemoveFriend: () -> Unit,
@@ -361,10 +368,17 @@ private fun FriendCard(
             if (canInvite) {
                 Button(
                     onClick = { onInviteFriend(friend.userId) },
-                    enabled = friend.presence == FriendPresence.ONLINE,
+                    enabled = friend.presence == FriendPresence.ONLINE &&
+                        !isSendingInvitation && !isInvited,
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text("Mời vào phòng")
+                    Text(
+                        when {
+                            isInvited -> "Đã mời"
+                            isSendingInvitation -> "Đang gửi…"
+                            else -> "Mời vào phòng"
+                        }
+                    )
                 }
             }
         }

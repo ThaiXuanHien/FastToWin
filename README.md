@@ -10,6 +10,16 @@ Fast To Win là game tìm số 1–50 theo thời gian thực dành cho Android 
 - Màn đấu giải hiển thị người tham gia, trạng thái từng trận, nhánh đấu, nhà vô địch và lịch sử giải gần đây.
 - Dữ liệu được lưu trong bảng `tournaments` khi backend chạy với PostgreSQL. Flyway tạo bảng này qua migration V21.
 
+## Tài sản và phần thưởng
+
+- Vàng dùng để mở khóa vật phẩm trong cửa hàng; Gem là tiền tệ hiếm.
+- Điểm danh nhận Vàng và XP tăng dần trong chu kỳ 7 ngày; ngày 7 nhận thêm 1 Gem.
+- Nhiệm vụ ngày/tuần nhận Vàng và XP; nhiệm vụ tuần khó có thể thưởng Gem.
+- Kết quả trận: thắng nhận 100 Vàng + 30 XP, hòa nhận 70 Vàng + 20 XP, thua nhận 40 Vàng + 10 XP.
+- Nhiệm vụ bang hoàn thành nhận 1.000 Vàng + 100 XP cho từng thành viên chưa nhận.
+- Các giao dịch được ghi vào `wallet_transactions` để kiểm tra lịch sử và ngăn nhận trùng.
+- Migration V31 chuẩn bị `store_purchases` cho Google Play/App Store. Thanh toán thật chỉ được bật sau khi cấu hình Product ID và xác thực biên lai phía server.
+
 ## Công nghệ và cấu trúc project
 
 | Thư mục | Vai trò |
@@ -79,6 +89,7 @@ Script sẽ:
 - Chờ database healthy.
 - Thiết lập `JAVA_HOME` từ JDK đi kèm Android Studio nếu chưa có.
 - Chạy `adb reverse tcp:8080 tcp:8080` cho mọi thiết bị đang online.
+- Đóng gói server và protocol thành bộ JAR đồng nhất trước khi chạy.
 - Chạy Flyway migration tự động.
 - Khởi động Ktor server ở `0.0.0.0:8080`.
 
@@ -128,7 +139,8 @@ $env:DATABASE_URL='jdbc:postgresql://localhost:5432/fasttowin'
 $env:DATABASE_USER='fasttowin'
 $env:DATABASE_PASSWORD='fasttowin'
 
-.\gradlew.bat :server:run
+.\gradlew.bat :server:installDist
+.\run-packaged-server.cmd
 ```
 
 Flyway tự chạy các migration còn thiếu khi backend khởi động.
@@ -144,7 +156,8 @@ Hoặc:
 ```powershell
 $env:JAVA_HOME='C:\Program Files\Android\Android Studio\jbr'
 $env:FASTTOWIN_ENV='dev'
-.\gradlew.bat :server:run
+.\gradlew.bat :server:installDist
+.\run-packaged-server.cmd
 ```
 
 Chế độ này dùng bộ nhớ và phù hợp để thử phòng/game cơ bản. Tài khoản, lịch sử, bạn bè, Elo, điểm danh và dữ liệu khác sẽ không được lưu bền vững.
@@ -341,7 +354,8 @@ $env:PORT='8080'
 $env:DATABASE_URL='jdbc:postgresql://database-host:5432/fasttowin'
 $env:DATABASE_USER='fasttowin_app'
 $env:DATABASE_PASSWORD='replace-with-a-secret'
-.\gradlew.bat :server:run
+.\gradlew.bat :server:installDist
+.\run-packaged-server.cmd
 ```
 
 Endpoint production mặc định trong project chỉ là placeholder và không thể kết nối. Không phát hành app trước khi thay bằng `wss://` hợp lệ.
@@ -376,7 +390,18 @@ Dừng đúng process cũ sau khi kiểm tra PID:
 Stop-Process -Id <PID>
 ```
 
-Không chạy hai lệnh `:server:run` cùng lúc.
+Không chạy hai server cùng lúc.
+
+### `NoClassDefFoundError` trong module `protocol`
+
+Lỗi này có thể xảy ra nếu build app/protocol trong lúc server đang chạy trực tiếp bằng `:server:run`.
+Dừng server bằng `Ctrl+C`, sau đó chạy lại script khuyến nghị:
+
+```powershell
+.\start-dev-server-with-db.cmd
+```
+
+Script chạy server từ bộ JAR đã đóng gói để các class protocol luôn cùng phiên bản.
 
 ### App báo không thể kết nối `ws://127.0.0.1:8080`
 

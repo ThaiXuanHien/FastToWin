@@ -6,6 +6,7 @@ import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performScrollToNode
@@ -34,7 +35,10 @@ import com.hienthai.fastowin.ui.screens.AuthScreen
 import com.hienthai.fastowin.ui.screens.GameScreen
 import com.hienthai.fastowin.ui.screens.LobbyScreen
 import com.hienthai.fastowin.ui.screens.ProfileScreen
+import com.hienthai.fastowin.ui.screens.ProfileSection
+import com.hienthai.fastowin.ui.screens.ProfileSectionScreen
 import com.hienthai.fastowin.ui.screens.ResultScreen
+import com.hienthai.fastowin.ui.screens.ShopScreen
 import com.hienthai.fastowin.ui.screens.PracticeLauncherDialog
 import com.hienthai.fastowin.ui.screens.TournamentScreen
 import com.hienthai.fastowin.ui.theme.FastToWinTheme
@@ -183,13 +187,14 @@ class CriticalFlowsUiTest {
                         connectionStatus = ConnectionStatus.CONNECTED,
                         player = PlayerState("Hiền", id = "player-hien"),
                         profile = PlayerProfileSnapshot(
+                            userId = "player-hien",
                             displayName = "Hiền",
                             playerCode = "HIEN001",
                             progression = PlayerProgressionSnapshot(level = 20)
                         )
                     ),
                     onBack = {},
-                    onCreate = { name, mode ->
+                    onCreate = { name, mode, _ ->
                         submittedName = name
                         submittedMode = mode
                     },
@@ -214,12 +219,13 @@ class CriticalFlowsUiTest {
 
     @Test
     fun profile_showsDailyCheckInMilestonesInIncreasingDifficulty() {
-        var claimedMissionCode: String? = null
         composeRule.setContent {
             FastToWinTheme {
                 ProfileScreen(
+                    serverUrl = "",
                     state = GameState(
                         profile = PlayerProfileSnapshot(
+                            userId = "player-hien",
                             displayName = "Hiền",
                             playerCode = "HIEN001",
                             progression = PlayerProgressionSnapshot(
@@ -247,8 +253,9 @@ class CriticalFlowsUiTest {
                     onOpenMatchDetail = {},
                     onCloseMatchDetail = {},
                     onEquipCosmetics = { _, _ -> },
-                    onClaimMissionReward = { claimedMissionCode = it },
+                    onClaimMissionReward = {},
                     onSave = { _, _ -> },
+                    onUploadAvatar = {},
                     canEdit = true,
                     isAccountLoading = false,
                     accountError = null,
@@ -275,32 +282,35 @@ class CriticalFlowsUiTest {
         composeRule.onNodeWithText("Tháng 8/2026").assertIsDisplayed()
         composeRule.onNodeWithContentDescription("Tháng trước").performClick()
         composeRule.onNodeWithText("Tháng 7/2026").assertIsDisplayed()
-        composeRule.onNodeWithTag("claim_mission:DAILY_PLAY_3").performScrollTo().performClick()
-        composeRule.runOnIdle { assertEquals("DAILY_PLAY_3", claimedMissionCode) }
+        composeRule.onNodeWithTag("profile_section_missions").performScrollTo().assertIsDisplayed()
     }
 
     @Test
     fun profile_showsStatisticsForEachPlayedGameMode() {
+        val profile = PlayerProfileSnapshot(
+            userId = "player-hien",
+            displayName = "Hiền",
+            playerCode = "HIEN001",
+            modeStatistics = listOf(
+                GameModeStatisticsSnapshot(
+                    gameMode = ProtocolGameMode.ORDER,
+                    totalMatches = 10,
+                    wins = 6,
+                    losses = 3,
+                    draws = 1,
+                    highestScore = 50,
+                    averageScore = 34
+                )
+            )
+        )
         composeRule.setContent {
             FastToWinTheme {
-                ProfileScreen(
-                    state = GameState(
-                        profile = PlayerProfileSnapshot(
-                            displayName = "Hiền",
-                            playerCode = "HIEN001",
-                            modeStatistics = listOf(
-                                GameModeStatisticsSnapshot(
-                                    gameMode = ProtocolGameMode.ORDER,
-                                    totalMatches = 10,
-                                    wins = 6,
-                                    losses = 3,
-                                    draws = 1,
-                                    highestScore = 50,
-                                    averageScore = 34
-                                )
-                            )
-                        )
-                    ),
+                ProfileSectionScreen(
+                    state = GameState(profile = profile),
+                    profile = profile,
+                    section = ProfileSection.STATISTICS,
+                    isExternalProfile = false,
+                    canEdit = true,
                     onBack = {},
                     onRefresh = {},
                     onOpenMatchDetail = {},
@@ -308,19 +318,7 @@ class CriticalFlowsUiTest {
                     onEquipCosmetics = { _, _ -> },
                     onClaimMissionReward = {},
                     onSave = { _, _ -> },
-                    canEdit = true,
-                    isAccountLoading = false,
-                    accountError = null,
-                    accountNotice = null,
-                    accountSessions = emptyList(),
-                    areSessionsLoading = false,
-                    onChangePassword = { _, _ -> },
-                    onDeleteAccount = {},
-                    onClearAccountFeedback = {},
-                    onLoadSessions = {},
-                    onRevokeSession = {},
-                    onRevokeAllSessions = {},
-                    onLogout = {}
+                    onOpenNotifications = {}
                 )
             }
         }
@@ -329,6 +327,27 @@ class CriticalFlowsUiTest {
         composeRule.onNodeWithText("60% thắng").assertIsDisplayed()
         composeRule.onNodeWithText("10 trận • 6 thắng • 3 thua • 1 hòa").assertIsDisplayed()
         composeRule.onNodeWithText("Điểm cao 50 • Trung bình 34").assertIsDisplayed()
+    }
+
+    @Test
+    fun shop_usesGameFriendlyLabelsAndGemCopy() {
+        composeRule.setContent {
+            FastToWinTheme {
+                ShopScreen(
+                    progression = PlayerProgressionSnapshot(gold = 2_000, gems = 25),
+                    onBuy = {},
+                    onEquip = {},
+                    onClose = {}
+                )
+            }
+        }
+
+        assertTrue(composeRule.onAllNodesWithText("Mặt bài").fetchSemanticsNodes().isNotEmpty())
+        composeRule.onNodeWithText("Bàn số").assertIsDisplayed()
+        composeRule.onNodeWithText("Gem").performClick()
+        composeRule.onNodeWithText("Kho Gem").assertIsDisplayed()
+        composeRule.onNodeWithText("Gói Tân binh").assertIsDisplayed()
+        assertTrue(composeRule.onAllNodesWithText("Sắp ra mắt").fetchSemanticsNodes().isNotEmpty())
     }
 
     @Test
@@ -580,8 +599,9 @@ class CriticalFlowsUiTest {
         connectionStatus = ConnectionStatus.CONNECTED,
         player = PlayerState("Hiền"),
         profile = PlayerProfileSnapshot(
-            "Hiền",
-            "HIEN001",
+            userId = "player-hien",
+            displayName = "Hiền",
+            playerCode = "HIEN001",
             progression = PlayerProgressionSnapshot(
                 dailyCheckIn = DailyCheckInSnapshot(
                     claimedToday = false,
@@ -667,10 +687,11 @@ private fun TestLobby(
         onLogout = {},
         isGuest = false,
         onUpgradeGuest = {},
-        onOpenSettings = {},
         onOpenNotifications = {},
+        onOpenClan = {},
         onOpenPractice = {},
         onOpenTournament = {},
+        onOpenShop = {},
         onShareRoom = onShareRoom,
         onResolveRoomLink = onResolveRoomLink,
         onClaimDailyCheckIn = onClaimDailyCheckIn

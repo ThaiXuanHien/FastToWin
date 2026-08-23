@@ -21,6 +21,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Payments
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.EmojiEvents
@@ -28,12 +29,10 @@ import androidx.compose.material.icons.filled.FitnessCenter
 import androidx.compose.material.icons.filled.Group
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.MeetingRoom
-import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.MonetizationOn
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.ShoppingCart
-import androidx.compose.material.icons.filled.SportsEsports
-import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.rounded.Bolt
 import androidx.compose.material.icons.rounded.Timer
 import androidx.compose.material3.AlertDialog
@@ -58,6 +57,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
@@ -67,13 +67,19 @@ import com.hienthai.fastowin.navigation.GameMode
 import com.hienthai.fastowin.protocol.FriendPresence
 import com.hienthai.fastowin.protocol.DailyCheckInSnapshot
 import com.hienthai.fastowin.protocol.DAILY_CHECK_IN_REWARDS_XP
+import com.hienthai.fastowin.protocol.DAILY_CHECK_IN_REWARDS_GOLD
+import com.hienthai.fastowin.protocol.DAILY_CHECK_IN_REWARDS_GEMS
 import com.hienthai.fastowin.protocol.MatchHistoryOutcome
 import com.hienthai.fastowin.protocol.MatchType
 import com.hienthai.fastowin.state.ConnectionStatus
 import com.hienthai.fastowin.state.GameState
+import com.hienthai.fastowin.ui.components.GemColor
+import com.hienthai.fastowin.ui.components.GoldColor
+import com.hienthai.fastowin.ui.components.FastToWinHeader
+import com.hienthai.fastowin.ui.components.CrossedSwordsIcon
 import kotlinx.coroutines.delay
 
-internal enum class MainTab { HOME, LEADERBOARD, FRIENDS, ACCOUNT }
+internal enum class MainTab { HOME, LEADERBOARD, CLAN, FRIENDS, ACCOUNT }
 
 private enum class HomeLaunchAction { CASUAL, RANKED, CREATE_ROOM }
 
@@ -87,7 +93,6 @@ internal fun HomeDashboard(
     onOpenFriends: () -> Unit,
     onOpenLeaderboard: () -> Unit,
     onOpenProfile: () -> Unit,
-    onOpenSettings: () -> Unit,
     onOpenNotifications: () -> Unit,
     onOpenClan: () -> Unit,
     onOpenPractice: () -> Unit,
@@ -128,52 +133,14 @@ internal fun HomeDashboard(
     BoxWithConstraints(modifier = modifier.fillMaxSize().testTag("home_screen")) {
         val compactHeight = maxHeight < 600.dp
         Column(modifier = Modifier.fillMaxSize()) {
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        "FAST TO WIN",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.primary,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Text(
-                        "Chào $displayName 👋",
-                        style = MaterialTheme.typography.headlineSmall,
-                        fontWeight = FontWeight.Bold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = onOpenNotifications) {
-                        BadgedBox(
-                            badge = {
-                                if (state.unreadNotificationCount > 0) {
-                                    Badge {
-                                        Text(
-                                            if (state.unreadNotificationCount > 99) "99+"
-                                            else state.unreadNotificationCount.toString()
-                                        )
-                                    }
-                                }
-                            }
-                        ) {
-                            Icon(Icons.Default.Notifications, contentDescription = "Thông báo")
-                        }
-                    }
-                    IconButton(onClick = onOpenClan) {
-                        Icon(androidx.compose.material.icons.Icons.Default.Group, contentDescription = "Bang hội")
-                    }
-                    IconButton(onClick = onOpenSettings) {
-                        Icon(Icons.Default.Settings, contentDescription = "Cài đặt")
-                    }
-                }
-            }
-
+            FastToWinHeader(
+                title = "Chào, $displayName",
+                gold = profile?.progression?.gold ?: 0,
+                gems = profile?.progression?.gems ?: 0,
+                unreadNotifications = state.unreadNotificationCount,
+                onNotifications = onOpenNotifications,
+                applySafeDrawingInset = false
+            )
         Column(
             modifier = Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(bottom = 16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
@@ -293,7 +260,7 @@ internal fun HomeDashboard(
                 )
                 HomeQuickAction(
                     "Cửa hàng",
-                    "Mua thẻ bài, skin bàn cờ, avatar...",
+                    "Mở khóa mặt bài, bàn số và vật phẩm mới",
                     Icons.Default.ShoppingCart,
                     onOpenShop,
                     Modifier.fillMaxWidth().testTag("home_shop")
@@ -369,6 +336,7 @@ private fun DailyCheckInCard(
     isClaiming: Boolean,
     onClaim: () -> Unit
 ) {
+    val rewardCardHeight = if (LocalDensity.current.fontScale >= 1.3f) 104.dp else 76.dp
     ElevatedCard(
         modifier = Modifier.fillMaxWidth().testTag("daily_check_in_card"),
         shape = RoundedCornerShape(20.dp),
@@ -413,12 +381,17 @@ private fun DailyCheckInCard(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(4.dp)
             ) {
-                DAILY_CHECK_IN_REWARDS_XP.forEachIndexed { index, reward ->
+                DAILY_CHECK_IN_REWARDS_XP.forEachIndexed { index, rewardXp ->
                     val day = index + 1
+                    val rewardGold = DAILY_CHECK_IN_REWARDS_GOLD[index]
+                    val rewardGems = DAILY_CHECK_IN_REWARDS_GEMS[index]
                     val completed = day < checkIn.cycleDay || (day == checkIn.cycleDay && checkIn.claimedToday)
                     val current = day == checkIn.cycleDay
                     Surface(
-                        modifier = Modifier.weight(1f),
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(rewardCardHeight)
+                            .testTag("daily_reward_day_$day"),
                         shape = RoundedCornerShape(10.dp),
                         color = when {
                             current -> MaterialTheme.colorScheme.primary
@@ -436,7 +409,30 @@ private fun DailyCheckInCard(
                             horizontalAlignment = Alignment.CenterHorizontally
                         ) {
                             Text("N$day", style = MaterialTheme.typography.labelSmall)
-                            Text("+$reward", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    Icons.Default.MonetizationOn,
+                                    contentDescription = null,
+                                    tint = GoldColor,
+                                    modifier = Modifier.size(12.dp)
+                                )
+                                Text(rewardGold.toString(), style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                            }
+                            Text("+$rewardXp XP", style = MaterialTheme.typography.labelSmall)
+                            Row(
+                                modifier = Modifier.height(16.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                if (rewardGems > 0) {
+                                    Icon(
+                                        Icons.Default.Payments,
+                                        contentDescription = null,
+                                        tint = GemColor,
+                                        modifier = Modifier.size(12.dp)
+                                    )
+                                    Text(rewardGems.toString(), style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                                }
+                            }
                         }
                     }
                 }
@@ -455,7 +451,13 @@ private fun DailyCheckInCard(
                             color = MaterialTheme.colorScheme.onPrimary
                         )
                     } else {
-                        Text("Nhận ${checkIn.todayRewardXp} XP", fontWeight = FontWeight.Bold)
+                        Text(
+                            buildString {
+                                append("Nhận ${checkIn.todayRewardGold} Vàng • ${checkIn.todayRewardXp} XP")
+                                if (checkIn.todayRewardGems > 0) append(" • ${checkIn.todayRewardGems} Gem")
+                            },
+                            fontWeight = FontWeight.Bold
+                        )
                     }
                 }
             }
@@ -493,7 +495,7 @@ internal fun FastToWinBottomBar(
     friendNotificationCount: Int,
     onHome: () -> Unit,
     onLeaderboard: () -> Unit,
-    onPlay: () -> Unit,
+    onClan: () -> Unit,
     onFriends: () -> Unit,
     onAccount: () -> Unit,
     modifier: Modifier = Modifier
@@ -508,7 +510,7 @@ internal fun FastToWinBottomBar(
         Row(modifier = Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
             BottomBarItem("Trang chủ", Icons.Default.Home, selected == MainTab.HOME, onHome, Modifier.weight(1f))
             BottomBarItem("Xếp hạng", Icons.Default.EmojiEvents, selected == MainTab.LEADERBOARD, onLeaderboard, Modifier.weight(1f))
-            BottomBarItem("Chơi", Icons.Default.SportsEsports, false, onPlay, Modifier.weight(1f))
+            BottomBarItem("Bang hội", CrossedSwordsIcon, selected == MainTab.CLAN, onClan, Modifier.weight(1f))
             BottomBarItem(
                 label = "Bạn bè",
                 icon = Icons.Default.Group,

@@ -235,6 +235,7 @@ class GameEngine(
         if (message is ClientMessage.RespondRoomInvitation) return respondRoomInvitation(playerId, message)
         if (message is ClientMessage.CreateClan) return createClan(playerId, message.name, message.description)
         if (message is ClientMessage.JoinClan) return joinClan(playerId, message.clanId)
+        if (message is ClientMessage.RespondClanJoinRequest) return respondClanJoinRequest(playerId, message)
         if (message is ClientMessage.LeaveClan) return leaveClan(playerId)
         if (message is ClientMessage.GetClanInfo) return getClanInfo(playerId, message.clanId)
         if (message is ClientMessage.GetClanList) return getClanList(playerId, message.query)
@@ -312,6 +313,7 @@ class GameEngine(
                 is ClientMessage.CreateClan -> HandleResult(emptyList())
                 is ClientMessage.GetClanInfo -> HandleResult(emptyList())
                 is ClientMessage.JoinClan -> HandleResult(emptyList())
+                is ClientMessage.RespondClanJoinRequest -> HandleResult(emptyList())
                 is ClientMessage.LeaveClan -> HandleResult(emptyList())
                 is ClientMessage.InviteToClan -> HandleResult(emptyList())
                 is ClientMessage.KickClanMember -> HandleResult(emptyList())
@@ -336,16 +338,7 @@ class GameEngine(
                         changedRoomId = deliveries.roomIdFrom<ServerMessage.GameStarted>()
                     )
                 }
-                is ClientMessage.LeaveRoom -> leaveRoom(player, message).let { deliveries ->
-                    HandleResult(
-                        deliveries = deliveries,
-                        changedRoomId = deliveries.asSequence()
-                            .map(Delivery::message)
-                            .filterIsInstance<ServerMessage.RoomClosed>()
-                            .firstOrNull()
-                            ?.roomId
-                    )
-                }
+                is ClientMessage.LeaveRoom -> leaveRoom(player, message)
                 is ClientMessage.SetReady -> setReady(player, message)
                 is ClientMessage.KickPlayer -> kickPlayer(player, message)
                 is ClientMessage.RequestRematch -> respondRematch(player, message.roomId, accept = true)
@@ -357,13 +350,6 @@ class GameEngine(
         result.completedMatch?.let { completed ->
             runCatching { matchResultRepository.save(completed) }
                 .onFailure { System.err.println("Could not persist match ${completed.matchId}: ${it.message}") }
-            
-            // Add Gold reward
-            val baseGold = 50
-            completed.players.forEach { p ->
-                val outcomeGold = if (p.playerId == completed.winnerPlayerId) 50 else if (completed.winnerPlayerId == null) 25 else 10
-                runCatching { playerProfileRepository.updateGold(p.playerId, baseGold + outcomeGold) }
-            }
         }
         result.changedRoomId?.let { persistRoom(it) }
         val tournamentDeliveries = result.completedMatch
@@ -885,7 +871,7 @@ class GameEngine(
             ))
         }
         if (!friendRepository.areFriends(playerId, command.friendUserId)) {
-            return listOf(error(playerId, "NOT_FRIENDS", "NgÃ†Â°Ã¡Â»Âi chÃ†Â¡i nÃƒÂ y chÃ†Â°a phÃ¡ÂºÂ£i bÃ¡ÂºÂ¡n bÃƒÂ¨."))
+            return listOf(error(playerId, "NOT_FRIENDS", "Người chơi này chưa phải bạn bè."))
         }
         var createdInvitation: RoomInvitationRecord? = null
         val replacedInvitationIds = mutableListOf<String>()
@@ -916,8 +902,7 @@ class GameEngine(
             roomInvitations[invitation.id] = invitation
             createdInvitation = invitation
             listOf(
-                Delivery(invitation.toMessage(), setOf(friendId)),
-                Delivery(ServerMessage.SocialNotice("Đã gửi lời mời vào phòng."), setOf(playerId))
+                Delivery(invitation.toMessage(), setOf(friendId))
             )
         }
         createdInvitation?.let { invitation ->
@@ -950,29 +935,46 @@ class GameEngine(
                     "${invitation.inviterDisplayName} đã mời bạn vào phòng ${invitation.roomName}"
                 )
             }
-            return deliveries + refreshNotificationsFor(setOf(invitation.inviteeId))
+            return deliveries + loadRoomInvitations(playerId) +
+                refreshNotificationsFor(setOf(invitation.inviteeId))
         }
         return deliveries
     }
 
     private suspend fun loadRoomInvitations(playerId: String): List<Delivery> {
         if (!isAccountSession(playerId)) return listOf(accountRequired(playerId))
-        val removedIds = mutableListOf<String>()
-        val invitations = mutex.withLock {
+        val removedInvitations = mutableListOf<RoomInvitationRecord>()
+        val invitationsData = mutex.withLock {
             val now = nowMillis()
-            roomInvitations.entries.removeAll { (id, invitation) ->
+            roomInvitations.entries.removeAll { (_, invitation) ->
                 val room = rooms[invitation.roomId]
                 (invitation.expiresAtMillis <= now || room == null ||
                     room.hostId != invitation.inviterId || room.phase != RoomPhase.WAITING || room.guestId != null
-                ).also { removed -> if (removed) removedIds += id }
+                ).also { removed -> if (removed) removedInvitations += invitation }
             }
-            roomInvitationMessagesFor(playerId)
+            roomInvitationsDataFor(playerId)
         }
-        removedIds.forEach { id ->
-            notificationRepository.deleteRoomInvitation(id)
-            notificationRepository.dismissNotifications(playerId, "room:$id", nowMillis())
+        removedInvitations.forEach { invitation ->
+            notificationRepository.deleteRoomInvitation(invitation.id)
+            notificationRepository.dismissNotifications(
+                invitation.inviteeId,
+                "room:${invitation.id}",
+                nowMillis()
+            )
         }
-        return listOf(Delivery(ServerMessage.RoomInvitationsData(invitations), setOf(playerId)))
+        val otherAffectedUsers = removedInvitations
+            .flatMap { listOf(it.inviterId, it.inviteeId) }
+            .toSet() - playerId
+        val refreshDeliveries = mutex.withLock {
+            otherAffectedUsers.mapNotNull { affectedUserId ->
+                sessionsByPlayerId[affectedUserId]
+                    ?.takeIf { it.isConnected && it.resumeToken == null }
+                    ?.let {
+                        Delivery(roomInvitationsDataFor(affectedUserId), setOf(affectedUserId))
+                    }
+            }
+        }
+        return listOf(Delivery(invitationsData, setOf(playerId))) + refreshDeliveries
     }
 
     private suspend fun clearRoomInvitationsBetween(firstUserId: String, secondUserId: String) {
@@ -1004,12 +1006,12 @@ class GameEngine(
         val result = mutex.withLock {
             val invitation = roomInvitations.remove(command.invitationId)
                 ?.takeIf { it.inviteeId == playerId && it.expiresAtMillis > nowMillis() }
-                ?: return@withLock listOf(error(playerId, "INVITATION_EXPIRED", "LÃ¡Â»Âi mÃ¡Â»Âi vÃƒÂ o phÃƒÂ²ng Ã„â€˜ÃƒÂ£ hÃ¡ÂºÂ¿t hÃ¡ÂºÂ¡n."))
+                ?: return@withLock listOf(error(playerId, "INVITATION_EXPIRED", "Lời mời vào phòng đã hết hạn."))
             invitationConsumed = true
             if (!command.accept) {
                 return@withLock listOf(
-                    Delivery(ServerMessage.SocialNotice("Ã„ÂÃƒÂ£ tÃ¡Â»Â« chÃ¡Â»â€˜i lÃ¡Â»Âi mÃ¡Â»Âi vÃƒÂ o phÃƒÂ²ng."), setOf(playerId)),
-                    Delivery(ServerMessage.SocialNotice("BÃ¡ÂºÂ¡n bÃƒÂ¨ Ã„â€˜ÃƒÂ£ tÃ¡Â»Â« chÃ¡Â»â€˜i lÃ¡Â»Âi mÃ¡Â»Âi vÃƒÂ o phÃƒÂ²ng."), setOf(invitation.inviterId))
+                    Delivery(ServerMessage.SocialNotice("Đã từ chối lời mời vào phòng."), setOf(playerId)),
+                    Delivery(ServerMessage.SocialNotice("Bạn bè đã từ chối lời mời vào phòng."), setOf(invitation.inviterId))
                 )
             }
             val player = sessionsByPlayerId[playerId]
@@ -1025,7 +1027,7 @@ class GameEngine(
             room.scores[player.playerId] = 0
             room.readyPlayerIds.clear()
             roomInvitations.entries.removeAll { entry ->
-                (entry.value.inviteeId == playerId).also { removed ->
+                (entry.value.roomId == room.id).also { removed ->
                     if (removed) otherRemovedInvitations += entry.value
                 }
             }
@@ -1039,10 +1041,16 @@ class GameEngine(
             notificationRepository.dismissNotifications(playerId, "room:${command.invitationId}", nowMillis())
         }
         if (result.any { it.message is ServerMessage.RoomUpdated }) {
-            notificationRepository.deleteRoomInvitationsForInvitee(playerId)
+            notificationRepository.deleteRoomInvitationsForRoom(
+                result.asSequence()
+                    .map(Delivery::message)
+                    .filterIsInstance<ServerMessage.RoomUpdated>()
+                    .first()
+                    .game.roomId
+            )
             otherRemovedInvitations.forEach { invitation ->
                 notificationRepository.dismissNotifications(
-                    playerId,
+                    invitation.inviteeId,
                     "room:${invitation.id}",
                     nowMillis()
                 )
@@ -1056,7 +1064,8 @@ class GameEngine(
             ?.roomId
             ?.let { persistRoom(it) }
         val affectedPlayers = (result.flatMap { it.recipients.orEmpty() } + playerId).toSet()
-        return result + affectedPlayers.flatMap { presenceUpdates(it) } + loadRoomInvitations(playerId) +
+        return result + affectedPlayers.flatMap { presenceUpdates(it) } +
+            refreshRoomInvitationsFor(affectedPlayers) +
             refreshNotificationsFor(setOf(playerId))
     }
 
@@ -1280,7 +1289,12 @@ class GameEngine(
                 "Chưa thể điểm danh. Vui lòng thử lại."
             ))
         return loadProfile(playerId) + Delivery(
-            ServerMessage.DailyCheckInResult(result.claimed, result.rewardXp),
+            ServerMessage.DailyCheckInResult(
+                result.claimed,
+                result.rewardXp,
+                result.rewardGold,
+                result.rewardGems
+            ),
             setOf(playerId)
         )
     }
@@ -1294,11 +1308,17 @@ class GameEngine(
         }.getOrNull() ?: return listOf(error(
             playerId,
             "MISSION_REWARD_UNAVAILABLE",
-            "ChÃ†Â°a thÃ¡Â»Æ’ nhÃ¡ÂºÂ­n thÃ†Â°Ã¡Â»Å¸ng nhiÃ¡Â»â€¡m vÃ¡Â»Â¥. Vui lÃƒÂ²ng thÃ¡Â»Â­ lÃ¡ÂºÂ¡i."
+            "Chưa thể nhận thưởng nhiệm vụ. Vui lòng thử lại."
         ))
         return when (result.status) {
             MissionRewardClaimStatus.CLAIMED -> loadProfile(playerId) + Delivery(
-                ServerMessage.MissionRewardResult(missionCode, claimed = true, rewardXp = result.rewardXp),
+                ServerMessage.MissionRewardResult(
+                    missionCode,
+                    claimed = true,
+                    rewardXp = result.rewardXp,
+                    rewardGold = result.rewardGold,
+                    rewardGems = result.rewardGems
+                ),
                 setOf(playerId)
             )
             MissionRewardClaimStatus.ALREADY_CLAIMED -> listOf(error(
@@ -1309,12 +1329,12 @@ class GameEngine(
             MissionRewardClaimStatus.NOT_COMPLETED -> listOf(error(
                 playerId,
                 "MISSION_NOT_COMPLETED",
-                "NhiÃ¡Â»â€¡m vÃ¡Â»Â¥ chÃ†Â°a hoÃƒÂ n thÃƒÂ nh."
+                "Nhiệm vụ chưa hoàn thành."
             ))
             MissionRewardClaimStatus.INVALID_MISSION -> listOf(error(
                 playerId,
                 "INVALID_MISSION",
-                "NhiÃ¡Â»â€¡m vÃ¡Â»Â¥ khÃƒÂ´ng hÃ¡Â»Â£p lÃ¡Â»â€¡."
+                "Nhiệm vụ không hợp lệ."
             ))
         }
     }
@@ -1322,25 +1342,25 @@ class GameEngine(
     private suspend fun loadFriendProfile(playerId: String, friendUserId: String): List<Delivery> {
         if (!isAccountSession(playerId)) return listOf(accountRequired(playerId))
         if (friendUserId.isBlank() || friendUserId.length > 64 || friendUserId == playerId) {
-            return listOf(error(playerId, "INVALID_FRIEND", "NgÃ†Â°Ã¡Â»Âi chÃ†Â¡i khÃƒÂ´ng hÃ¡Â»Â£p lÃ¡Â»â€¡."))
+            return listOf(error(playerId, "INVALID_FRIEND", "Người chơi không hợp lệ."))
         }
         val areFriends = runCatching { friendRepository.areFriends(playerId, friendUserId) }
             .getOrElse {
-                return listOf(error(playerId, "FRIEND_PROFILE_UNAVAILABLE", "ChÃ†Â°a tÃ¡ÂºÂ£i Ã„â€˜Ã†Â°Ã¡Â»Â£c hÃ¡Â»â€œ sÃ†Â¡ bÃ¡ÂºÂ¡n bÃƒÂ¨."))
+                return listOf(error(playerId, "FRIEND_PROFILE_UNAVAILABLE", "Chưa tải được hồ sơ bạn bè."))
             }
         if (!areFriends) {
-            return listOf(error(playerId, "FRIEND_PROFILE_FORBIDDEN", "BÃ¡ÂºÂ¡n chÃ¡Â»â€° cÃƒÂ³ thÃ¡Â»Æ’ xem hÃ¡Â»â€œ sÃ†Â¡ cÃ¡Â»Â§a bÃ¡ÂºÂ¡n bÃƒÂ¨."))
+            return listOf(error(playerId, "FRIEND_PROFILE_FORBIDDEN", "Bạn chỉ có thể xem hồ sơ của bạn bè."))
         }
         val profile = runCatching { playerProfileRepository.findByPlayerId(friendUserId) }
             .getOrNull()
-            ?: return listOf(error(playerId, "FRIEND_PROFILE_NOT_FOUND", "KhÃƒÂ´ng tÃƒÂ¬m thÃ¡ÂºÂ¥y hÃ¡Â»â€œ sÃ†Â¡ ngÃ†Â°Ã¡Â»Âi chÃ†Â¡i."))
+            ?: return listOf(error(playerId, "FRIEND_PROFILE_NOT_FOUND", "Không tìm thấy hồ sơ người chơi."))
         return listOf(Delivery(ServerMessage.FriendProfileData(friendUserId, profile), setOf(playerId)))
     }
 
     private suspend fun loadMatchDetail(playerId: String, matchId: String): List<Delivery> {
         if (!isAccountSession(playerId)) return listOf(accountRequired(playerId))
         val detail = runCatching { playerProfileRepository.findMatchDetail(playerId, matchId) }.getOrNull()
-            ?: return listOf(error(playerId, "MATCH_NOT_FOUND", "KhÃƒÂ´ng tÃƒÂ¬m thÃ¡ÂºÂ¥y chi tiÃ¡ÂºÂ¿t trÃ¡ÂºÂ­n Ã„â€˜Ã¡ÂºÂ¥u."))
+            ?: return listOf(error(playerId, "MATCH_NOT_FOUND", "Không tìm thấy chi tiết trận đấu."))
         return listOf(Delivery(ServerMessage.MatchDetailData(detail), setOf(playerId)))
     }
 
@@ -1353,7 +1373,7 @@ class GameEngine(
             playerProfileRepository.equipCosmetics(playerId, command.frameId, command.titleId)
         }.getOrDefault(false)
         if (!updated) {
-            return listOf(error(playerId, "COSMETIC_LOCKED", "VÃ¡ÂºÂ­t phÃ¡ÂºÂ©m chÃ†Â°a Ã„â€˜Ã†Â°Ã¡Â»Â£c mÃ¡Â»Å¸ khÃƒÂ³a hoÃ¡ÂºÂ·c khÃƒÂ´ng hÃ¡Â»Â£p lÃ¡Â»â€¡."))
+            return listOf(error(playerId, "COSMETIC_LOCKED", "Vật phẩm chưa được mở khóa hoặc không hợp lệ."))
         }
         return loadProfile(playerId)
     }
@@ -1367,7 +1387,7 @@ class GameEngine(
             return listOf(error(
                 playerId,
                 "INVALID_DISPLAY_NAME",
-                "BiÃ¡Â»â€¡t danh phÃ¡ÂºÂ£i cÃƒÂ³ tÃ¡Â»Â« 1 Ã„â€˜Ã¡ÂºÂ¿n $MAX_PROFILE_DISPLAY_NAME_LENGTH kÃƒÂ½ tÃ¡Â»Â±."
+                "Biệt danh phải có từ 1 đến $MAX_PROFILE_DISPLAY_NAME_LENGTH ký tự."
             ))
         }
         if (command.avatarId != null && command.avatarId !in PROFILE_AVATAR_IDS) {
@@ -1381,7 +1401,7 @@ class GameEngine(
             return listOf(error(
                 playerId,
                 "ACCOUNT_REQUIRED",
-                "HÃƒÂ£y lÃ†Â°u tÃƒÂ i khoÃ¡ÂºÂ£n khÃƒÂ¡ch trÃ†Â°Ã¡Â»â€ºc khi chÃ¡Â»â€°nh sÃ¡Â»Â­a hÃ¡Â»â€œ sÃ†Â¡."
+                "Hãy lưu tài khoản khách trước khi chỉnh sửa hồ sơ."
             ))
         }
         if (command.avatarId == DAILY_CHECK_IN_AVATAR_ID) {
@@ -1393,7 +1413,7 @@ class GameEngine(
                 return listOf(error(
                     playerId,
                     "AVATAR_LOCKED",
-                    "Ã¡ÂºÂ¢nh Ã„â€˜Ã¡ÂºÂ¡i diÃ¡Â»â€¡n nÃƒÂ y Ã„â€˜Ã†Â°Ã¡Â»Â£c mÃ¡Â»Å¸ khÃƒÂ³a sau 50 lÃ¡ÂºÂ§n Ã„â€˜iÃ¡Â»Æ’m danh."
+                    "Ảnh đại diện này được mở khóa sau 50 lần điểm danh."
                 ))
             }
         }
@@ -1406,7 +1426,7 @@ class GameEngine(
             return listOf(error(
                 playerId,
                 "PROFILE_UPDATE_UNAVAILABLE",
-                "ChÃ†Â°a thÃ¡Â»Æ’ lÃ†Â°u hÃ¡Â»â€œ sÃ†Â¡. Vui lÃƒÂ²ng thÃ¡Â»Â­ lÃ¡ÂºÂ¡i."
+                "Chưa thể lưu hồ sơ. Vui lòng thử lại."
             ))
         }
         val activeRoomId = mutex.withLock {
@@ -1427,7 +1447,7 @@ class GameEngine(
         }.onFailure {
             System.err.println("Could not load leaderboard $playerId: ${it.message}")
         }.getOrElse {
-            return listOf(error(playerId, "LEADERBOARD_UNAVAILABLE", "ChÃ†Â°a tÃ¡ÂºÂ£i Ã„â€˜Ã†Â°Ã¡Â»Â£c bÃ¡ÂºÂ£ng xÃ¡ÂºÂ¿p hÃ¡ÂºÂ¡ng."))
+            return listOf(error(playerId, "LEADERBOARD_UNAVAILABLE", "Chưa tải được bảng xếp hạng."))
         }
         return listOf(Delivery(ServerMessage.LeaderboardData(leaderboard), setOf(playerId)))
     }
@@ -1525,10 +1545,10 @@ class GameEngine(
         val removedInvitations = mutableListOf<RoomInvitationRecord>()
         val cleanup = mutex.withLock {
             val now = nowMillis()
-            val affectedInvitationRecipients = roomInvitations.values
+            val affectedInvitationUsers = roomInvitations.values
                 .filter { it.expiresAtMillis <= now }
                 .onEach(removedInvitations::add)
-                .mapTo(mutableSetOf()) { it.inviteeId }
+                .flatMapTo(mutableSetOf()) { listOf(it.inviterId, it.inviteeId) }
             roomInvitations.entries.removeAll { it.value.expiresAtMillis <= now }
             val expiredPlayerIds = sessionsByPlayerId.values
                 .filter { session ->
@@ -1565,15 +1585,15 @@ class GameEngine(
                 roomInvitations.values
                     .filter { it.roomId in removedRoomIds }
                     .onEach(removedInvitations::add)
-                    .mapTo(affectedInvitationRecipients) { it.inviteeId }
+                    .flatMapTo(affectedInvitationUsers) { listOf(it.inviterId, it.inviteeId) }
                 roomInvitations.entries.removeAll { it.value.roomId in removedRoomIds }
             }
-            affectedInvitationRecipients.forEach { inviteeId ->
-                val session = sessionsByPlayerId[inviteeId]
+            affectedInvitationUsers.forEach { affectedUserId ->
+                val session = sessionsByPlayerId[affectedUserId]
                 if (session?.isConnected == true && session.resumeToken == null) {
                     deliveries += Delivery(
-                        ServerMessage.RoomInvitationsData(roomInvitationMessagesFor(inviteeId)),
-                        setOf(inviteeId)
+                        roomInvitationsDataFor(affectedUserId),
+                        setOf(affectedUserId)
                     )
                 }
             }
@@ -1597,9 +1617,18 @@ class GameEngine(
             .sortedByDescending { it.expiresAtMillis }
             .map(RoomInvitationRecord::toMessage)
 
+    private fun roomInvitationsDataFor(playerId: String) = ServerMessage.RoomInvitationsData(
+        invitations = roomInvitationMessagesFor(playerId),
+        outgoingFriendUserIds = roomInvitations.values
+            .filter { it.inviterId == playerId }
+            .sortedByDescending { it.expiresAtMillis }
+            .map { it.inviteeId }
+            .distinct()
+    )
+
     private fun createRoom(player: GuestSession, command: ClientMessage.CreateRoom): List<Delivery> {
         if (activeTournamentFor(player.playerId) != null) {
-            return listOf(error(player.playerId, "TOURNAMENT_ACTIVE", "HÃƒÂ£y rÃ¡Â»Âi hoÃ¡ÂºÂ·c hoÃƒÂ n tÃ¡ÂºÂ¥t giÃ¡ÂºÂ£i Ã„â€˜Ã¡ÂºÂ¥u hiÃ¡Â»â€¡n tÃ¡ÂºÂ¡i trÃ†Â°Ã¡Â»â€ºc."))
+            return listOf(error(player.playerId, "TOURNAMENT_ACTIVE", "Hãy rời hoặc hoàn tất giải đấu hiện tại trước."))
         }
         if (roomFor(player.playerId) != null) {
             return listOf(error(player.playerId, "ALREADY_IN_ROOM", "Bạn đang ở trong một phòng khác."))
@@ -1625,13 +1654,13 @@ class GameEngine(
 
     private fun joinRoom(player: GuestSession, command: ClientMessage.JoinRoom): List<Delivery> {
         if (activeTournamentFor(player.playerId) != null) {
-            return listOf(error(player.playerId, "TOURNAMENT_ACTIVE", "HÃƒÂ£y rÃ¡Â»Âi hoÃ¡ÂºÂ·c hoÃƒÂ n tÃ¡ÂºÂ¥t giÃ¡ÂºÂ£i Ã„â€˜Ã¡ÂºÂ¥u hiÃ¡Â»â€¡n tÃ¡ÂºÂ¡i trÃ†Â°Ã¡Â»â€ºc."))
+            return listOf(error(player.playerId, "TOURNAMENT_ACTIVE", "Hãy rời hoặc hoàn tất giải đấu hiện tại trước."))
         }
         if (roomFor(player.playerId) != null) {
             return listOf(error(player.playerId, "ALREADY_IN_ROOM", "Bạn đang ở trong một phòng khác."))
         }
         val room = rooms[command.roomId]
-            ?: return listOf(error(player.playerId, "ROOM_NOT_FOUND", "PhÃƒÂ²ng khÃƒÂ´ng cÃƒÂ²n tÃ¡Â»â€œn tÃ¡ÂºÂ¡i."))
+            ?: return listOf(error(player.playerId, "ROOM_NOT_FOUND", "Phòng không còn tồn tại."))
         if (room.password != null && !room.password.matches(command.password)) {
             return listOf(error(player.playerId, "WRONG_PASSWORD", "Mật khẩu phòng không đúng."))
         }
@@ -1727,30 +1756,78 @@ class GameEngine(
         )
     }
 
-    private fun leaveRoom(player: GuestSession, command: ClientMessage.LeaveRoom): List<Delivery> {
+    private fun leaveRoom(player: GuestSession, command: ClientMessage.LeaveRoom): HandleResult {
         val room = rooms[command.roomId]
-            ?: return listOf(error(player.playerId, "ROOM_NOT_FOUND", "Phòng không còn tồn tại."))
+            ?: return HandleResult(listOf(error(player.playerId, "ROOM_NOT_FOUND", "Phòng không còn tồn tại.")))
         if (player.playerId !in room.playerIds() && player.playerId !in room.spectatorIds) {
-            return listOf(error(player.playerId, "NOT_IN_ROOM", "Bạn không ở trong phòng này."))
+            return HandleResult(listOf(error(player.playerId, "NOT_IN_ROOM", "Bạn không ở trong phòng này.")))
         }
         if (room.tournamentId != null && room.phase == RoomPhase.PLAYING) {
-            return listOf(error(player.playerId, "TOURNAMENT_MATCH_ACTIVE", "Không thể rời khi trận đấu giải đang diễn ra."))
+            return HandleResult(listOf(error(player.playerId, "TOURNAMENT_MATCH_ACTIVE", "Không thể rời khi trận đấu giải đang diễn ra.")))
         }
 
         if (player.playerId in room.spectatorIds) {
             room.spectatorIds.remove(player.playerId)
             room.sequence++
-            return listOf(
-                Delivery(ServerMessage.RoomUpdated(room.snapshot()), room.participantIds())
+            return HandleResult(
+                deliveries = listOf(Delivery(ServerMessage.RoomUpdated(room.snapshot()), room.participantIds())),
+                changedRoomId = room.id
+            )
+        }
+
+        if (room.phase == RoomPhase.PLAYING) {
+            val leavingTeamId = room.teamIds[player.playerId]
+            val winnerId = room.playerIds().firstOrNull { candidateId ->
+                candidateId != player.playerId &&
+                    (room.gameMode != ProtocolGameMode.TEAM_2V2 || room.teamIds[candidateId] != leavingTeamId)
+            } ?: return HandleResult(listOf(error(
+                player.playerId,
+                "FORFEIT_WINNER_NOT_FOUND",
+                "Chưa thể xử lý rời trận lúc này."
+            )))
+            room.forcedWinnerId = winnerId
+            room.finishedPlayerIds += player.playerId
+            room.phase = RoomPhase.FINISHED
+            room.finishedAtEpochMillis = nowMillis()
+            room.sequence++
+            val finished = ServerMessage.GameFinished(room.snapshot())
+            return HandleResult(
+                deliveries = listOf(Delivery(finished, room.participantIds())),
+                completedMatch = room.takeCompletedMatch(),
+                changedRoomId = room.id
             )
         }
 
         val participants = room.participantIds()
+        if (room.phase == RoomPhase.WAITING) {
+            rooms.remove(room.id)
+            return HandleResult(
+                deliveries = listOf(
+                    Delivery(
+                        ServerMessage.RoomClosed(
+                            room.id,
+                            if (player.playerId == room.hostId) {
+                                "Chủ phòng đã rời phòng."
+                            } else {
+                                "${player.displayName} đã rời phòng."
+                            }
+                        ),
+                        participants
+                    ),
+                    Delivery(ServerMessage.RoomList(publicRooms()))
+                ),
+                changedRoomId = room.id
+            )
+        }
+
         if (player.playerId == room.hostId) {
             rooms.remove(room.id)
-            return listOf(
-                Delivery(ServerMessage.RoomClosed(room.id, "Chủ phòng đã rời phòng."), participants),
-                Delivery(ServerMessage.RoomList(publicRooms()))
+            return HandleResult(
+                deliveries = listOf(
+                    Delivery(ServerMessage.RoomClosed(room.id, "Chủ phòng đã rời phòng."), participants),
+                    Delivery(ServerMessage.RoomList(publicRooms()))
+                ),
+                changedRoomId = room.id
             )
         } else {
             if (room.guestId == player.playerId) {
@@ -1762,9 +1839,12 @@ class GameEngine(
             room.scores.remove(player.playerId)
             room.readyPlayerIds.clear()
             room.sequence++
-            return listOf(
-                Delivery(ServerMessage.RoomUpdated(room.snapshot()), room.participantIds()),
-                Delivery(ServerMessage.RoomList(publicRooms()))
+            return HandleResult(
+                deliveries = listOf(
+                    Delivery(ServerMessage.RoomUpdated(room.snapshot()), room.participantIds()),
+                    Delivery(ServerMessage.RoomList(publicRooms()))
+                ),
+                changedRoomId = room.id
             )
         }
     }
@@ -1865,19 +1945,19 @@ class GameEngine(
 
     private fun selectNumber(player: GuestSession, command: ClientMessage.SelectNumber): HandleResult {
         val room = rooms[command.roomId]
-            ?: return HandleResult(listOf(error(player.playerId, "ROOM_NOT_FOUND", "PhÃƒÂ²ng khÃƒÂ´ng cÃƒÂ²n tÃ¡Â»â€œn tÃ¡ÂºÂ¡i.", command.requestId)))
+            ?: return HandleResult(listOf(error(player.playerId, "ROOM_NOT_FOUND", "Phòng không còn tồn tại.", command.requestId)))
         if (player.playerId !in room.playerIds()) {
-            return HandleResult(listOf(error(player.playerId, "NOT_IN_ROOM", "BÃ¡ÂºÂ¡n khÃƒÂ´ng Ã¡Â»Å¸ trong phÃƒÂ²ng nÃƒÂ y.", command.requestId)))
+            return HandleResult(listOf(error(player.playerId, "NOT_IN_ROOM", "Bạn không ở trong phòng này.", command.requestId)))
         }
         if (command.requestId.isBlank() || command.requestId.length > MAX_REQUEST_ID_LENGTH) {
-            return HandleResult(listOf(error(player.playerId, "INVALID_REQUEST_ID", "MÃƒÂ£ yÃƒÂªu cÃ¡ÂºÂ§u khÃƒÂ´ng hÃ¡Â»Â£p lÃ¡Â»â€¡.")))
+            return HandleResult(listOf(error(player.playerId, "INVALID_REQUEST_ID", "Mã yêu cầu không hợp lệ.")))
         }
         val requestKey = "${player.playerId}:${command.requestId}"
         room.processedRequests[requestKey]?.let { previous ->
             return HandleResult(listOf(Delivery(previous, setOf(player.playerId))))
         }
         if (room.processedRequests.size >= MAX_REQUESTS_PER_MATCH) {
-            return HandleResult(listOf(error(player.playerId, "TOO_MANY_REQUESTS", "TrÃ¡ÂºÂ­n Ã„â€˜Ã¡ÂºÂ¥u cÃƒÂ³ quÃƒÂ¡ nhiÃ¡Â»Âu lÃ†Â°Ã¡Â»Â£t gÃ¡Â»Â­i.")))
+            return HandleResult(listOf(error(player.playerId, "TOO_MANY_REQUESTS", "Trận đấu có quá nhiều lượt gửi.")))
         }
         val timedOut = room.finishIfTimedOut()
         if (room.phase != RoomPhase.PLAYING) {
@@ -1890,7 +1970,7 @@ class GameEngine(
             }
             val completedMatch = room.takeCompletedMatch()
             return HandleResult(
-                deliveries = listOf(error(player.playerId, "GAME_NOT_PLAYING", "TrÃ¡ÂºÂ­n Ã„â€˜Ã¡ÂºÂ¥u chÃ†Â°a bÃ¡ÂºÂ¯t Ã„â€˜Ã¡ÂºÂ§u hoÃ¡ÂºÂ·c Ã„â€˜ÃƒÂ£ kÃ¡ÂºÂ¿t thÃƒÂºc.", command.requestId)),
+                deliveries = listOf(error(player.playerId, "GAME_NOT_PLAYING", "Trận đấu chưa bắt đầu hoặc đã kết thúc.", command.requestId)),
                 completedMatch = completedMatch,
                 changedRoomId = room.id.takeIf { completedMatch != null }
             )
@@ -1899,13 +1979,13 @@ class GameEngine(
             return HandleResult(listOf(error(
                 player.playerId,
                 "PLAYER_FINISHED",
-                "LÃ†Â°Ã¡Â»Â£t chÃ†Â¡i cÃ¡Â»Â§a bÃ¡ÂºÂ¡n Ã„â€˜ÃƒÂ£ kÃ¡ÂºÂ¿t thÃƒÂºc.",
+                "Lượt chơi của bạn đã kết thúc.",
                 command.requestId
             )))
         }
         val expectedNumber = room.targetFor(player.playerId)
         if (command.number != expectedNumber) {
-            val rejected = error(player.playerId, "WRONG_NUMBER", "ChÃ†Â°a Ã„â€˜ÃƒÂºng sÃ¡Â»â€˜, thÃ¡Â»Â­ lÃ¡ÂºÂ¡i nhÃƒÂ©!", command.requestId)
+            val rejected = error(player.playerId, "WRONG_NUMBER", "Chưa đúng số, thử lại nhé!", command.requestId)
             room.processedRequests[requestKey] = rejected.message
             room.recordSelection(player.playerId, command, expectedNumber, SelectionResult.REJECTED)
             val previousCombo = room.combos[player.playerId] ?: 0
@@ -1994,10 +2074,10 @@ class GameEngine(
 
     private fun sendEmoji(player: GuestSession, command: ClientMessage.SendEmoji): HandleResult {
         val room = rooms[command.roomId]
-            ?: return HandleResult(listOf(error(player.playerId, "ROOM_NOT_FOUND", "KhÃƒÂ´ng tÃƒÂ¬m thÃ¡ÂºÂ¥y phÃƒÂ²ng.")))
+            ?: return HandleResult(listOf(error(player.playerId, "ROOM_NOT_FOUND", "Không tìm thấy phòng.")))
 
         if (player.playerId !in room.playerIds() && player.playerId !in room.spectatorIds) {
-            return HandleResult(listOf(error(player.playerId, "NOT_IN_ROOM", "BÃ¡ÂºÂ¡n khÃƒÂ´ng Ã¡Â»Å¸ trong phÃƒÂ²ng nÃƒÂ y.")))
+            return HandleResult(listOf(error(player.playerId, "NOT_IN_ROOM", "Bạn không ở trong phòng này.")))
         }
 
         val allParticipants = room.participantIds()
@@ -2009,11 +2089,11 @@ class GameEngine(
         val playerOneId = checkNotNull(match.playerOneId)
         val playerTwoId = checkNotNull(match.playerTwoId)
         val roomId = UUID.randomUUID().toString()
-        val roundName = if (match.round == 1) "BÃƒÂ¡n kÃ¡ÂºÂ¿t ${match.position}" else "Chung kết"
+        val roundName = if (match.round == 1) "Bán kết ${match.position}" else "Chung kết"
         val room = Room(
             id = roomId,
             matchId = roomId,
-            name = "${tournament.name} Ã¢â‚¬Â¢ $roundName",
+            name = "${tournament.name} • $roundName",
             hostId = playerOneId,
             password = null,
             gameMode = tournament.gameMode,
@@ -2740,30 +2820,144 @@ class GameEngine(
     }
 
     private suspend fun createClan(playerId: String, name: String, description: String): List<Delivery> {
-        if (name.isBlank() || name.length > 32) return listOf(error(playerId, "INVALID_CLAN_NAME", "TÃªn clan khÃ´ng há»£p lá»‡."))
+        if (name.isBlank() || name.length > 32) return listOf(error(playerId, "INVALID_CLAN_NAME", "Tên clan không hợp lệ."))
         val clanId = clanRepository.createClan(playerId, name, description)
         return if (clanId != null) {
-            listOf(Delivery(ServerMessage.ClanActionResult(true, "Táº¡o clan thÃ nh cÃ´ng", "create_clan"), setOf(playerId)))
+            listOf(Delivery(ServerMessage.ClanActionResult(true, "Tạo clan thành công", "create_clan"), setOf(playerId)))
         } else {
-            listOf(error(playerId, "CREATE_CLAN_FAILED", "Táº¡o clan tháº¥t báº¡i. CÃ³ thá»ƒ báº¡n Ä‘Ã£ vÃ o má»™t clan khÃ¡c hoáº·c tÃªn bá»‹ trÃ¹ng."))
+            listOf(error(playerId, "CREATE_CLAN_FAILED", "Tạo clan thất bại. Có thể bạn đã vào một clan khác hoặc tên bị trùng."))
         }
     }
 
     private suspend fun joinClan(playerId: String, clanId: String): List<Delivery> {
-        val success = clanRepository.joinClan(playerId, clanId)
-        return if (success) {
-            listOf(Delivery(ServerMessage.ClanActionResult(true, "VÃ o clan thÃ nh cÃ´ng", "join_clan"), setOf(playerId)))
-        } else {
-            listOf(error(playerId, "JOIN_CLAN_FAILED", "KhÃ´ng thá»ƒ vÃ o clan nÃ y."))
+        val clan = clanRepository.getClanById(clanId)
+            ?: return listOf(error(playerId, "CLAN_NOT_FOUND", "Không tìm thấy clan."))
+        return when (clanRepository.requestJoinClan(playerId, clanId)) {
+            ClanJoinRequestResult.REQUESTED -> {
+                val requester = playerProfileRepository.findByPlayerId(playerId)
+                val notification = NotificationSnapshot(
+                    id = UUID.randomUUID().toString(),
+                    kind = NotificationKind.CLAN_INVITATION,
+                    title = "Yêu cầu vào clan",
+                    message = "${requester?.displayName ?: "Một người chơi"} muốn vào clan ${clan.name}.",
+                    createdAtEpochMillis = nowMillis(),
+                    destination = NotificationDestination.CLAN,
+                    actionData = clanId
+                )
+                notificationRepository.createNotifications(clan.ownerId, listOf(notification))
+                val updatedClan = clanRepository.getClanById(clanId)
+                buildList {
+                    add(Delivery(
+                        ServerMessage.ClanActionResult(
+                            success = true,
+                            message = "Đã gửi yêu cầu. Chờ bang chủ duyệt.",
+                            action = "request_join_clan"
+                        ),
+                        setOf(playerId)
+                    ))
+                    updatedClan?.let {
+                        add(Delivery(ServerMessage.ClanInfoData(it), setOf(clan.ownerId)))
+                    }
+                    add(Delivery(
+                        ServerMessage.NotificationsData(notificationRepository.loadNotifications(clan.ownerId)),
+                        setOf(clan.ownerId)
+                    ))
+                }
+            }
+            ClanJoinRequestResult.CLAN_NOT_FOUND ->
+                listOf(error(playerId, "CLAN_NOT_FOUND", "Không tìm thấy clan."))
+            ClanJoinRequestResult.CLAN_FULL ->
+                listOf(error(playerId, "CLAN_FULL", "Clan đã đủ thành viên."))
+            ClanJoinRequestResult.OWN_CLAN ->
+                listOf(error(playerId, "OWN_CLAN_JOIN_REQUEST", "Bạn không thể xin vào bang do chính mình tạo."))
+            ClanJoinRequestResult.ALREADY_MEMBER ->
+                listOf(error(playerId, "ALREADY_IN_CLAN", "Bạn đã tham gia một clan."))
+            ClanJoinRequestResult.FAILED ->
+                listOf(error(playerId, "JOIN_CLAN_FAILED", "Không thể gửi yêu cầu vào clan này."))
+        }
+    }
+
+    private suspend fun respondClanJoinRequest(
+        playerId: String,
+        command: ClientMessage.RespondClanJoinRequest
+    ): List<Delivery> {
+        val clan = clanRepository.getClanById(command.clanId)
+            ?: return listOf(error(playerId, "CLAN_NOT_FOUND", "Không tìm thấy clan."))
+        if (clan.ownerId != playerId) {
+            return listOf(error(playerId, "NOT_CLAN_OWNER", "Chỉ bang chủ mới có thể duyệt thành viên."))
+        }
+        val requester = playerProfileRepository.findByPlayerId(command.userId)
+            ?: return listOf(error(playerId, "PLAYER_NOT_FOUND", "Không tìm thấy người chơi này."))
+
+        return when (val result = clanRepository.respondJoinRequest(
+            clanId = command.clanId,
+            ownerId = playerId,
+            userId = command.userId,
+            accept = command.accept
+        )) {
+            ClanJoinResponseResult.APPROVED,
+            ClanJoinResponseResult.REJECTED -> {
+                val approved = result == ClanJoinResponseResult.APPROVED
+                val requesterMessage = if (approved) {
+                    "Yêu cầu vào clan ${clan.name} đã được duyệt."
+                } else {
+                    "Yêu cầu vào clan ${clan.name} đã bị từ chối."
+                }
+                val notification = NotificationSnapshot(
+                    id = UUID.randomUUID().toString(),
+                    kind = NotificationKind.CLAN_INVITATION,
+                    title = if (approved) "Đã vào clan" else "Yêu cầu bị từ chối",
+                    message = requesterMessage,
+                    createdAtEpochMillis = nowMillis(),
+                    destination = NotificationDestination.CLAN,
+                    actionData = command.clanId
+                )
+                notificationRepository.createNotifications(command.userId, listOf(notification))
+                val updatedClan = clanRepository.getClanById(command.clanId)
+                buildList {
+                    add(Delivery(
+                        ServerMessage.ClanActionResult(
+                            success = true,
+                            message = if (approved) "Đã duyệt ${requester.displayName}." else "Đã từ chối ${requester.displayName}.",
+                            action = "respond_clan_join_request"
+                        ),
+                        setOf(playerId)
+                    ))
+                    add(Delivery(
+                        ServerMessage.ClanActionResult(
+                            success = true,
+                            message = requesterMessage,
+                            action = if (approved) "join_clan_approved" else "join_clan_rejected"
+                        ),
+                        setOf(command.userId)
+                    ))
+                    updatedClan?.let {
+                        add(Delivery(ServerMessage.ClanInfoData(it), setOf(playerId)))
+                    }
+                    add(Delivery(
+                        ServerMessage.NotificationsData(notificationRepository.loadNotifications(command.userId)),
+                        setOf(command.userId)
+                    ))
+                    if (approved) addAll(loadProfile(command.userId))
+                }
+            }
+            ClanJoinResponseResult.REQUEST_NOT_FOUND ->
+                listOf(error(playerId, "CLAN_JOIN_REQUEST_NOT_FOUND", "Yêu cầu không còn tồn tại."))
+            ClanJoinResponseResult.CLAN_FULL ->
+                listOf(error(playerId, "CLAN_FULL", "Clan đã đủ thành viên."))
+            ClanJoinResponseResult.ALREADY_MEMBER ->
+                listOf(error(playerId, "ALREADY_IN_CLAN", "Người chơi đã tham gia một clan khác."))
+            ClanJoinResponseResult.FAILED ->
+                listOf(error(playerId, "CLAN_JOIN_RESPONSE_FAILED", "Không thể xử lý yêu cầu lúc này."))
         }
     }
 
     private suspend fun leaveClan(playerId: String): List<Delivery> {
         val success = clanRepository.leaveClan(playerId)
         return if (success) {
-            listOf(Delivery(ServerMessage.ClanActionResult(true, "ÄÃ£ rá»i clan", "leave_clan"), setOf(playerId)))
+            listOf(Delivery(ServerMessage.ClanActionResult(true, "Đã rời clan", "leave_clan"), setOf(playerId)))
         } else {
-            listOf(error(playerId, "LEAVE_CLAN_FAILED", "Rá»i clan tháº¥t báº¡i."))
+            listOf(error(playerId, "LEAVE_CLAN_FAILED", "Rời clan thất bại."))
         }
     }
 
@@ -2772,42 +2966,43 @@ class GameEngine(
         return if (clan != null) {
             listOf(Delivery(ServerMessage.ClanInfoData(clan), setOf(playerId)))
         } else {
-            listOf(error(playerId, "CLAN_NOT_FOUND", "KhÃ´ng tÃ¬m tháº¥y clan."))
+            listOf(error(playerId, "CLAN_NOT_FOUND", "Không tìm thấy clan."))
         }
     }
 
     private suspend fun getClanList(playerId: String, query: String? = null): List<Delivery> {
         val list = clanRepository.getClanList(50, 0, query)
-        return listOf(Delivery(ServerMessage.ClanListData(list), setOf(playerId)))
+        val pendingJoinClanIds = clanRepository.getPendingJoinClanIds(playerId)
+        return listOf(Delivery(ServerMessage.ClanListData(list, pendingJoinClanIds), setOf(playerId)))
     }
 
     private suspend fun kickClanMember(playerId: String, clanId: String, memberId: String): List<Delivery> {
         val clan = clanRepository.getClanById(clanId)
-            ?: return listOf(error(playerId, "CLAN_NOT_FOUND", "KhÃ´ng tÃ¬m tháº¥y bang há»™i."))
+            ?: return listOf(error(playerId, "CLAN_NOT_FOUND", "Không tìm thấy bang hội."))
         if (clan.ownerId != playerId) {
-            return listOf(error(playerId, "NOT_CLAN_OWNER", "Chá»‰ Ä‘á»™i trÆ°á»Ÿng má»›i cÃ³ thá»ƒ kick thÃ nh viÃªn."))
+            return listOf(error(playerId, "NOT_CLAN_OWNER", "Chỉ đội trưởng mới có thể kick thành viên."))
         }
         val success = clanRepository.kickMember(clanId, playerId, memberId)
         return if (success) {
             getClanInfo(playerId, clanId)
         } else {
-            listOf(error(playerId, "KICK_FAILED", "KhÃ´ng thá»ƒ kick thÃ nh viÃªn nÃ y."))
+            listOf(error(playerId, "KICK_FAILED", "Không thể kick thành viên này."))
         }
     }
 
     private suspend fun inviteToClan(playerId: String, playerCode: String): List<Delivery> {
         val inviterProfile = playerProfileRepository.findByPlayerId(playerId)
         val clanId = inviterProfile?.clanId
-            ?: return listOf(error(playerId, "NOT_IN_CLAN", "Báº¡n chÆ°a tham gia bang há»™i nÃ o."))
+            ?: return listOf(error(playerId, "NOT_IN_CLAN", "Bạn chưa tham gia bang hội nào."))
         
         val clan = clanRepository.getClanById(clanId)
-            ?: return listOf(error(playerId, "CLAN_NOT_FOUND", "KhÃ´ng tÃ¬m tháº¥y bang há»™i."))
+            ?: return listOf(error(playerId, "CLAN_NOT_FOUND", "Không tìm thấy bang hội."))
 
         val targetPlayer = playerProfileRepository.findByPlayerCode(playerCode)
-            ?: return listOf(error(playerId, "PLAYER_NOT_FOUND", "KhÃ´ng tÃ¬m tháº¥y ngÆ°á»i chÆ¡i nÃ y."))
+            ?: return listOf(error(playerId, "PLAYER_NOT_FOUND", "Không tìm thấy người chơi này."))
         
         if (targetPlayer.clanId != null) {
-            return listOf(error(playerId, "ALREADY_IN_CLAN", "NgÆ°á»i chÆ¡i nÃ y Ä‘Ã£ cÃ³ bang há»™i."))
+            return listOf(error(playerId, "ALREADY_IN_CLAN", "Người chơi này đã có bang hội."))
         }
 
         val notification = NotificationSnapshot(
@@ -2824,7 +3019,7 @@ class GameEngine(
         
         return listOf(
             Delivery(ServerMessage.NotificationsData(notificationRepository.loadNotifications(targetPlayer.userId)), setOf(targetPlayer.userId)),
-            error(playerId, "INVITE_SENT", "ÄÃ£ gá»­i lá»i má»i.")
+            error(playerId, "INVITE_SENT", "Đã gửi lời mời.")
         )
     }
     suspend fun getAvatarData(playerId: String): String? = playerProfileRepository.getAvatarData(playerId)
@@ -2835,7 +3030,7 @@ class GameEngine(
         if (success) {
             return loadProfile(playerId)
         }
-        return listOf(error(playerId, "UPLOAD_FAILED", "KhÃ´ng thá»ƒ táº£i lÃªn áº£nh Ä‘áº¡i diá»‡n."))
+        return listOf(error(playerId, "UPLOAD_FAILED", "Không thể tải ảnh đại diện lên."))
     }
 
 
@@ -2858,15 +3053,15 @@ class GameEngine(
     }
     private suspend fun updateClanLogo(playerId: String, clanId: String, logoId: String): List<Delivery> {
         val clan = clanRepository.getClanById(clanId)
-            ?: return listOf(error(playerId, "CLAN_NOT_FOUND", "KhÃ´ng tÃ¬m tháº¥y bang há»™i."))
+            ?: return listOf(error(playerId, "CLAN_NOT_FOUND", "Không tìm thấy bang hội."))
         if (clan.ownerId != playerId) {
-            return listOf(error(playerId, "NOT_CLAN_OWNER", "Chá»‰ Ä‘á»™i trÆ°á»Ÿng má»›i cÃ³ thá»ƒ Ä‘á»•i logo."))
+            return listOf(error(playerId, "NOT_CLAN_OWNER", "Chỉ đội trưởng mới có thể đổi logo."))
         }
         val success = clanRepository.updateLogoId(clanId, logoId)
         if (success) {
             return getClanInfo(playerId, clanId)
         }
-        return listOf(error(playerId, "UPLOAD_FAILED", "KhÃ´ng thá»ƒ cáº­p nháº­t logo."))
+        return listOf(error(playerId, "UPLOAD_FAILED", "Không thể cập nhật logo."))
     }
 
     private suspend fun claimClanQuestReward(playerId: String, clanId: String): List<Delivery> {
@@ -2889,7 +3084,6 @@ class GameEngine(
 
         val claimed = clanRepository.claimQuestReward(clanId, playerId)
         if (claimed) {
-            playerProfileRepository.updateGold(playerId, quest.rewardGold)
             return getClanInfo(playerId, clanId) + loadProfile(playerId)
         }
         

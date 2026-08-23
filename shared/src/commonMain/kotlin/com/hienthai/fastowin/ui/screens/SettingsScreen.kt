@@ -46,6 +46,7 @@ import com.hienthai.fastowin.data.preferences.AppThemeMode
 import com.hienthai.fastowin.data.preferences.BoardStyle
 import com.hienthai.fastowin.ui.components.SystemBackHandler
 import com.hienthai.fastowin.ui.layout.ResponsiveScreen
+import com.hienthai.fastowin.ui.components.FastToWinHeader
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -55,20 +56,23 @@ fun SettingsScreen(
     onPreviewSound: () -> Unit,
     onOpenTutorial: () -> Unit,
     onBack: () -> Unit,
+    gold: Int = 0,
+    gems: Int = 0,
+    unreadNotifications: Int = 0,
+    onOpenNotifications: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     SystemBackHandler(onBack = onBack)
-
     Scaffold(
         modifier = modifier.fillMaxSize(),
         topBar = {
-            CenterAlignedTopAppBar(
-                title = { Text("Cài đặt", fontWeight = FontWeight.Bold) },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "Quay lại")
-                    }
-                }
+            FastToWinHeader(
+                title = "Cài đặt",
+                gold = gold,
+                gems = gems,
+                unreadNotifications = unreadNotifications,
+                onNotifications = onOpenNotifications,
+                onBack = onBack
             )
         }
     ) { paddingValues ->

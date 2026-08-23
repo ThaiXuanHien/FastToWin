@@ -77,6 +77,7 @@ class AppNotificationTest {
         cosmeticUnlocked: Boolean,
         missionCompleted: Boolean
     ) = PlayerProfileSnapshot(
+        userId = "player-1",
         displayName = "Player",
         playerCode = "PLAYER001",
         achievements = if (achievementUnlocked) {

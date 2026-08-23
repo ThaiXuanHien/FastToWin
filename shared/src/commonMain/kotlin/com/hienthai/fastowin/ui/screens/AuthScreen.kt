@@ -67,14 +67,13 @@ fun AuthScreen(
     onBack: () -> Unit,
     onCancelUpgrade: () -> Unit
 ) {
-    SystemBackHandler(enabled = state.stage != AuthStage.WELCOME && state.stage != AuthStage.PLAYING) {
-        if (state.stage == AuthStage.UPGRADE_GUEST) {
-            onCancelUpgrade()
-        } else {
-            onBack()
+    SystemBackHandler(
+        enabled = state.stage != AuthStage.WELCOME && state.stage != AuthStage.PLAYING
+    ) {
+        if (!state.isLoading) {
+            if (state.stage == AuthStage.UPGRADE_GUEST) onCancelUpgrade() else onBack()
         }
     }
-
     ResponsiveScreen(maxContentWidth = 520.dp, avoidKeyboard = true) { contentModifier ->
         Box(
             modifier = contentModifier

@@ -133,7 +133,9 @@ data class GameState(
     val isClanOpen: Boolean = false,
     val isShopOpen: Boolean = false,
     val clanList: List<com.hienthai.fastowin.protocol.ClanSummarySnapshot> = emptyList(),
+    val pendingClanJoinIds: Set<String> = emptySet(),
     val currentClan: com.hienthai.fastowin.protocol.ClanSnapshot? = null,
+    val clanNotice: String? = null,
     val profileNotice: String? = null,
     val profile: PlayerProfileSnapshot? = null,
     val isDailyCheckInClaiming: Boolean = false,
@@ -151,6 +153,8 @@ data class GameState(
     val isFriendsLoading: Boolean = false,
     val social: FriendsSnapshot = FriendsSnapshot(),
     val roomInvitations: List<ServerMessage.RoomInvitation> = emptyList(),
+    val sendingRoomInviteFriendIds: Set<String> = emptySet(),
+    val invitedRoomFriendIds: Set<String> = emptySet(),
     val activeEmojis: List<EmojiEvent> = emptyList(),
     val roomInvitationPrompt: ServerMessage.RoomInvitation? = null,
     val socialNotice: String? = null,
@@ -200,6 +204,35 @@ internal fun GameState.prepareForMatchStart(): GameState = copy(
     isFriendsLoading = false,
     isNotificationsOpen = false,
     isTournamentOpen = false,
+    roomInvitationPrompt = null,
+    tournamentInvitationPrompt = null
+)
+
+internal fun GameState.openNotificationsOverlay(): GameState = copy(
+    isNotificationsOpen = true,
+    error = null
+)
+
+internal fun GameState.closeNotificationsOverlay(): GameState = copy(
+    isNotificationsOpen = false
+)
+
+internal fun GameState.prepareForRoomWaiting(): GameState = copy(
+    isProfileOpen = false,
+    isProfileLoading = false,
+    isFriendProfileOpen = false,
+    isFriendProfileLoading = false,
+    viewedFriendUserId = null,
+    friendProfile = null,
+    isLeaderboardOpen = false,
+    isLeaderboardLoading = false,
+    isFriendsOpen = false,
+    isFriendsLoading = false,
+    isNotificationsOpen = false,
+    isTournamentOpen = false,
+    isTournamentLoading = false,
+    isShopOpen = false,
+    isClanOpen = false,
     roomInvitationPrompt = null,
     tournamentInvitationPrompt = null
 )

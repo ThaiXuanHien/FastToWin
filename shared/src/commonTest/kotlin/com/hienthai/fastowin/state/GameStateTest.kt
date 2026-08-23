@@ -10,6 +10,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 class GameStateTest {
     @Test
@@ -67,6 +68,34 @@ class GameStateTest {
     }
 
     @Test
+    fun `notifications preserve the previous destination when opened and closed`() {
+        val previous = GameState(
+            isProfileOpen = true,
+            isFriendsOpen = true,
+            isClanOpen = true,
+            isShopOpen = true,
+            error = "Old error"
+        )
+
+        val opened = previous.openNotificationsOverlay()
+
+        assertTrue(opened.isNotificationsOpen)
+        assertTrue(opened.isProfileOpen)
+        assertTrue(opened.isFriendsOpen)
+        assertTrue(opened.isClanOpen)
+        assertTrue(opened.isShopOpen)
+        assertNull(opened.error)
+
+        val closed = opened.closeNotificationsOverlay()
+
+        assertFalse(closed.isNotificationsOpen)
+        assertTrue(closed.isProfileOpen)
+        assertTrue(closed.isFriendsOpen)
+        assertTrue(closed.isClanOpen)
+        assertTrue(closed.isShopOpen)
+    }
+
+    @Test
     fun `post match friend action recognizes recent opponent and pending requests`() {
         val opponentId = "player-2"
         val recent = RecentPlayerSnapshot(
@@ -77,7 +106,7 @@ class GameStateTest {
             matchesPlayed = 1
         )
         val base = GameState(
-            profile = PlayerProfileSnapshot("Me", "ME000001"),
+            profile = PlayerProfileSnapshot(userId = "player-1", displayName = "Me", playerCode = "ME000001"),
             opponent = PlayerState("Opponent", id = opponentId),
             social = FriendsSnapshot(recentPlayers = listOf(recent))
         )
@@ -98,7 +127,7 @@ class GameStateTest {
     fun `friend relationship takes priority over recent opponent`() {
         val opponentId = "player-2"
         val state = GameState(
-            profile = PlayerProfileSnapshot("Me", "ME000001"),
+            profile = PlayerProfileSnapshot(userId = "player-1", displayName = "Me", playerCode = "ME000001"),
             opponent = PlayerState("Opponent", id = opponentId),
             social = FriendsSnapshot(
                 friends = listOf(FriendSnapshot(opponentId, "Opponent", "OPPONENT")),

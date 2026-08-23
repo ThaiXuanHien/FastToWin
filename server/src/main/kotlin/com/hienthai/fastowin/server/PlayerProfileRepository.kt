@@ -22,14 +22,18 @@ interface PlayerProfileRepository {
 
 data class DailyCheckInClaimResult(
     val claimed: Boolean,
-    val rewardXp: Int
+    val rewardXp: Int,
+    val rewardGold: Int = 0,
+    val rewardGems: Int = 0
 )
 
 enum class MissionRewardClaimStatus { CLAIMED, ALREADY_CLAIMED, NOT_COMPLETED, INVALID_MISSION }
 
 data class MissionRewardClaimResult(
     val status: MissionRewardClaimStatus,
-    val rewardXp: Int = 0
+    val rewardXp: Int = 0,
+    val rewardGold: Int = 0,
+    val rewardGems: Int = 0
 )
 
 object NoOpPlayerProfileRepository : PlayerProfileRepository {

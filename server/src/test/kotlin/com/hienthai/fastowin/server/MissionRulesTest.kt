@@ -9,12 +9,12 @@ class MissionRulesTest {
     fun `mission rewards increase with weekly difficulty`() {
         assertEquals(
             mapOf(
-                "DAILY_PLAY_3" to 20,
-                "DAILY_WIN_1" to 15,
-                "WEEKLY_CORRECT_100" to 50,
-                "WEEKLY_PERFECT_1" to 75
+                "DAILY_PLAY_3" to Triple(20, 100, 0),
+                "DAILY_WIN_1" to Triple(25, 150, 0),
+                "WEEKLY_CORRECT_100" to Triple(75, 400, 0),
+                "WEEKLY_PERFECT_1" to Triple(120, 600, 2)
             ),
-            MISSION_DEFINITIONS.associate { it.code to it.rewardXp }
+            MISSION_DEFINITIONS.associate { it.code to Triple(it.rewardXp, it.rewardGold, it.rewardGems) }
         )
     }
 

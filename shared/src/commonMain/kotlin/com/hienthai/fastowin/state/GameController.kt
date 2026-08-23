@@ -99,6 +99,7 @@ class GameController(
                 isProfileOpen = false,
                 isLeaderboardOpen = false,
                 isFriendsOpen = false,
+                isClanOpen = false,
                 isNotificationsOpen = false,
                 error = null
             )
@@ -203,6 +204,7 @@ class GameController(
                 isProfileLoading = true,
                 isLeaderboardOpen = false,
                 isFriendsOpen = false,
+                isClanOpen = false,
                 isNotificationsOpen = false,
                 error = null
             )
@@ -293,6 +295,7 @@ class GameController(
                 isLeaderboardLoading = true,
                 isProfileOpen = false,
                 isFriendsOpen = false,
+                isClanOpen = false,
                 isNotificationsOpen = false,
                 error = null
             )
@@ -316,6 +319,7 @@ class GameController(
                 isFriendsLoading = true,
                 isProfileOpen = false,
                 isLeaderboardOpen = false,
+                isClanOpen = false,
                 isNotificationsOpen = false,
                 error = null
             )
@@ -344,6 +348,7 @@ class GameController(
                 isLeaderboardLoading = false,
                 isFriendsOpen = false,
                 isFriendsLoading = false,
+                isClanOpen = false,
                 isNotificationsOpen = false,
                 error = null
             )
@@ -351,25 +356,14 @@ class GameController(
     }
 
     fun openNotifications() {
-        _uiState.update {
-            it.copy(
-                isNotificationsOpen = true,
-                isProfileOpen = false,
-                isProfileLoading = false,
-                isLeaderboardOpen = false,
-                isLeaderboardLoading = false,
-                isFriendsOpen = false,
-                isFriendsLoading = false,
-                error = null
-            )
-        }
+        _uiState.update(GameState::openNotificationsOverlay)
         if (accountDisplayName != null) {
             scope.launch { socket.sendMessage(ClientMessage.GetNotifications) }
         }
     }
 
     fun closeNotifications() {
-        _uiState.update { it.copy(isNotificationsOpen = false) }
+        _uiState.update(GameState::closeNotificationsOverlay)
     }
 
     fun openTournament() {
@@ -563,6 +557,13 @@ class GameController(
 
     fun inviteFriend(friendUserId: String) {
         val roomId = _uiState.value.currentRoomId ?: return
+        _uiState.update {
+            it.copy(
+                sendingRoomInviteFriendIds = it.sendingRoomInviteFriendIds + friendUserId,
+                socialNotice = null,
+                error = null
+            )
+        }
         scope.launch { socket.sendMessage(ClientMessage.InviteFriend(friendUserId, roomId)) }
     }
 
@@ -858,6 +859,11 @@ class GameController(
                 _uiState.update {
                     it.copy(
                         isDailyCheckInClaiming = false,
+                        profileNotice = if (message.claimed) rewardNotice(
+                            message.rewardGold,
+                            message.rewardXp,
+                            message.rewardGems
+                        ) else null,
                         error = null
                     )
                 }
@@ -866,7 +872,11 @@ class GameController(
                 _uiState.update {
                     it.copy(
                         claimingMissionCode = null,
-                        profileNotice = if (message.claimed) "Đã nhận ${message.rewardXp} XP." else null,
+                        profileNotice = if (message.claimed) rewardNotice(
+                            message.rewardGold,
+                            message.rewardXp,
+                            message.rewardGems
+                        ) else null,
                         error = null
                     )
                 }
@@ -929,8 +939,11 @@ class GameController(
             is ServerMessage.RoomInvitationsData -> {
                 _uiState.update { state ->
                     val invitationIds = message.invitations.mapTo(mutableSetOf()) { it.invitationId }
+                    val invitedFriendIds = message.outgoingFriendUserIds.toSet()
                     state.copy(
                         roomInvitations = message.invitations,
+                        sendingRoomInviteFriendIds = state.sendingRoomInviteFriendIds - invitedFriendIds,
+                        invitedRoomFriendIds = invitedFriendIds,
                         notifications = if (accountDisplayName == null) mergeNotifications(
                             state.notifications,
                             message.invitations.map { roomInvitationNotification(it, epochMillis()) },
@@ -1048,14 +1061,28 @@ class GameController(
                 _uiState.update { it.copy(currentClan = message.clan) }
             }
             is ServerMessage.ClanListData -> {
-                _uiState.update { it.copy(clanList = message.clans) }
+                _uiState.update {
+                    it.copy(
+                        clanList = message.clans,
+                        pendingClanJoinIds = message.pendingJoinClanIds.toSet()
+                    )
+                }
             }
             is ServerMessage.ClanActionResult -> {
+                _uiState.update { it.copy(clanNotice = message.message, error = null) }
                 if (message.success) {
                     when (message.action) {
-                        "create_clan", "join_clan" -> {
+                        "create_clan", "join_clan_approved" -> {
                             socket.sendMessage(ClientMessage.GetProfile)
                             socket.sendMessage(ClientMessage.GetClanList())
+                        }
+                        "request_join_clan", "join_clan_rejected" -> {
+                            socket.sendMessage(ClientMessage.GetClanList())
+                        }
+                        "respond_clan_join_request" -> {
+                            _uiState.value.currentClan?.id?.let {
+                                socket.sendMessage(ClientMessage.GetClanInfo(it))
+                            }
                         }
                         "leave_clan" -> {
                             socket.sendMessage(ClientMessage.GetProfile)
@@ -1157,7 +1184,15 @@ class GameController(
         val spectatorSnapshots = game.spectators.filter { it.id != playerId }
 
         _uiState.update { state ->
-            state.copy(
+            val enteredRoom = state.currentRoomId != game.roomId
+            val opponentJoinedRoom = game.hostId == playerId &&
+                !state.hasOpponent && opponentSnapshots.isNotEmpty()
+            val waitingState = if (enteredRoom || opponentJoinedRoom) {
+                state.prepareForRoomWaiting()
+            } else {
+                state
+            }
+            waitingState.copy(
                 gameMode = game.gameMode.toUi(),
                 matchType = game.matchType,
                 player = meSnapshot?.toState(state.player.name, 1, isSpectator = meSnapshot in game.spectators) ?: state.player,
@@ -1294,11 +1329,6 @@ class GameController(
 
     private fun handleServerError(error: ServerMessage.Error) {
         if (error.code == "WRONG_NUMBER") {
-            _uiState.update { it.copy(message = error.message) }
-            scope.launch {
-                delay(1_000)
-                _uiState.update { it.copy(message = null) }
-            }
             return
         }
 
@@ -1319,6 +1349,11 @@ class GameController(
                     isFriendProfileLoading = false,
                     isMatchDetailLoading = false,
                     isFriendsLoading = false,
+                    sendingRoomInviteFriendIds = if (error.code in ROOM_INVITATION_ERROR_CODES) {
+                        emptySet()
+                    } else {
+                        it.sendingRoomInviteFriendIds
+                    },
                     isTournamentLoading = false,
                     isDailyCheckInClaiming = false,
                     claimingMissionCode = null,
@@ -1414,6 +1449,8 @@ class GameController(
                 currentRoomName = null,
                 isRoomHost = false,
                 hasOpponent = false,
+                sendingRoomInviteFriendIds = emptySet(),
+                invitedRoomFriendIds = emptySet(),
                 isSearching = false,
                 isMatchStarted = false,
                 isGameOver = false,
@@ -1455,7 +1492,20 @@ class GameController(
     }
 
     fun openClan() {
-        _uiState.update { it.copy(isClanOpen = true) }
+        _uiState.update {
+            it.copy(
+                isClanOpen = true,
+                isProfileOpen = false,
+                isProfileLoading = false,
+                isLeaderboardOpen = false,
+                isLeaderboardLoading = false,
+                isFriendsOpen = false,
+                isFriendsLoading = false,
+                isNotificationsOpen = false,
+                clanNotice = null,
+                error = null
+            )
+        }
         scope.launch { socket.sendMessage(ClientMessage.GetClanList()) }
     }
 
@@ -1468,7 +1518,15 @@ class GameController(
     }
 
     fun joinClan(clanId: String) {
+        _uiState.update { it.copy(clanNotice = null, error = null) }
         scope.launch { socket.sendMessage(ClientMessage.JoinClan(clanId)) }
+    }
+
+    fun respondClanJoinRequest(clanId: String, userId: String, accept: Boolean) {
+        _uiState.update { it.copy(clanNotice = null, error = null) }
+        scope.launch {
+            socket.sendMessage(ClientMessage.RespondClanJoinRequest(clanId, userId, accept))
+        }
     }
 
     fun leaveClan() {
@@ -1517,5 +1575,18 @@ class GameController(
     private companion object {
         const val RECONNECTING_MATCH_MESSAGE =
             "Mất kết nối. Đang khôi phục trận, phòng được giữ tối đa 30 giây..."
+        val ROOM_INVITATION_ERROR_CODES = setOf(
+            "INTERACTION_BLOCKED",
+            "NOT_FRIENDS",
+            "SESSION_NOT_FOUND",
+            "ROOM_NOT_INVITABLE",
+            "FRIEND_BUSY"
+        )
     }
 }
+
+private fun rewardNotice(gold: Int, xp: Int, gems: Int): String = buildList {
+    if (gold > 0) add("$gold Vàng")
+    if (xp > 0) add("$xp XP")
+    if (gems > 0) add("$gems Gem")
+}.joinToString(prefix = "Đã nhận ", postfix = ".")

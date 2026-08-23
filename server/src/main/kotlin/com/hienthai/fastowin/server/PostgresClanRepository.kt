@@ -1,13 +1,17 @@
 ﻿package com.hienthai.fastowin.server
 
 import com.hienthai.fastowin.protocol.ClanMemberSnapshot
+import com.hienthai.fastowin.protocol.ClanJoinRequestSnapshot
 import com.hienthai.fastowin.protocol.ClanRole
+import com.hienthai.fastowin.protocol.ClanQuestSnapshot
 import com.hienthai.fastowin.protocol.ClanSnapshot
 import com.hienthai.fastowin.protocol.ClanSummarySnapshot
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.util.UUID
 import javax.sql.DataSource
+
+private const val CLAN_MAX_MEMBERS = 50
 
 class PostgresClanRepository(
     private val dataSource: DataSource
@@ -19,6 +23,15 @@ class PostgresClanRepository(
 
             try {
                 connection.autoCommit = false
+                connection.prepareStatement("SELECT 1 FROM users WHERE id = ? FOR UPDATE").use {
+                    it.setObject(1, ownerUuid)
+                    it.executeQuery().use { result ->
+                        if (!result.next()) {
+                            connection.rollback()
+                            return@withContext null
+                        }
+                    }
+                }
                 val check = connection.prepareStatement("SELECT 1 FROM clan_members WHERE user_id = ?").use {
                     it.setObject(1, ownerUuid)
                     it.executeQuery().use { rs -> rs.next() }
@@ -26,6 +39,11 @@ class PostgresClanRepository(
                 if (check) {
                     connection.rollback()
                     return@withContext null
+                }
+
+                connection.prepareStatement("DELETE FROM clan_join_requests WHERE user_id = ?").use {
+                    it.setObject(1, ownerUuid)
+                    it.executeUpdate()
                 }
 
                 connection.prepareStatement("INSERT INTO clans (id, name, description, owner_id, trophies, created_at) VALUES (?, ?, ?, ?, 0, NOW())").use {
@@ -53,18 +71,194 @@ class PostgresClanRepository(
         }
     }
 
-    override suspend fun joinClan(userId: String, clanId: String): Boolean = withContext(Dispatchers.IO) {
+    override suspend fun requestJoinClan(userId: String, clanId: String): ClanJoinRequestResult = withContext(Dispatchers.IO) {
         dataSource.connection.use { connection ->
-            val userUuid = UUID.fromString(userId)
-            val clanUuid = UUID.fromString(clanId)
             try {
-                connection.prepareStatement("INSERT INTO clan_members (clan_id, user_id, role, joined_at) VALUES (?, ?, 'MEMBER', NOW())").use {
+                connection.autoCommit = false
+                val userUuid = UUID.fromString(userId)
+                val clanUuid = UUID.fromString(clanId)
+
+                connection.prepareStatement("SELECT 1 FROM users WHERE id = ? FOR UPDATE").use {
+                    it.setObject(1, userUuid)
+                    it.executeQuery().use { result ->
+                        if (!result.next()) {
+                            connection.rollback()
+                            return@withContext ClanJoinRequestResult.FAILED
+                        }
+                    }
+                }
+
+                val clanInfo = connection.prepareStatement(
+                    "SELECT c.owner_id, COUNT(cm.user_id) AS member_count FROM clans c " +
+                        "LEFT JOIN clan_members cm ON cm.clan_id = c.id " +
+                        "WHERE c.id = ? GROUP BY c.id, c.owner_id"
+                ).use {
+                    it.setObject(1, clanUuid)
+                    it.executeQuery().use { result ->
+                        if (result.next()) {
+                            result.getObject("owner_id", UUID::class.java) to result.getInt("member_count")
+                        } else {
+                            null
+                        }
+                    }
+                } ?: run {
+                    connection.rollback()
+                    return@withContext ClanJoinRequestResult.CLAN_NOT_FOUND
+                }
+
+                if (clanInfo.first == userUuid) {
+                    connection.rollback()
+                    return@withContext ClanJoinRequestResult.OWN_CLAN
+                }
+
+                val alreadyMember = connection.prepareStatement("SELECT 1 FROM clan_members WHERE user_id = ?").use {
+                    it.setObject(1, userUuid)
+                    it.executeQuery().use { result -> result.next() }
+                }
+                if (alreadyMember) {
+                    connection.rollback()
+                    return@withContext ClanJoinRequestResult.ALREADY_MEMBER
+                }
+                if (clanInfo.second >= CLAN_MAX_MEMBERS) {
+                    connection.rollback()
+                    return@withContext ClanJoinRequestResult.CLAN_FULL
+                }
+
+                connection.prepareStatement(
+                    "INSERT INTO clan_join_requests (clan_id, user_id, requested_at) VALUES (?, ?, NOW()) " +
+                        "ON CONFLICT (clan_id, user_id) DO UPDATE SET requested_at = EXCLUDED.requested_at"
+                ).use {
                     it.setObject(1, clanUuid)
                     it.setObject(2, userUuid)
-                    it.executeUpdate() > 0
+                    it.executeUpdate()
                 }
+                connection.commit()
+                ClanJoinRequestResult.REQUESTED
             } catch (e: Exception) {
-                false
+                connection.rollback()
+                ClanJoinRequestResult.FAILED
+            } finally {
+                connection.autoCommit = true
+            }
+        }
+    }
+
+    override suspend fun respondJoinRequest(
+        clanId: String,
+        ownerId: String,
+        userId: String,
+        accept: Boolean
+    ): ClanJoinResponseResult = withContext(Dispatchers.IO) {
+        dataSource.connection.use { connection ->
+            try {
+                connection.autoCommit = false
+                val clanUuid = UUID.fromString(clanId)
+                val ownerUuid = UUID.fromString(ownerId)
+                val userUuid = UUID.fromString(userId)
+
+                connection.prepareStatement("SELECT 1 FROM users WHERE id = ? FOR UPDATE").use {
+                    it.setObject(1, userUuid)
+                    it.executeQuery().use { result ->
+                        if (!result.next()) {
+                            connection.rollback()
+                            return@withContext ClanJoinResponseResult.FAILED
+                        }
+                    }
+                }
+
+                val ownerMatches = connection.prepareStatement(
+                    "SELECT 1 FROM clans WHERE id = ? AND owner_id = ? FOR UPDATE"
+                ).use {
+                    it.setObject(1, clanUuid)
+                    it.setObject(2, ownerUuid)
+                    it.executeQuery().use { result -> result.next() }
+                }
+                if (!ownerMatches) {
+                    connection.rollback()
+                    return@withContext ClanJoinResponseResult.FAILED
+                }
+
+                val requestExists = connection.prepareStatement(
+                    "SELECT 1 FROM clan_join_requests WHERE clan_id = ? AND user_id = ? FOR UPDATE"
+                ).use {
+                    it.setObject(1, clanUuid)
+                    it.setObject(2, userUuid)
+                    it.executeQuery().use { result -> result.next() }
+                }
+                if (!requestExists) {
+                    connection.rollback()
+                    return@withContext ClanJoinResponseResult.REQUEST_NOT_FOUND
+                }
+
+                if (!accept) {
+                    connection.prepareStatement(
+                        "DELETE FROM clan_join_requests WHERE clan_id = ? AND user_id = ?"
+                    ).use {
+                        it.setObject(1, clanUuid)
+                        it.setObject(2, userUuid)
+                        it.executeUpdate()
+                    }
+                    connection.commit()
+                    return@withContext ClanJoinResponseResult.REJECTED
+                }
+
+                val alreadyMember = connection.prepareStatement("SELECT 1 FROM clan_members WHERE user_id = ?").use {
+                    it.setObject(1, userUuid)
+                    it.executeQuery().use { result -> result.next() }
+                }
+                if (alreadyMember) {
+                    connection.prepareStatement("DELETE FROM clan_join_requests WHERE user_id = ?").use {
+                        it.setObject(1, userUuid)
+                        it.executeUpdate()
+                    }
+                    connection.commit()
+                    return@withContext ClanJoinResponseResult.ALREADY_MEMBER
+                }
+
+                val memberCount = connection.prepareStatement(
+                    "SELECT COUNT(*) FROM clan_members WHERE clan_id = ?"
+                ).use {
+                    it.setObject(1, clanUuid)
+                    it.executeQuery().use { result -> result.next(); result.getInt(1) }
+                }
+                if (memberCount >= CLAN_MAX_MEMBERS) {
+                    connection.rollback()
+                    return@withContext ClanJoinResponseResult.CLAN_FULL
+                }
+
+                connection.prepareStatement(
+                    "INSERT INTO clan_members (clan_id, user_id, role, joined_at) VALUES (?, ?, 'MEMBER', NOW())"
+                ).use {
+                    it.setObject(1, clanUuid)
+                    it.setObject(2, userUuid)
+                    it.executeUpdate()
+                }
+                connection.prepareStatement("DELETE FROM clan_join_requests WHERE user_id = ?").use {
+                    it.setObject(1, userUuid)
+                    it.executeUpdate()
+                }
+                connection.commit()
+                ClanJoinResponseResult.APPROVED
+            } catch (e: Exception) {
+                connection.rollback()
+                ClanJoinResponseResult.FAILED
+            } finally {
+                connection.autoCommit = true
+            }
+        }
+    }
+
+    override suspend fun getPendingJoinClanIds(userId: String): List<String> = withContext(Dispatchers.IO) {
+        dataSource.connection.use { connection ->
+            connection.prepareStatement(
+                "SELECT clan_id FROM clan_join_requests WHERE user_id = ? ORDER BY requested_at DESC"
+            ).use {
+                it.setObject(1, UUID.fromString(userId))
+                it.executeQuery().use { result ->
+                    buildList {
+                        while (result.next()) add(result.getString("clan_id"))
+                    }
+                }
             }
         }
     }
@@ -116,7 +310,14 @@ class PostgresClanRepository(
                             members = emptyList(),
                             trophies = rs.getInt("trophies"),
                             logoId = rs.getString("logo_id"),
-                            maxMembers = 50
+                            maxMembers = 50,
+                            quest = ClanQuestSnapshot(
+                                progress = rs.getInt("quest_progress"),
+                                target = rs.getInt("quest_target"),
+                                rewardGold = rs.getInt("quest_reward_gold"),
+                                rewardXp = rs.getInt("quest_reward_xp"),
+                                rewardGems = rs.getInt("quest_reward_gems")
+                            )
                         )
                     }
                 }
@@ -125,7 +326,8 @@ class PostgresClanRepository(
             if (clan != null) {
                 val members = mutableListOf<ClanMemberSnapshot>()
                 connection.prepareStatement(
-                    "SELECT cm.user_id, cm.role, p.display_name, COALESCE(s.elo_rating, 1000) AS trophies " +
+                    "SELECT cm.user_id, cm.role, cm.quest_contribution, cm.quest_reward_claimed, " +
+                    "p.display_name, COALESCE(s.elo_rating, 1000) AS trophies " +
                     "FROM clan_members cm JOIN profiles p ON cm.user_id = p.user_id " +
                     "LEFT JOIN player_stats s ON cm.user_id = s.user_id " +
                     "WHERE cm.clan_id = ?"
@@ -138,13 +340,35 @@ class PostgresClanRepository(
                                     userId = rs.getString("user_id"),
                                     displayName = rs.getString("display_name"),
                                     role = ClanRole.valueOf(rs.getString("role")),
-                                    trophies = rs.getInt("trophies")
+                                    trophies = rs.getInt("trophies"),
+                                    questContribution = rs.getInt("quest_contribution"),
+                                    questRewardClaimed = rs.getBoolean("quest_reward_claimed")
                                 )
                             )
                         }
                     }
                 }
-                clan = clan!!.copy(members = members)
+                val joinRequests = mutableListOf<ClanJoinRequestSnapshot>()
+                connection.prepareStatement(
+                    "SELECT r.user_id, p.display_name, p.player_code, r.requested_at " +
+                        "FROM clan_join_requests r JOIN profiles p ON p.user_id = r.user_id " +
+                        "WHERE r.clan_id = ? ORDER BY r.requested_at ASC"
+                ).use {
+                    it.setObject(1, clanUuid)
+                    it.executeQuery().use { rs ->
+                        while (rs.next()) {
+                            joinRequests.add(
+                                ClanJoinRequestSnapshot(
+                                    userId = rs.getString("user_id"),
+                                    displayName = rs.getString("display_name"),
+                                    playerCode = rs.getString("player_code"),
+                                    requestedAtEpochMillis = rs.getTimestamp("requested_at").time
+                                )
+                            )
+                        }
+                    }
+                }
+                clan = clan!!.copy(members = members, joinRequests = joinRequests)
             }
             clan
         }
@@ -255,10 +479,79 @@ class PostgresClanRepository(
 
     override suspend fun claimQuestReward(clanId: String, userId: String): Boolean = withContext(Dispatchers.IO) {
         dataSource.connection.use { connection ->
-            connection.prepareStatement("UPDATE clan_members SET quest_reward_claimed = TRUE WHERE clan_id = ? AND user_id = ? AND quest_reward_claimed = FALSE").use {
-                it.setObject(1, UUID.fromString(clanId))
-                it.setObject(2, UUID.fromString(userId))
-                it.executeUpdate() > 0
+            connection.autoCommit = false
+            try {
+                val clanUuid = UUID.fromString(clanId)
+                val userUuid = UUID.fromString(userId)
+                val reward = connection.prepareStatement(
+                    """
+                    SELECT c.quest_progress, c.quest_target, c.quest_reward_gold,
+                           c.quest_reward_xp, c.quest_reward_gems, cm.quest_reward_claimed
+                    FROM clans c
+                    JOIN clan_members cm ON cm.clan_id = c.id AND cm.user_id = ?
+                    WHERE c.id = ?
+                    FOR UPDATE OF c, cm
+                    """.trimIndent()
+                ).use { statement ->
+                    statement.setObject(1, userUuid)
+                    statement.setObject(2, clanUuid)
+                    statement.executeQuery().use { result ->
+                        if (!result.next() ||
+                            result.getBoolean("quest_reward_claimed") ||
+                            result.getInt("quest_progress") < result.getInt("quest_target")
+                        ) null else Triple(
+                            result.getInt("quest_reward_gold"),
+                            result.getInt("quest_reward_xp"),
+                            result.getInt("quest_reward_gems")
+                        )
+                    }
+                } ?: run {
+                    connection.rollback()
+                    return@withContext false
+                }
+                connection.prepareStatement(
+                    """
+                    UPDATE player_stats
+                    SET gold = gold + ?, experience_points = experience_points + ?, gems = gems + ?,
+                        updated_at = CURRENT_TIMESTAMP
+                    WHERE user_id = ?
+                    """.trimIndent()
+                ).use { statement ->
+                    statement.setInt(1, reward.first)
+                    statement.setInt(2, reward.second)
+                    statement.setInt(3, reward.third)
+                    statement.setObject(4, userUuid)
+                    check(statement.executeUpdate() == 1)
+                }
+                connection.prepareStatement(
+                    """
+                    INSERT INTO wallet_transactions (
+                        id, user_id, source_type, source_id, gold_delta, gems_delta, xp_delta
+                    ) VALUES (?, ?, 'CLAN_QUEST', ?, ?, ?, ?)
+                    """.trimIndent()
+                ).use { statement ->
+                    statement.setObject(1, UUID.randomUUID())
+                    statement.setObject(2, userUuid)
+                    statement.setString(3, clanId)
+                    statement.setInt(4, reward.first)
+                    statement.setInt(5, reward.third)
+                    statement.setInt(6, reward.second)
+                    statement.executeUpdate()
+                }
+                connection.prepareStatement(
+                    "UPDATE clan_members SET quest_reward_claimed = TRUE WHERE clan_id = ? AND user_id = ?"
+                ).use { statement ->
+                    statement.setObject(1, clanUuid)
+                    statement.setObject(2, userUuid)
+                    check(statement.executeUpdate() == 1)
+                }
+                connection.commit()
+                true
+            } catch (error: Throwable) {
+                connection.rollback()
+                false
+            } finally {
+                connection.autoCommit = true
             }
         }
     }

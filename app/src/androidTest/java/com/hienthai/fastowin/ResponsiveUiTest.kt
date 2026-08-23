@@ -8,6 +8,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithContentDescription
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performScrollTo
@@ -25,6 +27,7 @@ import com.hienthai.fastowin.ui.screens.TutorialScreen
 import com.hienthai.fastowin.ui.theme.FastToWinTheme
 import org.junit.Rule
 import org.junit.Test
+import org.junit.Assert.assertTrue
 
 class ResponsiveUiTest {
     @get:Rule
@@ -50,6 +53,28 @@ class ResponsiveUiTest {
 
         composeRule.onNodeWithTag("home_screen").assertExists()
         composeRule.onNodeWithText("Luyện tập offline").performScrollTo().assertIsDisplayed()
+    }
+
+    @Test
+    fun home_compactHeaderAndSevenDayRewardsStayAlignedWithLargeText() {
+        setViewportContent(width = 320.dp, height = 568.dp, fontScale = 1.6f) {
+            TestResponsiveLobby()
+        }
+
+        composeRule.onNodeWithTag("app_header").assertIsDisplayed()
+        composeRule.onNodeWithText("Chào,", substring = true).assertIsDisplayed()
+        assertTrue(composeRule.onAllNodesWithText("FAST TO WIN").fetchSemanticsNodes().isEmpty())
+        assertTrue(composeRule.onAllNodesWithContentDescription("Cài đặt").fetchSemanticsNodes().isEmpty())
+
+        val rewardHeights = (1..7).map { day ->
+            composeRule.onNodeWithTag("daily_reward_day_$day").fetchSemanticsNode().boundsInRoot.height
+        }
+        assertTrue(rewardHeights.max() - rewardHeights.min() <= 1f)
+
+        val goldBounds = composeRule.onNodeWithTag("header_gold").fetchSemanticsNode().boundsInRoot
+        val gemBounds = composeRule.onNodeWithTag("header_gem").fetchSemanticsNode().boundsInRoot
+        val minimumGapPx = with(composeRule.density) { 4.dp.toPx() }
+        assertTrue(gemBounds.left - goldBounds.right >= minimumGapPx)
     }
 
     @Test
@@ -96,7 +121,11 @@ private fun TestResponsiveLobby() {
             lobbyStage = LobbyStage.SELECT_MODE,
             connectionStatus = ConnectionStatus.CONNECTED,
             player = PlayerState(longName),
-            profile = PlayerProfileSnapshot(longName, "PLAYER0001")
+            profile = PlayerProfileSnapshot(
+                userId = "player-responsive",
+                displayName = longName,
+                playerCode = "PLAYER0001"
+            )
         ),
         onModeSelected = {},
         onStartMatchmaking = { _, _ -> },
@@ -116,10 +145,11 @@ private fun TestResponsiveLobby() {
         onLogout = {},
         isGuest = false,
         onUpgradeGuest = {},
-        onOpenSettings = {},
         onOpenNotifications = {},
+        onOpenClan = {},
         onOpenPractice = {},
         onOpenTournament = {},
+        onOpenShop = {},
         onShareRoom = { _, _ -> Result.success(Unit) },
         onResolveRoomLink = {},
         onClaimDailyCheckIn = {}

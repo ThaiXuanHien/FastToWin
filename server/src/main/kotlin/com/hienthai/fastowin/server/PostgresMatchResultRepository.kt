@@ -3,6 +3,12 @@
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import com.hienthai.fastowin.protocol.MatchType
+import com.hienthai.fastowin.protocol.MATCH_DRAW_REWARD_GOLD
+import com.hienthai.fastowin.protocol.MATCH_DRAW_REWARD_XP
+import com.hienthai.fastowin.protocol.MATCH_LOSS_REWARD_GOLD
+import com.hienthai.fastowin.protocol.MATCH_LOSS_REWARD_XP
+import com.hienthai.fastowin.protocol.MATCH_WIN_REWARD_GOLD
+import com.hienthai.fastowin.protocol.MATCH_WIN_REWARD_XP
 import java.sql.Connection
 import java.sql.Timestamp
 import java.time.Instant
@@ -102,9 +108,9 @@ class PostgresMatchResultRepository(
             INSERT INTO player_stats (
                 user_id, total_matches, wins, losses, draws, highest_score,
                 current_win_streak, best_win_streak, correct_selections, wrong_selections,
-                reaction_time_total_ms, reaction_samples, experience_points, updated_at
+                reaction_time_total_ms, reaction_samples, experience_points, gold, updated_at
             )
-            VALUES (?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT (user_id) DO UPDATE SET
                 total_matches = player_stats.total_matches + 1,
                 wins = player_stats.wins + EXCLUDED.wins,
@@ -127,6 +133,7 @@ class PostgresMatchResultRepository(
                 reaction_time_total_ms = player_stats.reaction_time_total_ms + EXCLUDED.reaction_time_total_ms,
                 reaction_samples = player_stats.reaction_samples + EXCLUDED.reaction_samples,
                 experience_points = player_stats.experience_points + EXCLUDED.experience_points,
+                gold = player_stats.gold + EXCLUDED.gold,
                 updated_at = EXCLUDED.updated_at
             """.trimIndent()
         ).use { statement ->
@@ -144,8 +151,28 @@ class PostgresMatchResultRepository(
                 statement.setLong(9, metrics.wrong.toLong())
                 statement.setLong(10, metrics.reactionTimeTotalMillis)
                 statement.setLong(11, metrics.reactionSamples.toLong())
-                statement.setInt(12, BASE_MATCH_EXPERIENCE + if (won == 1) WIN_BONUS_EXPERIENCE else 0)
-                statement.setTimestamp(13, match.endedAtMillis.toTimestamp())
+                statement.setInt(12, matchExperienceReward(player.outcome))
+                statement.setInt(13, matchGoldReward(player.outcome))
+                statement.setTimestamp(14, match.endedAtMillis.toTimestamp())
+                statement.addBatch()
+            }
+            statement.executeBatch()
+        }
+        connection.prepareStatement(
+            """
+            INSERT INTO wallet_transactions (
+                id, user_id, source_type, source_id, gold_delta, gems_delta, xp_delta, created_at
+            ) VALUES (?, ?, 'MATCH', ?, ?, 0, ?, ?)
+            ON CONFLICT (user_id, source_type, source_id) DO NOTHING
+            """.trimIndent()
+        ).use { statement ->
+            match.players.forEach { player ->
+                statement.setObject(1, UUID.randomUUID())
+                statement.setObject(2, UUID.fromString(player.playerId))
+                statement.setString(3, match.matchId)
+                statement.setInt(4, matchGoldReward(player.outcome))
+                statement.setInt(5, matchExperienceReward(player.outcome))
+                statement.setTimestamp(6, match.endedAtMillis.toTimestamp())
                 statement.addBatch()
             }
             statement.executeBatch()
@@ -338,13 +365,16 @@ class PostgresMatchResultRepository(
         connection.prepareStatement(
             """
             INSERT INTO user_missions (
-                user_id, mission_code, period_start, progress, target, reward_xp, completed_at
+                user_id, mission_code, period_start, progress, target, reward_xp,
+                reward_gold, reward_gems, completed_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, CASE WHEN ? >= ? THEN CAST(? AS TIMESTAMPTZ) ELSE NULL END)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, CASE WHEN ? >= ? THEN CAST(? AS TIMESTAMPTZ) ELSE NULL END)
             ON CONFLICT (user_id, mission_code, period_start) DO UPDATE SET
                 progress = LEAST(user_missions.target, user_missions.progress + EXCLUDED.progress),
                 target = EXCLUDED.target,
                 reward_xp = EXCLUDED.reward_xp,
+                reward_gold = EXCLUDED.reward_gold,
+                reward_gems = EXCLUDED.reward_gems,
                 completed_at = CASE
                     WHEN user_missions.completed_at IS NOT NULL THEN user_missions.completed_at
                     WHEN user_missions.progress + EXCLUDED.progress >= user_missions.target THEN CURRENT_TIMESTAMP
@@ -376,9 +406,11 @@ class PostgresMatchResultRepository(
                     statement.setInt(4, mission.increment)
                     statement.setInt(5, mission.definition.target)
                     statement.setInt(6, mission.definition.rewardXp)
-                    statement.setInt(7, mission.increment)
-                    statement.setInt(8, mission.definition.target)
-                    statement.setTimestamp(9, match.endedAtMillis.toTimestamp())
+                    statement.setInt(7, mission.definition.rewardGold)
+                    statement.setInt(8, mission.definition.rewardGems)
+                    statement.setInt(9, mission.increment)
+                    statement.setInt(10, mission.definition.target)
+                    statement.setTimestamp(11, match.endedAtMillis.toTimestamp())
                     statement.addBatch()
                 }
             }
@@ -458,9 +490,19 @@ class PostgresMatchResultRepository(
     private companion object {
         const val ELO_K_FACTOR = 32.0
         const val MIN_ELO = 100
-        const val BASE_MATCH_EXPERIENCE = 15
-        const val WIN_BONUS_EXPERIENCE = 10
     }
+}
+
+private fun matchExperienceReward(outcome: MatchOutcome): Int = when (outcome) {
+    MatchOutcome.WIN -> MATCH_WIN_REWARD_XP
+    MatchOutcome.DRAW -> MATCH_DRAW_REWARD_XP
+    MatchOutcome.LOSS -> MATCH_LOSS_REWARD_XP
+}
+
+private fun matchGoldReward(outcome: MatchOutcome): Int = when (outcome) {
+    MatchOutcome.WIN -> MATCH_WIN_REWARD_GOLD
+    MatchOutcome.DRAW -> MATCH_DRAW_REWARD_GOLD
+    MatchOutcome.LOSS -> MATCH_LOSS_REWARD_GOLD
 }
 
 internal fun qualifiesForPerfectGame(

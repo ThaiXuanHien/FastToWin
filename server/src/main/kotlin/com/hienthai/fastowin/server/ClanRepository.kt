@@ -3,9 +3,34 @@
 import com.hienthai.fastowin.protocol.ClanSnapshot
 import com.hienthai.fastowin.protocol.ClanSummarySnapshot
 
+enum class ClanJoinRequestResult {
+    REQUESTED,
+    CLAN_NOT_FOUND,
+    CLAN_FULL,
+    OWN_CLAN,
+    ALREADY_MEMBER,
+    FAILED
+}
+
+enum class ClanJoinResponseResult {
+    APPROVED,
+    REJECTED,
+    REQUEST_NOT_FOUND,
+    CLAN_FULL,
+    ALREADY_MEMBER,
+    FAILED
+}
+
 interface ClanRepository {
     suspend fun createClan(ownerId: String, name: String, description: String): String?
-    suspend fun joinClan(userId: String, clanId: String): Boolean
+    suspend fun requestJoinClan(userId: String, clanId: String): ClanJoinRequestResult
+    suspend fun respondJoinRequest(
+        clanId: String,
+        ownerId: String,
+        userId: String,
+        accept: Boolean
+    ): ClanJoinResponseResult
+    suspend fun getPendingJoinClanIds(userId: String): List<String>
     suspend fun leaveClan(userId: String): Boolean
     suspend fun getClanByUserId(userId: String): ClanSnapshot?
     suspend fun getClanById(clanId: String): ClanSnapshot?

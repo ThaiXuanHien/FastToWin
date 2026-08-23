@@ -27,4 +27,8 @@ set "DATABASE_URL=jdbc:postgresql://localhost:5432/fasttowin"
 set "DATABASE_USER=fasttowin"
 set "DATABASE_PASSWORD=fasttowin"
 
-call gradlew.bat :server:run
+echo [FastToWin] Dang dong goi server va protocol...
+call gradlew.bat :server:installDist
+if errorlevel 1 exit /b 1
+
+call "%~dp0run-packaged-server.cmd"

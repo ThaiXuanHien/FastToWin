@@ -1,0 +1,53 @@
+package com.hienthai.fastowin.ui.components
+
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.graphics.vector.path
+import androidx.compose.ui.unit.dp
+
+val CrossedSwordsIcon: ImageVector by lazy {
+    ImageVector.Builder(
+        name = "CrossedSwords",
+        defaultWidth = 24.dp,
+        defaultHeight = 24.dp,
+        viewportWidth = 24f,
+        viewportHeight = 24f
+    ).apply {
+        path(
+            fill = null,
+            stroke = SolidColor(Color.Black),
+            strokeLineWidth = 1.9f,
+            strokeLineCap = StrokeCap.Round,
+            strokeLineJoin = StrokeJoin.Round
+        ) {
+            moveTo(14.5f, 17.5f)
+            lineTo(3f, 6f)
+            lineTo(3f, 3f)
+            lineTo(6f, 3f)
+            lineTo(17.5f, 14.5f)
+
+            moveTo(13f, 19f)
+            lineTo(19f, 13f)
+            moveTo(16f, 16f)
+            lineTo(20f, 20f)
+            moveTo(19f, 21f)
+            lineTo(21f, 19f)
+
+            moveTo(14.5f, 6.5f)
+            lineTo(18f, 3f)
+            lineTo(21f, 3f)
+            lineTo(21f, 6f)
+            lineTo(17.5f, 9.5f)
+
+            moveTo(5f, 14f)
+            lineTo(9f, 18f)
+            moveTo(7f, 17f)
+            lineTo(4f, 20f)
+            moveTo(3f, 19f)
+            lineTo(5f, 21f)
+        }
+    }.build()
+}

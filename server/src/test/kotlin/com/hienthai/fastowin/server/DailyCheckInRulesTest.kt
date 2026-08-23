@@ -10,13 +10,15 @@ class DailyCheckInRulesTest {
     private val today = LocalDate.of(2026, 8, 17)
 
     @Test
-    fun `first check in starts day one with five xp`() {
+    fun `first check in starts day one with gold and xp`() {
         val decision = dailyCheckInDecision(0, null, today)
 
         assertFalse(decision.claimedToday)
         assertEquals(1, decision.resultingStreak)
         assertEquals(1, decision.cycleDay)
-        assertEquals(5, decision.rewardXp)
+        assertEquals(10, decision.rewardXp)
+        assertEquals(50, decision.rewardGold)
+        assertEquals(0, decision.rewardGems)
     }
 
     @Test
@@ -25,9 +27,11 @@ class DailyCheckInRulesTest {
         val dayEight = dailyCheckInDecision(7, today.minusDays(1), today)
 
         assertEquals(7, daySeven.cycleDay)
-        assertEquals(25, daySeven.rewardXp)
+        assertEquals(40, daySeven.rewardXp)
+        assertEquals(200, daySeven.rewardGold)
+        assertEquals(1, daySeven.rewardGems)
         assertEquals(1, dayEight.cycleDay)
-        assertEquals(5, dayEight.rewardXp)
+        assertEquals(10, dayEight.rewardXp)
         assertEquals(8, dayEight.resultingStreak)
     }
 
@@ -37,7 +41,7 @@ class DailyCheckInRulesTest {
 
         assertEquals(1, decision.resultingStreak)
         assertEquals(1, decision.cycleDay)
-        assertEquals(5, decision.rewardXp)
+        assertEquals(10, decision.rewardXp)
     }
 
     @Test
@@ -51,7 +55,9 @@ class DailyCheckInRulesTest {
     }
 
     @Test
-    fun `weekly rewards total one hundred xp`() {
-        assertEquals(100, (1..7).sumOf(::dailyCheckInReward))
+    fun `weekly rewards increase and reserve gem for day seven`() {
+        assertEquals(135, (1..7).sumOf(::dailyCheckInReward))
+        assertEquals(680, (1..7).sumOf(::dailyCheckInGoldReward))
+        assertEquals(1, (1..7).sumOf(::dailyCheckInGemReward))
     }
 }

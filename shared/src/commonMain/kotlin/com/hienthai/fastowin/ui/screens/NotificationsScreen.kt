@@ -45,6 +45,7 @@ import com.hienthai.fastowin.state.AppNotification
 import com.hienthai.fastowin.state.AppNotificationKind
 import com.hienthai.fastowin.ui.components.SystemBackHandler
 import com.hienthai.fastowin.ui.layout.ResponsiveScreen
+import com.hienthai.fastowin.ui.components.FastToWinHeader
 
 @Composable
 fun NotificationsScreen(
@@ -54,6 +55,8 @@ fun NotificationsScreen(
     onDismiss: (String) -> Unit,
     onMarkAllRead: () -> Unit,
     onClearAll: () -> Unit,
+    gold: Int = 0,
+    gems: Int = 0,
     modifier: Modifier = Modifier
 ) {
     SystemBackHandler(onBack = onBack)
@@ -79,16 +82,17 @@ fun NotificationsScreen(
             modifier = contentModifier.padding(vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            IconButton(onClick = onBack) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Quay lại")
-            }
-            Text("Thông báo", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-            Row {
+        FastToWinHeader(
+            title = "Thông báo",
+            gold = gold,
+            gems = gems,
+            unreadNotifications = notifications.count { !it.isRead },
+            onNotifications = {},
+            onBack = onBack,
+            applySafeDrawingInset = false,
+            showNotifications = false
+        )
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                 IconButton(
                     onClick = onMarkAllRead,
                     enabled = notifications.any { !it.isRead }
@@ -97,7 +101,6 @@ fun NotificationsScreen(
                     onClick = { confirmClear = true },
                     enabled = notifications.isNotEmpty()
                 ) { Icon(Icons.Default.Delete, contentDescription = "Xóa tất cả thông báo") }
-            }
         }
 
         if (notifications.isEmpty()) {

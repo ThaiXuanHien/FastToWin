@@ -5,7 +5,10 @@ import com.hienthai.fastowin.protocol.ClanSummarySnapshot
 
 object NoOpClanRepository : ClanRepository {
     override suspend fun createClan(ownerId: String, name: String, description: String): String? = null
-    override suspend fun joinClan(userId: String, clanId: String): Boolean = false
+    override suspend fun requestJoinClan(userId: String, clanId: String) = ClanJoinRequestResult.FAILED
+    override suspend fun respondJoinRequest(clanId: String, ownerId: String, userId: String, accept: Boolean) =
+        ClanJoinResponseResult.FAILED
+    override suspend fun getPendingJoinClanIds(userId: String): List<String> = emptyList()
     override suspend fun leaveClan(userId: String): Boolean = false
     override suspend fun getClanByUserId(userId: String): ClanSnapshot? = null
     override suspend fun getClanById(clanId: String): ClanSnapshot? = null

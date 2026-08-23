@@ -25,6 +25,7 @@ import com.hienthai.fastowin.protocol.SeasonSnapshot
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.sql.Date
+import java.sql.Connection
 import java.time.Clock
 import java.time.LocalDate
 import java.time.ZoneId
@@ -253,7 +254,7 @@ class PostgresPlayerProfileRepository(
             }
             val storedMissions = connection.prepareStatement(
                 """
-                SELECT mission_code, progress, target, reward_xp, claimed_at
+                SELECT mission_code, progress, target, reward_xp, reward_gold, reward_gems, claimed_at
                 FROM user_missions
                 WHERE user_id = ? AND period_start IN (?, ?)
                 """.trimIndent()
@@ -273,6 +274,8 @@ class PostgresPlayerProfileRepository(
                                     progress = result.getInt("progress"),
                                     target = result.getInt("target"),
                                     rewardXp = result.getInt("reward_xp"),
+                                    rewardGold = result.getInt("reward_gold"),
+                                    rewardGems = result.getInt("reward_gems"),
                                     rewardClaimed = result.getTimestamp("claimed_at") != null
                                 )
                             )
@@ -303,6 +306,8 @@ class PostgresPlayerProfileRepository(
                     target = definition.target,
                     completed = progress >= definition.target,
                     rewardXp = stored?.rewardXp?.takeIf { it > 0 } ?: definition.rewardXp,
+                    rewardGold = stored?.rewardGold?.takeIf { it > 0 } ?: definition.rewardGold,
+                    rewardGems = stored?.rewardGems?.takeIf { it > 0 } ?: definition.rewardGems,
                     rewardClaimed = stored?.rewardClaimed == true
                 )
             }
@@ -394,6 +399,8 @@ class PostgresPlayerProfileRepository(
                 progression = PlayerProgressionSnapshot(
                     level = level,
                     experiencePoints = experiencePoints,
+                    gold = progressionRow.gold,
+                    gems = progressionRow.gems,
                     currentLevelExperience = experiencePoints % EXPERIENCE_PER_LEVEL,
                     nextLevelExperience = EXPERIENCE_PER_LEVEL,
                     dailyMissions = MISSION_DEFINITIONS.filter { it.period == MissionPeriod.DAILY }.map(::mission),
@@ -402,7 +409,11 @@ class PostgresPlayerProfileRepository(
                         claimedToday = checkInDecision.claimedToday,
                         cycleDay = checkInDecision.cycleDay,
                         todayRewardXp = checkInDecision.rewardXp,
-                        nextRewardXp = nextDailyCheckInReward(checkInDecision.cycleDay),
+                        todayRewardGold = checkInDecision.rewardGold,
+                        todayRewardGems = checkInDecision.rewardGems,
+                        nextRewardXp = nextDailyCheckInXpReward(checkInDecision.cycleDay),
+                        nextRewardGold = nextDailyCheckInGoldReward(checkInDecision.cycleDay),
+                        nextRewardGems = nextDailyCheckInGemReward(checkInDecision.cycleDay),
                         currentStreak = activeCheckInStreak,
                         bestStreak = progressionRow.bestDailyCheckInStreak,
                         totalCheckIns = progressionRow.totalDailyCheckIns,
@@ -531,6 +542,8 @@ class PostgresPlayerProfileRepository(
                             """
                             UPDATE player_stats
                             SET experience_points = experience_points + ?,
+                                gold = gold + ?,
+                                gems = gems + ?,
                                 current_daily_check_in_streak = ?,
                                 best_daily_check_in_streak = GREATEST(best_daily_check_in_streak, ?),
                                 total_daily_check_ins = total_daily_check_ins + 1,
@@ -540,26 +553,40 @@ class PostgresPlayerProfileRepository(
                             """.trimIndent()
                         ).use { statement ->
                             statement.setInt(1, decision.rewardXp)
-                            statement.setInt(2, decision.resultingStreak)
-                            statement.setInt(3, decision.resultingStreak)
-                            statement.setDate(4, Date.valueOf(today))
-                            statement.setObject(5, userId)
+                            statement.setInt(2, decision.rewardGold)
+                            statement.setInt(3, decision.rewardGems)
+                            statement.setInt(4, decision.resultingStreak)
+                            statement.setInt(5, decision.resultingStreak)
+                            statement.setDate(6, Date.valueOf(today))
+                            statement.setObject(7, userId)
                             check(statement.executeUpdate() == 1)
                         }
                         connection.prepareStatement(
                             """
                             INSERT INTO daily_check_ins (
-                                user_id, check_in_date, cycle_day, reward_xp, streak_after
-                            ) VALUES (?, ?, ?, ?, ?)
+                                user_id, check_in_date, cycle_day, reward_xp, reward_gold,
+                                reward_gems, streak_after
+                            ) VALUES (?, ?, ?, ?, ?, ?, ?)
                             """.trimIndent()
                         ).use { statement ->
                             statement.setObject(1, userId)
                             statement.setDate(2, Date.valueOf(today))
                             statement.setInt(3, decision.cycleDay)
                             statement.setInt(4, decision.rewardXp)
-                            statement.setInt(5, decision.resultingStreak)
+                            statement.setInt(5, decision.rewardGold)
+                            statement.setInt(6, decision.rewardGems)
+                            statement.setInt(7, decision.resultingStreak)
                             statement.executeUpdate()
                         }
+                        insertWalletTransaction(
+                            connection = connection,
+                            userId = userId,
+                            sourceType = "DAILY_CHECK_IN",
+                            sourceId = today.toString(),
+                            gold = decision.rewardGold,
+                            gems = decision.rewardGems,
+                            xp = decision.rewardXp
+                        )
                         if (decision.resultingStreak >= DAILY_CHECK_IN_STREAK_ACHIEVEMENT_TARGET) {
                             connection.prepareStatement(
                                 """
@@ -574,7 +601,12 @@ class PostgresPlayerProfileRepository(
                             }
                         }
                         connection.commit()
-                        DailyCheckInClaimResult(claimed = true, rewardXp = decision.rewardXp)
+                        DailyCheckInClaimResult(
+                            claimed = true,
+                            rewardXp = decision.rewardXp,
+                            rewardGold = decision.rewardGold,
+                            rewardGems = decision.rewardGems
+                        )
                     }
                 } catch (error: Throwable) {
                     connection.rollback()
@@ -596,7 +628,7 @@ class PostgresPlayerProfileRepository(
                 val periodStart = Date.valueOf(missionPeriodStart(definition, currentCheckInDate()))
                 val stored = connection.prepareStatement(
                     """
-                    SELECT progress, target, reward_xp, claimed_at
+                    SELECT progress, target, reward_xp, reward_gold, reward_gems, claimed_at
                     FROM user_missions
                     WHERE user_id = ? AND mission_code = ? AND period_start = ?
                     FOR UPDATE
@@ -610,6 +642,8 @@ class PostgresPlayerProfileRepository(
                             progress = result.getInt("progress"),
                             target = result.getInt("target"),
                             rewardXp = result.getInt("reward_xp"),
+                            rewardGold = result.getInt("reward_gold"),
+                            rewardGems = result.getInt("reward_gems"),
                             rewardClaimed = result.getTimestamp("claimed_at") != null
                         )
                     }
@@ -621,6 +655,8 @@ class PostgresPlayerProfileRepository(
                         MissionRewardClaimResult(MissionRewardClaimStatus.ALREADY_CLAIMED)
                     else -> {
                         val rewardXp = stored.rewardXp.takeIf { it > 0 } ?: definition.rewardXp
+                        val rewardGold = stored.rewardGold.takeIf { it > 0 } ?: definition.rewardGold
+                        val rewardGems = stored.rewardGems.takeIf { it > 0 } ?: definition.rewardGems
                         connection.prepareStatement(
                             """
                             UPDATE user_missions
@@ -637,15 +673,34 @@ class PostgresPlayerProfileRepository(
                         connection.prepareStatement(
                             """
                             UPDATE player_stats
-                            SET experience_points = experience_points + ?, updated_at = CURRENT_TIMESTAMP
+                            SET experience_points = experience_points + ?,
+                                gold = gold + ?,
+                                gems = gems + ?,
+                                updated_at = CURRENT_TIMESTAMP
                             WHERE user_id = ?
                             """.trimIndent()
                         ).use { statement ->
                             statement.setInt(1, rewardXp)
-                            statement.setObject(2, userId)
+                            statement.setInt(2, rewardGold)
+                            statement.setInt(3, rewardGems)
+                            statement.setObject(4, userId)
                             check(statement.executeUpdate() == 1)
                         }
-                        MissionRewardClaimResult(MissionRewardClaimStatus.CLAIMED, rewardXp)
+                        insertWalletTransaction(
+                            connection = connection,
+                            userId = userId,
+                            sourceType = "MISSION",
+                            sourceId = "${definition.code}:$periodStart",
+                            gold = rewardGold,
+                            gems = rewardGems,
+                            xp = rewardXp
+                        )
+                        MissionRewardClaimResult(
+                            MissionRewardClaimStatus.CLAIMED,
+                            rewardXp,
+                            rewardGold,
+                            rewardGems
+                        )
                     }
                 }
                 connection.commit()
@@ -776,6 +831,16 @@ class PostgresPlayerProfileRepository(
                     return@withContext false
                 }
 
+                insertWalletTransaction(
+                    connection = connection,
+                    userId = UUID.fromString(playerId),
+                    sourceType = "COSMETIC_PURCHASE",
+                    sourceId = cosmeticId,
+                    gold = -price,
+                    gems = 0,
+                    xp = 0
+                )
+
                 connection.commit()
                 true
             } catch (e: Exception) {
@@ -805,6 +870,34 @@ class PostgresPlayerProfileRepository(
         }
     }
 
+    private fun insertWalletTransaction(
+        connection: Connection,
+        userId: UUID,
+        sourceType: String,
+        sourceId: String,
+        gold: Int,
+        gems: Int,
+        xp: Int
+    ) {
+        if (gold == 0 && gems == 0 && xp == 0) return
+        connection.prepareStatement(
+            """
+            INSERT INTO wallet_transactions (
+                id, user_id, source_type, source_id, gold_delta, gems_delta, xp_delta
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            """.trimIndent()
+        ).use { statement ->
+            statement.setObject(1, UUID.randomUUID())
+            statement.setObject(2, userId)
+            statement.setString(3, sourceType)
+            statement.setString(4, sourceId)
+            statement.setInt(5, gold)
+            statement.setInt(6, gems)
+            statement.setInt(7, xp)
+            statement.executeUpdate()
+        }
+    }
+
 }
 
 private data class ProgressionRow(
@@ -825,6 +918,8 @@ private data class StoredMission(
     val progress: Int,
     val target: Int,
     val rewardXp: Int,
+    val rewardGold: Int,
+    val rewardGems: Int,
     val rewardClaimed: Boolean
 )
 

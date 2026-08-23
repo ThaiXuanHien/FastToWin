@@ -1,4 +1,4 @@
-package com.hienthai.fastowin.ui.screens
+﻿package com.hienthai.fastowin.ui.screens
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
@@ -63,12 +63,11 @@ import com.hienthai.fastowin.state.PlayerState
 import com.hienthai.fastowin.data.preferences.AppPreferences
 import com.hienthai.fastowin.data.preferences.BoardStyle
 import com.hienthai.fastowin.platform.GameFeedbackEffect
+import com.hienthai.fastowin.ui.components.SystemBackHandler
 import com.hienthai.fastowin.platform.playFeedbackSound
 import com.hienthai.fastowin.protocol.MatchType
 import com.hienthai.fastowin.ui.layout.ResponsiveScreen
 import com.hienthai.fastowin.ui.theme.FastToWinTheme
-import com.hienthai.fastowin.ui.components.SystemBackHandler
-import kotlinx.coroutines.delay
 import kotlin.math.abs
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -86,19 +85,9 @@ fun GameScreen(
 ) {
     val hapticFeedback = LocalHapticFeedback.current
     var showExitConfirmation by remember { mutableStateOf(false) }
-    var tapFeedback by remember { mutableStateOf<GameFeedbackEffect?>(null) }
-    var tapFeedbackToken by remember { mutableStateOf(0) }
     val opponentFriend = state.social.friends.firstOrNull { it.userId == state.opponent.id }
-
-    // Vuốt back từ cạnh màn hình: hiện dialog xác nhận rời trận (nếu cho phép)
     SystemBackHandler(enabled = allowExit) {
-        showExitConfirmation = true
-    }
-    LaunchedEffect(tapFeedbackToken) {
-        if (tapFeedback != null) {
-            delay(420)
-            tapFeedback = null
-        }
+        if (allowExit) showExitConfirmation = true
     }
     if (showExitConfirmation && allowExit) {
         AlertDialog(
@@ -236,10 +225,6 @@ fun GameScreen(
                             } else {
                                 GameFeedbackEffect.WRONG
                             }
-                            if (preferences.visualEffectsEnabled) {
-                                tapFeedback = effect
-                                tapFeedbackToken++
-                            }
                             if (preferences.soundEnabled) playFeedbackSound(effect)
                             if (preferences.vibrationEnabled) {
                                 hapticFeedback.performHapticFeedback(HapticFeedbackType.LongPress)
@@ -248,7 +233,6 @@ fun GameScreen(
                         },
                         modifier = Modifier.fillMaxSize()
                     )
-                    tapFeedback?.let { FeedbackBurst(it) }
                 }
             }
             EmojiOverlay(state.activeEmojis)
@@ -325,26 +309,6 @@ private fun LiveMetric(label: String, value: String, modifier: Modifier = Modifi
         ) {
             Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Text(value, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Black)
-        }
-    }
-}
-
-@Composable
-private fun FeedbackBurst(effect: GameFeedbackEffect) {
-    val correct = effect == GameFeedbackEffect.CORRECT
-    Surface(
-        modifier = Modifier.size(76.dp),
-        shape = RoundedCornerShape(24.dp),
-        color = if (correct) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.errorContainer,
-        shadowElevation = 8.dp
-    ) {
-        Box(contentAlignment = Alignment.Center) {
-            Text(
-                text = if (correct) "✓" else "×",
-                fontSize = 42.sp,
-                fontWeight = FontWeight.Black,
-                color = if (correct) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onErrorContainer
-            )
         }
     }
 }
@@ -603,8 +567,8 @@ fun NumberCell(
                 text = number.toString(),
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold,
-                color = if (isCompleted) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.25f)
-                else activeContentColor,
+            color = if (isCompleted) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.25f)
+            else activeContentColor,
                 fontSize = 20.sp
             )
         }

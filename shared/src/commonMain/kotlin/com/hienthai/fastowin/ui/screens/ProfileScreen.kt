@@ -8,12 +8,17 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -22,18 +27,26 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.Assignment
 import androidx.compose.material.icons.automirrored.filled.ExitToApp
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Devices
+import androidx.compose.material.icons.filled.Collections
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.RadioButtonUnchecked
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.Timer
+import androidx.compose.material.icons.filled.EmojiEvents
+import androidx.compose.material.icons.filled.Insights
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -92,10 +105,20 @@ import com.hienthai.fastowin.state.GameState
 import com.hienthai.fastowin.state.MAX_ACCOUNT_PASSWORD_LENGTH
 import com.hienthai.fastowin.state.accountPasswordConfirmationError
 import com.hienthai.fastowin.state.accountPasswordError
-import com.hienthai.fastowin.platform.epochMillis
 import com.hienthai.fastowin.ui.components.SystemBackHandler
+import com.hienthai.fastowin.platform.epochMillis
 import com.hienthai.fastowin.ui.layout.ResponsiveScreen
+import com.hienthai.fastowin.ui.components.RewardAmounts
+import com.hienthai.fastowin.ui.components.WalletBalanceRow
+import com.hienthai.fastowin.ui.components.FastToWinHeader
 import kotlinx.coroutines.delay
+
+enum class ProfileSection {
+    STATISTICS,
+    MISSIONS,
+    COLLECTION,
+    RECENT_MATCHES
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -127,11 +150,13 @@ fun ProfileScreen(
     onLogout: () -> Unit,
     sessionStartedAtMillis: Long? = null,
     onInviteToClan: ((String) -> Unit)? = null,
+    onOpenNotifications: () -> Unit = {},
+    onOpenSettings: () -> Unit = {},
+    onOpenSection: (ProfileSection) -> Unit = {},
     showBackButton: Boolean = true,
     modifier: Modifier = Modifier
 ) {
     SystemBackHandler(enabled = showBackButton, onBack = onBack)
-
     val profile = if (isExternalProfile) profileOverride else state.profile
     val isProfileLoading = if (isExternalProfile) state.isFriendProfileLoading else state.isProfileLoading
     val clipboardManager = LocalClipboardManager.current
@@ -140,7 +165,6 @@ fun ProfileScreen(
     var selectedAvatarId by remember { mutableStateOf<String?>(null) }
     var showAccountSecurity by remember { mutableStateOf(false) }
     var showAccountSessions by remember { mutableStateOf(false) }
-    var historyFilter by remember { mutableStateOf<MatchHistoryOutcome?>(null) }
     var isPlayerCodeCopied by remember(profile?.playerCode) { mutableStateOf(false) }
     if (!isExternalProfile && showAccountSecurity) {
         AccountSecurityDialog(
@@ -199,6 +223,7 @@ fun ProfileScreen(
         ResponsiveScreen(
             modifier = Modifier.fillMaxSize(),
             maxContentWidth = 920.dp,
+            applySafeDrawingInsets = showBackButton,
             includeBottomSafeDrawingInset = showBackButton,
             avoidKeyboard = isEditing
         ) { contentModifier ->
@@ -216,29 +241,17 @@ fun ProfileScreen(
                 .padding(vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            if (showBackButton) IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Quay lại") }
-            else Spacer(Modifier.size(48.dp))
-            Text(
-                if (isExternalProfile) "Hồ sơ bạn bè" else "Hồ sơ",
-                style = MaterialTheme.typography.headlineSmall,
-                fontWeight = FontWeight.Bold
+        if (showBackButton) {
+            FastToWinHeader(
+                title = if (isExternalProfile) "Hồ sơ bạn bè" else "Hồ sơ",
+                gold = state.profile?.progression?.gold ?: 0,
+                gems = state.profile?.progression?.gems ?: 0,
+                unreadNotifications = state.unreadNotificationCount,
+                onNotifications = onOpenNotifications,
+                onBack = onBack,
+                applySafeDrawingInset = false
             )
-            Row {
-                if (profile != null && canEdit) {
-                    IconButton(onClick = { isEditing = !isEditing }, enabled = !state.isProfileSaving) {
-                        Icon(Icons.Default.Edit, "Chỉnh sửa hồ sơ")
-                    }
-                } else {
-                    Spacer(Modifier.size(48.dp))
-                }
-            }
         }
-
         if (isProfileLoading && profile == null) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator()
@@ -251,66 +264,94 @@ fun ProfileScreen(
             return@Column
         }
 
-        ElevatedCard(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(24.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(20.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
-                Surface(
-                    modifier = Modifier.size(64.dp),
-                    shape = CircleShape,
-                    color = MaterialTheme.colorScheme.primaryContainer
+        ElevatedCard(
+            modifier = Modifier.fillMaxWidth().testTag("profile_identity_card"),
+            shape = RoundedCornerShape(24.dp)
+        ) {
+            Box(modifier = Modifier.fillMaxWidth().padding(20.dp)) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(end = if (canEdit) 48.dp else 0.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
-                    com.hienthai.fastowin.ui.components.NetworkImage(
-                        url = "$serverUrl/api/avatar/${profile.userId}",
-                        modifier = Modifier.fillMaxSize(),
-                        fallback = {
-                            Box(contentAlignment = Alignment.Center) {
-                                Text(avatarEmoji(profile.avatarId), style = MaterialTheme.typography.headlineLarge)
+                    Surface(
+                        modifier = Modifier.size(64.dp),
+                        shape = CircleShape,
+                        color = MaterialTheme.colorScheme.primaryContainer
+                    ) {
+                        com.hienthai.fastowin.ui.components.NetworkImage(
+                            url = "$serverUrl/api/avatar/${profile.userId}",
+                            modifier = Modifier.fillMaxSize(),
+                            fallback = {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Text(avatarEmoji(profile.avatarId), style = MaterialTheme.typography.headlineLarge)
+                                }
+                            }
+                        )
+                    }
+                    Column {
+                        Text(profile.displayName, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                        profile.progression.cosmetics.firstOrNull {
+                            it.type == CosmeticType.TITLE && it.equipped
+                        }?.let { Text(it.name, color = MaterialTheme.colorScheme.tertiary, fontWeight = FontWeight.SemiBold) }
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Text(
+                                "Mã người chơi: ${profile.playerCode}",
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            IconButton(
+                                onClick = {
+                                    clipboardManager.setText(AnnotatedString(profile.playerCode))
+                                    isPlayerCodeCopied = true
+                                },
+                                modifier = Modifier.size(36.dp)
+                            ) {
+                                Icon(
+                                    Icons.Default.ContentCopy,
+                                    contentDescription = "Sao chép mã người chơi",
+                                    modifier = Modifier.size(18.dp)
+                                )
                             }
                         }
-                    )
+                        Text("Elo ${profile.statistics.eloRating}", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+
+                        if (isExternalProfile && onInviteToClan != null && state.profile?.clanId != null && profile.clanId == null) {
+                            Button(
+                                onClick = { onInviteToClan.invoke(profile.playerCode) },
+                                modifier = Modifier.padding(top = 8.dp)
+                            ) {
+                                Text("Mời vào bang")
+                            }
+                        }
+                        if (!isExternalProfile && sessionStartedAtMillis != null) {
+                            CurrentSessionDuration(sessionStartedAtMillis)
+                        }
+                    }
                 }
-                Column {
-                    Text(profile.displayName, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-                    profile.progression.cosmetics.firstOrNull {
-                        it.type == CosmeticType.TITLE && it.equipped
-                    }?.let { Text(it.name, color = MaterialTheme.colorScheme.tertiary, fontWeight = FontWeight.SemiBold) }
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                if (canEdit) {
+                    IconButton(
+                        onClick = { isEditing = !isEditing },
+                        enabled = !state.isProfileSaving,
+                        modifier = Modifier.align(Alignment.TopEnd).testTag("profile_edit")
                     ) {
-                        Text(
-                            "Mã người chơi: ${profile.playerCode}",
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        IconButton(
-                            onClick = {
-                                clipboardManager.setText(AnnotatedString(profile.playerCode))
-                                isPlayerCodeCopied = true
-                            },
-                            modifier = Modifier.size(36.dp)
+                        Surface(
+                            modifier = Modifier.size(36.dp),
+                            shape = RoundedCornerShape(10.dp),
+                            color = MaterialTheme.colorScheme.primaryContainer
                         ) {
-                            Icon(
-                                Icons.Default.ContentCopy,
-                                contentDescription = "Sao chép mã người chơi",
-                                modifier = Modifier.size(18.dp)
-                            )
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    Icons.Default.Edit,
+                                    contentDescription = "Chỉnh sửa hồ sơ",
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
                         }
-                    }
-                    Text("Elo ${profile.statistics.eloRating}", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
-                    
-                    if (isExternalProfile && onInviteToClan != null && state.profile?.clanId != null && profile.clanId == null) {
-                        Button(
-                            onClick = { onInviteToClan.invoke(profile.playerCode) },
-                            modifier = Modifier.padding(top = 8.dp)
-                        ) {
-                            Text("Mời vào bang")
-                        }
-                    }
-                    if (!isExternalProfile && sessionStartedAtMillis != null) {
-                        CurrentSessionDuration(sessionStartedAtMillis)
                     }
                 }
             }
@@ -399,7 +440,6 @@ fun ProfileScreen(
         }
         state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
 
-        val stats = profile.statistics
         val progression = profile.progression
         Surface(shape = RoundedCornerShape(22.dp), color = MaterialTheme.colorScheme.primaryContainer) {
             Column(Modifier.fillMaxWidth().padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -407,6 +447,7 @@ fun ProfileScreen(
                     Text("Cấp ${progression.level}", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
                     Text("${progression.experiencePoints} XP", fontWeight = FontWeight.Bold)
                 }
+                WalletBalanceRow(gold = progression.gold, gems = progression.gems)
                 LinearProgressIndicator(
                     progress = {
                         progression.currentLevelExperience.toFloat() /
@@ -448,200 +489,48 @@ fun ProfileScreen(
             totalCheckIns = progression.dailyCheckIn.totalCheckIns
         )
 
-        Text("Nhiệm vụ", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-        listOf(
-            "Hằng ngày" to progression.dailyMissions,
-            "Hằng tuần" to progression.weeklyMissions
-        ).forEach { (sectionTitle, missions) ->
-            if (missions.isNotEmpty()) Text(sectionTitle, fontWeight = FontWeight.SemiBold)
-            missions.forEach { mission ->
-                Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surfaceContainer) {
-                    Row(
-                        Modifier.fillMaxWidth().padding(14.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        Text(if (mission.completed) "✅" else "🎯")
-                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                            Text(mission.title, fontWeight = FontWeight.SemiBold)
-                            LinearProgressIndicator(
-                                progress = { mission.progress.toFloat() / mission.target.coerceAtLeast(1) },
-                                modifier = Modifier.fillMaxWidth().height(6.dp)
-                            )
-                            Text(
-                                "${mission.progress}/${mission.target} • +${mission.rewardXp} XP",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                        when {
-                            mission.rewardClaimed -> Text("✓", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
-                            mission.completed && canEdit -> Button(
-                                onClick = { onClaimMissionReward(mission.code) },
-                                enabled = state.claimingMissionCode == null,
-                                modifier = Modifier.testTag("claim_mission:${mission.code}")
-                            ) {
-                                if (state.claimingMissionCode == mission.code) {
-                                    CircularProgressIndicator(
-                                        modifier = Modifier.size(18.dp),
-                                        strokeWidth = 2.dp
-                                    )
-                                } else {
-                                    Text("Nhận")
-                                }
-                            }
-                            mission.completed -> Text("Hoàn thành", style = MaterialTheme.typography.bodySmall)
-                        }
-                    }
-                }
-            }
-        }
-
-        if (progression.cosmetics.isNotEmpty()) {
-            val equippedFrame = progression.cosmetics.firstOrNull { it.type == CosmeticType.FRAME && it.equipped }?.id
-                ?: "frame_default"
-            val equippedTitle = progression.cosmetics.firstOrNull { it.type == CosmeticType.TITLE && it.equipped }?.id
-                ?: "title_rookie"
-            Text("Bộ sưu tập", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-            Text("Khung avatar", fontWeight = FontWeight.SemiBold)
-            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                items(progression.cosmetics.filter { it.type == CosmeticType.FRAME }, key = { it.id }) { cosmetic ->
-                    FilterChip(
-                        selected = cosmetic.equipped,
-                        enabled = canEdit && cosmetic.unlocked && !isProfileLoading,
-                        onClick = { onEquipCosmetics(cosmetic.id, equippedTitle) },
-                        label = { Text(cosmetic.displayLabel()) }
-                    )
-                }
-            }
-            Text("Danh hiệu", fontWeight = FontWeight.SemiBold)
-            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                items(progression.cosmetics.filter { it.type == CosmeticType.TITLE }, key = { it.id }) { cosmetic ->
-                    FilterChip(
-                        selected = cosmetic.equipped,
-                        enabled = canEdit && cosmetic.unlocked && !isProfileLoading,
-                        onClick = { onEquipCosmetics(equippedFrame, cosmetic.id) },
-                        label = { Text(cosmetic.displayLabel()) }
-                    )
-                }
-            }
-            val specialAvatars = progression.cosmetics.filter { it.type == CosmeticType.AVATAR }
-            if (specialAvatars.isNotEmpty()) {
-                Text("Ảnh đại diện đặc biệt", fontWeight = FontWeight.SemiBold)
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    items(specialAvatars, key = { it.id }) { cosmetic ->
-                        FilterChip(
-                            selected = cosmetic.equipped,
-                            enabled = canEdit && cosmetic.unlocked && !state.isProfileSaving,
-                            onClick = { onSave(profile.displayName, cosmetic.id) },
-                            label = { Text("${avatarEmoji(cosmetic.id)} ${cosmetic.displayLabel()}") }
-                        )
-                    }
-                }
-            }
-        }
-
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            StatCard("Trận", stats.totalMatches, Modifier.weight(1f))
-            StatCard("Thắng", stats.wins, Modifier.weight(1f))
-            StatCard("Thua", stats.losses, Modifier.weight(1f))
-            StatCard("Hòa", stats.draws, Modifier.weight(1f))
-        }
-
-        if (profile.modeStatistics.isNotEmpty()) {
-            Text("Thống kê theo chế độ", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-            Column(
-                modifier = Modifier.fillMaxWidth().testTag("mode_statistics"),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                profile.modeStatistics
-                    .sortedWith(compareBy<GameModeStatisticsSnapshot> { it.gameMode.unlockLevel }.thenBy { it.gameMode.name })
-                    .forEach { ModeStatisticsCard(it) }
-            }
-        }
-
-        if (profile.recentMatches.isNotEmpty()) {
-            val scoreTrend = profile.recentMatches.take(10).asReversed().map { it.playerScore }
-            val eloTrend = remember(profile.statistics.eloRating, profile.recentMatches) {
-                buildEloTrend(profile.statistics.eloRating, profile.recentMatches.take(10))
-            }
-            TrendChart("Phong độ điểm • 10 trận", scoreTrend) { "$it điểm" }
-            TrendChart("Biến động Elo", eloTrend) { "Elo $it" }
-        }
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            StatCard("Điểm cao", stats.highestScore, Modifier.weight(1f))
-            StatCard("Chuỗi hiện tại", stats.currentWinStreak, Modifier.weight(1f))
-            StatCard("Chuỗi tốt nhất", stats.bestWinStreak, Modifier.weight(1f))
-        }
-        val totalSelections = stats.correctSelections + stats.wrongSelections
-        val accuracy = if (totalSelections == 0) 0 else stats.correctSelections * 100 / totalSelections
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            StatCard("Chính xác", "$accuracy%", Modifier.weight(1f))
-            StatCard("Đúng / Sai", "${stats.correctSelections} / ${stats.wrongSelections}", Modifier.weight(1f))
-            StatCard("Phản ứng TB", "${stats.averageReactionMillis} ms", Modifier.weight(1f))
-        }
-
-        Text("Thành tích", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-        if (profile.achievements.isEmpty()) {
-            Text("Chưa mở khóa thành tích nào.", color = MaterialTheme.colorScheme.onSurfaceVariant)
-        } else {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                profile.achievements.forEach { achievement ->
-                    ElevatedCard(modifier = Modifier.fillMaxWidth()) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth().padding(14.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(12.dp)
-                        ) {
-                            Text("🏆", style = MaterialTheme.typography.headlineSmall)
-                            Column {
-                                Text(achievement.title, fontWeight = FontWeight.Bold)
-                                Text(
-                                    achievement.description,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        Text("Trận gần đây", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            FilterChip(selected = historyFilter == null, onClick = { historyFilter = null }, label = { Text("Tất cả") })
-            FilterChip(
-                selected = historyFilter == MatchHistoryOutcome.WIN,
-                onClick = { historyFilter = MatchHistoryOutcome.WIN },
-                label = { Text("Thắng") }
+        Text("Hoạt động", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+        ElevatedCard(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(20.dp)
+        ) {
+            AccountActionRow(
+                icon = Icons.Default.Insights,
+                title = "Thống kê & thành tích",
+                subtitle = "Hiệu suất thi đấu và các mốc đã mở khóa",
+                onClick = { onOpenSection(ProfileSection.STATISTICS) },
+                modifier = Modifier.testTag("profile_section_statistics")
             )
-            FilterChip(
-                selected = historyFilter == MatchHistoryOutcome.LOSS,
-                onClick = { historyFilter = MatchHistoryOutcome.LOSS },
-                label = { Text("Thua") }
+            HorizontalDivider(modifier = Modifier.padding(start = 64.dp))
+            AccountActionRow(
+                icon = Icons.AutoMirrored.Filled.Assignment,
+                title = "Nhiệm vụ",
+                subtitle = "Theo dõi tiến độ và nhận thưởng",
+                onClick = { onOpenSection(ProfileSection.MISSIONS) },
+                modifier = Modifier.testTag("profile_section_missions")
             )
-        }
-        val visibleMatches = profile.recentMatches.filter { historyFilter == null || it.outcome == historyFilter }
-        if (profile.recentMatches.isEmpty()) {
-            Text("Bạn chưa có trận đấu hoàn thành.", color = MaterialTheme.colorScheme.onSurfaceVariant)
-        } else if (visibleMatches.isEmpty()) {
-            Text("Không có trận phù hợp với bộ lọc.", color = MaterialTheme.colorScheme.onSurfaceVariant)
-        } else {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                visibleMatches.forEach { match ->
-                    MatchHistoryCard(
-                        match,
-                        onClick = if (isExternalProfile) null else ({ onOpenMatchDetail(match.matchId) })
-                    )
-                }
-            }
+            HorizontalDivider(modifier = Modifier.padding(start = 64.dp))
+            AccountActionRow(
+                icon = Icons.Default.Collections,
+                title = "Bộ sưu tập",
+                subtitle = "Khung, danh hiệu và ảnh đại diện",
+                onClick = { onOpenSection(ProfileSection.COLLECTION) },
+                modifier = Modifier.testTag("profile_section_collection")
+            )
+            HorizontalDivider(modifier = Modifier.padding(start = 64.dp))
+            AccountActionRow(
+                icon = Icons.Default.History,
+                title = "Trận gần đây",
+                subtitle = "Lịch sử đấu và biến động Elo",
+                onClick = { onOpenSection(ProfileSection.RECENT_MATCHES) },
+                modifier = Modifier.testTag("profile_section_recent_matches")
+            )
         }
 
         if (canEdit) {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(
-                    "Tài khoản & bảo mật",
+                    "Cài đặt & tài khoản",
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold
                 )
@@ -649,6 +538,14 @@ fun ProfileScreen(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(20.dp)
                 ) {
+                    AccountActionRow(
+                        icon = Icons.Default.Settings,
+                        title = "Cài đặt ứng dụng",
+                        subtitle = "Âm thanh, rung, hiệu ứng và hướng dẫn",
+                        onClick = onOpenSettings,
+                        modifier = Modifier.testTag("profile_settings")
+                    )
+                    HorizontalDivider(modifier = Modifier.padding(start = 64.dp))
                     AccountActionRow(
                         icon = Icons.Default.Devices,
                         title = "Thiết bị đăng nhập",
@@ -703,6 +600,352 @@ fun ProfileScreen(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun ProfileSectionScreen(
+    state: GameState,
+    profile: PlayerProfileSnapshot,
+    section: ProfileSection,
+    isExternalProfile: Boolean,
+    canEdit: Boolean,
+    onBack: () -> Unit,
+    onRefresh: () -> Unit,
+    onOpenMatchDetail: (String) -> Unit,
+    onCloseMatchDetail: () -> Unit,
+    onEquipCosmetics: (String, String) -> Unit,
+    onClaimMissionReward: (String) -> Unit,
+    onSave: (String, String?) -> Unit,
+    onOpenNotifications: () -> Unit
+) {
+    SystemBackHandler(onBack = onBack)
+    val isLoading = if (isExternalProfile) state.isFriendProfileLoading else state.isProfileLoading
+    var historyFilter by remember { mutableStateOf<MatchHistoryOutcome?>(null) }
+
+    if (!isExternalProfile && (state.isMatchDetailLoading || state.matchDetail != null)) {
+        MatchDetailDialog(
+            detail = state.matchDetail,
+            isLoading = state.isMatchDetailLoading,
+            onDismiss = onCloseMatchDetail
+        )
+    }
+
+    Column(modifier = Modifier.fillMaxSize().testTag("profile_section_screen:${section.name}")) {
+        FastToWinHeader(
+            title = when (section) {
+                ProfileSection.STATISTICS -> "Thống kê & thành tích"
+                ProfileSection.MISSIONS -> "Nhiệm vụ"
+                ProfileSection.COLLECTION -> "Bộ sưu tập"
+                ProfileSection.RECENT_MATCHES -> "Trận gần đây"
+            },
+            gold = state.profile?.progression?.gold ?: 0,
+            gems = state.profile?.progression?.gems ?: 0,
+            unreadNotifications = state.unreadNotificationCount,
+            onNotifications = onOpenNotifications,
+            onBack = onBack
+        )
+        ResponsiveScreen(
+            modifier = Modifier.weight(1f),
+            maxContentWidth = 920.dp,
+            applySafeDrawingInsets = false
+        ) { contentModifier ->
+            PullToRefreshBox(
+                isRefreshing = isLoading,
+                onRefresh = onRefresh,
+                modifier = contentModifier
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .verticalScroll(rememberScrollState())
+                        .windowInsetsPadding(
+                            WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal)
+                        )
+                        .padding(vertical = 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(14.dp)
+                ) {
+                    when (section) {
+                        ProfileSection.STATISTICS -> StatisticsAchievementsSectionContent(profile)
+                        ProfileSection.MISSIONS -> MissionSectionContent(
+                            state = state,
+                            profile = profile,
+                            canEdit = canEdit,
+                            onClaimMissionReward = onClaimMissionReward
+                        )
+                        ProfileSection.COLLECTION -> CollectionSectionContent(
+                            state = state,
+                            profile = profile,
+                            canEdit = canEdit,
+                            isLoading = isLoading,
+                            onEquipCosmetics = onEquipCosmetics,
+                            onSave = onSave
+                        )
+                        ProfileSection.RECENT_MATCHES -> RecentMatchesSectionContent(
+                            profile = profile,
+                            isExternalProfile = isExternalProfile,
+                            historyFilter = historyFilter,
+                            onFilterChange = { historyFilter = it },
+                            onOpenMatchDetail = onOpenMatchDetail
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun StatisticsAchievementsSectionContent(profile: PlayerProfileSnapshot) {
+    val stats = profile.statistics
+    Column(
+        modifier = Modifier.fillMaxWidth().testTag("profile_statistics_content"),
+        verticalArrangement = Arrangement.spacedBy(14.dp)
+    ) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            StatCard("Trận", stats.totalMatches, Modifier.weight(1f))
+            StatCard("Thắng", stats.wins, Modifier.weight(1f))
+            StatCard("Thua", stats.losses, Modifier.weight(1f))
+            StatCard("Hòa", stats.draws, Modifier.weight(1f))
+        }
+
+        if (profile.modeStatistics.isNotEmpty()) {
+            Text("Thống kê theo chế độ", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            Column(
+                modifier = Modifier.fillMaxWidth().testTag("mode_statistics"),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                profile.modeStatistics
+                    .sortedWith(compareBy<GameModeStatisticsSnapshot> { it.gameMode.unlockLevel }.thenBy { it.gameMode.name })
+                    .forEach { ModeStatisticsCard(it) }
+            }
+        }
+
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            StatCard("Điểm cao", stats.highestScore, Modifier.weight(1f))
+            StatCard("Chuỗi hiện tại", stats.currentWinStreak, Modifier.weight(1f))
+            StatCard("Chuỗi tốt nhất", stats.bestWinStreak, Modifier.weight(1f))
+        }
+        val totalSelections = stats.correctSelections + stats.wrongSelections
+        val accuracy = if (totalSelections == 0) 0 else stats.correctSelections * 100 / totalSelections
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            StatCard("Chính xác", "$accuracy%", Modifier.weight(1f))
+            StatCard("Đúng / Sai", "${stats.correctSelections} / ${stats.wrongSelections}", Modifier.weight(1f))
+            StatCard("Phản ứng TB", "${stats.averageReactionMillis} ms", Modifier.weight(1f))
+        }
+
+        Text("Thành tích", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+        if (profile.achievements.isEmpty()) {
+            Text("Chưa mở khóa thành tích nào.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        } else {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                profile.achievements.forEach { achievement ->
+                    ElevatedCard(modifier = Modifier.fillMaxWidth()) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(14.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.EmojiEvents,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(28.dp)
+                            )
+                            Column {
+                                Text(achievement.title, fontWeight = FontWeight.Bold)
+                                Text(
+                                    achievement.description,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun MissionSectionContent(
+    state: GameState,
+    profile: PlayerProfileSnapshot,
+    canEdit: Boolean,
+    onClaimMissionReward: (String) -> Unit
+) {
+    val missionGroups = listOf(
+        "Hằng ngày" to profile.progression.dailyMissions,
+        "Hằng tuần" to profile.progression.weeklyMissions
+    )
+    if (missionGroups.all { it.second.isEmpty() }) {
+        Text("Chưa có nhiệm vụ mới.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        return
+    }
+    missionGroups.forEach { (sectionTitle, missions) ->
+        if (missions.isNotEmpty()) {
+            Text(sectionTitle, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+        }
+        missions.forEach { mission ->
+            Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surfaceContainer) {
+                Row(
+                    Modifier.fillMaxWidth().padding(14.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Icon(
+                        imageVector = if (mission.completed) Icons.Default.CheckCircle else Icons.Default.RadioButtonUnchecked,
+                        contentDescription = null,
+                        tint = if (mission.completed) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                        Text(mission.title, fontWeight = FontWeight.SemiBold)
+                        LinearProgressIndicator(
+                            progress = { mission.progress.toFloat() / mission.target.coerceAtLeast(1) },
+                            modifier = Modifier.fillMaxWidth().height(6.dp)
+                        )
+                        Text("${mission.progress}/${mission.target}", style = MaterialTheme.typography.bodySmall)
+                        RewardAmounts(
+                            gold = mission.rewardGold,
+                            xp = mission.rewardXp,
+                            gems = mission.rewardGems
+                        )
+                    }
+                    when {
+                        mission.rewardClaimed -> Icon(
+                            Icons.Default.CheckCircle,
+                            contentDescription = "Đã nhận thưởng",
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                        mission.completed && canEdit -> Button(
+                            onClick = { onClaimMissionReward(mission.code) },
+                            enabled = state.claimingMissionCode == null,
+                            modifier = Modifier.testTag("claim_mission:${mission.code}")
+                        ) {
+                            if (state.claimingMissionCode == mission.code) {
+                                CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                            } else {
+                                Text("Nhận")
+                            }
+                        }
+                        mission.completed -> Text("Hoàn thành", style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CollectionSectionContent(
+    state: GameState,
+    profile: PlayerProfileSnapshot,
+    canEdit: Boolean,
+    isLoading: Boolean,
+    onEquipCosmetics: (String, String) -> Unit,
+    onSave: (String, String?) -> Unit
+) {
+    val cosmetics = profile.progression.cosmetics
+    if (cosmetics.isEmpty()) {
+        Text("Bộ sưu tập đang trống.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        return
+    }
+    val equippedFrame = cosmetics.firstOrNull { it.type == CosmeticType.FRAME && it.equipped }?.id
+        ?: "frame_default"
+    val equippedTitle = cosmetics.firstOrNull { it.type == CosmeticType.TITLE && it.equipped }?.id
+        ?: "title_rookie"
+    Text("Khung", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        items(cosmetics.filter { it.type == CosmeticType.FRAME }, key = { it.id }) { cosmetic ->
+            FilterChip(
+                selected = cosmetic.equipped,
+                enabled = canEdit && cosmetic.unlocked && !isLoading,
+                onClick = { onEquipCosmetics(cosmetic.id, equippedTitle) },
+                label = { Text(cosmetic.displayLabel()) }
+            )
+        }
+    }
+    Text("Danh hiệu", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        items(cosmetics.filter { it.type == CosmeticType.TITLE }, key = { it.id }) { cosmetic ->
+            FilterChip(
+                selected = cosmetic.equipped,
+                enabled = canEdit && cosmetic.unlocked && !isLoading,
+                onClick = { onEquipCosmetics(equippedFrame, cosmetic.id) },
+                label = { Text(cosmetic.displayLabel()) }
+            )
+        }
+    }
+    val specialAvatars = cosmetics.filter { it.type == CosmeticType.AVATAR }
+    if (specialAvatars.isNotEmpty()) {
+        Text("Ảnh đại diện đặc biệt", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            items(specialAvatars, key = { it.id }) { cosmetic ->
+                FilterChip(
+                    selected = cosmetic.equipped,
+                    enabled = canEdit && cosmetic.unlocked && !state.isProfileSaving,
+                    onClick = { onSave(profile.displayName, cosmetic.id) },
+                    label = { Text("${avatarEmoji(cosmetic.id)} ${cosmetic.displayLabel()}") }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun RecentMatchesSectionContent(
+    profile: PlayerProfileSnapshot,
+    isExternalProfile: Boolean,
+    historyFilter: MatchHistoryOutcome?,
+    onFilterChange: (MatchHistoryOutcome?) -> Unit,
+    onOpenMatchDetail: (String) -> Unit
+) {
+    if (profile.recentMatches.isNotEmpty()) {
+        val scoreTrend = profile.recentMatches.take(10).asReversed().map { it.playerScore }
+        val eloTrend = remember(profile.statistics.eloRating, profile.recentMatches) {
+            buildEloTrend(profile.statistics.eloRating, profile.recentMatches.take(10))
+        }
+        TrendChart("Phong độ điểm • 10 trận", scoreTrend) { "$it điểm" }
+        TrendChart("Biến động Elo", eloTrend) { "Elo $it" }
+    }
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        FilterChip(
+            selected = historyFilter == null,
+            onClick = { onFilterChange(null) },
+            label = { Text("Tất cả") },
+            modifier = Modifier.testTag("history_filter_all")
+        )
+        FilterChip(
+            selected = historyFilter == MatchHistoryOutcome.WIN,
+            onClick = { onFilterChange(MatchHistoryOutcome.WIN) },
+            label = { Text("Thắng") },
+            modifier = Modifier.testTag("history_filter_win")
+        )
+        FilterChip(
+            selected = historyFilter == MatchHistoryOutcome.LOSS,
+            onClick = { onFilterChange(MatchHistoryOutcome.LOSS) },
+            label = { Text("Thua") },
+            modifier = Modifier.testTag("history_filter_loss")
+        )
+    }
+    val visibleMatches = profile.recentMatches.filter { historyFilter == null || it.outcome == historyFilter }
+    when {
+        profile.recentMatches.isEmpty() -> Text(
+            "Chưa có trận đấu hoàn thành.",
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        visibleMatches.isEmpty() -> Text(
+            "Không có trận phù hợp với bộ lọc.",
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        else -> visibleMatches.forEach { match ->
+            MatchHistoryCard(
+                match,
+                onClick = if (isExternalProfile) null else ({ onOpenMatchDetail(match.matchId) })
+            )
+        }
+    }
+}
+
 @Composable
 private fun CurrentSessionDuration(sessionStartedAtMillis: Long) {
     var elapsedSeconds by remember(sessionStartedAtMillis) { mutableStateOf(0L) }
@@ -745,14 +988,19 @@ private fun AccountActionRow(
     title: String,
     subtitle: String,
     onClick: () -> Unit,
-    isDestructive: Boolean = false
+    isDestructive: Boolean = false,
+    modifier: Modifier = Modifier
 ) {
     val contentColor = if (isDestructive) {
         MaterialTheme.colorScheme.error
     } else {
         MaterialTheme.colorScheme.onSurface
     }
-    Surface(onClick = onClick, color = MaterialTheme.colorScheme.surfaceContainerLow) {
+    Surface(
+        onClick = onClick,
+        modifier = modifier,
+        color = MaterialTheme.colorScheme.surfaceContainerLow
+    ) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -783,6 +1031,11 @@ private fun AccountActionRow(
                     else MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
+            Icon(
+                imageVector = Icons.Default.ChevronRight,
+                contentDescription = null,
+                tint = contentColor.copy(alpha = 0.62f)
+            )
         }
     }
 }
@@ -1516,7 +1769,7 @@ private fun MatchHistoryCard(match: MatchHistorySnapshot, onClick: (() -> Unit)?
         MatchHistoryOutcome.DRAW -> "Hòa" to MaterialTheme.colorScheme.tertiary
     }
     ElevatedCard(
-        modifier = Modifier.fillMaxWidth().then(
+        modifier = Modifier.fillMaxWidth().testTag("match_history:${match.matchId}").then(
             if (onClick == null) Modifier else Modifier.clickable(onClick = onClick)
         )
     ) {

@@ -96,7 +96,6 @@ fun LobbyScreen(
     onLogout: () -> Unit,
     isGuest: Boolean,
     onUpgradeGuest: () -> Unit,
-    onOpenSettings: () -> Unit,
     onOpenNotifications: () -> Unit,
     onOpenClan: () -> Unit,
     onOpenPractice: () -> Unit,
@@ -107,28 +106,17 @@ fun LobbyScreen(
     onClaimDailyCheckIn: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    var openCreateAfterModeSelection by remember { mutableStateOf(false) }
     SystemBackHandler(enabled = state.lobbyStage != LobbyStage.SELECT_MODE) {
         when (state.lobbyStage) {
-            LobbyStage.ENTER_NAME -> onBackToMode()
-            LobbyStage.ROOM_BROWSER -> onBackToMode()
-            LobbyStage.ROOM_WAITING -> onLeaveRoom()
-            LobbyStage.MATCHMAKING -> onCancelMatchmaking()
-            else -> {}
-        }
-    }
-
-    var openCreateAfterModeSelection by remember { mutableStateOf(false) }
-    var showTabModePicker by remember { mutableStateOf(false) }
-    if (showTabModePicker) {
-        GameModePickerDialog(
-            title = "Chọn chế độ chơi",
-            playerLevel = state.profile?.progression?.level ?: 1,
-            onDismiss = { showTabModePicker = false },
-            onSelect = { mode ->
-                showTabModePicker = false
-                onModeSelected(mode)
+            LobbyStage.SELECT_MODE -> Unit
+            LobbyStage.ENTER_NAME, LobbyStage.ROOM_BROWSER -> {
+                openCreateAfterModeSelection = false
+                onBackToMode()
             }
-        )
+            LobbyStage.ROOM_WAITING, LobbyStage.MATCHED -> onLeaveRoom()
+            LobbyStage.MATCHMAKING -> onCancelMatchmaking()
+        }
     }
     Column(modifier = modifier.fillMaxSize().testTag("lobby_screen")) {
         ResponsiveScreen(
@@ -157,7 +145,6 @@ fun LobbyScreen(
                     onOpenFriends = onOpenFriends,
                     onOpenLeaderboard = if (isGuest) onUpgradeGuest else onOpenLeaderboard,
                     onOpenProfile = onOpenProfile,
-                    onOpenSettings = onOpenSettings,
                     onOpenNotifications = onOpenNotifications,
                     onOpenClan = onOpenClan,
                     onOpenPractice = onOpenPractice,
@@ -206,7 +193,7 @@ fun LobbyScreen(
                 friendNotificationCount = state.pendingSocialInvitationCount,
                 onHome = {},
                 onLeaderboard = if (isGuest) onUpgradeGuest else onOpenLeaderboard,
-                onPlay = { showTabModePicker = true },
+                onClan = if (isGuest) onUpgradeGuest else onOpenClan,
                 onFriends = if (isGuest) onUpgradeGuest else onOpenFriends,
                 onAccount = if (isGuest) onUpgradeGuest else onOpenProfile
             )

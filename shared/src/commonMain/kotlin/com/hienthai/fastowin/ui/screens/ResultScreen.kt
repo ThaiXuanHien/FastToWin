@@ -64,10 +64,17 @@ import com.hienthai.fastowin.platform.playFeedbackSound
 import com.hienthai.fastowin.platform.ResultShareContent
 import com.hienthai.fastowin.platform.rememberResultImageSharer
 import com.hienthai.fastowin.protocol.MatchType
+import com.hienthai.fastowin.protocol.MATCH_DRAW_REWARD_GOLD
+import com.hienthai.fastowin.protocol.MATCH_DRAW_REWARD_XP
+import com.hienthai.fastowin.protocol.MATCH_LOSS_REWARD_GOLD
+import com.hienthai.fastowin.protocol.MATCH_LOSS_REWARD_XP
+import com.hienthai.fastowin.protocol.MATCH_WIN_REWARD_GOLD
+import com.hienthai.fastowin.protocol.MATCH_WIN_REWARD_XP
 import com.hienthai.fastowin.state.GameState
 import com.hienthai.fastowin.state.PlayerState
 import com.hienthai.fastowin.state.PostMatchFriendStatus
 import com.hienthai.fastowin.ui.layout.ResponsiveScreen
+import com.hienthai.fastowin.ui.components.RewardAmounts
 import com.hienthai.fastowin.ui.theme.FastToWinTheme
 import com.hienthai.fastowin.ui.components.SystemBackHandler
 import kotlinx.coroutines.delay
@@ -77,6 +84,7 @@ import kotlin.math.ceil
 fun ResultScreen(
     state: GameState,
     onRestart: () -> Unit,
+    onBack: () -> Unit = onRestart,
     onRematch: () -> Unit,
     onCancelRematch: () -> Unit,
     onDeclineRematch: () -> Unit,
@@ -111,9 +119,7 @@ fun ResultScreen(
     val opponentFriend = state.social.friends.firstOrNull { it.userId == state.opponent.id }
     val imageSharer = rememberResultImageSharer()
     val shareContent = resultShareContent(state, isDraw, isWinner)
-
-    // Vuốt back từ cạnh màn hình: thoát màn hình kết quả (giống nhấn "Chơi lại")
-    SystemBackHandler(onBack = onRestart)
+    SystemBackHandler(onBack = onBack)
 
     LaunchedEffect(isWinner, isDraw) {
         val effect = when {
@@ -183,6 +189,34 @@ fun ResultScreen(
                 })
             )
             EloCard(state)
+            if (state.profile != null) {
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(18.dp),
+                    color = MaterialTheme.colorScheme.secondaryContainer
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(16.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("Thưởng trận", fontWeight = FontWeight.Bold)
+                        RewardAmounts(
+                            gold = when {
+                                isDraw -> MATCH_DRAW_REWARD_GOLD
+                                isWinner -> MATCH_WIN_REWARD_GOLD
+                                else -> MATCH_LOSS_REWARD_GOLD
+                            },
+                            xp = when {
+                                isDraw -> MATCH_DRAW_REWARD_XP
+                                isWinner -> MATCH_WIN_REWARD_XP
+                                else -> MATCH_LOSS_REWARD_XP
+                            },
+                            gems = 0
+                        )
+                    }
+                }
+            }
             MatchSummaryCard(state)
             PaceAnalysisCard(state.player)
             Button(

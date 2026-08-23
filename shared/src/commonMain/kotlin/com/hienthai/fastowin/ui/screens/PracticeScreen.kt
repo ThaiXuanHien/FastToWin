@@ -46,6 +46,7 @@ import androidx.compose.ui.unit.dp
 import com.hienthai.fastowin.data.preferences.AppPreferences
 import com.hienthai.fastowin.navigation.GameMode
 import com.hienthai.fastowin.platform.GameFeedbackEffect
+import com.hienthai.fastowin.ui.components.SystemBackHandler
 import com.hienthai.fastowin.platform.buildChallengeDeepLink
 import com.hienthai.fastowin.platform.epochMillis
 import com.hienthai.fastowin.platform.playFeedbackSound
@@ -56,7 +57,6 @@ import com.hienthai.fastowin.state.PracticeGameState
 import com.hienthai.fastowin.state.createPracticeChallenge
 import com.hienthai.fastowin.state.createPracticeGame
 import com.hienthai.fastowin.state.parsePracticeChallenge
-import com.hienthai.fastowin.ui.components.SystemBackHandler
 import com.hienthai.fastowin.ui.layout.ResponsiveScreen
 import kotlinx.coroutines.delay
 
@@ -71,14 +71,12 @@ fun PracticeScreen(
     modifier: Modifier = Modifier
 ) {
     SystemBackHandler(onBack = onBack)
-
     var currentChallenge by remember(mode, challenge?.code) {
         mutableStateOf(challenge ?: createPracticeChallenge(mode, challengeSeed()))
     }
     var game by remember(mode, currentChallenge.code) {
         mutableStateOf(createPracticeGame(mode, epochMillis(), challenge = currentChallenge))
     }
-    var feedback by remember(mode, currentChallenge.code) { mutableStateOf<String?>(null) }
     val hapticFeedback = LocalHapticFeedback.current
 
     LaunchedEffect(game.isComplete, game.startedAtMillis) {
@@ -125,7 +123,6 @@ fun PracticeScreen(
                     game = game,
                     onRestart = {
                         game = createPracticeGame(mode, epochMillis(), challenge = currentChallenge)
-                        feedback = null
                     },
                     onNewChallenge = {
                         currentChallenge = createPracticeChallenge(mode, challengeSeed())
@@ -138,9 +135,9 @@ fun PracticeScreen(
                 Column(modifier = contentModifier) {
                     PracticeStatus(game)
                     Text(
-                        feedback ?: "Chạm các số theo thứ tự từ 1 đến $GAME_NUMBER_COUNT",
+                        "Chạm các số theo thứ tự từ 1 đến $GAME_NUMBER_COUNT",
                         modifier = Modifier.fillMaxWidth().height(34.dp).padding(horizontal = 16.dp, vertical = 6.dp),
-                        color = if (feedback == null) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.error,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         style = MaterialTheme.typography.labelMedium,
                         textAlign = TextAlign.Center
                     )
@@ -158,7 +155,6 @@ fun PracticeScreen(
                                 hapticFeedback.performHapticFeedback(HapticFeedbackType.LongPress)
                             }
                             game = game.select(number, epochMillis())
-                            feedback = if (correct) null else "Chưa đúng số, hãy tìm ${game.currentTarget}"
                         },
                         modifier = Modifier.weight(1f)
                     )

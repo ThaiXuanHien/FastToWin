@@ -38,6 +38,7 @@ import com.hienthai.fastowin.protocol.rankedTierFor
 import com.hienthai.fastowin.state.GameState
 import com.hienthai.fastowin.ui.components.SystemBackHandler
 import com.hienthai.fastowin.ui.layout.ResponsiveScreen
+import com.hienthai.fastowin.ui.components.FastToWinHeader
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -46,16 +47,17 @@ fun LeaderboardScreen(
     onBack: () -> Unit,
     onRefresh: () -> Unit,
     onOpenFriendProfile: (String) -> Unit,
+    onOpenNotifications: () -> Unit = {},
     showBackButton: Boolean = true,
     modifier: Modifier = Modifier
 ) {
     SystemBackHandler(enabled = showBackButton, onBack = onBack)
-
     val leaderboard = state.leaderboard
     var showSeason by remember { mutableStateOf(true) }
     ResponsiveScreen(
         modifier = modifier,
         maxContentWidth = 920.dp,
+        applySafeDrawingInsets = showBackButton,
         includeBottomSafeDrawingInset = showBackButton
     ) { contentModifier ->
         PullToRefreshBox(
@@ -67,15 +69,16 @@ fun LeaderboardScreen(
             modifier = Modifier.fillMaxSize().padding(vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            if (showBackButton) IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Quay lại") }
-            else Spacer(Modifier.size(48.dp))
-            Text("Bảng xếp hạng", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-            Spacer(Modifier.size(48.dp))
+        if (showBackButton) {
+            FastToWinHeader(
+                title = "Xếp hạng",
+                gold = state.profile?.progression?.gold ?: 0,
+                gems = state.profile?.progression?.gems ?: 0,
+                unreadNotifications = state.unreadNotificationCount,
+                onNotifications = onOpenNotifications,
+                onBack = onBack,
+                applySafeDrawingInset = false
+            )
         }
 
         var selectedMainTab by remember { mutableStateOf(0) } // 0: Cá nhân, 1: Bang hội
