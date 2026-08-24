@@ -55,8 +55,6 @@ fun NotificationsScreen(
     onDismiss: (String) -> Unit,
     onMarkAllRead: () -> Unit,
     onClearAll: () -> Unit,
-    gold: Int = 0,
-    gems: Int = 0,
     modifier: Modifier = Modifier
 ) {
     SystemBackHandler(onBack = onBack)
@@ -82,53 +80,58 @@ fun NotificationsScreen(
             modifier = contentModifier.padding(vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-        FastToWinHeader(
-            title = "Thông báo",
-            gold = gold,
-            gems = gems,
-            unreadNotifications = notifications.count { !it.isRead },
-            onNotifications = {},
-            onBack = onBack,
-            applySafeDrawingInset = false,
-            showNotifications = false
-        )
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                IconButton(
-                    onClick = onMarkAllRead,
-                    enabled = notifications.any { !it.isRead }
-                ) { Icon(Icons.Default.DoneAll, contentDescription = "Đánh dấu tất cả đã đọc") }
-                IconButton(
-                    onClick = { confirmClear = true },
-                    enabled = notifications.isNotEmpty()
-                ) { Icon(Icons.Default.Delete, contentDescription = "Xóa tất cả thông báo") }
-        }
+            FastToWinHeader(
+                title = "Thông báo",
+                gold = 0,
+                gems = 0,
+                unreadNotifications = notifications.count { !it.isRead },
+                onNotifications = {},
+                onBack = onBack,
+                applySafeDrawingInset = false,
+                showNotifications = false,
+                showBalances = false,
+                actions = {
+                    IconButton(
+                        onClick = onMarkAllRead,
+                        enabled = notifications.any { !it.isRead }
+                    ) {
+                        Icon(Icons.Default.DoneAll, contentDescription = "Đánh dấu tất cả đã đọc")
+                    }
+                    IconButton(
+                        onClick = { confirmClear = true },
+                        enabled = notifications.isNotEmpty()
+                    ) {
+                        Icon(Icons.Default.Delete, contentDescription = "Xóa tất cả thông báo")
+                    }
+                }
+            )
 
-        if (notifications.isEmpty()) {
-            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("🔔", style = MaterialTheme.typography.displayMedium)
-                    Text("Chưa có thông báo", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                    Text(
-                        "Lời mời và phần thưởng mới sẽ xuất hiện tại đây.",
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+            if (notifications.isEmpty()) {
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("🔔", style = MaterialTheme.typography.displayMedium)
+                        Text("Chưa có thông báo", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                        Text(
+                            "Lời mời và phần thưởng mới sẽ xuất hiện tại đây.",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            } else {
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    items(notifications, key = AppNotification::id) { notification ->
+                        NotificationCard(
+                            notification = notification,
+                            onOpen = { onOpen(notification.id) },
+                            onDismiss = { onDismiss(notification.id) }
+                        )
+                    }
+                    item { Spacer(Modifier.size(12.dp)) }
                 }
             }
-        } else {
-            LazyColumn(
-                modifier = Modifier.fillMaxSize(),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                items(notifications, key = AppNotification::id) { notification ->
-                    NotificationCard(
-                        notification = notification,
-                        onOpen = { onOpen(notification.id) },
-                        onDismiss = { onDismiss(notification.id) }
-                    )
-                }
-                item { Spacer(Modifier.size(12.dp)) }
-            }
-        }
         }
     }
 }

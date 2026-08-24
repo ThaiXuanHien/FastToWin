@@ -6,6 +6,7 @@ import androidx.compose.ui.test.FontScale
 import androidx.compose.ui.test.ForcedSize
 import androidx.compose.ui.test.then
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithText
@@ -250,6 +251,40 @@ class ProfileSectionsUiTest {
         assertTrue(composeRule.onAllNodesWithContentDescription("Cài đặt").fetchSemanticsNodes().isEmpty())
         composeRule.onNodeWithContentDescription("Quay lại").performClick()
         composeRule.runOnIdle { assertTrue(wentBack) }
+    }
+
+    @Test
+    fun missions_claimedRewardBecomesDisabledClaimedButton() {
+        val baseProfile = profileFixture()
+        val claimedMission = baseProfile.progression.dailyMissions.single().copy(rewardClaimed = true)
+        val profile = baseProfile.copy(
+            progression = baseProfile.progression.copy(dailyMissions = listOf(claimedMission))
+        )
+
+        setAdaptiveContent(430.dp, 932.dp) {
+            ProfileSectionScreen(
+                state = GameState(profile = profile),
+                profile = profile,
+                section = ProfileSection.MISSIONS,
+                isExternalProfile = false,
+                canEdit = true,
+                onBack = {},
+                onRefresh = {},
+                onOpenMatchDetail = {},
+                onCloseMatchDetail = {},
+                onEquipCosmetics = { _, _ -> },
+                onClaimMissionReward = {},
+                onSave = { _, _ -> },
+                onOpenNotifications = {}
+            )
+        }
+
+        composeRule.onNodeWithTag("claim_mission:${claimedMission.code}")
+            .performScrollTo()
+            .assertIsDisplayed()
+            .assertIsNotEnabled()
+        composeRule.onNodeWithText("Đã nhận").assertIsDisplayed()
+        assertTrue(composeRule.onAllNodesWithContentDescription("Đã nhận thưởng").fetchSemanticsNodes().isEmpty())
     }
 
     @Test

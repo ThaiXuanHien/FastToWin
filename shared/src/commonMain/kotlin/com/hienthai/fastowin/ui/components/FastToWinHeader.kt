@@ -2,6 +2,7 @@ package com.hienthai.fastowin.ui.components
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
@@ -45,7 +46,9 @@ fun FastToWinHeader(
     modifier: Modifier = Modifier,
     onBack: (() -> Unit)? = null,
     applySafeDrawingInset: Boolean = true,
-    showNotifications: Boolean = true
+    showNotifications: Boolean = true,
+    showBalances: Boolean = true,
+    actions: @Composable RowScope.() -> Unit = {}
 ) {
     Surface(
         modifier = modifier.fillMaxWidth().testTag("app_header"),
@@ -80,9 +83,11 @@ fun FastToWinHeader(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
-            HeaderCurrency(amount = gold, label = "Vàng", isGem = false)
-            Spacer(modifier = Modifier.width(4.dp))
-            HeaderCurrency(amount = gems, label = "Gem", isGem = true)
+            if (showBalances) {
+                HeaderCurrency(amount = gold, label = "Vàng", isGem = false)
+                Spacer(modifier = Modifier.width(4.dp))
+                HeaderCurrency(amount = gems, label = "Gem", isGem = true)
+            }
             if (showNotifications) {
                 IconButton(onClick = onNotifications) {
                     BadgedBox(
@@ -98,6 +103,7 @@ fun FastToWinHeader(
                     }
                 }
             }
+            actions()
         }
     }
 }

@@ -391,9 +391,7 @@ private fun GameContent(
                     onOpen = controller::openNotification,
                     onDismiss = controller::dismissNotification,
                     onMarkAllRead = controller::markAllNotificationsRead,
-                    onClearAll = controller::clearNotifications,
-                    gold = state.profile?.progression?.gold ?: 0,
-                    gems = state.profile?.progression?.gems ?: 0
+                    onClearAll = controller::clearNotifications
                 )
 
                 showTutorial -> TutorialScreen(

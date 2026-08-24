@@ -3,9 +3,13 @@ package com.hienthai.fastowin
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.test.espresso.Espresso.pressBack
+import com.hienthai.fastowin.state.AppNotification
+import com.hienthai.fastowin.state.AppNotificationDestination
+import com.hienthai.fastowin.state.AppNotificationKind
 import com.hienthai.fastowin.state.GameState
 import com.hienthai.fastowin.state.PlayerState
 import com.hienthai.fastowin.ui.screens.GameScreen
@@ -59,6 +63,50 @@ class NavigationHeaderUiTest {
         pressBack()
 
         composeRule.runOnIdle { assertTrue(wentBack) }
+    }
+
+    @Test
+    fun notifications_placesBulkActionsInHeaderAndConfirmsBeforeClearing() {
+        var markedAllRead = false
+        var clearedAll = false
+        val notification = AppNotification(
+            id = "mission:daily",
+            kind = AppNotificationKind.MISSION,
+            title = "Hoàn thành nhiệm vụ",
+            message = "Bạn có phần thưởng mới.",
+            createdAtEpochMillis = 1L,
+            destination = AppNotificationDestination.PROFILE
+        )
+
+        composeRule.setContent {
+            FastToWinTheme {
+                NotificationsScreen(
+                    notifications = listOf(notification),
+                    onBack = {},
+                    onOpen = {},
+                    onDismiss = {},
+                    onMarkAllRead = { markedAllRead = true },
+                    onClearAll = { clearedAll = true }
+                )
+            }
+        }
+
+        composeRule.onNodeWithTag("header_gold").assertDoesNotExist()
+        composeRule.onNodeWithTag("header_gem").assertDoesNotExist()
+        composeRule.onNodeWithContentDescription("Đánh dấu tất cả đã đọc")
+            .assertIsDisplayed()
+            .performClick()
+        composeRule.runOnIdle { assertTrue(markedAllRead) }
+
+        composeRule.onNodeWithContentDescription("Xóa tất cả thông báo").performClick()
+        composeRule.onNodeWithText("Xóa tất cả thông báo?").assertIsDisplayed()
+        composeRule.runOnIdle { assertTrue(!clearedAll) }
+        composeRule.onNodeWithText("Hủy").performClick()
+        composeRule.runOnIdle { assertTrue(!clearedAll) }
+
+        composeRule.onNodeWithContentDescription("Xóa tất cả thông báo").performClick()
+        composeRule.onNodeWithText("Xóa tất cả").performClick()
+        composeRule.runOnIdle { assertTrue(clearedAll) }
     }
 
     @Test

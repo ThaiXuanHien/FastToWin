@@ -38,8 +38,6 @@ import androidx.compose.material.icons.filled.Collections
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.RadioButtonUnchecked
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material.icons.filled.PlayArrow
@@ -898,11 +896,6 @@ private fun MissionSectionContent(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    Icon(
-                        imageVector = if (mission.completed) Icons.Default.CheckCircle else Icons.Default.RadioButtonUnchecked,
-                        contentDescription = null,
-                        tint = if (mission.completed) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-                    )
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
@@ -928,11 +921,13 @@ private fun MissionSectionContent(
                         )
                     }
                     when {
-                        mission.rewardClaimed -> Icon(
-                            Icons.Default.CheckCircle,
-                            contentDescription = "Đã nhận thưởng",
-                            tint = MaterialTheme.colorScheme.primary
-                        )
+                        mission.rewardClaimed -> Button(
+                            onClick = {},
+                            enabled = false,
+                            modifier = Modifier.testTag("claim_mission:${mission.code}")
+                        ) {
+                            Text("Đã nhận")
+                        }
                         mission.completed && canEdit -> Button(
                             onClick = { onClaimMissionReward(mission.code) },
                             enabled = state.claimingMissionCode == null,
