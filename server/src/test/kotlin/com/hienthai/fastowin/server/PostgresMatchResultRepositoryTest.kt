@@ -158,6 +158,8 @@ class PostgresMatchResultRepositoryTest {
                 assertEquals(1016, profile.progression.season?.rating)
                 assertEquals(1, profile.progression.season?.placementMatchesPlayed)
                 assertEquals("Đang phân hạng", profile.progression.season?.tier)
+                assertEquals(7, profile.progression.season?.tierRewards?.size)
+                assertEquals(12, profile.progression.season?.tierRewards?.last()?.gems)
                 val firstCheckIn = profileRepository.claimDailyCheckIn(host.playerId)!!
                 val duplicateCheckIn = profileRepository.claimDailyCheckIn(host.playerId)!!
                 assertTrue(firstCheckIn.claimed)

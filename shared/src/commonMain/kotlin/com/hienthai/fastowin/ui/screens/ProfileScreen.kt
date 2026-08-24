@@ -115,6 +115,7 @@ import com.hienthai.fastowin.ui.components.FastToWinHeader
 import com.hienthai.fastowin.ui.components.WalletDeltaAmounts
 import com.hienthai.fastowin.ui.components.PlayerAvatar
 import com.hienthai.fastowin.ui.components.playerAvatarEmoji
+import com.hienthai.fastowin.ui.components.SeasonProgressCard
 import kotlinx.coroutines.delay
 
 enum class ProfileSection {
@@ -461,25 +462,7 @@ fun ProfileScreen(
             }
         }
 
-        progression.season?.let { season ->
-            val daysLeft = ((season.endsAtEpochMillis - epochMillis()).coerceAtLeast(0L) / 86_400_000L) + 1L
-            ElevatedCard(modifier = Modifier.fillMaxWidth()) {
-                Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                    Text(season.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black)
-                    Text(
-                        if (season.placementMatchesPlayed < season.placementMatchesRequired) {
-                            "Phân hạng ${season.placementMatchesPlayed}/${season.placementMatchesRequired} • Elo tạm thời ${season.rating}"
-                        } else {
-                            "${season.tier} • ${season.rating} Elo"
-                        },
-                        color = MaterialTheme.colorScheme.primary,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Text("Elo cao nhất mùa: ${season.peakRating}", style = MaterialTheme.typography.bodySmall)
-                    Text("Còn $daysLeft ngày • ${season.rewardDescription}", style = MaterialTheme.typography.bodySmall)
-                }
-            }
-        }
+        progression.season?.let { season -> SeasonProgressCard(season) }
 
         DailyCheckInCalendar(progression.dailyCheckIn)
 

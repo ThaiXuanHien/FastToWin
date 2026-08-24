@@ -40,6 +40,7 @@ import com.hienthai.fastowin.ui.components.SystemBackHandler
 import com.hienthai.fastowin.ui.layout.ResponsiveScreen
 import com.hienthai.fastowin.ui.components.FastToWinHeader
 import com.hienthai.fastowin.ui.components.PlayerAvatar
+import com.hienthai.fastowin.ui.components.SeasonProgressCard
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -103,32 +104,51 @@ fun LeaderboardScreen(
         }
 
         if (selectedMainTab == 0) {
-            Text(
-                if (showSeason) "Xếp hạng trong mùa hiện tại, tự làm mới sau mỗi trận."
-                else "Xếp theo Elo, sau đó số trận thắng, tỷ lệ thắng và điểm cao nhất.",
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                FilterChip(selected = showSeason, onClick = { showSeason = true }, label = {
-                    Text(leaderboard?.seasonName ?: "Mùa hiện tại")
-                })
-                FilterChip(selected = !showSeason, onClick = { showSeason = false }, label = { Text("Toàn thời gian") })
-            }
-
             val displayedCurrent = if (showSeason) leaderboard?.seasonCurrentPlayer else leaderboard?.currentPlayer
             val displayedTop = if (showSeason) leaderboard?.seasonTopPlayers.orEmpty() else leaderboard?.topPlayers.orEmpty()
-
-            displayedCurrent?.let { current ->
-                Text("Vị trí của bạn", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                LeaderboardCard(current, highlighted = true)
-            }
-
-            Text("Top người chơi", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-            if (displayedTop.isEmpty()) {
-                Text(if (showSeason) "Chưa có người chơi nào thi đấu trong mùa này." else "Chưa có người chơi nào hoàn thành trận đấu.")
-            } else {
-                LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            LazyColumn(
+                modifier = Modifier.fillMaxWidth().weight(1f),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                state.profile?.progression?.season?.let { season ->
+                    item(key = "season_progress") { SeasonProgressCard(season) }
+                }
+                item(key = "ranking_description") {
+                    Text(
+                        if (showSeason) "Xếp hạng trong mùa hiện tại, tự làm mới sau mỗi trận."
+                        else "Xếp theo Elo, sau đó số trận thắng, tỷ lệ thắng và điểm cao nhất.",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                item(key = "ranking_filters") {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        FilterChip(selected = showSeason, onClick = { showSeason = true }, label = {
+                            Text(leaderboard?.seasonName ?: "Mùa hiện tại")
+                        })
+                        FilterChip(
+                            selected = !showSeason,
+                            onClick = { showSeason = false },
+                            label = { Text("Toàn thời gian") }
+                        )
+                    }
+                }
+                displayedCurrent?.let { current ->
+                    item(key = "current_player_title") {
+                        Text("Vị trí của bạn", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    }
+                    item(key = "current_player") { LeaderboardCard(current, highlighted = true) }
+                }
+                item(key = "top_players_title") {
+                    Text("Top người chơi", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                }
+                if (displayedTop.isEmpty()) {
+                    item(key = "empty_players") {
+                        Text(
+                            if (showSeason) "Chưa có người chơi nào thi đấu trong mùa này."
+                            else "Chưa có người chơi nào hoàn thành trận đấu."
+                        )
+                    }
+                } else {
                     items(displayedTop, key = { it.playerCode }) { entry ->
                         val friend = state.social.friends.firstOrNull { it.playerCode == entry.playerCode }
                         LeaderboardCard(
@@ -140,20 +160,33 @@ fun LeaderboardScreen(
                 }
             }
         } else {
-            Text("Xếp hạng Bang hội theo tổng Elo của các thành viên.", color = MaterialTheme.colorScheme.onSurfaceVariant)
-            
             val displayedTopClans = leaderboard?.topClans.orEmpty()
-            
-            leaderboard?.currentClan?.let { currentClan ->
-                Text("Vị trí bang hội của bạn", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                ClanLeaderboardCard(currentClan, highlighted = true)
-            }
-            
-            Text("Top Bang hội", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-            if (displayedTopClans.isEmpty()) {
-                Text("Chưa có bang hội nào.")
-            } else {
-                LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            LazyColumn(
+                modifier = Modifier.fillMaxWidth().weight(1f),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                item(key = "clan_description") {
+                    Text(
+                        "Xếp hạng Bang hội theo tổng Elo của các thành viên.",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                leaderboard?.currentClan?.let { currentClan ->
+                    item(key = "current_clan_title") {
+                        Text(
+                            "Vị trí bang hội của bạn",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                    item(key = "current_clan") { ClanLeaderboardCard(currentClan, highlighted = true) }
+                }
+                item(key = "top_clans_title") {
+                    Text("Top Bang hội", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                }
+                if (displayedTopClans.isEmpty()) {
+                    item(key = "empty_clans") { Text("Chưa có bang hội nào.") }
+                } else {
                     items(displayedTopClans, key = { it.clanId }) { entry ->
                         ClanLeaderboardCard(
                             entry = entry,

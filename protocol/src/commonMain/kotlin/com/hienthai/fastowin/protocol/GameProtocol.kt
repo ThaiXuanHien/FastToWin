@@ -4,7 +4,7 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
-const val PROTOCOL_VERSION = 30
+const val PROTOCOL_VERSION = 31
 const val GAME_NUMBER_COUNT = 50
 const val MAX_PROFILE_DISPLAY_NAME_LENGTH = 32
 val DAILY_CHECK_IN_REWARDS_XP = listOf(10, 10, 15, 15, 20, 25, 40)
@@ -63,6 +63,23 @@ enum class RankedTier(val displayName: String, val minimumRating: Int) {
 fun rankedTierFor(rating: Int): RankedTier = RankedTier.entries
     .lastOrNull { rating >= it.minimumRating }
     ?: RankedTier.BRONZE
+
+@Serializable
+data class SeasonTierRewardSnapshot(
+    val tier: RankedTier,
+    val gold: Int,
+    val gems: Int = 0
+)
+
+val STANDARD_SEASON_TIER_REWARDS = listOf(
+    SeasonTierRewardSnapshot(RankedTier.BRONZE, gold = 300),
+    SeasonTierRewardSnapshot(RankedTier.SILVER, gold = 600),
+    SeasonTierRewardSnapshot(RankedTier.GOLD, gold = 1_000, gems = 1),
+    SeasonTierRewardSnapshot(RankedTier.PLATINUM, gold = 1_500, gems = 3),
+    SeasonTierRewardSnapshot(RankedTier.DIAMOND, gold = 2_500, gems = 5),
+    SeasonTierRewardSnapshot(RankedTier.MASTER, gold = 4_000, gems = 8),
+    SeasonTierRewardSnapshot(RankedTier.CHALLENGER, gold = 6_000, gems = 12)
+)
 
 @Serializable
 enum class RoomPhase {
@@ -287,7 +304,8 @@ data class SeasonSnapshot(
     val rewardDescription: String,
     val placementMatchesPlayed: Int = 0,
     val placementMatchesRequired: Int = 5,
-    val peakRating: Int = rating
+    val peakRating: Int = rating,
+    val tierRewards: List<SeasonTierRewardSnapshot> = emptyList()
 )
 
 @Serializable

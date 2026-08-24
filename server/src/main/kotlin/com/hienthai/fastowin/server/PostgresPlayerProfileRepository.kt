@@ -23,6 +23,7 @@ import com.hienthai.fastowin.protocol.MissionSnapshot
 import com.hienthai.fastowin.protocol.PlayerProgressionSnapshot
 import com.hienthai.fastowin.protocol.WalletTransactionSnapshot
 import com.hienthai.fastowin.protocol.SeasonSnapshot
+import com.hienthai.fastowin.protocol.STANDARD_SEASON_TIER_REWARDS
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.sql.Date
@@ -365,7 +366,8 @@ class PostgresPlayerProfileRepository(
                             endsAtEpochMillis = result.getTimestamp("ends_at").time,
                             rewardDescription = result.getString("reward_description"),
                             placementMatchesPlayed = placementMatches,
-                            peakRating = result.getInt("peak_rating")
+                            peakRating = result.getInt("peak_rating"),
+                            tierRewards = STANDARD_SEASON_TIER_REWARDS
                         )
                     }
                 }
