@@ -26,7 +26,12 @@ class PlayerAvatarUiTest {
             "frame_silver",
             "frame_gold",
             "frame_perfect",
-            "frame_persistent"
+            "frame_persistent",
+            "season_1_gold",
+            "season_1_platinum",
+            "season_1_diamond",
+            "season_1_master",
+            "season_1_challenger"
         )
 
         composeRule.setContent {

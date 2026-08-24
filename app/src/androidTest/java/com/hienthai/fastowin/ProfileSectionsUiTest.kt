@@ -319,7 +319,17 @@ class ProfileSectionsUiTest {
         composeRule.runOnIdle {
             assertEquals("frame_persistent" to "title_rookie", equippedFrame)
         }
+        composeRule.onNodeWithTag("collection_frame:season_1_gold")
+            .performScrollTo()
+            .assertIsDisplayed()
+            .performClick()
+        composeRule.runOnIdle {
+            assertEquals("season_1_gold" to "title_rookie", equippedFrame)
+        }
         composeRule.onNodeWithText("Danh hiệu").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("Chinh phục • Mùa Khởi Đầu")
+            .performScrollTo()
+            .assertIsDisplayed()
         composeRule.onNodeWithText("Ảnh đại diện đặc biệt").performScrollTo().assertIsDisplayed()
         assertTrue(composeRule.onAllNodesWithText("Trang chủ").fetchSemanticsNodes().isEmpty())
     }
@@ -443,8 +453,10 @@ private fun profileFixture(): PlayerProfileSnapshot = PlayerProfileSnapshot(
             CosmeticSnapshot("frame_default", "Khung mặc định", CosmeticType.FRAME, unlocked = true, equipped = true),
             CosmeticSnapshot("frame_silver", "Khung Bạc", CosmeticType.FRAME, unlocked = true, equipped = false),
             CosmeticSnapshot("frame_persistent", "Khung Bền bỉ", CosmeticType.FRAME, unlocked = true, equipped = false),
+            CosmeticSnapshot("season_1_gold", "Khung Mùa Khởi Đầu • Vàng", CosmeticType.FRAME, unlocked = true, equipped = false),
             CosmeticSnapshot("title_rookie", "Tân binh", CosmeticType.TITLE, unlocked = true, equipped = true),
             CosmeticSnapshot("title_diligent", "Chuyên cần", CosmeticType.TITLE, unlocked = true, equipped = false),
+            CosmeticSnapshot("season_1_silver", "Chinh phục • Mùa Khởi Đầu", CosmeticType.TITLE, unlocked = true, equipped = false),
             CosmeticSnapshot("avatar_checkin_50", "Chuyên cần 50", CosmeticType.AVATAR, unlocked = true, equipped = false)
         )
     ),

@@ -26,6 +26,8 @@ import com.hienthai.fastowin.protocol.SeasonSnapshot
 import com.hienthai.fastowin.protocol.SeasonRewardReceiptSnapshot
 import com.hienthai.fastowin.protocol.SeasonTierRewardSnapshot
 import com.hienthai.fastowin.protocol.STANDARD_SEASON_TIER_REWARDS
+import com.hienthai.fastowin.protocol.seasonCosmeticReward
+import com.hienthai.fastowin.protocol.seasonTierRewards
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.sql.Date
@@ -339,7 +341,7 @@ class PostgresPlayerProfileRepository(
             }
             val season = connection.prepareStatement(
                 """
-                SELECT s.name, s.ends_at, s.reward_description,
+                SELECT s.season_number, s.name, s.ends_at, s.reward_description,
                        COALESCE(sr.rating, ?) AS rating,
                        COALESCE(sr.placement_matches, 0) AS placement_matches,
                        COALESCE(sr.peak_rating, ?) AS peak_rating
@@ -357,8 +359,9 @@ class PostgresPlayerProfileRepository(
                     if (!result.next()) null else {
                         val rating = result.getInt("rating")
                         val placementMatches = result.getInt("placement_matches")
+                        val seasonName = result.getString("name")
                         SeasonSnapshot(
-                            name = result.getString("name"),
+                            name = seasonName,
                             tier = if (placementMatches < PLACEMENT_MATCHES_REQUIRED) {
                                 "Đang phân hạng"
                             } else {
@@ -369,15 +372,16 @@ class PostgresPlayerProfileRepository(
                             rewardDescription = result.getString("reward_description"),
                             placementMatchesPlayed = placementMatches,
                             peakRating = result.getInt("peak_rating"),
-                            tierRewards = STANDARD_SEASON_TIER_REWARDS
+                            tierRewards = seasonTierRewards(result.getInt("season_number"), seasonName)
                         )
                     }
                 }
             }
             val latestSeasonReward = connection.prepareStatement(
                 """
-                SELECT s.name, src.tier, src.peak_rating, src.reward_gold,
-                       src.reward_gems, src.awarded_at
+                SELECT s.season_number, s.name, src.tier, src.peak_rating, src.reward_gold,
+                       src.reward_gems, src.reward_cosmetic_id, src.reward_cosmetic_type,
+                       src.awarded_at
                 FROM season_reward_claims src
                 JOIN seasons s ON s.id = src.season_id
                 WHERE src.user_id = ?
@@ -387,14 +391,51 @@ class PostgresPlayerProfileRepository(
             ).use { statement ->
                 statement.setObject(1, userId)
                 statement.executeQuery().use { result ->
-                    if (!result.next()) null else SeasonRewardReceiptSnapshot(
-                        seasonName = result.getString("name"),
-                        tier = com.hienthai.fastowin.protocol.RankedTier.valueOf(result.getString("tier")),
-                        peakRating = result.getInt("peak_rating"),
-                        gold = result.getInt("reward_gold"),
-                        gems = result.getInt("reward_gems"),
-                        awardedAtEpochMillis = result.getTimestamp("awarded_at").time
-                    )
+                    if (!result.next()) null else {
+                        val seasonName = result.getString("name")
+                        val tier = com.hienthai.fastowin.protocol.RankedTier.valueOf(result.getString("tier"))
+                        val cosmetic = seasonCosmeticReward(result.getInt("season_number"), seasonName, tier)
+                        SeasonRewardReceiptSnapshot(
+                            seasonName = seasonName,
+                            tier = tier,
+                            peakRating = result.getInt("peak_rating"),
+                            gold = result.getInt("reward_gold"),
+                            gems = result.getInt("reward_gems"),
+                            awardedAtEpochMillis = result.getTimestamp("awarded_at").time,
+                            cosmetic = cosmetic.copy(
+                                id = result.getString("reward_cosmetic_id"),
+                                type = CosmeticType.valueOf(result.getString("reward_cosmetic_type"))
+                            )
+                        )
+                    }
+                }
+            }
+            val seasonCosmetics = connection.prepareStatement(
+                """
+                SELECT s.season_number, s.name, src.tier, src.reward_cosmetic_id,
+                       src.reward_cosmetic_type
+                FROM season_reward_claims src
+                JOIN seasons s ON s.id = src.season_id
+                WHERE src.user_id = ?
+                ORDER BY src.awarded_at DESC
+                """.trimIndent()
+            ).use { statement ->
+                statement.setObject(1, userId)
+                statement.executeQuery().use { result ->
+                    buildList {
+                        while (result.next()) {
+                            val cosmeticId = result.getString("reward_cosmetic_id")
+                            if (cosmeticId !in ownedCosmetics) continue
+                            val type = CosmeticType.valueOf(result.getString("reward_cosmetic_type"))
+                            val tier = com.hienthai.fastowin.protocol.RankedTier.valueOf(result.getString("tier"))
+                            val reward = seasonCosmeticReward(
+                                result.getInt("season_number"),
+                                result.getString("name"),
+                                tier
+                            )
+                            add(OwnedSeasonCosmetic(cosmeticId, reward.name, type))
+                        }
+                    }
                 }
             }
             val experiencePoints = progressionRow.experiencePoints
@@ -404,12 +445,16 @@ class PostgresPlayerProfileRepository(
                 level,
                 achievementCodes,
                 progressionRow.totalDailyCheckIns
-            )
+            ).toMutableSet().apply {
+                addAll(seasonCosmetics.filter { it.type == CosmeticType.FRAME }.map { it.id })
+            }
             val unlockedTitles = unlockedTitleIds(
                 base.statistics.wins,
                 achievementCodes,
                 progressionRow.bestDailyCheckInStreak
-            )
+            ).toMutableSet().apply {
+                addAll(seasonCosmetics.filter { it.type == CosmeticType.TITLE }.map { it.id })
+            }
             val unlockedAvatars = unlockedAvatarIds(progressionRow.totalDailyCheckIns)
             val equippedFrameId = progressionRow.equippedFrameId.takeIf(unlockedFrames::contains) ?: "frame_default"
             val equippedTitleId = progressionRow.equippedTitleId.takeIf(unlockedTitles::contains) ?: "title_rookie"
@@ -442,7 +487,15 @@ class PostgresPlayerProfileRepository(
                     DAILY_CHECK_IN_AVATAR_ID in unlockedAvatars,
                     base.avatarId
                 )
-            )
+            ) + seasonCosmetics.map { owned ->
+                cosmetic(
+                    owned.id,
+                    owned.name,
+                    owned.type,
+                    unlocked = true,
+                    equippedId = if (owned.type == CosmeticType.FRAME) equippedFrameId else equippedTitleId
+                )
+            }
             base.copy(
                 recentMatches = recentMatches,
                 achievements = achievements,
@@ -506,7 +559,7 @@ class PostgresPlayerProfileRepository(
 
                 val completedSeasons = connection.prepareStatement(
                     """
-                    SELECT s.id, sr.peak_rating
+                    SELECT s.id, s.season_number, s.name, sr.peak_rating
                     FROM season_ratings sr
                     JOIN seasons s ON s.id = sr.season_id
                     WHERE sr.user_id = ?
@@ -526,6 +579,8 @@ class PostgresPlayerProfileRepository(
                             while (result.next()) add(
                                 CompletedSeasonReward(
                                     seasonId = result.getObject("id", UUID::class.java),
+                                    seasonNumber = result.getInt("season_number"),
+                                    seasonName = result.getString("name"),
                                     peakRating = result.getInt("peak_rating")
                                 )
                             )
@@ -537,11 +592,17 @@ class PostgresPlayerProfileRepository(
                 var totalGems = 0
                 completedSeasons.forEach { completed ->
                     val reward = seasonRewardForPeakRating(completed.peakRating)
+                    val cosmetic = seasonCosmeticReward(
+                        completed.seasonNumber,
+                        completed.seasonName,
+                        reward.tier
+                    )
                     val inserted = connection.prepareStatement(
                         """
                         INSERT INTO season_reward_claims (
-                            season_id, user_id, tier, peak_rating, reward_gold, reward_gems
-                        ) VALUES (?, ?, ?, ?, ?, ?)
+                            season_id, user_id, tier, peak_rating, reward_gold, reward_gems,
+                            reward_cosmetic_id, reward_cosmetic_type
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                         ON CONFLICT (season_id, user_id) DO NOTHING
                         """.trimIndent()
                     ).use { statement ->
@@ -551,9 +612,23 @@ class PostgresPlayerProfileRepository(
                         statement.setInt(4, completed.peakRating)
                         statement.setInt(5, reward.gold)
                         statement.setInt(6, reward.gems)
+                        statement.setString(7, cosmetic.id)
+                        statement.setString(8, cosmetic.type.name)
                         statement.executeUpdate() == 1
                     }
                     if (inserted) {
+                        connection.prepareStatement(
+                            """
+                            INSERT INTO player_cosmetics (user_id, cosmetic_id, cosmetic_type, acquired_at)
+                            VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+                            ON CONFLICT (user_id, cosmetic_id) DO NOTHING
+                            """.trimIndent()
+                        ).use { statement ->
+                            statement.setObject(1, userId)
+                            statement.setString(2, cosmetic.id)
+                            statement.setString(3, cosmetic.type.name)
+                            statement.executeUpdate()
+                        }
                         insertWalletTransaction(
                             connection = connection,
                             userId = userId,
@@ -1298,7 +1373,15 @@ private data class ProgressionRow(
 
 private data class CompletedSeasonReward(
     val seasonId: UUID,
+    val seasonNumber: Int,
+    val seasonName: String,
     val peakRating: Int
+)
+
+private data class OwnedSeasonCosmetic(
+    val id: String,
+    val name: String,
+    val type: CosmeticType
 )
 
 internal fun seasonRewardForPeakRating(peakRating: Int): SeasonTierRewardSnapshot =

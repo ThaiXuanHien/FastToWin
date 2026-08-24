@@ -38,6 +38,7 @@ import androidx.compose.material.icons.filled.Devices
 import androidx.compose.material.icons.filled.Collections
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.MilitaryTech
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
@@ -1043,14 +1044,62 @@ private fun CollectionSectionContent(
         }
     }
     Text("Danh hiệu", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        items(cosmetics.filter { it.type == CosmeticType.TITLE }, key = { it.id }) { cosmetic ->
-            FilterChip(
-                selected = cosmetic.equipped,
-                enabled = canEdit && cosmetic.unlocked && !isLoading,
+    Column(
+        modifier = Modifier.fillMaxWidth().testTag("collection_titles"),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        cosmetics.filter { it.type == CosmeticType.TITLE }.forEach { cosmetic ->
+            val canEquip = canEdit && cosmetic.unlocked && !isLoading
+            Surface(
                 onClick = { onEquipCosmetics(equippedFrame, cosmetic.id) },
-                label = { Text(cosmetic.displayLabel()) }
-            )
+                enabled = canEquip,
+                modifier = Modifier.fillMaxWidth().testTag("collection_title:${cosmetic.id}"),
+                shape = RoundedCornerShape(16.dp),
+                color = if (cosmetic.equipped) {
+                    MaterialTheme.colorScheme.secondaryContainer
+                } else {
+                    MaterialTheme.colorScheme.surfaceContainer
+                },
+                border = BorderStroke(
+                    width = if (cosmetic.equipped) 2.dp else 1.dp,
+                    color = if (cosmetic.equipped) {
+                        MaterialTheme.colorScheme.secondary
+                    } else {
+                        MaterialTheme.colorScheme.outlineVariant
+                    }
+                )
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(14.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        Icons.Default.MilitaryTech,
+                        contentDescription = null,
+                        modifier = Modifier.size(30.dp),
+                        tint = if (cosmetic.equipped) {
+                            MaterialTheme.colorScheme.onSecondaryContainer
+                        } else {
+                            MaterialTheme.colorScheme.primary
+                        }
+                    )
+                    Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                        Text(cosmetic.name, fontWeight = FontWeight.Bold)
+                        Text(
+                            when {
+                                cosmetic.equipped -> "Đang dùng"
+                                cosmetic.unlocked && canEquip -> "Chạm để dùng"
+                                cosmetic.unlocked -> "Đã mở khóa"
+                                else -> cosmetic.unlockRequirement()?.let { "Mở khóa: $it" }
+                                    ?: "Chưa mở khóa"
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
         }
     }
     val specialAvatars = cosmetics.filter { it.type == CosmeticType.AVATAR }

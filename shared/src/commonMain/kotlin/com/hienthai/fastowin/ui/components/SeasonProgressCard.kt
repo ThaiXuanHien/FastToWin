@@ -6,10 +6,12 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.EmojiEvents
+import androidx.compose.material.icons.filled.MilitaryTech
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.Icon
@@ -34,6 +36,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.hienthai.fastowin.platform.epochMillis
 import com.hienthai.fastowin.protocol.RankedTier
+import com.hienthai.fastowin.protocol.CosmeticType
+import com.hienthai.fastowin.protocol.SeasonCosmeticRewardSnapshot
 import com.hienthai.fastowin.protocol.SeasonSnapshot
 import com.hienthai.fastowin.protocol.SeasonRewardReceiptSnapshot
 import com.hienthai.fastowin.protocol.SeasonTierRewardSnapshot
@@ -129,7 +133,16 @@ fun SeasonProgressCard(
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text("Mốc thưởng đang giữ", style = MaterialTheme.typography.labelMedium)
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("Mốc thưởng đang giữ", style = MaterialTheme.typography.labelMedium)
+                                reward.cosmetic?.let { cosmetic ->
+                                    Text(
+                                        cosmetic.name,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                                    )
+                                }
+                            }
                             RewardAmounts(gold = reward.gold, xp = 0, gems = reward.gems)
                         }
                     }
@@ -196,6 +209,14 @@ private fun SeasonRewardRow(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+                reward.cosmetic?.let { cosmetic ->
+                    Text(
+                        "${cosmetic.type.rewardTypeLabel()}: ${cosmetic.name}",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.testTag("season_reward_cosmetic:${reward.tier.name}")
+                    )
+                }
             }
             RewardAmounts(gold = reward.gold, xp = 0, gems = reward.gems)
         }
@@ -215,41 +236,101 @@ fun SeasonRewardReceiptCard(
                 stateDescription = "Đã nhận thưởng ${receipt.seasonName}, bậc ${receipt.tier.displayName}"
             }
     ) {
-        Row(
+        Column(
             modifier = Modifier.fillMaxWidth().padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Surface(
+                    shape = MaterialTheme.shapes.medium,
+                    color = MaterialTheme.colorScheme.secondaryContainer
+                ) {
+                    Icon(
+                        Icons.Default.EmojiEvents,
+                        contentDescription = null,
+                        modifier = Modifier.padding(10.dp),
+                        tint = MaterialTheme.colorScheme.onSecondaryContainer
+                    )
+                }
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Text("Thưởng mùa đã nhận", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    Text(
+                        "${receipt.seasonName} • ${receipt.tier.displayName} • ${receipt.peakRating} Elo",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(
+                        "Đã cộng vào tài sản",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+            }
+            RewardAmounts(gold = receipt.gold, xp = 0, gems = receipt.gems)
+            receipt.cosmetic?.let { cosmetic -> SeasonCosmeticRewardCard(cosmetic) }
+        }
+    }
+}
+
+@Composable
+private fun SeasonCosmeticRewardCard(cosmetic: SeasonCosmeticRewardSnapshot) {
+    Surface(
+        modifier = Modifier.fillMaxWidth().testTag("season_reward_receipt_cosmetic"),
+        shape = MaterialTheme.shapes.medium,
+        color = MaterialTheme.colorScheme.primaryContainer
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(12.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Surface(
-                shape = MaterialTheme.shapes.medium,
-                color = MaterialTheme.colorScheme.secondaryContainer
-            ) {
+            if (cosmetic.type == CosmeticType.FRAME) {
+                PlayerAvatar(
+                    displayName = "Phần thưởng mùa",
+                    avatarId = "trophy",
+                    frameId = cosmetic.id,
+                    size = 48.dp
+                )
+            } else {
                 Icon(
-                    Icons.Default.EmojiEvents,
+                    Icons.Default.MilitaryTech,
                     contentDescription = null,
-                    modifier = Modifier.padding(10.dp),
-                    tint = MaterialTheme.colorScheme.onSecondaryContainer
+                    modifier = Modifier.size(40.dp),
+                    tint = MaterialTheme.colorScheme.onPrimaryContainer
                 )
             }
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                Text("Thưởng mùa đã nhận", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    "${receipt.seasonName} • ${receipt.tier.displayName} • ${receipt.peakRating} Elo",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Text(
-                    "Đã cộng vào tài sản",
+                    cosmetic.type.rewardTypeLabel(),
                     style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.primary
+                    color = MaterialTheme.colorScheme.onPrimaryContainer
+                )
+                Text(
+                    cosmetic.name,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer
+                )
+                Text(
+                    "Đã thêm vào Bộ sưu tập",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer
                 )
             }
-            RewardAmounts(gold = receipt.gold, xp = 0, gems = receipt.gems)
         }
     }
+}
+
+private fun CosmeticType.rewardTypeLabel(): String = when (this) {
+    CosmeticType.FRAME -> "Khung mùa độc quyền"
+    CosmeticType.TITLE -> "Danh hiệu mùa độc quyền"
+    else -> "Ngoại trang mùa độc quyền"
 }
 
 internal fun nextRankedTier(rating: Int): RankedTier? = RankedTier.entries

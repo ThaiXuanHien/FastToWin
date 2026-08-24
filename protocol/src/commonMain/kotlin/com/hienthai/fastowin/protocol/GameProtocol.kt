@@ -4,7 +4,7 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
-const val PROTOCOL_VERSION = 33
+const val PROTOCOL_VERSION = 34
 const val GAME_NUMBER_COUNT = 50
 const val MAX_PROFILE_DISPLAY_NAME_LENGTH = 32
 val DAILY_CHECK_IN_REWARDS_XP = listOf(10, 10, 15, 15, 20, 25, 40)
@@ -65,10 +65,18 @@ fun rankedTierFor(rating: Int): RankedTier = RankedTier.entries
     ?: RankedTier.BRONZE
 
 @Serializable
+data class SeasonCosmeticRewardSnapshot(
+    val id: String,
+    val name: String,
+    val type: CosmeticType
+)
+
+@Serializable
 data class SeasonTierRewardSnapshot(
     val tier: RankedTier,
     val gold: Int,
-    val gems: Int = 0
+    val gems: Int = 0,
+    val cosmetic: SeasonCosmeticRewardSnapshot? = null
 )
 
 val STANDARD_SEASON_TIER_REWARDS = listOf(
@@ -80,6 +88,29 @@ val STANDARD_SEASON_TIER_REWARDS = listOf(
     SeasonTierRewardSnapshot(RankedTier.MASTER, gold = 4_000, gems = 8),
     SeasonTierRewardSnapshot(RankedTier.CHALLENGER, gold = 6_000, gems = 12)
 )
+
+fun seasonCosmeticReward(
+    seasonNumber: Int,
+    seasonName: String,
+    tier: RankedTier
+): SeasonCosmeticRewardSnapshot {
+    val type = if (tier <= RankedTier.SILVER) CosmeticType.TITLE else CosmeticType.FRAME
+    val name = when (tier) {
+        RankedTier.BRONZE -> "Đấu sĩ • $seasonName"
+        RankedTier.SILVER -> "Chinh phục • $seasonName"
+        else -> "Khung $seasonName • ${tier.displayName}"
+    }
+    return SeasonCosmeticRewardSnapshot(
+        id = "season_${seasonNumber}_${tier.name.lowercase()}",
+        name = name,
+        type = type
+    )
+}
+
+fun seasonTierRewards(seasonNumber: Int, seasonName: String): List<SeasonTierRewardSnapshot> =
+    STANDARD_SEASON_TIER_REWARDS.map { reward ->
+        reward.copy(cosmetic = seasonCosmeticReward(seasonNumber, seasonName, reward.tier))
+    }
 
 @Serializable
 enum class RoomPhase {
@@ -315,7 +346,8 @@ data class SeasonRewardReceiptSnapshot(
     val peakRating: Int,
     val gold: Int,
     val gems: Int = 0,
-    val awardedAtEpochMillis: Long
+    val awardedAtEpochMillis: Long,
+    val cosmetic: SeasonCosmeticRewardSnapshot? = null
 )
 
 @Serializable

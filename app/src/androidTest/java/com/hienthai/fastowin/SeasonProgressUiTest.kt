@@ -23,9 +23,10 @@ import com.hienthai.fastowin.protocol.LeaderboardSnapshot
 import com.hienthai.fastowin.protocol.PlayerProfileSnapshot
 import com.hienthai.fastowin.protocol.PlayerProgressionSnapshot
 import com.hienthai.fastowin.protocol.RankedTier
-import com.hienthai.fastowin.protocol.STANDARD_SEASON_TIER_REWARDS
 import com.hienthai.fastowin.protocol.SeasonRewardReceiptSnapshot
 import com.hienthai.fastowin.protocol.SeasonSnapshot
+import com.hienthai.fastowin.protocol.seasonCosmeticReward
+import com.hienthai.fastowin.protocol.seasonTierRewards
 import com.hienthai.fastowin.state.GameState
 import com.hienthai.fastowin.ui.screens.LeaderboardScreen
 import com.hienthai.fastowin.ui.theme.FastToWinTheme
@@ -72,12 +73,15 @@ class SeasonProgressUiTest {
         composeRule.onNodeWithTag("season_reward:CHALLENGER")
             .performScrollTo()
             .assertIsDisplayed()
+        composeRule.onNodeWithTag("season_reward_cosmetic:CHALLENGER").assertIsDisplayed()
         composeRule.onNodeWithTag("leaderboard_players_list")
             .performScrollToNode(hasTestTag("leaderboard_period_previous"))
         composeRule.onNodeWithTag("leaderboard_period_previous").performClick()
         composeRule.onNodeWithTag("leaderboard_players_list")
             .performScrollToNode(hasTestTag("season_reward_receipt"))
         composeRule.onNodeWithTag("season_reward_receipt").assertIsDisplayed()
+        composeRule.onNodeWithTag("season_reward_receipt_cosmetic").assertIsDisplayed()
+        composeRule.onNodeWithTag("avatar_frame:season_1_gold").assertIsDisplayed()
     }
 
     @Test
@@ -120,7 +124,7 @@ private fun seasonProfileFixture(): PlayerProfileSnapshot {
         rewardDescription = "Thưởng theo bậc cao nhất",
         placementMatchesPlayed = 5,
         peakRating = 1_350,
-        tierRewards = STANDARD_SEASON_TIER_REWARDS
+        tierRewards = seasonTierRewards(2, "Mùa Bứt Phá")
     )
     return PlayerProfileSnapshot(
         userId = "player-hien",
@@ -134,7 +138,8 @@ private fun seasonProfileFixture(): PlayerProfileSnapshot {
                 peakRating = 1_380,
                 gold = 1_000,
                 gems = 1,
-                awardedAtEpochMillis = System.currentTimeMillis() - 86_400_000L
+                awardedAtEpochMillis = System.currentTimeMillis() - 86_400_000L,
+                cosmetic = seasonCosmeticReward(1, "Mùa Khởi Đầu", RankedTier.GOLD)
             )
         )
     )

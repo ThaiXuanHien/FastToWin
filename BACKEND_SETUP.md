@@ -106,7 +106,7 @@ Mỗi người chơi bắt đầu với **1000 Elo**. Sau mỗi trận hai ngư�
 
 Server tự xét và lưu thành tích, không dựa vào dữ liệu client. Bộ thành tích đầu tiên gồm: chiến thắng đầu tiên, 10 chiến thắng, chuỗi thắng 5, có lượt đúng và không bấm sai trong cả trận, và tự chọn đủ 50 số trong tối đa 30 giây. Khóa chính `(user_id, achievement_code)` bảo đảm mỗi thành tích chỉ được mở một lần.
 
-Mỗi trận cấp XP và vàng theo kết quả. Hồ sơ hiển thị cấp độ, tiến trình XP, Elo mùa hiện tại, nhiệm vụ ngày/tuần và vật phẩm đã mở khóa. Người chơi có thể trang bị khung avatar hoặc danh hiệu; backend kiểm tra vật phẩm đã mở trước khi lưu. Mùa khởi đầu được tạo bởi migration `V13`; từ migration `V33`, backend tự chốt bảng xếp hạng, tạo mùa mới ba tháng một lần và đưa Elo mùa về mốc 1.000 mà không thay đổi Elo toàn thời gian.
+Mỗi trận cấp XP và vàng theo kết quả. Hồ sơ hiển thị cấp độ, tiến trình XP, nhiệm vụ ngày/tuần và vật phẩm đã mở khóa. Người chơi có thể trang bị khung avatar hoặc danh hiệu; backend kiểm tra vật phẩm đã mở trước khi lưu. Mùa khởi đầu được tạo bởi migration `V13`; từ migration `V33`, backend tự chốt bảng xếp hạng, tạo mùa mới ba tháng một lần và đưa Elo mùa về mốc 1.000 mà không thay đổi Elo toàn thời gian. Migration `V35` bổ sung ngoại trang riêng theo từng mùa: bậc Đồng/Bạc nhận danh hiệu, từ Vàng trở lên nhận khung theo bậc; việc cấp tiền và ngoại trang dùng cùng transaction và không thể nhận trùng.
 
 Âm thanh, rung, chủ đề, màu bàn số, cỡ chữ, hướng dẫn lần đầu và chế độ luyện tập offline được lưu cục bộ trên thiết bị. Luyện tập không gửi kết quả lên backend và không ảnh hưởng Elo.
 
