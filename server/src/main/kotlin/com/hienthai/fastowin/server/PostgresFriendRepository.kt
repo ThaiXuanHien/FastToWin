@@ -17,10 +17,12 @@ class PostgresFriendRepository(private val dataSource: DataSource) : FriendRepos
             val currentId = UUID.fromString(userId)
             val friends = connection.prepareStatement(
                 """
-                SELECT u.id, p.display_name, p.player_code, p.avatar_url
+                SELECT u.id, p.display_name, p.player_code, p.avatar_url,
+                       COALESCE(s.equipped_frame_id, 'frame_default') AS frame_id
                 FROM friendships f
                 JOIN users u ON u.id = CASE WHEN f.requester_id = ? THEN f.addressee_id ELSE f.requester_id END
                 JOIN profiles p ON p.user_id = u.id
+                LEFT JOIN player_stats s ON s.user_id = u.id
                 WHERE (f.requester_id = ? OR f.addressee_id = ?)
                   AND f.status = 'ACCEPTED' AND u.status = 'ACTIVE'
                 ORDER BY LOWER(p.display_name), p.player_code
@@ -35,7 +37,8 @@ class PostgresFriendRepository(private val dataSource: DataSource) : FriendRepos
                             userId = result.getObject("id", UUID::class.java).toString(),
                             displayName = result.getString("display_name"),
                             playerCode = result.getString("player_code"),
-                            avatarId = result.getString("avatar_url")
+                            avatarId = result.getString("avatar_url"),
+                            frameId = result.getString("frame_id")
                         ))
                     }
                 }
@@ -44,10 +47,12 @@ class PostgresFriendRepository(private val dataSource: DataSource) : FriendRepos
             val outgoing = loadRequests(connection, currentId, incoming = false)
             val blockedPlayers = connection.prepareStatement(
                 """
-                SELECT u.id, p.display_name, p.player_code, p.avatar_url
+                SELECT u.id, p.display_name, p.player_code, p.avatar_url,
+                       COALESCE(s.equipped_frame_id, 'frame_default') AS frame_id
                 FROM player_blocks b
                 JOIN users u ON u.id = b.blocked_id
                 JOIN profiles p ON p.user_id = u.id
+                LEFT JOIN player_stats s ON s.user_id = u.id
                 WHERE b.blocker_id = ? AND u.status = 'ACTIVE'
                 ORDER BY LOWER(p.display_name), p.player_code
                 """.trimIndent()
@@ -59,7 +64,8 @@ class PostgresFriendRepository(private val dataSource: DataSource) : FriendRepos
                             userId = result.getObject("id", UUID::class.java).toString(),
                             displayName = result.getString("display_name"),
                             playerCode = result.getString("player_code"),
-                            avatarId = result.getString("avatar_url")
+                            avatarId = result.getString("avatar_url"),
+                            frameId = result.getString("frame_id")
                         ))
                     }
                 }
@@ -67,6 +73,7 @@ class PostgresFriendRepository(private val dataSource: DataSource) : FriendRepos
             val recentPlayers = connection.prepareStatement(
                 """
                 SELECT opponent.id, profile.display_name, profile.player_code, profile.avatar_url,
+                       COALESCE(opponent_stats.equipped_frame_id, 'frame_default') AS frame_id,
                        MAX(m.ended_at) AS last_played_at, COUNT(*) AS matches_played
                 FROM match_players current_player
                 JOIN matches m ON m.id = current_player.match_id
@@ -75,10 +82,12 @@ class PostgresFriendRepository(private val dataSource: DataSource) : FriendRepos
                  AND opponent_player.user_id <> current_player.user_id
                 JOIN users opponent ON opponent.id = opponent_player.user_id
                 JOIN profiles profile ON profile.user_id = opponent.id
+                LEFT JOIN player_stats opponent_stats ON opponent_stats.user_id = opponent.id
                 WHERE current_player.user_id = ?
                   AND opponent.account_type = 'REGISTERED'
                   AND opponent.status = 'ACTIVE'
-                GROUP BY opponent.id, profile.display_name, profile.player_code, profile.avatar_url
+                GROUP BY opponent.id, profile.display_name, profile.player_code, profile.avatar_url,
+                         opponent_stats.equipped_frame_id
                 ORDER BY last_played_at DESC
                 LIMIT 20
                 """.trimIndent()
@@ -92,7 +101,8 @@ class PostgresFriendRepository(private val dataSource: DataSource) : FriendRepos
                             playerCode = result.getString("player_code"),
                             avatarId = result.getString("avatar_url"),
                             lastPlayedAtEpochMillis = result.getTimestamp("last_played_at").time,
-                            matchesPlayed = result.getInt("matches_played")
+                            matchesPlayed = result.getInt("matches_played"),
+                            frameId = result.getString("frame_id")
                         ))
                     }
                 }
@@ -359,8 +369,12 @@ class PostgresFriendRepository(private val dataSource: DataSource) : FriendRepos
         val otherColumn = if (incoming) "f.requester_id" else "f.addressee_id"
         return connection.prepareStatement(
             """
-            SELECT f.id, u.id AS user_id, p.display_name, p.player_code, p.avatar_url
-            FROM friendships f JOIN users u ON u.id = $otherColumn JOIN profiles p ON p.user_id = u.id
+            SELECT f.id, u.id AS user_id, p.display_name, p.player_code, p.avatar_url,
+                   COALESCE(s.equipped_frame_id, 'frame_default') AS frame_id
+            FROM friendships f
+            JOIN users u ON u.id = $otherColumn
+            JOIN profiles p ON p.user_id = u.id
+            LEFT JOIN player_stats s ON s.user_id = u.id
             WHERE $ownColumn = ? AND f.status = 'PENDING' AND u.status = 'ACTIVE'
             ORDER BY f.created_at DESC
             """.trimIndent()
@@ -373,7 +387,8 @@ class PostgresFriendRepository(private val dataSource: DataSource) : FriendRepos
                         userId = result.getObject("user_id", UUID::class.java).toString(),
                         displayName = result.getString("display_name"),
                         playerCode = result.getString("player_code"),
-                        avatarId = result.getString("avatar_url")
+                        avatarId = result.getString("avatar_url"),
+                        frameId = result.getString("frame_id")
                     ))
                 }
             }

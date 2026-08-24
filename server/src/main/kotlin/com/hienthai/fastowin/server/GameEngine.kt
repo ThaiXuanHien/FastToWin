@@ -86,22 +86,37 @@ class GameEngine(
 
     suspend fun connectAccount(account: AuthenticatedAccount): ConnectedPlayer {
         restoreActiveRooms()
-        return connectIdentity(account.userId.toString(), account.displayName, null)
+        val appearance = runCatching {
+            playerProfileRepository.findAppearance(account.userId.toString())
+        }.getOrNull()
+        return connectIdentity(
+            identityPlayerId = account.userId.toString(),
+            identityDisplayName = account.displayName,
+            resumeToken = null,
+            avatarId = appearance?.avatarId,
+            frameId = appearance?.frameId ?: "frame_default"
+        )
     }
 
     private suspend fun connectIdentity(
         identityPlayerId: String,
         identityDisplayName: String,
-        resumeToken: String?
+        resumeToken: String?,
+        avatarId: String? = null,
+        frameId: String = "frame_default"
     ): ConnectedPlayer {
         val connected = mutex.withLock {
             val session = sessionsByPlayerId[identityPlayerId]?.also { existing ->
                 existing.displayName = identityDisplayName
                 existing.resumeToken = resumeToken
+                existing.avatarId = avatarId
+                existing.frameId = frameId
             } ?: GuestSession(
                 playerId = identityPlayerId,
                 resumeToken = resumeToken,
-                displayName = identityDisplayName
+                displayName = identityDisplayName,
+                avatarId = avatarId,
+                frameId = frameId
             ).also { created ->
                 sessionsByPlayerId[created.playerId] = created
             }
@@ -137,6 +152,8 @@ class GameEngine(
                                 playerId = player.playerId,
                                 resumeToken = if (player.isAccount) null else RESTORED_GUEST_RESUME_TOKEN,
                                 displayName = player.displayName,
+                                avatarId = player.avatarId,
+                                frameId = player.frameId,
                                 isConnected = false,
                                 disconnectedAtMillis = restoredAtMillis
                             )
@@ -1512,6 +1529,11 @@ class GameEngine(
         if (!updated) {
             return listOf(error(playerId, "COSMETIC_LOCKED", "Vật phẩm chưa được mở khóa hoặc không hợp lệ."))
         }
+        val activeRoomId = mutex.withLock {
+            sessionsByPlayerId[playerId]?.frameId = command.frameId
+            roomFor(playerId)?.id
+        }
+        activeRoomId?.let { persistRoom(it) }
         return loadProfile(playerId)
     }
 
@@ -1568,6 +1590,7 @@ class GameEngine(
         }
         val activeRoomId = mutex.withLock {
             sessionsByPlayerId[playerId]?.displayName = safeName
+            sessionsByPlayerId[playerId]?.avatarId = command.avatarId
             roomFor(playerId)?.id
         }
         activeRoomId?.let { persistRoom(it) }
@@ -2421,7 +2444,9 @@ class GameEngine(
             return StoredActivePlayer(
                 playerId = playerId,
                 displayName = session.displayName,
-                isAccount = session.resumeToken == null
+                isAccount = session.resumeToken == null,
+                avatarId = session.avatarId,
+                frameId = session.frameId
             )
         }
 
@@ -2600,7 +2625,9 @@ class GameEngine(
                         slowestSegmentStart = slowestSegment?.start ?: 0,
                         slowestSegmentEnd = slowestSegment?.end ?: 0,
                         slowestSegmentAverageMillis = slowestSegment?.averageMillis ?: 0,
-                        teamId = teamIds[id]
+                        teamId = teamIds[id],
+                        avatarId = session.avatarId,
+                        frameId = session.frameId
                     )
                 }
             },
@@ -2609,7 +2636,9 @@ class GameEngine(
                     PlayerSnapshot(
                         id = id,
                         name = session.displayName,
-                        score = 0
+                        score = 0,
+                        avatarId = session.avatarId,
+                        frameId = session.frameId
                     )
                 }
             },
@@ -2780,6 +2809,8 @@ class GameEngine(
         val playerId: String,
         var resumeToken: String?,
         var displayName: String,
+        var avatarId: String? = null,
+        var frameId: String = "frame_default",
         var isConnected: Boolean = true,
         var disconnectedAtMillis: Long? = null,
         var latencyMillis: Long? = null
@@ -3226,6 +3257,13 @@ class GameEngine(
         val item = com.hienthai.fastowin.protocol.SHOP_ITEMS.find { it.id == cosmeticId } ?: return emptyList()
         val success = playerProfileRepository.equipCosmetic(playerId, cosmeticId, item.type.name)
         if (success) {
+            if (item.type == CosmeticType.FRAME) {
+                val activeRoomId = mutex.withLock {
+                    sessionsByPlayerId[playerId]?.frameId = cosmeticId
+                    roomFor(playerId)?.id
+                }
+                activeRoomId?.let { persistRoom(it) }
+            }
             return loadProfile(playerId)
         }
         return emptyList()

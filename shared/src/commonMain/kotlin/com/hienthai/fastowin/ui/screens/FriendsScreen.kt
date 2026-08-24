@@ -51,6 +51,7 @@ import com.hienthai.fastowin.ui.components.SystemBackHandler
 import com.hienthai.fastowin.ui.layout.ResponsiveScreen
 import com.hienthai.fastowin.ui.components.FastToWinHeader
 import com.hienthai.fastowin.ui.components.FriendPresenceIndicator
+import com.hienthai.fastowin.ui.components.PlayerAvatar
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -180,8 +181,20 @@ fun FriendsScreen(
                 items(state.social.incomingRequests, key = { "incoming:${it.requestId}" }) { request ->
                     ElevatedCard(modifier = Modifier.fillMaxWidth()) {
                         Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Text("${avatarEmoji(request.avatarId)}  ${request.displayName}", fontWeight = FontWeight.Bold)
-                            Text("Mã: ${request.playerCode}")
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                PlayerAvatar(
+                                    displayName = request.displayName,
+                                    avatarId = request.avatarId,
+                                    frameId = request.frameId
+                                )
+                                Column {
+                                    Text(request.displayName, fontWeight = FontWeight.Bold)
+                                    Text("Mã: ${request.playerCode}")
+                                }
+                            }
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 Button(onClick = { onRespondRequest(request.requestId, true) }) { Text("Chấp nhận") }
                                 OutlinedButton(onClick = { onRespondRequest(request.requestId, false) }) { Text("Từ chối") }
@@ -204,7 +217,11 @@ fun FriendsScreen(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(12.dp)
                         ) {
-                            Text(avatarEmoji(request.avatarId), style = MaterialTheme.typography.headlineMedium)
+                            PlayerAvatar(
+                                displayName = request.displayName,
+                                avatarId = request.avatarId,
+                                frameId = request.frameId
+                            )
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(request.displayName, fontWeight = FontWeight.Bold)
                                 Text("Mã: ${request.playerCode}")
@@ -248,7 +265,11 @@ fun FriendsScreen(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(12.dp)
                         ) {
-                            Text(avatarEmoji(player.avatarId), style = MaterialTheme.typography.headlineMedium)
+                            PlayerAvatar(
+                                displayName = player.displayName,
+                                avatarId = player.avatarId,
+                                frameId = player.frameId
+                            )
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(player.displayName, fontWeight = FontWeight.Bold)
                                 Text("Mã: ${player.playerCode}")
@@ -331,7 +352,11 @@ private fun FriendCard(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                Text(avatarEmoji(friend.avatarId), style = MaterialTheme.typography.headlineMedium)
+                PlayerAvatar(
+                    displayName = friend.displayName,
+                    avatarId = friend.avatarId,
+                    frameId = friend.frameId
+                )
                 Column(modifier = Modifier.weight(1f)) {
                     Text(friend.displayName, fontWeight = FontWeight.Bold)
                     Row(
@@ -412,13 +437,4 @@ fun RoomInvitationDialog(
             }
         }
     )
-}
-
-private fun avatarEmoji(avatarId: String?): String = when (avatarId) {
-    "rocket" -> "🚀"
-    "target" -> "🎯"
-    "trophy" -> "🏆"
-    "crown" -> "👑"
-    "star" -> "⭐"
-    else -> "⚡"
 }

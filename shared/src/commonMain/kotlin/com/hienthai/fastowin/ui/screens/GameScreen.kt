@@ -67,6 +67,7 @@ import com.hienthai.fastowin.data.preferences.AppPreferences
 import com.hienthai.fastowin.data.preferences.BoardStyle
 import com.hienthai.fastowin.platform.GameFeedbackEffect
 import com.hienthai.fastowin.ui.components.SystemBackHandler
+import com.hienthai.fastowin.ui.components.PlayerAvatar
 import com.hienthai.fastowin.platform.playFeedbackSound
 import com.hienthai.fastowin.protocol.MatchType
 import com.hienthai.fastowin.ui.layout.ResponsiveScreen
@@ -386,6 +387,7 @@ private fun PlayerScoreBar(
             label = labelMe,
             name = nameMe,
             score = myScore,
+            avatar = state.player,
             isLocal = true,
             modifier = Modifier.weight(1f)
         )
@@ -399,6 +401,7 @@ private fun PlayerScoreBar(
             label = labelOpp,
             name = nameOpp,
             score = opponentScore,
+            avatar = state.opponents.firstOrNull() ?: state.opponent,
             isLocal = false,
             onViewInfo = onOpponentInfo,
             modifier = Modifier.weight(1f)
@@ -411,6 +414,7 @@ private fun PlayerScoreCard(
     label: String,
     name: String,
     score: Int,
+    avatar: PlayerState,
     isLocal: Boolean,
     onViewInfo: (() -> Unit)? = null,
     modifier: Modifier = Modifier
@@ -429,10 +433,16 @@ private fun PlayerScoreCard(
         tonalElevation = 2.dp
     ) {
         Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
+            PlayerAvatar(
+                displayName = avatar.name,
+                avatarId = avatar.avatarId,
+                frameId = avatar.frameId,
+                size = 34.dp
+            )
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = label,

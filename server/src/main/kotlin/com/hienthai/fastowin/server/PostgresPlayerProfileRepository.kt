@@ -39,6 +39,27 @@ class PostgresPlayerProfileRepository(
     private val dataSource: DataSource,
     private val clock: Clock = Clock.system(DAILY_CHECK_IN_ZONE)
 ) : PlayerProfileRepository {
+    override suspend fun findAppearance(playerId: String): PlayerAppearance? = withContext(Dispatchers.IO) {
+        dataSource.connection.use { connection ->
+            connection.prepareStatement(
+                """
+                SELECT p.avatar_url, COALESCE(s.equipped_frame_id, 'frame_default') AS frame_id
+                FROM profiles p
+                LEFT JOIN player_stats s ON s.user_id = p.user_id
+                WHERE p.user_id = ?
+                """.trimIndent()
+            ).use { statement ->
+                statement.setObject(1, UUID.fromString(playerId))
+                statement.executeQuery().use { result ->
+                    if (!result.next()) null else PlayerAppearance(
+                        avatarId = result.getString("avatar_url"),
+                        frameId = result.getString("frame_id")
+                    )
+                }
+            }
+        }
+    }
+
     override suspend fun findByPlayerCode(playerCode: String): PlayerProfileSnapshot? = withContext(Dispatchers.IO) {
         val userId = dataSource.connection.use { connection ->
             connection.prepareStatement("SELECT user_id FROM profiles WHERE player_code = ?").use { statement ->

@@ -1188,6 +1188,8 @@ class GameController(
     private fun com.hienthai.fastowin.protocol.PlayerSnapshot.toState(fallbackName: String, fallbackTarget: Int, isSpectator: Boolean = false): PlayerState = PlayerState(
         name = name.takeIf { it.isNotBlank() } ?: fallbackName,
         id = id,
+        avatarId = avatarId,
+        frameId = frameId,
         teamId = teamId,
         isReady = isReady,
         score = score,

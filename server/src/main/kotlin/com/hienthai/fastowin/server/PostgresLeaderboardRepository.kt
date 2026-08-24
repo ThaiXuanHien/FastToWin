@@ -26,8 +26,9 @@ class PostgresLeaderboardRepository(
                 connection.prepareStatement(
                     """
                     WITH ranked AS (
-                        SELECT p.user_id, p.display_name, p.player_code,
+                        SELECT p.user_id, p.display_name, p.player_code, p.avatar_url,
                                s.wins, s.total_matches, s.highest_score, s.elo_rating,
+                               COALESCE(s.equipped_frame_id, 'frame_default') AS frame_id,
                                ROW_NUMBER() OVER (
                                    ORDER BY s.elo_rating DESC,
                                             s.wins DESC,
@@ -59,7 +60,10 @@ class PostgresLeaderboardRepository(
                                 wins = result.getInt("wins"),
                                 totalMatches = result.getInt("total_matches"),
                                 highestScore = result.getInt("highest_score"),
-                                eloRating = result.getInt("elo_rating")
+                                eloRating = result.getInt("elo_rating"),
+                                userId = result.getObject("user_id", UUID::class.java).toString(),
+                                avatarId = result.getString("avatar_url"),
+                                frameId = result.getString("frame_id")
                             )
                             if (result.getObject("user_id", UUID::class.java) == currentId) currentPlayer = entry
                             if (entry.rank <= limit) topPlayers += entry
@@ -115,9 +119,10 @@ class PostgresLeaderboardRepository(
                             connection.prepareStatement(
                                 """
                                 WITH ranked AS (
-                                    SELECT p.user_id, p.display_name, p.player_code,
+                                    SELECT p.user_id, p.display_name, p.player_code, p.avatar_url,
                                            ps.wins, ps.total_matches, ps.highest_score,
                                            sr.rating AS elo_rating,
+                                           COALESCE(ps.equipped_frame_id, 'frame_default') AS frame_id,
                                            ROW_NUMBER() OVER (
                                                ORDER BY sr.rating DESC, sr.matches_played ASC, sr.updated_at ASC, p.user_id
                                            ) AS rank
@@ -142,7 +147,10 @@ class PostgresLeaderboardRepository(
                                             wins = seasonResult.getInt("wins"),
                                             totalMatches = seasonResult.getInt("total_matches"),
                                             highestScore = seasonResult.getInt("highest_score"),
-                                            eloRating = seasonResult.getInt("elo_rating")
+                                            eloRating = seasonResult.getInt("elo_rating"),
+                                            userId = seasonResult.getObject("user_id", UUID::class.java).toString(),
+                                            avatarId = seasonResult.getString("avatar_url"),
+                                            frameId = seasonResult.getString("frame_id")
                                         )
                                         if (seasonResult.getObject("user_id", UUID::class.java) == currentId) seasonCurrentPlayer = entry
                                         if (entry.rank <= limit) seasonTopPlayers += entry

@@ -1,11 +1,20 @@
 package com.hienthai.fastowin.server
 
 import com.hienthai.fastowin.protocol.PlayerProfileSnapshot
+import com.hienthai.fastowin.protocol.CosmeticType
 import com.hienthai.fastowin.protocol.MatchDetailSnapshot
 import com.hienthai.fastowin.protocol.WalletTransactionSnapshot
 
 interface PlayerProfileRepository {
     suspend fun findByPlayerId(playerId: String): PlayerProfileSnapshot?
+    suspend fun findAppearance(playerId: String): PlayerAppearance? = findByPlayerId(playerId)?.let { profile ->
+        PlayerAppearance(
+            avatarId = profile.avatarId,
+            frameId = profile.progression.cosmetics.firstOrNull {
+                it.type == CosmeticType.FRAME && it.equipped
+            }?.id ?: "frame_default"
+        )
+    }
     suspend fun findByPlayerCode(playerCode: String): PlayerProfileSnapshot? = null
     suspend fun updateProfile(playerId: String, displayName: String, avatarId: String?): Boolean
     suspend fun updateFcmToken(playerId: String, token: String): Boolean = false
@@ -54,6 +63,11 @@ enum class StorePurchaseGrantStatus {
     PLAYER_NOT_FOUND,
     FAILED
 }
+
+data class PlayerAppearance(
+    val avatarId: String? = null,
+    val frameId: String = "frame_default"
+)
 
 data class MissionRewardClaimResult(
     val status: MissionRewardClaimStatus,

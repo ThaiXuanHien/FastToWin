@@ -39,6 +39,7 @@ import com.hienthai.fastowin.state.GameState
 import com.hienthai.fastowin.ui.components.SystemBackHandler
 import com.hienthai.fastowin.ui.layout.ResponsiveScreen
 import com.hienthai.fastowin.ui.components.FastToWinHeader
+import com.hienthai.fastowin.ui.components.PlayerAvatar
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -226,6 +227,12 @@ private fun LeaderboardCard(
                 text = when (entry.rank) { 1 -> "🥇"; 2 -> "🥈"; 3 -> "🥉"; else -> "#${entry.rank}" },
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Black
+            )
+            PlayerAvatar(
+                displayName = entry.displayName,
+                avatarId = entry.avatarId,
+                frameId = entry.frameId,
+                size = 44.dp
             )
             Column(modifier = Modifier.weight(1f)) {
                 Text(

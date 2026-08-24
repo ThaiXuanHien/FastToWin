@@ -15,7 +15,9 @@ import java.util.UUID
 data class StoredActivePlayer(
     val playerId: String,
     val displayName: String,
-    val isAccount: Boolean
+    val isAccount: Boolean,
+    val avatarId: String? = null,
+    val frameId: String = "frame_default"
 )
 
 @Serializable

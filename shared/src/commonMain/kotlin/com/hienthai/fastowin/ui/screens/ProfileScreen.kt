@@ -113,6 +113,8 @@ import com.hienthai.fastowin.ui.components.RewardAmounts
 import com.hienthai.fastowin.ui.components.WalletBalanceRow
 import com.hienthai.fastowin.ui.components.FastToWinHeader
 import com.hienthai.fastowin.ui.components.WalletDeltaAmounts
+import com.hienthai.fastowin.ui.components.PlayerAvatar
+import com.hienthai.fastowin.ui.components.playerAvatarEmoji
 import kotlinx.coroutines.delay
 
 enum class ProfileSection {
@@ -279,21 +281,15 @@ fun ProfileScreen(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
-                    Surface(
-                        modifier = Modifier.size(64.dp),
-                        shape = CircleShape,
-                        color = MaterialTheme.colorScheme.primaryContainer
-                    ) {
-                        com.hienthai.fastowin.ui.components.NetworkImage(
-                            url = "$serverUrl/api/avatar/${profile.userId}",
-                            modifier = Modifier.fillMaxSize(),
-                            fallback = {
-                                Box(contentAlignment = Alignment.Center) {
-                                    Text(avatarEmoji(profile.avatarId), style = MaterialTheme.typography.headlineLarge)
-                                }
-                            }
-                        )
-                    }
+                    PlayerAvatar(
+                        displayName = profile.displayName,
+                        avatarId = profile.avatarId,
+                        frameId = profile.progression.cosmetics.firstOrNull {
+                            it.type == CosmeticType.FRAME && it.equipped
+                        }?.id ?: "frame_default",
+                        size = 68.dp,
+                        imageUrl = "$serverUrl/api/avatar/${profile.userId}"
+                    )
                     Column {
                         Text(profile.displayName, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
                         profile.progression.cosmetics.firstOrNull {
@@ -405,7 +401,7 @@ fun ProfileScreen(
                                 onClick = { if (unlocked) selectedAvatarId = avatarId },
                                 label = {
                                     Text(
-                                        (if (unlocked) "" else "🔒 ") + avatarEmoji(avatarId),
+                                        (if (unlocked) "" else "🔒 ") + playerAvatarEmoji(avatarId),
                                         style = MaterialTheme.typography.titleLarge
                                     )
                                 }
@@ -1007,7 +1003,20 @@ private fun CollectionSectionContent(
                 selected = cosmetic.equipped,
                 enabled = canEdit && cosmetic.unlocked && !isLoading,
                 onClick = { onEquipCosmetics(cosmetic.id, equippedTitle) },
-                label = { Text(cosmetic.displayLabel()) }
+                label = {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        PlayerAvatar(
+                            displayName = profile.displayName,
+                            avatarId = profile.avatarId,
+                            frameId = cosmetic.id,
+                            size = 32.dp
+                        )
+                        Text(cosmetic.displayLabel())
+                    }
+                }
             )
         }
     }
@@ -1031,7 +1040,7 @@ private fun CollectionSectionContent(
                     selected = cosmetic.equipped,
                     enabled = canEdit && cosmetic.unlocked && !state.isProfileSaving,
                     onClick = { onSave(profile.displayName, cosmetic.id) },
-                    label = { Text("${avatarEmoji(cosmetic.id)} ${cosmetic.displayLabel()}") }
+                    label = { Text("${playerAvatarEmoji(cosmetic.id)} ${cosmetic.displayLabel()}") }
                 )
             }
         }
@@ -1431,16 +1440,6 @@ private fun SecurePasswordField(value: String, label: String, onValueChange: (St
         singleLine = true,
         modifier = Modifier.fillMaxWidth()
     )
-}
-
-private fun avatarEmoji(avatarId: String?): String = when (avatarId) {
-    "rocket" -> "🚀"
-    "target" -> "🎯"
-    "trophy" -> "🏆"
-    "crown" -> "👑"
-    "star" -> "⭐"
-    DAILY_CHECK_IN_AVATAR_ID -> "📅"
-    else -> "⚡"
 }
 
 private data class DailyCheckInMilestone(

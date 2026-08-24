@@ -4,7 +4,7 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
-const val PROTOCOL_VERSION = 29
+const val PROTOCOL_VERSION = 30
 const val GAME_NUMBER_COUNT = 50
 const val MAX_PROFILE_DISPLAY_NAME_LENGTH = 32
 val DAILY_CHECK_IN_REWARDS_XP = listOf(10, 10, 15, 15, 20, 25, 40)
@@ -164,7 +164,9 @@ data class PlayerSnapshot(
     val slowestSegmentStart: Int = 0,
     val slowestSegmentEnd: Int = 0,
     val slowestSegmentAverageMillis: Long = 0,
-    val teamId: String? = null
+    val teamId: String? = null,
+    val avatarId: String? = null,
+    val frameId: String = "frame_default"
 )
 
 @Serializable
@@ -362,7 +364,10 @@ data class LeaderboardEntrySnapshot(
     val wins: Int,
     val totalMatches: Int,
     val highestScore: Int,
-    val eloRating: Int = 1000
+    val eloRating: Int = 1000,
+    val userId: String? = null,
+    val avatarId: String? = null,
+    val frameId: String = "frame_default"
 )
 
 @Serializable
@@ -394,7 +399,8 @@ data class FriendSnapshot(
     val displayName: String,
     val playerCode: String,
     val avatarId: String? = null,
-    val presence: FriendPresence = FriendPresence.OFFLINE
+    val presence: FriendPresence = FriendPresence.OFFLINE,
+    val frameId: String = "frame_default"
 )
 
 @Serializable
@@ -403,7 +409,8 @@ data class FriendRequestSnapshot(
     val userId: String,
     val displayName: String,
     val playerCode: String,
-    val avatarId: String? = null
+    val avatarId: String? = null,
+    val frameId: String = "frame_default"
 )
 
 @Serializable
@@ -411,7 +418,8 @@ data class BlockedPlayerSnapshot(
     val userId: String,
     val displayName: String,
     val playerCode: String,
-    val avatarId: String? = null
+    val avatarId: String? = null,
+    val frameId: String = "frame_default"
 )
 
 @Serializable
@@ -421,7 +429,8 @@ data class RecentPlayerSnapshot(
     val playerCode: String,
     val avatarId: String? = null,
     val lastPlayedAtEpochMillis: Long,
-    val matchesPlayed: Int
+    val matchesPlayed: Int,
+    val frameId: String = "frame_default"
 )
 
 @Serializable

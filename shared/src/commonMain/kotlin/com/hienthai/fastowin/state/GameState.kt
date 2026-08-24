@@ -61,7 +61,9 @@ data class PlayerState(
     val slowestSegmentEnd: Int = 0,
     val slowestSegmentAverageMillis: Long = 0,
     val teamId: String? = null,
-    val isSpectator: Boolean = false
+    val isSpectator: Boolean = false,
+    val avatarId: String? = null,
+    val frameId: String = "frame_default"
 )
 
 data class EmojiEvent(

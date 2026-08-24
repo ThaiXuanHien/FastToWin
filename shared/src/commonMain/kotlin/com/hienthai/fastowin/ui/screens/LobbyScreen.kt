@@ -71,6 +71,7 @@ import com.hienthai.fastowin.state.GameState
 import com.hienthai.fastowin.state.LobbyStage
 import com.hienthai.fastowin.state.PlayerState
 import com.hienthai.fastowin.ui.components.SystemBackHandler
+import com.hienthai.fastowin.ui.components.PlayerAvatar
 import com.hienthai.fastowin.ui.layout.ResponsiveScreen
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -778,9 +779,12 @@ private fun RoomWaitingPlayerCard(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Surface(shape = CircleShape, color = MaterialTheme.colorScheme.surface) {
-                Icon(Icons.Default.Person, contentDescription = null, modifier = Modifier.padding(10.dp).size(28.dp))
-            }
+            PlayerAvatar(
+                displayName = player.name,
+                avatarId = player.avatarId,
+                frameId = player.frameId,
+                size = 52.dp
+            )
             Column(modifier = Modifier.weight(1f)) {
                 Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Text(player.name, fontWeight = FontWeight.Bold)

@@ -34,8 +34,20 @@ class PostgresActiveRoomRepositoryTest {
             val stored = StoredActiveRoom(
                 roomId = roomId,
                 roomName = "Restart integration room",
-                host = StoredActivePlayer(hostId, "Host", isAccount = false),
-                guest = StoredActivePlayer(guestId, "Guest", isAccount = true),
+                host = StoredActivePlayer(
+                    hostId,
+                    "Host",
+                    isAccount = false,
+                    avatarId = "crown",
+                    frameId = "frame_gold"
+                ),
+                guest = StoredActivePlayer(
+                    guestId,
+                    "Guest",
+                    isAccount = true,
+                    avatarId = "target",
+                    frameId = "frame_persistent"
+                ),
                 passwordSalt = byteArrayOf(1, 2, 3),
                 passwordHash = byteArrayOf(4, 5, 6),
                 gameMode = ProtocolGameMode.ORDER,

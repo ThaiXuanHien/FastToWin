@@ -509,6 +509,8 @@ class CriticalFlowsUiTest {
         }
 
         composeRule.onNodeWithTag("game_screen").assertIsDisplayed()
+        composeRule.onNodeWithTag("avatar_frame:frame_gold").assertIsDisplayed()
+        composeRule.onNodeWithTag("avatar_frame:frame_persistent").assertIsDisplayed()
         composeRule.onNodeWithTag("game_number_1").performClick()
         composeRule.onNodeWithTag("number_grid").performScrollToNode(hasTestTag("game_number_50"))
         composeRule.onNodeWithTag("game_number_50").assertIsDisplayed()
@@ -670,8 +672,8 @@ class CriticalFlowsUiTest {
         currentTarget = 1,
         connectionStatus = ConnectionStatus.CONNECTED,
         currentRoomName = "Phòng kiểm thử",
-        player = PlayerState("Hiền", score = 0),
-        opponent = PlayerState("Hiếu", score = 0)
+        player = PlayerState("Hiền", score = 0, avatarId = "crown", frameId = "frame_gold"),
+        opponent = PlayerState("Hiếu", score = 0, avatarId = "target", frameId = "frame_persistent")
     )
 
     private fun resultState() = GameState(

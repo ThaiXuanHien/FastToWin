@@ -32,7 +32,8 @@ class FriendsScreenTest {
                         userId = sharedUserId,
                         displayName = "Bạn bè Hiếu",
                         playerCode = "HIEU001",
-                        presence = FriendPresence.ONLINE
+                        presence = FriendPresence.ONLINE,
+                        frameId = "frame_gold"
                     )
                 ),
                 recentPlayers = listOf(
@@ -67,6 +68,7 @@ class FriendsScreenTest {
         }
 
         composeRule.onNodeWithText("Bạn bè Hiếu").assertIsDisplayed()
+        composeRule.onNodeWithTag("avatar_frame:frame_gold").assertIsDisplayed()
         assertEquals(0, composeRule.onAllNodesWithText("Vừa thi đấu cùng").fetchSemanticsNodes().size)
         assertEquals(0, composeRule.onAllNodesWithText("Đối thủ gần đây Hiếu").fetchSemanticsNodes().size)
     }

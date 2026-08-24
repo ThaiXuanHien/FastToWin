@@ -35,6 +35,44 @@ import java.util.UUID
 
 class GameEngineTest {
     @Test
+    fun `account appearance is included in room snapshots and persisted`() = runTest {
+        val playerId = UUID.randomUUID().toString()
+        val profile = PlayerProfileSnapshot(
+            userId = playerId,
+            displayName = "Hiền",
+            playerCode = "HIEN001",
+            avatarId = "crown",
+            progression = PlayerProgressionSnapshot(
+                cosmetics = listOf(
+                    CosmeticSnapshot("frame_gold", "Khung Vàng", CosmeticType.FRAME, unlocked = true, equipped = true)
+                )
+            )
+        )
+        val profileRepository = object : PlayerProfileRepository {
+            override suspend fun findByPlayerId(playerId: String) = profile
+            override suspend fun updateProfile(playerId: String, displayName: String, avatarId: String?) = false
+        }
+        val activeRoomRepository = InMemoryActiveRoomRepository()
+        val engine = GameEngine(
+            playerProfileRepository = profileRepository,
+            activeRoomRepository = activeRoomRepository
+        )
+        engine.connectAccount(AuthenticatedAccount(UUID.fromString(playerId), profile.displayName))
+
+        val room = engine.handle(
+            playerId,
+            ClientMessage.CreateRoom("Phòng có khung", "", ProtocolGameMode.ORDER)
+        ).map(Delivery::message).filterIsInstance<ServerMessage.RoomCreated>().single().game
+
+        val player = room.players.single()
+        assertEquals("crown", player.avatarId)
+        assertEquals("frame_gold", player.frameId)
+        val storedHost = activeRoomRepository.loadAll().single().host
+        assertEquals("crown", storedHost.avatarId)
+        assertEquals("frame_gold", storedHost.frameId)
+    }
+
+    @Test
     fun `daily check in refreshes profile and duplicate request gives no xp`() = runTest {
         val playerId = UUID.randomUUID().toString()
         var profile = PlayerProfileSnapshot(userId = "user1",
