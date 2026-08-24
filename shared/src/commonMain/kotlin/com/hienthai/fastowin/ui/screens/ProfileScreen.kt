@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -79,6 +80,7 @@ import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
@@ -115,7 +117,6 @@ import com.hienthai.fastowin.ui.components.FastToWinHeader
 import com.hienthai.fastowin.ui.components.WalletDeltaAmounts
 import com.hienthai.fastowin.ui.components.PlayerAvatar
 import com.hienthai.fastowin.ui.components.playerAvatarEmoji
-import com.hienthai.fastowin.ui.components.SeasonProgressCard
 import kotlinx.coroutines.delay
 
 enum class ProfileSection {
@@ -318,8 +319,6 @@ fun ProfileScreen(
                                 )
                             }
                         }
-                        Text("Elo ${profile.statistics.eloRating}", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
-
                         if (isExternalProfile && onInviteToClan != null && state.profile?.clanId != null && profile.clanId == null) {
                             Button(
                                 onClick = { onInviteToClan.invoke(profile.playerCode) },
@@ -462,8 +461,6 @@ fun ProfileScreen(
             }
         }
 
-        progression.season?.let { season -> SeasonProgressCard(season) }
-
         DailyCheckInCalendar(progression.dailyCheckIn)
 
         DailyCheckInMilestones(
@@ -513,7 +510,7 @@ fun ProfileScreen(
             AccountActionRow(
                 icon = Icons.Default.History,
                 title = "Trận gần đây",
-                subtitle = "Lịch sử đấu và biến động Elo",
+                subtitle = "Lịch sử và kết quả các trận đã chơi",
                 onClick = { onOpenSection(ProfileSection.RECENT_MATCHES) },
                 modifier = Modifier.testTag("profile_section_recent_matches")
             )
@@ -762,6 +759,7 @@ private fun walletSourceLabel(sourceType: String): String = when (sourceType) {
     "COSMETIC_PURCHASE" -> "Mua vật phẩm"
     "TOURNAMENT_ENTRY" -> "Phí tham gia giải đấu"
     "TOURNAMENT_PRIZE" -> "Giải thưởng vô địch"
+    "SEASON_REWARD" -> "Thưởng mùa giải"
     "STORE_PURCHASE" -> "Nạp Gem"
     else -> "Điều chỉnh tài sản"
 }
@@ -980,27 +978,68 @@ private fun CollectionSectionContent(
     val equippedTitle = cosmetics.firstOrNull { it.type == CosmeticType.TITLE && it.equipped }?.id
         ?: "title_rookie"
     Text("Khung", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+    LazyRow(
+        modifier = Modifier.fillMaxWidth().testTag("collection_frames"),
+        horizontalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
         items(cosmetics.filter { it.type == CosmeticType.FRAME }, key = { it.id }) { cosmetic ->
-            FilterChip(
-                selected = cosmetic.equipped,
-                enabled = canEdit && cosmetic.unlocked && !isLoading,
+            val canEquip = canEdit && cosmetic.unlocked && !isLoading
+            Surface(
                 onClick = { onEquipCosmetics(cosmetic.id, equippedTitle) },
-                label = {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        PlayerAvatar(
-                            displayName = profile.displayName,
-                            avatarId = profile.avatarId,
-                            frameId = cosmetic.id,
-                            size = 32.dp
-                        )
-                        Text(cosmetic.displayLabel())
+                modifier = Modifier
+                    .width(168.dp)
+                    .heightIn(min = 164.dp)
+                    .testTag("collection_frame:${cosmetic.id}"),
+                enabled = canEquip,
+                shape = RoundedCornerShape(18.dp),
+                color = if (cosmetic.equipped) {
+                    MaterialTheme.colorScheme.primaryContainer
+                } else {
+                    MaterialTheme.colorScheme.surfaceContainer
+                },
+                border = BorderStroke(
+                    width = if (cosmetic.equipped) 2.dp else 1.dp,
+                    color = if (cosmetic.equipped) {
+                        MaterialTheme.colorScheme.primary
+                    } else {
+                        MaterialTheme.colorScheme.outlineVariant
                     }
+                )
+            ) {
+                Column(
+                    modifier = Modifier.fillMaxWidth().padding(14.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    PlayerAvatar(
+                        displayName = profile.displayName,
+                        avatarId = profile.avatarId,
+                        frameId = cosmetic.id,
+                        size = 58.dp
+                    )
+                    Text(
+                        cosmetic.name,
+                        fontWeight = FontWeight.Bold,
+                        textAlign = TextAlign.Center
+                    )
+                    Text(
+                        text = when {
+                            cosmetic.equipped -> "Đang dùng"
+                            cosmetic.unlocked && canEquip -> "Chạm để dùng"
+                            cosmetic.unlocked -> "Đã mở khóa"
+                            else -> cosmetic.unlockRequirement()?.let { "Mở khóa: $it" }
+                                ?: "Chưa mở khóa"
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (cosmetic.equipped) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        },
+                        textAlign = TextAlign.Center
+                    )
                 }
-            )
+            }
         }
     }
     Text("Danh hiệu", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
@@ -1876,18 +1915,21 @@ private fun formatMatchDuration(millis: Long): String {
 
 private fun CosmeticSnapshot.displayLabel(): String {
     if (unlocked) return name
-    val requirement = when (id) {
-        "frame_bronze" -> "Cấp 3"
-        "frame_gold" -> "Cấp 10"
-        "frame_perfect" -> "Cấp 15 + thắng không bấm sai"
-        "frame_persistent" -> "Điểm danh 100 lần"
-        "title_champion" -> "Thắng 10 trận"
-        "title_speed" -> "Thắng và chọn đủ 50 số trong 30 giây"
-        "title_diligent" -> "Điểm danh 30 ngày liên tiếp"
-        DAILY_CHECK_IN_AVATAR_ID -> "Điểm danh 50 lần"
-        else -> null
-    }
+    val requirement = unlockRequirement()
     return if (requirement == null) "🔒 $name" else "🔒 $name · $requirement"
+}
+
+private fun CosmeticSnapshot.unlockRequirement(): String? = when (id) {
+    "frame_bronze" -> "Cấp 3"
+    "frame_silver" -> "Cấp 6"
+    "frame_gold" -> "Cấp 10"
+    "frame_perfect" -> "Cấp 15 + thắng không bấm sai"
+    "frame_persistent" -> "Điểm danh 100 lần"
+    "title_champion" -> "Thắng 10 trận"
+    "title_speed" -> "Thắng và chọn đủ 50 số trong 30 giây"
+    "title_diligent" -> "Điểm danh 30 ngày liên tiếp"
+    DAILY_CHECK_IN_AVATAR_ID -> "Điểm danh 50 lần"
+    else -> null
 }
 
 @Composable

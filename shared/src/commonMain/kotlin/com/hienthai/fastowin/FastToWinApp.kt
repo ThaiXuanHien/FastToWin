@@ -14,6 +14,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import com.hienthai.fastowin.state.GameController
@@ -384,7 +385,28 @@ private fun GameContent(
         showTutorial = false
     }
 
-    when {
+    val screenStateHolder = rememberSaveableStateHolder()
+    val screenStateKey = when {
+        state.isNotificationsOpen -> "notifications"
+        showTutorial -> "tutorial"
+        showSettings -> "settings"
+        state.isFriendProfileOpen && profileSection == null ->
+            "friend_profile:${state.friendProfile?.userId.orEmpty()}"
+        profileSection != null ->
+            "profile_section:${if (profileSectionExternal) state.friendProfile?.userId.orEmpty() else "self"}:${profileSection?.name}"
+        state.isTournamentOpen -> "tournament"
+        state.isFriendsOpen -> "friends"
+        state.isLeaderboardOpen -> "leaderboard"
+        state.isProfileOpen -> "profile"
+        state.isShopOpen -> "shop"
+        state.isClanOpen -> "clan"
+        state.isGameOver -> "result"
+        state.isMatchStarted -> "game"
+        practiceMode != null -> "practice:${practiceMode?.name}"
+        else -> "lobby"
+    }
+    screenStateHolder.SaveableStateProvider(screenStateKey) {
+        when {
                 state.isNotificationsOpen -> NotificationsScreen(
                     notifications = state.notifications,
                     onBack = controller::closeNotifications,
@@ -706,6 +728,7 @@ private fun GameContent(
                     onResolveRoomLink = controller::resolvePendingRoomLink,
                     onClaimDailyCheckIn = controller::claimDailyCheckIn
                 )
+        }
     }
 }
 

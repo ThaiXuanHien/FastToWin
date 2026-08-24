@@ -18,6 +18,9 @@ class PostgresLeaderboardRepository(
             val seasonTopPlayers = mutableListOf<LeaderboardEntrySnapshot>()
             var seasonCurrentPlayer: LeaderboardEntrySnapshot? = null
             var seasonName: String? = null
+            val previousSeasonTopPlayers = mutableListOf<LeaderboardEntrySnapshot>()
+            var previousSeasonCurrentPlayer: LeaderboardEntrySnapshot? = null
+            var previousSeasonName: String? = null
             
             val topClans = mutableListOf<com.hienthai.fastowin.protocol.ClanLeaderboardEntrySnapshot>()
             var currentClanEntry: com.hienthai.fastowin.protocol.ClanLeaderboardEntrySnapshot? = null
@@ -160,6 +163,51 @@ class PostgresLeaderboardRepository(
                         }
                     }
                 }
+
+                connection.prepareStatement(
+                    "SELECT id, name FROM seasons WHERE closed_at IS NOT NULL ORDER BY ends_at DESC LIMIT 1"
+                ).use { statement ->
+                    statement.executeQuery().use { result ->
+                        if (result.next()) {
+                            val seasonId = result.getObject("id", UUID::class.java)
+                            previousSeasonName = result.getString("name")
+                            connection.prepareStatement(
+                                """
+                                SELECT user_id, final_rank AS rank, display_name, player_code,
+                                       avatar_url, frame_id, wins, total_matches, highest_score,
+                                       rating AS elo_rating
+                                FROM season_leaderboard_archive
+                                WHERE season_id = ? AND (final_rank <= ? OR user_id = ?)
+                                ORDER BY final_rank
+                                """.trimIndent()
+                            ).use { archiveStatement ->
+                                archiveStatement.setObject(1, seasonId)
+                                archiveStatement.setInt(2, limit.coerceIn(1, MAX_LEADERBOARD_SIZE))
+                                archiveStatement.setObject(3, currentId)
+                                archiveStatement.executeQuery().use { archiveResult ->
+                                    while (archiveResult.next()) {
+                                        val entry = LeaderboardEntrySnapshot(
+                                            rank = archiveResult.getInt("rank"),
+                                            displayName = archiveResult.getString("display_name"),
+                                            playerCode = archiveResult.getString("player_code"),
+                                            wins = archiveResult.getInt("wins"),
+                                            totalMatches = archiveResult.getInt("total_matches"),
+                                            highestScore = archiveResult.getInt("highest_score"),
+                                            eloRating = archiveResult.getInt("elo_rating"),
+                                            userId = archiveResult.getObject("user_id", UUID::class.java).toString(),
+                                            avatarId = archiveResult.getString("avatar_url"),
+                                            frameId = archiveResult.getString("frame_id")
+                                        )
+                                        if (archiveResult.getObject("user_id", UUID::class.java) == currentId) {
+                                            previousSeasonCurrentPlayer = entry
+                                        }
+                                        if (entry.rank <= limit) previousSeasonTopPlayers += entry
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
                 
                 // Extract currentClanEntry
                 connection.prepareStatement("SELECT clan_id FROM clan_members WHERE user_id = ?").use { stmt ->
@@ -178,6 +226,9 @@ class PostgresLeaderboardRepository(
                 seasonName = seasonName,
                 seasonTopPlayers = seasonTopPlayers,
                 seasonCurrentPlayer = seasonCurrentPlayer,
+                previousSeasonName = previousSeasonName,
+                previousSeasonTopPlayers = previousSeasonTopPlayers,
+                previousSeasonCurrentPlayer = previousSeasonCurrentPlayer,
                 topClans = topClans.filter { it.rank <= limit },
                 currentClan = currentClanEntry
             )

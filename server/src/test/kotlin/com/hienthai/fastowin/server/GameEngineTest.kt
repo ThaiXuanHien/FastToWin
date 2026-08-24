@@ -35,6 +35,38 @@ import java.util.UUID
 
 class GameEngineTest {
     @Test
+    fun `loading an account profile settles season rewards before returning balances`() = runTest {
+        val playerId = UUID.randomUUID().toString()
+        var settled = false
+        val repository = object : PlayerProfileRepository {
+            override suspend fun settleCompletedSeasonRewards(playerId: String): Boolean {
+                settled = true
+                return true
+            }
+
+            override suspend fun findByPlayerId(playerId: String) = PlayerProfileSnapshot(
+                userId = playerId,
+                displayName = "Hiền",
+                playerCode = "HIEN001",
+                progression = PlayerProgressionSnapshot(gold = if (settled) 1_000 else 0)
+            )
+
+            override suspend fun updateProfile(playerId: String, displayName: String, avatarId: String?) = false
+        }
+        val engine = GameEngine(playerProfileRepository = repository)
+        engine.connectAccount(AuthenticatedAccount(UUID.fromString(playerId), "Hiền"))
+
+        val profile = engine.handle(playerId, ClientMessage.GetProfile)
+            .map(Delivery::message)
+            .filterIsInstance<ServerMessage.ProfileData>()
+            .single()
+            .profile
+
+        assertTrue(settled)
+        assertEquals(1_000, profile.progression.gold)
+    }
+
+    @Test
     fun `account appearance is included in room snapshots and persisted`() = runTest {
         val playerId = UUID.randomUUID().toString()
         val profile = PlayerProfileSnapshot(

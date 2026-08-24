@@ -106,7 +106,7 @@ Mỗi người chơi bắt đầu với **1000 Elo**. Sau mỗi trận hai ngư�
 
 Server tự xét và lưu thành tích, không dựa vào dữ liệu client. Bộ thành tích đầu tiên gồm: chiến thắng đầu tiên, 10 chiến thắng, chuỗi thắng 5, có lượt đúng và không bấm sai trong cả trận, và tự chọn đủ 50 số trong tối đa 30 giây. Khóa chính `(user_id, achievement_code)` bảo đảm mỗi thành tích chỉ được mở một lần.
 
-Mỗi trận cấp 15 XP và cộng thêm 10 XP khi thắng. Hồ sơ hiển thị cấp độ, tiến trình XP, Elo mùa hiện tại, nhiệm vụ ngày/tuần và vật phẩm đã mở khóa. Người chơi có thể trang bị khung avatar hoặc danh hiệu; backend kiểm tra vật phẩm đã mở trước khi lưu. Mùa khởi đầu được tạo bởi migration `V13`; khi vận hành production cần có tác vụ quản trị tạo mùa mới trước khi mùa hiện tại kết thúc.
+Mỗi trận cấp XP và vàng theo kết quả. Hồ sơ hiển thị cấp độ, tiến trình XP, Elo mùa hiện tại, nhiệm vụ ngày/tuần và vật phẩm đã mở khóa. Người chơi có thể trang bị khung avatar hoặc danh hiệu; backend kiểm tra vật phẩm đã mở trước khi lưu. Mùa khởi đầu được tạo bởi migration `V13`; từ migration `V33`, backend tự chốt bảng xếp hạng, tạo mùa mới ba tháng một lần và đưa Elo mùa về mốc 1.000 mà không thay đổi Elo toàn thời gian.
 
 Âm thanh, rung, chủ đề, màu bàn số, cỡ chữ, hướng dẫn lần đầu và chế độ luyện tập offline được lưu cục bộ trên thiết bị. Luyện tập không gửi kết quả lên backend và không ảnh hưởng Elo.
 
@@ -248,7 +248,7 @@ Test backend bao gồm:
 - Snapshot hiện dành cho một tiến trình backend; khi chạy nhiều instance cần chuyển trạng thái realtime sang Redis hoặc kho trạng thái phân tán.
 - Rate limit hiện nằm trong bộ nhớ từng tiến trình và được làm mới khi server restart; nhiều instance cần dùng Redis.
 - Chưa tích hợp dịch vụ email để gửi mã khôi phục và xác minh email; chưa có đăng xuất khỏi tất cả thiết bị.
-- Mùa mới chưa được tạo tự động; quản trị viên cần thêm mùa hoặc xây scheduler trước khi mùa hiện tại kết thúc.
+- Theo dõi log tác vụ vòng đời mùa; backend kiểm tra mỗi phút, đóng băng bảng xếp hạng mùa cũ và tự tạo mùa kế tiếp.
 - Cấu hình local dùng `ws://`; môi trường production phải dùng `wss://`.
 
 ## Reconnect hiện tại

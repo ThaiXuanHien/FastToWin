@@ -104,6 +104,7 @@ fun PlayerAvatar(
 @Composable
 private fun avatarFrameColors(frameId: String): List<Color> = when (frameId) {
     "frame_bronze" -> listOf(BronzeDark, Bronze, BronzeLight, BronzeDark)
+    "frame_silver" -> listOf(SilverDark, Silver, SilverLight, Silver, SilverDark)
     "frame_gold" -> listOf(GoldDark, Gold, GoldLight, Gold, GoldDark)
     "frame_perfect" -> listOf(PerfectCyan, PerfectPurple, PerfectPink, PerfectCyan)
     "frame_persistent" -> listOf(PersistentDark, Persistent, PersistentLight, PersistentGreen, PersistentDark)
@@ -112,6 +113,7 @@ private fun avatarFrameColors(frameId: String): List<Color> = when (frameId) {
 
 fun avatarFrameName(frameId: String): String = when (frameId) {
     "frame_bronze" -> "Khung Đồng"
+    "frame_silver" -> "Khung Bạc"
     "frame_gold" -> "Khung Vàng"
     "frame_perfect" -> "Khung Hoàn hảo"
     "frame_persistent" -> "Khung Bền bỉ"
@@ -131,6 +133,9 @@ fun playerAvatarEmoji(avatarId: String?): String = when (avatarId) {
 private val BronzeDark = Color(0xFF7A431D)
 private val Bronze = Color(0xFFCD7F32)
 private val BronzeLight = Color(0xFFF2C078)
+private val SilverDark = Color(0xFF5E6874)
+private val Silver = Color(0xFFB8C2CC)
+private val SilverLight = Color(0xFFF4F7FA)
 private val GoldDark = Color(0xFF9A6700)
 private val Gold = Color(0xFFFFB300)
 private val GoldLight = Color(0xFFFFF0A8)

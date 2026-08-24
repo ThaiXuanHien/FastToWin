@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.Icon
@@ -34,6 +35,7 @@ import androidx.compose.ui.unit.dp
 import com.hienthai.fastowin.platform.epochMillis
 import com.hienthai.fastowin.protocol.RankedTier
 import com.hienthai.fastowin.protocol.SeasonSnapshot
+import com.hienthai.fastowin.protocol.SeasonRewardReceiptSnapshot
 import com.hienthai.fastowin.protocol.SeasonTierRewardSnapshot
 import com.hienthai.fastowin.protocol.rankedTierFor
 import kotlinx.coroutines.delay
@@ -196,6 +198,56 @@ private fun SeasonRewardRow(
                 )
             }
             RewardAmounts(gold = reward.gold, xp = 0, gems = reward.gems)
+        }
+    }
+}
+
+@Composable
+fun SeasonRewardReceiptCard(
+    receipt: SeasonRewardReceiptSnapshot,
+    modifier: Modifier = Modifier
+) {
+    ElevatedCard(
+        modifier = modifier
+            .fillMaxWidth()
+            .testTag("season_reward_receipt")
+            .semantics {
+                stateDescription = "Đã nhận thưởng ${receipt.seasonName}, bậc ${receipt.tier.displayName}"
+            }
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(16.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Surface(
+                shape = MaterialTheme.shapes.medium,
+                color = MaterialTheme.colorScheme.secondaryContainer
+            ) {
+                Icon(
+                    Icons.Default.EmojiEvents,
+                    contentDescription = null,
+                    modifier = Modifier.padding(10.dp),
+                    tint = MaterialTheme.colorScheme.onSecondaryContainer
+                )
+            }
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Text("Thưởng mùa đã nhận", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text(
+                    "${receipt.seasonName} • ${receipt.tier.displayName} • ${receipt.peakRating} Elo",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Text(
+                    "Đã cộng vào tài sản",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
+            RewardAmounts(gold = receipt.gold, xp = 0, gems = receipt.gems)
         }
     }
 }

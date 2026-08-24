@@ -4,7 +4,7 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
-const val PROTOCOL_VERSION = 31
+const val PROTOCOL_VERSION = 33
 const val GAME_NUMBER_COUNT = 50
 const val MAX_PROFILE_DISPLAY_NAME_LENGTH = 32
 val DAILY_CHECK_IN_REWARDS_XP = listOf(10, 10, 15, 15, 20, 25, 40)
@@ -309,6 +309,16 @@ data class SeasonSnapshot(
 )
 
 @Serializable
+data class SeasonRewardReceiptSnapshot(
+    val seasonName: String,
+    val tier: RankedTier,
+    val peakRating: Int,
+    val gold: Int,
+    val gems: Int = 0,
+    val awardedAtEpochMillis: Long
+)
+
+@Serializable
 data class PlayerProgressionSnapshot(
     val level: Int = 1,
     val experiencePoints: Int = 0,
@@ -320,7 +330,8 @@ data class PlayerProgressionSnapshot(
     val weeklyMissions: List<MissionSnapshot> = emptyList(),
     val dailyCheckIn: DailyCheckInSnapshot = DailyCheckInSnapshot(),
     val cosmetics: List<CosmeticSnapshot> = emptyList(),
-    val season: SeasonSnapshot? = null
+    val season: SeasonSnapshot? = null,
+    val latestSeasonReward: SeasonRewardReceiptSnapshot? = null
 )
 
 @Serializable
@@ -404,6 +415,9 @@ data class LeaderboardSnapshot(
     val seasonName: String? = null,
     val seasonTopPlayers: List<LeaderboardEntrySnapshot> = emptyList(),
     val seasonCurrentPlayer: LeaderboardEntrySnapshot? = null,
+    val previousSeasonName: String? = null,
+    val previousSeasonTopPlayers: List<LeaderboardEntrySnapshot> = emptyList(),
+    val previousSeasonCurrentPlayer: LeaderboardEntrySnapshot? = null,
     val topClans: List<ClanLeaderboardEntrySnapshot> = emptyList(),
     val currentClan: ClanLeaderboardEntrySnapshot? = null
 )

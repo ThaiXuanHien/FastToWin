@@ -23,6 +23,7 @@ class PlayerAvatarUiTest {
         val frames = listOf(
             "frame_default",
             "frame_bronze",
+            "frame_silver",
             "frame_gold",
             "frame_perfect",
             "frame_persistent"

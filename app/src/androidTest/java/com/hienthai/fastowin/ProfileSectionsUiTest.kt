@@ -88,6 +88,7 @@ class ProfileSectionsUiTest {
         val editBounds = composeRule.onNodeWithTag("profile_edit").fetchSemanticsNode().boundsInRoot
         assertTrue(editBounds.left >= cardBounds.left && editBounds.top >= cardBounds.top)
         assertTrue(editBounds.right <= cardBounds.right && editBounds.bottom <= cardBounds.bottom)
+        assertTrue(composeRule.onAllNodesWithText("Elo", substring = true).fetchSemanticsNodes().isEmpty())
         composeRule.onNodeWithContentDescription("Chỉnh sửa hồ sơ").assertIsDisplayed()
 
         composeRule.onNodeWithTag("profile_section_statistics").performScrollTo().performClick()
@@ -312,6 +313,8 @@ class ProfileSectionsUiTest {
 
         composeRule.onNodeWithTag("profile_section_screen:COLLECTION").assertIsDisplayed()
         composeRule.onNodeWithText("Khung").assertIsDisplayed()
+        composeRule.onNodeWithTag("collection_frame:frame_silver").assertIsDisplayed()
+        composeRule.onNodeWithText("Khung Bạc").assertIsDisplayed()
         composeRule.onNodeWithText("Khung Bền bỉ").performClick()
         composeRule.runOnIdle {
             assertEquals("frame_persistent" to "title_rookie", equippedFrame)
@@ -319,6 +322,42 @@ class ProfileSectionsUiTest {
         composeRule.onNodeWithText("Danh hiệu").performScrollTo().assertIsDisplayed()
         composeRule.onNodeWithText("Ảnh đại diện đặc biệt").performScrollTo().assertIsDisplayed()
         assertTrue(composeRule.onAllNodesWithText("Trang chủ").fetchSemanticsNodes().isEmpty())
+    }
+
+    @Test
+    fun collection_smallPhoneLargestText_keepsLockedSilverFrameReadable() {
+        val baseProfile = profileFixture()
+        val profile = baseProfile.copy(
+            progression = baseProfile.progression.copy(
+                cosmetics = baseProfile.progression.cosmetics.map { cosmetic ->
+                    if (cosmetic.id == "frame_silver") cosmetic.copy(unlocked = false) else cosmetic
+                }
+            )
+        )
+
+        setAdaptiveContent(320.dp, 640.dp, fontScale = 2f) {
+            ProfileSectionScreen(
+                state = GameState(profile = profile),
+                profile = profile,
+                section = ProfileSection.COLLECTION,
+                isExternalProfile = false,
+                canEdit = true,
+                onBack = {},
+                onRefresh = {},
+                onOpenMatchDetail = {},
+                onCloseMatchDetail = {},
+                onEquipCosmetics = { _, _ -> },
+                onClaimMissionReward = {},
+                onSave = { _, _ -> },
+                onOpenNotifications = {}
+            )
+        }
+
+        composeRule.onNodeWithTag("collection_frame:frame_silver")
+            .performScrollTo()
+            .assertIsDisplayed()
+            .assertIsNotEnabled()
+        composeRule.onNodeWithText("Mở khóa: Cấp 6").assertIsDisplayed()
     }
 
     @Test
@@ -402,6 +441,7 @@ private fun profileFixture(): PlayerProfileSnapshot = PlayerProfileSnapshot(
         ),
         cosmetics = listOf(
             CosmeticSnapshot("frame_default", "Khung mặc định", CosmeticType.FRAME, unlocked = true, equipped = true),
+            CosmeticSnapshot("frame_silver", "Khung Bạc", CosmeticType.FRAME, unlocked = true, equipped = false),
             CosmeticSnapshot("frame_persistent", "Khung Bền bỉ", CosmeticType.FRAME, unlocked = true, equipped = false),
             CosmeticSnapshot("title_rookie", "Tân binh", CosmeticType.TITLE, unlocked = true, equipped = true),
             CosmeticSnapshot("title_diligent", "Chuyên cần", CosmeticType.TITLE, unlocked = true, equipped = false),

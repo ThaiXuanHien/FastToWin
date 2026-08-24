@@ -181,9 +181,7 @@ class PostgresMatchResultRepository(
 
     private fun updateSeasonRatings(
         connection: Connection,
-        match: CompletedMatch,
-        firstAfter: Int,
-        secondAfter: Int
+        match: CompletedMatch
     ) {
         val seasonId = connection.prepareStatement(
             "SELECT id FROM seasons WHERE ? >= starts_at AND ? < ends_at ORDER BY starts_at DESC LIMIT 1"
@@ -193,26 +191,71 @@ class PostgresMatchResultRepository(
             statement.setTimestamp(2, now)
             statement.executeQuery().use { result -> if (result.next()) result.getObject(1, UUID::class.java) else null }
         } ?: return
+        val now = match.endedAtMillis.toTimestamp()
         connection.prepareStatement(
             """
-            INSERT INTO season_ratings (
-                season_id, user_id, rating, matches_played, placement_matches, peak_rating, updated_at
-            )
-            VALUES (?, ?, ?, 1, 1, ?, ?)
-            ON CONFLICT (season_id, user_id) DO UPDATE SET
-                rating = EXCLUDED.rating,
-                matches_played = season_ratings.matches_played + 1,
-                placement_matches = LEAST(5, season_ratings.placement_matches + 1),
-                peak_rating = GREATEST(season_ratings.peak_rating, EXCLUDED.rating),
-                updated_at = EXCLUDED.updated_at
+                INSERT INTO season_ratings (
+                    season_id, user_id, rating, matches_played, placement_matches, peak_rating, updated_at
+                )
+            VALUES (?, ?, ?, 0, 0, ?, ?)
+            ON CONFLICT (season_id, user_id) DO NOTHING
             """.trimIndent()
         ).use { statement ->
-            listOf(match.players[0].playerId to firstAfter, match.players[1].playerId to secondAfter).forEach { (playerId, rating) ->
+            match.players.forEach { player ->
                 statement.setObject(1, seasonId)
-                statement.setObject(2, UUID.fromString(playerId))
-                statement.setInt(3, rating)
-                statement.setInt(4, rating)
-                statement.setTimestamp(5, match.endedAtMillis.toTimestamp())
+                statement.setObject(2, UUID.fromString(player.playerId))
+                statement.setInt(3, SEASON_INITIAL_RATING)
+                statement.setInt(4, SEASON_INITIAL_RATING)
+                statement.setTimestamp(5, now)
+                statement.addBatch()
+            }
+            statement.executeBatch()
+        }
+
+        val seasonRatings = mutableMapOf<String, Int>()
+        val sortedPlayerIds = match.players.map { it.playerId }.sorted()
+        connection.prepareStatement(
+            """
+            SELECT user_id, rating
+            FROM season_ratings
+            WHERE season_id = ? AND user_id IN (?, ?)
+            ORDER BY user_id
+            FOR UPDATE
+            """.trimIndent()
+        ).use { statement ->
+            statement.setObject(1, seasonId)
+            statement.setObject(2, UUID.fromString(sortedPlayerIds[0]))
+            statement.setObject(3, UUID.fromString(sortedPlayerIds[1]))
+            statement.executeQuery().use { result ->
+                while (result.next()) {
+                    seasonRatings[result.getObject("user_id", UUID::class.java).toString()] = result.getInt("rating")
+                }
+            }
+        }
+        val first = match.players[0]
+        val second = match.players[1]
+        val (firstAfter, secondAfter) = updatedEloRatings(
+            seasonRatings.getValue(first.playerId),
+            seasonRatings.getValue(second.playerId),
+            first.outcome.toEloScore()
+        )
+        connection.prepareStatement(
+            """
+            UPDATE season_ratings
+            SET rating = ?,
+                matches_played = matches_played + 1,
+                placement_matches = LEAST(5, placement_matches + 1),
+                peak_rating = GREATEST(peak_rating, ?),
+                updated_at = ?
+            WHERE season_id = ? AND user_id = ?
+            """.trimIndent()
+        ).use { statement ->
+            listOf(first.playerId to firstAfter, second.playerId to secondAfter).forEach { (playerId, rating) ->
+                statement.setInt(1, rating)
+                statement.setInt(2, rating)
+                statement.setTimestamp(3, now)
+                statement.setObject(4, seasonId)
+                statement.setObject(5, UUID.fromString(playerId))
                 statement.addBatch()
             }
             statement.executeBatch()
@@ -251,11 +294,11 @@ class PostgresMatchResultRepository(
         val second = match.players[1]
         val firstBefore = ratings.getValue(first.playerId)
         val secondBefore = ratings.getValue(second.playerId)
-        val firstScore = first.outcome.toEloScore()
-        val firstExpected = expectedScore(firstBefore, secondBefore)
-        val firstChange = kotlin.math.round(ELO_K_FACTOR * (firstScore - firstExpected)).toInt()
-        val firstAfter = (firstBefore + firstChange).coerceAtLeast(MIN_ELO)
-        val secondAfter = (secondBefore - (firstAfter - firstBefore)).coerceAtLeast(MIN_ELO)
+        val (firstAfter, secondAfter) = updatedEloRatings(
+            firstBefore,
+            secondBefore,
+            first.outcome.toEloScore()
+        )
 
         connection.prepareStatement("UPDATE player_stats SET elo_rating = ?, updated_at = ? WHERE user_id = ?").use { statement ->
             listOf(first.playerId to firstAfter, second.playerId to secondAfter).forEach { (playerId, rating) ->
@@ -286,7 +329,7 @@ class PostgresMatchResultRepository(
             }
             statement.executeBatch()
         }
-        updateSeasonRatings(connection, match, firstAfter, secondAfter)
+        updateSeasonRatings(connection, match)
     }
 
     private fun MatchOutcome.toEloScore(): Double = when (this) {
@@ -297,6 +340,14 @@ class PostgresMatchResultRepository(
 
     private fun expectedScore(rating: Int, opponentRating: Int): Double =
         1.0 / (1.0 + 10.0.pow((opponentRating - rating) / 400.0))
+
+    private fun updatedEloRatings(firstBefore: Int, secondBefore: Int, firstScore: Double): Pair<Int, Int> {
+        val firstExpected = expectedScore(firstBefore, secondBefore)
+        val firstChange = kotlin.math.round(ELO_K_FACTOR * (firstScore - firstExpected)).toInt()
+        val firstAfter = (firstBefore + firstChange).coerceAtLeast(MIN_ELO)
+        val secondAfter = (secondBefore - (firstAfter - firstBefore)).coerceAtLeast(MIN_ELO)
+        return firstAfter to secondAfter
+    }
 
     private fun calculateSelectionMetrics(match: CompletedMatch): Map<String, SelectionMetrics> {
         val metrics = match.players.associate { it.playerId to SelectionMetrics() }.toMutableMap()
@@ -490,6 +541,7 @@ class PostgresMatchResultRepository(
     private companion object {
         const val ELO_K_FACTOR = 32.0
         const val MIN_ELO = 100
+        const val SEASON_INITIAL_RATING = 1_000
     }
 }
 

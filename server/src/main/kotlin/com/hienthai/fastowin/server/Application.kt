@@ -62,6 +62,7 @@ fun Application.gameModule(
     environment: String = "dev",
     rateLimiter: RateLimiter = InMemoryRateLimiter(),
     rateLimitPolicies: ServerRateLimitPolicies = ServerRateLimitPolicies(),
+    seasonLifecycleRepository: SeasonLifecycleRepository = NoOpSeasonLifecycleRepository,
     websocketPingPeriod: Duration = DEFAULT_WEBSOCKET_PING_PERIOD,
     websocketPongTimeout: Duration = DEFAULT_WEBSOCKET_PONG_TIMEOUT
 ) {
@@ -75,6 +76,14 @@ fun Application.gameModule(
     }
 
     val connections = ConcurrentHashMap<String, SocketConnection>()
+
+    launch {
+        while (isActive) {
+            runCatching { seasonLifecycleRepository.maintain() }
+                .onFailure { System.err.println("Could not maintain season lifecycle: ${it.message}") }
+            delay(SEASON_LIFECYCLE_INTERVAL_MILLIS)
+        }
+    }
 
     suspend fun deliver(deliveries: List<Delivery>) {
         deliveries.forEach { delivery ->
@@ -568,5 +577,6 @@ private class SocketConnection(val session: io.ktor.server.websocket.DefaultWebS
 
 private const val SESSION_CLEANUP_INTERVAL_MILLIS = 5_000L
 private const val GAME_TIMER_INTERVAL_MILLIS = 250L
+private const val SEASON_LIFECYCLE_INTERVAL_MILLIS = 60_000L
 private val DEFAULT_WEBSOCKET_PING_PERIOD = 10.seconds
 private val DEFAULT_WEBSOCKET_PONG_TIMEOUT = 8.seconds

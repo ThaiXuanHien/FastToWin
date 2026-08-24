@@ -5,12 +5,14 @@ import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.FontScale
 import androidx.compose.ui.test.ForcedSize
 import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.then
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.unit.DpSize
@@ -20,7 +22,9 @@ import com.hienthai.fastowin.data.preferences.AppThemeMode
 import com.hienthai.fastowin.protocol.LeaderboardSnapshot
 import com.hienthai.fastowin.protocol.PlayerProfileSnapshot
 import com.hienthai.fastowin.protocol.PlayerProgressionSnapshot
+import com.hienthai.fastowin.protocol.RankedTier
 import com.hienthai.fastowin.protocol.STANDARD_SEASON_TIER_REWARDS
+import com.hienthai.fastowin.protocol.SeasonRewardReceiptSnapshot
 import com.hienthai.fastowin.protocol.SeasonSnapshot
 import com.hienthai.fastowin.state.GameState
 import com.hienthai.fastowin.ui.screens.LeaderboardScreen
@@ -44,7 +48,10 @@ class SeasonProgressUiTest {
             ) {
                 FastToWinTheme {
                     LeaderboardScreen(
-                        state = GameState(profile = profile, leaderboard = LeaderboardSnapshot()),
+                        state = GameState(
+                            profile = profile,
+                            leaderboard = LeaderboardSnapshot(previousSeasonName = "Mùa Khởi Đầu")
+                        ),
                         onBack = {},
                         onRefresh = {},
                         onOpenFriendProfile = {},
@@ -65,6 +72,12 @@ class SeasonProgressUiTest {
         composeRule.onNodeWithTag("season_reward:CHALLENGER")
             .performScrollTo()
             .assertIsDisplayed()
+        composeRule.onNodeWithTag("leaderboard_players_list")
+            .performScrollToNode(hasTestTag("leaderboard_period_previous"))
+        composeRule.onNodeWithTag("leaderboard_period_previous").performClick()
+        composeRule.onNodeWithTag("leaderboard_players_list")
+            .performScrollToNode(hasTestTag("season_reward_receipt"))
+        composeRule.onNodeWithTag("season_reward_receipt").assertIsDisplayed()
     }
 
     @Test
@@ -77,7 +90,10 @@ class SeasonProgressUiTest {
             ) {
                 FastToWinTheme(preferences = AppPreferences(themeMode = AppThemeMode.DARK)) {
                     LeaderboardScreen(
-                        state = GameState(profile = profile, leaderboard = LeaderboardSnapshot()),
+                        state = GameState(
+                            profile = profile,
+                            leaderboard = LeaderboardSnapshot(previousSeasonName = "Mùa Khởi Đầu")
+                        ),
                         onBack = {},
                         onRefresh = {},
                         onOpenFriendProfile = {},
@@ -110,6 +126,16 @@ private fun seasonProfileFixture(): PlayerProfileSnapshot {
         userId = "player-hien",
         displayName = "Hiền",
         playerCode = "HIEN001",
-        progression = PlayerProgressionSnapshot(season = season)
+        progression = PlayerProgressionSnapshot(
+            season = season,
+            latestSeasonReward = SeasonRewardReceiptSnapshot(
+                seasonName = "Mùa Khởi Đầu",
+                tier = RankedTier.GOLD,
+                peakRating = 1_380,
+                gold = 1_000,
+                gems = 1,
+                awardedAtEpochMillis = System.currentTimeMillis() - 86_400_000L
+            )
+        )
     )
 }

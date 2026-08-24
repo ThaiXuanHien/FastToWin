@@ -26,6 +26,8 @@ class ProgressionRulesTest {
         assertTrue("frame_default" in unlockedFrameIds(level = 1, achievementCodes = emptySet()))
         assertFalse("frame_bronze" in unlockedFrameIds(level = 2, achievementCodes = emptySet()))
         assertTrue("frame_bronze" in unlockedFrameIds(level = 3, achievementCodes = emptySet()))
+        assertFalse("frame_silver" in unlockedFrameIds(level = 5, achievementCodes = emptySet()))
+        assertTrue("frame_silver" in unlockedFrameIds(level = 6, achievementCodes = emptySet()))
         assertFalse("frame_gold" in unlockedFrameIds(level = 9, achievementCodes = emptySet()))
         assertTrue("frame_gold" in unlockedFrameIds(level = 10, achievementCodes = emptySet()))
         assertFalse("frame_perfect" in unlockedFrameIds(level = 14, achievementCodes = setOf("PERFECT_GAME")))

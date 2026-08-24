@@ -4,6 +4,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -31,6 +32,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.hienthai.fastowin.protocol.LeaderboardEntrySnapshot
@@ -41,6 +43,7 @@ import com.hienthai.fastowin.ui.layout.ResponsiveScreen
 import com.hienthai.fastowin.ui.components.FastToWinHeader
 import com.hienthai.fastowin.ui.components.PlayerAvatar
 import com.hienthai.fastowin.ui.components.SeasonProgressCard
+import com.hienthai.fastowin.ui.components.SeasonRewardReceiptCard
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -55,7 +58,7 @@ fun LeaderboardScreen(
 ) {
     SystemBackHandler(enabled = showBackButton, onBack = onBack)
     val leaderboard = state.leaderboard
-    var showSeason by remember { mutableStateOf(true) }
+    var selectedPeriod by remember { mutableStateOf(LeaderboardPeriod.CURRENT_SEASON) }
     ResponsiveScreen(
         modifier = modifier,
         maxContentWidth = 920.dp,
@@ -104,30 +107,67 @@ fun LeaderboardScreen(
         }
 
         if (selectedMainTab == 0) {
-            val displayedCurrent = if (showSeason) leaderboard?.seasonCurrentPlayer else leaderboard?.currentPlayer
-            val displayedTop = if (showSeason) leaderboard?.seasonTopPlayers.orEmpty() else leaderboard?.topPlayers.orEmpty()
+            val displayedCurrent = when (selectedPeriod) {
+                LeaderboardPeriod.CURRENT_SEASON -> leaderboard?.seasonCurrentPlayer
+                LeaderboardPeriod.PREVIOUS_SEASON -> leaderboard?.previousSeasonCurrentPlayer
+                LeaderboardPeriod.ALL_TIME -> leaderboard?.currentPlayer
+            }
+            val displayedTop = when (selectedPeriod) {
+                LeaderboardPeriod.CURRENT_SEASON -> leaderboard?.seasonTopPlayers.orEmpty()
+                LeaderboardPeriod.PREVIOUS_SEASON -> leaderboard?.previousSeasonTopPlayers.orEmpty()
+                LeaderboardPeriod.ALL_TIME -> leaderboard?.topPlayers.orEmpty()
+            }
             LazyColumn(
-                modifier = Modifier.fillMaxWidth().weight(1f),
+                modifier = Modifier.fillMaxWidth().weight(1f).testTag("leaderboard_players_list"),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                state.profile?.progression?.season?.let { season ->
-                    item(key = "season_progress") { SeasonProgressCard(season) }
+                if (selectedPeriod == LeaderboardPeriod.CURRENT_SEASON) {
+                    state.profile?.progression?.season?.let { season ->
+                        item(key = "season_progress") { SeasonProgressCard(season) }
+                    }
+                }
+                if (selectedPeriod == LeaderboardPeriod.PREVIOUS_SEASON) {
+                    state.profile?.progression?.latestSeasonReward
+                        ?.takeIf { it.seasonName == leaderboard?.previousSeasonName }
+                        ?.let { receipt ->
+                        item(key = "season_reward_receipt") { SeasonRewardReceiptCard(receipt) }
+                    }
                 }
                 item(key = "ranking_description") {
                     Text(
-                        if (showSeason) "Xếp hạng trong mùa hiện tại, tự làm mới sau mỗi trận."
-                        else "Xếp theo Elo, sau đó số trận thắng, tỷ lệ thắng và điểm cao nhất.",
+                        when (selectedPeriod) {
+                            LeaderboardPeriod.CURRENT_SEASON ->
+                                "${leaderboard?.seasonName ?: "Mùa hiện tại"}: Elo mùa được tính lại từ 1.000."
+                            LeaderboardPeriod.PREVIOUS_SEASON ->
+                                "Kết quả đã chốt của ${leaderboard?.previousSeasonName ?: "mùa trước"}."
+                            LeaderboardPeriod.ALL_TIME ->
+                                "Xếp theo Elo, sau đó số trận thắng, tỷ lệ thắng và điểm cao nhất."
+                        },
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
                 item(key = "ranking_filters") {
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        FilterChip(selected = showSeason, onClick = { showSeason = true }, label = {
-                            Text(leaderboard?.seasonName ?: "Mùa hiện tại")
-                        })
+                    FlowRow(
+                        modifier = Modifier.fillMaxWidth().testTag("leaderboard_period_filters"),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
                         FilterChip(
-                            selected = !showSeason,
-                            onClick = { showSeason = false },
+                            selected = selectedPeriod == LeaderboardPeriod.CURRENT_SEASON,
+                            onClick = { selectedPeriod = LeaderboardPeriod.CURRENT_SEASON },
+                            label = { Text("Hiện tại") },
+                            modifier = Modifier.testTag("leaderboard_period_current")
+                        )
+                        FilterChip(
+                            selected = selectedPeriod == LeaderboardPeriod.PREVIOUS_SEASON,
+                            onClick = { selectedPeriod = LeaderboardPeriod.PREVIOUS_SEASON },
+                            enabled = leaderboard?.previousSeasonName != null,
+                            label = { Text("Mùa trước") },
+                            modifier = Modifier.testTag("leaderboard_period_previous")
+                        )
+                        FilterChip(
+                            selected = selectedPeriod == LeaderboardPeriod.ALL_TIME,
+                            onClick = { selectedPeriod = LeaderboardPeriod.ALL_TIME },
                             label = { Text("Toàn thời gian") }
                         )
                     }
@@ -144,8 +184,11 @@ fun LeaderboardScreen(
                 if (displayedTop.isEmpty()) {
                     item(key = "empty_players") {
                         Text(
-                            if (showSeason) "Chưa có người chơi nào thi đấu trong mùa này."
-                            else "Chưa có người chơi nào hoàn thành trận đấu."
+                            when (selectedPeriod) {
+                                LeaderboardPeriod.CURRENT_SEASON -> "Chưa có người chơi nào hoàn thành phân hạng mùa này."
+                                LeaderboardPeriod.PREVIOUS_SEASON -> "Mùa trước chưa có người chơi đủ điều kiện xếp hạng."
+                                LeaderboardPeriod.ALL_TIME -> "Chưa có người chơi nào hoàn thành trận đấu."
+                            }
                         )
                     }
                 } else {
@@ -200,6 +243,8 @@ fun LeaderboardScreen(
         }
     }
 }
+
+private enum class LeaderboardPeriod { CURRENT_SEASON, PREVIOUS_SEASON, ALL_TIME }
 
 @Composable
 private fun ClanLeaderboardCard(

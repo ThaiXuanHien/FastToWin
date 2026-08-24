@@ -22,6 +22,7 @@ fun main() {
     val activeRoomRepository = database?.activeRoomRepository ?: NoOpActiveRoomRepository
     val tournamentRepository = database?.tournamentRepository ?: InMemoryTournamentRepository()
     val clanRepository = database?.clanRepository ?: NoOpClanRepository
+    val seasonLifecycleRepository = database?.seasonLifecycleRepository ?: NoOpSeasonLifecycleRepository
     val storage = if (database == null) "memory" else "postgresql"
     val storePurchaseVerifier = configuredStorePurchaseVerifier(environment)
     val engine = GameEngine(
@@ -38,7 +39,10 @@ fun main() {
         storePurchaseVerifier = storePurchaseVerifier,
         storeSandboxEnabled = environment == "dev"
     )
-    runBlocking { engine.restoreActiveRooms() }
+    runBlocking {
+        seasonLifecycleRepository.maintain()
+        engine.restoreActiveRooms()
+    }
 
     println("Starting Fast To Win server: environment=$environment, host=$host, port=$port, storage=$storage")
     try {
@@ -46,7 +50,8 @@ fun main() {
             gameModule(
                 engine = engine,
                 authService = authService,
-                environment = environment
+                environment = environment,
+                seasonLifecycleRepository = seasonLifecycleRepository
             )
         }.start(wait = true)
     } finally {

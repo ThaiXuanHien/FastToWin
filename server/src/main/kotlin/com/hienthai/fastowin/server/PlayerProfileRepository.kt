@@ -7,6 +7,7 @@ import com.hienthai.fastowin.protocol.WalletTransactionSnapshot
 
 interface PlayerProfileRepository {
     suspend fun findByPlayerId(playerId: String): PlayerProfileSnapshot?
+    suspend fun settleCompletedSeasonRewards(playerId: String): Boolean = false
     suspend fun findAppearance(playerId: String): PlayerAppearance? = findByPlayerId(playerId)?.let { profile ->
         PlayerAppearance(
             avatarId = profile.avatarId,

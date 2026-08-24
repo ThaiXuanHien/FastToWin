@@ -23,6 +23,8 @@ import com.hienthai.fastowin.protocol.MissionSnapshot
 import com.hienthai.fastowin.protocol.PlayerProgressionSnapshot
 import com.hienthai.fastowin.protocol.WalletTransactionSnapshot
 import com.hienthai.fastowin.protocol.SeasonSnapshot
+import com.hienthai.fastowin.protocol.SeasonRewardReceiptSnapshot
+import com.hienthai.fastowin.protocol.SeasonTierRewardSnapshot
 import com.hienthai.fastowin.protocol.STANDARD_SEASON_TIER_REWARDS
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -348,8 +350,8 @@ class PostgresPlayerProfileRepository(
                 LIMIT 1
                 """.trimIndent()
             ).use { statement ->
-                statement.setInt(1, base.statistics.eloRating)
-                statement.setInt(2, base.statistics.eloRating)
+                statement.setInt(1, SEASON_INITIAL_RATING)
+                statement.setInt(2, SEASON_INITIAL_RATING)
                 statement.setObject(3, userId)
                 statement.executeQuery().use { result ->
                     if (!result.next()) null else {
@@ -370,6 +372,29 @@ class PostgresPlayerProfileRepository(
                             tierRewards = STANDARD_SEASON_TIER_REWARDS
                         )
                     }
+                }
+            }
+            val latestSeasonReward = connection.prepareStatement(
+                """
+                SELECT s.name, src.tier, src.peak_rating, src.reward_gold,
+                       src.reward_gems, src.awarded_at
+                FROM season_reward_claims src
+                JOIN seasons s ON s.id = src.season_id
+                WHERE src.user_id = ?
+                ORDER BY src.awarded_at DESC
+                LIMIT 1
+                """.trimIndent()
+            ).use { statement ->
+                statement.setObject(1, userId)
+                statement.executeQuery().use { result ->
+                    if (!result.next()) null else SeasonRewardReceiptSnapshot(
+                        seasonName = result.getString("name"),
+                        tier = com.hienthai.fastowin.protocol.RankedTier.valueOf(result.getString("tier")),
+                        peakRating = result.getInt("peak_rating"),
+                        gold = result.getInt("reward_gold"),
+                        gems = result.getInt("reward_gems"),
+                        awardedAtEpochMillis = result.getTimestamp("awarded_at").time
+                    )
                 }
             }
             val experiencePoints = progressionRow.experiencePoints
@@ -402,6 +427,7 @@ class PostgresPlayerProfileRepository(
             val cosmetics = listOf(
                 cosmetic("frame_default", "Khung cơ bản", CosmeticType.FRAME, true, equippedFrameId),
                 cosmetic("frame_bronze", "Khung Đồng", CosmeticType.FRAME, "frame_bronze" in unlockedFrames, equippedFrameId),
+                cosmetic("frame_silver", "Khung Bạc", CosmeticType.FRAME, "frame_silver" in unlockedFrames, equippedFrameId),
                 cosmetic("frame_gold", "Khung Vàng", CosmeticType.FRAME, "frame_gold" in unlockedFrames, equippedFrameId),
                 cosmetic("frame_perfect", "Khung Hoàn hảo", CosmeticType.FRAME, "frame_perfect" in unlockedFrames, equippedFrameId),
                 cosmetic("frame_persistent", "Khung Bền bỉ", CosmeticType.FRAME, "frame_persistent" in unlockedFrames, equippedFrameId),
@@ -447,9 +473,123 @@ class PostgresPlayerProfileRepository(
                         historyDates = recentCheckInDates
                     ),
                     cosmetics = cosmetics,
-                    season = season
+                    season = season,
+                    latestSeasonReward = latestSeasonReward
                 )
             )
+        }
+    }
+
+    override suspend fun settleCompletedSeasonRewards(playerId: String): Boolean = withContext(Dispatchers.IO) {
+        dataSource.connection.use { connection ->
+            connection.autoCommit = false
+            try {
+                val userId = UUID.fromString(playerId)
+                val userExists = connection.prepareStatement("SELECT 1 FROM users WHERE id = ? FOR UPDATE").use { statement ->
+                    statement.setObject(1, userId)
+                    statement.executeQuery().use { it.next() }
+                }
+                if (!userExists) {
+                    connection.rollback()
+                    return@withContext false
+                }
+                connection.prepareStatement(
+                    """
+                    INSERT INTO player_stats (user_id, updated_at)
+                    VALUES (?, CURRENT_TIMESTAMP)
+                    ON CONFLICT (user_id) DO NOTHING
+                    """.trimIndent()
+                ).use { statement ->
+                    statement.setObject(1, userId)
+                    statement.executeUpdate()
+                }
+
+                val completedSeasons = connection.prepareStatement(
+                    """
+                    SELECT s.id, sr.peak_rating
+                    FROM season_ratings sr
+                    JOIN seasons s ON s.id = sr.season_id
+                    WHERE sr.user_id = ?
+                      AND s.ends_at <= CURRENT_TIMESTAMP
+                      AND sr.placement_matches >= ?
+                      AND NOT EXISTS (
+                          SELECT 1 FROM season_reward_claims src
+                          WHERE src.season_id = s.id AND src.user_id = sr.user_id
+                      )
+                    ORDER BY s.ends_at ASC
+                    """.trimIndent()
+                ).use { statement ->
+                    statement.setObject(1, userId)
+                    statement.setInt(2, PLACEMENT_MATCHES_REQUIRED)
+                    statement.executeQuery().use { result ->
+                        buildList {
+                            while (result.next()) add(
+                                CompletedSeasonReward(
+                                    seasonId = result.getObject("id", UUID::class.java),
+                                    peakRating = result.getInt("peak_rating")
+                                )
+                            )
+                        }
+                    }
+                }
+
+                var totalGold = 0
+                var totalGems = 0
+                completedSeasons.forEach { completed ->
+                    val reward = seasonRewardForPeakRating(completed.peakRating)
+                    val inserted = connection.prepareStatement(
+                        """
+                        INSERT INTO season_reward_claims (
+                            season_id, user_id, tier, peak_rating, reward_gold, reward_gems
+                        ) VALUES (?, ?, ?, ?, ?, ?)
+                        ON CONFLICT (season_id, user_id) DO NOTHING
+                        """.trimIndent()
+                    ).use { statement ->
+                        statement.setObject(1, completed.seasonId)
+                        statement.setObject(2, userId)
+                        statement.setString(3, reward.tier.name)
+                        statement.setInt(4, completed.peakRating)
+                        statement.setInt(5, reward.gold)
+                        statement.setInt(6, reward.gems)
+                        statement.executeUpdate() == 1
+                    }
+                    if (inserted) {
+                        insertWalletTransaction(
+                            connection = connection,
+                            userId = userId,
+                            sourceType = "SEASON_REWARD",
+                            sourceId = completed.seasonId.toString(),
+                            gold = reward.gold,
+                            gems = reward.gems,
+                            xp = 0
+                        )
+                        totalGold += reward.gold
+                        totalGems += reward.gems
+                    }
+                }
+
+                if (totalGold > 0 || totalGems > 0) {
+                    connection.prepareStatement(
+                        """
+                        UPDATE player_stats
+                        SET gold = gold + ?, gems = gems + ?, updated_at = CURRENT_TIMESTAMP
+                        WHERE user_id = ?
+                        """.trimIndent()
+                    ).use { statement ->
+                        statement.setInt(1, totalGold)
+                        statement.setInt(2, totalGems)
+                        statement.setObject(3, userId)
+                        check(statement.executeUpdate() == 1)
+                    }
+                }
+                connection.commit()
+                totalGold > 0 || totalGems > 0
+            } catch (error: Throwable) {
+                connection.rollback()
+                throw error
+            } finally {
+                connection.autoCommit = true
+            }
         }
     }
 
@@ -820,6 +960,7 @@ class PostgresPlayerProfileRepository(
     private companion object {
         const val EXPERIENCE_PER_LEVEL = 100
         const val PLACEMENT_MATCHES_REQUIRED = 5
+        const val SEASON_INITIAL_RATING = 1_000
     }
     override suspend fun loadWalletHistory(
         playerId: String,
@@ -1155,6 +1296,15 @@ private data class ProgressionRow(
     val lastDailyCheckInDate: LocalDate? = null
 )
 
+private data class CompletedSeasonReward(
+    val seasonId: UUID,
+    val peakRating: Int
+)
+
+internal fun seasonRewardForPeakRating(peakRating: Int): SeasonTierRewardSnapshot =
+    STANDARD_SEASON_TIER_REWARDS.lastOrNull { peakRating >= it.tier.minimumRating }
+        ?: STANDARD_SEASON_TIER_REWARDS.first()
+
 private data class StoredMission(
     val progress: Int,
     val target: Int,
@@ -1171,6 +1321,7 @@ internal fun unlockedFrameIds(
 ): Set<String> = buildSet {
     add("frame_default")
     if (level >= 3) add("frame_bronze")
+    if (level >= 6) add("frame_silver")
     if (level >= 10) add("frame_gold")
     if (level >= 15 && "PERFECT_GAME" in achievementCodes) add("frame_perfect")
     if (totalDailyCheckIns >= DAILY_CHECK_IN_FRAME_TARGET) add("frame_persistent")

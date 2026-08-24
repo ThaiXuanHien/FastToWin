@@ -1317,6 +1317,10 @@ class GameEngine(
     private suspend fun loadProfile(playerId: String): List<Delivery> {
         val session = mutex.withLock { sessionsByPlayerId[playerId]?.copy() }
             ?: return listOf(error(playerId, "SESSION_NOT_FOUND", "Phiên chơi không còn hợp lệ."))
+        if (session.resumeToken == null) {
+            runCatching { playerProfileRepository.settleCompletedSeasonRewards(playerId) }
+                .onFailure { System.err.println("Could not settle season rewards for $playerId: ${it.message}") }
+        }
         val persisted = runCatching { playerProfileRepository.findByPlayerId(playerId) }
             .onFailure { System.err.println("Could not load profile $playerId: ${it.message}") }
             .getOrNull()
