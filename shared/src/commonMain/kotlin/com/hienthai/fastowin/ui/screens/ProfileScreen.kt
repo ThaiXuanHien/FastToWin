@@ -91,6 +91,7 @@ import com.hienthai.fastowin.protocol.MatchType
 import com.hienthai.fastowin.protocol.MatchDetailSnapshot
 import com.hienthai.fastowin.protocol.CosmeticSnapshot
 import com.hienthai.fastowin.protocol.CosmeticType
+import com.hienthai.fastowin.protocol.MissionDifficulty
 import com.hienthai.fastowin.protocol.DailyCheckInSnapshot
 import com.hienthai.fastowin.protocol.DAILY_CHECK_IN_AVATAR_ID
 import com.hienthai.fastowin.protocol.DAILY_CHECK_IN_AVATAR_TARGET
@@ -903,7 +904,18 @@ private fun MissionSectionContent(
                         tint = if (mission.completed) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                        Text(mission.title, fontWeight = FontWeight.SemiBold)
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Text(
+                                mission.title,
+                                fontWeight = FontWeight.SemiBold,
+                                modifier = Modifier.weight(1f)
+                            )
+                            MissionDifficultyBadge(mission.difficulty)
+                        }
                         LinearProgressIndicator(
                             progress = { mission.progress.toFloat() / mission.target.coerceAtLeast(1) },
                             modifier = Modifier.fillMaxWidth().height(6.dp)
@@ -937,6 +949,41 @@ private fun MissionSectionContent(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun MissionDifficultyBadge(difficulty: MissionDifficulty) {
+    val label = when (difficulty) {
+        MissionDifficulty.EASY -> "Dễ"
+        MissionDifficulty.NORMAL -> "Vừa"
+        MissionDifficulty.HARD -> "Khó"
+        MissionDifficulty.ELITE -> "Thử thách"
+    }
+    val containerColor = when (difficulty) {
+        MissionDifficulty.EASY -> MaterialTheme.colorScheme.secondaryContainer
+        MissionDifficulty.NORMAL -> MaterialTheme.colorScheme.primaryContainer
+        MissionDifficulty.HARD -> MaterialTheme.colorScheme.tertiaryContainer
+        MissionDifficulty.ELITE -> MaterialTheme.colorScheme.errorContainer
+    }
+    val contentColor = when (difficulty) {
+        MissionDifficulty.EASY -> MaterialTheme.colorScheme.onSecondaryContainer
+        MissionDifficulty.NORMAL -> MaterialTheme.colorScheme.onPrimaryContainer
+        MissionDifficulty.HARD -> MaterialTheme.colorScheme.onTertiaryContainer
+        MissionDifficulty.ELITE -> MaterialTheme.colorScheme.onErrorContainer
+    }
+    Surface(
+        shape = RoundedCornerShape(8.dp),
+        color = containerColor,
+        modifier = Modifier.testTag("mission_difficulty_${difficulty.name.lowercase()}")
+    ) {
+        Text(
+            label,
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+            style = MaterialTheme.typography.labelSmall,
+            fontWeight = FontWeight.Bold,
+            color = contentColor
+        )
     }
 }
 

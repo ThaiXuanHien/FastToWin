@@ -153,12 +153,18 @@ private fun completedMissionNotifications(
             id = "mission:$periodKey:${mission.code}",
             kind = AppNotificationKind.MISSION,
             title = "Hoàn thành nhiệm vụ",
-            message = "${mission.title} • Có thể nhận ${mission.rewardXp} XP.",
+            message = "${mission.title} • Nhận ${mission.rewardSummary()}.",
             createdAtEpochMillis = nowMillis,
             destination = AppNotificationDestination.PROFILE
         )
     }
 }
+
+private fun MissionSnapshot.rewardSummary(): String = buildList {
+    if (rewardGold > 0) add("$rewardGold vàng")
+    if (rewardXp > 0) add("$rewardXp XP")
+    if (rewardGems > 0) add("$rewardGems Gem")
+}.joinToString(" + ").ifEmpty { "thưởng" }
 
 private const val MAX_IN_APP_NOTIFICATIONS = 100
 private const val DAY_MILLIS = 86_400_000L

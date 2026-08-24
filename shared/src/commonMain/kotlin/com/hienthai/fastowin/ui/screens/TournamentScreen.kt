@@ -61,6 +61,8 @@ import com.hienthai.fastowin.protocol.TournamentMatchSnapshot
 import com.hienthai.fastowin.protocol.TournamentPhase
 import com.hienthai.fastowin.protocol.TournamentSnapshot
 import com.hienthai.fastowin.state.GameState
+import com.hienthai.fastowin.ui.components.FriendPresenceIndicator
+import com.hienthai.fastowin.ui.components.OnlineStatusIndicator
 import com.hienthai.fastowin.ui.components.SystemBackHandler
 import com.hienthai.fastowin.ui.layout.ResponsiveScreen
 
@@ -489,29 +491,25 @@ private fun ActiveTournamentContent(
                     }
                     
                     if (participant != null) {
-                        Surface(
-                            color = when {
-                                participant.isHost -> MaterialTheme.colorScheme.tertiaryContainer
-                                participant.isOnline -> MaterialTheme.colorScheme.primaryContainer
-                                else -> MaterialTheme.colorScheme.surfaceVariant
-                            },
-                            shape = RoundedCornerShape(8.dp)
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
-                            Text(
-                                when {
-                                    participant.isHost -> "Chủ giải"
-                                    participant.isOnline -> "Trực tuyến"
-                                    else -> "Ngoại tuyến"
-                                },
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                                style = MaterialTheme.typography.labelSmall,
-                                fontWeight = FontWeight.Bold,
-                                color = when {
-                                    participant.isHost -> MaterialTheme.colorScheme.onTertiaryContainer
-                                    participant.isOnline -> MaterialTheme.colorScheme.onPrimaryContainer
-                                    else -> MaterialTheme.colorScheme.onSurfaceVariant
+                            if (participant.isHost) {
+                                Surface(
+                                    color = MaterialTheme.colorScheme.tertiaryContainer,
+                                    shape = RoundedCornerShape(8.dp)
+                                ) {
+                                    Text(
+                                        "Chủ giải",
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onTertiaryContainer
+                                    )
                                 }
-                            )
+                            }
+                            OnlineStatusIndicator(participant.isOnline)
                         }
                     }
                 }
@@ -537,7 +535,13 @@ private fun ActiveTournamentContent(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
-                            Text(friend.displayName, fontWeight = FontWeight.Medium)
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Text(friend.displayName, fontWeight = FontWeight.Medium)
+                                FriendPresenceIndicator(friend.presence)
+                            }
                             TextButton(
                                 onClick = { onInvite(friend.userId) },
                                 shape = RoundedCornerShape(12.dp)

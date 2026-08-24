@@ -50,6 +50,7 @@ import com.hienthai.fastowin.state.LobbyStage
 import com.hienthai.fastowin.ui.components.SystemBackHandler
 import com.hienthai.fastowin.ui.layout.ResponsiveScreen
 import com.hienthai.fastowin.ui.components.FastToWinHeader
+import com.hienthai.fastowin.ui.components.FriendPresenceIndicator
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -333,7 +334,13 @@ private fun FriendCard(
                 Text(avatarEmoji(friend.avatarId), style = MaterialTheme.typography.headlineMedium)
                 Column(modifier = Modifier.weight(1f)) {
                     Text(friend.displayName, fontWeight = FontWeight.Bold)
-                    Text("${friend.playerCode} • ${friend.presence.label()}")
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Text(friend.playerCode)
+                        FriendPresenceIndicator(friend.presence)
+                    }
                 }
                 Box {
                     IconButton(
@@ -405,13 +412,6 @@ fun RoomInvitationDialog(
             }
         }
     )
-}
-
-private fun FriendPresence.label(): String = when (this) {
-    FriendPresence.OFFLINE -> "Ngoại tuyến"
-    FriendPresence.ONLINE -> "Trực tuyến"
-    FriendPresence.IN_ROOM -> "Trong phòng"
-    FriendPresence.PLAYING -> "Đang thi đấu"
 }
 
 private fun avatarEmoji(avatarId: String?): String = when (avatarId) {

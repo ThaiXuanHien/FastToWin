@@ -39,6 +39,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.SentimentSatisfiedAlt
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -48,6 +49,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -93,7 +96,7 @@ fun GameScreen(
         AlertDialog(
             onDismissRequest = { showExitConfirmation = false },
             title = { Text("Rời trận đấu?") },
-            text = { Text("Trận hiện tại sẽ kết thúc và cả hai người chơi được đưa ra khỏi phòng.") },
+            text = { Text("Bạn sẽ bị xử thua và trở về sảnh. Đối thủ vẫn xem được kết quả trận.") },
             confirmButton = {
                 TextButton(onClick = {
                     showExitConfirmation = false
@@ -142,8 +145,16 @@ fun GameScreen(
                 actions = {
                     var showEmojiMenu by remember { mutableStateOf(false) }
                     Box {
-                        IconButton(onClick = { showEmojiMenu = true }) {
-                            Text("😀", fontSize = 20.sp)
+                        IconButton(
+                            onClick = { showEmojiMenu = true },
+                            modifier = Modifier
+                                .testTag("open_emoji_menu")
+                                .semantics { contentDescription = "Gửi biểu cảm" }
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.SentimentSatisfiedAlt,
+                                contentDescription = null
+                            )
                         }
                         DropdownMenu(
                             expanded = showEmojiMenu,
@@ -158,7 +169,9 @@ fun GameScreen(
                                             showEmojiMenu = false
                                         },
                                         contentPadding = PaddingValues(8.dp),
-                                        modifier = Modifier.defaultMinSize(minWidth = 32.dp)
+                                        modifier = Modifier
+                                            .defaultMinSize(minWidth = 48.dp, minHeight = 48.dp)
+                                            .testTag("send_emoji:$emoji")
                                     ) {
                                         Text(emoji, fontSize = 24.sp)
                                     }
@@ -616,6 +629,7 @@ private fun EmojiOverlay(emojis: List<com.hienthai.fastowin.state.EmojiEvent>) {
                         .align(Alignment.BottomStart)
                         .offset(x = 16.dp, y = offsetY.dp - 32.dp)
                         .alpha(alpha)
+                        .testTag("received_emoji:${emoji.id}")
                 )
             }
         }

@@ -1613,7 +1613,7 @@ class GameEngine(
                         TimedAdvance(
                             delivery = Delivery(
                                 ServerMessage.RematchStatus(room.snapshot(), RematchEvent.EXPIRED),
-                                room.playerIds()
+                                room.activePlayerIds()
                             ),
                             completedMatch = null
                         )
@@ -1633,7 +1633,7 @@ class GameEngine(
                                     selectionAccepted = false
                                 )
                             },
-                            room.playerIds()
+                            room.activePlayerIds()
                         ),
                         completedMatch = room.takeCompletedMatch()
                     )
@@ -1842,7 +1842,7 @@ class GameEngine(
     private fun setReady(player: GuestSession, command: ClientMessage.SetReady): HandleResult {
         val room = rooms[command.roomId]
             ?: return HandleResult(listOf(error(player.playerId, "ROOM_NOT_FOUND", "Phòng không còn tồn tại.")))
-        if (player.playerId !in room.playerIds()) {
+        if (player.playerId !in room.activePlayerIds()) {
             return HandleResult(listOf(error(player.playerId, "NOT_IN_ROOM", "Bạn không ở trong phòng này.")))
         }
         if (room.phase != RoomPhase.WAITING) {
@@ -1896,7 +1896,7 @@ class GameEngine(
     private fun leaveRoom(player: GuestSession, command: ClientMessage.LeaveRoom): HandleResult {
         val room = rooms[command.roomId]
             ?: return HandleResult(listOf(error(player.playerId, "ROOM_NOT_FOUND", "Phòng không còn tồn tại.")))
-        if (player.playerId !in room.playerIds() && player.playerId !in room.spectatorIds) {
+        if (player.playerId !in room.activePlayerIds() && player.playerId !in room.spectatorIds) {
             return HandleResult(listOf(error(player.playerId, "NOT_IN_ROOM", "Bạn không ở trong phòng này.")))
         }
         if (room.tournamentId != null && room.phase == RoomPhase.PLAYING) {
@@ -1928,9 +1928,35 @@ class GameEngine(
             room.finishedAtEpochMillis = nowMillis()
             room.sequence++
             val finished = ServerMessage.GameFinished(room.snapshot())
+            val completedMatch = room.takeCompletedMatch()
+            room.departedPlayerIds += player.playerId
+            room.rematchRequestedPlayerIds.remove(player.playerId)
             return HandleResult(
-                deliveries = listOf(Delivery(finished, room.participantIds())),
-                completedMatch = room.takeCompletedMatch(),
+                deliveries = listOf(
+                    Delivery(
+                        ServerMessage.RoomClosed(room.id, "Bạn đã rời trận và bị xử thua."),
+                        setOf(player.playerId)
+                    ),
+                    Delivery(finished, room.participantIds())
+                ),
+                completedMatch = completedMatch,
+                changedRoomId = room.id
+            )
+        }
+
+        if (room.phase == RoomPhase.FINISHED) {
+            room.departedPlayerIds += player.playerId
+            room.rematchRequestedPlayerIds.remove(player.playerId)
+            room.sequence++
+            val noPlayersRemain = room.activePlayerIds().isEmpty()
+            if (noPlayersRemain) rooms.remove(room.id)
+            return HandleResult(
+                deliveries = listOf(
+                    Delivery(
+                        ServerMessage.RoomClosed(room.id, "Bạn đã rời màn kết quả."),
+                        setOf(player.playerId)
+                    )
+                ),
                 changedRoomId = room.id
             )
         }
@@ -1993,7 +2019,7 @@ class GameEngine(
     ): HandleResult {
         val room = rooms[roomId]
             ?: return HandleResult(listOf(error(player.playerId, "ROOM_NOT_FOUND", "Phòng không còn tồn tại.")))
-        if (player.playerId !in room.playerIds()) {
+        if (player.playerId !in room.activePlayerIds()) {
             return HandleResult(listOf(error(player.playerId, "NOT_IN_ROOM", "Bạn không ở trong phòng này.")))
         }
         if (room.tournamentId != null) {
@@ -2013,7 +2039,7 @@ class GameEngine(
         if (room.phase != RoomPhase.FINISHED) {
             return HandleResult(listOf(error(player.playerId, "REMATCH_NOT_AVAILABLE", "Chỉ có thể đấu lại sau khi trận kết thúc.")))
         }
-        if (room.playerIds().size != 2) {
+        if (room.activePlayerIds().size != 2) {
             return HandleResult(listOf(error(player.playerId, "OPPONENT_LEFT", "Đối thủ đã rời phòng.")))
         }
 
@@ -2026,7 +2052,7 @@ class GameEngine(
             room.sequence++
             return HandleResult(
                 deliveries = listOf(
-                    Delivery(ServerMessage.RematchStatus(room.snapshot(), RematchEvent.EXPIRED), room.playerIds())
+                    Delivery(ServerMessage.RematchStatus(room.snapshot(), RematchEvent.EXPIRED), room.activePlayerIds())
                 ),
                 changedRoomId = room.id
             )
@@ -2048,7 +2074,7 @@ class GameEngine(
                 deliveries = listOf(
                     Delivery(
                         ServerMessage.RematchStatus(room.snapshot(), event, player.playerId),
-                        room.playerIds()
+                        room.activePlayerIds()
                     )
                 ),
                 changedRoomId = room.id
@@ -2059,13 +2085,13 @@ class GameEngine(
             room.rematchExpiresAtEpochMillis = nowMillis() + rematchTimeoutMillis
         }
         room.rematchRequestedPlayerIds += player.playerId
-        if (!room.rematchRequestedPlayerIds.containsAll(room.playerIds())) {
+        if (!room.rematchRequestedPlayerIds.containsAll(room.activePlayerIds())) {
             room.sequence++
             return HandleResult(
                 deliveries = listOf(
                     Delivery(
                         ServerMessage.RematchStatus(room.snapshot(), RematchEvent.REQUESTED, player.playerId),
-                        room.playerIds()
+                        room.activePlayerIds()
                     )
                 ),
                 changedRoomId = room.id
@@ -2075,7 +2101,7 @@ class GameEngine(
         room.matchId = UUID.randomUUID().toString()
         room.startMatch(nowMillis(), timeAttackMillis)
         return HandleResult(
-            deliveries = listOf(Delivery(ServerMessage.GameStarted(room.snapshot()), room.playerIds())),
+            deliveries = listOf(Delivery(ServerMessage.GameStarted(room.snapshot()), room.activePlayerIds())),
             changedRoomId = room.id
         )
     }
@@ -2213,7 +2239,7 @@ class GameEngine(
         val room = rooms[command.roomId]
             ?: return HandleResult(listOf(error(player.playerId, "ROOM_NOT_FOUND", "Không tìm thấy phòng.")))
 
-        if (player.playerId !in room.playerIds() && player.playerId !in room.spectatorIds) {
+        if (player.playerId !in room.activePlayerIds() && player.playerId !in room.spectatorIds) {
             return HandleResult(listOf(error(player.playerId, "NOT_IN_ROOM", "Bạn không ở trong phòng này.")))
         }
 
@@ -2375,7 +2401,7 @@ class GameEngine(
         finishedAtMillis = finishedAtEpochMillis
     )
 
-    private fun roomFor(playerId: String): Room? = rooms.values.firstOrNull { playerId in it.playerIds() }
+    private fun roomFor(playerId: String): Room? = rooms.values.firstOrNull { playerId in it.activePlayerIds() }
 
     private inline fun <reified T : ServerMessage> List<Delivery>.roomIdFrom(): String? {
         return when (val message = asSequence().map(Delivery::message).filterIsInstance<T>().firstOrNull()) {
@@ -2433,6 +2459,7 @@ class GameEngine(
             lives = lives.toMap(),
             deadlinesAtEpochMillis = deadlinesAtEpochMillis.toMap(),
             finishedPlayerIds = finishedPlayerIds.toSet(),
+            departedPlayerIds = departedPlayerIds.toSet(),
             forcedWinnerId = forcedWinnerId
         )
     }
@@ -2490,6 +2517,7 @@ class GameEngine(
             }
         },
         finishedPlayerIds = finishedPlayerIds.toMutableSet(),
+        departedPlayerIds = departedPlayerIds.toMutableSet(),
         forcedWinnerId = forcedWinnerId,
         scores = scores.toMutableMap().also { restoredScores ->
             restoredScores.putIfAbsent(host.playerId, 0)
@@ -2799,6 +2827,7 @@ class GameEngine(
         val lives: MutableMap<String, Int> = mutableMapOf(),
         val deadlinesAtEpochMillis: MutableMap<String, Long> = mutableMapOf(),
         val finishedPlayerIds: MutableSet<String> = mutableSetOf(),
+        val departedPlayerIds: MutableSet<String> = mutableSetOf(),
         var forcedWinnerId: String? = null,
         val scores: MutableMap<String, Int> = mutableMapOf(hostId to 0),
         var sequence: Long = 0,
@@ -2812,7 +2841,8 @@ class GameEngine(
         val selectionEvents: MutableList<MatchSelectionEvent> = mutableListOf()
     ) {
         fun playerIds(): Set<String> = setOfNotNull(hostId, guestId) + extraGuestIds
-        fun participantIds(): Set<String> = playerIds() + spectatorIds
+        fun activePlayerIds(): Set<String> = playerIds() - departedPlayerIds
+        fun participantIds(): Set<String> = activePlayerIds() + spectatorIds
 
         fun targetFor(playerId: String): Int {
             val index = targetIndexes[playerId] ?: 0
@@ -2835,6 +2865,7 @@ class GameEngine(
             lives.clear()
             deadlinesAtEpochMillis.clear()
             finishedPlayerIds.clear()
+            departedPlayerIds.clear()
             forcedWinnerId = null
             playerIds().forEach { id ->
                 scores[id] = 0

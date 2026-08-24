@@ -309,7 +309,8 @@ class PostgresPlayerProfileRepository(
                     rewardXp = stored?.rewardXp?.takeIf { it > 0 } ?: definition.rewardXp,
                     rewardGold = stored?.rewardGold?.takeIf { it > 0 } ?: definition.rewardGold,
                     rewardGems = stored?.rewardGems?.takeIf { it > 0 } ?: definition.rewardGems,
-                    rewardClaimed = stored?.rewardClaimed == true
+                    rewardClaimed = stored?.rewardClaimed == true,
+                    difficulty = definition.difficulty
                 )
             }
             val season = connection.prepareStatement(

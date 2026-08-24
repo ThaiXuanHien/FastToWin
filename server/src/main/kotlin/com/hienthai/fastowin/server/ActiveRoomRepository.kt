@@ -53,6 +53,7 @@ data class StoredActiveRoom(
     val lives: Map<String, Int> = emptyMap(),
     val deadlinesAtEpochMillis: Map<String, Long> = emptyMap(),
     val finishedPlayerIds: Set<String> = emptySet(),
+    val departedPlayerIds: Set<String> = emptySet(),
     val forcedWinnerId: String? = null
 )
 

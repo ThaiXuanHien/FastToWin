@@ -520,6 +520,26 @@ class CriticalFlowsUiTest {
     }
 
     @Test
+    fun game_sendsSelectedEmoji() {
+        var sentEmoji: String? = null
+        composeRule.setContent {
+            FastToWinTheme {
+                GameScreen(
+                    state = gameState(),
+                    onNumberClick = {},
+                    onFinish = {},
+                    onSendEmoji = { sentEmoji = it },
+                    preferences = AppPreferences(soundEnabled = false, vibrationEnabled = false)
+                )
+            }
+        }
+
+        composeRule.onNodeWithTag("open_emoji_menu").performClick()
+        composeRule.onNodeWithTag("send_emoji:😂").performClick()
+        composeRule.runOnIdle { assertEquals("😂", sentEmoji) }
+    }
+
+    @Test
     fun result_showsSummaryAndReturnsToLobby() {
         var returnedToLobby = false
         var sharedResult: ResultShareContent? = null

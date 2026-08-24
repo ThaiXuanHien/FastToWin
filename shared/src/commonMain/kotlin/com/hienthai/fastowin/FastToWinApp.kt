@@ -640,11 +640,11 @@ private fun GameContent(
 
                 state.isGameOver -> ResultScreen(
                     state = state,
-                    onRestart = controller::resetGame,
+                    onRestart = controller::leaveRoom,
                     onBack = if (state.isTournamentMatch) {
                         controller::openTournamentAfterMatch
                     } else {
-                        controller::resetGame
+                        controller::leaveRoom
                     },
                     onRematch = controller::requestRematch,
                     onCancelRematch = controller::cancelRematch,
@@ -663,6 +663,7 @@ private fun GameContent(
                     onOpenFriendProfile = controller::openFriendProfile,
                     onExit = controller::leaveRoom,
                     allowExit = !state.isTournamentMatch,
+                    onSendEmoji = controller::sendEmoji,
                     preferences = appPreferences
                 )
 

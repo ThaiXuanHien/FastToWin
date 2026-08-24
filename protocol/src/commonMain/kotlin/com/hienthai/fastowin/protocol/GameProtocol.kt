@@ -4,7 +4,7 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
-const val PROTOCOL_VERSION = 28
+const val PROTOCOL_VERSION = 29
 const val GAME_NUMBER_COUNT = 50
 const val MAX_PROFILE_DISPLAY_NAME_LENGTH = 32
 val DAILY_CHECK_IN_REWARDS_XP = listOf(10, 10, 15, 15, 20, 25, 40)
@@ -233,6 +233,9 @@ data class PlayerProfileSnapshot(
 enum class CosmeticType { FRAME, TITLE, AVATAR, CARD_BACK, BOARD_SKIN, EMOJI }
 
 @Serializable
+enum class MissionDifficulty { EASY, NORMAL, HARD, ELITE }
+
+@Serializable
 data class CosmeticSnapshot(
     val id: String,
     val name: String,
@@ -251,7 +254,8 @@ data class MissionSnapshot(
     val rewardXp: Int = 0,
     val rewardGold: Int = 0,
     val rewardGems: Int = 0,
-    val rewardClaimed: Boolean = false
+    val rewardClaimed: Boolean = false,
+    val difficulty: MissionDifficulty = MissionDifficulty.EASY
 )
 
 @Serializable

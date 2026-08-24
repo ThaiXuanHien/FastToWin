@@ -24,6 +24,7 @@ import com.hienthai.fastowin.protocol.GameModeStatisticsSnapshot
 import com.hienthai.fastowin.protocol.MatchHistoryOutcome
 import com.hienthai.fastowin.protocol.MatchHistorySnapshot
 import com.hienthai.fastowin.protocol.MatchType
+import com.hienthai.fastowin.protocol.MissionDifficulty
 import com.hienthai.fastowin.protocol.MissionSnapshot
 import com.hienthai.fastowin.protocol.PlayerProfileSnapshot
 import com.hienthai.fastowin.protocol.PlayerProgressionSnapshot
@@ -240,6 +241,8 @@ class ProfileSectionsUiTest {
 
         composeRule.onNodeWithTag("profile_section_screen:MISSIONS").assertIsDisplayed()
         composeRule.onNodeWithText("Nhiệm vụ").assertIsDisplayed()
+        composeRule.onNodeWithTag("mission_difficulty_normal").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithTag("mission_difficulty_elite").performScrollTo().assertIsDisplayed()
         composeRule.onNodeWithTag("claim_mission:DAILY_WIN_1").performScrollTo().assertIsDisplayed().performClick()
         composeRule.runOnIdle { assertEquals("DAILY_WIN_1", claimedCode) }
 
@@ -345,7 +348,8 @@ private fun profileFixture(): PlayerProfileSnapshot = PlayerProfileSnapshot(
                 target = 1,
                 completed = true,
                 rewardXp = 25,
-                rewardGold = 150
+                rewardGold = 150,
+                difficulty = MissionDifficulty.NORMAL
             )
         ),
         weeklyMissions = listOf(
@@ -357,7 +361,8 @@ private fun profileFixture(): PlayerProfileSnapshot = PlayerProfileSnapshot(
                 completed = false,
                 rewardXp = 75,
                 rewardGold = 400,
-                rewardGems = 2
+                rewardGems = 2,
+                difficulty = MissionDifficulty.ELITE
             )
         ),
         cosmetics = listOf(

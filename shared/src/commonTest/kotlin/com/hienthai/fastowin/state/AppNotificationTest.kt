@@ -41,6 +41,10 @@ class AppNotificationTest {
         )
         assertEquals(3, notifications.size)
         assertTrue(notifications.all { !it.isRead })
+        assertEquals(
+            "Thắng một trận • Nhận 150 vàng + 25 XP + 2 Gem.",
+            notifications.single { it.kind == AppNotificationKind.MISSION }.message
+        )
     }
 
     @Test
@@ -87,7 +91,16 @@ class AppNotificationTest {
         },
         progression = PlayerProgressionSnapshot(
             dailyMissions = listOf(
-                MissionSnapshot("daily_win", "Thắng một trận", if (missionCompleted) 1 else 0, 1, missionCompleted)
+                MissionSnapshot(
+                    "daily_win",
+                    "Thắng một trận",
+                    if (missionCompleted) 1 else 0,
+                    1,
+                    missionCompleted,
+                    rewardXp = 25,
+                    rewardGold = 150,
+                    rewardGems = 2
+                )
             ),
             cosmetics = listOf(
                 CosmeticSnapshot("gold_frame", "Khung vàng", CosmeticType.FRAME, cosmeticUnlocked, false)

@@ -1062,10 +1062,17 @@ class GameEngineTest {
         startRoom(engine, host.playerId, guest.playerId, room.roomId)
         assertEquals(room.roomId, repository.loadAll().single().roomId)
 
-        val finished = engine.handle(host.playerId, ClientMessage.LeaveRoom(room.roomId))
-            .map(Delivery::message).filterIsInstance<ServerMessage.GameFinished>().single().game
+        val leaveDeliveries = engine.handle(host.playerId, ClientMessage.LeaveRoom(room.roomId))
+        val finishedDelivery = leaveDeliveries.single { it.message is ServerMessage.GameFinished }
+        val finished = (finishedDelivery.message as ServerMessage.GameFinished).game
         assertEquals(guest.playerId, finished.winnerPlayerId)
+        assertEquals(setOf(guest.playerId), finishedDelivery.recipients)
+        assertEquals(
+            setOf(host.playerId),
+            leaveDeliveries.single { it.message is ServerMessage.RoomClosed }.recipients
+        )
         assertEquals(com.hienthai.fastowin.protocol.RoomPhase.FINISHED, repository.loadAll().single().phase)
+        assertEquals(setOf(host.playerId), repository.loadAll().single().departedPlayerIds)
         val saved = savedMatches.single()
         assertEquals(guest.playerId, saved.winnerPlayerId)
         assertEquals(MatchOutcome.LOSS, saved.players.single { it.playerId == host.playerId }.outcome)
@@ -1077,8 +1084,67 @@ class GameEngineTest {
         ).map(Delivery::message).filterIsInstance<ServerMessage.Error>().single()
         assertEquals("GAME_NOT_PLAYING", rejected.code)
 
-        engine.handle(host.playerId, ClientMessage.LeaveRoom(room.roomId))
+        val hostReconnect = engine.connectGuest("Host", host.resumeToken)
+        val guestReconnect = engine.connectGuest("Guest", guest.resumeToken)
+        assertEquals(null, hostReconnect.currentGame)
+        assertEquals(room.roomId, guestReconnect.currentGame?.roomId)
+
+        val rematchRejected = engine.handle(
+            guest.playerId,
+            ClientMessage.RespondRematch(room.roomId, accept = true)
+        ).map(Delivery::message).filterIsInstance<ServerMessage.Error>().single()
+        assertEquals("OPPONENT_LEFT", rematchRejected.code)
+
+        engine.handle(guest.playerId, ClientMessage.LeaveRoom(room.roomId))
         assertTrue(repository.loadAll().isEmpty())
+    }
+
+    @Test
+    fun `leaving a completed result only returns that player to lobby`() = runTest {
+        val repository = InMemoryActiveRoomRepository()
+        val engine = GameEngine(activeRoomRepository = repository)
+        val host = engine.connectGuest("Host", null)
+        val guest = engine.connectGuest("Guest", null)
+        val room = engine.handle(
+            host.playerId,
+            ClientMessage.CreateRoom("Independent result exit", PASSWORD, ProtocolGameMode.ORDER)
+        ).map(Delivery::message).filterIsInstance<ServerMessage.RoomCreated>().single().game
+        startRoom(engine, host.playerId, guest.playerId, room.roomId)
+        repeat(50) { index ->
+            engine.handle(
+                host.playerId,
+                ClientMessage.SelectNumber(room.roomId, index + 1, "complete-result-$index")
+            )
+        }
+
+        val hostExit = engine.handle(host.playerId, ClientMessage.LeaveRoom(room.roomId))
+        val closed = hostExit.single { it.message is ServerMessage.RoomClosed }
+        assertEquals(setOf(host.playerId), closed.recipients)
+        assertTrue(hostExit.none { it.recipients?.contains(guest.playerId) == true })
+        assertEquals(setOf(host.playerId), repository.loadAll().single().departedPlayerIds)
+        assertEquals(room.roomId, engine.connectGuest("Guest", guest.resumeToken).currentGame?.roomId)
+        assertEquals(null, engine.connectGuest("Host", host.resumeToken).currentGame)
+
+        engine.handle(guest.playerId, ClientMessage.LeaveRoom(room.roomId))
+        assertTrue(repository.loadAll().isEmpty())
+    }
+
+    @Test
+    fun `emoji is broadcast to both players during a match`() = runTest {
+        val engine = GameEngine()
+        val host = engine.connectGuest("Host", null)
+        val guest = engine.connectGuest("Guest", null)
+        val room = engine.handle(
+            host.playerId,
+            ClientMessage.CreateRoom("Emoji room", PASSWORD, ProtocolGameMode.ORDER)
+        ).map(Delivery::message).filterIsInstance<ServerMessage.RoomCreated>().single().game
+        startRoom(engine, host.playerId, guest.playerId, room.roomId)
+
+        val delivery = engine.handle(host.playerId, ClientMessage.SendEmoji(room.roomId, "😂")).single()
+        val broadcast = assertIs<ServerMessage.EmojiBroadcast>(delivery.message)
+        assertEquals(host.playerId, broadcast.senderPlayerId)
+        assertEquals("😂", broadcast.emojiId)
+        assertEquals(setOf(host.playerId, guest.playerId), delivery.recipients)
     }
 
     @Test

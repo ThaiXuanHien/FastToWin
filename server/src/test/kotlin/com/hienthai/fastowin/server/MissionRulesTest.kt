@@ -1,5 +1,6 @@
 package com.hienthai.fastowin.server
 
+import com.hienthai.fastowin.protocol.MissionDifficulty
 import java.time.LocalDate
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -16,6 +17,17 @@ class MissionRulesTest {
             ),
             MISSION_DEFINITIONS.associate { it.code to Triple(it.rewardXp, it.rewardGold, it.rewardGems) }
         )
+        assertEquals(
+            listOf(
+                MissionDifficulty.EASY,
+                MissionDifficulty.NORMAL,
+                MissionDifficulty.HARD,
+                MissionDifficulty.ELITE
+            ),
+            MISSION_DEFINITIONS.map(MissionDefinition::difficulty)
+        )
+        assertEquals(0, MISSION_DEFINITIONS.filterNot { it.difficulty == MissionDifficulty.ELITE }.sumOf { it.rewardGems })
+        assertEquals(2, MISSION_DEFINITIONS.single { it.difficulty == MissionDifficulty.ELITE }.rewardGems)
     }
 
     @Test

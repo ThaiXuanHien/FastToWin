@@ -3,6 +3,7 @@ package com.hienthai.fastowin
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -106,5 +107,42 @@ class FriendsScreenTest {
         composeRule.onNodeWithText("Hủy kết bạn").performClick()
         composeRule.onNodeWithText("Hủy kết bạn").performClick()
         composeRule.runOnIdle { assertEquals("player-1", removedFriendId) }
+    }
+
+    @Test
+    fun friendPresenceUsesAccessibleIndicatorsInsteadOfStatusText() {
+        val friends = FriendPresence.entries.mapIndexed { index, presence ->
+            FriendSnapshot(
+                userId = "player-$index",
+                displayName = "Người chơi $index",
+                playerCode = "CODE$index",
+                presence = presence
+            )
+        }
+        composeRule.setContent {
+            FastToWinTheme {
+                FriendsScreen(
+                    state = GameState(social = FriendsSnapshot(friends = friends)),
+                    onBack = {},
+                    onRefresh = {},
+                    onSendRequest = {},
+                    onRespondRequest = { _, _ -> },
+                    onCancelRequest = {},
+                    onRemoveFriend = {},
+                    onBlockPlayer = {},
+                    onUnblockPlayer = {},
+                    onInviteFriend = {},
+                    onRespondRoomInvitation = { _, _ -> },
+                    onOpenFriendProfile = {}
+                )
+            }
+        }
+
+        composeRule.onNodeWithContentDescription("Đang ngoại tuyến").assertExists()
+        composeRule.onNodeWithContentDescription("Đang trực tuyến").assertExists()
+        composeRule.onNodeWithContentDescription("Đang trong phòng").assertExists()
+        composeRule.onNodeWithContentDescription("Đang trong trận").assertExists()
+        assertEquals(0, composeRule.onAllNodesWithText("Ngoại tuyến").fetchSemanticsNodes().size)
+        assertEquals(0, composeRule.onAllNodesWithText("Trực tuyến").fetchSemanticsNodes().size)
     }
 }
