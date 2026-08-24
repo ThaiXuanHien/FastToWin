@@ -18,6 +18,7 @@ import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
+import androidx.compose.runtime.mutableStateOf
 import com.hienthai.fastowin.protocol.CosmeticSnapshot
 import com.hienthai.fastowin.protocol.CosmeticType
 import com.hienthai.fastowin.protocol.AchievementSnapshot
@@ -368,6 +369,59 @@ class ProfileSectionsUiTest {
             .assertIsDisplayed()
             .assertIsNotEnabled()
         composeRule.onNodeWithText("Mở khóa: Cấp 6").assertIsDisplayed()
+    }
+
+    @Test
+    fun collection_equippingFrameUsesStableItemProgressWithoutFullScreenReload() {
+        val profile = profileFixture()
+        val state = mutableStateOf(
+            GameState(
+                profile = profile,
+                isProfileLoading = false,
+                equippingCosmeticId = "frame_persistent"
+            )
+        )
+
+        setAdaptiveContent(430.dp, 932.dp) {
+            ProfileSectionScreen(
+                state = state.value,
+                profile = checkNotNull(state.value.profile),
+                section = ProfileSection.COLLECTION,
+                isExternalProfile = false,
+                canEdit = true,
+                onBack = {},
+                onRefresh = {},
+                onOpenMatchDetail = {},
+                onCloseMatchDetail = {},
+                onEquipCosmetics = { _, _ -> },
+                onClaimMissionReward = {},
+                onSave = { _, _ -> },
+                onOpenNotifications = {}
+            )
+        }
+
+        composeRule.onNodeWithTag("collection_equipping:frame_persistent")
+            .performScrollTo()
+            .assertIsDisplayed()
+        composeRule.onNodeWithTag("collection_frame:frame_persistent").assertIsNotEnabled()
+        composeRule.onNodeWithText("Đang trang bị…").assertIsDisplayed()
+
+        composeRule.runOnIdle {
+            val equipped = profile.progression.cosmetics.map { cosmetic ->
+                if (cosmetic.type == CosmeticType.FRAME) {
+                    cosmetic.copy(equipped = cosmetic.id == "frame_persistent")
+                } else {
+                    cosmetic
+                }
+            }
+            val updatedProfile = profile.copy(
+                progression = profile.progression.copy(cosmetics = equipped)
+            )
+            state.value = state.value.copy(profile = updatedProfile, equippingCosmeticId = null)
+        }
+
+        composeRule.onNodeWithTag("collection_equipping:frame_persistent").assertDoesNotExist()
+        composeRule.onNodeWithTag("collection_frame:frame_persistent").assertIsNotEnabled()
     }
 
     @Test

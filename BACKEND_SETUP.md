@@ -67,6 +67,10 @@ $env:DATABASE_PASSWORD="fasttowin"
 
 Flyway tự tạo các bảng tài khoản, hồ sơ, phiên đăng nhập, kết quả trận, thống kê, xã hội, thành tích, nhiệm vụ, mùa giải và `active_room_snapshots`. Resume token chỉ được lưu dưới dạng SHA-256 hash, không lưu token gốc. Migration `V13` bổ sung XP/cấp độ, vật phẩm trang trí, nhiệm vụ và Elo theo mùa; `V14` bổ sung thông báo tài khoản và lời mời phòng bền vững; `V15` làm rõ điều kiện thành tích; `V16` bổ sung điểm danh hằng ngày và chuỗi điểm danh; `V17` bổ sung các mốc thưởng điểm danh; `V19` bổ sung phần thưởng nhiệm vụ; `V20` bổ sung loại trận thường/xếp hạng, năm trận phân hạng và Elo cao nhất mùa.
 
+Để tạo lại tài khoản kiểm thử có đầy đủ dữ liệu trên PostgreSQL development, chạy
+`.\seed-dev-full-account.cmd` trên Windows hoặc `./seed-dev-full-account.sh` trên macOS.
+Seeder bị khóa ở môi trường `dev`, có tính idempotent và không được dùng cho production.
+
 Khi trận kết thúc, backend lưu kết quả đúng một lần theo `roomId`, gồm điểm từng người, thắng/thua/hòa, tổng số trận, điểm cao nhất và chuỗi thắng. Mỗi thay đổi của một phòng được xử lý trong bộ nhớ rồi UPSERT đúng snapshot của phòng đó vào PostgreSQL; server không ghi lại toàn bộ danh sách phòng sau mỗi lượt bấm.
 
 Từ màn hình **Hồ sơ**, người chơi có thể xem mã người chơi, tổng trận, thắng/thua/hòa, điểm cao nhất, chuỗi thắng, biểu đồ phong độ và tối đa 20 trận gần nhất. Mỗi trận có màn chi tiết cùng bản phát lại dựa trên event do server lưu. Dữ liệu được lấy qua WebSocket của phiên hiện tại nên client không thể yêu cầu hồ sơ riêng tư của player ID khác.

@@ -36,3 +36,10 @@ dependencies {
 tasks.test {
     useJUnitPlatform()
 }
+
+tasks.register<JavaExec>("seedDevFullAccount") {
+    group = "application"
+    description = "Creates or refreshes the full-featured local development account."
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass.set("com.hienthai.fastowin.server.DevFullAccountSeedKt")
+}

@@ -645,7 +645,9 @@ fun ProfileSectionScreen(
         ) { contentModifier ->
             PullToRefreshBox(
                 isRefreshing = isLoading,
-                onRefresh = onRefresh,
+                onRefresh = {
+                    if (state.equippingCosmeticId == null) onRefresh()
+                },
                 modifier = contentModifier
             ) {
                 Column(
@@ -978,13 +980,16 @@ private fun CollectionSectionContent(
         ?: "frame_default"
     val equippedTitle = cosmetics.firstOrNull { it.type == CosmeticType.TITLE && it.equipped }?.id
         ?: "title_rookie"
+    val equippingCosmeticId = state.equippingCosmeticId
     Text("Khung", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
     LazyRow(
         modifier = Modifier.fillMaxWidth().testTag("collection_frames"),
         horizontalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         items(cosmetics.filter { it.type == CosmeticType.FRAME }, key = { it.id }) { cosmetic ->
-            val canEquip = canEdit && cosmetic.unlocked && !isLoading
+            val isEquipping = equippingCosmeticId == cosmetic.id
+            val canEquip = canEdit && cosmetic.unlocked && !cosmetic.equipped &&
+                !isLoading && equippingCosmeticId == null
             Surface(
                 onClick = { onEquipCosmetics(cosmetic.id, equippedTitle) },
                 modifier = Modifier
@@ -1012,12 +1017,19 @@ private fun CollectionSectionContent(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    PlayerAvatar(
-                        displayName = profile.displayName,
-                        avatarId = profile.avatarId,
-                        frameId = cosmetic.id,
-                        size = 58.dp
-                    )
+                    if (isEquipping) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(58.dp).testTag("collection_equipping:${cosmetic.id}"),
+                            strokeWidth = 3.dp
+                        )
+                    } else {
+                        PlayerAvatar(
+                            displayName = profile.displayName,
+                            avatarId = profile.avatarId,
+                            frameId = cosmetic.id,
+                            size = 58.dp
+                        )
+                    }
                     Text(
                         cosmetic.name,
                         fontWeight = FontWeight.Bold,
@@ -1025,6 +1037,7 @@ private fun CollectionSectionContent(
                     )
                     Text(
                         text = when {
+                            isEquipping -> "Đang trang bị…"
                             cosmetic.equipped -> "Đang dùng"
                             cosmetic.unlocked && canEquip -> "Chạm để dùng"
                             cosmetic.unlocked -> "Đã mở khóa"
@@ -1049,7 +1062,9 @@ private fun CollectionSectionContent(
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         cosmetics.filter { it.type == CosmeticType.TITLE }.forEach { cosmetic ->
-            val canEquip = canEdit && cosmetic.unlocked && !isLoading
+            val isEquipping = equippingCosmeticId == cosmetic.id
+            val canEquip = canEdit && cosmetic.unlocked && !cosmetic.equipped &&
+                !isLoading && equippingCosmeticId == null
             Surface(
                 onClick = { onEquipCosmetics(equippedFrame, cosmetic.id) },
                 enabled = canEquip,
@@ -1074,20 +1089,28 @@ private fun CollectionSectionContent(
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Icon(
-                        Icons.Default.MilitaryTech,
-                        contentDescription = null,
-                        modifier = Modifier.size(30.dp),
-                        tint = if (cosmetic.equipped) {
-                            MaterialTheme.colorScheme.onSecondaryContainer
-                        } else {
-                            MaterialTheme.colorScheme.primary
-                        }
-                    )
+                    if (isEquipping) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(30.dp).testTag("collection_equipping:${cosmetic.id}"),
+                            strokeWidth = 2.dp
+                        )
+                    } else {
+                        Icon(
+                            Icons.Default.MilitaryTech,
+                            contentDescription = null,
+                            modifier = Modifier.size(30.dp),
+                            tint = if (cosmetic.equipped) {
+                                MaterialTheme.colorScheme.onSecondaryContainer
+                            } else {
+                                MaterialTheme.colorScheme.primary
+                            }
+                        )
+                    }
                     Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                         Text(cosmetic.name, fontWeight = FontWeight.Bold)
                         Text(
                             when {
+                                isEquipping -> "Đang trang bị…"
                                 cosmetic.equipped -> "Đang dùng"
                                 cosmetic.unlocked && canEquip -> "Chạm để dùng"
                                 cosmetic.unlocked -> "Đã mở khóa"
@@ -1109,7 +1132,8 @@ private fun CollectionSectionContent(
             items(specialAvatars, key = { it.id }) { cosmetic ->
                 FilterChip(
                     selected = cosmetic.equipped,
-                    enabled = canEdit && cosmetic.unlocked && !state.isProfileSaving,
+                    enabled = canEdit && cosmetic.unlocked && !state.isProfileSaving &&
+                        equippingCosmeticId == null,
                     onClick = { onSave(profile.displayName, cosmetic.id) },
                     label = { Text("${playerAvatarEmoji(cosmetic.id)} ${cosmetic.displayLabel()}") }
                 )

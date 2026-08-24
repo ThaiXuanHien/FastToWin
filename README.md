@@ -113,6 +113,35 @@ Kết quả mong đợi:
 OK
 ```
 
+### Tài khoản kiểm thử đầy đủ
+
+Sau khi PostgreSQL đã chạy, tạo hoặc làm mới tài khoản có đầy đủ dữ liệu bằng:
+
+```powershell
+.\seed-dev-full-account.cmd
+```
+
+Thông tin đăng nhập mặc định:
+
+```text
+Email: fulltest@fasttowin.dev
+Mật khẩu: 12345678
+```
+
+Tài khoản này có cấp cao, Vàng/Gem, toàn bộ mốc điểm danh và thành tích, các vật phẩm,
+nhiệm vụ hoàn thành, Elo, lịch sử mùa, trận đủ chế độ, bạn bè, thông báo và bang hội mẫu.
+Script chỉ chạy khi `FASTTOWIN_ENV=dev`, có thể chạy lại an toàn sau khi reset database.
+
+Trên macOS/Linux dùng:
+
+```bash
+./seed-dev-full-account.sh
+```
+
+Có thể đổi thông tin trước khi chạy qua các biến
+`FASTTOWIN_DEV_ACCOUNT_EMAIL`, `FASTTOWIN_DEV_ACCOUNT_PASSWORD` và
+`FASTTOWIN_DEV_ACCOUNT_NAME`.
+
 Trong Android Studio:
 
 1. Chọn run configuration/module `app`.

@@ -6,6 +6,7 @@ import com.hienthai.fastowin.data.network.SocketConnectionState
 import com.hienthai.fastowin.navigation.GameMode
 import com.hienthai.fastowin.platform.epochMillis
 import com.hienthai.fastowin.protocol.ClientMessage
+import com.hienthai.fastowin.protocol.CosmeticType
 import com.hienthai.fastowin.protocol.GameSnapshot
 import com.hienthai.fastowin.protocol.MAX_PROFILE_DISPLAY_NAME_LENGTH
 import com.hienthai.fastowin.protocol.PROFILE_AVATAR_IDS
@@ -225,7 +226,13 @@ class GameController(
 
     fun closeProfile() {
         _uiState.update {
-            it.copy(isProfileOpen = false, isProfileLoading = false, isProfileSaving = false, profileNotice = null)
+            it.copy(
+                isProfileOpen = false,
+                isProfileLoading = false,
+                isProfileSaving = false,
+                equippingCosmeticId = null,
+                profileNotice = null
+            )
         }
     }
 
@@ -692,7 +699,21 @@ class GameController(
     }
 
     fun equipCosmetics(frameId: String, titleId: String) {
-        _uiState.update { it.copy(isProfileLoading = true, error = null) }
+        val state = _uiState.value
+        if (state.equippingCosmeticId != null) return
+        val cosmetics = state.profile?.progression?.cosmetics ?: return
+        val frame = cosmetics.firstOrNull { it.type == CosmeticType.FRAME && it.id == frameId && it.unlocked }
+            ?: return
+        val title = cosmetics.firstOrNull { it.type == CosmeticType.TITLE && it.id == titleId && it.unlocked }
+            ?: return
+        val currentFrameId = cosmetics.firstOrNull { it.type == CosmeticType.FRAME && it.equipped }?.id
+        val currentTitleId = cosmetics.firstOrNull { it.type == CosmeticType.TITLE && it.equipped }?.id
+        val changingCosmeticId = when {
+            frame.id != currentFrameId -> frame.id
+            title.id != currentTitleId -> title.id
+            else -> return
+        }
+        _uiState.update { it.copy(equippingCosmeticId = changingCosmeticId, error = null) }
         scope.launch { socket.sendMessage(ClientMessage.EquipCosmetics(frameId, titleId)) }
     }
 
@@ -860,6 +881,7 @@ class GameController(
                         player = state.player.copy(name = message.profile.displayName),
                         isProfileLoading = false,
                         isProfileSaving = false,
+                        equippingCosmeticId = null,
                         profileNotice = if (wasSaving) "Đã lưu hồ sơ." else null,
                         lastMatchEloChange = completedMatch?.eloChange ?: state.lastMatchEloChange,
                         lastMatchEloRating = if (completedMatch != null) {
@@ -1408,6 +1430,7 @@ class GameController(
                         it.lobbyStage
                     },
                     isProfileSaving = false,
+                    equippingCosmeticId = null,
                     isFriendProfileLoading = false,
                     isMatchDetailLoading = false,
                     isFriendsLoading = false,

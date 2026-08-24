@@ -27,6 +27,7 @@ import com.hienthai.fastowin.protocol.SeasonRewardReceiptSnapshot
 import com.hienthai.fastowin.protocol.SeasonHistoryEntrySnapshot
 import com.hienthai.fastowin.protocol.SeasonTierRewardSnapshot
 import com.hienthai.fastowin.protocol.STANDARD_SEASON_TIER_REWARDS
+import com.hienthai.fastowin.protocol.SHOP_ITEMS
 import com.hienthai.fastowin.protocol.seasonCosmeticReward
 import com.hienthai.fastowin.protocol.seasonTierRewards
 import kotlinx.coroutines.Dispatchers
@@ -561,6 +562,18 @@ class PostgresPlayerProfileRepository(
                     owned.type,
                     unlocked = true,
                     equippedId = if (owned.type == CosmeticType.FRAME) equippedFrameId else equippedTitleId
+                )
+            } + SHOP_ITEMS.filter { it.id in ownedCosmetics }.map { owned ->
+                cosmetic(
+                    id = owned.id,
+                    name = owned.name,
+                    type = owned.type,
+                    unlocked = true,
+                    equippedId = when (owned.type) {
+                        CosmeticType.CARD_BACK -> progressionRow.equippedCardBackId
+                        CosmeticType.BOARD_SKIN -> progressionRow.equippedBoardSkinId
+                        else -> null
+                    }
                 )
             }
             base.copy(
@@ -1369,7 +1382,13 @@ class PostgresPlayerProfileRepository(
                     return@withContext false
                 }
 
-                val insertCosmetic = connection.prepareStatement("INSERT INTO cosmetics (user_id, cosmetic_type, cosmetic_id, unlocked_at) VALUES (?, ?, ?, ?) ON CONFLICT DO NOTHING")
+                val insertCosmetic = connection.prepareStatement(
+                    """
+                    INSERT INTO player_cosmetics (user_id, cosmetic_type, cosmetic_id, acquired_at)
+                    VALUES (?, ?, ?, ?)
+                    ON CONFLICT (user_id, cosmetic_id) DO NOTHING
+                    """.trimIndent()
+                )
                 insertCosmetic.setObject(1, java.util.UUID.fromString(playerId))
                 insertCosmetic.setString(2, cosmeticType)
                 insertCosmetic.setString(3, cosmeticId)

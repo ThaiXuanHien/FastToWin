@@ -133,6 +133,7 @@ data class GameState(
     val isProfileOpen: Boolean = false,
     val isProfileLoading: Boolean = false,
     val isProfileSaving: Boolean = false,
+    val equippingCosmeticId: String? = null,
     val isClanOpen: Boolean = false,
     val isShopOpen: Boolean = false,
     val gemStorePackages: List<com.hienthai.fastowin.protocol.GemPackageSnapshot> = emptyList(),
@@ -204,6 +205,7 @@ data class GameState(
 internal fun GameState.prepareForMatchStart(): GameState = copy(
     isProfileOpen = false,
     isProfileLoading = false,
+    equippingCosmeticId = null,
     isFriendProfileOpen = false,
     isFriendProfileLoading = false,
     viewedFriendUserId = null,
@@ -230,6 +232,7 @@ internal fun GameState.closeNotificationsOverlay(): GameState = copy(
 internal fun GameState.prepareForRoomWaiting(): GameState = copy(
     isProfileOpen = false,
     isProfileLoading = false,
+    equippingCosmeticId = null,
     isFriendProfileOpen = false,
     isFriendProfileLoading = false,
     viewedFriendUserId = null,
