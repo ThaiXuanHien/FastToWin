@@ -17,6 +17,7 @@ import androidx.compose.ui.test.then
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
+import androidx.compose.runtime.mutableStateOf
 import com.hienthai.fastowin.data.preferences.AppPreferences
 import com.hienthai.fastowin.data.preferences.AppThemeMode
 import com.hienthai.fastowin.protocol.LeaderboardSnapshot
@@ -28,10 +29,12 @@ import com.hienthai.fastowin.protocol.SeasonSnapshot
 import com.hienthai.fastowin.protocol.seasonCosmeticReward
 import com.hienthai.fastowin.protocol.seasonTierRewards
 import com.hienthai.fastowin.state.GameState
+import com.hienthai.fastowin.ui.components.SeasonRewardSummaryDialog
 import com.hienthai.fastowin.ui.screens.LeaderboardScreen
 import com.hienthai.fastowin.ui.theme.FastToWinTheme
 import org.junit.Rule
 import org.junit.Test
+import org.junit.Assert.assertTrue
 
 @OptIn(ExperimentalTestApi::class)
 class SeasonProgressUiTest {
@@ -113,6 +116,56 @@ class SeasonProgressUiTest {
             .performScrollTo()
             .assertIsDisplayed()
     }
+
+    @Test
+    fun seasonSummaryRemainsUsableOnSmallPhoneWithLargeTextAndClosesOnce() {
+        val visible = mutableStateOf(true)
+        var acknowledged = false
+        val receipt = seasonProfileFixture().progression.latestSeasonReward!!
+
+        composeRule.setContent {
+            DeviceConfigurationOverride(
+                DeviceConfigurationOverride.ForcedSize(DpSize(320.dp, 568.dp)) then
+                    DeviceConfigurationOverride.FontScale(1.4f)
+            ) {
+                FastToWinTheme {
+                    if (visible.value) {
+                        SeasonRewardSummaryDialog(
+                            receipt = receipt,
+                            onAcknowledge = {
+                                acknowledged = true
+                                visible.value = false
+                            }
+                        )
+                    }
+                }
+            }
+        }
+
+        composeRule.onNodeWithTag("season_reward_summary_dialog").assertIsDisplayed()
+        composeRule.onNodeWithTag("season_reward_receipt_cosmetic").assertIsDisplayed()
+        composeRule.onNodeWithTag("acknowledge_season_reward").performClick()
+        composeRule.runOnIdle { assertTrue(acknowledged) }
+        composeRule.onNodeWithTag("season_reward_summary_dialog").assertDoesNotExist()
+    }
+
+    @Test
+    fun seasonSummaryKeepsPrimaryActionVisibleInLandscapeDarkTheme() {
+        val receipt = seasonProfileFixture().progression.latestSeasonReward!!
+
+        composeRule.setContent {
+            DeviceConfigurationOverride(
+                DeviceConfigurationOverride.ForcedSize(DpSize(720.dp, 400.dp))
+            ) {
+                FastToWinTheme(preferences = AppPreferences(themeMode = AppThemeMode.DARK)) {
+                    SeasonRewardSummaryDialog(receipt = receipt, onAcknowledge = {})
+                }
+            }
+        }
+
+        composeRule.onNodeWithTag("season_reward_summary_dialog").assertIsDisplayed()
+        composeRule.onNodeWithTag("acknowledge_season_reward").assertIsDisplayed()
+    }
 }
 
 private fun seasonProfileFixture(): PlayerProfileSnapshot {
@@ -133,6 +186,7 @@ private fun seasonProfileFixture(): PlayerProfileSnapshot {
         progression = PlayerProgressionSnapshot(
             season = season,
             latestSeasonReward = SeasonRewardReceiptSnapshot(
+                seasonNumber = 1,
                 seasonName = "Mùa Khởi Đầu",
                 tier = RankedTier.GOLD,
                 peakRating = 1_380,

@@ -17,6 +17,7 @@ Fast To Win là game tìm số 1–50 theo thời gian thực dành cho Android 
 - Nhiệm vụ ngày/tuần nhận Vàng và XP; nhiệm vụ tuần khó có thể thưởng Gem.
 - Kết quả trận: thắng nhận 100 Vàng + 30 XP, hòa nhận 70 Vàng + 20 XP, thua nhận 40 Vàng + 10 XP.
 - Nhiệm vụ bang hoàn thành nhận 1.000 Vàng + 100 XP cho từng thành viên chưa nhận.
+- Khi mùa xếp hạng kết thúc, app hiển thị tổng kết bậc cao nhất, Elo và toàn bộ phần thưởng đúng một lần; trạng thái đã xem được đồng bộ giữa các thiết bị.
 - Các giao dịch được ghi vào `wallet_transactions` để kiểm tra lịch sử và ngăn nhận trùng.
 - Migration V31 chuẩn bị `store_purchases` cho Google Play/App Store. Thanh toán thật chỉ được bật sau khi cấu hình Product ID và xác thực biên lai phía server.
 

@@ -22,6 +22,8 @@ import com.hienthai.fastowin.protocol.ServerMessage
 import com.hienthai.fastowin.protocol.WalletTransactionSnapshot
 import com.hienthai.fastowin.protocol.StorePlatform
 import com.hienthai.fastowin.protocol.StorePurchaseStatus
+import com.hienthai.fastowin.protocol.RankedTier
+import com.hienthai.fastowin.protocol.SeasonRewardReceiptSnapshot
 import kotlinx.coroutines.async
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -64,6 +66,52 @@ class GameEngineTest {
 
         assertTrue(settled)
         assertEquals(1_000, profile.progression.gold)
+    }
+
+    @Test
+    fun `acknowledging season reward persists seen state and refreshes account profile`() = runTest {
+        val playerId = UUID.randomUUID().toString()
+        var acknowledged = false
+        val repository = object : PlayerProfileRepository {
+            override suspend fun findByPlayerId(playerId: String) = PlayerProfileSnapshot(
+                userId = playerId,
+                displayName = "Hiền",
+                playerCode = "HIEN001",
+                progression = PlayerProgressionSnapshot(
+                    latestSeasonReward = SeasonRewardReceiptSnapshot(
+                        seasonNumber = 3,
+                        seasonName = "Mùa Ba",
+                        tier = RankedTier.GOLD,
+                        peakRating = 1_450,
+                        gold = 1_000,
+                        awardedAtEpochMillis = 1_000L,
+                        acknowledged = acknowledged
+                    )
+                )
+            )
+
+            override suspend fun acknowledgeSeasonReward(playerId: String, seasonNumber: Int): Boolean {
+                if (seasonNumber != 3) return false
+                acknowledged = true
+                return true
+            }
+
+            override suspend fun updateProfile(playerId: String, displayName: String, avatarId: String?) = false
+        }
+        val engine = GameEngine(playerProfileRepository = repository)
+        engine.connectAccount(AuthenticatedAccount(UUID.fromString(playerId), "Hiền"))
+
+        val refreshed = engine.handle(playerId, ClientMessage.AcknowledgeSeasonReward(3))
+            .map(Delivery::message)
+            .filterIsInstance<ServerMessage.ProfileData>()
+            .single()
+
+        assertTrue(acknowledged)
+        assertTrue(refreshed.profile.progression.latestSeasonReward!!.acknowledged)
+
+        val guest = engine.connectGuest("Khách", null)
+        val denied = engine.handle(guest.playerId, ClientMessage.AcknowledgeSeasonReward(3))
+        assertEquals("ACCOUNT_REQUIRED", assertIs<ServerMessage.Error>(denied.single().message).code)
     }
 
     @Test

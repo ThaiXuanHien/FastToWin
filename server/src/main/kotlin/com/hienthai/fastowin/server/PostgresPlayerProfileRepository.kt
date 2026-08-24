@@ -381,7 +381,7 @@ class PostgresPlayerProfileRepository(
                 """
                 SELECT s.season_number, s.name, src.tier, src.peak_rating, src.reward_gold,
                        src.reward_gems, src.reward_cosmetic_id, src.reward_cosmetic_type,
-                       src.awarded_at
+                       src.awarded_at, src.viewed_at
                 FROM season_reward_claims src
                 JOIN seasons s ON s.id = src.season_id
                 WHERE src.user_id = ?
@@ -396,6 +396,7 @@ class PostgresPlayerProfileRepository(
                         val tier = com.hienthai.fastowin.protocol.RankedTier.valueOf(result.getString("tier"))
                         val cosmetic = seasonCosmeticReward(result.getInt("season_number"), seasonName, tier)
                         SeasonRewardReceiptSnapshot(
+                            seasonNumber = result.getInt("season_number"),
                             seasonName = seasonName,
                             tier = tier,
                             peakRating = result.getInt("peak_rating"),
@@ -405,7 +406,8 @@ class PostgresPlayerProfileRepository(
                             cosmetic = cosmetic.copy(
                                 id = result.getString("reward_cosmetic_id"),
                                 type = CosmeticType.valueOf(result.getString("reward_cosmetic_type"))
-                            )
+                            ),
+                            acknowledged = result.getTimestamp("viewed_at") != null
                         )
                     }
                 }
@@ -664,6 +666,29 @@ class PostgresPlayerProfileRepository(
                 throw error
             } finally {
                 connection.autoCommit = true
+            }
+        }
+    }
+
+    override suspend fun acknowledgeSeasonReward(
+        playerId: String,
+        seasonNumber: Int
+    ): Boolean = withContext(Dispatchers.IO) {
+        if (seasonNumber <= 0) return@withContext false
+        dataSource.connection.use { connection ->
+            connection.prepareStatement(
+                """
+                UPDATE season_reward_claims src
+                SET viewed_at = COALESCE(src.viewed_at, CURRENT_TIMESTAMP)
+                FROM seasons s
+                WHERE src.season_id = s.id
+                  AND src.user_id = ?
+                  AND s.season_number = ?
+                """.trimIndent()
+            ).use { statement ->
+                statement.setObject(1, UUID.fromString(playerId))
+                statement.setInt(2, seasonNumber)
+                statement.executeUpdate() == 1
             }
         }
     }

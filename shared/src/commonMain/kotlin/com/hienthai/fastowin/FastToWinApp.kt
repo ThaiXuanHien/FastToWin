@@ -61,6 +61,7 @@ import com.hienthai.fastowin.protocol.StorePurchaseStatus
 import com.hienthai.fastowin.navigation.GameMode
 import com.hienthai.fastowin.state.PracticeChallenge
 import com.hienthai.fastowin.ui.components.FastToWinHeader
+import com.hienthai.fastowin.ui.components.SeasonRewardSummaryDialog
 
 @Composable
 fun FastToWinApp(
@@ -349,6 +350,28 @@ private fun GameContent(
                 practiceMode = challenge.mode
             },
             playerLevel = state.profile?.progression?.level ?: 1
+        )
+    }
+
+    val pendingSeasonReward = state.profile?.progression?.latestSeasonReward?.takeIf {
+        !it.acknowledged && it.seasonNumber > 0
+    }
+    val canShowSeasonSummary = pendingSeasonReward != null &&
+        state.currentRoomId == null &&
+        !state.isMatchmaking &&
+        state.roomInvitationPrompt == null &&
+        state.tournamentInvitationPrompt == null &&
+        !showTutorial &&
+        !showSettings &&
+        !showPracticeLauncher &&
+        !showPracticeModePicker &&
+        practiceMode == null
+    pendingSeasonReward?.takeIf { canShowSeasonSummary }?.let { receipt ->
+        SeasonRewardSummaryDialog(
+            receipt = receipt,
+            onAcknowledge = {
+                controller.acknowledgeSeasonReward(receipt.seasonNumber)
+            }
         )
     }
 

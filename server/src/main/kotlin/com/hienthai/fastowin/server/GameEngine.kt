@@ -220,6 +220,9 @@ class GameEngine(
     suspend fun handle(playerId: String, message: ClientMessage): List<Delivery> {
         restoreActiveRooms()
         if (message is ClientMessage.GetProfile) return loadProfile(playerId)
+        if (message is ClientMessage.AcknowledgeSeasonReward) {
+            return acknowledgeSeasonReward(playerId, message.seasonNumber)
+        }
         if (message is ClientMessage.GetWalletHistory) return loadWalletHistory(playerId)
         if (message is ClientMessage.GetGemStoreCatalog) return loadGemStoreCatalog(playerId)
         if (message is ClientMessage.VerifyStorePurchase) return verifyStorePurchase(playerId, message)
@@ -296,6 +299,7 @@ class GameEngine(
                     listOf(Delivery(ServerMessage.RoomList(publicRooms()), setOf(playerId)))
                 )
                 ClientMessage.GetProfile -> HandleResult(emptyList())
+                is ClientMessage.AcknowledgeSeasonReward -> HandleResult(emptyList())
                 ClientMessage.GetWalletHistory -> HandleResult(emptyList())
                 ClientMessage.GetGemStoreCatalog -> HandleResult(emptyList())
                 is ClientMessage.VerifyStorePurchase -> HandleResult(emptyList())
@@ -1330,6 +1334,24 @@ class GameEngine(
             playerCode = playerId.replace("-", "").take(10).uppercase()
         )
         return listOf(Delivery(ServerMessage.ProfileData(profile), setOf(playerId)))
+    }
+
+    private suspend fun acknowledgeSeasonReward(playerId: String, seasonNumber: Int): List<Delivery> {
+        if (!isAccountSession(playerId)) return listOf(accountRequired(playerId))
+        val acknowledged = runCatching {
+            playerProfileRepository.acknowledgeSeasonReward(playerId, seasonNumber)
+        }.onFailure {
+            System.err.println("Could not acknowledge season reward for $playerId: ${it.message}")
+        }.getOrDefault(false)
+        return if (acknowledged) {
+            loadProfile(playerId)
+        } else {
+            listOf(error(
+                playerId,
+                "SEASON_REWARD_NOT_FOUND",
+                "Không tìm thấy phần thưởng mùa cần xác nhận."
+            ))
+        }
     }
 
     private suspend fun loadWalletHistory(playerId: String): List<Delivery> {

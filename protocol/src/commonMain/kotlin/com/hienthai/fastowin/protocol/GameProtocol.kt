@@ -4,7 +4,7 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
-const val PROTOCOL_VERSION = 34
+const val PROTOCOL_VERSION = 35
 const val GAME_NUMBER_COUNT = 50
 const val MAX_PROFILE_DISPLAY_NAME_LENGTH = 32
 val DAILY_CHECK_IN_REWARDS_XP = listOf(10, 10, 15, 15, 20, 25, 40)
@@ -341,13 +341,15 @@ data class SeasonSnapshot(
 
 @Serializable
 data class SeasonRewardReceiptSnapshot(
+    val seasonNumber: Int = 0,
     val seasonName: String,
     val tier: RankedTier,
     val peakRating: Int,
     val gold: Int,
     val gems: Int = 0,
     val awardedAtEpochMillis: Long,
-    val cosmetic: SeasonCosmeticRewardSnapshot? = null
+    val cosmetic: SeasonCosmeticRewardSnapshot? = null,
+    val acknowledged: Boolean = false
 )
 
 @Serializable
@@ -589,6 +591,10 @@ sealed class ClientMessage {
     @Serializable
     @SerialName("get_profile")
     data object GetProfile : ClientMessage()
+
+    @Serializable
+    @SerialName("acknowledge_season_reward")
+    data class AcknowledgeSeasonReward(val seasonNumber: Int) : ClientMessage()
 
     @Serializable
     @SerialName("get_wallet_history")

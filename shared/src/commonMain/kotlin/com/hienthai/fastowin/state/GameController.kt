@@ -710,6 +710,25 @@ class GameController(
         scope.launch { socket.sendMessage(ClientMessage.ClaimMissionReward(missionCode)) }
     }
 
+    fun acknowledgeSeasonReward(seasonNumber: Int) {
+        if (seasonNumber <= 0) return
+        val receipt = _uiState.value.profile?.progression?.latestSeasonReward ?: return
+        if (receipt.seasonNumber != seasonNumber || receipt.acknowledged) return
+        _uiState.update { state ->
+            val profile = state.profile ?: return@update state
+            val progression = profile.progression
+            val latestReward = progression.latestSeasonReward ?: return@update state
+            state.copy(
+                profile = profile.copy(
+                    progression = progression.copy(
+                        latestSeasonReward = latestReward.copy(acknowledged = true)
+                    )
+                )
+            )
+        }
+        scope.launch { socket.sendMessage(ClientMessage.AcknowledgeSeasonReward(seasonNumber)) }
+    }
+
     fun refreshWalletHistory() {
         if (accountDisplayName == null || _uiState.value.isWalletHistoryLoading) return
         _uiState.update { it.copy(isWalletHistoryLoading = true, error = null) }

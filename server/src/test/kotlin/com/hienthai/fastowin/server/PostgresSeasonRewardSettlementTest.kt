@@ -100,6 +100,7 @@ class PostgresSeasonRewardSettlementTest {
                 assertEquals(1_000, profile.progression.gold)
                 assertEquals(1, profile.progression.gems)
                 with(profile.progression.latestSeasonReward!!) {
+                    assertEquals(seasonNumber, this.seasonNumber)
                     assertEquals("Mùa Kiểm Thử", seasonName)
                     assertEquals(RankedTier.GOLD, tier)
                     assertEquals(1_380, peakRating)
@@ -108,7 +109,14 @@ class PostgresSeasonRewardSettlementTest {
                     assertEquals("season_${seasonNumber}_gold", cosmetic?.id)
                     assertEquals("Khung Mùa Kiểm Thử • Vàng", cosmetic?.name)
                     assertEquals(com.hienthai.fastowin.protocol.CosmeticType.FRAME, cosmetic?.type)
+                    assertFalse(acknowledged)
                 }
+                assertTrue(profileRepository.acknowledgeSeasonReward(player.playerId, seasonNumber))
+                assertTrue(
+                    profileRepository.findByPlayerId(player.playerId)!!
+                        .progression.latestSeasonReward!!.acknowledged
+                )
+                assertTrue(profileRepository.acknowledgeSeasonReward(player.playerId, seasonNumber))
                 val seasonFrame = profile.progression.cosmetics.first {
                     it.id == "season_${seasonNumber}_gold"
                 }
@@ -168,6 +176,8 @@ class PostgresSeasonRewardSettlementTest {
                 }
                 assertTrue(profileRepository.settleCompletedSeasonRewards(player.playerId))
                 val profileWithTitle = profileRepository.findByPlayerId(player.playerId)!!
+                assertEquals(seasonNumber + 2, profileWithTitle.progression.latestSeasonReward?.seasonNumber)
+                assertFalse(profileWithTitle.progression.latestSeasonReward?.acknowledged ?: true)
                 val seasonTitle = profileWithTitle.progression.cosmetics.first {
                     it.id == "season_${seasonNumber + 2}_silver"
                 }

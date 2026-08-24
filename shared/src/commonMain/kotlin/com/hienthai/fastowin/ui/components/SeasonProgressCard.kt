@@ -7,6 +7,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
@@ -14,6 +16,7 @@ import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material.icons.filled.MilitaryTech
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material3.ElevatedCard
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -277,6 +280,45 @@ fun SeasonRewardReceiptCard(
             receipt.cosmetic?.let { cosmetic -> SeasonCosmeticRewardCard(cosmetic) }
         }
     }
+}
+
+@Composable
+fun SeasonRewardSummaryDialog(
+    receipt: SeasonRewardReceiptSnapshot,
+    onAcknowledge: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onAcknowledge,
+        modifier = Modifier.testTag("season_reward_summary_dialog"),
+        icon = {
+            Icon(Icons.Default.EmojiEvents, contentDescription = null)
+        },
+        title = {
+            Text("Tổng kết mùa", fontWeight = FontWeight.Black)
+        },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Text(
+                    "Chúc mừng! Thành tích và phần thưởng mùa của bạn đã được ghi nhận.",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+                SeasonRewardReceiptCard(receipt)
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = onAcknowledge,
+                modifier = Modifier.testTag("acknowledge_season_reward")
+            ) {
+                Text("Tuyệt vời")
+            }
+        }
+    )
 }
 
 @Composable
