@@ -322,7 +322,7 @@ fun SeasonRewardSummaryDialog(
 }
 
 @Composable
-private fun SeasonCosmeticRewardCard(cosmetic: SeasonCosmeticRewardSnapshot) {
+internal fun SeasonCosmeticRewardCard(cosmetic: SeasonCosmeticRewardSnapshot) {
     Surface(
         modifier = Modifier.fillMaxWidth().testTag("season_reward_receipt_cosmetic"),
         shape = MaterialTheme.shapes.medium,

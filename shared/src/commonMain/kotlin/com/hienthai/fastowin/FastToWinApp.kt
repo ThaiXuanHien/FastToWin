@@ -38,6 +38,7 @@ import com.hienthai.fastowin.ui.screens.ProfileSection
 import com.hienthai.fastowin.ui.screens.ProfileSectionScreen
 import com.hienthai.fastowin.ui.screens.LeaderboardScreen
 import com.hienthai.fastowin.ui.screens.ResultScreen
+import com.hienthai.fastowin.ui.screens.SeasonHistoryScreen
 import com.hienthai.fastowin.ui.screens.FastToWinBottomBar
 import com.hienthai.fastowin.ui.screens.GameModePickerDialog
 import com.hienthai.fastowin.ui.screens.MainTab
@@ -187,6 +188,7 @@ private fun GameContent(
     var showPracticeLauncher by remember { mutableStateOf(false) }
     var showPracticeModePicker by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
+    var showSeasonHistory by remember { mutableStateOf(false) }
 
     DisposableEffect(storeBillingGateway) {
         onDispose { storeBillingGateway.close() }
@@ -255,6 +257,7 @@ private fun GameContent(
             showPracticeLauncher = false
             showPracticeModePicker = false
             showSettings = false
+            showSeasonHistory = false
             profileSection = null
             showTutorial = false
             practiceMode = null
@@ -290,6 +293,7 @@ private fun GameContent(
             showPracticeLauncher = false
             showPracticeModePicker = false
             showSettings = false
+            showSeasonHistory = false
             showTutorial = false
             practiceChallenge = challenge
             practiceMode = challenge.mode
@@ -363,6 +367,7 @@ private fun GameContent(
         state.tournamentInvitationPrompt == null &&
         !showTutorial &&
         !showSettings &&
+        !showSeasonHistory &&
         !showPracticeLauncher &&
         !showPracticeModePicker &&
         practiceMode == null
@@ -378,27 +383,32 @@ private fun GameContent(
     val showTopLevelNavigation = state.lobbyStage == com.hienthai.fastowin.state.LobbyStage.SELECT_MODE
     val openHome = {
         profileSection = null
+        showSeasonHistory = false
         controller.openHome()
     }
     val openLeaderboardTab = {
         profileSection = null
+        showSeasonHistory = false
         controller.openLeaderboard()
     }
     val openFriendsTab = {
         if (isGuest) onUpgradeGuest() else {
             profileSection = null
+            showSeasonHistory = false
             controller.openFriends()
         }
     }
     val openAccountTab = {
         if (isGuest) onUpgradeGuest() else {
             profileSection = null
+            showSeasonHistory = false
             controller.openProfile()
         }
     }
     val openClanTab = {
         if (isGuest) onUpgradeGuest() else {
             profileSection = null
+            showSeasonHistory = false
             controller.openClan()
         }
     }
@@ -418,6 +428,7 @@ private fun GameContent(
         profileSection != null ->
             "profile_section:${if (profileSectionExternal) state.friendProfile?.userId.orEmpty() else "self"}:${profileSection?.name}"
         state.isTournamentOpen -> "tournament"
+        showSeasonHistory -> "season_history"
         state.isFriendsOpen -> "friends"
         state.isLeaderboardOpen -> "leaderboard"
         state.isProfileOpen -> "profile"
@@ -531,6 +542,16 @@ private fun GameContent(
                     onOpenFriendProfile = controller::openFriendProfile
                 )
 
+                showSeasonHistory -> SeasonHistoryScreen(
+                    state = state,
+                    onBack = {
+                        showSeasonHistory = false
+                        if (!state.isLeaderboardOpen) controller.openLeaderboard()
+                    },
+                    onRefresh = controller::refreshProfile,
+                    onOpenNotifications = controller::openNotifications
+                )
+
                 state.isFriendsOpen -> TopLevelTabIfNeeded(
                     enabled = showTopLevelNavigation,
                     state = state,
@@ -576,6 +597,7 @@ private fun GameContent(
                     onBack = if (showTopLevelNavigation) openHome else controller::closeLeaderboard,
                     onRefresh = controller::openLeaderboard,
                     onOpenFriendProfile = controller::openFriendProfile,
+                    onOpenSeasonHistory = { showSeasonHistory = true },
                     onOpenNotifications = controller::openNotifications,
                     showBackButton = !showTopLevelNavigation,
                     modifier = contentModifier

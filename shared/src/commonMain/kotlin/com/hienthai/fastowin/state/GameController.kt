@@ -217,6 +217,12 @@ class GameController(
         scope.launch { socket.sendMessage(ClientMessage.GetProfile) }
     }
 
+    fun refreshProfile() {
+        if (_uiState.value.isProfileLoading || playerId == null) return
+        _uiState.update { it.copy(isProfileLoading = true, error = null) }
+        scope.launch { socket.sendMessage(ClientMessage.GetProfile) }
+    }
+
     fun closeProfile() {
         _uiState.update {
             it.copy(isProfileOpen = false, isProfileLoading = false, isProfileSaving = false, profileNotice = null)

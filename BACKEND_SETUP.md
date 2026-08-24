@@ -102,7 +102,7 @@ Từ audit log, server cộng dồn tổng lượt đúng/sai và thời gian ph
 
 Màn hình **Bảng xếp hạng** có hai tab mùa hiện tại và toàn thời gian, hiển thị tối đa 100 người chơi có trận hoàn thành. Thứ tự ưu tiên Elo, số trận thắng, tỷ lệ thắng, điểm cao nhất rồi thời điểm cập nhật; người chơi hiện tại vẫn nhận được thứ hạng cá nhân kể cả khi nằm ngoài top 100.
 
-Mỗi người chơi bắt đầu với **1000 Elo**. Sau mỗi trận hai người, server dùng công thức Elo với K=32 để cộng/trừ dựa trên kết quả và chênh lệch rating; hòa cũng có thể tăng hoặc giảm nếu rating hai bên khác nhau. Rating tối thiểu là 100. Mọi thay đổi được lưu trong `rating_history`, hiển thị ở lịch sử trận và bảng xếp hạng ưu tiên Elo trước các tiêu chí phụ.
+Mỗi người chơi bắt đầu với **1000 Elo**. Sau mỗi trận hai người, server dùng công thức Elo với K=32 để cộng/trừ dựa trên kết quả và chênh lệch rating; hòa cũng có thể tăng hoặc giảm nếu rating hai bên khác nhau. Rating tối thiểu là 100. Mọi thay đổi được lưu trong `rating_history`, hiển thị ở lịch sử trận và bảng xếp hạng ưu tiên Elo trước các tiêu chí phụ. Hồ sơ progression còn tổng hợp tối đa 50 mùa đã kết thúc từ `season_ratings`, `season_leaderboard_archive` và `season_reward_claims`, không cần nhân bản thêm dữ liệu lịch sử.
 
 Server tự xét và lưu thành tích, không dựa vào dữ liệu client. Bộ thành tích đầu tiên gồm: chiến thắng đầu tiên, 10 chiến thắng, chuỗi thắng 5, có lượt đúng và không bấm sai trong cả trận, và tự chọn đủ 50 số trong tối đa 30 giây. Khóa chính `(user_id, achievement_code)` bảo đảm mỗi thành tích chỉ được mở một lần.
 

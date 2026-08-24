@@ -24,6 +24,7 @@ import com.hienthai.fastowin.protocol.PlayerProgressionSnapshot
 import com.hienthai.fastowin.protocol.WalletTransactionSnapshot
 import com.hienthai.fastowin.protocol.SeasonSnapshot
 import com.hienthai.fastowin.protocol.SeasonRewardReceiptSnapshot
+import com.hienthai.fastowin.protocol.SeasonHistoryEntrySnapshot
 import com.hienthai.fastowin.protocol.SeasonTierRewardSnapshot
 import com.hienthai.fastowin.protocol.STANDARD_SEASON_TIER_REWARDS
 import com.hienthai.fastowin.protocol.seasonCosmeticReward
@@ -412,6 +413,70 @@ class PostgresPlayerProfileRepository(
                     }
                 }
             }
+            val seasonHistory = connection.prepareStatement(
+                """
+                SELECT s.season_number, s.name, s.ends_at,
+                       sr.rating, sr.peak_rating, sr.matches_played, sr.placement_matches,
+                       sla.final_rank,
+                       src.tier, src.reward_gold, src.reward_gems,
+                       src.reward_cosmetic_id, src.reward_cosmetic_type,
+                       src.awarded_at, src.viewed_at
+                FROM season_ratings sr
+                JOIN seasons s ON s.id = sr.season_id
+                LEFT JOIN season_leaderboard_archive sla
+                  ON sla.season_id = sr.season_id AND sla.user_id = sr.user_id
+                LEFT JOIN season_reward_claims src
+                  ON src.season_id = sr.season_id AND src.user_id = sr.user_id
+                WHERE sr.user_id = ?
+                  AND s.ends_at <= CURRENT_TIMESTAMP
+                ORDER BY s.season_number DESC
+                LIMIT 50
+                """.trimIndent()
+            ).use { statement ->
+                statement.setObject(1, userId)
+                statement.executeQuery().use { result ->
+                    buildList {
+                        while (result.next()) {
+                            val seasonNumber = result.getInt("season_number")
+                            val seasonName = result.getString("name")
+                            val finalRank = result.getInt("final_rank").takeUnless { result.wasNull() }
+                            val tierName = result.getString("tier")
+                            val reward = tierName?.let {
+                                val tier = com.hienthai.fastowin.protocol.RankedTier.valueOf(it)
+                                val cosmetic = seasonCosmeticReward(seasonNumber, seasonName, tier).copy(
+                                    id = result.getString("reward_cosmetic_id"),
+                                    type = CosmeticType.valueOf(result.getString("reward_cosmetic_type"))
+                                )
+                                SeasonRewardReceiptSnapshot(
+                                    seasonNumber = seasonNumber,
+                                    seasonName = seasonName,
+                                    tier = tier,
+                                    peakRating = result.getInt("peak_rating"),
+                                    gold = result.getInt("reward_gold"),
+                                    gems = result.getInt("reward_gems"),
+                                    awardedAtEpochMillis = result.getTimestamp("awarded_at").time,
+                                    cosmetic = cosmetic,
+                                    acknowledged = result.getTimestamp("viewed_at") != null
+                                )
+                            }
+                            add(
+                                SeasonHistoryEntrySnapshot(
+                                    seasonNumber = seasonNumber,
+                                    seasonName = seasonName,
+                                    endedAtEpochMillis = result.getTimestamp("ends_at").time,
+                                    finalRating = result.getInt("rating"),
+                                    peakRating = result.getInt("peak_rating"),
+                                    finalRank = finalRank,
+                                    matchesPlayed = result.getInt("matches_played"),
+                                    placementMatchesPlayed = result.getInt("placement_matches"),
+                                    placementMatchesRequired = PLACEMENT_MATCHES_REQUIRED,
+                                    reward = reward
+                                )
+                            )
+                        }
+                    }
+                }
+            }
             val seasonCosmetics = connection.prepareStatement(
                 """
                 SELECT s.season_number, s.name, src.tier, src.reward_cosmetic_id,
@@ -529,7 +594,8 @@ class PostgresPlayerProfileRepository(
                     ),
                     cosmetics = cosmetics,
                     season = season,
-                    latestSeasonReward = latestSeasonReward
+                    latestSeasonReward = latestSeasonReward,
+                    seasonHistory = seasonHistory
                 )
             )
         }

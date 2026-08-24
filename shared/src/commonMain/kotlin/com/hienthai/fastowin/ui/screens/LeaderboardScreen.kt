@@ -16,6 +16,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -23,6 +24,7 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
@@ -52,6 +54,7 @@ fun LeaderboardScreen(
     onBack: () -> Unit,
     onRefresh: () -> Unit,
     onOpenFriendProfile: (String) -> Unit,
+    onOpenSeasonHistory: () -> Unit = {},
     onOpenNotifications: () -> Unit = {},
     showBackButton: Boolean = true,
     modifier: Modifier = Modifier
@@ -145,6 +148,17 @@ fun LeaderboardScreen(
                         },
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
+                }
+                item(key = "season_history_action") {
+                    OutlinedButton(
+                        onClick = onOpenSeasonHistory,
+                        enabled = state.profile != null,
+                        modifier = Modifier.fillMaxWidth().testTag("open_season_history")
+                    ) {
+                        Icon(Icons.Default.History, contentDescription = null)
+                        Spacer(Modifier.size(8.dp))
+                        Text("Lịch sử mùa giải")
+                    }
                 }
                 item(key = "ranking_filters") {
                     FlowRow(

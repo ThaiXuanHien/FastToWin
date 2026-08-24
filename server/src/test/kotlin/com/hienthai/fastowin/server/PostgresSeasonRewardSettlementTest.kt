@@ -85,6 +85,20 @@ class PostgresSeasonRewardSettlementTest {
                         statement.setObject(2, UUID.fromString(player.playerId))
                         statement.executeUpdate()
                     }
+                    connection.prepareStatement(
+                        """
+                        INSERT INTO season_leaderboard_archive (
+                            season_id, user_id, final_rank, display_name, player_code,
+                            avatar_url, frame_id, wins, total_matches, highest_score,
+                            rating, season_matches
+                        ) VALUES (?, ?, 7, 'Season reward test', 'SEASON01', NULL,
+                                  'frame_default', 4, 8, 50, 1320, 8)
+                        """.trimIndent()
+                    ).use { statement ->
+                        statement.setObject(1, seasonId)
+                        statement.setObject(2, UUID.fromString(player.playerId))
+                        statement.executeUpdate()
+                    }
                 }
 
                 val results = coroutineScope {
@@ -110,6 +124,25 @@ class PostgresSeasonRewardSettlementTest {
                     assertEquals("Khung Mùa Kiểm Thử • Vàng", cosmetic?.name)
                     assertEquals(com.hienthai.fastowin.protocol.CosmeticType.FRAME, cosmetic?.type)
                     assertFalse(acknowledged)
+                }
+                with(profile.progression.seasonHistory.first { it.seasonNumber == seasonNumber }) {
+                    assertEquals("Mùa Kiểm Thử", seasonName)
+                    assertEquals(1_320, finalRating)
+                    assertEquals(1_380, peakRating)
+                    assertEquals(7, finalRank)
+                    assertEquals(8, matchesPlayed)
+                    assertEquals(5, placementMatchesPlayed)
+                    assertEquals(RankedTier.GOLD, reward?.tier)
+                    assertEquals(1_000, reward?.gold)
+                    assertEquals(1, reward?.gems)
+                    assertEquals("season_${seasonNumber}_gold", reward?.cosmetic?.id)
+                }
+                with(profile.progression.seasonHistory.first { it.seasonNumber == seasonNumber + 1 }) {
+                    assertEquals("Mùa Chưa Phân Hạng", seasonName)
+                    assertEquals(2_400, peakRating)
+                    assertEquals(4, placementMatchesPlayed)
+                    assertEquals(null, finalRank)
+                    assertEquals(null, reward)
                 }
                 assertTrue(profileRepository.acknowledgeSeasonReward(player.playerId, seasonNumber))
                 assertTrue(
@@ -178,6 +211,11 @@ class PostgresSeasonRewardSettlementTest {
                 val profileWithTitle = profileRepository.findByPlayerId(player.playerId)!!
                 assertEquals(seasonNumber + 2, profileWithTitle.progression.latestSeasonReward?.seasonNumber)
                 assertFalse(profileWithTitle.progression.latestSeasonReward?.acknowledged ?: true)
+                with(profileWithTitle.progression.seasonHistory.first { it.seasonNumber == seasonNumber + 2 }) {
+                    assertEquals(RankedTier.SILVER, reward?.tier)
+                    assertEquals(1_200, peakRating)
+                    assertEquals("season_${seasonNumber + 2}_silver", reward?.cosmetic?.id)
+                }
                 val seasonTitle = profileWithTitle.progression.cosmetics.first {
                     it.id == "season_${seasonNumber + 2}_silver"
                 }

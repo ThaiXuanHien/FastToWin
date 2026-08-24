@@ -4,7 +4,7 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
-const val PROTOCOL_VERSION = 35
+const val PROTOCOL_VERSION = 36
 const val GAME_NUMBER_COUNT = 50
 const val MAX_PROFILE_DISPLAY_NAME_LENGTH = 32
 val DAILY_CHECK_IN_REWARDS_XP = listOf(10, 10, 15, 15, 20, 25, 40)
@@ -353,6 +353,20 @@ data class SeasonRewardReceiptSnapshot(
 )
 
 @Serializable
+data class SeasonHistoryEntrySnapshot(
+    val seasonNumber: Int,
+    val seasonName: String,
+    val endedAtEpochMillis: Long,
+    val finalRating: Int,
+    val peakRating: Int,
+    val finalRank: Int? = null,
+    val matchesPlayed: Int = 0,
+    val placementMatchesPlayed: Int = 0,
+    val placementMatchesRequired: Int = 5,
+    val reward: SeasonRewardReceiptSnapshot? = null
+)
+
+@Serializable
 data class PlayerProgressionSnapshot(
     val level: Int = 1,
     val experiencePoints: Int = 0,
@@ -365,7 +379,8 @@ data class PlayerProgressionSnapshot(
     val dailyCheckIn: DailyCheckInSnapshot = DailyCheckInSnapshot(),
     val cosmetics: List<CosmeticSnapshot> = emptyList(),
     val season: SeasonSnapshot? = null,
-    val latestSeasonReward: SeasonRewardReceiptSnapshot? = null
+    val latestSeasonReward: SeasonRewardReceiptSnapshot? = null,
+    val seasonHistory: List<SeasonHistoryEntrySnapshot> = emptyList()
 )
 
 @Serializable
