@@ -1,6 +1,8 @@
 package com.hienthai.fastowin.ui.components
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
@@ -35,6 +37,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.hienthai.fastowin.ui.theme.ArcadePalette
 
 @Composable
 fun FastToWinHeader(
@@ -48,11 +51,14 @@ fun FastToWinHeader(
     applySafeDrawingInset: Boolean = true,
     showNotifications: Boolean = true,
     showBalances: Boolean = true,
+    showBrand: Boolean = false,
+    subtitle: String? = null,
     actions: @Composable RowScope.() -> Unit = {}
 ) {
     Surface(
         modifier = modifier.fillMaxWidth().testTag("app_header"),
-        color = MaterialTheme.colorScheme.surface
+        color = ArcadePalette.Navy900,
+        contentColor = ArcadePalette.White
     ) {
         Row(
             modifier = Modifier
@@ -66,23 +72,42 @@ fun FastToWinHeader(
                         Modifier
                     }
                 )
-                .padding(horizontal = 4.dp, vertical = 4.dp),
+                .padding(horizontal = 8.dp, vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(2.dp)
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
         ) {
             if (onBack != null) {
                 IconButton(onClick = onBack) {
                     Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Quay lại")
                 }
             }
-            Text(
-                text = title,
-                modifier = Modifier.weight(1f),
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
+            if (showBrand && onBack == null) {
+                ArcadeHeaderLogo()
+                Spacer(modifier = Modifier.weight(1f))
+            } else {
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    Text(
+                        text = title,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = ArcadePalette.White,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    if (!subtitle.isNullOrBlank()) {
+                        Text(
+                            text = subtitle,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = ArcadePalette.White.copy(alpha = 0.72f),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+            }
             if (showBalances) {
                 HeaderCurrency(amount = gold, label = "Vàng", isGem = false)
                 Spacer(modifier = Modifier.width(4.dp))
@@ -110,28 +135,32 @@ fun FastToWinHeader(
 
 @Composable
 private fun HeaderCurrency(amount: Int, label: String, isGem: Boolean) {
+    val accent = if (isGem) GemColor else GoldColor
     Surface(
         modifier = Modifier
             .testTag(if (isGem) "header_gem" else "header_gold")
             .semantics { contentDescription = "${formatHeaderAmount(amount)} $label" },
-        shape = RoundedCornerShape(14.dp),
-        color = MaterialTheme.colorScheme.surfaceContainer
+        shape = RoundedCornerShape(12.dp),
+        color = ArcadePalette.Navy800,
+        contentColor = ArcadePalette.White,
+        border = BorderStroke(1.dp, accent.copy(alpha = 0.72f))
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 7.dp, vertical = 6.dp),
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 7.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(3.dp)
         ) {
             Icon(
                 imageVector = if (isGem) Icons.Default.Payments else Icons.Default.MonetizationOn,
                 contentDescription = null,
-                tint = if (isGem) GemColor else GoldColor,
+                tint = accent,
                 modifier = Modifier.size(18.dp)
             )
             Text(
                 formatHeaderAmount(amount),
                 style = MaterialTheme.typography.labelMedium,
                 fontWeight = FontWeight.Bold,
+                color = ArcadePalette.White,
                 maxLines = 1
             )
         }

@@ -16,6 +16,10 @@ kotlin {
         minSdk = 29
         withHostTestBuilder {}.configure {}
 
+        androidResources {
+            enable = true
+        }
+
         compilerOptions {
             jvmTarget.set(JvmTarget.JVM_11)
         }
@@ -39,6 +43,7 @@ kotlin {
             implementation(compose.material3)
             implementation(compose.materialIconsExtended)
             implementation(compose.ui)
+            implementation(compose.components.resources)
             implementation(libs.kotlinx.coroutines.core)
             implementation(libs.kotlinx.serialization.core)
             implementation(libs.kotlinx.serialization.json)
@@ -64,4 +69,9 @@ kotlin {
             implementation(libs.kotlinx.coroutines.test)
         }
     }
+}
+
+compose.resources {
+    packageOfResClass = "com.hienthai.fastowin.resources"
+    publicResClass = true
 }

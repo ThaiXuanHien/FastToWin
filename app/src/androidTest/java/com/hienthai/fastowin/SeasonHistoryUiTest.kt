@@ -56,6 +56,8 @@ class SeasonHistoryUiTest {
         }
 
         composeRule.onNodeWithTag("season_history_screen").assertIsDisplayed()
+        composeRule.onNodeWithTag("season_history_list")
+            .performScrollToNode(hasTestTag("season_history_item:3"))
         composeRule.onNodeWithTag("season_history_item:3").assertIsDisplayed()
         composeRule.onNodeWithTag("season_history_list")
             .performScrollToNode(hasTestTag("season_history_item:2"))
@@ -80,6 +82,8 @@ class SeasonHistoryUiTest {
         }
 
         composeRule.onNodeWithTag("season_history_screen").assertIsDisplayed()
+        composeRule.onNodeWithTag("season_history_list")
+            .performScrollToNode(hasTestTag("season_history_item:3"))
         composeRule.onNodeWithTag("season_history_item:3").assertIsDisplayed()
         composeRule.onNodeWithTag("season_history_list")
             .performScrollToNode(hasTestTag("season_history_item:2"))

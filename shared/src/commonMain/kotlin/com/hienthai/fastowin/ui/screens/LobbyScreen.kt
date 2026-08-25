@@ -1,17 +1,23 @@
 package com.hienthai.fastowin.ui.screens
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.lazy.LazyColumn
@@ -21,7 +27,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Person
@@ -36,7 +41,6 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -55,11 +59,13 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.hienthai.fastowin.navigation.GameMode
@@ -72,6 +78,10 @@ import com.hienthai.fastowin.state.LobbyStage
 import com.hienthai.fastowin.state.PlayerState
 import com.hienthai.fastowin.ui.components.SystemBackHandler
 import com.hienthai.fastowin.ui.components.PlayerAvatar
+import com.hienthai.fastowin.ui.components.FastToWinHeader
+import com.hienthai.fastowin.ui.components.ArcadeFeatureHero
+import com.hienthai.fastowin.resources.Res
+import com.hienthai.fastowin.resources.arcade_room_portal
 import com.hienthai.fastowin.ui.layout.ResponsiveScreen
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -108,6 +118,9 @@ fun LobbyScreen(
     modifier: Modifier = Modifier
 ) {
     var openCreateAfterModeSelection by remember { mutableStateOf(false) }
+    val hasTopLevelChrome = state.lobbyStage == LobbyStage.SELECT_MODE ||
+        state.lobbyStage == LobbyStage.ROOM_BROWSER
+    val displayName = (state.profile?.displayName ?: state.player.name).ifBlank { "người chơi" }
     SystemBackHandler(enabled = state.lobbyStage != LobbyStage.SELECT_MODE) {
         when (state.lobbyStage) {
             LobbyStage.SELECT_MODE -> Unit
@@ -120,10 +133,44 @@ fun LobbyScreen(
         }
     }
     Column(modifier = modifier.fillMaxSize().testTag("lobby_screen")) {
+        if (state.lobbyStage == LobbyStage.SELECT_MODE) {
+            FastToWinHeader(
+                title = "Xin chào, $displayName!",
+                subtitle = "Sẵn sàng phá kỷ lục mới?",
+                gold = state.profile?.progression?.gold ?: 0,
+                gems = state.profile?.progression?.gems ?: 0,
+                unreadNotifications = state.unreadNotificationCount,
+                onNotifications = onOpenNotifications,
+                onBack = null
+            )
+        } else if (state.lobbyStage == LobbyStage.ROOM_BROWSER) {
+            FastToWinHeader(
+                title = "Phòng chơi",
+                gold = state.profile?.progression?.gold ?: 0,
+                gems = state.profile?.progression?.gems ?: 0,
+                unreadNotifications = state.unreadNotificationCount,
+                onNotifications = onOpenNotifications,
+                onBack = null
+            )
+        }
         ResponsiveScreen(
-            modifier = Modifier.weight(1f),
+            modifier = Modifier
+                .weight(1f)
+                .then(
+                    if (hasTopLevelChrome) {
+                        Modifier.windowInsetsPadding(
+                            WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal)
+                        )
+                    } else {
+                        Modifier
+                    }
+                ),
             maxContentWidth = 760.dp,
-            includeBottomSafeDrawingInset = state.lobbyStage != LobbyStage.SELECT_MODE,
+            applySafeDrawingInsets = !hasTopLevelChrome,
+            includeBottomSafeDrawingInset = state.lobbyStage !in setOf(
+                LobbyStage.SELECT_MODE,
+                LobbyStage.ROOM_BROWSER
+            ),
             avoidKeyboard = true
         ) { contentModifier ->
             Box(
@@ -163,10 +210,6 @@ fun LobbyScreen(
                     onRefreshRooms = onRefreshRooms,
                     onOpenProfile = onOpenProfile,
                     onOpenFriends = onOpenFriends,
-                    onBack = {
-                        openCreateAfterModeSelection = false
-                        onBackToMode()
-                    },
                     isGuest = isGuest,
                     onUpgradeGuest = onUpgradeGuest,
                     showCreateInitially = openCreateAfterModeSelection,
@@ -188,14 +231,19 @@ fun LobbyScreen(
                 }
             }
         }
-        if (state.lobbyStage == LobbyStage.SELECT_MODE) {
+        if (state.lobbyStage == LobbyStage.SELECT_MODE || state.lobbyStage == LobbyStage.ROOM_BROWSER) {
             FastToWinBottomBar(
-                selected = MainTab.HOME,
-                friendNotificationCount = state.pendingSocialInvitationCount,
-                onHome = {},
+                selected = if (state.lobbyStage == LobbyStage.ROOM_BROWSER) MainTab.ROOMS else MainTab.HOME,
+                friendNotificationCount = 0,
+                onHome = if (state.lobbyStage == LobbyStage.ROOM_BROWSER) onBackToMode else ({}),
+                onRooms = {
+                    if (state.lobbyStage != LobbyStage.ROOM_BROWSER) {
+                        openCreateAfterModeSelection = false
+                        onModeSelected(state.gameMode)
+                    }
+                },
                 onLeaderboard = if (isGuest) onUpgradeGuest else onOpenLeaderboard,
                 onClan = if (isGuest) onUpgradeGuest else onOpenClan,
-                onFriends = if (isGuest) onUpgradeGuest else onOpenFriends,
                 onAccount = if (isGuest) onUpgradeGuest else onOpenProfile
             )
         }
@@ -302,7 +350,6 @@ private fun RoomBrowser(
     onRefreshRooms: () -> Unit,
     onOpenProfile: () -> Unit,
     onOpenFriends: () -> Unit,
-    onBack: () -> Unit,
     isGuest: Boolean,
     onUpgradeGuest: () -> Unit,
     showCreateInitially: Boolean,
@@ -391,29 +438,43 @@ private fun RoomBrowser(
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+            horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            IconButton(onClick = onBack) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Về trang chủ")
-            }
             Column(modifier = Modifier.weight(1f)) {
-                Text("Phòng chơi", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                Text("Tìm phòng phù hợp", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Black)
                 Text(
                     buildString {
-                        append(state.player.name).append(" • ").append(state.gameMode.displayName())
-                        state.latencyMillis?.let { append(" • ").append(it).append(" ms") }
+                        append(state.player.name).append("  •  ").append(state.gameMode.displayName())
+                        state.latencyMillis?.let { append("  •  ").append(it).append(" ms") }
                     },
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1
                 )
             }
-            Spacer(Modifier.size(48.dp))
+            Surface(
+                shape = RoundedCornerShape(12.dp),
+                color = MaterialTheme.colorScheme.primaryContainer
+            ) {
+                Text(
+                    "${visibleRooms.size} phòng",
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.Bold
+                )
+            }
         }
 
         state.error?.let {
             Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium)
         }
+
+        ArcadeFeatureHero(
+            illustration = Res.drawable.arcade_room_portal,
+            title = "Sảnh kết nối",
+            subtitle = "Tạo phòng riêng hoặc chọn đối thủ đang chờ để bắt đầu.",
+            accent = MaterialTheme.colorScheme.primary
+        )
 
         if (isGuest) {
             OutlinedButton(
@@ -458,10 +519,7 @@ private fun RoomBrowser(
             }
         }
 
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Text("Phòng đang chờ", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-            Text("${visibleRooms.size} phòng", color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
+        Text("Phòng đang chờ", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
         Box(modifier = Modifier.fillMaxWidth().weight(1f)) {
             when {
                 state.isSearching -> Row(
@@ -511,7 +569,7 @@ private fun CreateRoomDialog(
 ) {
     var roomName by remember { mutableStateOf("") }
     var roomPassword by remember { mutableStateOf("") }
-    var isPrivate by remember { mutableStateOf(true) }
+    var isPrivate by remember { mutableStateOf(false) }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Tạo phòng mới") },
@@ -584,12 +642,26 @@ private fun RoomCard(room: AvailableRoom, onClick: () -> Unit) {
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
+            Surface(
+                modifier = Modifier.size(54.dp),
+                shape = RoundedCornerShape(14.dp),
+                color = MaterialTheme.colorScheme.primaryContainer
+            ) {
+                Image(
+                    painter = org.jetbrains.compose.resources.painterResource(Res.drawable.arcade_room_portal),
+                    contentDescription = null,
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier.padding(4.dp)
+                )
+            }
             Column(modifier = Modifier.weight(1f)) {
                 Text(room.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                 Text("Chủ phòng: ${room.hostName} • ${room.gameMode.displayName()}")
             }
-            if (room.requiresPassword) Icon(Icons.Default.Lock, contentDescription = "Phòng có mật khẩu")
-            Text("  Tham gia", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+            Column(horizontalAlignment = Alignment.End) {
+                if (room.requiresPassword) Icon(Icons.Default.Lock, contentDescription = "Phòng có mật khẩu")
+                Text("Vào phòng", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+            }
         }
     }
 }
@@ -821,17 +893,22 @@ private fun MatchedStatus(state: GameState, onOpenFriendProfile: (String) -> Uni
         )
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceEvenly,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            PlayerMatchedCard(state.player, true)
-            Text("ĐẤU", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Black)
             PlayerMatchedCard(
-                state.opponent,
-                false,
+                player = state.player,
+                isLocal = true,
+                modifier = Modifier.weight(1f)
+            )
+            Text("ĐẤU", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black)
+            PlayerMatchedCard(
+                player = state.opponent,
+                isLocal = false,
                 onViewInfo = if (opponentFriend == null) null else ({
                     onOpenFriendProfile(opponentFriend.userId)
-                })
+                }),
+                modifier = Modifier.weight(1f)
             )
         }
         Text(
@@ -846,22 +923,43 @@ private fun MatchedStatus(state: GameState, onOpenFriendProfile: (String) -> Uni
 private fun PlayerMatchedCard(
     player: PlayerState,
     isLocal: Boolean,
-    onViewInfo: (() -> Unit)? = null
+    onViewInfo: (() -> Unit)? = null,
+    modifier: Modifier = Modifier
 ) {
-    Column(
-        modifier = Modifier.clickable(enabled = onViewInfo != null) { onViewInfo?.invoke() },
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        Surface(
-            modifier = Modifier.size(100.dp),
-            shape = CircleShape,
-            color = if (isLocal) MaterialTheme.colorScheme.primaryContainer
-            else MaterialTheme.colorScheme.secondaryContainer
-        ) {
-            Icon(Icons.Default.Person, null, modifier = Modifier.padding(24.dp).fillMaxSize())
+    Surface(
+        modifier = modifier.clickable(enabled = onViewInfo != null) { onViewInfo?.invoke() },
+        shape = RoundedCornerShape(20.dp),
+        color = if (isLocal) {
+            MaterialTheme.colorScheme.primaryContainer
+        } else {
+            MaterialTheme.colorScheme.secondaryContainer
         }
-        Text(player.name, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 14.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text(
+                if (isLocal) "BẠN" else "ĐỐI THỦ",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontWeight = FontWeight.Bold
+            )
+            PlayerAvatar(
+                displayName = player.name,
+                avatarId = player.avatarId,
+                frameId = player.frameId,
+                size = 76.dp
+            )
+            Text(
+                player.name,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
     }
 }
 

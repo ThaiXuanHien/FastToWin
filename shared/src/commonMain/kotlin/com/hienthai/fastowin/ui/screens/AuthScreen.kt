@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
@@ -37,6 +38,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
@@ -49,6 +51,9 @@ import com.hienthai.fastowin.state.AuthState
 import com.hienthai.fastowin.state.MAX_ACCOUNT_PASSWORD_LENGTH
 import com.hienthai.fastowin.state.accountPasswordConfirmationError
 import com.hienthai.fastowin.state.accountPasswordError
+import com.hienthai.fastowin.ui.components.ArcadeBackdrop
+import com.hienthai.fastowin.ui.components.ArcadeBrandLockup
+import com.hienthai.fastowin.ui.components.ArcadePanel
 import com.hienthai.fastowin.ui.components.SystemBackHandler
 import com.hienthai.fastowin.ui.layout.ResponsiveScreen
 
@@ -74,26 +79,28 @@ fun AuthScreen(
             if (state.stage == AuthStage.UPGRADE_GUEST) onCancelUpgrade() else onBack()
         }
     }
-    ResponsiveScreen(maxContentWidth = 520.dp, avoidKeyboard = true) { contentModifier ->
-        Box(
-            modifier = contentModifier
-                .verticalScroll(rememberScrollState())
-                .padding(vertical = 24.dp),
-            contentAlignment = Alignment.Center
-        ) {
-            when (state.stage) {
-                AuthStage.WELCOME -> WelcomeContent(state, onOpenLogin, onOpenRegister, onPlayAsGuest)
-                AuthStage.LOGIN -> LoginContent(state, onLogin, onOpenPasswordReset, onBack)
-                AuthStage.REGISTER -> RegisterContent(state, onRegister, onBack)
-                AuthStage.RESET_PASSWORD -> PasswordResetContent(
-                    state,
-                    onRequestPasswordReset,
-                    onConfirmPasswordReset,
-                    onOpenPasswordReset,
-                    onBack
-                )
-                AuthStage.UPGRADE_GUEST -> UpgradeGuestContent(state, onUpgradeGuest, onCancelUpgrade)
-                AuthStage.PLAYING -> Unit
+    ArcadeBackdrop(modifier = Modifier.fillMaxSize()) {
+        ResponsiveScreen(maxContentWidth = 520.dp, avoidKeyboard = true) { contentModifier ->
+            Box(
+                modifier = contentModifier
+                    .verticalScroll(rememberScrollState())
+                    .padding(vertical = 24.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                when (state.stage) {
+                    AuthStage.WELCOME -> WelcomeContent(state, onOpenLogin, onOpenRegister, onPlayAsGuest)
+                    AuthStage.LOGIN -> LoginContent(state, onLogin, onOpenPasswordReset, onBack)
+                    AuthStage.REGISTER -> RegisterContent(state, onRegister, onBack)
+                    AuthStage.RESET_PASSWORD -> PasswordResetContent(
+                        state,
+                        onRequestPasswordReset,
+                        onConfirmPasswordReset,
+                        onOpenPasswordReset,
+                        onBack
+                    )
+                    AuthStage.UPGRADE_GUEST -> UpgradeGuestContent(state, onUpgradeGuest, onCancelUpgrade)
+                    AuthStage.PLAYING -> Unit
+                }
             }
         }
     }
@@ -111,22 +118,25 @@ private fun WelcomeContent(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        Text(
-            "Fast To Win",
-            style = MaterialTheme.typography.displayLarge,
-            fontWeight = FontWeight.Black,
-            color = MaterialTheme.colorScheme.primary
-        )
+        ArcadeBrandLockup()
         Text(
             "Đăng nhập để đồng bộ Elo, lịch sử và thành tích trên mọi thiết bị.",
             textAlign = TextAlign.Center,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
         Spacer(Modifier.height(24.dp))
-        Button(onClick = onOpenLogin, modifier = Modifier.fillMaxWidth().height(56.dp)) {
+        Button(
+            onClick = onOpenLogin,
+            modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
+            shape = RoundedCornerShape(18.dp)
+        ) {
             Text("Đăng nhập")
         }
-        OutlinedButton(onClick = onOpenRegister, modifier = Modifier.fillMaxWidth().height(56.dp)) {
+        OutlinedButton(
+            onClick = onOpenRegister,
+            modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
+            shape = RoundedCornerShape(18.dp)
+        ) {
             Text("Tạo tài khoản")
         }
         TextButton(onClick = onPlayAsGuest) { Text("Chơi với tư cách khách") }
@@ -150,7 +160,8 @@ private fun LoginContent(
         Button(
             onClick = { onLogin(email, password) },
             enabled = email.isNotBlank() && password.isNotBlank() && !state.isLoading,
-            modifier = Modifier.fillMaxWidth().height(56.dp).testTag("auth_login_submit")
+            modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp).testTag("auth_login_submit"),
+            shape = RoundedCornerShape(18.dp)
         ) {
             if (state.isLoading) CircularProgressIndicator(strokeWidth = 2.dp)
             else Text("Đăng nhập")
@@ -190,7 +201,8 @@ private fun PasswordResetContent(
             Button(
                 onClick = { onRequest(email) },
                 enabled = email.isNotBlank() && !state.isLoading,
-                modifier = Modifier.fillMaxWidth().height(56.dp)
+                modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
+                shape = RoundedCornerShape(18.dp)
             ) {
                 if (state.isLoading) CircularProgressIndicator(strokeWidth = 2.dp)
                 else Text("Tạo mã khôi phục")
@@ -220,7 +232,8 @@ private fun PasswordResetContent(
                 onClick = { onConfirm(requestedEmail, resetToken, newPassword) },
                 enabled = resetToken.isNotBlank() && passwordError == null &&
                     confirmationError == null && confirmPassword.isNotEmpty() && !state.isLoading,
-                modifier = Modifier.fillMaxWidth().height(56.dp)
+                modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
+                shape = RoundedCornerShape(18.dp)
             ) {
                 if (state.isLoading) CircularProgressIndicator(strokeWidth = 2.dp)
                 else Text("Đặt lại mật khẩu")
@@ -262,7 +275,8 @@ private fun RegisterContent(
             onClick = { onRegister(email, password, displayName) },
             enabled = displayName.isNotBlank() && email.isNotBlank() && passwordError == null &&
                 confirmationError == null && confirmPassword.isNotEmpty() && !state.isLoading,
-            modifier = Modifier.fillMaxWidth().height(56.dp)
+            modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
+            shape = RoundedCornerShape(18.dp)
         ) {
             if (state.isLoading) CircularProgressIndicator(strokeWidth = 2.dp)
             else Text("Tạo tài khoản")
@@ -296,7 +310,8 @@ private fun UpgradeGuestContent(
             onClick = { onUpgradeGuest(email, password) },
             enabled = email.isNotBlank() && passwordError == null && confirmationError == null &&
                 confirmPassword.isNotEmpty() && !state.isLoading,
-            modifier = Modifier.fillMaxWidth().height(56.dp)
+            modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
+            shape = RoundedCornerShape(18.dp)
         ) {
             if (state.isLoading) CircularProgressIndicator(strokeWidth = 2.dp)
             else Text("Lưu và tạo tài khoản")
@@ -311,16 +326,19 @@ private fun AuthForm(
     onBack: () -> Unit,
     content: @Composable ColumnScope.() -> Unit
 ) {
-    Column(
-        modifier = Modifier.widthIn(max = 480.dp).fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(14.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Text(title, style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold)
-        content()
-        state.notice?.let { Text(it, color = MaterialTheme.colorScheme.primary, textAlign = TextAlign.Center) }
-        state.error?.let { Text(it, color = MaterialTheme.colorScheme.error, textAlign = TextAlign.Center) }
-        TextButton(onClick = onBack, enabled = !state.isLoading) { Text("Quay lại") }
+    ArcadePanel(modifier = Modifier.widthIn(max = 480.dp).fillMaxWidth()) {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            ArcadeBrandLockup(compact = true)
+            Text(title, style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Black)
+            content()
+            state.notice?.let { Text(it, color = MaterialTheme.colorScheme.primary, textAlign = TextAlign.Center) }
+            state.error?.let { Text(it, color = MaterialTheme.colorScheme.error, textAlign = TextAlign.Center) }
+            TextButton(onClick = onBack, enabled = !state.isLoading) { Text("Quay lại") }
+        }
     }
 }
 

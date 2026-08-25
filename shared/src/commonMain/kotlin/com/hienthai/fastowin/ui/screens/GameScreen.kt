@@ -35,6 +35,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material.icons.Icons
@@ -43,6 +44,7 @@ import androidx.compose.material.icons.rounded.SentimentSatisfiedAlt
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -52,6 +54,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
@@ -72,6 +75,8 @@ import com.hienthai.fastowin.platform.playFeedbackSound
 import com.hienthai.fastowin.protocol.MatchType
 import com.hienthai.fastowin.ui.layout.ResponsiveScreen
 import com.hienthai.fastowin.ui.theme.FastToWinTheme
+import com.hienthai.fastowin.ui.theme.ArcadePalette
+import kotlinx.coroutines.delay
 import kotlin.math.abs
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -89,7 +94,15 @@ fun GameScreen(
 ) {
     val hapticFeedback = LocalHapticFeedback.current
     var showExitConfirmation by remember { mutableStateOf(false) }
+    var wrongNumber by remember { mutableStateOf<Int?>(null) }
+    var wrongFeedbackToken by remember { mutableIntStateOf(0) }
     val opponentFriend = state.social.friends.firstOrNull { it.userId == state.opponent.id }
+    LaunchedEffect(wrongFeedbackToken) {
+        if (wrongFeedbackToken > 0) {
+            delay(180)
+            wrongNumber = null
+        }
+    }
     SystemBackHandler(enabled = allowExit) {
         if (allowExit) showExitConfirmation = true
     }
@@ -115,8 +128,15 @@ fun GameScreen(
 
     Scaffold(
         modifier = modifier.fillMaxSize().testTag("game_screen"),
+        containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             CenterAlignedTopAppBar(
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = ArcadePalette.Navy900,
+                    navigationIconContentColor = Color.White,
+                    titleContentColor = Color.White,
+                    actionIconContentColor = Color.White
+                ),
                 navigationIcon = {
                     if (allowExit) {
                         IconButton(onClick = { showExitConfirmation = true }) {
@@ -139,7 +159,7 @@ fun GameScreen(
                                 append(" • ").append(state.gameMode.description)
                             },
                             style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            color = Color.White.copy(alpha = 0.72f)
                         )
                     }
                 },
@@ -180,9 +200,6 @@ fun GameScreen(
                             }
                         }
                     }
-                    if (state.timeLeftMillis > 0) {
-                        TimerBadge(state.timeLeftMillis)
-                    }
                 }
             )
         }
@@ -195,6 +212,7 @@ fun GameScreen(
             Column(modifier = contentModifier) {
                 PlayerScoreBar(
                     state = state,
+                    timeLeftMillis = state.timeLeftMillis,
                     onOpponentInfo = if (opponentFriend == null) null else ({
                         onOpenFriendProfile(opponentFriend.userId)
                     })
@@ -211,26 +229,15 @@ fun GameScreen(
 
                 LiveMetricsBar(state)
 
-                Box(modifier = Modifier.fillMaxWidth().height(32.dp), contentAlignment = Alignment.Center) {
-                    state.message?.let { message ->
-                        Text(
-                            text = message,
-                            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
-                            color = MaterialTheme.colorScheme.error,
-                            style = MaterialTheme.typography.labelLarge,
-                            textAlign = TextAlign.Center,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                    }
-                }
+                GameConnectionNotice(state)
 
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
 
                 Box(modifier = Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
                     NumberGrid(
                         numbers = state.numbers,
-                        currentTarget = state.currentTarget,
                         selectedNumbers = state.player.selectedNumbers,
+                        wrongNumber = wrongNumber,
                         enabled = state.connectionStatus == ConnectionStatus.CONNECTED && !state.player.isFinished,
                         boardStyle = preferences.boardStyle,
                         onNumberClick = { number ->
@@ -243,6 +250,10 @@ fun GameScreen(
                             if (preferences.vibrationEnabled) {
                                 hapticFeedback.performHapticFeedback(HapticFeedbackType.LongPress)
                             }
+                            if (number != state.currentTarget) {
+                                wrongNumber = number
+                                wrongFeedbackToken += 1
+                            }
                             onNumberClick(number)
                         },
                         modifier = Modifier.fillMaxSize()
@@ -250,6 +261,30 @@ fun GameScreen(
                 }
             }
             EmojiOverlay(state.activeEmojis)
+        }
+    }
+}
+
+@Composable
+private fun GameConnectionNotice(state: GameState) {
+    val message = when (state.connectionStatus) {
+        ConnectionStatus.DISCONNECTED -> "Mất kết nối. Đang thử kết nối lại…"
+        ConnectionStatus.RECONNECTING -> "Đang kết nối lại trận đấu…"
+        else -> state.message?.takeIf { it.contains("máy chủ", ignoreCase = true) }
+    }
+    Box(
+        modifier = Modifier.fillMaxWidth().height(if (message == null) 4.dp else 32.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        message?.let {
+            Text(
+                text = it,
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.labelMedium,
+                textAlign = TextAlign.Center,
+                fontWeight = FontWeight.SemiBold
+            )
         }
     }
 }
@@ -335,13 +370,13 @@ private fun comboMultiplier(combo: Int): Int = when {
 }
 
 @Composable
-private fun TimerBadge(timeLeftMillis: Long) {
+private fun TimerBadge(timeLeftMillis: Long, modifier: Modifier = Modifier) {
     val seconds = (timeLeftMillis / 1_000) % 60
     val minutes = (timeLeftMillis / 1_000) / 60
     val urgent = timeLeftMillis < 10_000
 
     Surface(
-        modifier = Modifier.padding(end = 12.dp),
+        modifier = modifier,
         shape = RoundedCornerShape(14.dp),
         color = if (urgent) MaterialTheme.colorScheme.errorContainer
         else MaterialTheme.colorScheme.primaryContainer
@@ -359,6 +394,7 @@ private fun TimerBadge(timeLeftMillis: Long) {
 @Composable
 private fun PlayerScoreBar(
     state: GameState,
+    timeLeftMillis: Long,
     onOpponentInfo: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
@@ -391,12 +427,16 @@ private fun PlayerScoreBar(
             isLocal = true,
             modifier = Modifier.weight(1f)
         )
-        Text(
-            text = "ĐẤU",
-            style = MaterialTheme.typography.labelLarge,
-            fontWeight = FontWeight.Black,
-            color = MaterialTheme.colorScheme.outline
-        )
+        if (timeLeftMillis > 0L) {
+            TimerBadge(timeLeftMillis)
+        } else {
+            Text(
+                text = "ĐẤU",
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.Black,
+                color = MaterialTheme.colorScheme.outline
+            )
+        }
         PlayerScoreCard(
             label = labelOpp,
             name = nameOpp,
@@ -420,9 +460,10 @@ private fun PlayerScoreCard(
     modifier: Modifier = Modifier
 ) {
     val containerColor = if (isLocal) MaterialTheme.colorScheme.primaryContainer
-    else MaterialTheme.colorScheme.secondaryContainer
+    else MaterialTheme.colorScheme.tertiaryContainer
     val contentColor = if (isLocal) MaterialTheme.colorScheme.onPrimaryContainer
-    else MaterialTheme.colorScheme.onSecondaryContainer
+    else MaterialTheme.colorScheme.onTertiaryContainer
+    val accentColor = if (isLocal) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.tertiary
 
     Surface(
         modifier = modifier.then(
@@ -430,7 +471,8 @@ private fun PlayerScoreCard(
         ),
         shape = RoundedCornerShape(18.dp),
         color = containerColor,
-        tonalElevation = 2.dp
+        border = BorderStroke(2.dp, accentColor.copy(alpha = 0.55f)),
+        shadowElevation = 2.dp
     ) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 10.dp),
@@ -477,7 +519,9 @@ private fun TargetPanel(currentTarget: Int, completedCount: Int) {
     Surface(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
         shape = RoundedCornerShape(22.dp),
-        color = MaterialTheme.colorScheme.primaryContainer
+        color = MaterialTheme.colorScheme.primaryContainer,
+        border = BorderStroke(2.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.55f)),
+        shadowElevation = 2.dp
     ) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 12.dp),
@@ -496,7 +540,7 @@ private fun TargetPanel(currentTarget: Int, completedCount: Int) {
                     fontSize = 42.sp,
                     lineHeight = 46.sp,
                     fontWeight = FontWeight.Black,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer
+                    color = MaterialTheme.colorScheme.primary
                 )
             }
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -518,26 +562,33 @@ private fun TargetPanel(currentTarget: Int, completedCount: Int) {
 @Composable
 fun NumberGrid(
     numbers: List<Int>,
-    currentTarget: Int,
     selectedNumbers: List<Int> = emptyList(),
+    wrongNumber: Int? = null,
     enabled: Boolean = true,
     boardStyle: BoardStyle = BoardStyle.CLASSIC,
     onNumberClick: (Int) -> Unit,
     modifier: Modifier = Modifier
 ) {
     BoxWithConstraints(modifier = modifier) {
-        val columnCount = if (maxWidth >= 600.dp) 10 else 5
+        val columnCount = when {
+            maxWidth >= 600.dp -> 10
+            maxWidth > maxHeight -> 10
+            else -> 5
+        }
+        val gridPadding = if (columnCount == 10) 6.dp else 8.dp
+        val gridSpacing = if (columnCount == 10) 4.dp else 6.dp
         LazyVerticalGrid(
             columns = GridCells.Fixed(columnCount),
-            contentPadding = PaddingValues(12.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+            contentPadding = PaddingValues(gridPadding),
+            horizontalArrangement = Arrangement.spacedBy(gridSpacing),
+            verticalArrangement = Arrangement.spacedBy(gridSpacing),
             modifier = Modifier.fillMaxSize().testTag("number_grid")
         ) {
             items(numbers, key = { it }) { number ->
                 NumberCell(
                     number = number,
                     isCompleted = number in selectedNumbers,
+                    isWrong = number == wrongNumber,
                     enabled = enabled,
                     boardStyle = boardStyle,
                     onClick = { onNumberClick(number) }
@@ -551,47 +602,78 @@ fun NumberGrid(
 fun NumberCell(
     number: Int,
     isCompleted: Boolean,
+    isWrong: Boolean = false,
     enabled: Boolean = true,
     boardStyle: BoardStyle = BoardStyle.CLASSIC,
     onClick: () -> Unit
 ) {
-    val activeColor = when (boardStyle) {
-        BoardStyle.CLASSIC -> MaterialTheme.colorScheme.surface
-        BoardStyle.OCEAN -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.62f)
-        BoardStyle.HIGH_CONTRAST -> MaterialTheme.colorScheme.primaryContainer
+    val classicColor = when (number % 4) {
+        0 -> MaterialTheme.colorScheme.primaryContainer
+        1 -> MaterialTheme.colorScheme.secondaryContainer
+        2 -> MaterialTheme.colorScheme.tertiaryContainer
+        else -> MaterialTheme.colorScheme.surface
     }
-    val activeContentColor = when (boardStyle) {
-        BoardStyle.CLASSIC -> MaterialTheme.colorScheme.onSurface
-        BoardStyle.OCEAN, BoardStyle.HIGH_CONTRAST -> MaterialTheme.colorScheme.onPrimaryContainer
+    val classicContentColor = when (number % 4) {
+        0 -> MaterialTheme.colorScheme.onPrimaryContainer
+        1 -> MaterialTheme.colorScheme.onSecondaryContainer
+        2 -> MaterialTheme.colorScheme.onTertiaryContainer
+        else -> MaterialTheme.colorScheme.onSurface
     }
-    val activeBorderColor = when (boardStyle) {
-        BoardStyle.CLASSIC -> MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.7f)
-        BoardStyle.OCEAN -> MaterialTheme.colorScheme.primary
-        BoardStyle.HIGH_CONTRAST -> MaterialTheme.colorScheme.outline
+    val classicBorderColor = when (number % 4) {
+        0 -> MaterialTheme.colorScheme.primary
+        1 -> MaterialTheme.colorScheme.secondary
+        2 -> MaterialTheme.colorScheme.tertiary
+        else -> MaterialTheme.colorScheme.outlineVariant
+    }
+    val activeColor = when {
+        isWrong -> ArcadePalette.Coral600
+        boardStyle == BoardStyle.HIGH_CONTRAST -> Color.White
+        else -> when (boardStyle) {
+            BoardStyle.CLASSIC -> classicColor
+            BoardStyle.OCEAN -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.62f)
+            BoardStyle.HIGH_CONTRAST -> Color.White
+        }
+    }
+    val activeContentColor = when {
+        isWrong -> Color.White
+        boardStyle == BoardStyle.HIGH_CONTRAST -> Color.Black
+        else -> when (boardStyle) {
+            BoardStyle.CLASSIC -> classicContentColor
+            BoardStyle.OCEAN, BoardStyle.HIGH_CONTRAST -> MaterialTheme.colorScheme.onPrimaryContainer
+        }
+    }
+    val activeBorderColor = when {
+        isWrong -> ArcadePalette.Coral400
+        boardStyle == BoardStyle.HIGH_CONTRAST -> Color.Black
+        else -> when (boardStyle) {
+            BoardStyle.CLASSIC -> classicBorderColor.copy(alpha = 0.64f)
+            BoardStyle.OCEAN -> MaterialTheme.colorScheme.primary
+            BoardStyle.HIGH_CONTRAST -> MaterialTheme.colorScheme.outline
+        }
     }
     Surface(
         modifier = Modifier
             .aspectRatio(1f)
             .testTag("game_number_$number")
-            .clip(RoundedCornerShape(16.dp))
+            .clip(RoundedCornerShape(13.dp))
             .clickable(enabled = enabled && !isCompleted, onClick = onClick),
         color = if (isCompleted) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
         else activeColor,
-        shape = RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(13.dp),
         border = if (isCompleted) null else BorderStroke(
             1.dp,
             activeBorderColor
         ),
-        tonalElevation = if (isCompleted) 0.dp else 2.dp,
-        shadowElevation = if (isCompleted) 0.dp else 1.dp
+        tonalElevation = if (isCompleted || isWrong) 0.dp else 2.dp,
+        shadowElevation = if (isCompleted || isWrong) 0.dp else 2.dp
     ) {
         Box(contentAlignment = Alignment.Center) {
             Text(
                 text = number.toString(),
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold,
-            color = if (isCompleted) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.25f)
-            else activeContentColor,
+                color = if (isCompleted) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.25f)
+                else activeContentColor,
                 fontSize = 20.sp
             )
         }

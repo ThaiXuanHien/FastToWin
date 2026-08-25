@@ -138,6 +138,7 @@ class GameController(
                 isProfileOpen = false,
                 isLeaderboardOpen = false,
                 isFriendsOpen = false,
+                isClanOpen = false,
                 isNotificationsOpen = false,
                 error = null
             )

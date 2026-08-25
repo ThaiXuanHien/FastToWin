@@ -46,6 +46,10 @@ import com.hienthai.fastowin.ui.components.FastToWinHeader
 import com.hienthai.fastowin.ui.components.PlayerAvatar
 import com.hienthai.fastowin.ui.components.SeasonProgressCard
 import com.hienthai.fastowin.ui.components.SeasonRewardReceiptCard
+import com.hienthai.fastowin.ui.components.ArcadeFeatureHero
+import com.hienthai.fastowin.ui.components.ArcadeRankBadge
+import com.hienthai.fastowin.resources.Res
+import com.hienthai.fastowin.resources.arcade_leaderboard_trophy
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -128,6 +132,14 @@ fun LeaderboardScreen(
                     state.profile?.progression?.season?.let { season ->
                         item(key = "season_progress") { SeasonProgressCard(season) }
                     }
+                }
+                item(key = "leaderboard_hero") {
+                    ArcadeFeatureHero(
+                        illustration = Res.drawable.arcade_leaderboard_trophy,
+                        title = "Đường đua danh vọng",
+                        subtitle = "Leo bậc, giữ chuỗi thắng và chinh phục vị trí cao nhất.",
+                        accent = MaterialTheme.colorScheme.tertiary
+                    )
                 }
                 if (selectedPeriod == LeaderboardPeriod.PREVIOUS_SEASON) {
                     state.profile?.progression?.latestSeasonReward
@@ -222,6 +234,14 @@ fun LeaderboardScreen(
                 modifier = Modifier.fillMaxWidth().weight(1f),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
+                item(key = "clan_leaderboard_hero") {
+                    ArcadeFeatureHero(
+                        illustration = Res.drawable.arcade_leaderboard_trophy,
+                        title = "Bang hội mạnh nhất",
+                        subtitle = "Tổng hợp sức mạnh Elo của toàn bộ thành viên.",
+                        accent = MaterialTheme.colorScheme.tertiary
+                    )
+                }
                 item(key = "clan_description") {
                     Text(
                         "Xếp hạng Bang hội theo tổng Elo của các thành viên.",
@@ -274,11 +294,7 @@ private fun ClanLeaderboardCard(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            Text(
-                text = when (entry.rank) { 1 -> "🥇"; 2 -> "🥈"; 3 -> "🥉"; else -> "#${entry.rank}" },
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Black
-            )
+            ArcadeRankBadge(entry.rank)
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     entry.clanName + if (highlighted) " (Bạn)" else "",
@@ -315,11 +331,7 @@ private fun LeaderboardCard(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            Text(
-                text = when (entry.rank) { 1 -> "🥇"; 2 -> "🥈"; 3 -> "🥉"; else -> "#${entry.rank}" },
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Black
-            )
+            ArcadeRankBadge(entry.rank)
             PlayerAvatar(
                 displayName = entry.displayName,
                 avatarId = entry.avatarId,

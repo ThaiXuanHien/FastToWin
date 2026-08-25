@@ -8,6 +8,8 @@ import kotlin.test.assertTrue
 import kotlin.test.assertNull
 import kotlin.test.assertNotNull
 import com.hienthai.fastowin.ui.screens.buildChallengeShareText
+import com.hienthai.fastowin.ui.screens.decodePracticeGameState
+import com.hienthai.fastowin.ui.screens.encodePracticeGameState
 
 class PracticeGameTest {
     private val orderedNumbers = (1..GAME_NUMBER_COUNT).toList()
@@ -140,5 +142,36 @@ class PracticeGameTest {
         assertTrue(text.contains(challenge.code))
         assertTrue(text.contains("fasttowin://challenge/${challenge.code}"))
         assertTrue(text.contains("Luyện tập offline"))
+    }
+
+    @Test
+    fun savedPracticeProgressRestoresAgainstTheSameChallenge() {
+        val challenge = createPracticeChallenge(GameMode.COMBO, seed = 0x13572468)
+        var state = createPracticeGame(challenge.mode, nowMillis = 1_000, challenge = challenge)
+        repeat(5) { index ->
+            state = state.select(state.currentTarget, atMillis = 1_100L + index * 100L)
+        }
+        state = state.select(number = state.selectedNumbers.first(), atMillis = 1_700)
+        state = state.select(number = state.currentTarget, atMillis = 1_800)
+
+        val restored = assertNotNull(decodePracticeGameState(encodePracticeGameState(state), challenge))
+
+        assertEquals(state, restored)
+        assertEquals(6, restored.correctSelections)
+        assertEquals(1, restored.wrongSelections)
+        assertEquals(1, restored.combo)
+    }
+
+    @Test
+    fun savedPracticeProgressRejectsAnotherBoardOrCorruptPayload() {
+        val challenge = createPracticeChallenge(GameMode.RANDOM_TARGET, seed = 0x12345678)
+        val anotherChallenge = createPracticeChallenge(GameMode.RANDOM_TARGET, seed = 0x76543210)
+        val state = createPracticeGame(challenge.mode, nowMillis = 1_000, challenge = challenge)
+            .select(number = challenge.targetOrder.first(), atMillis = 1_200)
+        val encoded = encodePracticeGameState(state)
+
+        assertNull(decodePracticeGameState(encoded, anotherChallenge))
+        assertNull(decodePracticeGameState(encoded.replaceFirst("|10|", "|-10|"), challenge))
+        assertNull(decodePracticeGameState("invalid", challenge))
     }
 }

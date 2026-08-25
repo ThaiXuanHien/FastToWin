@@ -62,7 +62,7 @@ class ResponsiveUiTest {
         }
 
         composeRule.onNodeWithTag("app_header").assertIsDisplayed()
-        composeRule.onNodeWithText("Chào,", substring = true).assertIsDisplayed()
+        composeRule.onNodeWithText("Xin chào,", substring = true).assertIsDisplayed()
         assertTrue(composeRule.onAllNodesWithText("FAST TO WIN").fetchSemanticsNodes().isEmpty())
         assertTrue(composeRule.onAllNodesWithContentDescription("Cài đặt").fetchSemanticsNodes().isEmpty())
 

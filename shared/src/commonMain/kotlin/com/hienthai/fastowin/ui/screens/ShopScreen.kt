@@ -1,6 +1,8 @@
 ﻿package com.hienthai.fastowin.ui.screens
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -17,18 +19,27 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.layout.ContentScale
 import com.hienthai.fastowin.protocol.ShopItem
+import com.hienthai.fastowin.protocol.CosmeticType
 import com.hienthai.fastowin.protocol.SHOP_ITEMS
 import com.hienthai.fastowin.protocol.PlayerProgressionSnapshot
 import com.hienthai.fastowin.protocol.GemPackageSnapshot
 import com.hienthai.fastowin.platform.StoreBillingState
 import com.hienthai.fastowin.ui.components.SystemBackHandler
 import com.hienthai.fastowin.ui.components.GemColor
+import com.hienthai.fastowin.ui.theme.ArcadePalette
 import com.hienthai.fastowin.ui.components.FastToWinHeader
+import com.hienthai.fastowin.ui.components.ArcadeFeatureHero
+import com.hienthai.fastowin.ui.components.ArcadeEmptyState
+import com.hienthai.fastowin.resources.Res
+import com.hienthai.fastowin.resources.arcade_shop_chest
+import org.jetbrains.compose.resources.painterResource
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -63,6 +74,7 @@ fun ShopScreen(
     val equippedIds = progression?.cosmetics?.filter { it.equipped }?.map { it.id }?.toSet() ?: emptySet()
 
     Scaffold(
+        containerColor = androidx.compose.ui.graphics.Color.Transparent,
         topBar = {
             FastToWinHeader(
                 title = "Cửa hàng",
@@ -74,10 +86,21 @@ fun ShopScreen(
             )
         }
     ) { innerPadding ->
-        Column(modifier = Modifier.padding(innerPadding).fillMaxSize()) {
+        Column(
+            modifier = Modifier.padding(innerPadding).fillMaxSize(),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            ArcadeFeatureHero(
+                illustration = Res.drawable.arcade_shop_chest,
+                title = "Kho báu Arcade",
+                subtitle = "Mở khóa diện mạo mới và tạo dấu ấn riêng trong mỗi trận đấu.",
+                modifier = Modifier.padding(horizontal = 16.dp),
+                accent = ArcadePalette.Gold400
+            )
             ScrollableTabRow(
                 selectedTabIndex = tabs.indexOfFirst { it.first == selectedTab },
                 edgePadding = 16.dp,
+                containerColor = androidx.compose.ui.graphics.Color.Transparent,
                 divider = {}
             ) {
                 tabs.forEach { (type, label) ->
@@ -100,24 +123,33 @@ fun ShopScreen(
                 )
             } else {
                 val items = SHOP_ITEMS.filter { it.type.name == selectedTab }
-                LazyVerticalGrid(
-                    columns = GridCells.Adaptive(150.dp),
-                    contentPadding = PaddingValues(16.dp),
-                    horizontalArrangement = Arrangement.spacedBy(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(16.dp),
-                    modifier = Modifier.weight(1f)
-                ) {
-                    items(items) { item ->
-                        val isOwned = item.id in ownedIds
-                        val isEquipped = item.id in equippedIds
-                        ShopItemCard(
-                            item = item,
-                            isOwned = isOwned,
-                            isEquipped = isEquipped,
-                            canAfford = gold >= item.price,
-                            onBuy = { onBuy(item.id) },
-                            onEquip = { onEquip(item.id) }
-                        )
+                if (items.isEmpty()) {
+                    ArcadeEmptyState(
+                        illustration = Res.drawable.arcade_shop_chest,
+                        title = "Đang nhập hàng",
+                        description = "Vật phẩm mới sẽ sớm xuất hiện tại quầy này.",
+                        modifier = Modifier.weight(1f)
+                    )
+                } else {
+                    LazyVerticalGrid(
+                        columns = GridCells.Adaptive(150.dp),
+                        contentPadding = PaddingValues(16.dp),
+                        horizontalArrangement = Arrangement.spacedBy(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(16.dp),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        items(items) { item ->
+                            val isOwned = item.id in ownedIds
+                            val isEquipped = item.id in equippedIds
+                            ShopItemCard(
+                                item = item,
+                                isOwned = isOwned,
+                                isEquipped = isEquipped,
+                                canAfford = gold >= item.price,
+                                onBuy = { onBuy(item.id) },
+                                onEquip = { onEquip(item.id) }
+                            )
+                        }
                     }
                 }
             }
@@ -221,7 +253,6 @@ private fun ShopItemCard(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.SpaceBetween
         ) {
-            // Box for image/preview placeholder
             Box(
                 modifier = Modifier
                     .weight(1f)
@@ -230,11 +261,7 @@ private fun ShopItemCard(
                     .background(MaterialTheme.colorScheme.surfaceVariant),
                 contentAlignment = Alignment.Center
             ) {
-                if (item.type.name == "CARD_BACK") {
-                    Text("Mặt bài", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                } else if (item.type.name == "BOARD_SKIN") {
-                    Text("Bàn số", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
+                ShopItemPreview(item)
             }
             
             Spacer(Modifier.height(8.dp))
@@ -260,8 +287,8 @@ private fun ShopItemCard(
                     contentPadding = PaddingValues(0.dp),
                     enabled = canAfford,
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = if (canAfford) Color(0xFFFFD700) else MaterialTheme.colorScheme.surfaceVariant,
-                        contentColor = if (canAfford) Color.Black else MaterialTheme.colorScheme.onSurfaceVariant
+                        containerColor = if (canAfford) ArcadePalette.Gold400 else MaterialTheme.colorScheme.surfaceVariant,
+                        contentColor = if (canAfford) ArcadePalette.Navy900 else MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 ) {
                     Icon(Icons.Default.MonetizationOn, contentDescription = null, modifier = Modifier.size(16.dp))
@@ -269,6 +296,85 @@ private fun ShopItemCard(
                     Text(item.price.toString(), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun ShopItemPreview(item: ShopItem) {
+    val isGold = item.id.contains("gold")
+    val accent = when {
+        isGold -> ArcadePalette.Gold400
+        item.id.contains("diamond") -> ArcadePalette.Blue300
+        item.id.contains("forest") -> ArcadePalette.Mint400
+        else -> ArcadePalette.Violet400
+    }
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(
+                Brush.linearGradient(
+                    listOf(ArcadePalette.Navy950, accent.copy(alpha = 0.52f))
+                )
+            )
+            .padding(12.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        when (item.type) {
+            CosmeticType.CARD_BACK -> {
+                Surface(
+                    modifier = Modifier.fillMaxHeight(0.88f).aspectRatio(0.72f),
+                    shape = RoundedCornerShape(14.dp),
+                    color = accent,
+                    border = BorderStroke(3.dp, Color.White.copy(alpha = 0.78f)),
+                    shadowElevation = 6.dp
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Text(
+                            if (isGold) "28" else "37",
+                            style = MaterialTheme.typography.headlineLarge,
+                            color = ArcadePalette.Navy950,
+                            fontWeight = FontWeight.Black
+                        )
+                    }
+                }
+            }
+            CosmeticType.BOARD_SKIN -> {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(5.dp)
+                ) {
+                    repeat(3) { row ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(5.dp)
+                        ) {
+                            repeat(3) { column ->
+                                Surface(
+                                    modifier = Modifier.weight(1f).aspectRatio(1f),
+                                    shape = RoundedCornerShape(7.dp),
+                                    color = if ((row + column) % 2 == 0) accent else ArcadePalette.Navy800,
+                                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.35f))
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Text(
+                                            (row * 3 + column + 1).toString(),
+                                            style = MaterialTheme.typography.labelMedium,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            else -> Image(
+                painter = painterResource(Res.drawable.arcade_shop_chest),
+                contentDescription = null,
+                contentScale = ContentScale.Fit,
+                modifier = Modifier.fillMaxSize()
+            )
         }
     }
 }

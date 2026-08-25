@@ -52,6 +52,10 @@ import com.hienthai.fastowin.ui.layout.ResponsiveScreen
 import com.hienthai.fastowin.ui.components.FastToWinHeader
 import com.hienthai.fastowin.ui.components.FriendPresenceIndicator
 import com.hienthai.fastowin.ui.components.PlayerAvatar
+import com.hienthai.fastowin.ui.components.ArcadeFeatureHero
+import com.hienthai.fastowin.resources.Res
+import com.hienthai.fastowin.resources.arcade_room_portal
+import com.hienthai.fastowin.ui.theme.ArcadePalette
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -134,6 +138,12 @@ fun FriendsScreen(
                 applySafeDrawingInset = false
             )
         }
+        ArcadeFeatureHero(
+            illustration = Res.drawable.arcade_room_portal,
+            title = "Biệt đội của bạn",
+            subtitle = "Kết nối bằng mã người chơi, theo dõi trạng thái và mời bạn vào trận.",
+            accent = ArcadePalette.Mint400
+        )
         FriendCodeForm(
             playerCode = playerCode,
             onPlayerCodeChange = { playerCode = it.uppercase().take(12) },

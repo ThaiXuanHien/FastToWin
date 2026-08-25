@@ -15,6 +15,8 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performSemanticsAction
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
@@ -92,22 +94,35 @@ class ProfileSectionsUiTest {
         assertTrue(composeRule.onAllNodesWithText("Elo", substring = true).fetchSemanticsNodes().isEmpty())
         composeRule.onNodeWithContentDescription("Chỉnh sửa hồ sơ").assertIsDisplayed()
 
-        composeRule.onNodeWithTag("profile_section_statistics").performScrollTo().performClick()
+        composeRule.onNodeWithTag("profile_section_statistics")
+            .performScrollTo()
+            .performSemanticsAction(SemanticsActions.OnClick)
         composeRule.runOnIdle { assertEquals(ProfileSection.STATISTICS, openedSection) }
 
-        composeRule.onNodeWithTag("profile_section_wallet").performScrollTo().performClick()
+        composeRule.onNodeWithTag("profile_section_wallet")
+            .performScrollTo()
+            .performSemanticsAction(SemanticsActions.OnClick)
         composeRule.runOnIdle { assertEquals(ProfileSection.WALLET, openedSection) }
 
-        composeRule.onNodeWithTag("profile_section_missions").performScrollTo().performClick()
+        composeRule.onNodeWithTag("profile_section_missions")
+            .performScrollTo()
+            .performSemanticsAction(SemanticsActions.OnClick)
         composeRule.runOnIdle { assertEquals(ProfileSection.MISSIONS, openedSection) }
 
-        composeRule.onNodeWithTag("profile_section_collection").performScrollTo().performClick()
+        composeRule.onNodeWithTag("profile_section_collection")
+            .performScrollTo()
+            .performSemanticsAction(SemanticsActions.OnClick)
         composeRule.runOnIdle { assertEquals(ProfileSection.COLLECTION, openedSection) }
 
-        composeRule.onNodeWithTag("profile_section_recent_matches").performScrollTo().performClick()
+        composeRule.onNodeWithTag("profile_section_recent_matches")
+            .performScrollTo()
+            .performSemanticsAction(SemanticsActions.OnClick)
         composeRule.runOnIdle { assertEquals(ProfileSection.RECENT_MATCHES, openedSection) }
 
-        composeRule.onNodeWithTag("profile_settings").performScrollTo().assertIsDisplayed().performClick()
+        composeRule.onNodeWithTag("profile_settings")
+            .performScrollTo()
+            .assertIsDisplayed()
+            .performSemanticsAction(SemanticsActions.OnClick)
         composeRule.runOnIdle { assertTrue(openedSettings) }
     }
 
@@ -154,7 +169,7 @@ class ProfileSectionsUiTest {
         composeRule.onNodeWithText("Thưởng trận đấu").assertIsDisplayed()
         composeRule.onNodeWithContentDescription("nhận 100 vàng, nhận 30 XP").assertIsDisplayed()
         composeRule.onNodeWithText("Mua vật phẩm").performScrollTo().assertIsDisplayed()
-        composeRule.onNodeWithContentDescription("dùng 500 vàng").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("dùng 500 vàng").performScrollTo().assertIsDisplayed()
     }
 
     @Test

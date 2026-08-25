@@ -15,14 +15,15 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.hienthai.fastowin.ui.theme.ArcadeGem
+import com.hienthai.fastowin.ui.theme.ArcadeGold
 
-val GoldColor = Color(0xFFFFB300)
-val GemColor = Color(0xFF00A86B)
+val GoldColor = ArcadeGold
+val GemColor = ArcadeGem
 
 @Composable
 fun WalletBalanceRow(

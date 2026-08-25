@@ -3,6 +3,7 @@ package com.hienthai.fastowin
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.Column
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -14,6 +15,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -61,7 +63,10 @@ import com.hienthai.fastowin.platform.PlatformStorePurchase
 import com.hienthai.fastowin.protocol.StorePurchaseStatus
 import com.hienthai.fastowin.navigation.GameMode
 import com.hienthai.fastowin.state.PracticeChallenge
+import com.hienthai.fastowin.state.createPracticeChallenge
+import com.hienthai.fastowin.state.parsePracticeChallenge
 import com.hienthai.fastowin.ui.components.FastToWinHeader
+import com.hienthai.fastowin.ui.components.ArcadeBackdrop
 import com.hienthai.fastowin.ui.components.SeasonRewardSummaryDialog
 
 @Composable
@@ -73,8 +78,15 @@ fun FastToWinApp(
     devicePlatform: String,
     fcmToken: String? = null
 ) {
+    var restoreGuestSession by rememberSaveable { mutableStateOf(false) }
     val authController = remember(serverUrl, authSessionStore, devicePlatform) {
-        AuthController(serverUrl, authSessionStore, resumeTokenStore, devicePlatform)
+        AuthController(
+            serverUrl = serverUrl,
+            store = authSessionStore,
+            resumeTokenStore = resumeTokenStore,
+            devicePlatform = devicePlatform,
+            initialGuestSession = restoreGuestSession
+        )
     }
     val authState by authController.state.collectAsState()
     val pendingRoomLink by RoomDeepLinkRouter.pendingLink.collectAsState()
@@ -91,15 +103,28 @@ fun FastToWinApp(
         onDispose { authController.close() }
     }
 
+    LaunchedEffect(authState.isGuest, authState.session, authState.stage) {
+        if (authState.session != null || authState.stage == AuthStage.WELCOME) {
+            restoreGuestSession = false
+        }
+    }
+
     FastToWinTheme(preferences = appPreferences) {
-        Surface(modifier = Modifier.fillMaxSize()) {
+        Surface(
+            modifier = Modifier.fillMaxSize(),
+            color = MaterialTheme.colorScheme.background,
+            contentColor = MaterialTheme.colorScheme.onBackground
+        ) {
             if (authState.stage != AuthStage.PLAYING) {
                 AuthScreen(
                     state = authState,
                     onOpenLogin = authController::openLogin,
                     onOpenRegister = authController::openRegister,
                     onOpenPasswordReset = authController::openPasswordReset,
-                    onPlayAsGuest = authController::playAsGuest,
+                    onPlayAsGuest = {
+                        restoreGuestSession = true
+                        authController.playAsGuest()
+                    },
                     onLogin = authController::login,
                     onRegister = authController::register,
                     onUpgradeGuest = authController::upgradeGuest,
@@ -117,7 +142,10 @@ fun FastToWinApp(
                     accessTokenProvider = authState.session?.let {
                         { forceRefresh -> authController.validAccessToken(forceRefresh) }
                     },
-                    onLogout = authController::logout,
+                    onLogout = {
+                        restoreGuestSession = false
+                        authController.logout()
+                    },
                     isGuest = authState.isGuest,
                     fcmToken = fcmToken,
                     onUpgradeGuest = authController::openGuestUpgrade,
@@ -184,11 +212,11 @@ private fun GameContent(
     val storeBillingState by storeBillingGateway.state.collectAsState()
     val pendingStorePurchases = remember { mutableStateMapOf<String, PlatformStorePurchase>() }
     val textSharer = rememberTextSharer()
-    val sessionStartedAtMillis = remember { epochMillis() }
-    var showPracticeLauncher by remember { mutableStateOf(false) }
-    var showPracticeModePicker by remember { mutableStateOf(false) }
-    var showSettings by remember { mutableStateOf(false) }
-    var showSeasonHistory by remember { mutableStateOf(false) }
+    val sessionStartedAtMillis = rememberSaveable { epochMillis() }
+    var showPracticeLauncher by rememberSaveable { mutableStateOf(false) }
+    var showPracticeModePicker by rememberSaveable { mutableStateOf(false) }
+    var showSettings by rememberSaveable { mutableStateOf(false) }
+    var showSeasonHistory by rememberSaveable { mutableStateOf(false) }
 
     DisposableEffect(storeBillingGateway) {
         onDispose { storeBillingGateway.close() }
@@ -234,10 +262,17 @@ private fun GameContent(
     }
     var profileSection by remember { mutableStateOf<ProfileSection?>(null) }
     var profileSectionExternal by remember { mutableStateOf(false) }
-    var showTutorial by remember { mutableStateOf(!appPreferences.hasCompletedTutorial) }
-    var practiceMode by remember { mutableStateOf<GameMode?>(null) }
-    var practiceChallenge by remember { mutableStateOf<PracticeChallenge?>(null) }
-    var challengeLinkError by remember { mutableStateOf<String?>(null) }
+    var showTutorial by rememberSaveable { mutableStateOf(!appPreferences.hasCompletedTutorial) }
+    var savedPracticeRoute by rememberSaveable { mutableStateOf<String?>(null) }
+    val practiceChallenge = savedPracticeRoute?.let(::parsePracticeChallenge)
+    val practiceMode = practiceChallenge?.mode
+    var challengeLinkError by rememberSaveable { mutableStateOf<String?>(null) }
+    val screenStateHolder = rememberSaveableStateHolder()
+    val activePracticeStateKey = practiceChallenge?.code?.let { code -> "practice:$code" }
+    val clearPracticeSession = {
+        activePracticeStateKey?.let(screenStateHolder::removeState)
+        savedPracticeRoute = null
+    }
     
     LaunchedEffect(fcmToken, state.connectionStatus) {
         if (state.connectionStatus == com.hienthai.fastowin.state.ConnectionStatus.CONNECTED && fcmToken != null) {
@@ -260,8 +295,7 @@ private fun GameContent(
             showSeasonHistory = false
             profileSection = null
             showTutorial = false
-            practiceMode = null
-            practiceChallenge = null
+            clearPracticeSession()
             challengeLinkError = null
         }
     }
@@ -295,8 +329,8 @@ private fun GameContent(
             showSettings = false
             showSeasonHistory = false
             showTutorial = false
-            practiceChallenge = challenge
-            practiceMode = challenge.mode
+            clearPracticeSession()
+            savedPracticeRoute = challenge.code
         }
         onChallengeLinkConsumed(challenge.code)
     }
@@ -336,8 +370,12 @@ private fun GameContent(
             onDismiss = { showPracticeModePicker = false },
             onSelect = { mode ->
                 showPracticeModePicker = false
-                practiceChallenge = null
-                practiceMode = mode
+                val now = epochMillis()
+                clearPracticeSession()
+                savedPracticeRoute = createPracticeChallenge(
+                    mode = mode,
+                    seed = (now xor (now ushr 32)).toInt()
+                ).code
             }
         )
     }
@@ -350,8 +388,8 @@ private fun GameContent(
             },
             onOpenChallenge = { challenge ->
                 showPracticeLauncher = false
-                practiceChallenge = challenge
-                practiceMode = challenge.mode
+                clearPracticeSession()
+                savedPracticeRoute = challenge.code
             },
             playerLevel = state.profile?.progression?.level ?: 1
         )
@@ -389,7 +427,13 @@ private fun GameContent(
     val openLeaderboardTab = {
         profileSection = null
         showSeasonHistory = false
+        controller.backToModeSelection()
         controller.openLeaderboard()
+    }
+    val openRoomsTab = {
+        profileSection = null
+        showSeasonHistory = false
+        controller.openRoomBrowser(state.profile?.displayName ?: state.player.name)
     }
     val openFriendsTab = {
         if (isGuest) onUpgradeGuest() else {
@@ -402,6 +446,7 @@ private fun GameContent(
         if (isGuest) onUpgradeGuest() else {
             profileSection = null
             showSeasonHistory = false
+            controller.backToModeSelection()
             controller.openProfile()
         }
     }
@@ -409,6 +454,7 @@ private fun GameContent(
         if (isGuest) onUpgradeGuest() else {
             profileSection = null
             showSeasonHistory = false
+            controller.backToModeSelection()
             controller.openClan()
         }
     }
@@ -418,7 +464,6 @@ private fun GameContent(
         showTutorial = false
     }
 
-    val screenStateHolder = rememberSaveableStateHolder()
     val screenStateKey = when {
         state.isNotificationsOpen -> "notifications"
         showTutorial -> "tutorial"
@@ -436,11 +481,12 @@ private fun GameContent(
         state.isClanOpen -> "clan"
         state.isGameOver -> "result"
         state.isMatchStarted -> "game"
-        practiceMode != null -> "practice:${practiceMode?.name}"
+        activePracticeStateKey != null -> activePracticeStateKey
         else -> "lobby"
     }
     screenStateHolder.SaveableStateProvider(screenStateKey) {
-        when {
+        ArcadeBackdrop(modifier = Modifier.fillMaxSize()) {
+            when {
                 state.isNotificationsOpen -> NotificationsScreen(
                     notifications = state.notifications,
                     onBack = controller::closeNotifications,
@@ -552,20 +598,9 @@ private fun GameContent(
                     onOpenNotifications = controller::openNotifications
                 )
 
-                state.isFriendsOpen -> TopLevelTabIfNeeded(
-                    enabled = showTopLevelNavigation,
+                state.isFriendsOpen -> FriendsScreen(
                     state = state,
-                    selected = MainTab.FRIENDS,
-                    friendNotificationCount = state.pendingSocialInvitationCount,
-                    onHome = openHome,
-                    onLeaderboard = openLeaderboardTab,
-                    onClan = openClanTab,
-                    onFriends = controller::openFriends,
-                    onAccount = openAccountTab,
-                    onNotifications = controller::openNotifications
-                ) { contentModifier -> FriendsScreen(
-                    state = state,
-                    onBack = if (showTopLevelNavigation) openHome else controller::closeFriends,
+                    onBack = controller::closeFriends,
                     onRefresh = controller::openFriends,
                     onSendRequest = controller::sendFriendRequest,
                     onRespondRequest = controller::respondFriendRequest,
@@ -577,9 +612,9 @@ private fun GameContent(
                     onRespondRoomInvitation = controller::respondRoomInvitation,
                     onOpenFriendProfile = controller::openFriendProfile,
                     onOpenNotifications = controller::openNotifications,
-                    showBackButton = !showTopLevelNavigation,
-                    modifier = contentModifier
-                ) }
+                    showBackButton = true,
+                    modifier = Modifier.fillMaxSize()
+                )
 
                 state.isLeaderboardOpen -> TopLevelTabIfNeeded(
                     enabled = showTopLevelNavigation,
@@ -587,9 +622,9 @@ private fun GameContent(
                     selected = MainTab.LEADERBOARD,
                     friendNotificationCount = state.pendingSocialInvitationCount,
                     onHome = openHome,
+                    onRooms = openRoomsTab,
                     onLeaderboard = controller::openLeaderboard,
                     onClan = openClanTab,
-                    onFriends = openFriendsTab,
                     onAccount = openAccountTab,
                     onNotifications = controller::openNotifications
                 ) { contentModifier -> LeaderboardScreen(
@@ -609,9 +644,9 @@ private fun GameContent(
                     selected = MainTab.ACCOUNT,
                     friendNotificationCount = state.pendingSocialInvitationCount,
                     onHome = openHome,
+                    onRooms = openRoomsTab,
                     onLeaderboard = openLeaderboardTab,
                     onClan = openClanTab,
-                    onFriends = openFriendsTab,
                     onAccount = controller::openProfile,
                     onNotifications = controller::openNotifications
                 ) { contentModifier -> ProfileScreen(
@@ -672,9 +707,9 @@ private fun GameContent(
                     selected = MainTab.CLAN,
                     friendNotificationCount = state.pendingSocialInvitationCount,
                     onHome = openHome,
+                    onRooms = openRoomsTab,
                     onLeaderboard = openLeaderboardTab,
                     onClan = controller::openClan,
-                    onFriends = openFriendsTab,
                     onAccount = openAccountTab,
                     onNotifications = controller::openNotifications
                 ) { contentModifier -> ClanScreen(
@@ -737,8 +772,7 @@ private fun GameContent(
                     challenge = practiceChallenge,
                     preferences = appPreferences,
                     onBack = {
-                        practiceMode = null
-                        practiceChallenge = null
+                        clearPracticeSession()
                     }
                 )
 
@@ -754,8 +788,8 @@ private fun GameContent(
                     onSetReady = controller::setReady,
                     onKickOpponent = controller::kickOpponent,
                     onRefreshRooms = controller::requestRoomList,
-                    onOpenProfile = controller::openProfile,
-                    onOpenLeaderboard = controller::openLeaderboard,
+                    onOpenProfile = openAccountTab,
+                    onOpenLeaderboard = openLeaderboardTab,
                     onOpenFriends = controller::openFriends,
                     onOpenFriendProfile = controller::openFriendProfile,
                     onBackToMode = controller::backToModeSelection,
@@ -763,7 +797,7 @@ private fun GameContent(
                     isGuest = isGuest,
                     onUpgradeGuest = onUpgradeGuest,
                     onOpenNotifications = controller::openNotifications,
-                    onOpenClan = controller::openClan,
+                    onOpenClan = openClanTab,
                     onOpenPractice = { showPracticeLauncher = true },
                     onOpenTournament = controller::openTournament,
                     onOpenShop = controller::openShop,
@@ -773,6 +807,7 @@ private fun GameContent(
                     onResolveRoomLink = controller::resolvePendingRoomLink,
                     onClaimDailyCheckIn = controller::claimDailyCheckIn
                 )
+            }
         }
     }
 }
@@ -784,9 +819,9 @@ private fun TopLevelTabIfNeeded(
     selected: MainTab,
     friendNotificationCount: Int,
     onHome: () -> Unit,
+    onRooms: () -> Unit,
     onLeaderboard: () -> Unit,
     onClan: () -> Unit,
-    onFriends: () -> Unit,
     onAccount: () -> Unit,
     onNotifications: () -> Unit,
     content: @Composable (Modifier) -> Unit
@@ -799,25 +834,25 @@ private fun TopLevelTabIfNeeded(
         FastToWinHeader(
             title = when (selected) {
                 MainTab.HOME -> ""
+                MainTab.ROOMS -> "Phòng"
                 MainTab.LEADERBOARD -> "Xếp hạng"
                 MainTab.CLAN -> "Bang hội"
-                MainTab.FRIENDS -> "Bạn bè"
                 MainTab.ACCOUNT -> "Tài khoản"
             },
             gold = state.profile?.progression?.gold ?: 0,
             gems = state.profile?.progression?.gems ?: 0,
             unreadNotifications = state.unreadNotificationCount,
             onNotifications = onNotifications,
-            onBack = if (selected == MainTab.HOME) null else onHome
+            onBack = null
         )
         content(Modifier.weight(1f))
         FastToWinBottomBar(
             selected = selected,
             friendNotificationCount = friendNotificationCount,
             onHome = onHome,
+            onRooms = onRooms,
             onLeaderboard = onLeaderboard,
             onClan = onClan,
-            onFriends = onFriends,
             onAccount = onAccount
         )
     }

@@ -1,12 +1,9 @@
 package com.hienthai.fastowin.ui.screens
 
-import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.spring
-import androidx.compose.foundation.background
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -14,28 +11,27 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Block
 import androidx.compose.material.icons.rounded.Check
-import androidx.compose.material.icons.rounded.EmojiEvents
 import androidx.compose.material.icons.rounded.GroupAdd
 import androidx.compose.material.icons.rounded.RestartAlt
-import androidx.compose.material.icons.rounded.SentimentVeryDissatisfied
 import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -49,14 +45,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.scale
-import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.hienthai.fastowin.data.preferences.AppPreferences
 import com.hienthai.fastowin.platform.GameFeedbackEffect
 import com.hienthai.fastowin.platform.epochMillis
@@ -74,9 +69,16 @@ import com.hienthai.fastowin.state.GameState
 import com.hienthai.fastowin.state.PlayerState
 import com.hienthai.fastowin.state.PostMatchFriendStatus
 import com.hienthai.fastowin.ui.layout.ResponsiveScreen
+import com.hienthai.fastowin.resources.Res
+import com.hienthai.fastowin.resources.arcade_leaderboard_trophy
+import com.hienthai.fastowin.ui.components.ArcadeFeatureHero
+import com.hienthai.fastowin.ui.components.ArcadePanel
+import com.hienthai.fastowin.ui.components.FastToWinHeader
+import com.hienthai.fastowin.ui.components.PlayerAvatar
 import com.hienthai.fastowin.ui.components.RewardAmounts
 import com.hienthai.fastowin.ui.theme.FastToWinTheme
 import com.hienthai.fastowin.ui.components.SystemBackHandler
+import com.hienthai.fastowin.ui.theme.ArcadePalette
 import kotlinx.coroutines.delay
 import kotlin.math.ceil
 
@@ -109,16 +111,18 @@ fun ResultScreen(
         }
     } ?: (myScore > opponentScore)
     val hapticFeedback = LocalHapticFeedback.current
-    val winScale by animateFloatAsState(
-        targetValue = 1f,
-        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow),
-        label = "WinScale"
-    )
     var showBlockConfirmation by remember { mutableStateOf(false) }
     var shareError by remember { mutableStateOf<String?>(null) }
     val opponentFriend = state.social.friends.firstOrNull { it.userId == state.opponent.id }
     val imageSharer = rememberResultImageSharer()
-    val shareContent = resultShareContent(state, isDraw, isWinner)
+    val shareContent = resultShareContent(
+        state = state,
+        isDraw = isDraw,
+        isWinner = isWinner,
+        playerScore = myScore,
+        opponentScore = opponentScore,
+        is2v2 = is2v2
+    )
     SystemBackHandler(onBack = onBack)
 
     LaunchedEffect(isWinner, isDraw) {
@@ -148,11 +152,43 @@ fun ResultScreen(
         )
     }
 
-    Surface(
+    val resultTitle = when {
+        isDraw -> "HÒA!"
+        isWinner -> "CHIẾN THẮNG!"
+        else -> "THUA CUỘC"
+    }
+    val resultDescription = when {
+        isDraw -> "Hai bên ngang điểm sau trận đấu."
+        isWinner -> "Bạn đã giành chiến thắng!"
+        is2v2 -> "Đội đối thủ đã giành chiến thắng."
+        else -> "${state.opponent.name} đã giành chiến thắng."
+    }
+    val eloSummary = state.lastMatchEloChange
+        ?.takeIf { state.matchType == MatchType.RANKED }
+        ?.let { if (it >= 0) "+$it Elo" else "$it Elo" }
+
+    Scaffold(
         modifier = modifier.fillMaxSize().testTag("result_screen"),
-        color = MaterialTheme.colorScheme.background
-    ) {
-        ResponsiveScreen(maxContentWidth = 760.dp) { contentModifier ->
+        containerColor = Color.Transparent,
+        topBar = {
+            FastToWinHeader(
+                title = "Kết quả trận",
+                subtitle = "${state.gameMode.title} • ${if (state.matchType == MatchType.RANKED) "Xếp hạng" else "Đấu thường"}",
+                gold = 0,
+                gems = 0,
+                unreadNotifications = 0,
+                onNotifications = {},
+                onBack = onBack,
+                showBalances = false,
+                showNotifications = false
+            )
+        }
+    ) { paddingValues ->
+        ResponsiveScreen(
+            modifier = Modifier.padding(paddingValues),
+            maxContentWidth = 760.dp,
+            applySafeDrawingInsets = false
+        ) { contentModifier ->
             Column(
                 modifier = contentModifier
                     .verticalScroll(rememberScrollState())
@@ -160,144 +196,78 @@ fun ResultScreen(
                 verticalArrangement = Arrangement.spacedBy(16.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-            VictoryHeader(isWinner || isDraw, winScale)
-            Text(
-                text = when {
-                    isDraw -> "HÒA!"
-                    isWinner -> "CHIẾN THẮNG!"
-                    else -> "THUA CUỘC"
-                },
-                style = MaterialTheme.typography.headlineLarge.copy(
-                    fontWeight = FontWeight.Black,
-                    letterSpacing = 2.sp
-                ),
-                color = when {
-                    isDraw -> MaterialTheme.colorScheme.secondary
-                    isWinner -> MaterialTheme.colorScheme.primary
-                    else -> MaterialTheme.colorScheme.error
-                }
-            )
-
-            ScoreBoard(
-                state = state,
-                isDraw = isDraw,
-                isPlayerWinner = isWinner,
-                myScore = myScore,
-                opponentScore = opponentScore,
-                onOpponentInfo = if (opponentFriend == null) null else ({
-                    onOpenFriendProfile(opponentFriend.userId)
-                })
-            )
-            EloCard(state)
-            if (state.profile != null) {
-                Surface(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(18.dp),
-                    color = MaterialTheme.colorScheme.secondaryContainer
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth().padding(16.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text("Thưởng trận", fontWeight = FontWeight.Bold)
-                        RewardAmounts(
-                            gold = when {
-                                isDraw -> MATCH_DRAW_REWARD_GOLD
-                                isWinner -> MATCH_WIN_REWARD_GOLD
-                                else -> MATCH_LOSS_REWARD_GOLD
-                            },
-                            xp = when {
-                                isDraw -> MATCH_DRAW_REWARD_XP
-                                isWinner -> MATCH_WIN_REWARD_XP
-                                else -> MATCH_LOSS_REWARD_XP
-                            },
-                            gems = 0
-                        )
+                ArcadeFeatureHero(
+                    illustration = Res.drawable.arcade_leaderboard_trophy,
+                    title = resultTitle,
+                    subtitle = listOfNotNull(resultDescription, eloSummary).joinToString(" • "),
+                    accent = when {
+                        isDraw -> MaterialTheme.colorScheme.secondary
+                        isWinner -> ArcadePalette.Gold500
+                        else -> MaterialTheme.colorScheme.error
                     }
-                }
-            }
-            MatchSummaryCard(state)
-            PaceAnalysisCard(state.player)
-            Button(
-                onClick = {
-                    if (onShareResult != null) {
-                        onShareResult(shareContent)
-                    } else {
-                        imageSharer.share(shareContent).onFailure {
-                            shareError = "Không thể tạo ảnh chia sẻ. Vui lòng thử lại."
-                        }
-                    }
-                },
-                modifier = Modifier.fillMaxWidth().height(52.dp).testTag("share_result"),
-                shape = RoundedCornerShape(16.dp)
-            ) {
-                Icon(Icons.Rounded.Share, contentDescription = null)
-                Spacer(Modifier.size(8.dp))
-                Text("Chia sẻ kết quả")
-            }
-            shareError?.let {
-                Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
-            }
-            if (state.isTournamentMatch) {
-                Surface(shape = RoundedCornerShape(18.dp), color = MaterialTheme.colorScheme.tertiaryContainer) {
-                    Column(
-                        modifier = Modifier.fillMaxWidth().padding(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        Text(
-                            if (state.currentTournamentRound == 2) "Trận chung kết" else "Trận bán kết",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Text("Nhánh đấu đã được cập nhật. Trận tiếp theo sẽ được tạo tự động.")
-                        Button(
-                            onClick = onOpenTournament,
-                            modifier = Modifier.fillMaxWidth().testTag("open_tournament_bracket")
-                        ) { Text("Xem nhánh đấu") }
-                    }
-                }
-            } else {
-                RematchCard(
-                    state = state,
-                    onRematch = onRematch,
-                    onCancel = onCancelRematch,
-                    onDecline = onDeclineRematch
                 )
-            }
-            OpponentActions(
-                state = state,
-                onConnect = onConnectOpponent,
-                onBlock = { showBlockConfirmation = true }
-            )
-
-            if (!state.isTournamentMatch) {
+                ScoreBoard(
+                    state = state,
+                    isDraw = isDraw,
+                    isPlayerWinner = isWinner,
+                    myScore = myScore,
+                    opponentScore = opponentScore,
+                    onOpponentInfo = if (opponentFriend == null) null else ({
+                        onOpenFriendProfile(opponentFriend.userId)
+                    })
+                )
+                MatchSummaryCard(state)
+                PaceAnalysisCard(state.player)
+                EloCard(state)
+                if (state.profile != null) {
+                    MatchRewardCard(isDraw = isDraw, isWinner = isWinner)
+                }
+                if (state.isTournamentMatch) {
+                    TournamentResultCard(state = state, onOpenTournament = onOpenTournament)
+                } else {
+                    RematchCard(
+                        state = state,
+                        onRematch = onRematch,
+                        onCancel = onCancelRematch,
+                        onDecline = onDeclineRematch
+                    )
+                }
                 OutlinedButton(
-                    onClick = onRestart,
-                    modifier = Modifier.fillMaxWidth().height(52.dp),
+                    onClick = {
+                        shareError = null
+                        if (onShareResult != null) {
+                            onShareResult(shareContent)
+                        } else {
+                            imageSharer.share(shareContent).onFailure {
+                                shareError = "Không thể tạo ảnh chia sẻ. Vui lòng thử lại."
+                            }
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp).testTag("share_result"),
                     shape = RoundedCornerShape(16.dp)
-                ) { Text("Về sảnh") }
-            }
-            Spacer(modifier = Modifier.height(12.dp))
-            }
-        }
-    }
-}
+                ) {
+                    Icon(Icons.Rounded.Share, contentDescription = null)
+                    Spacer(Modifier.size(8.dp))
+                    Text("Chia sẻ kết quả")
+                }
+                shareError?.let {
+                    Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                }
+                OpponentActions(
+                    state = state,
+                    onConnect = onConnectOpponent,
+                    onBlock = { showBlockConfirmation = true }
+                )
 
-@Composable
-private fun VictoryHeader(isWinner: Boolean, scale: Float) {
-    Surface(
-        shape = CircleShape,
-        color = if (isWinner) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.errorContainer,
-        modifier = Modifier.size(96.dp).scale(scale)
-    ) {
-        Box(contentAlignment = Alignment.Center) {
-            Icon(
-                imageVector = if (isWinner) Icons.Rounded.EmojiEvents else Icons.Rounded.SentimentVeryDissatisfied,
-                contentDescription = null,
-                modifier = Modifier.size(48.dp),
-                tint = if (isWinner) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onErrorContainer
-            )
+                if (!state.isTournamentMatch) {
+                    OutlinedButton(
+                        onClick = onRestart,
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp),
+                        shape = RoundedCornerShape(16.dp)
+                    ) { Text("Về sảnh") }
+                }
+                Spacer(modifier = Modifier.height(12.dp))
+            }
         }
     }
 }
@@ -312,61 +282,140 @@ private fun ScoreBoard(
     onOpponentInfo: (() -> Unit)? = null
 ) {
     val is2v2 = state.gameMode == com.hienthai.fastowin.navigation.GameMode.TEAM_2V2
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(24.dp))
-            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
-            .padding(20.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
+    val myName = if (is2v2) "Đội của bạn" else "${state.player.name} (Bạn)"
+    val opponentName = if (is2v2) "Đội đối thủ" else state.opponent.name
+    val myResult = if (isDraw) "Hòa" else if (isPlayerWinner) "Thắng" else "Thua"
+    val opponentResult = if (isDraw) "Hòa" else if (!isPlayerWinner) "Thắng" else "Thua"
+
+    ArcadePanel(
+        modifier = Modifier.fillMaxWidth(),
+        accent = if (isDraw) MaterialTheme.colorScheme.secondary else ArcadePalette.Gold500
     ) {
-        val myName = if (is2v2) "Đội của bạn" else "${state.player.name} (Bạn)"
-        val oppName = if (is2v2) "Đội đối thủ" else state.opponent.name
-        ScoreRow(
-            name = myName,
-            score = myScore,
-            result = if (isDraw) "Hòa" else if (isPlayerWinner) "Thắng" else "Thua",
-            isWinner = !isDraw && isPlayerWinner
-        )
-        HorizontalDivider(color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.2f))
-        ScoreRow(
-            name = oppName,
-            score = opponentScore,
-            result = if (isDraw) "Hòa" else if (!isPlayerWinner) "Thắng" else "Thua",
-            isWinner = !isDraw && !isPlayerWinner,
-            onClick = onOpponentInfo
-        )
+        BoxWithConstraints(modifier = Modifier.fillMaxWidth().padding(14.dp)) {
+            val stackPlayers = maxWidth < 330.dp || androidx.compose.ui.platform.LocalDensity.current.fontScale >= 1.35f
+            if (stackPlayers) {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    ResultScoreCard(
+                        name = myName,
+                        score = myScore,
+                        result = myResult,
+                        player = state.player,
+                        isLocal = true,
+                        isWinner = !isDraw && isPlayerWinner,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Text(
+                        "KẾT QUẢ",
+                        modifier = Modifier.fillMaxWidth(),
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Black,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = TextAlign.Center
+                    )
+                    ResultScoreCard(
+                        name = opponentName,
+                        score = opponentScore,
+                        result = opponentResult,
+                        player = state.opponents.firstOrNull() ?: state.opponent,
+                        isLocal = false,
+                        isWinner = !isDraw && !isPlayerWinner,
+                        onClick = onOpponentInfo,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            } else {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    ResultScoreCard(
+                        name = myName,
+                        score = myScore,
+                        result = myResult,
+                        player = state.player,
+                        isLocal = true,
+                        isWinner = !isDraw && isPlayerWinner,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Text(
+                        "KẾT\nQUẢ",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Black,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = TextAlign.Center
+                    )
+                    ResultScoreCard(
+                        name = opponentName,
+                        score = opponentScore,
+                        result = opponentResult,
+                        player = state.opponents.firstOrNull() ?: state.opponent,
+                        isLocal = false,
+                        isWinner = !isDraw && !isPlayerWinner,
+                        onClick = onOpponentInfo,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+            }
+        }
     }
 }
 
 @Composable
-private fun ScoreRow(
+private fun ResultScoreCard(
     name: String,
     score: Int,
     result: String,
+    player: PlayerState,
+    isLocal: Boolean,
     isWinner: Boolean,
-    onClick: (() -> Unit)? = null
+    onClick: (() -> Unit)? = null,
+    modifier: Modifier = Modifier
 ) {
-    Row(
-        modifier = Modifier.fillMaxWidth().then(
+    val accent = if (isLocal) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.tertiary
+    val container = if (isLocal) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.tertiaryContainer
+    val content = if (isLocal) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onTertiaryContainer
+    Surface(
+        modifier = modifier.then(
             if (onClick == null) Modifier else Modifier.clickable(onClick = onClick)
         ),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
+        shape = RoundedCornerShape(18.dp),
+        color = container,
+        border = BorderStroke(2.dp, accent.copy(alpha = if (isWinner) 0.82f else 0.46f))
     ) {
-        Column {
-            Text(name, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Text(
-                result,
-                style = MaterialTheme.typography.bodySmall,
-                color = if (isWinner) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 11.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            PlayerAvatar(
+                displayName = player.name,
+                avatarId = player.avatarId,
+                frameId = player.frameId,
+                size = 42.dp
             )
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    name,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = content.copy(alpha = 0.78f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    score.toString(),
+                    style = MaterialTheme.typography.headlineMedium,
+                    fontWeight = FontWeight.Black,
+                    color = content
+                )
+                Text(
+                    result,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = if (isWinner) accent else content.copy(alpha = 0.68f),
+                    fontWeight = FontWeight.Bold
+                )
+            }
         }
-        Text(
-            score.toString(),
-            style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold),
-            color = if (isWinner) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
-        )
     }
 }
 
@@ -420,61 +469,147 @@ private fun EloCard(state: GameState) {
 }
 
 @Composable
-private fun MatchSummaryCard(state: GameState) {
-    val attempts = state.player.correctSelections + state.player.wrongSelections
-    val accuracy = if (attempts == 0) 0 else state.player.correctSelections * 100 / attempts
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)
-    ) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text("Tóm tắt của bạn", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                SummaryMetric("Thời gian", formatDuration(state.lastMatchDurationMillis), Modifier.weight(1f))
-                SummaryMetric("Chính xác", "$accuracy%", Modifier.weight(1f))
-            }
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                SummaryMetric("Đúng / Sai", "${state.player.correctSelections} / ${state.player.wrongSelections}", Modifier.weight(1f))
-                SummaryMetric("Phản ứng", formatReaction(state.player.averageReactionMillis), Modifier.weight(1f))
+private fun MatchRewardCard(isDraw: Boolean, isWinner: Boolean) {
+    val gold = when {
+        isDraw -> MATCH_DRAW_REWARD_GOLD
+        isWinner -> MATCH_WIN_REWARD_GOLD
+        else -> MATCH_LOSS_REWARD_GOLD
+    }
+    val xp = when {
+        isDraw -> MATCH_DRAW_REWARD_XP
+        isWinner -> MATCH_WIN_REWARD_XP
+        else -> MATCH_LOSS_REWARD_XP
+    }
+    ArcadePanel(modifier = Modifier.fillMaxWidth(), accent = ArcadePalette.Gold500) {
+        BoxWithConstraints(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
+            val stackRewards = maxWidth < 340.dp || androidx.compose.ui.platform.LocalDensity.current.fontScale >= 1.35f
+            if (stackRewards) {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Text("Thưởng trận", fontWeight = FontWeight.Black)
+                    RewardAmounts(gold = gold, xp = xp, gems = 0)
+                }
+            } else {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("Thưởng trận", fontWeight = FontWeight.Black)
+                    RewardAmounts(gold = gold, xp = xp, gems = 0)
+                }
             }
         }
     }
 }
 
 @Composable
-private fun PaceAnalysisCard(player: PlayerState) {
-    if (player.fastestSegmentAverageMillis <= 0L && player.slowestSegmentAverageMillis <= 0L) return
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)
-    ) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text("Phân tích nhịp chơi", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+private fun TournamentResultCard(state: GameState, onOpenTournament: () -> Unit) {
+    ArcadePanel(modifier = Modifier.fillMaxWidth(), accent = MaterialTheme.colorScheme.tertiary) {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
             Text(
-                "Mỗi chặng gồm tối đa 10 số bạn đã tìm.",
-                style = MaterialTheme.typography.bodySmall,
+                if (state.currentTournamentRound == 2) "Trận chung kết" else "Trận bán kết",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Black
+            )
+            Text(
+                if (state.currentTournamentRound == 2) {
+                    "Giải đấu đã hoàn tất. Mở nhánh đấu để xem nhà vô địch."
+                } else {
+                    "Nhánh đấu đã được cập nhật. Trận tiếp theo sẽ được tạo tự động."
+                },
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
-            SegmentRow(
-                label = "Nhanh nhất",
-                start = player.fastestSegmentStart,
-                end = player.fastestSegmentEnd,
-                averageMillis = player.fastestSegmentAverageMillis,
-                highlight = true
-            )
-            if (
-                player.slowestSegmentStart != player.fastestSegmentStart ||
-                player.slowestSegmentEnd != player.fastestSegmentEnd
-            ) {
-                SegmentRow(
-                    label = "Chậm nhất",
-                    start = player.slowestSegmentStart,
-                    end = player.slowestSegmentEnd,
-                    averageMillis = player.slowestSegmentAverageMillis,
-                    highlight = false
+            Button(
+                onClick = onOpenTournament,
+                modifier = Modifier.fillMaxWidth().heightIn(min = 54.dp).testTag("open_tournament_bracket"),
+                shape = RoundedCornerShape(16.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = ArcadePalette.Gold500,
+                    contentColor = ArcadePalette.Navy950
                 )
+            ) { Text("Xem nhánh đấu", fontWeight = FontWeight.Black) }
+        }
+    }
+}
+
+@Composable
+private fun MatchSummaryCard(state: GameState) {
+    val attempts = state.player.correctSelections + state.player.wrongSelections
+    val accuracy = if (attempts == 0) 0 else state.player.correctSelections * 100 / attempts
+    ArcadePanel(modifier = Modifier.fillMaxWidth(), accent = MaterialTheme.colorScheme.primary) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text("Tóm tắt của bạn", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+                val stackMetrics = maxWidth < 330.dp || androidx.compose.ui.platform.LocalDensity.current.fontScale >= 1.35f
+                if (stackMetrics) {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        SummaryMetric("Phản xạ TB", formatReaction(state.player.averageReactionMillis), Modifier.fillMaxWidth())
+                        SummaryMetric("Chính xác", "$accuracy%", Modifier.fillMaxWidth())
+                        SummaryMetric("Combo", "x${state.player.combo}", Modifier.fillMaxWidth())
+                    }
+                } else {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        SummaryMetric("Phản xạ TB", formatReaction(state.player.averageReactionMillis), Modifier.weight(1f))
+                        SummaryMetric("Chính xác", "$accuracy%", Modifier.weight(1f))
+                        SummaryMetric("Combo", "x${state.player.combo}", Modifier.weight(1f))
+                    }
+                }
+            }
+            Text(
+                "Đúng ${state.player.correctSelections} • Sai ${state.player.wrongSelections} • ${formatDuration(state.lastMatchDurationMillis)}",
+                modifier = Modifier.fillMaxWidth(),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center
+            )
+        }
+    }
+}
+
+@Composable
+private fun PaceAnalysisCard(player: PlayerState) {
+    val hasAnalysis = player.fastestSegmentAverageMillis > 0L || player.slowestSegmentAverageMillis > 0L
+    ArcadePanel(modifier = Modifier.fillMaxWidth(), accent = MaterialTheme.colorScheme.secondary) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text("Phân tích nhịp chơi", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            if (!hasAnalysis) {
+                Text(
+                    "Chưa đủ dữ liệu để phân tích chặng nhanh và chậm.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            } else {
+                Text(
+                    "Mỗi chặng gồm tối đa 10 số bạn đã tìm.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                SegmentRow(
+                    label = "Nhanh nhất",
+                    start = player.fastestSegmentStart,
+                    end = player.fastestSegmentEnd,
+                    averageMillis = player.fastestSegmentAverageMillis,
+                    highlight = true
+                )
+                if (
+                    player.slowestSegmentStart != player.fastestSegmentStart ||
+                    player.slowestSegmentEnd != player.fastestSegmentEnd
+                ) {
+                    SegmentRow(
+                        label = "Chậm nhất",
+                        start = player.slowestSegmentStart,
+                        end = player.slowestSegmentEnd,
+                        averageMillis = player.slowestSegmentAverageMillis,
+                        highlight = false
+                    )
+                }
             }
         }
     }
@@ -513,10 +648,29 @@ private fun SegmentRow(
 
 @Composable
 private fun SummaryMetric(label: String, value: String, modifier: Modifier = Modifier) {
-    Surface(modifier = modifier, shape = RoundedCornerShape(14.dp), color = MaterialTheme.colorScheme.surfaceContainerHighest) {
-        Column(Modifier.padding(12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(value, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
-            Text(label, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    Surface(
+        modifier = modifier.heightIn(min = 72.dp),
+        shape = RoundedCornerShape(14.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerHighest
+    ) {
+        Column(
+            Modifier.padding(horizontal = 8.dp, vertical = 11.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            Text(
+                value,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Black,
+                color = MaterialTheme.colorScheme.primary,
+                textAlign = TextAlign.Center
+            )
+            Text(
+                label,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center
+            )
         }
     }
 }
@@ -564,15 +718,18 @@ private fun RematchCard(
                 Text("Còn $remainingSeconds giây để phản hồi", style = MaterialTheme.typography.bodySmall)
             }
             when {
-                state.isRematchRequestedByOpponent -> Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    OutlinedButton(onClick = onDecline, modifier = Modifier.weight(1f)) { Text("Từ chối") }
-                    Button(onClick = onRematch, modifier = Modifier.weight(1f)) {
-                        Icon(Icons.Rounded.Check, contentDescription = null)
-                        Spacer(Modifier.size(6.dp))
-                        Text("Chấp nhận")
+                state.isRematchRequestedByOpponent -> BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+                    val stackActions = maxWidth < 330.dp || androidx.compose.ui.platform.LocalDensity.current.fontScale >= 1.35f
+                    if (stackActions) {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            RematchAcceptButton(onClick = onRematch, modifier = Modifier.fillMaxWidth())
+                            OutlinedButton(onClick = onDecline, modifier = Modifier.fillMaxWidth()) { Text("Từ chối") }
+                        }
+                    } else {
+                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            OutlinedButton(onClick = onDecline, modifier = Modifier.weight(1f)) { Text("Từ chối") }
+                            RematchAcceptButton(onClick = onRematch, modifier = Modifier.weight(1f))
+                        }
                     }
                 }
                 state.isRematchRequestedByMe -> OutlinedButton(
@@ -581,16 +738,36 @@ private fun RematchCard(
                 ) { Text("Hủy yêu cầu") }
                 else -> Button(
                     onClick = onRematch,
-                    modifier = Modifier.fillMaxWidth().height(52.dp),
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 54.dp),
                     shape = RoundedCornerShape(16.dp),
-                    contentPadding = PaddingValues(12.dp)
+                    contentPadding = PaddingValues(12.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = ArcadePalette.Gold500,
+                        contentColor = ArcadePalette.Navy950
+                    )
                 ) {
                     Icon(Icons.Rounded.RestartAlt, contentDescription = null)
                     Spacer(Modifier.size(8.dp))
-                    Text("Mời đấu lại")
+                    Text("Mời đấu lại", fontWeight = FontWeight.Black)
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun RematchAcceptButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
+    Button(
+        onClick = onClick,
+        modifier = modifier.heightIn(min = 48.dp),
+        colors = ButtonDefaults.buttonColors(
+            containerColor = ArcadePalette.Gold500,
+            contentColor = ArcadePalette.Navy950
+        )
+    ) {
+        Icon(Icons.Rounded.Check, contentDescription = null)
+        Spacer(Modifier.size(6.dp))
+        Text("Chấp nhận", fontWeight = FontWeight.Black)
     }
 }
 
@@ -616,24 +793,61 @@ private fun OpponentActions(state: GameState, onConnect: () -> Unit, onBlock: ()
         PostMatchFriendStatus.AVAILABLE,
         PostMatchFriendStatus.REQUEST_RECEIVED
     )
-    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        OutlinedButton(
-            onClick = onConnect,
-            enabled = canConnect,
-            modifier = Modifier.weight(1f)
-        ) {
-            Icon(Icons.Rounded.GroupAdd, contentDescription = null)
-            Spacer(Modifier.size(6.dp))
-            Text(friendLabel)
+    BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+        val stackActions = maxWidth < 340.dp || androidx.compose.ui.platform.LocalDensity.current.fontScale >= 1.35f
+        if (stackActions) {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                OpponentConnectButton(friendLabel, canConnect, onConnect, Modifier.fillMaxWidth())
+                OpponentBlockButton(
+                    enabled = state.postMatchFriendStatus != PostMatchFriendStatus.BLOCKED,
+                    onClick = onBlock,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        } else {
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                OpponentConnectButton(friendLabel, canConnect, onConnect, Modifier.weight(1f))
+                OpponentBlockButton(
+                    enabled = state.postMatchFriendStatus != PostMatchFriendStatus.BLOCKED,
+                    onClick = onBlock
+                )
+            }
         }
-        TextButton(
-            onClick = onBlock,
-            enabled = state.postMatchFriendStatus != PostMatchFriendStatus.BLOCKED
-        ) {
-            Icon(Icons.Rounded.Block, contentDescription = null)
-            Spacer(Modifier.size(4.dp))
-            Text("Chặn")
-        }
+    }
+}
+
+@Composable
+private fun OpponentConnectButton(
+    label: String,
+    enabled: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    OutlinedButton(
+        onClick = onClick,
+        enabled = enabled,
+        modifier = modifier.heightIn(min = 48.dp)
+    ) {
+        Icon(Icons.Rounded.GroupAdd, contentDescription = null)
+        Spacer(Modifier.size(6.dp))
+        Text(label)
+    }
+}
+
+@Composable
+private fun OpponentBlockButton(
+    enabled: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    TextButton(
+        onClick = onClick,
+        enabled = enabled,
+        modifier = modifier.heightIn(min = 48.dp)
+    ) {
+        Icon(Icons.Rounded.Block, contentDescription = null)
+        Spacer(Modifier.size(4.dp))
+        Text("Chặn")
     }
 }
 
@@ -654,19 +868,28 @@ private fun formatReaction(reactionMillis: Long): String =
         "${reactionMillis / 100 / 10.0}s"
     }
 
-private fun resultShareContent(state: GameState, isDraw: Boolean, isWinner: Boolean): ResultShareContent {
-    val attempts = state.player.correctSelections + state.player.wrongSelections
-    val accuracy = if (attempts == 0) 0 else state.player.correctSelections * 100 / attempts
+private fun resultShareContent(
+    state: GameState,
+    isDraw: Boolean,
+    isWinner: Boolean,
+    playerScore: Int,
+    opponentScore: Int,
+    is2v2: Boolean
+): ResultShareContent {
+    val teamPlayers = if (is2v2) listOf(state.player) + state.teammates else listOf(state.player)
+    val correctSelections = teamPlayers.sumOf { it.correctSelections }
+    val attempts = teamPlayers.sumOf { it.correctSelections + it.wrongSelections }
+    val accuracy = if (attempts == 0) 0 else correctSelections * 100 / attempts
     return ResultShareContent(
         result = when {
             isDraw -> "HÒA"
             isWinner -> "CHIẾN THẮNG"
             else -> "THUA CUỘC"
         },
-        playerName = state.player.name,
-        playerScore = state.player.score,
-        opponentName = state.opponent.name,
-        opponentScore = state.opponent.score,
+        playerName = if (is2v2) "Đội của bạn" else state.player.name,
+        playerScore = playerScore,
+        opponentName = if (is2v2) "Đội đối thủ" else state.opponent.name,
+        opponentScore = opponentScore,
         gameMode = state.gameMode.title,
         matchType = if (state.matchType == MatchType.RANKED) "Trận xếp hạng" else "Trận thường",
         duration = formatDuration(state.lastMatchDurationMillis),

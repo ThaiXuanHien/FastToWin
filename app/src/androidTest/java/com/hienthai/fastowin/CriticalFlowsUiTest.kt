@@ -381,6 +381,7 @@ class CriticalFlowsUiTest {
 
         composeRule.onNodeWithTag("create_room_open").performClick()
         composeRule.onNodeWithTag("create_room_name").performTextInput("Phòng của Hiền")
+        composeRule.onNodeWithTag("create_room_privacy_toggle").performClick()
         composeRule.onNodeWithTag("create_room_password").performTextInput("12345678")
         composeRule.onNodeWithTag("create_room_submit").performClick()
 
@@ -401,7 +402,6 @@ class CriticalFlowsUiTest {
 
         composeRule.onNodeWithTag("create_room_open").performClick()
         composeRule.onNodeWithTag("create_room_name").performTextInput("Phòng công khai")
-        composeRule.onNodeWithTag("create_room_privacy_toggle").performClick()
         composeRule.onNodeWithTag("create_room_submit").performClick()
 
         composeRule.runOnIdle { assertEquals("Phòng công khai" to "", createdRoom) }

@@ -46,6 +46,10 @@ import com.hienthai.fastowin.state.AppNotificationKind
 import com.hienthai.fastowin.ui.components.SystemBackHandler
 import com.hienthai.fastowin.ui.layout.ResponsiveScreen
 import com.hienthai.fastowin.ui.components.FastToWinHeader
+import com.hienthai.fastowin.ui.components.ArcadeFeatureHero
+import com.hienthai.fastowin.ui.components.ArcadeEmptyState
+import com.hienthai.fastowin.resources.Res
+import com.hienthai.fastowin.resources.arcade_notifications_inbox
 
 @Composable
 fun NotificationsScreen(
@@ -108,20 +112,25 @@ fun NotificationsScreen(
 
             if (notifications.isEmpty()) {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("🔔", style = MaterialTheme.typography.displayMedium)
-                        Text("Chưa có thông báo", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                        Text(
-                            "Lời mời và phần thưởng mới sẽ xuất hiện tại đây.",
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
+                    ArcadeEmptyState(
+                        illustration = Res.drawable.arcade_notifications_inbox,
+                        title = "Hộp thư đang trống",
+                        description = "Lời mời, phần thưởng và tin mới sẽ xuất hiện tại đây."
+                    )
                 }
             } else {
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
+                    item(key = "notifications_hero") {
+                        ArcadeFeatureHero(
+                            illustration = Res.drawable.arcade_notifications_inbox,
+                            title = "Tin mới dành cho bạn",
+                            subtitle = "Theo dõi lời mời, phần thưởng và hoạt động quan trọng.",
+                            accent = MaterialTheme.colorScheme.tertiary
+                        )
+                    }
                     items(notifications, key = AppNotification::id) { notification ->
                         NotificationCard(
                             notification = notification,

@@ -38,6 +38,7 @@ class AuthController(
     private val store: AuthSessionStore,
     private val resumeTokenStore: ResumeTokenStore,
     private val devicePlatform: String,
+    private val initialGuestSession: Boolean = false,
     private val api: AuthApiClient = AuthApiClient(serverUrl)
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
@@ -50,8 +51,11 @@ class AuthController(
         }
     }
     private val _state = MutableStateFlow(
-        if (initialSession == null) AuthState()
-        else AuthState(stage = AuthStage.PLAYING, session = initialSession)
+        when {
+            initialSession != null -> AuthState(stage = AuthStage.PLAYING, session = initialSession)
+            initialGuestSession -> AuthState(stage = AuthStage.PLAYING, isGuest = true)
+            else -> AuthState()
+        }
     )
     val state: StateFlow<AuthState> = _state.asStateFlow()
 

@@ -1,27 +1,35 @@
 package com.hienthai.fastowin.ui.screens
 
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.rounded.FitnessCenter
 import androidx.compose.material.icons.rounded.RestartAlt
 import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
-import androidx.compose.material3.CenterAlignedTopAppBar
-import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -31,18 +39,28 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.Saver
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.hienthai.fastowin.data.preferences.AppPreferences
 import com.hienthai.fastowin.navigation.GameMode
 import com.hienthai.fastowin.platform.GameFeedbackEffect
@@ -57,10 +75,15 @@ import com.hienthai.fastowin.state.PracticeGameState
 import com.hienthai.fastowin.state.createPracticeChallenge
 import com.hienthai.fastowin.state.createPracticeGame
 import com.hienthai.fastowin.state.parsePracticeChallenge
+import com.hienthai.fastowin.resources.Res
+import com.hienthai.fastowin.resources.arcade_leaderboard_trophy
+import com.hienthai.fastowin.ui.components.ArcadeFeatureHero
+import com.hienthai.fastowin.ui.components.ArcadePanel
+import com.hienthai.fastowin.ui.components.FastToWinHeader
 import com.hienthai.fastowin.ui.layout.ResponsiveScreen
+import com.hienthai.fastowin.ui.theme.ArcadePalette
 import kotlinx.coroutines.delay
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PracticeScreen(
     mode: GameMode,
@@ -71,13 +94,33 @@ fun PracticeScreen(
     modifier: Modifier = Modifier
 ) {
     SystemBackHandler(onBack = onBack)
-    var currentChallenge by remember(mode, challenge?.code) {
-        mutableStateOf(challenge ?: createPracticeChallenge(mode, challengeSeed()))
+    var currentChallengeCode by rememberSaveable(mode.name, challenge?.code) {
+        mutableStateOf(
+            (challenge?.takeIf { it.mode == mode } ?: createPracticeChallenge(mode, challengeSeed())).code
+        )
     }
-    var game by remember(mode, currentChallenge.code) {
+    val currentChallenge = remember(mode, currentChallengeCode, challenge?.code) {
+        parsePracticeChallenge(currentChallengeCode)
+            ?.takeIf { it.mode == mode }
+            ?: challenge?.takeIf { it.mode == mode }
+            ?: createPracticeChallenge(mode, challengeSeed())
+    }
+    val gameStateSaver = remember(currentChallenge.code) {
+        practiceGameMutableStateSaver(currentChallenge)
+    }
+    var game by rememberSaveable(mode.name, currentChallenge.code, saver = gameStateSaver) {
         mutableStateOf(createPracticeGame(mode, epochMillis(), challenge = currentChallenge))
     }
+    var wrongNumber by remember(mode, currentChallenge.code) { mutableStateOf<Int?>(null) }
+    var wrongFeedbackToken by remember(mode, currentChallenge.code) { mutableIntStateOf(0) }
+    var accessibilityFeedback by remember(mode, currentChallenge.code) { mutableStateOf<String?>(null) }
     val hapticFeedback = LocalHapticFeedback.current
+
+    LaunchedEffect(currentChallenge.code, currentChallengeCode) {
+        if (currentChallengeCode != currentChallenge.code) {
+            currentChallengeCode = currentChallenge.code
+        }
+    }
 
     LaunchedEffect(game.isComplete, game.startedAtMillis) {
         while (!game.isComplete) {
@@ -90,27 +133,35 @@ fun PracticeScreen(
             playFeedbackSound(GameFeedbackEffect.WIN)
         }
     }
+    LaunchedEffect(wrongFeedbackToken) {
+        if (wrongFeedbackToken > 0) {
+            delay(180)
+            wrongNumber = null
+        }
+    }
 
-    Scaffold(
-        modifier = modifier.fillMaxSize(),
+    BoxWithConstraints(modifier = modifier.fillMaxSize()) {
+        val compactLandscape = maxHeight < 430.dp && maxWidth > maxHeight
+        Scaffold(
+        modifier = Modifier.fillMaxSize(),
+        containerColor = Color.Transparent,
         topBar = {
-            CenterAlignedTopAppBar(
-                title = {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("Luyện tập", fontWeight = FontWeight.Bold)
-                        Text(
-                            "${mode.title} • Ngoại tuyến",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "Thoát luyện tập")
-                    }
-                }
+            FastToWinHeader(
+                title = "Luyện tập · ${mode.title}",
+                subtitle = "Ngoại tuyến • Không ảnh hưởng Elo",
+                gold = 0,
+                gems = 0,
+                unreadNotifications = 0,
+                onNotifications = {},
+                onBack = onBack,
+                showBalances = false,
+                showNotifications = false
             )
+        },
+        bottomBar = {
+            if (!game.isComplete && !compactLandscape) {
+                PracticeExitBar(onBack = onBack)
+            }
         }
     ) { paddingValues ->
         ResponsiveScreen(
@@ -125,7 +176,7 @@ fun PracticeScreen(
                         game = createPracticeGame(mode, epochMillis(), challenge = currentChallenge)
                     },
                     onNewChallenge = {
-                        currentChallenge = createPracticeChallenge(mode, challengeSeed())
+                        currentChallengeCode = createPracticeChallenge(mode, challengeSeed()).code
                     },
                     onShareChallenge = onShareChallenge,
                     onBack = onBack,
@@ -133,63 +184,218 @@ fun PracticeScreen(
                 )
             } else {
                 Column(modifier = contentModifier) {
-                    PracticeStatus(game)
-                    Text(
-                        "Chạm các số theo thứ tự từ 1 đến $GAME_NUMBER_COUNT",
-                        modifier = Modifier.fillMaxWidth().height(34.dp).padding(horizontal = 16.dp, vertical = 6.dp),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        style = MaterialTheme.typography.labelMedium,
-                        textAlign = TextAlign.Center
-                    )
+                    PracticeStatus(game, compact = compactLandscape)
                     NumberGrid(
                         numbers = game.numbers,
-                        currentTarget = game.currentTarget,
                         selectedNumbers = game.selectedNumbers,
+                        wrongNumber = wrongNumber,
                         enabled = true,
                         boardStyle = preferences.boardStyle,
                         onNumberClick = { number ->
                             val correct = number == game.currentTarget
                             val effect = if (correct) GameFeedbackEffect.CORRECT else GameFeedbackEffect.WRONG
+                            accessibilityFeedback = if (correct) {
+                                if (game.correctSelections + 1 >= GAME_NUMBER_COUNT) {
+                                    "Đúng, đã hoàn thành bàn số"
+                                } else {
+                                    "Đúng, mục tiêu tiếp theo ${game.currentTarget + 1}"
+                                }
+                            } else {
+                                "Sai, cần tìm ${game.currentTarget}"
+                            }
+                            wrongNumber = if (!correct && preferences.visualEffectsEnabled) number else null
+                            if (!correct && preferences.visualEffectsEnabled) wrongFeedbackToken += 1
                             if (preferences.soundEnabled) playFeedbackSound(effect)
                             if (preferences.vibrationEnabled) {
                                 hapticFeedback.performHapticFeedback(HapticFeedbackType.LongPress)
                             }
                             game = game.select(number, epochMillis())
                         },
-                        modifier = Modifier.weight(1f)
+                        modifier = Modifier
+                            .weight(1f)
+                            .semantics {
+                                liveRegion = LiveRegionMode.Polite
+                                accessibilityFeedback?.let { stateDescription = it }
+                            }
                     )
                 }
             }
+        }
         }
     }
 }
 
 @Composable
-private fun PracticeStatus(game: PracticeGameState) {
-    Row(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
+private fun PracticeStatus(game: PracticeGameState, compact: Boolean) {
+    val isCountdownMode = game.mode in setOf(GameMode.TIME_ATTACK, GameMode.TIME_BONUS, GameMode.SPEED_UP)
+    if (compact) {
+        Surface(
+            modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp),
+            shape = RoundedCornerShape(16.dp),
+            color = MaterialTheme.colorScheme.secondaryContainer,
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.secondary.copy(alpha = 0.55f))
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                PracticeCompactMetric(
+                    "Mục tiêu",
+                    game.currentTarget.coerceAtMost(GAME_NUMBER_COUNT).toString(),
+                    Modifier.weight(1f)
+                )
+                PracticeCompactMetric("Điểm", game.score.toString(), Modifier.weight(1f))
+                PracticeCompactMetric(
+                    if (isCountdownMode) "Còn lại" else "Thời gian",
+                    formatPracticeTime(if (isCountdownMode) game.timeLeftMillis else game.elapsedMillis),
+                    Modifier.weight(1f)
+                )
+                PracticeCompactMetric(
+                    if (game.mode == GameMode.SURVIVAL) "Mạng" else "Combo",
+                    if (game.mode == GameMode.SURVIVAL) game.lives.toString() else "x${game.combo}",
+                    Modifier.weight(1f)
+                )
+            }
+        }
+        return
+    }
+    Column(
+        modifier = Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 4.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        PracticeMetric("Cần tìm", game.currentTarget.coerceAtMost(GAME_NUMBER_COUNT).toString(), Modifier.weight(1f))
-        PracticeMetric("Điểm", game.score.toString(), Modifier.weight(1f))
-        PracticeMetric(
-            if (game.mode in setOf(GameMode.TIME_ATTACK, GameMode.TIME_BONUS, GameMode.SPEED_UP)) "Còn lại" else "Thời gian",
-            formatPracticeTime(
-                if (game.mode in setOf(GameMode.TIME_ATTACK, GameMode.TIME_BONUS, GameMode.SPEED_UP)) {
-                    game.timeLeftMillis
-                } else game.elapsedMillis
-            ),
-            Modifier.weight(1f)
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(20.dp),
+            color = MaterialTheme.colorScheme.secondaryContainer,
+            border = BorderStroke(2.dp, MaterialTheme.colorScheme.secondary.copy(alpha = 0.55f))
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 9.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column {
+                    Text(
+                        "MỤC TIÊU",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.72f),
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        game.currentTarget.coerceAtMost(GAME_NUMBER_COUNT).toString(),
+                        modifier = Modifier.testTag("practice_target"),
+                        style = MaterialTheme.typography.headlineLarge,
+                        color = MaterialTheme.colorScheme.onSecondaryContainer,
+                        fontWeight = FontWeight.Black,
+                        lineHeight = 36.sp
+                    )
+                }
+                Surface(
+                    shape = RoundedCornerShape(14.dp),
+                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.88f)
+                ) {
+                    Column(
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+                        horizontalAlignment = Alignment.End
+                    ) {
+                        Text("ĐIỂM", style = MaterialTheme.typography.labelSmall)
+                        Text(
+                            game.score.toString(),
+                            modifier = Modifier.testTag("practice_score"),
+                            style = MaterialTheme.typography.titleLarge,
+                            color = MaterialTheme.colorScheme.primary,
+                            fontWeight = FontWeight.Black
+                        )
+                    }
+                }
+            }
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            PracticeMetric(
+                if (isCountdownMode) "Còn lại" else "Thời gian",
+                formatPracticeTime(if (isCountdownMode) game.timeLeftMillis else game.elapsedMillis),
+                Modifier.weight(1f)
+            )
+            PracticeMetric(
+                if (game.mode == GameMode.SURVIVAL) "Mạng" else "Combo",
+                if (game.mode == GameMode.SURVIVAL) game.lives.toString() else "x${game.combo}",
+                Modifier.weight(1f)
+            )
+            PracticeMetric("Chính xác", "${game.accuracyPercent}%", Modifier.weight(1f))
+        }
+    }
+}
+
+@Composable
+private fun PracticeCompactMetric(label: String, value: String, modifier: Modifier = Modifier) {
+    Column(
+        modifier = modifier,
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Text(
+            label,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.72f),
+            maxLines = 1
+        )
+        Text(
+            value,
+            style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.onSecondaryContainer,
+            fontWeight = FontWeight.Black,
+            maxLines = 1
         )
     }
 }
 
 @Composable
 private fun PracticeMetric(label: String, value: String, modifier: Modifier) {
-    Surface(modifier = modifier, shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surfaceContainer) {
-        Column(Modifier.padding(10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+    Surface(
+        modifier = modifier.heightIn(min = 58.dp),
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.surface,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.34f))
+    ) {
+        Column(
+            Modifier.padding(horizontal = 6.dp, vertical = 8.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
             Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Text(value, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
+            Text(
+                value,
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.primary,
+                fontWeight = FontWeight.Black,
+                textAlign = TextAlign.Center
+            )
+        }
+    }
+}
+
+@Composable
+private fun PracticeExitBar(onBack: () -> Unit) {
+    Surface(color = MaterialTheme.colorScheme.surface.copy(alpha = 0.96f)) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal))
+                .padding(horizontal = 16.dp, vertical = 8.dp)
+        ) {
+            OutlinedButton(
+                onClick = onBack,
+                modifier = Modifier.fillMaxWidth().height(48.dp),
+                shape = RoundedCornerShape(16.dp),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.error),
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error)
+            ) {
+                Text("KẾT THÚC", fontWeight = FontWeight.Black)
+            }
         }
     }
 }
@@ -208,36 +414,29 @@ private fun PracticeResult(
     val challengeText = game.challengeCode?.let {
         buildChallengeShareText(game.mode, it, game.score, game.elapsedMillis)
     }
+    val completionMessage = when {
+        game.correctSelections >= GAME_NUMBER_COUNT -> "Bạn đã tìm đủ 50 số"
+        game.mode == GameMode.SURVIVAL -> "Bạn đã hết 3 lượt bấm sai"
+        game.mode == GameMode.SPEED_UP -> "Bạn không kịp tìm mục tiêu tiếp theo"
+        game.mode == GameMode.TIME_BONUS -> "Bạn đã hết thời gian tích lũy"
+        game.mode == GameMode.TIME_ATTACK -> "Hết 60 giây"
+        else -> "Thử thách đã kết thúc"
+    }
     Column(
-        modifier = modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp),
+        modifier = modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(vertical = 20.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(20.dp)
+        verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        Text("HOÀN THÀNH", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Black)
-        Text(
-            when {
-                game.correctSelections >= GAME_NUMBER_COUNT -> "Bạn đã tìm đủ 50 số"
-                game.mode == GameMode.SURVIVAL -> "Bạn đã hết 3 lượt bấm sai"
-                game.mode == GameMode.SPEED_UP -> "Bạn không kịp tìm mục tiêu tiếp theo"
-                game.mode == GameMode.TIME_BONUS -> "Bạn đã hết thời gian tích lũy"
-                game.mode == GameMode.TIME_ATTACK -> "Hết 60 giây"
-                else -> "Thử thách đã kết thúc"
-            },
-            color = MaterialTheme.colorScheme.onSurfaceVariant
+        ArcadeFeatureHero(
+            illustration = Res.drawable.arcade_leaderboard_trophy,
+            title = "HOÀN THÀNH",
+            subtitle = "$completionMessage. ${game.score} điểm · ${game.mode.title}.",
+            accent = ArcadePalette.Gold500
         )
-        Surface(shape = RoundedCornerShape(24.dp), color = MaterialTheme.colorScheme.primaryContainer) {
-            Column(
-                modifier = Modifier.fillMaxWidth().padding(22.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Text("${game.score} điểm", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Black)
-                Text("Đúng ${game.correctSelections} • Sai ${game.wrongSelections} • Chính xác ${game.accuracyPercent}%")
-                Text("Thời gian ${formatPracticeTime(game.elapsedMillis)}")
-            }
-        }
+        PracticeResultMetrics(game)
+        PracticeAnalysisCard(game)
         game.challengeCode?.let { code ->
-            Surface(shape = RoundedCornerShape(18.dp), color = MaterialTheme.colorScheme.surfaceContainer) {
+            ArcadePanel(accent = MaterialTheme.colorScheme.secondary) {
                 Column(
                     modifier = Modifier.fillMaxWidth().padding(16.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
@@ -254,9 +453,14 @@ private fun PracticeResult(
                 }
             }
         }
-        Text("Kết quả luyện tập không ảnh hưởng Elo.", style = MaterialTheme.typography.bodySmall)
+        Text(
+            "Kết quả luyện tập không ảnh hưởng Elo.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center
+        )
         if (challengeText != null) {
-            Button(
+            OutlinedButton(
                 onClick = {
                     shareError = null
                     if (onShareChallenge != null) {
@@ -267,22 +471,122 @@ private fun PracticeResult(
                         }
                     }
                 },
-                modifier = Modifier.fillMaxWidth().height(54.dp).testTag("share_challenge")
+                modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp).testTag("share_challenge"),
+                shape = RoundedCornerShape(16.dp)
             ) {
                 Icon(Icons.Rounded.Share, contentDescription = null)
-                Text("  Chia sẻ thử thách")
+                Spacer(Modifier.size(8.dp))
+                Text("Chia sẻ thử thách")
             }
         }
         shareError?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
-        OutlinedButton(onClick = onRestart, modifier = Modifier.fillMaxWidth().height(52.dp)) {
+        Button(
+            onClick = onRestart,
+            modifier = Modifier.fillMaxWidth().heightIn(min = 54.dp),
+            shape = RoundedCornerShape(16.dp),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = ArcadePalette.Gold500,
+                contentColor = ArcadePalette.Navy950
+            )
+        ) {
             Icon(Icons.Rounded.RestartAlt, contentDescription = null)
-            Text("  Chơi lại cùng bàn")
+            Spacer(Modifier.size(8.dp))
+            Text("Chơi lại cùng bàn", fontWeight = FontWeight.Black)
         }
-        OutlinedButton(onClick = onNewChallenge, modifier = Modifier.fillMaxWidth().height(52.dp)) {
+        OutlinedButton(
+            onClick = onNewChallenge,
+            modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp),
+            shape = RoundedCornerShape(16.dp)
+        ) {
             Icon(Icons.Rounded.Add, contentDescription = null)
-            Text("  Tạo thử thách mới")
+            Spacer(Modifier.size(8.dp))
+            Text("Tạo thử thách mới")
         }
-        Button(onClick = onBack, modifier = Modifier.fillMaxWidth()) { Text("Về trang chủ") }
+        OutlinedButton(
+            onClick = onBack,
+            modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp),
+            shape = RoundedCornerShape(16.dp)
+        ) { Text("Về trang chủ") }
+        Spacer(Modifier.height(8.dp))
+    }
+}
+
+@Composable
+private fun PracticeResultMetrics(game: PracticeGameState) {
+    val averageReaction = if (game.correctSelections == 0) 0L else game.elapsedMillis / game.correctSelections
+    BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+        val stackMetrics = maxWidth < 330.dp || androidx.compose.ui.platform.LocalDensity.current.fontScale >= 1.35f
+        if (stackMetrics) {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                PracticeResultMetric("Điểm", game.score.toString(), Modifier.fillMaxWidth())
+                PracticeResultMetric("Chính xác", "${game.accuracyPercent}%", Modifier.fillMaxWidth())
+                PracticeResultMetric("Phản xạ", formatPracticeReaction(averageReaction), Modifier.fillMaxWidth())
+            }
+        } else {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                PracticeResultMetric("Điểm", game.score.toString(), Modifier.weight(1f))
+                PracticeResultMetric("Chính xác", "${game.accuracyPercent}%", Modifier.weight(1f))
+                PracticeResultMetric("Phản xạ", formatPracticeReaction(averageReaction), Modifier.weight(1f))
+            }
+        }
+    }
+}
+
+@Composable
+private fun PracticeResultMetric(label: String, value: String, modifier: Modifier) {
+    Surface(
+        modifier = modifier.heightIn(min = 76.dp),
+        shape = RoundedCornerShape(18.dp),
+        color = MaterialTheme.colorScheme.surface,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.38f))
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 12.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            Text(
+                value,
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Black,
+                color = MaterialTheme.colorScheme.primary,
+                textAlign = TextAlign.Center
+            )
+            Text(
+                label,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center
+            )
+        }
+    }
+}
+
+@Composable
+private fun PracticeAnalysisCard(game: PracticeGameState) {
+    val averageReaction = if (game.correctSelections == 0) 0L else game.elapsedMillis / game.correctSelections
+    ArcadePanel(accent = MaterialTheme.colorScheme.primary) {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Text("Nhịp độ", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black)
+            PracticeAnalysisRow("Đúng / Sai", "${game.correctSelections} / ${game.wrongSelections}")
+            PracticeAnalysisRow("Thời gian", formatPracticeTime(game.elapsedMillis))
+            PracticeAnalysisRow("Trung bình mỗi số", formatPracticeReaction(averageReaction))
+        }
+    }
+}
+
+@Composable
+private fun PracticeAnalysisRow(label: String, value: String) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(label, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(value, fontWeight = FontWeight.Black, color = MaterialTheme.colorScheme.primary)
     }
 }
 
@@ -297,15 +601,65 @@ fun PracticeLauncherDialog(
     var error by remember { mutableStateOf<String?>(null) }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Luyện tập & thử thách") },
+        icon = {
+            Surface(
+                shape = RoundedCornerShape(18.dp),
+                color = MaterialTheme.colorScheme.secondaryContainer,
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.secondary.copy(alpha = 0.55f))
+            ) {
+                Box(modifier = Modifier.size(64.dp), contentAlignment = Alignment.Center) {
+                    Icon(
+                        Icons.Rounded.FitnessCenter,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.secondary,
+                        modifier = Modifier.size(32.dp)
+                    )
+                }
+            }
+        },
+        title = {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text("LUYỆN TẬP OFFLINE", fontWeight = FontWeight.Black, textAlign = TextAlign.Center)
+                Text(
+                    "Rèn phản xạ mỗi ngày",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center
+                )
+            }
+        },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                Text("Tạo một bàn mới hoặc nhập mã bạn bè đã gửi.")
+            Column(
+                modifier = Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = MaterialTheme.colorScheme.primaryContainer
+                ) {
+                    Text(
+                        "Không ảnh hưởng Elo và không cần kết nối máy chủ.",
+                        modifier = Modifier.fillMaxWidth().padding(14.dp),
+                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                        textAlign = TextAlign.Center,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
                 Button(
                     onClick = onStartNew,
-                    modifier = Modifier.fillMaxWidth().testTag("practice_new")
-                ) { Text("Bắt đầu luyện tập mới") }
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 54.dp).testTag("practice_new"),
+                    shape = RoundedCornerShape(16.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = ArcadePalette.Gold500,
+                        contentColor = ArcadePalette.Navy950
+                    )
+                ) {
+                    Icon(Icons.Rounded.FitnessCenter, contentDescription = null)
+                    Spacer(Modifier.size(8.dp))
+                    Text("Bắt đầu luyện tập mới", fontWeight = FontWeight.Black)
+                }
                 HorizontalDivider()
+                Text("Có mã thử thách?", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
                 OutlinedTextField(
                     value = code,
                     onValueChange = {
@@ -330,12 +684,15 @@ fun PracticeLauncherDialog(
                         }
                     },
                     enabled = code.isNotBlank(),
-                    modifier = Modifier.fillMaxWidth().testTag("challenge_open")
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp).testTag("challenge_open"),
+                    shape = RoundedCornerShape(16.dp)
                 ) { Text("Chơi thử thách") }
             }
         },
         confirmButton = {},
-        dismissButton = { androidx.compose.material3.TextButton(onClick = onDismiss) { Text("Đóng") } }
+        dismissButton = { androidx.compose.material3.TextButton(onClick = onDismiss) { Text("Đóng") } },
+        shape = RoundedCornerShape(28.dp),
+        containerColor = MaterialTheme.colorScheme.surface
     )
 }
 
@@ -347,6 +704,99 @@ internal fun buildChallengeShareText(mode: GameMode, code: String, score: Int, e
     Mã thử thách: $code
     Nếu liên kết không mở, vào Luyện tập offline và nhập mã để chơi cùng bàn số.
     """.trimIndent()
+
+private fun practiceGameMutableStateSaver(
+    challenge: PracticeChallenge
+): Saver<MutableState<PracticeGameState>, String> = Saver(
+    save = { state -> encodePracticeGameState(state.value) },
+    restore = { encoded ->
+        decodePracticeGameState(encoded, challenge)
+            ?.tick(epochMillis())
+            ?.let(::mutableStateOf)
+    }
+)
+
+/**
+ * Save only mutable progress. The challenge code restores the immutable board and target order,
+ * keeping the SaveableStateRegistry payload small and portable between Android and iOS.
+ */
+internal fun encodePracticeGameState(state: PracticeGameState): String = listOf(
+    PRACTICE_STATE_VERSION,
+    state.mode.name,
+    state.challengeCode.orEmpty(),
+    state.currentTarget.toString(),
+    state.score.toString(),
+    state.correctSelections.toString(),
+    state.wrongSelections.toString(),
+    state.startedAtMillis.toString(),
+    state.nowMillis.toString(),
+    if (state.isComplete) "1" else "0",
+    state.targetIndex.toString(),
+    state.selectedNumbers.joinToString(","),
+    state.combo.toString(),
+    state.lives.toString(),
+    state.timeAdjustmentMillis.toString(),
+    state.targetStartedAtMillis.toString()
+).joinToString("|")
+
+internal fun decodePracticeGameState(
+    encoded: String,
+    challenge: PracticeChallenge
+): PracticeGameState? {
+    val fields = encoded.split('|')
+    if (fields.size != PRACTICE_STATE_FIELD_COUNT || fields[0] != PRACTICE_STATE_VERSION) return null
+    val mode = GameMode.entries.firstOrNull { it.name == fields[1] } ?: return null
+    if (mode != challenge.mode) return null
+    if (fields[2] != challenge.code) return null
+    val currentTarget = fields[3].toIntOrNull() ?: return null
+    val score = fields[4].toIntOrNull() ?: return null
+    val correctSelections = fields[5].toIntOrNull() ?: return null
+    val wrongSelections = fields[6].toIntOrNull() ?: return null
+    val startedAtMillis = fields[7].toLongOrNull() ?: return null
+    val nowMillis = fields[8].toLongOrNull() ?: return null
+    val isComplete = when (fields[9]) {
+        "0" -> false
+        "1" -> true
+        else -> return null
+    }
+    val targetIndex = fields[10].toIntOrNull() ?: return null
+    val selectedNumbers = if (fields[11].isEmpty()) {
+        emptyList()
+    } else {
+        fields[11].split(',').map { it.toIntOrNull() ?: return null }
+    }
+    val combo = fields[12].toIntOrNull() ?: return null
+    val lives = fields[13].toIntOrNull() ?: return null
+    val timeAdjustmentMillis = fields[14].toLongOrNull() ?: return null
+    val targetStartedAtMillis = fields[15].toLongOrNull() ?: return null
+
+    if (targetIndex !in 0..GAME_NUMBER_COUNT) return null
+    if (correctSelections != targetIndex || selectedNumbers != challenge.targetOrder.take(targetIndex)) return null
+    if (currentTarget != (challenge.targetOrder.getOrNull(targetIndex) ?: GAME_NUMBER_COUNT + 1)) return null
+    if (score < 0 || wrongSelections < 0 || combo !in 0..correctSelections || lives !in 0..3) return null
+    if (nowMillis < startedAtMillis || targetStartedAtMillis !in startedAtMillis..nowMillis) return null
+    if (!isComplete && targetIndex == GAME_NUMBER_COUNT) return null
+
+    return PracticeGameState(
+        mode = mode,
+        numbers = challenge.numbers,
+        currentTarget = currentTarget,
+        score = score,
+        correctSelections = correctSelections,
+        wrongSelections = wrongSelections,
+        startedAtMillis = startedAtMillis,
+        nowMillis = nowMillis,
+        isComplete = isComplete,
+        targetOrder = challenge.targetOrder,
+        targetIndex = targetIndex,
+        selectedNumbers = selectedNumbers,
+        combo = combo,
+        lives = lives,
+        timeAdjustmentMillis = timeAdjustmentMillis,
+        targetStartedAtMillis = targetStartedAtMillis,
+        challengeCode = challenge.code
+    )
+}
 
 private fun challengeSeed(): Int {
     val now = epochMillis()
@@ -360,3 +810,12 @@ private fun formatPracticeTime(millis: Long): String {
     val tenths = totalTenths % 10
     return "${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}.$tenths"
 }
+
+private fun formatPracticeReaction(millis: Long): String = when {
+    millis <= 0L -> "--"
+    millis < 1_000L -> "${millis}ms"
+    else -> "${millis / 100 / 10.0}s"
+}
+
+private const val PRACTICE_STATE_VERSION = "1"
+private const val PRACTICE_STATE_FIELD_COUNT = 16

@@ -41,12 +41,14 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
@@ -62,9 +64,12 @@ import com.hienthai.fastowin.protocol.TournamentPhase
 import com.hienthai.fastowin.protocol.TournamentSnapshot
 import com.hienthai.fastowin.state.GameState
 import com.hienthai.fastowin.ui.components.FriendPresenceIndicator
+import com.hienthai.fastowin.ui.components.ArcadeFeatureHero
 import com.hienthai.fastowin.ui.components.OnlineStatusIndicator
 import com.hienthai.fastowin.ui.components.SystemBackHandler
 import com.hienthai.fastowin.ui.layout.ResponsiveScreen
+import com.hienthai.fastowin.resources.Res
+import com.hienthai.fastowin.resources.arcade_tournament_trophy
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -84,8 +89,13 @@ fun TournamentScreen(
     val tournament = state.tournamentHub.activeTournament
     Scaffold(
         modifier = modifier.fillMaxSize().testTag("tournament_screen"),
+        containerColor = Color.Transparent,
         topBar = {
             CenterAlignedTopAppBar(
+                colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
+                    containerColor = Color.Transparent,
+                    scrolledContainerColor = MaterialTheme.colorScheme.surface
+                ),
                 title = { Text("Đấu giải", fontWeight = FontWeight.Bold) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
@@ -95,11 +105,20 @@ fun TournamentScreen(
             )
         }
     ) { paddingValues ->
-        ResponsiveScreen(modifier = Modifier.padding(paddingValues), maxContentWidth = 760.dp) { contentModifier ->
+        ResponsiveScreen(
+            modifier = Modifier.padding(paddingValues),
+            maxContentWidth = 760.dp,
+            applySafeDrawingInsets = false
+        ) { contentModifier ->
             Column(
                 modifier = contentModifier.verticalScroll(rememberScrollState()).padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
+                ArcadeFeatureHero(
+                    illustration = Res.drawable.arcade_tournament_trophy,
+                    title = "Đấu trường loại trực tiếp",
+                    subtitle = "Tập hợp 4 chiến binh, vượt bán kết và chạm tay vào cúp vô địch."
+                )
                 state.error?.let { MessageCard(it, isError = true) }
                 state.tournamentNotice?.let { MessageCard(it, isError = false) }
                 if (state.isTournamentLoading && tournament == null) {
