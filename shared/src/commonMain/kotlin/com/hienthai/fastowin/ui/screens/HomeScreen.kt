@@ -880,7 +880,8 @@ internal fun GameModePickerDialog(
                     title = mode.title,
                     subtitle = if (unlocked) mode.description else "Mở khóa ở cấp ${mode.unlockLevel}",
                     icon = mode.modeIcon(),
-                    enabled = unlocked
+                    enabled = unlocked,
+                    modifier = Modifier.testTag("game_mode:${mode.name}")
                 ) { onSelect(mode) }
             }
         }
@@ -910,6 +911,7 @@ internal fun MatchTypePickerDialog(
                 subtitle = "Luyện kỹ năng, không ảnh hưởng Elo",
                 icon = CrossedSwordsIcon,
                 enabled = true,
+                modifier = Modifier.testTag("match_type:CASUAL"),
                 onClick = { onSelect(MatchType.CASUAL) }
             )
             ModeChoice(
@@ -917,6 +919,7 @@ internal fun MatchTypePickerDialog(
                 subtitle = "Thắng hoặc thua sẽ thay đổi Elo",
                 icon = Icons.Default.EmojiEvents,
                 enabled = true,
+                modifier = Modifier.testTag("match_type:RANKED"),
                 onClick = { onSelect(MatchType.RANKED) }
             )
         }
@@ -935,12 +938,13 @@ private fun ModeChoice(
     subtitle: String,
     icon: ImageVector,
     enabled: Boolean,
+    modifier: Modifier = Modifier,
     onClick: () -> Unit
 ) {
     Surface(
         onClick = onClick,
         enabled = enabled,
-        modifier = Modifier.fillMaxWidth().heightIn(min = 72.dp).alpha(if (enabled) 1f else 0.58f),
+        modifier = modifier.fillMaxWidth().heightIn(min = 72.dp).alpha(if (enabled) 1f else 0.58f),
         shape = RoundedCornerShape(16.dp),
         color = ArcadePalette.Navy800,
         contentColor = Color.White,

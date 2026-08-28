@@ -388,7 +388,7 @@ class ProfileSectionsUiTest {
         composeRule.onNodeWithText("Chinh phục • Mùa Khởi Đầu")
             .performScrollTo()
             .assertIsDisplayed()
-        composeRule.onNodeWithText("Ảnh đại diện đặc biệt").performScrollTo().assertIsDisplayed()
+        assertTrue(composeRule.onAllNodesWithText("Ảnh đại diện đặc biệt").fetchSemanticsNodes().isEmpty())
         assertTrue(composeRule.onAllNodesWithText("Trang chủ").fetchSemanticsNodes().isEmpty())
     }
 

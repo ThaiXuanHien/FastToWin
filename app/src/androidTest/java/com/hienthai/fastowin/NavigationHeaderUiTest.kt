@@ -1,12 +1,15 @@
 package com.hienthai.fastowin
 
+import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
-import androidx.test.espresso.Espresso.pressBack
+import androidx.test.platform.app.InstrumentationRegistry
+import androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry
+import androidx.test.runner.lifecycle.Stage
 import com.hienthai.fastowin.state.AppNotification
 import com.hienthai.fastowin.state.AppNotificationDestination
 import com.hienthai.fastowin.state.AppNotificationKind
@@ -60,7 +63,7 @@ class NavigationHeaderUiTest {
             }
         }
 
-        pressBack()
+        pressSystemBack()
 
         composeRule.runOnIdle { assertTrue(wentBack) }
     }
@@ -128,14 +131,24 @@ class NavigationHeaderUiTest {
             }
         }
 
-        pressBack()
+        pressSystemBack()
 
         composeRule.onNodeWithText("Rời trận?").assertIsDisplayed()
         composeRule.onNodeWithText("TIẾP TỤC CHƠI").performClick()
         composeRule.runOnIdle { assertTrue(!exited) }
 
-        pressBack()
+        pressSystemBack()
         composeRule.onNodeWithText("RỜI TRẬN").performClick()
         composeRule.runOnIdle { assertTrue(exited) }
+    }
+}
+
+private fun pressSystemBack() {
+    val instrumentation = InstrumentationRegistry.getInstrumentation()
+    instrumentation.runOnMainSync {
+        val activity = ActivityLifecycleMonitorRegistry.getInstance()
+            .getActivitiesInStage(Stage.RESUMED)
+            .single() as ComponentActivity
+        activity.onBackPressedDispatcher.onBackPressed()
     }
 }

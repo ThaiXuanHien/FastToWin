@@ -1914,7 +1914,7 @@ private fun AccountSessionsDialog(
             label = "ĐÓNG",
             onClick = onDismiss,
             enabled = !isLoading,
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth().testTag("account_sessions_close"),
             style = ArcadeActionStyle.PRIMARY
         )
     }

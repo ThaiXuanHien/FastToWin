@@ -359,8 +359,8 @@ class CriticalFlowsUiTest {
 
         assertTrue(composeRule.onAllNodesWithText("Mặt bài").fetchSemanticsNodes().isNotEmpty())
         composeRule.onNodeWithText("Bàn số").assertIsDisplayed()
-        composeRule.onNodeWithTag("shop_tab:EMOJI").assertIsDisplayed()
-        composeRule.onNodeWithText("Gem").performClick()
+        composeRule.onNodeWithTag("shop_tab:EMOJI").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithTag("shop_tab:GEMS").performScrollTo().assertIsDisplayed().performClick()
         composeRule.onNodeWithText("Kho Gem").assertIsDisplayed()
         composeRule.onNodeWithText("Gói Tân binh").assertIsDisplayed()
         composeRule.onNodeWithText("Sandbox").performClick()
@@ -380,8 +380,8 @@ class CriticalFlowsUiTest {
         }
 
         composeRule.onNodeWithTag("create_room_open").performClick()
-        composeRule.onNodeWithText("Đấu thường").performClick()
-        composeRule.onNodeWithText("Cổ điển").performClick()
+        composeRule.onNodeWithTag("match_type:CASUAL").performClick()
+        composeRule.onNodeWithTag("game_mode:ORDER").performClick()
         composeRule.onNodeWithTag("create_room_name").performTextInput("Phòng của Hiền")
         composeRule.onNodeWithTag("create_room_privacy_toggle").performClick()
         composeRule.onNodeWithTag("create_room_password").performTextInput("12345678")
@@ -403,8 +403,8 @@ class CriticalFlowsUiTest {
         }
 
         composeRule.onNodeWithTag("create_room_open").performClick()
-        composeRule.onNodeWithText("Đấu thường").performClick()
-        composeRule.onNodeWithText("Cổ điển").performClick()
+        composeRule.onNodeWithTag("match_type:CASUAL").performClick()
+        composeRule.onNodeWithTag("game_mode:ORDER").performClick()
         composeRule.onNodeWithTag("create_room_name").performTextInput("Phòng công khai")
         composeRule.onNodeWithTag("create_room_submit").performClick()
 
@@ -681,8 +681,12 @@ class CriticalFlowsUiTest {
             }
         }
 
-        composeRule.onNodeWithText("Mời đấu lại").assertIsEnabled().performClick()
-        composeRule.onNodeWithText("Đang gửi...").assertIsNotEnabled()
+        composeRule.onNodeWithTag("result_rematch_action")
+            .performScrollTo()
+            .assertIsDisplayed()
+            .assertIsEnabled()
+            .performClick()
+        composeRule.onNodeWithTag("result_rematch_action").assertIsNotEnabled()
 
         composeRule.runOnIdle {
             state.value = state.value.copy(
@@ -690,7 +694,7 @@ class CriticalFlowsUiTest {
                 isRematchRequestedByMe = true
             )
         }
-        composeRule.onNodeWithText("ĐÃ MỜI").assertIsNotEnabled()
+        composeRule.onNodeWithTag("result_rematch_action").assertIsNotEnabled()
 
         composeRule.runOnIdle {
             state.value = state.value.copy(
@@ -698,9 +702,9 @@ class CriticalFlowsUiTest {
                 rematchNotice = "Đối thủ đã từ chối đấu lại."
             )
         }
-        composeRule.onNodeWithText("Mời đấu lại").assertIsEnabled()
+        composeRule.onNodeWithTag("result_rematch_action").assertIsEnabled()
 
-        composeRule.onNodeWithText("Mời đấu lại").performClick()
+        composeRule.onNodeWithTag("result_rematch_action").performClick()
         composeRule.runOnIdle {
             state.value = state.value.copy(
                 isRematchActionPending = false,
@@ -708,7 +712,7 @@ class CriticalFlowsUiTest {
                 rematchExpiresAtEpochMillis = Long.MAX_VALUE
             )
         }
-        composeRule.onNodeWithText("ĐÃ MỜI").assertIsNotEnabled()
+        composeRule.onNodeWithTag("result_rematch_action").assertIsNotEnabled()
 
         composeRule.runOnIdle {
             state.value = state.value.copy(
@@ -718,7 +722,7 @@ class CriticalFlowsUiTest {
             )
         }
         composeRule.onNodeWithText("Yêu cầu đấu lại đã hết thời gian.").assertIsDisplayed()
-        composeRule.onNodeWithText("Mời đấu lại").assertIsEnabled()
+        composeRule.onNodeWithTag("result_rematch_action").assertIsEnabled()
     }
 
     @Test

@@ -746,21 +746,21 @@ private fun RematchCard(
                 !state.hasOpponent -> ArcadeActionButton(
                     label = "ĐỐI THỦ ĐÃ RỜI",
                     onClick = {},
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth().testTag("result_rematch_action"),
                     style = ArcadeActionStyle.OUTLINE,
                     enabled = false
                 )
                 state.isRematchRequestedByOpponent -> ArcadeActionButton(
                     label = if (state.isRematchActionPending) "ĐANG XỬ LÝ..." else "ĐANG CHỜ PHẢN HỒI",
                     onClick = {},
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth().testTag("result_rematch_action"),
                     style = ArcadeActionStyle.OUTLINE,
                     enabled = false
                 )
                 state.isRematchRequestedByMe -> ArcadeActionButton(
                     label = "ĐÃ MỜI",
                     onClick = {},
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth().testTag("result_rematch_action"),
                     icon = Icons.Rounded.RestartAlt,
                     style = ArcadeActionStyle.OUTLINE,
                     enabled = false
@@ -769,7 +769,7 @@ private fun RematchCard(
                     label = if (state.isRematchActionPending) "Đang gửi..." else "Mời đấu lại",
                     onClick = onRematch,
                     icon = Icons.Rounded.RestartAlt,
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth().testTag("result_rematch_action"),
                     style = ArcadeActionStyle.GOLD,
                     enabled = !state.isRematchActionPending
                 )

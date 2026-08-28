@@ -208,7 +208,7 @@ class ArcadeProfilePracticeUiTest {
             .performScrollTo()
             .performSemanticsAction(SemanticsActions.OnClick)
         composeRule.onNodeWithText("Android • Thiết bị này").performScrollTo().assertIsDisplayed()
-        composeRule.onNodeWithText("Đóng").performClick()
+        composeRule.onNodeWithTag("account_sessions_close").performClick()
 
         composeRule.onNodeWithTag("profile_security")
             .performScrollTo()

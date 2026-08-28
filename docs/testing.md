@@ -27,6 +27,8 @@ Lệnh `connectedDevDebugAndroidTest` chạy bộ UI test trên tất cả thi�
 & "$env:LOCALAPPDATA\Android\Sdk\platform-tools\adb.exe" devices -l
 ```
 
+Với nhiều emulator Android 17, nên chạy lần lượt từng máy để tránh lỗi mất `window focus` của Espresso khi các emulator cùng hoạt động.
+
 ## Phạm vi hồi quy chính
 
 - Đăng nhập và nhập liệu bằng bàn phím.
@@ -40,10 +42,10 @@ Lệnh `connectedDevDebugAndroidTest` chạy bộ UI test trên tất cả thi�
 
 ## Kết quả gần nhất
 
-Ngày 23/08/2026, toàn bộ UI test chạy thành công trên hai emulator Android 17:
+Ngày 28/08/2026, toàn bộ bộ hồi quy tự động chạy thành công:
 
-- Pixel 9 Pro XL: 39/39 test đạt, không skip.
-- Pixel 10a: 39/39 test đạt, không skip.
-- Shared tests, server tests và APK dev/debug đều build thành công.
+- Pixel 10a Android 17: 82/82 UI test đạt, không skip.
+- Shared và server: 136/136 test đạt.
+- APK dev/debug và APK UI test đều build thành công.
 
 Sau khi thay đổi test, luôn chạy lại toàn bộ các lệnh phía trên. Các luồng WebSocket/PostgreSQL thực tế trên hai tài khoản và bản iOS vẫn cần smoke test thủ công trước mỗi bản phát hành.
