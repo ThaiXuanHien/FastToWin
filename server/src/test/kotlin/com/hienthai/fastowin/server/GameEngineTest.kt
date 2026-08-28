@@ -396,6 +396,36 @@ class GameEngineTest {
     }
 
     @Test
+    fun `ranked room keeps match type and requires an account`() = runTest {
+        val engine = GameEngine()
+        val guest = engine.connectGuest("Guest", null)
+        val guestMessages = engine.handle(
+            guest.playerId,
+            ClientMessage.CreateRoom(
+                "Guest ranked room",
+                "",
+                ProtocolGameMode.ORDER,
+                MatchType.RANKED
+            )
+        ).map(Delivery::message)
+        assertEquals("ACCOUNT_REQUIRED", guestMessages.filterIsInstance<ServerMessage.Error>().single().code)
+
+        val accountId = UUID.randomUUID()
+        engine.connectAccount(AuthenticatedAccount(accountId, "Ranked host"))
+        val created = engine.handle(
+            accountId.toString(),
+            ClientMessage.CreateRoom(
+                "Ranked room",
+                "",
+                ProtocolGameMode.ORDER,
+                MatchType.RANKED
+            )
+        ).map(Delivery::message).filterIsInstance<ServerMessage.RoomCreated>().single().game
+
+        assertEquals(MatchType.RANKED, created.matchType)
+    }
+
+    @Test
     fun `casual and ranked matchmaking queues never cross match`() = runTest {
         val firstId = UUID.randomUUID()
         val secondId = UUID.randomUUID()
@@ -498,13 +528,17 @@ class GameEngineTest {
         assertEquals(listOf(1), restored.selectedNumbers)
         assertEquals(2, restored.currentTarget)
         assertEquals(10, restored.players.single { it.id == guest.playerId }.score)
+        assertEquals(1, restored.players.single { it.id == host.playerId }.wrongSelections)
         assertEquals(created.roomId, resumedGuest.currentGame?.roomId)
 
         val duplicateAfterRestart = restartedEngine.handle(
             host.playerId,
             ClientMessage.SelectNumber(created.roomId, 50, "stable-wrong-request")
         ).map(Delivery::message)
-        assertEquals(rejectedBeforeRestart, duplicateAfterRestart)
+        assertEquals(
+            rejectedBeforeRestart.filterIsInstance<ServerMessage.Error>(),
+            duplicateAfterRestart.filterIsInstance<ServerMessage.Error>()
+        )
 
         val continued = restartedEngine.handle(
             host.playerId,
@@ -1031,13 +1065,36 @@ class GameEngineTest {
         }
 
         val messages = (hostResult.await() + guestResult.await()).map(Delivery::message)
-        val accepted = messages.filterIsInstance<ServerMessage.GameStateUpdated>().single()
+        val updates = messages.filterIsInstance<ServerMessage.GameStateUpdated>()
+        val accepted = updates.single { it.selectionAccepted }
+        val rejectedUpdate = updates.single { !it.selectionAccepted }
         val rejected = messages.filterIsInstance<ServerMessage.Error>().single()
 
         assertEquals(2, accepted.game.currentTarget)
         assertEquals(10, accepted.game.players.sumOf { it.score })
+        assertEquals(1, rejectedUpdate.game.players.sumOf { it.wrongSelections })
         assertEquals("WRONG_NUMBER", rejected.code)
         assertNotEquals(accepted.selectedByPlayerId, "")
+    }
+
+    @Test
+    fun `wrong selection broadcasts updated mistake count immediately in classic mode`() = runTest {
+        val fixture = createRoomFixture()
+        startRoom(fixture.engine, fixture.hostId, fixture.guestId, fixture.roomId)
+
+        val messages = fixture.engine.handle(
+            fixture.hostId,
+            ClientMessage.SelectNumber(fixture.roomId, 2, "wrong-classic")
+        ).map(Delivery::message)
+
+        val update = messages.filterIsInstance<ServerMessage.GameStateUpdated>().single()
+        val host = update.game.players.single { it.id == fixture.hostId }
+        assertFalse(update.selectionAccepted)
+        assertEquals(1, host.wrongSelections)
+        assertEquals(
+            "WRONG_NUMBER",
+            messages.filterIsInstance<ServerMessage.Error>().single().code
+        )
     }
 
     @Test
@@ -1184,13 +1241,10 @@ class GameEngineTest {
         val finishedDelivery = leaveDeliveries.single { it.message is ServerMessage.GameFinished }
         val finished = (finishedDelivery.message as ServerMessage.GameFinished).game
         assertEquals(guest.playerId, finished.winnerPlayerId)
-        assertEquals(setOf(guest.playerId), finishedDelivery.recipients)
-        assertEquals(
-            setOf(host.playerId),
-            leaveDeliveries.single { it.message is ServerMessage.RoomClosed }.recipients
-        )
+        assertEquals(setOf(host.playerId, guest.playerId), finishedDelivery.recipients)
+        assertTrue(leaveDeliveries.none { it.message is ServerMessage.RoomClosed })
         assertEquals(com.hienthai.fastowin.protocol.RoomPhase.FINISHED, repository.loadAll().single().phase)
-        assertEquals(setOf(host.playerId), repository.loadAll().single().departedPlayerIds)
+        assertTrue(repository.loadAll().single().departedPlayerIds.isEmpty())
         val saved = savedMatches.single()
         assertEquals(guest.playerId, saved.winnerPlayerId)
         assertEquals(MatchOutcome.LOSS, saved.players.single { it.playerId == host.playerId }.outcome)
@@ -1204,15 +1258,22 @@ class GameEngineTest {
 
         val hostReconnect = engine.connectGuest("Host", host.resumeToken)
         val guestReconnect = engine.connectGuest("Guest", guest.resumeToken)
-        assertEquals(null, hostReconnect.currentGame)
+        assertEquals(room.roomId, hostReconnect.currentGame?.roomId)
         assertEquals(room.roomId, guestReconnect.currentGame?.roomId)
 
-        val rematchRejected = engine.handle(
+        val rematchRequested = engine.handle(
             guest.playerId,
             ClientMessage.RespondRematch(room.roomId, accept = true)
-        ).map(Delivery::message).filterIsInstance<ServerMessage.Error>().single()
-        assertEquals("OPPONENT_LEFT", rematchRejected.code)
+        ).map(Delivery::message).filterIsInstance<ServerMessage.RematchStatus>().single()
+        assertEquals(RematchEvent.REQUESTED, rematchRequested.event)
+        val restarted = engine.handle(
+            host.playerId,
+            ClientMessage.RespondRematch(room.roomId, accept = true)
+        ).map(Delivery::message).filterIsInstance<ServerMessage.GameStarted>().single()
+        assertEquals(com.hienthai.fastowin.protocol.RoomPhase.PLAYING, restarted.game.phase)
 
+        engine.handle(host.playerId, ClientMessage.LeaveRoom(room.roomId))
+        engine.handle(host.playerId, ClientMessage.LeaveRoom(room.roomId))
         engine.handle(guest.playerId, ClientMessage.LeaveRoom(room.roomId))
         assertTrue(repository.loadAll().isEmpty())
     }
@@ -1286,7 +1347,10 @@ class GameEngineTest {
             host.playerId,
             ClientMessage.SelectNumber(room.roomId, 50, "same-wrong-request")
         )
-        assertEquals(firstWrong.map(Delivery::message), duplicateWrong.map(Delivery::message))
+        assertEquals(
+            firstWrong.map(Delivery::message).filterIsInstance<ServerMessage.Error>(),
+            duplicateWrong.map(Delivery::message).filterIsInstance<ServerMessage.Error>()
+        )
 
         repeat(50) { index ->
             engine.handle(
@@ -1326,8 +1390,10 @@ class GameEngineTest {
             engine.handle(host.playerId, ClientMessage.SelectNumber(room.roomId, index + 1, "round-one-$index"))
         }
 
-        val waiting = engine.handle(host.playerId, ClientMessage.RequestRematch(room.roomId))
-            .map(Delivery::message).filterIsInstance<ServerMessage.RematchStatus>().single().game
+        val rematchInvitation = engine.handle(host.playerId, ClientMessage.RequestRematch(room.roomId))
+            .single { it.message is ServerMessage.RematchStatus }
+        assertEquals(setOf(host.playerId, guest.playerId), rematchInvitation.recipients)
+        val waiting = (rematchInvitation.message as ServerMessage.RematchStatus).game
         assertEquals(listOf(host.playerId), waiting.rematchRequestedPlayerIds)
         assertEquals(com.hienthai.fastowin.protocol.RoomPhase.FINISHED, waiting.phase)
 

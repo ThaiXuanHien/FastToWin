@@ -22,7 +22,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.layout.ContentScale
 import com.hienthai.fastowin.protocol.ShopItem
@@ -37,6 +39,11 @@ import com.hienthai.fastowin.ui.theme.ArcadePalette
 import com.hienthai.fastowin.ui.components.FastToWinHeader
 import com.hienthai.fastowin.ui.components.ArcadeFeatureHero
 import com.hienthai.fastowin.ui.components.ArcadeEmptyState
+import com.hienthai.fastowin.ui.components.ArcadeActionButton
+import com.hienthai.fastowin.ui.components.ArcadeActionStyle
+import com.hienthai.fastowin.ui.components.ArcadePanel
+import com.hienthai.fastowin.ui.components.ArcadeScrollableSegmentedControl
+import com.hienthai.fastowin.ui.layout.ResponsiveScreen
 import com.hienthai.fastowin.resources.Res
 import com.hienthai.fastowin.resources.arcade_shop_chest
 import org.jetbrains.compose.resources.painterResource
@@ -86,69 +93,71 @@ fun ShopScreen(
             )
         }
     ) { innerPadding ->
-        Column(
-            modifier = Modifier.padding(innerPadding).fillMaxSize(),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            ArcadeFeatureHero(
-                illustration = Res.drawable.arcade_shop_chest,
-                title = "Kho báu Arcade",
-                subtitle = "Mở khóa diện mạo mới và tạo dấu ấn riêng trong mỗi trận đấu.",
-                modifier = Modifier.padding(horizontal = 16.dp),
-                accent = ArcadePalette.Gold400
-            )
-            ScrollableTabRow(
-                selectedTabIndex = tabs.indexOfFirst { it.first == selectedTab },
-                edgePadding = 16.dp,
-                containerColor = androidx.compose.ui.graphics.Color.Transparent,
-                divider = {}
+        ResponsiveScreen(
+            modifier = Modifier.padding(innerPadding),
+            maxContentWidth = 920.dp,
+            applySafeDrawingInsets = false
+        ) { contentModifier ->
+            Column(
+                modifier = contentModifier,
+                verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                tabs.forEach { (type, label) ->
-                    Tab(
-                        selected = selectedTab == type,
-                        onClick = { selectedTab = type },
-                        text = { Text(label) }
-                    )
-                }
-            }
-            
-            if (selectedTab == "GEMS") {
-                GemStorePreview(
-                    packages = gemPackages,
-                    billingState = billingState,
-                    isCatalogLoading = isCatalogLoading,
-                    isAccount = isAccount,
-                    onBuy = onBuyGems,
-                    modifier = Modifier.weight(1f)
+                ArcadeFeatureHero(
+                    illustration = Res.drawable.arcade_shop_chest,
+                    title = if (selectedTab == "GEMS") "Kho Gem" else "Kho báu Arcade",
+                    subtitle = if (selectedTab == "GEMS") {
+                        "Gem mở khóa vật phẩm hiếm và đồng bộ an toàn qua Store."
+                    } else {
+                        "Mở khóa diện mạo mới và tạo dấu ấn riêng trong mỗi trận đấu."
+                    },
+                    accent = if (selectedTab == "GEMS") ArcadePalette.Mint400 else ArcadePalette.Gold400
                 )
-            } else {
-                val items = SHOP_ITEMS.filter { it.type.name == selectedTab }
-                if (items.isEmpty()) {
-                    ArcadeEmptyState(
-                        illustration = Res.drawable.arcade_shop_chest,
-                        title = "Đang nhập hàng",
-                        description = "Vật phẩm mới sẽ sớm xuất hiện tại quầy này.",
+                ArcadeScrollableSegmentedControl(
+                    labels = tabs.map { it.second },
+                    selectedIndex = tabs.indexOfFirst { it.first == selectedTab }.coerceAtLeast(0),
+                    onSelected = { index -> selectedTab = tabs[index].first },
+                    modifier = Modifier.fillMaxWidth().testTag("shop_category_tabs"),
+                    itemTestTag = { index -> "shop_tab:${tabs[index].first}" }
+                )
+
+                if (selectedTab == "GEMS") {
+                    GemStorePreview(
+                        packages = gemPackages,
+                        billingState = billingState,
+                        isCatalogLoading = isCatalogLoading,
+                        isAccount = isAccount,
+                        onBuy = onBuyGems,
                         modifier = Modifier.weight(1f)
                     )
                 } else {
-                    LazyVerticalGrid(
-                        columns = GridCells.Adaptive(150.dp),
-                        contentPadding = PaddingValues(16.dp),
-                        horizontalArrangement = Arrangement.spacedBy(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(16.dp),
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        items(items) { item ->
-                            val isOwned = item.id in ownedIds
-                            val isEquipped = item.id in equippedIds
-                            ShopItemCard(
-                                item = item,
-                                isOwned = isOwned,
-                                isEquipped = isEquipped,
-                                canAfford = gold >= item.price,
-                                onBuy = { onBuy(item.id) },
-                                onEquip = { onEquip(item.id) }
-                            )
+                    val items = SHOP_ITEMS.filter { it.type.name == selectedTab }
+                    if (items.isEmpty()) {
+                        ArcadeEmptyState(
+                            illustration = Res.drawable.arcade_shop_chest,
+                            title = "Đang nhập hàng",
+                            description = "Vật phẩm mới sẽ sớm xuất hiện tại quầy này.",
+                            modifier = Modifier.weight(1f)
+                        )
+                    } else {
+                        LazyVerticalGrid(
+                            columns = GridCells.Adaptive(180.dp),
+                            contentPadding = PaddingValues(vertical = 4.dp, horizontal = 0.dp),
+                            horizontalArrangement = Arrangement.spacedBy(14.dp),
+                            verticalArrangement = Arrangement.spacedBy(14.dp),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            items(items) { item ->
+                                val isOwned = item.id in ownedIds
+                                val isEquipped = item.id in equippedIds
+                                ShopItemCard(
+                                    item = item,
+                                    isOwned = isOwned,
+                                    isEquipped = isEquipped,
+                                    canAfford = gold >= item.price,
+                                    onBuy = { onBuy(item.id) },
+                                    onEquip = { onEquip(item.id) }
+                                )
+                            }
                         }
                     }
                 }
@@ -168,10 +177,10 @@ private fun GemStorePreview(
 ) {
     LazyColumn(
         modifier = modifier.fillMaxWidth(),
-        contentPadding = PaddingValues(16.dp),
+        contentPadding = PaddingValues(vertical = 4.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        item { Text("Kho Gem", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold) }
+        item { Text("Chọn gói Gem", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black) }
         item {
             Text("Gem mở khóa vật phẩm hiếm. Giá được hiển thị theo tài khoản Store của bạn.", color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
@@ -188,34 +197,13 @@ private fun GemStorePreview(
         listItems(packages, key = GemPackageSnapshot::productId) { gemPackage ->
             val price = billingState.prices[gemPackage.productId]?.formattedPrice ?: "Chưa có giá"
             val isPurchasing = billingState.purchasingProductId == gemPackage.productId
-            ElevatedCard(modifier = Modifier.fillMaxWidth()) {
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(16.dp).testTag("gem_package_${gemPackage.productId}"),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    Icon(Icons.Default.Payments, contentDescription = null, tint = GemColor, modifier = Modifier.size(32.dp))
-                    Column(Modifier.weight(1f)) {
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Text(gemPackage.title, fontWeight = FontWeight.Bold)
-                            if (gemPackage.featured) {
-                                SuggestionChip(onClick = {}, enabled = false, label = { Text("Phổ biến") })
-                            }
-                        }
-                        Text("${gemPackage.gems} Gem", color = GemColor, fontWeight = FontWeight.SemiBold)
-                    }
-                    Button(
-                        onClick = { onBuy(gemPackage.productId) },
-                        enabled = isAccount && billingState.isReady && billingState.purchasingProductId == null
-                    ) {
-                        if (isPurchasing) {
-                            CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
-                            Spacer(Modifier.width(6.dp))
-                        }
-                        Text(if (isPurchasing) "Đang xử lý" else price)
-                    }
-                }
-            }
+            GemPackageCard(
+                gemPackage = gemPackage,
+                price = price,
+                isPurchasing = isPurchasing,
+                enabled = isAccount && billingState.isReady && billingState.purchasingProductId == null,
+                onBuy = { onBuy(gemPackage.productId) }
+            )
         }
         billingState.notice?.let { notice ->
             item { Text(notice, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary) }
@@ -234,6 +222,84 @@ private fun GemStorePreview(
 }
 
 @Composable
+private fun GemPackageCard(
+    gemPackage: GemPackageSnapshot,
+    price: String,
+    isPurchasing: Boolean,
+    enabled: Boolean,
+    onBuy: () -> Unit
+) {
+    ArcadePanel(
+        modifier = Modifier.fillMaxWidth().testTag("gem_package_${gemPackage.productId}"),
+        accent = if (gemPackage.featured) ArcadePalette.Gold500 else ArcadePalette.Mint400
+    ) {
+        BoxWithConstraints(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
+            val stackContent = maxWidth < 410.dp || LocalDensity.current.fontScale >= 1.35f
+            val packageInfo: @Composable () -> Unit = {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Surface(
+                        modifier = Modifier.size(52.dp),
+                        shape = RoundedCornerShape(16.dp),
+                        color = ArcadePalette.Mint900,
+                        border = BorderStroke(1.dp, ArcadePalette.Mint400)
+                    ) {
+                        Icon(
+                            Icons.Default.Payments,
+                            contentDescription = null,
+                            tint = GemColor,
+                            modifier = Modifier.padding(12.dp)
+                        )
+                    }
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                        Text(gemPackage.title, fontWeight = FontWeight.Black, maxLines = 2)
+                        Text("${gemPackage.gems} Gem", color = GemColor, fontWeight = FontWeight.Bold)
+                        if (gemPackage.featured) {
+                            Text(
+                                "PHỔ BIẾN",
+                                color = ArcadePalette.Gold500,
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Black
+                            )
+                        }
+                    }
+                }
+            }
+            if (stackContent) {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    packageInfo()
+                    ArcadeActionButton(
+                        label = if (isPurchasing) "ĐANG XỬ LÝ" else price,
+                        onClick = onBuy,
+                        enabled = enabled,
+                        style = if (gemPackage.featured) ArcadeActionStyle.GOLD else ArcadeActionStyle.PRIMARY,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            } else {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    Box(modifier = Modifier.weight(1f)) { packageInfo() }
+                    ArcadeActionButton(
+                        label = if (isPurchasing) "ĐANG XỬ LÝ" else price,
+                        onClick = onBuy,
+                        enabled = enabled,
+                        style = if (gemPackage.featured) ArcadeActionStyle.GOLD else ArcadeActionStyle.PRIMARY,
+                        modifier = Modifier.widthIn(min = 132.dp, max = 178.dp)
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
 private fun ShopItemCard(
     item: ShopItem,
     isOwned: Boolean,
@@ -242,22 +308,24 @@ private fun ShopItemCard(
     onBuy: () -> Unit,
     onEquip: () -> Unit
 ) {
-    ElevatedCard(
-        modifier = Modifier.fillMaxWidth().aspectRatio(0.8f),
-        colors = CardDefaults.elevatedCardColors(
-            containerColor = if (isEquipped) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface
-        )
+    ArcadePanel(
+        modifier = Modifier.fillMaxWidth().heightIn(min = 320.dp),
+        accent = when {
+            isEquipped -> ArcadePalette.Mint400
+            isOwned -> ArcadePalette.Blue300
+            else -> ArcadePalette.Gold500
+        }
     ) {
         Column(
-            modifier = Modifier.padding(8.dp).fillMaxSize(),
+            modifier = Modifier.padding(10.dp).fillMaxSize(),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.SpaceBetween
         ) {
             Box(
                 modifier = Modifier
-                    .weight(1f)
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(8.dp))
+                    .height(174.dp)
+                    .clip(RoundedCornerShape(14.dp))
                     .background(MaterialTheme.colorScheme.surfaceVariant),
                 contentAlignment = Alignment.Center
             ) {
@@ -265,36 +333,50 @@ private fun ShopItemCard(
             }
             
             Spacer(Modifier.height(8.dp))
-            Text(item.name, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium, maxLines = 1)
+            Text(
+                item.name,
+                fontWeight = FontWeight.Black,
+                style = MaterialTheme.typography.bodyLarge,
+                maxLines = 2,
+                textAlign = TextAlign.Center
+            )
             Spacer(Modifier.height(8.dp))
             
             if (isOwned) {
                 if (isEquipped) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.CheckCircle, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
-                        Spacer(Modifier.width(4.dp))
-                        Text("Đang dùng", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+                    Surface(
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+                        shape = RoundedCornerShape(13.dp),
+                        color = ArcadePalette.Mint900,
+                        border = BorderStroke(1.dp, ArcadePalette.Mint400)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                            horizontalArrangement = Arrangement.Center,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(Icons.Default.CheckCircle, contentDescription = null, tint = ArcadePalette.Mint400, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text("ĐANG TRANG BỊ", style = MaterialTheme.typography.labelMedium, color = ArcadePalette.Mint100, fontWeight = FontWeight.Black)
+                        }
                     }
                 } else {
-                    Button(onClick = onEquip, modifier = Modifier.fillMaxWidth().height(36.dp), contentPadding = PaddingValues(0.dp)) {
-                        Text("Trang bị", style = MaterialTheme.typography.labelMedium)
-                    }
+                    ArcadeActionButton(
+                        label = "TRANG BỊ",
+                        onClick = onEquip,
+                        style = ArcadeActionStyle.PRIMARY,
+                        modifier = Modifier.fillMaxWidth()
+                    )
                 }
             } else {
-                Button(
+                ArcadeActionButton(
+                    label = item.price.toString(),
                     onClick = onBuy,
-                    modifier = Modifier.fillMaxWidth().height(36.dp),
-                    contentPadding = PaddingValues(0.dp),
                     enabled = canAfford,
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = if (canAfford) ArcadePalette.Gold400 else MaterialTheme.colorScheme.surfaceVariant,
-                        contentColor = if (canAfford) ArcadePalette.Navy900 else MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                ) {
-                    Icon(Icons.Default.MonetizationOn, contentDescription = null, modifier = Modifier.size(16.dp))
-                    Spacer(Modifier.width(4.dp))
-                    Text(item.price.toString(), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
-                }
+                    icon = Icons.Default.MonetizationOn,
+                    style = ArcadeActionStyle.GOLD,
+                    modifier = Modifier.fillMaxWidth()
+                )
             }
         }
     }

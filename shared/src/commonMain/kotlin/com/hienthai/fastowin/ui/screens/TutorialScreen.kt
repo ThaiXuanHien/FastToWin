@@ -21,14 +21,11 @@ import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Groups
 import androidx.compose.material.icons.rounded.LooksOne
 import androidx.compose.material.icons.rounded.Security
-import androidx.compose.material3.Button
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -37,14 +34,19 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import com.hienthai.fastowin.ui.components.ArcadeActionButton
+import com.hienthai.fastowin.ui.components.ArcadeActionStyle
+import com.hienthai.fastowin.ui.components.ArcadeBackdrop
+import com.hienthai.fastowin.ui.components.ArcadeIconHero
+import com.hienthai.fastowin.ui.components.ArcadePanel
 import com.hienthai.fastowin.ui.components.SystemBackHandler
 import com.hienthai.fastowin.ui.layout.ResponsiveScreen
+import com.hienthai.fastowin.ui.theme.ArcadePalette
 import kotlinx.coroutines.launch
 
 private data class TutorialPage(
@@ -58,20 +60,20 @@ private val tutorialPages = listOf(
     TutorialPage(
         icon = Icons.Rounded.LooksOne,
         title = "Tìm số thật nhanh",
-        description = "Quan sát bàn 50 số và chạm lần lượt từ 1 đến 50. Số cần tìm luôn được hiển thị phía trên bàn.",
-        hint = "Chạm sai không làm mất lượt, nhưng được ghi vào thống kê độ chính xác."
+        description = "Chạm lần lượt từ 1 đến 50. Mục tiêu luôn nổi bật phía trên bàn.",
+        hint = "Chạm sai được ghi vào thống kê độ chính xác."
     ),
     TutorialPage(
         icon = Icons.Rounded.Groups,
         title = "Cùng một mục tiêu",
-        description = "Hai người chơi luôn nhìn cùng số mục tiêu. Khi một người chọn đúng, số đó bị khóa ở cả hai máy và mục tiêu chuyển sang số tiếp theo.",
-        hint = "Người phản ứng nhanh hơn sẽ nhận 10 điểm cho lượt đó."
+        description = "Hai người cùng nhìn một số. Người nhanh hơn ghi điểm và số bị khóa cả hai bên.",
+        hint = "Mỗi lượt đúng nhận 10 điểm."
     ),
     TutorialPage(
         icon = Icons.Rounded.Security,
         title = "Chọn cách bạn muốn chơi",
-        description = "Luyện tập hoạt động offline. Trận trong phòng dùng máy chủ để đồng bộ điểm, còn đấu xếp hạng sẽ làm thay đổi Elo.",
-        hint = "Bạn có thể xem lại hướng dẫn bất kỳ lúc nào trong Cài đặt."
+        description = "Luyện tập offline, đấu thường hoặc xếp hạng ảnh hưởng Elo.",
+        hint = "Có thể xem lại hướng dẫn trong Cài đặt."
     )
 )
 
@@ -95,7 +97,7 @@ fun TutorialScreen(
         }
     }
 
-    Surface(modifier = modifier.fillMaxSize(), color = Color.Transparent) {
+    ArcadeBackdrop(modifier = modifier.fillMaxSize()) {
         ResponsiveScreen(maxContentWidth = 680.dp) { contentModifier ->
             Column(
                 modifier = contentModifier.padding(vertical = 16.dp),
@@ -123,50 +125,34 @@ fun TutorialScreen(
                         modifier = Modifier
                             .fillMaxSize()
                             .verticalScroll(rememberScrollState()),
-                        horizontalAlignment = Alignment.CenterHorizontally
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
                     ) {
-                        Spacer(Modifier.height(24.dp))
-                        Surface(
-                            modifier = Modifier.size(136.dp),
-                            shape = CircleShape,
-                            color = MaterialTheme.colorScheme.primaryContainer
-                        ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Icon(
-                                    page.icon,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(68.dp),
-                                    tint = MaterialTheme.colorScheme.onPrimaryContainer
-                                )
+                        ArcadeIconHero(
+                            kicker = "BƯỚC ${pageIndex + 1} / ${tutorialPages.size}",
+                            title = page.title,
+                            subtitle = page.description,
+                            icon = page.icon,
+                            accent = when (pageIndex) {
+                                0 -> ArcadePalette.Violet600
+                                1 -> ArcadePalette.Coral600
+                                else -> ArcadePalette.Mint600
                             }
-                        }
-                        Spacer(Modifier.height(32.dp))
-                        Text(
-                            page.title,
-                            style = MaterialTheme.typography.headlineMedium,
-                            fontWeight = FontWeight.Black,
-                            textAlign = TextAlign.Center
                         )
-                        Spacer(Modifier.height(12.dp))
-                        Text(
-                            page.description,
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            textAlign = TextAlign.Center
-                        )
-                        Spacer(Modifier.height(20.dp))
-                        Surface(
-                            shape = RoundedCornerShape(18.dp),
-                            color = MaterialTheme.colorScheme.surfaceContainer
+                        Spacer(Modifier.height(16.dp))
+                        ArcadePanel(
+                            modifier = Modifier.fillMaxWidth(),
+                            accent = ArcadePalette.Gold500
                         ) {
                             Text(
                                 page.hint,
                                 modifier = Modifier.fillMaxWidth().padding(16.dp),
                                 textAlign = TextAlign.Center,
-                                style = MaterialTheme.typography.bodyMedium
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.SemiBold
                             )
                         }
-                        Spacer(Modifier.height(32.dp))
+                        Spacer(Modifier.height(16.dp))
                     }
                 }
 
@@ -194,7 +180,8 @@ fun TutorialScreen(
                     },
                     label = "TutorialButtonLabel"
                 ) { isLastPage ->
-                    Button(
+                    ArcadeActionButton(
+                        label = if (isLastPage) "BẮT ĐẦU CHƠI" else "TIẾP TỤC",
                         onClick = {
                             if (isLastPage) {
                                 onComplete()
@@ -206,15 +193,9 @@ fun TutorialScreen(
                         },
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(54.dp)
                             .testTag("tutorial_continue"),
-                        shape = RoundedCornerShape(18.dp)
-                    ) {
-                        Text(
-                            if (isLastPage) "Bắt đầu chơi" else "Tiếp tục",
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
+                        style = ArcadeActionStyle.GOLD
+                    )
                 }
             }
         }

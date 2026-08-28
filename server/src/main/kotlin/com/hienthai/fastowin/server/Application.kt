@@ -122,7 +122,8 @@ fun Application.gameModule(
                     request.email,
                     request.password,
                     request.displayName,
-                    request.devicePlatform
+                    request.devicePlatform,
+                    request.gender
                 ),
                 successStatus = HttpStatusCode.Created
             )

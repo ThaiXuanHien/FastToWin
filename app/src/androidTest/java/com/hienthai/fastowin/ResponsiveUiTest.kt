@@ -28,6 +28,7 @@ import com.hienthai.fastowin.ui.theme.FastToWinTheme
 import org.junit.Rule
 import org.junit.Test
 import org.junit.Assert.assertTrue
+import kotlin.math.abs
 
 class ResponsiveUiTest {
     @get:Rule
@@ -52,7 +53,20 @@ class ResponsiveUiTest {
         }
 
         composeRule.onNodeWithTag("home_screen").assertExists()
-        composeRule.onNodeWithText("Luyện tập offline").performScrollTo().assertIsDisplayed()
+        val practiceCard = composeRule.onNodeWithTag("home_action:Luyện tập offline")
+        practiceCard.performScrollTo().assertIsDisplayed()
+
+        val practiceBounds = practiceCard.fetchSemanticsNode().boundsInRoot
+        val contentBounds = composeRule
+            .onNodeWithTag("home_action_content:Luyện tập offline", useUnmergedTree = true)
+            .fetchSemanticsNode()
+            .boundsInRoot
+        val subtitleBounds = composeRule
+            .onNodeWithText("Rèn tốc độ với bàn 50 số, không ảnh hưởng Elo")
+            .fetchSemanticsNode()
+            .boundsInRoot
+        assertTrue(subtitleBounds.bottom <= practiceBounds.bottom)
+        assertTrue(abs(contentBounds.center.y - practiceBounds.center.y) <= 1f)
     }
 
     @Test
@@ -75,6 +89,23 @@ class ResponsiveUiTest {
         val gemBounds = composeRule.onNodeWithTag("header_gem").fetchSemanticsNode().boundsInRoot
         val minimumGapPx = with(composeRule.density) { 4.dp.toPx() }
         assertTrue(gemBounds.left - goldBounds.right >= minimumGapPx)
+    }
+
+    @Test
+    fun home_primaryAndOutlineActionsUseFullWidthVerticalHierarchy() {
+        setViewportContent(width = 430.dp, height = 932.dp) {
+            TestResponsiveLobby()
+        }
+
+        val primary = composeRule.onNodeWithTag("home_action:Tạo phòng")
+        val secondary = composeRule.onNodeWithTag("home_action:Vào phòng")
+        primary.performScrollTo()
+        secondary.performScrollTo()
+
+        val primaryBounds = primary.fetchSemanticsNode().boundsInRoot
+        val secondaryBounds = secondary.fetchSemanticsNode().boundsInRoot
+        assertTrue(primaryBounds.bottom <= secondaryBounds.top)
+        assertTrue(abs(primaryBounds.width - secondaryBounds.width) <= 1f)
     }
 
     @Test
@@ -131,7 +162,7 @@ private fun TestResponsiveLobby() {
         onStartMatchmaking = { _, _ -> },
         onCancelMatchmaking = {},
         onOpenRoomBrowser = {},
-        onCreateRoom = { _, _ -> },
+        onCreateRoom = { _, _, _, _ -> },
         onJoinRoom = { _, _ -> },
         onLeaveRoom = {},
         onSetReady = {},

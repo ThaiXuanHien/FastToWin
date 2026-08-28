@@ -130,12 +130,12 @@ class NavigationHeaderUiTest {
 
         pressBack()
 
-        composeRule.onNodeWithText("Rời trận đấu?").assertIsDisplayed()
-        composeRule.onNodeWithText("Tiếp tục chơi").performClick()
+        composeRule.onNodeWithText("Rời trận?").assertIsDisplayed()
+        composeRule.onNodeWithText("TIẾP TỤC CHƠI").performClick()
         composeRule.runOnIdle { assertTrue(!exited) }
 
         pressBack()
-        composeRule.onNodeWithText("Rời trận").performClick()
+        composeRule.onNodeWithText("RỜI TRẬN").performClick()
         composeRule.runOnIdle { assertTrue(exited) }
     }
 }

@@ -112,6 +112,7 @@ data class GameState(
     val pendingRoomLinkListVersion: Long = 0,
     val currentRoomId: String? = null,
     val currentRoomName: String? = null,
+    val latestGameSequence: Long = -1L,
     val isRoomHost: Boolean = false,
     val hasOpponent: Boolean = false,
     val latencyMillis: Long? = null,
@@ -123,8 +124,10 @@ data class GameState(
     val currentTournamentRound: Int? = null,
     val winnerPlayerId: String? = null,
     val winnerTeamId: String? = null,
+    val didForfeitLastMatch: Boolean = false,
     val isRematchRequestedByMe: Boolean = false,
     val isRematchRequestedByOpponent: Boolean = false,
+    val isRematchActionPending: Boolean = false,
     val rematchExpiresAtEpochMillis: Long? = null,
     val rematchNotice: String? = null,
     val lastMatchDurationMillis: Long? = null,
@@ -216,9 +219,23 @@ internal fun GameState.prepareForMatchStart(): GameState = copy(
     isFriendsLoading = false,
     isNotificationsOpen = false,
     isTournamentOpen = false,
+    didForfeitLastMatch = false,
     roomInvitationPrompt = null,
     tournamentInvitationPrompt = null
 )
+
+internal fun GameState.registerOptimisticNumberSelection(number: Int): GameState {
+    if (number == player.currentTarget) return this
+    return copy(
+        player = player.copy(
+            wrongSelections = player.wrongSelections + 1,
+            combo = 0
+        )
+    )
+}
+
+internal fun GameState.canApplyGameSnapshot(roomId: String, sequence: Long): Boolean =
+    currentRoomId != roomId || sequence >= latestGameSequence
 
 internal fun GameState.openNotificationsOverlay(): GameState = copy(
     isNotificationsOpen = true,
@@ -246,6 +263,7 @@ internal fun GameState.prepareForRoomWaiting(): GameState = copy(
     isTournamentLoading = false,
     isShopOpen = false,
     isClanOpen = false,
+    didForfeitLastMatch = false,
     roomInvitationPrompt = null,
     tournamentInvitationPrompt = null
 )

@@ -3,6 +3,8 @@ package com.hienthai.fastowin.ui.screens
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -39,6 +41,8 @@ import androidx.compose.material.icons.filled.Collections
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.MilitaryTech
+import androidx.compose.material.icons.filled.MonetizationOn
+import androidx.compose.material.icons.filled.Payments
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
@@ -51,12 +55,10 @@ import androidx.compose.material.icons.filled.AccountBalanceWallet
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.ShoppingBag
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -79,10 +81,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -101,12 +108,12 @@ import com.hienthai.fastowin.protocol.MissionDifficulty
 import com.hienthai.fastowin.protocol.MissionSnapshot
 import com.hienthai.fastowin.protocol.DailyCheckInSnapshot
 import com.hienthai.fastowin.protocol.DAILY_CHECK_IN_AVATAR_ID
-import com.hienthai.fastowin.protocol.DAILY_CHECK_IN_AVATAR_TARGET
 import com.hienthai.fastowin.protocol.DAILY_CHECK_IN_FRAME_TARGET
+import com.hienthai.fastowin.protocol.DAILY_CHECK_IN_REWARDS_GEMS
+import com.hienthai.fastowin.protocol.DAILY_CHECK_IN_REWARDS_GOLD
 import com.hienthai.fastowin.protocol.DAILY_CHECK_IN_STREAK_ACHIEVEMENT_TARGET
 import com.hienthai.fastowin.protocol.DAILY_CHECK_IN_TITLE_TARGET
 import com.hienthai.fastowin.protocol.MAX_PROFILE_DISPLAY_NAME_LENGTH
-import com.hienthai.fastowin.protocol.PROFILE_AVATAR_IDS
 import com.hienthai.fastowin.protocol.PlayerProfileSnapshot
 import com.hienthai.fastowin.protocol.GameModeStatisticsSnapshot
 import com.hienthai.fastowin.protocol.ProtocolGameMode
@@ -119,8 +126,12 @@ import com.hienthai.fastowin.ui.components.SystemBackHandler
 import com.hienthai.fastowin.platform.epochMillis
 import com.hienthai.fastowin.ui.layout.ResponsiveScreen
 import com.hienthai.fastowin.ui.components.RewardAmounts
+import com.hienthai.fastowin.ui.components.ArcadeActionButton
+import com.hienthai.fastowin.ui.components.ArcadeActionStyle
+import com.hienthai.fastowin.ui.components.ArcadeDialog
 import com.hienthai.fastowin.ui.components.ArcadeFeatureHero
 import com.hienthai.fastowin.ui.components.ArcadePanel
+import com.hienthai.fastowin.ui.components.ArcadeSegmentedControl
 import com.hienthai.fastowin.ui.components.FastToWinHeader
 import com.hienthai.fastowin.ui.components.WalletDeltaAmounts
 import com.hienthai.fastowin.ui.components.PlayerAvatar
@@ -187,7 +198,6 @@ fun ProfileScreen(
     val clipboardManager = LocalClipboardManager.current
     var isEditing by remember { mutableStateOf(false) }
     var displayName by remember { mutableStateOf("") }
-    var selectedAvatarId by remember { mutableStateOf<String?>(null) }
     var showAccountSecurity by remember { mutableStateOf(false) }
     var showAccountSessions by remember { mutableStateOf(false) }
     var isPlayerCodeCopied by remember(profile?.playerCode) { mutableStateOf(false) }
@@ -211,7 +221,6 @@ fun ProfileScreen(
             isLoading = areSessionsLoading,
             error = accountError,
             notice = accountNotice,
-            onRefresh = onLoadSessions,
             onRevokeSession = onRevokeSession,
             onRevokeAllSessions = onRevokeAllSessions,
             onDismiss = {
@@ -232,7 +241,6 @@ fun ProfileScreen(
     LaunchedEffect(profile) {
         profile?.let {
             displayName = it.displayName
-            selectedAvatarId = it.avatarId
         }
     }
     LaunchedEffect(state.profileNotice) {
@@ -264,11 +272,11 @@ fun ProfileScreen(
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
                 .padding(vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
         if (showBackButton) {
             FastToWinHeader(
-                title = if (isExternalProfile) "Hồ sơ bạn bè" else "Hồ sơ",
+                title = if (isExternalProfile) "Người chơi" else "Hồ sơ",
                 gold = state.profile?.progression?.gold ?: 0,
                 gems = state.profile?.progression?.gems ?: 0,
                 unreadNotifications = state.unreadNotificationCount,
@@ -305,12 +313,12 @@ fun ProfileScreen(
         )
 
         if (isExternalProfile && onInviteToClan != null && state.profile?.clanId != null && profile.clanId == null) {
-            Button(
+            ArcadeActionButton(
+                label = "MỜI VÀO BANG",
                 onClick = { onInviteToClan.invoke(profile.playerCode) },
-                modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp)
-            ) {
-                Text("MỜI VÀO BANG", fontWeight = FontWeight.Black)
-            }
+                style = ArcadeActionStyle.GOLD,
+                modifier = Modifier.fillMaxWidth()
+            )
         }
 
         if (isEditing) {
@@ -333,7 +341,7 @@ fun ProfileScreen(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text("Chọn ảnh đại diện", fontWeight = FontWeight.Medium)
+                        Text("Ảnh đại diện", fontWeight = FontWeight.Medium)
                         com.hienthai.fastowin.platform.ImagePicker(
                             onImageSelected = { bytes ->
                                 if (bytes != null) onUploadAvatar(bytes)
@@ -344,64 +352,27 @@ fun ProfileScreen(
                             }
                         }
                     }
-                    
-                    val avatarCosmetics = profile.progression.cosmetics
-                        .filter { it.type == CosmeticType.AVATAR }
-                        .associateBy(CosmeticSnapshot::id)
-                    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        items(PROFILE_AVATAR_IDS.toList(), key = { it }) { avatarId ->
-                            val unlocked = avatarId != DAILY_CHECK_IN_AVATAR_ID ||
-                                avatarCosmetics[avatarId]?.unlocked == true
-                            FilterChip(
-                                selected = selectedAvatarId == avatarId,
-                                enabled = unlocked,
-                                onClick = { if (unlocked) selectedAvatarId = avatarId },
-                                label = {
-                                    Box(contentAlignment = Alignment.Center) {
-                                        PlayerAvatar(
-                                            displayName = profile.displayName,
-                                            avatarId = avatarId,
-                                            frameId = "frame_default",
-                                            size = 42.dp
-                                        )
-                                        if (!unlocked) {
-                                            Icon(
-                                                Icons.Default.Lock,
-                                                contentDescription = "Chưa mở khóa",
-                                                modifier = Modifier.size(20.dp),
-                                                tint = MaterialTheme.colorScheme.error
-                                            )
-                                        }
-                                    }
-                                }
-                            )
-                        }
-                    }
-                    Row(
+                    Column(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        OutlinedButton(
+                        ArcadeActionButton(
+                            label = if (state.isProfileSaving) "Đang lưu..." else "Lưu",
+                            onClick = { onSave(displayName, profile.avatarId) },
+                            enabled = displayName.isNotBlank() && !state.isProfileSaving,
+                            modifier = Modifier.fillMaxWidth(),
+                            style = ArcadeActionStyle.GOLD
+                        )
+                        ArcadeActionButton(
+                            label = "Hủy",
                             onClick = {
                                 displayName = profile.displayName
-                                selectedAvatarId = profile.avatarId
                                 isEditing = false
                             },
                             enabled = !state.isProfileSaving,
-                            modifier = Modifier.weight(1f)
-                        ) { Text("Hủy") }
-                        Button(
-                            onClick = { onSave(displayName, selectedAvatarId) },
-                            enabled = displayName.isNotBlank() && !state.isProfileSaving,
-                            modifier = Modifier.weight(1f),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = ArcadeGold,
-                                contentColor = ArcadePalette.Navy950
-                            )
-                        ) {
-                            if (state.isProfileSaving) CircularProgressIndicator(strokeWidth = 2.dp, modifier = Modifier.size(20.dp))
-                            else Text("Lưu", fontWeight = FontWeight.Black)
-                        }
+                            modifier = Modifier.fillMaxWidth(),
+                            style = ArcadeActionStyle.OUTLINE
+                        )
                     }
                 }
             }
@@ -412,25 +383,14 @@ fun ProfileScreen(
         }
         state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
 
-        ArcadeStatGrid(
-            stats = listOf(
-                "Trận" to profile.statistics.totalMatches.toString(),
-                "Thắng" to profile.statistics.wins.toString(),
-                if (isExternalProfile) {
+        if (isExternalProfile) {
+            ArcadeStatGrid(
+                stats = listOf(
+                    "Trận" to profile.statistics.totalMatches.toString(),
+                    "Thắng" to profile.statistics.wins.toString(),
                     "Elo" to profile.statistics.eloRating.toString()
-                } else {
-                    "Điểm cao" to profile.statistics.highestScore.toString()
-                }
+                )
             )
-        )
-
-        if (!isExternalProfile) {
-            DailyCheckInCalendar(progression.dailyCheckIn)
-            DailyCheckInMilestones(
-                bestStreak = progression.dailyCheckIn.bestStreak,
-                totalCheckIns = progression.dailyCheckIn.totalCheckIns
-            )
-        } else {
             Text("Thành tích nổi bật", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
             ArcadeStatGrid(
                 stats = listOf(
@@ -440,99 +400,94 @@ fun ProfileScreen(
             )
         }
 
-        Text("Hoạt động", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-        ArcadePanel(modifier = Modifier.fillMaxWidth(), accent = MaterialTheme.colorScheme.primary) {
-            AccountActionRow(
-                icon = Icons.Default.Insights,
-                title = "Thống kê & thành tích",
-                subtitle = "Hiệu suất thi đấu và các mốc đã mở khóa",
-                onClick = { onOpenSection(ProfileSection.STATISTICS) },
-                modifier = Modifier.testTag("profile_section_statistics")
-            )
-            HorizontalDivider(modifier = Modifier.padding(start = 64.dp))
-            if (!isExternalProfile && canEdit) {
+        ProfileSectionTitle("Hoạt động")
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
                 AccountActionRow(
-                    icon = Icons.Default.AccountBalanceWallet,
-                    title = "Lịch sử tài sản",
-                    subtitle = "Các lần nhận và sử dụng Vàng, Gem, XP",
-                    onClick = { onOpenSection(ProfileSection.WALLET) },
-                    modifier = Modifier.testTag("profile_section_wallet")
+                    icon = Icons.Default.Insights,
+                    title = "Thống kê & thành tích",
+                    subtitle = "Hiệu suất và mốc đã mở",
+                    onClick = { onOpenSection(ProfileSection.STATISTICS) },
+                    modifier = Modifier.testTag("profile_section_statistics")
                 )
-                HorizontalDivider(modifier = Modifier.padding(start = 64.dp))
-            }
-            if (!isExternalProfile) {
+                if (!isExternalProfile && canEdit) {
+                    AccountActionRow(
+                        icon = Icons.Default.AccountBalanceWallet,
+                        title = "Lịch sử tài sản",
+                        subtitle = "Vàng, Gem và XP",
+                        onClick = { onOpenSection(ProfileSection.WALLET) },
+                        modifier = Modifier.testTag("profile_section_wallet")
+                    )
+                }
+                if (!isExternalProfile) {
+                    AccountActionRow(
+                        icon = Icons.AutoMirrored.Filled.Assignment,
+                        title = "Nhiệm vụ",
+                        subtitle = "Theo dõi và nhận thưởng",
+                        onClick = { onOpenSection(ProfileSection.MISSIONS) },
+                        modifier = Modifier.testTag("profile_section_missions")
+                    )
+                    AccountActionRow(
+                        icon = Icons.Default.Collections,
+                        title = "Bộ sưu tập",
+                        subtitle = "Khung và danh hiệu",
+                        onClick = { onOpenSection(ProfileSection.COLLECTION) },
+                        modifier = Modifier.testTag("profile_section_collection")
+                    )
+                }
                 AccountActionRow(
-                    icon = Icons.AutoMirrored.Filled.Assignment,
-                    title = "Nhiệm vụ",
-                    subtitle = "Theo dõi tiến độ và nhận thưởng",
-                    onClick = { onOpenSection(ProfileSection.MISSIONS) },
-                    modifier = Modifier.testTag("profile_section_missions")
+                    icon = Icons.Default.History,
+                    title = "Trận gần đây",
+                    subtitle = "Lịch sử thi đấu",
+                    onClick = { onOpenSection(ProfileSection.RECENT_MATCHES) },
+                    modifier = Modifier.testTag("profile_section_recent_matches")
                 )
-                HorizontalDivider(modifier = Modifier.padding(start = 64.dp))
-                AccountActionRow(
-                    icon = Icons.Default.Collections,
-                    title = "Bộ sưu tập",
-                    subtitle = "Khung, danh hiệu và ảnh đại diện",
-                    onClick = { onOpenSection(ProfileSection.COLLECTION) },
-                    modifier = Modifier.testTag("profile_section_collection")
-                )
-                HorizontalDivider(modifier = Modifier.padding(start = 64.dp))
-            }
-            AccountActionRow(
-                icon = Icons.Default.History,
-                title = "Trận gần đây",
-                subtitle = "Lịch sử và kết quả các trận đã chơi",
-                onClick = { onOpenSection(ProfileSection.RECENT_MATCHES) },
-                modifier = Modifier.testTag("profile_section_recent_matches")
-            )
         }
 
         if (canEdit) {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(
-                    "Cài đặt & tài khoản",
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold
-                )
-                ArcadePanel(modifier = Modifier.fillMaxWidth(), accent = MaterialTheme.colorScheme.secondary) {
-                    AccountActionRow(
-                        icon = Icons.Default.Settings,
-                        title = "Cài đặt ứng dụng",
-                        subtitle = "Âm thanh, rung, hiệu ứng và hướng dẫn",
-                        onClick = onOpenSettings,
-                        modifier = Modifier.testTag("profile_settings")
-                    )
-                    HorizontalDivider(modifier = Modifier.padding(start = 64.dp))
-                    AccountActionRow(
-                        icon = Icons.Default.Devices,
-                        title = "Thiết bị đăng nhập",
-                        subtitle = "Xem và đăng xuất các phiên đang hoạt động",
-                        onClick = {
-                            onClearAccountFeedback()
-                            showAccountSessions = true
-                            onLoadSessions()
-                        },
-                        modifier = Modifier.testTag("profile_sessions")
-                    )
-                    HorizontalDivider(modifier = Modifier.padding(start = 64.dp))
-                    AccountActionRow(
-                        icon = Icons.Default.Lock,
-                        title = "Bảo mật tài khoản",
-                        subtitle = "Đổi mật khẩu hoặc xóa tài khoản",
-                        onClick = {
-                            onClearAccountFeedback()
-                            showAccountSecurity = true
-                        },
-                        modifier = Modifier.testTag("profile_security")
-                    )
-                    HorizontalDivider(modifier = Modifier.padding(start = 64.dp))
-                    AccountActionRow(
-                        icon = Icons.AutoMirrored.Filled.ExitToApp,
-                        title = "Đăng xuất",
-                        subtitle = "Kết thúc phiên trên thiết bị này",
-                        isDestructive = true,
-                        onClick = onLogout
-                    )
+                ProfileSectionTitle("Cài đặt & tài khoản")
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                        AccountActionRow(
+                            icon = Icons.Default.Settings,
+                            title = "Cài đặt ứng dụng",
+                            subtitle = "",
+                            onClick = onOpenSettings,
+                            modifier = Modifier.testTag("profile_settings")
+                        )
+                        AccountActionRow(
+                            icon = Icons.Default.Devices,
+                            title = "Thiết bị đăng nhập",
+                            subtitle = "",
+                            onClick = {
+                                onClearAccountFeedback()
+                                showAccountSessions = true
+                                onLoadSessions()
+                            },
+                            modifier = Modifier.testTag("profile_sessions")
+                        )
+                        AccountActionRow(
+                            icon = Icons.Default.Lock,
+                            title = "Bảo mật tài khoản",
+                            subtitle = "",
+                            onClick = {
+                                onClearAccountFeedback()
+                                showAccountSecurity = true
+                            },
+                            modifier = Modifier.testTag("profile_security")
+                        )
+                        AccountActionRow(
+                            icon = Icons.AutoMirrored.Filled.ExitToApp,
+                            title = "Đăng xuất",
+                            subtitle = "",
+                            isDestructive = true,
+                            onClick = onLogout
+                        )
                 }
             }
         }
@@ -578,24 +533,36 @@ private fun ProfileIdentityPanel(
         it.type == CosmeticType.TITLE && it.equipped
     }?.name ?: "Tân binh"
 
-    ArcadePanel(
-        modifier = Modifier.fillMaxWidth().testTag("profile_identity_card"),
-        accent = ArcadeGold
+    val panelShape = RoundedCornerShape(20.dp)
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("profile_identity_card")
+            .clip(panelShape)
+            .background(
+                Brush.verticalGradient(
+                    listOf(
+                        ArcadePalette.Gold800.copy(alpha = 0.72f),
+                        ArcadePalette.Navy900.copy(alpha = 0.98f)
+                    )
+                )
+            )
+            .border(1.dp, ArcadeGold.copy(alpha = 0.52f), panelShape)
     ) {
         BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
-            val compact = maxWidth < 360.dp
-            Box(modifier = Modifier.fillMaxWidth().padding(20.dp)) {
+            val compact = maxWidth < 330.dp
+            Box(modifier = Modifier.fillMaxWidth().padding(14.dp)) {
                 if (compact) {
                     Column(
-                        modifier = Modifier.fillMaxWidth().padding(top = if (canEdit) 36.dp else 0.dp),
+                        modifier = Modifier.fillMaxWidth().padding(top = if (canEdit) 32.dp else 0.dp),
                         horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(14.dp)
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
                         PlayerAvatar(
                             displayName = profile.displayName,
                             avatarId = profile.avatarId,
                             frameId = equippedFrame,
-                            size = 82.dp,
+                            size = 76.dp,
                             imageUrl = "$serverUrl/api/avatar/${profile.userId}"
                         )
                         ProfileIdentityDetails(
@@ -608,15 +575,15 @@ private fun ProfileIdentityPanel(
                     }
                 } else {
                     Row(
-                        modifier = Modifier.fillMaxWidth().padding(end = if (canEdit) 48.dp else 0.dp),
+                        modifier = Modifier.fillMaxWidth().padding(end = if (canEdit) 42.dp else 0.dp),
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(16.dp)
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
                         PlayerAvatar(
                             displayName = profile.displayName,
                             avatarId = profile.avatarId,
                             frameId = equippedFrame,
-                            size = 88.dp,
+                            size = 76.dp,
                             imageUrl = "$serverUrl/api/avatar/${profile.userId}"
                         )
                         ProfileIdentityDetails(
@@ -633,20 +600,20 @@ private fun ProfileIdentityPanel(
                     IconButton(
                         onClick = onEdit,
                         enabled = !isSaving,
-                        modifier = Modifier.align(Alignment.TopEnd).size(48.dp).testTag("profile_edit")
+                        modifier = Modifier.align(Alignment.TopEnd).size(44.dp).testTag("profile_edit")
                     ) {
                         Surface(
-                            modifier = Modifier.size(38.dp),
+                            modifier = Modifier.size(34.dp),
                             shape = RoundedCornerShape(10.dp),
-                            color = MaterialTheme.colorScheme.primaryContainer,
-                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.55f))
+                            color = ArcadePalette.Navy800,
+                            border = BorderStroke(1.dp, ArcadePalette.Blue300.copy(alpha = 0.65f))
                         ) {
                             Box(contentAlignment = Alignment.Center) {
                                 Icon(
                                     Icons.Default.Edit,
                                     contentDescription = "Chỉnh sửa hồ sơ",
-                                    modifier = Modifier.size(20.dp),
-                                    tint = MaterialTheme.colorScheme.primary
+                                    modifier = Modifier.size(18.dp),
+                                    tint = Color.White
                                 )
                             }
                         }
@@ -670,58 +637,22 @@ private fun ProfileIdentityDetails(
     Column(
         modifier = modifier,
         horizontalAlignment = if (centered) Alignment.CenterHorizontally else Alignment.Start,
-        verticalArrangement = Arrangement.spacedBy(6.dp)
+        verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
-        val levelBadge: @Composable () -> Unit = {
-            Surface(shape = RoundedCornerShape(10.dp), color = ArcadePalette.Violet600) {
-                Text(
-                    "Cấp ${progression.level}",
-                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
-                    color = Color.White,
-                    style = MaterialTheme.typography.labelLarge,
-                    fontWeight = FontWeight.Black,
-                    maxLines = 1
-                )
-            }
-        }
-        if (centered) {
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                Text(
-                    profile.displayName,
-                    style = MaterialTheme.typography.headlineSmall,
-                    fontWeight = FontWeight.Black,
-                    textAlign = TextAlign.Center,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
-                )
-                levelBadge()
-            }
-        } else {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-            Text(
-                profile.displayName,
-                modifier = Modifier.weight(1f),
-                style = MaterialTheme.typography.headlineSmall,
-                fontWeight = FontWeight.Black,
-                textAlign = TextAlign.Start,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis
-            )
-                levelBadge()
-            }
-        }
+        Text(
+            profile.displayName,
+            modifier = if (centered) Modifier.fillMaxWidth() else Modifier,
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.Black,
+            textAlign = if (centered) TextAlign.Center else TextAlign.Start,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis
+        )
         Text(
             "Danh hiệu: $equippedTitle",
-            color = MaterialTheme.colorScheme.tertiary,
-            fontWeight = FontWeight.Bold,
+            color = ArcadePalette.Gold400,
+            style = MaterialTheme.typography.bodySmall,
+            fontWeight = FontWeight.SemiBold,
             textAlign = if (centered) TextAlign.Center else TextAlign.Start
         )
         Row(
@@ -733,30 +664,46 @@ private fun ProfileIdentityDetails(
                 "Mã: ${profile.playerCode}",
                 modifier = if (centered) Modifier else Modifier.weight(1f),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodySmall,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
-            IconButton(onClick = onCopyCode, modifier = Modifier.size(48.dp)) {
+            IconButton(onClick = onCopyCode, modifier = Modifier.size(40.dp)) {
                 Icon(
                     Icons.Default.ContentCopy,
                     contentDescription = "Sao chép mã người chơi",
-                    modifier = Modifier.size(20.dp)
+                    modifier = Modifier.size(18.dp)
                 )
             }
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                "Cấp ${progression.level}",
+                modifier = Modifier.testTag("profile_level_label"),
+                style = MaterialTheme.typography.labelSmall,
+                fontWeight = FontWeight.Black,
+                color = ArcadePalette.Gold400
+            )
+            Text(
+                "${progression.currentLevelExperience}/${progression.nextLevelExperience} XP",
+                modifier = Modifier.testTag("profile_xp_count"),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.End
+            )
         }
         LinearProgressIndicator(
             progress = {
                 progression.currentLevelExperience.toFloat() /
                     progression.nextLevelExperience.coerceAtLeast(1)
             },
-            modifier = Modifier.fillMaxWidth().height(8.dp),
+            modifier = Modifier.fillMaxWidth().height(6.dp),
             color = ArcadeGold,
-            trackColor = MaterialTheme.colorScheme.surfaceContainerHighest
-        )
-        Text(
-            "${progression.currentLevelExperience}/${progression.nextLevelExperience} XP",
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
+            trackColor = ArcadePalette.Navy950
         )
         sessionStartedAtMillis?.let { CurrentSessionDuration(it) }
     }
@@ -770,9 +717,8 @@ private fun ArcadeStatGrid(
     if (stats.isEmpty()) return
     BoxWithConstraints(modifier = modifier.fillMaxWidth()) {
         val columns = when {
-            maxWidth < 360.dp -> 2
-            maxWidth < 720.dp -> minOf(3, stats.size)
-            else -> minOf(4, stats.size)
+            maxWidth < 280.dp -> 2
+            else -> minOf(3, stats.size)
         }.coerceAtLeast(1)
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
             stats.chunked(columns).forEach { rowStats ->
@@ -921,7 +867,7 @@ private fun ProfileSectionHero(section: ProfileSection) {
         )
         ProfileSection.COLLECTION -> Triple(
             "Dấu ấn của bạn",
-            "Trang bị khung, danh hiệu và avatar đã mở khóa.",
+            "Trang bị khung và danh hiệu đã mở khóa.",
             Res.drawable.arcade_shop_chest
         )
         ProfileSection.RECENT_MATCHES -> Triple(
@@ -936,50 +882,37 @@ private fun ProfileSectionHero(section: ProfileSection) {
         ProfileSection.RECENT_MATCHES -> ArcadeOpponent
         ProfileSection.STATISTICS -> MaterialTheme.colorScheme.primary
     }
-    BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
-        if (maxWidth < 720.dp) {
-            ArcadePanel(modifier = Modifier.fillMaxWidth(), accent = accent) {
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(14.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    Image(
-                        painter = painterResource(illustration),
-                        contentDescription = null,
-                        contentScale = ContentScale.Fit,
-                        modifier = Modifier.size(68.dp)
-                    )
-                    Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
-                        Text(
-                            subtitle,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
-                }
-            }
-        } else {
-            ArcadeFeatureHero(
-                illustration = illustration,
-                title = title,
-                subtitle = subtitle,
-                accent = accent
-            )
-        }
-    }
+    ArcadeFeatureHero(
+        illustration = illustration,
+        title = title,
+        subtitle = subtitle,
+        accent = accent
+    )
 }
 
 @Composable
 private fun WalletHistorySectionContent(transactions: List<WalletTransactionSnapshot>) {
+    var selectedFilter by remember { mutableStateOf(0) }
+    val visibleTransactions = remember(transactions, selectedFilter) {
+        transactions.filter { transaction ->
+            when (selectedFilter) {
+                1 -> transaction.goldDelta > 0 || transaction.gemsDelta > 0 || transaction.xpDelta > 0
+                2 -> transaction.goldDelta < 0 || transaction.gemsDelta < 0 || transaction.xpDelta < 0
+                else -> true
+            }
+        }
+    }
     Column(
         modifier = Modifier.fillMaxWidth().testTag("wallet_history_content"),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        if (transactions.isEmpty()) {
+        ArcadeSegmentedControl(
+            labels = listOf("Tất cả", "Nhận", "Đã dùng"),
+            selectedIndex = selectedFilter,
+            onSelected = { selectedFilter = it },
+            modifier = Modifier.testTag("wallet_history_tabs")
+        )
+        if (visibleTransactions.isEmpty()) {
             ArcadePanel(modifier = Modifier.fillMaxWidth(), accent = ArcadeGold) {
                 Column(
                     modifier = Modifier.fillMaxWidth().padding(20.dp),
@@ -989,14 +922,18 @@ private fun WalletHistorySectionContent(transactions: List<WalletTransactionSnap
                     Icon(Icons.Default.AccountBalanceWallet, contentDescription = null)
                     Text("Chưa có giao dịch", fontWeight = FontWeight.Bold)
                     Text(
-                        "Phần thưởng và vật phẩm đã mua sẽ xuất hiện tại đây.",
+                        if (transactions.isEmpty()) {
+                            "Phần thưởng và vật phẩm đã mua sẽ xuất hiện tại đây."
+                        } else {
+                            "Chưa có giao dịch trong mục này."
+                        },
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             }
         } else {
-            transactions.forEach { transaction ->
+            visibleTransactions.forEach { transaction ->
                 val isSpending = transaction.goldDelta < 0 || transaction.gemsDelta < 0 || transaction.xpDelta < 0
                 val accent = if (isSpending) ArcadeOpponent else ArcadeSuccess
                 ArcadePanel(
@@ -1305,24 +1242,20 @@ private fun MissionClaimControl(
     modifier: Modifier = Modifier
 ) {
     when {
-        mission.rewardClaimed -> Button(
+        mission.rewardClaimed -> ArcadeActionButton(
+            label = "Đã nhận",
             onClick = {},
             enabled = false,
+            style = ArcadeActionStyle.OUTLINE,
             modifier = modifier.heightIn(min = 48.dp).testTag("claim_mission:${mission.code}")
-        ) {
-            Text("Đã nhận")
-        }
-        mission.completed && canEdit -> Button(
+        )
+        mission.completed && canEdit -> ArcadeActionButton(
+            label = if (claimingMissionCode == mission.code) "ĐANG NHẬN" else "NHẬN THƯỞNG",
             onClick = onClaim,
             enabled = claimingMissionCode == null,
+            style = ArcadeActionStyle.GOLD,
             modifier = modifier.heightIn(min = 48.dp).testTag("claim_mission:${mission.code}")
-        ) {
-            if (claimingMissionCode == mission.code) {
-                CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
-            } else {
-                Text("NHẬN THƯỞNG", fontWeight = FontWeight.Black)
-            }
-        }
+        )
         mission.completed -> Text("Hoàn thành", modifier = modifier, style = MaterialTheme.typography.bodySmall)
     }
 }
@@ -1437,34 +1370,6 @@ private fun CollectionSectionContent(
                     }
                     repeat(columns - titleRow.size) { Spacer(Modifier.weight(1f)) }
                 }
-            }
-        }
-    }
-    val specialAvatars = cosmetics.filter { it.type == CosmeticType.AVATAR }
-    if (specialAvatars.isNotEmpty()) {
-        Text("Ảnh đại diện đặc biệt", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            items(specialAvatars, key = { it.id }) { cosmetic ->
-                FilterChip(
-                    selected = cosmetic.equipped,
-                    enabled = canEdit && cosmetic.unlocked && !state.isProfileSaving &&
-                        equippingCosmeticId == null,
-                    onClick = { onSave(profile.displayName, cosmetic.id) },
-                    label = {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            PlayerAvatar(
-                                displayName = profile.displayName,
-                                avatarId = cosmetic.id,
-                                frameId = equippedFrame,
-                                size = 36.dp
-                            )
-                            Text(cosmetic.displayLabel())
-                        }
-                    }
-                )
             }
         }
     }
@@ -1623,32 +1528,32 @@ private fun RecentMatchesSectionContent(
     onFilterChange: (MatchHistoryOutcome?) -> Unit,
     onOpenMatchDetail: (String) -> Unit
 ) {
-    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        item {
-        FilterChip(
-            selected = historyFilter == null,
-            onClick = { onFilterChange(null) },
-            label = { Text("Tất cả") },
-            modifier = Modifier.testTag("history_filter_all")
-        )
+    ArcadeSegmentedControl(
+        labels = listOf("Tất cả", "Thắng", "Thua"),
+        selectedIndex = when (historyFilter) {
+            null -> 0
+            MatchHistoryOutcome.WIN -> 1
+            MatchHistoryOutcome.LOSS -> 2
+            MatchHistoryOutcome.DRAW -> 0
+        },
+        onSelected = { index ->
+            onFilterChange(
+                when (index) {
+                    1 -> MatchHistoryOutcome.WIN
+                    2 -> MatchHistoryOutcome.LOSS
+                    else -> null
+                }
+            )
+        },
+        modifier = Modifier.fillMaxWidth().testTag("recent_match_tabs"),
+        itemTestTag = { index ->
+            when (index) {
+                1 -> "history_filter_win"
+                2 -> "history_filter_loss"
+                else -> "history_filter_all"
+            }
         }
-        item {
-        FilterChip(
-            selected = historyFilter == MatchHistoryOutcome.WIN,
-            onClick = { onFilterChange(MatchHistoryOutcome.WIN) },
-            label = { Text("Thắng") },
-            modifier = Modifier.testTag("history_filter_win")
-        )
-        }
-        item {
-        FilterChip(
-            selected = historyFilter == MatchHistoryOutcome.LOSS,
-            onClick = { onFilterChange(MatchHistoryOutcome.LOSS) },
-            label = { Text("Thua") },
-            modifier = Modifier.testTag("history_filter_loss")
-        )
-        }
-    }
+    )
     val visibleMatches = profile.recentMatches.filter { historyFilter == null || it.outcome == historyFilter }
     when {
         profile.recentMatches.isEmpty() -> Text(
@@ -1719,13 +1624,22 @@ private fun AccountActionRow(
         MaterialTheme.colorScheme.onSurface
     }
     Surface(
-        modifier = modifier.clickable(onClick = onClick),
-        color = MaterialTheme.colorScheme.surfaceContainerLow
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .clickable(onClick = onClick),
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.surface,
+        border = BorderStroke(
+            1.dp,
+            if (isDestructive) MaterialTheme.colorScheme.error.copy(alpha = 0.34f)
+            else ArcadePalette.OutlineDark.copy(alpha = 0.42f)
+        )
     ) {
         Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 11.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(14.dp)
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             Surface(
                 modifier = Modifier.size(34.dp),
@@ -1745,12 +1659,14 @@ private fun AccountActionRow(
             }
             Column(modifier = Modifier.weight(1f)) {
                 Text(title, fontWeight = FontWeight.SemiBold, color = contentColor)
-                Text(
-                    subtitle,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = if (isDestructive) contentColor.copy(alpha = 0.78f)
-                    else MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                if (subtitle.isNotBlank()) {
+                    Text(
+                        subtitle,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (isDestructive) contentColor.copy(alpha = 0.78f)
+                        else MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             }
             Icon(
                 imageVector = Icons.Default.ChevronRight,
@@ -1777,19 +1693,20 @@ private fun AccountSecurityDialog(
     val passwordError = accountPasswordError(newPassword)
     val confirmationError = accountPasswordConfirmationError(newPassword, confirmPassword)
     val passwordUnchanged = currentPassword.isNotEmpty() && currentPassword == newPassword
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Bảo mật tài khoản", fontWeight = FontWeight.Black) },
-        text = {
-            Column(
-                modifier = Modifier.heightIn(max = 560.dp).verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
+    ArcadeDialog(
+        title = "BẢO MẬT TÀI KHOẢN",
+        subtitle = "Đổi mật khẩu hoặc quản lý việc xóa tài khoản.",
+        onDismissRequest = onDismiss
+    ) {
+        Column(
+            modifier = Modifier.heightIn(max = 560.dp).verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    Icon(Icons.Default.Shield, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                    Icon(Icons.Default.Shield, contentDescription = null, tint = ArcadeGold)
                     Text("Đổi mật khẩu", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black)
                 }
                 SecurePasswordField(currentPassword, "Mật khẩu hiện tại") { currentPassword = it }
@@ -1802,19 +1719,14 @@ private fun AccountSecurityDialog(
                 if (passwordUnchanged) {
                     Text("Mật khẩu mới phải khác mật khẩu hiện tại.", color = MaterialTheme.colorScheme.error)
                 }
-                Button(
+                ArcadeActionButton(
+                    label = if (isLoading) "ĐANG CẬP NHẬT..." else "ĐỔI MẬT KHẨU",
                     onClick = { onChangePassword(currentPassword, newPassword) },
                     enabled = !isLoading && currentPassword.isNotBlank() && passwordError == null &&
                         confirmationError == null && confirmPassword.isNotEmpty() && !passwordUnchanged,
-                    modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = ArcadeGold,
-                        contentColor = ArcadePalette.Navy950
-                    )
-                ) {
-                    if (isLoading) CircularProgressIndicator(strokeWidth = 2.dp, modifier = Modifier.size(20.dp))
-                    else Text("ĐỔI MẬT KHẨU", fontWeight = FontWeight.Black)
-                }
+                    modifier = Modifier.fillMaxWidth(),
+                    style = ArcadeActionStyle.GOLD
+                )
                 error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
                 ArcadePanel(modifier = Modifier.fillMaxWidth(), accent = ArcadeOpponent) {
                     Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -1828,29 +1740,39 @@ private fun AccountSecurityDialog(
                 }
                 SecurePasswordField(deletePassword, "Nhập mật khẩu để xác nhận") { deletePassword = it }
                 if (!confirmDelete) {
-                    OutlinedButton(
+                    ArcadeActionButton(
+                        label = "TÔI MUỐN XÓA TÀI KHOẢN",
                         onClick = { confirmDelete = true },
                         enabled = !isLoading && deletePassword.isNotBlank(),
-                        modifier = Modifier.fillMaxWidth()
-                    ) { Text("Tôi muốn xóa tài khoản") }
+                        modifier = Modifier.fillMaxWidth(),
+                        style = ArcadeActionStyle.OUTLINE
+                    )
                 } else {
-                    Button(
+                    ArcadeActionButton(
+                        label = if (isLoading) "ĐANG XÓA..." else "XÓA TÀI KHOẢN",
                         onClick = { onDeleteAccount(deletePassword) },
                         enabled = !isLoading,
-                        modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = MaterialTheme.colorScheme.error,
-                            contentColor = MaterialTheme.colorScheme.onError
-                        )
-                    ) {
-                        if (isLoading) CircularProgressIndicator(strokeWidth = 2.dp, modifier = Modifier.size(20.dp))
-                        else Text("XÓA TÀI KHOẢN", fontWeight = FontWeight.Black)
-                    }
+                        modifier = Modifier.fillMaxWidth(),
+                        style = ArcadeActionStyle.DANGER
+                    )
                 }
-            }
-        },
-        confirmButton = {},
-        dismissButton = { TextButton(onClick = onDismiss, enabled = !isLoading) { Text("Đóng") } }
+        }
+        ArcadeActionButton(
+            label = "Đóng",
+            onClick = onDismiss,
+            enabled = !isLoading,
+            modifier = Modifier.fillMaxWidth(),
+            style = ArcadeActionStyle.OUTLINE
+        )
+    }
+}
+
+@Composable
+private fun ProfileSectionTitle(title: String) {
+    Text(
+        title,
+        style = MaterialTheme.typography.titleMedium,
+        fontWeight = FontWeight.Black
     )
 }
 
@@ -1860,7 +1782,6 @@ private fun AccountSessionsDialog(
     isLoading: Boolean,
     error: String?,
     notice: String?,
-    onRefresh: () -> Unit,
     onRevokeSession: (String) -> Unit,
     onRevokeAllSessions: () -> Unit,
     onDismiss: () -> Unit
@@ -1869,54 +1790,65 @@ private fun AccountSessionsDialog(
     var confirmRevokeAll by remember { mutableStateOf(false) }
 
     sessionPendingRevoke?.let { session ->
-        AlertDialog(
-            onDismissRequest = { sessionPendingRevoke = null },
-            title = { Text(if (session.isCurrent) "Đăng xuất thiết bị này?" else "Đăng xuất thiết bị?") },
-            text = {
-                Text(
-                    if (session.isCurrent) {
-                        "Bạn sẽ quay về màn đăng nhập trên thiết bị hiện tại."
-                    } else {
-                        "Phiên trên ${sessionDeviceLabel(session.devicePlatform)} sẽ bị thu hồi ngay."
-                    }
-                )
+        ArcadeDialog(
+            title = if (session.isCurrent) "ĐĂNG XUẤT THIẾT BỊ NÀY?" else "ĐĂNG XUẤT THIẾT BỊ?",
+            subtitle = if (session.isCurrent) {
+                "Bạn sẽ quay về màn đăng nhập trên thiết bị hiện tại."
+            } else {
+                "Phiên trên ${sessionDeviceLabel(session.devicePlatform)} sẽ bị thu hồi ngay."
             },
-            confirmButton = {
-                TextButton(onClick = {
+            onDismissRequest = { sessionPendingRevoke = null }
+        ) {
+            ArcadeActionButton(
+                label = "Đăng xuất",
+                onClick = {
                     sessionPendingRevoke = null
                     onRevokeSession(session.sessionId)
-                }) { Text("Đăng xuất", color = MaterialTheme.colorScheme.error) }
-            },
-            dismissButton = {
-                TextButton(onClick = { sessionPendingRevoke = null }) { Text("Hủy") }
-            }
-        )
+                },
+                modifier = Modifier.fillMaxWidth(),
+                style = ArcadeActionStyle.DANGER
+            )
+            ArcadeActionButton(
+                label = "Hủy",
+                onClick = { sessionPendingRevoke = null },
+                modifier = Modifier.fillMaxWidth(),
+                style = ArcadeActionStyle.OUTLINE
+            )
+        }
     }
     if (confirmRevokeAll) {
-        AlertDialog(
-            onDismissRequest = { confirmRevokeAll = false },
-            title = { Text("Đăng xuất tất cả thiết bị?") },
-            text = { Text("Tất cả phiên, bao gồm thiết bị này, sẽ bị thu hồi và bạn cần đăng nhập lại.") },
-            confirmButton = {
-                TextButton(onClick = {
+        ArcadeDialog(
+            title = "ĐĂNG XUẤT TẤT CẢ THIẾT BỊ?",
+            subtitle = "Tất cả phiên, bao gồm thiết bị này, sẽ bị thu hồi và bạn cần đăng nhập lại.",
+            onDismissRequest = { confirmRevokeAll = false }
+        ) {
+            ArcadeActionButton(
+                label = "Đăng xuất tất cả",
+                onClick = {
                     confirmRevokeAll = false
                     onRevokeAllSessions()
-                }) { Text("Đăng xuất tất cả", color = MaterialTheme.colorScheme.error) }
-            },
-            dismissButton = {
-                TextButton(onClick = { confirmRevokeAll = false }) { Text("Hủy") }
-            }
-        )
+                },
+                modifier = Modifier.fillMaxWidth(),
+                style = ArcadeActionStyle.DANGER
+            )
+            ArcadeActionButton(
+                label = "Hủy",
+                onClick = { confirmRevokeAll = false },
+                modifier = Modifier.fillMaxWidth(),
+                style = ArcadeActionStyle.OUTLINE
+            )
+        }
     }
 
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Thiết bị đăng nhập", fontWeight = FontWeight.Black) },
-        text = {
-            Column(
-                modifier = Modifier.heightIn(max = 560.dp).verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
+    ArcadeDialog(
+        title = "THIẾT BỊ ĐĂNG NHẬP",
+        subtitle = "Kiểm tra và thu hồi những phiên bạn không còn sử dụng.",
+        onDismissRequest = onDismiss
+    ) {
+        Column(
+            modifier = Modifier.heightIn(max = 520.dp).verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
                 Text(
                     "Bạn có thể thu hồi những phiên không còn sử dụng.",
                     color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -1970,20 +1902,22 @@ private fun AccountSessionsDialog(
                 }
                 notice?.let { Text(it, color = MaterialTheme.colorScheme.primary) }
                 error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-                OutlinedButton(
-                    onClick = { confirmRevokeAll = true },
-                    enabled = !isLoading && sessions.isNotEmpty(),
-                    modifier = Modifier.fillMaxWidth()
-                ) { Text("Đăng xuất tất cả thiết bị", color = MaterialTheme.colorScheme.error) }
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = onRefresh, enabled = !isLoading) { Text("Làm mới") }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss, enabled = !isLoading) { Text("Đóng") }
         }
-    )
+        ArcadeActionButton(
+            label = "Đăng xuất tất cả thiết bị",
+            onClick = { confirmRevokeAll = true },
+            enabled = !isLoading && sessions.isNotEmpty(),
+            modifier = Modifier.fillMaxWidth(),
+            style = ArcadeActionStyle.DANGER
+        )
+        ArcadeActionButton(
+            label = "ĐÓNG",
+            onClick = onDismiss,
+            enabled = !isLoading,
+            modifier = Modifier.fillMaxWidth(),
+            style = ArcadeActionStyle.PRIMARY
+        )
+    }
 }
 
 private fun sessionDeviceLabel(platform: String?): String = when (platform?.lowercase()) {
@@ -2041,6 +1975,93 @@ private data class DailyCheckInMilestone(
 )
 
 @Composable
+private fun ProfileDailyCheckInStrip(checkIn: DailyCheckInSnapshot) {
+    val rewardCardHeight = if (LocalDensity.current.fontScale >= 1.3f) 78.dp else 58.dp
+    Column(
+        modifier = Modifier.fillMaxWidth().testTag("profile_daily_check_in_strip"),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            ProfileSectionTitle("Điểm danh")
+            Surface(
+                shape = RoundedCornerShape(999.dp),
+                color = ArcadeGold.copy(alpha = 0.16f),
+                border = BorderStroke(1.dp, ArcadeGold.copy(alpha = 0.34f))
+            ) {
+                Text(
+                    "Chuỗi ${checkIn.currentStreak} ngày",
+                    modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp),
+                    color = ArcadePalette.Gold400,
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.Black
+                )
+            }
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(5.dp)
+        ) {
+            DAILY_CHECK_IN_REWARDS_GOLD.forEachIndexed { index, rewardGold ->
+                val day = index + 1
+                val rewardGems = DAILY_CHECK_IN_REWARDS_GEMS[index]
+                val completed = day < checkIn.cycleDay ||
+                    (day == checkIn.cycleDay && checkIn.claimedToday)
+                val current = day == checkIn.cycleDay
+                Surface(
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(rewardCardHeight)
+                        .testTag("profile_check_in_day_$day"),
+                    shape = RoundedCornerShape(11.dp),
+                    color = when {
+                        current -> ArcadePalette.Gold800.copy(alpha = 0.72f)
+                        completed -> ArcadePalette.Navy900.copy(alpha = 0.66f)
+                        else -> ArcadePalette.Navy800
+                    },
+                    border = BorderStroke(
+                        1.dp,
+                        if (current) ArcadePalette.Gold400
+                        else ArcadePalette.OutlineDark.copy(alpha = 0.72f)
+                    )
+                ) {
+                    Column(
+                        modifier = Modifier.fillMaxSize().padding(horizontal = 2.dp, vertical = 5.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        Text(
+                            day.toString(),
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Black,
+                            color = Color.White.copy(alpha = if (completed) 0.58f else 1f)
+                        )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                if (rewardGems > 0) Icons.Default.Payments else Icons.Default.MonetizationOn,
+                                contentDescription = null,
+                                modifier = Modifier.size(11.dp),
+                                tint = if (rewardGems > 0) ArcadeGem else ArcadeGold
+                            )
+                            Text(
+                                (if (rewardGems > 0) rewardGems else rewardGold).toString(),
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White.copy(alpha = if (completed) 0.58f else 1f),
+                                maxLines = 1
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
 private fun DailyCheckInCalendar(checkIn: DailyCheckInSnapshot) {
     val today = checkIn.todayDate?.toProfileCalendarDate() ?: return
     val currentMonth = ProfileCalendarMonth(today.year, today.month)
@@ -2062,7 +2083,7 @@ private fun DailyCheckInCalendar(checkIn: DailyCheckInSnapshot) {
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text("Điểm danh", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
+                Text("Lịch sử điểm danh", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black)
                 Surface(shape = RoundedCornerShape(999.dp), color = ArcadeGold.copy(alpha = 0.16f)) {
                     Text(
                         "Chuỗi ${checkIn.currentStreak} ngày",
@@ -2239,13 +2260,6 @@ private fun DailyCheckInMilestones(bestStreak: Int, totalCheckIns: Int) {
             target = DAILY_CHECK_IN_TITLE_TARGET
         ),
         DailyCheckInMilestone(
-            icon = Icons.Default.DateRange,
-            title = "50 lần điểm danh",
-            reward = "Ảnh đại diện đặc biệt",
-            progress = totalCheckIns,
-            target = DAILY_CHECK_IN_AVATAR_TARGET
-        ),
-        DailyCheckInMilestone(
             icon = Icons.Default.Shield,
             title = "100 lần điểm danh",
             reward = "Khung Bền bỉ",
@@ -2317,14 +2331,14 @@ private fun StatCard(label: String, value: Int, modifier: Modifier = Modifier) {
 @Composable
 private fun StatCard(label: String, value: String, modifier: Modifier = Modifier) {
     Surface(
-        modifier = modifier.heightIn(min = 82.dp),
-        shape = RoundedCornerShape(16.dp),
+        modifier = modifier.heightIn(min = 68.dp),
+        shape = RoundedCornerShape(15.dp),
         color = MaterialTheme.colorScheme.surface,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.34f)),
+        border = BorderStroke(1.dp, ArcadePalette.OutlineDark.copy(alpha = 0.42f)),
         shadowElevation = 1.dp
     ) {
         Column(
-            Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 12.dp),
+            Modifier.fillMaxWidth().padding(horizontal = 7.dp, vertical = 10.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
@@ -2343,6 +2357,41 @@ private fun StatCard(label: String, value: String, modifier: Modifier = Modifier
                 textAlign = TextAlign.Center,
                 maxLines = 2
             )
+        }
+    }
+}
+
+@Composable
+private fun ArcadeProfileChip(
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    content: @Composable () -> Unit
+) {
+    Surface(
+        onClick = onClick,
+        enabled = enabled,
+        modifier = modifier
+            .heightIn(min = 48.dp)
+            .semantics { this.selected = selected },
+        shape = RoundedCornerShape(14.dp),
+        color = if (selected) ArcadePalette.Blue700 else ArcadePalette.Navy800,
+        contentColor = if (enabled) ArcadePalette.White else ArcadePalette.OutlineDark,
+        border = BorderStroke(
+            1.dp,
+            when {
+                selected -> ArcadePalette.Gold500
+                enabled -> ArcadePalette.OutlineDark
+                else -> ArcadePalette.Navy700
+            }
+        )
+    ) {
+        Box(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 9.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            content()
         }
     }
 }
@@ -2463,37 +2512,41 @@ private fun MatchDetailDialog(
         replayIndex++
     }
 
-    AlertDialog(
+    ArcadeDialog(
         onDismissRequest = onDismiss,
-        title = {
-            Text(
-                if (isLoading) "Đang tải trận đấu" else "Chi tiết trận",
-                fontWeight = FontWeight.Black
-            )
-        },
-        text = {
-            if (isLoading || detail == null) {
-                Box(Modifier.fillMaxWidth().height(120.dp), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator()
-                }
-            } else {
+        title = if (isLoading) "Đang tải trận đấu" else "Chi tiết trận",
+        subtitle = detail?.let {
+            "${it.summary.gameMode.displayName()} · ${if (it.summary.matchType == MatchType.RANKED) "Xếp hạng" else "Đấu thường"}"
+        }
+    ) {
+        if (isLoading || detail == null) {
+            Box(Modifier.fillMaxWidth().height(120.dp), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator()
+            }
+        } else {
                 val mine = events.filter { it.isCurrentPlayer }
                 val correct = mine.count { it.accepted }
                 val wrong = mine.size - correct
                 val accuracy = if (mine.isEmpty()) 0 else correct * 100 / mine.size
+                val acceptedTimes = mine.filter { it.accepted }
+                    .sortedBy { it.occurredAtEpochMillis }
+                    .map { it.occurredAtEpochMillis }
+                val reactionSamples = acceptedTimes.zipWithNext { previous, next ->
+                    (next - previous).coerceAtLeast(0L)
+                }
+                val averageReaction = if (reactionSamples.isEmpty()) {
+                    if (correct == 0) 0L else detail.durationMillis / correct
+                } else {
+                    reactionSamples.average().toLong()
+                }
                 Column(
                     modifier = Modifier.heightIn(max = 520.dp).verticalScroll(rememberScrollState()),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    Text(
-                        "${detail.summary.gameMode.displayName()} · ${if (detail.summary.matchType == MatchType.RANKED) "Xếp hạng" else "Đấu thường"}",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
                     MatchDetailScoreboard(detail.summary)
                     ArcadeStatGrid(
                         stats = listOf(
-                            "Thời gian" to formatMatchDuration(detail.durationMillis),
+                            "Phản xạ" to if (averageReaction > 0) "${averageReaction} ms" else "--",
                             "Chính xác" to "$accuracy%",
                             "Elo" to if (detail.summary.matchType == MatchType.RANKED) {
                                 if (detail.summary.eloChange >= 0) "+${detail.summary.eloChange}" else detail.summary.eloChange.toString()
@@ -2503,9 +2556,26 @@ private fun MatchDetailDialog(
                         )
                     )
                     Text(
-                        "Bạn chọn đúng $correct lần · sai $wrong lần",
+                        "${formatMatchDuration(detail.durationMillis)} · Đúng $correct · Sai $wrong",
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
+                    if (reactionSamples.isNotEmpty()) {
+                        ArcadePanel(modifier = Modifier.fillMaxWidth(), accent = ArcadePalette.Violet400) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(14.dp),
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
+                                    Text("NHANH NHẤT", style = MaterialTheme.typography.labelSmall, color = ArcadeSuccess)
+                                    Text("${reactionSamples.minOrNull()} ms", fontWeight = FontWeight.Black)
+                                }
+                                Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
+                                    Text("CHẬM NHẤT", style = MaterialTheme.typography.labelSmall, color = ArcadeOpponent)
+                                    Text("${reactionSamples.maxOrNull()} ms", fontWeight = FontWeight.Black)
+                                }
+                            }
+                        }
+                    }
                     if (events.isEmpty()) {
                         Text("Trận này chưa có dữ liệu lượt bấm để phát lại.")
                     } else {
@@ -2528,34 +2598,64 @@ private fun MatchDetailDialog(
                                 )
                             }
                         }
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            OutlinedButton(
-                                onClick = { replayIndex = (replayIndex - 1).coerceAtLeast(0) },
-                                enabled = replayIndex > 0,
-                                modifier = Modifier.weight(1f)
-                            ) { Text("Trước") }
-                            Button(
-                                onClick = {
-                                    if (replayIndex >= events.lastIndex) replayIndex = 0
-                                    isPlaying = !isPlaying
-                                },
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                Icon(if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow, null)
-                                Text(if (isPlaying) " Dừng" else " Phát lại")
-                            }
-                            OutlinedButton(
-                                onClick = { replayIndex = (replayIndex + 1).coerceAtMost(events.lastIndex) },
-                                enabled = replayIndex < events.lastIndex,
-                                modifier = Modifier.weight(1f)
-                            ) { Text("Sau") }
-                        }
+                        MatchReplayControls(
+                            isPlaying = isPlaying,
+                            canGoPrevious = replayIndex > 0,
+                            canGoNext = replayIndex < events.lastIndex,
+                            onPrevious = { replayIndex = (replayIndex - 1).coerceAtLeast(0) },
+                            onPlayPause = {
+                                if (replayIndex >= events.lastIndex) replayIndex = 0
+                                isPlaying = !isPlaying
+                            },
+                            onNext = { replayIndex = (replayIndex + 1).coerceAtMost(events.lastIndex) }
+                        )
                     }
                 }
             }
-        },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("ĐÓNG", fontWeight = FontWeight.Black) } }
-    )
+        ArcadeActionButton(
+            label = "ĐÓNG",
+            onClick = onDismiss,
+            style = ArcadeActionStyle.GOLD,
+            modifier = Modifier.fillMaxWidth()
+        )
+    }
+}
+
+@Composable
+private fun MatchReplayControls(
+    isPlaying: Boolean,
+    canGoPrevious: Boolean,
+    canGoNext: Boolean,
+    onPrevious: () -> Unit,
+    onPlayPause: () -> Unit,
+    onNext: () -> Unit
+) {
+    val button: @Composable (String, () -> Unit, Boolean, ArcadeActionStyle, Modifier) -> Unit =
+        { label, onClick, enabled, style, modifier ->
+            ArcadeActionButton(
+                label = label,
+                onClick = onClick,
+                enabled = enabled,
+                style = style,
+                modifier = modifier
+            )
+        }
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        button(
+            if (isPlaying) "DỪNG" else "PHÁT LẠI",
+            onPlayPause,
+            true,
+            ArcadeActionStyle.PRIMARY,
+            Modifier.fillMaxWidth()
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            button("TRƯỚC", onPrevious, canGoPrevious, ArcadeActionStyle.OUTLINE, Modifier.weight(1f))
+            button("SAU", onNext, canGoNext, ArcadeActionStyle.OUTLINE, Modifier.weight(1f))
+        }
+    }
 }
 
 @Composable

@@ -3,8 +3,11 @@ package com.hienthai.fastowin
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTextInput
 import com.hienthai.fastowin.protocol.ClanJoinRequestSnapshot
 import com.hienthai.fastowin.protocol.ClanMemberSnapshot
 import com.hienthai.fastowin.protocol.ClanRole
@@ -110,5 +113,88 @@ class ClanScreenTest {
         composeRule.runOnIdle {
             assertEquals(Triple("clan-a", "applicant", true), approval)
         }
+    }
+
+    @Test
+    fun playerCanCreateClanFromArcadeDialog() {
+        var createdClan: Pair<String, String>? = null
+
+        composeRule.setContent {
+            FastToWinTheme {
+                ClanScreen(
+                    serverUrl = "ws://127.0.0.1:8080/game",
+                    currentUserId = "player",
+                    myClanId = null,
+                    clanList = emptyList(),
+                    pendingJoinClanIds = emptySet(),
+                    currentClan = null,
+                    notice = null,
+                    onCreateClan = { name, description -> createdClan = name to description },
+                    onJoinClan = {},
+                    onLeaveClan = {},
+                    onSearch = {},
+                    onKickMember = { _, _ -> },
+                    onRespondJoinRequest = { _, _, _ -> },
+                    onUpdateLogo = { _, _ -> },
+                    onClaimQuest = {},
+                    onViewClan = {},
+                    onBack = {}
+                )
+            }
+        }
+
+        composeRule.onNodeWithTag("open_create_clan").performClick()
+        composeRule.onNodeWithTag("create_clan_dialog").assertIsDisplayed()
+        composeRule.onNodeWithTag("create_clan_name").performTextInput("Tia Chớp")
+        composeRule.onNodeWithTag("create_clan_description").performTextInput("Nhanh và chính xác")
+        composeRule.onNodeWithText("TẠO").performClick()
+
+        composeRule.runOnIdle {
+            assertEquals("Tia Chớp" to "Nhanh và chính xác", createdClan)
+        }
+    }
+
+    @Test
+    fun clanOwnerCanSelectLogoByTappingHero() {
+        var selectedLogo: String? = null
+        val clan = ClanSnapshot(
+            id = "clan-a",
+            name = "Bang Tốc Độ",
+            description = "Nhanh và chuẩn",
+            ownerId = "owner",
+            members = listOf(ClanMemberSnapshot("owner", "Bang chủ", ClanRole.LEADER, trophies = 100)),
+            trophies = 100,
+            logoId = "shield"
+        )
+
+        composeRule.setContent {
+            FastToWinTheme {
+                ClanScreen(
+                    serverUrl = "ws://127.0.0.1:8080/game",
+                    currentUserId = "owner",
+                    myClanId = clan.id,
+                    clanList = emptyList(),
+                    pendingJoinClanIds = emptySet(),
+                    currentClan = clan,
+                    notice = null,
+                    onCreateClan = { _, _ -> },
+                    onJoinClan = {},
+                    onLeaveClan = {},
+                    onSearch = {},
+                    onKickMember = { _, _ -> },
+                    onRespondJoinRequest = { _, _, _ -> },
+                    onUpdateLogo = { _, logoId -> selectedLogo = logoId },
+                    onClaimQuest = {},
+                    onViewClan = {},
+                    onBack = {}
+                )
+            }
+        }
+
+        composeRule.onNodeWithContentDescription("Chọn logo bang").performClick()
+        composeRule.onNodeWithTag("clan_logo_dialog").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("Logo Song kiếm").performClick()
+
+        composeRule.runOnIdle { assertEquals("sword", selectedLogo) }
     }
 }

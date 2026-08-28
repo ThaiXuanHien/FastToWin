@@ -28,7 +28,9 @@ data class AppPreferences(
     val soundEnabled: Boolean = true,
     val vibrationEnabled: Boolean = true,
     val visualEffectsEnabled: Boolean = true,
-    val themeMode: AppThemeMode = AppThemeMode.SYSTEM,
+    // The approved 2D Arcade canvases use the navy theme. Light and system modes
+    // remain available in Settings, while new installs start with the branded look.
+    val themeMode: AppThemeMode = AppThemeMode.DARK,
     val boardStyle: BoardStyle = BoardStyle.CLASSIC,
     val fontScale: AppFontScale = AppFontScale.STANDARD,
     val hasCompletedTutorial: Boolean = false

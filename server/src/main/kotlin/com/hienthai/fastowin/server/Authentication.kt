@@ -2,6 +2,7 @@ package com.hienthai.fastowin.server
 
 import com.hienthai.fastowin.protocol.AuthSessionResponse
 import com.hienthai.fastowin.protocol.AccountSessionSnapshot
+import com.hienthai.fastowin.protocol.PlayerGender
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.security.MessageDigest
@@ -19,7 +20,8 @@ data class NewAccount(
     val displayName: String,
     val playerCode: String,
     val devicePlatform: String?,
-    val session: NewAuthSession
+    val session: NewAuthSession,
+    val gender: PlayerGender = PlayerGender.MALE
 )
 
 data class NewAuthSession(
@@ -112,7 +114,8 @@ class AuthenticationService(
         email: String,
         password: String,
         displayName: String,
-        devicePlatform: String?
+        devicePlatform: String?,
+        gender: PlayerGender = PlayerGender.MALE
     ): AuthResult {
         val normalizedEmail = normalizeEmail(email)
             ?: return AuthResult.Failure("INVALID_EMAIL", "Email không hợp lệ.")
@@ -138,7 +141,8 @@ class AuthenticationService(
                 displayName = safeName,
                 playerCode = playerCode(userId),
                 devicePlatform = normalizeDevicePlatform(devicePlatform),
-                session = issued.record
+                session = issued.record,
+                gender = gender
             )
         )
         if (!created) return AuthResult.Failure("EMAIL_ALREADY_EXISTS", "Email này đã được sử dụng.")

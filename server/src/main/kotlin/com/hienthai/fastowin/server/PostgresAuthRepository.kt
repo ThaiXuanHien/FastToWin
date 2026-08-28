@@ -1,5 +1,8 @@
 package com.hienthai.fastowin.server
 
+import com.hienthai.fastowin.protocol.DEFAULT_FEMALE_AVATAR_ID
+import com.hienthai.fastowin.protocol.DEFAULT_MALE_AVATAR_ID
+import com.hienthai.fastowin.protocol.PlayerGender
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.sql.Connection
@@ -531,15 +534,20 @@ class PostgresAuthRepository(private val dataSource: DataSource) : AuthRepositor
     private fun insertProfile(connection: Connection, account: NewAccount) {
         connection.prepareStatement(
             """
-            INSERT INTO profiles (user_id, display_name, player_code, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?)
+            INSERT INTO profiles (user_id, display_name, player_code, avatar_url, gender, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
             """.trimIndent()
         ).use { statement ->
             statement.setObject(1, account.userId)
             statement.setString(2, account.displayName)
             statement.setString(3, account.playerCode)
-            statement.setTimestamp(4, account.session.nowMillis.toTimestamp())
-            statement.setTimestamp(5, account.session.nowMillis.toTimestamp())
+            statement.setString(
+                4,
+                if (account.gender == PlayerGender.FEMALE) DEFAULT_FEMALE_AVATAR_ID else DEFAULT_MALE_AVATAR_ID
+            )
+            statement.setString(5, account.gender.name)
+            statement.setTimestamp(6, account.session.nowMillis.toTimestamp())
+            statement.setTimestamp(7, account.session.nowMillis.toTimestamp())
             statement.executeUpdate()
         }
     }

@@ -9,6 +9,7 @@ import androidx.compose.ui.test.ForcedSize
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -40,6 +41,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
+import kotlin.math.abs
 
 @OptIn(ExperimentalTestApi::class)
 class ArcadeProfilePracticeUiTest {
@@ -218,17 +220,22 @@ class ArcadeProfilePracticeUiTest {
     @Test
     fun profileEdit_smallPhoneLargeText_updatesDisplayNameWithoutLosingActions() {
         var savedName: String? = null
+        var savedAvatar: String? = null
+        val profile = profileFixture().copy(avatarId = "target")
         setAdaptiveContent(320.dp, 568.dp, 1.4f) {
             ProfileScreen(
                 serverUrl = "",
-                state = GameState(profile = profileFixture()),
+                state = GameState(profile = profile),
                 onBack = {},
                 onRefresh = {},
                 onOpenMatchDetail = {},
                 onCloseMatchDetail = {},
                 onEquipCosmetics = { _, _ -> },
                 onClaimMissionReward = {},
-                onSave = { name, _ -> savedName = name },
+                onSave = { name, avatar ->
+                    savedName = name
+                    savedAvatar = avatar
+                },
                 onUploadAvatar = {},
                 canEdit = true,
                 isAccountLoading = false,
@@ -247,12 +254,23 @@ class ArcadeProfilePracticeUiTest {
             )
         }
 
+        val levelBounds = composeRule.onNodeWithTag("profile_level_label").fetchSemanticsNode().boundsInRoot
+        val xpBounds = composeRule.onNodeWithTag("profile_xp_count").fetchSemanticsNode().boundsInRoot
+        assertTrue(xpBounds.left > levelBounds.left)
+        assertTrue(abs(xpBounds.center.y - levelBounds.center.y) <= 1f)
+
         composeRule.onNodeWithTag("profile_edit").performClick()
+        composeRule.onNodeWithText("Ảnh đại diện").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("Tải ảnh lên").assertIsDisplayed()
+        assertTrue(composeRule.onAllNodesWithText("Chọn ảnh đại diện").fetchSemanticsNodes().isEmpty())
         val displayNameField = composeRule.onNodeWithTag("profile_display_name")
         displayNameField.performTextClearance()
         displayNameField.performTextInput("Hiền mới")
         composeRule.onNodeWithText("Lưu").performScrollTo().performClick()
-        composeRule.runOnIdle { assertEquals("Hiền mới", savedName) }
+        composeRule.runOnIdle {
+            assertEquals("Hiền mới", savedName)
+            assertEquals("target", savedAvatar)
+        }
     }
 
     private fun setAdaptiveContent(

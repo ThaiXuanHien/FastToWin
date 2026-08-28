@@ -23,18 +23,13 @@ import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.GroupAdd
 import androidx.compose.material.icons.rounded.RestartAlt
 import androidx.compose.material.icons.rounded.Share
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -73,6 +68,9 @@ import com.hienthai.fastowin.resources.Res
 import com.hienthai.fastowin.resources.arcade_leaderboard_trophy
 import com.hienthai.fastowin.ui.components.ArcadeFeatureHero
 import com.hienthai.fastowin.ui.components.ArcadePanel
+import com.hienthai.fastowin.ui.components.ArcadeActionButton
+import com.hienthai.fastowin.ui.components.ArcadeActionStyle
+import com.hienthai.fastowin.ui.components.ArcadeDialog
 import com.hienthai.fastowin.ui.components.FastToWinHeader
 import com.hienthai.fastowin.ui.components.PlayerAvatar
 import com.hienthai.fastowin.ui.components.RewardAmounts
@@ -135,21 +133,59 @@ fun ResultScreen(
         if (preferences.vibrationEnabled) hapticFeedback.performHapticFeedback(HapticFeedbackType.LongPress)
     }
 
-    if (showBlockConfirmation) {
-        AlertDialog(
+    if (showBlockConfirmation && !state.isRematchRequestedByOpponent) {
+        ArcadeDialog(
+            title = "CHẶN ${state.opponent.name.uppercase()}?",
+            subtitle = "Hai người sẽ không thể kết bạn, gửi lời mời hoặc đấu lại.",
             onDismissRequest = { showBlockConfirmation = false },
-            title = { Text("Chặn ${state.opponent.name}?") },
-            text = { Text("Hai người sẽ không thể kết bạn, gửi lời mời hoặc đấu lại. Bạn cũng sẽ rời phòng hiện tại.") },
-            confirmButton = {
-                TextButton(onClick = {
-                    showBlockConfirmation = false
-                    onBlockOpponent()
-                }) { Text("Chặn", color = MaterialTheme.colorScheme.error) }
-            },
-            dismissButton = {
-                TextButton(onClick = { showBlockConfirmation = false }) { Text("Hủy") }
+        ) {
+            Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                ArcadeActionButton(
+                    label = "CHẶN",
+                    onClick = {
+                        showBlockConfirmation = false
+                        onBlockOpponent()
+                    },
+                    style = ArcadeActionStyle.DANGER,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                ArcadeActionButton(
+                    label = "HỦY",
+                    onClick = { showBlockConfirmation = false },
+                    style = ArcadeActionStyle.OUTLINE,
+                    modifier = Modifier.fillMaxWidth()
+                )
             }
-        )
+        }
+    }
+
+    if (state.isRematchRequestedByOpponent) {
+        ArcadeDialog(
+            title = "MỜI ĐẤU LẠI",
+            subtitle = "${state.opponent.name} muốn đấu lại với bạn.",
+            onDismissRequest = {}
+        ) {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                ArcadeActionButton(
+                    label = if (state.isRematchActionPending) "ĐANG XỬ LÝ..." else "CHẤP NHẬN",
+                    onClick = onRematch,
+                    icon = Icons.Rounded.Check,
+                    modifier = Modifier.fillMaxWidth().testTag("accept_rematch"),
+                    style = ArcadeActionStyle.GOLD,
+                    enabled = !state.isRematchActionPending
+                )
+                ArcadeActionButton(
+                    label = "TỪ CHỐI",
+                    onClick = onDeclineRematch,
+                    modifier = Modifier.fillMaxWidth().testTag("decline_rematch"),
+                    style = ArcadeActionStyle.OUTLINE,
+                    enabled = !state.isRematchActionPending
+                )
+            }
+        }
     }
 
     val resultTitle = when {
@@ -158,6 +194,7 @@ fun ResultScreen(
         else -> "THUA CUỘC"
     }
     val resultDescription = when {
+        state.didForfeitLastMatch -> "Bạn đã chủ động rời trận và bị xử thua."
         isDraw -> "Hai bên ngang điểm sau trận đấu."
         isWinner -> "Bạn đã giành chiến thắng!"
         is2v2 -> "Đội đối thủ đã giành chiến thắng."
@@ -227,12 +264,11 @@ fun ResultScreen(
                 } else {
                     RematchCard(
                         state = state,
-                        onRematch = onRematch,
-                        onCancel = onCancelRematch,
-                        onDecline = onDeclineRematch
+                        onRematch = onRematch
                     )
                 }
-                OutlinedButton(
+                ArcadeActionButton(
+                    label = "CHIA SẺ KẾT QUẢ",
                     onClick = {
                         shareError = null
                         if (onShareResult != null) {
@@ -243,13 +279,10 @@ fun ResultScreen(
                             }
                         }
                     },
-                    modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp).testTag("share_result"),
-                    shape = RoundedCornerShape(16.dp)
-                ) {
-                    Icon(Icons.Rounded.Share, contentDescription = null)
-                    Spacer(Modifier.size(8.dp))
-                    Text("Chia sẻ kết quả")
-                }
+                    style = ArcadeActionStyle.OUTLINE,
+                    icon = Icons.Rounded.Share,
+                    modifier = Modifier.fillMaxWidth().testTag("share_result")
+                )
                 shareError?.let {
                     Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
                 }
@@ -260,11 +293,12 @@ fun ResultScreen(
                 )
 
                 if (!state.isTournamentMatch) {
-                    OutlinedButton(
+                    ArcadeActionButton(
+                        label = "Về sảnh",
                         onClick = onRestart,
-                        modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp),
-                        shape = RoundedCornerShape(16.dp)
-                    ) { Text("Về sảnh") }
+                        style = ArcadeActionStyle.OUTLINE,
+                        modifier = Modifier.fillMaxWidth()
+                    )
                 }
                 Spacer(modifier = Modifier.height(12.dp))
             }
@@ -372,9 +406,9 @@ private fun ResultScoreCard(
     onClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
-    val accent = if (isLocal) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.tertiary
-    val container = if (isLocal) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.tertiaryContainer
-    val content = if (isLocal) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onTertiaryContainer
+    val accent = if (isLocal) ArcadePalette.Blue300 else ArcadePalette.Coral400
+    val container = ArcadePalette.Navy800
+    val content = Color.White
     Surface(
         modifier = modifier.then(
             if (onClick == null) Modifier else Modifier.clickable(onClick = onClick)
@@ -526,15 +560,12 @@ private fun TournamentResultCard(state: GameState, onOpenTournament: () -> Unit)
                 },
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
-            Button(
+            ArcadeActionButton(
+                label = "Xem nhánh đấu",
                 onClick = onOpenTournament,
-                modifier = Modifier.fillMaxWidth().heightIn(min = 54.dp).testTag("open_tournament_bracket"),
-                shape = RoundedCornerShape(16.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = ArcadePalette.Gold500,
-                    contentColor = ArcadePalette.Navy950
-                )
-            ) { Text("Xem nhánh đấu", fontWeight = FontWeight.Black) }
+                modifier = Modifier.fillMaxWidth().testTag("open_tournament_bracket"),
+                style = ArcadeActionStyle.GOLD
+            )
         }
     }
 }
@@ -678,9 +709,7 @@ private fun SummaryMetric(label: String, value: String, modifier: Modifier = Mod
 @Composable
 private fun RematchCard(
     state: GameState,
-    onRematch: () -> Unit,
-    onCancel: () -> Unit,
-    onDecline: () -> Unit
+    onRematch: () -> Unit
 ) {
     if (state.matchType == MatchType.RANKED) {
         Surface(shape = RoundedCornerShape(18.dp), color = MaterialTheme.colorScheme.surfaceContainer) {
@@ -704,11 +733,7 @@ private fun RematchCard(
         ceil(((it - nowMillis).coerceAtLeast(0L)) / 1_000.0).toInt()
     }
 
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f))
-    ) {
+    ArcadePanel(modifier = Modifier.fillMaxWidth(), accent = ArcadePalette.Violet600) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text("Đấu lại", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             state.rematchNotice?.let {
@@ -718,56 +743,38 @@ private fun RematchCard(
                 Text("Còn $remainingSeconds giây để phản hồi", style = MaterialTheme.typography.bodySmall)
             }
             when {
-                state.isRematchRequestedByOpponent -> BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
-                    val stackActions = maxWidth < 330.dp || androidx.compose.ui.platform.LocalDensity.current.fontScale >= 1.35f
-                    if (stackActions) {
-                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            RematchAcceptButton(onClick = onRematch, modifier = Modifier.fillMaxWidth())
-                            OutlinedButton(onClick = onDecline, modifier = Modifier.fillMaxWidth()) { Text("Từ chối") }
-                        }
-                    } else {
-                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                            OutlinedButton(onClick = onDecline, modifier = Modifier.weight(1f)) { Text("Từ chối") }
-                            RematchAcceptButton(onClick = onRematch, modifier = Modifier.weight(1f))
-                        }
-                    }
-                }
-                state.isRematchRequestedByMe -> OutlinedButton(
-                    onClick = onCancel,
-                    modifier = Modifier.fillMaxWidth()
-                ) { Text("Hủy yêu cầu") }
-                else -> Button(
+                !state.hasOpponent -> ArcadeActionButton(
+                    label = "ĐỐI THỦ ĐÃ RỜI",
+                    onClick = {},
+                    modifier = Modifier.fillMaxWidth(),
+                    style = ArcadeActionStyle.OUTLINE,
+                    enabled = false
+                )
+                state.isRematchRequestedByOpponent -> ArcadeActionButton(
+                    label = if (state.isRematchActionPending) "ĐANG XỬ LÝ..." else "ĐANG CHỜ PHẢN HỒI",
+                    onClick = {},
+                    modifier = Modifier.fillMaxWidth(),
+                    style = ArcadeActionStyle.OUTLINE,
+                    enabled = false
+                )
+                state.isRematchRequestedByMe -> ArcadeActionButton(
+                    label = "ĐÃ MỜI",
+                    onClick = {},
+                    modifier = Modifier.fillMaxWidth(),
+                    icon = Icons.Rounded.RestartAlt,
+                    style = ArcadeActionStyle.OUTLINE,
+                    enabled = false
+                )
+                else -> ArcadeActionButton(
+                    label = if (state.isRematchActionPending) "Đang gửi..." else "Mời đấu lại",
                     onClick = onRematch,
-                    modifier = Modifier.fillMaxWidth().heightIn(min = 54.dp),
-                    shape = RoundedCornerShape(16.dp),
-                    contentPadding = PaddingValues(12.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = ArcadePalette.Gold500,
-                        contentColor = ArcadePalette.Navy950
-                    )
-                ) {
-                    Icon(Icons.Rounded.RestartAlt, contentDescription = null)
-                    Spacer(Modifier.size(8.dp))
-                    Text("Mời đấu lại", fontWeight = FontWeight.Black)
-                }
+                    icon = Icons.Rounded.RestartAlt,
+                    modifier = Modifier.fillMaxWidth(),
+                    style = ArcadeActionStyle.GOLD,
+                    enabled = !state.isRematchActionPending
+                )
             }
         }
-    }
-}
-
-@Composable
-private fun RematchAcceptButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
-    Button(
-        onClick = onClick,
-        modifier = modifier.heightIn(min = 48.dp),
-        colors = ButtonDefaults.buttonColors(
-            containerColor = ArcadePalette.Gold500,
-            contentColor = ArcadePalette.Navy950
-        )
-    ) {
-        Icon(Icons.Rounded.Check, contentDescription = null)
-        Spacer(Modifier.size(6.dp))
-        Text("Chấp nhận", fontWeight = FontWeight.Black)
     }
 }
 
@@ -793,26 +800,16 @@ private fun OpponentActions(state: GameState, onConnect: () -> Unit, onBlock: ()
         PostMatchFriendStatus.AVAILABLE,
         PostMatchFriendStatus.REQUEST_RECEIVED
     )
-    BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
-        val stackActions = maxWidth < 340.dp || androidx.compose.ui.platform.LocalDensity.current.fontScale >= 1.35f
-        if (stackActions) {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                OpponentConnectButton(friendLabel, canConnect, onConnect, Modifier.fillMaxWidth())
-                OpponentBlockButton(
-                    enabled = state.postMatchFriendStatus != PostMatchFriendStatus.BLOCKED,
-                    onClick = onBlock,
-                    modifier = Modifier.fillMaxWidth()
-                )
-            }
-        } else {
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                OpponentConnectButton(friendLabel, canConnect, onConnect, Modifier.weight(1f))
-                OpponentBlockButton(
-                    enabled = state.postMatchFriendStatus != PostMatchFriendStatus.BLOCKED,
-                    onClick = onBlock
-                )
-            }
-        }
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        OpponentBlockButton(
+            enabled = state.postMatchFriendStatus != PostMatchFriendStatus.BLOCKED,
+            onClick = onBlock,
+            modifier = Modifier.fillMaxWidth()
+        )
+        OpponentConnectButton(friendLabel, canConnect, onConnect, Modifier.fillMaxWidth())
     }
 }
 
@@ -823,15 +820,14 @@ private fun OpponentConnectButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    OutlinedButton(
+    ArcadeActionButton(
+        label = label,
         onClick = onClick,
         enabled = enabled,
-        modifier = modifier.heightIn(min = 48.dp)
-    ) {
-        Icon(Icons.Rounded.GroupAdd, contentDescription = null)
-        Spacer(Modifier.size(6.dp))
-        Text(label)
-    }
+        icon = Icons.Rounded.GroupAdd,
+        modifier = modifier,
+        style = ArcadeActionStyle.OUTLINE
+    )
 }
 
 @Composable
@@ -840,15 +836,14 @@ private fun OpponentBlockButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    TextButton(
+    ArcadeActionButton(
+        label = "Chặn",
         onClick = onClick,
         enabled = enabled,
-        modifier = modifier.heightIn(min = 48.dp)
-    ) {
-        Icon(Icons.Rounded.Block, contentDescription = null)
-        Spacer(Modifier.size(4.dp))
-        Text("Chặn")
-    }
+        icon = Icons.Rounded.Block,
+        modifier = modifier,
+        style = ArcadeActionStyle.DANGER
+    )
 }
 
 private fun formatDuration(durationMillis: Long?): String {

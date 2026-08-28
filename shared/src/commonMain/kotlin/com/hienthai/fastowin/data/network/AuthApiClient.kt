@@ -14,6 +14,7 @@ import com.hienthai.fastowin.protocol.PasswordResetRequest
 import com.hienthai.fastowin.protocol.ProtocolJson
 import com.hienthai.fastowin.protocol.RefreshTokenRequest
 import com.hienthai.fastowin.protocol.RegisterRequest
+import com.hienthai.fastowin.protocol.PlayerGender
 import com.hienthai.fastowin.protocol.RevokeAccountSessionRequest
 import com.hienthai.fastowin.protocol.RevokeAllAccountSessionsRequest
 import com.hienthai.fastowin.protocol.UpgradeGuestRequest
@@ -43,10 +44,11 @@ class AuthApiClient(serverUrl: String) {
         email: String,
         password: String,
         displayName: String,
-        devicePlatform: String
+        devicePlatform: String,
+        gender: PlayerGender
     ): AuthSessionResponse = execute(
         "$baseUrl/auth/register",
-        RegisterRequest(email, password, displayName, devicePlatform)
+        RegisterRequest(email, password, displayName, devicePlatform, gender)
     )
 
     suspend fun login(email: String, password: String, devicePlatform: String): AuthSessionResponse =

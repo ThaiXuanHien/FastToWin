@@ -463,6 +463,7 @@ class GameController(
                 currentRoomName = null,
                 currentMatchId = null,
                 winnerPlayerId = null,
+                didForfeitLastMatch = false,
                 isTournamentOpen = true,
                 isTournamentLoading = true,
                 error = null
@@ -602,17 +603,28 @@ class GameController(
     }
 
     fun createRoom(roomName: String, password: String) {
+        createRoom(_uiState.value.gameMode, roomName, password)
+    }
+
+    fun createRoom(mode: GameMode, roomName: String, password: String) {
+        createRoom(mode, MatchType.CASUAL, roomName, password)
+    }
+
+    fun createRoom(mode: GameMode, matchType: MatchType, roomName: String, password: String) {
         if (roomName.isBlank()) {
             _uiState.update { it.copy(error = "Vui lòng nhập tên phòng.") }
             return
         }
-        _uiState.update { it.copy(isSearching = true, error = null) }
+        _uiState.update {
+            it.copy(gameMode = mode, matchType = matchType, isSearching = true, error = null)
+        }
         scope.launch {
             socket.sendMessage(
                 ClientMessage.CreateRoom(
                     roomName = roomName,
                     password = password,
-                    gameMode = _uiState.value.gameMode.toProtocol()
+                    gameMode = mode.toProtocol(),
+                    matchType = matchType
                 )
             )
         }
@@ -639,16 +651,54 @@ class GameController(
     }
 
     fun leaveRoom() {
-        val roomId = _uiState.value.currentRoomId
+        val state = _uiState.value
+        val roomId = state.currentRoomId
         if (roomId != null) scope.launch { socket.sendMessage(ClientMessage.LeaveRoom(roomId)) }
-        returnToRoomBrowser()
+        if (roomId != null && state.isMatchStarted && !state.isGameOver) {
+            _uiState.update {
+                it.copy(
+                    isGameOver = true,
+                    isMatchStarted = false,
+                    winnerPlayerId = it.opponent.id ?: "opponent-forfeit-winner",
+                    didForfeitLastMatch = true,
+                    isRematchRequestedByMe = false,
+                    isRematchRequestedByOpponent = false,
+                    isRematchActionPending = false,
+                    rematchNotice = "Bạn đã chủ động rời trận và bị xử thua.",
+                    error = null
+                )
+            }
+        } else {
+            returnToRoomBrowser()
+        }
     }
 
     fun requestRematch() {
         val state = _uiState.value
         val roomId = state.currentRoomId ?: return
-        if (!state.isGameOver || state.isRematchRequestedByMe) return
-        scope.launch { socket.sendMessage(ClientMessage.RespondRematch(roomId, accept = true)) }
+        if (!state.isGameOver || state.isRematchRequestedByMe || state.isRematchActionPending) return
+        val isAcceptingInvitation = state.isRematchRequestedByOpponent
+        _uiState.update {
+            it.copy(
+                isRematchActionPending = true,
+                isRematchRequestedByMe = !isAcceptingInvitation,
+                rematchNotice = if (isAcceptingInvitation) {
+                    "Đang chấp nhận lời mời đấu lại..."
+                } else {
+                    "Đã gửi lời mời đấu lại."
+                },
+                error = null
+            )
+        }
+        scope.launch {
+            socket.sendMessage(
+                if (isAcceptingInvitation) {
+                    ClientMessage.RespondRematch(roomId, accept = true)
+                } else {
+                    ClientMessage.RequestRematch(roomId)
+                }
+            )
+        }
     }
 
     fun declineRematch() = respondToRematch(accept = false)
@@ -658,7 +708,12 @@ class GameController(
     private fun respondToRematch(accept: Boolean) {
         val state = _uiState.value
         val roomId = state.currentRoomId ?: return
-        if (!state.isGameOver || (!state.isRematchRequestedByMe && !state.isRematchRequestedByOpponent)) return
+        if (
+            !state.isGameOver ||
+            state.isRematchActionPending ||
+            (!state.isRematchRequestedByMe && !state.isRematchRequestedByOpponent)
+        ) return
+        _uiState.update { it.copy(isRematchActionPending = true, error = null) }
         scope.launch { socket.sendMessage(ClientMessage.RespondRematch(roomId, accept)) }
     }
 
@@ -1176,29 +1231,36 @@ class GameController(
             }
 
             is ServerMessage.RematchStatus -> {
-                applyGameSnapshot(message.game)
-                _uiState.update { state ->
-                    val actorIsMe = message.actorPlayerId == playerId
-                    state.copy(
-                        rematchNotice = when (message.event) {
-                            RematchEvent.REQUESTED -> if (actorIsMe) {
-                                "Đã gửi yêu cầu đấu lại."
-                            } else {
-                                "Đối thủ muốn đấu lại với bạn."
+                if (applyGameSnapshot(message.game)) {
+                    _uiState.update { state ->
+                        val localPlayerId = playerId ?: state.player.id
+                        val actorIsMe = message.actorPlayerId?.let { it == localPlayerId }
+                            ?: (localPlayerId != null && localPlayerId in message.game.rematchRequestedPlayerIds)
+                        val requestStillPending = message.event == RematchEvent.REQUESTED
+                        state.copy(
+                            isRematchActionPending = false,
+                            isRematchRequestedByMe = requestStillPending && actorIsMe,
+                            isRematchRequestedByOpponent = requestStillPending && !actorIsMe,
+                            rematchNotice = when (message.event) {
+                                RematchEvent.REQUESTED -> if (actorIsMe) {
+                                    "Đã gửi yêu cầu đấu lại."
+                                } else {
+                                    "Đối thủ muốn đấu lại với bạn."
+                                }
+                                RematchEvent.CANCELLED -> if (actorIsMe) {
+                                    "Bạn đã hủy yêu cầu đấu lại."
+                                } else {
+                                    "Đối thủ đã hủy yêu cầu đấu lại."
+                                }
+                                RematchEvent.DECLINED -> if (actorIsMe) {
+                                    "Bạn đã từ chối đấu lại."
+                                } else {
+                                    "Đối thủ đã từ chối đấu lại."
+                                }
+                                RematchEvent.EXPIRED -> "Yêu cầu đấu lại đã hết thời gian."
                             }
-                            RematchEvent.CANCELLED -> if (actorIsMe) {
-                                "Bạn đã hủy yêu cầu đấu lại."
-                            } else {
-                                "Đối thủ đã hủy yêu cầu đấu lại."
-                            }
-                            RematchEvent.DECLINED -> if (actorIsMe) {
-                                "Bạn đã từ chối đấu lại."
-                            } else {
-                                "Đối thủ đã từ chối đấu lại."
-                            }
-                            RematchEvent.EXPIRED -> "Yêu cầu đấu lại đã hết thời gian."
-                        }
-                    )
+                        )
+                    }
                 }
             }
             is ServerMessage.LatencyPong -> {
@@ -1225,7 +1287,18 @@ class GameController(
             }
             is ServerMessage.RoomClosed -> {
                 if (_uiState.value.currentRoomId == message.roomId) {
-                    returnToRoomBrowser(message.reason)
+                    if (_uiState.value.didForfeitLastMatch && _uiState.value.isGameOver) {
+                        _uiState.update {
+                            it.copy(
+                                currentRoomId = null,
+                                isRoomHost = false,
+                                rematchNotice = message.reason,
+                                error = null
+                            )
+                        }
+                    } else {
+                        returnToRoomBrowser(message.reason)
+                    }
                 }
             }
 
@@ -1259,6 +1332,8 @@ class GameController(
     )
 
     private fun applyWaitingSnapshot(game: GameSnapshot) {
+        val currentState = _uiState.value
+        if (!currentState.canApplyGameSnapshot(game.roomId, game.sequence)) return
         gameStarted = false
         val meSnapshot = game.players.firstOrNull { it.id == playerId }
             ?: game.spectators.firstOrNull { it.id == playerId }
@@ -1297,8 +1372,10 @@ class GameController(
                 currentTournamentMatchId = game.tournamentMatchId,
                 currentTournamentRound = game.tournamentRound,
                 winnerPlayerId = game.winnerPlayerId,
+                didForfeitLastMatch = false,
                 isRematchRequestedByMe = false,
                 isRematchRequestedByOpponent = false,
+                isRematchActionPending = false,
                 rematchExpiresAtEpochMillis = null,
                 rematchNotice = null,
                 lastMatchDurationMillis = null,
@@ -1307,6 +1384,7 @@ class GameController(
                 lobbyStage = LobbyStage.ROOM_WAITING,
                 currentRoomId = game.roomId,
                 currentRoomName = game.roomName,
+                latestGameSequence = game.sequence,
                 isRoomHost = game.hostId == playerId,
                 isSearching = false,
                 roomInvitations = emptyList(),
@@ -1339,7 +1417,9 @@ class GameController(
         applyGameSnapshot(game, forceStart = true)
     }
 
-    private fun applyGameSnapshot(game: GameSnapshot, forceStart: Boolean = false) {
+    private fun applyGameSnapshot(game: GameSnapshot, forceStart: Boolean = false): Boolean {
+        val currentState = _uiState.value
+        if (!currentState.canApplyGameSnapshot(game.roomId, game.sequence)) return false
         val meSnapshot = game.players.firstOrNull { it.id == playerId }
             ?: game.spectators.firstOrNull { it.id == playerId }
         val myTeamId = meSnapshot?.teamId
@@ -1350,6 +1430,15 @@ class GameController(
         val finished = game.phase == RoomPhase.FINISHED
         
         _uiState.update { state ->
+            val authoritativePlayer = meSnapshot
+                ?.toState(state.player.name, game.currentTarget, isSpectator = meSnapshot in game.spectators)
+            val reconciledPlayer = authoritativePlayer?.let { player ->
+                if (!finished && player.wrongSelections < state.player.wrongSelections) {
+                    player.copy(wrongSelections = state.player.wrongSelections)
+                } else {
+                    player
+                }
+            } ?: state.player
             state.copy(
                 numbers = if (game.numbers.isNotEmpty()) game.numbers else state.numbers,
                 currentTarget = meSnapshot?.currentTarget ?: game.currentTarget,
@@ -1357,7 +1446,7 @@ class GameController(
                 isGameOver = finished,
                 gameMode = game.gameMode.toUi(),
                 matchType = game.matchType,
-                player = meSnapshot?.toState(state.player.name, game.currentTarget, isSpectator = meSnapshot in game.spectators) ?: state.player,
+                player = reconciledPlayer,
                 opponent = opponent?.toState(DEFAULT_OPPONENT_NAME, game.currentTarget) ?: PlayerState(DEFAULT_OPPONENT_NAME),
                 teammates = teammateSnapshots.map { it.toState("Đồng đội", game.currentTarget) },
                 opponents = opponentSnapshots.map { it.toState(DEFAULT_OPPONENT_NAME, game.currentTarget) },
@@ -1365,6 +1454,7 @@ class GameController(
                 lobbyStage = LobbyStage.MATCHED,
                 currentRoomId = game.roomId,
                 currentRoomName = game.roomName,
+                latestGameSequence = game.sequence,
                 isRoomHost = game.hostId == playerId,
                 hasOpponent = opponent != null,
                 isMatchmaking = false,
@@ -1378,6 +1468,7 @@ class GameController(
                 winnerPlayerId = game.winnerPlayerId,
                 isRematchRequestedByMe = playerId?.let { it in game.rematchRequestedPlayerIds } == true,
                 isRematchRequestedByOpponent = game.rematchRequestedPlayerIds.any { it != playerId },
+                isRematchActionPending = false,
                 rematchExpiresAtEpochMillis = game.rematchExpiresAtEpochMillis,
                 lastMatchDurationMillis = if (finished) {
                     val startedAt = game.startedAtEpochMillis
@@ -1410,6 +1501,7 @@ class GameController(
             gameStarted = false
             timerJob?.cancel()
         }
+        return true
     }
 
     private fun handleServerError(error: ServerMessage.Error) {
@@ -1417,6 +1509,8 @@ class GameController(
             return
         }
 
+        val isRematchError = error.code in REMATCH_ACTION_ERROR_CODES
+        val opponentIsUnavailable = error.code in setOf("OPPONENT_LEFT", "NOT_IN_ROOM", "ROOM_NOT_FOUND")
         if (error.code in setOf("WRONG_PASSWORD", "ROOM_NOT_FOUND", "ROOM_FULL", "ALREADY_IN_ROOM")) {
             returnToRoomBrowser(error.message)
         } else {
@@ -1458,6 +1552,15 @@ class GameController(
                     },
                     isDailyCheckInClaiming = false,
                     claimingMissionCode = null,
+                    isRematchActionPending = if (isRematchError) {
+                        false
+                    } else {
+                        it.isRematchActionPending
+                    },
+                    isRematchRequestedByMe = if (isRematchError) false else it.isRematchRequestedByMe,
+                    isRematchRequestedByOpponent = if (isRematchError) false else it.isRematchRequestedByOpponent,
+                    rematchNotice = if (isRematchError) error.message else it.rematchNotice,
+                    hasOpponent = if (opponentIsUnavailable) false else it.hasOpponent,
                     error = error.message
                 )
             }
@@ -1484,6 +1587,13 @@ class GameController(
         val state = _uiState.value
         val roomId = state.currentRoomId ?: return
         if (!gameStarted || state.isGameOver || state.connectionStatus != ConnectionStatus.CONNECTED) return
+        _uiState.update { current ->
+            if (current.currentRoomId == roomId && current.isMatchStarted && !current.isGameOver) {
+                current.registerOptimisticNumberSelection(number)
+            } else {
+                current
+            }
+        }
         scope.launch {
             socket.sendMessage(
                 ClientMessage.SelectNumber(
@@ -1548,6 +1658,7 @@ class GameController(
                 lobbyStage = LobbyStage.ROOM_BROWSER,
                 currentRoomId = null,
                 currentRoomName = null,
+                latestGameSequence = -1L,
                 isRoomHost = false,
                 hasOpponent = false,
                 sendingRoomInviteFriendIds = emptySet(),
@@ -1556,6 +1667,7 @@ class GameController(
                 isMatchStarted = false,
                 isGameOver = false,
                 winnerPlayerId = null,
+                didForfeitLastMatch = false,
                 countdown = null,
                 error = error
             )
@@ -1712,6 +1824,17 @@ class GameController(
             "SESSION_NOT_FOUND",
             "ROOM_NOT_INVITABLE",
             "FRIEND_BUSY"
+        )
+        val REMATCH_ACTION_ERROR_CODES = setOf(
+            "CONNECTION_NOT_READY",
+            "SEND_FAILED",
+            "RATE_LIMITED",
+            "NOT_IN_ROOM",
+            "OPPONENT_LEFT",
+            "TOURNAMENT_REMATCH_DISABLED",
+            "RANKED_REMATCH_DISABLED",
+            "REMATCH_NOT_AVAILABLE",
+            "REMATCH_NOT_PENDING"
         )
     }
 }

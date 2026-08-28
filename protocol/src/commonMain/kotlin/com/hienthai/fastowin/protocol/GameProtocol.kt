@@ -4,7 +4,7 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
-const val PROTOCOL_VERSION = 36
+const val PROTOCOL_VERSION = 37
 const val GAME_NUMBER_COUNT = 50
 const val MAX_PROFILE_DISPLAY_NAME_LENGTH = 32
 val DAILY_CHECK_IN_REWARDS_XP = listOf(10, 10, 15, 15, 20, 25, 40)
@@ -21,9 +21,14 @@ const val DAILY_CHECK_IN_TITLE_TARGET = 30
 const val DAILY_CHECK_IN_AVATAR_TARGET = 50
 const val DAILY_CHECK_IN_FRAME_TARGET = 100
 const val DAILY_CHECK_IN_AVATAR_ID = "calendar"
+const val DEFAULT_MALE_AVATAR_ID = "male"
+const val DEFAULT_FEMALE_AVATAR_ID = "female"
 
 val STANDARD_PROFILE_AVATAR_IDS = listOf("bolt", "rocket", "target", "trophy", "crown", "star")
-val PROFILE_AVATAR_IDS = (STANDARD_PROFILE_AVATAR_IDS + DAILY_CHECK_IN_AVATAR_ID).toSet()
+val PROFILE_AVATAR_IDS = (
+    STANDARD_PROFILE_AVATAR_IDS + DAILY_CHECK_IN_AVATAR_ID +
+        DEFAULT_MALE_AVATAR_ID + DEFAULT_FEMALE_AVATAR_ID
+).toSet()
 val CLAN_AVATAR_IDS = listOf("shield", "sword", "flag", "dragon", "wolf", "eagle", "crown")
 
 val ProtocolJson = Json {
@@ -754,7 +759,8 @@ sealed class ClientMessage {
     data class CreateRoom(
         val roomName: String,
         val password: String,
-        val gameMode: ProtocolGameMode
+        val gameMode: ProtocolGameMode,
+        val matchType: MatchType = MatchType.CASUAL
     ) : ClientMessage()
 
     @Serializable

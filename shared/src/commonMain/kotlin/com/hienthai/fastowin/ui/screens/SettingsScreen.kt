@@ -25,10 +25,8 @@ import androidx.compose.material.icons.rounded.RestartAlt
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.Vibration
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
@@ -39,6 +37,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.hienthai.fastowin.data.preferences.AppFontScale
@@ -47,9 +47,13 @@ import com.hienthai.fastowin.data.preferences.AppThemeMode
 import com.hienthai.fastowin.data.preferences.BoardStyle
 import com.hienthai.fastowin.ui.components.ArcadeBackdrop
 import com.hienthai.fastowin.ui.components.ArcadePanel
+import com.hienthai.fastowin.ui.components.ArcadeActionButton
+import com.hienthai.fastowin.ui.components.ArcadeActionStyle
+import com.hienthai.fastowin.ui.components.ArcadeSegmentedControl
 import com.hienthai.fastowin.ui.components.FastToWinHeader
 import com.hienthai.fastowin.ui.components.SystemBackHandler
 import com.hienthai.fastowin.ui.layout.ResponsiveScreen
+import com.hienthai.fastowin.ui.theme.ArcadePalette
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -124,15 +128,14 @@ fun SettingsScreen(
                                 onPreferencesChange(preferences.copy(visualEffectsEnabled = it))
                             }
                         )
-                        OutlinedButton(
+                        ArcadeActionButton(
+                            label = "Nghe thử âm thanh",
                             onClick = onPreviewSound,
                             enabled = preferences.soundEnabled,
+                            icon = Icons.AutoMirrored.Rounded.VolumeUp,
+                            style = ArcadeActionStyle.OUTLINE,
                             modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)
-                        ) {
-                            Icon(Icons.AutoMirrored.Rounded.VolumeUp, contentDescription = null)
-                            Spacer(Modifier.width(8.dp))
-                            Text("Nghe thử âm thanh")
-                        }
+                        )
                     }
 
                     SettingsSection(
@@ -182,21 +185,20 @@ fun SettingsScreen(
                         )
                     }
 
-                    OutlinedButton(
+                    ArcadeActionButton(
+                        label = "Xem lại hướng dẫn chơi",
                         onClick = onOpenTutorial,
+                        style = ArcadeActionStyle.PRIMARY,
                         modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)
-                    ) {
-                        Text("Xem lại hướng dẫn chơi")
-                    }
+                    )
 
-                    OutlinedButton(
+                    ArcadeActionButton(
+                        label = "Khôi phục cài đặt mặc định",
                         onClick = { onPreferencesChange(AppPreferences()) },
+                        icon = Icons.Rounded.RestartAlt,
+                        style = ArcadeActionStyle.OUTLINE,
                         modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)
-                    ) {
-                        Icon(Icons.Rounded.RestartAlt, contentDescription = null)
-                        Spacer(Modifier.width(8.dp))
-                        Text("Khôi phục cài đặt mặc định")
-                    }
+                    )
                 }
             }
         }
@@ -207,7 +209,7 @@ fun SettingsScreen(
 private fun SettingsHero() {
     ArcadePanel(
         modifier = Modifier.fillMaxWidth(),
-        accent = MaterialTheme.colorScheme.tertiary
+        accent = ArcadePalette.Violet400
     ) {
         BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
             val stackVertically = maxWidth < 340.dp && LocalDensity.current.fontScale >= 1.3f
@@ -241,7 +243,7 @@ private fun SettingsHeroText(modifier: Modifier = Modifier) {
             "PREFERENCES",
             style = MaterialTheme.typography.labelMedium,
             fontWeight = FontWeight.Black,
-            color = MaterialTheme.colorScheme.tertiary
+            color = ArcadePalette.Gold500
         )
         Text(
             "Chơi theo cách của bạn",
@@ -261,8 +263,9 @@ private fun SettingsHeroIcon() {
     Surface(
         modifier = Modifier.size(72.dp),
         shape = MaterialTheme.shapes.large,
-        color = MaterialTheme.colorScheme.tertiaryContainer,
-        contentColor = MaterialTheme.colorScheme.onTertiaryContainer
+        color = ArcadePalette.Violet600,
+        contentColor = ArcadePalette.White,
+        border = androidx.compose.foundation.BorderStroke(1.dp, ArcadePalette.Violet400)
     ) {
         Box(contentAlignment = Alignment.Center) {
             Icon(
@@ -289,7 +292,7 @@ private fun SettingsSection(
         )
         ArcadePanel(
             modifier = Modifier.fillMaxWidth(),
-            accent = MaterialTheme.colorScheme.primary
+            accent = ArcadePalette.Blue300
         ) {
             Column(
                 modifier = Modifier.fillMaxWidth().padding(16.dp),
@@ -316,8 +319,9 @@ private fun SettingsSwitchRow(
         Surface(
             modifier = Modifier.size(44.dp),
             shape = MaterialTheme.shapes.medium,
-            color = MaterialTheme.colorScheme.primaryContainer,
-            contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+            color = ArcadePalette.Navy700,
+            contentColor = ArcadePalette.White,
+            border = androidx.compose.foundation.BorderStroke(1.dp, ArcadePalette.Blue300)
         ) {
             Box(contentAlignment = Alignment.Center) {
                 Icon(icon, contentDescription = null, modifier = Modifier.size(22.dp))
@@ -342,7 +346,7 @@ private fun SettingsSwitchRow(
 @Composable
 private fun SettingChoiceTitle(icon: ImageVector, title: String) {
     Row(verticalAlignment = Alignment.CenterVertically) {
-        Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+        Icon(icon, contentDescription = null, tint = ArcadePalette.Blue300, modifier = Modifier.size(20.dp))
         Spacer(Modifier.width(8.dp))
         Text(title, fontWeight = FontWeight.SemiBold)
     }
@@ -355,52 +359,9 @@ private fun <T> ChoiceRow(
     label: (T) -> String,
     onSelected: (T) -> Unit
 ) {
-    BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
-        val useEqualRow = maxWidth >= 280.dp && LocalDensity.current.fontScale < 1.35f
-        if (useEqualRow) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                entries.forEach { entry ->
-                    ChoiceChip(
-                        selected = entry == selected,
-                        label = label(entry),
-                        onClick = { onSelected(entry) },
-                        modifier = Modifier.weight(1f)
-                    )
-                }
-            }
-        } else {
-            FlowRow(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                entries.forEach { entry ->
-                    ChoiceChip(
-                        selected = entry == selected,
-                        label = label(entry),
-                        onClick = { onSelected(entry) },
-                        modifier = Modifier.widthIn(min = 92.dp)
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun ChoiceChip(
-    selected: Boolean,
-    label: String,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    FilterChip(
-        selected = selected,
-        onClick = onClick,
-        label = { Text(label) },
-        modifier = modifier.heightIn(min = 48.dp)
+    ArcadeSegmentedControl(
+        labels = entries.map(label),
+        selectedIndex = entries.indexOf(selected).coerceAtLeast(0),
+        onSelected = { index -> entries.getOrNull(index)?.let(onSelected) }
     )
 }

@@ -1,6 +1,7 @@
 package com.hienthai.fastowin.ui.screens
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Arrangement
@@ -26,12 +27,8 @@ import androidx.compose.material.icons.rounded.FitnessCenter
 import androidx.compose.material.icons.rounded.RestartAlt
 import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material.icons.rounded.Add
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Scaffold
@@ -51,6 +48,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.LiveRegionMode
@@ -79,6 +77,9 @@ import com.hienthai.fastowin.resources.Res
 import com.hienthai.fastowin.resources.arcade_leaderboard_trophy
 import com.hienthai.fastowin.ui.components.ArcadeFeatureHero
 import com.hienthai.fastowin.ui.components.ArcadePanel
+import com.hienthai.fastowin.ui.components.ArcadeActionButton
+import com.hienthai.fastowin.ui.components.ArcadeActionStyle
+import com.hienthai.fastowin.ui.components.ArcadeDialog
 import com.hienthai.fastowin.ui.components.FastToWinHeader
 import com.hienthai.fastowin.ui.layout.ResponsiveScreen
 import com.hienthai.fastowin.ui.theme.ArcadePalette
@@ -232,8 +233,8 @@ private fun PracticeStatus(game: PracticeGameState, compact: Boolean) {
         Surface(
             modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp),
             shape = RoundedCornerShape(16.dp),
-            color = MaterialTheme.colorScheme.secondaryContainer,
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.secondary.copy(alpha = 0.55f))
+            color = ArcadePalette.Navy800,
+            border = BorderStroke(1.dp, ArcadePalette.Violet400.copy(alpha = 0.6f))
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
@@ -261,53 +262,52 @@ private fun PracticeStatus(game: PracticeGameState, compact: Boolean) {
         return
     }
     Column(
-        modifier = Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 4.dp),
+        modifier = Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 6.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         Surface(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(20.dp),
-            color = MaterialTheme.colorScheme.secondaryContainer,
-            border = BorderStroke(2.dp, MaterialTheme.colorScheme.secondary.copy(alpha = 0.55f))
+            color = Color.Transparent,
+            border = BorderStroke(1.dp, Color(0xFF9FB8FF).copy(alpha = 0.7f)),
+            shadowElevation = 3.dp
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 9.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(
+                        Brush.horizontalGradient(listOf(Color(0xFF643BD1), Color(0xFF3D72EF))),
+                        RoundedCornerShape(20.dp)
+                    )
+                    .padding(horizontal = 18.dp, vertical = 11.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                Column {
+                Text(
+                    "MỤC TIÊU",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = Color.White.copy(alpha = 0.8f),
+                    fontWeight = FontWeight.Black
+                )
+                Text(
+                    game.currentTarget.coerceAtMost(GAME_NUMBER_COUNT).toString(),
+                    modifier = Modifier.testTag("practice_target"),
+                    style = MaterialTheme.typography.headlineLarge,
+                    color = Color.White,
+                    fontWeight = FontWeight.Black,
+                    lineHeight = 40.sp
+                )
+                when (game.mode) {
+                    GameMode.SURVIVAL -> "${game.lives} mạng"
+                    GameMode.COMBO -> "Combo x${game.combo}"
+                    GameMode.SPEED_UP -> "Nhịp ${game.correctSelections + 1}/$GAME_NUMBER_COUNT"
+                    else -> null
+                }?.let { supporting ->
                     Text(
-                        "MỤC TIÊU",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.72f),
+                        supporting,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Color.White.copy(alpha = 0.74f),
                         fontWeight = FontWeight.Bold
                     )
-                    Text(
-                        game.currentTarget.coerceAtMost(GAME_NUMBER_COUNT).toString(),
-                        modifier = Modifier.testTag("practice_target"),
-                        style = MaterialTheme.typography.headlineLarge,
-                        color = MaterialTheme.colorScheme.onSecondaryContainer,
-                        fontWeight = FontWeight.Black,
-                        lineHeight = 36.sp
-                    )
-                }
-                Surface(
-                    shape = RoundedCornerShape(14.dp),
-                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.88f)
-                ) {
-                    Column(
-                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
-                        horizontalAlignment = Alignment.End
-                    ) {
-                        Text("ĐIỂM", style = MaterialTheme.typography.labelSmall)
-                        Text(
-                            game.score.toString(),
-                            modifier = Modifier.testTag("practice_score"),
-                            style = MaterialTheme.typography.titleLarge,
-                            color = MaterialTheme.colorScheme.primary,
-                            fontWeight = FontWeight.Black
-                        )
-                    }
                 }
             }
         }
@@ -321,9 +321,10 @@ private fun PracticeStatus(game: PracticeGameState, compact: Boolean) {
                 Modifier.weight(1f)
             )
             PracticeMetric(
-                if (game.mode == GameMode.SURVIVAL) "Mạng" else "Combo",
-                if (game.mode == GameMode.SURVIVAL) game.lives.toString() else "x${game.combo}",
-                Modifier.weight(1f)
+                "Điểm",
+                game.score.toString(),
+                Modifier.weight(1f),
+                valueTestTag = "practice_score"
             )
             PracticeMetric("Chính xác", "${game.accuracyPercent}%", Modifier.weight(1f))
         }
@@ -354,12 +355,17 @@ private fun PracticeCompactMetric(label: String, value: String, modifier: Modifi
 }
 
 @Composable
-private fun PracticeMetric(label: String, value: String, modifier: Modifier) {
+private fun PracticeMetric(
+    label: String,
+    value: String,
+    modifier: Modifier,
+    valueTestTag: String? = null
+) {
     Surface(
         modifier = modifier.heightIn(min = 58.dp),
         shape = RoundedCornerShape(16.dp),
-        color = MaterialTheme.colorScheme.surface,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.34f))
+            color = ArcadePalette.Navy800,
+            border = BorderStroke(1.dp, ArcadePalette.OutlineDark.copy(alpha = 0.6f))
     ) {
         Column(
             Modifier.padding(horizontal = 6.dp, vertical = 8.dp),
@@ -369,6 +375,7 @@ private fun PracticeMetric(label: String, value: String, modifier: Modifier) {
             Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Text(
                 value,
+                modifier = valueTestTag?.let { Modifier.testTag(it) } ?: Modifier,
                 style = MaterialTheme.typography.titleMedium,
                 color = MaterialTheme.colorScheme.primary,
                 fontWeight = FontWeight.Black,
@@ -380,22 +387,19 @@ private fun PracticeMetric(label: String, value: String, modifier: Modifier) {
 
 @Composable
 private fun PracticeExitBar(onBack: () -> Unit) {
-    Surface(color = MaterialTheme.colorScheme.surface.copy(alpha = 0.96f)) {
+    Surface(color = ArcadePalette.Navy900.copy(alpha = 0.98f)) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal))
                 .padding(horizontal = 16.dp, vertical = 8.dp)
         ) {
-            OutlinedButton(
+            ArcadeActionButton(
+                label = "KẾT THÚC",
                 onClick = onBack,
-                modifier = Modifier.fillMaxWidth().height(48.dp),
-                shape = RoundedCornerShape(16.dp),
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.error),
-                colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error)
-            ) {
-                Text("KẾT THÚC", fontWeight = FontWeight.Black)
-            }
+                style = ArcadeActionStyle.DANGER,
+                modifier = Modifier.fillMaxWidth()
+            )
         }
     }
 }
@@ -460,7 +464,8 @@ private fun PracticeResult(
             textAlign = TextAlign.Center
         )
         if (challengeText != null) {
-            OutlinedButton(
+            ArcadeActionButton(
+                label = "CHIA SẺ THỬ THÁCH",
                 onClick = {
                     shareError = null
                     if (onShareChallenge != null) {
@@ -471,42 +476,32 @@ private fun PracticeResult(
                         }
                     }
                 },
-                modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp).testTag("share_challenge"),
-                shape = RoundedCornerShape(16.dp)
-            ) {
-                Icon(Icons.Rounded.Share, contentDescription = null)
-                Spacer(Modifier.size(8.dp))
-                Text("Chia sẻ thử thách")
-            }
+                style = ArcadeActionStyle.OUTLINE,
+                icon = Icons.Rounded.Share,
+                modifier = Modifier.fillMaxWidth().testTag("share_challenge")
+            )
         }
         shareError?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
-        Button(
+        ArcadeActionButton(
+            label = "CHƠI LẠI CÙNG BÀN",
             onClick = onRestart,
-            modifier = Modifier.fillMaxWidth().heightIn(min = 54.dp),
-            shape = RoundedCornerShape(16.dp),
-            colors = ButtonDefaults.buttonColors(
-                containerColor = ArcadePalette.Gold500,
-                contentColor = ArcadePalette.Navy950
-            )
-        ) {
-            Icon(Icons.Rounded.RestartAlt, contentDescription = null)
-            Spacer(Modifier.size(8.dp))
-            Text("Chơi lại cùng bàn", fontWeight = FontWeight.Black)
-        }
-        OutlinedButton(
+            style = ArcadeActionStyle.GOLD,
+            icon = Icons.Rounded.RestartAlt,
+            modifier = Modifier.fillMaxWidth()
+        )
+        ArcadeActionButton(
+            label = "TẠO THỬ THÁCH MỚI",
             onClick = onNewChallenge,
-            modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp),
-            shape = RoundedCornerShape(16.dp)
-        ) {
-            Icon(Icons.Rounded.Add, contentDescription = null)
-            Spacer(Modifier.size(8.dp))
-            Text("Tạo thử thách mới")
-        }
-        OutlinedButton(
+            style = ArcadeActionStyle.PRIMARY,
+            icon = Icons.Rounded.Add,
+            modifier = Modifier.fillMaxWidth()
+        )
+        ArcadeActionButton(
+            label = "VỀ TRANG CHỦ",
             onClick = onBack,
-            modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp),
-            shape = RoundedCornerShape(16.dp)
-        ) { Text("Về trang chủ") }
+            style = ArcadeActionStyle.OUTLINE,
+            modifier = Modifier.fillMaxWidth()
+        )
         Spacer(Modifier.height(8.dp))
     }
 }
@@ -537,8 +532,8 @@ private fun PracticeResultMetric(label: String, value: String, modifier: Modifie
     Surface(
         modifier = modifier.heightIn(min = 76.dp),
         shape = RoundedCornerShape(18.dp),
-        color = MaterialTheme.colorScheme.surface,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.38f))
+        color = ArcadePalette.Navy800,
+        border = BorderStroke(1.dp, ArcadePalette.Blue300.copy(alpha = 0.42f))
     ) {
         Column(
             modifier = Modifier.padding(horizontal = 8.dp, vertical = 12.dp),
@@ -599,65 +594,31 @@ fun PracticeLauncherDialog(
 ) {
     var code by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        icon = {
-            Surface(
-                shape = RoundedCornerShape(18.dp),
-                color = MaterialTheme.colorScheme.secondaryContainer,
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.secondary.copy(alpha = 0.55f))
-            ) {
-                Box(modifier = Modifier.size(64.dp), contentAlignment = Alignment.Center) {
-                    Icon(
-                        Icons.Rounded.FitnessCenter,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.secondary,
-                        modifier = Modifier.size(32.dp)
-                    )
-                }
-            }
-        },
-        title = {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text("LUYỆN TẬP OFFLINE", fontWeight = FontWeight.Black, textAlign = TextAlign.Center)
-                Text(
-                    "Rèn phản xạ mỗi ngày",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    textAlign = TextAlign.Center
-                )
-            }
-        },
-        text = {
-            Column(
-                modifier = Modifier.verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(14.dp)
-            ) {
-                Surface(
-                    shape = RoundedCornerShape(16.dp),
-                    color = MaterialTheme.colorScheme.primaryContainer
-                ) {
+    ArcadeDialog(
+        title = "LUYỆN TẬP OFFLINE",
+        subtitle = "Rèn phản xạ mỗi ngày mà không ảnh hưởng Elo.",
+        onDismissRequest = onDismiss
+    ) {
+        Column(
+            modifier = Modifier.heightIn(max = 590.dp).verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+                ArcadePanel(modifier = Modifier.fillMaxWidth(), accent = ArcadePalette.Mint600) {
                     Text(
                         "Không ảnh hưởng Elo và không cần kết nối máy chủ.",
                         modifier = Modifier.fillMaxWidth().padding(14.dp),
-                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         textAlign = TextAlign.Center,
                         fontWeight = FontWeight.SemiBold
                     )
                 }
-                Button(
+                ArcadeActionButton(
+                    label = "Bắt đầu luyện tập mới",
                     onClick = onStartNew,
-                    modifier = Modifier.fillMaxWidth().heightIn(min = 54.dp).testTag("practice_new"),
-                    shape = RoundedCornerShape(16.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = ArcadePalette.Gold500,
-                        contentColor = ArcadePalette.Navy950
-                    )
-                ) {
-                    Icon(Icons.Rounded.FitnessCenter, contentDescription = null)
-                    Spacer(Modifier.size(8.dp))
-                    Text("Bắt đầu luyện tập mới", fontWeight = FontWeight.Black)
-                }
+                    icon = Icons.Rounded.FitnessCenter,
+                    modifier = Modifier.fillMaxWidth().testTag("practice_new"),
+                    style = ArcadeActionStyle.GOLD
+                )
                 HorizontalDivider()
                 Text("Có mã thử thách?", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
                 OutlinedTextField(
@@ -671,9 +632,11 @@ fun PracticeLauncherDialog(
                     singleLine = true,
                     isError = error != null,
                     supportingText = error?.let { message -> ({ Text(message) }) },
+                    shape = RoundedCornerShape(15.dp),
                     modifier = Modifier.fillMaxWidth().testTag("challenge_input")
                 )
-                OutlinedButton(
+                ArcadeActionButton(
+                    label = "Chơi thử thách",
                     onClick = {
                         val challenge = parsePracticeChallenge(code)
                         when {
@@ -684,16 +647,17 @@ fun PracticeLauncherDialog(
                         }
                     },
                     enabled = code.isNotBlank(),
-                    modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp).testTag("challenge_open"),
-                    shape = RoundedCornerShape(16.dp)
-                ) { Text("Chơi thử thách") }
-            }
-        },
-        confirmButton = {},
-        dismissButton = { androidx.compose.material3.TextButton(onClick = onDismiss) { Text("Đóng") } },
-        shape = RoundedCornerShape(28.dp),
-        containerColor = MaterialTheme.colorScheme.surface
-    )
+                    modifier = Modifier.fillMaxWidth().testTag("challenge_open"),
+                    style = ArcadeActionStyle.PRIMARY
+                )
+        }
+        ArcadeActionButton(
+            label = "Đóng",
+            onClick = onDismiss,
+            modifier = Modifier.fillMaxWidth(),
+            style = ArcadeActionStyle.OUTLINE
+        )
+    }
 }
 
 internal fun buildChallengeShareText(mode: GameMode, code: String, score: Int, elapsedMillis: Long): String =

@@ -1,6 +1,7 @@
 ﻿package com.hienthai.fastowin.ui.screens
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -8,7 +9,6 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -26,7 +26,6 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CenterAlignedTopAppBar
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.LinearProgressIndicator
@@ -55,6 +54,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
@@ -71,6 +71,10 @@ import com.hienthai.fastowin.data.preferences.BoardStyle
 import com.hienthai.fastowin.platform.GameFeedbackEffect
 import com.hienthai.fastowin.ui.components.SystemBackHandler
 import com.hienthai.fastowin.ui.components.PlayerAvatar
+import com.hienthai.fastowin.ui.components.ArcadeActionButton
+import com.hienthai.fastowin.ui.components.ArcadeActionStyle
+import com.hienthai.fastowin.ui.components.ArcadeDialog
+import com.hienthai.fastowin.ui.components.FastToWinHeader
 import com.hienthai.fastowin.platform.playFeedbackSound
 import com.hienthai.fastowin.protocol.MatchType
 import com.hienthai.fastowin.ui.layout.ResponsiveScreen
@@ -107,20 +111,32 @@ fun GameScreen(
         if (allowExit) showExitConfirmation = true
     }
     if (showExitConfirmation && allowExit) {
-        AlertDialog(
+        ArcadeDialog(
+            title = "Rời trận?",
+            subtitle = "Chủ động rời trận sẽ bị xử thua${if (state.matchType == MatchType.RANKED) " và mất Elo" else ""}.",
             onDismissRequest = { showExitConfirmation = false },
-            title = { Text("Rời trận đấu?") },
-            text = { Text("Bạn sẽ bị xử thua và trở về sảnh. Đối thủ vẫn xem được kết quả trận.") },
-            confirmButton = {
-                TextButton(onClick = {
-                    showExitConfirmation = false
-                    onExit()
-                }) { Text("Rời trận", color = MaterialTheme.colorScheme.error) }
-            },
-            dismissButton = {
-                TextButton(onClick = { showExitConfirmation = false }) { Text("Tiếp tục chơi") }
+        ) {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                ArcadeActionButton(
+                    label = "RỜI TRẬN",
+                    onClick = {
+                        showExitConfirmation = false
+                        onExit()
+                    },
+                    style = ArcadeActionStyle.DANGER,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                ArcadeActionButton(
+                    label = "TIẾP TỤC CHƠI",
+                    onClick = { showExitConfirmation = false },
+                    style = ArcadeActionStyle.OUTLINE,
+                    modifier = Modifier.fillMaxWidth()
+                )
             }
-        )
+        }
     }
     LaunchedEffect(state.isGameOver) {
         if (state.isGameOver) onFinish()
@@ -128,79 +144,19 @@ fun GameScreen(
 
     Scaffold(
         modifier = modifier.fillMaxSize().testTag("game_screen"),
-        containerColor = MaterialTheme.colorScheme.background,
+        containerColor = Color.Transparent,
         topBar = {
-            CenterAlignedTopAppBar(
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = ArcadePalette.Navy900,
-                    navigationIconContentColor = Color.White,
-                    titleContentColor = Color.White,
-                    actionIconContentColor = Color.White
-                ),
-                navigationIcon = {
-                    if (allowExit) {
-                        IconButton(onClick = { showExitConfirmation = true }) {
-                            Icon(Icons.Rounded.Close, contentDescription = "Rời trận")
-                        }
-                    }
-                },
-                title = {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(
-                            text = state.currentRoomName ?: "Fast To Win",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                        Text(
-                            text = buildString {
-                                append(if (state.matchType == MatchType.RANKED) "Xếp hạng" else "Thường")
-                                append(" • ").append(state.gameMode.description)
-                            },
-                            style = MaterialTheme.typography.labelSmall,
-                            color = Color.White.copy(alpha = 0.72f)
-                        )
-                    }
-                },
-                actions = {
-                    var showEmojiMenu by remember { mutableStateOf(false) }
-                    Box {
-                        IconButton(
-                            onClick = { showEmojiMenu = true },
-                            modifier = Modifier
-                                .testTag("open_emoji_menu")
-                                .semantics { contentDescription = "Gửi biểu cảm" }
-                        ) {
-                            Icon(
-                                imageVector = Icons.Rounded.SentimentSatisfiedAlt,
-                                contentDescription = null
-                            )
-                        }
-                        DropdownMenu(
-                            expanded = showEmojiMenu,
-                            onDismissRequest = { showEmojiMenu = false }
-                        ) {
-                            val emojis = listOf("😀", "😂", "😡", "😭", "👍", "👎")
-                            Row(modifier = Modifier.padding(horizontal = 8.dp)) {
-                                emojis.forEach { emoji ->
-                                    TextButton(
-                                        onClick = {
-                                            onSendEmoji(emoji)
-                                            showEmojiMenu = false
-                                        },
-                                        contentPadding = PaddingValues(8.dp),
-                                        modifier = Modifier
-                                            .defaultMinSize(minWidth = 48.dp, minHeight = 48.dp)
-                                            .testTag("send_emoji:$emoji")
-                                    ) {
-                                        Text(emoji, fontSize = 24.sp)
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
+            FastToWinHeader(
+                title = "${state.gameMode.title} · ${if (state.matchType == MatchType.RANKED) "Xếp hạng" else "Đấu thường"}",
+                subtitle = state.currentRoomName ?: "Ván đấu 50 số",
+                gold = 0,
+                gems = 0,
+                unreadNotifications = 0,
+                onNotifications = {},
+                onBack = if (allowExit) ({ showExitConfirmation = true }) else null,
+                backIcon = Icons.Rounded.Close,
+                showBalances = false,
+                showNotifications = false
             )
         }
     ) { paddingValues ->
@@ -209,7 +165,9 @@ fun GameScreen(
             maxContentWidth = 760.dp,
             applySafeDrawingInsets = false
         ) { contentModifier ->
-            Column(modifier = contentModifier) {
+            BoxWithConstraints(modifier = contentModifier) {
+            val compactLandscape = maxHeight < 430.dp && maxWidth > maxHeight
+            Column(modifier = Modifier.fillMaxSize()) {
                 PlayerScoreBar(
                     state = state,
                     timeLeftMillis = state.timeLeftMillis,
@@ -218,16 +176,17 @@ fun GameScreen(
                     })
                 )
 
-                if (preferences.visualEffectsEnabled) {
+                if (preferences.visualEffectsEnabled && !compactLandscape) {
                     CloseScoreWarning(state)
                 }
 
                 TargetPanel(
                     currentTarget = state.currentTarget,
-                    completedCount = state.player.selectedNumbers.size
+                    completedCount = state.player.selectedNumbers.size,
+                    compact = compactLandscape
                 )
 
-                LiveMetricsBar(state)
+                if (!compactLandscape) LiveMetricsBar(state, onSendEmoji)
 
                 GameConnectionNotice(state)
 
@@ -259,8 +218,10 @@ fun GameScreen(
                         modifier = Modifier.fillMaxSize()
                     )
                 }
+                if (!compactLandscape) GameBottomSummary(state)
             }
             EmojiOverlay(state.activeEmojis)
+            }
         }
     }
 }
@@ -303,7 +264,8 @@ private fun CloseScoreWarning(state: GameState) {
     Surface(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 2.dp),
         shape = RoundedCornerShape(12.dp),
-        color = MaterialTheme.colorScheme.tertiaryContainer
+        color = ArcadePalette.Gold800.copy(alpha = 0.9f),
+        border = BorderStroke(1.dp, ArcadePalette.Gold400.copy(alpha = 0.72f))
     ) {
         Text(
             text = if (difference == 0) "Đang hòa điểm — lượt tiếp theo rất quan trọng!"
@@ -312,45 +274,123 @@ private fun CloseScoreWarning(state: GameState) {
             textAlign = TextAlign.Center,
             style = MaterialTheme.typography.labelMedium,
             fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.onTertiaryContainer
+            color = ArcadePalette.Gold100
         )
     }
 }
 
 @Composable
-private fun LiveMetricsBar(state: GameState) {
+private fun LiveMetricsBar(state: GameState, onSendEmoji: (String) -> Unit) {
     val speed = state.player.averageReactionMillis.takeIf { it > 0 }?.let {
         (10_000L / it).coerceAtMost(99L) / 10.0
     }
+    var showEmojiMenu by remember { mutableStateOf(false) }
     Row(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 2.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        speed?.let { LiveMetric("Tốc độ", "$it số/s", Modifier.weight(1f)) }
-        when (state.gameMode) {
-            com.hienthai.fastowin.navigation.GameMode.COMBO -> LiveMetric(
-                "Combo",
-                "${state.player.combo} • x${comboMultiplier(state.player.combo)}",
-                Modifier.weight(1f)
+        val leading = when (state.gameMode) {
+            com.hienthai.fastowin.navigation.GameMode.SURVIVAL -> "❤ ${state.player.lives} mạng"
+            com.hienthai.fastowin.navigation.GameMode.SPEED_UP -> "NHỊP ${state.player.correctSelections + 1}/$GAME_NUMBER_COUNT"
+            else -> "COMBO x${comboMultiplier(state.player.combo)}"
+        }
+        Surface(
+            shape = RoundedCornerShape(11.dp),
+            color = if (state.player.combo >= 5) ArcadePalette.Violet600 else Color(0xFF102B60),
+            border = BorderStroke(1.dp, ArcadePalette.Violet400.copy(alpha = 0.72f))
+        ) {
+            Text(
+                leading,
+                modifier = Modifier.padding(horizontal = 11.dp, vertical = 8.dp),
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.Black,
+                color = Color.White
             )
-            com.hienthai.fastowin.navigation.GameMode.SURVIVAL -> LiveMetric(
-                "Sinh tồn",
-                "${state.player.lives} mạng",
-                Modifier.weight(1f)
+        }
+        Text(
+            text = "TỐC ĐỘ  ${speed?.let { "$it số/s" } ?: "--"}",
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.Black,
+            color = Color(0xFFA9BADC)
+        )
+        Box {
+            Surface(
+                onClick = { showEmojiMenu = true },
+                modifier = Modifier
+                    .size(42.dp)
+                    .testTag("open_emoji_menu")
+                    .semantics { contentDescription = "Gửi biểu cảm" },
+                shape = RoundedCornerShape(12.dp),
+                color = Color.White.copy(alpha = 0.08f),
+                contentColor = Color.White
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(Icons.Rounded.SentimentSatisfiedAlt, contentDescription = null)
+                }
+            }
+            DropdownMenu(expanded = showEmojiMenu, onDismissRequest = { showEmojiMenu = false }) {
+                Column(modifier = Modifier.padding(8.dp)) {
+                    listOf("😀", "😂", "🔥", "🏆", "❤️", "⚡").chunked(3).forEach { row ->
+                        Row {
+                            row.forEach { emoji ->
+                                TextButton(
+                                    onClick = {
+                                        onSendEmoji(emoji)
+                                        showEmojiMenu = false
+                                    },
+                                    contentPadding = PaddingValues(8.dp),
+                                    modifier = Modifier
+                                        .defaultMinSize(minWidth = 48.dp, minHeight = 48.dp)
+                                        .testTag("send_emoji:$emoji")
+                                ) { Text(emoji, fontSize = 24.sp) }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun GameBottomSummary(state: GameState) {
+    val speed = state.player.averageReactionMillis.takeIf { it > 0 }?.let {
+        (10_000L / it).coerceAtMost(99L) / 10.0
+    }
+    Surface(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 5.dp),
+        shape = RoundedCornerShape(14.dp),
+        color = Color(0xFF0A1E45),
+        border = BorderStroke(1.dp, ArcadePalette.OutlineDark.copy(alpha = 0.58f))
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 9.dp),
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text(
+                "Đúng ${state.player.correctSelections}  ·  Sai ${state.player.wrongSelections}",
+                style = MaterialTheme.typography.labelMedium,
+                color = Color(0xFFA9BADC)
             )
-            com.hienthai.fastowin.navigation.GameMode.SPEED_UP -> LiveMetric(
-                "Nhịp",
-                "${state.player.correctSelections + 1}/$GAME_NUMBER_COUNT",
-                Modifier.weight(1f)
+            Text(
+                "${speed?.let { "$it số/s" } ?: "Đang đo"}",
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.Black,
+                color = ArcadePalette.Blue300
             )
-            else -> Unit
         }
     }
 }
 
 @Composable
 private fun LiveMetric(label: String, value: String, modifier: Modifier = Modifier) {
-    Surface(modifier = modifier, shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.surfaceContainer) {
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(12.dp),
+        color = ArcadePalette.Navy800,
+        border = BorderStroke(1.dp, ArcadePalette.OutlineDark.copy(alpha = 0.58f))
+    ) {
         Row(
             modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -378,15 +418,14 @@ private fun TimerBadge(timeLeftMillis: Long, modifier: Modifier = Modifier) {
     Surface(
         modifier = modifier,
         shape = RoundedCornerShape(14.dp),
-        color = if (urgent) MaterialTheme.colorScheme.errorContainer
-        else MaterialTheme.colorScheme.primaryContainer
+        color = if (urgent) ArcadePalette.Coral800 else ArcadePalette.Navy800,
+        border = BorderStroke(1.dp, if (urgent) ArcadePalette.Coral400 else ArcadePalette.Gold400)
     ) {
         Text(
             text = "${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}",
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
             fontWeight = FontWeight.Black,
-            color = if (urgent) MaterialTheme.colorScheme.onErrorContainer
-            else MaterialTheme.colorScheme.onPrimaryContainer
+            color = if (urgent) Color.White else ArcadePalette.Gold400
         )
     }
 }
@@ -459,11 +498,9 @@ private fun PlayerScoreCard(
     onViewInfo: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
-    val containerColor = if (isLocal) MaterialTheme.colorScheme.primaryContainer
-    else MaterialTheme.colorScheme.tertiaryContainer
-    val contentColor = if (isLocal) MaterialTheme.colorScheme.onPrimaryContainer
-    else MaterialTheme.colorScheme.onTertiaryContainer
-    val accentColor = if (isLocal) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.tertiary
+    val containerColor = ArcadePalette.Navy800
+    val contentColor = Color.White
+    val accentColor = if (isLocal) ArcadePalette.Blue300 else ArcadePalette.Coral400
 
     Surface(
         modifier = modifier.then(
@@ -472,18 +509,18 @@ private fun PlayerScoreCard(
         shape = RoundedCornerShape(18.dp),
         color = containerColor,
         border = BorderStroke(2.dp, accentColor.copy(alpha = 0.55f)),
-        shadowElevation = 2.dp
+        shadowElevation = 0.dp
     ) {
         Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 10.dp),
+            modifier = Modifier.fillMaxWidth().padding(start = 9.dp, end = 7.dp, top = 11.dp, bottom = 11.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp)
+            horizontalArrangement = Arrangement.spacedBy(7.dp)
         ) {
             PlayerAvatar(
                 displayName = avatar.name,
                 avatarId = avatar.avatarId,
                 frameId = avatar.frameId,
-                size = 34.dp
+                size = 40.dp
             )
             Column(modifier = Modifier.weight(1f)) {
                 Text(
@@ -503,56 +540,55 @@ private fun PlayerScoreCard(
             }
             Text(
                 text = score.toString(),
+                modifier = Modifier.padding(end = 5.dp),
                 style = MaterialTheme.typography.headlineSmall,
                 color = contentColor,
-                fontWeight = FontWeight.Black
+                fontWeight = FontWeight.Black,
+                fontSize = 27.sp
             )
         }
     }
 }
 
 @Composable
-private fun TargetPanel(currentTarget: Int, completedCount: Int) {
-    val completed = completedCount.coerceIn(0, GAME_NUMBER_COUNT)
+private fun TargetPanel(currentTarget: Int, completedCount: Int, compact: Boolean = false) {
     val displayedTarget = currentTarget.coerceAtMost(GAME_NUMBER_COUNT)
 
     Surface(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
         shape = RoundedCornerShape(22.dp),
-        color = MaterialTheme.colorScheme.primaryContainer,
-        border = BorderStroke(2.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.55f)),
-        shadowElevation = 2.dp
+        color = Color.Transparent,
+        border = BorderStroke(1.dp, Color(0xFF9FB8FF).copy(alpha = 0.72f)),
+        shadowElevation = 4.dp
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(20.dp)
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(
+                    Brush.horizontalGradient(listOf(Color(0xFF643BD1), Color(0xFF3D72EF))),
+                    RoundedCornerShape(22.dp)
+                )
+                    .padding(horizontal = 18.dp, vertical = if (compact) 4.dp else 11.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(
+                text = "SỐ TIẾP THEO",
+                style = MaterialTheme.typography.labelMedium,
+                color = Color.White.copy(alpha = 0.78f),
+                fontWeight = FontWeight.Black
+            )
+            Text(
+                text = displayedTarget.toString(),
+                fontSize = if (compact) 29.sp else 42.sp,
+                lineHeight = if (compact) 30.sp else 44.sp,
+                fontWeight = FontWeight.Black,
+                color = Color.White
+            )
+            if (!compact) {
                 Text(
-                    text = "SỐ CẦN TÌM",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.75f),
-                    fontWeight = FontWeight.Bold
-                )
-                Text(
-                    text = displayedTarget.toString(),
-                    fontSize = 42.sp,
-                    lineHeight = 46.sp,
-                    fontWeight = FontWeight.Black,
-                    color = MaterialTheme.colorScheme.primary
-                )
-            }
-            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("Tiến độ", style = MaterialTheme.typography.labelMedium)
-                    Text("$completed/$GAME_NUMBER_COUNT", fontWeight = FontWeight.Bold)
-                }
-                LinearProgressIndicator(
-                    progress = { completed.toFloat() / GAME_NUMBER_COUNT },
-                    modifier = Modifier.fillMaxWidth().height(8.dp).clip(RoundedCornerShape(8.dp)),
-                    color = MaterialTheme.colorScheme.primary,
-                    trackColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.7f)
+                    text = "${completedCount.coerceIn(0, GAME_NUMBER_COUNT)}/$GAME_NUMBER_COUNT",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = Color.White.copy(alpha = 0.72f)
                 )
             }
         }
@@ -607,30 +643,15 @@ fun NumberCell(
     boardStyle: BoardStyle = BoardStyle.CLASSIC,
     onClick: () -> Unit
 ) {
-    val classicColor = when (number % 4) {
-        0 -> MaterialTheme.colorScheme.primaryContainer
-        1 -> MaterialTheme.colorScheme.secondaryContainer
-        2 -> MaterialTheme.colorScheme.tertiaryContainer
-        else -> MaterialTheme.colorScheme.surface
-    }
-    val classicContentColor = when (number % 4) {
-        0 -> MaterialTheme.colorScheme.onPrimaryContainer
-        1 -> MaterialTheme.colorScheme.onSecondaryContainer
-        2 -> MaterialTheme.colorScheme.onTertiaryContainer
-        else -> MaterialTheme.colorScheme.onSurface
-    }
-    val classicBorderColor = when (number % 4) {
-        0 -> MaterialTheme.colorScheme.primary
-        1 -> MaterialTheme.colorScheme.secondary
-        2 -> MaterialTheme.colorScheme.tertiary
-        else -> MaterialTheme.colorScheme.outlineVariant
-    }
+    val classicColor = Color(0xFFF6F8FF)
+    val classicContentColor = Color(0xFF10234A)
+    val classicBorderColor = Color(0xFFD6DEF1)
     val activeColor = when {
         isWrong -> ArcadePalette.Coral600
         boardStyle == BoardStyle.HIGH_CONTRAST -> Color.White
         else -> when (boardStyle) {
             BoardStyle.CLASSIC -> classicColor
-            BoardStyle.OCEAN -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.62f)
+            BoardStyle.OCEAN -> ArcadePalette.Blue900
             BoardStyle.HIGH_CONTRAST -> Color.White
         }
     }
@@ -639,7 +660,7 @@ fun NumberCell(
         boardStyle == BoardStyle.HIGH_CONTRAST -> Color.Black
         else -> when (boardStyle) {
             BoardStyle.CLASSIC -> classicContentColor
-            BoardStyle.OCEAN, BoardStyle.HIGH_CONTRAST -> MaterialTheme.colorScheme.onPrimaryContainer
+            BoardStyle.OCEAN, BoardStyle.HIGH_CONTRAST -> Color.White
         }
     }
     val activeBorderColor = when {
@@ -647,35 +668,43 @@ fun NumberCell(
         boardStyle == BoardStyle.HIGH_CONTRAST -> Color.Black
         else -> when (boardStyle) {
             BoardStyle.CLASSIC -> classicBorderColor.copy(alpha = 0.64f)
-            BoardStyle.OCEAN -> MaterialTheme.colorScheme.primary
+            BoardStyle.OCEAN -> ArcadePalette.Blue300
             BoardStyle.HIGH_CONTRAST -> MaterialTheme.colorScheme.outline
         }
     }
-    Surface(
-        modifier = Modifier
-            .aspectRatio(1f)
-            .testTag("game_number_$number")
-            .clip(RoundedCornerShape(13.dp))
-            .clickable(enabled = enabled && !isCompleted, onClick = onClick),
-        color = if (isCompleted) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
-        else activeColor,
-        shape = RoundedCornerShape(13.dp),
-        border = if (isCompleted) null else BorderStroke(
-            1.dp,
-            activeBorderColor
-        ),
-        tonalElevation = if (isCompleted || isWrong) 0.dp else 2.dp,
-        shadowElevation = if (isCompleted || isWrong) 0.dp else 2.dp
+    Box(
+        modifier = Modifier.aspectRatio(1f).testTag("game_number_$number")
     ) {
-        Box(contentAlignment = Alignment.Center) {
-            Text(
-                text = number.toString(),
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Bold,
-                color = if (isCompleted) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.25f)
-                else activeContentColor,
-                fontSize = 20.sp
+        if (!isCompleted) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .offset(y = 3.dp)
+                    .background(
+                        if (isWrong) Color(0xFF9E2940) else Color(0xFFAAB7D2),
+                        RoundedCornerShape(11.dp)
+                    )
             )
+        }
+        Surface(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(bottom = if (isCompleted) 0.dp else 3.dp)
+                .clip(RoundedCornerShape(11.dp))
+                .clickable(enabled = enabled && !isCompleted, onClick = onClick),
+            color = if (isCompleted) Color(0xFF244F99) else activeColor,
+            shape = RoundedCornerShape(11.dp),
+            border = if (isCompleted) null else BorderStroke(1.dp, activeBorderColor)
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                Text(
+                    text = number.toString(),
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Black,
+                    color = if (isCompleted) Color(0xFF7995C9) else activeContentColor,
+                    fontSize = 20.sp
+                )
+            }
         }
     }
 }

@@ -14,6 +14,19 @@ import kotlin.test.assertTrue
 
 class GameStateTest {
     @Test
+    fun `older snapshot from current room cannot overwrite rematch state`() {
+        val state = GameState(
+            currentRoomId = "room-1",
+            latestGameSequence = 42L,
+            isRematchRequestedByOpponent = true
+        )
+
+        assertFalse(state.canApplyGameSnapshot("room-1", 41L))
+        assertTrue(state.canApplyGameSnapshot("room-1", 42L))
+        assertTrue(state.canApplyGameSnapshot("room-2", 1L))
+    }
+
+    @Test
     fun `pending social badge counts incoming friend and room invitations only`() {
         val incoming = listOf(
             friendRequest("incoming-1", "player-1"),
@@ -138,6 +151,20 @@ class GameStateTest {
         )
 
         assertEquals(PostMatchFriendStatus.FRIEND, state.postMatchFriendStatus)
+    }
+
+    @Test
+    fun `wrong selection updates local mistake count immediately`() {
+        val state = GameState(
+            currentTarget = 7,
+            player = PlayerState("Me", currentTarget = 7, wrongSelections = 2, combo = 4)
+        )
+
+        val updated = state.registerOptimisticNumberSelection(9)
+
+        assertEquals(3, updated.player.wrongSelections)
+        assertEquals(0, updated.player.combo)
+        assertEquals(state, state.registerOptimisticNumberSelection(7))
     }
 
     private fun friendRequest(requestId: String, userId: String) = FriendRequestSnapshot(

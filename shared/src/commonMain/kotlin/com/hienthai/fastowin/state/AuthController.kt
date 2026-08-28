@@ -5,6 +5,7 @@ import com.hienthai.fastowin.data.network.AuthApiException
 import com.hienthai.fastowin.data.network.AuthSessionStore
 import com.hienthai.fastowin.data.network.StoredAuthSession
 import com.hienthai.fastowin.data.network.ResumeTokenStore
+import com.hienthai.fastowin.protocol.PlayerGender
 import com.hienthai.fastowin.platform.epochMillis
 import com.hienthai.fastowin.protocol.AuthSessionResponse
 import com.hienthai.fastowin.protocol.AccountSessionSnapshot
@@ -95,12 +96,12 @@ class AuthController(
         }
     }
 
-    fun register(email: String, password: String, displayName: String) {
+    fun register(email: String, password: String, displayName: String, gender: PlayerGender) {
         if (_state.value.isLoading) return
         _state.update { it.copy(isLoading = true, error = null) }
         scope.launch {
             runCatching {
-                val response = api.register(email, password, displayName, devicePlatform)
+                val response = api.register(email, password, displayName, devicePlatform, gender)
                 persist(email, displayName.trim(), response)
             }
                 .onFailure(::showError)

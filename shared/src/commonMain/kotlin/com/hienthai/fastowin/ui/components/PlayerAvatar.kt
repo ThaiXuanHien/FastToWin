@@ -19,6 +19,7 @@ import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.hienthai.fastowin.protocol.DAILY_CHECK_IN_AVATAR_ID
+import com.hienthai.fastowin.protocol.DEFAULT_FEMALE_AVATAR_ID
 import com.hienthai.fastowin.protocol.RankedTier
 import com.hienthai.fastowin.resources.Res
 import com.hienthai.fastowin.resources.arcade_frame_bronze
@@ -132,4 +133,4 @@ private fun seasonalFrameTier(frameId: String): RankedTier? {
     return RankedTier.entries.firstOrNull { frameId.endsWith("_${it.name.lowercase()}") }
 }
 
-private val coralAvatarIds = setOf("target", "crown", DAILY_CHECK_IN_AVATAR_ID)
+private val coralAvatarIds = setOf("target", "crown", DAILY_CHECK_IN_AVATAR_ID, DEFAULT_FEMALE_AVATAR_ID)

@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
@@ -20,12 +21,10 @@ import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
-import androidx.compose.material3.Button
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -51,11 +50,19 @@ import com.hienthai.fastowin.state.AuthState
 import com.hienthai.fastowin.state.MAX_ACCOUNT_PASSWORD_LENGTH
 import com.hienthai.fastowin.state.accountPasswordConfirmationError
 import com.hienthai.fastowin.state.accountPasswordError
+import com.hienthai.fastowin.protocol.DEFAULT_FEMALE_AVATAR_ID
+import com.hienthai.fastowin.protocol.DEFAULT_MALE_AVATAR_ID
+import com.hienthai.fastowin.protocol.PlayerGender
 import com.hienthai.fastowin.ui.components.ArcadeBackdrop
+import com.hienthai.fastowin.ui.components.ArcadeActionButton
+import com.hienthai.fastowin.ui.components.ArcadeActionStyle
 import com.hienthai.fastowin.ui.components.ArcadeBrandLockup
 import com.hienthai.fastowin.ui.components.ArcadePanel
+import com.hienthai.fastowin.ui.components.ArcadeSegmentedControl
+import com.hienthai.fastowin.ui.components.PlayerAvatar
 import com.hienthai.fastowin.ui.components.SystemBackHandler
 import com.hienthai.fastowin.ui.layout.ResponsiveScreen
+import com.hienthai.fastowin.ui.theme.ArcadePalette
 
 @Composable
 fun AuthScreen(
@@ -65,7 +72,7 @@ fun AuthScreen(
     onOpenPasswordReset: () -> Unit,
     onPlayAsGuest: () -> Unit,
     onLogin: (String, String) -> Unit,
-    onRegister: (String, String, String) -> Unit,
+    onRegister: (String, String, String, PlayerGender) -> Unit,
     onUpgradeGuest: (String, String) -> Unit,
     onRequestPasswordReset: (String) -> Unit,
     onConfirmPasswordReset: (String, String, String) -> Unit,
@@ -125,23 +132,20 @@ private fun WelcomeContent(
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
         Spacer(Modifier.height(24.dp))
-        Button(
+        ArcadeActionButton(
+            label = "ĐĂNG NHẬP",
             onClick = onOpenLogin,
-            modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
-            shape = RoundedCornerShape(18.dp)
-        ) {
-            Text("Đăng nhập")
-        }
-        OutlinedButton(
+            modifier = Modifier.fillMaxWidth().testTag("auth_open_login"),
+            style = ArcadeActionStyle.GOLD
+        )
+        ArcadeActionButton(
+            label = "TẠO TÀI KHOẢN",
             onClick = onOpenRegister,
-            modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
-            shape = RoundedCornerShape(18.dp)
-        ) {
-            Text("Tạo tài khoản")
-        }
+            modifier = Modifier.fillMaxWidth().testTag("auth_open_register"),
+            style = ArcadeActionStyle.OUTLINE
+        )
         TextButton(onClick = onPlayAsGuest) { Text("Chơi với tư cách khách") }
-        state.notice?.let { Text(it, color = MaterialTheme.colorScheme.primary, textAlign = TextAlign.Center) }
-        state.error?.let { Text(it, color = MaterialTheme.colorScheme.error, textAlign = TextAlign.Center) }
+        AuthFeedback(state)
     }
 }
 
@@ -157,15 +161,14 @@ private fun LoginContent(
     AuthForm(title = "Đăng nhập", state = state, onBack = onBack) {
         EmailField(email) { email = it }
         PasswordField(password, "Mật khẩu") { password = it }
-        Button(
+        ArcadeActionButton(
+            label = if (state.isLoading) "ĐANG ĐĂNG NHẬP..." else "ĐĂNG NHẬP",
             onClick = { onLogin(email, password) },
             enabled = email.isNotBlank() && password.isNotBlank() && !state.isLoading,
-            modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp).testTag("auth_login_submit"),
-            shape = RoundedCornerShape(18.dp)
-        ) {
-            if (state.isLoading) CircularProgressIndicator(strokeWidth = 2.dp)
-            else Text("Đăng nhập")
-        }
+            modifier = Modifier.fillMaxWidth().testTag("auth_login_submit"),
+            style = ArcadeActionStyle.GOLD,
+            content = authLoadingContent(state.isLoading)
+        )
         TextButton(onClick = onOpenPasswordReset, enabled = !state.isLoading) {
             Text("Quên mật khẩu?")
         }
@@ -198,15 +201,14 @@ private fun PasswordResetContent(
         )
         EmailField(email, enabled = requestedEmail == null && !state.isLoading) { email = it }
         if (requestedEmail == null) {
-            Button(
+            ArcadeActionButton(
+                label = if (state.isLoading) "ĐANG TẠO MÃ..." else "TẠO MÃ KHÔI PHỤC",
                 onClick = { onRequest(email) },
                 enabled = email.isNotBlank() && !state.isLoading,
-                modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
-                shape = RoundedCornerShape(18.dp)
-            ) {
-                if (state.isLoading) CircularProgressIndicator(strokeWidth = 2.dp)
-                else Text("Tạo mã khôi phục")
-            }
+                modifier = Modifier.fillMaxWidth().testTag("auth_reset_request"),
+                style = ArcadeActionStyle.GOLD,
+                content = authLoadingContent(state.isLoading)
+            )
         } else {
             state.devResetToken?.let { token ->
                 Text(
@@ -220,7 +222,8 @@ private fun PasswordResetContent(
                 onValueChange = { resetToken = it.trim() },
                 label = { Text("Mã khôi phục") },
                 singleLine = true,
-                modifier = Modifier.fillMaxWidth()
+                shape = RoundedCornerShape(15.dp),
+                modifier = Modifier.fillMaxWidth().testTag("auth_reset_token")
             )
             PasswordField(newPassword, "Mật khẩu mới (ít nhất 8 ký tự)") { newPassword = it }
             PasswordField(confirmPassword, "Nhập lại mật khẩu mới") { confirmPassword = it }
@@ -228,16 +231,15 @@ private fun PasswordResetContent(
                 Text(passwordError, color = MaterialTheme.colorScheme.error)
             }
             confirmationError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-            Button(
+            ArcadeActionButton(
+                label = if (state.isLoading) "ĐANG CẬP NHẬT..." else "ĐẶT LẠI MẬT KHẨU",
                 onClick = { onConfirm(requestedEmail, resetToken, newPassword) },
                 enabled = resetToken.isNotBlank() && passwordError == null &&
                     confirmationError == null && confirmPassword.isNotEmpty() && !state.isLoading,
-                modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
-                shape = RoundedCornerShape(18.dp)
-            ) {
-                if (state.isLoading) CircularProgressIndicator(strokeWidth = 2.dp)
-                else Text("Đặt lại mật khẩu")
-            }
+                modifier = Modifier.fillMaxWidth().testTag("auth_reset_confirm"),
+                style = ArcadeActionStyle.GOLD,
+                content = authLoadingContent(state.isLoading)
+            )
             TextButton(onClick = onUseDifferentEmail, enabled = !state.isLoading) {
                 Text("Dùng email khác")
             }
@@ -248,13 +250,14 @@ private fun PasswordResetContent(
 @Composable
 private fun RegisterContent(
     state: AuthState,
-    onRegister: (String, String, String) -> Unit,
+    onRegister: (String, String, String, PlayerGender) -> Unit,
     onBack: () -> Unit
 ) {
     var displayName by remember { mutableStateOf("") }
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var confirmPassword by remember { mutableStateOf("") }
+    var gender by remember { mutableStateOf(PlayerGender.MALE) }
     val passwordError = accountPasswordError(password)
     val confirmationError = accountPasswordConfirmationError(password, confirmPassword)
     AuthForm(title = "Tạo tài khoản", state = state, onBack = onBack) {
@@ -264,23 +267,41 @@ private fun RegisterContent(
             label = { Text("Biệt danh") },
             leadingIcon = { Icon(Icons.Default.Person, null) },
             singleLine = true,
-            modifier = Modifier.fillMaxWidth()
+            shape = RoundedCornerShape(15.dp),
+            modifier = Modifier.fillMaxWidth().testTag("auth_display_name")
+        )
+        Text(
+            "GIỚI TÍNH · ẢNH ĐẠI DIỆN MẶC ĐỊNH",
+            modifier = Modifier.fillMaxWidth(),
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.Black
+        )
+        ArcadeSegmentedControl(
+            labels = listOf("Nam", "Nữ"),
+            selectedIndex = if (gender == PlayerGender.MALE) 0 else 1,
+            onSelected = { gender = if (it == 0) PlayerGender.MALE else PlayerGender.FEMALE },
+            modifier = Modifier.fillMaxWidth().testTag("auth_gender"),
+            itemTestTag = { if (it == 0) "auth_gender_male" else "auth_gender_female" }
+        )
+        PlayerAvatar(
+            displayName = displayName.ifBlank { "Người chơi" },
+            avatarId = if (gender == PlayerGender.MALE) DEFAULT_MALE_AVATAR_ID else DEFAULT_FEMALE_AVATAR_ID,
+            size = 72.dp
         )
         EmailField(email) { email = it }
         PasswordField(password, "Mật khẩu (ít nhất 8 ký tự)") { password = it }
         PasswordField(confirmPassword, "Nhập lại mật khẩu") { confirmPassword = it }
         if (password.isNotEmpty() && passwordError != null) Text(passwordError, color = MaterialTheme.colorScheme.error)
         confirmationError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-        Button(
-            onClick = { onRegister(email, password, displayName) },
+        ArcadeActionButton(
+            label = if (state.isLoading) "ĐANG TẠO..." else "TẠO TÀI KHOẢN",
+            onClick = { onRegister(email, password, displayName, gender) },
             enabled = displayName.isNotBlank() && email.isNotBlank() && passwordError == null &&
                 confirmationError == null && confirmPassword.isNotEmpty() && !state.isLoading,
-            modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
-            shape = RoundedCornerShape(18.dp)
-        ) {
-            if (state.isLoading) CircularProgressIndicator(strokeWidth = 2.dp)
-            else Text("Tạo tài khoản")
-        }
+            modifier = Modifier.fillMaxWidth().testTag("auth_register_submit"),
+            style = ArcadeActionStyle.GOLD,
+            content = authLoadingContent(state.isLoading)
+        )
     }
 }
 
@@ -306,16 +327,15 @@ private fun UpgradeGuestContent(
         PasswordField(confirmPassword, "Nhập lại mật khẩu") { confirmPassword = it }
         if (password.isNotEmpty() && passwordError != null) Text(passwordError, color = MaterialTheme.colorScheme.error)
         confirmationError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-        Button(
+        ArcadeActionButton(
+            label = if (state.isLoading) "ĐANG LƯU..." else "LƯU VÀ TẠO TÀI KHOẢN",
             onClick = { onUpgradeGuest(email, password) },
             enabled = email.isNotBlank() && passwordError == null && confirmationError == null &&
                 confirmPassword.isNotEmpty() && !state.isLoading,
-            modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
-            shape = RoundedCornerShape(18.dp)
-        ) {
-            if (state.isLoading) CircularProgressIndicator(strokeWidth = 2.dp)
-            else Text("Lưu và tạo tài khoản")
-        }
+            modifier = Modifier.fillMaxWidth().testTag("auth_upgrade_submit"),
+            style = ArcadeActionStyle.GOLD,
+            content = authLoadingContent(state.isLoading)
+        )
     }
 }
 
@@ -335,9 +355,14 @@ private fun AuthForm(
             ArcadeBrandLockup(compact = true)
             Text(title, style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Black)
             content()
-            state.notice?.let { Text(it, color = MaterialTheme.colorScheme.primary, textAlign = TextAlign.Center) }
-            state.error?.let { Text(it, color = MaterialTheme.colorScheme.error, textAlign = TextAlign.Center) }
-            TextButton(onClick = onBack, enabled = !state.isLoading) { Text("Quay lại") }
+            AuthFeedback(state)
+            ArcadeActionButton(
+                label = "QUAY LẠI",
+                onClick = onBack,
+                enabled = !state.isLoading,
+                modifier = Modifier.fillMaxWidth(),
+                style = ArcadeActionStyle.OUTLINE
+            )
         }
     }
 }
@@ -356,6 +381,7 @@ private fun EmailField(
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email, imeAction = ImeAction.Next),
         enabled = enabled,
         singleLine = true,
+        shape = RoundedCornerShape(15.dp),
         modifier = Modifier.fillMaxWidth().testTag("auth_email")
     )
 }
@@ -379,6 +405,47 @@ private fun PasswordField(value: String, label: String, onValueChange: (String) 
         },
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done),
         singleLine = true,
+        shape = RoundedCornerShape(15.dp),
         modifier = Modifier.fillMaxWidth().testTag("auth_password")
     )
 }
+
+@Composable
+private fun AuthFeedback(state: AuthState) {
+    state.notice?.let { message ->
+        ArcadePanel(modifier = Modifier.fillMaxWidth(), accent = ArcadePalette.Mint600) {
+            Text(
+                message,
+                modifier = Modifier.fillMaxWidth().padding(12.dp),
+                color = ArcadePalette.Mint600,
+                fontWeight = FontWeight.SemiBold,
+                textAlign = TextAlign.Center
+            )
+        }
+    }
+    state.error?.let { message ->
+        ArcadePanel(modifier = Modifier.fillMaxWidth(), accent = ArcadePalette.Coral600) {
+            Text(
+                message,
+                modifier = Modifier.fillMaxWidth().padding(12.dp),
+                color = ArcadePalette.Coral600,
+                fontWeight = FontWeight.SemiBold,
+                textAlign = TextAlign.Center
+            )
+        }
+    }
+}
+
+@Composable
+private fun authLoadingContent(isLoading: Boolean): (@Composable androidx.compose.foundation.layout.RowScope.() -> Unit)? =
+    if (isLoading) {
+        {
+            CircularProgressIndicator(
+                modifier = Modifier.size(22.dp),
+                color = ArcadePalette.Gold400,
+                strokeWidth = 2.dp
+            )
+        }
+    } else {
+        null
+    }

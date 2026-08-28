@@ -9,6 +9,7 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithContentDescription
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
@@ -27,6 +28,8 @@ import com.hienthai.fastowin.protocol.AchievementSnapshot
 import com.hienthai.fastowin.protocol.GameModeStatisticsSnapshot
 import com.hienthai.fastowin.protocol.MatchHistoryOutcome
 import com.hienthai.fastowin.protocol.MatchHistorySnapshot
+import com.hienthai.fastowin.protocol.MatchDetailSnapshot
+import com.hienthai.fastowin.protocol.MatchEventSnapshot
 import com.hienthai.fastowin.protocol.MatchType
 import com.hienthai.fastowin.protocol.MissionDifficulty
 import com.hienthai.fastowin.protocol.MissionSnapshot
@@ -93,6 +96,7 @@ class ProfileSectionsUiTest {
         assertTrue(editBounds.right <= cardBounds.right && editBounds.bottom <= cardBounds.bottom)
         assertTrue(composeRule.onAllNodesWithText("Elo", substring = true).fetchSemanticsNodes().isEmpty())
         composeRule.onNodeWithContentDescription("Chỉnh sửa hồ sơ").assertIsDisplayed()
+        assertTrue(composeRule.onAllNodesWithTag("profile_daily_check_in_strip").fetchSemanticsNodes().isEmpty())
 
         composeRule.onNodeWithTag("profile_section_statistics")
             .performScrollTo()
@@ -124,6 +128,44 @@ class ProfileSectionsUiTest {
             .assertIsDisplayed()
             .performSemanticsAction(SemanticsActions.OnClick)
         composeRule.runOnIdle { assertTrue(openedSettings) }
+    }
+
+    @Test
+    fun profile_smallPhoneLargestText_keepsCoreSectionsReachable() {
+        setAdaptiveContent(320.dp, 568.dp, fontScale = 1.6f) {
+            ProfileScreen(
+                serverUrl = "",
+                state = GameState(profile = profileFixture()),
+                onBack = {},
+                onRefresh = {},
+                onOpenMatchDetail = {},
+                onCloseMatchDetail = {},
+                onEquipCosmetics = { _, _ -> },
+                onClaimMissionReward = {},
+                onSave = { _, _ -> },
+                onUploadAvatar = {},
+                canEdit = true,
+                isAccountLoading = false,
+                accountError = null,
+                accountNotice = null,
+                accountSessions = emptyList(),
+                areSessionsLoading = false,
+                onChangePassword = { _, _ -> },
+                onDeleteAccount = {},
+                onClearAccountFeedback = {},
+                onLoadSessions = {},
+                onRevokeSession = {},
+                onRevokeAllSessions = {},
+                onLogout = {},
+                onOpenSettings = {},
+                showBackButton = false
+            )
+        }
+
+        composeRule.onNodeWithTag("profile_identity_card").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("Chỉnh sửa hồ sơ").assertIsDisplayed()
+        composeRule.onNodeWithTag("profile_section_statistics").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithTag("profile_settings").performScrollTo().assertIsDisplayed()
     }
 
     @Test
@@ -166,8 +208,8 @@ class ProfileSectionsUiTest {
         }
 
         composeRule.onNodeWithTag("profile_section_screen:WALLET").assertIsDisplayed()
-        composeRule.onNodeWithText("Thưởng trận đấu").assertIsDisplayed()
-        composeRule.onNodeWithContentDescription("nhận 100 vàng, nhận 30 XP").assertIsDisplayed()
+        composeRule.onNodeWithText("Thưởng trận đấu").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("nhận 100 vàng, nhận 30 XP").performScrollTo().assertIsDisplayed()
         composeRule.onNodeWithText("Mua vật phẩm").performScrollTo().assertIsDisplayed()
         composeRule.onNodeWithContentDescription("dùng 500 vàng").performScrollTo().assertIsDisplayed()
     }
@@ -467,6 +509,46 @@ class ProfileSectionsUiTest {
         composeRule.onNodeWithTag("match_history:match-loss").performScrollTo().assertIsDisplayed().performClick()
         composeRule.runOnIdle { assertEquals("match-loss", openedMatchId) }
         composeRule.onNodeWithTag("match_history:match-win").assertDoesNotExist()
+    }
+
+    @Test
+    fun matchDetail_smallPhoneReplaysEventsAndCloses() {
+        var closes = 0
+        val profile = profileFixture()
+        val summary = profile.recentMatches.first()
+        val detail = MatchDetailSnapshot(
+            summary = summary,
+            durationMillis = 45_000L,
+            events = listOf(
+                MatchEventSnapshot(1, "Hiền", true, 1, 1, true, 1L),
+                MatchEventSnapshot(2, "Hiếu", false, 3, 2, false, 2L)
+            )
+        )
+
+        setAdaptiveContent(320.dp, 568.dp, fontScale = 1.4f) {
+            ProfileSectionScreen(
+                state = GameState(profile = profile, matchDetail = detail),
+                profile = profile,
+                section = ProfileSection.RECENT_MATCHES,
+                isExternalProfile = false,
+                canEdit = true,
+                onBack = {},
+                onRefresh = {},
+                onOpenMatchDetail = {},
+                onCloseMatchDetail = { closes++ },
+                onEquipCosmetics = { _, _ -> },
+                onClaimMissionReward = {},
+                onSave = { _, _ -> },
+                onOpenNotifications = {}
+            )
+        }
+
+        composeRule.onNodeWithText("Chi tiết trận").assertIsDisplayed()
+        composeRule.onNodeWithText("Lượt 1/2").assertIsDisplayed()
+        composeRule.onNodeWithText("SAU").performScrollTo().performClick()
+        composeRule.onNodeWithText("Lượt 2/2").assertIsDisplayed()
+        composeRule.onNodeWithText("ĐÓNG").assertIsDisplayed().performClick()
+        composeRule.runOnIdle { assertEquals(1, closes) }
     }
 
     private fun setAdaptiveContent(

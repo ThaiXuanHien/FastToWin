@@ -5,11 +5,15 @@ import kotlinx.serialization.Serializable
 const val SESSION_REPLACED_CLOSE_REASON = "Session resumed elsewhere"
 
 @Serializable
+enum class PlayerGender { MALE, FEMALE }
+
+@Serializable
 data class RegisterRequest(
     val email: String,
     val password: String,
     val displayName: String,
-    val devicePlatform: String? = null
+    val devicePlatform: String? = null,
+    val gender: PlayerGender = PlayerGender.MALE
 )
 
 @Serializable

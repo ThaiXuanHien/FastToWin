@@ -275,6 +275,9 @@ class GameEngine(
         if (message is ClientMessage.JoinMatchmaking) return joinMatchmaking(playerId, message)
         if (message is ClientMessage.CancelMatchmaking) return cancelMatchmaking(playerId)
         if (message is ClientMessage.CreateRoom) {
+            if (message.matchType == MatchType.RANKED && !isAccountSession(playerId)) {
+                return listOf(error(playerId, "ACCOUNT_REQUIRED", "Hãy đăng nhập để tạo phòng xếp hạng."))
+            }
             validateModeAccess(playerId, message.gameMode)?.let { return listOf(it) }
         }
         if (message is ClientMessage.JoinRoom) {
@@ -1829,7 +1832,8 @@ class GameEngine(
             name = name,
             hostId = player.playerId,
             password = command.password.takeIf(String::isNotBlank)?.let(PasswordHash::create),
-            gameMode = command.gameMode
+            gameMode = command.gameMode,
+            matchType = command.matchType
         )
         rooms[room.id] = room
         return listOf(
@@ -1978,16 +1982,8 @@ class GameEngine(
             room.sequence++
             val finished = ServerMessage.GameFinished(room.snapshot())
             val completedMatch = room.takeCompletedMatch()
-            room.departedPlayerIds += player.playerId
-            room.rematchRequestedPlayerIds.remove(player.playerId)
             return HandleResult(
-                deliveries = listOf(
-                    Delivery(
-                        ServerMessage.RoomClosed(room.id, "Bạn đã rời trận và bị xử thua."),
-                        setOf(player.playerId)
-                    ),
-                    Delivery(finished, room.participantIds())
-                ),
+                deliveries = listOf(Delivery(finished, room.activePlayerIds())),
                 completedMatch = completedMatch,
                 changedRoomId = room.id
             )
@@ -2200,16 +2196,14 @@ class GameEngine(
             val rejected = error(player.playerId, "WRONG_NUMBER", "Chưa đúng số, thử lại nhé!", command.requestId)
             room.processedRequests[requestKey] = rejected.message
             room.recordSelection(player.playerId, command, expectedNumber, SelectionResult.REJECTED)
-            val previousCombo = room.combos[player.playerId] ?: 0
             room.combos[player.playerId] = 0
-            val stateChanged = when (room.gameMode) {
+            when (room.gameMode) {
                 ProtocolGameMode.TIME_BONUS -> {
                     val deadline = room.deadlinesAtEpochMillis[player.playerId] ?: nowMillis()
                     room.deadlinesAtEpochMillis[player.playerId] = deadline - TIME_BONUS_WRONG_MILLIS
                     if (deadline - TIME_BONUS_WRONG_MILLIS <= nowMillis()) {
                         room.finishedPlayerIds += player.playerId
                     }
-                    true
                 }
                 ProtocolGameMode.SURVIVAL -> {
                     val remainingLives = ((room.lives[player.playerId] ?: SURVIVAL_STARTING_LIVES) - 1).coerceAtLeast(0)
@@ -2218,12 +2212,10 @@ class GameEngine(
                         room.finishedPlayerIds += player.playerId
                         room.forcedWinnerId = room.playerIds().firstOrNull { it != player.playerId }
                     }
-                    true
                 }
-                ProtocolGameMode.COMBO -> previousCombo > 0
-                else -> false
+                ProtocolGameMode.COMBO -> Unit
+                else -> Unit
             }
-            if (!stateChanged) return HandleResult(listOf(rejected), changedRoomId = room.id)
             room.sequence++
             room.finishIfPlayersDone(nowMillis())
             val update = ServerMessage.GameStateUpdated(
@@ -2233,7 +2225,7 @@ class GameEngine(
                 selectionAccepted = false
             )
             return HandleResult(
-                deliveries = listOf(Delivery(update, room.playerIds()), rejected),
+                deliveries = listOf(Delivery(update, room.participantIds()), rejected),
                 completedMatch = room.takeCompletedMatch(),
                 changedRoomId = room.id
             )

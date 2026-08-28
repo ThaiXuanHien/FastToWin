@@ -585,7 +585,8 @@ private fun GameContent(
                     onRespondInvitation = controller::respondTournamentInvitation,
                     onStart = controller::startTournament,
                     onLeave = controller::leaveTournament,
-                    onOpenFriendProfile = controller::openFriendProfile
+                    onOpenFriendProfile = controller::openFriendProfile,
+                    onOpenNotifications = controller::openNotifications
                 )
 
                 showSeasonHistory -> SeasonHistoryScreen(

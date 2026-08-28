@@ -1,11 +1,15 @@
 package com.hienthai.fastowin
 
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
@@ -72,7 +76,7 @@ class CriticalFlowsUiTest {
                         submittedEmail = email
                         submittedPassword = password
                     },
-                    onRegister = { _, _, _ -> },
+                    onRegister = { _, _, _, _ -> },
                     onUpgradeGuest = { _, _ -> },
                     onRequestPasswordReset = {},
                     onConfirmPasswordReset = { _, _, _ -> },
@@ -110,6 +114,7 @@ class CriticalFlowsUiTest {
 
         composeRule.onNodeWithTag("home_screen").assertIsDisplayed()
         composeRule.onNodeWithTag("home_quick_match").performClick()
+        composeRule.onNodeWithText("Đấu xếp hạng").performClick()
         composeRule.onNodeWithText("Cổ điển").performClick()
 
         composeRule.runOnIdle {
@@ -131,7 +136,7 @@ class CriticalFlowsUiTest {
         }
 
         composeRule.onNodeWithTag("daily_check_in_card").performScrollTo().assertIsDisplayed()
-        composeRule.onNodeWithText("Điểm danh ngày 1/7").assertIsDisplayed()
+        composeRule.onNodeWithText("Điểm danh 7 ngày").assertIsDisplayed()
         composeRule.onNodeWithTag("daily_check_in_claim").performClick()
 
         composeRule.runOnIdle { assertEquals(1, claims) }
@@ -222,7 +227,7 @@ class CriticalFlowsUiTest {
     }
 
     @Test
-    fun profile_showsDailyCheckInMilestonesInIncreasingDifficulty() {
+    fun profile_doesNotShowDailyCheckInSection() {
         composeRule.setContent {
             FastToWinTheme {
                 ProfileScreen(
@@ -277,15 +282,9 @@ class CriticalFlowsUiTest {
             }
         }
 
-        composeRule.onNodeWithTag("daily_check_in_milestones").performScrollTo().assertIsDisplayed()
-        composeRule.onNodeWithText("7/7").assertIsDisplayed()
-        composeRule.onNodeWithText("30/30").assertIsDisplayed()
-        composeRule.onNodeWithText("50/50").assertIsDisplayed()
-        composeRule.onNodeWithText("50/100").assertIsDisplayed()
-        composeRule.onNodeWithTag("daily_check_in_calendar").performScrollTo().assertIsDisplayed()
-        composeRule.onNodeWithText("Tháng 8/2026").assertIsDisplayed()
-        composeRule.onNodeWithContentDescription("Tháng trước").performClick()
-        composeRule.onNodeWithText("Tháng 7/2026").assertIsDisplayed()
+        assertTrue(composeRule.onAllNodesWithTag("daily_check_in_milestones").fetchSemanticsNodes().isEmpty())
+        assertTrue(composeRule.onAllNodesWithTag("daily_check_in_calendar").fetchSemanticsNodes().isEmpty())
+        assertTrue(composeRule.onAllNodesWithTag("profile_daily_check_in_strip").fetchSemanticsNodes().isEmpty())
         composeRule.onNodeWithTag("profile_section_missions").performScrollTo().assertIsDisplayed()
     }
 
@@ -360,6 +359,7 @@ class CriticalFlowsUiTest {
 
         assertTrue(composeRule.onAllNodesWithText("Mặt bài").fetchSemanticsNodes().isNotEmpty())
         composeRule.onNodeWithText("Bàn số").assertIsDisplayed()
+        composeRule.onNodeWithTag("shop_tab:EMOJI").assertIsDisplayed()
         composeRule.onNodeWithText("Gem").performClick()
         composeRule.onNodeWithText("Kho Gem").assertIsDisplayed()
         composeRule.onNodeWithText("Gói Tân binh").assertIsDisplayed()
@@ -380,6 +380,8 @@ class CriticalFlowsUiTest {
         }
 
         composeRule.onNodeWithTag("create_room_open").performClick()
+        composeRule.onNodeWithText("Đấu thường").performClick()
+        composeRule.onNodeWithText("Cổ điển").performClick()
         composeRule.onNodeWithTag("create_room_name").performTextInput("Phòng của Hiền")
         composeRule.onNodeWithTag("create_room_privacy_toggle").performClick()
         composeRule.onNodeWithTag("create_room_password").performTextInput("12345678")
@@ -401,6 +403,8 @@ class CriticalFlowsUiTest {
         }
 
         composeRule.onNodeWithTag("create_room_open").performClick()
+        composeRule.onNodeWithText("Đấu thường").performClick()
+        composeRule.onNodeWithText("Cổ điển").performClick()
         composeRule.onNodeWithTag("create_room_name").performTextInput("Phòng công khai")
         composeRule.onNodeWithTag("create_room_submit").performClick()
 
@@ -522,6 +526,29 @@ class CriticalFlowsUiTest {
     }
 
     @Test
+    fun game_updatesWrongSelectionMetricWhenSnapshotChanges() {
+        val state = mutableStateOf(gameState())
+        composeRule.setContent {
+            FastToWinTheme {
+                GameScreen(
+                    state = state.value,
+                    onNumberClick = {},
+                    onFinish = {},
+                    preferences = AppPreferences(soundEnabled = false, vibrationEnabled = false)
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("Đúng 0  ·  Sai 0").assertIsDisplayed()
+        composeRule.runOnIdle {
+            state.value = state.value.copy(
+                player = state.value.player.copy(wrongSelections = 1)
+            )
+        }
+        composeRule.onNodeWithText("Đúng 0  ·  Sai 1").assertIsDisplayed()
+    }
+
+    @Test
     fun game_sendsSelectedEmoji() {
         var sentEmoji: String? = null
         composeRule.setContent {
@@ -606,6 +633,123 @@ class CriticalFlowsUiTest {
     }
 
     @Test
+    fun result_forfeitShowsLossInsteadOfReturningStraightToLobby() {
+        composeRule.setContent {
+            FastToWinTheme {
+                ResultScreen(
+                    state = GameState(
+                        isGameOver = true,
+                        didForfeitLastMatch = true,
+                        hasOpponent = true,
+                        player = PlayerState("Hiền", id = "player-hien", score = 21),
+                        opponent = PlayerState("Hiếu", id = "player-hieu", score = 29),
+                        winnerPlayerId = "player-hieu"
+                    ),
+                    onRestart = {},
+                    onRematch = {},
+                    onCancelRematch = {},
+                    onDeclineRematch = {},
+                    onConnectOpponent = {},
+                    onBlockOpponent = {},
+                    preferences = AppPreferences(soundEnabled = false, vibrationEnabled = false)
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("THUA CUỘC").assertIsDisplayed()
+        composeRule.onNodeWithText("Bạn đã chủ động rời trận và bị xử thua.").assertIsDisplayed()
+        composeRule.onNodeWithText("Mời đấu lại").assertIsEnabled()
+    }
+
+    @Test
+    fun result_rematchInviteDisablesUntilOpponentResponds() {
+        val state = mutableStateOf(resultState())
+        composeRule.setContent {
+            FastToWinTheme {
+                ResultScreen(
+                    state = state.value,
+                    onRestart = {},
+                    onRematch = {
+                        state.value = state.value.copy(isRematchActionPending = true)
+                    },
+                    onCancelRematch = {},
+                    onDeclineRematch = {},
+                    onConnectOpponent = {},
+                    onBlockOpponent = {},
+                    preferences = AppPreferences(soundEnabled = false, vibrationEnabled = false)
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("Mời đấu lại").assertIsEnabled().performClick()
+        composeRule.onNodeWithText("Đang gửi...").assertIsNotEnabled()
+
+        composeRule.runOnIdle {
+            state.value = state.value.copy(
+                isRematchActionPending = false,
+                isRematchRequestedByMe = true
+            )
+        }
+        composeRule.onNodeWithText("ĐÃ MỜI").assertIsNotEnabled()
+
+        composeRule.runOnIdle {
+            state.value = state.value.copy(
+                isRematchRequestedByMe = false,
+                rematchNotice = "Đối thủ đã từ chối đấu lại."
+            )
+        }
+        composeRule.onNodeWithText("Mời đấu lại").assertIsEnabled()
+
+        composeRule.onNodeWithText("Mời đấu lại").performClick()
+        composeRule.runOnIdle {
+            state.value = state.value.copy(
+                isRematchActionPending = false,
+                isRematchRequestedByMe = true,
+                rematchExpiresAtEpochMillis = Long.MAX_VALUE
+            )
+        }
+        composeRule.onNodeWithText("ĐÃ MỜI").assertIsNotEnabled()
+
+        composeRule.runOnIdle {
+            state.value = state.value.copy(
+                isRematchRequestedByMe = false,
+                rematchExpiresAtEpochMillis = null,
+                rematchNotice = "Yêu cầu đấu lại đã hết thời gian."
+            )
+        }
+        composeRule.onNodeWithText("Yêu cầu đấu lại đã hết thời gian.").assertIsDisplayed()
+        composeRule.onNodeWithText("Mời đấu lại").assertIsEnabled()
+    }
+
+    @Test
+    fun result_receivedRematchInviteShowsImmediateDialog() {
+        var accepted = false
+        var declined = false
+        composeRule.setContent {
+            FastToWinTheme {
+                ResultScreen(
+                    state = resultState().copy(isRematchRequestedByOpponent = true),
+                    onRestart = {},
+                    onRematch = { accepted = true },
+                    onCancelRematch = {},
+                    onDeclineRematch = { declined = true },
+                    onConnectOpponent = {},
+                    onBlockOpponent = {},
+                    preferences = AppPreferences(soundEnabled = false, vibrationEnabled = false)
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("MỜI ĐẤU LẠI").assertIsDisplayed()
+        composeRule.onNodeWithText("Hiếu muốn đấu lại với bạn.").assertIsDisplayed()
+        composeRule.onNodeWithTag("accept_rematch").assertIsEnabled().performClick()
+        composeRule.runOnIdle {
+            assertTrue(accepted)
+            assertTrue(!declined)
+        }
+    }
+
+    @Test
     fun result_shareCreatesPngForSystemShareSheet() {
         val shareDirectory = File(
             InstrumentationRegistry.getInstrumentation().targetContext.cacheDir,
@@ -678,6 +822,7 @@ class CriticalFlowsUiTest {
 
     private fun resultState() = GameState(
         isGameOver = true,
+        hasOpponent = true,
         lastMatchDurationMillis = 42_000,
         player = PlayerState(
             "Hiền",
@@ -712,7 +857,7 @@ private fun TestLobby(
         onStartMatchmaking = onStartMatchmaking,
         onCancelMatchmaking = {},
         onOpenRoomBrowser = {},
-        onCreateRoom = onCreateRoom,
+        onCreateRoom = { _, _, name, password -> onCreateRoom(name, password) },
         onJoinRoom = onJoinRoom,
         onLeaveRoom = {},
         onSetReady = {},

@@ -15,7 +15,6 @@ import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material.icons.filled.MilitaryTech
 import androidx.compose.material.icons.filled.Schedule
-import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
@@ -45,6 +44,7 @@ import com.hienthai.fastowin.protocol.SeasonSnapshot
 import com.hienthai.fastowin.protocol.SeasonRewardReceiptSnapshot
 import com.hienthai.fastowin.protocol.SeasonTierRewardSnapshot
 import com.hienthai.fastowin.protocol.rankedTierFor
+import com.hienthai.fastowin.ui.theme.ArcadePalette
 import kotlinx.coroutines.delay
 
 @Composable
@@ -80,12 +80,32 @@ fun SeasonProgressCard(
     val heldReward = if (isPlacement) null else season.tierRewards
         .lastOrNull { season.peakRating >= it.tier.minimumRating }
 
-    ElevatedCard(modifier = modifier.fillMaxWidth().testTag("season_progress_card")) {
+    ArcadePanel(
+        modifier = modifier.fillMaxWidth().testTag("season_progress_card"),
+        accent = ArcadePalette.Gold500
+    ) {
         Column(
             modifier = Modifier.fillMaxWidth().padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            Text(season.name, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
+            Text(
+                season.name,
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Black,
+                color = ArcadePalette.Gold500
+            )
+            if (season.tierRewards.isNotEmpty()) {
+                TextButton(
+                    onClick = { rewardsExpanded = !rewardsExpanded },
+                    modifier = Modifier.align(Alignment.End).testTag("season_rewards_toggle")
+                ) {
+                    Text(if (rewardsExpanded) "Ẩn thưởng các bậc" else "Xem thưởng các bậc")
+                    Icon(
+                        if (rewardsExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                        contentDescription = null
+                    )
+                }
+            }
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(6.dp)
@@ -153,16 +173,6 @@ fun SeasonProgressCard(
             }
 
             if (season.tierRewards.isNotEmpty()) {
-                TextButton(
-                    onClick = { rewardsExpanded = !rewardsExpanded },
-                    modifier = Modifier.align(Alignment.End).testTag("season_rewards_toggle")
-                ) {
-                    Text(if (rewardsExpanded) "Ẩn thưởng các bậc" else "Xem thưởng các bậc")
-                    Icon(
-                        if (rewardsExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                        contentDescription = null
-                    )
-                }
                 if (rewardsExpanded) {
                     Column(
                         modifier = Modifier.fillMaxWidth().testTag("season_rewards"),
@@ -231,13 +241,14 @@ fun SeasonRewardReceiptCard(
     receipt: SeasonRewardReceiptSnapshot,
     modifier: Modifier = Modifier
 ) {
-    ElevatedCard(
+    ArcadePanel(
         modifier = modifier
             .fillMaxWidth()
             .testTag("season_reward_receipt")
             .semantics {
                 stateDescription = "Đã nhận thưởng ${receipt.seasonName}, bậc ${receipt.tier.displayName}"
-            }
+            },
+        accent = ArcadePalette.Gold500
     ) {
         Column(
             modifier = Modifier.fillMaxWidth().padding(16.dp),

@@ -149,8 +149,11 @@ class ArcadeShellUiTest {
                     },
                     onStartMatchmaking = { _, _ -> },
                     onCancelMatchmaking = {},
-                    onOpenRoomBrowser = {},
-                    onCreateRoom = { _, _ -> },
+                    onOpenRoomBrowser = {
+                        roomClicks += 1
+                        stage.value = LobbyStage.ROOM_BROWSER
+                    },
+                    onCreateRoom = { _, _, _, _ -> },
                     onJoinRoom = { _, _ -> },
                     onLeaveRoom = {},
                     onSetReady = {},

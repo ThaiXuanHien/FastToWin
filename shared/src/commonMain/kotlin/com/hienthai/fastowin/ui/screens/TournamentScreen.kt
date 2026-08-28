@@ -2,6 +2,7 @@ package com.hienthai.fastowin.ui.screens
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.FlowRow
@@ -9,39 +10,30 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.ui.draw.alpha
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.EmojiEvents
 import androidx.compose.material.icons.rounded.GroupAdd
 import androidx.compose.material.icons.rounded.PlayArrow
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.CenterAlignedTopAppBar
+import androidx.compose.material.icons.filled.MonetizationOn
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -65,11 +57,17 @@ import com.hienthai.fastowin.protocol.TournamentSnapshot
 import com.hienthai.fastowin.state.GameState
 import com.hienthai.fastowin.ui.components.FriendPresenceIndicator
 import com.hienthai.fastowin.ui.components.ArcadeFeatureHero
+import com.hienthai.fastowin.ui.components.ArcadeActionButton
+import com.hienthai.fastowin.ui.components.ArcadeActionStyle
+import com.hienthai.fastowin.ui.components.ArcadeDialog
+import com.hienthai.fastowin.ui.components.ArcadePanel
+import com.hienthai.fastowin.ui.components.FastToWinHeader
 import com.hienthai.fastowin.ui.components.OnlineStatusIndicator
 import com.hienthai.fastowin.ui.components.SystemBackHandler
 import com.hienthai.fastowin.ui.layout.ResponsiveScreen
 import com.hienthai.fastowin.resources.Res
 import com.hienthai.fastowin.resources.arcade_tournament_trophy
+import com.hienthai.fastowin.ui.theme.ArcadePalette
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -82,6 +80,7 @@ fun TournamentScreen(
     onStart: () -> Unit,
     onLeave: () -> Unit,
     onOpenFriendProfile: (String) -> Unit,
+    onOpenNotifications: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     SystemBackHandler(onBack = onBack)
@@ -91,17 +90,13 @@ fun TournamentScreen(
         modifier = modifier.fillMaxSize().testTag("tournament_screen"),
         containerColor = Color.Transparent,
         topBar = {
-            CenterAlignedTopAppBar(
-                colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
-                    containerColor = Color.Transparent,
-                    scrolledContainerColor = MaterialTheme.colorScheme.surface
-                ),
-                title = { Text("Đấu giải", fontWeight = FontWeight.Bold) },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "Quay lại")
-                    }
-                }
+            FastToWinHeader(
+                title = "Đấu giải",
+                gold = state.profile?.progression?.gold ?: 0,
+                gems = state.profile?.progression?.gems ?: 0,
+                unreadNotifications = state.unreadNotificationCount,
+                onNotifications = onOpenNotifications,
+                onBack = onBack
             )
         }
     ) { paddingValues ->
@@ -114,10 +109,33 @@ fun TournamentScreen(
                 modifier = contentModifier.verticalScroll(rememberScrollState()).padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
+                val heroTitle: String
+                val heroSubtitle: String
+                if (tournament == null) {
+                    heroTitle = "Đấu trường loại trực tiếp"
+                    heroSubtitle = "Tập hợp 4 chiến binh, vượt bán kết và chạm tay vào cúp vô địch."
+                } else {
+                    val championName = tournament.players
+                        .firstOrNull { it.playerId == tournament.championPlayerId }
+                        ?.displayName
+                    heroTitle = when (tournament.phase) {
+                        TournamentPhase.LOBBY -> "Sảnh giải đấu"
+                        TournamentPhase.RUNNING -> tournament.name
+                        TournamentPhase.FINISHED -> "Nhà vô địch: ${championName ?: "Đang cập nhật"}"
+                        TournamentPhase.CANCELLED -> "Giải đấu đã hủy"
+                    }
+                    heroSubtitle = when (tournament.phase) {
+                        TournamentPhase.LOBBY -> "${tournament.gameMode.title()} · ${tournament.players.size}/${tournament.maxPlayers} người · ${tournament.prizePool} vàng"
+                        TournamentPhase.RUNNING -> "Nhánh đấu đang diễn ra. Người thắng sẽ tiến vào vòng tiếp theo."
+                        TournamentPhase.FINISHED -> "Phần thưởng ${tournament.prizePool} vàng đã được trao."
+                        TournamentPhase.CANCELLED -> "Bạn có thể tạo một giải đấu mới ngay bây giờ."
+                    }
+                }
                 ArcadeFeatureHero(
                     illustration = Res.drawable.arcade_tournament_trophy,
-                    title = "Đấu trường loại trực tiếp",
-                    subtitle = "Tập hợp 4 chiến binh, vượt bán kết và chạm tay vào cúp vô địch."
+                    title = heroTitle,
+                    subtitle = heroSubtitle,
+                    accent = ArcadePalette.Gold500
                 )
                 state.error?.let { MessageCard(it, isError = true) }
                 state.tournamentNotice?.let { MessageCard(it, isError = false) }
@@ -170,24 +188,36 @@ fun TournamentInvitationDialog(
     onRespond: (Boolean) -> Unit,
     onDefer: () -> Unit
 ) {
-    AlertDialog(
+    ArcadeDialog(
+        title = "Lời mời đấu giải",
+        subtitle = "${invitation.hostDisplayName} mời bạn tham gia “${invitation.tournamentName}” · ${invitation.gameMode.title()}.",
         onDismissRequest = onDefer,
-        icon = { Icon(Icons.Rounded.EmojiEvents, contentDescription = null) },
-        title = { Text("Lời mời đấu giải") },
-        text = {
-            Text(
-                "${invitation.hostDisplayName} mời bạn tham gia “${invitation.tournamentName}” " +
-                    "• ${invitation.gameMode.title()}."
+        modifier = Modifier.testTag("tournament_invitation_dialog")
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            ArcadeActionButton(
+                label = "THAM GIA",
+                onClick = { onRespond(true) },
+                style = ArcadeActionStyle.GOLD,
+                modifier = Modifier.fillMaxWidth()
             )
-        },
-        confirmButton = { Button(onClick = { onRespond(true) }) { Text("Tham gia") } },
-        dismissButton = {
-            Row {
-                TextButton(onClick = onDefer) { Text("Để sau") }
-                TextButton(onClick = { onRespond(false) }) { Text("Từ chối") }
-            }
+            ArcadeActionButton(
+                label = "ĐỂ SAU",
+                onClick = onDefer,
+                style = ArcadeActionStyle.OUTLINE,
+                modifier = Modifier.fillMaxWidth()
+            )
         }
-    )
+        ArcadeActionButton(
+            label = "TỪ CHỐI",
+            onClick = { onRespond(false) },
+            style = ArcadeActionStyle.DANGER,
+            modifier = Modifier.fillMaxWidth()
+        )
+    }
 }
 
 @Composable
@@ -210,15 +240,7 @@ private fun CreateTournamentCard(
             }
         )
     }
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(24.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface,
-            contentColor = MaterialTheme.colorScheme.onSurface
-        ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-    ) {
+    ArcadePanel(modifier = Modifier.fillMaxWidth(), accent = ArcadePalette.Gold500) {
         Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
@@ -309,24 +331,22 @@ private fun CreateTournamentCard(
                 FlowRow(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     entryFeeOptions.forEach { fee ->
-                        FilterChip(
+                        TournamentFeeChip(
+                            label = if (fee == 0) "Miễn phí" else "$fee",
                             selected = !isCustomFee && entryFee == fee,
                             onClick = {
                                 isCustomFee = false
                                 entryFee = fee
-                            },
-                            label = { Text(if (fee == 0) "Miễn phí" else "$fee") },
-                            shape = RoundedCornerShape(12.dp)
+                            }
                         )
                     }
-                    FilterChip(
+                    TournamentFeeChip(
+                        label = "Tùy chỉnh",
                         selected = isCustomFee,
-                        onClick = { isCustomFee = true },
-                        label = { Text("Tùy chỉnh") },
-                        shape = RoundedCornerShape(12.dp)
+                        onClick = { isCustomFee = true }
                     )
                 }
 
@@ -342,7 +362,14 @@ private fun CreateTournamentCard(
                         label = { Text("Nhập số vàng lệ phí") },
                         placeholder = { Text("VD: 750") },
                         singleLine = true,
-                        prefix = { Text("💰 ") },
+                        prefix = {
+                            Icon(
+                                Icons.Filled.MonetizationOn,
+                                contentDescription = null,
+                                tint = ArcadePalette.Gold500,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        },
                         suffix = { Text("Vàng") },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                         shape = RoundedCornerShape(16.dp),
@@ -351,14 +378,13 @@ private fun CreateTournamentCard(
                 }
             }
 
-            Button(
+            ArcadeActionButton(
+                label = "BẮT ĐẦU TẠO GIẢI",
                 onClick = { onCreate(name.trim(), mode, entryFee) },
                 enabled = enabled && name.trim().length >= 3 && (!isCustomFee || customFeeText.isNotEmpty()),
-                modifier = Modifier.fillMaxWidth().height(56.dp).testTag("create_tournament"),
-                shape = RoundedCornerShape(16.dp)
-            ) {
-                Text("Bắt đầu tạo giải", fontWeight = FontWeight.Bold)
-            }
+                style = ArcadeActionStyle.GOLD,
+                modifier = Modifier.fillMaxWidth().testTag("create_tournament")
+            )
             
             Surface(
                 color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.5f),
@@ -376,6 +402,45 @@ private fun CreateTournamentCard(
 }
 
 @Composable
+private fun TournamentFeeChip(
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit
+) {
+    Surface(
+        onClick = onClick,
+        modifier = Modifier.heightIn(min = 48.dp),
+        shape = RoundedCornerShape(12.dp),
+        color = if (selected) ArcadePalette.Blue700 else ArcadePalette.Navy800,
+        border = androidx.compose.foundation.BorderStroke(
+            width = 1.dp,
+            color = if (selected) ArcadePalette.Blue300 else ArcadePalette.Navy700
+        )
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            if (selected) {
+                Icon(
+                    Icons.Filled.MonetizationOn,
+                    contentDescription = null,
+                    modifier = Modifier.size(16.dp),
+                    tint = ArcadePalette.Gold500
+                )
+            }
+            Text(
+                text = label,
+                color = ArcadePalette.White,
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.Bold
+            )
+        }
+    }
+}
+
+@Composable
 private fun ActiveTournamentContent(
     state: GameState,
     tournament: TournamentSnapshot,
@@ -387,14 +452,7 @@ private fun ActiveTournamentContent(
     val myId = state.player.id
     val isHost = tournament.hostPlayerId == myId
     
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(24.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.primaryContainer,
-            contentColor = MaterialTheme.colorScheme.onPrimaryContainer
-        )
-    ) {
+    ArcadePanel(modifier = Modifier.fillMaxWidth(), accent = ArcadePalette.Gold500) {
         Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -477,6 +535,7 @@ private fun ActiveTournamentContent(
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     Row(
+                        modifier = Modifier.weight(1f),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
@@ -494,18 +553,22 @@ private fun ActiveTournamentContent(
                                        else MaterialTheme.colorScheme.outline
                             )
                         }
-                        Text(
-                            participant?.displayName ?: "Đang chờ người chơi…",
-                            fontWeight = if (participant != null) FontWeight.Bold else FontWeight.Normal,
-                            color = if (participant != null) MaterialTheme.colorScheme.onSurface 
-                                    else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
-                        )
-                        if (isMe) {
+                        Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                "(Bạn)",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.secondary
+                                participant?.displayName ?: "Đang chờ người chơi…",
+                                fontWeight = if (participant != null) FontWeight.Bold else FontWeight.Normal,
+                                color = if (participant != null) MaterialTheme.colorScheme.onSurface
+                                else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                                maxLines = 1,
+                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                             )
+                            if (isMe) {
+                                Text(
+                                    "Bạn",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = ArcadePalette.Blue300
+                                )
+                            }
                         }
                     }
                     
@@ -576,17 +639,15 @@ private fun ActiveTournamentContent(
         
         Spacer(Modifier.height(8.dp))
         
-        Button(
+        ArcadeActionButton(
+            label = "BẮT ĐẦU GIẢI ĐẤU",
             onClick = onStart,
             enabled = tournament.players.size == tournament.maxPlayers &&
                 tournament.players.all { it.isOnline } && !state.isTournamentLoading,
-            modifier = Modifier.fillMaxWidth().height(56.dp).testTag("start_tournament"),
-            shape = RoundedCornerShape(16.dp)
-        ) {
-            Icon(Icons.Rounded.PlayArrow, contentDescription = null)
-            Spacer(Modifier.width(8.dp))
-            Text("BẮT ĐẦU GIẢI ĐẤU", fontWeight = FontWeight.Black)
-        }
+            icon = Icons.Rounded.PlayArrow,
+            style = ArcadeActionStyle.GOLD,
+            modifier = Modifier.fillMaxWidth().testTag("start_tournament")
+        )
     }
 
     if (tournament.phase != TournamentPhase.LOBBY || tournament.matches.any { it.playerOneId != null }) {
@@ -595,14 +656,13 @@ private fun ActiveTournamentContent(
     }
 
     if (tournament.phase == TournamentPhase.LOBBY) {
-        OutlinedButton(
-            onClick = onLeave, 
-            modifier = Modifier.fillMaxWidth().height(50.dp), 
+        ArcadeActionButton(
+            label = if (isHost) "HỦY GIẢI ĐẤU" else "RỜI KHỎI GIẢI",
+            onClick = onLeave,
             enabled = !state.isTournamentLoading,
-            shape = RoundedCornerShape(16.dp)
-        ) {
-            Text(if (isHost) "Hủy giải đấu" else "Rời khỏi giải", fontWeight = FontWeight.Bold)
-        }
+            style = ArcadeActionStyle.DANGER,
+            modifier = Modifier.fillMaxWidth()
+        )
     } else if (tournament.phase == TournamentPhase.RUNNING) {
         Surface(
             color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
@@ -623,6 +683,7 @@ private fun ActiveTournamentContent(
 @Composable
 private fun TournamentBracket(tournament: TournamentSnapshot) {
     val names = tournament.players.associate { it.playerId to it.displayName }
+    val semiFinals = tournament.matches.filter { it.round == 1 }.sortedBy { it.position }
     Column(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(16.dp)
@@ -635,14 +696,27 @@ private fun TournamentBracket(tournament: TournamentSnapshot) {
             fontWeight = FontWeight.Bold
         )
         
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            val semiFinals = tournament.matches.filter { it.round == 1 }.sortedBy { it.position }
-            semiFinals.forEach { match ->
-                Box(modifier = Modifier.weight(1f)) {
-                    TournamentMatchCard(match, names, compact = true)
+        BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+            val useStackedBracket = maxWidth < 520.dp
+            if (useStackedBracket) {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    semiFinals.forEach { match ->
+                        TournamentMatchCard(match, names)
+                    }
+                }
+            } else {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    semiFinals.forEach { match ->
+                        Box(modifier = Modifier.weight(1f)) {
+                            TournamentMatchCard(match, names, compact = true)
+                        }
+                    }
                 }
             }
         }
@@ -685,12 +759,15 @@ private fun TournamentBracket(tournament: TournamentSnapshot) {
         )
         
         tournament.matches.firstOrNull { it.round == 2 }?.let { finalMatch ->
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth(0.7f)
-                    .align(Alignment.CenterHorizontally)
-            ) {
-                TournamentMatchCard(finalMatch, names, isFinal = true)
+            BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+                val finalWidth = if (maxWidth < 520.dp) 1f else 0.7f
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth(finalWidth)
+                        .align(Alignment.Center)
+                ) {
+                    TournamentMatchCard(finalMatch, names, isFinal = true)
+                }
             }
         }
 
@@ -704,12 +781,7 @@ private fun TournamentBracket(tournament: TournamentSnapshot) {
 
 @Composable
 private fun ChampionCard(name: String) {
-    Surface(
-        shape = RoundedCornerShape(24.dp),
-        color = MaterialTheme.colorScheme.tertiaryContainer,
-        border = androidx.compose.foundation.BorderStroke(2.dp, MaterialTheme.colorScheme.tertiary),
-        modifier = Modifier.fillMaxWidth()
-    ) {
+    ArcadePanel(modifier = Modifier.fillMaxWidth(), accent = ArcadePalette.Gold500) {
         Column(
             modifier = Modifier.padding(24.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
@@ -719,20 +791,20 @@ private fun ChampionCard(name: String) {
                 Icons.Rounded.EmojiEvents,
                 contentDescription = null,
                 modifier = Modifier.size(64.dp),
-                tint = MaterialTheme.colorScheme.tertiary
+                tint = ArcadePalette.Gold500
             )
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Text(
                     "NHÀ VÔ ĐỊCH",
                     style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.7f),
+                    color = ArcadePalette.Gold500,
                     fontWeight = FontWeight.Bold
                 )
                 Text(
                     name,
                     style = MaterialTheme.typography.headlineMedium,
                     fontWeight = FontWeight.Black,
-                    color = MaterialTheme.colorScheme.onTertiaryContainer,
+                    color = MaterialTheme.colorScheme.onSurface,
                     textAlign = TextAlign.Center
                 )
             }
@@ -748,14 +820,13 @@ private fun TournamentMatchCard(
     isFinal: Boolean = false
 ) {
     val isPlaying = match.phase == TournamentMatchPhase.PLAYING
-    Card(
+    ArcadePanel(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = if (isPlaying) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)
-                            else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
-        ),
-        border = if (isPlaying) androidx.compose.foundation.BorderStroke(2.dp, MaterialTheme.colorScheme.primary) else null
+        accent = when {
+            isFinal -> ArcadePalette.Gold500
+            isPlaying -> ArcadePalette.Coral400
+            else -> ArcadePalette.Blue500
+        }
     ) {
         Column(
             modifier = Modifier.padding(if (compact) 10.dp else 14.dp),
@@ -775,9 +846,9 @@ private fun TournamentMatchCard(
             ) {
                 Surface(
                     color = when (match.phase) {
-                        TournamentMatchPhase.PENDING -> MaterialTheme.colorScheme.surfaceVariant
-                        TournamentMatchPhase.PLAYING -> MaterialTheme.colorScheme.primary
-                        TournamentMatchPhase.FINISHED -> MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)
+                        TournamentMatchPhase.PENDING -> ArcadePalette.Navy700
+                        TournamentMatchPhase.PLAYING -> ArcadePalette.Coral600
+                        TournamentMatchPhase.FINISHED -> ArcadePalette.Mint900
                     },
                     shape = RoundedCornerShape(4.dp)
                 ) {
@@ -791,8 +862,9 @@ private fun TournamentMatchCard(
                         style = MaterialTheme.typography.labelSmall,
                         fontWeight = FontWeight.Bold,
                         color = when (match.phase) {
-                            TournamentMatchPhase.PLAYING -> MaterialTheme.colorScheme.onPrimary
-                            else -> MaterialTheme.colorScheme.onSurfaceVariant
+                            TournamentMatchPhase.PLAYING -> ArcadePalette.White
+                            TournamentMatchPhase.FINISHED -> ArcadePalette.Mint100
+                            TournamentMatchPhase.PENDING -> ArcadePalette.Blue100
                         }
                     )
                 }
@@ -821,14 +893,14 @@ private fun TournamentPlayerLine(
             maxLines = 1,
             overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f),
-            color = if (isWinner) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+            color = if (isWinner) ArcadePalette.Gold500 else MaterialTheme.colorScheme.onSurface
         )
         if (isWinner) {
             Icon(
                 Icons.Rounded.EmojiEvents,
                 contentDescription = null,
                 modifier = Modifier.size(if (compact) 14.dp else 18.dp),
-                tint = MaterialTheme.colorScheme.primary
+                tint = ArcadePalette.Gold500
             )
         }
     }
@@ -839,17 +911,29 @@ private fun InvitationCard(
     invitation: TournamentInvitationSnapshot,
     onRespond: (String, Boolean) -> Unit
 ) {
-    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)) {
+    ArcadePanel(modifier = Modifier.fillMaxWidth(), accent = ArcadePalette.Gold500) {
         Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text(invitation.tournamentName, fontWeight = FontWeight.Bold)
-            Text("${invitation.hostDisplayName} mời bạn • ${invitation.gameMode.title()}")
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(onClick = { onRespond(invitation.invitationId, true) }, modifier = Modifier.weight(1f)) {
-                    Text("Tham gia")
-                }
-                OutlinedButton(onClick = { onRespond(invitation.invitationId, false) }, modifier = Modifier.weight(1f)) {
-                    Text("Từ chối")
-                }
+            Text(
+                "${invitation.hostDisplayName} mời bạn · ${invitation.gameMode.title()}",
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                ArcadeActionButton(
+                    label = "THAM GIA",
+                    onClick = { onRespond(invitation.invitationId, true) },
+                    style = ArcadeActionStyle.GOLD,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                ArcadeActionButton(
+                    label = "TỪ CHỐI",
+                    onClick = { onRespond(invitation.invitationId, false) },
+                    style = ArcadeActionStyle.OUTLINE,
+                    modifier = Modifier.fillMaxWidth()
+                )
             }
         }
     }
@@ -862,18 +946,21 @@ private fun TournamentHistoryCard(
 ) {
     val champion = tournament.players.firstOrNull { it.playerId == tournament.championPlayerId }?.displayName
     var expanded by remember(tournament.tournamentId) { mutableStateOf(initiallyExpanded) }
-    Card(
+    Surface(
         onClick = { expanded = !expanded },
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(18.dp),
+        color = MaterialTheme.colorScheme.surface,
+        border = androidx.compose.foundation.BorderStroke(1.dp, ArcadePalette.Gold500.copy(alpha = 0.48f))
     ) {
         Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(tournament.name, fontWeight = FontWeight.Bold)
             Text("${tournament.gameMode.title()} • ${tournament.phase.label()}")
-            champion?.let { Text("Vô địch: $it", color = MaterialTheme.colorScheme.primary) }
+            champion?.let { Text("Vô địch: $it", color = ArcadePalette.Gold500, fontWeight = FontWeight.Bold) }
             Text(
                 if (expanded) "Ẩn nhánh đấu" else "Xem nhánh đấu",
                 style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.primary
+                color = ArcadePalette.Blue300
             )
             if (expanded) {
                 Spacer(Modifier.height(8.dp))
@@ -885,7 +972,12 @@ private fun TournamentHistoryCard(
 
 @Composable
 private fun SectionLabel(text: String) {
-    Text(text, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+    Text(
+        text,
+        style = MaterialTheme.typography.titleLarge,
+        fontWeight = FontWeight.Black,
+        color = MaterialTheme.colorScheme.onSurface
+    )
 }
 
 @Composable
@@ -893,9 +985,13 @@ private fun MessageCard(message: String, isError: Boolean) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(14.dp),
-        color = if (isError) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.secondaryContainer
+        color = if (isError) ArcadePalette.Coral800 else ArcadePalette.Navy800,
+        border = androidx.compose.foundation.BorderStroke(
+            1.dp,
+            if (isError) ArcadePalette.Coral400 else ArcadePalette.Blue300
+        )
     ) {
-        Text(message, modifier = Modifier.padding(14.dp))
+        Text(message, modifier = Modifier.padding(14.dp), color = ArcadePalette.White)
     }
 }
 
