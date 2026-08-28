@@ -294,7 +294,7 @@ ws://127.0.0.1:8080/game
 
 Với iPhone/iPad thật, thay `GAME_SERVER_URL` trong Debug build settings bằng địa chỉ LAN của Mac, ví dụ `ws://192.168.1.20:8080/game`, đồng thời mở firewall cổng 8080.
 
-Hướng dẫn đầy đủ từ cài Xcode/JDK/Docker, chạy simulator và thiết bị thật, kiểm thử hai người chơi đến xử lý lỗi nằm trong [IOS_SETUP.md](IOS_SETUP.md). Xem thêm ma trận thiết bị tại [UI_TESTING.md](UI_TESTING.md).
+Hướng dẫn đầy đủ từ cài Xcode/JDK/Docker, chạy simulator và thiết bị thật, kiểm thử hai người chơi đến xử lý lỗi nằm trong [IOS_SETUP.md](IOS_SETUP.md). Xem thêm ma trận thiết bị tại [docs/testing.md](docs/testing.md).
 
 ## 7. Build và test
 
@@ -465,4 +465,4 @@ Kiểm tra process/container khác đang dùng cổng hoặc đổi port mapping
 
 - [BACKEND_SETUP.md](BACKEND_SETUP.md): kiến trúc backend, API, bảo mật và production.
 - [IOS_SETUP.md](IOS_SETUP.md): chạy ứng dụng iOS.
-- [UI_TESTING.md](UI_TESTING.md): test tự động và ma trận kiểm thử đa thiết bị.
+- [docs/testing.md](docs/testing.md): test tự động và ma trận kiểm thử đa thiết bị.

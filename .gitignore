@@ -13,6 +13,9 @@
 /captures
 .externalNativeBuild
 .cxx
+/.artifacts/
+/.agent/
+/patch*.diff
 local.properties
 server-dev.*.log
 
