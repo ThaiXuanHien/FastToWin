@@ -93,8 +93,30 @@ class AuthControllerTest {
             controller.expireSession("Đã đăng nhập ở thiết bị khác.")
 
             assertEquals(newSession, store.load(SERVER_URL))
-            assertEquals(AuthStage.WELCOME, controller.state.value.stage)
+            assertEquals(AuthStage.LOGIN, controller.state.value.stage)
             assertEquals("Đã đăng nhập ở thiết bị khác.", controller.state.value.error)
+        } finally {
+            controller.close()
+        }
+    }
+
+    @Test
+    fun logout_clearsSessionAndNavigatesImmediatelyToLogin() {
+        val session = storedSession("logout-refresh")
+        val store = InMemoryAuthSessionStore().apply { save(SERVER_URL, session) }
+        val controller = AuthController(
+            serverUrl = SERVER_URL,
+            store = store,
+            resumeTokenStore = InMemoryResumeTokenStore(),
+            devicePlatform = "test"
+        )
+
+        try {
+            controller.logout()
+
+            assertEquals(AuthStage.LOGIN, controller.state.value.stage)
+            assertEquals(null, controller.state.value.session)
+            assertEquals(null, store.load(SERVER_URL))
         } finally {
             controller.close()
         }

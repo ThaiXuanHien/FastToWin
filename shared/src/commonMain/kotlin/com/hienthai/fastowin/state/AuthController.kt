@@ -147,11 +147,10 @@ class AuthController(
 
     fun logout() {
         val session = _state.value.session
-        _state.update { it.copy(isLoading = true) }
+        store.clear(serverUrl)
+        _state.value = AuthState(stage = AuthStage.LOGIN)
         scope.launch {
             if (session != null) runCatching { api.logout(session.refreshToken) }
-            store.clear(serverUrl)
-            _state.value = AuthState()
         }
     }
 
@@ -279,7 +278,7 @@ class AuthController(
         if (expiredSession == null || storedSession?.refreshToken == expiredSession.refreshToken) {
             store.clear(serverUrl)
         }
-        _state.value = AuthState(error = message)
+        _state.value = AuthState(stage = AuthStage.LOGIN, error = message)
     }
 
     fun updateStoredDisplayName(displayName: String) {
