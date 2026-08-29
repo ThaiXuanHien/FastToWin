@@ -1,0 +1,45 @@
+:root {
+    color-scheme: dark;
+    background: #071824;
+}
+
+html,
+body,
+#fastToWinRoot {
+    width: 100%;
+    min-width: 320px;
+    height: 100%;
+    min-height: 100%;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+}
+
+body {
+    background: #071824;
+    overscroll-behavior: none;
+    -webkit-tap-highlight-color: transparent;
+}
+
+canvas {
+    display: block;
+    outline: none;
+}
+
+noscript {
+    display: block;
+    max-width: 36rem;
+    margin: 4rem auto;
+    padding: 1.5rem;
+    color: #ffffff;
+    font: 600 1rem/1.5 system-ui, sans-serif;
+    text-align: center;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        scroll-behavior: auto !important;
+    }
+}

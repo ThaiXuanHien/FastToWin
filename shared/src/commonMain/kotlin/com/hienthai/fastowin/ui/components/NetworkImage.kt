@@ -9,6 +9,7 @@ import com.hienthai.fastowin.platform.toImageBitmap
 import io.ktor.client.*
 import io.ktor.client.request.*
 import io.ktor.client.statement.*
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -23,7 +24,6 @@ fun NetworkImage(
     fallback: @Composable () -> Unit = {}
 ) {
     var imageBitmap by remember(url) { mutableStateOf<ImageBitmap?>(null) }
-    var error by remember(url) { mutableStateOf(false) }
 
     LaunchedEffect(url) {
         if (url.isEmpty()) return@LaunchedEffect
@@ -33,9 +33,12 @@ fun NetworkImage(
                 bytes.toImageBitmap()
             }
             imageBitmap = bitmap
-        } catch (e: Exception) {
-            e.printStackTrace()
-            error = true
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Throwable) {
+            // Network images are optional. Keep the composable alive and show
+            // its caller-provided fallback when an image cannot be fetched or decoded.
+            imageBitmap = null
         }
     }
 
@@ -50,4 +53,3 @@ fun NetworkImage(
         fallback()
     }
 }
-

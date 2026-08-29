@@ -5,11 +5,9 @@ import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.FontScale
 import androidx.compose.ui.test.ForcedSize
 import androidx.compose.ui.test.assertIsDisplayed
-import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
-import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.then
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.DpSize
@@ -61,7 +59,6 @@ class ArcadeGameUiTest {
         composeRule.onNodeWithText(LEGACY_ERROR_MESSAGE).assertDoesNotExist()
         composeRule.onNodeWithTag("number_grid")
             .assertIsDisplayed()
-            .performScrollToNode(hasTestTag("game_number_50"))
         composeRule.onNodeWithTag("game_number_50").assertIsDisplayed()
     }
 

@@ -7,14 +7,12 @@ import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.FontScale
 import androidx.compose.ui.test.ForcedSize
 import androidx.compose.ui.test.assertIsDisplayed
-import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
-import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.test.performTextInput
@@ -61,7 +59,6 @@ class ArcadeProfilePracticeUiTest {
 
         composeRule.onNodeWithTag("number_grid")
             .assertIsDisplayed()
-            .performScrollToNode(hasTestTag("game_number_50"))
         composeRule.onNodeWithTag("game_number_50").assertIsDisplayed()
         composeRule.onNodeWithText("KẾT THÚC").performClick()
         composeRule.runOnIdle { assertTrue(wentBack) }
@@ -79,7 +76,6 @@ class ArcadeProfilePracticeUiTest {
 
         composeRule.onNodeWithTag("number_grid")
             .assertIsDisplayed()
-            .performScrollToNode(hasTestTag("game_number_50"))
         composeRule.onNodeWithTag("game_number_50").assertIsDisplayed()
     }
 

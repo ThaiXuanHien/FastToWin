@@ -31,6 +31,7 @@ Fast To Win là game tìm số 1–50 theo thời gian thực dành cho Android 
 | `protocol/` | Message model và serialization dùng chung giữa client/server |
 | `server/` | Ktor HTTP/WebSocket server, repository và Flyway migration |
 | `iosApp/` | Ứng dụng iOS, Xcode project và cầu nối Swift–Kotlin |
+| `webApp/` | Điểm khởi chạy Compose Multiplatform Web bằng Kotlin/Wasm |
 
 Cấu hình chính hiện tại:
 
@@ -339,6 +340,39 @@ Báo cáo Compose UI test:
 app/build/reports/androidTests/connected/debug/flavors/dev/index.html
 ```
 
+### Chạy phiên bản web thử nghiệm
+
+Để chạy PostgreSQL, backend, cài/mở Android và mở web bằng một lệnh trên Windows, hãy mở emulator hoặc cắm thiết bị trước rồi chạy:
+
+```powershell
+.\start-dev-all.cmd
+```
+
+Script dùng lại backend nếu `http://127.0.0.1:8080/health` đang hoạt động, mở Android trên mọi thiết bị online và mở web tại `http://localhost:8081`. Log nền nằm trong `.artifacts/dev-all`; nhấn `Ctrl+C` để dừng các tiến trình do script khởi động. Dùng `.\start-dev-all.cmd -NoBrowser` nếu không muốn tự mở trình duyệt.
+
+Khởi động backend ở cổng `8080`, sau đó mở terminal thứ hai:
+
+```powershell
+$env:JAVA_HOME='C:\Program Files\Android\Android Studio\jbr'
+.\gradlew.bat :webApp:wasmJsBrowserDevelopmentRun
+```
+
+Web development chạy tại `http://localhost:8081` và mặc định kết nối `ws://127.0.0.1:8080/game`. Có thể thay backend trong `webApp/src/wasmJsMain/resources/config.js` mà không sửa UI dùng chung.
+
+Build bộ file web để triển khai:
+
+```powershell
+.\gradlew.bat :webApp:wasmJsBrowserDistribution
+```
+
+Khi production, đổi URL trong `config.js` sang `wss://`, đặt domain web được phép cho backend rồi khởi động server:
+
+```powershell
+$env:FASTTOWIN_WEB_ORIGINS='https://play.example.com'
+```
+
+Chi tiết phần đã tương thích và các giới hạn còn lại: [docs/web-wasm-audit.md](docs/web-wasm-audit.md).
+
 ### Kiểm thử liên kết phòng và thử thách trên Android
 
 Cài bản dev rồi gửi một liên kết thử nghiệm vào emulator:
@@ -392,6 +426,26 @@ $env:DATABASE_PASSWORD='replace-with-a-secret'
 ```
 
 Endpoint production mặc định trong project chỉ là placeholder và không thể kết nối. Không phát hành app trước khi thay bằng `wss://` hợp lệ.
+
+### Bật/tắt chế độ bảo trì
+
+Màn bảo trì chỉ xuất hiện khi backend chủ động trả về `maintenance: true` tại `GET /status`. Mất mạng hoặc mất kết nối WebSocket không kích hoạt màn này.
+
+Trước khi khởi động server, bật bảo trì và đặt thông báo:
+
+```powershell
+$env:FASTTOWIN_MAINTENANCE='true'
+$env:FASTTOWIN_MAINTENANCE_MESSAGE='Đang nâng cấp dữ liệu mùa giải. Vui lòng quay lại sau.'
+.\start-dev-server-with-db.cmd
+```
+
+Trong thời gian bảo trì, app tự kiểm tra trạng thái mỗi 60 giây, khóa thao tác và chặn Back. Để mở lại dịch vụ, dừng server, tắt cờ rồi khởi động lại:
+
+```powershell
+$env:FASTTOWIN_MAINTENANCE='false'
+Remove-Item Env:FASTTOWIN_MAINTENANCE_MESSAGE -ErrorAction SilentlyContinue
+.\start-dev-server-with-db.cmd
+```
 
 ## 9. Xử lý lỗi thường gặp
 

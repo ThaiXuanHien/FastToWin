@@ -9,7 +9,6 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -613,11 +612,18 @@ fun NumberGrid(
         }
         val gridPadding = if (columnCount == 10) 6.dp else 8.dp
         val gridSpacing = if (columnCount == 10) 4.dp else 6.dp
+        val rowCount = ((numbers.size + columnCount - 1) / columnCount).coerceAtLeast(1)
+        val availableCellHeight = (
+            maxHeight - (gridPadding * 2) - (gridSpacing * (rowCount - 1))
+        ) / rowCount
+        val cellHeight = availableCellHeight.coerceAtMost(if (columnCount == 10) 54.dp else 52.dp)
+        val compactCells = cellHeight < 46.dp
         LazyVerticalGrid(
             columns = GridCells.Fixed(columnCount),
             contentPadding = PaddingValues(gridPadding),
             horizontalArrangement = Arrangement.spacedBy(gridSpacing),
             verticalArrangement = Arrangement.spacedBy(gridSpacing),
+            userScrollEnabled = false,
             modifier = Modifier.fillMaxSize().testTag("number_grid")
         ) {
             items(numbers, key = { it }) { number ->
@@ -627,6 +633,8 @@ fun NumberGrid(
                     isWrong = number == wrongNumber,
                     enabled = enabled,
                     boardStyle = boardStyle,
+                    compact = compactCells,
+                    modifier = Modifier.height(cellHeight),
                     onClick = { onNumberClick(number) }
                 )
             }
@@ -641,6 +649,8 @@ fun NumberCell(
     isWrong: Boolean = false,
     enabled: Boolean = true,
     boardStyle: BoardStyle = BoardStyle.CLASSIC,
+    compact: Boolean = false,
+    modifier: Modifier = Modifier,
     onClick: () -> Unit
 ) {
     val classicColor = Color(0xFFF6F8FF)
@@ -673,27 +683,27 @@ fun NumberCell(
         }
     }
     Box(
-        modifier = Modifier.aspectRatio(1f).testTag("game_number_$number")
+        modifier = modifier.testTag("game_number_$number")
     ) {
         if (!isCompleted) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .offset(y = 3.dp)
+                    .offset(y = if (compact) 2.dp else 3.dp)
                     .background(
                         if (isWrong) Color(0xFF9E2940) else Color(0xFFAAB7D2),
-                        RoundedCornerShape(11.dp)
+                        RoundedCornerShape(if (compact) 8.dp else 11.dp)
                     )
             )
         }
         Surface(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(bottom = if (isCompleted) 0.dp else 3.dp)
-                .clip(RoundedCornerShape(11.dp))
+                .padding(bottom = if (isCompleted) 0.dp else if (compact) 2.dp else 3.dp)
+                .clip(RoundedCornerShape(if (compact) 8.dp else 11.dp))
                 .clickable(enabled = enabled && !isCompleted, onClick = onClick),
             color = if (isCompleted) Color(0xFF244F99) else activeColor,
-            shape = RoundedCornerShape(11.dp),
+            shape = RoundedCornerShape(if (compact) 8.dp else 11.dp),
             border = if (isCompleted) null else BorderStroke(1.dp, activeBorderColor)
         ) {
             Box(contentAlignment = Alignment.Center) {
@@ -702,7 +712,7 @@ fun NumberCell(
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Black,
                     color = if (isCompleted) Color(0xFF7995C9) else activeContentColor,
-                    fontSize = 20.sp
+                    fontSize = if (compact) 15.sp else 18.sp
                 )
             }
         }

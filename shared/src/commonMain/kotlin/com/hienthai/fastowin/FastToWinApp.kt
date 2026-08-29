@@ -24,6 +24,7 @@ import com.hienthai.fastowin.state.AuthController
 import com.hienthai.fastowin.state.AuthStage
 import com.hienthai.fastowin.data.network.AuthSessionStore
 import com.hienthai.fastowin.data.network.ResumeTokenStore
+import com.hienthai.fastowin.data.network.ServiceStatusClient
 import com.hienthai.fastowin.data.preferences.AppPreferences
 import com.hienthai.fastowin.data.preferences.AppPreferencesStore
 import com.hienthai.fastowin.platform.GameFeedbackEffect
@@ -52,6 +53,7 @@ import com.hienthai.fastowin.ui.screens.PracticeLauncherDialog
 import com.hienthai.fastowin.ui.screens.NotificationsScreen
 import com.hienthai.fastowin.ui.screens.TournamentInvitationDialog
 import com.hienthai.fastowin.ui.screens.TournamentScreen
+import com.hienthai.fastowin.ui.screens.MaintenanceScreen
 import com.hienthai.fastowin.ui.theme.FastToWinTheme
 import com.hienthai.fastowin.platform.epochMillis
 import com.hienthai.fastowin.platform.RoomDeepLink
@@ -68,6 +70,7 @@ import com.hienthai.fastowin.state.parsePracticeChallenge
 import com.hienthai.fastowin.ui.components.FastToWinHeader
 import com.hienthai.fastowin.ui.components.ArcadeBackdrop
 import com.hienthai.fastowin.ui.components.SeasonRewardSummaryDialog
+import kotlinx.coroutines.delay
 
 @Composable
 fun FastToWinApp(
@@ -79,6 +82,10 @@ fun FastToWinApp(
     fcmToken: String? = null
 ) {
     var restoreGuestSession by rememberSaveable { mutableStateOf(false) }
+    val serviceStatusClient = remember(serverUrl) { ServiceStatusClient(serverUrl) }
+    var serviceStatus by remember(serverUrl) {
+        mutableStateOf<com.hienthai.fastowin.protocol.ServiceStatusResponse?>(null)
+    }
     val authController = remember(serverUrl, authSessionStore, devicePlatform) {
         AuthController(
             serverUrl = serverUrl,
@@ -103,6 +110,18 @@ fun FastToWinApp(
         onDispose { authController.close() }
     }
 
+    DisposableEffect(serviceStatusClient) {
+        onDispose { serviceStatusClient.close() }
+    }
+
+    LaunchedEffect(serviceStatusClient) {
+        while (true) {
+            serviceStatusClient.fetchOrNull()?.let { serviceStatus = it }
+            val pollSeconds = serviceStatus?.pollAfterSeconds?.coerceIn(15, 300) ?: 30
+            delay(pollSeconds * 1_000L)
+        }
+    }
+
     LaunchedEffect(authState.isGuest, authState.session, authState.stage) {
         if (authState.session != null || authState.stage == AuthStage.WELCOME) {
             restoreGuestSession = false
@@ -115,7 +134,11 @@ fun FastToWinApp(
             color = MaterialTheme.colorScheme.background,
             contentColor = MaterialTheme.colorScheme.onBackground
         ) {
-            if (authState.stage != AuthStage.PLAYING) {
+            if (serviceStatus?.maintenance == true) {
+                ArcadeBackdrop(modifier = Modifier.fillMaxSize()) {
+                    MaintenanceScreen(message = serviceStatus?.message)
+                }
+            } else if (authState.stage != AuthStage.PLAYING) {
                 AuthScreen(
                     state = authState,
                     onOpenLogin = authController::openLogin,

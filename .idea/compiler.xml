@@ -1,6 +1,13 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
   <component name="CompilerConfiguration">
-    <bytecodeTargetLevel target="17" />
+    <bytecodeTargetLevel target="17">
+      <module name="Fast_To_Win.app" target="25" />
+      <module name="Fast_To_Win.protocol" target="25" />
+      <module name="Fast_To_Win.protocol.jvmMain" target="25" />
+      <module name="Fast_To_Win.protocol.jvmTest" target="25" />
+      <module name="Fast_To_Win.shared" target="25" />
+      <module name="Fast_To_Win.webApp" target="25" />
+    </bytecodeTargetLevel>
   </component>
 </project>

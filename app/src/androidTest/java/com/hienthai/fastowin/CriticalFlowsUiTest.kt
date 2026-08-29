@@ -4,7 +4,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
-import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -13,7 +12,6 @@ import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
-import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextInput
 import androidx.test.platform.app.InstrumentationRegistry
 import com.hienthai.fastowin.data.preferences.AppPreferences
@@ -499,7 +497,7 @@ class CriticalFlowsUiTest {
     }
 
     @Test
-    fun game_rendersAndScrollsAcrossAllFiftyNumbers() {
+    fun game_rendersAllFiftyNumbersWithoutScrolling() {
         val clickedNumbers = mutableListOf<Int>()
         composeRule.setContent {
             FastToWinTheme {
@@ -516,7 +514,6 @@ class CriticalFlowsUiTest {
         composeRule.onNodeWithTag("avatar_frame:frame_gold").assertIsDisplayed()
         composeRule.onNodeWithTag("avatar_frame:frame_persistent").assertIsDisplayed()
         composeRule.onNodeWithTag("game_number_1").performClick()
-        composeRule.onNodeWithTag("number_grid").performScrollToNode(hasTestTag("game_number_50"))
         composeRule.onNodeWithTag("game_number_50").assertIsDisplayed()
 
         composeRule.runOnIdle {

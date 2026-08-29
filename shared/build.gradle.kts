@@ -1,5 +1,6 @@
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import org.jetbrains.kotlin.gradle.plugin.mpp.KotlinNativeTarget
+import org.jetbrains.kotlin.gradle.ExperimentalWasmDsl
 
 plugins {
     alias(libs.plugins.kotlin.multiplatform)
@@ -27,6 +28,10 @@ kotlin {
 
     iosArm64()
     iosSimulatorArm64()
+    @OptIn(ExperimentalWasmDsl::class)
+    wasmJs {
+        browser()
+    }
 
     targets.withType<KotlinNativeTarget>().configureEach {
         binaries.framework {
@@ -62,6 +67,10 @@ kotlin {
 
         iosMain.dependencies {
             implementation(libs.ktor.client.darwin)
+        }
+
+        wasmJsMain.dependencies {
+            implementation(libs.ktor.client.wasm)
         }
 
         commonTest.dependencies {

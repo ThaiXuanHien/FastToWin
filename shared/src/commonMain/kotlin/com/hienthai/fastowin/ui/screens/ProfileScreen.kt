@@ -114,6 +114,7 @@ import com.hienthai.fastowin.protocol.DAILY_CHECK_IN_REWARDS_GOLD
 import com.hienthai.fastowin.protocol.DAILY_CHECK_IN_STREAK_ACHIEVEMENT_TARGET
 import com.hienthai.fastowin.protocol.DAILY_CHECK_IN_TITLE_TARGET
 import com.hienthai.fastowin.protocol.MAX_PROFILE_DISPLAY_NAME_LENGTH
+import com.hienthai.fastowin.data.network.toHttpBaseUrl
 import com.hienthai.fastowin.protocol.PlayerProfileSnapshot
 import com.hienthai.fastowin.protocol.GameModeStatisticsSnapshot
 import com.hienthai.fastowin.protocol.ProtocolGameMode
@@ -563,7 +564,7 @@ private fun ProfileIdentityPanel(
                             avatarId = profile.avatarId,
                             frameId = equippedFrame,
                             size = 76.dp,
-                            imageUrl = "$serverUrl/api/avatar/${profile.userId}"
+                            imageUrl = "${serverUrl.toHttpBaseUrl()}/api/avatar/${profile.userId}"
                         )
                         ProfileIdentityDetails(
                             profile = profile,
@@ -584,7 +585,7 @@ private fun ProfileIdentityPanel(
                             avatarId = profile.avatarId,
                             frameId = equippedFrame,
                             size = 76.dp,
-                            imageUrl = "$serverUrl/api/avatar/${profile.userId}"
+                            imageUrl = "${serverUrl.toHttpBaseUrl()}/api/avatar/${profile.userId}"
                         )
                         ProfileIdentityDetails(
                             profile = profile,

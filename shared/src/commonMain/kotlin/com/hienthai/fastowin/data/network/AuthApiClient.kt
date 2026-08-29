@@ -158,15 +158,6 @@ class AuthApiClient(serverUrl: String) {
         )
     }
 
-    private fun String.toHttpBaseUrl(): String {
-        val httpUrl = when {
-            startsWith("wss://") -> "https://${removePrefix("wss://")}"
-            startsWith("ws://") -> "http://${removePrefix("ws://")}"
-            else -> this
-        }
-        return httpUrl.removeSuffix("/game").trimEnd('/')
-    }
-
     private companion object {
         const val REQUEST_TIMEOUT_MILLIS = 10_000L
     }

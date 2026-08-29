@@ -1,0 +1,6 @@
+<component name="ArtifactManager">
+  <artifact type="jar" name="protocol-wasm-js">
+    <output-path>$PROJECT_DIR$/protocol/build/libs</output-path>
+    <root id="archive" name="protocol-wasm-js.jar" />
+  </artifact>
+</component>

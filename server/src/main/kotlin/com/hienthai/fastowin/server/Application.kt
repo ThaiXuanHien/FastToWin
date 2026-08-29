@@ -18,14 +18,17 @@ import com.hienthai.fastowin.protocol.RevokeAllAccountSessionsRequest
 import com.hienthai.fastowin.protocol.RegisterRequest
 import com.hienthai.fastowin.protocol.UpgradeGuestRequest
 import com.hienthai.fastowin.protocol.ServerMessage
+import com.hienthai.fastowin.protocol.ServiceStatusResponse
 import com.hienthai.fastowin.protocol.SESSION_REPLACED_CLOSE_REASON
 import io.ktor.http.HttpHeaders
+import io.ktor.http.HttpMethod
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.ApplicationCall
 import io.ktor.server.application.Application
 import io.ktor.server.application.call
 import io.ktor.server.application.install
 import io.ktor.server.plugins.contentnegotiation.ContentNegotiation
+import io.ktor.server.plugins.cors.routing.CORS
 import io.ktor.server.request.receive
 import io.ktor.server.response.header
 import io.ktor.server.response.respond
@@ -53,6 +56,7 @@ import kotlinx.coroutines.launch
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import java.util.concurrent.ConcurrentHashMap
+import java.net.URI
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 
@@ -63,11 +67,25 @@ fun Application.gameModule(
     rateLimiter: RateLimiter = InMemoryRateLimiter(),
     rateLimitPolicies: ServerRateLimitPolicies = ServerRateLimitPolicies(),
     seasonLifecycleRepository: SeasonLifecycleRepository = NoOpSeasonLifecycleRepository,
+    serviceStatusProvider: () -> ServiceStatusResponse = ::serviceStatusFromEnvironment,
     websocketPingPeriod: Duration = DEFAULT_WEBSOCKET_PING_PERIOD,
     websocketPongTimeout: Duration = DEFAULT_WEBSOCKET_PONG_TIMEOUT
 ) {
     install(ContentNegotiation) {
         json(ProtocolJson)
+    }
+    install(CORS) {
+        allowMethod(HttpMethod.Get)
+        allowMethod(HttpMethod.Post)
+        allowMethod(HttpMethod.Options)
+        allowHeader(HttpHeaders.ContentType)
+        if (environment == "dev") {
+            anyHost()
+        } else {
+            allowedWebOriginsFromEnvironment().forEach { (host, scheme) ->
+                allowHost(host, schemes = listOf(scheme))
+            }
+        }
     }
     install(WebSockets) {
         pingPeriod = websocketPingPeriod
@@ -113,6 +131,11 @@ fun Application.gameModule(
     }
 
     routing {
+        get("/status") {
+            call.response.header(HttpHeaders.CacheControl, "no-store")
+            call.respond(serviceStatusProvider())
+        }
+
         get("/health") { call.respondText("OK") }
 
         post("/auth/register") {
@@ -247,6 +270,11 @@ fun Application.gameModule(
 
 
         webSocket("/game") {
+            val serviceStatus = serviceStatusProvider()
+            if (serviceStatus.maintenance) {
+                close(CloseReason(CloseReason.Codes.GOING_AWAY, "Server maintenance"))
+                return@webSocket
+            }
             val clientRateLimitKey = stableRateLimitKey(call.request.local.remoteHost)
             var playerId: String? = null
             var playerRateLimitKey: String? = null
@@ -581,3 +609,32 @@ private const val GAME_TIMER_INTERVAL_MILLIS = 250L
 private const val SEASON_LIFECYCLE_INTERVAL_MILLIS = 60_000L
 private val DEFAULT_WEBSOCKET_PING_PERIOD = 10.seconds
 private val DEFAULT_WEBSOCKET_PONG_TIMEOUT = 8.seconds
+
+internal fun serviceStatusFromEnvironment(): ServiceStatusResponse {
+    val maintenance = System.getenv("FASTTOWIN_MAINTENANCE")
+        ?.trim()
+        ?.equals("true", ignoreCase = true) == true
+    val configuredMessage = System.getenv("FASTTOWIN_MAINTENANCE_MESSAGE")
+        ?.trim()
+        ?.takeIf(String::isNotEmpty)
+    return ServiceStatusResponse(
+        maintenance = maintenance,
+        message = configuredMessage.takeIf { maintenance },
+        pollAfterSeconds = if (maintenance) 60 else 30
+    )
+}
+
+private fun allowedWebOriginsFromEnvironment(): List<Pair<String, String>> =
+    System.getenv("FASTTOWIN_WEB_ORIGINS")
+        ?.split(',')
+        .orEmpty()
+        .mapNotNull { rawOrigin ->
+            runCatching {
+                val uri = URI(rawOrigin.trim())
+                val scheme = uri.scheme?.lowercase().takeIf { it == "http" || it == "https" }
+                    ?: return@runCatching null
+                val authority = uri.rawAuthority?.takeIf(String::isNotBlank)
+                    ?: return@runCatching null
+                authority to scheme
+            }.getOrNull()
+        }

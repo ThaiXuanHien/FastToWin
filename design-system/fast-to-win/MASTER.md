@@ -1,6 +1,6 @@
 # Fast To Win — 2D Arcade Design System
 
-This document is the visual source of truth for Android and iOS. Runtime tokens live in
+This document is the visual source of truth for Android, iOS and web. Runtime tokens live in
 `shared/src/commonMain/kotlin/com/hienthai/fastowin/ui/theme`.
 
 ## Direction
@@ -47,6 +47,8 @@ This document is the visual source of truth for Android and iOS. Runtime tokens 
 
 ## Production artwork
 
+- `artwork/app-icon/fast-to-win-app-icon-1024.png`: master app icon shared by Android and iOS; the 1–50 number tiles and lightning bolt must remain inside adaptive-icon safe masks.
+
 - `arcade_home_hero.png`: full-bleed arena art for the home match hero. Keep text on the dark left side.
 - `fast_to_win_logo_banner.png`: opaque 3:1 brand banner used by authentication screens.
 - `arcade_screen_background.png`: shared portrait arena backdrop with a quiet center crop.
@@ -71,6 +73,7 @@ This document is the visual source of truth for Android and iOS. Runtime tokens 
 ## Interaction and accessibility
 
 - Android touch targets are at least 48 dp; iOS layouts retain at least 44 pt.
+- Web keeps the same large targets, supports pointer/keyboard input and never relies on hover alone.
 - Color is decorative support, not the only indicator of state.
 - Disabled controls use native disabled semantics.
 - Loading feedback must reserve its layout bounds to avoid UI flicker.
