@@ -34,7 +34,7 @@ import kotlin.test.assertTrue
 
 class AuthenticationTest {
     @Test
-    fun `account can list and revoke only its own device sessions`() = testApplication {
+    fun `new login revokes previous device and keeps only current session`() = testApplication {
         application { gameModule(environment = "dev") }
         val email = "sessions@example.com"
         val registered = client.postJson(
@@ -46,14 +46,22 @@ class AuthenticationTest {
             LoginRequest(email, PASSWORD, "ios")
         ).decode<AuthSessionResponse>()
 
-        val listed = client.postJson(
+        assertEquals(HttpStatusCode.Unauthorized, client.postJson(
             "/auth/sessions",
             AccountSessionsRequest(registered.accessToken)
+        ).status)
+        assertEquals(HttpStatusCode.Unauthorized, client.postJson(
+            "/auth/refresh",
+            RefreshTokenRequest(registered.refreshToken)
+        ).status)
+
+        val listed = client.postJson(
+            "/auth/sessions",
+            AccountSessionsRequest(iosLogin.accessToken)
         ).decode<AccountSessionsResponse>()
-        assertEquals(2, listed.sessions.size)
-        val current = listed.sessions.single { it.isCurrent }
-        val iosSession = listed.sessions.single { it.devicePlatform == "ios" }
-        assertEquals("android", current.devicePlatform)
+        val current = listed.sessions.single()
+        assertTrue(current.isCurrent)
+        assertEquals("ios", current.devicePlatform)
 
         val other = client.postJson(
             "/auth/register",
@@ -65,25 +73,20 @@ class AuthenticationTest {
         ).decode<AccountSessionsResponse>().sessions.single().sessionId
         val forbidden = client.postJson(
             "/auth/sessions/revoke",
-            RevokeAccountSessionRequest(registered.accessToken, otherSessionId)
+            RevokeAccountSessionRequest(iosLogin.accessToken, otherSessionId)
         )
         assertEquals(HttpStatusCode.BadRequest, forbidden.status)
         assertEquals("SESSION_NOT_FOUND", forbidden.decode<AuthErrorResponse>().code)
 
-        val revokedIos = client.postJson(
+        val revokedCurrent = client.postJson(
             "/auth/sessions/revoke",
-            RevokeAccountSessionRequest(registered.accessToken, iosSession.sessionId)
+            RevokeAccountSessionRequest(iosLogin.accessToken, current.sessionId)
         )
-        assertEquals(HttpStatusCode.OK, revokedIos.status)
+        assertEquals(HttpStatusCode.OK, revokedCurrent.status)
         assertEquals(HttpStatusCode.Unauthorized, client.postJson(
             "/auth/refresh",
             RefreshTokenRequest(iosLogin.refreshToken)
         ).status)
-        val afterSingleRevoke = client.postJson(
-            "/auth/sessions",
-            AccountSessionsRequest(registered.accessToken)
-        ).decode<AccountSessionsResponse>()
-        assertEquals(listOf(current.sessionId), afterSingleRevoke.sessions.map { it.sessionId })
 
         val secondAndroid = client.postJson(
             "/auth/login",
@@ -91,13 +94,9 @@ class AuthenticationTest {
         ).decode<AuthSessionResponse>()
         val revokedAll = client.postJson(
             "/auth/sessions/revoke-all",
-            RevokeAllAccountSessionsRequest(registered.accessToken)
+            RevokeAllAccountSessionsRequest(secondAndroid.accessToken)
         )
         assertEquals(HttpStatusCode.OK, revokedAll.status)
-        assertEquals(HttpStatusCode.Unauthorized, client.postJson(
-            "/auth/refresh",
-            RefreshTokenRequest(registered.refreshToken)
-        ).status)
         assertEquals(HttpStatusCode.Unauthorized, client.postJson(
             "/auth/refresh",
             RefreshTokenRequest(secondAndroid.refreshToken)

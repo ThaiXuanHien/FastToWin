@@ -1,6 +1,7 @@
 package com.hienthai.fastowin.server
 
 import com.hienthai.fastowin.protocol.ClientMessage
+import com.hienthai.fastowin.protocol.LoginRequest
 import com.hienthai.fastowin.protocol.ProtocolGameMode
 import com.hienthai.fastowin.protocol.ProtocolJson
 import com.hienthai.fastowin.protocol.ServerMessage
@@ -10,6 +11,11 @@ import com.zaxxer.hikari.HikariDataSource
 import io.ktor.client.plugins.websocket.DefaultClientWebSocketSession
 import io.ktor.client.plugins.websocket.WebSockets
 import io.ktor.client.plugins.websocket.webSocketSession
+import io.ktor.client.request.post
+import io.ktor.client.request.setBody
+import io.ktor.http.ContentType
+import io.ktor.http.HttpStatusCode
+import io.ktor.http.contentType
 import io.ktor.server.testing.testApplication
 import io.ktor.websocket.Frame
 import io.ktor.websocket.close
@@ -245,13 +251,6 @@ class GameWebSocketTest {
                 devicePlatform = "android"
             )
         ).session
-        val secondDevice = assertIs<AuthResult.Success>(
-            authService.login(
-                email = "multi-device@example.com",
-                password = "strong-password-123",
-                devicePlatform = "ios"
-            )
-        ).session
         application { gameModule(authService = authService) }
         val webSocketClient = createClient { install(WebSockets) }
         val first = webSocketClient.webSocketSession("/game")
@@ -262,6 +261,13 @@ class GameWebSocketTest {
             val firstReady = first.receiveMessage<ServerMessage.SessionReady>()
             first.receiveMessage<ServerMessage.RoomList>()
 
+            val secondDevice = assertIs<AuthResult.Success>(
+                authService.login(
+                    email = "multi-device@example.com",
+                    password = "strong-password-123",
+                    devicePlatform = "ios"
+                )
+            ).session
             second.sendMessage(ClientMessage.ConnectAccount(secondDevice.accessToken))
             val secondReady = second.receiveMessage<ServerMessage.SessionReady>()
             second.receiveMessage<ServerMessage.RoomList>()
@@ -278,6 +284,49 @@ class GameWebSocketTest {
         } finally {
             first.close()
             second.close()
+        }
+    }
+
+    @Test
+    fun `HTTP login immediately closes websocket on previous device`() = testApplication {
+        val authService = AuthenticationService(
+            repository = InMemoryAuthRepository(),
+            passwordHasher = PasswordHasher(iterations = 1_000)
+        )
+        val registered = assertIs<AuthResult.Success>(
+            authService.register(
+                email = "exclusive-login@example.com",
+                password = "strong-password-123",
+                displayName = "Exclusive login",
+                devicePlatform = "android"
+            )
+        ).session
+        application { gameModule(authService = authService) }
+        val webSocketClient = createClient { install(WebSockets) }
+        val oldDevice = webSocketClient.webSocketSession("/game")
+
+        try {
+            oldDevice.sendMessage(ClientMessage.ConnectAccount(registered.accessToken))
+            oldDevice.receiveMessage<ServerMessage.SessionReady>()
+            oldDevice.receiveMessage<ServerMessage.RoomList>()
+
+            val loginResponse = client.post("/auth/login") {
+                contentType(ContentType.Application.Json)
+                setBody(ProtocolJson.encodeToString(
+                    LoginRequest(
+                        email = "exclusive-login@example.com",
+                        password = "strong-password-123",
+                        devicePlatform = "web"
+                    )
+                ))
+            }
+            assertEquals(HttpStatusCode.OK, loginResponse.status)
+            val closeReason = withTimeout(2_000) { oldDevice.closeReason.await() }
+            assertEquals(SESSION_REPLACED_CLOSE_REASON, closeReason?.message)
+            assertEquals(null, authService.authenticateAccessToken(registered.accessToken))
+            assertIs<AuthResult.Failure>(authService.refresh(registered.refreshToken))
+        } finally {
+            oldDevice.close()
         }
     }
 

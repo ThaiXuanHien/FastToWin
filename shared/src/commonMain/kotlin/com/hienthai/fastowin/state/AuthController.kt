@@ -274,7 +274,11 @@ class AuthController(
     }
 
     fun expireSession(message: String = "Phiên đăng nhập không còn hợp lệ.") {
-        store.clear(serverUrl)
+        val expiredSession = _state.value.session
+        val storedSession = store.load(serverUrl)
+        if (expiredSession == null || storedSession?.refreshToken == expiredSession.refreshToken) {
+            store.clear(serverUrl)
+        }
         _state.value = AuthState(error = message)
     }
 

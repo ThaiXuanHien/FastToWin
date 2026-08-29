@@ -78,9 +78,40 @@ class PostgresAuthRepository(private val dataSource: DataSource) : AuthRepositor
             }
         }
 
-    override suspend fun createSession(userId: UUID, devicePlatform: String?, session: NewAuthSession): Unit =
+    override suspend fun replaceSessions(userId: UUID, devicePlatform: String?, session: NewAuthSession): Unit =
         withContext(Dispatchers.IO) {
-            dataSource.connection.use { connection -> insertSession(connection, userId, devicePlatform, session) }
+            dataSource.connection.use { connection ->
+                connection.autoCommit = false
+                try {
+                    // Serialize logins per account so two simultaneous requests cannot
+                    // both create an active session after revoking the previous one.
+                    connection.prepareStatement(
+                        "SELECT id FROM users WHERE id = ? FOR UPDATE"
+                    ).use { statement ->
+                        statement.setObject(1, userId)
+                        statement.executeQuery().use { result ->
+                            check(result.next()) { "Cannot create a session for a missing user" }
+                        }
+                    }
+                    connection.prepareStatement(
+                        """
+                        UPDATE sessions
+                        SET revoked_at = ?, last_seen_at = ?
+                        WHERE user_id = ? AND revoked_at IS NULL
+                        """.trimIndent()
+                    ).use { statement ->
+                        statement.setTimestamp(1, session.nowMillis.toTimestamp())
+                        statement.setTimestamp(2, session.nowMillis.toTimestamp())
+                        statement.setObject(3, userId)
+                        statement.executeUpdate()
+                    }
+                    insertSession(connection, userId, devicePlatform, session)
+                    connection.commit()
+                } catch (error: Throwable) {
+                    connection.rollback()
+                    throw error
+                }
+            }
         }
 
     override suspend fun rotateSession(

@@ -76,6 +76,40 @@ class AuthControllerTest {
         }
     }
 
+    @Test
+    fun expiredOldTab_doesNotClearNewerSessionInSharedStore() {
+        val oldSession = storedSession("old-refresh")
+        val newSession = storedSession("new-refresh")
+        val store = InMemoryAuthSessionStore().apply { save(SERVER_URL, oldSession) }
+        val controller = AuthController(
+            serverUrl = SERVER_URL,
+            store = store,
+            resumeTokenStore = InMemoryResumeTokenStore(),
+            devicePlatform = "web"
+        )
+
+        try {
+            store.save(SERVER_URL, newSession)
+            controller.expireSession("Đã đăng nhập ở thiết bị khác.")
+
+            assertEquals(newSession, store.load(SERVER_URL))
+            assertEquals(AuthStage.WELCOME, controller.state.value.stage)
+            assertEquals("Đã đăng nhập ở thiết bị khác.", controller.state.value.error)
+        } finally {
+            controller.close()
+        }
+    }
+
+    private fun storedSession(refreshToken: String) = StoredAuthSession(
+        userId = "user-1",
+        email = "hien@example.com",
+        displayName = "Hiền",
+        accessToken = "access-$refreshToken",
+        refreshToken = refreshToken,
+        accessExpiresAtEpochMillis = Long.MAX_VALUE,
+        refreshExpiresAtEpochMillis = Long.MAX_VALUE
+    )
+
     private companion object {
         const val SERVER_URL = "ws://127.0.0.1:8080/game"
     }

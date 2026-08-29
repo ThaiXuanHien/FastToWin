@@ -48,11 +48,12 @@ import io.ktor.websocket.CloseReason
 import io.ktor.websocket.close
 import io.ktor.websocket.readText
 import io.ktor.websocket.send
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import java.util.concurrent.ConcurrentHashMap
@@ -168,9 +169,22 @@ fun Application.gameModule(
                 rateLimitPolicies.loginPerAccount
             )
             if (!accountAllowed) return@post
-            call.respondAuthResult(
-                authService.login(request.email, request.password, request.devicePlatform)
-            )
+            val result = authService.login(request.email, request.password, request.devicePlatform)
+            if (result is AuthResult.Success) {
+                // A successful login owns the account from this point forward.
+                // Closing the previous socket makes the old device return to login immediately.
+                val previousConnection = connections[result.session.userId]
+                if (previousConnection != null) {
+                    try {
+                        previousConnection.closeForReplacement()
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
+                    } catch (_: Exception) {
+                        connections.remove(result.session.userId, previousConnection)
+                    }
+                }
+            }
+            call.respondAuthResult(result)
         }
 
         post("/auth/upgrade-guest") {

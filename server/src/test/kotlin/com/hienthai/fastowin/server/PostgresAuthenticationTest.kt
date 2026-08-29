@@ -9,6 +9,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertNotEquals
+import kotlin.test.assertTrue
 
 class PostgresAuthenticationTest {
     @Test
@@ -135,6 +136,8 @@ class PostgresAuthenticationTest {
                 ).session
                 assertEquals(registration.userId, login.userId)
                 assertEquals("Postgres player", login.displayName)
+                assertIs<AuthResult.Failure>(service.refresh(registration.refreshToken))
+                assertEquals(null, service.authenticateAccessToken(registration.accessToken))
                 val authenticated = service.authenticateAccessToken(login.accessToken)
                 assertEquals(login.userId, authenticated?.userId.toString())
                 assertEquals("Postgres player", authenticated?.displayName)
@@ -142,13 +145,9 @@ class PostgresAuthenticationTest {
                 val sessions = assertIs<AccountSessionsResult.Success>(
                     service.listSessions(login.accessToken)
                 ).sessions
-                assertEquals(2, sessions.size)
-                assertEquals("ios", sessions.single { it.isCurrent }.devicePlatform)
-                val registrationSession = sessions.single { !it.isCurrent }
-                assertIs<AccountActionResult.Success>(
-                    service.revokeSession(login.accessToken, registrationSession.sessionId)
-                )
-                assertIs<AuthResult.Failure>(service.refresh(registration.refreshToken))
+                assertEquals(1, sessions.size)
+                assertEquals("ios", sessions.single().devicePlatform)
+                assertTrue(sessions.single().isCurrent)
 
                 val refreshed = assertIs<AuthResult.Success>(
                     service.refresh(login.refreshToken)

@@ -40,7 +40,7 @@ class GameSocketClient(
     private val serverUrl: String,
     private val tokenStore: ResumeTokenStore,
     private val accessTokenProvider: (suspend (forceRefresh: Boolean) -> String?)? = null,
-    private val onAccountSessionExpired: (() -> Unit)? = null
+    private val onAccountSessionExpired: ((String) -> Unit)? = null
 ) {
     private val client = HttpClient {
         install(WebSockets)
@@ -86,7 +86,9 @@ class GameSocketClient(
                         forceAccessTokenRefresh = false
                         if (accessToken == null) {
                             reconnectEnabled = false
-                            onAccountSessionExpired?.invoke()
+                            onAccountSessionExpired?.invoke(
+                                "Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại."
+                            )
                             return@webSocket
                         }
                         ClientMessage.ConnectAccount(accessToken)
@@ -136,10 +138,13 @@ class GameSocketClient(
                     val reason = closeReason.await()?.message
                     if (!shouldReconnectAfterSocketClose(reason)) {
                         reconnectEnabled = false
+                        onAccountSessionExpired?.invoke(
+                            "Tài khoản đã đăng nhập trên thiết bị khác. Vui lòng đăng nhập lại."
+                        )
                         _messages.send(
                             ServerMessage.Error(
                                 code = "SESSION_REPLACED",
-                                message = "Kết nối trò chơi đã chuyển sang thiết bị khác. Đóng ứng dụng ở thiết bị kia rồi mở lại nếu bạn muốn chơi tại đây."
+                                message = "Tài khoản đã đăng nhập trên thiết bị khác."
                             )
                         )
                     }

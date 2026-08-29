@@ -32,8 +32,11 @@ class InMemoryAuthRepository : AuthRepository {
         accounts.values.firstOrNull { it.userId == userId }
     }
 
-    override suspend fun createSession(userId: UUID, devicePlatform: String?, session: NewAuthSession) {
-        mutex.withLock { store(userId, devicePlatform, session) }
+    override suspend fun replaceSessions(userId: UUID, devicePlatform: String?, session: NewAuthSession) {
+        mutex.withLock {
+            revokeUserSessions(userId)
+            store(userId, devicePlatform, session)
+        }
     }
 
     override suspend fun rotateSession(refreshTokenHash: String, replacement: NewAuthSession): UUID? = mutex.withLock {

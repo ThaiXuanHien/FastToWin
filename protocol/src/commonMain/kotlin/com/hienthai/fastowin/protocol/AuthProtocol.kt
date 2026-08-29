@@ -2,7 +2,7 @@ package com.hienthai.fastowin.protocol
 
 import kotlinx.serialization.Serializable
 
-const val SESSION_REPLACED_CLOSE_REASON = "Session resumed elsewhere"
+const val SESSION_REPLACED_CLOSE_REASON = "Account signed in elsewhere"
 
 @Serializable
 data class ServiceStatusResponse(

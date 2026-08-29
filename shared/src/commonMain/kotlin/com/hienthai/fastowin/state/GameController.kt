@@ -35,7 +35,7 @@ class GameController(
     resumeTokenStore: ResumeTokenStore,
     accountDisplayName: String? = null,
     accessTokenProvider: (suspend (forceRefresh: Boolean) -> String?)? = null,
-    onAccountSessionExpired: (() -> Unit)? = null,
+    onAccountSessionExpired: ((String) -> Unit)? = null,
     private val onProfileDisplayNameChanged: (String) -> Unit = {}
 ) {
     private var accountDisplayName = accountDisplayName

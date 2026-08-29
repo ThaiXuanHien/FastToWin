@@ -71,7 +71,7 @@ interface AuthRepository {
     suspend fun createAccount(account: NewAccount): Boolean
     suspend fun findActiveAccount(emailNormalized: String): AccountCredentials?
     suspend fun findActiveAccountById(userId: UUID): AccountCredentials?
-    suspend fun createSession(userId: UUID, devicePlatform: String?, session: NewAuthSession)
+    suspend fun replaceSessions(userId: UUID, devicePlatform: String?, session: NewAuthSession)
     suspend fun rotateSession(refreshTokenHash: String, replacement: NewAuthSession): UUID?
     suspend fun revokeSession(refreshTokenHash: String, nowMillis: Long): Boolean
     suspend fun findActiveSession(accessTokenHash: String, nowMillis: Long): AuthenticatedAccount?
@@ -160,7 +160,7 @@ class AuthenticationService(
         if (!passwordMatches) return invalidCredentials()
 
         val issued = issueTokens(account.userId, account.displayName, nowMillis())
-        repository.createSession(account.userId, normalizeDevicePlatform(devicePlatform), issued.record)
+        repository.replaceSessions(account.userId, normalizeDevicePlatform(devicePlatform), issued.record)
         return AuthResult.Success(issued.response)
     }
 
