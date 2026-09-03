@@ -2362,7 +2362,11 @@ class GameEngine(
         room.sequence++
         if (nextIndex >= GAME_NUMBER_COUNT) {
             room.finishedPlayerIds += player.playerId
-            room.forcedWinnerId = player.playerId
+            // Shared boards are decided by score, not by who taps the final number.
+            // Only independent time-bonus boards award the first finisher the win.
+            if (room.gameMode == ProtocolGameMode.TIME_BONUS) {
+                room.forcedWinnerId = player.playerId
+            }
             room.phase = RoomPhase.FINISHED
             room.finishedAtEpochMillis = nowMillis()
         }

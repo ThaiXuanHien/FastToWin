@@ -1654,6 +1654,59 @@ class GameEngineTest {
     }
 
     @Test
+    fun `shared boards award the highest score even when the other player selects last`() = runTest {
+        for (mode in listOf(ProtocolGameMode.ORDER, ProtocolGameMode.RANDOM_TARGET,
+            ProtocolGameMode.SPEED_UP, ProtocolGameMode.SURVIVAL, ProtocolGameMode.COMBO,
+            ProtocolGameMode.TIME_ATTACK)) {
+            val fixture = createUnlockedRoomFixture(mode)
+            var snapshot = startRoom(fixture.engine, fixture.hostId, fixture.guestId, fixture.roomId)
+            repeat(50) { index ->
+                val playerId = if (index < 26) fixture.hostId else fixture.guestId
+                snapshot = fixture.engine.handle(playerId, ClientMessage.SelectNumber(
+                    fixture.roomId, snapshot.currentTarget, "finish-$index"
+                )).map(Delivery::message).filterIsInstance<ServerMessage.GameStateUpdated>().single().game
+            }
+            assertEquals(fixture.hostId, snapshot.winnerPlayerId, "Highest score must win in $mode")
+        }
+    }
+
+    @Test
+    fun `shared board equal scores persist a draw even when guest selects last`() = runTest {
+        val savedMatches = mutableListOf<CompletedMatch>()
+        val engine = GameEngine(matchResultRepository = MatchResultRepository { savedMatches += it })
+        val host = engine.connectGuest("Host", null)
+        val guest = engine.connectGuest("Guest", null)
+        val room = engine.handle(host.playerId, ClientMessage.CreateRoom(
+            "Draw regression", PASSWORD, ProtocolGameMode.ORDER
+        )).map(Delivery::message).filterIsInstance<ServerMessage.RoomCreated>().single().game
+        var snapshot = startRoom(engine, host.playerId, guest.playerId, room.roomId)
+        repeat(50) { index ->
+            val playerId = if (index < 25) host.playerId else guest.playerId
+            snapshot = engine.handle(playerId, ClientMessage.SelectNumber(
+                room.roomId, index + 1, "draw-$index"
+            )).map(Delivery::message).filterIsInstance<ServerMessage.GameStateUpdated>().single().game
+        }
+        assertEquals(null, snapshot.winnerPlayerId)
+        assertEquals(null, savedMatches.single().winnerPlayerId)
+        assertTrue(savedMatches.single().players.all { it.outcome == MatchOutcome.DRAW })
+        assertTrue(engine.advanceTimedGames().isEmpty())
+        assertEquals(1, savedMatches.size)
+    }
+
+    @Test
+    fun `time bonus still awards the first independent board finisher`() = runTest {
+        val fixture = createUnlockedRoomFixture(ProtocolGameMode.TIME_BONUS)
+        var snapshot = startRoom(fixture.engine, fixture.hostId, fixture.guestId, fixture.roomId)
+        repeat(50) { index ->
+            snapshot = fixture.engine.handle(fixture.guestId, ClientMessage.SelectNumber(
+                fixture.roomId, index + 1, "bonus-finish-$index"
+            )).map(Delivery::message).filterIsInstance<ServerMessage.GameStateUpdated>().single().game
+        }
+        assertEquals(fixture.guestId, snapshot.winnerPlayerId)
+        assertEquals(0, snapshot.players.single { it.id == fixture.hostId }.score)
+    }
+
+    @Test
     fun `time bonus gives each player an independent board and adjusts time`() = runTest {
         val fixture = createUnlockedRoomFixture(ProtocolGameMode.TIME_BONUS)
         val started = startRoom(fixture.engine, fixture.hostId, fixture.guestId, fixture.roomId)

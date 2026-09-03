@@ -2,6 +2,8 @@
 
 Fast To Win là game tìm số 1–50 theo thời gian thực dành cho Android và iOS. Giao diện và phần lớn logic client dùng Compose Multiplatform; backend là Ktor WebSocket và PostgreSQL.
 
+Theo dõi các bước đã làm và còn lại tại [lộ trình phát triển](docs/roadmap.md). Kiểm thử: [tổng quan](docs/testing.md) và [Web E2E](docs/web-e2e.md).
+
 ## Tính năng đấu giải riêng
 
 - Người đã đăng nhập có thể tạo giải loại trực tiếp dành cho 4 người và mời bạn bè đang online.

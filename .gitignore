@@ -24,3 +24,8 @@ server-dev.*.log
 xcuserdata/
 *.xcuserstate
 server/firebase-adminsdk.json
+
+# Standalone Web E2E dependencies and failure diagnostics
+/e2e/node_modules/
+/e2e/playwright-report/
+/e2e/test-results/
