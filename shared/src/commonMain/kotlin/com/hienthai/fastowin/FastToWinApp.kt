@@ -80,6 +80,7 @@ import com.hienthai.fastowin.platform.rememberStoreBillingGateway
 import com.hienthai.fastowin.platform.PlatformStorePurchase
 import com.hienthai.fastowin.protocol.StorePurchaseStatus
 import com.hienthai.fastowin.navigation.GameMode
+import com.hienthai.fastowin.navigation.ResultNavigationActions
 import com.hienthai.fastowin.state.PracticeChallenge
 import com.hienthai.fastowin.state.createPracticeChallenge
 import com.hienthai.fastowin.state.parsePracticeChallenge
@@ -627,6 +628,12 @@ private fun GameContent(
     val navigateBack: (() -> Unit) -> Unit = { fallback ->
         if (!navigationBridge.goBack()) fallback()
     }
+    val resultNavigation = ResultNavigationActions(
+        leaveRoom = controller::leaveRoom,
+        openTournament = controller::openTournamentAfterMatch,
+        navigateBack = navigateBack,
+        isTournamentMatch = state.isTournamentMatch
+    )
     val finishTutorial = {
         onPreferencesChange(appPreferences.copy(hasCompletedTutorial = true))
         showTutorial = false
@@ -1152,12 +1159,8 @@ private fun GameContent(
 
                 state.isGameOver -> ResultScreen(
                     state = state,
-                    onRestart = { navigateBack(controller::leaveRoom) },
-                    onBack = if (state.isTournamentMatch) {
-                        { navigateBack(controller::openTournamentAfterMatch) }
-                    } else {
-                        { navigateBack(controller::leaveRoom) }
-                    },
+                    onRestart = resultNavigation.returnToLobby,
+                    onBack = resultNavigation.back,
                     onRematch = controller::requestRematch,
                     onCancelRematch = controller::cancelRematch,
                     onDeclineRematch = controller::declineRematch,
