@@ -34,9 +34,41 @@ export default defineConfig({
     navigationTimeout: 60_000,
   },
   projects: [
-    { name: 'chromium', use: { browserName: 'chromium' } },
-    { name: 'firefox', use: { browserName: 'firefox' } },
-    { name: 'webkit', use: { browserName: 'webkit' } },
+    {
+      name: 'chromium',
+      testMatch: /game\.spec\.mjs/,
+      use: { browserName: 'chromium' },
+    },
+    {
+      name: 'chromium-small-phone',
+      testMatch: /responsive\.spec\.mjs/,
+      use: { browserName: 'chromium', viewport: { width: 320, height: 568 } },
+    },
+    {
+      name: 'chromium-large-phone',
+      testMatch: /responsive\.spec\.mjs/,
+      use: { browserName: 'chromium', viewport: { width: 430, height: 932 } },
+    },
+    {
+      name: 'chromium-tablet',
+      testMatch: /responsive\.spec\.mjs/,
+      use: { browserName: 'chromium', viewport: { width: 834, height: 1112 } },
+    },
+    {
+      name: 'chromium-landscape',
+      testMatch: /responsive\.spec\.mjs/,
+      use: { browserName: 'chromium', viewport: { width: 932, height: 430 } },
+    },
+    {
+      name: 'firefox-smoke',
+      testMatch: /browser-smoke\.spec\.mjs/,
+      use: { browserName: 'firefox', viewport: { width: 390, height: 844 } },
+    },
+    {
+      name: 'webkit-smoke',
+      testMatch: /browser-smoke\.spec\.mjs/,
+      use: { browserName: 'webkit', viewport: { width: 390, height: 844 } },
+    },
   ],
   webServer: reuse ? undefined : {
     command: 'node support/serve.mjs',

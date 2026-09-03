@@ -27,9 +27,9 @@ Các mục sau trong danh sách cũ **đã có triển khai**; tiếp tục hồ
 
 Phần đang làm và còn lại:
 
-- [ ] Hoàn thiện và xác minh bộ Web E2E trong `e2e/`: đăng nhập/F5, Back/Forward, phòng hai người, trận đủ 50 số, mất kết nối, đấu lại, về sảnh độc lập. Chỉ đánh dấu hoàn tất sau khi chạy đạt trên CI.
-- [ ] Mở rộng kiểm thử responsive: điện thoại nhỏ/lớn, tablet, ngang, chữ lớn, bàn phím và nội dung dài.
-- [ ] Smoke test Chrome, Edge, Firefox, Safari; kiểm thử Wasm và JS fallback. Có cấu hình Playwright không thay thế xác nhận trên trình duyệt/thiết bị thật.
+- [x] Hoàn thiện và xác minh bộ Web E2E trong `e2e/`: đăng nhập/F5, Back/Forward, phòng hai người, trận đủ 50 số, mất kết nối, đấu lại, về sảnh độc lập. CI #67 đã đạt.
+- [ ] Mở rộng kiểm thử responsive: đã có điện thoại nhỏ/lớn, tablet và ngang; còn chữ lớn, bàn phím ảo và nội dung dài.
+- [ ] Smoke test trình duyệt: đã thêm Firefox/WebKit tự động; còn Chrome/Edge/Safari thật và nhánh JS fallback. Playwright WebKit không thay thế Safari trên thiết bị Apple.
 - [ ] Mua Gem trên Web: cần thống nhất cổng thanh toán, phí và xác thực giao dịch backend trước khi làm.
 
 Chi tiết: [audit Web](web-wasm-audit.md), [hướng dẫn Web E2E](web-e2e.md).

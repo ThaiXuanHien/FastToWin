@@ -7,7 +7,7 @@
 - Logic dùng `kotlin.test` và coroutine test trong `shared/src/commonTest`.
 - Backend dùng Kotlin Test/JUnit Platform, Ktor test host và coroutine test trong `server/src/test`.
 - Chưa cấu hình Robolectric, screenshot testing tự động hoặc JaCoCo.
-- Có bộ [Web E2E Playwright](web-e2e.md) và cấu hình job Chromium; xem tài liệu này để phân biệt phạm vi đã chạy với phần còn chờ xác minh.
+- Có bộ [Web E2E Playwright](web-e2e.md) cho Chromium, Firefox, WebKit và ma trận responsive; xem tài liệu này để phân biệt kiểm thử tự động với phần còn cần thiết bị/trình duyệt thật.
 
 ## Lệnh kiểm thử trên Windows
 
@@ -94,7 +94,7 @@ GitHub Actions chạy với mọi push, pull request và khi kích hoạt thủ 
 - Biên dịch Android UI test để phát hiện lỗi import/dependency trước khi khởi động emulator.
 - Build APK dev và biên dịch Web/Wasm.
 - Chạy Compose UI test trên Android emulator.
-- Chạy Web E2E trên Chromium với backend in-memory riêng; lưu trace/ảnh khi lỗi.
+- Chạy Web E2E game trên Chromium, responsive ở bốn kích thước và smoke test Firefox/WebKit với backend in-memory riêng; lưu trace/ảnh khi lỗi.
 - Lưu APK cùng báo cáo test thành artifact.
 
 ## Kết quả gần nhất

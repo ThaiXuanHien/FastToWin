@@ -87,7 +87,7 @@ jobs:
           if-no-files-found: warn
 
   web-e2e:
-    name: Web E2E (Chromium)
+    name: Web E2E (responsive + multi-browser)
     needs: build-and-test
     runs-on: ubuntu-latest
     timeout-minutes: 25
@@ -117,7 +117,7 @@ jobs:
         run: |
           npm install --global pnpm@11.19.0
           pnpm install --frozen-lockfile
-          pnpm exec playwright install --with-deps chromium
+          pnpm exec playwright install --with-deps chromium firefox webkit
 
       - name: Install Android SDK 37
         run: |
@@ -136,7 +136,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: web-e2e-chromium
+          name: web-e2e-multi-browser
           path: |
             e2e/playwright-report/
             e2e/test-results/

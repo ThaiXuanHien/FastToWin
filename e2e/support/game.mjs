@@ -7,12 +7,20 @@ export const test = base.extend({
     const actors = [];
     const createActor = async (label = 'Player') => {
       const suffix = randomUUID().replaceAll('-', '').slice(0, 12);
+      const shortLabel = label.replace(/[^a-z0-9]/gi, '').slice(0, 8) || 'Player';
       const account = { email: `e2e-${suffix}@example.invalid`, password: `Test-${suffix}-9!`,
-        displayName: `E2E ${label} ${suffix.slice(0, 4)}`, devicePlatform: 'web-e2e', gender: 'MALE' };
+        displayName: `E2E ${shortLabel} ${suffix.slice(0, 4)}`, devicePlatform: 'web-e2e', gender: 'MALE' };
       const registered = await request.post(`${process.env.E2E_API_URL}/auth/register`, { data: account });
       expect(registered.status(), 'Create only this test account').toBe(201);
       const session = await registered.json();
-      const actor = { account, registrationAccessToken: session.accessToken, errors: [], blocked: false, sockets: new Set() };
+      const actor = {
+        account,
+        accessToken: session.accessToken,
+        errors: [],
+        expectedNavigationAbort: false,
+        blocked: false,
+        sockets: new Set(),
+      };
       actors.push(actor);
       const context = await browser.newContext({
         baseURL, viewport: testInfo.project.use.viewport, locale: 'vi-VN', serviceWorkers: 'block',
@@ -43,7 +51,22 @@ export const test = base.extend({
       };
       actor.reconnect = () => { actor.blocked = false; };
       actor.page = await context.newPage();
-      actor.page.on('pageerror', error => actor.errors.push(error.message));
+      actor.page.on('pageerror', error => {
+        // WebKit reports an in-flight fetch cancelled by an explicit reload/
+        // history navigation as a generic page error. Ignore it only while the
+        // test is performing that navigation; real fetch errors still fail.
+        if (actor.expectedNavigationAbort && error.message === 'Load failed') return;
+        actor.errors.push(error.message);
+      });
+      actor.navigate = async action => {
+        actor.expectedNavigationAbort = testInfo.project.use.browserName === 'webkit';
+        try {
+          return await action();
+        } finally {
+          await actor.page.waitForTimeout(250);
+          actor.expectedNavigationAbort = false;
+        }
+      };
       return actor;
     };
     await use(createActor);
@@ -58,15 +81,8 @@ export const test = base.extend({
         await actor.context?.close();
       } catch (error) { cleanupErrors.push(error); }
       try {
-        // A successful UI login revokes the registration token. Obtain a fresh,
-        // test-owned session after closing the browser, then delete the account.
-        const cleanupLogin = await request.post(`${process.env.E2E_API_URL}/auth/login`, {
-          data: { email: actor.account.email, password: actor.account.password, devicePlatform: 'web-e2e-cleanup' },
-        });
-        expect(cleanupLogin.ok(), `Open cleanup session for ${actor.account.email}`).toBeTruthy();
-        const cleanupSession = await cleanupLogin.json();
         const deleted = await request.post(`${process.env.E2E_API_URL}/auth/delete-account`, {
-          data: { accessToken: cleanupSession.accessToken, password: actor.account.password },
+          data: { accessToken: actor.accessToken, password: actor.account.password },
         });
         expect(deleted.ok(), `Clean up disposable account ${actor.account.email}`).toBeTruthy();
         expect(actor.errors, 'No uncaught browser errors').toEqual([]);
@@ -117,7 +133,13 @@ export async function login(actor) {
   await click(page, tag(page, 'auth_open_login'));
   await fill(page, tag(page, 'auth_email'), account.email);
   await fill(page, tag(page, 'auth_password'), account.password);
+  const loginResponsePromise = page.waitForResponse(response =>
+    response.url() === `${process.env.E2E_API_URL}/auth/login` && response.request().method() === 'POST'
+  );
   await click(page, tag(page, 'auth_login_submit'));
+  const loginResponse = await loginResponsePromise;
+  expect(loginResponse.ok(), 'Login through the visible Web form').toBeTruthy();
+  actor.accessToken = (await loginResponse.json()).accessToken;
   await click(page, page.getByRole('button', { name: 'Bỏ qua', exact: true }));
   await expect(tag(page, 'home_screen')).toBeAttached();
 }

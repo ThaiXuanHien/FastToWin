@@ -8,6 +8,8 @@ Bộ test Playwright tại `e2e/` chạy giao diện Compose Web thật, HTTP/We
 2. Tạo phòng công khai, F5 tại phòng chờ, mở URL phòng bằng người chơi thứ hai, sẵn sàng và chọn đủ 50 số; mời/từ chối đấu lại; một người về sảnh không kéo người còn lại đi theo.
 3. Người được 260 điểm vẫn thắng người được 240 điểm dù đối thủ chọn số 50 cuối cùng.
 4. F5 giữa trận, ngắt WebSocket có kiểm soát, reconnect giữ tiến độ, hoàn thành trận và không còn thông báo kết nối cũ ở phần đấu lại.
+5. Responsive trên điện thoại nhỏ `320×568`, điện thoại lớn `430×932`, tablet `834×1112` và màn ngang `932×430`: nội dung mobile được căn giữa, không tràn ngang, bottom bar, hồ sơ và luồng tạo phòng vẫn thao tác được.
+6. Smoke test đăng nhập, F5 và Back/Forward trên Firefox và WebKit.
 
 Mỗi ca tạo tài khoản UUID riêng qua API rồi **đăng nhập qua UI**; teardown xóa đúng các tài khoản này. Không dùng tài khoản cá nhân, không reset database. Mặc định backend chạy in-memory, không cần Docker và không có dữ liệu bền vững. Vì vậy bộ này chưa kiểm tra lưu Elo/ví/lịch sử PostgreSQL.
 
@@ -23,7 +25,7 @@ $env:JAVA_HOME='C:\Users\TEN_WINDOWS_CUA_BAN\.jdks\corretto-17.0.17'
 .\gradlew.bat :server:installDist :webApp:wasmJsBrowserDevelopmentWebpack --no-daemon --no-configuration-cache
 cd e2e
 pnpm install --frozen-lockfile
-pnpm exec playwright install chromium
+pnpm exec playwright install chromium firefox webkit
 pnpm test
 ```
 
@@ -37,11 +39,11 @@ Từ thư mục gốc, đặt `JAVA_HOME` tới JDK 17 (macOS có thể dùng `e
 ./gradlew :server:installDist :webApp:wasmJsBrowserDevelopmentWebpack --no-daemon --no-configuration-cache
 cd e2e
 pnpm install --frozen-lockfile
-pnpm exec playwright install chromium
+pnpm exec playwright install chromium firefox webkit
 pnpm test
 ```
 
-Linux CI dùng `pnpm exec playwright install --with-deps chromium` để cài thêm thư viện hệ thống.
+Linux CI dùng `pnpm exec playwright install --with-deps chromium firefox webkit` để cài thêm thư viện hệ thống.
 
 ## Server test tách biệt
 
@@ -74,16 +76,18 @@ pnpm exec playwright show-trace test-results/DUONG_DAN_CA_LOI/trace.zip
 
 Báo cáo ở `e2e/playwright-report/`; ảnh và trace khi lỗi ở `e2e/test-results/`. Trace có thể chứa token/mật khẩu **tài khoản test**, không chia sẻ công khai khi còn phiên hiệu lực. Các thư mục này đã được gitignore.
 
-CI có job **Web E2E (Chromium)** và lưu báo cáo/ảnh/trace tối đa 7 ngày. Mặc định không retry để tránh che lỗi không ổn định.
+CI có job **Web E2E (responsive + multi-browser)** và lưu báo cáo/ảnh/trace tối đa 7 ngày. Mặc định không retry để tránh che lỗi không ổn định.
 
-Đã khai báo project Firefox/WebKit để mở rộng sau:
+Các lệnh chạy theo nhóm:
 
 ```bash
-pnpm exec playwright install firefox webkit
-pnpm test:all
+pnpm test:chromium      # 4 luồng game cốt lõi
+pnpm test:responsive    # 4 kích thước trên Chromium
+pnpm test:cross-browser # Firefox và WebKit smoke test
+pnpm test               # toàn bộ ma trận 10 ca
 ```
 
-Chưa coi Firefox/WebKit là đã đạt khi chưa chạy. Playwright WebKit không thay thế Safari/iOS thật; Chromium không thay thế đầy đủ Chrome/Edge thật. Service worker bị chặn trong bộ này để tránh cache cũ và push; cần test PWA/update/push riêng.
+Playwright WebKit không thay thế Safari/iOS thật; Chromium không thay thế đầy đủ Chrome/Edge thật. Service worker bị chặn trong bộ này để tránh cache cũ và push; cần test PWA/update/push riêng. Ma trận responsive hiện chưa mô phỏng font scale hệ điều hành hoặc bàn phím ảo thật.
 
 ## Ghi chú Compose Web
 
@@ -94,8 +98,9 @@ Chưa coi Firefox/WebKit là đã đạt khi chưa chạy. Playwright WebKit kh�
 
 Cách quản lý server và ngắt WebSocket dựa trên [Playwright webServer](https://playwright.dev/docs/test-webserver) và [WebSocketRoute](https://playwright.dev/docs/api/class-websocketroute).
 
-## Xác minh lần đầu — 03/09/2026
+## Xác minh — 03/09/2026
 
 - Ba ca đăng nhập/F5/Back–Forward, trận đủ 50 số + từ chối đấu lại + về sảnh độc lập, và reconnect đã chạy đạt trên Chromium với dev server hiện tại.
 - E2E phát hiện lỗi người chọn số cuối bị xử thắng dù ít điểm hơn. Đã sửa backend và chạy trực tiếp Kotlin/JUnit: **53/53 test GameEngine đạt**, gồm 3 test hồi quy mới.
-- CI #66 build/unit test và Android UI test đạt. Hai ca Web E2E bị dừng ở đăng nhập do test bấm nút ngay khi Compose Web đang thay input sau blur; đã bổ sung thời gian chờ accessibility node ổn định và teardown đăng nhập API bằng chính tài khoản test trước khi xóa. Ca E2E thứ tư (người nhiều điểm hơn thắng dù đối thủ chọn số cuối) vẫn cần CI tiếp theo xác minh bản sửa.
+- CI #67 đã chạy đạt cả Build/test và 4 ca Web E2E Chromium cốt lõi.
+- Bốn kích thước responsive và Playwright WebKit đã chạy đạt local. Firefox headless trên máy Windows hiện tại không khởi tạo được framebuffer phần mềm; job Ubuntu CI là bước xác minh Firefox độc lập với giới hạn máy local này.
