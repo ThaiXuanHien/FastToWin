@@ -11,6 +11,8 @@ import com.hienthai.fastowin.protocol.FriendPresence
 import com.hienthai.fastowin.protocol.FriendsSnapshot
 import com.hienthai.fastowin.protocol.PlayerSnapshot
 import com.hienthai.fastowin.protocol.PlayerProfileSnapshot
+import com.hienthai.fastowin.protocol.PushNotificationCategory
+import com.hienthai.fastowin.protocol.PushPreferencesSnapshot
 import com.hienthai.fastowin.protocol.ProtocolGameMode
 import com.hienthai.fastowin.protocol.MatchType
 import com.hienthai.fastowin.protocol.RematchEvent
@@ -231,6 +233,9 @@ class GameEngine(
         if (message is ClientMessage.GetFriendProfile) return loadFriendProfile(playerId, message.friendUserId)
         if (message is ClientMessage.GetMatchDetail) return loadMatchDetail(playerId, message.matchId)
         if (message is ClientMessage.UpdateProfile) return updateProfile(playerId, message)
+        if (message is ClientMessage.UpdatePushPreferences) {
+            return updatePushPreferences(playerId, message)
+        }
         if (message is ClientMessage.EquipCosmetics) return equipCosmetics(playerId, message)
         if (message is ClientMessage.GetLeaderboard) return loadLeaderboard(playerId)
         if (message is ClientMessage.GetFriends) return loadFriends(playerId)
@@ -337,9 +342,10 @@ class GameEngine(
                     HandleResult(emptyList())
                 }
                 is ClientMessage.UpdateFcmToken -> {
-                    playerProfileRepository.updateFcmToken(playerId, message.token)
+                    playerProfileRepository.updateFcmToken(playerId, message.token.trim().take(4096))
                     HandleResult(emptyList())
                 }
+                is ClientMessage.UpdatePushPreferences -> HandleResult(emptyList())
                 is ClientMessage.JoinMatchmaking -> HandleResult(emptyList())
                 ClientMessage.CancelMatchmaking -> HandleResult(emptyList())
                 is ClientMessage.GetClanList -> HandleResult(emptyList())
@@ -381,8 +387,7 @@ class GameEngine(
             }
         }
         result.completedMatch?.let { completed ->
-            runCatching { matchResultRepository.save(completed) }
-                .onFailure { System.err.println("Could not persist match ${completed.matchId}: ${it.message}") }
+            persistCompletedMatch(completed)
         }
         result.changedRoomId?.let { persistRoom(it) }
         val tournamentDeliveries = result.completedMatch
@@ -539,12 +544,17 @@ class GameEngine(
             tournamentInvitations[invitation.id] = invitation
             
             // Send Push Notification
-            val fcmToken = playerProfileRepository.findFcmToken(friendId)
+            val fcmToken = playerProfileRepository.findPushToken(
+                friendId,
+                PushNotificationCategory.TOURNAMENT_INVITATIONS
+            )
             if (fcmToken != null) {
-                pushNotificationService.sendNotification(
-                    fcmToken,
-                    "Lời mời giải đấu",
-                    "${invitation.hostDisplayName} đã mời bạn vào giải đấu ${invitation.tournamentName}"
+                sendPushNotification(
+                    playerId = friendId,
+                    fcmToken = fcmToken,
+                    title = "Lời mời giải đấu",
+                    body = "${invitation.hostDisplayName} đã mời bạn vào giải đấu ${invitation.tournamentName}",
+                    destinationPath = "/tournament"
                 )
             }
             
@@ -984,12 +994,17 @@ class GameEngine(
                 ))
             )
             
-            val fcmToken = playerProfileRepository.findFcmToken(invitation.inviteeId)
+            val fcmToken = playerProfileRepository.findPushToken(
+                invitation.inviteeId,
+                PushNotificationCategory.ROOM_INVITATIONS
+            )
             if (fcmToken != null) {
-                pushNotificationService.sendNotification(
-                    fcmToken,
-                    "Lời mời chơi game",
-                    "${invitation.inviterDisplayName} đã mời bạn vào phòng ${invitation.roomName}"
+                sendPushNotification(
+                    playerId = invitation.inviteeId,
+                    fcmToken = fcmToken,
+                    title = "Lời mời chơi game",
+                    body = "${invitation.inviterDisplayName} đã mời bạn vào phòng ${invitation.roomName}",
+                    destinationPath = "/friends"
                 )
             }
             return deliveries + loadRoomInvitations(playerId) +
@@ -1339,6 +1354,69 @@ class GameEngine(
         return listOf(Delivery(ServerMessage.ProfileData(profile), setOf(playerId)))
     }
 
+    private suspend fun persistCompletedMatch(completed: CompletedMatch) {
+        val profilesBefore = completed.players.associate { player ->
+            player.playerId to runCatching {
+                playerProfileRepository.findByPlayerId(player.playerId)
+            }.getOrNull()
+        }
+        val saved = runCatching { matchResultRepository.save(completed) }
+            .onFailure { error ->
+                System.err.println("Could not persist match ${completed.matchId}: ${error.message}")
+            }
+            .isSuccess
+        if (!saved) return
+
+        completed.players.forEach { player ->
+            val previous = profilesBefore[player.playerId] ?: return@forEach
+            val current = runCatching {
+                playerProfileRepository.findByPlayerId(player.playerId)
+            }.getOrNull() ?: return@forEach
+            val previouslyCompleted = (
+                previous.progression.dailyMissions + previous.progression.weeklyMissions
+            ).filter { it.completed }.mapTo(mutableSetOf()) { it.code }
+            val newlyCompleted = (
+                current.progression.dailyMissions + current.progression.weeklyMissions
+            ).filter { it.completed && it.code !in previouslyCompleted }
+            if (newlyCompleted.isEmpty()) return@forEach
+
+            val token = runCatching {
+                playerProfileRepository.findPushToken(
+                    player.playerId,
+                    PushNotificationCategory.MISSION_REWARDS
+                )
+            }.getOrNull() ?: return@forEach
+            newlyCompleted.forEach { mission ->
+                sendPushNotification(
+                    playerId = player.playerId,
+                    fcmToken = token,
+                    title = "Nhiệm vụ hoàn thành",
+                    body = "${mission.title} — vào nhận thưởng ngay!",
+                    destinationPath = "/account/missions"
+                )
+            }
+        }
+    }
+
+    private suspend fun sendPushNotification(
+        playerId: String,
+        fcmToken: String,
+        title: String,
+        body: String,
+        destinationPath: String
+    ) {
+        if (
+            pushNotificationService.sendNotification(
+                fcmToken = fcmToken,
+                title = title,
+                body = body,
+                destinationPath = destinationPath
+            ) == PushDeliveryStatus.INVALID_TOKEN
+        ) {
+            playerProfileRepository.clearFcmToken(playerId, fcmToken)
+        }
+    }
+
     private suspend fun acknowledgeSeasonReward(playerId: String, seasonNumber: Int): List<Delivery> {
         if (!isAccountSession(playerId)) return listOf(accountRequired(playerId))
         val acknowledged = runCatching {
@@ -1537,7 +1615,13 @@ class GameEngine(
         val profile = runCatching { playerProfileRepository.findByPlayerId(friendUserId) }
             .getOrNull()
             ?: return listOf(error(playerId, "FRIEND_PROFILE_NOT_FOUND", "Không tìm thấy hồ sơ người chơi."))
-        return listOf(Delivery(ServerMessage.FriendProfileData(friendUserId, profile), setOf(playerId)))
+        return listOf(Delivery(
+            ServerMessage.FriendProfileData(
+                friendUserId,
+                profile.copy(pushPreferences = PushPreferencesSnapshot())
+            ),
+            setOf(playerId)
+        ))
     }
 
     private suspend fun loadMatchDetail(playerId: String, matchId: String): List<Delivery> {
@@ -1626,6 +1710,27 @@ class GameEngine(
         return loadProfile(playerId) + Delivery(roomList()) + presenceUpdates(playerId)
     }
 
+    private suspend fun updatePushPreferences(
+        playerId: String,
+        command: ClientMessage.UpdatePushPreferences
+    ): List<Delivery> {
+        if (!isAccountSession(playerId)) return listOf(accountRequired(playerId))
+        val updated = runCatching {
+            playerProfileRepository.updatePushPreferences(playerId, command.preferences)
+        }.onFailure { error ->
+            System.err.println("Could not update push preferences for $playerId: ${error.message}")
+        }.getOrDefault(false)
+        return if (updated) {
+            loadProfile(playerId)
+        } else {
+            listOf(error(
+                playerId,
+                "PUSH_PREFERENCES_UNAVAILABLE",
+                "Chưa thể lưu tùy chọn thông báo. Vui lòng thử lại."
+            ))
+        }
+    }
+
     private suspend fun loadLeaderboard(playerId: String): List<Delivery> {
         val sessionExists = mutex.withLock { playerId in sessionsByPlayerId }
         if (!sessionExists) {
@@ -1693,8 +1798,7 @@ class GameEngine(
             }
         }
         advances.mapNotNull(TimedAdvance::completedMatch).forEach { completed ->
-            runCatching { matchResultRepository.save(completed) }
-                .onFailure { System.err.println("Could not persist timed match ${completed.matchId}: ${it.message}") }
+            persistCompletedMatch(completed)
         }
         advances.forEach { advance ->
             when (val message = advance.delivery.message) {

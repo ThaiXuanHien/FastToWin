@@ -68,6 +68,7 @@ fun Application.gameModule(
     rateLimiter: RateLimiter = InMemoryRateLimiter(),
     rateLimitPolicies: ServerRateLimitPolicies = ServerRateLimitPolicies(),
     seasonLifecycleRepository: SeasonLifecycleRepository = NoOpSeasonLifecycleRepository,
+    pushReminderService: PushReminderService = NoOpPushReminderService,
     serviceStatusProvider: () -> ServiceStatusResponse = ::serviceStatusFromEnvironment,
     websocketPingPeriod: Duration = DEFAULT_WEBSOCKET_PING_PERIOD,
     websocketPongTimeout: Duration = DEFAULT_WEBSOCKET_PONG_TIMEOUT
@@ -128,6 +129,19 @@ fun Application.gameModule(
         while (isActive) {
             delay(GAME_TIMER_INTERVAL_MILLIS)
             deliver(engine.advanceTimedGames())
+        }
+    }
+
+    launch {
+        while (isActive) {
+            runCatching { pushReminderService.sendDueReminders() }
+                .onSuccess { delivered ->
+                    if (delivered > 0) println("Sent $delivered daily push reminder(s).")
+                }
+                .onFailure { error ->
+                    System.err.println("Could not send daily push reminders: ${error.message}")
+                }
+            delay(PUSH_REMINDER_INTERVAL_MILLIS)
         }
     }
 
@@ -267,6 +281,7 @@ fun Application.gameModule(
 
         get("/api/avatar/{playerId}") {
             val playerId = call.parameters["playerId"] ?: return@get call.respond(HttpStatusCode.BadRequest)
+            call.response.header(HttpHeaders.CacheControl, "no-store, max-age=0")
             val base64Data = engine.getAvatarData(playerId)
             if (base64Data != null) {
                 val cleanBase64 = base64Data.substringAfter(",")
@@ -620,6 +635,7 @@ private class SocketConnection(val session: io.ktor.server.websocket.DefaultWebS
 
 private const val SESSION_CLEANUP_INTERVAL_MILLIS = 5_000L
 private const val GAME_TIMER_INTERVAL_MILLIS = 250L
+private const val PUSH_REMINDER_INTERVAL_MILLIS = 15L * 60L * 1_000L
 private const val SEASON_LIFECYCLE_INTERVAL_MILLIS = 60_000L
 private val DEFAULT_WEBSOCKET_PING_PERIOD = 10.seconds
 private val DEFAULT_WEBSOCKET_PONG_TIMEOUT = 8.seconds

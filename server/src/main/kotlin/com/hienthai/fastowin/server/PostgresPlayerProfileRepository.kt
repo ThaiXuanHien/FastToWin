@@ -21,6 +21,8 @@ import com.hienthai.fastowin.protocol.DAILY_CHECK_IN_STREAK_ACHIEVEMENT_TARGET
 import com.hienthai.fastowin.protocol.DAILY_CHECK_IN_TITLE_TARGET
 import com.hienthai.fastowin.protocol.MissionSnapshot
 import com.hienthai.fastowin.protocol.PlayerProgressionSnapshot
+import com.hienthai.fastowin.protocol.PushNotificationCategory
+import com.hienthai.fastowin.protocol.PushPreferencesSnapshot
 import com.hienthai.fastowin.protocol.WalletTransactionSnapshot
 import com.hienthai.fastowin.protocol.SeasonSnapshot
 import com.hienthai.fastowin.protocol.SeasonRewardReceiptSnapshot
@@ -97,8 +99,13 @@ class PostgresPlayerProfileRepository(
                        COALESCE(s.elo_rating, 1000) AS elo_rating,
                        CASE WHEN COALESCE(s.reaction_samples, 0) = 0 THEN 0
                             ELSE s.reaction_time_total_ms / s.reaction_samples END AS average_reaction_ms,
+                       u.push_room_invitations_enabled,
+                       u.push_tournament_invitations_enabled,
+                       u.push_mission_rewards_enabled,
+                       u.push_daily_check_in_enabled,
                        cm.clan_id, c.name AS clan_name
                 FROM profiles p
+                JOIN users u ON u.id = p.user_id
                 LEFT JOIN player_stats s ON s.user_id = p.user_id
                 LEFT JOIN clan_members cm ON cm.user_id = p.user_id
                 LEFT JOIN clans c ON c.id = cm.clan_id
@@ -127,7 +134,13 @@ class PostgresPlayerProfileRepository(
                             eloRating = result.getInt("elo_rating")
                         ),
                         clanId = result.getString("clan_id"),
-                        clanName = result.getString("clan_name")
+                        clanName = result.getString("clan_name"),
+                        pushPreferences = PushPreferencesSnapshot(
+                            roomInvitationsEnabled = result.getBoolean("push_room_invitations_enabled"),
+                            tournamentInvitationsEnabled = result.getBoolean("push_tournament_invitations_enabled"),
+                            missionRewardsEnabled = result.getBoolean("push_mission_rewards_enabled"),
+                            dailyCheckInEnabled = result.getBoolean("push_daily_check_in_enabled")
+                        )
                     )
                 }
             }
@@ -1058,9 +1071,45 @@ class PostgresPlayerProfileRepository(
 
     override suspend fun updateFcmToken(playerId: String, token: String): Boolean = withContext(Dispatchers.IO) {
         dataSource.connection.use { connection ->
-            connection.prepareStatement("UPDATE users SET fcm_token = ? WHERE id = ?").use { statement ->
-                statement.setString(1, token)
-                statement.setObject(2, UUID.fromString(playerId))
+            connection.autoCommit = false
+            try {
+                val userId = UUID.fromString(playerId)
+                val normalizedToken = token.trim().takeIf(String::isNotEmpty)
+                if (normalizedToken != null) {
+                    connection.prepareStatement(
+                        "UPDATE users SET fcm_token = NULL WHERE fcm_token = ? AND id <> ?"
+                    ).use { statement ->
+                        statement.setString(1, normalizedToken)
+                        statement.setObject(2, userId)
+                        statement.executeUpdate()
+                    }
+                }
+                val updated = connection.prepareStatement(
+                    "UPDATE users SET fcm_token = ? WHERE id = ?"
+                ).use { statement ->
+                    statement.setString(1, normalizedToken)
+                    statement.setObject(2, userId)
+                    statement.executeUpdate() > 0
+                }
+                connection.commit()
+                updated
+            } catch (error: Throwable) {
+                connection.rollback()
+                throw error
+            }
+        }
+    }
+
+    override suspend fun clearFcmToken(
+        playerId: String,
+        expectedToken: String
+    ): Boolean = withContext(Dispatchers.IO) {
+        dataSource.connection.use { connection ->
+            connection.prepareStatement(
+                "UPDATE users SET fcm_token = NULL WHERE id = ? AND fcm_token = ?"
+            ).use { statement ->
+                statement.setObject(1, UUID.fromString(playerId))
+                statement.setString(2, expectedToken)
                 statement.executeUpdate() > 0
             }
         }
@@ -1174,6 +1223,115 @@ class PostgresPlayerProfileRepository(
                         }
                     }
                 }
+            }
+        }
+    }
+
+    override suspend fun findPushToken(
+        playerId: String,
+        category: PushNotificationCategory
+    ): String? = withContext(Dispatchers.IO) {
+        val enabledColumn = when (category) {
+            PushNotificationCategory.ROOM_INVITATIONS -> "push_room_invitations_enabled"
+            PushNotificationCategory.TOURNAMENT_INVITATIONS -> "push_tournament_invitations_enabled"
+            PushNotificationCategory.MISSION_REWARDS -> "push_mission_rewards_enabled"
+            PushNotificationCategory.DAILY_CHECK_IN -> "push_daily_check_in_enabled"
+        }
+        dataSource.connection.use { connection ->
+            connection.prepareStatement(
+                "SELECT fcm_token FROM users WHERE id = ? AND $enabledColumn = TRUE"
+            ).use { statement ->
+                statement.setObject(1, UUID.fromString(playerId))
+                statement.executeQuery().use { result ->
+                    if (result.next()) result.getString("fcm_token") else null
+                }
+            }
+        }
+    }
+
+    override suspend fun updatePushPreferences(
+        playerId: String,
+        preferences: PushPreferencesSnapshot
+    ): Boolean = withContext(Dispatchers.IO) {
+        dataSource.connection.use { connection ->
+            connection.prepareStatement(
+                """
+                UPDATE users
+                SET push_room_invitations_enabled = ?,
+                    push_tournament_invitations_enabled = ?,
+                    push_mission_rewards_enabled = ?,
+                    push_daily_check_in_enabled = ?
+                WHERE id = ? AND status = 'ACTIVE'
+                """.trimIndent()
+            ).use { statement ->
+                statement.setBoolean(1, preferences.roomInvitationsEnabled)
+                statement.setBoolean(2, preferences.tournamentInvitationsEnabled)
+                statement.setBoolean(3, preferences.missionRewardsEnabled)
+                statement.setBoolean(4, preferences.dailyCheckInEnabled)
+                statement.setObject(5, UUID.fromString(playerId))
+                statement.executeUpdate() == 1
+            }
+        }
+    }
+
+    override suspend fun loadDailyPushReminderTargets(
+        reminderDate: String,
+        limit: Int
+    ): List<PushReminderTarget> = withContext(Dispatchers.IO) {
+        val date = runCatching { LocalDate.parse(reminderDate) }.getOrNull() ?: return@withContext emptyList()
+        val reminderKey = "daily-check-in:$date"
+        dataSource.connection.use { connection ->
+            connection.prepareStatement(
+                """
+                SELECT u.id, u.fcm_token
+                FROM users u
+                LEFT JOIN player_stats ps ON ps.user_id = u.id
+                WHERE u.status = 'ACTIVE'
+                  AND u.fcm_token IS NOT NULL
+                  AND BTRIM(u.fcm_token) <> ''
+                  AND u.push_daily_check_in_enabled = TRUE
+                  AND (ps.last_daily_check_in_date IS NULL OR ps.last_daily_check_in_date < ?)
+                  AND NOT EXISTS (
+                      SELECT 1
+                      FROM push_reminder_deliveries d
+                      WHERE d.user_id = u.id AND d.reminder_key = ?
+                  )
+                ORDER BY u.id
+                LIMIT ?
+                """.trimIndent()
+            ).use { statement ->
+                statement.setDate(1, Date.valueOf(date))
+                statement.setString(2, reminderKey)
+                statement.setInt(3, limit.coerceIn(1, 2_000))
+                statement.executeQuery().use { result ->
+                    buildList {
+                        while (result.next()) {
+                            add(PushReminderTarget(
+                                playerId = result.getObject("id", UUID::class.java).toString(),
+                                fcmToken = result.getString("fcm_token")
+                            ))
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    override suspend fun markPushReminderDelivered(
+        playerId: String,
+        reminderKey: String
+    ): Boolean = withContext(Dispatchers.IO) {
+        dataSource.connection.use { connection ->
+            connection.prepareStatement(
+                """
+                INSERT INTO push_reminder_deliveries (user_id, reminder_key, delivered_at)
+                VALUES (?, ?, CURRENT_TIMESTAMP)
+                ON CONFLICT (user_id, reminder_key) DO NOTHING
+                """.trimIndent()
+            ).use { statement ->
+                statement.setObject(1, UUID.fromString(playerId))
+                statement.setString(2, reminderKey.take(96))
+                statement.executeUpdate() == 1
             }
         }
     }

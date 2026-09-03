@@ -8,6 +8,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -18,6 +20,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.hienthai.fastowin.data.network.toAvatarImageUrl
 import com.hienthai.fastowin.protocol.DAILY_CHECK_IN_AVATAR_ID
 import com.hienthai.fastowin.protocol.DEFAULT_FEMALE_AVATAR_ID
 import com.hienthai.fastowin.protocol.RankedTier
@@ -41,11 +44,20 @@ import org.jetbrains.compose.resources.painterResource
 fun PlayerAvatar(
     displayName: String,
     avatarId: String?,
+    userId: String? = null,
     frameId: String = "frame_default",
     size: Dp = 48.dp,
     imageUrl: String = "",
     modifier: Modifier = Modifier
 ) {
+    val avatarServerUrl = LocalAvatarServerUrl.current
+    val avatarRevision = LocalAvatarRevision.current
+    val resolvedImageUrl = imageUrl.ifBlank {
+        userId
+            ?.takeIf { it.isNotBlank() && avatarServerUrl.isNotBlank() }
+            ?.let { avatarServerUrl.toAvatarImageUrl(it, avatarRevision) }
+            .orEmpty()
+    }
     val frameName = avatarFrameName(frameId)
     val frameResource = avatarFrameResource(frameId)
     val avatarSize = size * 0.78f
@@ -73,7 +85,7 @@ fun PlayerAvatar(
             contentAlignment = Alignment.Center
         ) {
             NetworkImage(
-                url = imageUrl,
+                url = resolvedImageUrl,
                 modifier = Modifier.fillMaxSize(),
                 contentDescription = null,
                 fallback = {
@@ -94,6 +106,22 @@ fun PlayerAvatar(
             modifier = Modifier.fillMaxSize()
         )
     }
+}
+
+private val LocalAvatarServerUrl = staticCompositionLocalOf { "" }
+private val LocalAvatarRevision = staticCompositionLocalOf { 0L }
+
+@Composable
+fun AvatarImageProvider(
+    serverUrl: String,
+    revision: Long,
+    content: @Composable () -> Unit
+) {
+    CompositionLocalProvider(
+        LocalAvatarServerUrl provides serverUrl,
+        LocalAvatarRevision provides revision,
+        content = content
+    )
 }
 
 private fun avatarFrameResource(frameId: String): DrawableResource {

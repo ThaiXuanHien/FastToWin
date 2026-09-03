@@ -247,14 +247,16 @@ fun ArcadeDialog(
         onDismissRequest = onDismissRequest,
         properties = DialogProperties(usePlatformDefaultWidth = false)
     ) {
-        Box(
-            modifier = Modifier.fillMaxSize().padding(horizontal = 14.dp, vertical = 24.dp),
+        BoxWithConstraints(
+            modifier = Modifier.fillMaxSize().padding(horizontal = 10.dp, vertical = 12.dp),
             contentAlignment = Alignment.Center
         ) {
+            val dialogMaxHeight = (maxHeight - 24.dp).coerceAtLeast(240.dp)
             Surface(
                 modifier = modifier
+                    .widthIn(max = 420.dp)
                     .fillMaxWidth()
-                    .widthIn(max = 520.dp)
+                    .heightIn(max = dialogMaxHeight)
                     .imePadding(),
                 shape = RoundedCornerShape(24.dp),
                 color = Color.Transparent,

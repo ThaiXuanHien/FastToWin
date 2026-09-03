@@ -24,7 +24,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -39,6 +38,7 @@ import com.hienthai.fastowin.protocol.rankedTierFor
 import com.hienthai.fastowin.state.GameState
 import com.hienthai.fastowin.ui.components.ArcadeBackdrop
 import com.hienthai.fastowin.ui.components.FastToWinHeader
+import com.hienthai.fastowin.ui.components.FastToWinPullRefresh
 import com.hienthai.fastowin.ui.components.RewardAmounts
 import com.hienthai.fastowin.ui.components.SeasonCosmeticRewardCard
 import com.hienthai.fastowin.ui.components.SystemBackHandler
@@ -81,7 +81,7 @@ fun SeasonHistoryScreen(
                 maxContentWidth = 800.dp,
                 applySafeDrawingInsets = false
             ) { contentModifier ->
-                PullToRefreshBox(
+                FastToWinPullRefresh(
                     isRefreshing = state.isProfileLoading,
                     onRefresh = { if (!state.isProfileLoading) onRefresh() },
                     modifier = contentModifier.fillMaxSize()

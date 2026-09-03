@@ -31,7 +31,7 @@ Fast To Win là game tìm số 1–50 theo thời gian thực dành cho Android 
 | `protocol/` | Message model và serialization dùng chung giữa client/server |
 | `server/` | Ktor HTTP/WebSocket server, repository và Flyway migration |
 | `iosApp/` | Ứng dụng iOS, Xcode project và cầu nối Swift–Kotlin |
-| `webApp/` | Điểm khởi chạy Compose Multiplatform Web bằng Kotlin/Wasm |
+| `webApp/` | Điểm khởi chạy Compose Multiplatform Web bằng Kotlin/Wasm, kèm Kotlin/JS fallback |
 
 Cấu hình chính hiện tại:
 
@@ -360,11 +360,83 @@ $env:JAVA_HOME='C:\Program Files\Android\Android Studio\jbr'
 
 Web development chạy tại `http://localhost:8081` và mặc định kết nối `ws://127.0.0.1:8080/game`. Có thể thay backend trong `webApp/src/wasmJsMain/resources/config.js` mà không sửa UI dùng chung.
 
-Build bộ file web để triển khai:
+Để kiểm tra riêng bản JavaScript fallback trên trình duyệt không hỗ trợ WasmGC:
 
 ```powershell
-.\gradlew.bat :webApp:wasmJsBrowserDistribution
+.\gradlew.bat :webApp:jsBrowserDevelopmentRun
 ```
+
+Bản JavaScript development chạy tại `http://localhost:8082`.
+
+Build bộ phân phối tương thích để trình duyệt tự chọn Wasm hoặc JavaScript:
+
+```powershell
+.\gradlew.bat :webApp:composeCompatibilityBrowserDistribution
+```
+
+Bản web đã có manifest, icon thường/maskable và service worker nên có thể cài như
+một PWA. Khi trình duyệt hỗ trợ, vào **Tài khoản → Cài đặt ứng dụng → Cài Fast To Win**
+để mở trình cài đặt; Safari và một số trình duyệt sẽ hiển thị hướng dẫn cài thủ công.
+Service worker lưu app shell và các tài nguyên tĩnh đã tải; API, WebSocket và dữ liệu
+trận vẫn cần backend hoạt động. Khi health check không thể tới máy chủ, app hiển thị
+trạng thái Offline riêng và vẫn cho phép mở Luyện tập offline, không nhầm với bảo trì.
+Khi phát hiện bản mới, app chỉ hỏi cập nhật ở trạng thái an toàn, không chen vào
+lúc đang ghép trận, ở trong phòng hoặc thi đấu.
+
+### Bật Web Push
+
+Fast To Win dùng chung Firebase Cloud Messaging cho Android và web. Trong Firebase
+Console, tạo một **Web App** trong cùng project, sau đó vào **Cloud Messaging → Web
+Push certificates** để tạo VAPID key. Điền public client config vào
+`webApp/src/wasmJsMain/resources/config.js`:
+
+```javascript
+globalThis.FASTTOWIN_CONFIG = {
+    serverUrl: "wss://api.example.com/game",
+    firebase: {
+        apiKey: "...",
+        authDomain: "your-project.firebaseapp.com",
+        projectId: "your-project",
+        storageBucket: "your-project.appspot.com",
+        messagingSenderId: "...",
+        appId: "..."
+    },
+    vapidKey: "YOUR_PUBLIC_VAPID_KEY"
+};
+```
+
+Firebase Web config và VAPID public key không phải private credentials. Không đưa
+`firebase-adminsdk.json`, service-account key hoặc VAPID private key vào web client.
+Backend production dùng:
+
+```powershell
+$env:GOOGLE_APPLICATION_CREDENTIALS='D:\secrets\firebase-adminsdk.json'
+$env:FASTTOWIN_WEB_BASE_URL='https://play.example.com'
+$env:FASTTOWIN_PUSH_ZONE='Asia/Ho_Chi_Minh'
+$env:FASTTOWIN_DAILY_PUSH_HOUR='19'
+```
+
+Người chơi bật **Cài đặt → Thông báo trên thiết bị** để cấp quyền. Server gửi lời
+mời phòng, lời mời giải đấu, thông báo nhiệm vụ vừa hoàn thành và một lời nhắc điểm
+danh sau giờ đã cấu hình. Bốn nhóm này có công tắc riêng trong Cài đặt; lựa chọn
+được lưu theo tài khoản và đồng bộ giữa các nền tảng. Migration V38 lưu trạng thái
+chống gửi nhắc điểm danh trùng trong cùng ngày, còn V39 lưu tùy chọn từng nhóm.
+Khi đăng xuất hoặc đăng nhập ở thiết bị khác, token cũ được xóa khỏi tài khoản.
+Các script development tự đặt `FASTTOWIN_WEB_BASE_URL=http://localhost:8081` để
+thông báo thử mở đúng màn hình web. Backend chỉ chấp nhận HTTP cho địa chỉ loopback;
+mọi domain production vẫn phải dùng HTTPS.
+
+Khi phát hành một bản web mới có thay đổi client, tăng phiên bản
+`SHELL_CACHE` trong `webApp/src/wasmJsMain/resources/service-worker.js`. Sau đó
+build lại bộ phân phối tương thích và triển khai toàn bộ thư mục output cùng lúc.
+Máy chủ web production cần:
+
+- HTTPS và backend dùng `wss://`.
+- Trả đúng MIME type cho `.wasm`, `.js`, `.webmanifest` và ảnh PNG.
+- Không cache lâu `service-worker.js`, `index.html` và `config.js`.
+- Cho phép tải Firebase SDK từ `https://www.gstatic.com` nếu triển khai Content Security Policy.
+- Trả `index.html` cho mọi URL SPA, gồm `/rooms`, `/friends`, `/tournament`,
+  `/account/*`, `/room/*` và `/challenge/*`.
 
 Khi production, đổi URL trong `config.js` sang `wss://`, đặt domain web được phép cho backend rồi khởi động server:
 

@@ -26,6 +26,7 @@ set "FASTTOWIN_ENV=dev"
 set "DATABASE_URL=jdbc:postgresql://localhost:5432/fasttowin"
 set "DATABASE_USER=fasttowin"
 set "DATABASE_PASSWORD=fasttowin"
+set "FASTTOWIN_WEB_BASE_URL=http://localhost:8081"
 
 set "SERVER_INSTALL_DIR=%~dp0server\build\install\server"
 if exist "%SERVER_INSTALL_DIR%" (

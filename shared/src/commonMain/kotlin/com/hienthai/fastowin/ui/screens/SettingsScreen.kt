@@ -20,9 +20,15 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.VolumeUp
 import androidx.compose.material.icons.rounded.ColorLens
+import androidx.compose.material.icons.rounded.CalendarMonth
+import androidx.compose.material.icons.rounded.EmojiEvents
 import androidx.compose.material.icons.rounded.FormatSize
+import androidx.compose.material.icons.rounded.InstallMobile
+import androidx.compose.material.icons.rounded.MeetingRoom
+import androidx.compose.material.icons.rounded.NotificationsActive
 import androidx.compose.material.icons.rounded.RestartAlt
 import androidx.compose.material.icons.rounded.Settings
+import androidx.compose.material.icons.rounded.TaskAlt
 import androidx.compose.material.icons.rounded.Vibration
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -45,6 +51,9 @@ import com.hienthai.fastowin.data.preferences.AppFontScale
 import com.hienthai.fastowin.data.preferences.AppPreferences
 import com.hienthai.fastowin.data.preferences.AppThemeMode
 import com.hienthai.fastowin.data.preferences.BoardStyle
+import com.hienthai.fastowin.platform.AppPushStatus
+import com.hienthai.fastowin.platform.AppInstallStatus
+import com.hienthai.fastowin.protocol.PushPreferencesSnapshot
 import com.hienthai.fastowin.ui.components.ArcadeBackdrop
 import com.hienthai.fastowin.ui.components.ArcadePanel
 import com.hienthai.fastowin.ui.components.ArcadeActionButton
@@ -67,6 +76,14 @@ fun SettingsScreen(
     gems: Int = 0,
     unreadNotifications: Int = 0,
     onOpenNotifications: () -> Unit = {},
+    pushStatus: AppPushStatus = AppPushStatus.UNSUPPORTED,
+    onEnablePush: () -> Unit = {},
+    onDisablePush: () -> Unit = {},
+    pushPreferences: PushPreferencesSnapshot? = null,
+    pushPreferencesSaving: Boolean = false,
+    onPushPreferencesChange: (PushPreferencesSnapshot) -> Unit = {},
+    installStatus: AppInstallStatus = AppInstallStatus.UNSUPPORTED,
+    onInstallApp: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     SystemBackHandler(onBack = onBack)
@@ -97,6 +114,116 @@ fun SettingsScreen(
                     verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
                     SettingsHero()
+
+                    if (installStatus != AppInstallStatus.UNSUPPORTED) {
+                        SettingsSection(
+                            title = "Cài Fast To Win",
+                            subtitle = "Mở game nhanh như một ứng dụng độc lập trên thiết bị này."
+                        ) {
+                            SettingsInstallRow(installStatus)
+                            when (installStatus) {
+                                AppInstallStatus.AVAILABLE,
+                                AppInstallStatus.ERROR -> ArcadeActionButton(
+                                    label = if (installStatus == AppInstallStatus.ERROR) {
+                                        "THỬ MỞ TRÌNH CÀI ĐẶT"
+                                    } else {
+                                        "CÀI FAST TO WIN"
+                                    },
+                                    onClick = onInstallApp,
+                                    icon = Icons.Rounded.InstallMobile,
+                                    style = ArcadeActionStyle.GOLD,
+                                    modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)
+                                )
+
+                                AppInstallStatus.INSTALLING -> ArcadeActionButton(
+                                    label = "ĐANG MỞ TRÌNH CÀI ĐẶT",
+                                    onClick = {},
+                                    enabled = false,
+                                    icon = Icons.Rounded.InstallMobile,
+                                    modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)
+                                )
+
+                                AppInstallStatus.MANUAL -> Text(
+                                    text = "Chrome/Edge: mở menu trình duyệt và chọn Cài đặt ứng dụng. " +
+                                        "Safari trên iPhone/iPad: chọn Chia sẻ → Thêm vào Màn hình chính.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+
+                                AppInstallStatus.INSTALLED,
+                                AppInstallStatus.UNSUPPORTED -> Unit
+                            }
+                        }
+                    }
+
+                    val showDevicePushControl = pushStatus !in setOf(
+                        AppPushStatus.UNSUPPORTED,
+                        AppPushStatus.UNCONFIGURED
+                    )
+                    if (showDevicePushControl || pushPreferences != null) {
+                        SettingsSection(
+                            title = "Thông báo",
+                            subtitle = "Chọn chính xác những cập nhật bạn muốn nhận."
+                        ) {
+                            if (showDevicePushControl) {
+                                SettingsSwitchRow(
+                                    icon = Icons.Rounded.NotificationsActive,
+                                    title = "Thông báo trên thiết bị",
+                                    subtitle = pushStatus.description(),
+                                    checked = pushStatus == AppPushStatus.ENABLED,
+                                    enabled = pushStatus !in setOf(
+                                        AppPushStatus.REQUESTING,
+                                        AppPushStatus.DENIED
+                                    ),
+                                    onCheckedChange = { enabled ->
+                                        if (enabled) onEnablePush() else onDisablePush()
+                                    }
+                                )
+                            }
+                            pushPreferences?.let { preferences ->
+                                SettingsSwitchRow(
+                                    icon = Icons.Rounded.MeetingRoom,
+                                    title = "Lời mời phòng",
+                                    subtitle = "Khi bạn bè mời vào phòng chơi",
+                                    checked = preferences.roomInvitationsEnabled,
+                                    enabled = !pushPreferencesSaving,
+                                    onCheckedChange = {
+                                        onPushPreferencesChange(preferences.copy(roomInvitationsEnabled = it))
+                                    }
+                                )
+                                SettingsSwitchRow(
+                                    icon = Icons.Rounded.EmojiEvents,
+                                    title = "Lời mời giải đấu",
+                                    subtitle = "Khi bạn bè mời tham gia giải",
+                                    checked = preferences.tournamentInvitationsEnabled,
+                                    enabled = !pushPreferencesSaving,
+                                    onCheckedChange = {
+                                        onPushPreferencesChange(preferences.copy(tournamentInvitationsEnabled = it))
+                                    }
+                                )
+                                SettingsSwitchRow(
+                                    icon = Icons.Rounded.TaskAlt,
+                                    title = "Nhiệm vụ và phần thưởng",
+                                    subtitle = "Khi vừa hoàn thành một nhiệm vụ",
+                                    checked = preferences.missionRewardsEnabled,
+                                    enabled = !pushPreferencesSaving,
+                                    onCheckedChange = {
+                                        onPushPreferencesChange(preferences.copy(missionRewardsEnabled = it))
+                                    }
+                                )
+                                SettingsSwitchRow(
+                                    icon = Icons.Rounded.CalendarMonth,
+                                    title = "Nhắc điểm danh",
+                                    subtitle = "Một lần mỗi ngày nếu bạn chưa nhận quà",
+                                    checked = preferences.dailyCheckInEnabled,
+                                    enabled = !pushPreferencesSaving,
+                                    onCheckedChange = {
+                                        onPushPreferencesChange(preferences.copy(dailyCheckInEnabled = it))
+                                    }
+                                )
+                            }
+                        }
+                    }
 
                     SettingsSection(
                         title = "Phản hồi khi chơi",
@@ -206,6 +333,51 @@ fun SettingsScreen(
 }
 
 @Composable
+private fun SettingsInstallRow(status: AppInstallStatus) {
+    val (title, subtitle) = when (status) {
+        AppInstallStatus.AVAILABLE -> "Sẵn sàng cài đặt" to "Không cần tải file, cập nhật tự động."
+        AppInstallStatus.INSTALLING -> "Đang chờ xác nhận" to "Hoàn tất trong cửa sổ của trình duyệt."
+        AppInstallStatus.INSTALLED -> "Đã cài trên thiết bị" to "Bạn có thể mở game từ màn hình chính."
+        AppInstallStatus.MANUAL -> "Cài từ menu trình duyệt" to "Trình duyệt này cần thao tác cài đặt thủ công."
+        AppInstallStatus.ERROR -> "Chưa mở được trình cài đặt" to "Bạn có thể thử lại hoặc cài từ menu trình duyệt."
+        AppInstallStatus.UNSUPPORTED -> "Không hỗ trợ cài đặt" to "Hãy tiếp tục chơi trực tiếp trên trình duyệt."
+    }
+    Row(
+        modifier = Modifier.fillMaxWidth().heightIn(min = 64.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Surface(
+            modifier = Modifier.size(44.dp),
+            shape = MaterialTheme.shapes.medium,
+            color = ArcadePalette.Navy700,
+            contentColor = if (status == AppInstallStatus.INSTALLED) {
+                ArcadePalette.Mint400
+            } else {
+                ArcadePalette.Gold500
+            },
+            border = androidx.compose.foundation.BorderStroke(1.dp, ArcadePalette.Blue300)
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                Icon(
+                    Icons.Rounded.InstallMobile,
+                    contentDescription = null,
+                    modifier = Modifier.size(22.dp)
+                )
+            }
+        }
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(title, fontWeight = FontWeight.SemiBold)
+            Text(
+                subtitle,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+}
+
+@Composable
 private fun SettingsHero() {
     ArcadePanel(
         modifier = Modifier.fillMaxWidth(),
@@ -309,6 +481,7 @@ private fun SettingsSwitchRow(
     title: String,
     subtitle: String,
     checked: Boolean,
+    enabled: Boolean = true,
     onCheckedChange: (Boolean) -> Unit
 ) {
     Row(
@@ -337,10 +510,22 @@ private fun SettingsSwitchRow(
         }
         Switch(
             checked = checked,
-            onCheckedChange = onCheckedChange,
+            onCheckedChange = if (enabled) onCheckedChange else null,
+            enabled = enabled,
             modifier = Modifier.heightIn(min = 48.dp).widthIn(min = 48.dp)
         )
     }
+}
+
+private fun AppPushStatus.description(): String = when (this) {
+    AppPushStatus.PROMPT -> "Nhận lời mời phòng, giải đấu và nhắc phần thưởng"
+    AppPushStatus.REQUESTING -> "Đang chờ bạn cấp quyền trong trình duyệt…"
+    AppPushStatus.ENABLED -> "Đã bật lời mời, nhiệm vụ và nhắc điểm danh"
+    AppPushStatus.DISABLED -> "Đang tắt trên trình duyệt này"
+    AppPushStatus.DENIED -> "Đã bị chặn — hãy cho phép trong cài đặt trình duyệt"
+    AppPushStatus.ERROR -> "Chưa thể bật thông báo, vui lòng thử lại"
+    AppPushStatus.UNSUPPORTED -> "Trình duyệt không hỗ trợ thông báo"
+    AppPushStatus.UNCONFIGURED -> "Web Push chưa được cấu hình"
 }
 
 @Composable

@@ -17,6 +17,18 @@ class RoomDeepLinkTest {
     }
 
     @Test
+    fun sharedRoomTextCanUsePublicWebUrl() {
+        val text = buildRoomShareText(
+            roomName = "Phòng Hiền",
+            roomId = "room-123",
+            deepLink = "https://play.fasttowin.example/room/room-123"
+        )
+
+        assertTrue("https://play.fasttowin.example/room/room-123" in text)
+        assertTrue("fasttowin://" !in text)
+    }
+
+    @Test
     fun invalidSchemesAndRoomIdsAreRejected() {
         assertNull(parseRoomDeepLink("https://example.com/room/abc"))
         assertNull(parseRoomDeepLink("fasttowin://room/../../secret"))

@@ -92,6 +92,7 @@ $env:FASTTOWIN_ENV = 'dev'
 $env:DATABASE_URL = 'jdbc:postgresql://localhost:5432/fasttowin'
 $env:DATABASE_USER = 'fasttowin'
 $env:DATABASE_PASSWORD = 'fasttowin'
+$env:FASTTOWIN_WEB_BASE_URL = 'http://localhost:8081'
 
 if (-not (Test-HttpEndpoint 'http://127.0.0.1:8080/health')) {
     if (Test-TcpPort 8080) {
@@ -136,9 +137,6 @@ if (-not (Test-HttpEndpoint 'http://127.0.0.1:8080/health')) {
     Write-Host '[FastToWin] Backend cong 8080 dang chay, se su dung lai.'
 }
 
-Write-Host '[FastToWin] Cai ban Android development...'
-Invoke-Checked (Join-Path $projectDir 'gradlew.bat') :app:installDevDebug
-
 $deviceLines = & $adb devices
 $serials = foreach ($line in ($deviceLines | Select-Object -Skip 1)) {
     $parts = $line.Trim() -split '\s+'
@@ -146,10 +144,28 @@ $serials = foreach ($line in ($deviceLines | Select-Object -Skip 1)) {
         $parts[0]
     }
 }
-foreach ($serial in $serials) {
-    & $adb -s $serial shell am start -W `
-        -n 'com.hienthai.fastowin.dev/com.hienthai.fastowin.MainActivity' *> $null
-    Write-Host "[FastToWin] Da mo Android tren $serial"
+
+if ($serials.Count -eq 0) {
+    Write-Host '[FastToWin] Khong co thiet bi Android online, bo qua buoc build va cai app.' -ForegroundColor Yellow
+} else {
+    Write-Host '[FastToWin] Dong goi ban Android development...'
+    Invoke-Checked (Join-Path $projectDir 'gradlew.bat') :app:assembleDevDebug
+
+    $androidApk = Join-Path $projectDir 'app\build\outputs\apk\dev\debug\app-dev-debug.apk'
+    if (-not (Test-Path -LiteralPath $androidApk)) {
+        throw "Khong tim thay APK development tai $androidApk"
+    }
+
+    foreach ($serial in $serials) {
+        Write-Host "[FastToWin] Cai ban Android development tren $serial..."
+        Invoke-Checked $adb -s $serial install -r -t $androidApk
+        & $adb -s $serial shell am start -W `
+            -n 'com.hienthai.fastowin.dev/com.hienthai.fastowin.MainActivity' *> $null
+        if ($LASTEXITCODE -ne 0) {
+            throw "Khong the mo app Android tren $serial"
+        }
+        Write-Host "[FastToWin] Da mo Android tren $serial"
+    }
 }
 
 if (Test-TcpPort 8081) {

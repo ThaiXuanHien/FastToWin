@@ -69,12 +69,12 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -85,12 +85,11 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -114,7 +113,7 @@ import com.hienthai.fastowin.protocol.DAILY_CHECK_IN_REWARDS_GOLD
 import com.hienthai.fastowin.protocol.DAILY_CHECK_IN_STREAK_ACHIEVEMENT_TARGET
 import com.hienthai.fastowin.protocol.DAILY_CHECK_IN_TITLE_TARGET
 import com.hienthai.fastowin.protocol.MAX_PROFILE_DISPLAY_NAME_LENGTH
-import com.hienthai.fastowin.data.network.toHttpBaseUrl
+import com.hienthai.fastowin.data.network.toAvatarImageUrl
 import com.hienthai.fastowin.protocol.PlayerProfileSnapshot
 import com.hienthai.fastowin.protocol.GameModeStatisticsSnapshot
 import com.hienthai.fastowin.protocol.ProtocolGameMode
@@ -125,6 +124,7 @@ import com.hienthai.fastowin.state.accountPasswordConfirmationError
 import com.hienthai.fastowin.state.accountPasswordError
 import com.hienthai.fastowin.ui.components.SystemBackHandler
 import com.hienthai.fastowin.platform.epochMillis
+import com.hienthai.fastowin.platform.createPlainTextClipEntry
 import com.hienthai.fastowin.ui.layout.ResponsiveScreen
 import com.hienthai.fastowin.ui.components.RewardAmounts
 import com.hienthai.fastowin.ui.components.ArcadeActionButton
@@ -134,6 +134,7 @@ import com.hienthai.fastowin.ui.components.ArcadeFeatureHero
 import com.hienthai.fastowin.ui.components.ArcadePanel
 import com.hienthai.fastowin.ui.components.ArcadeSegmentedControl
 import com.hienthai.fastowin.ui.components.FastToWinHeader
+import com.hienthai.fastowin.ui.components.FastToWinPullRefresh
 import com.hienthai.fastowin.ui.components.WalletDeltaAmounts
 import com.hienthai.fastowin.ui.components.PlayerAvatar
 import com.hienthai.fastowin.resources.Res
@@ -147,11 +148,13 @@ import com.hienthai.fastowin.ui.theme.ArcadeOpponent
 import com.hienthai.fastowin.ui.theme.ArcadePalette
 import com.hienthai.fastowin.ui.theme.ArcadeSuccess
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.painterResource
 
 enum class ProfileSection {
     STATISTICS,
     WALLET,
+    DAILY_CHECK_IN,
     MISSIONS,
     COLLECTION,
     RECENT_MATCHES
@@ -196,7 +199,8 @@ fun ProfileScreen(
     SystemBackHandler(enabled = showBackButton, onBack = onBack)
     val profile = if (isExternalProfile) profileOverride else state.profile
     val isProfileLoading = if (isExternalProfile) state.isFriendProfileLoading else state.isProfileLoading
-    val clipboardManager = LocalClipboardManager.current
+    val clipboard = LocalClipboard.current
+    val coroutineScope = rememberCoroutineScope()
     var isEditing by remember { mutableStateOf(false) }
     var displayName by remember { mutableStateOf("") }
     var showAccountSecurity by remember { mutableStateOf(false) }
@@ -261,7 +265,7 @@ fun ProfileScreen(
             includeBottomSafeDrawingInset = showBackButton,
             avoidKeyboard = isEditing
         ) { contentModifier ->
-        PullToRefreshBox(
+        FastToWinPullRefresh(
             isRefreshing = isProfileLoading,
             onRefresh = {
                 if (!isProfileLoading && (!canEdit || !state.isProfileSaving)) onRefresh()
@@ -302,14 +306,17 @@ fun ProfileScreen(
         ProfileIdentityPanel(
             serverUrl = serverUrl,
             profile = profile,
+            avatarRevision = state.avatarRevision,
             canEdit = canEdit,
             isSaving = state.isProfileSaving,
             isExternalProfile = isExternalProfile,
             sessionStartedAtMillis = sessionStartedAtMillis,
             onEdit = { isEditing = !isEditing },
             onCopyCode = {
-                clipboardManager.setText(AnnotatedString(profile.playerCode))
-                isPlayerCodeCopied = true
+                coroutineScope.launch {
+                    clipboard.setClipEntry(createPlainTextClipEntry(profile.playerCode))
+                    isPlayerCodeCopied = true
+                }
             }
         )
 
@@ -424,6 +431,13 @@ fun ProfileScreen(
                 }
                 if (!isExternalProfile) {
                     AccountActionRow(
+                        icon = Icons.Default.DateRange,
+                        title = "Lịch sử điểm danh",
+                        subtitle = "Lịch điểm danh và các mốc chuyên cần",
+                        onClick = { onOpenSection(ProfileSection.DAILY_CHECK_IN) },
+                        modifier = Modifier.testTag("profile_section_daily_check_in")
+                    )
+                    AccountActionRow(
                         icon = Icons.AutoMirrored.Filled.Assignment,
                         title = "Nhiệm vụ",
                         subtitle = "Theo dõi và nhận thưởng",
@@ -519,6 +533,7 @@ fun ProfileScreen(
 private fun ProfileIdentityPanel(
     serverUrl: String,
     profile: PlayerProfileSnapshot,
+    avatarRevision: Long,
     canEdit: Boolean,
     isSaving: Boolean,
     isExternalProfile: Boolean,
@@ -562,9 +577,10 @@ private fun ProfileIdentityPanel(
                         PlayerAvatar(
                             displayName = profile.displayName,
                             avatarId = profile.avatarId,
+                            userId = profile.userId,
                             frameId = equippedFrame,
                             size = 76.dp,
-                            imageUrl = "${serverUrl.toHttpBaseUrl()}/api/avatar/${profile.userId}"
+                            imageUrl = serverUrl.toAvatarImageUrl(profile.userId, avatarRevision)
                         )
                         ProfileIdentityDetails(
                             profile = profile,
@@ -583,9 +599,10 @@ private fun ProfileIdentityPanel(
                         PlayerAvatar(
                             displayName = profile.displayName,
                             avatarId = profile.avatarId,
+                            userId = profile.userId,
                             frameId = equippedFrame,
                             size = 76.dp,
-                            imageUrl = "${serverUrl.toHttpBaseUrl()}/api/avatar/${profile.userId}"
+                            imageUrl = serverUrl.toAvatarImageUrl(profile.userId, avatarRevision)
                         )
                         ProfileIdentityDetails(
                             profile = profile,
@@ -775,6 +792,7 @@ fun ProfileSectionScreen(
             title = when (section) {
                 ProfileSection.STATISTICS -> "Thống kê & thành tích"
                 ProfileSection.WALLET -> "Lịch sử tài sản"
+                ProfileSection.DAILY_CHECK_IN -> "Lịch sử điểm danh"
                 ProfileSection.MISSIONS -> "Nhiệm vụ"
                 ProfileSection.COLLECTION -> "Bộ sưu tập"
                 ProfileSection.RECENT_MATCHES -> "Trận gần đây"
@@ -790,7 +808,7 @@ fun ProfileSectionScreen(
             maxContentWidth = 920.dp,
             applySafeDrawingInsets = false
         ) { contentModifier ->
-            PullToRefreshBox(
+            FastToWinPullRefresh(
                 isRefreshing = isLoading && state.equippingCosmeticId == null,
                 onRefresh = {
                     if (state.equippingCosmeticId == null) onRefresh()
@@ -819,6 +837,15 @@ fun ProfileSectionScreen(
                                 )
                             )
                             WalletHistorySectionContent(state.walletTransactions)
+                        }
+                        ProfileSection.DAILY_CHECK_IN -> {
+                            val checkIn = profile.progression.dailyCheckIn
+                            ProfileDailyCheckInStrip(checkIn)
+                            DailyCheckInCalendar(checkIn)
+                            DailyCheckInMilestones(
+                                bestStreak = checkIn.bestStreak,
+                                totalCheckIns = checkIn.totalCheckIns
+                            )
                         }
                         ProfileSection.MISSIONS -> MissionSectionContent(
                             state = state,
@@ -861,6 +888,11 @@ private fun ProfileSectionHero(section: ProfileSection) {
             "Mọi lần nhận và sử dụng Vàng, Gem, XP đều được lưu tại đây.",
             Res.drawable.arcade_shop_chest
         )
+        ProfileSection.DAILY_CHECK_IN -> Triple(
+            "Hành trình chuyên cần",
+            "Xem chuỗi ngày, lịch sử và tiến độ các mốc điểm danh.",
+            Res.drawable.arcade_leaderboard_trophy
+        )
         ProfileSection.MISSIONS -> Triple(
             "Nhiệm vụ hôm nay",
             "Hoàn thành thử thách, nhận thưởng và nâng cấp tài khoản.",
@@ -879,6 +911,7 @@ private fun ProfileSectionHero(section: ProfileSection) {
     }
     val accent = when (section) {
         ProfileSection.WALLET, ProfileSection.COLLECTION -> ArcadeGold
+        ProfileSection.DAILY_CHECK_IN -> ArcadeGold
         ProfileSection.MISSIONS -> ArcadeGem
         ProfileSection.RECENT_MATCHES -> ArcadeOpponent
         ProfileSection.STATISTICS -> MaterialTheme.colorScheme.primary
@@ -1472,6 +1505,7 @@ private fun CollectionFrameCard(
                 PlayerAvatar(
                     displayName = profile.displayName,
                     avatarId = profile.avatarId,
+                    userId = profile.userId,
                     frameId = cosmetic.id,
                     size = 74.dp
                 )
@@ -2175,9 +2209,20 @@ private fun DailyCheckInCalendar(checkIn: DailyCheckInSnapshot) {
                     }
                 }
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                Text("● Đã điểm danh", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
-                Text("Viền: hôm nay", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(7.dp)
+                        .background(MaterialTheme.colorScheme.primary, CircleShape)
+                )
+                Text(
+                    "Đã điểm danh",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary
+                )
             }
         }
     }

@@ -39,7 +39,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -69,6 +68,7 @@ import com.hienthai.fastowin.state.PlayerState
 import com.hienthai.fastowin.ui.components.SystemBackHandler
 import com.hienthai.fastowin.ui.components.PlayerAvatar
 import com.hienthai.fastowin.ui.components.FastToWinHeader
+import com.hienthai.fastowin.ui.components.FastToWinPullRefresh
 import com.hienthai.fastowin.ui.components.ArcadeActionButton
 import com.hienthai.fastowin.ui.components.ArcadeActionStyle
 import com.hienthai.fastowin.ui.components.ArcadeDialog
@@ -108,6 +108,7 @@ fun LobbyScreen(
     onShareRoom: (String, String) -> Result<Unit>,
     onResolveRoomLink: (String?) -> Unit,
     onClaimDailyCheckIn: () -> Unit,
+    serverUrl: String = "",
     modifier: Modifier = Modifier
 ) {
     val hasBottomNavigation = state.lobbyStage == LobbyStage.SELECT_MODE ||
@@ -178,6 +179,7 @@ fun LobbyScreen(
                 LobbyStage.SELECT_MODE -> HomeDashboard(
                     state = state,
                     isGuest = isGuest,
+                    serverUrl = serverUrl,
                     onQuickMatch = onStartMatchmaking,
                     onOpenRooms = openRoomBrowserAction,
                     onOpenFriends = onOpenFriends,
@@ -492,7 +494,7 @@ private fun RoomBrowser(
             }
         )
     }
-    PullToRefreshBox(
+    FastToWinPullRefresh(
         isRefreshing = isPullRefreshing,
         onRefresh = {
             if (!state.isSearching) {
@@ -1181,6 +1183,7 @@ private fun RoomWaitingPlayerCard(
             PlayerAvatar(
                 displayName = player.name,
                 avatarId = player.avatarId,
+                userId = player.id,
                 frameId = player.frameId,
                 size = 52.dp
             )
@@ -1288,6 +1291,7 @@ private fun PlayerMatchedCard(
             PlayerAvatar(
                 displayName = player.name,
                 avatarId = player.avatarId,
+                userId = player.id,
                 frameId = player.frameId,
                 size = 76.dp
             )

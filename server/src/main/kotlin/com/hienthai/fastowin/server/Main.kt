@@ -25,6 +25,12 @@ fun main() {
     val seasonLifecycleRepository = database?.seasonLifecycleRepository ?: NoOpSeasonLifecycleRepository
     val storage = if (database == null) "memory" else "postgresql"
     val storePurchaseVerifier = configuredStorePurchaseVerifier(environment)
+    val pushNotificationService = FirebasePushNotificationService()
+    val pushReminderService = if (database == null) {
+        NoOpPushReminderService
+    } else {
+        DailyPushReminderService(playerProfileRepository, pushNotificationService)
+    }
     val engine = GameEngine(
         identityRepository,
         matchResultRepository,
@@ -35,7 +41,7 @@ fun main() {
         notificationRepository,
         tournamentRepository,
         clanRepository,
-        FirebasePushNotificationService(),
+        pushNotificationService,
         storePurchaseVerifier = storePurchaseVerifier,
         storeSandboxEnabled = environment == "dev"
     )
@@ -51,7 +57,8 @@ fun main() {
                 engine = engine,
                 authService = authService,
                 environment = environment,
-                seasonLifecycleRepository = seasonLifecycleRepository
+                seasonLifecycleRepository = seasonLifecycleRepository,
+                pushReminderService = pushReminderService
             )
         }.start(wait = true)
     } finally {

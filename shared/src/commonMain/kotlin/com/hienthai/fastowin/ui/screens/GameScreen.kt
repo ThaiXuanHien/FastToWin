@@ -37,8 +37,13 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Bolt
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.EmojiEvents
+import androidx.compose.material.icons.rounded.Favorite
+import androidx.compose.material.icons.rounded.LocalFireDepartment
 import androidx.compose.material.icons.rounded.SentimentSatisfiedAlt
+import androidx.compose.material.icons.rounded.SentimentVerySatisfied
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -54,6 +59,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
@@ -81,6 +87,25 @@ import com.hienthai.fastowin.ui.theme.FastToWinTheme
 import com.hienthai.fastowin.ui.theme.ArcadePalette
 import kotlinx.coroutines.delay
 import kotlin.math.abs
+
+private data class GameReaction(
+    val id: String,
+    val label: String,
+    val icon: ImageVector,
+    val color: Color
+)
+
+private val gameReactions = listOf(
+    GameReaction("😀", "Vui vẻ", Icons.Rounded.SentimentSatisfiedAlt, Color(0xFFFFC83D)),
+    GameReaction("😂", "Cười lớn", Icons.Rounded.SentimentVerySatisfied, Color(0xFFFFA726)),
+    GameReaction("🔥", "Bùng cháy", Icons.Rounded.LocalFireDepartment, Color(0xFFFF5C5C)),
+    GameReaction("🏆", "Chiến thắng", Icons.Rounded.EmojiEvents, Color(0xFFFFD54F)),
+    GameReaction("❤️", "Yêu thích", Icons.Rounded.Favorite, Color(0xFFFF5C7A)),
+    GameReaction("⚡", "Tăng tốc", Icons.Rounded.Bolt, Color(0xFF68D8FF))
+)
+
+private fun reactionFor(id: String): GameReaction =
+    gameReactions.firstOrNull { it.id == id } ?: gameReactions.first()
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -290,7 +315,7 @@ private fun LiveMetricsBar(state: GameState, onSendEmoji: (String) -> Unit) {
         verticalAlignment = Alignment.CenterVertically
     ) {
         val leading = when (state.gameMode) {
-            com.hienthai.fastowin.navigation.GameMode.SURVIVAL -> "❤ ${state.player.lives} mạng"
+            com.hienthai.fastowin.navigation.GameMode.SURVIVAL -> "${state.player.lives} mạng"
             com.hienthai.fastowin.navigation.GameMode.SPEED_UP -> "NHỊP ${state.player.correctSelections + 1}/$GAME_NUMBER_COUNT"
             else -> "COMBO x${comboMultiplier(state.player.combo)}"
         }
@@ -299,13 +324,26 @@ private fun LiveMetricsBar(state: GameState, onSendEmoji: (String) -> Unit) {
             color = if (state.player.combo >= 5) ArcadePalette.Violet600 else Color(0xFF102B60),
             border = BorderStroke(1.dp, ArcadePalette.Violet400.copy(alpha = 0.72f))
         ) {
-            Text(
-                leading,
+            Row(
                 modifier = Modifier.padding(horizontal = 11.dp, vertical = 8.dp),
-                style = MaterialTheme.typography.labelMedium,
-                fontWeight = FontWeight.Black,
-                color = Color.White
-            )
+                horizontalArrangement = Arrangement.spacedBy(5.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                if (state.gameMode == com.hienthai.fastowin.navigation.GameMode.SURVIVAL) {
+                    Icon(
+                        imageVector = Icons.Rounded.Favorite,
+                        contentDescription = null,
+                        modifier = Modifier.size(15.dp),
+                        tint = Color(0xFFFF6B84)
+                    )
+                }
+                Text(
+                    leading,
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Black,
+                    color = Color.White
+                )
+            }
         }
         Text(
             text = "TỐC ĐỘ  ${speed?.let { "$it số/s" } ?: "--"}",
@@ -330,19 +368,27 @@ private fun LiveMetricsBar(state: GameState, onSendEmoji: (String) -> Unit) {
             }
             DropdownMenu(expanded = showEmojiMenu, onDismissRequest = { showEmojiMenu = false }) {
                 Column(modifier = Modifier.padding(8.dp)) {
-                    listOf("😀", "😂", "🔥", "🏆", "❤️", "⚡").chunked(3).forEach { row ->
+                    gameReactions.chunked(3).forEach { row ->
                         Row {
-                            row.forEach { emoji ->
+                            row.forEach { reaction ->
                                 TextButton(
                                     onClick = {
-                                        onSendEmoji(emoji)
+                                        onSendEmoji(reaction.id)
                                         showEmojiMenu = false
                                     },
                                     contentPadding = PaddingValues(8.dp),
                                     modifier = Modifier
                                         .defaultMinSize(minWidth = 48.dp, minHeight = 48.dp)
-                                        .testTag("send_emoji:$emoji")
-                                ) { Text(emoji, fontSize = 24.sp) }
+                                        .testTag("send_emoji:${reaction.id}")
+                                        .semantics { contentDescription = reaction.label }
+                                ) {
+                                    Icon(
+                                        imageVector = reaction.icon,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(28.dp),
+                                        tint = reaction.color
+                                    )
+                                }
                             }
                         }
                     }
@@ -518,6 +564,7 @@ private fun PlayerScoreCard(
             PlayerAvatar(
                 displayName = avatar.name,
                 avatarId = avatar.avatarId,
+                userId = avatar.id,
                 frameId = avatar.frameId,
                 size = 40.dp
             )
@@ -753,15 +800,28 @@ private fun EmojiOverlay(emojis: List<com.hienthai.fastowin.state.EmojiEvent>) {
                     targetValue = if (startAnimation) 0f else 1f,
                     animationSpec = tween(durationMillis = 2000, easing = LinearEasing)
                 )
-                Text(
-                    text = emoji.emojiId,
-                    fontSize = 48.sp,
+                val reaction = reactionFor(emoji.emojiId)
+                Surface(
                     modifier = Modifier
                         .align(Alignment.BottomStart)
                         .offset(x = 16.dp, y = offsetY.dp - 32.dp)
                         .alpha(alpha)
-                        .testTag("received_emoji:${emoji.id}")
-                )
+                        .size(58.dp)
+                        .testTag("received_emoji:${emoji.id}"),
+                    shape = RoundedCornerShape(18.dp),
+                    color = Color(0xFF102B60).copy(alpha = 0.94f),
+                    border = BorderStroke(1.dp, reaction.color.copy(alpha = 0.72f)),
+                    shadowElevation = 8.dp
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            imageVector = reaction.icon,
+                            contentDescription = reaction.label,
+                            modifier = Modifier.size(38.dp),
+                            tint = reaction.color
+                        )
+                    }
+                }
             }
         }
     }

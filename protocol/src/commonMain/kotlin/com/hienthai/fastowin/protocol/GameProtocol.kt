@@ -4,7 +4,7 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
-const val PROTOCOL_VERSION = 37
+const val PROTOCOL_VERSION = 38
 const val GAME_NUMBER_COUNT = 50
 const val MAX_PROFILE_DISPLAY_NAME_LENGTH = 32
 val DAILY_CHECK_IN_REWARDS_XP = listOf(10, 10, 15, 15, 20, 25, 40)
@@ -281,7 +281,24 @@ data class PlayerProfileSnapshot(
     val progression: PlayerProgressionSnapshot = PlayerProgressionSnapshot(),
     val modeStatistics: List<GameModeStatisticsSnapshot> = emptyList(),
     val clanId: String? = null,
-    val clanName: String? = null
+    val clanName: String? = null,
+    val pushPreferences: PushPreferencesSnapshot = PushPreferencesSnapshot()
+)
+
+@Serializable
+enum class PushNotificationCategory {
+    ROOM_INVITATIONS,
+    TOURNAMENT_INVITATIONS,
+    MISSION_REWARDS,
+    DAILY_CHECK_IN
+}
+
+@Serializable
+data class PushPreferencesSnapshot(
+    val roomInvitationsEnabled: Boolean = true,
+    val tournamentInvitationsEnabled: Boolean = true,
+    val missionRewardsEnabled: Boolean = true,
+    val dailyCheckInEnabled: Boolean = true
 )
 
 @Serializable
@@ -830,6 +847,10 @@ sealed class ClientMessage {
     @Serializable
     @SerialName("update_fcm_token")
     data class UpdateFcmToken(val token: String) : ClientMessage()
+
+    @Serializable
+    @SerialName("update_push_preferences")
+    data class UpdatePushPreferences(val preferences: PushPreferencesSnapshot) : ClientMessage()
 
     @Serializable
     @SerialName("join_matchmaking")

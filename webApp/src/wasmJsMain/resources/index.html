@@ -2,17 +2,25 @@
 <html lang="vi">
 <head>
     <meta charset="UTF-8">
+    <base href="/">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <meta name="theme-color" content="#071824">
     <meta name="description" content="Fast To Win — game tìm số đối kháng thời gian thực.">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Fast To Win">
     <title>Fast To Win</title>
-    <link rel="icon" type="image/webp" href="app-icon.webp">
-    <link rel="stylesheet" href="styles.css">
-    <script src="config.js"></script>
+    <link rel="manifest" href="/manifest.webmanifest">
+    <link rel="apple-touch-icon" href="/icons/icon-192.png">
+    <link rel="icon" type="image/webp" href="/app-icon.webp">
+    <link rel="stylesheet" href="/styles.css">
+    <script src="/config.js"></script>
 </head>
 <body>
     <noscript>Bạn cần bật JavaScript để chơi Fast To Win.</noscript>
     <main id="fastToWinRoot" aria-label="Fast To Win"></main>
-    <script src="fast-to-win.js"></script>
+    <script src="/pwa.js"></script>
+    <script src="/fast-to-win.js"></script>
 </body>
 </html>

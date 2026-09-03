@@ -1,7 +1,9 @@
 package com.hienthai.fastowin
 
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -19,6 +21,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import com.hienthai.fastowin.state.GameController
 import com.hienthai.fastowin.state.AuthController
 import com.hienthai.fastowin.state.AuthStage
@@ -28,6 +31,15 @@ import com.hienthai.fastowin.data.network.ServiceStatusClient
 import com.hienthai.fastowin.data.preferences.AppPreferences
 import com.hienthai.fastowin.data.preferences.AppPreferencesStore
 import com.hienthai.fastowin.platform.GameFeedbackEffect
+import com.hienthai.fastowin.platform.AppNavigationBridge
+import com.hienthai.fastowin.platform.NoOpAppNavigationBridge
+import com.hienthai.fastowin.platform.AppUpdateBridge
+import com.hienthai.fastowin.platform.NoOpAppUpdateBridge
+import com.hienthai.fastowin.platform.AppInstallBridge
+import com.hienthai.fastowin.platform.NoOpAppInstallBridge
+import com.hienthai.fastowin.platform.AppPushBridge
+import com.hienthai.fastowin.platform.AppPushStatus
+import com.hienthai.fastowin.platform.NoOpAppPushBridge
 import com.hienthai.fastowin.platform.ChallengeDeepLinkRouter
 import com.hienthai.fastowin.platform.playFeedbackSound
 import com.hienthai.fastowin.ui.screens.AuthScreen
@@ -54,11 +66,15 @@ import com.hienthai.fastowin.ui.screens.NotificationsScreen
 import com.hienthai.fastowin.ui.screens.TournamentInvitationDialog
 import com.hienthai.fastowin.ui.screens.TournamentScreen
 import com.hienthai.fastowin.ui.screens.MaintenanceScreen
+import com.hienthai.fastowin.ui.screens.OfflineScreen
 import com.hienthai.fastowin.ui.theme.FastToWinTheme
 import com.hienthai.fastowin.platform.epochMillis
 import com.hienthai.fastowin.platform.RoomDeepLink
 import com.hienthai.fastowin.platform.RoomDeepLinkRouter
+import com.hienthai.fastowin.platform.buildRoomDeepLink
 import com.hienthai.fastowin.platform.buildRoomShareText
+import com.hienthai.fastowin.platform.buildChallengeDeepLink
+import com.hienthai.fastowin.platform.parseRoomDeepLink
 import com.hienthai.fastowin.platform.rememberTextSharer
 import com.hienthai.fastowin.platform.rememberStoreBillingGateway
 import com.hienthai.fastowin.platform.PlatformStorePurchase
@@ -69,7 +85,9 @@ import com.hienthai.fastowin.state.createPracticeChallenge
 import com.hienthai.fastowin.state.parsePracticeChallenge
 import com.hienthai.fastowin.ui.components.FastToWinHeader
 import com.hienthai.fastowin.ui.components.ArcadeBackdrop
+import com.hienthai.fastowin.ui.components.AvatarImageProvider
 import com.hienthai.fastowin.ui.components.SeasonRewardSummaryDialog
+import com.hienthai.fastowin.ui.components.UpdateAvailableDialog
 import kotlinx.coroutines.delay
 
 @Composable
@@ -79,13 +97,20 @@ fun FastToWinApp(
     authSessionStore: AuthSessionStore,
     preferencesStore: AppPreferencesStore,
     devicePlatform: String,
-    fcmToken: String? = null
+    fcmToken: String? = null,
+    navigationBridge: AppNavigationBridge = NoOpAppNavigationBridge,
+    updateBridge: AppUpdateBridge = NoOpAppUpdateBridge,
+    installBridge: AppInstallBridge = NoOpAppInstallBridge,
+    pushBridge: AppPushBridge = NoOpAppPushBridge
 ) {
     var restoreGuestSession by rememberSaveable { mutableStateOf(false) }
     val serviceStatusClient = remember(serverUrl) { ServiceStatusClient(serverUrl) }
     var serviceStatus by remember(serverUrl) {
         mutableStateOf<com.hienthai.fastowin.protocol.ServiceStatusResponse?>(null)
     }
+    var serviceReachable by remember(serverUrl) { mutableStateOf<Boolean?>(null) }
+    var serviceStatusRefreshKey by rememberSaveable(serverUrl) { mutableStateOf(0) }
+    var launchOfflinePractice by rememberSaveable { mutableStateOf(false) }
     val authController = remember(serverUrl, authSessionStore, devicePlatform) {
         AuthController(
             serverUrl = serverUrl,
@@ -114,10 +139,12 @@ fun FastToWinApp(
         onDispose { serviceStatusClient.close() }
     }
 
-    LaunchedEffect(serviceStatusClient) {
+    LaunchedEffect(serviceStatusClient, serviceStatusRefreshKey) {
         while (true) {
-            serviceStatusClient.fetchOrNull()?.let { serviceStatus = it }
-            val pollSeconds = serviceStatus?.pollAfterSeconds?.coerceIn(15, 300) ?: 30
+            val fetchedStatus = serviceStatusClient.fetchOrNull()
+            serviceStatus = fetchedStatus
+            serviceReachable = fetchedStatus != null
+            val pollSeconds = fetchedStatus?.pollAfterSeconds?.coerceIn(15, 300) ?: 10
             delay(pollSeconds * 1_000L)
         }
     }
@@ -134,9 +161,20 @@ fun FastToWinApp(
             color = MaterialTheme.colorScheme.background,
             contentColor = MaterialTheme.colorScheme.onBackground
         ) {
-            if (serviceStatus?.maintenance == true) {
+            if (serviceReachable == true && serviceStatus?.maintenance == true) {
                 ArcadeBackdrop(modifier = Modifier.fillMaxSize()) {
                     MaintenanceScreen(message = serviceStatus?.message)
+                }
+            } else if (serviceReachable == false && authState.stage != AuthStage.PLAYING) {
+                ArcadeBackdrop(modifier = Modifier.fillMaxSize()) {
+                    OfflineScreen(
+                        onRetry = { serviceStatusRefreshKey += 1 },
+                        onPractice = {
+                            restoreGuestSession = true
+                            launchOfflinePractice = true
+                            authController.playAsGuest()
+                        }
+                    )
                 }
             } else if (authState.stage != AuthStage.PLAYING) {
                 AuthScreen(
@@ -186,7 +224,15 @@ fun FastToWinApp(
                     pendingRoomLink = pendingRoomLink,
                     onRoomLinkConsumed = RoomDeepLinkRouter::consume,
                     pendingChallenge = pendingChallenge,
-                    onChallengeLinkConsumed = ChallengeDeepLinkRouter::consume
+                    onChallengeLinkConsumed = ChallengeDeepLinkRouter::consume,
+                    navigationBridge = navigationBridge,
+                    updateBridge = updateBridge,
+                    installBridge = installBridge,
+                    serviceReachable = serviceReachable,
+                    onRetryService = { serviceStatusRefreshKey += 1 },
+                    launchOfflinePractice = launchOfflinePractice,
+                    onOfflinePracticeLaunched = { launchOfflinePractice = false },
+                    pushBridge = pushBridge
                 )
             }
         }
@@ -218,7 +264,15 @@ private fun GameContent(
     pendingRoomLink: RoomDeepLink?,
     onRoomLinkConsumed: (String) -> Unit,
     pendingChallenge: PracticeChallenge?,
-    onChallengeLinkConsumed: (String) -> Unit
+    onChallengeLinkConsumed: (String) -> Unit,
+    navigationBridge: AppNavigationBridge,
+    updateBridge: AppUpdateBridge,
+    installBridge: AppInstallBridge,
+    serviceReachable: Boolean?,
+    onRetryService: () -> Unit,
+    launchOfflinePractice: Boolean,
+    onOfflinePracticeLaunched: () -> Unit,
+    pushBridge: AppPushBridge
 ) {
     val controller = remember(serverUrl, resumeTokenStore, accountUserId) {
         GameController(
@@ -290,17 +344,83 @@ private fun GameContent(
     val practiceChallenge = savedPracticeRoute?.let(::parsePracticeChallenge)
     val practiceMode = practiceChallenge?.mode
     var challengeLinkError by rememberSaveable { mutableStateOf<String?>(null) }
+    var requestedAppRoute by remember(navigationBridge) {
+        mutableStateOf(
+            navigationBridge.initialRoute?.takeUnless { normalizeAppRoute(it) == "/" }
+        )
+    }
+    var webUpdateAvailable by remember(updateBridge) {
+        mutableStateOf(updateBridge.updateAvailable)
+    }
+    var installStatus by remember(installBridge) { mutableStateOf(installBridge.status) }
+    var pushStatus by remember(pushBridge) { mutableStateOf(pushBridge.status) }
+    var pendingPushToken by remember(pushBridge) { mutableStateOf<String?>(null) }
+    var continueOffline by rememberSaveable { mutableStateOf(false) }
     val screenStateHolder = rememberSaveableStateHolder()
     val activePracticeStateKey = practiceChallenge?.code?.let { code -> "practice:$code" }
     val clearPracticeSession = {
         activePracticeStateKey?.let(screenStateHolder::removeState)
         savedPracticeRoute = null
     }
+    val closeLocalScreens = {
+        showPracticeLauncher = false
+        showPracticeModePicker = false
+        showSettings = false
+        showSeasonHistory = false
+        showTutorial = false
+        profileSection = null
+        clearPracticeSession()
+        controller.closeNotifications()
+        controller.closeFriendProfile()
+        controller.closeProfile()
+        controller.closeLeaderboard()
+        controller.closeFriends()
+        controller.closeTournament()
+        controller.closeShop()
+        controller.closeClan()
+    }
     
-    LaunchedEffect(fcmToken, state.connectionStatus) {
-        if (state.connectionStatus == com.hienthai.fastowin.state.ConnectionStatus.CONNECTED && fcmToken != null) {
-            controller.sendFcmToken(fcmToken)
+    LaunchedEffect(fcmToken, pendingPushToken, state.connectionStatus) {
+        if (state.connectionStatus == com.hienthai.fastowin.state.ConnectionStatus.CONNECTED) {
+            val token = pendingPushToken ?: fcmToken
+            if (token != null) controller.sendFcmToken(token)
         }
+    }
+
+    DisposableEffect(navigationBridge) {
+        val stopObserving = navigationBridge.observe { route -> requestedAppRoute = route }
+        onDispose { stopObserving() }
+    }
+
+    DisposableEffect(updateBridge) {
+        val stopObserving = updateBridge.observe { webUpdateAvailable = true }
+        onDispose { stopObserving() }
+    }
+
+    DisposableEffect(installBridge) {
+        val stopObserving = installBridge.observe { installStatus = it }
+        onDispose { stopObserving() }
+    }
+
+    DisposableEffect(pushBridge) {
+        val stopObserving = pushBridge.observe(
+            onStatusChanged = { pushStatus = it },
+            onTokenChanged = { pendingPushToken = it }
+        )
+        onDispose { stopObserving() }
+    }
+
+    LaunchedEffect(serviceReachable) {
+        if (serviceReachable != false) continueOffline = false
+    }
+
+    LaunchedEffect(launchOfflinePractice) {
+        if (!launchOfflinePractice) return@LaunchedEffect
+        continueOffline = true
+        controller.backToModeSelection()
+        controller.openHome()
+        showPracticeLauncher = true
+        onOfflinePracticeLaunched()
     }
 
     LaunchedEffect(pendingRoomLink?.roomId, controller) {
@@ -379,11 +499,33 @@ private fun GameContent(
     challengeLinkError?.let { message ->
         AlertDialog(
             onDismissRequest = { challengeLinkError = null },
+            modifier = Modifier.widthIn(max = 420.dp).fillMaxWidth(),
             title = { Text("Không thể mở thử thách") },
             text = { Text(message) },
             confirmButton = {
                 TextButton(onClick = { challengeLinkError = null }) { Text("Đã hiểu") }
             }
+        )
+    }
+    val canShowWebUpdate = serviceReachable != false &&
+        webUpdateAvailable &&
+        state.currentRoomId == null &&
+        !state.isMatchmaking &&
+        !state.isMatchStarted &&
+        !state.isGameOver &&
+        state.roomInvitationPrompt == null &&
+        state.tournamentInvitationPrompt == null
+    if (canShowWebUpdate) {
+        val dismissUpdate = {
+            webUpdateAvailable = false
+            updateBridge.dismissUpdate()
+        }
+        UpdateAvailableDialog(
+            onUpdate = {
+                webUpdateAvailable = false
+                updateBridge.applyUpdate()
+            },
+            onDismiss = dismissUpdate
         )
     }
     if (showPracticeModePicker) {
@@ -482,9 +624,195 @@ private fun GameContent(
         }
     }
     val openSettingsTab = { showSettings = true }
+    val navigateBack: (() -> Unit) -> Unit = { fallback ->
+        if (!navigationBridge.goBack()) fallback()
+    }
     val finishTutorial = {
         onPreferencesChange(appPreferences.copy(hasCompletedTutorial = true))
         showTutorial = false
+    }
+
+    LaunchedEffect(
+        requestedAppRoute,
+        state.profile,
+        state.isProfileLoading,
+        state.friendProfile,
+        state.isFriendProfileLoading,
+        state.social.friends,
+        state.isFriendsOpen,
+        state.isFriendsLoading,
+        state.currentRoomId,
+        state.isMatchStarted,
+        state.isGameOver
+    ) {
+        val requested = requestedAppRoute ?: return@LaunchedEffect
+        val route = normalizeAppRoute(requested)
+        val activeRoomRoute = state.currentRoomId?.let { "/room/$it" }
+
+        if (state.isMatchStarted && !state.isGameOver && route != activeRoomRoute) {
+            requestedAppRoute = null
+            activeRoomRoute?.let(navigationBridge::publish)
+            return@LaunchedEffect
+        }
+
+        if (state.currentRoomId != null && route != activeRoomRoute) {
+            if (state.isTournamentMatch && state.isGameOver && route == "/tournament") {
+                controller.openTournamentAfterMatch()
+            } else {
+                controller.leaveRoom()
+            }
+        }
+
+        when {
+            route == "/" -> {
+                closeLocalScreens()
+                controller.backToModeSelection()
+                controller.openHome()
+            }
+            route == "/rooms" -> {
+                closeLocalScreens()
+                openRoomsTab()
+            }
+            route == "/leaderboard" -> {
+                closeLocalScreens()
+                openLeaderboardTab()
+            }
+            route == "/clan" -> {
+                closeLocalScreens()
+                openClanTab()
+            }
+            route == "/account" -> {
+                closeLocalScreens()
+                openAccountTab()
+            }
+            route.startsWith("/account/") -> {
+                val section = profileSectionFromRoute(route.substringAfter("/account/"))
+                if (section == null) {
+                    openAccountTab()
+                } else if (state.profile == null) {
+                    if (state.isProfileOpen && !state.isProfileLoading) {
+                        requestedAppRoute = null
+                        navigationBridge.publish("/account")
+                        return@LaunchedEffect
+                    }
+                    openAccountTab()
+                    return@LaunchedEffect
+                } else {
+                    showSettings = false
+                    profileSectionExternal = false
+                    profileSection = section
+                    if (section == ProfileSection.WALLET) controller.refreshWalletHistory()
+                }
+            }
+            route == "/friends" -> {
+                closeLocalScreens()
+                openFriendsTab()
+            }
+            route.startsWith("/friends/") -> {
+                val friendPath = route.substringAfter("/friends/")
+                val friendId = friendPath.substringBefore('/')
+                val section = friendPath.substringAfter('/', missingDelimiterValue = "")
+                    .takeIf(String::isNotBlank)
+                    ?.let(::profileSectionFromRoute)
+                val friend = state.social.friends.firstOrNull { it.userId == friendId }
+                if (friend == null) {
+                    if (state.isFriendsOpen && !state.isFriendsLoading) {
+                        requestedAppRoute = null
+                        navigationBridge.publish("/friends")
+                        return@LaunchedEffect
+                    }
+                    openFriendsTab()
+                    return@LaunchedEffect
+                }
+                showSettings = false
+                showSeasonHistory = false
+                clearPracticeSession()
+                if (!state.isFriendProfileOpen || state.viewedFriendUserId != friend.userId) {
+                    profileSection = null
+                    controller.openFriendProfile(friend.userId)
+                    return@LaunchedEffect
+                }
+                if (section != null) {
+                    if (state.friendProfile == null) {
+                        if (!state.isFriendProfileLoading) {
+                            requestedAppRoute = null
+                            navigationBridge.publish("/friends/$friendId")
+                        }
+                        return@LaunchedEffect
+                    }
+                    profileSectionExternal = true
+                    profileSection = section
+                } else {
+                    profileSection = null
+                }
+            }
+            route == "/notifications" -> {
+                showSettings = false
+                profileSection = null
+                controller.openNotifications()
+            }
+            route == "/settings" -> {
+                controller.closeNotifications()
+                profileSection = null
+                showSettings = true
+            }
+            route == "/tutorial" -> {
+                showSettings = false
+                profileSection = null
+                showTutorial = true
+            }
+            route == "/shop" -> {
+                closeLocalScreens()
+                controller.openHome()
+                controller.openShop()
+            }
+            route == "/tournament" -> {
+                closeLocalScreens()
+                controller.openHome()
+                controller.openTournament()
+            }
+            route == "/season-history" -> {
+                closeLocalScreens()
+                controller.openLeaderboard()
+                showSeasonHistory = true
+            }
+            route == "/practice" -> {
+                closeLocalScreens()
+                controller.backToModeSelection()
+                controller.openHome()
+                showPracticeLauncher = true
+            }
+            route.startsWith("/challenge/") -> {
+                val code = route.substringAfter("/challenge/")
+                val challenge = parsePracticeChallenge(code)
+                if (challenge == null) {
+                    closeLocalScreens()
+                    controller.openHome()
+                } else {
+                    closeLocalScreens()
+                    controller.backToModeSelection()
+                    controller.openHome()
+                    savedPracticeRoute = challenge.code
+                }
+            }
+            route.startsWith("/room/") -> {
+                val roomId = route.substringAfter("/room/").substringBefore('/')
+                closeLocalScreens()
+                val validRoomId = parseRoomDeepLink("fasttowin://room/$roomId")?.roomId
+                if (validRoomId != null && state.currentRoomId != validRoomId) {
+                    controller.openRoomLink(validRoomId)
+                } else if (validRoomId == null) {
+                    openRoomsTab()
+                }
+            }
+            else -> {
+                closeLocalScreens()
+                controller.backToModeSelection()
+                controller.openHome()
+            }
+        }
+        delay(32)
+        requestedAppRoute = null
     }
 
     val screenStateKey = when {
@@ -507,12 +835,55 @@ private fun GameContent(
         activePracticeStateKey != null -> activePracticeStateKey
         else -> "lobby"
     }
-    screenStateHolder.SaveableStateProvider(screenStateKey) {
-        ArcadeBackdrop(modifier = Modifier.fillMaxSize()) {
-            when {
+    val appRoute = when {
+        state.isNotificationsOpen -> "/notifications"
+        showTutorial -> "/tutorial"
+        showSettings -> "/settings"
+        profileSection != null && !profileSectionExternal ->
+            "/account/${profileSectionRoute(checkNotNull(profileSection))}"
+        profileSection != null && profileSectionExternal ->
+            "/friends/${state.viewedFriendUserId.orEmpty()}/${profileSectionRoute(checkNotNull(profileSection))}"
+        state.isFriendProfileOpen -> "/friends/${state.viewedFriendUserId.orEmpty()}"
+        state.isTournamentOpen -> "/tournament"
+        showSeasonHistory -> "/season-history"
+        state.isFriendsOpen -> "/friends"
+        state.isLeaderboardOpen -> "/leaderboard"
+        state.isProfileOpen -> "/account"
+        state.isShopOpen -> "/shop"
+        state.isClanOpen -> "/clan"
+        state.currentRoomId != null -> "/room/${state.currentRoomId}"
+        state.pendingRoomLinkId != null -> "/room/${state.pendingRoomLinkId}"
+        practiceChallenge != null -> "/challenge/${practiceChallenge.code}"
+        showPracticeLauncher || showPracticeModePicker -> "/practice"
+        state.lobbyStage == com.hienthai.fastowin.state.LobbyStage.ROOM_BROWSER -> "/rooms"
+        else -> "/"
+    }
+    LaunchedEffect(appRoute, requestedAppRoute) {
+        if (requestedAppRoute == null) navigationBridge.publish(appRoute)
+    }
+    AvatarImageProvider(serverUrl = serverUrl, revision = state.avatarRevision) {
+        screenStateHolder.SaveableStateProvider(screenStateKey) {
+            ArcadeBackdrop(modifier = Modifier.fillMaxSize()) {
+                when {
+                serviceReachable == false &&
+                    !continueOffline &&
+                    state.currentRoomId == null &&
+                    !state.isMatchmaking &&
+                    !state.isMatchStarted &&
+                    !state.isGameOver -> OfflineScreen(
+                    onRetry = onRetryService,
+                    onPractice = {
+                        continueOffline = true
+                        closeLocalScreens()
+                        controller.backToModeSelection()
+                        controller.openHome()
+                        showPracticeLauncher = true
+                    }
+                )
+
                 state.isNotificationsOpen -> NotificationsScreen(
                     notifications = state.notifications,
-                    onBack = controller::closeNotifications,
+                    onBack = { navigateBack(controller::closeNotifications) },
                     onOpen = controller::openNotification,
                     onDismiss = controller::dismissNotification,
                     onMarkAllRead = controller::markAllNotificationsRead,
@@ -531,11 +902,20 @@ private fun GameContent(
                     onOpenTutorial = {
                         showTutorial = true
                     },
-                    onBack = { showSettings = false },
+                    onBack = { navigateBack { showSettings = false } },
                     gold = state.profile?.progression?.gold ?: 0,
                     gems = state.profile?.progression?.gems ?: 0,
                     unreadNotifications = state.unreadNotificationCount,
-                    onOpenNotifications = controller::openNotifications
+                    onOpenNotifications = controller::openNotifications,
+                    pushStatus = pushStatus,
+                    onEnablePush = pushBridge::enable,
+                    onDisablePush = pushBridge::disable,
+                    pushPreferences = state.profile?.pushPreferences,
+                    pushPreferencesSaving = state.isPushPreferencesSaving ||
+                        state.connectionStatus != com.hienthai.fastowin.state.ConnectionStatus.CONNECTED,
+                    onPushPreferencesChange = controller::updatePushPreferences,
+                    installStatus = installStatus,
+                    onInstallApp = installBridge::install
                 )
 
                 state.isFriendProfileOpen && profileSection == null && !state.isNotificationsOpen -> ProfileScreen(
@@ -543,7 +923,7 @@ private fun GameContent(
                     state = state,
                     profileOverride = state.friendProfile,
                     isExternalProfile = true,
-                    onBack = controller::closeFriendProfile,
+                    onBack = { navigateBack(controller::closeFriendProfile) },
                     onRefresh = controller::refreshFriendProfile,
                     onOpenMatchDetail = {},
                     onCloseMatchDetail = {},
@@ -584,7 +964,7 @@ private fun GameContent(
                             section = checkNotNull(profileSection),
                             isExternalProfile = profileSectionExternal,
                             canEdit = !profileSectionExternal && !isGuest,
-                            onBack = { profileSection = null },
+                            onBack = { navigateBack { profileSection = null } },
                             onRefresh = when {
                                 profileSectionExternal -> controller::refreshFriendProfile
                                 profileSection == ProfileSection.WALLET -> controller::refreshWalletHistory
@@ -602,7 +982,7 @@ private fun GameContent(
 
                 state.isTournamentOpen -> TournamentScreen(
                     state = state,
-                    onBack = controller::closeTournament,
+                    onBack = { navigateBack(controller::closeTournament) },
                     onCreate = controller::createTournament,
                     onInvite = controller::inviteTournamentPlayer,
                     onRespondInvitation = controller::respondTournamentInvitation,
@@ -615,8 +995,10 @@ private fun GameContent(
                 showSeasonHistory -> SeasonHistoryScreen(
                     state = state,
                     onBack = {
-                        showSeasonHistory = false
-                        if (!state.isLeaderboardOpen) controller.openLeaderboard()
+                        navigateBack {
+                            showSeasonHistory = false
+                            if (!state.isLeaderboardOpen) controller.openLeaderboard()
+                        }
                     },
                     onRefresh = controller::refreshProfile,
                     onOpenNotifications = controller::openNotifications
@@ -624,7 +1006,7 @@ private fun GameContent(
 
                 state.isFriendsOpen -> FriendsScreen(
                     state = state,
-                    onBack = controller::closeFriends,
+                    onBack = { navigateBack(controller::closeFriends) },
                     onRefresh = controller::openFriends,
                     onSendRequest = controller::sendFriendRequest,
                     onRespondRequest = controller::respondFriendRequest,
@@ -653,7 +1035,9 @@ private fun GameContent(
                     onNotifications = controller::openNotifications
                 ) { contentModifier -> LeaderboardScreen(
                     state = state,
-                    onBack = if (showTopLevelNavigation) openHome else controller::closeLeaderboard,
+                    onBack = {
+                        navigateBack(if (showTopLevelNavigation) openHome else controller::closeLeaderboard)
+                    },
                     onRefresh = controller::openLeaderboard,
                     onOpenFriendProfile = controller::openFriendProfile,
                     onOpenSeasonHistory = { showSeasonHistory = true },
@@ -676,7 +1060,9 @@ private fun GameContent(
                 ) { contentModifier -> ProfileScreen(
                     serverUrl = serverUrl,
                     state = state,
-                    onBack = if (showTopLevelNavigation) openHome else controller::closeProfile,
+                    onBack = {
+                        navigateBack(if (showTopLevelNavigation) openHome else controller::closeProfile)
+                    },
                     onRefresh = controller::openProfile,
                     onOpenMatchDetail = controller::openMatchDetail,
                     onCloseMatchDetail = controller::closeMatchDetail,
@@ -720,7 +1106,7 @@ private fun GameContent(
                     },
                     onBuy = controller::buyCosmetic,
                     onEquip = controller::equipCosmetic,
-                    onClose = controller::closeShop,
+                    onClose = { navigateBack(controller::closeShop) },
                     unreadNotifications = state.unreadNotificationCount,
                     onNotifications = controller::openNotifications
                 )
@@ -753,7 +1139,9 @@ private fun GameContent(
                     onUpdateLogo = controller::updateClanLogo,
                     onClaimQuest = controller::claimClanQuestReward,
                     onViewClan = controller::viewClan,
-                    onBack = if (showTopLevelNavigation) openHome else controller::closeClan,
+                    onBack = {
+                        navigateBack(if (showTopLevelNavigation) openHome else controller::closeClan)
+                    },
                     gold = state.profile?.progression?.gold ?: 0,
                     gems = state.profile?.progression?.gems ?: 0,
                     unreadNotifications = state.unreadNotificationCount,
@@ -764,11 +1152,11 @@ private fun GameContent(
 
                 state.isGameOver -> ResultScreen(
                     state = state,
-                    onRestart = controller::leaveRoom,
+                    onRestart = { navigateBack(controller::leaveRoom) },
                     onBack = if (state.isTournamentMatch) {
-                        controller::openTournamentAfterMatch
+                        { navigateBack(controller::openTournamentAfterMatch) }
                     } else {
-                        controller::leaveRoom
+                        { navigateBack(controller::leaveRoom) }
                     },
                     onRematch = controller::requestRematch,
                     onCancelRematch = controller::cancelRematch,
@@ -796,19 +1184,23 @@ private fun GameContent(
                     challenge = practiceChallenge,
                     preferences = appPreferences,
                     onBack = {
-                        clearPracticeSession()
+                        navigateBack { clearPracticeSession() }
+                    },
+                    buildChallengeLink = { code ->
+                        navigationBridge.publicUrl("/challenge/$code") ?: buildChallengeDeepLink(code)
                     }
                 )
 
                 else -> LobbyScreen(
                     state = state,
+                    serverUrl = serverUrl,
                     onModeSelected = controller::selectMode,
                     onStartMatchmaking = controller::startMatchmaking,
                     onCancelMatchmaking = controller::cancelMatchmaking,
                     onOpenRoomBrowser = controller::openRoomBrowser,
                     onCreateRoom = controller::createRoom,
                     onJoinRoom = controller::joinRoom,
-                    onLeaveRoom = controller::leaveRoom,
+                    onLeaveRoom = { navigateBack(controller::leaveRoom) },
                     onSetReady = controller::setReady,
                     onKickOpponent = controller::kickOpponent,
                     onRefreshRooms = controller::requestRoomList,
@@ -816,7 +1208,7 @@ private fun GameContent(
                     onOpenLeaderboard = openLeaderboardTab,
                     onOpenFriends = controller::openFriends,
                     onOpenFriendProfile = controller::openFriendProfile,
-                    onBackToMode = controller::backToModeSelection,
+                    onBackToMode = { navigateBack(controller::backToModeSelection) },
                     onLogout = onLogout,
                     isGuest = isGuest,
                     onUpgradeGuest = onUpgradeGuest,
@@ -826,14 +1218,52 @@ private fun GameContent(
                     onOpenTournament = controller::openTournament,
                     onOpenShop = controller::openShop,
                     onShareRoom = { roomId, roomName ->
-                        textSharer.share(buildRoomShareText(roomName, roomId), "Chia sẻ phòng")
+                        val deepLink = navigationBridge.publicUrl("/room/$roomId")
+                        textSharer.share(
+                            buildRoomShareText(
+                                roomName = roomName,
+                                roomId = roomId,
+                                deepLink = deepLink ?: buildRoomDeepLink(roomId)
+                            ),
+                            "Chia sẻ phòng"
+                        )
                     },
                     onResolveRoomLink = controller::resolvePendingRoomLink,
                     onClaimDailyCheckIn = controller::claimDailyCheckIn
                 )
+                }
             }
         }
     }
+}
+
+private fun normalizeAppRoute(route: String): String {
+    val path = route.trim().substringBefore('?').substringBefore('#')
+    val normalized = when {
+        path.isBlank() -> "/"
+        path.startsWith('/') -> path
+        else -> "/$path"
+    }
+    return normalized.takeUnless { it.length > 1 && it.endsWith('/') } ?: normalized.dropLast(1)
+}
+
+private fun profileSectionRoute(section: ProfileSection): String = when (section) {
+    ProfileSection.STATISTICS -> "statistics"
+    ProfileSection.WALLET -> "wallet"
+    ProfileSection.DAILY_CHECK_IN -> "check-in"
+    ProfileSection.MISSIONS -> "missions"
+    ProfileSection.COLLECTION -> "collection"
+    ProfileSection.RECENT_MATCHES -> "matches"
+}
+
+private fun profileSectionFromRoute(route: String): ProfileSection? = when (route.lowercase()) {
+    "statistics" -> ProfileSection.STATISTICS
+    "wallet" -> ProfileSection.WALLET
+    "check-in" -> ProfileSection.DAILY_CHECK_IN
+    "missions" -> ProfileSection.MISSIONS
+    "collection" -> ProfileSection.COLLECTION
+    "matches" -> ProfileSection.RECENT_MATCHES
+    else -> null
 }
 
 @Composable

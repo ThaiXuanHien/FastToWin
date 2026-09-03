@@ -5,12 +5,14 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
@@ -54,14 +56,16 @@ fun MaintenanceScreen(
         modifier = modifier.fillMaxSize().testTag("maintenance_screen"),
         maxContentWidth = 520.dp
     ) { contentModifier ->
-        Column(
-            modifier = contentModifier
-                .fillMaxSize()
-                .verticalScroll(rememberScrollState())
-                .padding(vertical = 24.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
-        ) {
+        BoxWithConstraints(modifier = contentModifier.fillMaxSize()) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
+                    .heightIn(min = maxHeight)
+                    .padding(vertical = 24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
+            ) {
             Surface(
                 shape = RoundedCornerShape(100.dp),
                 color = ArcadePalette.Gold500.copy(alpha = 0.16f),
@@ -107,41 +111,41 @@ fun MaintenanceScreen(
                 textAlign = TextAlign.Center
             )
 
-            Surface(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 20.dp),
-                shape = RoundedCornerShape(16.dp),
-                color = ArcadePalette.Navy800.copy(alpha = 0.9f),
-                border = BorderStroke(1.dp, ArcadePalette.OutlineDark)
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 20.dp),
+                    shape = RoundedCornerShape(16.dp),
+                    color = ArcadePalette.Navy800.copy(alpha = 0.9f),
+                    border = BorderStroke(1.dp, ArcadePalette.OutlineDark)
                 ) {
-                    Icon(
-                        Icons.Rounded.Schedule,
-                        contentDescription = null,
-                        tint = ArcadePalette.Mint400,
-                        modifier = Modifier.size(20.dp)
-                    )
-                    Column(Modifier.weight(1f)) {
-                        Text(
-                            "Hệ thống sẽ tự mở lại khi hoàn tất",
-                            style = MaterialTheme.typography.labelLarge,
-                            color = Color.White,
-                            fontWeight = FontWeight.Bold
+                    Row(
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Icon(
+                            Icons.Rounded.Schedule,
+                            contentDescription = null,
+                            tint = ArcadePalette.Mint400,
+                            modifier = Modifier.size(20.dp)
                         )
-                        Text(
-                            "Bạn không cần thao tác, đăng xuất hoặc cài lại ứng dụng.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = ArcadePalette.Blue100.copy(alpha = 0.72f)
-                        )
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                "Hệ thống sẽ tự mở lại khi hoàn tất",
+                                style = MaterialTheme.typography.labelLarge,
+                                color = Color.White,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                "Bạn không cần thao tác, đăng xuất hoặc cài lại ứng dụng.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = ArcadePalette.Blue100.copy(alpha = 0.72f)
+                            )
+                        }
                     }
                 }
             }
-
         }
     }
 }

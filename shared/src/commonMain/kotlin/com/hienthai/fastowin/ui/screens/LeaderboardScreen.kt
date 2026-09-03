@@ -20,7 +20,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -50,6 +49,7 @@ import com.hienthai.fastowin.ui.components.ArcadePanel
 import com.hienthai.fastowin.ui.components.ArcadeRankBadge
 import com.hienthai.fastowin.ui.components.ArcadeSegmentedControl
 import com.hienthai.fastowin.ui.components.FastToWinHeader
+import com.hienthai.fastowin.ui.components.FastToWinPullRefresh
 import com.hienthai.fastowin.ui.components.PlayerAvatar
 import com.hienthai.fastowin.ui.components.SeasonProgressCard
 import com.hienthai.fastowin.ui.components.SeasonRewardReceiptCard
@@ -80,7 +80,7 @@ fun LeaderboardScreen(
         applySafeDrawingInsets = showBackButton,
         includeBottomSafeDrawingInset = showBackButton
     ) { contentModifier ->
-        PullToRefreshBox(
+        FastToWinPullRefresh(
             isRefreshing = state.isLeaderboardLoading,
             onRefresh = { if (!state.isLeaderboardLoading) onRefresh() },
             modifier = contentModifier
@@ -478,6 +478,7 @@ private fun LeaderboardCard(
             PlayerAvatar(
                 displayName = entry.displayName,
                 avatarId = entry.avatarId,
+                userId = entry.userId,
                 frameId = entry.frameId,
                 size = 44.dp
             )

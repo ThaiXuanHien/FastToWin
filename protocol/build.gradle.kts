@@ -24,10 +24,14 @@ kotlin {
     }
     iosArm64()
     iosSimulatorArm64()
+    js {
+        browser()
+    }
     @OptIn(ExperimentalWasmDsl::class)
     wasmJs {
         browser()
     }
+    applyDefaultHierarchyTemplate()
 
     targets.withType<KotlinNativeTarget>().configureEach {
         binaries.framework {

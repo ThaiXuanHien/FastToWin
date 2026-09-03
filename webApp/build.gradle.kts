@@ -9,6 +9,18 @@ plugins {
 }
 
 kotlin {
+    js {
+        browser {
+            commonWebpackConfig {
+                outputFileName = "fast-to-win.js"
+                devServer = (devServer ?: KotlinWebpackConfig.DevServer()).apply {
+                    port = 8082
+                    open = false
+                }
+            }
+        }
+        binaries.executable()
+    }
     @OptIn(ExperimentalWasmDsl::class)
     wasmJs {
         browser {
@@ -22,9 +34,10 @@ kotlin {
         }
         binaries.executable()
     }
+    applyDefaultHierarchyTemplate()
 
     sourceSets {
-        wasmJsMain.dependencies {
+        commonMain.dependencies {
             implementation(project(":shared"))
             implementation(project(":protocol"))
             implementation(compose.runtime)
@@ -32,6 +45,11 @@ kotlin {
             implementation(compose.material3)
             implementation(compose.ui)
             implementation(libs.kotlinx.serialization.json)
+        }
+
+        jsMain {
+            kotlin.srcDir("src/wasmJsMain/kotlin")
+            resources.srcDir("src/wasmJsMain/resources")
         }
     }
 }

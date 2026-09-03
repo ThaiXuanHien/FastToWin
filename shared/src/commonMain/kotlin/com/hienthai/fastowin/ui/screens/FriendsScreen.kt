@@ -31,7 +31,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -54,6 +53,7 @@ import com.hienthai.fastowin.ui.components.ArcadeDialog
 import com.hienthai.fastowin.ui.components.ArcadeIconHero
 import com.hienthai.fastowin.ui.components.ArcadePanel
 import com.hienthai.fastowin.ui.components.FastToWinHeader
+import com.hienthai.fastowin.ui.components.FastToWinPullRefresh
 import com.hienthai.fastowin.ui.components.FriendPresenceIndicator
 import com.hienthai.fastowin.ui.components.PlayerAvatar
 import com.hienthai.fastowin.ui.components.SystemBackHandler
@@ -150,7 +150,7 @@ fun FriendsScreen(
         applySafeDrawingInsets = showBackButton,
         includeBottomSafeDrawingInset = showBackButton
     ) { contentModifier ->
-        PullToRefreshBox(
+        FastToWinPullRefresh(
             isRefreshing = state.isFriendsLoading,
             onRefresh = { if (!state.isFriendsLoading) onRefresh() },
             modifier = contentModifier
@@ -271,6 +271,7 @@ fun FriendsScreen(
                                             PlayerAvatar(
                                                 displayName = request.displayName,
                                                 avatarId = request.avatarId,
+                                                userId = request.userId,
                                                 frameId = request.frameId
                                             )
                                             Column(modifier = Modifier.weight(1f)) {
@@ -372,6 +373,7 @@ fun FriendsScreen(
                                         PlayerAvatar(
                                             displayName = request.displayName,
                                             avatarId = request.avatarId,
+                                            userId = request.userId,
                                             frameId = request.frameId
                                         )
                                         Column(modifier = Modifier.weight(1f)) {
@@ -412,6 +414,7 @@ fun FriendsScreen(
                                         PlayerAvatar(
                                             displayName = player.displayName,
                                             avatarId = player.avatarId,
+                                            userId = player.userId,
                                             frameId = player.frameId
                                         )
                                         Column(modifier = Modifier.weight(1f)) {
@@ -583,6 +586,7 @@ private fun FriendCard(
                 PlayerAvatar(
                     displayName = friend.displayName,
                     avatarId = friend.avatarId,
+                    userId = friend.userId,
                     frameId = friend.frameId
                 )
                 Column(modifier = Modifier.weight(1f)) {

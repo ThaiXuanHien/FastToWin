@@ -425,6 +425,7 @@ private fun ResultScoreCard(
             PlayerAvatar(
                 displayName = player.name,
                 avatarId = player.avatarId,
+                userId = player.id,
                 frameId = player.frameId,
                 size = 42.dp
             )

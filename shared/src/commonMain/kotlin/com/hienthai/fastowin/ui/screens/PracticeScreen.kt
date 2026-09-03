@@ -92,6 +92,7 @@ fun PracticeScreen(
     preferences: AppPreferences,
     onBack: () -> Unit,
     onShareChallenge: ((String) -> Unit)? = null,
+    buildChallengeLink: (String) -> String = ::buildChallengeDeepLink,
     modifier: Modifier = Modifier
 ) {
     SystemBackHandler(onBack = onBack)
@@ -180,6 +181,7 @@ fun PracticeScreen(
                         currentChallengeCode = createPracticeChallenge(mode, challengeSeed()).code
                     },
                     onShareChallenge = onShareChallenge,
+                    buildChallengeLink = buildChallengeLink,
                     onBack = onBack,
                     modifier = contentModifier
                 )
@@ -410,13 +412,20 @@ private fun PracticeResult(
     onRestart: () -> Unit,
     onNewChallenge: () -> Unit,
     onShareChallenge: ((String) -> Unit)?,
+    buildChallengeLink: (String) -> String,
     onBack: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val textSharer = rememberTextSharer()
     var shareError by remember(game.challengeCode) { mutableStateOf<String?>(null) }
     val challengeText = game.challengeCode?.let {
-        buildChallengeShareText(game.mode, it, game.score, game.elapsedMillis)
+        buildChallengeShareText(
+            mode = game.mode,
+            code = it,
+            score = game.score,
+            elapsedMillis = game.elapsedMillis,
+            deepLink = buildChallengeLink(it)
+        )
     }
     val completionMessage = when {
         game.correctSelections >= GAME_NUMBER_COUNT -> "Bạn đã tìm đủ 50 số"
@@ -660,11 +669,17 @@ fun PracticeLauncherDialog(
     }
 }
 
-internal fun buildChallengeShareText(mode: GameMode, code: String, score: Int, elapsedMillis: Long): String =
+internal fun buildChallengeShareText(
+    mode: GameMode,
+    code: String,
+    score: Int,
+    elapsedMillis: Long,
+    deepLink: String = buildChallengeDeepLink(code)
+): String =
     """
     Thử thách Fast To Win • ${mode.title}
     Mình đạt $score điểm trong ${formatPracticeTime(elapsedMillis)}.
-    Mở trực tiếp: ${buildChallengeDeepLink(code)}
+    Mở trực tiếp: $deepLink
     Mã thử thách: $code
     Nếu liên kết không mở, vào Luyện tập offline và nhập mã để chơi cùng bàn số.
     """.trimIndent()

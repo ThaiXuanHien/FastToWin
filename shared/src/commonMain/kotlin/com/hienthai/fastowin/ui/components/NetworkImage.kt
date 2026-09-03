@@ -23,7 +23,10 @@ fun NetworkImage(
     contentScale: ContentScale = ContentScale.Crop,
     fallback: @Composable () -> Unit = {}
 ) {
-    var imageBitmap by remember(url) { mutableStateOf<ImageBitmap?>(null) }
+    // Keep the previous bitmap while only the cache-busting revision changes.
+    // A different player URL still resets immediately and cannot show another user's avatar.
+    val sourceKey = url.substringBefore('?')
+    var imageBitmap by remember(sourceKey) { mutableStateOf<ImageBitmap?>(null) }
 
     LaunchedEffect(url) {
         if (url.isEmpty()) return@LaunchedEffect
@@ -36,9 +39,8 @@ fun NetworkImage(
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (_: Throwable) {
-            // Network images are optional. Keep the composable alive and show
-            // its caller-provided fallback when an image cannot be fetched or decoded.
-            imageBitmap = null
+            // Network images are optional. Keep an already displayed bitmap when
+            // refreshing the same player; the initial load still uses the fallback.
         }
     }
 

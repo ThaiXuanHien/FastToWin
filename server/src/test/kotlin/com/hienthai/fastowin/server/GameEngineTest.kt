@@ -15,6 +15,7 @@ import com.hienthai.fastowin.protocol.DailyCheckInSnapshot
 import com.hienthai.fastowin.protocol.MissionSnapshot
 import com.hienthai.fastowin.protocol.MatchType
 import com.hienthai.fastowin.protocol.PlayerProgressionSnapshot
+import com.hienthai.fastowin.protocol.PushPreferencesSnapshot
 import com.hienthai.fastowin.protocol.FriendSnapshot
 import com.hienthai.fastowin.protocol.RecentPlayerSnapshot
 import com.hienthai.fastowin.protocol.RematchEvent
@@ -36,6 +37,47 @@ import kotlin.test.assertTrue
 import java.util.UUID
 
 class GameEngineTest {
+    @Test
+    fun `account can update synchronized push preferences`() = runTest {
+        val playerId = UUID.randomUUID().toString()
+        var storedPreferences = PushPreferencesSnapshot()
+        val repository = object : PlayerProfileRepository {
+            override suspend fun findByPlayerId(playerId: String) = PlayerProfileSnapshot(
+                userId = playerId,
+                displayName = "Hiền",
+                playerCode = "HIEN001",
+                pushPreferences = storedPreferences
+            )
+
+            override suspend fun updatePushPreferences(
+                playerId: String,
+                preferences: PushPreferencesSnapshot
+            ): Boolean {
+                storedPreferences = preferences
+                return true
+            }
+
+            override suspend fun updateProfile(
+                playerId: String,
+                displayName: String,
+                avatarId: String?
+            ) = false
+        }
+        val engine = GameEngine(playerProfileRepository = repository)
+        engine.connectAccount(AuthenticatedAccount(UUID.fromString(playerId), "Hiền"))
+        val updated = storedPreferences.copy(
+            tournamentInvitationsEnabled = false,
+            dailyCheckInEnabled = false
+        )
+
+        val response = engine.handle(playerId, ClientMessage.UpdatePushPreferences(updated))
+            .map(Delivery::message)
+            .filterIsInstance<ServerMessage.ProfileData>()
+            .single()
+
+        assertEquals(updated, response.profile.pushPreferences)
+    }
+
     @Test
     fun `loading an account profile settles season rewards before returning balances`() = runTest {
         val playerId = UUID.randomUUID().toString()

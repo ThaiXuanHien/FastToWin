@@ -30,6 +30,7 @@ dependencies {
 
     testImplementation(kotlin("test"))
     testImplementation(libs.ktor.server.test.host)
+    testImplementation(libs.ktor.client.content.negotiation)
     testImplementation(libs.ktor.client.websockets)
     testImplementation(libs.kotlinx.coroutines.test)
 }

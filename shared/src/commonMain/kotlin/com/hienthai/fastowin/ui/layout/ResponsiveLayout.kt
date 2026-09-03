@@ -18,10 +18,10 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
 /**
- * Khung nội dung dùng chung cho Android và iOS.
+ * Khung nội dung dùng chung cho Android, iOS và web.
  *
  * Nội dung vẫn chiếm toàn bộ chiều cao nhưng được giới hạn chiều rộng và căn giữa
- * trên tablet. Khoảng đệm ngang tự giảm trên điện thoại nhỏ và tăng trên màn lớn.
+ * trên tablet/desktop. Khoảng đệm ngang tự giảm trên điện thoại nhỏ và tăng trên màn lớn.
  */
 @Composable
 fun ResponsiveScreen(

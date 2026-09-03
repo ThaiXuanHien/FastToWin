@@ -77,6 +77,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.hienthai.fastowin.data.network.toAvatarImageUrl
 import com.hienthai.fastowin.navigation.GameMode
 import com.hienthai.fastowin.protocol.FriendPresence
 import com.hienthai.fastowin.protocol.DailyCheckInSnapshot
@@ -104,6 +105,7 @@ internal enum class MainTab { HOME, ROOMS, LEADERBOARD, CLAN, ACCOUNT }
 internal fun HomeDashboard(
     state: GameState,
     isGuest: Boolean,
+    serverUrl: String = "",
     onQuickMatch: (GameMode, MatchType) -> Unit,
     onOpenRooms: () -> Unit,
     onOpenFriends: () -> Unit,
@@ -122,6 +124,9 @@ internal fun HomeDashboard(
     val profile = state.profile
     val displayName = profile?.displayName ?: state.player.name
     val avatarId = profile?.avatarId ?: state.player.avatarId
+    val avatarImageUrl = profile?.userId?.let { userId ->
+        serverUrl.toAvatarImageUrl(userId, state.avatarRevision)
+    }.orEmpty()
     val equippedFrameId = profile?.progression?.cosmetics?.firstOrNull {
         it.type == CosmeticType.FRAME && it.equipped
     }?.id ?: state.player.frameId
@@ -167,6 +172,7 @@ internal fun HomeDashboard(
             ArcadePlayerSummary(
                 displayName = displayName,
                 avatarId = avatarId,
+                avatarImageUrl = avatarImageUrl,
                 frameId = equippedFrameId,
                 level = profile?.progression?.level ?: 1,
                 currentXp = profile?.progression?.currentLevelExperience ?: 0,
@@ -442,6 +448,7 @@ private fun HomeDiscoveryHighlights(
 private fun ArcadePlayerSummary(
     displayName: String,
     avatarId: String?,
+    avatarImageUrl: String,
     frameId: String,
     level: Int,
     currentXp: Int,
@@ -468,7 +475,8 @@ private fun ArcadePlayerSummary(
                 displayName = displayName,
                 avatarId = avatarId,
                 frameId = frameId,
-                size = 58.dp
+                size = 58.dp,
+                imageUrl = avatarImageUrl
             )
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
                 Row(

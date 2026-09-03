@@ -1,6 +1,8 @@
 package com.hienthai.fastowin.server
 
 import com.hienthai.fastowin.protocol.PlayerProfileSnapshot
+import com.hienthai.fastowin.protocol.PushNotificationCategory
+import com.hienthai.fastowin.protocol.PushPreferencesSnapshot
 import com.hienthai.fastowin.protocol.CosmeticType
 import com.hienthai.fastowin.protocol.MatchDetailSnapshot
 import com.hienthai.fastowin.protocol.WalletTransactionSnapshot
@@ -20,7 +22,24 @@ interface PlayerProfileRepository {
     suspend fun findByPlayerCode(playerCode: String): PlayerProfileSnapshot? = null
     suspend fun updateProfile(playerId: String, displayName: String, avatarId: String?): Boolean
     suspend fun updateFcmToken(playerId: String, token: String): Boolean = false
+    suspend fun clearFcmToken(playerId: String, expectedToken: String): Boolean = false
     suspend fun findFcmToken(playerId: String): String? = null
+    suspend fun findPushToken(
+        playerId: String,
+        category: PushNotificationCategory
+    ): String? = findFcmToken(playerId)
+    suspend fun updatePushPreferences(
+        playerId: String,
+        preferences: PushPreferencesSnapshot
+    ): Boolean = false
+    suspend fun loadDailyPushReminderTargets(
+        reminderDate: String,
+        limit: Int = 500
+    ): List<PushReminderTarget> = emptyList()
+    suspend fun markPushReminderDelivered(
+        playerId: String,
+        reminderKey: String
+    ): Boolean = false
     suspend fun findMatchDetail(playerId: String, matchId: String): MatchDetailSnapshot? = null
     suspend fun equipCosmetics(playerId: String, frameId: String, titleId: String): Boolean = false
     suspend fun claimDailyCheckIn(playerId: String): DailyCheckInClaimResult? = null
@@ -46,6 +65,11 @@ interface PlayerProfileRepository {
     suspend fun buyCosmetic(playerId: String, cosmeticId: String, cosmeticType: String, price: Int): Boolean = false
     suspend fun equipCosmetic(playerId: String, cosmeticId: String, cosmeticType: String): Boolean = false
 }
+
+data class PushReminderTarget(
+    val playerId: String,
+    val fcmToken: String
+)
 
 data class DailyCheckInClaimResult(
     val claimed: Boolean,

@@ -9,3 +9,9 @@ internal fun String.toHttpBaseUrl(): String {
     }
     return httpUrl.removeSuffix("/game").trimEnd('/')
 }
+
+/** Builds a cache-busted avatar URL so every surface displays the same uploaded image. */
+internal fun String.toAvatarImageUrl(userId: String, revision: Long = 0L): String {
+    if (isBlank() || userId.isBlank()) return ""
+    return "${toHttpBaseUrl()}/api/avatar/$userId?v=$revision"
+}

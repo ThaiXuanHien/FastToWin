@@ -105,6 +105,12 @@ class PostgresAuthRepository(private val dataSource: DataSource) : AuthRepositor
                         statement.setObject(3, userId)
                         statement.executeUpdate()
                     }
+                    connection.prepareStatement(
+                        "UPDATE users SET fcm_token = NULL WHERE id = ?"
+                    ).use { statement ->
+                        statement.setObject(1, userId)
+                        statement.executeUpdate()
+                    }
                     insertSession(connection, userId, devicePlatform, session)
                     connection.commit()
                 } catch (error: Throwable) {
@@ -178,15 +184,22 @@ class PostgresAuthRepository(private val dataSource: DataSource) : AuthRepositor
             dataSource.connection.use { connection ->
                 connection.prepareStatement(
                     """
-                    UPDATE sessions
-                    SET revoked_at = ?, last_seen_at = ?
-                    WHERE refresh_token_hash = ? AND revoked_at IS NULL
+                    WITH revoked AS (
+                        UPDATE sessions
+                        SET revoked_at = ?, last_seen_at = ?
+                        WHERE refresh_token_hash = ? AND revoked_at IS NULL
+                        RETURNING user_id
+                    )
+                    UPDATE users
+                    SET fcm_token = NULL
+                    WHERE id IN (SELECT user_id FROM revoked)
+                    RETURNING id
                     """.trimIndent()
                 ).use { statement ->
                     statement.setTimestamp(1, nowMillis.toTimestamp())
                     statement.setTimestamp(2, nowMillis.toTimestamp())
                     statement.setString(3, refreshTokenHash)
-                    statement.executeUpdate() > 0
+                    statement.executeQuery().use { it.next() }
                 }
             }
         }

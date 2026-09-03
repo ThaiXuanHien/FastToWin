@@ -11,6 +11,7 @@ import com.hienthai.fastowin.protocol.GameSnapshot
 import com.hienthai.fastowin.protocol.MAX_PROFILE_DISPLAY_NAME_LENGTH
 import com.hienthai.fastowin.protocol.PROFILE_AVATAR_IDS
 import com.hienthai.fastowin.protocol.ProtocolGameMode
+import com.hienthai.fastowin.protocol.PushPreferencesSnapshot
 import com.hienthai.fastowin.protocol.MatchType
 import com.hienthai.fastowin.protocol.RematchEvent
 import com.hienthai.fastowin.protocol.RoomPhase
@@ -929,14 +930,25 @@ class GameController(
                 accountDisplayName = message.profile.displayName
                 onProfileDisplayNameChanged(message.profile.displayName)
                 _uiState.update { state ->
+                    val equippedFrameId = message.profile.progression.cosmetics
+                        .firstOrNull { it.type == CosmeticType.FRAME && it.equipped }
+                        ?.id
+                        ?: state.player.frameId
                     val completedMatch = state.currentMatchId?.takeIf { state.isGameOver }?.let { matchId ->
                         message.profile.recentMatches.firstOrNull { it.matchId == matchId }
                     }
                     state.copy(
                         profile = message.profile,
-                        player = state.player.copy(name = message.profile.displayName),
+                        avatarRevision = if (wasSaving) state.avatarRevision + 1 else state.avatarRevision,
+                        player = state.player.copy(
+                            name = message.profile.displayName,
+                            id = message.profile.userId,
+                            avatarId = message.profile.avatarId,
+                            frameId = equippedFrameId
+                        ),
                         isProfileLoading = false,
                         isProfileSaving = false,
+                        isPushPreferencesSaving = false,
                         equippingCosmeticId = null,
                         profileNotice = if (wasSaving) "Đã lưu hồ sơ." else null,
                         lastMatchEloChange = completedMatch?.eloChange ?: state.lastMatchEloChange,
@@ -1306,7 +1318,10 @@ class GameController(
         }
     }
 
-    private fun com.hienthai.fastowin.protocol.PlayerSnapshot.toState(fallbackName: String, fallbackTarget: Int, isSpectator: Boolean = false): PlayerState = PlayerState(
+    private fun com.hienthai.fastowin.protocol.PlayerSnapshot.toState(
+        fallbackName: String,
+        isSpectator: Boolean = false
+    ): PlayerState = PlayerState(
         name = name.takeIf { it.isNotBlank() } ?: fallbackName,
         id = id,
         avatarId = avatarId,
@@ -1314,7 +1329,7 @@ class GameController(
         teamId = teamId,
         isReady = isReady,
         score = score,
-        currentTarget = currentTarget ?: fallbackTarget,
+        currentTarget = currentTarget,
         correctSelections = correctSelections,
         wrongSelections = wrongSelections,
         averageReactionMillis = averageReactionMillis,
@@ -1355,11 +1370,11 @@ class GameController(
             waitingState.copy(
                 gameMode = game.gameMode.toUi(),
                 matchType = game.matchType,
-                player = meSnapshot?.toState(state.player.name, 1, isSpectator = meSnapshot in game.spectators) ?: state.player,
-                opponent = opponent?.toState(DEFAULT_OPPONENT_NAME, 1) ?: PlayerState(DEFAULT_OPPONENT_NAME),
-                teammates = teammateSnapshots.map { it.toState("Đồng đội", 1) },
-                opponents = opponentSnapshots.map { it.toState(DEFAULT_OPPONENT_NAME, 1) },
-                spectators = spectatorSnapshots.map { it.toState("Khán giả", 1, isSpectator = true) },
+                player = meSnapshot?.toState(state.player.name, isSpectator = meSnapshot in game.spectators) ?: state.player,
+                opponent = opponent?.toState(DEFAULT_OPPONENT_NAME) ?: PlayerState(DEFAULT_OPPONENT_NAME),
+                teammates = teammateSnapshots.map { it.toState("Đồng đội") },
+                opponents = opponentSnapshots.map { it.toState(DEFAULT_OPPONENT_NAME) },
+                spectators = spectatorSnapshots.map { it.toState("Khán giả", isSpectator = true) },
                 hasOpponent = opponentSnapshots.isNotEmpty(),
                 isMatchmaking = false,
                 matchmakingStartedAtMillis = null,
@@ -1431,7 +1446,7 @@ class GameController(
         
         _uiState.update { state ->
             val authoritativePlayer = meSnapshot
-                ?.toState(state.player.name, game.currentTarget, isSpectator = meSnapshot in game.spectators)
+                ?.toState(state.player.name, isSpectator = meSnapshot in game.spectators)
             val reconciledPlayer = authoritativePlayer?.let { player ->
                 if (!finished && player.wrongSelections < state.player.wrongSelections) {
                     player.copy(wrongSelections = state.player.wrongSelections)
@@ -1447,10 +1462,10 @@ class GameController(
                 gameMode = game.gameMode.toUi(),
                 matchType = game.matchType,
                 player = reconciledPlayer,
-                opponent = opponent?.toState(DEFAULT_OPPONENT_NAME, game.currentTarget) ?: PlayerState(DEFAULT_OPPONENT_NAME),
-                teammates = teammateSnapshots.map { it.toState("Đồng đội", game.currentTarget) },
-                opponents = opponentSnapshots.map { it.toState(DEFAULT_OPPONENT_NAME, game.currentTarget) },
-                spectators = spectatorSnapshots.map { it.toState("Khán giả", game.currentTarget, isSpectator = true) },
+                opponent = opponent?.toState(DEFAULT_OPPONENT_NAME) ?: PlayerState(DEFAULT_OPPONENT_NAME),
+                teammates = teammateSnapshots.map { it.toState("Đồng đội") },
+                opponents = opponentSnapshots.map { it.toState(DEFAULT_OPPONENT_NAME) },
+                spectators = spectatorSnapshots.map { it.toState("Khán giả", isSpectator = true) },
                 lobbyStage = LobbyStage.MATCHED,
                 currentRoomId = game.roomId,
                 currentRoomName = game.roomName,
@@ -1525,6 +1540,7 @@ class GameController(
                         it.lobbyStage
                     },
                     isProfileSaving = false,
+                    isPushPreferencesSaving = false,
                     equippingCosmeticId = null,
                     isFriendProfileLoading = false,
                     isMatchDetailLoading = false,
@@ -1624,6 +1640,12 @@ class GameController(
     }
     fun sendFcmToken(token: String) {
         scope.launch { socket.sendMessage(ClientMessage.UpdateFcmToken(token)) }
+    }
+
+    fun updatePushPreferences(preferences: PushPreferencesSnapshot) {
+        if (_uiState.value.isPushPreferencesSaving) return
+        _uiState.update { it.copy(isPushPreferencesSaving = true) }
+        scope.launch { socket.sendMessage(ClientMessage.UpdatePushPreferences(preferences)) }
     }
 
     fun close() {

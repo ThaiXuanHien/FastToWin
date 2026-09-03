@@ -58,10 +58,14 @@ fun parseRoomDeepLink(uri: String): RoomDeepLink? {
     return roomId.takeIf(::isValidRoomId)?.let(::RoomDeepLink)
 }
 
-fun buildRoomShareText(roomName: String, roomId: String): String =
+fun buildRoomShareText(
+    roomName: String,
+    roomId: String,
+    deepLink: String = buildRoomDeepLink(roomId)
+): String =
     """
     Tham gia phòng “${roomName.trim()}” trên Fast To Win:
-    ${buildRoomDeepLink(roomId)}
+    $deepLink
     Nếu phòng riêng tư, hãy nhập mật khẩu do chủ phòng gửi riêng.
     """.trimIndent()
 

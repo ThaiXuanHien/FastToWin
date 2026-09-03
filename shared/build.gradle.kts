@@ -28,10 +28,14 @@ kotlin {
 
     iosArm64()
     iosSimulatorArm64()
+    js {
+        browser()
+    }
     @OptIn(ExperimentalWasmDsl::class)
     wasmJs {
         browser()
     }
+    applyDefaultHierarchyTemplate()
 
     targets.withType<KotlinNativeTarget>().configureEach {
         binaries.framework {
@@ -67,6 +71,13 @@ kotlin {
 
         iosMain.dependencies {
             implementation(libs.ktor.client.darwin)
+        }
+
+        jsMain {
+            kotlin.srcDir("src/wasmJsMain/kotlin")
+            dependencies {
+                implementation(libs.ktor.client.js)
+            }
         }
 
         wasmJsMain.dependencies {
