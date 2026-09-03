@@ -12,7 +12,7 @@ export const test = base.extend({
       const registered = await request.post(`${process.env.E2E_API_URL}/auth/register`, { data: account });
       expect(registered.status(), 'Create only this test account').toBe(201);
       const session = await registered.json();
-      const actor = { account, accessToken: session.accessToken, errors: [], blocked: false, sockets: new Set() };
+      const actor = { account, registrationAccessToken: session.accessToken, errors: [], blocked: false, sockets: new Set() };
       actors.push(actor);
       const context = await browser.newContext({
         baseURL, viewport: testInfo.project.use.viewport, locale: 'vi-VN', serviceWorkers: 'block',
@@ -58,8 +58,15 @@ export const test = base.extend({
         await actor.context?.close();
       } catch (error) { cleanupErrors.push(error); }
       try {
+        // A successful UI login revokes the registration token. Obtain a fresh,
+        // test-owned session after closing the browser, then delete the account.
+        const cleanupLogin = await request.post(`${process.env.E2E_API_URL}/auth/login`, {
+          data: { email: actor.account.email, password: actor.account.password, devicePlatform: 'web-e2e-cleanup' },
+        });
+        expect(cleanupLogin.ok(), `Open cleanup session for ${actor.account.email}`).toBeTruthy();
+        const cleanupSession = await cleanupLogin.json();
         const deleted = await request.post(`${process.env.E2E_API_URL}/auth/delete-account`, {
-          data: { accessToken: actor.accessToken, password: actor.account.password },
+          data: { accessToken: cleanupSession.accessToken, password: actor.account.password },
         });
         expect(deleted.ok(), `Clean up disposable account ${actor.account.email}`).toBeTruthy();
         expect(actor.errors, 'No uncaught browser errors').toEqual([]);
@@ -99,6 +106,9 @@ export async function fill(page, locator, text) {
   await page.keyboard.press('ControlOrMeta+A');
   await page.keyboard.insertText(text);
   await page.keyboard.press('Tab');
+  // Compose replaces the backing input after blur and rebuilds its accessibility
+  // nodes on a debounce. Wait before using the next node's canvas coordinates.
+  await page.waitForTimeout(250);
 }
 
 export async function login(actor) {
@@ -107,11 +117,7 @@ export async function login(actor) {
   await click(page, tag(page, 'auth_open_login'));
   await fill(page, tag(page, 'auth_email'), account.email);
   await fill(page, tag(page, 'auth_password'), account.password);
-  const response = page.waitForResponse(r => r.url().endsWith('/auth/login') && r.request().method() === 'POST');
   await click(page, tag(page, 'auth_login_submit'));
-  const loginResponse = await response;
-  expect(loginResponse.ok()).toBeTruthy();
-  actor.accessToken = (await loginResponse.json()).accessToken;
   await click(page, page.getByRole('button', { name: 'Bỏ qua', exact: true }));
   await expect(tag(page, 'home_screen')).toBeAttached();
 }

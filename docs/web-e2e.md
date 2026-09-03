@@ -98,4 +98,4 @@ Cách quản lý server và ngắt WebSocket dựa trên [Playwright webServer](
 
 - Ba ca đăng nhập/F5/Back–Forward, trận đủ 50 số + từ chối đấu lại + về sảnh độc lập, và reconnect đã chạy đạt trên Chromium với dev server hiện tại.
 - E2E phát hiện lỗi người chọn số cuối bị xử thắng dù ít điểm hơn. Đã sửa backend và chạy trực tiếp Kotlin/JUnit: **53/53 test GameEngine đạt**, gồm 3 test hồi quy mới.
-- Ca E2E thứ tư (người nhiều điểm hơn thắng dù đối thủ chọn số cuối) cần server rebuild để xác minh bản sửa. Không đánh dấu toàn bộ E2E/CI đạt trước khi chạy lại bản mới. Java khởi động từ môi trường tự động hiện tại lỗi `Unable to establish loopback connection`; không đổi cấu hình hoặc dừng server dev của chủ dự án để né lỗi này.
+- CI #66 build/unit test và Android UI test đạt. Hai ca Web E2E bị dừng ở đăng nhập do test bấm nút ngay khi Compose Web đang thay input sau blur; đã bổ sung thời gian chờ accessibility node ổn định và teardown đăng nhập API bằng chính tài khoản test trước khi xóa. Ca E2E thứ tư (người nhiều điểm hơn thắng dù đối thủ chọn số cuối) vẫn cần CI tiếp theo xác minh bản sửa.
