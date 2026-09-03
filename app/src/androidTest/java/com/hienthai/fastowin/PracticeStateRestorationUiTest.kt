@@ -2,10 +2,10 @@ package com.hienthai.fastowin
 
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.StateRestorationTester
+import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
-import androidx.compose.ui.test.performScrollToIndex
 import androidx.compose.ui.test.v2.runComposeUiTest
 import com.hienthai.fastowin.data.preferences.AppPreferences
 import com.hienthai.fastowin.navigation.GameMode
@@ -36,7 +36,11 @@ class PracticeStateRestorationUiTest {
         }
         waitForIdle()
 
-        onNodeWithTag("number_grid").performScrollToIndex(challenge.numbers.indexOf(1))
+        // All 50 cells must fit without scrolling, including numbers near the
+        // end of the seeded board. Do not require a ScrollToIndex action.
+        challenge.numbers.forEach { number ->
+            onNodeWithTag("game_number_$number").assertIsDisplayed()
+        }
         onNodeWithTag("game_number_1").performClick()
         waitForIdle()
         onNodeWithTag("practice_score").assertTextEquals("10")
@@ -47,7 +51,9 @@ class PracticeStateRestorationUiTest {
 
         onNodeWithTag("practice_score").assertTextEquals("10")
         onNodeWithTag("practice_target").assertTextEquals("2")
-        onNodeWithTag("number_grid").performScrollToIndex(challenge.numbers.indexOf(2))
+        challenge.numbers.forEach { number ->
+            onNodeWithTag("game_number_$number").assertIsDisplayed()
+        }
         onNodeWithTag("game_number_2").performClick()
         waitForIdle()
         onNodeWithTag("practice_score").assertTextEquals("20")
