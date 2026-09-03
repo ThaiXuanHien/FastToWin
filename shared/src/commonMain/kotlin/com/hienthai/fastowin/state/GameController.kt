@@ -666,6 +666,7 @@ class GameController(
                     isRematchRequestedByOpponent = false,
                     isRematchActionPending = false,
                     rematchNotice = "Bạn đã chủ động rời trận và bị xử thua.",
+                    rematchNoticeErrorCode = null,
                     error = null
                 )
             }
@@ -688,6 +689,7 @@ class GameController(
                 } else {
                     "Đã gửi lời mời đấu lại."
                 },
+                rematchNoticeErrorCode = null,
                 error = null
             )
         }
@@ -864,13 +866,7 @@ class GameController(
             is ServerMessage.SessionReady -> {
                 val wasRecoveringRoom = _uiState.value.currentRoomId != null
                 playerId = message.playerId
-                _uiState.update {
-                    it.copy(
-                        player = it.player.copy(id = message.playerId),
-                        isSearching = false,
-                        error = null
-                    )
-                }
+                _uiState.update { it.withReadySession(message.playerId) }
                 startLatencyMonitoring()
                 if (accountDisplayName != null) {
                     scope.launch {
@@ -1270,7 +1266,8 @@ class GameController(
                                     "Đối thủ đã từ chối đấu lại."
                                 }
                                 RematchEvent.EXPIRED -> "Yêu cầu đấu lại đã hết thời gian."
-                            }
+                            },
+                            rematchNoticeErrorCode = null
                         )
                     }
                 }
@@ -1305,6 +1302,7 @@ class GameController(
                                 currentRoomId = null,
                                 isRoomHost = false,
                                 rematchNotice = message.reason,
+                                rematchNoticeErrorCode = null,
                                 error = null
                             )
                         }
@@ -1393,6 +1391,7 @@ class GameController(
                 isRematchActionPending = false,
                 rematchExpiresAtEpochMillis = null,
                 rematchNotice = null,
+                rematchNoticeErrorCode = null,
                 lastMatchDurationMillis = null,
                 lastMatchEloChange = null,
                 lastMatchEloRating = null,
@@ -1524,13 +1523,12 @@ class GameController(
             return
         }
 
-        val isRematchError = error.code in REMATCH_ACTION_ERROR_CODES
         val opponentIsUnavailable = error.code in setOf("OPPONENT_LEFT", "NOT_IN_ROOM", "ROOM_NOT_FOUND")
         if (error.code in setOf("WRONG_PASSWORD", "ROOM_NOT_FOUND", "ROOM_FULL", "ALREADY_IN_ROOM")) {
             returnToRoomBrowser(error.message)
         } else {
             _uiState.update {
-                it.copy(
+                it.withRematchError(error).copy(
                     isSearching = false,
                     isMatchmaking = false,
                     matchmakingStartedAtMillis = null,
@@ -1568,14 +1566,6 @@ class GameController(
                     },
                     isDailyCheckInClaiming = false,
                     claimingMissionCode = null,
-                    isRematchActionPending = if (isRematchError) {
-                        false
-                    } else {
-                        it.isRematchActionPending
-                    },
-                    isRematchRequestedByMe = if (isRematchError) false else it.isRematchRequestedByMe,
-                    isRematchRequestedByOpponent = if (isRematchError) false else it.isRematchRequestedByOpponent,
-                    rematchNotice = if (isRematchError) error.message else it.rematchNotice,
                     hasOpponent = if (opponentIsUnavailable) false else it.hasOpponent,
                     error = error.message
                 )
@@ -1846,17 +1836,6 @@ class GameController(
             "SESSION_NOT_FOUND",
             "ROOM_NOT_INVITABLE",
             "FRIEND_BUSY"
-        )
-        val REMATCH_ACTION_ERROR_CODES = setOf(
-            "CONNECTION_NOT_READY",
-            "SEND_FAILED",
-            "RATE_LIMITED",
-            "NOT_IN_ROOM",
-            "OPPONENT_LEFT",
-            "TOURNAMENT_REMATCH_DISABLED",
-            "RANKED_REMATCH_DISABLED",
-            "REMATCH_NOT_AVAILABLE",
-            "REMATCH_NOT_PENDING"
         )
     }
 }

@@ -130,6 +130,7 @@ data class GameState(
     val isRematchActionPending: Boolean = false,
     val rematchExpiresAtEpochMillis: Long? = null,
     val rematchNotice: String? = null,
+    val rematchNoticeErrorCode: String? = null,
     val lastMatchDurationMillis: Long? = null,
     val lastMatchEloChange: Int? = null,
     val lastMatchEloRating: Int? = null,
@@ -238,6 +239,39 @@ internal fun GameState.registerOptimisticNumberSelection(number: Int): GameState
 
 internal fun GameState.canApplyGameSnapshot(roomId: String, sequence: Long): Boolean =
     currentRoomId != roomId || sequence >= latestGameSequence
+
+internal fun GameState.withReadySession(playerId: String): GameState {
+    val clearRematchError = rematchNoticeErrorCode in REMATCH_CONNECTION_ERROR_CODES
+    return copy(
+        player = player.copy(id = playerId),
+        isSearching = false,
+        error = null,
+        rematchNotice = if (clearRematchError) null else rematchNotice,
+        rematchNoticeErrorCode = if (clearRematchError) null else rematchNoticeErrorCode
+    )
+}
+
+internal fun GameState.withRematchError(error: ServerMessage.Error): GameState {
+    if (!isGameOver || error.code !in REMATCH_ACTION_ERROR_CODES) return this
+    // Background requests (including latency pings) are not rematch actions.
+    if (error.code in REMATCH_CONNECTION_ERROR_CODES && !isRematchActionPending) return this
+    return copy(
+        isRematchActionPending = false,
+        isRematchRequestedByMe = false,
+        isRematchRequestedByOpponent = false,
+        rematchNotice = error.message,
+        rematchNoticeErrorCode = error.code
+    )
+}
+
+private val REMATCH_CONNECTION_ERROR_CODES = setOf(
+    "CONNECTION_NOT_READY", "CONNECTION_FAILED", "SEND_FAILED"
+)
+
+private val REMATCH_ACTION_ERROR_CODES = REMATCH_CONNECTION_ERROR_CODES + setOf(
+    "RATE_LIMITED", "NOT_IN_ROOM", "OPPONENT_LEFT", "TOURNAMENT_REMATCH_DISABLED",
+    "RANKED_REMATCH_DISABLED", "REMATCH_NOT_AVAILABLE", "REMATCH_NOT_PENDING"
+)
 
 internal fun GameState.openNotificationsOverlay(): GameState = copy(
     isNotificationsOpen = true,

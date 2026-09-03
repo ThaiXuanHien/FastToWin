@@ -167,6 +167,105 @@ class GameStateTest {
         assertEquals(state, state.registerOptimisticNumberSelection(7))
     }
 
+    @Test
+    fun `connection loss during play cannot leak a rematch notice into results`() {
+        val playing = GameState(
+            isMatchStarted = true,
+            currentRoomId = "room-1",
+            currentTarget = 4,
+            player = PlayerState("Me", score = 20),
+            opponent = PlayerState("Opponent", score = 10)
+        )
+
+        for (code in listOf("CONNECTION_NOT_READY", "CONNECTION_FAILED", "SEND_FAILED")) {
+            val disconnected = playing.withRematchError(ServerMessage.Error(code, "Connection failed"))
+            assertEquals(playing, disconnected)
+
+            val recovered = disconnected.withReadySession("player-1")
+            val result = recovered.copy(isGameOver = true)
+            assertNull(result.rematchNotice)
+            assertNull(result.rematchNoticeErrorCode)
+            assertEquals("room-1", result.currentRoomId)
+            assertEquals(4, result.currentTarget)
+            assertEquals(20, result.player.score)
+            assertEquals(10, result.opponent.score)
+        }
+    }
+
+    @Test
+    fun `background connection errors preserve confirmed rematch invitations`() {
+        for (requestedByMe in listOf(true, false)) {
+            val waiting = GameState(
+                isGameOver = true,
+                isRematchRequestedByMe = requestedByMe,
+                isRematchRequestedByOpponent = !requestedByMe,
+                rematchExpiresAtEpochMillis = 10_000L,
+                rematchNotice = "Confirmed invitation"
+            )
+            val updated = waiting.withRematchError(
+                ServerMessage.Error("CONNECTION_NOT_READY", "Connection failed")
+            )
+
+            assertEquals(waiting, updated)
+            assertEquals("Confirmed invitation", updated.withReadySession("me").rematchNotice)
+        }
+    }
+
+    @Test
+    fun `failed pending rematch becomes retryable and clears its network notice on resume`() {
+        for (code in listOf("CONNECTION_NOT_READY", "CONNECTION_FAILED", "SEND_FAILED")) {
+            val pending = GameState(
+                isGameOver = true,
+                isRematchActionPending = true,
+                isRematchRequestedByMe = true,
+                rematchNotice = "Sending request",
+                error = "Old error"
+            )
+            val failed = pending.withRematchError(ServerMessage.Error(code, "Connection failed"))
+
+            assertFalse(failed.isRematchActionPending)
+            assertFalse(failed.isRematchRequestedByMe)
+            assertEquals("Connection failed", failed.rematchNotice)
+            assertEquals(code, failed.rematchNoticeErrorCode)
+
+            val recovered = failed.withReadySession("me")
+            assertNull(recovered.rematchNotice)
+            assertNull(recovered.rematchNoticeErrorCode)
+            assertNull(recovered.error)
+            assertFalse(recovered.isSearching)
+            assertEquals("me", recovered.player.id)
+        }
+    }
+
+    @Test
+    fun `session recovery preserves non network rematch failures`() {
+        val failed = GameState(isGameOver = true, isRematchActionPending = true)
+            .withRematchError(ServerMessage.Error("OPPONENT_LEFT", "Opponent left"))
+
+        val recovered = failed.withReadySession("me")
+
+        assertFalse(recovered.isRematchActionPending)
+        assertEquals("Opponent left", recovered.rematchNotice)
+        assertEquals("OPPONENT_LEFT", recovered.rematchNoticeErrorCode)
+    }
+
+    @Test
+    fun `session recovery does not classify rematch notices by their text`() {
+        val state = GameState(isGameOver = true, rematchNotice = "Connection failed")
+        assertEquals("Connection failed", state.withReadySession("me").rematchNotice)
+    }
+
+    @Test
+    fun `unrelated server errors leave rematch state unchanged`() {
+        val state = GameState(
+            isGameOver = true,
+            isRematchActionPending = true,
+            isRematchRequestedByOpponent = true,
+            rematchNotice = "Accepting invitation"
+        )
+        assertEquals(state, state.withRematchError(ServerMessage.Error("WRONG_PASSWORD", "Wrong password")))
+    }
+
     private fun friendRequest(requestId: String, userId: String) = FriendRequestSnapshot(
         requestId = requestId,
         userId = userId,
