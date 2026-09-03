@@ -58,12 +58,14 @@ jobs:
         run: |
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-37.0" "build-tools;36.1.0"
 
-      - name: Run tests and build dev APK
+      - name: Run regression tests and compile clients
         run: >-
           ./gradlew
           :server:test
           :shared:testAndroidHostTest
+          :app:compileDevDebugAndroidTestKotlin
           :app:assembleDevDebug
+          :webApp:compileKotlinWasmJs
           --no-daemon
           --no-configuration-cache
 

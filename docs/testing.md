@@ -21,6 +21,13 @@ $env:GRADLE_USER_HOME="$PWD\.gradle"
 .\gradlew.bat :app:connectedDevDebugAndroidTest --no-daemon
 ```
 
+Lệnh hồi quy thống nhất, tương đương các bước biên dịch và unit/integration test
+chính trong CI:
+
+```powershell
+.\gradlew.bat :server:test :shared:testAndroidHostTest :app:compileDevDebugAndroidTestKotlin :app:assembleDevDebug :webApp:compileKotlinWasmJs --no-daemon
+```
+
 Có thể chỉ biên dịch APK test mà không cần thiết bị bằng:
 
 ```powershell
@@ -77,6 +84,16 @@ Thực hiện trên máy Mac Apple Silicon có Xcode sau khi Android test đạt
 6. Trước khi phát hành, kiểm tra thêm trên ít nhất một iPhone hoặc iPad thật.
 
 Các luồng bắt buộc gồm đăng ký/đăng nhập và khôi phục phiên, điều hướng và pull-to-refresh, trận 50 số giữa hai thiết bị, kết quả/đấu lại/Elo, thao tác bạn bè, bàn phím, safe area, xoay màn hình và chữ lớn.
+
+## Kiểm tra tự động trên CI
+
+GitHub Actions chạy với mọi push, pull request và khi kích hoạt thủ công:
+
+- Unit/integration test của server và shared.
+- Biên dịch Android UI test để phát hiện lỗi import/dependency trước khi khởi động emulator.
+- Build APK dev và biên dịch Web/Wasm.
+- Chạy Compose UI test trên Android emulator.
+- Lưu APK cùng báo cáo test thành artifact.
 
 ## Kết quả gần nhất
 
