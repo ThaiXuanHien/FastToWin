@@ -179,7 +179,9 @@ class CriticalFlowsUiTest {
         composeRule.onNodeWithTag("challenge_input").performTextInput(locked.code)
         composeRule.onNodeWithTag("challenge_open").performClick()
 
-        composeRule.onNodeWithText("Chế độ Combo mở khóa ở cấp 12.").assertIsDisplayed()
+        composeRule.onNodeWithText("Chế độ Combo mở khóa ở cấp 12.")
+            .performScrollTo()
+            .assertIsDisplayed()
         composeRule.runOnIdle { assertEquals(null, openedChallenge) }
     }
 

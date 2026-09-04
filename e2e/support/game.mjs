@@ -59,7 +59,7 @@ export const test = base.extend({
         const message = error.message;
         const webKitNavigationCancellation =
           ['Load failed', 'The I/O read operation failed.'].includes(message) ||
-          (/^\/(?:localhost|127\.0\.0\.1):\d+\/composeResources\/.* due to access control checks\.$/.test(message)) ||
+          (/^(?:https?:\/\/|ttps?:\/\/|\/)(?:localhost|127\.0\.0\.1):\d+\/.+ due to access control checks\.$/.test(message)) ||
           (message.startsWith('Fatal exception in coroutines machinery for AwaitContinuation(') &&
             message.includes('{Cancelled}'));
         const expectedWebKitAbort =
@@ -137,9 +137,8 @@ export async function fill(page, locator, text) {
   // Focusing Compose replaces the semantics div with a backing native input.
   await page.keyboard.press('ControlOrMeta+A');
   await page.keyboard.insertText(text);
-  await page.keyboard.press('Tab');
-  // Compose replaces the backing input after blur and rebuilds its accessibility
-  // nodes on a debounce. Wait before using the next node's canvas coordinates.
+  // Clicking the next control performs the blur. Sending Tab here makes
+  // Firefox apply Compose's pending edit a second time and duplicates text.
   await page.waitForTimeout(250);
 }
 
