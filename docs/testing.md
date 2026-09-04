@@ -77,14 +77,23 @@ Kiểm tra cả cỡ chữ mặc định và cỡ chữ trợ năng lớn nhất
 
 Thực hiện trên máy Mac Apple Silicon có Xcode sau khi Android test đạt:
 
-1. Chạy dev server và PostgreSQL trên Mac hoặc dùng server cùng mạng LAN.
-2. Mở `iosApp/iosApp.xcodeproj` và chọn scheme `iosApp`.
-3. Simulator có thể dùng `GAME_SERVER_URL=ws://127.0.0.1:8080/game`.
-4. Thiết bị thật cần dùng địa chỉ LAN của Mac, ví dụ `ws://192.168.1.20:8080/game`, và mở cổng 8080 trên firewall.
-5. Chạy trên iPhone nhỏ, iPhone Pro Max và iPad ở cả dọc lẫn ngang.
-6. Trước khi phát hành, kiểm tra thêm trên ít nhất một iPhone hoặc iPad thật.
+1. Chạy `./gradlew :shared:compileKotlinIosSimulatorArm64 --no-daemon` để bắt lỗi cầu nối Kotlin/Native trước khi mở Xcode.
+2. Chạy dev server và PostgreSQL trên Mac hoặc dùng server cùng mạng LAN.
+3. Mở `iosApp/iosApp.xcodeproj` và chọn scheme `iosApp`.
+4. Simulator có thể dùng `GAME_SERVER_URL=ws://127.0.0.1:8080/game`.
+5. Thiết bị thật cần dùng địa chỉ LAN của Mac, ví dụ `ws://192.168.1.20:8080/game`, và mở cổng 8080 trên firewall.
+6. Chạy trên iPhone nhỏ, iPhone Pro Max và iPad ở cả dọc lẫn ngang.
+7. Trước khi phát hành, kiểm tra thêm trên ít nhất một iPhone hoặc iPad thật.
 
 Các luồng bắt buộc gồm đăng ký/đăng nhập và khôi phục phiên, điều hướng và pull-to-refresh, trận 50 số giữa hai thiết bị, kết quả/đấu lại/Elo, thao tác bạn bè, bàn phím, safe area, xoay màn hình và chữ lớn.
+
+Riêng ảnh đại diện iOS, kiểm tra thêm:
+
+1. Mở Hồ sơ → chỉnh sửa → **Tải ảnh lên** và xác nhận photo picker chỉ hiển thị ảnh.
+2. Thử ảnh JPEG, PNG và HEIC; ảnh dọc/ngang phải đúng chiều, không méo và tải lên thành công.
+3. Sau khi lưu, avatar phải đổi đồng thời ở Hồ sơ, Trang chủ và các màn có thông tin người chơi.
+4. Đóng/mở lại ứng dụng và đăng nhập trên thiết bị còn lại để xác nhận ảnh được lấy lại từ server.
+5. Hủy photo picker không được thay avatar hiện tại hoặc làm treo màn chỉnh sửa.
 
 ## Kiểm tra tự động trên CI
 

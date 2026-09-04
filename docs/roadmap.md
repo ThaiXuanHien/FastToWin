@@ -37,7 +37,7 @@ Chi tiết: [audit Web](web-wasm-audit.md), [hướng dẫn Web E2E](web-e2e.md)
 
 ## 2. Hoàn thiện iOS
 
-- [ ] Chọn, nén và tải ảnh đại diện bằng picker iOS.
+- [x] Chọn, nén và tải ảnh đại diện bằng picker iOS; ảnh được thu về tối đa 512 px và nén trước khi gửi qua WebSocket.
 - [ ] Hoàn thiện StoreKit 2 production và xác thực giao dịch App Store; hiện có phần chuẩn bị/sandbox, chưa coi là thanh toán thật.
 - [ ] Hoàn thiện đăng ký thiết bị, quyền thông báo, APNs/FCM và mở đúng màn từ thông báo.
 - [ ] Build/chạy trên macOS/Xcode, iPhone và iPad simulator.
@@ -95,4 +95,4 @@ Backend hiện dùng trạng thái realtime trong một instance. Không coi cá
 
 ## Bước đang thực hiện
 
-**Hoàn thiện kiểm thử Web tự động**. Sau khi CI xác nhận test adaptive và JS fallback, đề xuất chuyển tới picker avatar iOS. Chrome/Edge/Safari và bàn phím ảo thật tiếp tục nằm trong checklist kiểm thử thủ công. Các hạng mục phụ thuộc tài khoản, kinh phí hoặc môi trường production cần chủ dự án quyết định riêng.
+**Hoàn thiện picker avatar iOS**. Phần code chọn/nén/tải ảnh đã có; cần build và smoke test trên macOS với iPhone/iPad simulator hoặc thiết bị thật. Sau khi xác nhận, đề xuất chuyển sang đăng ký thiết bị và quyền thông báo iOS; StoreKit production vẫn để sau vì phụ thuộc tài khoản Apple và cấu hình thanh toán.
