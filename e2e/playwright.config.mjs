@@ -1,6 +1,7 @@
 import { defineConfig } from 'playwright/test';
 
 const reuse = process.env.E2E_REUSE_SERVERS === '1';
+const jsFallback = process.env.E2E_JS_FALLBACK === '1';
 const baseURL = process.env.E2E_BASE_URL || 'http://127.0.0.1:18081';
 const apiURL = process.env.E2E_API_URL || 'http://127.0.0.1:18080';
 
@@ -21,7 +22,11 @@ export default defineConfig({
   workers: 1,
   forbidOnly: !!process.env.CI,
   retries: 0,
-  reporter: [['list'], ['html', { open: 'never' }]],
+  outputDir: jsFallback ? 'test-results-js-fallback' : 'test-results',
+  reporter: [['list'], ['html', {
+    open: 'never',
+    outputFolder: jsFallback ? 'playwright-report-js-fallback' : 'playwright-report',
+  }]],
   use: {
     baseURL,
     viewport: { width: 430, height: 932 },
@@ -33,7 +38,13 @@ export default defineConfig({
     actionTimeout: 15_000,
     navigationTimeout: 60_000,
   },
-  projects: [
+  projects: jsFallback ? [
+    {
+      name: 'chromium-js-fallback',
+      testMatch: /browser-smoke\.spec\.mjs/,
+      use: { browserName: 'chromium', viewport: { width: 390, height: 844 } },
+    },
+  ] : [
     {
       name: 'chromium',
       testMatch: /game\.spec\.mjs/,
@@ -60,6 +71,11 @@ export default defineConfig({
       use: { browserName: 'chromium', viewport: { width: 932, height: 430 } },
     },
     {
+      name: 'chromium-adaptive-input',
+      testMatch: /adaptive-input\.spec\.mjs/,
+      use: { browserName: 'chromium', viewport: { width: 320, height: 568 } },
+    },
+    {
       name: 'firefox-smoke',
       testMatch: /browser-smoke\.spec\.mjs/,
       // Compose for Web renders through WebGL2. Firefox disables WebGL2 in its
@@ -84,6 +100,10 @@ export default defineConfig({
     timeout: 60_000,
     stdout: 'pipe',
     stderr: 'pipe',
-    env: { E2E_BASE_URL: baseURL, E2E_API_URL: apiURL },
+    env: {
+      E2E_BASE_URL: baseURL,
+      E2E_API_URL: apiURL,
+      E2E_WEB_TARGET: process.env.E2E_WEB_TARGET || 'wasmJs',
+    },
   },
 });

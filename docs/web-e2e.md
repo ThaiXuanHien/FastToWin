@@ -9,7 +9,8 @@ Bộ test Playwright tại `e2e/` chạy giao diện Compose Web thật, HTTP/We
 3. Người được 260 điểm vẫn thắng người được 240 điểm dù đối thủ chọn số 50 cuối cùng.
 4. F5 giữa trận, ngắt WebSocket có kiểm soát, reconnect giữ tiến độ, hoàn thành trận và không còn thông báo kết nối cũ ở phần đấu lại.
 5. Responsive trên điện thoại nhỏ `320×568`, điện thoại lớn `430×932`, tablet `834×1112` và màn ngang `932×430`: nội dung mobile được căn giữa, không tràn ngang, bottom bar, hồ sơ và luồng tạo phòng vẫn thao tác được.
-6. Smoke test đăng nhập, F5 và Back/Forward trên Firefox và WebKit.
+6. Chữ lớn, biệt danh/tên phòng dài và viewport thấp mô phỏng vùng hiển thị còn lại khi bàn phím ảo mở trên điện thoại nhỏ.
+7. Smoke test đăng nhập, F5 và Back/Forward trên Firefox, WebKit và bundle Kotlin/JS fallback.
 
 Mỗi ca tạo tài khoản UUID riêng qua API rồi **đăng nhập qua UI**; teardown xóa đúng các tài khoản này. Không dùng tài khoản cá nhân, không reset database. Mặc định backend chạy in-memory, không cần Docker và không có dữ liệu bền vững. Vì vậy bộ này chưa kiểm tra lưu Elo/ví/lịch sử PostgreSQL.
 
@@ -22,11 +23,12 @@ Trong PowerShell tại thư mục gốc repo:
 ```powershell
 $env:JAVA_HOME='C:\Users\TEN_WINDOWS_CUA_BAN\.jdks\corretto-17.0.17'
 # Đổi JAVA_HOME thành thư mục JDK 17 thực tế trên máy.
-.\gradlew.bat :server:installDist :webApp:wasmJsBrowserDevelopmentWebpack --no-daemon --no-configuration-cache
+.\gradlew.bat :server:installDist :webApp:wasmJsBrowserDevelopmentWebpack :webApp:jsBrowserDevelopmentWebpack --no-daemon --no-configuration-cache
 cd e2e
 pnpm install --frozen-lockfile
 pnpm exec playwright install chromium firefox webkit
 pnpm test
+pnpm test:js-fallback
 ```
 
 Mỗi lần sửa Kotlin, chạy lại bước build trước test. `pnpm test` chỉ test bundle đã build, không tự biên dịch Kotlin.
@@ -36,11 +38,12 @@ Mỗi lần sửa Kotlin, chạy lại bước build trước test. `pnpm test` 
 Từ thư mục gốc, đặt `JAVA_HOME` tới JDK 17 (macOS có thể dùng `export JAVA_HOME=$(/usr/libexec/java_home -v 17)`), rồi:
 
 ```bash
-./gradlew :server:installDist :webApp:wasmJsBrowserDevelopmentWebpack --no-daemon --no-configuration-cache
+./gradlew :server:installDist :webApp:wasmJsBrowserDevelopmentWebpack :webApp:jsBrowserDevelopmentWebpack --no-daemon --no-configuration-cache
 cd e2e
 pnpm install --frozen-lockfile
 pnpm exec playwright install chromium firefox webkit
 pnpm test
+pnpm test:js-fallback
 ```
 
 Linux CI dùng `pnpm exec playwright install --with-deps chromium firefox webkit` để cài thêm thư viện hệ thống.
@@ -52,7 +55,7 @@ Linux CI dùng `pnpm exec playwright install --with-deps chromium firefox webkit
 - Runner bỏ biến môi trường database/Firebase/maintenance khỏi backend con; không đọc file Firebase của server dev. Web config chỉ trỏ về API local.
 - Runner dừng tiến trình backend do chính nó tạo sau test. Không dừng server dev 8080/8081. Cổng test bị chiếm thì báo lỗi, không tự giết tiến trình.
 - `E2E_BASE_URL`/`E2E_API_URL` có thể đổi sang cổng loopback HTTP khác. Không cho địa chỉ production.
-- `E2E_WEB_ROOT` có thể chỉ tới thư mục bundle webpack khác; mặc định là `webApp/build/kotlin-webpack/wasmJs/developmentExecutable`, resources lấy từ `webApp/build/processedResources/wasmJs/main`.
+- `E2E_WEB_TARGET=wasmJs|js` chọn bundle cần test. `E2E_WEB_ROOT` có thể chỉ tới thư mục bundle webpack khác; mặc định lấy đúng thư mục `webApp/build/kotlin-webpack/<target>/developmentExecutable` và resources tương ứng.
 
 Chỉ khi chủ động muốn dùng server dev đang mở, có thể opt-in từ thư mục `e2e`:
 
@@ -84,10 +87,11 @@ Các lệnh chạy theo nhóm:
 pnpm test:chromium      # 4 luồng game cốt lõi
 pnpm test:responsive    # 4 kích thước trên Chromium
 pnpm test:cross-browser # Firefox và WebKit smoke test
-pnpm test               # toàn bộ ma trận 10 ca
+pnpm test:js-fallback   # Chromium smoke test bundle Kotlin/JS compatibility
+pnpm test               # toàn bộ ma trận Wasm 11 ca
 ```
 
-Playwright WebKit không thay thế Safari/iOS thật; Chromium không thay thế đầy đủ Chrome/Edge thật. Service worker bị chặn trong bộ này để tránh cache cũ và push; cần test PWA/update/push riêng. Ma trận responsive hiện chưa mô phỏng font scale hệ điều hành hoặc bàn phím ảo thật.
+Playwright WebKit không thay thế Safari/iOS thật; Chromium không thay thế đầy đủ Chrome/Edge thật. Service worker bị chặn trong bộ này để tránh cache cũ và push; cần test PWA/update/push riêng. Test adaptive dùng cỡ chữ lớn của app và viewport thấp để bắt lỗi bố cục phổ biến, nhưng không thay thế việc mở bàn phím ảo và đổi font scale hệ điều hành trên thiết bị thật.
 
 ## Ghi chú Compose Web
 
@@ -98,9 +102,9 @@ Playwright WebKit không thay thế Safari/iOS thật; Chromium không thay th�
 
 Cách quản lý server và ngắt WebSocket dựa trên [Playwright webServer](https://playwright.dev/docs/test-webserver) và [WebSocketRoute](https://playwright.dev/docs/api/class-websocketroute).
 
-## Xác minh — 03/09/2026
+## Xác minh — 04/09/2026
 
 - Ba ca đăng nhập/F5/Back–Forward, trận đủ 50 số + từ chối đấu lại + về sảnh độc lập, và reconnect đã chạy đạt trên Chromium với dev server hiện tại.
 - E2E phát hiện lỗi người chọn số cuối bị xử thắng dù ít điểm hơn. Đã sửa backend và chạy trực tiếp Kotlin/JUnit: **53/53 test GameEngine đạt**, gồm 3 test hồi quy mới.
-- CI #67 đã chạy đạt cả Build/test và 4 ca Web E2E Chromium cốt lõi.
-- Bốn kích thước responsive và Playwright WebKit đã chạy đạt local. Firefox headless trên máy Windows hiện tại không khởi tạo được framebuffer phần mềm; job Ubuntu CI là bước xác minh Firefox độc lập với giới hạn máy local này.
+- CI #70 đã chạy đạt Build/test, Android UI và toàn bộ ma trận Web E2E Chromium/Firefox/WebKit.
+- Test chữ lớn, nội dung dài và viewport bàn phím ảo mô phỏng đã chạy đạt local trên Chromium. Bundle Kotlin/JS fallback được build và smoke test riêng trong CI.

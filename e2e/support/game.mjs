@@ -5,11 +5,12 @@ export { expect };
 export const test = base.extend({
   actors: async ({ browser, request, baseURL }, use, testInfo) => {
     const actors = [];
-    const createActor = async (label = 'Player') => {
+    const createActor = async (label = 'Player', options = {}) => {
       const suffix = randomUUID().replaceAll('-', '').slice(0, 12);
       const shortLabel = label.replace(/[^a-z0-9]/gi, '').slice(0, 8) || 'Player';
       const account = { email: `e2e-${suffix}@example.invalid`, password: `Test-${suffix}-9!`,
-        displayName: `E2E ${shortLabel} ${suffix.slice(0, 4)}`, devicePlatform: 'web-e2e', gender: 'MALE' };
+        displayName: options.displayName || `E2E ${shortLabel} ${suffix.slice(0, 4)}`,
+        devicePlatform: 'web-e2e', gender: 'MALE' };
       const registered = await request.post(`${process.env.E2E_API_URL}/auth/register`, { data: account });
       expect(registered.status(), 'Create only this test account').toBe(201);
       const session = await registered.json();
@@ -26,6 +27,11 @@ export const test = base.extend({
         baseURL, viewport: testInfo.project.use.viewport, locale: 'vi-VN', serviceWorkers: 'block',
       });
       actor.context = context;
+      if (options.preferences) {
+        await context.addInitScript(preferences => {
+          window.localStorage.setItem('fasttowin.preferences', JSON.stringify(preferences));
+        }, options.preferences);
+      }
       // Use only the chosen local test backend; disable push/PWA configuration.
       await context.route('**/config.js', route => route.fulfill({
         contentType: 'text/javascript',

@@ -126,13 +126,15 @@ jobs:
       - name: Build isolated E2E server and Web bundle
         run: |
           chmod +x gradlew
-          ./gradlew :server:installDist :webApp:wasmJsBrowserDevelopmentWebpack --no-daemon --no-configuration-cache
+          ./gradlew :server:installDist :webApp:wasmJsBrowserDevelopmentWebpack :webApp:jsBrowserDevelopmentWebpack --no-daemon --no-configuration-cache
 
       - name: Test Web against an isolated in-memory backend
         working-directory: e2e
         # Firefox needs a display-backed WebGL2 context for Compose's canvas.
         # Playwright's --with-deps install provides Xvfb on Linux runners.
-        run: xvfb-run --auto-servernum pnpm test
+        run: |
+          xvfb-run --auto-servernum pnpm test
+          pnpm test:js-fallback
 
       - name: Upload Web E2E report and failure diagnostics
         if: always()
@@ -142,6 +144,8 @@ jobs:
           path: |
             e2e/playwright-report/
             e2e/test-results/
+            e2e/playwright-report-js-fallback/
+            e2e/test-results-js-fallback/
           retention-days: 7
           if-no-files-found: warn
 

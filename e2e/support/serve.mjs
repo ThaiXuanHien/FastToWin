@@ -6,8 +6,10 @@ import { dirname, extname, resolve, sep, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const repo = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
-const webRoot = resolve(repo, process.env.E2E_WEB_ROOT || 'webApp/build/kotlin-webpack/wasmJs/developmentExecutable');
-const resourceRoot = resolve(repo, 'webApp/build/processedResources/wasmJs/main');
+const webTarget = process.env.E2E_WEB_TARGET || 'wasmJs';
+if (!['wasmJs', 'js'].includes(webTarget)) throw new Error('E2E_WEB_TARGET must be wasmJs or js.');
+const webRoot = resolve(repo, process.env.E2E_WEB_ROOT || `webApp/build/kotlin-webpack/${webTarget}/developmentExecutable`);
+const resourceRoot = resolve(repo, `webApp/build/processedResources/${webTarget}/main`);
 const roots = [webRoot, resourceRoot];
 const indexFile = roots.map(root => join(root, 'index.html')).find(existsSync);
 const baseURL = new URL(process.env.E2E_BASE_URL || 'http://127.0.0.1:18081');
@@ -18,7 +20,8 @@ for (const url of [baseURL, apiURL]) {
   }
 }
 if (!indexFile || !existsSync(join(webRoot, 'fast-to-win.js'))) {
-  throw new Error('Build :webApp:wasmJsBrowserDevelopmentWebpack before running E2E.');
+  const buildTask = webTarget === 'js' ? 'jsBrowserDevelopmentWebpack' : 'wasmJsBrowserDevelopmentWebpack';
+  throw new Error(`Build :webApp:${buildTask} before running E2E.`);
 }
 const lib = join(repo, 'server/build/install/server/lib');
 if (!existsSync(lib)) throw new Error('Build :server:installDist before running E2E.');

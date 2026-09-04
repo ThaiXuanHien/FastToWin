@@ -1,6 +1,6 @@
 # Lộ trình hoàn thiện Fast To Win
 
-Cập nhật: 03/09/2026. Đây là danh sách theo dõi thống nhất từ các hạng mục chủ dự án đã duyệt. Có code không đồng nghĩa đã kiểm thử hoặc sẵn sàng production.
+Cập nhật: 04/09/2026. Đây là danh sách theo dõi thống nhất từ các hạng mục chủ dự án đã duyệt. Có code không đồng nghĩa đã kiểm thử hoặc sẵn sàng production.
 
 ## Quy tắc thực hiện
 
@@ -20,16 +20,17 @@ Các mục sau trong danh sách cũ **đã có triển khai**; tiếp tục hồ
 | Chia sẻ ảnh kết quả | Canvas PNG, Web Share hoặc tải ảnh xuống |
 | Back/Forward trình duyệt | History API và đồng bộ màn trong app |
 | URL phòng/thử thách | `/room/{id}`, `/challenge/{code}` |
-| Trình duyệt không hỗ trợ WasmGC | Có target JS và gói compatibility; cần kiểm thử nhánh fallback |
-| Avatar và responsive | Có chọn/nén/tải ảnh Web, chiều rộng nội dung và dialog theo viewport; cần tiếp tục ma trận thiết bị |
+| Trình duyệt không hỗ trợ WasmGC | Có target JS và smoke test bundle compatibility trong CI |
+| Avatar và responsive | Có chọn/nén/tải ảnh Web, chiều rộng nội dung và dialog theo viewport; đã có ma trận responsive tự động |
 | Pull-to-refresh | Gesture chỉ dành cho thiết bị cảm ứng |
 | PWA, offline, update và Web Push | Đã có; Web Push đã được người dùng xác nhận nhận đủ 4 nhóm thông báo |
 
 Phần đang làm và còn lại:
 
 - [x] Hoàn thiện và xác minh bộ Web E2E trong `e2e/`: đăng nhập/F5, Back/Forward, phòng hai người, trận đủ 50 số, mất kết nối, đấu lại, về sảnh độc lập. CI #67 đã đạt.
-- [ ] Mở rộng kiểm thử responsive: đã có điện thoại nhỏ/lớn, tablet và ngang; còn chữ lớn, bàn phím ảo và nội dung dài.
-- [ ] Smoke test trình duyệt: đã thêm Firefox/WebKit tự động; còn Chrome/Edge/Safari thật và nhánh JS fallback. Playwright WebKit không thay thế Safari trên thiết bị Apple.
+- [x] Mở rộng kiểm thử responsive tự động: điện thoại nhỏ/lớn, tablet, ngang, chữ lớn, nội dung dài và viewport thấp mô phỏng bàn phím ảo.
+- [x] Smoke test tự động Chromium/Firefox/WebKit và bundle Kotlin/JS fallback trong CI.
+- [ ] Smoke test Chrome/Edge/Safari và bàn phím ảo thật trên thiết bị. Playwright WebKit không thay thế Safari trên thiết bị Apple.
 - [ ] Mua Gem trên Web: cần thống nhất cổng thanh toán, phí và xác thực giao dịch backend trước khi làm.
 
 Chi tiết: [audit Web](web-wasm-audit.md), [hướng dẫn Web E2E](web-e2e.md).
@@ -88,10 +89,10 @@ Backend hiện dùng trạng thái realtime trong một instance. Không coi cá
 
 - [ ] Screenshot regression test với ảnh chuẩn đã review (ảnh chụp khi test lỗi chưa phải screenshot regression).
 - [ ] Báo cáo độ bao phủ test và ngưỡng phù hợp.
-- [ ] Ma trận trình duyệt Web và JS fallback.
+- [x] Ma trận Playwright Chromium/Firefox/WebKit và JS fallback trong CI.
 - [ ] Kiểm thử hai người trên iOS thật.
 - [ ] Cập nhật SRS/API/hướng dẫn dev khi hành vi hoặc cấu hình thay đổi.
 
 ## Bước đang thực hiện
 
-**Web E2E và tích hợp CI**. Sau khi bộ này chạy ổn, đề xuất kiểm thử responsive/cross-browser còn thiếu, rồi tới picker avatar iOS. Các hạng mục phụ thuộc tài khoản, kinh phí hoặc môi trường production cần chủ dự án quyết định riêng.
+**Hoàn thiện kiểm thử Web tự động**. Sau khi CI xác nhận test adaptive và JS fallback, đề xuất chuyển tới picker avatar iOS. Chrome/Edge/Safari và bàn phím ảo thật tiếp tục nằm trong checklist kiểm thử thủ công. Các hạng mục phụ thuộc tài khoản, kinh phí hoặc môi trường production cần chủ dự án quyết định riêng.
