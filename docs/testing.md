@@ -95,6 +95,14 @@ Riêng ảnh đại diện iOS, kiểm tra thêm:
 4. Đóng/mở lại ứng dụng và đăng nhập trên thiết bị còn lại để xác nhận ảnh được lấy lại từ server.
 5. Hủy photo picker không được thay avatar hiện tại hoặc làm treo màn chỉnh sửa.
 
+Riêng thông báo iOS, kiểm tra trên thiết bị thật đã cấu hình APNs:
+
+1. Khi chưa cấp quyền, Cài đặt hiển thị trạng thái chờ và chỉ hỏi quyền sau khi bật.
+2. Tắt trong app phải xóa token khỏi tài khoản; bật lại phải đăng ký được token mới.
+3. Từ chối quyền rồi bật lại phải mở trang Settings của iOS.
+4. Nhận đủ lời mời phòng, lời mời giải đấu, nhiệm vụ và nhắc điểm danh khi app ở nền.
+5. Chạm thông báo phải mở đúng phòng/màn tương ứng; thông báo không có đích mở danh sách Thông báo.
+
 ## Kiểm tra tự động trên CI
 
 GitHub Actions chạy với mọi push, pull request và khi kích hoạt thủ công:

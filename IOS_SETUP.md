@@ -7,7 +7,7 @@ Tài liệu này dành cho developer mới clone project và muốn chạy backe
 - Khuyến nghị Mac Apple Silicon (M1 trở lên). Project hiện cấu hình `iosSimulatorArm64` cho simulator Apple Silicon và `iosArm64` cho thiết bị thật.
 - macOS có thể cài phiên bản Xcode tương thích với iOS cần kiểm thử.
 - Tối thiểu khoảng 30 GB trống cho Xcode, Android SDK, Gradle cache và Docker image.
-- iOS deployment target của app là iOS 14.
+- iOS deployment target của app là iOS 15 để tương thích Firebase Apple SDK 12.
 
 ## 2. Cài công cụ
 
@@ -230,6 +230,10 @@ Android Debug cũng dùng `ws://127.0.0.1:8080/game`; `adb reverse` chuyển c�
 4. Chọn Apple Development Team của bạn.
 5. Nếu bundle ID đã được dùng bởi tài khoản khác, đổi `PRODUCT_BUNDLE_IDENTIFIER` Debug thành một giá trị duy nhất, ví dụ `com.tenban.fasttowin.dev`.
 
+> Lưu ý: cấu hình Firebase hiện tại dùng bundle ID `com.hienthai.fastowin` cho cả
+> Debug và Release. Nếu đổi bundle ID theo gợi ý trên, hãy đăng ký thêm iOS App
+> tương ứng trong Firebase Console và thay `GoogleService-Info.plist`.
+
 ### 7.2. Dùng IP LAN của Mac
 
 `127.0.0.1` trên iPhone là chính iPhone, không phải Mac. Mac và iPhone phải cùng Wi-Fi.
@@ -262,6 +266,32 @@ http://192.168.1.20:8080/health
 
 Trang phải hiển thị `OK` trước khi mở app.
 
+### 7.3. Bật thông báo Push trên iOS
+
+Project đã có Firebase Messaging qua Swift Package Manager, file entitlement,
+luồng xin quyền, đăng ký token và mở đúng màn hình từ thông báo. Xcode sẽ tự tải
+Firebase Apple SDK lần đầu nên máy cần Internet.
+
+Để nhận thông báo thật:
+
+1. Trong Apple Developer, tạo **APNs Authentication Key** có quyền Apple Push
+   Notifications service (APNs), lưu file `.p8`, Key ID và Team ID ở nơi an toàn.
+2. Vào Firebase Console → Project settings → Cloud Messaging → Apple app
+   configuration, tải APNs key lên cùng Key ID và Team ID.
+3. Trong Xcode, chọn target `iosApp` → **Signing & Capabilities**, chọn đúng Team và
+   xác nhận capability **Push Notifications** đang hoạt động. Project đã khai báo
+   `aps-environment` cho Debug/Release và background mode `remote-notification`.
+4. Chạy app trên iPhone/iPad thật, đăng nhập, vào **Tài khoản → Cài đặt** rồi bật
+   **Thông báo trên thiết bị** và chọn Allow trong hộp thoại iOS.
+5. Kiểm tra server đã được cấp service account bằng biến
+   `GOOGLE_APPLICATION_CREDENTIALS`; sau đó gửi thử lần lượt lời mời phòng, lời mời
+   giải đấu, hoàn thành nhiệm vụ và nhắc điểm danh.
+
+Khi người chơi tắt thông báo trong app, token trên tài khoản được xóa và token FCM
+cục bộ được thu hồi. Nếu quyền bị chặn ở cấp hệ điều hành, bật lại công tắc sẽ mở
+Settings của iOS. Remote Push cần thiết bị thật và cấu hình Apple Developer; simulator
+chỉ phù hợp kiểm tra UI/quyền ở mức giới hạn.
+
 ## 8. Kiểm thử hai người chơi
 
 Không đăng nhập cùng một tài khoản trên hai máy vì backend chỉ cho một WebSocket game hoạt động cho mỗi tài khoản.
@@ -287,6 +317,7 @@ Checklist kiểm thử đề xuất:
 8. Chơi xếp hạng và xác nhận Elo cùng tiến độ phân hạng được cập nhật.
 9. Tắt/mở lại app để kiểm tra đăng nhập và reconnect.
 10. Kiểm tra portrait, landscape, chữ lớn, iPhone nhỏ và iPad.
+11. Bật thông báo, đưa app về nền và xác nhận từng nhóm thông báo mở đúng màn hình.
 
 ## 9. Build và test bằng Terminal trên macOS
 

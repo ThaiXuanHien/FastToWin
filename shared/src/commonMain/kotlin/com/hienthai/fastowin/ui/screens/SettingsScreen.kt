@@ -171,10 +171,7 @@ fun SettingsScreen(
                                     title = "Thông báo trên thiết bị",
                                     subtitle = pushStatus.description(),
                                     checked = pushStatus == AppPushStatus.ENABLED,
-                                    enabled = pushStatus !in setOf(
-                                        AppPushStatus.REQUESTING,
-                                        AppPushStatus.DENIED
-                                    ),
+                                    enabled = pushStatus != AppPushStatus.REQUESTING,
                                     onCheckedChange = { enabled ->
                                         if (enabled) onEnablePush() else onDisablePush()
                                     }
@@ -519,13 +516,13 @@ private fun SettingsSwitchRow(
 
 private fun AppPushStatus.description(): String = when (this) {
     AppPushStatus.PROMPT -> "Nhận lời mời phòng, giải đấu và nhắc phần thưởng"
-    AppPushStatus.REQUESTING -> "Đang chờ bạn cấp quyền trong trình duyệt…"
+    AppPushStatus.REQUESTING -> "Đang chờ bạn cấp quyền thông báo…"
     AppPushStatus.ENABLED -> "Đã bật lời mời, nhiệm vụ và nhắc điểm danh"
-    AppPushStatus.DISABLED -> "Đang tắt trên trình duyệt này"
-    AppPushStatus.DENIED -> "Đã bị chặn — hãy cho phép trong cài đặt trình duyệt"
+    AppPushStatus.DISABLED -> "Đang tắt trên thiết bị này"
+    AppPushStatus.DENIED -> "Đã bị chặn — hãy cho phép trong cài đặt thiết bị"
     AppPushStatus.ERROR -> "Chưa thể bật thông báo, vui lòng thử lại"
-    AppPushStatus.UNSUPPORTED -> "Trình duyệt không hỗ trợ thông báo"
-    AppPushStatus.UNCONFIGURED -> "Web Push chưa được cấu hình"
+    AppPushStatus.UNSUPPORTED -> "Thiết bị không hỗ trợ thông báo"
+    AppPushStatus.UNCONFIGURED -> "Thông báo chưa được cấu hình"
 }
 
 @Composable

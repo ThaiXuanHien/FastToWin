@@ -272,7 +272,7 @@ Không chạy `docker compose down -v` trừ khi chủ động muốn xóa toàn
 iOS chỉ build/run trên macOS. Yêu cầu cơ bản:
 
 - Mac Apple Silicon.
-- Xcode và iOS 14+ simulator hoặc iPhone/iPad đã provisioning.
+- Xcode tương thích Firebase Apple SDK 12 và iOS 15+ simulator hoặc iPhone/iPad đã provisioning.
 - JDK 17.
 - Android Studio/Android SDK vì shared module có Android target.
 - Docker Desktop nếu chạy PostgreSQL trên cùng máy.
@@ -387,7 +387,7 @@ lúc đang ghép trận, ở trong phòng hoặc thi đấu.
 
 ### Bật Web Push
 
-Fast To Win dùng chung Firebase Cloud Messaging cho Android và web. Trong Firebase
+Fast To Win dùng chung Firebase Cloud Messaging cho Android, iOS và web. Trong Firebase
 Console, tạo một **Web App** trong cùng project, sau đó vào **Cloud Messaging → Web
 Push certificates** để tạo VAPID key. Điền public client config vào
 `webApp/src/wasmJsMain/resources/config.js`:
@@ -427,6 +427,12 @@ Khi đăng xuất hoặc đăng nhập ở thiết bị khác, token cũ đượ
 Các script development tự đặt `FASTTOWIN_WEB_BASE_URL=http://localhost:8081` để
 thông báo thử mở đúng màn hình web. Backend chỉ chấp nhận HTTP cho địa chỉ loopback;
 mọi domain production vẫn phải dùng HTTPS.
+
+Trên iOS, project Xcode đã tích hợp Firebase Messaging, quyền Push Notifications,
+đăng ký APNs/FCM và điều hướng đến đúng màn khi chạm thông báo. Để nhận thông báo
+trên thiết bị thật, cần tải APNs Authentication Key lên Firebase Console và chọn
+Apple Development Team có quyền Push Notifications. Chi tiết nằm trong
+[IOS_SETUP.md](IOS_SETUP.md#73-bật-thông-báo-push-trên-ios).
 
 Khi phát hành một bản web mới có thay đổi client, tăng phiên bản
 `SHELL_CACHE` trong `webApp/src/wasmJsMain/resources/service-worker.js`. Sau đó

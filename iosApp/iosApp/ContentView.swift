@@ -5,7 +5,10 @@ struct ComposeView: UIViewControllerRepresentable {
     func makeUIViewController(context: Context) -> UIViewController {
         let serverUrl = Bundle.main.object(forInfoDictionaryKey: "GAME_SERVER_URL") as? String
             ?? "ws://127.0.0.1:8080/game"
-        return MainViewControllerKt.MainViewController(serverUrl: serverUrl)
+        return MainViewControllerKt.MainViewController(
+            serverUrl: serverUrl,
+            pushBridge: PushNotificationCoordinator.shared.bridge
+        )
     }
 
     func updateUIViewController(_ uiViewController: UIViewController, context: Context) {}

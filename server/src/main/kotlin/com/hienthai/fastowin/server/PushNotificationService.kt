@@ -5,6 +5,8 @@ import com.google.firebase.FirebaseApp
 import com.google.firebase.FirebaseOptions
 import com.google.firebase.messaging.FirebaseMessaging
 import com.google.firebase.messaging.FirebaseMessagingException
+import com.google.firebase.messaging.ApnsConfig
+import com.google.firebase.messaging.Aps
 import com.google.firebase.messaging.Message
 import com.google.firebase.messaging.MessagingErrorCode
 import com.google.firebase.messaging.Notification
@@ -76,11 +78,19 @@ class FirebasePushNotificationService(
         }
         return withContext(Dispatchers.IO) {
             try {
+                val destination = normalizePushDestination(destinationPath)
                 val message = Message.builder()
                     .setToken(fcmToken)
                     .setNotification(Notification.builder().setTitle(title).setBody(body).build())
+                    .putData("destination", destination)
+                    .setApnsConfig(
+                        ApnsConfig.builder()
+                            .putHeader("apns-priority", "10")
+                            .setAps(Aps.builder().setSound("default").build())
+                            .build()
+                    )
                     .apply {
-                        webPushConfig(title, body, destinationPath)?.let { setWebpushConfig(it) }
+                        webPushConfig(title, body, destination)?.let { setWebpushConfig(it) }
                     }
                     .build()
                 FirebaseMessaging.getInstance().send(message)
@@ -105,7 +115,7 @@ class FirebasePushNotificationService(
         destinationPath: String
     ): WebpushConfig? {
         val baseUrl = webBaseUrl ?: return null
-        val path = destinationPath.trim().let { if (it.startsWith('/')) it else "/$it" }
+        val path = normalizePushDestination(destinationPath)
         return WebpushConfig.builder()
             .putHeader("Urgency", "high")
             .putData("destination", path)
@@ -136,6 +146,12 @@ class FirebasePushNotificationService(
             return value.takeIf { isSecure || isLocalDev }
         }
     }
+}
+
+internal fun normalizePushDestination(destinationPath: String): String {
+    val normalized = destinationPath.trim().substringBefore('?').substringBefore('#')
+        .let { if (it.startsWith('/')) it else "/$it" }
+    return normalized.takeIf { it.length in 2..256 } ?: "/notifications"
 }
 
 private fun configuredFirebaseCredentialFile(): File {
