@@ -126,7 +126,10 @@ jobs:
       - name: Build isolated E2E server and Web bundle
         run: |
           chmod +x gradlew
-          ./gradlew :server:installDist :webApp:wasmJsBrowserDevelopmentWebpack :webApp:jsBrowserDevelopmentWebpack --no-daemon --no-configuration-cache
+          # Keep Wasm and compatibility JS in separate Gradle processes. Both
+          # compilers in one 2 GiB JVM can retain enough IR to exhaust CI RAM.
+          ./gradlew :server:installDist :webApp:wasmJsBrowserDevelopmentWebpack --no-daemon --no-configuration-cache --max-workers=1
+          ./gradlew :webApp:jsBrowserDevelopmentWebpack --no-daemon --no-configuration-cache --max-workers=1
 
       - name: Test Web against an isolated in-memory backend
         working-directory: e2e
