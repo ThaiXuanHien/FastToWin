@@ -62,7 +62,14 @@ export default defineConfig({
     {
       name: 'firefox-smoke',
       testMatch: /browser-smoke\.spec\.mjs/,
-      use: { browserName: 'firefox', viewport: { width: 390, height: 844 } },
+      // Compose for Web renders through WebGL2. Firefox disables WebGL2 in its
+      // Linux headless process, so CI supplies a virtual display for the real
+      // headed browser instead of testing against a permanently blank canvas.
+      use: {
+        browserName: 'firefox',
+        headless: process.env.CI ? false : true,
+        viewport: { width: 390, height: 844 },
+      },
     },
     {
       name: 'webkit-smoke',

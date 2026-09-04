@@ -17,7 +17,7 @@ export const test = base.extend({
         account,
         accessToken: session.accessToken,
         errors: [],
-        expectedNavigationAbort: false,
+        expectedNavigationAbortUntil: 0,
         blocked: false,
         sockets: new Set(),
       };
@@ -53,18 +53,34 @@ export const test = base.extend({
       actor.page = await context.newPage();
       actor.page.on('pageerror', error => {
         // WebKit reports an in-flight fetch cancelled by an explicit reload/
-        // history navigation as a generic page error. Ignore it only while the
-        // test is performing that navigation; real fetch errors still fail.
-        if (actor.expectedNavigationAbort && error.message === 'Load failed') return;
-        actor.errors.push(error.message);
+        // history navigation as page errors. It can arrive just after the
+        // navigation promise settles on slower CI runners, so keep a short
+        // grace window and accept only known cancellation-shaped messages.
+        const message = error.message;
+        const webKitNavigationCancellation =
+          ['Load failed', 'The I/O read operation failed.'].includes(message) ||
+          (/^\/(?:localhost|127\.0\.0\.1):\d+\/composeResources\/.* due to access control checks\.$/.test(message)) ||
+          (message.startsWith('Fatal exception in coroutines machinery for AwaitContinuation(') &&
+            message.includes('{Cancelled}'));
+        const expectedWebKitAbort =
+          testInfo.project.use.browserName === 'webkit' &&
+          Date.now() <= actor.expectedNavigationAbortUntil &&
+          webKitNavigationCancellation;
+        if (expectedWebKitAbort) return;
+        actor.errors.push(message);
       });
       actor.navigate = async action => {
-        actor.expectedNavigationAbort = testInfo.project.use.browserName === 'webkit';
+        if (testInfo.project.use.browserName === 'webkit') {
+          actor.expectedNavigationAbortUntil = Date.now() + 3_000;
+        }
         try {
           return await action();
         } finally {
-          await actor.page.waitForTimeout(250);
-          actor.expectedNavigationAbort = false;
+          // The pageerror event is delivered asynchronously after the load has
+          // been cancelled; extend, rather than clear, the narrow grace window.
+          if (testInfo.project.use.browserName === 'webkit') {
+            actor.expectedNavigationAbortUntil = Date.now() + 1_500;
+          }
         }
       };
       return actor;

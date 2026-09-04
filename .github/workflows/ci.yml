@@ -130,7 +130,9 @@ jobs:
 
       - name: Test Web against an isolated in-memory backend
         working-directory: e2e
-        run: pnpm test
+        # Firefox needs a display-backed WebGL2 context for Compose's canvas.
+        # Playwright's --with-deps install provides Xvfb on Linux runners.
+        run: xvfb-run --auto-servernum pnpm test
 
       - name: Upload Web E2E report and failure diagnostics
         if: always()
