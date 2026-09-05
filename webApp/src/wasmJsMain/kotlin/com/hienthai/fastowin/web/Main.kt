@@ -12,6 +12,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.ComposeViewport
 import androidx.compose.runtime.remember
 import com.hienthai.fastowin.FastToWinApp
+import com.hienthai.fastowin.data.network.AuthRequestConfigurator
+import io.ktor.client.fetchOptions
+import io.ktor.client.request.header
+import kotlin.js.toJsString
 
 @OptIn(ExperimentalComposeUiApi::class)
 fun main() {
@@ -28,6 +32,7 @@ fun main() {
                     authSessionStore = WebAuthSessionStore(),
                     preferencesStore = WebAppPreferencesStore(),
                     devicePlatform = "web",
+                    authRequestConfigurator = WebCookieAuthRequestConfigurator,
                     navigationBridge = remember { WebAppNavigationBridge() },
                     updateBridge = remember { WebAppUpdateBridge() },
                     installBridge = remember { WebAppInstallBridge() },
@@ -39,5 +44,13 @@ fun main() {
 }
 
 private fun configuredServerUrl(): String = js(
-    "(window.FASTTOWIN_CONFIG && window.FASTTOWIN_CONFIG.serverUrl) || 'ws://127.0.0.1:8080/game'"
+    "(window.FASTTOWIN_CONFIG && window.FASTTOWIN_CONFIG.serverUrl) || 'ws://localhost:8080/game'"
 )
+
+private val WebCookieAuthRequestConfigurator = AuthRequestConfigurator { request ->
+    request.header("X-FastToWin-Web-Session", "1")
+    request.header("X-FastToWin-CSRF", "1")
+    request.fetchOptions {
+        credentials = "include".toJsString()
+    }
+}

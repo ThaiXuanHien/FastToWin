@@ -84,6 +84,8 @@ import com.hienthai.fastowin.navigation.ResultNavigationActions
 import com.hienthai.fastowin.state.PracticeChallenge
 import com.hienthai.fastowin.state.createPracticeChallenge
 import com.hienthai.fastowin.state.parsePracticeChallenge
+import com.hienthai.fastowin.data.network.AuthRequestConfigurator
+import com.hienthai.fastowin.data.network.NoOpAuthRequestConfigurator
 import com.hienthai.fastowin.ui.components.FastToWinHeader
 import com.hienthai.fastowin.ui.components.ArcadeBackdrop
 import com.hienthai.fastowin.ui.components.AvatarImageProvider
@@ -98,6 +100,7 @@ fun FastToWinApp(
     authSessionStore: AuthSessionStore,
     preferencesStore: AppPreferencesStore,
     devicePlatform: String,
+    authRequestConfigurator: AuthRequestConfigurator = NoOpAuthRequestConfigurator,
     fcmToken: String? = null,
     navigationBridge: AppNavigationBridge = NoOpAppNavigationBridge,
     updateBridge: AppUpdateBridge = NoOpAppUpdateBridge,
@@ -112,12 +115,13 @@ fun FastToWinApp(
     var serviceReachable by remember(serverUrl) { mutableStateOf<Boolean?>(null) }
     var serviceStatusRefreshKey by rememberSaveable(serverUrl) { mutableStateOf(0) }
     var launchOfflinePractice by rememberSaveable { mutableStateOf(false) }
-    val authController = remember(serverUrl, authSessionStore, devicePlatform) {
+    val authController = remember(serverUrl, authSessionStore, devicePlatform, authRequestConfigurator) {
         AuthController(
             serverUrl = serverUrl,
             store = authSessionStore,
             resumeTokenStore = resumeTokenStore,
             devicePlatform = devicePlatform,
+            requestConfigurator = authRequestConfigurator,
             initialGuestSession = restoreGuestSession
         )
     }

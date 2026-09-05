@@ -1,5 +1,5 @@
 globalThis.FASTTOWIN_CONFIG = {
-    serverUrl: "ws://127.0.0.1:8080/game",
+    serverUrl: "ws://localhost:8080/game",
     // Public Firebase Web configuration. Không đặt service-account/private key tại đây.
     firebase: {
         apiKey: "AIzaSyA8hAGqhwtR3WqVWmVgidGHTf9Kt4dtkc0",

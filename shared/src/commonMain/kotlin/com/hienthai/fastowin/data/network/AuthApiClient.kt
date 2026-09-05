@@ -24,6 +24,7 @@ import io.ktor.client.HttpClient
 import io.ktor.client.call.body
 import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
+import io.ktor.client.request.HttpRequestBuilder
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
 import io.ktor.http.ContentType
@@ -31,7 +32,16 @@ import io.ktor.http.isSuccess
 import io.ktor.http.contentType
 import io.ktor.serialization.kotlinx.json.json
 
-class AuthApiClient(serverUrl: String) {
+fun interface AuthRequestConfigurator {
+    fun configure(request: HttpRequestBuilder)
+}
+
+val NoOpAuthRequestConfigurator = AuthRequestConfigurator { }
+
+class AuthApiClient(
+    serverUrl: String,
+    private val requestConfigurator: AuthRequestConfigurator = NoOpAuthRequestConfigurator
+) {
     private val baseUrl = serverUrl.toHttpBaseUrl()
     private val client = HttpClient {
         install(ContentNegotiation) { json(ProtocolJson) }
@@ -71,6 +81,7 @@ class AuthApiClient(serverUrl: String) {
 
     suspend fun logout(refreshToken: String) {
         val response = client.post("$baseUrl/auth/logout") {
+            requestConfigurator.configure(this)
             contentType(ContentType.Application.Json)
             setBody(LogoutRequest(refreshToken))
         }
@@ -137,6 +148,7 @@ class AuthApiClient(serverUrl: String) {
 
     private suspend inline fun <reified T : Any> execute(url: String, request: T): AuthSessionResponse {
         val response = client.post(url) {
+            requestConfigurator.configure(this)
             contentType(ContentType.Application.Json)
             setBody(request)
         }
@@ -146,6 +158,7 @@ class AuthApiClient(serverUrl: String) {
 
     private suspend inline fun <reified T : Any> executeAction(url: String, request: T): AccountActionResponse {
         val response = client.post(url) {
+            requestConfigurator.configure(this)
             contentType(ContentType.Application.Json)
             setBody(request)
         }
@@ -158,6 +171,7 @@ class AuthApiClient(serverUrl: String) {
         request: Request
     ): Response {
         val response = client.post(url) {
+            requestConfigurator.configure(this)
             contentType(ContentType.Application.Json)
             setBody(request)
         }

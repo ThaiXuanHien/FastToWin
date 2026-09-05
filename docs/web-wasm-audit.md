@@ -11,7 +11,7 @@ Module `webApp` là điểm khởi chạy trình duyệt, còn `shared` tiếp t
 | Compose UI và theme 2D Arcade | Dùng chung | Render bằng `ComposeViewport`, viewport co giãn theo cửa sổ |
 | HTTP API | Dùng chung | Ktor client Wasm dùng Fetch; backend đã bật CORS trong dev |
 | WebSocket game | Dùng chung | Giữ nguyên `/game` và serialization hiện tại |
-| Đăng nhập và resume token | Có bản web | Lưu trong `localStorage` để không mất khi tải lại trang |
+| Đăng nhập và resume token | Có bản web | Refresh token nằm trong cookie `HttpOnly`; access token chỉ nằm trong bộ nhớ; metadata hồ sơ tối thiểu nằm trong `localStorage` |
 | Cài đặt giao diện | Có bản web | Lưu trong `localStorage` |
 | Âm thanh trận đấu | Có bản web | Dùng Web Audio sau tương tác đầu tiên để tuân thủ autoplay policy |
 | Tải avatar từ máy | Có bản web | Dùng File API, resize và nén ảnh trước khi upload |
@@ -35,7 +35,7 @@ Module `webApp` là điểm khởi chạy trình duyệt, còn `shared` tiếp t
 | Hạng mục | Hiện tại | Hướng triển khai |
 | --- | --- | --- |
 | Mua Gem | Nút bị vô hiệu hóa và có thông báo | Chọn cổng thanh toán web rồi thêm verifier riêng ở backend |
-| Đăng nhập production | Token đang ở `localStorage` | Trước production nên chuyển refresh token sang cookie `HttpOnly`, `Secure`, `SameSite` |
+| Đăng nhập production | Đã bảo vệ | Cookie host-only `HttpOnly`, `Secure`, `SameSite=Strict`, kiểm tra `Origin` và custom CSRF header; phiên Web cũ yêu cầu đăng nhập lại một lần |
 
 ## Kiểm thử bắt buộc trước khi phát hành
 

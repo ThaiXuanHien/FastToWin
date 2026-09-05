@@ -69,7 +69,7 @@ Danh mục bán hiện tại: Gem, Mặt bài Hoàng Kim, Mặt bài Kim Cương
 - [x] Dịch vụ SMTP production cho quên mật khẩu; token chỉ hiển thị ở dev.
 - [x] Xác minh địa chỉ email bằng mã 6 số và giới hạn gửi lại/thử mã.
 - [x] Mẫu triển khai domain, HTTPS/WSS, CORS allowlist và Docker secrets.
-- [ ] Bảo vệ phiên Web: đánh giá chuyển refresh token từ `localStorage` sang cookie `HttpOnly`, `Secure`, `SameSite`.
+- [x] Bảo vệ phiên Web: refresh token dùng cookie host-only `HttpOnly`, `Secure`, `SameSite=Strict`; access token chỉ nằm trong bộ nhớ và request cookie được kiểm tra `Origin`/CSRF.
 - [ ] Chốt quy trình phát hành, rollback, bảo trì và kiểm tra sức khỏe dịch vụ.
 
 ## 6. Hạ tầng khi mở rộng

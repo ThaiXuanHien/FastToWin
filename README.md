@@ -360,7 +360,7 @@ $env:JAVA_HOME='C:\Program Files\Android\Android Studio\jbr'
 .\gradlew.bat :webApp:wasmJsBrowserDevelopmentRun
 ```
 
-Web development chạy tại `http://localhost:8081` và mặc định kết nối `ws://127.0.0.1:8080/game`. Có thể thay backend trong `webApp/src/wasmJsMain/resources/config.js` mà không sửa UI dùng chung.
+Web development chạy tại `http://localhost:8081` và mặc định kết nối `ws://localhost:8080/game`. Có thể thay backend trong `webApp/src/wasmJsMain/resources/config.js` mà không sửa UI dùng chung. Nên dùng cùng hostname `localhost` cho cả hai cổng để cookie phiên đăng nhập hoạt động đúng chính sách `SameSite` của trình duyệt.
 
 Để kiểm tra riêng bản JavaScript fallback trên trình duyệt không hỗ trợ WasmGC:
 

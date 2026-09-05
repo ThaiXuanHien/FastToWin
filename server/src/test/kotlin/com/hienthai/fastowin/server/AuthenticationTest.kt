@@ -21,11 +21,13 @@ import com.hienthai.fastowin.protocol.RevokeAllAccountSessionsRequest
 import io.ktor.client.statement.HttpResponse
 import io.ktor.client.statement.bodyAsText
 import io.ktor.client.request.post
+import io.ktor.client.request.header
 import io.ktor.client.request.setBody
 import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.contentType
+import io.ktor.http.parseServerSetCookieHeader
 import io.ktor.server.testing.testApplication
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.decodeFromString
@@ -36,6 +38,106 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class AuthenticationTest {
+    @Test
+    fun `web refresh token stays in protected cookie and requires csrf headers`() = testApplication {
+        application {
+            gameModule(
+                environment = "prod",
+                allowedWebOriginsValue = "https://play.fasttowin.vn"
+            )
+        }
+
+        val registered = client.postWebJson(
+            "/auth/register",
+            RegisterRequest("web-cookie@example.com", PASSWORD, "Web player", "web")
+        )
+        assertEquals(HttpStatusCode.Created, registered.status)
+        val session = registered.decode<AuthSessionResponse>()
+        assertTrue(session.accessToken.isNotBlank())
+        assertEquals("", session.refreshToken)
+
+        val initialCookie = parseServerSetCookieHeader(
+            requireNotNull(registered.headers.getAll(HttpHeaders.SetCookie)?.single())
+        )
+        assertEquals("__Host-fasttowin_refresh", initialCookie.name)
+        assertTrue(initialCookie.value.isNotBlank())
+        assertTrue(initialCookie.httpOnly)
+        assertTrue(initialCookie.secure)
+        assertEquals("/", initialCookie.path)
+        assertNull(initialCookie.domain)
+        assertEquals("Strict", initialCookie.extensions["SameSite"])
+        assertTrue(requireNotNull(initialCookie.maxAge) > 0)
+
+        val missingCsrf = client.post("/auth/refresh") {
+            header(HttpHeaders.Origin, WEB_ORIGIN)
+            header("X-FastToWin-Web-Session", "1")
+            header(HttpHeaders.Cookie, "${initialCookie.name}=${initialCookie.value}")
+            contentType(ContentType.Application.Json)
+            setBody(ProtocolJson.encodeToString(RefreshTokenRequest("")))
+        }
+        assertEquals(HttpStatusCode.Forbidden, missingCsrf.status)
+        assertEquals("INVALID_WEB_SESSION_REQUEST", missingCsrf.decode<AuthErrorResponse>().code)
+
+        val refreshed = client.postWebJson(
+            "/auth/refresh",
+            RefreshTokenRequest(""),
+            cookie = initialCookie
+        )
+        assertEquals(HttpStatusCode.OK, refreshed.status)
+        assertEquals("", refreshed.decode<AuthSessionResponse>().refreshToken)
+        val rotatedCookie = parseServerSetCookieHeader(
+            requireNotNull(refreshed.headers.getAll(HttpHeaders.SetCookie)?.single())
+        )
+        assertNotEquals(initialCookie.value, rotatedCookie.value)
+
+        val logout = client.postWebJson(
+            "/auth/logout",
+            LogoutRequest(""),
+            cookie = rotatedCookie
+        )
+        assertEquals(HttpStatusCode.NoContent, logout.status)
+        val clearedCookie = parseServerSetCookieHeader(
+            requireNotNull(logout.headers.getAll(HttpHeaders.SetCookie)?.single())
+        )
+        assertEquals(0, clearedCookie.maxAge)
+
+        val native = client.postJson(
+            "/auth/register",
+            RegisterRequest("native-cookie@example.com", PASSWORD, "Native player", "android")
+        )
+        assertTrue(native.decode<AuthSessionResponse>().refreshToken.isNotBlank())
+        assertNull(native.headers[HttpHeaders.SetCookie])
+    }
+
+    @Test
+    fun `web login rejects a missing or foreign origin`() = testApplication {
+        application {
+            gameModule(
+                environment = "prod",
+                allowedWebOriginsValue = "https://play.fasttowin.vn"
+            )
+        }
+
+        val missingHeaders = client.postJson(
+            "/auth/register",
+            RegisterRequest("legacy-web@example.com", PASSWORD, "Legacy Web", "web")
+        )
+        assertEquals(HttpStatusCode.Forbidden, missingHeaders.status)
+
+        val foreignOrigin = client.post("/auth/register") {
+            header(HttpHeaders.Origin, "https://evil.example")
+            header("X-FastToWin-Web-Session", "1")
+            header("X-FastToWin-CSRF", "1")
+            contentType(ContentType.Application.Json)
+            setBody(
+                ProtocolJson.encodeToString(
+                    RegisterRequest("foreign-web@example.com", PASSWORD, "Foreign Web", "web")
+                )
+            )
+        }
+        assertEquals(HttpStatusCode.Forbidden, foreignOrigin.status)
+    }
+
     @Test
     fun `new login revokes previous device and keeps only current session`() = testApplication {
         application { gameModule(environment = "dev") }
@@ -422,6 +524,19 @@ class AuthenticationTest {
             setBody(ProtocolJson.encodeToString(body))
         }
 
+    private suspend inline fun <reified T> io.ktor.client.HttpClient.postWebJson(
+        path: String,
+        body: T,
+        cookie: io.ktor.http.Cookie? = null
+    ) = post(path) {
+        header(HttpHeaders.Origin, WEB_ORIGIN)
+        header("X-FastToWin-Web-Session", "1")
+        header("X-FastToWin-CSRF", "1")
+        if (cookie != null) header(HttpHeaders.Cookie, "${cookie.name}=${cookie.value}")
+        contentType(ContentType.Application.Json)
+        setBody(ProtocolJson.encodeToString(body))
+    }
+
     private suspend inline fun <reified T> HttpResponse.decode(): T =
         ProtocolJson.decodeFromString(bodyAsText())
 
@@ -429,6 +544,7 @@ class AuthenticationTest {
         const val PASSWORD = "strong-password-123"
         const val NEW_PASSWORD = "new-strong-password-456"
         const val RESET_PASSWORD = "reset-strong-password-789"
+        const val WEB_ORIGIN = "https://play.fasttowin.vn"
     }
 
     private class RecordingAuthEmailSender : AuthEmailSender {

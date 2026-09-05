@@ -34,7 +34,13 @@ try {
 }
 const java = process.env.JAVA_HOME
   ? join(process.env.JAVA_HOME, 'bin', process.platform === 'win32' ? 'java.exe' : 'java') : 'java';
-const serverEnv = { ...process.env, FASTTOWIN_ENV: 'dev', SERVER_HOST: apiURL.hostname, PORT: apiURL.port };
+const serverEnv = {
+  ...process.env,
+  FASTTOWIN_ENV: 'dev',
+  FASTTOWIN_WEB_ORIGINS: baseURL.origin,
+  SERVER_HOST: apiURL.hostname,
+  PORT: apiURL.port,
+};
 // A fresh in-memory backend; do not inherit production/dev DB or push credentials.
 for (const key of Object.keys(serverEnv)) {
   if (/^(DATABASE_|TEST_DATABASE_|FIREBASE_|GOOGLE_APPLICATION_CREDENTIALS$|FASTTOWIN_MAINTENANCE)/.test(key)) {

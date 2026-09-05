@@ -3,6 +3,8 @@ package com.hienthai.fastowin.state
 import com.hienthai.fastowin.data.network.AuthApiClient
 import com.hienthai.fastowin.data.network.AuthApiException
 import com.hienthai.fastowin.data.network.AuthSessionStore
+import com.hienthai.fastowin.data.network.AuthRequestConfigurator
+import com.hienthai.fastowin.data.network.NoOpAuthRequestConfigurator
 import com.hienthai.fastowin.data.network.StoredAuthSession
 import com.hienthai.fastowin.data.network.ResumeTokenStore
 import com.hienthai.fastowin.protocol.PlayerGender
@@ -41,7 +43,8 @@ class AuthController(
     private val resumeTokenStore: ResumeTokenStore,
     private val devicePlatform: String,
     private val initialGuestSession: Boolean = false,
-    private val api: AuthApiClient = AuthApiClient(serverUrl)
+    private val requestConfigurator: AuthRequestConfigurator = NoOpAuthRequestConfigurator,
+    private val api: AuthApiClient = AuthApiClient(serverUrl, requestConfigurator)
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val initialSession = store.load(serverUrl).let { stored ->

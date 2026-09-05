@@ -25,6 +25,7 @@ import com.hienthai.fastowin.protocol.SESSION_REPLACED_CLOSE_REASON
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpMethod
 import io.ktor.http.HttpStatusCode
+import io.ktor.http.CookieEncoding
 import io.ktor.server.application.ApplicationCall
 import io.ktor.server.application.Application
 import io.ktor.server.application.call
@@ -34,6 +35,9 @@ import io.ktor.server.plugins.cors.routing.CORS
 import io.ktor.server.plugins.forwardedheaders.XForwardedHeaders
 import io.ktor.server.plugins.origin
 import io.ktor.server.request.receive
+import io.ktor.server.request.cookies
+import io.ktor.server.request.header
+import io.ktor.server.response.cookies
 import io.ktor.server.response.header
 import io.ktor.server.response.respond
 import io.ktor.server.response.respondText
@@ -75,9 +79,16 @@ fun Application.gameModule(
     seasonLifecycleRepository: SeasonLifecycleRepository = NoOpSeasonLifecycleRepository,
     pushReminderService: PushReminderService = NoOpPushReminderService,
     serviceStatusProvider: () -> ServiceStatusResponse = ::serviceStatusFromEnvironment,
+    allowedWebOriginsValue: String? = System.getenv("FASTTOWIN_WEB_ORIGINS"),
     websocketPingPeriod: Duration = DEFAULT_WEBSOCKET_PING_PERIOD,
     websocketPongTimeout: Duration = DEFAULT_WEBSOCKET_PONG_TIMEOUT
 ) {
+    val isProduction = environment != "dev"
+    val allowedWebOrigins = buildAllowedWebOrigins(
+        environment = environment,
+        configuredOrigins = allowedWebOriginsValue
+    )
+    val webSessionCookies = WebSessionCookieConfiguration(isProduction)
     if (trustProxyHeaders) {
         install(XForwardedHeaders)
     }
@@ -89,12 +100,11 @@ fun Application.gameModule(
         allowMethod(HttpMethod.Post)
         allowMethod(HttpMethod.Options)
         allowHeader(HttpHeaders.ContentType)
-        if (environment == "dev") {
-            anyHost()
-        } else {
-            parseAllowedWebOrigins(System.getenv("FASTTOWIN_WEB_ORIGINS"), requireHttps = true).forEach { origin ->
-                allowHost(origin.authority, schemes = listOf(origin.scheme))
-            }
+        allowHeader(WEB_SESSION_HEADER)
+        allowHeader(WEB_CSRF_HEADER)
+        allowCredentials = true
+        allowedWebOrigins.forEach { origin ->
+            allowHost(origin.authority, schemes = listOf(origin.scheme))
         }
     }
     install(WebSockets) {
@@ -163,6 +173,8 @@ fun Application.gameModule(
 
         post("/auth/register") {
             val request = call.receiveOrReject<RegisterRequest>() ?: return@post
+            val webSession = call.resolveWebSessionRequest(request.devicePlatform, allowedWebOrigins)
+                ?: return@post
             call.respondAuthResult(
                 authService.register(
                     request.email,
@@ -171,7 +183,9 @@ fun Application.gameModule(
                     request.devicePlatform,
                     request.gender
                 ),
-                successStatus = HttpStatusCode.Created
+                successStatus = HttpStatusCode.Created,
+                webSession = webSession,
+                cookieConfiguration = webSessionCookies
             )
         }
 
@@ -191,6 +205,8 @@ fun Application.gameModule(
                 rateLimitPolicies.loginPerAccount
             )
             if (!accountAllowed) return@post
+            val webSession = call.resolveWebSessionRequest(request.devicePlatform, allowedWebOrigins)
+                ?: return@post
             val result = authService.login(request.email, request.password, request.devicePlatform)
             if (result is AuthResult.Success) {
                 // A successful login owns the account from this point forward.
@@ -206,29 +222,52 @@ fun Application.gameModule(
                     }
                 }
             }
-            call.respondAuthResult(result)
+            call.respondAuthResult(result, webSession = webSession, cookieConfiguration = webSessionCookies)
         }
 
         post("/auth/upgrade-guest") {
             val request = call.receiveOrReject<UpgradeGuestRequest>() ?: return@post
+            val webSession = call.resolveWebSessionRequest(request.devicePlatform, allowedWebOrigins)
+                ?: return@post
             call.respondAuthResult(
                 authService.upgradeGuest(
                     request.resumeToken,
                     request.email,
                     request.password,
                     request.devicePlatform
-                )
+                ),
+                webSession = webSession,
+                cookieConfiguration = webSessionCookies
             )
         }
 
         post("/auth/refresh") {
             val request = call.receiveOrReject<RefreshTokenRequest>() ?: return@post
-            call.respondAuthResult(authService.refresh(request.refreshToken))
+            val webSession = call.resolveWebSessionRequest(null, allowedWebOrigins) ?: return@post
+            val refreshToken = if (webSession) {
+                call.request.cookies[webSessionCookies.name].orEmpty()
+            } else {
+                request.refreshToken
+            }
+            val result = authService.refresh(refreshToken)
+            call.respondAuthResult(
+                result,
+                webSession = webSession,
+                cookieConfiguration = webSessionCookies,
+                clearCookieOnFailure = webSession
+            )
         }
 
         post("/auth/logout") {
             val request = call.receiveOrReject<LogoutRequest>() ?: return@post
-            authService.logout(request.refreshToken)
+            val webSession = call.resolveWebSessionRequest(null, allowedWebOrigins) ?: return@post
+            val refreshToken = if (webSession) {
+                call.request.cookies[webSessionCookies.name].orEmpty()
+            } else {
+                request.refreshToken
+            }
+            authService.logout(refreshToken)
+            if (webSession) call.clearWebSessionCookie(webSessionCookies)
             call.respond(HttpStatusCode.NoContent)
         }
 
@@ -688,22 +727,128 @@ private suspend inline fun <reified T : Any> ApplicationCall.receiveOrReject(): 
 
 private suspend fun ApplicationCall.respondAuthResult(
     result: AuthResult,
-    successStatus: HttpStatusCode = HttpStatusCode.OK
+    successStatus: HttpStatusCode = HttpStatusCode.OK,
+    webSession: Boolean = false,
+    cookieConfiguration: WebSessionCookieConfiguration? = null,
+    clearCookieOnFailure: Boolean = false
 ) {
     when (result) {
-        is AuthResult.Success -> respond(successStatus, result.session)
-        is AuthResult.Failure -> respond(
-            when (result.code) {
-                "EMAIL_ALREADY_EXISTS" -> HttpStatusCode.Conflict
-                "INVALID_CREDENTIALS", "INVALID_REFRESH_TOKEN", "INVALID_GUEST_SESSION" ->
-                    HttpStatusCode.Unauthorized
-                "DATABASE_REQUIRED" -> HttpStatusCode.ServiceUnavailable
-                else -> HttpStatusCode.BadRequest
-            },
-            AuthErrorResponse(result.code, result.message)
-        )
+        is AuthResult.Success -> {
+            response.header(HttpHeaders.CacheControl, "no-store")
+            if (webSession) {
+                val configuration = requireNotNull(cookieConfiguration)
+                setWebSessionCookie(configuration, result.session)
+                respond(successStatus, result.session.copy(refreshToken = ""))
+            } else {
+                respond(successStatus, result.session)
+            }
+        }
+        is AuthResult.Failure -> {
+            if (clearCookieOnFailure && cookieConfiguration != null) {
+                clearWebSessionCookie(cookieConfiguration)
+            }
+            respond(
+                when (result.code) {
+                    "EMAIL_ALREADY_EXISTS" -> HttpStatusCode.Conflict
+                    "INVALID_CREDENTIALS", "INVALID_REFRESH_TOKEN", "INVALID_GUEST_SESSION" ->
+                        HttpStatusCode.Unauthorized
+                    "DATABASE_REQUIRED" -> HttpStatusCode.ServiceUnavailable
+                    else -> HttpStatusCode.BadRequest
+                },
+                AuthErrorResponse(result.code, result.message)
+            )
+        }
     }
 }
+
+private data class WebSessionCookieConfiguration(val production: Boolean) {
+    val name: String = if (production) "__Host-fasttowin_refresh" else "fasttowin_refresh_dev"
+}
+
+private fun buildAllowedWebOrigins(
+    environment: String,
+    configuredOrigins: String?
+): List<AllowedWebOrigin> {
+    val configured = parseAllowedWebOrigins(configuredOrigins, requireHttps = environment != "dev")
+    if (environment != "dev") return configured
+    return (configured + DEV_WEB_ORIGINS).distinct()
+}
+
+private suspend fun ApplicationCall.resolveWebSessionRequest(
+    devicePlatform: String?,
+    allowedOrigins: List<AllowedWebOrigin>
+): Boolean? {
+    val hasWebHeader = request.header(WEB_SESSION_HEADER) == WEB_SESSION_HEADER_VALUE
+    val isWebPlatform = devicePlatform?.trim()?.equals("web", ignoreCase = true) == true
+    if (isWebPlatform && !hasWebHeader) {
+        rejectWebSessionRequest()
+        return null
+    }
+    if (!hasWebHeader) return false
+
+    val origin = request.header(HttpHeaders.Origin)
+    val csrfHeader = request.header(WEB_CSRF_HEADER)
+    val allowed = origin != null &&
+        csrfHeader == WEB_CSRF_HEADER_VALUE &&
+        allowedOrigins.any { "${it.scheme}://${it.authority}".equals(origin, ignoreCase = true) }
+    if (!allowed) {
+        rejectWebSessionRequest()
+        return null
+    }
+    return true
+}
+
+private suspend fun ApplicationCall.rejectWebSessionRequest() {
+    respond(
+        HttpStatusCode.Forbidden,
+        AuthErrorResponse(
+            code = "INVALID_WEB_SESSION_REQUEST",
+            message = "Yêu cầu phiên Web không hợp lệ. Vui lòng tải lại trang."
+        )
+    )
+}
+
+private fun ApplicationCall.setWebSessionCookie(
+    configuration: WebSessionCookieConfiguration,
+    session: com.hienthai.fastowin.protocol.AuthSessionResponse
+) {
+    val maxAgeSeconds = ((session.refreshExpiresAtEpochMillis - System.currentTimeMillis()) / 1_000L)
+        .coerceAtLeast(1L)
+    response.cookies.append(
+        name = configuration.name,
+        value = session.refreshToken,
+        encoding = CookieEncoding.RAW,
+        maxAge = maxAgeSeconds,
+        path = "/",
+        secure = configuration.production,
+        httpOnly = true,
+        extensions = mapOf("SameSite" to "Strict")
+    )
+}
+
+private fun ApplicationCall.clearWebSessionCookie(configuration: WebSessionCookieConfiguration) {
+    response.cookies.append(
+        name = configuration.name,
+        value = "",
+        encoding = CookieEncoding.RAW,
+        maxAge = 0,
+        path = "/",
+        secure = configuration.production,
+        httpOnly = true,
+        extensions = mapOf("SameSite" to "Strict")
+    )
+}
+
+private const val WEB_SESSION_HEADER = "X-FastToWin-Web-Session"
+private const val WEB_SESSION_HEADER_VALUE = "1"
+private const val WEB_CSRF_HEADER = "X-FastToWin-CSRF"
+private const val WEB_CSRF_HEADER_VALUE = "1"
+private val DEV_WEB_ORIGINS = listOf(
+    AllowedWebOrigin("localhost:8081", "http"),
+    AllowedWebOrigin("localhost:8082", "http"),
+    AllowedWebOrigin("127.0.0.1:8081", "http"),
+    AllowedWebOrigin("127.0.0.1:8082", "http")
+)
 
 private suspend fun ApplicationCall.respondAccountAction(
     result: AccountActionResult,
