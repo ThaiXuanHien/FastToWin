@@ -47,10 +47,13 @@ chưa nằm trong phạm vi.
 
 ### 3.1 Catalog Kotlin dùng chung
 
-Ứng dụng dùng catalog Kotlin trong `shared/commonMain`, không dựa vào locale ngầm
-định của `stringResource()`. Lý do là lựa chọn ngôn ngữ trong ứng dụng phải đổi
-ngay và đồng nhất trên Web/iOS; API override locale của Compose Multiplatform chưa
-đảm bảo hành vi này trên mọi target.
+Ứng dụng dùng catalog Kotlin thuần trong `protocol/commonMain`, không dựa vào
+locale ngầm định của `stringResource()`. Cả client và backend đều đã phụ thuộc
+`protocol`, nên vị trí này cho phép dùng chung key, template và quy tắc format mà
+không tạo phụ thuộc vòng vào module UI `shared`. Lớp tích hợp Compose nằm trong
+`shared/commonMain`. Lý do chọn catalog chủ động là lựa chọn ngôn ngữ trong ứng
+dụng phải đổi ngay và đồng nhất trên Web/iOS; API override locale của Compose
+Multiplatform chưa đảm bảo hành vi này trên mọi target.
 
 Các thành phần chính:
 
@@ -60,10 +63,11 @@ Các thành phần chính:
 - `QuantityKey`: tập khóa số lượng cần quy tắc số ít/số nhiều.
 - `LocalizationCatalog`: cung cấp `text(TextKey, arguments)` và
   `quantity(QuantityKey, count, arguments)` theo ngôn ngữ đã resolve.
-- `LocalLocalization`: `CompositionLocal` đặt tại gốc `FastToWinApp`, để tất cả
-  composable đọc cùng catalog và tự recompose khi lựa chọn thay đổi.
-- `LocalizationService`: API không phụ thuộc Compose cho controller, router,
-  mapper thông báo và các luồng chạy ngoài composition.
+- `LocalizationService`: API thuần Kotlin trong `protocol` cho backend,
+  controller, router, mapper thông báo và các luồng chạy ngoài composition.
+- `LocalLocalization`: adapter Compose trong `shared`, đặt tại gốc
+  `FastToWinApp`, để tất cả composable đọc cùng service và tự recompose khi lựa
+  chọn thay đổi.
 
 Catalog tiếng Anh là fallback bắt buộc. Mỗi catalog khác chỉ được build khi đủ
 100% khóa. Không được hiển thị tên khóa hoặc chuỗi rỗng cho người chơi.
