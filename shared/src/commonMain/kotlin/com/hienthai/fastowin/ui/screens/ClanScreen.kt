@@ -79,11 +79,14 @@ import com.hienthai.fastowin.ui.components.ArcadeDialog
 import com.hienthai.fastowin.ui.components.ArcadeEmptyState
 import com.hienthai.fastowin.ui.components.ArcadeFeatureHero
 import com.hienthai.fastowin.ui.components.ArcadeIconHero
+import com.hienthai.fastowin.ui.components.ArcadeLoadMoreButton
 import com.hienthai.fastowin.ui.components.ArcadePanel
 import com.hienthai.fastowin.ui.components.CrossedSwordsIcon
+import com.hienthai.fastowin.ui.components.DEFAULT_ARCADE_PAGE_SIZE
 import com.hienthai.fastowin.ui.components.FastToWinHeader
 import com.hienthai.fastowin.ui.components.RewardAmounts
 import com.hienthai.fastowin.ui.components.SystemBackHandler
+import com.hienthai.fastowin.ui.components.nextArcadePageItemCount
 import com.hienthai.fastowin.ui.layout.ResponsiveScreen
 import com.hienthai.fastowin.ui.theme.ArcadePalette
 
@@ -186,6 +189,8 @@ private fun ClanDiscoveryView(
 ) {
     var showCreateDialog by remember { mutableStateOf(false) }
     var searchQuery by remember { mutableStateOf("") }
+    var visibleClanCount by remember { mutableStateOf(DEFAULT_ARCADE_PAGE_SIZE) }
+    val visibleClans = clanList.take(visibleClanCount)
 
     LazyColumn(
         modifier = modifier.testTag("clan_discovery_list"),
@@ -214,7 +219,10 @@ private fun ClanDiscoveryView(
                 leadingIcon = { Icon(Icons.Rounded.Search, contentDescription = null) },
                 trailingIcon = {
                     IconButton(
-                        onClick = { onSearch(searchQuery.trim().takeIf(String::isNotEmpty)) },
+                        onClick = {
+                            visibleClanCount = DEFAULT_ARCADE_PAGE_SIZE
+                            onSearch(searchQuery.trim().takeIf(String::isNotEmpty))
+                        },
                         modifier = Modifier.semantics { contentDescription = "Tìm kiếm bang hội" }
                     ) {
                         Icon(Icons.Rounded.Search, contentDescription = null)
@@ -249,11 +257,21 @@ private fun ClanDiscoveryView(
                 )
             }
         } else {
-            items(clanList, key = { "clan:${it.id}" }) { clan ->
+            items(visibleClans, key = { "clan:${it.id}" }) { clan ->
                 ClanSummaryCard(
                     clan = clan,
                     isPending = clan.id in pendingJoinClanIds,
                     onJoin = { onJoinClan(clan.id) }
+                )
+            }
+            item(key = "clan_discovery_load_more") {
+                ArcadeLoadMoreButton(
+                    visibleItemCount = visibleClans.size,
+                    totalItemCount = clanList.size,
+                    onLoadMore = {
+                        visibleClanCount = nextArcadePageItemCount(visibleClanCount, clanList.size)
+                    },
+                    testTag = "clan_discovery_load_more"
                 )
             }
         }
@@ -397,8 +415,11 @@ fun ClanDetailView(
     modifier: Modifier = Modifier
 ) {
     var showLogoDialog by remember { mutableStateOf(false) }
+    var kickTarget by remember { mutableStateOf<ClanMemberSnapshot?>(null) }
+    var visibleMemberCount by remember(clan.id) { mutableStateOf(DEFAULT_ARCADE_PAGE_SIZE) }
     val isOwner = clan.ownerId == currentUserId
     val currentMember = clan.members.firstOrNull { it.userId == currentUserId }
+    val visibleMembers = clan.members.take(visibleMemberCount)
 
     LazyColumn(
         modifier = modifier.testTag("clan_detail_list"),
@@ -454,12 +475,23 @@ fun ClanDetailView(
             )
         }
 
-        items(clan.members, key = { "member:${it.userId}" }) { member ->
+        items(visibleMembers, key = { "member:${it.userId}" }) { member ->
             ClanMemberCard(
                 member = member,
                 isOwner = isOwner,
                 canRemove = clan.ownerId != member.userId,
-                onRemove = { onKickMember(clan.id, member.userId) }
+                onRemove = { kickTarget = member }
+            )
+        }
+
+        item(key = "clan_members_load_more") {
+            ArcadeLoadMoreButton(
+                visibleItemCount = visibleMembers.size,
+                totalItemCount = clan.members.size,
+                onLoadMore = {
+                    visibleMemberCount = nextArcadePageItemCount(visibleMemberCount, clan.members.size)
+                },
+                testTag = "clan_members_load_more"
             )
         }
 
@@ -470,6 +502,33 @@ fun ClanDetailView(
                 style = ArcadeActionStyle.DANGER,
                 modifier = Modifier.fillMaxWidth().testTag("leave_clan")
             )
+        }
+    }
+
+    kickTarget?.let { member ->
+        ArcadeDialog(
+            title = "Mời thành viên rời bang?",
+            subtitle = "${member.displayName} sẽ bị xóa khỏi bang ${clan.name}.",
+            onDismissRequest = { kickTarget = null },
+            modifier = Modifier.testTag("kick_clan_member_dialog")
+        ) {
+            Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                ArcadeActionButton(
+                    label = "MỜI RỜI BANG",
+                    onClick = {
+                        kickTarget = null
+                        onKickMember(clan.id, member.userId)
+                    },
+                    style = ArcadeActionStyle.DANGER,
+                    modifier = Modifier.fillMaxWidth().testTag("confirm_kick_clan_member")
+                )
+                ArcadeActionButton(
+                    label = "HỦY",
+                    onClick = { kickTarget = null },
+                    style = ArcadeActionStyle.OUTLINE,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
         }
     }
 

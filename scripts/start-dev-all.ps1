@@ -99,17 +99,16 @@ if (-not (Test-HttpEndpoint 'http://127.0.0.1:8080/health')) {
         throw 'Cong 8080 dang bi ung dung khac su dung. Hay dong ung dung do roi chay lai.'
     }
 
-    $serverInstallDir = [IO.Path]::GetFullPath((Join-Path $projectDir 'server\build\install\server'))
-    $expectedInstallDir = [IO.Path]::GetFullPath((Join-Path $projectDir 'server\build\install\server'))
-    if (Test-Path -LiteralPath $serverInstallDir) {
-        if ($serverInstallDir -ne $expectedInstallDir) {
-            throw 'Thu muc server install khong hop le.'
-        }
-        Remove-Item -LiteralPath $serverInstallDir -Recurse -Force
-    }
-
+    $serverInstallDir = [IO.Path]::GetFullPath((Join-Path $projectDir '.artifacts\dev-server\server'))
     Write-Host '[FastToWin] Dong goi backend...'
-    Invoke-Checked (Join-Path $projectDir 'gradlew.bat') :server:installDist --rerun-tasks
+    $prepareServerArguments = @(
+        '-NoProfile',
+        '-ExecutionPolicy',
+        'Bypass',
+        '-File',
+        (Join-Path $projectDir 'scripts\prepare-dev-server.ps1')
+    )
+    Invoke-Checked -FilePath 'powershell.exe' -Arguments $prepareServerArguments
 
     $serverLib = Join-Path $serverInstallDir 'lib\*'
     $serverProcess = Start-Process `

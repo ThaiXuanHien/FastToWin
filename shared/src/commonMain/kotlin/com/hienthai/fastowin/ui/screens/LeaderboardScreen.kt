@@ -45,15 +45,18 @@ import com.hienthai.fastowin.resources.arcade_leaderboard_trophy
 import com.hienthai.fastowin.state.GameState
 import com.hienthai.fastowin.ui.components.ArcadeEmptyState
 import com.hienthai.fastowin.ui.components.ArcadeFeatureHero
+import com.hienthai.fastowin.ui.components.ArcadeLoadMoreButton
 import com.hienthai.fastowin.ui.components.ArcadePanel
 import com.hienthai.fastowin.ui.components.ArcadeRankBadge
 import com.hienthai.fastowin.ui.components.ArcadeSegmentedControl
+import com.hienthai.fastowin.ui.components.DEFAULT_ARCADE_PAGE_SIZE
 import com.hienthai.fastowin.ui.components.FastToWinHeader
 import com.hienthai.fastowin.ui.components.FastToWinPullRefresh
 import com.hienthai.fastowin.ui.components.PlayerAvatar
 import com.hienthai.fastowin.ui.components.SeasonProgressCard
 import com.hienthai.fastowin.ui.components.SeasonRewardReceiptCard
 import com.hienthai.fastowin.ui.components.SystemBackHandler
+import com.hienthai.fastowin.ui.components.nextArcadePageItemCount
 import com.hienthai.fastowin.ui.layout.ResponsiveScreen
 import com.hienthai.fastowin.ui.theme.ArcadePalette
 
@@ -199,6 +202,8 @@ private fun PlayerLeaderboard(
         LeaderboardPeriod.PREVIOUS_SEASON -> leaderboard?.previousSeasonTopPlayers.orEmpty()
         LeaderboardPeriod.ALL_TIME -> leaderboard?.topPlayers.orEmpty()
     }
+    var visiblePlayerCount by remember(selectedPeriod) { mutableStateOf(DEFAULT_ARCADE_PAGE_SIZE) }
+    val visibleTopPlayers = displayedTop.take(visiblePlayerCount)
 
     LazyColumn(
         modifier = Modifier.fillMaxWidth().testTag("leaderboard_players_list"),
@@ -268,12 +273,22 @@ private fun PlayerLeaderboard(
                 )
             }
         } else {
-            items(displayedTop, key = { it.playerCode }) { entry ->
+            items(visibleTopPlayers, key = { it.playerCode }) { entry ->
                 val friend = state.social.friends.firstOrNull { it.playerCode == entry.playerCode }
                 LeaderboardCard(
                     entry = entry,
                     highlighted = entry.playerCode == displayedCurrent?.playerCode,
                     onClick = friend?.let { { onOpenFriendProfile(it.userId) } }
+                )
+            }
+            item(key = "leaderboard_players_load_more") {
+                ArcadeLoadMoreButton(
+                    visibleItemCount = visibleTopPlayers.size,
+                    totalItemCount = displayedTop.size,
+                    onLoadMore = {
+                        visiblePlayerCount = nextArcadePageItemCount(visiblePlayerCount, displayedTop.size)
+                    },
+                    testTag = "leaderboard_players_load_more"
                 )
             }
         }
@@ -344,6 +359,8 @@ private fun CurrentPlayerPanel(entry: LeaderboardEntrySnapshot) {
 private fun ClanLeaderboard(state: GameState) {
     val leaderboard = state.leaderboard
     val displayedTopClans = leaderboard?.topClans.orEmpty()
+    var visibleClanCount by remember { mutableStateOf(DEFAULT_ARCADE_PAGE_SIZE) }
+    val visibleTopClans = displayedTopClans.take(visibleClanCount)
     LazyColumn(
         modifier = Modifier.fillMaxWidth().testTag("leaderboard_clans_list"),
         contentPadding = PaddingValues(bottom = 24.dp),
@@ -368,10 +385,20 @@ private fun ClanLeaderboard(state: GameState) {
         if (displayedTopClans.isEmpty()) {
             item(key = "empty_clans") { LeaderboardEmptyPanel("Chưa có bang hội nào trên bảng xếp hạng.") }
         } else {
-            items(displayedTopClans, key = { it.clanId }) { entry ->
+            items(visibleTopClans, key = { it.clanId }) { entry ->
                 ClanLeaderboardCard(
                     entry = entry,
                     highlighted = entry.clanId == leaderboard?.currentClan?.clanId
+                )
+            }
+            item(key = "leaderboard_clans_load_more") {
+                ArcadeLoadMoreButton(
+                    visibleItemCount = visibleTopClans.size,
+                    totalItemCount = displayedTopClans.size,
+                    onLoadMore = {
+                        visibleClanCount = nextArcadePageItemCount(visibleClanCount, displayedTopClans.size)
+                    },
+                    testTag = "leaderboard_clans_load_more"
                 )
             }
         }

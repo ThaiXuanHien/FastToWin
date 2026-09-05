@@ -51,12 +51,15 @@ import com.hienthai.fastowin.ui.components.ArcadeActionButton
 import com.hienthai.fastowin.ui.components.ArcadeActionStyle
 import com.hienthai.fastowin.ui.components.ArcadeDialog
 import com.hienthai.fastowin.ui.components.ArcadeIconHero
+import com.hienthai.fastowin.ui.components.ArcadeLoadMoreButton
 import com.hienthai.fastowin.ui.components.ArcadePanel
+import com.hienthai.fastowin.ui.components.DEFAULT_ARCADE_PAGE_SIZE
 import com.hienthai.fastowin.ui.components.FastToWinHeader
 import com.hienthai.fastowin.ui.components.FastToWinPullRefresh
 import com.hienthai.fastowin.ui.components.FriendPresenceIndicator
 import com.hienthai.fastowin.ui.components.PlayerAvatar
 import com.hienthai.fastowin.ui.components.SystemBackHandler
+import com.hienthai.fastowin.ui.components.nextArcadePageItemCount
 import com.hienthai.fastowin.ui.layout.ResponsiveScreen
 import com.hienthai.fastowin.ui.theme.ArcadePalette
 
@@ -83,6 +86,11 @@ fun FriendsScreen(
     var playerCode by remember { mutableStateOf("") }
     var removeTarget by remember { mutableStateOf<PlayerActionTarget?>(null) }
     var blockTarget by remember { mutableStateOf<PlayerActionTarget?>(null) }
+    var visibleRoomInvitationCount by remember { mutableStateOf(DEFAULT_ARCADE_PAGE_SIZE) }
+    var visibleIncomingRequestCount by remember { mutableStateOf(DEFAULT_ARCADE_PAGE_SIZE) }
+    var visibleFriendCount by remember { mutableStateOf(DEFAULT_ARCADE_PAGE_SIZE) }
+    var visibleOutgoingRequestCount by remember { mutableStateOf(DEFAULT_ARCADE_PAGE_SIZE) }
+    var visibleBlockedPlayerCount by remember { mutableStateOf(DEFAULT_ARCADE_PAGE_SIZE) }
     val canInvite = state.isRoomHost &&
         state.currentRoomId != null &&
         state.lobbyStage == LobbyStage.ROOM_WAITING
@@ -210,7 +218,10 @@ fun FriendsScreen(
                             item {
                                 SocialSectionTitle("Lời mời vào phòng", "${state.roomInvitations.size} mới")
                             }
-                            items(state.roomInvitations, key = { "room:${it.invitationId}" }) { invitation ->
+                            items(
+                                state.roomInvitations.take(visibleRoomInvitationCount),
+                                key = { "room:${it.invitationId}" }
+                            ) { invitation ->
                                 SocialPanel {
                                     Column(
                                         modifier = Modifier.fillMaxWidth().padding(14.dp),
@@ -245,6 +256,19 @@ fun FriendsScreen(
                                     }
                                 }
                             }
+                            item(key = "room_invitations_load_more") {
+                                ArcadeLoadMoreButton(
+                                    visibleItemCount = state.roomInvitations.take(visibleRoomInvitationCount).size,
+                                    totalItemCount = state.roomInvitations.size,
+                                    onLoadMore = {
+                                        visibleRoomInvitationCount = nextArcadePageItemCount(
+                                            visibleRoomInvitationCount,
+                                            state.roomInvitations.size
+                                        )
+                                    },
+                                    testTag = "room_invitations_load_more"
+                                )
+                            }
                         }
 
                         if (state.social.incomingRequests.isNotEmpty()) {
@@ -255,7 +279,7 @@ fun FriendsScreen(
                                 )
                             }
                             items(
-                                state.social.incomingRequests,
+                                state.social.incomingRequests.take(visibleIncomingRequestCount),
                                 key = { "incoming:${it.requestId}" }
                             ) { request ->
                                 SocialPanel {
@@ -319,6 +343,19 @@ fun FriendsScreen(
                                     }
                                 }
                             }
+                            item(key = "incoming_requests_load_more") {
+                                ArcadeLoadMoreButton(
+                                    visibleItemCount = state.social.incomingRequests.take(visibleIncomingRequestCount).size,
+                                    totalItemCount = state.social.incomingRequests.size,
+                                    onLoadMore = {
+                                        visibleIncomingRequestCount = nextArcadePageItemCount(
+                                            visibleIncomingRequestCount,
+                                            state.social.incomingRequests.size
+                                        )
+                                    },
+                                    testTag = "incoming_requests_load_more"
+                                )
+                            }
                         }
 
                         val activeFriends = state.social.friends.count {
@@ -335,7 +372,10 @@ fun FriendsScreen(
                                 )
                             }
                         } else {
-                            items(state.social.friends, key = { "friend:${it.userId}" }) { friend ->
+                            items(
+                                state.social.friends.take(visibleFriendCount),
+                                key = { "friend:${it.userId}" }
+                            ) { friend ->
                                 FriendCard(
                                     friend = friend,
                                     canInvite = canInvite,
@@ -351,6 +391,19 @@ fun FriendsScreen(
                                     }
                                 )
                             }
+                            item(key = "friends_load_more") {
+                                ArcadeLoadMoreButton(
+                                    visibleItemCount = state.social.friends.take(visibleFriendCount).size,
+                                    totalItemCount = state.social.friends.size,
+                                    onLoadMore = {
+                                        visibleFriendCount = nextArcadePageItemCount(
+                                            visibleFriendCount,
+                                            state.social.friends.size
+                                        )
+                                    },
+                                    testTag = "friends_load_more"
+                                )
+                            }
                         }
 
                         if (state.social.outgoingRequests.isNotEmpty()) {
@@ -361,7 +414,7 @@ fun FriendsScreen(
                                 )
                             }
                             items(
-                                state.social.outgoingRequests,
+                                state.social.outgoingRequests.take(visibleOutgoingRequestCount),
                                 key = { "outgoing:${it.requestId}" }
                             ) { request ->
                                 SocialPanel {
@@ -392,6 +445,19 @@ fun FriendsScreen(
                                     }
                                 }
                             }
+                            item(key = "outgoing_requests_load_more") {
+                                ArcadeLoadMoreButton(
+                                    visibleItemCount = state.social.outgoingRequests.take(visibleOutgoingRequestCount).size,
+                                    totalItemCount = state.social.outgoingRequests.size,
+                                    onLoadMore = {
+                                        visibleOutgoingRequestCount = nextArcadePageItemCount(
+                                            visibleOutgoingRequestCount,
+                                            state.social.outgoingRequests.size
+                                        )
+                                    },
+                                    testTag = "outgoing_requests_load_more"
+                                )
+                            }
                         }
 
                         if (state.social.blockedPlayers.isNotEmpty()) {
@@ -402,7 +468,7 @@ fun FriendsScreen(
                                 )
                             }
                             items(
-                                state.social.blockedPlayers,
+                                state.social.blockedPlayers.take(visibleBlockedPlayerCount),
                                 key = { "blocked:${it.userId}" }
                             ) { player ->
                                 SocialPanel(accent = ArcadePalette.Coral400) {
@@ -432,6 +498,19 @@ fun FriendsScreen(
                                         )
                                     }
                                 }
+                            }
+                            item(key = "blocked_players_load_more") {
+                                ArcadeLoadMoreButton(
+                                    visibleItemCount = state.social.blockedPlayers.take(visibleBlockedPlayerCount).size,
+                                    totalItemCount = state.social.blockedPlayers.size,
+                                    onLoadMore = {
+                                        visibleBlockedPlayerCount = nextArcadePageItemCount(
+                                            visibleBlockedPlayerCount,
+                                            state.social.blockedPlayers.size
+                                        )
+                                    },
+                                    testTag = "blocked_players_load_more"
+                                )
                             }
                         }
                     }

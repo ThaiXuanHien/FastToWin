@@ -8,6 +8,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.performScrollTo
 import com.hienthai.fastowin.protocol.ClanJoinRequestSnapshot
 import com.hienthai.fastowin.protocol.ClanMemberSnapshot
 import com.hienthai.fastowin.protocol.ClanRole
@@ -196,5 +197,54 @@ class ClanScreenTest {
         composeRule.onNodeWithContentDescription("Logo Song kiếm").performClick()
 
         composeRule.runOnIdle { assertEquals("sword", selectedLogo) }
+    }
+
+    @Test
+    fun clanOwnerMustConfirmBeforeKickingMember() {
+        var kickedMember: Pair<String, String>? = null
+        val clan = ClanSnapshot(
+            id = "clan-a",
+            name = "Bang Tốc Độ",
+            description = "Nhanh và chuẩn",
+            ownerId = "owner",
+            members = listOf(
+                ClanMemberSnapshot("owner", "Bang chủ", ClanRole.LEADER, trophies = 100),
+                ClanMemberSnapshot("member", "Thành viên thử", ClanRole.MEMBER, trophies = 25)
+            ),
+            trophies = 125
+        )
+
+        composeRule.setContent {
+            FastToWinTheme {
+                ClanScreen(
+                    serverUrl = "ws://127.0.0.1:8080/game",
+                    currentUserId = "owner",
+                    myClanId = clan.id,
+                    clanList = emptyList(),
+                    pendingJoinClanIds = emptySet(),
+                    currentClan = clan,
+                    notice = null,
+                    onCreateClan = { _, _ -> },
+                    onJoinClan = {},
+                    onLeaveClan = {},
+                    onSearch = {},
+                    onKickMember = { clanId, memberId -> kickedMember = clanId to memberId },
+                    onRespondJoinRequest = { _, _, _ -> },
+                    onUpdateLogo = { _, _ -> },
+                    onClaimQuest = {},
+                    onViewClan = {},
+                    onBack = {}
+                )
+            }
+        }
+
+        composeRule.onNodeWithContentDescription("Mời Thành viên thử rời bang")
+            .performScrollTo()
+            .performClick()
+        composeRule.onNodeWithTag("kick_clan_member_dialog").assertIsDisplayed()
+        composeRule.runOnIdle { assertEquals(null, kickedMember) }
+
+        composeRule.onNodeWithTag("confirm_kick_clan_member").performClick()
+        composeRule.runOnIdle { assertEquals("clan-a" to "member", kickedMember) }
     }
 }

@@ -42,7 +42,7 @@ import com.hienthai.fastowin.ui.components.ArcadeEmptyState
 import com.hienthai.fastowin.ui.components.ArcadeActionButton
 import com.hienthai.fastowin.ui.components.ArcadeActionStyle
 import com.hienthai.fastowin.ui.components.ArcadePanel
-import com.hienthai.fastowin.ui.components.ArcadeScrollableSegmentedControl
+import com.hienthai.fastowin.ui.components.ArcadeSegmentedControl
 import com.hienthai.fastowin.ui.layout.ResponsiveScreen
 import com.hienthai.fastowin.resources.Res
 import com.hienthai.fastowin.resources.arcade_shop_chest
@@ -110,7 +110,7 @@ fun ShopScreen(
                     },
                     accent = if (selectedTab == "GEMS") ArcadePalette.Mint400 else ArcadePalette.Gold400
                 )
-                ArcadeScrollableSegmentedControl(
+                ArcadeSegmentedControl(
                     labels = tabs.map { it.second },
                     selectedIndex = tabs.indexOfFirst { it.first == selectedTab }.coerceAtLeast(0),
                     onSelected = { index -> selectedTab = tabs[index].first },

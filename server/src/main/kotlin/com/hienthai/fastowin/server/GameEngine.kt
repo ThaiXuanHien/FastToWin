@@ -3394,13 +3394,13 @@ class GameEngine(
         val clan = clanRepository.getClanById(clanId)
             ?: return listOf(error(playerId, "CLAN_NOT_FOUND", "Không tìm thấy bang hội."))
         if (clan.ownerId != playerId) {
-            return listOf(error(playerId, "NOT_CLAN_OWNER", "Chỉ đội trưởng mới có thể kick thành viên."))
+            return listOf(error(playerId, "NOT_CLAN_OWNER", "Chỉ bang chủ mới có thể mời thành viên rời bang."))
         }
         val success = clanRepository.kickMember(clanId, playerId, memberId)
         return if (success) {
             getClanInfo(playerId, clanId)
         } else {
-            listOf(error(playerId, "KICK_FAILED", "Không thể kick thành viên này."))
+            listOf(error(playerId, "KICK_FAILED", "Không thể mời thành viên này rời bang."))
         }
     }
 

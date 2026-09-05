@@ -73,7 +73,10 @@ import com.hienthai.fastowin.ui.components.ArcadeActionButton
 import com.hienthai.fastowin.ui.components.ArcadeActionStyle
 import com.hienthai.fastowin.ui.components.ArcadeDialog
 import com.hienthai.fastowin.ui.components.ArcadeIconHero
+import com.hienthai.fastowin.ui.components.ArcadeLoadMoreButton
 import com.hienthai.fastowin.ui.components.ArcadeSegmentedControl
+import com.hienthai.fastowin.ui.components.DEFAULT_ARCADE_PAGE_SIZE
+import com.hienthai.fastowin.ui.components.nextArcadePageItemCount
 import com.hienthai.fastowin.ui.theme.ArcadePalette
 import com.hienthai.fastowin.ui.layout.ResponsiveScreen
 import kotlinx.coroutines.delay
@@ -406,13 +409,15 @@ private fun RoomBrowser(
     var matchTypeFilter by remember { mutableStateOf<MatchType?>(null) }
     var isPullRefreshing by remember { mutableStateOf(false) }
     val pullRefreshScope = rememberCoroutineScope()
-    val visibleRooms = remember(state.availableRooms, searchQuery, matchTypeFilter) {
+    val filteredRooms = remember(state.availableRooms, searchQuery, matchTypeFilter) {
         state.availableRooms.filter { room ->
             (searchQuery.isBlank() || room.name.contains(searchQuery.trim(), ignoreCase = true) ||
                 room.hostName.contains(searchQuery.trim(), ignoreCase = true)) &&
                 (matchTypeFilter == null || room.matchType == matchTypeFilter)
         }
     }
+    var visibleRoomCount by remember(searchQuery, matchTypeFilter) { mutableStateOf(DEFAULT_ARCADE_PAGE_SIZE) }
+    val visibleRooms = filteredRooms.take(visibleRoomCount)
 
     LaunchedEffect(Unit) {
         while (true) {
@@ -591,7 +596,7 @@ private fun RoomBrowser(
                 ) {
                     Text("Đang chờ", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black)
                     Text(
-                        "${visibleRooms.size} phòng",
+                        "${filteredRooms.size} phòng",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -629,13 +634,25 @@ private fun RoomBrowser(
                     )
                 }
 
-                else -> items(visibleRooms, key = { it.id }) { room ->
-                    RoomCard(
-                        room = room,
-                        onClick = {
-                            if (room.requiresPassword) selectedRoom = room else onJoinRoom(room.id, "")
-                        }
-                    )
+                else -> {
+                    items(visibleRooms, key = { it.id }) { room ->
+                        RoomCard(
+                            room = room,
+                            onClick = {
+                                if (room.requiresPassword) selectedRoom = room else onJoinRoom(room.id, "")
+                            }
+                        )
+                    }
+                    item(key = "rooms_load_more") {
+                        ArcadeLoadMoreButton(
+                            visibleItemCount = visibleRooms.size,
+                            totalItemCount = filteredRooms.size,
+                            onLoadMore = {
+                                visibleRoomCount = nextArcadePageItemCount(visibleRoomCount, filteredRooms.size)
+                            },
+                            testTag = "rooms_load_more"
+                        )
+                    }
                 }
             }
         }

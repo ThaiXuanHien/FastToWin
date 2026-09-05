@@ -5,6 +5,8 @@ import com.hienthai.fastowin.protocol.ServiceStatusResponse
 import io.ktor.client.call.body
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.client.request.get
+import io.ktor.client.statement.bodyAsText
+import io.ktor.http.HttpStatusCode
 import io.ktor.serialization.kotlinx.json.json
 import io.ktor.server.testing.testApplication
 import kotlin.test.Test
@@ -13,6 +15,19 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class ServiceStatusTest {
+    @Test
+    fun `internal metrics use prometheus text format`() = testApplication {
+        application { gameModule() }
+
+        val response = client.get("/internal/metrics")
+        val body = response.bodyAsText()
+
+        assertEquals(HttpStatusCode.OK, response.status)
+        assertTrue(response.headers["Content-Type"].orEmpty().startsWith("text/plain"))
+        assertTrue(body.contains("fasttowin_websocket_connections"))
+        assertTrue(body.contains("fasttowin_jvm_memory_used_bytes"))
+    }
+
     @Test
     fun `status reports normal operation explicitly`() = testApplication {
         application {

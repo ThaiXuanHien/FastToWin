@@ -5,6 +5,9 @@
 {$FASTTOWIN_DOMAIN} {
 	encode zstd gzip
 
+	@internal path /internal/*
+	respond @internal 404
+
 	@backend path /game /auth/* /api/* /status /health
 	handle @backend {
 		reverse_proxy server:8080

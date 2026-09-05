@@ -1,0 +1,38 @@
+groups:
+  - name: fasttowin
+    rules:
+      - alert: FastToWinServerDown
+        expr: up{job="fasttowin-server"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Fast To Win backend không phản hồi"
+          description: "Prometheus không lấy được metrics từ backend trong 2 phút."
+
+      - alert: FastToWinHighJvmMemory
+        expr: fasttowin_jvm_memory_used_bytes / fasttowin_jvm_memory_max_bytes > 0.85
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "JVM đang sử dụng trên 85% heap"
+          description: "Heap cao liên tục 10 phút; cần kiểm tra tải, GC và log lỗi."
+
+      - alert: FastToWinWebSocketRateLimitSpike
+        expr: increase(fasttowin_websocket_rate_limited_total[5m]) > 100
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "WebSocket bị rate limit tăng cao"
+          description: "Có hơn 100 thao tác bị giới hạn trong 5 phút."
+
+      - alert: FastToWinInvalidMessageSpike
+        expr: increase(fasttowin_websocket_invalid_messages_total[5m]) > 25
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Nhiều WebSocket message không hợp lệ"
+          description: "Có hơn 25 message sai định dạng trong 5 phút."

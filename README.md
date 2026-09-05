@@ -4,6 +4,10 @@ Fast To Win là game tìm số 1–50 theo thời gian thực dành cho Android 
 
 Theo dõi các bước đã làm và còn lại tại [lộ trình phát triển](docs/roadmap.md). Kiểm thử: [tổng quan](docs/testing.md) và [Web E2E](docs/web-e2e.md). Khi chuẩn bị đưa lên máy chủ, dùng [hướng dẫn production](docs/production-deployment.md).
 
+Vận hành production dùng `production-ops.sh` hoặc `production-ops.cmd` cho health,
+bảo trì, backup có xác minh/restore drill và rollback có kiểm soát; xem hướng dẫn
+production trước khi chạy.
+
 ## Tính năng đấu giải riêng
 
 - Người đã đăng nhập có thể tạo giải loại trực tiếp dành cho 4, 8 hoặc 16 người và mời bạn bè đang online.
@@ -174,7 +178,7 @@ $env:DATABASE_URL='jdbc:postgresql://localhost:5432/fasttowin'
 $env:DATABASE_USER='fasttowin'
 $env:DATABASE_PASSWORD='fasttowin'
 
-.\gradlew.bat :server:installDist
+.\scripts\prepare-dev-server.ps1
 .\run-packaged-server.cmd
 ```
 
@@ -191,7 +195,7 @@ Hoặc:
 ```powershell
 $env:JAVA_HOME='C:\Program Files\Android\Android Studio\jbr'
 $env:FASTTOWIN_ENV='dev'
-.\gradlew.bat :server:installDist
+.\scripts\prepare-dev-server.ps1
 .\run-packaged-server.cmd
 ```
 
@@ -512,7 +516,7 @@ $env:FASTTOWIN_SMTP_FROM_EMAIL='no-reply@example.com'
 $env:FASTTOWIN_SMTP_FROM_NAME='Fast To Win'
 $env:FASTTOWIN_SMTP_STARTTLS='true'
 $env:FASTTOWIN_SMTP_SSL='false'
-.\gradlew.bat :server:installDist
+.\scripts\prepare-dev-server.ps1
 .\run-packaged-server.cmd
 ```
 

@@ -52,6 +52,7 @@ flyway = "13.0.0"
 postgresql = "42.7.13"
 billing = "9.1.0"
 angusMail = "2.0.5"
+logback = "1.6.3"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -110,6 +111,7 @@ flyway-database-postgresql = { group = "org.flywaydb", name = "flyway-database-p
 postgresql = { group = "org.postgresql", name = "postgresql", version.ref = "postgresql" }
 play-billing = { group = "com.android.billingclient", name = "billing", version.ref = "billing" }
 angus-mail = { group = "org.eclipse.angus", name = "jakarta.mail", version.ref = "angusMail" }
+logback-classic = { group = "ch.qos.logback", name = "logback-classic", version.ref = "logback" }
 ktor-client-core = { group = "io.ktor", name = "ktor-client-core", version.ref = "ktor" }
 ktor-client-websockets = { group = "io.ktor", name = "ktor-client-websockets", version.ref = "ktor" }
 ktor-client-cio = { group = "io.ktor", name = "ktor-client-cio", version.ref = "ktor" }
@@ -124,6 +126,7 @@ ktor-server-netty = { group = "io.ktor", name = "ktor-server-netty", version.ref
 ktor-server-websockets = { group = "io.ktor", name = "ktor-server-websockets", version.ref = "ktor" }
 ktor-server-content-negotiation = { group = "io.ktor", name = "ktor-server-content-negotiation", version.ref = "ktor" }
 ktor-server-cors = { group = "io.ktor", name = "ktor-server-cors", version.ref = "ktor" }
+ktor-server-call-logging = { group = "io.ktor", name = "ktor-server-call-logging", version.ref = "ktor" }
 ktor-server-forwarded-header = { group = "io.ktor", name = "ktor-server-forwarded-header", version.ref = "ktor" }
 ktor-server-test-host = { group = "io.ktor", name = "ktor-server-test-host", version.ref = "ktor" }
 

@@ -1,5 +1,11 @@
 name: fasttowin-production
 
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
 services:
   database:
     image: postgres:17-alpine
@@ -20,8 +26,10 @@ services:
       start_period: 20s
     security_opt:
       - no-new-privileges:true
+    logging: *default-logging
 
   server:
+    image: ${FASTTOWIN_SERVER_IMAGE:-fasttowin-server}:${FASTTOWIN_RELEASE_TAG:-local}
     build:
       context: .
       dockerfile: deploy/server.Dockerfile
@@ -71,8 +79,10 @@ services:
       - /tmp
     security_opt:
       - no-new-privileges:true
+    logging: *default-logging
 
   web:
+    image: ${FASTTOWIN_WEB_IMAGE:-fasttowin-web}:${FASTTOWIN_RELEASE_TAG:-local}
     build:
       context: .
       dockerfile: deploy/web.Dockerfile
@@ -92,6 +102,123 @@ services:
       - fasttowin-production-caddy-config:/config
     security_opt:
       - no-new-privileges:true
+    logging: *default-logging
+
+  prometheus:
+    image: prom/prometheus:v3.11.3
+    restart: unless-stopped
+    mem_limit: 384m
+    depends_on:
+      server:
+        condition: service_healthy
+      alertmanager:
+        condition: service_started
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=15d
+      - --web.enable-lifecycle
+    volumes:
+      - ./deploy/monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./deploy/monitoring/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - fasttowin-production-prometheus:/prometheus
+    ports:
+      - "127.0.0.1:9090:9090"
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    logging: *default-logging
+
+  alertmanager:
+    image: prom/alertmanager:v0.32.1
+    restart: unless-stopped
+    mem_limit: 128m
+    command:
+      - --config.file=/etc/alertmanager/alertmanager.yml
+      - --storage.path=/alertmanager
+    volumes:
+      - ./deploy/monitoring/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - fasttowin-production-alertmanager:/alertmanager
+    ports:
+      - "127.0.0.1:9093:9093"
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    logging: *default-logging
+
+  loki:
+    image: grafana/loki:3.7.0
+    restart: unless-stopped
+    mem_limit: 512m
+    command:
+      - -config.file=/etc/loki/loki.yml
+    volumes:
+      - ./deploy/monitoring/loki.yml:/etc/loki/loki.yml:ro
+      - fasttowin-production-loki:/loki
+    ports:
+      - "127.0.0.1:3100:3100"
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    logging: *default-logging
+
+  alloy:
+    image: grafana/alloy:v1.18.0
+    restart: unless-stopped
+    mem_limit: 256m
+    user: "0:0"
+    depends_on:
+      loki:
+        condition: service_started
+    command:
+      - run
+      - --server.http.listen-addr=0.0.0.0:12345
+      - --storage.path=/var/lib/alloy/data
+      - /etc/alloy/config.alloy
+    volumes:
+      - ./deploy/monitoring/alloy.config:/etc/alloy/config.alloy:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - fasttowin-production-alloy:/var/lib/alloy/data
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    logging: *default-logging
+
+  grafana:
+    image: grafana/grafana:13.2.0
+    restart: unless-stopped
+    mem_limit: 512m
+    depends_on:
+      prometheus:
+        condition: service_started
+      loki:
+        condition: service_started
+      alertmanager:
+        condition: service_started
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD__FILE: /run/secrets/grafana_admin_password
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+    secrets:
+      - grafana_admin_password
+    volumes:
+      - ./deploy/monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./deploy/monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - fasttowin-production-grafana:/var/lib/grafana
+    ports:
+      - "127.0.0.1:3000:3000"
+    security_opt:
+      - no-new-privileges:true
+    logging: *default-logging
 
 secrets:
   database_password:
@@ -100,8 +227,15 @@ secrets:
     file: ./deploy/secrets/smtp_password.txt
   firebase_service_account:
     file: ./deploy/secrets/firebase-service-account.json
+  grafana_admin_password:
+    file: ./deploy/secrets/grafana_admin_password.txt
 
 volumes:
   fasttowin-production-postgres:
   fasttowin-production-caddy-data:
   fasttowin-production-caddy-config:
+  fasttowin-production-prometheus:
+  fasttowin-production-alertmanager:
+  fasttowin-production-loki:
+  fasttowin-production-alloy:
+  fasttowin-production-grafana:

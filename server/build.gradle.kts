@@ -19,6 +19,7 @@ dependencies {
     implementation(libs.ktor.server.websockets)
     implementation(libs.ktor.server.content.negotiation)
     implementation(libs.ktor.server.cors)
+    implementation(libs.ktor.server.call.logging)
     implementation(libs.ktor.server.forwarded.header)
     implementation(libs.ktor.serialization.kotlinx.json)
     implementation(libs.kotlinx.coroutines.core)
@@ -27,6 +28,7 @@ dependencies {
     implementation(libs.flyway.core)
     implementation(libs.flyway.database.postgresql)
     implementation(libs.angus.mail)
+    implementation(libs.logback.classic)
     implementation("com.google.firebase:firebase-admin:9.2.0")
     runtimeOnly(libs.postgresql)
 

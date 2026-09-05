@@ -55,6 +55,9 @@ import com.hienthai.fastowin.ui.components.ArcadeActionButton
 import com.hienthai.fastowin.ui.components.ArcadeActionStyle
 import com.hienthai.fastowin.ui.components.ArcadeDialog
 import com.hienthai.fastowin.ui.components.ArcadeHeaderIconButton
+import com.hienthai.fastowin.ui.components.ArcadeLoadMoreButton
+import com.hienthai.fastowin.ui.components.DEFAULT_ARCADE_PAGE_SIZE
+import com.hienthai.fastowin.ui.components.nextArcadePageItemCount
 import com.hienthai.fastowin.ui.theme.ArcadePalette
 import com.hienthai.fastowin.resources.Res
 import com.hienthai.fastowin.resources.arcade_notifications_inbox
@@ -73,6 +76,8 @@ fun NotificationsScreen(
 
     var confirmClear by remember { mutableStateOf(false) }
     var pendingDelete by remember { mutableStateOf<AppNotification?>(null) }
+    var visibleNotificationCount by remember { mutableStateOf(DEFAULT_ARCADE_PAGE_SIZE) }
+    val visibleNotifications = notifications.take(visibleNotificationCount)
     if (confirmClear) {
         ArcadeDialog(
             onDismissRequest = { confirmClear = false },
@@ -166,11 +171,24 @@ fun NotificationsScreen(
                             accent = ArcadePalette.Violet400
                         )
                     }
-                    items(notifications, key = AppNotification::id) { notification ->
+                    items(visibleNotifications, key = AppNotification::id) { notification ->
                         NotificationCard(
                             notification = notification,
                             onOpen = { onOpen(notification.id) },
                             onDismiss = { pendingDelete = notification }
+                        )
+                    }
+                    item(key = "notifications_load_more") {
+                        ArcadeLoadMoreButton(
+                            visibleItemCount = visibleNotifications.size,
+                            totalItemCount = notifications.size,
+                            onLoadMore = {
+                                visibleNotificationCount = nextArcadePageItemCount(
+                                    visibleNotificationCount,
+                                    notifications.size
+                                )
+                            },
+                            testTag = "notifications_load_more"
                         )
                     }
                     item { Spacer(Modifier.size(12.dp)) }

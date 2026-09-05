@@ -409,6 +409,36 @@ fun ArcadeScrollableSegmentedControl(
     }
 }
 
+const val DEFAULT_ARCADE_PAGE_SIZE = 20
+
+internal fun nextArcadePageItemCount(
+    currentVisibleCount: Int,
+    totalItemCount: Int,
+    pageSize: Int = DEFAULT_ARCADE_PAGE_SIZE
+): Int = (currentVisibleCount.coerceAtLeast(0) + pageSize.coerceAtLeast(1))
+    .coerceAtMost(totalItemCount.coerceAtLeast(0))
+
+@Composable
+fun ArcadeLoadMoreButton(
+    visibleItemCount: Int,
+    totalItemCount: Int,
+    onLoadMore: () -> Unit,
+    modifier: Modifier = Modifier,
+    testTag: String? = null
+) {
+    val remaining = (totalItemCount - visibleItemCount).coerceAtLeast(0)
+    if (remaining == 0) return
+
+    ArcadeActionButton(
+        label = "XEM THÊM ($remaining)",
+        onClick = onLoadMore,
+        style = ArcadeActionStyle.OUTLINE,
+        modifier = modifier
+            .fillMaxWidth()
+            .then(testTag?.let { Modifier.testTag(it) } ?: Modifier)
+    )
+}
+
 @Composable
 fun ArcadeChoiceChip(
     label: String,

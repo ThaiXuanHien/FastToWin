@@ -131,12 +131,15 @@ import com.hienthai.fastowin.ui.components.ArcadeActionButton
 import com.hienthai.fastowin.ui.components.ArcadeActionStyle
 import com.hienthai.fastowin.ui.components.ArcadeDialog
 import com.hienthai.fastowin.ui.components.ArcadeFeatureHero
+import com.hienthai.fastowin.ui.components.ArcadeLoadMoreButton
 import com.hienthai.fastowin.ui.components.ArcadePanel
 import com.hienthai.fastowin.ui.components.ArcadeSegmentedControl
+import com.hienthai.fastowin.ui.components.DEFAULT_ARCADE_PAGE_SIZE
 import com.hienthai.fastowin.ui.components.FastToWinHeader
 import com.hienthai.fastowin.ui.components.FastToWinPullRefresh
 import com.hienthai.fastowin.ui.components.WalletDeltaAmounts
 import com.hienthai.fastowin.ui.components.PlayerAvatar
+import com.hienthai.fastowin.ui.components.nextArcadePageItemCount
 import com.hienthai.fastowin.resources.Res
 import com.hienthai.fastowin.resources.arcade_leaderboard_trophy
 import com.hienthai.fastowin.resources.arcade_notifications_inbox
@@ -927,7 +930,8 @@ private fun ProfileSectionHero(section: ProfileSection) {
 @Composable
 private fun WalletHistorySectionContent(transactions: List<WalletTransactionSnapshot>) {
     var selectedFilter by remember { mutableStateOf(0) }
-    val visibleTransactions = remember(transactions, selectedFilter) {
+    var visibleTransactionCount by remember(selectedFilter) { mutableStateOf(DEFAULT_ARCADE_PAGE_SIZE) }
+    val filteredTransactions = remember(transactions, selectedFilter) {
         transactions.filter { transaction ->
             when (selectedFilter) {
                 1 -> transaction.goldDelta > 0 || transaction.gemsDelta > 0 || transaction.xpDelta > 0
@@ -936,6 +940,7 @@ private fun WalletHistorySectionContent(transactions: List<WalletTransactionSnap
             }
         }
     }
+    val visibleTransactions = filteredTransactions.take(visibleTransactionCount)
     Column(
         modifier = Modifier.fillMaxWidth().testTag("wallet_history_content"),
         verticalArrangement = Arrangement.spacedBy(10.dp)
@@ -1006,6 +1011,17 @@ private fun WalletHistorySectionContent(transactions: List<WalletTransactionSnap
                     }
                 }
             }
+            ArcadeLoadMoreButton(
+                visibleItemCount = visibleTransactions.size,
+                totalItemCount = filteredTransactions.size,
+                onLoadMore = {
+                    visibleTransactionCount = nextArcadePageItemCount(
+                        visibleTransactionCount,
+                        filteredTransactions.size
+                    )
+                },
+                testTag = "wallet_history_load_more"
+            )
         }
     }
 }
@@ -1563,6 +1579,7 @@ private fun RecentMatchesSectionContent(
     onFilterChange: (MatchHistoryOutcome?) -> Unit,
     onOpenMatchDetail: (String) -> Unit
 ) {
+    var visibleMatchCount by remember(historyFilter) { mutableStateOf(DEFAULT_ARCADE_PAGE_SIZE) }
     ArcadeSegmentedControl(
         labels = listOf("Tất cả", "Thắng", "Thua"),
         selectedIndex = when (historyFilter) {
@@ -1589,20 +1606,31 @@ private fun RecentMatchesSectionContent(
             }
         }
     )
-    val visibleMatches = profile.recentMatches.filter { historyFilter == null || it.outcome == historyFilter }
+    val filteredMatches = profile.recentMatches.filter { historyFilter == null || it.outcome == historyFilter }
+    val visibleMatches = filteredMatches.take(visibleMatchCount)
     when {
         profile.recentMatches.isEmpty() -> Text(
             "Chưa có trận đấu hoàn thành.",
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
-        visibleMatches.isEmpty() -> Text(
+        filteredMatches.isEmpty() -> Text(
             "Không có trận phù hợp với bộ lọc.",
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
-        else -> visibleMatches.forEach { match ->
-            MatchHistoryCard(
-                match,
-                onClick = if (isExternalProfile) null else ({ onOpenMatchDetail(match.matchId) })
+        else -> {
+            visibleMatches.forEach { match ->
+                MatchHistoryCard(
+                    match,
+                    onClick = if (isExternalProfile) null else ({ onOpenMatchDetail(match.matchId) })
+                )
+            }
+            ArcadeLoadMoreButton(
+                visibleItemCount = visibleMatches.size,
+                totalItemCount = filteredMatches.size,
+                onLoadMore = {
+                    visibleMatchCount = nextArcadePageItemCount(visibleMatchCount, filteredMatches.size)
+                },
+                testTag = "recent_matches_load_more"
             )
         }
     }

@@ -1,6 +1,6 @@
 # Lộ trình hoàn thiện Fast To Win
 
-Cập nhật: 04/09/2026. Đây là danh sách theo dõi thống nhất từ các hạng mục chủ dự án đã duyệt. Có code không đồng nghĩa đã kiểm thử hoặc sẵn sàng production.
+Cập nhật: 05/09/2026. Đây là danh sách theo dõi thống nhất từ các hạng mục chủ dự án đã duyệt. Có code không đồng nghĩa đã kiểm thử hoặc sẵn sàng production.
 
 ## Quy tắc thực hiện
 
@@ -70,7 +70,7 @@ Danh mục bán hiện tại: Gem, Mặt bài Hoàng Kim, Mặt bài Kim Cương
 - [x] Xác minh địa chỉ email bằng mã 6 số và giới hạn gửi lại/thử mã.
 - [x] Mẫu triển khai domain, HTTPS/WSS, CORS allowlist và Docker secrets.
 - [x] Bảo vệ phiên Web: refresh token dùng cookie host-only `HttpOnly`, `Secure`, `SameSite=Strict`; access token chỉ nằm trong bộ nhớ và request cookie được kiểm tra `Origin`/CSRF.
-- [ ] Chốt quy trình phát hành, rollback, bảo trì và kiểm tra sức khỏe dịch vụ.
+- [x] Chốt quy trình phát hành, rollback, bảo trì và kiểm tra sức khỏe dịch vụ; image được gắn release tag, backup có SHA-256 và rollback yêu cầu xác nhận tương thích schema.
 
 ## 6. Hạ tầng khi mở rộng
 
@@ -78,8 +78,8 @@ Backend hiện dùng trạng thái realtime trong một instance. Không coi cá
 
 - [ ] Redis cho presence/trạng thái liên instance và rate limiting dùng chung.
 - [ ] Load balancer/sticky session hoặc WebSocket gateway; xác định rõ instance sở hữu trận và cách khôi phục.
-- [ ] Monitoring, log tập trung và cảnh báo có ý nghĩa.
-- [ ] Backup PostgreSQL, thời gian lưu và diễn tập khôi phục dữ liệu.
+- [x] Monitoring/log cho một instance: metrics nội bộ, Prometheus, Alertmanager, Grafana, Loki/Alloy, dashboard dựng sẵn và giới hạn dung lượng Docker log.
+- [x] Backup PostgreSQL tự động, thời gian lưu cấu hình được, xác minh checksum/dump và diễn tập khôi phục cách ly bằng PostgreSQL tạm.
 - [ ] CDN/object storage cho avatar và tài nguyên.
 - [ ] Load test có giới hạn trên môi trường riêng trước khi mở rộng.
 
@@ -95,6 +95,8 @@ Backend hiện dùng trạng thái realtime trong một instance. Không coi cá
 
 ## Bước đang thực hiện
 
-**Chuẩn bị production**. Bộ cấu hình Docker/Caddy và kiểm tra bắt buộc đã có; bước
-tiếp theo là smoke test trên một staging domain thật rồi chốt quy trình phát hành,
-backup và rollback. StoreKit/APNs production vẫn tạm hoãn vì phụ thuộc tài khoản Apple.
+**Chuẩn bị production**. Bộ cấu hình Docker/Caddy, release tag, backup tự động có
+xác minh/restore drill, bảo trì, health check, rollback và monitoring một instance
+đã có. Bước tiếp theo là smoke test trên staging domain thật. StoreKit/APNs
+production vẫn tạm hoãn vì phụ thuộc
+tài khoản Apple.

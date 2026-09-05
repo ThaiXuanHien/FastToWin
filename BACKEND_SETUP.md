@@ -87,6 +87,11 @@ Backend giữ audit log tối đa 2.000 request cho mỗi trận và ghi hàng l
 
 Backend dùng token bucket trong bộ nhớ và khóa định danh SHA-256, không giữ email/IP dạng gốc trong bucket. Giới hạn mặc định:
 
+Endpoint nội bộ `GET /internal/metrics` xuất Prometheus metrics tổng hợp về uptime,
+WebSocket, rate limit, message lỗi và JVM heap. Production chỉ cho Prometheus trong
+mạng Docker gọi endpoint này; Caddy không reverse proxy nó ra Internet. Metrics
+không dùng player ID/email/token làm label để tránh lộ dữ liệu và cardinality cao.
+
 | Thao tác | Giới hạn |
 |---|---|
 | Đăng nhập theo IP | 20 lần/phút |

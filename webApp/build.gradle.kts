@@ -45,11 +45,19 @@ kotlin {
             implementation(compose.material3)
             implementation(compose.ui)
             implementation(libs.kotlinx.serialization.json)
+            implementation(libs.ktor.client.core)
         }
 
         jsMain {
             kotlin.srcDir("src/wasmJsMain/kotlin")
             resources.srcDir("src/wasmJsMain/resources")
+            dependencies {
+                implementation(libs.ktor.client.js)
+            }
+        }
+
+        wasmJsMain.dependencies {
+            implementation(libs.ktor.client.wasm)
         }
     }
 }

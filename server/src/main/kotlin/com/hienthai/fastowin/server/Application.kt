@@ -26,18 +26,19 @@ import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpMethod
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.CookieEncoding
+import io.ktor.http.ContentType
 import io.ktor.server.application.ApplicationCall
 import io.ktor.server.application.Application
 import io.ktor.server.application.call
 import io.ktor.server.application.install
 import io.ktor.server.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.server.plugins.cors.routing.CORS
+import io.ktor.server.plugins.calllogging.CallLogging
 import io.ktor.server.plugins.forwardedheaders.XForwardedHeaders
 import io.ktor.server.plugins.origin
 import io.ktor.server.request.receive
-import io.ktor.server.request.cookies
+import io.ktor.server.request.path
 import io.ktor.server.request.header
-import io.ktor.server.response.cookies
 import io.ktor.server.response.header
 import io.ktor.server.response.respond
 import io.ktor.server.response.respondText
@@ -89,11 +90,15 @@ fun Application.gameModule(
         configuredOrigins = allowedWebOriginsValue
     )
     val webSessionCookies = WebSessionCookieConfiguration(isProduction)
+    val metrics = ServerMetrics()
     if (trustProxyHeaders) {
         install(XForwardedHeaders)
     }
     install(ContentNegotiation) {
         json(ProtocolJson)
+    }
+    install(CallLogging) {
+        filter { call -> call.request.path() !in QUIET_LOG_PATHS }
     }
     install(CORS) {
         allowMethod(HttpMethod.Get)
@@ -170,6 +175,14 @@ fun Application.gameModule(
         }
 
         get("/health") { call.respondText("OK") }
+
+        get("/internal/metrics") {
+            call.response.header(HttpHeaders.CacheControl, "no-store")
+            call.respondText(
+                metrics.render(),
+                ContentType.parse("text/plain; version=0.0.4; charset=utf-8")
+            )
+        }
 
         post("/auth/register") {
             val request = call.receiveOrReject<RegisterRequest>() ?: return@post
@@ -452,9 +465,11 @@ fun Application.gameModule(
 
 
         webSocket("/game") {
+            metrics.webSocketOpened()
             val serviceStatus = serviceStatusProvider()
             if (serviceStatus.maintenance) {
                 close(CloseReason(CloseReason.Codes.GOING_AWAY, "Server maintenance"))
+                metrics.webSocketClosed()
                 return@webSocket
             }
             val clientRateLimitKey = stableRateLimitKey(call.request.origin.remoteHost)
@@ -469,14 +484,17 @@ fun Application.gameModule(
                         rateLimitPolicies.websocketMessagesPerIp
                     )
                     if (!ipMessageLimit.allowed) {
+                        metrics.webSocketRateLimited()
                         sendRateLimited(ipMessageLimit)
                         close(CloseReason(CloseReason.Codes.VIOLATED_POLICY, "WebSocket rate limit exceeded"))
                         break
                     }
                     if (frame !is Frame.Text) continue
+                    metrics.webSocketMessageReceived()
                     val message = runCatching {
                         ProtocolJson.decodeFromString<ClientMessage>(frame.readText())
                     }.getOrElse {
+                        metrics.invalidWebSocketMessage()
                         send(ProtocolJson.encodeToString<ServerMessage>(
                             ServerMessage.Error("INVALID_MESSAGE", "Dữ liệu gửi lên không hợp lệ.")
                         ))
@@ -544,6 +562,7 @@ fun Application.gameModule(
                             continue
                         }
                         playerId = connected.playerId
+                        metrics.sessionAuthenticated()
                         playerRateLimitKey = stableRateLimitKey(connected.playerId)
                         val connection = SocketConnection(this)
                         connections.put(connected.playerId, connection)?.closeForReplacement()
@@ -567,6 +586,7 @@ fun Application.gameModule(
                         rateLimitPolicies.websocketMessagesPerPlayer
                     )
                     if (!playerMessageLimit.allowed) {
+                        metrics.webSocketRateLimited()
                         sendRateLimited(playerMessageLimit)
                         close(CloseReason(CloseReason.Codes.VIOLATED_POLICY, "Player rate limit exceeded"))
                         break
@@ -578,6 +598,7 @@ fun Application.gameModule(
                         rateLimitPolicies
                     )
                     if (actionLimit != null) {
+                        metrics.webSocketRateLimited()
                         sendRateLimited(
                             actionLimit,
                             requestId = when (message) {
@@ -605,6 +626,7 @@ fun Application.gameModule(
                     deliver(engine.handle(activePlayerId, message))
                 }
             } finally {
+                metrics.webSocketClosed()
                 playerId?.let { id ->
                     val connection = connections[id]
                     if (connection?.session === this && connections.remove(id, connection)) {
@@ -849,6 +871,7 @@ private val DEV_WEB_ORIGINS = listOf(
     AllowedWebOrigin("127.0.0.1:8081", "http"),
     AllowedWebOrigin("127.0.0.1:8082", "http")
 )
+private val QUIET_LOG_PATHS = setOf("/health", "/internal/metrics")
 
 private suspend fun ApplicationCall.respondAccountAction(
     result: AccountActionResult,

@@ -28,19 +28,7 @@ set "DATABASE_USER=fasttowin"
 set "DATABASE_PASSWORD=fasttowin"
 set "FASTTOWIN_WEB_BASE_URL=http://localhost:8081"
 
-set "SERVER_INSTALL_DIR=%~dp0server\build\install\server"
-if exist "%SERVER_INSTALL_DIR%" (
-    echo [FastToWin] Dang don ban server da dong goi...
-    powershell.exe -NoProfile -Command "$target = [IO.Path]::GetFullPath($env:SERVER_INSTALL_DIR); $expected = [IO.Path]::GetFullPath((Join-Path '%~dp0' 'server\build\install\server')); if ($target -ne $expected) { throw 'Thu muc server khong hop le.' }; Remove-Item -LiteralPath $target -Recurse -Force"
-    if errorlevel 1 (
-        echo [FastToWin] Khong the don thu muc server cu.
-        echo [FastToWin] Hay dung server dang chay bang Ctrl+C, sau do thu lai.
-        exit /b 1
-    )
-)
-
-echo [FastToWin] Dang dong goi server va protocol...
-call gradlew.bat :server:installDist --rerun-tasks
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\prepare-dev-server.ps1"
 if errorlevel 1 exit /b 1
 
 call "%~dp0run-packaged-server.cmd"

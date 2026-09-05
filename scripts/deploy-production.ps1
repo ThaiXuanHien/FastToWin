@@ -1,5 +1,6 @@
 param(
-    [switch]$BuildOnly
+    [switch]$BuildOnly,
+    [string]$ReleaseTag
 )
 
 $ErrorActionPreference = 'Stop'
@@ -8,7 +9,8 @@ $environmentFile = Join-Path $projectDir 'deploy\.env.production'
 $requiredSecretFiles = @(
     (Join-Path $projectDir 'deploy\secrets\database_password.txt'),
     (Join-Path $projectDir 'deploy\secrets\smtp_password.txt'),
-    (Join-Path $projectDir 'deploy\secrets\firebase-service-account.json')
+    (Join-Path $projectDir 'deploy\secrets\firebase-service-account.json'),
+    (Join-Path $projectDir 'deploy\secrets\grafana_admin_password.txt')
 )
 
 function Invoke-Checked {
@@ -23,6 +25,19 @@ function Invoke-Checked {
 }
 
 Set-Location $projectDir
+
+if ([string]::IsNullOrWhiteSpace($ReleaseTag)) {
+    $ReleaseTag = (& git -c "safe.directory=$($projectDir -replace '\\', '/')" rev-parse --short=12 HEAD 2>$null)
+    if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($ReleaseTag)) {
+        $ReleaseTag = 'local'
+    }
+}
+$ReleaseTag = $ReleaseTag.Trim()
+if ($ReleaseTag -notmatch '^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$') {
+    throw 'ReleaseTag chỉ được gồm chữ, số, dấu chấm, gạch dưới và gạch ngang (tối đa 64 ký tự).'
+}
+$env:FASTTOWIN_RELEASE_TAG = $ReleaseTag
+Write-Host "[FastToWin] Release: $ReleaseTag"
 
 if (-not $env:JAVA_HOME) {
     $env:JAVA_HOME = 'C:\Program Files\Android\Android Studio\jbr'
@@ -78,4 +93,16 @@ Invoke-Checked $dockerPath compose --env-file $environmentFile -f compose.produc
 Write-Host '[FastToWin] Build image và khởi động production...'
 Invoke-Checked $dockerPath compose --env-file $environmentFile -f compose.production.yaml up -d --build --wait
 
-Write-Host '[FastToWin] Production đã khởi động. Kiểm tra HTTPS /health trước khi phát hành.' -ForegroundColor Green
+$stateDir = Join-Path $projectDir 'deploy\state'
+$activeReleaseFile = Join-Path $stateDir 'active-release.txt'
+$previousReleaseFile = Join-Path $stateDir 'previous-release.txt'
+$previousRelease = if (Test-Path -LiteralPath $activeReleaseFile) {
+    (Get-Content -LiteralPath $activeReleaseFile -Raw).Trim()
+} else { $null }
+New-Item -ItemType Directory -Path $stateDir -Force | Out-Null
+if (-not [string]::IsNullOrWhiteSpace($previousRelease) -and $previousRelease -ne $ReleaseTag) {
+    Set-Content -LiteralPath $previousReleaseFile -Value $previousRelease -NoNewline
+}
+Set-Content -LiteralPath $activeReleaseFile -Value $ReleaseTag -NoNewline
+
+Write-Host "[FastToWin] Production release $ReleaseTag đã khởi động. Chạy production-ops health." -ForegroundColor Green

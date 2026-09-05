@@ -25,6 +25,10 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -44,7 +48,10 @@ import com.hienthai.fastowin.ui.components.SeasonCosmeticRewardCard
 import com.hienthai.fastowin.ui.components.SystemBackHandler
 import com.hienthai.fastowin.ui.components.ArcadeEmptyState
 import com.hienthai.fastowin.ui.components.ArcadeFeatureHero
+import com.hienthai.fastowin.ui.components.ArcadeLoadMoreButton
 import com.hienthai.fastowin.ui.components.ArcadePanel
+import com.hienthai.fastowin.ui.components.DEFAULT_ARCADE_PAGE_SIZE
+import com.hienthai.fastowin.ui.components.nextArcadePageItemCount
 import com.hienthai.fastowin.ui.layout.ResponsiveScreen
 import com.hienthai.fastowin.resources.Res
 import com.hienthai.fastowin.resources.arcade_leaderboard_trophy
@@ -61,6 +68,8 @@ fun SeasonHistoryScreen(
 ) {
     SystemBackHandler(onBack = onBack)
     val history = state.profile?.progression?.seasonHistory.orEmpty()
+    var visibleSeasonCount by remember { mutableStateOf(DEFAULT_ARCADE_PAGE_SIZE) }
+    val visibleHistory = history.take(visibleSeasonCount)
     ArcadeBackdrop(modifier = modifier.fillMaxSize().testTag("season_history_screen")) {
         Scaffold(
             modifier = Modifier.fillMaxSize(),
@@ -134,10 +143,23 @@ fun SeasonHistoryScreen(
                                     )
                                 }
                                 itemsIndexed(
-                                    items = history,
+                                    items = visibleHistory,
                                     key = { _, season -> season.seasonNumber }
                                 ) { index, season ->
                                     SeasonHistoryCard(season = season, highlighted = index == 0)
+                                }
+                                item(key = "season_history_load_more") {
+                                    ArcadeLoadMoreButton(
+                                        visibleItemCount = visibleHistory.size,
+                                        totalItemCount = history.size,
+                                        onLoadMore = {
+                                            visibleSeasonCount = nextArcadePageItemCount(
+                                                visibleSeasonCount,
+                                                history.size
+                                            )
+                                        },
+                                        testTag = "season_history_load_more"
+                                    )
                                 }
                             }
                         }

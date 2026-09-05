@@ -7,6 +7,7 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry
 import androidx.test.runner.lifecycle.Stage
@@ -150,5 +151,36 @@ private fun pressSystemBack() {
             .getActivitiesInStage(Stage.RESUMED)
             .single() as ComponentActivity
         activity.onBackPressedDispatcher.onBackPressed()
+    }
+
+    @Test
+    fun notifications_loadMoreRevealsTheNextPage() {
+        val notifications = (1..21).map { index ->
+            AppNotification(
+                id = "notification-$index",
+                kind = AppNotificationKind.MISSION,
+                title = "Thông báo $index",
+                message = "Nội dung $index",
+                createdAtEpochMillis = index.toLong(),
+                destination = AppNotificationDestination.PROFILE
+            )
+        }
+        composeRule.setContent {
+            FastToWinTheme {
+                NotificationsScreen(
+                    notifications = notifications,
+                    onBack = {},
+                    onOpen = {},
+                    onDismiss = {},
+                    onMarkAllRead = {},
+                    onClearAll = {}
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("Thông báo 21").assertDoesNotExist()
+        composeRule.onNodeWithTag("notifications_load_more").performScrollTo().performClick()
+        composeRule.onNodeWithText("Thông báo 21").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithTag("notifications_load_more").assertDoesNotExist()
     }
 }

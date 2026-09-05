@@ -28,6 +28,8 @@ server/firebase-adminsdk.json
 /deploy/secrets/*.txt
 /deploy/secrets/*.json
 !/deploy/secrets/README.md
+/deploy/backups/
+/deploy/state/
 
 # Standalone Web E2E dependencies and failure diagnostics
 /e2e/node_modules/

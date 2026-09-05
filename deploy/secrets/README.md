@@ -7,3 +7,7 @@ Tạo ba file sau trên máy chủ production. Chỉ ghi giá trị bí mật, k
 - `firebase-service-account.json`: service-account JSON tải từ Firebase Console.
 
 Các file thật trong thư mục này được `.gitignore` loại trừ và không được commit. Giới hạn quyền đọc cho tài khoản triển khai; trên Linux có thể dùng `chmod 600 deploy/secrets/*`.
+
+Các file production bắt buộc: `database_password.txt`, `smtp_password.txt`,
+`firebase-service-account.json` và `grafana_admin_password.txt`. Mật khẩu Grafana
+nên được sinh ngẫu nhiên riêng, không dùng lại mật khẩu database hoặc SMTP.

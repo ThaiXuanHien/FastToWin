@@ -53,6 +53,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import java.io.File
+import kotlin.math.abs
 
 class CriticalFlowsUiTest {
     @get:Rule
@@ -368,7 +369,11 @@ class CriticalFlowsUiTest {
         composeRule.onNodeWithText("Bàn số").assertIsDisplayed()
         assertTrue(composeRule.onAllNodesWithTag("shop_tab:FRAME").fetchSemanticsNodes().isEmpty())
         assertTrue(composeRule.onAllNodesWithTag("shop_tab:EMOJI").fetchSemanticsNodes().isEmpty())
-        composeRule.onNodeWithTag("shop_tab:GEMS").performScrollTo().assertIsDisplayed().performClick()
+        val shopTabWidths = listOf("GEMS", "CARD_BACK", "BOARD_SKIN").map { tab ->
+            composeRule.onNodeWithTag("shop_tab:$tab").fetchSemanticsNode().boundsInRoot.width
+        }
+        assertTrue(shopTabWidths.all { width -> abs(width - shopTabWidths.first()) <= 1f })
+        composeRule.onNodeWithTag("shop_tab:GEMS").assertIsDisplayed().performClick()
         composeRule.onNodeWithText("Kho Gem").assertIsDisplayed()
         composeRule.onNodeWithText("Gói Tân binh").assertIsDisplayed()
         composeRule.onNodeWithText("Sandbox").performClick()
