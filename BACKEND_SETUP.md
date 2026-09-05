@@ -198,6 +198,11 @@ Máy tính và điện thoại phải cùng mạng, đồng thời firewall ph�
 
 ## Cấu hình production
 
+Cách khuyến nghị là dùng `compose.production.yaml`: Caddy tự cấp HTTPS, phục vụ Web
+và reverse proxy HTTP/WebSocket; backend và PostgreSQL chỉ nằm trong mạng Docker.
+Xem đầy đủ DNS, secrets, build, health check, bảo trì và rollback tại
+[docs/production-deployment.md](docs/production-deployment.md).
+
 Android production:
 
 ```powershell
@@ -211,13 +216,15 @@ Backend production:
 ```powershell
 $env:FASTTOWIN_ENV="prod"
 $env:PORT="8080"
+$env:FASTTOWIN_PUBLIC_URL="https://play.ten-mien-cua-ban.com"
+$env:FASTTOWIN_WEB_ORIGINS="https://play.ten-mien-cua-ban.com"
 $env:DATABASE_URL="jdbc:postgresql://database-host:5432/fasttowin"
 $env:DATABASE_USER="fasttowin_app"
 $env:DATABASE_PASSWORD="mat-khau-bi-mat"
 $env:FASTTOWIN_SMTP_HOST="smtp.mail-provider.example"
 $env:FASTTOWIN_SMTP_PORT="587"
 $env:FASTTOWIN_SMTP_USERNAME="smtp-user"
-$env:FASTTOWIN_SMTP_PASSWORD="smtp-secret"
+$env:FASTTOWIN_SMTP_PASSWORD="thay-bang-mat-khau-smtp-manh"
 $env:FASTTOWIN_SMTP_FROM_EMAIL="no-reply@example.com"
 $env:FASTTOWIN_SMTP_FROM_NAME="Fast To Win"
 $env:FASTTOWIN_SMTP_STARTTLS="true"
@@ -226,6 +233,12 @@ $env:FASTTOWIN_SMTP_SSL="false"
 ```
 
 Không commit SMTP secret vào Git. Dùng STARTTLS với port 587; nếu nhà cung cấp yêu cầu SSL port 465 thì đặt `FASTTOWIN_SMTP_STARTTLS=false` và `FASTTOWIN_SMTP_SSL=true`.
+
+Backend cũng hỗ trợ `DATABASE_PASSWORD_FILE` và `FASTTOWIN_SMTP_PASSWORD_FILE` để
+đọc secret được mount từ file. Không đặt đồng thời biến trực tiếp và biến `_FILE`.
+Nếu bật `FASTTOWIN_TRUST_PROXY_HEADERS=true`, phải bảo đảm backend chỉ nhận traffic
+từ reverse proxy đáng tin cậy; cấu hình Compose production đã bảo đảm điều này bằng
+cách không publish cổng 8080.
 
 Giá trị `configure-production-server.invalid` chỉ là placeholder an toàn và không thể kết nối. Cần thay URL trước khi phát hành.
 

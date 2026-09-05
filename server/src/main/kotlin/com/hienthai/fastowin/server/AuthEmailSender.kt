@@ -10,6 +10,8 @@ import jakarta.mail.internet.MimeMessage
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.util.Properties
+import java.nio.file.Files
+import java.nio.file.Path
 
 interface AuthEmailSender {
     val isConfigured: Boolean
@@ -47,10 +49,13 @@ data class SmtpEmailSettings(
     }
 
     companion object {
-        fun fromEnvironment(values: Map<String, String> = System.getenv()): SmtpEmailSettings? {
+        fun fromEnvironment(
+            values: Map<String, String> = System.getenv(),
+            fileReader: (String) -> String = { Files.readString(Path.of(it)) }
+        ): SmtpEmailSettings? {
             val host = values["FASTTOWIN_SMTP_HOST"]?.trim().orEmpty()
             val username = values["FASTTOWIN_SMTP_USERNAME"]?.trim().orEmpty()
-            val password = values["FASTTOWIN_SMTP_PASSWORD"].orEmpty()
+            val password = readEnvironmentSecret("FASTTOWIN_SMTP_PASSWORD", values, fileReader).orEmpty()
             val fromEmail = values["FASTTOWIN_SMTP_FROM_EMAIL"]?.trim().orEmpty()
             val configuredValues = listOf(host, username, password, fromEmail)
             if (configuredValues.all(String::isEmpty)) return null

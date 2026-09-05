@@ -2,7 +2,7 @@
 
 Fast To Win là game tìm số 1–50 theo thời gian thực dành cho Android và iOS. Giao diện và phần lớn logic client dùng Compose Multiplatform; backend là Ktor WebSocket và PostgreSQL.
 
-Theo dõi các bước đã làm và còn lại tại [lộ trình phát triển](docs/roadmap.md). Kiểm thử: [tổng quan](docs/testing.md) và [Web E2E](docs/web-e2e.md).
+Theo dõi các bước đã làm và còn lại tại [lộ trình phát triển](docs/roadmap.md). Kiểm thử: [tổng quan](docs/testing.md) và [Web E2E](docs/web-e2e.md). Khi chuẩn bị đưa lên máy chủ, dùng [hướng dẫn production](docs/production-deployment.md).
 
 ## Tính năng đấu giải riêng
 
@@ -491,7 +491,7 @@ Nếu chưa đăng nhập, app giữ liên kết qua màn xác thực rồi mở
 Build Android production:
 
 ```powershell
-.\gradlew.bat :app:assembleProdRelease -PFASTTOWIN_PROD_WS_URL=wss://api.example.com/game
+.\gradlew.bat :app:assembleProdRelease -PFASTTOWIN_PROD_WS_URL=wss://play.ten-mien-cua-ban.com/game
 ```
 
 Backend production yêu cầu PostgreSQL và không được dùng mật khẩu development:
@@ -499,6 +499,8 @@ Backend production yêu cầu PostgreSQL và không được dùng mật khẩu 
 ```powershell
 $env:FASTTOWIN_ENV='prod'
 $env:PORT='8080'
+$env:FASTTOWIN_PUBLIC_URL='https://play.ten-mien-cua-ban.com'
+$env:FASTTOWIN_WEB_ORIGINS='https://play.ten-mien-cua-ban.com'
 $env:DATABASE_URL='jdbc:postgresql://database-host:5432/fasttowin'
 $env:DATABASE_USER='fasttowin_app'
 $env:DATABASE_PASSWORD='replace-with-a-secret'

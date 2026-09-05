@@ -40,4 +40,21 @@ class AuthEmailSenderTest {
             )
         }
     }
+
+    @Test
+    fun `smtp password supports mounted secret file`() {
+        val settings = requireNotNull(
+            SmtpEmailSettings.fromEnvironment(
+                values = mapOf(
+                    "FASTTOWIN_SMTP_HOST" to "smtp.example.com",
+                    "FASTTOWIN_SMTP_USERNAME" to "mailer",
+                    "FASTTOWIN_SMTP_PASSWORD_FILE" to "/run/secrets/smtp_password",
+                    "FASTTOWIN_SMTP_FROM_EMAIL" to "hello@example.com"
+                ),
+                fileReader = { "file-secret\n" }
+            )
+        )
+
+        assertEquals("file-secret", settings.password)
+    }
 }

@@ -31,7 +31,9 @@ import io.ktor.server.application.call
 import io.ktor.server.application.install
 import io.ktor.server.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.server.plugins.cors.routing.CORS
+import io.ktor.server.plugins.forwardedheaders.XForwardedHeaders
 import io.ktor.server.request.receive
+import io.ktor.server.request.origin
 import io.ktor.server.response.header
 import io.ktor.server.response.respond
 import io.ktor.server.response.respondText
@@ -59,7 +61,6 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import java.util.concurrent.ConcurrentHashMap
-import java.net.URI
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 
@@ -70,12 +71,16 @@ fun Application.gameModule(
     rateLimiter: RateLimiter = InMemoryRateLimiter(),
     rateLimitPolicies: ServerRateLimitPolicies = ServerRateLimitPolicies(),
     authEmailSender: AuthEmailSender = DisabledAuthEmailSender,
+    trustProxyHeaders: Boolean = false,
     seasonLifecycleRepository: SeasonLifecycleRepository = NoOpSeasonLifecycleRepository,
     pushReminderService: PushReminderService = NoOpPushReminderService,
     serviceStatusProvider: () -> ServiceStatusResponse = ::serviceStatusFromEnvironment,
     websocketPingPeriod: Duration = DEFAULT_WEBSOCKET_PING_PERIOD,
     websocketPongTimeout: Duration = DEFAULT_WEBSOCKET_PONG_TIMEOUT
 ) {
+    if (trustProxyHeaders) {
+        install(XForwardedHeaders)
+    }
     install(ContentNegotiation) {
         json(ProtocolJson)
     }
@@ -87,8 +92,8 @@ fun Application.gameModule(
         if (environment == "dev") {
             anyHost()
         } else {
-            allowedWebOriginsFromEnvironment().forEach { (host, scheme) ->
-                allowHost(host, schemes = listOf(scheme))
+            parseAllowedWebOrigins(System.getenv("FASTTOWIN_WEB_ORIGINS"), requireHttps = true).forEach { origin ->
+                allowHost(origin.authority, schemes = listOf(origin.scheme))
             }
         }
     }
@@ -413,7 +418,7 @@ fun Application.gameModule(
                 close(CloseReason(CloseReason.Codes.GOING_AWAY, "Server maintenance"))
                 return@webSocket
             }
-            val clientRateLimitKey = stableRateLimitKey(call.request.local.remoteHost)
+            val clientRateLimitKey = stableRateLimitKey(call.request.origin.remoteHost)
             var playerId: String? = null
             var playerRateLimitKey: String? = null
             var accountAccessToken: String? = null
@@ -573,7 +578,7 @@ fun Application.gameModule(
 }
 
 private fun ApplicationCall.clientRateLimitKey(): String =
-    stableRateLimitKey(request.local.remoteHost)
+    stableRateLimitKey(request.origin.remoteHost)
 
 private suspend fun ApplicationCall.consumeHttpRateLimit(
     rateLimiter: RateLimiter,
@@ -771,18 +776,3 @@ internal fun serviceStatusFromEnvironment(): ServiceStatusResponse {
         pollAfterSeconds = if (maintenance) 60 else 30
     )
 }
-
-private fun allowedWebOriginsFromEnvironment(): List<Pair<String, String>> =
-    System.getenv("FASTTOWIN_WEB_ORIGINS")
-        ?.split(',')
-        .orEmpty()
-        .mapNotNull { rawOrigin ->
-            runCatching {
-                val uri = URI(rawOrigin.trim())
-                val scheme = uri.scheme?.lowercase().takeIf { it == "http" || it == "https" }
-                    ?: return@runCatching null
-                val authority = uri.rawAuthority?.takeIf(String::isNotBlank)
-                    ?: return@runCatching null
-                authority to scheme
-            }.getOrNull()
-        }

@@ -69,6 +69,16 @@ jobs:
           --no-daemon
           --no-configuration-cache
 
+      - name: Validate production deployment configuration
+        run: |
+          docker compose --env-file deploy/.env.production.example -f compose.production.yaml config --quiet
+          docker run --rm \
+            -e FASTTOWIN_DOMAIN=play.fasttowin.vn \
+            -e ACME_EMAIL=admin@fasttowin.vn \
+            -v "$PWD/deploy/Caddyfile:/etc/caddy/Caddyfile:ro" \
+            caddy:2.11.4-alpine \
+            caddy validate --config /etc/caddy/Caddyfile
+
       - name: Upload dev APK
         uses: actions/upload-artifact@v7
         with:

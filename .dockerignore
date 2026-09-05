@@ -1,0 +1,17 @@
+**
+!deploy/
+!deploy/**
+deploy/.env.production
+deploy/secrets/*
+!deploy/secrets/README.md
+!server/
+!server/build/
+!server/build/install/
+!server/build/install/server/
+!server/build/install/server/**
+!webApp/
+!webApp/build/
+!webApp/build/dist/
+!webApp/build/dist/composeWebCompatibility/
+!webApp/build/dist/composeWebCompatibility/productionExecutable/
+!webApp/build/dist/composeWebCompatibility/productionExecutable/**

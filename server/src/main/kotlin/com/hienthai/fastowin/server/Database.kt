@@ -11,19 +11,25 @@ data class DatabaseSettings(
     val maximumPoolSize: Int
 ) {
     companion object {
-        fun fromEnvironment(environment: String): DatabaseSettings? {
-            val url = System.getenv("DATABASE_URL")?.takeIf(String::isNotBlank)
+        fun fromEnvironment(
+            environment: String,
+            values: Map<String, String> = System.getenv(),
+            fileReader: (String) -> String = { java.nio.file.Files.readString(java.nio.file.Path.of(it)) }
+        ): DatabaseSettings? {
+            val url = values["DATABASE_URL"]?.takeIf(String::isNotBlank)
             if (url == null) {
                 require(environment != "prod") { "DATABASE_URL is required when FASTTOWIN_ENV=prod." }
                 return null
             }
-            val password = System.getenv("DATABASE_PASSWORD")?.takeIf(String::isNotBlank)
-                ?: if (environment == "dev") "fasttowin" else error("DATABASE_PASSWORD is required in production.")
+            val password = readEnvironmentSecret("DATABASE_PASSWORD", values, fileReader)
+                ?: if (environment == "dev") "fasttowin" else error(
+                    "DATABASE_PASSWORD or DATABASE_PASSWORD_FILE is required in production."
+                )
             return DatabaseSettings(
                 url = url,
-                user = System.getenv("DATABASE_USER") ?: "fasttowin",
+                user = values["DATABASE_USER"] ?: "fasttowin",
                 password = password,
-                maximumPoolSize = System.getenv("DATABASE_POOL_SIZE")?.toIntOrNull()?.coerceIn(2, 50) ?: 10
+                maximumPoolSize = values["DATABASE_POOL_SIZE"]?.toIntOrNull()?.coerceIn(2, 50) ?: 10
             )
         }
     }

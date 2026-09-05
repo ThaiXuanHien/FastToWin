@@ -66,9 +66,9 @@ Danh mục bán hiện tại: Gem, Mặt bài Hoàng Kim, Mặt bài Kim Cương
 
 ## 5. Tài khoản và cấu hình production
 
-- [ ] Dịch vụ gửi email thật cho quên mật khẩu; không chỉ luồng/token dev.
-- [ ] Xác minh địa chỉ email và giới hạn gửi lại.
-- [ ] Domain, HTTPS/WSS, CORS allowlist và quản lý secrets.
+- [x] Dịch vụ SMTP production cho quên mật khẩu; token chỉ hiển thị ở dev.
+- [x] Xác minh địa chỉ email bằng mã 6 số và giới hạn gửi lại/thử mã.
+- [x] Mẫu triển khai domain, HTTPS/WSS, CORS allowlist và Docker secrets.
 - [ ] Bảo vệ phiên Web: đánh giá chuyển refresh token từ `localStorage` sang cookie `HttpOnly`, `Secure`, `SameSite`.
 - [ ] Chốt quy trình phát hành, rollback, bảo trì và kiểm tra sức khỏe dịch vụ.
 
@@ -95,7 +95,6 @@ Backend hiện dùng trạng thái realtime trong một instance. Không coi cá
 
 ## Bước đang thực hiện
 
-**Build và smoke test iOS trên macOS**. Picker avatar và luồng Push đã có trong code;
-cần xác nhận trên iPhone/iPad, gồm cấp/tắt quyền, nhận bốn nhóm thông báo và mở đúng
-màn hình. Sau đó mới chuyển sang StoreKit production vì phần này phụ thuộc tài khoản
-Apple và cấu hình thanh toán.
+**Chuẩn bị production**. Bộ cấu hình Docker/Caddy và kiểm tra bắt buộc đã có; bước
+tiếp theo là smoke test trên một staging domain thật rồi chốt quy trình phát hành,
+backup và rollback. StoreKit/APNs production vẫn tạm hoãn vì phụ thuộc tài khoản Apple.

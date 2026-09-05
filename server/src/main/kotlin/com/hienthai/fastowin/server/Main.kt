@@ -9,8 +9,11 @@ fun main() {
     require(environment in setOf("dev", "prod")) {
         "FASTTOWIN_ENV must be either 'dev' or 'prod'."
     }
+    if (environment == "prod") validateProductionEnvironment()
     val host = System.getenv("SERVER_HOST") ?: "0.0.0.0"
     val port = System.getenv("PORT")?.toIntOrNull() ?: 8080
+    val trustProxyHeaders = System.getenv("FASTTOWIN_TRUST_PROXY_HEADERS")
+        ?.equals("true", ignoreCase = true) == true
     val database = DatabaseSettings.fromEnvironment(environment)?.let(DatabaseRuntime::open)
     val authService = AuthenticationService(database?.authRepository ?: InMemoryAuthRepository())
     val authEmailSender = configuredAuthEmailSender()
@@ -63,6 +66,7 @@ fun main() {
                 authService = authService,
                 authEmailSender = authEmailSender,
                 environment = environment,
+                trustProxyHeaders = trustProxyHeaders,
                 seasonLifecycleRepository = seasonLifecycleRepository,
                 pushReminderService = pushReminderService
             )
