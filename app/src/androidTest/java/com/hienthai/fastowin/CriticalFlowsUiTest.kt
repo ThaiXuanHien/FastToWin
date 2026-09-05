@@ -381,6 +381,32 @@ class CriticalFlowsUiTest {
     }
 
     @Test
+    fun shop_categoryTabs_keepCompactFixedHeight() {
+        composeRule.setContent {
+            FastToWinTheme {
+                ShopScreen(
+                    progression = PlayerProgressionSnapshot(gold = 2_000, gems = 25),
+                    onBuy = {},
+                    onEquip = {},
+                    onClose = {}
+                )
+            }
+        }
+
+        val density = InstrumentationRegistry.getInstrumentation()
+            .targetContext.resources.displayMetrics.density
+        val expectedHeightPx = 48f * density
+        val shopTabHeights = listOf("GEMS", "CARD_BACK", "BOARD_SKIN").map { tab ->
+            composeRule.onNodeWithTag("shop_tab:$tab").fetchSemanticsNode().boundsInRoot.height
+        }
+
+        assertTrue(
+            "Shop tabs must stay at 48dp instead of matching the available screen height: $shopTabHeights",
+            shopTabHeights.all { height -> abs(height - expectedHeightPx) <= 1f }
+        )
+    }
+
+    @Test
     fun roomBrowser_createsPrivateRoomFromKeyboardInput() {
         var createdRoom: Pair<String, String>? = null
         composeRule.setContent {

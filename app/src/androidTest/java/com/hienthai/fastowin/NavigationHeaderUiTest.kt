@@ -2,12 +2,15 @@ package com.hienthai.fastowin
 
 import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.hasScrollAction
+import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performScrollToNode
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry
 import androidx.test.runner.lifecycle.Stage
@@ -142,15 +145,15 @@ class NavigationHeaderUiTest {
         composeRule.onNodeWithText("RỜI TRẬN").performClick()
         composeRule.runOnIdle { assertTrue(exited) }
     }
-}
 
-private fun pressSystemBack() {
-    val instrumentation = InstrumentationRegistry.getInstrumentation()
-    instrumentation.runOnMainSync {
-        val activity = ActivityLifecycleMonitorRegistry.getInstance()
-            .getActivitiesInStage(Stage.RESUMED)
-            .single() as ComponentActivity
-        activity.onBackPressedDispatcher.onBackPressed()
+    private fun pressSystemBack() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        instrumentation.runOnMainSync {
+            val activity = ActivityLifecycleMonitorRegistry.getInstance()
+                .getActivitiesInStage(Stage.RESUMED)
+                .single() as ComponentActivity
+            activity.onBackPressedDispatcher.onBackPressed()
+        }
     }
 
     @Test
@@ -179,7 +182,9 @@ private fun pressSystemBack() {
         }
 
         composeRule.onNodeWithText("Thông báo 21").assertDoesNotExist()
-        composeRule.onNodeWithTag("notifications_load_more").performScrollTo().performClick()
+        composeRule.onNode(hasScrollAction())
+            .performScrollToNode(hasTestTag("notifications_load_more"))
+        composeRule.onNodeWithTag("notifications_load_more").performClick()
         composeRule.onNodeWithText("Thông báo 21").performScrollTo().assertIsDisplayed()
         composeRule.onNodeWithTag("notifications_load_more").assertDoesNotExist()
     }

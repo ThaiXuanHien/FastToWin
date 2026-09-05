@@ -330,7 +330,7 @@ fun ArcadeSegmentedControl(
                 shadowElevation = if (selected) 3.dp else 0.dp
             ) {
                 Box(
-                    modifier = Modifier.fillMaxSize().padding(horizontal = 10.dp, vertical = 10.dp),
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 10.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
