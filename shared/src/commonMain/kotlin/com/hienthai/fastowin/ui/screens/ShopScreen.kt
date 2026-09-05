@@ -68,9 +68,7 @@ fun ShopScreen(
     val tabs = listOf(
         "GEMS" to "Gem",
         "CARD_BACK" to "Mặt bài",
-        "BOARD_SKIN" to "Bàn số",
-        "FRAME" to "Khung",
-        "EMOJI" to "Biểu cảm"
+        "BOARD_SKIN" to "Bàn số"
     )
     
     val gold = progression?.gold ?: 0

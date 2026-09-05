@@ -39,7 +39,8 @@ Chi tiết: [audit Web](web-wasm-audit.md), [hướng dẫn Web E2E](web-e2e.md)
 
 - [x] Chọn, nén và tải ảnh đại diện bằng picker iOS; ảnh được thu về tối đa 512 px và nén trước khi gửi qua WebSocket.
 - [ ] Hoàn thiện StoreKit 2 production và xác thực giao dịch App Store; hiện có phần chuẩn bị/sandbox, chưa coi là thanh toán thật.
-- [x] Đã tích hợp đăng ký thiết bị, quyền thông báo, APNs/FCM và mở đúng màn từ thông báo; còn cấu hình APNs key và smoke test trên thiết bị thật.
+- [x] Đã tích hợp đăng ký thiết bị, quyền thông báo, APNs/FCM và mở đúng màn từ thông báo.
+- [ ] Cấu hình APNs Authentication Key và smoke test trên thiết bị thật: tạm hoãn đến khi có tài khoản Apple Developer Program.
 - [ ] Build/chạy trên macOS/Xcode, iPhone và iPad simulator.
 - [ ] Hai người chơi thật, safe area, bàn phím, xoay màn hình, nền/khôi phục ứng dụng trên thiết bị iOS thật.
 
@@ -47,10 +48,8 @@ Mua hàng và APNs cần cấu hình Apple tương ứng; kiểm thử thiết b
 
 ## 3. Cửa hàng
 
-Danh mục bán hiện tại: Mặt bài Hoàng Kim, Mặt bài Kim Cương, Bàn số Bóng Đêm và Bàn số Rừng Xanh. Khung/phần thưởng đã mở khóa ở bộ sưu tập không đồng nghĩa có vật phẩm bán trong shop.
+Danh mục bán hiện tại: Gem, Mặt bài Hoàng Kim, Mặt bài Kim Cương, Bàn số Bóng Đêm và Bàn số Rừng Xanh. Theo quyết định sản phẩm, Cửa hàng không hiển thị tab Khung và Biểu cảm; các phần thưởng này vẫn có thể mở khóa ở Bộ sưu tập/thành tích.
 
-- [ ] Bổ sung vật phẩm bán cho tab Khung.
-- [ ] Bổ sung vật phẩm bán cho tab Biểu cảm.
 - [ ] Duyệt hình ảnh, giá Vàng/Gem và điều kiện mở khóa trước khi thêm danh mục.
 - [ ] Kiểm thử mua trùng, thiếu tài sản, trang bị/đồng bộ và lịch sử giao dịch.
 

@@ -359,7 +359,8 @@ class CriticalFlowsUiTest {
 
         assertTrue(composeRule.onAllNodesWithText("Mặt bài").fetchSemanticsNodes().isNotEmpty())
         composeRule.onNodeWithText("Bàn số").assertIsDisplayed()
-        composeRule.onNodeWithTag("shop_tab:EMOJI").performScrollTo().assertIsDisplayed()
+        assertTrue(composeRule.onAllNodesWithTag("shop_tab:FRAME").fetchSemanticsNodes().isEmpty())
+        assertTrue(composeRule.onAllNodesWithTag("shop_tab:EMOJI").fetchSemanticsNodes().isEmpty())
         composeRule.onNodeWithTag("shop_tab:GEMS").performScrollTo().assertIsDisplayed().performClick()
         composeRule.onNodeWithText("Kho Gem").assertIsDisplayed()
         composeRule.onNodeWithText("Gói Tân binh").assertIsDisplayed()
