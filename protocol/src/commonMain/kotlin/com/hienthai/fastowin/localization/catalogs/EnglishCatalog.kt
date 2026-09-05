@@ -1,0 +1,29 @@
+package com.hienthai.fastowin.localization.catalogs
+
+import com.hienthai.fastowin.localization.AppLanguage
+import com.hienthai.fastowin.localization.LocalizationCatalog
+import com.hienthai.fastowin.localization.PluralCategory
+import com.hienthai.fastowin.localization.QuantityKey
+import com.hienthai.fastowin.localization.TextKey
+
+internal val englishCatalog = LocalizationCatalog(
+    language = AppLanguage.ENGLISH,
+    texts = mapOf(
+        TextKey.Back to "Back",
+        TextKey.Cancel to "Cancel",
+        TextKey.Confirm to "Confirm",
+        TextKey.Retry to "Retry",
+        TextKey.Close to "Close",
+        TextKey.Save to "Save",
+        TextKey.Delete to "Delete",
+        TextKey.Loading to "Loading…",
+        TextKey.UnknownError to "Something went wrong. Please try again.",
+        TextKey.WelcomePlayer to "Hello {player}!"
+    ),
+    quantities = mapOf(
+        QuantityKey.Players to mapOf(
+            PluralCategory.ONE to "{count} player",
+            PluralCategory.OTHER to "{count} players"
+        )
+    )
+)

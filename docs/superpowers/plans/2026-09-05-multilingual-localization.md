@@ -65,6 +65,18 @@ and do not know how catalogs are stored.
 
 ### Task 1: Pure Kotlin localization domain and 12 catalog skeletons
 
+**Progress (2026-09-05):** Implemented on `codex/multilingual-localization`.
+Added `commonTest` dependency in `protocol/build.gradle.kts` because the module
+previously had no test library. The first test compilation failed on the missing
+localization API as expected. All 9 catalog tests then passed; JVM, JS and Wasm
+compilation succeeded. This task supplies foundation strings only; Settings and
+the remaining feature strings are still pending in Tasks 2–11.
+
+Local verification uses Corretto 17 and the process-only option
+`-Djdk.net.unixdomain.tmpdir=D:/HienTX/Work/Android/FastToWin/.artifacts/localization-tmp`
+to avoid this machine's Java loopback/socket temporary-path error. No machine-wide
+JDK or startup-script setting was changed.
+
 **Files:**
 - Create: `protocol/src/commonMain/kotlin/com/hienthai/fastowin/localization/AppLanguage.kt`
 - Create: `protocol/src/commonMain/kotlin/com/hienthai/fastowin/localization/TextKey.kt`
@@ -78,7 +90,7 @@ and do not know how catalogs are stored.
 - Produces: `AppLanguage`, `TextKey`, `QuantityKey`, `LocalizationCatalog`, `LocalizationService`, `allLocalizationCatalogs`.
 - Consumes: no UI or platform API.
 
-- [ ] **Step 1: Write failing language-resolution and catalog-contract tests**
+- [x] **Step 1: Write failing language-resolution and catalog-contract tests**
 
 ```kotlin
 class LocalizationCatalogTest {
@@ -119,7 +131,7 @@ class LocalizationCatalogTest {
 }
 ```
 
-- [ ] **Step 2: Run the protocol tests and confirm RED**
+- [x] **Step 2: Run the protocol tests and confirm RED**
 
 Run:
 
@@ -129,7 +141,7 @@ Run:
 
 Expected: compilation fails because the localization types do not exist.
 
-- [ ] **Step 3: Implement the stable language and catalog APIs**
+- [x] **Step 3: Implement the stable language and catalog APIs**
 
 ```kotlin
 enum class AppLanguage(val code: String, val languageTag: String, val nativeName: String) {
@@ -164,7 +176,7 @@ language-only matching third, with `pt-BR` excluded from language-only matching.
 Add foundation keys for generic actions (`Back`, `Cancel`, `Confirm`, `Retry`,
 `Close`, `Save`, `Delete`, `Loading`, `UnknownError`) to all 12 catalogs.
 
-- [ ] **Step 4: Implement named placeholder and plural validation**
+- [x] **Step 4: Implement named placeholder and plural validation**
 
 Use `{name}` tokens only. Reject missing arguments in tests, leave no raw token in
 rendered output, and implement Russian `one/few/many/other` rules plus `one/other`
@@ -187,7 +199,7 @@ internal fun pluralCategory(language: AppLanguage, count: Int): PluralCategory =
 }
 ```
 
-- [ ] **Step 5: Run tests and confirm GREEN**
+- [x] **Step 5: Run tests and confirm GREEN**
 
 ```powershell
 ./gradlew.bat :protocol:jvmTest --tests "*LocalizationCatalogTest" --no-daemon
@@ -195,7 +207,7 @@ internal fun pluralCategory(language: AppLanguage, count: Int): PluralCategory =
 
 Expected: all localization domain tests pass.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```powershell
 git add protocol/src/commonMain/kotlin/com/hienthai/fastowin/localization protocol/src/commonTest/kotlin/com/hienthai/fastowin/localization
