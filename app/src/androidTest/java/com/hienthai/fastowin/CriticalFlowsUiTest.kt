@@ -189,6 +189,7 @@ class CriticalFlowsUiTest {
     fun tournament_createSubmitsNameAndMode() {
         var submittedName: String? = null
         var submittedMode: GameMode? = null
+        var submittedMaxPlayers: Int? = null
         composeRule.setContent {
             FastToWinTheme {
                 TournamentScreen(
@@ -203,9 +204,10 @@ class CriticalFlowsUiTest {
                         )
                     ),
                     onBack = {},
-                    onCreate = { name, mode, _ ->
+                    onCreate = { name, mode, _, maxPlayers ->
                         submittedName = name
                         submittedMode = mode
+                        submittedMaxPlayers = maxPlayers
                     },
                     onInvite = {},
                     onRespondInvitation = { _, _ -> },
@@ -218,11 +220,13 @@ class CriticalFlowsUiTest {
 
         composeRule.onNodeWithTag("tournament_screen").assertIsDisplayed()
         composeRule.onNodeWithTag("tournament_name").performTextInput("Cúp cuối tuần")
+        composeRule.onNodeWithTag("tournament_size_8").performClick()
         composeRule.onNodeWithTag("create_tournament").performClick()
 
         composeRule.runOnIdle {
             assertEquals("Cúp cuối tuần", submittedName)
             assertEquals(GameMode.ORDER, submittedMode)
+            assertEquals(8, submittedMaxPlayers)
         }
     }
 

@@ -401,9 +401,11 @@ class GameController(
         _uiState.update { it.copy(isTournamentOpen = false, isTournamentLoading = false, tournamentNotice = null) }
     }
 
-    fun createTournament(name: String, mode: GameMode, entryFee: Int = 0) {
+    fun createTournament(name: String, mode: GameMode, entryFee: Int = 0, maxPlayers: Int = 4) {
         _uiState.update { it.copy(isTournamentLoading = true, tournamentNotice = null, error = null) }
-        scope.launch { socket.sendMessage(ClientMessage.CreateTournament(name, mode.toProtocol(), entryFee)) }
+        scope.launch {
+            socket.sendMessage(ClientMessage.CreateTournament(name, mode.toProtocol(), entryFee, maxPlayers))
+        }
     }
 
     fun inviteTournamentPlayer(friendPlayerId: String) {

@@ -176,6 +176,7 @@ data class TournamentInvitationSnapshot(
     val hostPlayerId: String,
     val hostDisplayName: String,
     val gameMode: ProtocolGameMode,
+    val maxPlayers: Int = 4,
     val expiresAtEpochMillis: Long
 )
 
@@ -734,7 +735,8 @@ sealed class ClientMessage {
     data class CreateTournament(
         val name: String,
         val gameMode: ProtocolGameMode,
-        val entryFee: Int = 0
+        val entryFee: Int = 0,
+        val maxPlayers: Int = 4
     ) : ClientMessage()
 
     @Serializable

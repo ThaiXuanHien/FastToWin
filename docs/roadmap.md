@@ -55,9 +55,10 @@ Danh mục bán hiện tại: Gem, Mặt bài Hoàng Kim, Mặt bài Kim Cương
 
 ## 4. Giải đấu mở rộng
 
-Đã có giải riêng 4 người, bán kết/chung kết, nhà vô địch và lịch sử.
+Đã có giải riêng 4 hoặc 8 người, nhánh đấu loại trực tiếp, nhà vô địch và lịch sử.
 
-- [ ] Giải 8 người, sau đó 16 người.
+- [x] Giải riêng 8 người với tứ kết, bán kết và chung kết.
+- [ ] Giải riêng 16 người.
 - [ ] Giải công khai/toàn hệ thống.
 - [ ] Lịch thi đấu, thời hạn đăng ký và xử lý vắng mặt.
 - [ ] Khán giả xem trận đấu giải (khác với xem phòng thông thường).

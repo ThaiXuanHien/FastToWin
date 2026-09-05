@@ -36,6 +36,7 @@ class PostgresTournamentRepositoryTest {
                 hostPlayerId = hostId,
                 gameMode = ProtocolGameMode.ORDER,
                 phase = TournamentPhase.LOBBY,
+                maxPlayers = 8,
                 players = listOf(
                     TournamentPlayerSnapshot(hostId, "Hiền", isHost = true, isOnline = true),
                     TournamentPlayerSnapshot(guestId, "Hiếu", isOnline = true)
@@ -59,6 +60,7 @@ class PostgresTournamentRepositoryTest {
                 val saved = repository.loadRecent(hostId, 10).single { it.tournamentId == tournamentId }
                 assertEquals(hostId, saved.championPlayerId)
                 assertEquals(TournamentPhase.FINISHED, saved.phase)
+                assertEquals(8, saved.maxPlayers)
             } finally {
                 dataSource.connection.use { connection ->
                     connection.prepareStatement("DELETE FROM tournaments WHERE tournament_id = ?").use { statement ->

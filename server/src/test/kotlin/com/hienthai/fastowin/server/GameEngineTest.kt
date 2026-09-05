@@ -1888,6 +1888,117 @@ class GameEngineTest {
         assertEquals(null, history.activeTournament)
     }
 
+    @Test
+    fun `private eight player tournament advances through quarterfinals to champion`() = runTest {
+        val playerIds = List(8) { UUID.randomUUID().toString() }
+        val names = List(8) { index -> "Đấu thủ ${index + 1}" }
+        val profiles = playerIds.mapIndexed { index, playerId ->
+            playerId to PlayerProfileSnapshot(
+                userId = playerId,
+                displayName = names[index],
+                playerCode = "EIGHT${index + 1}",
+                progression = PlayerProgressionSnapshot(level = 20)
+            )
+        }.toMap()
+        val profileRepository = object : PlayerProfileRepository {
+            override suspend fun findByPlayerId(playerId: String) = profiles[playerId]
+            override suspend fun updateProfile(
+                playerId: String,
+                displayName: String,
+                avatarId: String?
+            ) = false
+        }
+        val friendRepository = object : FriendRepository {
+            override suspend fun load(userId: String) = StoredFriends(
+                friends = playerIds.filterNot { it == userId }.map { friendId ->
+                    FriendSnapshot(
+                        userId = friendId,
+                        displayName = profiles.getValue(friendId).displayName,
+                        playerCode = profiles.getValue(friendId).playerCode
+                    )
+                }
+            )
+            override suspend fun sendRequest(userId: String, playerCode: String, nowMillis: Long) =
+                FriendRequestResult.PlayerNotFound
+            override suspend fun respond(userId: String, requestId: String, accept: Boolean, nowMillis: Long) =
+                FriendResponseResult.NotFound
+            override suspend fun cancelRequest(userId: String, requestId: String) =
+                FriendCancellationResult.NotFound
+            override suspend fun removeFriend(userId: String, friendUserId: String) =
+                SocialMutationResult.NotFound
+            override suspend fun blockPlayer(userId: String, playerUserId: String, nowMillis: Long) =
+                SocialMutationResult.NotFound
+            override suspend fun unblockPlayer(userId: String, playerUserId: String) =
+                SocialMutationResult.NotFound
+            override suspend fun areFriends(firstUserId: String, secondUserId: String) =
+                firstUserId != secondUserId && firstUserId in playerIds && secondUserId in playerIds
+            override suspend fun isBlockedEitherWay(firstUserId: String, secondUserId: String) = false
+        }
+        val engine = GameEngine(
+            playerProfileRepository = profileRepository,
+            friendRepository = friendRepository
+        )
+        playerIds.forEachIndexed { index, playerId ->
+            engine.connectAccount(AuthenticatedAccount(UUID.fromString(playerId), names[index]))
+        }
+
+        val created = engine.handle(
+            playerIds[0],
+            ClientMessage.CreateTournament(
+                name = "Cúp tám người",
+                gameMode = ProtocolGameMode.SURVIVAL,
+                maxPlayers = 8
+            )
+        ).map(Delivery::message).filterIsInstance<ServerMessage.TournamentUpdated>().single().tournament
+        assertEquals(8, created.maxPlayers)
+        assertEquals(7, created.matches.size)
+        assertEquals(mapOf(1 to 4, 2 to 2, 3 to 1), created.matches.groupingBy { it.round }.eachCount())
+
+        playerIds.drop(1).forEach { inviteeId ->
+            val invitation = engine.handle(
+                playerIds[0],
+                ClientMessage.InviteTournamentPlayer(created.tournamentId, inviteeId)
+            ).map(Delivery::message).filterIsInstance<ServerMessage.TournamentInvitation>().single().invitation
+            engine.handle(
+                inviteeId,
+                ClientMessage.RespondTournamentInvitation(invitation.invitationId, accept = true)
+            )
+        }
+
+        val quarterfinals = engine.handle(
+            playerIds[0],
+            ClientMessage.StartTournament(created.tournamentId)
+        ).map(Delivery::message).filterIsInstance<ServerMessage.GameStarted>().map(ServerMessage.GameStarted::game)
+        assertEquals(4, quarterfinals.size)
+        assertTrue(quarterfinals.all { it.tournamentRound == 1 })
+
+        var roundMessages = emptyList<ServerMessage>()
+        listOf(playerIds[7], playerIds[6], playerIds[5], playerIds[4]).forEachIndexed { index, loserId ->
+            val game = quarterfinals.single { loserId in it.players.map { player -> player.id } }
+            roundMessages = loseSurvivalTournamentMatch(engine, game, loserId, "quarter-$index")
+        }
+        val semifinals = roundMessages.filterIsInstance<ServerMessage.GameStarted>()
+            .map(ServerMessage.GameStarted::game)
+        assertEquals(2, semifinals.size)
+        assertTrue(semifinals.all { it.tournamentRound == 2 })
+
+        listOf(playerIds[1], playerIds[3]).forEachIndexed { index, loserId ->
+            val game = semifinals.single { loserId in it.players.map { player -> player.id } }
+            roundMessages = loseSurvivalTournamentMatch(engine, game, loserId, "semi-eight-$index")
+        }
+        val finalGame = roundMessages.filterIsInstance<ServerMessage.GameStarted>().single().game
+        assertEquals(3, finalGame.tournamentRound)
+        assertEquals(setOf(playerIds[0], playerIds[2]), finalGame.players.map { it.id }.toSet())
+
+        val finalMessages = loseSurvivalTournamentMatch(engine, finalGame, playerIds[2], "final-eight")
+        val completed = finalMessages.filterIsInstance<ServerMessage.TournamentUpdated>().last().tournament
+        assertEquals(com.hienthai.fastowin.protocol.TournamentPhase.FINISHED, completed.phase)
+        assertEquals(playerIds[0], completed.championPlayerId)
+        assertTrue(completed.matches.all {
+            it.phase == com.hienthai.fastowin.protocol.TournamentMatchPhase.FINISHED
+        })
+    }
+
     private suspend fun loseSurvivalTournamentMatch(
         engine: GameEngine,
         game: com.hienthai.fastowin.protocol.GameSnapshot,

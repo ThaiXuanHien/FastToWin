@@ -228,7 +228,7 @@ internal fun HomeDashboard(
                 )
                 HomeQuickAction(
                     "Đấu giải",
-                    if (isGuest) "Đăng ký để tham gia" else "Giải riêng 4 người loại trực tiếp",
+                    if (isGuest) "Đăng ký để tham gia" else "Giải riêng 4 hoặc 8 người loại trực tiếp",
                     Icons.Default.EmojiEvents,
                     ArcadePalette.Coral600,
                     if (isGuest) onUpgradeGuest else onOpenTournament,

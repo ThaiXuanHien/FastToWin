@@ -445,6 +445,9 @@ class GameEngine(
         if (safeName.length < 3) {
             return listOf(error(playerId, "INVALID_TOURNAMENT_NAME", "Tên giải cần có ít nhất 3 ký tự."))
         }
+        if (command.maxPlayers !in SUPPORTED_TOURNAMENT_PLAYER_COUNTS) {
+            return listOf(error(playerId, "INVALID_TOURNAMENT_SIZE", "Giải đấu chỉ hỗ trợ 4 hoặc 8 người."))
+        }
         var snapshotToSave: TournamentSnapshot? = null
         val tournamentId = UUID.randomUUID().toString()
         val deliveries = mutex.withLock {
@@ -481,14 +484,11 @@ class GameEngine(
                 name = safeName,
                 hostId = playerId,
                 gameMode = command.gameMode,
+                maxPlayers = command.maxPlayers,
                 entryFee = command.entryFee,
                 prizePool = command.entryFee,
                 participants = mutableListOf(TournamentParticipant(playerId, host.displayName)),
-                matches = mutableListOf(
-                    TournamentMatch(UUID.randomUUID().toString(), round = 1, position = 1),
-                    TournamentMatch(UUID.randomUUID().toString(), round = 1, position = 2),
-                    TournamentMatch(UUID.randomUUID().toString(), round = 2, position = 1)
-                ),
+                matches = createTournamentMatches(command.maxPlayers),
                 createdAtMillis = nowMillis()
             )
             tournaments[tournament.id] = tournament
@@ -496,7 +496,10 @@ class GameEngine(
             snapshotToSave = snapshot
             listOf(
                 Delivery(ServerMessage.TournamentUpdated(snapshot), setOf(playerId)),
-                Delivery(ServerMessage.TournamentNotice("Đã tạo giải riêng 4 người."), setOf(playerId))
+                Delivery(
+                    ServerMessage.TournamentNotice("Đã tạo giải riêng ${command.maxPlayers} người."),
+                    setOf(playerId)
+                )
             )
         }
         snapshotToSave?.let { tournamentRepository.save(it) }
@@ -518,8 +521,10 @@ class GameEngine(
             val tournament = tournaments[command.tournamentId]
                 ?.takeIf { it.hostId == playerId && it.phase == TournamentPhase.LOBBY }
                 ?: return@withLock listOf(error(playerId, "TOURNAMENT_NOT_INVITABLE", "Giải không còn nhận lời mời."))
-            if (tournament.participants.size >= TOURNAMENT_PLAYER_COUNT) {
-                return@withLock listOf(error(playerId, "TOURNAMENT_FULL", "Giải đã đủ 4 người."))
+            if (tournament.participants.size >= tournament.maxPlayers) {
+                return@withLock listOf(
+                    error(playerId, "TOURNAMENT_FULL", "Giải đã đủ ${tournament.maxPlayers} người.")
+                )
             }
             if (command.friendPlayerId in tournament.playerIds()) {
                 return@withLock listOf(error(playerId, "PLAYER_ALREADY_JOINED", "Người chơi đã ở trong giải."))
@@ -539,6 +544,7 @@ class GameEngine(
                 hostDisplayName = sessionsByPlayerId[playerId]?.displayName.orEmpty(),
                 tournamentName = tournament.name,
                 gameMode = tournament.gameMode,
+                maxPlayers = tournament.maxPlayers,
                 expiresAtMillis = nowMillis() + TOURNAMENT_INVITATION_TTL_MILLIS
             )
             tournamentInvitations[invitation.id] = invitation
@@ -584,8 +590,10 @@ class GameEngine(
             val tournament = tournaments[invitation.tournamentId]
                 ?.takeIf { it.phase == TournamentPhase.LOBBY }
                 ?: return@withLock listOf(error(playerId, "TOURNAMENT_NOT_FOUND", "Giải đấu không còn tồn tại."))
-            if (tournament.participants.size >= TOURNAMENT_PLAYER_COUNT) {
-                return@withLock listOf(error(playerId, "TOURNAMENT_FULL", "Giải đã đủ 4 người."))
+            if (tournament.participants.size >= tournament.maxPlayers) {
+                return@withLock listOf(
+                    error(playerId, "TOURNAMENT_FULL", "Giải đã đủ ${tournament.maxPlayers} người.")
+                )
             }
             if (activeTournamentFor(playerId) != null || roomFor(playerId) != null || playerId in matchmakingEntries) {
                 return@withLock listOf(error(playerId, "PLAYER_BUSY", "Hãy rời phòng hoặc giải hiện tại trước."))
@@ -632,8 +640,10 @@ class GameEngine(
             val tournament = tournaments[tournamentId]
                 ?.takeIf { it.hostId == playerId && it.phase == TournamentPhase.LOBBY }
                 ?: return@withLock listOf(error(playerId, "TOURNAMENT_NOT_STARTABLE", "Bạn không thể bắt đầu giải này."))
-            if (tournament.participants.size != TOURNAMENT_PLAYER_COUNT) {
-                return@withLock listOf(error(playerId, "TOURNAMENT_NOT_FULL", "Cần đủ 4 người để bắt đầu."))
+            if (tournament.participants.size != tournament.maxPlayers) {
+                return@withLock listOf(
+                    error(playerId, "TOURNAMENT_NOT_FULL", "Cần đủ ${tournament.maxPlayers} người để bắt đầu.")
+                )
             }
             val unavailable = tournament.playerIds().firstOrNull { participantId ->
                 sessionsByPlayerId[participantId]?.let { !it.isConnected || it.resumeToken != null } != false ||
@@ -646,10 +656,12 @@ class GameEngine(
             tournament.phase = TournamentPhase.RUNNING
             tournament.startedAtMillis = nowMillis()
             val players = tournament.participants.map(TournamentParticipant::playerId)
-            val semifinalPairs = listOf(players[0] to players[3], players[1] to players[2])
+            val openingPairs = (0 until players.size / 2).map { index ->
+                players[index] to players[players.lastIndex - index]
+            }
             val gameDeliveries = mutableListOf<Delivery>()
             tournament.matches.filter { it.round == 1 }.sortedBy { it.position }
-                .zip(semifinalPairs)
+                .zip(openingPairs)
                 .forEach { (match, pair) ->
                     match.playerOneId = pair.first
                     match.playerTwoId = pair.second
@@ -2397,11 +2409,35 @@ class GameEngine(
         return HandleResult(listOf(delivery))
     }
 
+    private fun createTournamentMatches(maxPlayers: Int): MutableList<TournamentMatch> {
+        val matches = mutableListOf<TournamentMatch>()
+        var round = 1
+        var matchesInRound = maxPlayers / 2
+        while (matchesInRound >= 1) {
+            repeat(matchesInRound) { position ->
+                matches += TournamentMatch(
+                    id = UUID.randomUUID().toString(),
+                    round = round,
+                    position = position + 1
+                )
+            }
+            round += 1
+            matchesInRound /= 2
+        }
+        return matches
+    }
+
     private fun createTournamentRoom(tournament: Tournament, match: TournamentMatch): Room {
         val playerOneId = checkNotNull(match.playerOneId)
         val playerTwoId = checkNotNull(match.playerTwoId)
         val roomId = UUID.randomUUID().toString()
-        val roundName = if (match.round == 1) "Bán kết ${match.position}" else "Chung kết"
+        val finalRound = tournament.matches.maxOf(TournamentMatch::round)
+        val roundName = when (match.round) {
+            finalRound -> "Chung kết"
+            finalRound - 1 -> "Bán kết ${match.position}"
+            finalRound - 2 -> "Tứ kết ${match.position}"
+            else -> "Vòng ${match.round} • Trận ${match.position}"
+        }
         val room = Room(
             id = roomId,
             matchId = roomId,
@@ -2426,7 +2462,7 @@ class GameEngine(
     private suspend fun advanceTournamentAfterMatch(matchId: String): List<Delivery> {
         var snapshotToSave: TournamentSnapshot? = null
         var removedRoomId: String? = null
-        var createdRoomId: String? = null
+        val createdRoomIds = mutableListOf<String>()
         var rewardedChampionId: String? = null
         val deliveries = mutex.withLock {
             val tournament = tournaments.values.firstOrNull { candidate ->
@@ -2444,15 +2480,25 @@ class GameEngine(
             rooms.remove(room.id)
 
             val gameDeliveries = mutableListOf<Delivery>()
-            if (tournamentMatch.round == 1) {
-                val semifinals = tournament.matches.filter { it.round == 1 }.sortedBy { it.position }
-                if (semifinals.all { it.phase == TournamentMatchPhase.FINISHED }) {
-                    val final = tournament.matches.single { it.round == 2 }
-                    final.playerOneId = semifinals[0].winnerPlayerId
-                    final.playerTwoId = semifinals[1].winnerPlayerId
-                    val finalRoom = createTournamentRoom(tournament, final)
-                    createdRoomId = finalRoom.id
-                    gameDeliveries += Delivery(ServerMessage.GameStarted(finalRoom.snapshot()), finalRoom.playerIds())
+            val currentRoundMatches = tournament.matches
+                .filter { it.round == tournamentMatch.round }
+                .sortedBy { it.position }
+            val nextRoundMatches = tournament.matches
+                .filter { it.round == tournamentMatch.round + 1 }
+                .sortedBy { it.position }
+            if (nextRoundMatches.isNotEmpty()) {
+                if (currentRoundMatches.all { it.phase == TournamentMatchPhase.FINISHED }) {
+                    val winners = currentRoundMatches.map { checkNotNull(it.winnerPlayerId) }
+                    nextRoundMatches.forEachIndexed { index, nextMatch ->
+                        nextMatch.playerOneId = winners[index * 2]
+                        nextMatch.playerTwoId = winners[index * 2 + 1]
+                        val nextRoom = createTournamentRoom(tournament, nextMatch)
+                        createdRoomIds += nextRoom.id
+                        gameDeliveries += Delivery(
+                            ServerMessage.GameStarted(nextRoom.snapshot()),
+                            nextRoom.playerIds()
+                        )
+                    }
                 }
             } else {
                 tournament.phase = TournamentPhase.FINISHED
@@ -2477,7 +2523,7 @@ class GameEngine(
         }
         snapshotToSave?.let { tournamentRepository.save(it) }
         removedRoomId?.let { persistRoom(it) }
-        createdRoomId?.let { persistRoom(it) }
+        createdRoomIds.forEach { persistRoom(it) }
         return deliveries +
             snapshotToSave?.players.orEmpty().flatMap { presenceUpdates(it.playerId) } +
             rewardedChampionId?.let { loadProfile(it) }.orEmpty()
@@ -2494,7 +2540,7 @@ class GameEngine(
         hostPlayerId = hostId,
         gameMode = gameMode,
         phase = phase,
-        maxPlayers = TOURNAMENT_PLAYER_COUNT,
+        maxPlayers = maxPlayers,
         entryFee = entryFee,
         prizePool = prizePool,
         players = participants.map { participant ->
@@ -2530,6 +2576,9 @@ class GameEngine(
         name = name,
         hostId = hostPlayerId,
         gameMode = gameMode,
+        maxPlayers = maxPlayers,
+        entryFee = entryFee,
+        prizePool = prizePool,
         participants = players.mapTo(mutableListOf()) { TournamentParticipant(it.playerId, it.displayName) },
         matches = matches.mapTo(mutableListOf()) { match ->
             TournamentMatch(
@@ -3097,6 +3146,7 @@ class GameEngine(
         val name: String,
         val hostId: String,
         val gameMode: ProtocolGameMode,
+        val maxPlayers: Int = DEFAULT_TOURNAMENT_PLAYER_COUNT,
         val entryFee: Int = 0,
         var prizePool: Int = 0,
         val participants: MutableList<TournamentParticipant>,
@@ -3118,6 +3168,7 @@ class GameEngine(
         val hostDisplayName: String,
         val tournamentName: String,
         val gameMode: ProtocolGameMode,
+        val maxPlayers: Int,
         val expiresAtMillis: Long
     ) {
         fun snapshot() = TournamentInvitationSnapshot(
@@ -3127,6 +3178,7 @@ class GameEngine(
             hostPlayerId = hostId,
             hostDisplayName = hostDisplayName,
             gameMode = gameMode,
+            maxPlayers = maxPlayers,
             expiresAtEpochMillis = expiresAtMillis
         )
     }
@@ -3441,7 +3493,8 @@ class GameEngine(
         const val MAX_REQUESTS_PER_MATCH = 2_000
         const val MAX_NOTIFICATION_SYNC_BATCH = 20
         const val LEADERBOARD_SIZE = 100
-        const val TOURNAMENT_PLAYER_COUNT = 4
+        const val DEFAULT_TOURNAMENT_PLAYER_COUNT = 4
+        val SUPPORTED_TOURNAMENT_PLAYER_COUNTS = setOf(4, 8)
         const val MAX_TOURNAMENT_NAME_LENGTH = 48
         const val TOURNAMENT_HISTORY_LIMIT = 10
         const val TOURNAMENT_INVITATION_TTL_MILLIS = 10 * 60 * 1000L

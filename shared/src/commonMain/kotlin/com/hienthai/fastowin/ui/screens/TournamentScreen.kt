@@ -74,7 +74,7 @@ import com.hienthai.fastowin.ui.theme.ArcadePalette
 fun TournamentScreen(
     state: GameState,
     onBack: () -> Unit,
-    onCreate: (String, GameMode, Int) -> Unit,
+    onCreate: (String, GameMode, Int, Int) -> Unit,
     onInvite: (String) -> Unit,
     onRespondInvitation: (String, Boolean) -> Unit,
     onStart: () -> Unit,
@@ -113,7 +113,7 @@ fun TournamentScreen(
                 val heroSubtitle: String
                 if (tournament == null) {
                     heroTitle = "Đấu trường loại trực tiếp"
-                    heroSubtitle = "Tập hợp 4 chiến binh, vượt bán kết và chạm tay vào cúp vô địch."
+                    heroSubtitle = "Tập hợp 4 hoặc 8 chiến binh và chạm tay vào cúp vô địch."
                 } else {
                     val championName = tournament.players
                         .firstOrNull { it.playerId == tournament.championPlayerId }
@@ -190,7 +190,7 @@ fun TournamentInvitationDialog(
 ) {
     ArcadeDialog(
         title = "Lời mời đấu giải",
-        subtitle = "${invitation.hostDisplayName} mời bạn tham gia “${invitation.tournamentName}” · ${invitation.gameMode.title()}.",
+        subtitle = "${invitation.hostDisplayName} mời bạn tham gia “${invitation.tournamentName}” · ${invitation.gameMode.title()} · ${invitation.maxPlayers} người.",
         onDismissRequest = onDefer,
         modifier = Modifier.testTag("tournament_invitation_dialog")
     ) {
@@ -224,10 +224,11 @@ fun TournamentInvitationDialog(
 private fun CreateTournamentCard(
     playerLevel: Int,
     enabled: Boolean,
-    onCreate: (String, GameMode, Int) -> Unit
+    onCreate: (String, GameMode, Int, Int) -> Unit
 ) {
     var name by remember { mutableStateOf("") }
     var mode by remember { mutableStateOf(GameMode.ORDER) }
+    var maxPlayers by remember { mutableStateOf(4) }
     var showModePicker by remember { mutableStateOf(false) }
     if (showModePicker) {
         GameModePickerDialog(
@@ -259,15 +260,40 @@ private fun CreateTournamentCard(
                 }
                 Column {
                     Text(
-                        "Tạo giải riêng 4 người",
+                        "Tạo giải riêng",
                         style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.Bold
                     )
                     Text(
-                        "Loại trực tiếp • 2 bán kết • 1 chung kết",
+                        if (maxPlayers == 4) {
+                            "4 người • 2 bán kết • 1 chung kết"
+                        } else {
+                            "8 người • 4 tứ kết • 2 bán kết • 1 chung kết"
+                        },
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
+                }
+            }
+
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(
+                    "Quy mô giải",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    listOf(4, 8).forEach { size ->
+                        TournamentSizeChip(
+                            playerCount = size,
+                            selected = maxPlayers == size,
+                            onClick = { maxPlayers = size },
+                            modifier = Modifier.weight(1f).testTag("tournament_size_$size")
+                        )
+                    }
                 }
             }
 
@@ -380,7 +406,7 @@ private fun CreateTournamentCard(
 
             ArcadeActionButton(
                 label = "BẮT ĐẦU TẠO GIẢI",
-                onClick = { onCreate(name.trim(), mode, entryFee) },
+                onClick = { onCreate(name.trim(), mode, entryFee, maxPlayers) },
                 enabled = enabled && name.trim().length >= 3 && (!isCustomFee || customFeeText.isNotEmpty()),
                 style = ArcadeActionStyle.GOLD,
                 modifier = Modifier.fillMaxWidth().testTag("create_tournament")
@@ -397,6 +423,45 @@ private fun CreateTournamentCard(
                     color = MaterialTheme.colorScheme.onSecondaryContainer
                 )
             }
+        }
+    }
+}
+
+@Composable
+private fun TournamentSizeChip(
+    playerCount: Int,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        onClick = onClick,
+        modifier = modifier.heightIn(min = 52.dp),
+        shape = RoundedCornerShape(14.dp),
+        color = if (selected) ArcadePalette.Blue700 else ArcadePalette.Navy800,
+        border = androidx.compose.foundation.BorderStroke(
+            width = 1.dp,
+            color = if (selected) ArcadePalette.Blue300 else ArcadePalette.Navy700
+        )
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center
+        ) {
+            Icon(
+                Icons.Rounded.GroupAdd,
+                contentDescription = null,
+                modifier = Modifier.size(18.dp),
+                tint = if (selected) ArcadePalette.Gold500 else ArcadePalette.Blue100
+            )
+            Spacer(Modifier.size(7.dp))
+            Text(
+                "$playerCount NGƯỜI",
+                color = ArcadePalette.White,
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.Black
+            )
         }
     }
 }
@@ -670,7 +735,7 @@ private fun ActiveTournamentContent(
             modifier = Modifier.fillMaxWidth()
         ) {
             Text(
-                "Các trận đấu được tạo tự động. Người thắng bán kết sẽ vào chung kết.",
+                "Các trận đấu được tạo tự động. Người thắng sẽ tiến vào vòng tiếp theo.",
                 modifier = Modifier.padding(12.dp),
                 textAlign = TextAlign.Center,
                 style = MaterialTheme.typography.bodySmall,
@@ -683,100 +748,77 @@ private fun ActiveTournamentContent(
 @Composable
 private fun TournamentBracket(tournament: TournamentSnapshot) {
     val names = tournament.players.associate { it.playerId to it.displayName }
-    val semiFinals = tournament.matches.filter { it.round == 1 }.sortedBy { it.position }
+    val roundNumbers = tournament.matches.map(TournamentMatchSnapshot::round).distinct().sorted()
+    val finalRound = roundNumbers.maxOrNull() ?: 1
     Column(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        // Semi-finals
-        Text(
-            "VÒNG BÁN KẾT",
-            style = MaterialTheme.typography.labelLarge,
-            color = MaterialTheme.colorScheme.primary,
-            fontWeight = FontWeight.Bold
-        )
-        
-        BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
-            val useStackedBracket = maxWidth < 520.dp
-            if (useStackedBracket) {
-                Column(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    semiFinals.forEach { match ->
-                        TournamentMatchCard(match, names)
-                    }
-                }
-            } else {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    semiFinals.forEach { match ->
-                        Box(modifier = Modifier.weight(1f)) {
-                            TournamentMatchCard(match, names, compact = true)
+        roundNumbers.forEach { round ->
+            val matches = tournament.matches.filter { it.round == round }
+            val isFinal = round == finalRound
+            Text(
+                tournamentRoundLabel(round, finalRound),
+                style = MaterialTheme.typography.labelLarge,
+                color = if (isFinal) ArcadePalette.Gold500 else MaterialTheme.colorScheme.primary,
+                fontWeight = FontWeight.Black,
+                modifier = if (isFinal) Modifier.align(Alignment.CenterHorizontally) else Modifier
+            )
+            BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+                val sortedMatches = matches.sortedBy(TournamentMatchSnapshot::position)
+                val columns = if (maxWidth >= 560.dp && sortedMatches.size > 1) 2 else 1
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    sortedMatches.chunked(columns).forEach { rowMatches ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            rowMatches.forEach { match ->
+                                Box(modifier = Modifier.weight(1f)) {
+                                    TournamentMatchCard(
+                                        match = match,
+                                        names = names,
+                                        compact = columns > 1,
+                                        isFinal = isFinal
+                                    )
+                                }
+                            }
+                            if (rowMatches.size < columns) {
+                                repeat(columns - rowMatches.size) { Spacer(Modifier.weight(1f)) }
+                            }
                         }
                     }
                 }
             }
-        }
-
-        // Visual connector (simplified for now, can be improved with custom drawing)
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(24.dp),
-            contentAlignment = Alignment.Center
-        ) {
-            androidx.compose.foundation.Canvas(modifier = Modifier.fillMaxSize()) {
-                val color = androidx.compose.ui.graphics.Color.Gray.copy(alpha = 0.3f)
-                val strokeWidth = 2.dp.toPx()
-                
-                // Horizontal line connecting the two semi-finals
-                drawLine(
-                    color = color,
-                    start = androidx.compose.ui.geometry.Offset(size.width * 0.25f, 0f),
-                    end = androidx.compose.ui.geometry.Offset(size.width * 0.75f, 0f),
-                    strokeWidth = strokeWidth
-                )
-                // Vertical line down to final
-                drawLine(
-                    color = color,
-                    start = androidx.compose.ui.geometry.Offset(size.width * 0.5f, 0f),
-                    end = androidx.compose.ui.geometry.Offset(size.width * 0.5f, size.height),
-                    strokeWidth = strokeWidth
-                )
-            }
-        }
-
-        // Final
-        Text(
-            "TRẬN CHUNG KẾT",
-            style = MaterialTheme.typography.labelLarge,
-            color = MaterialTheme.colorScheme.secondary,
-            fontWeight = FontWeight.Bold,
-            modifier = Modifier.align(Alignment.CenterHorizontally)
-        )
-        
-        tournament.matches.firstOrNull { it.round == 2 }?.let { finalMatch ->
-            BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
-                val finalWidth = if (maxWidth < 520.dp) 1f else 0.7f
+            if (!isFinal) {
                 Box(
-                    modifier = Modifier
-                        .fillMaxWidth(finalWidth)
-                        .align(Alignment.Center)
+                    modifier = Modifier.fillMaxWidth().height(20.dp),
+                    contentAlignment = Alignment.Center
                 ) {
-                    TournamentMatchCard(finalMatch, names, isFinal = true)
+                    androidx.compose.foundation.Canvas(modifier = Modifier.fillMaxSize()) {
+                        drawLine(
+                            color = ArcadePalette.Blue300.copy(alpha = 0.45f),
+                            start = androidx.compose.ui.geometry.Offset(size.width / 2f, 0f),
+                            end = androidx.compose.ui.geometry.Offset(size.width / 2f, size.height),
+                            strokeWidth = 2.dp.toPx()
+                        )
+                    }
                 }
             }
         }
 
-        // Champion
         tournament.championPlayerId?.let { championId ->
             Spacer(Modifier.height(8.dp))
             ChampionCard(names[championId] ?: "Người chơi")
         }
     }
+}
+
+private fun tournamentRoundLabel(round: Int, finalRound: Int): String = when (round) {
+    finalRound -> "TRẬN CHUNG KẾT"
+    finalRound - 1 -> "VÒNG BÁN KẾT"
+    finalRound - 2 -> "VÒNG TỨ KẾT"
+    else -> "VÒNG $round"
 }
 
 @Composable
@@ -915,7 +957,7 @@ private fun InvitationCard(
         Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text(invitation.tournamentName, fontWeight = FontWeight.Bold)
             Text(
-                "${invitation.hostDisplayName} mời bạn · ${invitation.gameMode.title()}",
+                "${invitation.hostDisplayName} mời bạn · ${invitation.gameMode.title()} · ${invitation.maxPlayers} người",
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             Column(
