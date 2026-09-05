@@ -208,6 +208,7 @@ fun ProfileScreen(
     var displayName by remember { mutableStateOf("") }
     var showAccountSecurity by remember { mutableStateOf(false) }
     var showAccountSessions by remember { mutableStateOf(false) }
+    var showLogoutConfirmation by remember { mutableStateOf(false) }
     var isPlayerCodeCopied by remember(profile?.playerCode) { mutableStateOf(false) }
     if (!isExternalProfile && showAccountSecurity) {
         AccountSecurityDialog(
@@ -238,6 +239,32 @@ fun ProfileScreen(
                 }
             }
         )
+    }
+    if (!isExternalProfile && showLogoutConfirmation) {
+        ArcadeDialog(
+            title = "Đăng xuất?",
+            subtitle = "Bạn sẽ quay về màn đăng nhập trên thiết bị này.",
+            onDismissRequest = { showLogoutConfirmation = false },
+            modifier = Modifier.testTag("logout_confirmation_dialog")
+        ) {
+            Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                ArcadeActionButton(
+                    label = "ĐĂNG XUẤT",
+                    onClick = {
+                        showLogoutConfirmation = false
+                        onLogout()
+                    },
+                    style = ArcadeActionStyle.DANGER,
+                    modifier = Modifier.fillMaxWidth().testTag("confirm_logout")
+                )
+                ArcadeActionButton(
+                    label = "HỦY",
+                    onClick = { showLogoutConfirmation = false },
+                    style = ArcadeActionStyle.OUTLINE,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        }
     }
     if (!isExternalProfile && (state.isMatchDetailLoading || state.matchDetail != null)) {
         MatchDetailDialog(
@@ -504,7 +531,7 @@ fun ProfileScreen(
                             title = "Đăng xuất",
                             subtitle = "",
                             isDestructive = true,
-                            onClick = onLogout
+                            onClick = { showLogoutConfirmation = true }
                         )
                 }
             }

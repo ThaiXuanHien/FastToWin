@@ -169,6 +169,47 @@ class ProfileSectionsUiTest {
     }
 
     @Test
+    fun profileMustConfirmBeforeLoggingOut() {
+        var loggedOut = false
+
+        setAdaptiveContent(430.dp, 932.dp) {
+            ProfileScreen(
+                serverUrl = "",
+                state = GameState(profile = profileFixture()),
+                onBack = {},
+                onRefresh = {},
+                onOpenMatchDetail = {},
+                onCloseMatchDetail = {},
+                onEquipCosmetics = { _, _ -> },
+                onClaimMissionReward = {},
+                onSave = { _, _ -> },
+                onUploadAvatar = {},
+                canEdit = true,
+                isAccountLoading = false,
+                accountError = null,
+                accountNotice = null,
+                accountSessions = emptyList(),
+                areSessionsLoading = false,
+                onChangePassword = { _, _ -> },
+                onDeleteAccount = {},
+                onClearAccountFeedback = {},
+                onLoadSessions = {},
+                onRevokeSession = {},
+                onRevokeAllSessions = {},
+                onLogout = { loggedOut = true },
+                showBackButton = false
+            )
+        }
+
+        composeRule.onNodeWithText("Đăng xuất").performScrollTo().performClick()
+        composeRule.runOnIdle { assertEquals(false, loggedOut) }
+        composeRule.onNodeWithTag("logout_confirmation_dialog").assertIsDisplayed()
+
+        composeRule.onNodeWithTag("confirm_logout").performClick()
+        composeRule.runOnIdle { assertEquals(true, loggedOut) }
+    }
+
+    @Test
     fun walletHistory_smallPhoneShowsIncomeAndSpending() {
         val profile = profileFixture()
         val transactions = listOf(

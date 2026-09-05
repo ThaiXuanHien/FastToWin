@@ -625,5 +625,6 @@ Kiểm tra process/container khác đang dùng cổng hoặc đổi port mapping
 ## Tài liệu chi tiết
 
 - [BACKEND_SETUP.md](BACKEND_SETUP.md): kiến trúc backend, API, bảo mật và production.
+- [docs/account-api.md](docs/account-api.md): URL, method, request, response và mã lỗi của API tài khoản.
 - [IOS_SETUP.md](IOS_SETUP.md): chạy ứng dụng iOS.
 - [docs/testing.md](docs/testing.md): test tự động và ma trận kiểm thử đa thiết bị.

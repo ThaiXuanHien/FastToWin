@@ -139,10 +139,15 @@ Backend hỗ trợ tài khoản email/mật khẩu qua JSON API:
 | `POST` | `/auth/sessions` | Liệt kê các phiên đăng nhập còn hoạt động |
 | `POST` | `/auth/sessions/revoke` | Thu hồi một phiên thuộc tài khoản hiện tại |
 | `POST` | `/auth/sessions/revoke-all` | Thu hồi toàn bộ phiên của tài khoản |
+| `POST` | `/auth/change-password` | Đổi mật khẩu và thu hồi mọi phiên |
 | `POST` | `/auth/password-reset/request` | Gửi mã khôi phục mật khẩu qua email |
 | `POST` | `/auth/password-reset/confirm` | Đặt mật khẩu mới bằng mã khôi phục |
 | `POST` | `/auth/email-verification/request` | Gửi hoặc gửi lại mã xác minh email |
 | `POST` | `/auth/email-verification/confirm` | Xác minh email bằng mã 6 số |
+| `POST` | `/auth/delete-account` | Xóa tài khoản sau khi xác nhận mật khẩu |
+
+Request, response, mã HTTP, mã lỗi và quy tắc cookie Web của từng endpoint được mô
+tả tại [đặc tả API tài khoản](docs/account-api.md).
 
 Ví dụ đăng ký:
 
@@ -151,7 +156,8 @@ Ví dụ đăng ký:
   "email": "player@example.com",
   "password": "mat-khau-toi-thieu-8-ky-tu",
   "displayName": "Người chơi",
-  "devicePlatform": "android"
+  "devicePlatform": "android",
+  "gender": "MALE"
 }
 ```
 
@@ -163,9 +169,9 @@ Compose Multiplatform có màn hình đăng nhập, đăng ký và lựa chọn 
 
 Trong màn **Hồ sơ**, tài khoản có thể đổi biệt danh/avatar và mở phần **Bảo mật** để đổi mật khẩu. Đổi mật khẩu thành công thu hồi mọi phiên hiện có và đưa ứng dụng về màn đăng nhập. Luồng **Quên mật khẩu** khóa email sau khi gửi yêu cầu, nhận mã có hiệu lực 15 phút và đặt mật khẩu mới. Ở môi trường dev mã được hiển thị và tự điền; production gửi qua SMTP và không trả token trong API response. Tài khoản mới cũng phải nhập mã email 6 số trước khi vào game. Client và backend cùng áp dụng giới hạn mật khẩu từ 8 đến 128 ký tự.
 
-Một tài khoản có thể giữ phiên đăng nhập HTTP trên nhiều thiết bị, nhưng chỉ có một kết nối game WebSocket hoạt động tại một thời điểm. Khi thiết bị mới kết nối cùng tài khoản, server đóng WebSocket cũ với lý do `Session resumed elsewhere`; kết nối mới giữ nguyên player ID và snapshot trận hiện tại. Thiết bị cũ nhận thông báo `SESSION_REPLACED` và dừng tự reconnect để hai máy không liên tục giành kết nối của nhau. Việc thay thế socket không đánh dấu người chơi offline và không làm mất phòng.
+Mỗi tài khoản chỉ có một phiên đăng nhập hoạt động. Khi đăng nhập thành công trên thiết bị mới, backend thu hồi toàn bộ access/refresh token cũ, đóng WebSocket cũ với lý do `Account signed in elsewhere` và đưa thiết bị cũ về màn đăng nhập. Thiết bị mới giữ nguyên player ID và có thể nhận lại snapshot phòng/trận của tài khoản. Việc thay thế socket không đánh dấu người chơi offline và không làm mất phòng.
 
-Màn **Thiết bị** trong Hồ sơ liệt kê nền tảng, thời gian hoạt động, hạn phiên và đánh dấu thiết bị hiện tại. Người chơi có thể đăng xuất riêng một thiết bị hoặc tất cả thiết bị. Backend luôn kiểm tra session ID thuộc đúng user từ access token; không thể dùng ID đã biết để thu hồi phiên của tài khoản khác. Thu hồi thiết bị hiện tại hoặc toàn bộ phiên đưa app về màn đăng nhập; WebSocket dùng token đã bị thu hồi sẽ bị đóng ở thao tác kế tiếp.
+Màn **Thiết bị** trong Hồ sơ hiển thị nền tảng, thời gian hoạt động, hạn phiên và đánh dấu phiên hiện tại. Theo chính sách một phiên, danh sách thường chỉ có thiết bị đang dùng; API vẫn hỗ trợ thu hồi một session cụ thể hoặc toàn bộ session để xử lý dữ liệu cũ an toàn. Backend luôn kiểm tra session ID thuộc đúng user từ access token; không thể dùng ID đã biết để thu hồi phiên của tài khoản khác. Thu hồi phiên hiện tại hoặc toàn bộ phiên đưa app về màn đăng nhập; WebSocket dùng token đã bị thu hồi sẽ bị đóng ở thao tác kế tiếp.
 
 Protocol WebSocket hiện tại là phiên bản 21. Sau khi cập nhật ứng dụng, cần khởi động lại backend để client và server dùng cùng phiên bản.
 
@@ -228,6 +234,7 @@ $env:FASTTOWIN_WEB_ORIGINS="https://play.ten-mien-cua-ban.com"
 $env:DATABASE_URL="jdbc:postgresql://database-host:5432/fasttowin"
 $env:DATABASE_USER="fasttowin_app"
 $env:DATABASE_PASSWORD="mat-khau-bi-mat"
+$env:DATABASE_POOL_SIZE="10"
 $env:FASTTOWIN_SMTP_HOST="smtp.mail-provider.example"
 $env:FASTTOWIN_SMTP_PORT="587"
 $env:FASTTOWIN_SMTP_USERNAME="smtp-user"
@@ -240,6 +247,14 @@ $env:FASTTOWIN_SMTP_SSL="false"
 ```
 
 Không commit SMTP secret vào Git. Dùng STARTTLS với port 587; nếu nhà cung cấp yêu cầu SSL port 465 thì đặt `FASTTOWIN_SMTP_STARTTLS=false` và `FASTTOWIN_SMTP_SSL=true`.
+
+Các biến bắt buộc ở production được backend kiểm tra lúc khởi động: origin HTTPS
+thật trong `FASTTOWIN_PUBLIC_URL` và `FASTTOWIN_WEB_ORIGINS`, PostgreSQL cùng mật
+khẩu ít nhất 12 ký tự, và SMTP cùng đúng một chế độ STARTTLS hoặc SSL. Cấu hình
+Docker đầy đủ, gồm push notification, bảo trì và secret mount từ file, nằm tại
+[`deploy/.env.production.example`](deploy/.env.production.example) và
+[`compose.production.yaml`](compose.production.yaml). Không dùng giá trị mẫu trong
+khối lệnh trên để triển khai thật.
 
 Backend cũng hỗ trợ `DATABASE_PASSWORD_FILE` và `FASTTOWIN_SMTP_PASSWORD_FILE` để
 đọc secret được mount từ file. Không đặt đồng thời biến trực tiếp và biến `_FILE`.
@@ -289,7 +304,7 @@ Test backend bao gồm:
 - Lời mời bạn bè vào phòng của tài khoản được lưu với thời hạn trong PostgreSQL và khôi phục cùng phòng sau khi server restart; chế độ chạy thuần bộ nhớ vẫn mất dữ liệu này.
 - Snapshot hiện dành cho một tiến trình backend; khi chạy nhiều instance cần chuyển trạng thái realtime sang Redis hoặc kho trạng thái phân tán.
 - Rate limit hiện nằm trong bộ nhớ từng tiến trình và được làm mới khi server restart; nhiều instance cần dùng Redis.
-- Chưa tích hợp dịch vụ email để gửi mã khôi phục và xác minh email; chưa có đăng xuất khỏi tất cả thiết bị.
+- SMTP gửi mã khôi phục/xác minh và API đăng xuất tất cả thiết bị đã được triển khai; production sẽ từ chối khởi động nếu thiếu cấu hình SMTP bắt buộc.
 - Theo dõi log tác vụ vòng đời mùa; backend kiểm tra mỗi phút, đóng băng bảng xếp hạng mùa cũ và tự tạo mùa kế tiếp.
 - Cấu hình local dùng `ws://`; môi trường production phải dùng `wss://`.
 

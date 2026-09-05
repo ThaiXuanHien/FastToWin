@@ -415,6 +415,7 @@ fun ClanDetailView(
     modifier: Modifier = Modifier
 ) {
     var showLogoDialog by remember { mutableStateOf(false) }
+    var showLeaveConfirmation by remember { mutableStateOf(false) }
     var kickTarget by remember { mutableStateOf<ClanMemberSnapshot?>(null) }
     var visibleMemberCount by remember(clan.id) { mutableStateOf(DEFAULT_ARCADE_PAGE_SIZE) }
     val isOwner = clan.ownerId == currentUserId
@@ -498,10 +499,37 @@ fun ClanDetailView(
         item(key = "leave_clan") {
             ArcadeActionButton(
                 label = "RỜI BANG",
-                onClick = onLeave,
+                onClick = { showLeaveConfirmation = true },
                 style = ArcadeActionStyle.DANGER,
                 modifier = Modifier.fillMaxWidth().testTag("leave_clan")
             )
+        }
+    }
+
+    if (showLeaveConfirmation) {
+        ArcadeDialog(
+            title = "Rời bang?",
+            subtitle = "Bạn sẽ rời khỏi ${clan.name}.",
+            onDismissRequest = { showLeaveConfirmation = false },
+            modifier = Modifier.testTag("leave_clan_confirmation_dialog")
+        ) {
+            Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                ArcadeActionButton(
+                    label = "RỜI BANG",
+                    onClick = {
+                        showLeaveConfirmation = false
+                        onLeave()
+                    },
+                    style = ArcadeActionStyle.DANGER,
+                    modifier = Modifier.fillMaxWidth().testTag("confirm_leave_clan")
+                )
+                ArcadeActionButton(
+                    label = "HỦY",
+                    onClick = { showLeaveConfirmation = false },
+                    style = ArcadeActionStyle.OUTLINE,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
         }
     }
 
