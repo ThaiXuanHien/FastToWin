@@ -33,7 +33,9 @@ data class AppPreferences(
     val themeMode: AppThemeMode = AppThemeMode.DARK,
     val boardStyle: BoardStyle = BoardStyle.CLASSIC,
     val fontScale: AppFontScale = AppFontScale.STANDARD,
-    val hasCompletedTutorial: Boolean = false
+    val hasCompletedTutorial: Boolean = false,
+    // Keep unknown codes readable when returning from a newer app version.
+    val languageCode: String = "system"
 )
 
 interface AppPreferencesStore {

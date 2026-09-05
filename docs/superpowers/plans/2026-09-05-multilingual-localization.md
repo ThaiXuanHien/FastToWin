@@ -218,6 +218,19 @@ git commit -m "feat: add shared localization catalog"
 
 ### Task 2: Device locale bridge and backward-compatible preferences
 
+**Progress (2026-09-05):** Implemented. Existing Android/iOS/Web JSON stores
+automatically persist `languageCode`; older JSON defaults to `system`, while
+unknown codes retain other settings and resolve using device preferences.
+`resolveSavedLanguage` delegates to the protocol resolver to avoid duplicating
+normalization rules. Added Android LocaleList, iOS NSLocale and shared JS/Wasm
+navigator bridges plus document-language support for the upcoming root provider.
+
+Verification: RED compilation confirmed missing preference/resolver APIs before
+implementation. GREEN: 66 shared host tests (including 6 new tests) passed with
+no failures/skips; Android app, Web JS and Web Wasm compilation passed in 56s.
+iOS compilation and device checks remain pending macOS. No Settings UI wiring
+is included yet; that is Task 3.
+
 **Files:**
 - Modify: `shared/src/commonMain/kotlin/com/hienthai/fastowin/data/preferences/AppPreferences.kt`
 - Create: `shared/src/commonMain/kotlin/com/hienthai/fastowin/localization/PlatformLocale.kt`
@@ -232,7 +245,7 @@ git commit -m "feat: add shared localization catalog"
 - Produces: `platformLanguageTags()`, `applyPlatformLanguageTag(tag)`,
   `resolveSavedLanguage(code, systemTags)`, `AppPreferences.languageCode`.
 
-- [ ] **Step 1: Write failing preference compatibility tests**
+- [x] **Step 1: Write failing preference compatibility tests**
 
 ```kotlin
 @Test
@@ -250,13 +263,13 @@ fun unknownLanguageCodeResolvesThroughSystemInsteadOfResettingPreferences() {
 }
 ```
 
-- [ ] **Step 2: Confirm RED**
+- [x] **Step 2: Confirm RED**
 
 ```powershell
 ./gradlew.bat :shared:testAndroidHostTest --tests "*AppPreferencesTest" --tests "*LanguagePreferenceTest" --no-daemon
 ```
 
-- [ ] **Step 3: Add the serialized preference and platform contract**
+- [x] **Step 3: Add the serialized preference and platform contract**
 
 ```kotlin
 @Serializable
@@ -288,7 +301,7 @@ Android reads `LocaleList.getDefault()`, iOS reads
 `navigator.language`. Android/iOS `applyPlatformLanguageTag` is a no-op because
 Compose text comes from the app catalog; Web sets `document.documentElement.lang`.
 
-- [ ] **Step 4: Verify all platform compilers**
+- [x] **Step 4: Verify Windows-supported platform compilers (iOS pending macOS)**
 
 ```powershell
 ./gradlew.bat :shared:testAndroidHostTest :app:compileDevDebugKotlin :webApp:compileKotlinWasmJs :webApp:compileKotlinJs --no-daemon
@@ -297,7 +310,7 @@ Compose text comes from the app catalog; Web sets `document.documentElement.lang
 Expected: Android host tests and both Web compilers pass. iOS compilation remains
 covered by the macOS CI job.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```powershell
 git add shared/src/commonMain/kotlin/com/hienthai/fastowin/data/preferences/AppPreferences.kt shared/src/commonMain/kotlin/com/hienthai/fastowin/localization shared/src/androidMain/kotlin/com/hienthai/fastowin/localization shared/src/iosMain/kotlin/com/hienthai/fastowin/localization shared/src/wasmJsMain/kotlin/com/hienthai/fastowin/localization shared/src/commonTest/kotlin/com/hienthai/fastowin/data/preferences/AppPreferencesTest.kt shared/src/commonTest/kotlin/com/hienthai/fastowin/localization/LanguagePreferenceTest.kt
