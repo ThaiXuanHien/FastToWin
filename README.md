@@ -40,7 +40,7 @@ Cấu hình chính hiện tại:
 - JDK 17.
 - Gradle wrapper 9.5.
 - Android `minSdk 29`, `compileSdk 37`, `targetSdk 37`.
-- iOS 14 trở lên, Apple Silicon simulator và thiết bị arm64.
+- iOS 15 trở lên, simulator trên Mac Intel/Apple Silicon và thiết bị arm64.
 - PostgreSQL 17 khi chạy qua Docker.
 - Backend HTTP/WebSocket ở cổng `8080`.
 - PostgreSQL development ở cổng `5432`.
@@ -271,7 +271,7 @@ Không chạy `docker compose down -v` trừ khi chủ động muốn xóa toàn
 
 iOS chỉ build/run trên macOS. Yêu cầu cơ bản:
 
-- Mac Apple Silicon.
+- Mac Intel hoặc Apple Silicon.
 - Xcode tương thích Firebase Apple SDK 12 và iOS 15+ simulator hoặc iPhone/iPad đã provisioning.
 - JDK 17.
 - Android Studio/Android SDK vì shared module có Android target.

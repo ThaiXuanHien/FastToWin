@@ -75,7 +75,7 @@ Kiểm tra cả cỡ chữ mặc định và cỡ chữ trợ năng lớn nhất
 
 ## Xác minh iOS và iPadOS
 
-Thực hiện trên máy Mac Apple Silicon có Xcode sau khi Android test đạt:
+Thực hiện trên máy Mac Intel hoặc Apple Silicon có Xcode sau khi Android test đạt:
 
 1. Chạy `./gradlew :shared:compileKotlinIosSimulatorArm64 --no-daemon` để bắt lỗi cầu nối Kotlin/Native trước khi mở Xcode.
 2. Chạy dev server và PostgreSQL trên Mac hoặc dùng server cùng mạng LAN.
