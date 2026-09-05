@@ -7,6 +7,8 @@ import com.hienthai.fastowin.protocol.AccountSessionsRequest
 import com.hienthai.fastowin.protocol.AccountSessionsResponse
 import com.hienthai.fastowin.protocol.ChangePasswordRequest
 import com.hienthai.fastowin.protocol.DeleteAccountRequest
+import com.hienthai.fastowin.protocol.EmailVerificationConfirmRequest
+import com.hienthai.fastowin.protocol.EmailVerificationRequest
 import com.hienthai.fastowin.protocol.LoginRequest
 import com.hienthai.fastowin.protocol.LogoutRequest
 import com.hienthai.fastowin.protocol.PasswordResetConfirmRequest
@@ -30,6 +32,7 @@ import kotlinx.serialization.decodeFromString
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotEquals
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class AuthenticationTest {
@@ -319,6 +322,89 @@ class AuthenticationTest {
     }
 
     @Test
+    fun `new account verifies email with single-use code`() = testApplication {
+        application { gameModule(environment = "dev") }
+        val registered = client.postJson(
+            "/auth/register",
+            RegisterRequest("verify@example.com", PASSWORD, "Verify player", "android")
+        ).decode<AuthSessionResponse>()
+        assertTrue(!registered.emailVerified)
+
+        val requested = client.postJson(
+            "/auth/email-verification/request",
+            EmailVerificationRequest(registered.accessToken)
+        ).decode<AccountActionResponse>()
+        val code = requireNotNull(requested.devEmailVerificationCode)
+        assertEquals(6, code.length)
+        assertTrue(code.all(Char::isDigit))
+
+        val confirmed = client.postJson(
+            "/auth/email-verification/confirm",
+            EmailVerificationConfirmRequest(registered.accessToken, code)
+        )
+        assertEquals(HttpStatusCode.OK, confirmed.status)
+        assertEquals(true, confirmed.decode<AccountActionResponse>().emailVerified)
+
+        val reused = client.postJson(
+            "/auth/email-verification/confirm",
+            EmailVerificationConfirmRequest(registered.accessToken, code)
+        )
+        assertEquals(HttpStatusCode.BadRequest, reused.status)
+        assertEquals("INVALID_VERIFICATION_CODE", reused.decode<AuthErrorResponse>().code)
+
+        val loggedIn = client.postJson(
+            "/auth/login",
+            LoginRequest("verify@example.com", PASSWORD, "ios")
+        ).decode<AuthSessionResponse>()
+        assertTrue(loggedIn.emailVerified)
+    }
+
+    @Test
+    fun `production sends reset email without exposing token or account existence`() = testApplication {
+        val sender = RecordingAuthEmailSender()
+        application {
+            gameModule(environment = "prod", authEmailSender = sender)
+        }
+        client.postJson(
+            "/auth/register",
+            RegisterRequest("reset-mail@example.com", PASSWORD, "Reset mail", "web")
+        )
+
+        val existing = client.postJson(
+            "/auth/password-reset/request",
+            PasswordResetRequest("reset-mail@example.com")
+        ).decode<AccountActionResponse>()
+        val missing = client.postJson(
+            "/auth/password-reset/request",
+            PasswordResetRequest("missing@example.com")
+        ).decode<AccountActionResponse>()
+
+        assertEquals(existing.message, missing.message)
+        assertNull(existing.devResetToken)
+        assertNull(missing.devResetToken)
+        assertEquals(1, sender.passwordResets.size)
+        assertEquals("reset-mail@example.com", sender.passwordResets.single().first)
+    }
+
+    @Test
+    fun `email verification resend is rate limited per account`() = testApplication {
+        val policies = ServerRateLimitPolicies().copy(
+            emailVerificationRequestPerAccount = RateLimitPolicy(1, 60_000L)
+        )
+        application { gameModule(environment = "dev", rateLimitPolicies = policies) }
+        val registered = client.postJson(
+            "/auth/register",
+            RegisterRequest("verify-limit@example.com", PASSWORD, "Limited", "android")
+        ).decode<AuthSessionResponse>()
+        val request = EmailVerificationRequest(registered.accessToken)
+
+        assertEquals(HttpStatusCode.OK, client.postJson("/auth/email-verification/request", request).status)
+        val limited = client.postJson("/auth/email-verification/request", request)
+        assertEquals(HttpStatusCode.TooManyRequests, limited.status)
+        assertEquals("RATE_LIMITED", limited.decode<AuthErrorResponse>().code)
+    }
+
+    @Test
     fun `password hashes use unique salts and verify safely`() {
         val hasher = PasswordHasher(iterations = 1_000)
         val first = hasher.hash(PASSWORD)
@@ -343,5 +429,16 @@ class AuthenticationTest {
         const val PASSWORD = "strong-password-123"
         const val NEW_PASSWORD = "new-strong-password-456"
         const val RESET_PASSWORD = "reset-strong-password-789"
+    }
+
+    private class RecordingAuthEmailSender : AuthEmailSender {
+        override val isConfigured: Boolean = true
+        val passwordResets = mutableListOf<Pair<String, String>>()
+
+        override suspend fun sendPasswordReset(recipient: String, resetToken: String) {
+            passwordResets += recipient to resetToken
+        }
+
+        override suspend fun sendEmailVerification(recipient: String, verificationCode: String) = Unit
     }
 }

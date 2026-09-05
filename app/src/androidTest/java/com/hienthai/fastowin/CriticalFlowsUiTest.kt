@@ -78,8 +78,11 @@ class CriticalFlowsUiTest {
                     onUpgradeGuest = { _, _ -> },
                     onRequestPasswordReset = {},
                     onConfirmPasswordReset = { _, _, _ -> },
+                    onRequestEmailVerification = {},
+                    onConfirmEmailVerification = {},
                     onBack = {},
-                    onCancelUpgrade = {}
+                    onCancelUpgrade = {},
+                    onCancelEmailVerification = {}
                 )
             }
         }

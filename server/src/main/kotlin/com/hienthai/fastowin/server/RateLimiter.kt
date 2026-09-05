@@ -19,6 +19,14 @@ data class RateLimitPolicy(
 data class ServerRateLimitPolicies(
     val loginPerIp: RateLimitPolicy = RateLimitPolicy(20, 60_000L),
     val loginPerAccount: RateLimitPolicy = RateLimitPolicy(8, 5 * 60_000L),
+    val passwordResetPerIp: RateLimitPolicy = RateLimitPolicy(10, 15 * 60_000L),
+    val passwordResetPerAccount: RateLimitPolicy = RateLimitPolicy(3, 15 * 60_000L),
+    val passwordResetConfirmPerIp: RateLimitPolicy = RateLimitPolicy(30, 15 * 60_000L),
+    val passwordResetConfirmPerAccount: RateLimitPolicy = RateLimitPolicy(8, 15 * 60_000L),
+    val emailVerificationRequestPerIp: RateLimitPolicy = RateLimitPolicy(60, 15 * 60_000L),
+    val emailVerificationRequestPerAccount: RateLimitPolicy = RateLimitPolicy(3, 15 * 60_000L),
+    val emailVerificationConfirmPerIp: RateLimitPolicy = RateLimitPolicy(120, 15 * 60_000L),
+    val emailVerificationConfirmPerAccount: RateLimitPolicy = RateLimitPolicy(8, 15 * 60_000L),
     val websocketConnectPerIp: RateLimitPolicy = RateLimitPolicy(60, 60_000L),
     val websocketMessagesPerIp: RateLimitPolicy = RateLimitPolicy(300, 1_000L),
     val websocketMessagesPerPlayer: RateLimitPolicy = RateLimitPolicy(120, 1_000L),
@@ -128,6 +136,14 @@ class InMemoryRateLimiter(
 internal object RateLimitBuckets {
     const val LOGIN_IP = "login-ip"
     const val LOGIN_ACCOUNT = "login-account"
+    const val PASSWORD_RESET_IP = "password-reset-ip"
+    const val PASSWORD_RESET_ACCOUNT = "password-reset-account"
+    const val PASSWORD_RESET_CONFIRM_IP = "password-reset-confirm-ip"
+    const val PASSWORD_RESET_CONFIRM_ACCOUNT = "password-reset-confirm-account"
+    const val EMAIL_VERIFICATION_REQUEST_IP = "email-verification-request-ip"
+    const val EMAIL_VERIFICATION_REQUEST_ACCOUNT = "email-verification-request-account"
+    const val EMAIL_VERIFICATION_CONFIRM_IP = "email-verification-confirm-ip"
+    const val EMAIL_VERIFICATION_CONFIRM_ACCOUNT = "email-verification-confirm-account"
     const val WEBSOCKET_CONNECT_IP = "websocket-connect-ip"
     const val WEBSOCKET_MESSAGE_IP = "websocket-message-ip"
     const val WEBSOCKET_MESSAGE_PLAYER = "websocket-message-player"

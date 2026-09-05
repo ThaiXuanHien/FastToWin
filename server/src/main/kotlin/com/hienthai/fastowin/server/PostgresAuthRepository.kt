@@ -37,7 +37,7 @@ class PostgresAuthRepository(private val dataSource: DataSource) : AuthRepositor
             dataSource.connection.use { connection ->
                 connection.prepareStatement(
                     """
-                    SELECT u.id, u.password_hash, p.display_name
+                    SELECT u.id, u.password_hash, u.email_verified_at, p.display_name
                     FROM users u
                     JOIN profiles p ON p.user_id = u.id
                     WHERE u.email_normalized = ? AND u.account_type = 'REGISTERED' AND u.status = 'ACTIVE'
@@ -48,7 +48,8 @@ class PostgresAuthRepository(private val dataSource: DataSource) : AuthRepositor
                         if (!result.next()) null else AccountCredentials(
                             userId = result.getObject("id", UUID::class.java),
                             passwordHash = result.getString("password_hash"),
-                            displayName = result.getString("display_name")
+                            displayName = result.getString("display_name"),
+                            emailVerified = result.getTimestamp("email_verified_at") != null
                         )
                     }
                 }
@@ -60,7 +61,7 @@ class PostgresAuthRepository(private val dataSource: DataSource) : AuthRepositor
             dataSource.connection.use { connection ->
                 connection.prepareStatement(
                     """
-                    SELECT u.id, u.password_hash, p.display_name
+                    SELECT u.id, u.password_hash, u.email_verified_at, p.display_name
                     FROM users u
                     JOIN profiles p ON p.user_id = u.id
                     WHERE u.id = ? AND u.account_type = 'REGISTERED' AND u.status = 'ACTIVE'
@@ -71,7 +72,8 @@ class PostgresAuthRepository(private val dataSource: DataSource) : AuthRepositor
                         if (!result.next()) null else AccountCredentials(
                             userId = result.getObject("id", UUID::class.java),
                             passwordHash = result.getString("password_hash"),
-                            displayName = result.getString("display_name")
+                            displayName = result.getString("display_name"),
+                            emailVerified = result.getTimestamp("email_verified_at") != null
                         )
                     }
                 }
@@ -211,7 +213,7 @@ class PostgresAuthRepository(private val dataSource: DataSource) : AuthRepositor
         dataSource.connection.use { connection ->
             connection.prepareStatement(
                 """
-                SELECT u.id, p.display_name, s.id AS session_id
+                SELECT u.id, u.email_verified_at, p.display_name, s.id AS session_id
                 FROM sessions s
                 JOIN users u ON u.id = s.user_id
                 JOIN profiles p ON p.user_id = u.id
@@ -228,7 +230,8 @@ class PostgresAuthRepository(private val dataSource: DataSource) : AuthRepositor
                     if (!result.next()) null else AuthenticatedAccount(
                         userId = result.getObject("id", UUID::class.java),
                         displayName = result.getString("display_name"),
-                        sessionId = result.getObject("session_id", UUID::class.java)
+                        sessionId = result.getObject("session_id", UUID::class.java),
+                        emailVerified = result.getTimestamp("email_verified_at") != null
                     )
                 }
             }
@@ -502,6 +505,120 @@ class PostgresAuthRepository(private val dataSource: DataSource) : AuthRepositor
                     statement.executeUpdate()
                 }
                 revokeAllSessions(connection, reset.userId, nowMillis)
+                connection.commit()
+                true
+            } catch (error: Throwable) {
+                connection.rollback()
+                throw error
+            }
+        }
+    }
+
+    override suspend fun createEmailVerification(
+        userId: UUID,
+        verification: NewEmailVerification
+    ): EmailVerificationDestination? = withContext(Dispatchers.IO) {
+        dataSource.connection.use { connection ->
+            connection.autoCommit = false
+            try {
+                val destination = connection.prepareStatement(
+                    """
+                    SELECT email_normalized, email_verified_at
+                    FROM users
+                    WHERE id = ? AND account_type = 'REGISTERED' AND status = 'ACTIVE'
+                    FOR UPDATE
+                    """.trimIndent()
+                ).use { statement ->
+                    statement.setObject(1, userId)
+                    statement.executeQuery().use { result ->
+                        if (!result.next()) null else EmailVerificationDestination(
+                            emailNormalized = result.getString("email_normalized"),
+                            alreadyVerified = result.getTimestamp("email_verified_at") != null
+                        )
+                    }
+                }
+                if (destination == null) {
+                    connection.rollback()
+                    return@withContext null
+                }
+                if (!destination.alreadyVerified) {
+                    connection.prepareStatement(
+                        "DELETE FROM email_verification_tokens WHERE user_id = ? AND used_at IS NULL"
+                    ).use { statement ->
+                        statement.setObject(1, userId)
+                        statement.executeUpdate()
+                    }
+                    connection.prepareStatement(
+                        """
+                        INSERT INTO email_verification_tokens (id, user_id, code_hash, created_at, expires_at)
+                        VALUES (?, ?, ?, ?, ?)
+                        """.trimIndent()
+                    ).use { statement ->
+                        statement.setObject(1, verification.id)
+                        statement.setObject(2, userId)
+                        statement.setString(3, verification.codeHash)
+                        statement.setTimestamp(4, verification.nowMillis.toTimestamp())
+                        statement.setTimestamp(5, verification.expiresAtMillis.toTimestamp())
+                        statement.executeUpdate()
+                    }
+                }
+                connection.commit()
+                destination
+            } catch (error: Throwable) {
+                connection.rollback()
+                throw error
+            }
+        }
+    }
+
+    override suspend fun consumeEmailVerification(
+        userId: UUID,
+        codeHash: String,
+        nowMillis: Long
+    ): Boolean = withContext(Dispatchers.IO) {
+        dataSource.connection.use { connection ->
+            connection.autoCommit = false
+            try {
+                val tokenId = connection.prepareStatement(
+                    """
+                    SELECT id FROM email_verification_tokens
+                    WHERE user_id = ? AND code_hash = ? AND used_at IS NULL AND expires_at > ?
+                    FOR UPDATE
+                    """.trimIndent()
+                ).use { statement ->
+                    statement.setObject(1, userId)
+                    statement.setString(2, codeHash)
+                    statement.setTimestamp(3, nowMillis.toTimestamp())
+                    statement.executeQuery().use { result ->
+                        if (result.next()) result.getObject("id", UUID::class.java) else null
+                    }
+                }
+                if (tokenId == null) {
+                    connection.rollback()
+                    return@withContext false
+                }
+                val verified = connection.prepareStatement(
+                    """
+                    UPDATE users SET email_verified_at = ?, updated_at = ?
+                    WHERE id = ? AND account_type = 'REGISTERED' AND status = 'ACTIVE'
+                    """.trimIndent()
+                ).use { statement ->
+                    statement.setTimestamp(1, nowMillis.toTimestamp())
+                    statement.setTimestamp(2, nowMillis.toTimestamp())
+                    statement.setObject(3, userId)
+                    statement.executeUpdate() == 1
+                }
+                if (!verified) {
+                    connection.rollback()
+                    return@withContext false
+                }
+                connection.prepareStatement(
+                    "UPDATE email_verification_tokens SET used_at = ? WHERE id = ?"
+                ).use { statement ->
+                    statement.setTimestamp(1, nowMillis.toTimestamp())
+                    statement.setObject(2, tokenId)
+                    statement.executeUpdate()
+                }
                 connection.commit()
                 true
             } catch (error: Throwable) {

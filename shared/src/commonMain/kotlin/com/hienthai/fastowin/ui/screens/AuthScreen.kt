@@ -76,14 +76,21 @@ fun AuthScreen(
     onUpgradeGuest: (String, String) -> Unit,
     onRequestPasswordReset: (String) -> Unit,
     onConfirmPasswordReset: (String, String, String) -> Unit,
+    onRequestEmailVerification: () -> Unit,
+    onConfirmEmailVerification: (String) -> Unit,
     onBack: () -> Unit,
-    onCancelUpgrade: () -> Unit
+    onCancelUpgrade: () -> Unit,
+    onCancelEmailVerification: () -> Unit
 ) {
     SystemBackHandler(
         enabled = state.stage != AuthStage.WELCOME && state.stage != AuthStage.PLAYING
     ) {
         if (!state.isLoading) {
-            if (state.stage == AuthStage.UPGRADE_GUEST) onCancelUpgrade() else onBack()
+            when (state.stage) {
+                AuthStage.UPGRADE_GUEST -> onCancelUpgrade()
+                AuthStage.VERIFY_EMAIL -> onCancelEmailVerification()
+                else -> onBack()
+            }
         }
     }
     ArcadeBackdrop(modifier = Modifier.fillMaxSize()) {
@@ -105,10 +112,73 @@ fun AuthScreen(
                         onOpenPasswordReset,
                         onBack
                     )
+                    AuthStage.VERIFY_EMAIL -> EmailVerificationContent(
+                        state = state,
+                        onRequest = onRequestEmailVerification,
+                        onConfirm = onConfirmEmailVerification,
+                        onCancel = onCancelEmailVerification
+                    )
                     AuthStage.UPGRADE_GUEST -> UpgradeGuestContent(state, onUpgradeGuest, onCancelUpgrade)
                     AuthStage.PLAYING -> Unit
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun EmailVerificationContent(
+    state: AuthState,
+    onRequest: () -> Unit,
+    onConfirm: (String) -> Unit,
+    onCancel: () -> Unit
+) {
+    var code by remember { mutableStateOf("") }
+    LaunchedEffect(state.devEmailVerificationCode) {
+        state.devEmailVerificationCode?.let { code = it }
+    }
+    AuthForm(title = "Xác minh email", state = state, onBack = onCancel) {
+        Text(
+            "Nhập mã 6 số được gửi tới ${state.session?.email.orEmpty()}. Mã có hiệu lực trong 15 phút.",
+            textAlign = TextAlign.Center,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        state.devEmailVerificationCode?.let {
+            Text(
+                "Môi trường dev – mã đã được tự điền: $it",
+                color = MaterialTheme.colorScheme.primary,
+                textAlign = TextAlign.Center
+            )
+        }
+        OutlinedTextField(
+            value = code,
+            onValueChange = { value -> code = value.filter(Char::isDigit).take(6) },
+            label = { Text("Mã xác minh") },
+            keyboardOptions = KeyboardOptions(
+                keyboardType = KeyboardType.Number,
+                imeAction = ImeAction.Done
+            ),
+            singleLine = true,
+            shape = RoundedCornerShape(15.dp),
+            modifier = Modifier.fillMaxWidth().testTag("auth_email_verification_code")
+        )
+        ArcadeActionButton(
+            label = if (state.isLoading) "ĐANG XÁC MINH..." else "XÁC MINH",
+            onClick = { onConfirm(code) },
+            enabled = code.length == 6 && !state.isLoading,
+            modifier = Modifier.fillMaxWidth().testTag("auth_email_verification_confirm"),
+            style = ArcadeActionStyle.GOLD,
+            content = authLoadingContent(state.isLoading)
+        )
+        ArcadeActionButton(
+            label = "GỬI LẠI MÃ",
+            onClick = onRequest,
+            enabled = !state.isLoading,
+            modifier = Modifier.fillMaxWidth().testTag("auth_email_verification_resend"),
+            style = ArcadeActionStyle.OUTLINE
+        )
+        TextButton(onClick = onCancel, enabled = !state.isLoading) {
+            Text("Đăng xuất")
         }
     }
 }
@@ -202,7 +272,7 @@ private fun PasswordResetContent(
         EmailField(email, enabled = requestedEmail == null && !state.isLoading) { email = it }
         if (requestedEmail == null) {
             ArcadeActionButton(
-                label = if (state.isLoading) "ĐANG TẠO MÃ..." else "TẠO MÃ KHÔI PHỤC",
+                label = if (state.isLoading) "ĐANG GỬI..." else "GỬI MÃ KHÔI PHỤC",
                 onClick = { onRequest(email) },
                 enabled = email.isNotBlank() && !state.isLoading,
                 modifier = Modifier.fillMaxWidth().testTag("auth_reset_request"),

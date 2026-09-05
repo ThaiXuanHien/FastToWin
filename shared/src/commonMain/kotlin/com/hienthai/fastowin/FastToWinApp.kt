@@ -192,8 +192,11 @@ fun FastToWinApp(
                     onUpgradeGuest = authController::upgradeGuest,
                     onRequestPasswordReset = authController::requestPasswordReset,
                     onConfirmPasswordReset = authController::confirmPasswordReset,
+                    onRequestEmailVerification = authController::requestEmailVerification,
+                    onConfirmEmailVerification = authController::confirmEmailVerification,
                     onBack = authController::backToWelcome,
-                    onCancelUpgrade = authController::cancelGuestUpgrade
+                    onCancelUpgrade = authController::cancelGuestUpgrade,
+                    onCancelEmailVerification = authController::logout
                 )
             } else {
                 GameContent(

@@ -25,6 +25,7 @@ dependencies {
     implementation(libs.hikari)
     implementation(libs.flyway.core)
     implementation(libs.flyway.database.postgresql)
+    implementation(libs.angus.mail)
     implementation("com.google.firebase:firebase-admin:9.2.0")
     runtimeOnly(libs.postgresql)
 

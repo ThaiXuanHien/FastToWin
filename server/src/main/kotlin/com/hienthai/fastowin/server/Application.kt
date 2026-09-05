@@ -7,6 +7,8 @@ import com.hienthai.fastowin.protocol.AccountSessionsRequest
 import com.hienthai.fastowin.protocol.AccountSessionsResponse
 import com.hienthai.fastowin.protocol.ChangePasswordRequest
 import com.hienthai.fastowin.protocol.DeleteAccountRequest
+import com.hienthai.fastowin.protocol.EmailVerificationConfirmRequest
+import com.hienthai.fastowin.protocol.EmailVerificationRequest
 import com.hienthai.fastowin.protocol.LoginRequest
 import com.hienthai.fastowin.protocol.LogoutRequest
 import com.hienthai.fastowin.protocol.PasswordResetConfirmRequest
@@ -67,6 +69,7 @@ fun Application.gameModule(
     environment: String = "dev",
     rateLimiter: RateLimiter = InMemoryRateLimiter(),
     rateLimitPolicies: ServerRateLimitPolicies = ServerRateLimitPolicies(),
+    authEmailSender: AuthEmailSender = DisabledAuthEmailSender,
     seasonLifecycleRepository: SeasonLifecycleRepository = NoOpSeasonLifecycleRepository,
     pushReminderService: PushReminderService = NoOpPushReminderService,
     serviceStatusProvider: () -> ServiceStatusResponse = ::serviceStatusFromEnvironment,
@@ -253,24 +256,130 @@ fun Application.gameModule(
         }
 
         post("/auth/password-reset/request") {
-            if (environment != "dev") {
+            if (environment != "dev" && !authEmailSender.isConfigured) {
                 call.respond(
                     HttpStatusCode.ServiceUnavailable,
                     AuthErrorResponse(
                         "PASSWORD_RESET_DELIVERY_UNAVAILABLE",
-                        "Dịch vụ gửi email khôi phục mật khẩu chưa được cấu hình."
+                        "Dịch vụ email chưa được cấu hình."
                     )
                 )
                 return@post
             }
+            val ipAllowed = call.consumeHttpRateLimit(
+                rateLimiter,
+                RateLimitBuckets.PASSWORD_RESET_IP,
+                call.clientRateLimitKey(),
+                rateLimitPolicies.passwordResetPerIp
+            )
+            if (!ipAllowed) return@post
             val request = call.receiveOrReject<PasswordResetRequest>() ?: return@post
-            call.respondAccountAction(authService.requestPasswordReset(request.email), exposeResetToken = true)
+            val accountAllowed = call.consumeHttpRateLimit(
+                rateLimiter,
+                RateLimitBuckets.PASSWORD_RESET_ACCOUNT,
+                stableRateLimitKey(request.email.trim().lowercase()),
+                rateLimitPolicies.passwordResetPerAccount
+            )
+            if (!accountAllowed) return@post
+            val result = authService.requestPasswordReset(request.email)
+            if (result is AccountActionResult.Success && result.resetToken != null && authEmailSender.isConfigured) {
+                runCatching {
+                    authEmailSender.sendPasswordReset(request.email.trim().lowercase(), result.resetToken)
+                }.onFailure { error ->
+                    // Keep the response generic so delivery errors cannot reveal registered accounts.
+                    System.err.println("Could not send password reset email: ${error.message}")
+                }
+            }
+            call.respondAccountAction(result, exposeResetToken = environment == "dev")
         }
 
         post("/auth/password-reset/confirm") {
+            val ipAllowed = call.consumeHttpRateLimit(
+                rateLimiter,
+                RateLimitBuckets.PASSWORD_RESET_CONFIRM_IP,
+                call.clientRateLimitKey(),
+                rateLimitPolicies.passwordResetConfirmPerIp
+            )
+            if (!ipAllowed) return@post
             val request = call.receiveOrReject<PasswordResetConfirmRequest>() ?: return@post
+            val accountAllowed = call.consumeHttpRateLimit(
+                rateLimiter,
+                RateLimitBuckets.PASSWORD_RESET_CONFIRM_ACCOUNT,
+                stableRateLimitKey(request.email.trim().lowercase()),
+                rateLimitPolicies.passwordResetConfirmPerAccount
+            )
+            if (!accountAllowed) return@post
             call.respondAccountAction(
                 authService.resetPassword(request.email, request.resetToken, request.newPassword)
+            )
+        }
+
+        post("/auth/email-verification/request") {
+            if (environment != "dev" && !authEmailSender.isConfigured) {
+                call.respond(
+                    HttpStatusCode.ServiceUnavailable,
+                    AuthErrorResponse("EMAIL_DELIVERY_UNAVAILABLE", "Dịch vụ email chưa được cấu hình.")
+                )
+                return@post
+            }
+            val ipAllowed = call.consumeHttpRateLimit(
+                rateLimiter,
+                RateLimitBuckets.EMAIL_VERIFICATION_REQUEST_IP,
+                call.clientRateLimitKey(),
+                rateLimitPolicies.emailVerificationRequestPerIp
+            )
+            if (!ipAllowed) return@post
+            val request = call.receiveOrReject<EmailVerificationRequest>() ?: return@post
+            val accountAllowed = call.consumeHttpRateLimit(
+                rateLimiter,
+                RateLimitBuckets.EMAIL_VERIFICATION_REQUEST_ACCOUNT,
+                stableRateLimitKey(request.accessToken),
+                rateLimitPolicies.emailVerificationRequestPerAccount
+            )
+            if (!accountAllowed) return@post
+            val result = authService.requestEmailVerification(request.accessToken)
+            if (result is AccountActionResult.Success &&
+                result.emailVerificationCode != null && result.emailRecipient != null &&
+                authEmailSender.isConfigured
+            ) {
+                try {
+                    authEmailSender.sendEmailVerification(
+                        result.emailRecipient,
+                        result.emailVerificationCode
+                    )
+                } catch (error: Exception) {
+                    System.err.println("Could not send email verification: ${error.message}")
+                    call.respond(
+                        HttpStatusCode.ServiceUnavailable,
+                        AuthErrorResponse("EMAIL_DELIVERY_FAILED", "Chưa thể gửi email. Vui lòng thử lại sau.")
+                    )
+                    return@post
+                }
+            }
+            call.respondAccountAction(
+                result,
+                exposeEmailVerificationCode = environment == "dev"
+            )
+        }
+
+        post("/auth/email-verification/confirm") {
+            val ipAllowed = call.consumeHttpRateLimit(
+                rateLimiter,
+                RateLimitBuckets.EMAIL_VERIFICATION_CONFIRM_IP,
+                call.clientRateLimitKey(),
+                rateLimitPolicies.emailVerificationConfirmPerIp
+            )
+            if (!ipAllowed) return@post
+            val request = call.receiveOrReject<EmailVerificationConfirmRequest>() ?: return@post
+            val accountAllowed = call.consumeHttpRateLimit(
+                rateLimiter,
+                RateLimitBuckets.EMAIL_VERIFICATION_CONFIRM_ACCOUNT,
+                stableRateLimitKey(request.accessToken),
+                rateLimitPolicies.emailVerificationConfirmPerAccount
+            )
+            if (!accountAllowed) return@post
+            call.respondAccountAction(
+                authService.confirmEmailVerification(request.accessToken, request.verificationCode)
             )
         }
 
@@ -366,19 +475,23 @@ fun Application.gameModule(
                                 is ClientMessage.ConnectAccount -> {
                                     val account = authService.authenticateAccessToken(message.accessToken)
                                         ?: throw InvalidAccessTokenException()
+                                    if (!account.emailVerified) throw UnverifiedEmailException()
                                     accountAccessToken = message.accessToken
                                     engine.connectAccount(account)
                                 }
                             }
                         }.getOrElse { error ->
                             send(ProtocolJson.encodeToString<ServerMessage>(
-                                if (error is InvalidAccessTokenException) {
-                                    ServerMessage.Error(
+                                when (error) {
+                                    is InvalidAccessTokenException -> ServerMessage.Error(
                                         "INVALID_ACCESS_TOKEN",
                                         "Phiên đăng nhập không hợp lệ hoặc đã hết hạn."
                                     )
-                                } else {
-                                    ServerMessage.Error(
+                                    is UnverifiedEmailException -> ServerMessage.Error(
+                                        "EMAIL_NOT_VERIFIED",
+                                        "Vui lòng xác minh email trước khi vào game."
+                                    )
+                                    else -> ServerMessage.Error(
                                         "INVALID_NAME",
                                         error.message ?: "Tên người chơi không hợp lệ."
                                     )
@@ -557,6 +670,7 @@ private fun RateLimitResult.retryAfterSeconds(): Long =
     ((retryAfterMillis + 999L) / 1_000L).coerceAtLeast(1L)
 
 private class InvalidAccessTokenException : RuntimeException()
+private class UnverifiedEmailException : RuntimeException()
 
 private suspend inline fun <reified T : Any> ApplicationCall.receiveOrReject(): T? =
     runCatching { receive<T>() }.getOrElse {
@@ -588,14 +702,18 @@ private suspend fun ApplicationCall.respondAuthResult(
 
 private suspend fun ApplicationCall.respondAccountAction(
     result: AccountActionResult,
-    exposeResetToken: Boolean = false
+    exposeResetToken: Boolean = false,
+    exposeEmailVerificationCode: Boolean = false
 ) {
     when (result) {
         is AccountActionResult.Success -> respond(
             HttpStatusCode.OK,
             AccountActionResponse(
                 message = result.message,
-                devResetToken = result.resetToken.takeIf { exposeResetToken }
+                devResetToken = result.resetToken.takeIf { exposeResetToken },
+                devEmailVerificationCode = result.emailVerificationCode
+                    .takeIf { exposeEmailVerificationCode },
+                emailVerified = result.emailVerified
             )
         )
         is AccountActionResult.Failure -> respond(

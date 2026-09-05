@@ -14,6 +14,18 @@ export const test = base.extend({
       const registered = await request.post(`${process.env.E2E_API_URL}/auth/register`, { data: account });
       expect(registered.status(), 'Create only this test account').toBe(201);
       const session = await registered.json();
+      const verification = await request.post(
+        `${process.env.E2E_API_URL}/auth/email-verification/request`,
+        { data: { accessToken: session.accessToken } },
+      );
+      expect(verification.ok(), 'Request verification for the disposable account').toBeTruthy();
+      const verificationCode = (await verification.json()).devEmailVerificationCode;
+      expect(verificationCode, 'Development server exposes only the disposable verification code').toMatch(/^\d{6}$/);
+      const verified = await request.post(
+        `${process.env.E2E_API_URL}/auth/email-verification/confirm`,
+        { data: { accessToken: session.accessToken, verificationCode } },
+      );
+      expect(verified.ok(), 'Verify the disposable account before UI login').toBeTruthy();
       const actor = {
         account,
         accessToken: session.accessToken,

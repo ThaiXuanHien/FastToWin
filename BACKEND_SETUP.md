@@ -91,6 +91,10 @@ Backend dùng token bucket trong bộ nhớ và khóa định danh SHA-256, khô
 |---|---|
 | Đăng nhập theo IP | 20 lần/phút |
 | Đăng nhập theo email chuẩn hóa | 8 lần/5 phút |
+| Gửi mã khôi phục | 10 lần/15 phút/IP và 3 lần/15 phút/email |
+| Thử mã khôi phục | 30 lần/15 phút/IP và 8 lần/15 phút/email |
+| Gửi lại mã xác minh | 60 lần/15 phút/IP và 3 lần/15 phút/tài khoản |
+| Thử mã xác minh | 120 lần/15 phút/IP và 8 lần/15 phút/tài khoản |
 | Khởi tạo WebSocket theo IP | 60 lần/phút |
 | Mọi message WebSocket theo IP | 300 lần/giây |
 | Mọi message WebSocket theo người chơi | 120 lần/giây |
@@ -130,6 +134,10 @@ Backend hỗ trợ tài khoản email/mật khẩu qua JSON API:
 | `POST` | `/auth/sessions` | Liệt kê các phiên đăng nhập còn hoạt động |
 | `POST` | `/auth/sessions/revoke` | Thu hồi một phiên thuộc tài khoản hiện tại |
 | `POST` | `/auth/sessions/revoke-all` | Thu hồi toàn bộ phiên của tài khoản |
+| `POST` | `/auth/password-reset/request` | Gửi mã khôi phục mật khẩu qua email |
+| `POST` | `/auth/password-reset/confirm` | Đặt mật khẩu mới bằng mã khôi phục |
+| `POST` | `/auth/email-verification/request` | Gửi hoặc gửi lại mã xác minh email |
+| `POST` | `/auth/email-verification/confirm` | Xác minh email bằng mã 6 số |
 
 Ví dụ đăng ký:
 
@@ -146,7 +154,7 @@ Access token có hiệu lực 15 phút, refresh token có hiệu lực 30 ngày.
 
 Compose Multiplatform có màn hình đăng nhập, đăng ký và lựa chọn chơi khách. Android mã hóa phiên bằng AES-GCM với khóa trong Android Keystore; iOS lưu phiên trong Keychain. Ứng dụng tự refresh access token trước khi hết hạn và tài khoản dùng `connect_account` để xác thực WebSocket. Server tự lấy player ID và biệt danh từ phiên đăng nhập, không nhận các giá trị này từ client. Chế độ khách vẫn dùng `connect_guest` và resume token cũ.
 
-Trong màn **Hồ sơ**, tài khoản có thể đổi biệt danh/avatar và mở phần **Bảo mật** để đổi mật khẩu. Đổi mật khẩu thành công thu hồi mọi phiên hiện có và đưa ứng dụng về màn đăng nhập. Luồng **Quên mật khẩu** khóa email sau khi gửi yêu cầu, nhận mã có hiệu lực 15 phút và đặt mật khẩu mới; ở môi trường dev mã được hiển thị và tự điền, còn production vẫn chờ tích hợp dịch vụ email theo giới hạn bên dưới. Client và backend cùng áp dụng giới hạn mật khẩu từ 8 đến 128 ký tự.
+Trong màn **Hồ sơ**, tài khoản có thể đổi biệt danh/avatar và mở phần **Bảo mật** để đổi mật khẩu. Đổi mật khẩu thành công thu hồi mọi phiên hiện có và đưa ứng dụng về màn đăng nhập. Luồng **Quên mật khẩu** khóa email sau khi gửi yêu cầu, nhận mã có hiệu lực 15 phút và đặt mật khẩu mới. Ở môi trường dev mã được hiển thị và tự điền; production gửi qua SMTP và không trả token trong API response. Tài khoản mới cũng phải nhập mã email 6 số trước khi vào game. Client và backend cùng áp dụng giới hạn mật khẩu từ 8 đến 128 ký tự.
 
 Một tài khoản có thể giữ phiên đăng nhập HTTP trên nhiều thiết bị, nhưng chỉ có một kết nối game WebSocket hoạt động tại một thời điểm. Khi thiết bị mới kết nối cùng tài khoản, server đóng WebSocket cũ với lý do `Session resumed elsewhere`; kết nối mới giữ nguyên player ID và snapshot trận hiện tại. Thiết bị cũ nhận thông báo `SESSION_REPLACED` và dừng tự reconnect để hai máy không liên tục giành kết nối của nhau. Việc thay thế socket không đánh dấu người chơi offline và không làm mất phòng.
 
@@ -206,8 +214,18 @@ $env:PORT="8080"
 $env:DATABASE_URL="jdbc:postgresql://database-host:5432/fasttowin"
 $env:DATABASE_USER="fasttowin_app"
 $env:DATABASE_PASSWORD="mat-khau-bi-mat"
+$env:FASTTOWIN_SMTP_HOST="smtp.mail-provider.example"
+$env:FASTTOWIN_SMTP_PORT="587"
+$env:FASTTOWIN_SMTP_USERNAME="smtp-user"
+$env:FASTTOWIN_SMTP_PASSWORD="smtp-secret"
+$env:FASTTOWIN_SMTP_FROM_EMAIL="no-reply@example.com"
+$env:FASTTOWIN_SMTP_FROM_NAME="Fast To Win"
+$env:FASTTOWIN_SMTP_STARTTLS="true"
+$env:FASTTOWIN_SMTP_SSL="false"
 .\gradlew.bat :server:run
 ```
+
+Không commit SMTP secret vào Git. Dùng STARTTLS với port 587; nếu nhà cung cấp yêu cầu SSL port 465 thì đặt `FASTTOWIN_SMTP_STARTTLS=false` và `FASTTOWIN_SMTP_SSL=true`.
 
 Giá trị `configure-production-server.invalid` chỉ là placeholder an toàn và không thể kết nối. Cần thay URL trước khi phát hành.
 

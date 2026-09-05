@@ -33,11 +33,17 @@ data class NewAuthSession(
     val nowMillis: Long
 )
 
-data class AccountCredentials(val userId: UUID, val passwordHash: String, val displayName: String)
+data class AccountCredentials(
+    val userId: UUID,
+    val passwordHash: String,
+    val displayName: String,
+    val emailVerified: Boolean = true
+)
 data class AuthenticatedAccount(
     val userId: UUID,
     val displayName: String,
-    val sessionId: UUID? = null
+    val sessionId: UUID? = null,
+    val emailVerified: Boolean = true
 )
 data class StoredAccountSession(
     val sessionId: UUID,
@@ -51,6 +57,16 @@ data class NewPasswordReset(
     val tokenHash: String,
     val nowMillis: Long,
     val expiresAtMillis: Long
+)
+data class NewEmailVerification(
+    val id: UUID,
+    val codeHash: String,
+    val nowMillis: Long,
+    val expiresAtMillis: Long
+)
+data class EmailVerificationDestination(
+    val emailNormalized: String,
+    val alreadyVerified: Boolean
 )
 data class GuestUpgrade(
     val resumeTokenHash: String,
@@ -87,6 +103,11 @@ interface AuthRepository {
         passwordHash: String,
         nowMillis: Long
     ): Boolean
+    suspend fun createEmailVerification(
+        userId: UUID,
+        verification: NewEmailVerification
+    ): EmailVerificationDestination?
+    suspend fun consumeEmailVerification(userId: UUID, codeHash: String, nowMillis: Long): Boolean
     suspend fun deleteAccount(userId: UUID): Boolean
 }
 
@@ -96,7 +117,13 @@ sealed interface AuthResult {
 }
 
 sealed interface AccountActionResult {
-    data class Success(val message: String, val resetToken: String? = null) : AccountActionResult
+    data class Success(
+        val message: String,
+        val resetToken: String? = null,
+        val emailVerificationCode: String? = null,
+        val emailRecipient: String? = null,
+        val emailVerified: Boolean? = null
+    ) : AccountActionResult
     data class Failure(val code: String, val message: String) : AccountActionResult
 }
 
@@ -131,7 +158,7 @@ class AuthenticationService(
 
         val now = nowMillis()
         val userId = UUID.randomUUID()
-        val issued = issueTokens(userId, safeName, now)
+        val issued = issueTokens(userId, safeName, now, emailVerified = false)
         val passwordHash = withContext(Dispatchers.Default) { passwordHasher.hash(password) }
         val created = repository.createAccount(
             NewAccount(
@@ -159,7 +186,12 @@ class AuthenticationService(
         }
         if (!passwordMatches) return invalidCredentials()
 
-        val issued = issueTokens(account.userId, account.displayName, nowMillis())
+        val issued = issueTokens(
+            account.userId,
+            account.displayName,
+            nowMillis(),
+            emailVerified = account.emailVerified
+        )
         repository.replaceSessions(account.userId, normalizeDevicePlatform(devicePlatform), issued.record)
         return AuthResult.Success(issued.response)
     }
@@ -178,7 +210,7 @@ class AuthenticationService(
 
         val now = nowMillis()
         val placeholderUserId = UUID.randomUUID()
-        val issued = issueTokens(placeholderUserId, "", now)
+        val issued = issueTokens(placeholderUserId, "", now, emailVerified = false)
         val passwordHash = withContext(Dispatchers.Default) { passwordHasher.hash(password) }
         return when (val result = repository.upgradeGuest(
             GuestUpgrade(
@@ -331,6 +363,54 @@ class AuthenticationService(
         } else invalidPasswordReset()
     }
 
+    suspend fun requestEmailVerification(accessToken: String): AccountActionResult {
+        val authenticated = authenticateAccessToken(accessToken)
+            ?: return invalidAccountSession()
+        val now = nowMillis()
+        val code = newVerificationCode()
+        val destination = repository.createEmailVerification(
+            authenticated.userId,
+            NewEmailVerification(
+                id = UUID.randomUUID(),
+                codeHash = hashToken(code),
+                nowMillis = now,
+                expiresAtMillis = now + EMAIL_VERIFICATION_TTL_MILLIS
+            )
+        ) ?: return invalidAccountSession()
+        if (destination.alreadyVerified) {
+            return AccountActionResult.Success(
+                message = "Email của bạn đã được xác minh.",
+                emailVerified = true
+            )
+        }
+        return AccountActionResult.Success(
+            message = "Mã xác minh đã được gửi tới email của bạn.",
+            emailVerificationCode = code,
+            emailRecipient = destination.emailNormalized
+        )
+    }
+
+    suspend fun confirmEmailVerification(
+        accessToken: String,
+        verificationCode: String
+    ): AccountActionResult {
+        val authenticated = authenticateAccessToken(accessToken)
+            ?: return invalidAccountSession()
+        val normalizedCode = verificationCode.trim()
+        if (!EMAIL_VERIFICATION_CODE_PATTERN.matches(normalizedCode)) {
+            return invalidEmailVerification()
+        }
+        return if (repository.consumeEmailVerification(
+                authenticated.userId,
+                hashToken(normalizedCode),
+                nowMillis()
+            )) {
+            AccountActionResult.Success("Xác minh email thành công.", emailVerified = true)
+        } else {
+            invalidEmailVerification()
+        }
+    }
+
     suspend fun deleteAccount(accessToken: String, password: String): AccountActionResult {
         val authenticated = authenticateAccessToken(accessToken)
             ?: return invalidAccountSession()
@@ -348,7 +428,12 @@ class AuthenticationService(
         } else invalidAccountSession()
     }
 
-    private fun issueTokens(userId: UUID, displayName: String, now: Long): IssuedTokens {
+    private fun issueTokens(
+        userId: UUID,
+        displayName: String,
+        now: Long,
+        emailVerified: Boolean = true
+    ): IssuedTokens {
         val accessToken = newToken()
         val refreshToken = newToken()
         val accessExpiry = now + ACCESS_TOKEN_TTL_MILLIS
@@ -368,7 +453,8 @@ class AuthenticationService(
                 accessToken = accessToken,
                 refreshToken = refreshToken,
                 accessExpiresAtEpochMillis = accessExpiry,
-                refreshExpiresAtEpochMillis = refreshExpiry
+                refreshExpiresAtEpochMillis = refreshExpiry,
+                emailVerified = emailVerified
             )
         )
     }
@@ -421,6 +507,11 @@ class AuthenticationService(
         "Mã khôi phục không hợp lệ hoặc đã hết hạn."
     )
 
+    private fun invalidEmailVerification() = AccountActionResult.Failure(
+        "INVALID_VERIFICATION_CODE",
+        "Mã xác minh không hợp lệ hoặc đã hết hạn."
+    )
+
     private fun playerCode(userId: UUID): String = userId.toString().replace("-", "").take(10).uppercase()
 
     private data class IssuedTokens(val record: NewAuthSession, val response: AuthSessionResponse)
@@ -429,11 +520,13 @@ class AuthenticationService(
         const val ACCESS_TOKEN_TTL_MILLIS = 15L * 60 * 1_000
         const val REFRESH_TOKEN_TTL_MILLIS = 30L * 24 * 60 * 60 * 1_000
         const val PASSWORD_RESET_TTL_MILLIS = 15L * 60 * 1_000
+        const val EMAIL_VERIFICATION_TTL_MILLIS = 15L * 60 * 1_000
         private const val MIN_PASSWORD_LENGTH = 8
         private const val MAX_PASSWORD_LENGTH = 128
         private const val MAX_DISPLAY_NAME_LENGTH = 32
         private const val MAX_DEVICE_PLATFORM_LENGTH = 16
         private val EMAIL_PATTERN = Regex("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$")
+        private val EMAIL_VERIFICATION_CODE_PATTERN = Regex("^[0-9]{6}$")
     }
 }
 
@@ -485,6 +578,10 @@ private val tokenRandom = SecureRandom()
 private fun newToken(): String = ByteArray(32)
     .also(tokenRandom::nextBytes)
     .let { Base64.getUrlEncoder().withoutPadding().encodeToString(it) }
+
+private fun newVerificationCode(): String = tokenRandom.nextInt(1_000_000)
+    .toString()
+    .padStart(6, '0')
 
 internal fun hashToken(token: String): String = MessageDigest.getInstance("SHA-256")
     .digest(token.toByteArray(Charsets.UTF_8))

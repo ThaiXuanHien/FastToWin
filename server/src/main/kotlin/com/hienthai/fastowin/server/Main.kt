@@ -13,6 +13,7 @@ fun main() {
     val port = System.getenv("PORT")?.toIntOrNull() ?: 8080
     val database = DatabaseSettings.fromEnvironment(environment)?.let(DatabaseRuntime::open)
     val authService = AuthenticationService(database?.authRepository ?: InMemoryAuthRepository())
+    val authEmailSender = configuredAuthEmailSender()
     val identityRepository = database?.identityRepository ?: InMemoryGuestIdentityRepository()
     val matchResultRepository = database?.matchResultRepository ?: NoOpMatchResultRepository
     val playerProfileRepository = database?.playerProfileRepository ?: NoOpPlayerProfileRepository
@@ -50,12 +51,17 @@ fun main() {
         engine.restoreActiveRooms()
     }
 
-    println("Starting Fast To Win server: environment=$environment, host=$host, port=$port, storage=$storage")
+    val emailDelivery = if (authEmailSender.isConfigured) "smtp" else "disabled"
+    println(
+        "Starting Fast To Win server: environment=$environment, host=$host, port=$port, " +
+            "storage=$storage, email=$emailDelivery"
+    )
     try {
         embeddedServer(Netty, host = host, port = port) {
             gameModule(
                 engine = engine,
                 authService = authService,
+                authEmailSender = authEmailSender,
                 environment = environment,
                 seasonLifecycleRepository = seasonLifecycleRepository,
                 pushReminderService = pushReminderService

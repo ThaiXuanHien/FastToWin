@@ -502,11 +502,31 @@ $env:PORT='8080'
 $env:DATABASE_URL='jdbc:postgresql://database-host:5432/fasttowin'
 $env:DATABASE_USER='fasttowin_app'
 $env:DATABASE_PASSWORD='replace-with-a-secret'
+$env:FASTTOWIN_SMTP_HOST='smtp.mail-provider.example'
+$env:FASTTOWIN_SMTP_PORT='587'
+$env:FASTTOWIN_SMTP_USERNAME='smtp-user'
+$env:FASTTOWIN_SMTP_PASSWORD='replace-with-an-smtp-secret'
+$env:FASTTOWIN_SMTP_FROM_EMAIL='no-reply@example.com'
+$env:FASTTOWIN_SMTP_FROM_NAME='Fast To Win'
+$env:FASTTOWIN_SMTP_STARTTLS='true'
+$env:FASTTOWIN_SMTP_SSL='false'
 .\gradlew.bat :server:installDist
 .\run-packaged-server.cmd
 ```
 
 Endpoint production mặc định trong project chỉ là placeholder và không thể kết nối. Không phát hành app trước khi thay bằng `wss://` hợp lệ.
+
+### Email tài khoản
+
+Production cần cấu hình SMTP trước khi gửi mã khôi phục mật khẩu hoặc mã xác minh email. Dùng tài khoản SMTP/API key riêng của nhà cung cấp; không dùng mật khẩu đăng nhập email cá nhân và không commit secret vào Git.
+
+- Port `587`: đặt `FASTTOWIN_SMTP_STARTTLS=true`, `FASTTOWIN_SMTP_SSL=false`.
+- Port `465`: đặt `FASTTOWIN_SMTP_STARTTLS=false`, `FASTTOWIN_SMTP_SSL=true`.
+- Development không bắt buộc SMTP; mã test được tự điền trong UI.
+- Production không trả mã xác minh hoặc token khôi phục trong API response.
+- Mã xác minh email hết hạn sau 15 phút. Gửi lại mã và thử mã sai đều có rate limit theo IP/tài khoản.
+
+Tài khoản đã tồn tại trước migration V40 được đánh dấu đã xác minh để không khóa người chơi cũ. Tài khoản đăng ký mới phải xác minh email trước khi vào game.
 
 ### Bật/tắt chế độ bảo trì
 

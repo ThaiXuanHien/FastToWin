@@ -10,7 +10,8 @@ data class StoredAuthSession(
     val accessToken: String,
     val refreshToken: String,
     val accessExpiresAtEpochMillis: Long,
-    val refreshExpiresAtEpochMillis: Long
+    val refreshExpiresAtEpochMillis: Long,
+    val emailVerified: Boolean = true
 )
 
 interface AuthSessionStore {

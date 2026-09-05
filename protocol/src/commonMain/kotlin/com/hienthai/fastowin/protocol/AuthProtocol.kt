@@ -62,6 +62,15 @@ data class PasswordResetConfirmRequest(
 )
 
 @Serializable
+data class EmailVerificationRequest(val accessToken: String)
+
+@Serializable
+data class EmailVerificationConfirmRequest(
+    val accessToken: String,
+    val verificationCode: String
+)
+
+@Serializable
 data class DeleteAccountRequest(
     val accessToken: String,
     val password: String
@@ -95,7 +104,9 @@ data class AccountSessionsResponse(val sessions: List<AccountSessionSnapshot>)
 @Serializable
 data class AccountActionResponse(
     val message: String,
-    val devResetToken: String? = null
+    val devResetToken: String? = null,
+    val devEmailVerificationCode: String? = null,
+    val emailVerified: Boolean? = null
 )
 
 @Serializable
@@ -105,7 +116,8 @@ data class AuthSessionResponse(
     val accessToken: String,
     val refreshToken: String,
     val accessExpiresAtEpochMillis: Long,
-    val refreshExpiresAtEpochMillis: Long
+    val refreshExpiresAtEpochMillis: Long,
+    val emailVerified: Boolean = true
 )
 
 @Serializable

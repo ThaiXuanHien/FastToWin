@@ -7,6 +7,8 @@ import com.hienthai.fastowin.protocol.AccountSessionsRequest
 import com.hienthai.fastowin.protocol.AccountSessionsResponse
 import com.hienthai.fastowin.protocol.ChangePasswordRequest
 import com.hienthai.fastowin.protocol.DeleteAccountRequest
+import com.hienthai.fastowin.protocol.EmailVerificationConfirmRequest
+import com.hienthai.fastowin.protocol.EmailVerificationRequest
 import com.hienthai.fastowin.protocol.LoginRequest
 import com.hienthai.fastowin.protocol.LogoutRequest
 import com.hienthai.fastowin.protocol.PasswordResetConfirmRequest
@@ -96,6 +98,19 @@ class AuthApiClient(serverUrl: String) {
     ): AccountActionResponse = executeAction(
         "$baseUrl/auth/password-reset/confirm",
         PasswordResetConfirmRequest(email, resetToken, newPassword)
+    )
+
+    suspend fun requestEmailVerification(accessToken: String): AccountActionResponse = executeAction(
+        "$baseUrl/auth/email-verification/request",
+        EmailVerificationRequest(accessToken)
+    )
+
+    suspend fun confirmEmailVerification(
+        accessToken: String,
+        verificationCode: String
+    ): AccountActionResponse = executeAction(
+        "$baseUrl/auth/email-verification/confirm",
+        EmailVerificationConfirmRequest(accessToken, verificationCode)
     )
 
     suspend fun deleteAccount(accessToken: String, password: String): AccountActionResponse = executeAction(

@@ -1,6 +1,7 @@
 package com.hienthai.fastowin.server
 
 import com.hienthai.fastowin.protocol.ClientMessage
+import com.hienthai.fastowin.protocol.AuthSessionResponse
 import com.hienthai.fastowin.protocol.LoginRequest
 import com.hienthai.fastowin.protocol.ProtocolGameMode
 import com.hienthai.fastowin.protocol.ProtocolJson
@@ -163,14 +164,11 @@ class GameWebSocketTest {
             repository = InMemoryAuthRepository(),
             passwordHasher = PasswordHasher(iterations = 1_000)
         )
-        val authSession = assertIs<AuthResult.Success>(
-            authService.register(
-                email = "revoked-socket@example.com",
-                password = "strong-password-123",
-                displayName = "Revoked player",
-                devicePlatform = "android"
-            )
-        ).session
+        val authSession = authService.registerVerified(
+            email = "revoked-socket@example.com",
+            password = "strong-password-123",
+            displayName = "Revoked player"
+        )
         application { gameModule(authService = authService) }
         val webSocketClient = createClient { install(WebSockets) }
         val socket = webSocketClient.webSocketSession("/game")
@@ -199,14 +197,11 @@ class GameWebSocketTest {
             repository = InMemoryAuthRepository(),
             passwordHasher = PasswordHasher(iterations = 1_000)
         )
-        val authSession = assertIs<AuthResult.Success>(
-            authService.register(
-                email = "socket@example.com",
-                password = "strong-password-123",
-                displayName = "Người chơi tài khoản",
-                devicePlatform = "android"
-            )
-        ).session
+        val authSession = authService.registerVerified(
+            email = "socket@example.com",
+            password = "strong-password-123",
+            displayName = "Người chơi tài khoản"
+        )
         application { gameModule(authService = authService) }
         val webSocketClient = createClient { install(WebSockets) }
 
@@ -238,19 +233,42 @@ class GameWebSocketTest {
     }
 
     @Test
+    fun `unverified account cannot authenticate game websocket`() = testApplication {
+        val authService = AuthenticationService(
+            repository = InMemoryAuthRepository(),
+            passwordHasher = PasswordHasher(iterations = 1_000)
+        )
+        val session = assertIs<AuthResult.Success>(
+            authService.register(
+                email = "unverified-socket@example.com",
+                password = "strong-password-123",
+                displayName = "Unverified",
+                devicePlatform = "web"
+            )
+        ).session
+        application { gameModule(authService = authService) }
+        val webSocketClient = createClient { install(WebSockets) }
+        val socket = webSocketClient.webSocketSession("/game")
+
+        try {
+            socket.sendMessage(ClientMessage.ConnectAccount(session.accessToken))
+            assertEquals("EMAIL_NOT_VERIFIED", socket.receiveMessage<ServerMessage.Error>().code)
+        } finally {
+            socket.close()
+        }
+    }
+
+    @Test
     fun `new device connection replaces old account websocket without disconnecting player`() = testApplication {
         val authService = AuthenticationService(
             repository = InMemoryAuthRepository(),
             passwordHasher = PasswordHasher(iterations = 1_000)
         )
-        val registered = assertIs<AuthResult.Success>(
-            authService.register(
-                email = "multi-device@example.com",
-                password = "strong-password-123",
-                displayName = "Multi device",
-                devicePlatform = "android"
-            )
-        ).session
+        val registered = authService.registerVerified(
+            email = "multi-device@example.com",
+            password = "strong-password-123",
+            displayName = "Multi device"
+        )
         application { gameModule(authService = authService) }
         val webSocketClient = createClient { install(WebSockets) }
         val first = webSocketClient.webSocketSession("/game")
@@ -293,14 +311,11 @@ class GameWebSocketTest {
             repository = InMemoryAuthRepository(),
             passwordHasher = PasswordHasher(iterations = 1_000)
         )
-        val registered = assertIs<AuthResult.Success>(
-            authService.register(
-                email = "exclusive-login@example.com",
-                password = "strong-password-123",
-                displayName = "Exclusive login",
-                devicePlatform = "android"
-            )
-        ).session
+        val registered = authService.registerVerified(
+            email = "exclusive-login@example.com",
+            password = "strong-password-123",
+            displayName = "Exclusive login"
+        )
         application { gameModule(authService = authService) }
         val webSocketClient = createClient { install(WebSockets) }
         val oldDevice = webSocketClient.webSocketSession("/game")
@@ -336,14 +351,11 @@ class GameWebSocketTest {
             repository = InMemoryAuthRepository(),
             passwordHasher = PasswordHasher(iterations = 1_000)
         )
-        val authSession = assertIs<AuthResult.Success>(
-            authService.register(
-                email = "account-reconnect@example.com",
-                password = "strong-password-123",
-                displayName = "Chủ phòng tài khoản",
-                devicePlatform = "android"
-            )
-        ).session
+        val authSession = authService.registerVerified(
+            email = "account-reconnect@example.com",
+            password = "strong-password-123",
+            displayName = "Chủ phòng tài khoản"
+        )
         application { gameModule(authService = authService) }
         val webSocketClient = createClient { install(WebSockets) }
         val host = webSocketClient.webSocketSession("/game")
@@ -600,6 +612,26 @@ class GameWebSocketTest {
 
     private suspend fun DefaultClientWebSocketSession.sendMessage(message: ClientMessage) {
         send(Frame.Text(ProtocolJson.encodeToString<ClientMessage>(message)))
+    }
+
+    private suspend fun AuthenticationService.registerVerified(
+        email: String,
+        password: String,
+        displayName: String
+    ): AuthSessionResponse {
+        val session = assertIs<AuthResult.Success>(
+            register(email, password, displayName, "android")
+        ).session
+        val verification = assertIs<AccountActionResult.Success>(
+            requestEmailVerification(session.accessToken)
+        )
+        assertIs<AccountActionResult.Success>(
+            confirmEmailVerification(
+                session.accessToken,
+                requireNotNull(verification.emailVerificationCode)
+            )
+        )
+        return session.copy(emailVerified = true)
     }
 
     private suspend fun joinAndReadyRoom(

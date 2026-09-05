@@ -11,13 +11,15 @@ class InMemoryAuthRepository : AuthRepository {
     private val sessionsByAccessToken = mutableMapOf<String, StoredSession>()
     private val displayNamesByUserId = mutableMapOf<UUID, String>()
     private val passwordResets = mutableMapOf<String, StoredPasswordReset>()
+    private val emailVerifications = mutableMapOf<Pair<UUID, String>, StoredEmailVerification>()
 
     override suspend fun createAccount(account: NewAccount): Boolean = mutex.withLock {
         if (account.emailNormalized in accounts) return@withLock false
         accounts[account.emailNormalized] = AccountCredentials(
             account.userId,
             account.passwordHash,
-            account.displayName
+            account.displayName,
+            emailVerified = false
         )
         displayNamesByUserId[account.userId] = account.displayName
         store(account.userId, account.devicePlatform, account.session)
@@ -70,7 +72,9 @@ class InMemoryAuthRepository : AuthRepository {
             ?.takeIf { !it.revoked && it.accessExpiresAtMillis > nowMillis }
             ?: return@withLock null
         val displayName = displayNamesByUserId[session.userId] ?: return@withLock null
-        AuthenticatedAccount(session.userId, displayName, session.sessionId)
+        val emailVerified = accounts.values.firstOrNull { it.userId == session.userId }?.emailVerified
+            ?: return@withLock null
+        AuthenticatedAccount(session.userId, displayName, session.sessionId, emailVerified)
     }
 
     override suspend fun listActiveSessions(
@@ -172,11 +176,42 @@ class InMemoryAuthRepository : AuthRepository {
         true
     }
 
+    override suspend fun createEmailVerification(
+        userId: UUID,
+        verification: NewEmailVerification
+    ): EmailVerificationDestination? = mutex.withLock {
+        val entry = accounts.entries.firstOrNull { it.value.userId == userId } ?: return@withLock null
+        if (entry.value.emailVerified) {
+            return@withLock EmailVerificationDestination(entry.key, alreadyVerified = true)
+        }
+        emailVerifications.entries.removeAll { it.value.userId == userId }
+        emailVerifications[userId to verification.codeHash] = StoredEmailVerification(
+            userId = userId,
+            expiresAtMillis = verification.expiresAtMillis
+        )
+        EmailVerificationDestination(entry.key, alreadyVerified = false)
+    }
+
+    override suspend fun consumeEmailVerification(
+        userId: UUID,
+        codeHash: String,
+        nowMillis: Long
+    ): Boolean = mutex.withLock {
+        val verification = emailVerifications.remove(userId to codeHash)
+            ?.takeIf { it.userId == userId && it.expiresAtMillis > nowMillis }
+            ?: return@withLock false
+        val entry = accounts.entries.firstOrNull { it.value.userId == userId } ?: return@withLock false
+        accounts[entry.key] = entry.value.copy(emailVerified = true)
+        emailVerifications.entries.removeAll { it.value.userId == userId }
+        true
+    }
+
     override suspend fun deleteAccount(userId: UUID): Boolean = mutex.withLock {
         val removed = accounts.entries.removeAll { it.value.userId == userId }
         if (!removed) return@withLock false
         displayNamesByUserId.remove(userId)
         passwordResets.entries.removeAll { it.value.userId == userId }
+        emailVerifications.entries.removeAll { it.value.userId == userId }
         revokeUserSessions(userId)
         true
     }
@@ -214,6 +249,11 @@ class InMemoryAuthRepository : AuthRepository {
     private data class StoredPasswordReset(
         val userId: UUID,
         val emailNormalized: String,
+        val expiresAtMillis: Long
+    )
+
+    private data class StoredEmailVerification(
+        val userId: UUID,
         val expiresAtMillis: Long
     )
 }

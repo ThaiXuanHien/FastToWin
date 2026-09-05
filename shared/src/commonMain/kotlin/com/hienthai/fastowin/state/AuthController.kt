@@ -19,7 +19,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
-enum class AuthStage { WELCOME, LOGIN, REGISTER, RESET_PASSWORD, UPGRADE_GUEST, PLAYING }
+enum class AuthStage { WELCOME, LOGIN, REGISTER, RESET_PASSWORD, VERIFY_EMAIL, UPGRADE_GUEST, PLAYING }
 
 data class AuthState(
     val stage: AuthStage = AuthStage.WELCOME,
@@ -29,6 +29,7 @@ data class AuthState(
     val error: String? = null,
     val notice: String? = null,
     val devResetToken: String? = null,
+    val devEmailVerificationCode: String? = null,
     val passwordResetEmail: String? = null,
     val accountSessions: List<AccountSessionSnapshot> = emptyList(),
     val areSessionsLoading: Boolean = false
@@ -53,7 +54,10 @@ class AuthController(
     }
     private val _state = MutableStateFlow(
         when {
-            initialSession != null -> AuthState(stage = AuthStage.PLAYING, session = initialSession)
+            initialSession != null -> AuthState(
+                stage = if (initialSession.emailVerified) AuthStage.PLAYING else AuthStage.VERIFY_EMAIL,
+                session = initialSession
+            )
             initialGuestSession -> AuthState(stage = AuthStage.PLAYING, isGuest = true)
             else -> AuthState()
         }
@@ -103,6 +107,7 @@ class AuthController(
             runCatching {
                 val response = api.register(email, password, displayName, devicePlatform, gender)
                 persist(email, displayName.trim(), response)
+                if (!response.emailVerified) requestEmailVerification()
             }
                 .onFailure(::showError)
         }
@@ -123,6 +128,7 @@ class AuthController(
                 val response = api.upgradeGuest(resumeToken, email, password, devicePlatform)
                 persist(email, response.displayName, response)
                 resumeTokenStore.clear(serverUrl)
+                if (!response.emailVerified) requestEmailVerification()
             }.onFailure(::showError)
         }
     }
@@ -181,6 +187,43 @@ class AuthController(
             runCatching { api.confirmPasswordReset(email, resetToken, newPassword) }
                 .onSuccess { response ->
                     _state.value = AuthState(stage = AuthStage.LOGIN, notice = response.message)
+                }
+                .onFailure(::showError)
+        }
+    }
+
+    fun requestEmailVerification() {
+        if (_state.value.isLoading || _state.value.session == null) return
+        _state.update { it.copy(isLoading = true, error = null, notice = null) }
+        scope.launch {
+            val accessToken = validAccessToken() ?: return@launch
+            runCatching { api.requestEmailVerification(accessToken) }
+                .onSuccess { response ->
+                    if (response.emailVerified == true) {
+                        completeEmailVerification(response.message)
+                    } else {
+                        _state.update {
+                            it.copy(
+                                isLoading = false,
+                                notice = response.message,
+                                devEmailVerificationCode = response.devEmailVerificationCode,
+                                error = null
+                            )
+                        }
+                    }
+                }
+                .onFailure(::showError)
+        }
+    }
+
+    fun confirmEmailVerification(verificationCode: String) {
+        if (_state.value.isLoading || _state.value.session == null) return
+        _state.update { it.copy(isLoading = true, error = null, notice = null) }
+        scope.launch {
+            val accessToken = validAccessToken() ?: return@launch
+            runCatching { api.confirmEmailVerification(accessToken, verificationCode) }
+                .onSuccess { response ->
+                    completeEmailVerification(response.message)
                 }
                 .onFailure(::showError)
         }
@@ -304,10 +347,14 @@ class AuthController(
             accessToken = response.accessToken,
             refreshToken = response.refreshToken,
             accessExpiresAtEpochMillis = response.accessExpiresAtEpochMillis,
-            refreshExpiresAtEpochMillis = response.refreshExpiresAtEpochMillis
+            refreshExpiresAtEpochMillis = response.refreshExpiresAtEpochMillis,
+            emailVerified = response.emailVerified
         )
         store.save(serverUrl, stored)
-        _state.value = AuthState(stage = AuthStage.PLAYING, session = stored)
+        _state.value = AuthState(
+            stage = if (stored.emailVerified) AuthStage.PLAYING else AuthStage.VERIFY_EMAIL,
+            session = stored
+        )
     }
 
     private fun showError(error: Throwable) {
@@ -328,6 +375,17 @@ class AuthController(
                     ?: "Không thể tải danh sách thiết bị. Vui lòng thử lại."
             )
         }
+    }
+
+    private fun completeEmailVerification(message: String) {
+        val current = _state.value.session ?: return
+        val verified = current.copy(emailVerified = true)
+        store.save(serverUrl, verified)
+        _state.value = AuthState(
+            stage = AuthStage.PLAYING,
+            session = verified,
+            notice = message
+        )
     }
 
     private fun StoredAuthSession.withTokens(response: AuthSessionResponse) = copy(

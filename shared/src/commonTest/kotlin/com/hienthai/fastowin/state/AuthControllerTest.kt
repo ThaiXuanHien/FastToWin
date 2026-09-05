@@ -77,6 +77,25 @@ class AuthControllerTest {
     }
 
     @Test
+    fun unverifiedStoredAccount_startsInEmailVerificationStage() {
+        val account = storedSession("unverified-refresh").copy(emailVerified = false)
+        val store = InMemoryAuthSessionStore().apply { save(SERVER_URL, account) }
+        val controller = AuthController(
+            serverUrl = SERVER_URL,
+            store = store,
+            resumeTokenStore = InMemoryResumeTokenStore(),
+            devicePlatform = "test"
+        )
+
+        try {
+            assertEquals(AuthStage.VERIFY_EMAIL, controller.state.value.stage)
+            assertEquals(account, controller.state.value.session)
+        } finally {
+            controller.close()
+        }
+    }
+
+    @Test
     fun expiredOldTab_doesNotClearNewerSessionInSharedStore() {
         val oldSession = storedSession("old-refresh")
         val newSession = storedSession("new-refresh")
