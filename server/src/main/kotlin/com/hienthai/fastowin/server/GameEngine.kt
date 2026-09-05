@@ -1870,18 +1870,41 @@ class GameEngine(
 
             val deliveries = mutableListOf<Delivery>()
             val removedRoomIds = mutableSetOf<String>()
+            val handledRoomIds = mutableSetOf<String>()
+            val completedMatches = mutableListOf<CompletedMatch>()
+            val advancingDisconnectedPlayers = mutableSetOf<String>()
             expiredPlayerIds.forEach { playerId ->
-                roomFor(playerId)?.takeIf { removedRoomIds.add(it.id) }?.let { room ->
-                    rooms.remove(room.id)
-                    deliveries += Delivery(
-                        ServerMessage.RoomClosed(
-                            roomId = room.id,
-                            reason = "Người chơi đã mất kết nối quá lâu."
-                        ),
-                        room.playerIds()
-                    )
+                roomFor(playerId)?.takeIf { handledRoomIds.add(it.id) }?.let { room ->
+                    val tournamentForfeitWinner = room.takeIf {
+                        it.tournamentId != null && it.phase == RoomPhase.PLAYING
+                    }?.playerIds()?.firstOrNull { it != playerId }
+                    if (tournamentForfeitWinner != null) {
+                        advancingDisconnectedPlayers += tournamentForfeitWinner
+                        room.forcedWinnerId = tournamentForfeitWinner
+                        room.finishedPlayerIds += playerId
+                        room.phase = RoomPhase.FINISHED
+                        room.finishedAtEpochMillis = now
+                        room.sequence++
+                        room.takeCompletedMatch()?.let(completedMatches::add)
+                        deliveries += Delivery(
+                            ServerMessage.GameFinished(room.snapshot()),
+                            room.activePlayerIds()
+                        )
+                    } else {
+                        removedRoomIds += room.id
+                        rooms.remove(room.id)
+                        deliveries += Delivery(
+                            ServerMessage.RoomClosed(
+                                roomId = room.id,
+                                reason = "Người chơi đã mất kết nối quá lâu."
+                            ),
+                            room.playerIds()
+                        )
+                    }
                 }
-                sessionsByPlayerId.remove(playerId)
+                if (playerId !in advancingDisconnectedPlayers) {
+                    sessionsByPlayerId.remove(playerId)
+                }
             }
             if (removedRoomIds.isNotEmpty()) {
                 deliveries += Delivery(ServerMessage.RoomList(publicRooms()))
@@ -1902,7 +1925,7 @@ class GameEngine(
                     )
                 }
             }
-            CleanupResult(deliveries, removedRoomIds)
+            CleanupResult(deliveries, removedRoomIds, completedMatches)
         }
         notificationRepository.deleteExpiredRoomInvitations(nowMillis())
         removedInvitations.forEach { invitation ->
@@ -1912,8 +1935,13 @@ class GameEngine(
                 nowMillis()
             )
         }
+        cleanup.completedMatches.forEach { persistCompletedMatch(it) }
         cleanup.removedRoomIds.forEach { persistRoom(it) }
-        return cleanup.deliveries + refreshNotificationsFor(removedInvitations.mapTo(mutableSetOf()) { it.inviteeId })
+        val tournamentDeliveries = cleanup.completedMatches.flatMap { completed ->
+            advanceTournamentAfterMatch(completed.matchId)
+        }
+        return cleanup.deliveries + tournamentDeliveries +
+            refreshNotificationsFor(removedInvitations.mapTo(mutableSetOf()) { it.inviteeId })
     }
 
     private fun roomInvitationMessagesFor(playerId: String): List<ServerMessage.RoomInvitation> =
@@ -2068,10 +2096,6 @@ class GameEngine(
         if (player.playerId !in room.activePlayerIds() && player.playerId !in room.spectatorIds) {
             return HandleResult(listOf(error(player.playerId, "NOT_IN_ROOM", "Bạn không ở trong phòng này.")))
         }
-        if (room.tournamentId != null && room.phase == RoomPhase.PLAYING) {
-            return HandleResult(listOf(error(player.playerId, "TOURNAMENT_MATCH_ACTIVE", "Không thể rời khi trận đấu giải đang diễn ra.")))
-        }
-
         if (player.playerId in room.spectatorIds) {
             room.spectatorIds.remove(player.playerId)
             room.sequence++
@@ -3005,7 +3029,8 @@ class GameEngine(
 
     private data class CleanupResult(
         val deliveries: List<Delivery>,
-        val removedRoomIds: Set<String>
+        val removedRoomIds: Set<String>,
+        val completedMatches: List<CompletedMatch>
     )
 
     private data class Room(

@@ -62,7 +62,7 @@ Danh mục bán hiện tại: Gem, Mặt bài Hoàng Kim, Mặt bài Kim Cương
 - [ ] Giải công khai/toàn hệ thống.
 - [ ] Lịch thi đấu, thời hạn đăng ký và xử lý vắng mặt.
 - [ ] Khán giả xem trận đấu giải (khác với xem phòng thông thường).
-- [ ] Hồi quy tạo nhánh đấu, reconnect, rời trận và phần thưởng không trùng.
+- [x] Hồi quy tạo nhánh đấu 4/8/16 người, reconnect/restart, xử thua khi rời hoặc quá hạn và phần thưởng không trùng.
 
 ## 5. Tài khoản và cấu hình production
 

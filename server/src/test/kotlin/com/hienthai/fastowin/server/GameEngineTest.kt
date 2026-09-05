@@ -1889,6 +1889,142 @@ class GameEngineTest {
     }
 
     @Test
+    fun `tournament player reconnects within grace period and keeps match state`() = runTest {
+        val fixture = createStartedTournamentFixture(maxPlayers = 4)
+        val game = fixture.games.first()
+        val reconnectingId = game.players.first().id
+        val accepted = fixture.engine.handle(
+            reconnectingId,
+            ClientMessage.SelectNumber(game.roomId, game.players.first().currentTarget, "before-reconnect")
+        ).map(Delivery::message).filterIsInstance<ServerMessage.GameStateUpdated>().single().game
+        assertEquals(2, accepted.players.single { it.id == reconnectingId }.currentTarget)
+
+        fixture.engine.markDisconnected(reconnectingId)
+        val resumed = fixture.engine.connectAccount(
+            AuthenticatedAccount(UUID.fromString(reconnectingId), fixture.names.getValue(reconnectingId))
+        )
+        val restoredGame = assertNotNull(resumed.currentGame)
+        assertEquals(game.roomId, restoredGame.roomId)
+        assertEquals(2, restoredGame.players.single { it.id == reconnectingId }.currentTarget)
+
+        val hub = fixture.engine.handle(reconnectingId, ClientMessage.GetTournamentHub)
+            .map(Delivery::message).filterIsInstance<ServerMessage.TournamentHubData>().single().hub
+        val tournament = assertNotNull(hub.activeTournament)
+        assertEquals(com.hienthai.fastowin.protocol.TournamentPhase.RUNNING, tournament.phase)
+        assertTrue(tournament.players.single { it.playerId == reconnectingId }.isOnline)
+    }
+
+    @Test
+    fun `leaving an active tournament match is a loss and advances the bracket`() = runTest {
+        val fixture = createStartedTournamentFixture(maxPlayers = 4)
+        val game = fixture.games.first()
+        val loserId = game.players.last().id
+        val winnerId = game.players.first().id
+
+        val messages = fixture.engine.handle(loserId, ClientMessage.LeaveRoom(game.roomId))
+            .map(Delivery::message)
+        assertTrue(messages.filterIsInstance<ServerMessage.Error>().isEmpty())
+        val finishedGame = messages.filterIsInstance<ServerMessage.GameFinished>().single().game
+        assertEquals(winnerId, finishedGame.winnerPlayerId)
+        val tournament = messages.filterIsInstance<ServerMessage.TournamentUpdated>().last().tournament
+        val finishedMatch = tournament.matches.single { it.roomId == game.roomId }
+        assertEquals(com.hienthai.fastowin.protocol.TournamentMatchPhase.FINISHED, finishedMatch.phase)
+        assertEquals(winnerId, finishedMatch.winnerPlayerId)
+    }
+
+    @Test
+    fun `expired disconnect in tournament forfeits instead of leaving bracket stuck`() = runTest {
+        var now = 1_000L
+        val fixture = createStartedTournamentFixture(maxPlayers = 4, nowMillis = { now })
+        val game = fixture.games.first()
+        val loserId = game.players.last().id
+        val winnerId = game.players.first().id
+
+        fixture.engine.markDisconnected(loserId)
+        now += 31_000L
+        val messages = fixture.engine.cleanupExpiredSessions().map(Delivery::message)
+
+        val finishedGame = messages.filterIsInstance<ServerMessage.GameFinished>().single().game
+        assertEquals(winnerId, finishedGame.winnerPlayerId)
+        val tournament = messages.filterIsInstance<ServerMessage.TournamentUpdated>().last().tournament
+        assertEquals(
+            com.hienthai.fastowin.protocol.TournamentMatchPhase.FINISHED,
+            tournament.matches.single { it.roomId == game.roomId }.phase
+        )
+        assertEquals(com.hienthai.fastowin.protocol.TournamentPhase.RUNNING, tournament.phase)
+    }
+
+    @Test
+    fun `running tournament and match state survive engine restart`() = runTest {
+        val activeRoomRepository = InMemoryActiveRoomRepository()
+        val tournamentRepository = InMemoryTournamentRepository()
+        val fixture = createStartedTournamentFixture(
+            maxPlayers = 4,
+            activeRoomRepository = activeRoomRepository,
+            tournamentRepository = tournamentRepository
+        )
+        val game = fixture.games.first()
+        val selectingId = game.players.first().id
+        fixture.engine.handle(
+            selectingId,
+            ClientMessage.SelectNumber(game.roomId, game.players.first().currentTarget, "before-restart")
+        )
+
+        val restarted = GameEngine(
+            playerProfileRepository = fixture.playerProfileRepository,
+            friendRepository = fixture.friendRepository,
+            activeRoomRepository = activeRoomRepository,
+            tournamentRepository = tournamentRepository
+        )
+        val restoredGames = fixture.playerIds.map { playerId ->
+            restarted.connectAccount(
+                AuthenticatedAccount(UUID.fromString(playerId), fixture.names.getValue(playerId))
+            ).currentGame
+        }.filterNotNull().distinctBy { it.roomId }
+
+        assertEquals(2, restoredGames.size)
+        val restoredSelectedGame = restoredGames.single { it.roomId == game.roomId }
+        assertEquals(2, restoredSelectedGame.players.single { it.id == selectingId }.currentTarget)
+        val hub = restarted.handle(selectingId, ClientMessage.GetTournamentHub)
+            .map(Delivery::message).filterIsInstance<ServerMessage.TournamentHubData>().single().hub
+        val active = assertNotNull(hub.activeTournament)
+        assertEquals(fixture.tournamentId, active.tournamentId)
+        assertEquals(2, active.matches.count {
+            it.phase == com.hienthai.fastowin.protocol.TournamentMatchPhase.PLAYING
+        })
+    }
+
+    @Test
+    fun `tournament champion prize is granted exactly once`() = runTest {
+        data class WalletCall(val sourceType: String, val sourceId: String, val goldDelta: Int)
+        val calls = mutableListOf<WalletCall>()
+        val appliedSources = mutableSetOf<Triple<String, String, String>>()
+        val fixture = createStartedTournamentFixture(
+            maxPlayers = 4,
+            entryFee = 100,
+            walletMutation = { playerId, sourceType, sourceId, goldDelta ->
+                calls += WalletCall(sourceType, sourceId, goldDelta)
+                if (appliedSources.add(Triple(playerId, sourceType, sourceId))) {
+                    WalletMutationStatus.APPLIED
+                } else {
+                    WalletMutationStatus.DUPLICATE
+                }
+            }
+        )
+
+        val completed = finishStartedTournament(fixture)
+        val prizeCalls = calls.filter { it.sourceType == "TOURNAMENT_PRIZE" }
+        assertEquals(1, prizeCalls.size)
+        assertEquals(fixture.tournamentId, prizeCalls.single().sourceId)
+        assertEquals(400, prizeCalls.single().goldDelta)
+        assertEquals(fixture.playerIds.first(), completed.championPlayerId)
+
+        fixture.engine.handle(fixture.playerIds.first(), ClientMessage.GetTournamentHub)
+        fixture.engine.cleanupExpiredSessions()
+        assertEquals(1, calls.count { it.sourceType == "TOURNAMENT_PRIZE" })
+    }
+
+    @Test
     fun `private eight player tournament advances through quarterfinals to champion`() = runTest {
         assertPrivateTournamentCompletes(maxPlayers = 8)
     }
@@ -2018,6 +2154,140 @@ class GameEngineTest {
             it.phase == com.hienthai.fastowin.protocol.TournamentMatchPhase.FINISHED
         })
     }
+
+    private suspend fun createStartedTournamentFixture(
+        maxPlayers: Int,
+        entryFee: Int = 0,
+        activeRoomRepository: ActiveRoomRepository = NoOpActiveRoomRepository,
+        tournamentRepository: TournamentRepository = InMemoryTournamentRepository(),
+        nowMillis: () -> Long = System::currentTimeMillis,
+        walletMutation: suspend (String, String, String, Int) -> WalletMutationStatus =
+            { _, _, _, _ -> WalletMutationStatus.PLAYER_NOT_FOUND }
+    ): StartedTournamentFixture {
+        val playerIds = List(maxPlayers) { UUID.randomUUID().toString() }
+        val names = playerIds.mapIndexed { index, playerId -> playerId to "Đấu thủ ${index + 1}" }.toMap()
+        val profiles = playerIds.associateWith { playerId ->
+            PlayerProfileSnapshot(
+                userId = playerId,
+                displayName = names.getValue(playerId),
+                playerCode = "REG${playerIds.indexOf(playerId) + 1}",
+                progression = PlayerProgressionSnapshot(level = 20, gold = 10_000)
+            )
+        }
+        val playerProfileRepository = object : PlayerProfileRepository {
+            override suspend fun findByPlayerId(playerId: String) = profiles[playerId]
+            override suspend fun updateProfile(playerId: String, displayName: String, avatarId: String?) = false
+            override suspend fun applyWalletTransaction(
+                playerId: String,
+                sourceType: String,
+                sourceId: String,
+                goldDelta: Int,
+                gemsDelta: Int,
+                xpDelta: Int
+            ) = walletMutation(playerId, sourceType, sourceId, goldDelta)
+        }
+        val friendRepository = object : FriendRepository {
+            override suspend fun load(userId: String) = StoredFriends(
+                friends = playerIds.filterNot { it == userId }.map { friendId ->
+                    FriendSnapshot(
+                        userId = friendId,
+                        displayName = names.getValue(friendId),
+                        playerCode = profiles.getValue(friendId).playerCode
+                    )
+                }
+            )
+            override suspend fun sendRequest(userId: String, playerCode: String, nowMillis: Long) =
+                FriendRequestResult.PlayerNotFound
+            override suspend fun respond(userId: String, requestId: String, accept: Boolean, nowMillis: Long) =
+                FriendResponseResult.NotFound
+            override suspend fun cancelRequest(userId: String, requestId: String) = FriendCancellationResult.NotFound
+            override suspend fun removeFriend(userId: String, friendUserId: String) = SocialMutationResult.NotFound
+            override suspend fun blockPlayer(userId: String, playerUserId: String, nowMillis: Long) =
+                SocialMutationResult.NotFound
+            override suspend fun unblockPlayer(userId: String, playerUserId: String) = SocialMutationResult.NotFound
+            override suspend fun areFriends(firstUserId: String, secondUserId: String) =
+                firstUserId != secondUserId && firstUserId in playerIds && secondUserId in playerIds
+            override suspend fun isBlockedEitherWay(firstUserId: String, secondUserId: String) = false
+        }
+        val engine = GameEngine(
+            playerProfileRepository = playerProfileRepository,
+            friendRepository = friendRepository,
+            activeRoomRepository = activeRoomRepository,
+            tournamentRepository = tournamentRepository,
+            nowMillis = nowMillis
+        )
+        playerIds.forEach { playerId ->
+            engine.connectAccount(AuthenticatedAccount(UUID.fromString(playerId), names.getValue(playerId)))
+        }
+        val tournament = engine.handle(
+            playerIds.first(),
+            ClientMessage.CreateTournament(
+                name = "Cúp hồi quy $maxPlayers",
+                gameMode = ProtocolGameMode.SURVIVAL,
+                entryFee = entryFee,
+                maxPlayers = maxPlayers
+            )
+        ).map(Delivery::message).filterIsInstance<ServerMessage.TournamentUpdated>().single().tournament
+        playerIds.drop(1).forEach { inviteeId ->
+            val invitation = engine.handle(
+                playerIds.first(),
+                ClientMessage.InviteTournamentPlayer(tournament.tournamentId, inviteeId)
+            ).map(Delivery::message).filterIsInstance<ServerMessage.TournamentInvitation>().single().invitation
+            engine.handle(
+                inviteeId,
+                ClientMessage.RespondTournamentInvitation(invitation.invitationId, accept = true)
+            )
+        }
+        val games = engine.handle(
+            playerIds.first(),
+            ClientMessage.StartTournament(tournament.tournamentId)
+        ).map(Delivery::message).filterIsInstance<ServerMessage.GameStarted>().map(ServerMessage.GameStarted::game)
+        return StartedTournamentFixture(
+            engine = engine,
+            playerIds = playerIds,
+            names = names,
+            tournamentId = tournament.tournamentId,
+            games = games,
+            playerProfileRepository = playerProfileRepository,
+            friendRepository = friendRepository
+        )
+    }
+
+    private suspend fun finishStartedTournament(
+        fixture: StartedTournamentFixture
+    ): com.hienthai.fastowin.protocol.TournamentSnapshot {
+        val seedByPlayerId = fixture.playerIds.withIndex().associate { (index, playerId) -> playerId to index }
+        var games = fixture.games
+        var round = 1
+        var completed: com.hienthai.fastowin.protocol.TournamentSnapshot? = null
+        while (games.isNotEmpty()) {
+            var messages = emptyList<ServerMessage>()
+            games.forEachIndexed { matchIndex, game ->
+                val loserId = game.players.maxBy { seedByPlayerId.getValue(it.id) }.id
+                messages = loseSurvivalTournamentMatch(
+                    fixture.engine,
+                    game,
+                    loserId,
+                    "regression-$round-$matchIndex"
+                )
+            }
+            val updated = messages.filterIsInstance<ServerMessage.TournamentUpdated>().last().tournament
+            if (updated.phase == com.hienthai.fastowin.protocol.TournamentPhase.FINISHED) completed = updated
+            games = messages.filterIsInstance<ServerMessage.GameStarted>().map(ServerMessage.GameStarted::game)
+            round += 1
+        }
+        return checkNotNull(completed)
+    }
+
+    private data class StartedTournamentFixture(
+        val engine: GameEngine,
+        val playerIds: List<String>,
+        val names: Map<String, String>,
+        val tournamentId: String,
+        val games: List<com.hienthai.fastowin.protocol.GameSnapshot>,
+        val playerProfileRepository: PlayerProfileRepository,
+        val friendRepository: FriendRepository
+    )
 
     private suspend fun loseSurvivalTournamentMatch(
         engine: GameEngine,

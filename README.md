@@ -8,7 +8,7 @@ Theo dõi các bước đã làm và còn lại tại [lộ trình phát triển
 
 - Người đã đăng nhập có thể tạo giải loại trực tiếp dành cho 4, 8 hoặc 16 người và mời bạn bè đang online.
 - Khi đủ người, server tự tạo nhánh đấu tương ứng và tự đưa người thắng qua từng vòng đến chung kết.
-- Trận đấu giải dùng cơ chế phòng 1 đấu 1 hiện có, không ảnh hưởng Elo và không cho rời/rematch giữa nhánh đấu.
+- Trận đấu giải dùng cơ chế phòng 1 đấu 1 hiện có, không ảnh hưởng Elo, không cho đấu lại; chủ động rời hoặc hết thời gian reconnect sẽ bị xử thua.
 - Màn đấu giải hiển thị người tham gia, trạng thái từng trận, nhánh đấu, nhà vô địch và lịch sử giải gần đây.
 - Dữ liệu được lưu trong bảng `tournaments` khi backend chạy với PostgreSQL. Flyway tạo bảng này qua migration V21.
 
