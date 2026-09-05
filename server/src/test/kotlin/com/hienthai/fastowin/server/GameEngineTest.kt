@@ -1890,13 +1890,22 @@ class GameEngineTest {
 
     @Test
     fun `private eight player tournament advances through quarterfinals to champion`() = runTest {
-        val playerIds = List(8) { UUID.randomUUID().toString() }
-        val names = List(8) { index -> "Đấu thủ ${index + 1}" }
+        assertPrivateTournamentCompletes(maxPlayers = 8)
+    }
+
+    @Test
+    fun `private sixteen player tournament advances through every round to champion`() = runTest {
+        assertPrivateTournamentCompletes(maxPlayers = 16)
+    }
+
+    private suspend fun assertPrivateTournamentCompletes(maxPlayers: Int) {
+        val playerIds = List(maxPlayers) { UUID.randomUUID().toString() }
+        val names = List(maxPlayers) { index -> "Đấu thủ ${index + 1}" }
         val profiles = playerIds.mapIndexed { index, playerId ->
             playerId to PlayerProfileSnapshot(
                 userId = playerId,
                 displayName = names[index],
-                playerCode = "EIGHT${index + 1}",
+                playerCode = "CUP${maxPlayers}P${index + 1}",
                 progression = PlayerProgressionSnapshot(level = 20)
             )
         }.toMap()
@@ -1945,14 +1954,22 @@ class GameEngineTest {
         val created = engine.handle(
             playerIds[0],
             ClientMessage.CreateTournament(
-                name = "Cúp tám người",
+                name = "Cúp $maxPlayers người",
                 gameMode = ProtocolGameMode.SURVIVAL,
-                maxPlayers = 8
+                maxPlayers = maxPlayers
             )
         ).map(Delivery::message).filterIsInstance<ServerMessage.TournamentUpdated>().single().tournament
-        assertEquals(8, created.maxPlayers)
-        assertEquals(7, created.matches.size)
-        assertEquals(mapOf(1 to 4, 2 to 2, 3 to 1), created.matches.groupingBy { it.round }.eachCount())
+        val expectedMatchesByRound = mutableMapOf<Int, Int>()
+        var expectedRound = 1
+        var matchesInRound = maxPlayers / 2
+        while (matchesInRound >= 1) {
+            expectedMatchesByRound[expectedRound] = matchesInRound
+            expectedRound += 1
+            matchesInRound /= 2
+        }
+        assertEquals(maxPlayers, created.maxPlayers)
+        assertEquals(maxPlayers - 1, created.matches.size)
+        assertEquals(expectedMatchesByRound, created.matches.groupingBy { it.round }.eachCount())
 
         playerIds.drop(1).forEach { inviteeId ->
             val invitation = engine.handle(
@@ -1965,36 +1982,39 @@ class GameEngineTest {
             )
         }
 
-        val quarterfinals = engine.handle(
+        var games = engine.handle(
             playerIds[0],
             ClientMessage.StartTournament(created.tournamentId)
         ).map(Delivery::message).filterIsInstance<ServerMessage.GameStarted>().map(ServerMessage.GameStarted::game)
-        assertEquals(4, quarterfinals.size)
-        assertTrue(quarterfinals.all { it.tournamentRound == 1 })
-
-        var roundMessages = emptyList<ServerMessage>()
-        listOf(playerIds[7], playerIds[6], playerIds[5], playerIds[4]).forEachIndexed { index, loserId ->
-            val game = quarterfinals.single { loserId in it.players.map { player -> player.id } }
-            roundMessages = loseSurvivalTournamentMatch(engine, game, loserId, "quarter-$index")
+        val seedByPlayerId = playerIds.withIndex().associate { (index, playerId) -> playerId to index }
+        var currentRound = 1
+        var completed: com.hienthai.fastowin.protocol.TournamentSnapshot? = null
+        while (games.isNotEmpty()) {
+            assertEquals(expectedMatchesByRound.getValue(currentRound), games.size)
+            assertTrue(games.all { it.tournamentRound == currentRound })
+            var roundMessages = emptyList<ServerMessage>()
+            games.forEachIndexed { matchIndex, game ->
+                val loserId = game.players.maxBy { seedByPlayerId.getValue(it.id) }.id
+                roundMessages = loseSurvivalTournamentMatch(
+                    engine = engine,
+                    game = game,
+                    loserId = loserId,
+                    requestPrefix = "size-$maxPlayers-round-$currentRound-match-$matchIndex"
+                )
+            }
+            val updated = roundMessages.filterIsInstance<ServerMessage.TournamentUpdated>().last().tournament
+            if (updated.phase == com.hienthai.fastowin.protocol.TournamentPhase.FINISHED) {
+                completed = updated
+            }
+            games = roundMessages.filterIsInstance<ServerMessage.GameStarted>()
+                .map(ServerMessage.GameStarted::game)
+            currentRound += 1
         }
-        val semifinals = roundMessages.filterIsInstance<ServerMessage.GameStarted>()
-            .map(ServerMessage.GameStarted::game)
-        assertEquals(2, semifinals.size)
-        assertTrue(semifinals.all { it.tournamentRound == 2 })
 
-        listOf(playerIds[1], playerIds[3]).forEachIndexed { index, loserId ->
-            val game = semifinals.single { loserId in it.players.map { player -> player.id } }
-            roundMessages = loseSurvivalTournamentMatch(engine, game, loserId, "semi-eight-$index")
-        }
-        val finalGame = roundMessages.filterIsInstance<ServerMessage.GameStarted>().single().game
-        assertEquals(3, finalGame.tournamentRound)
-        assertEquals(setOf(playerIds[0], playerIds[2]), finalGame.players.map { it.id }.toSet())
-
-        val finalMessages = loseSurvivalTournamentMatch(engine, finalGame, playerIds[2], "final-eight")
-        val completed = finalMessages.filterIsInstance<ServerMessage.TournamentUpdated>().last().tournament
-        assertEquals(com.hienthai.fastowin.protocol.TournamentPhase.FINISHED, completed.phase)
-        assertEquals(playerIds[0], completed.championPlayerId)
-        assertTrue(completed.matches.all {
+        val completedTournament = checkNotNull(completed)
+        assertEquals(com.hienthai.fastowin.protocol.TournamentPhase.FINISHED, completedTournament.phase)
+        assertEquals(playerIds[0], completedTournament.championPlayerId)
+        assertTrue(completedTournament.matches.all {
             it.phase == com.hienthai.fastowin.protocol.TournamentMatchPhase.FINISHED
         })
     }

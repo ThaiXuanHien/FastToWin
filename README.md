@@ -6,7 +6,7 @@ Theo dõi các bước đã làm và còn lại tại [lộ trình phát triển
 
 ## Tính năng đấu giải riêng
 
-- Người đã đăng nhập có thể tạo giải loại trực tiếp dành cho 4 hoặc 8 người và mời bạn bè đang online.
+- Người đã đăng nhập có thể tạo giải loại trực tiếp dành cho 4, 8 hoặc 16 người và mời bạn bè đang online.
 - Khi đủ người, server tự tạo nhánh đấu tương ứng và tự đưa người thắng qua từng vòng đến chung kết.
 - Trận đấu giải dùng cơ chế phòng 1 đấu 1 hiện có, không ảnh hưởng Elo và không cho rời/rematch giữa nhánh đấu.
 - Màn đấu giải hiển thị người tham gia, trạng thái từng trận, nhánh đấu, nhà vô địch và lịch sử giải gần đây.

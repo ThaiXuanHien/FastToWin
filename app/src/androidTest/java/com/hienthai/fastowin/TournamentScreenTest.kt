@@ -131,6 +131,28 @@ class TournamentScreenTest {
     }
 
     @Test
+    fun host_startsSixteenPlayerTournamentWhenLobbyIsFull() {
+        var starts = 0
+        composeRule.setContent {
+            FastToWinTheme {
+                TournamentScreen(
+                    state = tournamentLobbyState(playerCount = 16, maxPlayers = 16),
+                    onBack = {},
+                    onCreate = { _: String, _: GameMode, _: Int, _: Int -> },
+                    onInvite = {},
+                    onRespondInvitation = { _, _ -> },
+                    onStart = { starts++ },
+                    onLeave = {},
+                    onOpenFriendProfile = {}
+                )
+            }
+        }
+
+        composeRule.onNodeWithTag("start_tournament").performScrollTo().performClick()
+        composeRule.runOnIdle { assertEquals(1, starts) }
+    }
+
+    @Test
     fun eightPlayerBracketShowsQuarterfinalsSemifinalsAndFinal() {
         val lobbyState = tournamentLobbyState(playerCount = 8, maxPlayers = 8)
         val tournament = checkNotNull(lobbyState.tournamentHub.activeTournament)
@@ -166,11 +188,46 @@ class TournamentScreenTest {
         composeRule.onNodeWithText("TRẬN CHUNG KẾT").performScrollTo().assertIsDisplayed()
     }
 
+    @Test
+    fun sixteenPlayerBracketShowsAllFourRounds() {
+        val lobbyState = tournamentLobbyState(playerCount = 16, maxPlayers = 16)
+        val tournament = checkNotNull(lobbyState.tournamentHub.activeTournament)
+        val matches = buildList {
+            repeat(8) { add(TournamentMatchSnapshot("round-of-16-$it", 1, it + 1)) }
+            repeat(4) { add(TournamentMatchSnapshot("quarter-$it", 2, it + 1)) }
+            repeat(2) { add(TournamentMatchSnapshot("semi-$it", 3, it + 1)) }
+            add(TournamentMatchSnapshot("final", 4, 1))
+        }
+        composeRule.setContent {
+            FastToWinTheme {
+                TournamentScreen(
+                    state = lobbyState.copy(
+                        tournamentHub = lobbyState.tournamentHub.copy(
+                            activeTournament = tournament.copy(
+                                phase = TournamentPhase.RUNNING,
+                                matches = matches
+                            )
+                        )
+                    ),
+                    onBack = {},
+                    onCreate = { _: String, _: GameMode, _: Int, _: Int -> },
+                    onInvite = {},
+                    onRespondInvitation = { _, _ -> },
+                    onStart = {},
+                    onLeave = {},
+                    onOpenFriendProfile = {}
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("VÒNG 1/8").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("VÒNG TỨ KẾT").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("VÒNG BÁN KẾT").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("TRẬN CHUNG KẾT").performScrollTo().assertIsDisplayed()
+    }
+
     private fun tournamentLobbyState(playerCount: Int, maxPlayers: Int = 4): GameState {
-        val playerIds = listOf(
-            "player-hien", "player-2", "player-3", "player-4",
-            "player-5", "player-6", "player-7", "player-8"
-        )
+        val playerIds = listOf("player-hien") + (2..maxPlayers).map { "player-$it" }
         val players = playerIds.take(playerCount).mapIndexed { index, id ->
             TournamentPlayerSnapshot(
                 playerId = id,

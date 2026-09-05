@@ -446,7 +446,7 @@ class GameEngine(
             return listOf(error(playerId, "INVALID_TOURNAMENT_NAME", "Tên giải cần có ít nhất 3 ký tự."))
         }
         if (command.maxPlayers !in SUPPORTED_TOURNAMENT_PLAYER_COUNTS) {
-            return listOf(error(playerId, "INVALID_TOURNAMENT_SIZE", "Giải đấu chỉ hỗ trợ 4 hoặc 8 người."))
+            return listOf(error(playerId, "INVALID_TOURNAMENT_SIZE", "Giải đấu chỉ hỗ trợ 4, 8 hoặc 16 người."))
         }
         var snapshotToSave: TournamentSnapshot? = null
         val tournamentId = UUID.randomUUID().toString()
@@ -2436,6 +2436,7 @@ class GameEngine(
             finalRound -> "Chung kết"
             finalRound - 1 -> "Bán kết ${match.position}"
             finalRound - 2 -> "Tứ kết ${match.position}"
+            finalRound - 3 -> "Vòng 1/8 ${match.position}"
             else -> "Vòng ${match.round} • Trận ${match.position}"
         }
         val room = Room(
@@ -3494,7 +3495,7 @@ class GameEngine(
         const val MAX_NOTIFICATION_SYNC_BATCH = 20
         const val LEADERBOARD_SIZE = 100
         const val DEFAULT_TOURNAMENT_PLAYER_COUNT = 4
-        val SUPPORTED_TOURNAMENT_PLAYER_COUNTS = setOf(4, 8)
+        val SUPPORTED_TOURNAMENT_PLAYER_COUNTS = setOf(4, 8, 16)
         const val MAX_TOURNAMENT_NAME_LENGTH = 48
         const val TOURNAMENT_HISTORY_LIMIT = 10
         const val TOURNAMENT_INVITATION_TTL_MILLIS = 10 * 60 * 1000L

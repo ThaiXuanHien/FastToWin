@@ -113,7 +113,7 @@ fun TournamentScreen(
                 val heroSubtitle: String
                 if (tournament == null) {
                     heroTitle = "Đấu trường loại trực tiếp"
-                    heroSubtitle = "Tập hợp 4 hoặc 8 chiến binh và chạm tay vào cúp vô địch."
+                    heroSubtitle = "Tập hợp 4, 8 hoặc 16 chiến binh và chạm tay vào cúp vô địch."
                 } else {
                     val championName = tournament.players
                         .firstOrNull { it.playerId == tournament.championPlayerId }
@@ -265,10 +265,10 @@ private fun CreateTournamentCard(
                         fontWeight = FontWeight.Bold
                     )
                     Text(
-                        if (maxPlayers == 4) {
-                            "4 người • 2 bán kết • 1 chung kết"
-                        } else {
-                            "8 người • 4 tứ kết • 2 bán kết • 1 chung kết"
+                        when (maxPlayers) {
+                            4 -> "4 người • 2 bán kết • 1 chung kết"
+                            8 -> "8 người • 4 tứ kết • 2 bán kết • 1 chung kết"
+                            else -> "16 người • 8 vòng 1/8 • 4 tứ kết • 2 bán kết • 1 chung kết"
                         },
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -282,17 +282,43 @@ private fun CreateTournamentCard(
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.Bold
                 )
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    listOf(4, 8).forEach { size ->
-                        TournamentSizeChip(
-                            playerCount = size,
-                            selected = maxPlayers == size,
-                            onClick = { maxPlayers = size },
-                            modifier = Modifier.weight(1f).testTag("tournament_size_$size")
-                        )
+                BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+                    if (maxWidth < 400.dp) {
+                        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                listOf(4, 8).forEach { size ->
+                                    TournamentSizeChip(
+                                        playerCount = size,
+                                        selected = maxPlayers == size,
+                                        onClick = { maxPlayers = size },
+                                        modifier = Modifier.weight(1f).testTag("tournament_size_$size")
+                                    )
+                                }
+                            }
+                            TournamentSizeChip(
+                                playerCount = 16,
+                                selected = maxPlayers == 16,
+                                onClick = { maxPlayers = 16 },
+                                modifier = Modifier.fillMaxWidth().testTag("tournament_size_16")
+                            )
+                        }
+                    } else {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            listOf(4, 8, 16).forEach { size ->
+                                TournamentSizeChip(
+                                    playerCount = size,
+                                    selected = maxPlayers == size,
+                                    onClick = { maxPlayers = size },
+                                    modifier = Modifier.weight(1f).testTag("tournament_size_$size")
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -818,6 +844,7 @@ private fun tournamentRoundLabel(round: Int, finalRound: Int): String = when (ro
     finalRound -> "TRẬN CHUNG KẾT"
     finalRound - 1 -> "VÒNG BÁN KẾT"
     finalRound - 2 -> "VÒNG TỨ KẾT"
+    finalRound - 3 -> "VÒNG 1/8"
     else -> "VÒNG $round"
 }
 
