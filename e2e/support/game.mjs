@@ -58,25 +58,29 @@ export const test = base.extend({
       actor.reconnect = () => { actor.blocked = false; };
       actor.page = await context.newPage();
       actor.page.on('pageerror', error => {
-        // WebKit reports an in-flight fetch cancelled by an explicit reload/
-        // history navigation as page errors. It can arrive just after the
-        // navigation promise settles on slower CI runners, so keep a short
-        // grace window and accept only known cancellation-shaped messages.
+        // Browsers can report an in-flight fetch cancelled by an explicit
+        // reload/history navigation as a page error. It can arrive just after
+        // the navigation promise settles on slower CI runners, so keep a short
+        // grace window and accept only browser-specific cancellation messages.
         const message = error.message;
         const webKitNavigationCancellation =
           ['Load failed', 'The I/O read operation failed.'].includes(message) ||
           (/^(?:https?:\/\/|ttps?:\/\/|\/)(?:localhost|127\.0\.0\.1):\d+\/.+ due to access control checks\.$/.test(message)) ||
           (message.startsWith('Fatal exception in coroutines machinery for AwaitContinuation(') &&
             message.includes('{Cancelled}'));
-        const expectedWebKitAbort =
-          testInfo.project.use.browserName === 'webkit' &&
+        const firefoxNavigationCancellation =
+          message === 'NetworkError when attempting to fetch resource.';
+        const browserName = testInfo.project.use.browserName;
+        const expectedNavigationAbort =
           Date.now() <= actor.expectedNavigationAbortUntil &&
-          webKitNavigationCancellation;
-        if (expectedWebKitAbort) return;
+          ((browserName === 'webkit' && webKitNavigationCancellation) ||
+            (browserName === 'firefox' && firefoxNavigationCancellation));
+        if (expectedNavigationAbort) return;
         actor.errors.push(message);
       });
       actor.navigate = async action => {
-        if (testInfo.project.use.browserName === 'webkit') {
+        const tracksNavigationAbort = ['webkit', 'firefox'].includes(testInfo.project.use.browserName);
+        if (tracksNavigationAbort) {
           actor.expectedNavigationAbortUntil = Date.now() + 3_000;
         }
         try {
@@ -84,7 +88,7 @@ export const test = base.extend({
         } finally {
           // The pageerror event is delivered asynchronously after the load has
           // been cancelled; extend, rather than clear, the narrow grace window.
-          if (testInfo.project.use.browserName === 'webkit') {
+          if (tracksNavigationAbort) {
             actor.expectedNavigationAbortUntil = Date.now() + 1_500;
           }
         }
