@@ -79,6 +79,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.hienthai.fastowin.data.network.toAvatarImageUrl
 import com.hienthai.fastowin.navigation.GameMode
+import com.hienthai.fastowin.localization.TextKey
+import com.hienthai.fastowin.localization.localized
 import com.hienthai.fastowin.protocol.FriendPresence
 import com.hienthai.fastowin.protocol.DailyCheckInSnapshot
 import com.hienthai.fastowin.protocol.DAILY_CHECK_IN_REWARDS_XP
@@ -138,7 +140,7 @@ internal fun HomeDashboard(
     var pendingMatchType by remember { mutableStateOf<MatchType?>(null) }
     if (showMatchTypePicker) {
         MatchTypePickerDialog(
-            title = "Chọn loại trận",
+            title = localized(TextKey.ChooseMatchType),
             onDismiss = { showMatchTypePicker = false },
             onSelect = { matchType ->
                 showMatchTypePicker = false
@@ -149,9 +151,9 @@ internal fun HomeDashboard(
     pendingMatchType?.let { matchType ->
         GameModePickerDialog(
             title = if (matchType == MatchType.RANKED) {
-                "Chọn chế độ xếp hạng"
+                localized(TextKey.ChooseRankedMode)
             } else {
-                "Chọn chế độ đấu thường"
+                localized(TextKey.ChooseCasualMode)
             },
             playerLevel = profile?.progression?.level ?: 1,
             onDismiss = { pendingMatchType = null },
@@ -185,19 +187,19 @@ internal fun HomeDashboard(
             val season = profile?.progression?.season
             HomeMatchHero(
                 kicker = when {
-                    isGuest -> "CHẾ ĐỘ KHÁCH"
+                    isGuest -> localized(TextKey.GuestMode)
                     season != null -> season.name.uppercase()
-                    else -> "XẾP HẠNG"
+                    else -> localized(TextKey.Ranked).uppercase()
                 },
                 description = if (isGuest) {
-                    "Đăng ký tài khoản để ghép đối thủ trực tuyến."
+                    localized(TextKey.RegisterToPlayOnline)
                 } else {
-                    "Đấu thường để luyện tập hoặc xếp hạng để tăng Elo."
+                    localized(TextKey.CasualOrRankedDescription)
                 },
                 compact = compactHeight
             )
             ArcadeActionButton(
-                label = if (isGuest) "ĐĂNG NHẬP ĐỂ CHƠI" else "CHƠI NGAY",
+                label = localized(if (isGuest) TextKey.LoginToPlay else TextKey.PlayNow),
                 icon = Icons.Default.PlayArrow,
                 style = ArcadeActionStyle.GOLD,
                 onClick = if (isGuest) onUpgradeGuest else ({ showMatchTypePicker = true }),
@@ -217,7 +219,7 @@ internal fun HomeDashboard(
                 )
             }
 
-            SectionTitle("Khám phá", "Tính năng và hoạt động")
+            SectionTitle(localized(TextKey.Explore), localized(TextKey.FeaturesAndActivities))
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 HomeDiscoveryHighlights(
                     isGuest = isGuest,
@@ -227,24 +229,24 @@ internal fun HomeDashboard(
                     onOpenLeaderboard = onOpenLeaderboard
                 )
                 HomeQuickAction(
-                    "Đấu giải",
-                    if (isGuest) "Đăng ký để tham gia" else "Giải riêng 4, 8 hoặc 16 người loại trực tiếp",
+                    localized(TextKey.Tournament),
+                    if (isGuest) localized(TextKey.RegisterToJoin) else localized(TextKey.TournamentDescription),
                     Icons.Default.EmojiEvents,
                     ArcadePalette.Coral600,
                     if (isGuest) onUpgradeGuest else onOpenTournament,
                     Modifier.fillMaxWidth().testTag("home_tournament")
                 )
                 HomeQuickAction(
-                    "Cửa hàng",
-                    "Mở khóa mặt số, bàn số và vật phẩm mới",
+                    localized(TextKey.Shop),
+                    localized(TextKey.ShopDiscoveryDescription),
                     Icons.Default.ShoppingCart,
                     ArcadePalette.Violet600,
                     onOpenShop,
                     Modifier.fillMaxWidth().testTag("home_shop")
                 )
                 HomeQuickAction(
-                    "Luyện tập offline",
-                    "Rèn tốc độ với bàn 50 số, không ảnh hưởng Elo",
+                    localized(TextKey.OfflinePracticeTitle),
+                    localized(TextKey.OfflinePracticeDescription),
                     Icons.Default.FitnessCenter,
                     ArcadePalette.Mint600,
                     onOpenPractice,
@@ -259,9 +261,9 @@ internal fun HomeDashboard(
             if (isGuest) {
                 ArcadePanel(modifier = Modifier.fillMaxWidth(), accent = ArcadePalette.Mint600) {
                     Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text("LƯU TIẾN TRÌNH", fontWeight = FontWeight.Black)
+                        Text(localized(TextKey.SaveProgress), fontWeight = FontWeight.Black)
                         Text(
-                            "Tạo tài khoản để giữ Elo, lịch sử và bạn bè trên Android/iOS.",
+                            localized(TextKey.SaveProgressDescription),
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         Column(
@@ -269,13 +271,13 @@ internal fun HomeDashboard(
                             verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             ArcadeActionButton(
-                                label = "TẠO TÀI KHOẢN",
+                                label = localized(TextKey.CreateAccount),
                                 onClick = onUpgradeGuest,
                                 modifier = Modifier.fillMaxWidth(),
                                 style = ArcadeActionStyle.GOLD
                             )
                             ArcadeActionButton(
-                                label = "THOÁT CHẾ ĐỘ KHÁCH",
+                                label = localized(TextKey.ExitGuestMode),
                                 onClick = onLogout,
                                 modifier = Modifier.fillMaxWidth(),
                                 style = ArcadeActionStyle.OUTLINE
@@ -331,7 +333,7 @@ private fun HomeMatchHero(
                 color = Color(0xFFFFE28B)
             )
             Text(
-                "Chọn cách thi đấu",
+                localized(TextKey.ChooseCompetitionType),
                 style = MaterialTheme.typography.headlineSmall,
                 fontWeight = FontWeight.Black,
                 color = Color.White
@@ -377,17 +379,17 @@ private fun HomeRoomActions(
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         ArcadeActionButton(
-            label = "TẠO PHÒNG",
+            label = localized(TextKey.CreateRoom).uppercase(),
             icon = Icons.Default.Add,
             onClick = onCreateRoom,
-            modifier = Modifier.fillMaxWidth().testTag("home_action:Tạo phòng")
+            modifier = Modifier.fillMaxWidth().testTag("home_action:create_room")
         )
         ArcadeActionButton(
-            label = "THAM GIA",
+            label = localized(TextKey.JoinRoom).uppercase(),
             icon = Icons.Default.MeetingRoom,
             style = ArcadeActionStyle.OUTLINE,
             onClick = onOpenRooms,
-            modifier = Modifier.fillMaxWidth().testTag("home_action:Vào phòng")
+            modifier = Modifier.fillMaxWidth().testTag("home_action:join_room")
         )
     }
 }
@@ -405,16 +407,16 @@ private fun HomeDiscoveryHighlights(
         if (stack) {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 HomeQuickAction(
-                    "Bạn bè",
-                    if (isGuest) "Đăng ký để kết bạn" else "$onlineFriends người trực tuyến",
+                    localized(TextKey.Friends),
+                    if (isGuest) localized(TextKey.RegisterToAddFriends) else localized(TextKey.OnlineFriends, "count" to onlineFriends),
                     Icons.Default.Group,
                     ArcadePalette.Violet600,
                     openSocial,
                     Modifier.fillMaxWidth()
                 )
                 HomeQuickAction(
-                    "Xếp hạng",
-                    rank?.let { "Bạn đang hạng #$it" } ?: "Xem bảng Elo",
+                    localized(TextKey.Leaderboard),
+                    rank?.let { localized(TextKey.YourRank, "rank" to it) } ?: localized(TextKey.ViewEloLeaderboard),
                     Icons.Default.EmojiEvents,
                     ArcadePalette.Gold500,
                     onOpenLeaderboard,
@@ -424,16 +426,16 @@ private fun HomeDiscoveryHighlights(
         } else {
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 HomeQuickAction(
-                    "Bạn bè",
-                    if (isGuest) "Đăng ký để kết bạn" else "$onlineFriends người trực tuyến",
+                    localized(TextKey.Friends),
+                    if (isGuest) localized(TextKey.RegisterToAddFriends) else localized(TextKey.OnlineFriends, "count" to onlineFriends),
                     Icons.Default.Group,
                     ArcadePalette.Violet600,
                     openSocial,
                     Modifier.weight(1f)
                 )
                 HomeQuickAction(
-                    "Xếp hạng",
-                    rank?.let { "Bạn đang hạng #$it" } ?: "Xem bảng Elo",
+                    localized(TextKey.Leaderboard),
+                    rank?.let { localized(TextKey.YourRank, "rank" to it) } ?: localized(TextKey.ViewEloLeaderboard),
                     Icons.Default.EmojiEvents,
                     ArcadePalette.Gold500,
                     onOpenLeaderboard,
@@ -498,7 +500,7 @@ private fun ArcadePlayerSummary(
                         contentColor = Color.White
                     ) {
                         Text(
-                            "Cấp $level",
+                            localized(TextKey.Level, "level" to level),
                             modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp),
                             style = MaterialTheme.typography.labelMedium,
                             fontWeight = FontWeight.Black
@@ -507,7 +509,7 @@ private fun ArcadePlayerSummary(
                 }
                 Text(
                     buildString {
-                        append(tier?.replaceFirstChar { it.uppercase() } ?: "Đang phân hạng")
+                        append(tier?.replaceFirstChar { it.uppercase() } ?: localized(TextKey.PlacementPending))
                         elo?.let { append("  •  Elo ").append(it) }
                     },
                     style = MaterialTheme.typography.labelSmall,
@@ -543,12 +545,12 @@ private fun DailyCheckInCard(
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Text(
-                "Điểm danh 7 ngày",
+                localized(TextKey.DailyCheckInSevenDays),
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Black
             )
             Text(
-                "Chuỗi ${checkIn.currentStreak} ngày",
+                localized(TextKey.CheckInStreak, "count" to checkIn.currentStreak),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -587,7 +589,7 @@ private fun DailyCheckInCard(
                         verticalArrangement = Arrangement.spacedBy(3.dp)
                     ) {
                         Text(
-                            "Ngày",
+                            localized(TextKey.DayLabel),
                             style = MaterialTheme.typography.labelSmall,
                             color = Color.White.copy(alpha = if (completed) 0.55f else 0.72f),
                             maxLines = 1
@@ -619,7 +621,7 @@ private fun DailyCheckInCard(
 
         if (!checkIn.claimedToday) {
             ArcadeActionButton(
-                label = "NHẬN THƯỞNG NGÀY ${checkIn.cycleDay}",
+                label = localized(TextKey.ClaimDayReward, "day" to checkIn.cycleDay),
                 onClick = onClaim,
                 enabled = !isClaiming,
                 style = ArcadeActionStyle.GOLD,
@@ -656,7 +658,7 @@ private fun DelayedConnectionNotice(status: ConnectionStatus) {
             color = MaterialTheme.colorScheme.surfaceContainer
         ) {
             Text(
-                connectionLabel(stableStatus),
+                localized(connectionKey(stableStatus)),
                 modifier = Modifier.fillMaxWidth().padding(14.dp),
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -696,7 +698,7 @@ internal fun FastToWinBottomBar(
         ) {
             BottomBarItem(
                 tab = MainTab.HOME,
-                label = "Trang chủ",
+                label = localized(TextKey.Home),
                 icon = Icons.Default.Home,
                 selected = selected == MainTab.HOME,
                 onClick = onHome,
@@ -704,7 +706,7 @@ internal fun FastToWinBottomBar(
             )
             BottomBarItem(
                 tab = MainTab.ROOMS,
-                label = "Phòng",
+                label = localized(TextKey.Rooms),
                 icon = Icons.Default.MeetingRoom,
                 selected = selected == MainTab.ROOMS,
                 onClick = onRooms,
@@ -712,7 +714,7 @@ internal fun FastToWinBottomBar(
             )
             BottomBarItem(
                 MainTab.LEADERBOARD,
-                "Xếp hạng",
+                localized(TextKey.Leaderboard),
                 Icons.Default.EmojiEvents,
                 selected == MainTab.LEADERBOARD,
                 onLeaderboard,
@@ -720,7 +722,7 @@ internal fun FastToWinBottomBar(
             )
             BottomBarItem(
                 MainTab.CLAN,
-                "Bang hội",
+                localized(TextKey.Clan),
                 CrossedSwordsIcon,
                 selected == MainTab.CLAN,
                 onClan,
@@ -728,7 +730,7 @@ internal fun FastToWinBottomBar(
             )
             BottomBarItem(
                 MainTab.ACCOUNT,
-                "Tài khoản",
+                localized(TextKey.Account),
                 Icons.Default.Person,
                 selected == MainTab.ACCOUNT,
                 onAccount,
@@ -875,7 +877,7 @@ internal fun GameModePickerDialog(
 ) {
     ArcadeDialog(
         title = title.uppercase(),
-        subtitle = "Chế độ khó hơn sẽ được mở khóa theo cấp độ.",
+        subtitle = localized(TextKey.HarderModesUnlock),
         onDismissRequest = onDismiss
     ) {
         Column(
@@ -885,8 +887,8 @@ internal fun GameModePickerDialog(
             GameMode.entries.filter { !it.isLegacy && it != GameMode.TEAM_2V2 }.forEach { mode ->
                 val unlocked = playerLevel >= mode.unlockLevel
                 ModeChoice(
-                    title = mode.title,
-                    subtitle = if (unlocked) mode.description else "Mở khóa ở cấp ${mode.unlockLevel}",
+                    title = localized(mode.titleKey),
+                    subtitle = if (unlocked) localized(mode.descriptionKey) else localized(TextKey.UnlockAtLevel, "level" to mode.unlockLevel),
                     icon = mode.modeIcon(),
                     enabled = unlocked,
                     modifier = Modifier.testTag("game_mode:${mode.name}")
@@ -894,7 +896,7 @@ internal fun GameModePickerDialog(
             }
         }
         ArcadeActionButton(
-            label = "ĐÓNG",
+            label = localized(TextKey.Close).uppercase(),
             onClick = onDismiss,
             modifier = Modifier.fillMaxWidth(),
             style = ArcadeActionStyle.OUTLINE
@@ -910,21 +912,21 @@ internal fun MatchTypePickerDialog(
 ) {
     ArcadeDialog(
         title = title.uppercase(),
-        subtitle = "Chọn cách trận đấu được tính kết quả.",
+        subtitle = localized(TextKey.ChooseMatchScoring),
         onDismissRequest = onDismiss
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
             ModeChoice(
-                title = "Đấu thường",
-                subtitle = "Luyện kỹ năng, không ảnh hưởng Elo",
+                title = localized(TextKey.CasualMatch),
+                subtitle = localized(TextKey.CasualMatchDescription),
                 icon = CrossedSwordsIcon,
                 enabled = true,
                 modifier = Modifier.testTag("match_type:CASUAL"),
                 onClick = { onSelect(MatchType.CASUAL) }
             )
             ModeChoice(
-                title = "Đấu xếp hạng",
-                subtitle = "Thắng hoặc thua sẽ thay đổi Elo",
+                title = localized(TextKey.RankedMatch),
+                subtitle = localized(TextKey.RankedMatchDescription),
                 icon = Icons.Default.EmojiEvents,
                 enabled = true,
                 modifier = Modifier.testTag("match_type:RANKED"),
@@ -932,7 +934,7 @@ internal fun MatchTypePickerDialog(
             )
         }
         ArcadeActionButton(
-            label = "ĐÓNG",
+            label = localized(TextKey.Close).uppercase(),
             onClick = onDismiss,
             modifier = Modifier.fillMaxWidth(),
             style = ArcadeActionStyle.OUTLINE
@@ -995,10 +997,10 @@ internal fun GameMode.modeIcon(): ImageVector = when (this) {
     GameMode.TEAM_2V2 -> Icons.Default.Group
 }
 
-private fun connectionLabel(status: ConnectionStatus): String = when (status) {
-    ConnectionStatus.DISCONNECTED -> "Chưa kết nối máy chủ"
-    ConnectionStatus.CONNECTING -> "Đang kết nối máy chủ..."
-    ConnectionStatus.AUTHENTICATING -> "Đang xác thực tài khoản..."
-    ConnectionStatus.CONNECTED -> "Đã kết nối"
-    ConnectionStatus.RECONNECTING -> "Mất kết nối, đang thử lại..."
+private fun connectionKey(status: ConnectionStatus): TextKey = when (status) {
+    ConnectionStatus.DISCONNECTED -> TextKey.ConnectionDisconnected
+    ConnectionStatus.CONNECTING -> TextKey.ConnectionConnecting
+    ConnectionStatus.AUTHENTICATING -> TextKey.ConnectionAuthenticating
+    ConnectionStatus.CONNECTED -> TextKey.ConnectionConnected
+    ConnectionStatus.RECONNECTING -> TextKey.ConnectionReconnecting
 }

@@ -486,7 +486,7 @@ private fun GameContent(
             playerLevel < challenge.mode.unlockLevel ->
                 localization.text(
                     TextKey.ModeUnlockLevel,
-                    mapOf("mode" to challenge.mode.title, "level" to challenge.mode.unlockLevel)
+                    mapOf("mode" to localization.text(challenge.mode.titleKey), "level" to challenge.mode.unlockLevel)
                 )
             else -> null
         }
@@ -1252,7 +1252,8 @@ private fun GameContent(
                             buildRoomShareText(
                                 roomName = roomName,
                                 roomId = roomId,
-                                deepLink = deepLink ?: buildRoomDeepLink(roomId)
+                                deepLink = deepLink ?: buildRoomDeepLink(roomId),
+                                localization = localization
                             ),
                             localization.text(TextKey.ShareRoom)
                         )

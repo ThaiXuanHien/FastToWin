@@ -21,6 +21,10 @@ actual fun rememberResultImageSharer(): ResultImageSharer = remember {
                 accuracy = content.accuracy,
                 elo = content.elo ?: "—",
                 caption = content.caption,
+                timeLabel = content.timeLabel,
+                accuracyLabel = content.accuracyLabel,
+                slogan = content.slogan,
+                shareSheetTitle = content.shareSheetTitle,
             )
         }
     }
@@ -53,6 +57,10 @@ private fun shareResultImage(
     accuracy: String,
     elo: String,
     caption: String,
+    timeLabel: String,
+    accuracyLabel: String,
+    slogan: String,
+    shareSheetTitle: String,
 ): Unit = js(
     """{
         const canvas = document.createElement('canvas');
@@ -127,8 +135,8 @@ private fun shareResultImage(
 
         fillRoundedRect(70, 866, 940, 250, 42, 'rgba(9, 24, 42, 0.78)');
         const metrics = [
-            { x: 230, label: 'THỜI GIAN', value: duration },
-            { x: 540, label: 'CHÍNH XÁC', value: accuracy },
+            { x: 230, label: timeLabel, value: duration },
+            { x: 540, label: accuracyLabel, value: accuracy },
             { x: 850, label: 'ELO', value: elo }
         ];
         metrics.forEach(metric => {
@@ -137,7 +145,7 @@ private fun shareResultImage(
         });
 
         drawCentered(caption, 540, 1204, 900, 30, '#C9D9E5', 600);
-        drawCentered('Tìm nhanh hơn. Thắng đậm hơn.', 540, 1270, 900, 32, '#35F0C7', 700);
+        drawCentered(slogan, 540, 1270, 900, 32, '#35F0C7', 700);
 
         const dataUrl = canvas.toDataURL('image/png');
         const encoded = dataUrl.substring(dataUrl.indexOf(',') + 1);
@@ -162,7 +170,7 @@ private fun shareResultImage(
         if (typeof File !== 'undefined' && navigator.share && navigator.canShare) {
             const file = new File([blob], fileName, { type: 'image/png' });
             const shareData = {
-                title: 'Kết quả Fast To Win',
+                title: shareSheetTitle,
                 text: caption,
                 files: [file]
             };

@@ -12,11 +12,13 @@ data class ResultShareContent(
     val matchType: String,
     val duration: String,
     val accuracy: String,
-    val elo: String? = null
-) {
-    val caption: String
-        get() = "Kết quả Fast To Win: $playerName $playerScore – $opponentScore $opponentName • $gameMode"
-}
+    val elo: String? = null,
+    val caption: String,
+    val timeLabel: String,
+    val accuracyLabel: String,
+    val slogan: String,
+    val shareSheetTitle: String
+)
 
 fun interface ResultImageSharer {
     fun share(content: ResultShareContent): Result<Unit>

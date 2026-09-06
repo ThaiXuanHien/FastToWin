@@ -89,12 +89,12 @@ private fun resultCard(content: ResultShareContent): UIView {
         backgroundColor = color(28, 54, 80)
         layer.cornerRadius = 42.0
     })
-    addMetric(card, "THỜI GIAN", content.duration, 75.0)
-    addMetric(card, "CHÍNH XÁC", content.accuracy, 385.0)
+    addMetric(card, content.timeLabel, content.duration, 75.0)
+    addMetric(card, content.accuracyLabel, content.accuracy, 385.0)
     addMetric(card, "ELO", content.elo ?: "—", 695.0)
 
     card.addSubview(label(content.caption, 90.0, 1160.0, 900.0, 72.0, 27.0, color(182, 208, 224), fit = true))
-    card.addSubview(label("Nhanh mắt • Nhanh tay • Chiến thắng", 90.0, 1240.0, 900.0, 48.0, 28.0, color(41, 211, 158), true))
+    card.addSubview(label(content.slogan, 90.0, 1240.0, 900.0, 48.0, 28.0, color(41, 211, 158), true))
     return card
 }
 

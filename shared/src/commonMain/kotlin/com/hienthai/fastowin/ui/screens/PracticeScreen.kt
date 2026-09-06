@@ -61,6 +61,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.hienthai.fastowin.data.preferences.AppPreferences
 import com.hienthai.fastowin.navigation.GameMode
+import com.hienthai.fastowin.localization.LocalLocalization
+import com.hienthai.fastowin.localization.AppLanguage
+import com.hienthai.fastowin.localization.LocalizationService
+import com.hienthai.fastowin.localization.TextKey
+import com.hienthai.fastowin.localization.localized
 import com.hienthai.fastowin.platform.GameFeedbackEffect
 import com.hienthai.fastowin.ui.components.SystemBackHandler
 import com.hienthai.fastowin.platform.buildChallengeDeepLink
@@ -95,6 +100,7 @@ fun PracticeScreen(
     buildChallengeLink: (String) -> String = ::buildChallengeDeepLink,
     modifier: Modifier = Modifier
 ) {
+    val localization = LocalLocalization.current
     SystemBackHandler(onBack = onBack)
     var currentChallengeCode by rememberSaveable(mode.name, challenge?.code) {
         mutableStateOf(
@@ -149,8 +155,8 @@ fun PracticeScreen(
         containerColor = Color.Transparent,
         topBar = {
             FastToWinHeader(
-                title = "Luyện tập · ${mode.title}",
-                subtitle = "Ngoại tuyến • Không ảnh hưởng Elo",
+                title = localized(TextKey.PracticeHeader, "mode" to localized(mode.titleKey)),
+                subtitle = localized(TextKey.OfflineNoElo),
                 gold = 0,
                 gems = 0,
                 unreadNotifications = 0,
@@ -199,12 +205,12 @@ fun PracticeScreen(
                             val effect = if (correct) GameFeedbackEffect.CORRECT else GameFeedbackEffect.WRONG
                             accessibilityFeedback = if (correct) {
                                 if (game.correctSelections + 1 >= GAME_NUMBER_COUNT) {
-                                    "Đúng, đã hoàn thành bàn số"
+                                    localization.text(TextKey.CorrectBoardCompleted)
                                 } else {
-                                    "Đúng, mục tiêu tiếp theo ${game.currentTarget + 1}"
+                                    localization.text(TextKey.CorrectNextTarget, mapOf("target" to game.currentTarget + 1))
                                 }
                             } else {
-                                "Sai, cần tìm ${game.currentTarget}"
+                                localization.text(TextKey.WrongNeedTarget, mapOf("target" to game.currentTarget))
                             }
                             wrongNumber = if (!correct && preferences.visualEffectsEnabled) number else null
                             if (!correct && preferences.visualEffectsEnabled) wrongFeedbackToken += 1
@@ -244,18 +250,18 @@ private fun PracticeStatus(game: PracticeGameState, compact: Boolean) {
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 PracticeCompactMetric(
-                    "Mục tiêu",
+                    localized(TextKey.Target),
                     game.currentTarget.coerceAtMost(GAME_NUMBER_COUNT).toString(),
                     Modifier.weight(1f)
                 )
-                PracticeCompactMetric("Điểm", game.score.toString(), Modifier.weight(1f))
+                PracticeCompactMetric(localized(TextKey.Score), game.score.toString(), Modifier.weight(1f))
                 PracticeCompactMetric(
-                    if (isCountdownMode) "Còn lại" else "Thời gian",
+                    localized(if (isCountdownMode) TextKey.Remaining else TextKey.Time),
                     formatPracticeTime(if (isCountdownMode) game.timeLeftMillis else game.elapsedMillis),
                     Modifier.weight(1f)
                 )
                 PracticeCompactMetric(
-                    if (game.mode == GameMode.SURVIVAL) "Mạng" else "Combo",
+                    localized(if (game.mode == GameMode.SURVIVAL) TextKey.Lives else TextKey.ComboLabel),
                     if (game.mode == GameMode.SURVIVAL) game.lives.toString() else "x${game.combo}",
                     Modifier.weight(1f)
                 )
@@ -285,7 +291,7 @@ private fun PracticeStatus(game: PracticeGameState, compact: Boolean) {
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Text(
-                    "MỤC TIÊU",
+                    localized(TextKey.Target).uppercase(),
                     style = MaterialTheme.typography.labelMedium,
                     color = Color.White.copy(alpha = 0.8f),
                     fontWeight = FontWeight.Black
@@ -299,9 +305,9 @@ private fun PracticeStatus(game: PracticeGameState, compact: Boolean) {
                     lineHeight = 40.sp
                 )
                 when (game.mode) {
-                    GameMode.SURVIVAL -> "${game.lives} mạng"
+                    GameMode.SURVIVAL -> localized(TextKey.LivesCount, "count" to game.lives)
                     GameMode.COMBO -> "Combo x${game.combo}"
-                    GameMode.SPEED_UP -> "Nhịp ${game.correctSelections + 1}/$GAME_NUMBER_COUNT"
+                    GameMode.SPEED_UP -> localized(TextKey.PaceProgress, "current" to game.correctSelections + 1, "total" to GAME_NUMBER_COUNT)
                     else -> null
                 }?.let { supporting ->
                     Text(
@@ -318,17 +324,17 @@ private fun PracticeStatus(game: PracticeGameState, compact: Boolean) {
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             PracticeMetric(
-                if (isCountdownMode) "Còn lại" else "Thời gian",
+                localized(if (isCountdownMode) TextKey.Remaining else TextKey.Time),
                 formatPracticeTime(if (isCountdownMode) game.timeLeftMillis else game.elapsedMillis),
                 Modifier.weight(1f)
             )
             PracticeMetric(
-                "Điểm",
+                localized(TextKey.Score),
                 game.score.toString(),
                 Modifier.weight(1f),
                 valueTestTag = "practice_score"
             )
-            PracticeMetric("Chính xác", "${game.accuracyPercent}%", Modifier.weight(1f))
+            PracticeMetric(localized(TextKey.Accuracy), "${game.accuracyPercent}%", Modifier.weight(1f))
         }
     }
 }
@@ -397,7 +403,7 @@ private fun PracticeExitBar(onBack: () -> Unit) {
                 .padding(horizontal = 16.dp, vertical = 8.dp)
         ) {
             ArcadeActionButton(
-                label = "KẾT THÚC",
+                label = localized(TextKey.EndPractice),
                 onClick = onBack,
                 style = ArcadeActionStyle.DANGER,
                 modifier = Modifier.fillMaxWidth()
@@ -416,6 +422,7 @@ private fun PracticeResult(
     onBack: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val localization = LocalLocalization.current
     val textSharer = rememberTextSharer()
     var shareError by remember(game.challengeCode) { mutableStateOf<String?>(null) }
     val challengeText = game.challengeCode?.let {
@@ -424,16 +431,17 @@ private fun PracticeResult(
             code = it,
             score = game.score,
             elapsedMillis = game.elapsedMillis,
-            deepLink = buildChallengeLink(it)
+            deepLink = buildChallengeLink(it),
+            localization = LocalLocalization.current
         )
     }
     val completionMessage = when {
-        game.correctSelections >= GAME_NUMBER_COUNT -> "Bạn đã tìm đủ 50 số"
-        game.mode == GameMode.SURVIVAL -> "Bạn đã hết 3 lượt bấm sai"
-        game.mode == GameMode.SPEED_UP -> "Bạn không kịp tìm mục tiêu tiếp theo"
-        game.mode == GameMode.TIME_BONUS -> "Bạn đã hết thời gian tích lũy"
-        game.mode == GameMode.TIME_ATTACK -> "Hết 60 giây"
-        else -> "Thử thách đã kết thúc"
+        game.correctSelections >= GAME_NUMBER_COUNT -> localized(TextKey.FoundAllNumbers)
+        game.mode == GameMode.SURVIVAL -> localized(TextKey.SurvivalEnded)
+        game.mode == GameMode.SPEED_UP -> localized(TextKey.SpeedUpEnded)
+        game.mode == GameMode.TIME_BONUS -> localized(TextKey.TimeBonusEnded)
+        game.mode == GameMode.TIME_ATTACK -> localized(TextKey.TimeAttackEnded)
+        else -> localized(TextKey.ChallengeEnded)
     }
     Column(
         modifier = modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(vertical = 20.dp),
@@ -442,8 +450,8 @@ private fun PracticeResult(
     ) {
         ArcadeFeatureHero(
             illustration = Res.drawable.arcade_leaderboard_trophy,
-            title = "HOÀN THÀNH",
-            subtitle = "$completionMessage. ${game.score} điểm · ${game.mode.title}.",
+            title = localized(TextKey.Completed),
+            subtitle = localized(TextKey.PracticeCompletionSummary, "message" to completionMessage, "score" to game.score, "mode" to localized(game.mode.titleKey)),
             accent = ArcadePalette.Gold500
         )
         PracticeResultMetrics(game)
@@ -455,10 +463,10 @@ private fun PracticeResult(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    Text("Mã thử thách", style = MaterialTheme.typography.labelMedium)
+                    Text(localized(TextKey.ChallengeCode), style = MaterialTheme.typography.labelMedium)
                     Text(code, fontWeight = FontWeight.Black, modifier = Modifier.testTag("challenge_code"))
                     Text(
-                        "Bạn bè nhập mã này để chơi đúng cùng một bàn số.",
+                        localized(TextKey.ChallengeCodeHint),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         textAlign = TextAlign.Center
@@ -467,21 +475,21 @@ private fun PracticeResult(
             }
         }
         Text(
-            "Kết quả luyện tập không ảnh hưởng Elo.",
+            localized(TextKey.PracticeNoElo),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center
         )
         if (challengeText != null) {
             ArcadeActionButton(
-                label = "CHIA SẺ THỬ THÁCH",
+                label = localized(TextKey.ShareChallenge),
                 onClick = {
                     shareError = null
                     if (onShareChallenge != null) {
                         onShareChallenge(challengeText)
                     } else {
-                        textSharer.share(challengeText, "Chia sẻ thử thách").onFailure {
-                            shareError = "Không thể mở bảng chia sẻ. Vui lòng thử lại."
+                        textSharer.share(challengeText, localization.text(TextKey.ShareChallengeSheetTitle)).onFailure {
+                            shareError = localization.text(TextKey.ShareSheetError)
                         }
                     }
                 },
@@ -492,21 +500,21 @@ private fun PracticeResult(
         }
         shareError?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
         ArcadeActionButton(
-            label = "CHƠI LẠI CÙNG BÀN",
+            label = localized(TextKey.ReplaySameBoard),
             onClick = onRestart,
             style = ArcadeActionStyle.GOLD,
             icon = Icons.Rounded.RestartAlt,
             modifier = Modifier.fillMaxWidth()
         )
         ArcadeActionButton(
-            label = "TẠO THỬ THÁCH MỚI",
+            label = localized(TextKey.CreateNewChallenge),
             onClick = onNewChallenge,
             style = ArcadeActionStyle.PRIMARY,
             icon = Icons.Rounded.Add,
             modifier = Modifier.fillMaxWidth()
         )
         ArcadeActionButton(
-            label = "VỀ TRANG CHỦ",
+            label = localized(TextKey.ReturnHome),
             onClick = onBack,
             style = ArcadeActionStyle.OUTLINE,
             modifier = Modifier.fillMaxWidth()
@@ -522,15 +530,15 @@ private fun PracticeResultMetrics(game: PracticeGameState) {
         val stackMetrics = maxWidth < 330.dp || androidx.compose.ui.platform.LocalDensity.current.fontScale >= 1.35f
         if (stackMetrics) {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                PracticeResultMetric("Điểm", game.score.toString(), Modifier.fillMaxWidth())
-                PracticeResultMetric("Chính xác", "${game.accuracyPercent}%", Modifier.fillMaxWidth())
-                PracticeResultMetric("Phản xạ", formatPracticeReaction(averageReaction), Modifier.fillMaxWidth())
+                PracticeResultMetric(localized(TextKey.Score), game.score.toString(), Modifier.fillMaxWidth())
+                PracticeResultMetric(localized(TextKey.Accuracy), "${game.accuracyPercent}%", Modifier.fillMaxWidth())
+                PracticeResultMetric(localized(TextKey.Reaction), formatPracticeReaction(averageReaction), Modifier.fillMaxWidth())
             }
         } else {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                PracticeResultMetric("Điểm", game.score.toString(), Modifier.weight(1f))
-                PracticeResultMetric("Chính xác", "${game.accuracyPercent}%", Modifier.weight(1f))
-                PracticeResultMetric("Phản xạ", formatPracticeReaction(averageReaction), Modifier.weight(1f))
+                PracticeResultMetric(localized(TextKey.Score), game.score.toString(), Modifier.weight(1f))
+                PracticeResultMetric(localized(TextKey.Accuracy), "${game.accuracyPercent}%", Modifier.weight(1f))
+                PracticeResultMetric(localized(TextKey.Reaction), formatPracticeReaction(averageReaction), Modifier.weight(1f))
             }
         }
     }
@@ -574,10 +582,10 @@ private fun PracticeAnalysisCard(game: PracticeGameState) {
             modifier = Modifier.fillMaxWidth().padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            Text("Nhịp độ", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black)
-            PracticeAnalysisRow("Đúng / Sai", "${game.correctSelections} / ${game.wrongSelections}")
-            PracticeAnalysisRow("Thời gian", formatPracticeTime(game.elapsedMillis))
-            PracticeAnalysisRow("Trung bình mỗi số", formatPracticeReaction(averageReaction))
+            Text(localized(TextKey.PaceAnalysis), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black)
+            PracticeAnalysisRow(localized(TextKey.CorrectWrong), "${game.correctSelections} / ${game.wrongSelections}")
+            PracticeAnalysisRow(localized(TextKey.Time), formatPracticeTime(game.elapsedMillis))
+            PracticeAnalysisRow(localized(TextKey.AveragePerNumber), formatPracticeReaction(averageReaction))
         }
     }
 }
@@ -601,11 +609,12 @@ fun PracticeLauncherDialog(
     onOpenChallenge: (PracticeChallenge) -> Unit,
     playerLevel: Int = 1
 ) {
+    val localization = LocalLocalization.current
     var code by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
     ArcadeDialog(
-        title = "LUYỆN TẬP OFFLINE",
-        subtitle = "Rèn phản xạ mỗi ngày mà không ảnh hưởng Elo.",
+        title = localized(TextKey.PracticeHeroTitle),
+        subtitle = localized(TextKey.PracticeHeroDescription),
         onDismissRequest = onDismiss
     ) {
         Column(
@@ -614,7 +623,7 @@ fun PracticeLauncherDialog(
         ) {
                 ArcadePanel(modifier = Modifier.fillMaxWidth(), accent = ArcadePalette.Mint600) {
                     Text(
-                        "Không ảnh hưởng Elo và không cần kết nối máy chủ.",
+                        localized(TextKey.PracticeNoServerNeeded),
                         modifier = Modifier.fillMaxWidth().padding(14.dp),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         textAlign = TextAlign.Center,
@@ -622,21 +631,21 @@ fun PracticeLauncherDialog(
                     )
                 }
                 ArcadeActionButton(
-                    label = "Bắt đầu luyện tập mới",
+                    label = localized(TextKey.StartNewPractice),
                     onClick = onStartNew,
                     icon = Icons.Rounded.FitnessCenter,
                     modifier = Modifier.fillMaxWidth().testTag("practice_new"),
                     style = ArcadeActionStyle.GOLD
                 )
                 HorizontalDivider()
-                Text("Có mã thử thách?", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                Text(localized(TextKey.HaveChallengeCode), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
                 OutlinedTextField(
                     value = code,
                     onValueChange = {
                         code = it.uppercase().take(20)
                         error = null
                     },
-                    label = { Text("Mã thử thách") },
+                    label = { Text(localized(TextKey.ChallengeCode)) },
                     placeholder = { Text("FTW-CL-12345678-AB") },
                     singleLine = true,
                     isError = error != null,
@@ -645,13 +654,13 @@ fun PracticeLauncherDialog(
                     modifier = Modifier.fillMaxWidth().testTag("challenge_input")
                 )
                 ArcadeActionButton(
-                    label = "Chơi thử thách",
+                    label = localized(TextKey.PlayChallenge),
                     onClick = {
                         val challenge = parsePracticeChallenge(code)
                         when {
-                            challenge == null -> error = "Mã không hợp lệ hoặc đã nhập sai."
+                            challenge == null -> error = localization.text(TextKey.InvalidChallengeCode)
                             playerLevel < challenge.mode.unlockLevel ->
-                                error = "Chế độ ${challenge.mode.title} mở khóa ở cấp ${challenge.mode.unlockLevel}."
+                                error = localization.text(TextKey.ChallengeModeUnlock, mapOf("mode" to localization.text(challenge.mode.titleKey), "level" to challenge.mode.unlockLevel))
                             else -> onOpenChallenge(challenge)
                         }
                     },
@@ -661,7 +670,7 @@ fun PracticeLauncherDialog(
                 )
         }
         ArcadeActionButton(
-            label = "Đóng",
+            label = localized(TextKey.Close),
             onClick = onDismiss,
             modifier = Modifier.fillMaxWidth(),
             style = ArcadeActionStyle.OUTLINE
@@ -674,15 +683,19 @@ internal fun buildChallengeShareText(
     code: String,
     score: Int,
     elapsedMillis: Long,
-    deepLink: String = buildChallengeDeepLink(code)
-): String =
-    """
-    Thử thách Fast To Win • ${mode.title}
-    Mình đạt $score điểm trong ${formatPracticeTime(elapsedMillis)}.
-    Mở trực tiếp: $deepLink
-    Mã thử thách: $code
-    Nếu liên kết không mở, vào Luyện tập offline và nhập mã để chơi cùng bàn số.
-    """.trimIndent()
+    deepLink: String = buildChallengeDeepLink(code),
+    localization: LocalizationService = LocalizationService(AppLanguage.VIETNAMESE)
+): String = localization.text(
+    TextKey.ChallengeShareText,
+    mapOf(
+        "practice" to localization.text(TextKey.OfflinePracticeTitle),
+        "mode" to localization.text(mode.titleKey),
+        "score" to score,
+        "time" to formatPracticeTime(elapsedMillis),
+        "link" to deepLink,
+        "code" to code
+    )
+)
 
 private fun practiceGameMutableStateSaver(
     challenge: PracticeChallenge

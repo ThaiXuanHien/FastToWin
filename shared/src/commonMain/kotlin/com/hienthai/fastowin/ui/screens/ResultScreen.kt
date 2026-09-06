@@ -63,6 +63,9 @@ import com.hienthai.fastowin.protocol.MATCH_WIN_REWARD_XP
 import com.hienthai.fastowin.state.GameState
 import com.hienthai.fastowin.state.PlayerState
 import com.hienthai.fastowin.state.PostMatchFriendStatus
+import com.hienthai.fastowin.localization.LocalLocalization
+import com.hienthai.fastowin.localization.TextKey
+import com.hienthai.fastowin.localization.localized
 import com.hienthai.fastowin.ui.layout.ResponsiveScreen
 import com.hienthai.fastowin.resources.Res
 import com.hienthai.fastowin.resources.arcade_leaderboard_trophy
@@ -96,6 +99,7 @@ fun ResultScreen(
     preferences: AppPreferences = AppPreferences(),
     modifier: Modifier = Modifier
 ) {
+    val localization = LocalLocalization.current
     val is2v2 = state.gameMode == com.hienthai.fastowin.navigation.GameMode.TEAM_2V2
     val myScore = if (is2v2) state.player.score + state.teammates.sumOf { it.score } else state.player.score
     val opponentScore = if (is2v2) state.opponents.sumOf { it.score } else state.opponent.score
@@ -119,7 +123,8 @@ fun ResultScreen(
         isWinner = isWinner,
         playerScore = myScore,
         opponentScore = opponentScore,
-        is2v2 = is2v2
+        is2v2 = is2v2,
+        localization = localization
     )
     SystemBackHandler(onBack = onBack)
 
@@ -135,13 +140,13 @@ fun ResultScreen(
 
     if (showBlockConfirmation && !state.isRematchRequestedByOpponent) {
         ArcadeDialog(
-            title = "CHẶN ${state.opponent.name.uppercase()}?",
-            subtitle = "Hai người sẽ không thể kết bạn, gửi lời mời hoặc đấu lại.",
+            title = localized(TextKey.BlockPlayerTitle, "player" to state.opponent.name.uppercase()),
+            subtitle = localized(TextKey.BlockPlayerDescription),
             onDismissRequest = { showBlockConfirmation = false },
         ) {
             Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 ArcadeActionButton(
-                    label = "CHẶN",
+                    label = localized(TextKey.Block),
                     onClick = {
                         showBlockConfirmation = false
                         onBlockOpponent()
@@ -150,7 +155,7 @@ fun ResultScreen(
                     modifier = Modifier.fillMaxWidth()
                 )
                 ArcadeActionButton(
-                    label = "HỦY",
+                    label = localized(TextKey.Cancel).uppercase(),
                     onClick = { showBlockConfirmation = false },
                     style = ArcadeActionStyle.OUTLINE,
                     modifier = Modifier.fillMaxWidth()
@@ -161,8 +166,8 @@ fun ResultScreen(
 
     if (state.isRematchRequestedByOpponent) {
         ArcadeDialog(
-            title = "MỜI ĐẤU LẠI",
-            subtitle = "${state.opponent.name} muốn đấu lại với bạn.",
+            title = localized(TextKey.RematchInviteTitle),
+            subtitle = localized(TextKey.RematchInviteDescription, "player" to state.opponent.name),
             onDismissRequest = {}
         ) {
             Column(
@@ -170,7 +175,7 @@ fun ResultScreen(
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 ArcadeActionButton(
-                    label = if (state.isRematchActionPending) "ĐANG XỬ LÝ..." else "CHẤP NHẬN",
+                    label = localized(if (state.isRematchActionPending) TextKey.Processing else TextKey.Accept),
                     onClick = onRematch,
                     icon = Icons.Rounded.Check,
                     modifier = Modifier.fillMaxWidth().testTag("accept_rematch"),
@@ -178,7 +183,7 @@ fun ResultScreen(
                     enabled = !state.isRematchActionPending
                 )
                 ArcadeActionButton(
-                    label = "TỪ CHỐI",
+                    label = localized(TextKey.Decline),
                     onClick = onDeclineRematch,
                     modifier = Modifier.fillMaxWidth().testTag("decline_rematch"),
                     style = ArcadeActionStyle.OUTLINE,
@@ -189,16 +194,16 @@ fun ResultScreen(
     }
 
     val resultTitle = when {
-        isDraw -> "HÒA!"
-        isWinner -> "CHIẾN THẮNG!"
-        else -> "THUA CUỘC"
+        isDraw -> localized(TextKey.DrawResult)
+        isWinner -> localized(TextKey.VictoryResult)
+        else -> localized(TextKey.DefeatResult)
     }
     val resultDescription = when {
-        state.didForfeitLastMatch -> "Bạn đã chủ động rời trận và bị xử thua."
-        isDraw -> "Hai bên ngang điểm sau trận đấu."
-        isWinner -> "Bạn đã giành chiến thắng!"
-        is2v2 -> "Đội đối thủ đã giành chiến thắng."
-        else -> "${state.opponent.name} đã giành chiến thắng."
+        state.didForfeitLastMatch -> localized(TextKey.ForfeitResultDescription)
+        isDraw -> localized(TextKey.DrawResultDescription)
+        isWinner -> localized(TextKey.VictoryResultDescription)
+        is2v2 -> localized(TextKey.OpposingTeamVictoryDescription)
+        else -> localized(TextKey.OpponentVictoryDescription, "player" to state.opponent.name)
     }
     val eloSummary = state.lastMatchEloChange
         ?.takeIf { state.matchType == MatchType.RANKED }
@@ -209,8 +214,12 @@ fun ResultScreen(
         containerColor = Color.Transparent,
         topBar = {
             FastToWinHeader(
-                title = "Kết quả trận",
-                subtitle = "${state.gameMode.title} • ${if (state.matchType == MatchType.RANKED) "Xếp hạng" else "Đấu thường"}",
+                title = localized(TextKey.MatchResultTitle),
+                subtitle = localized(
+                    TextKey.GameResultSubtitle,
+                    "mode" to localized(state.gameMode.titleKey),
+                    "matchType" to localized(if (state.matchType == MatchType.RANKED) TextKey.Ranked else TextKey.Casual)
+                ),
                 gold = 0,
                 gems = 0,
                 unreadNotifications = 0,
@@ -268,14 +277,14 @@ fun ResultScreen(
                     )
                 }
                 ArcadeActionButton(
-                    label = "CHIA SẺ KẾT QUẢ",
+                    label = localized(TextKey.ShareResult),
                     onClick = {
                         shareError = null
                         if (onShareResult != null) {
                             onShareResult(shareContent)
                         } else {
                             imageSharer.share(shareContent).onFailure {
-                                shareError = "Không thể tạo ảnh chia sẻ. Vui lòng thử lại."
+                                shareError = localization.text(TextKey.ShareResultError)
                             }
                         }
                     },
@@ -294,7 +303,7 @@ fun ResultScreen(
 
                 if (!state.isTournamentMatch) {
                     ArcadeActionButton(
-                        label = "Về sảnh",
+                        label = localized(TextKey.ReturnToLobby),
                         onClick = onRestart,
                         style = ArcadeActionStyle.OUTLINE,
                         modifier = Modifier.fillMaxWidth()
@@ -316,10 +325,10 @@ private fun ScoreBoard(
     onOpponentInfo: (() -> Unit)? = null
 ) {
     val is2v2 = state.gameMode == com.hienthai.fastowin.navigation.GameMode.TEAM_2V2
-    val myName = if (is2v2) "Đội của bạn" else "${state.player.name} (Bạn)"
-    val opponentName = if (is2v2) "Đội đối thủ" else state.opponent.name
-    val myResult = if (isDraw) "Hòa" else if (isPlayerWinner) "Thắng" else "Thua"
-    val opponentResult = if (isDraw) "Hòa" else if (!isPlayerWinner) "Thắng" else "Thua"
+    val myName = if (is2v2) localized(TextKey.YourTeam) else localized(TextKey.PlayerYou, "player" to state.player.name)
+    val opponentName = if (is2v2) localized(TextKey.OpponentTeam) else state.opponent.name
+    val myResult = localized(if (isDraw) TextKey.Draw else if (isPlayerWinner) TextKey.Win else TextKey.Loss)
+    val opponentResult = localized(if (isDraw) TextKey.Draw else if (!isPlayerWinner) TextKey.Win else TextKey.Loss)
 
     ArcadePanel(
         modifier = Modifier.fillMaxWidth(),
@@ -339,7 +348,7 @@ private fun ScoreBoard(
                         modifier = Modifier.fillMaxWidth()
                     )
                     Text(
-                        "KẾT QUẢ",
+                        localized(TextKey.ResultLabel),
                         modifier = Modifier.fillMaxWidth(),
                         style = MaterialTheme.typography.labelMedium,
                         fontWeight = FontWeight.Black,
@@ -373,7 +382,7 @@ private fun ScoreBoard(
                         modifier = Modifier.weight(1f)
                     )
                     Text(
-                        "KẾT\nQUẢ",
+                        localized(TextKey.ResultLabel).replace(" ", "\n"),
                         style = MaterialTheme.typography.labelSmall,
                         fontWeight = FontWeight.Black,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -463,9 +472,9 @@ private fun EloCard(state: GameState) {
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text("Trận thường", fontWeight = FontWeight.SemiBold)
+                Text(localized(TextKey.CasualMatch), fontWeight = FontWeight.SemiBold)
                 Text(
-                    "Không ảnh hưởng Elo",
+                    localized(TextKey.NoEloImpact),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     fontWeight = FontWeight.Bold
                 )
@@ -482,7 +491,7 @@ private fun EloCard(state: GameState) {
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text("Trận xếp hạng", fontWeight = FontWeight.SemiBold)
+                Text(localized(TextKey.RankedMatch), fontWeight = FontWeight.SemiBold)
                 Text(
                     buildString {
                         append(if (eloChange >= 0) "+$eloChange Elo" else "$eloChange Elo")
@@ -494,7 +503,7 @@ private fun EloCard(state: GameState) {
             }
             if (season != null && season.placementMatchesPlayed < season.placementMatchesRequired) {
                 Text(
-                    "Phân hạng ${season.placementMatchesPlayed}/${season.placementMatchesRequired}",
+                    localized(TextKey.PlacementProgress, "played" to season.placementMatchesPlayed, "required" to season.placementMatchesRequired),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -524,7 +533,7 @@ private fun MatchRewardCard(isDraw: Boolean, isWinner: Boolean) {
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    Text("Thưởng trận", fontWeight = FontWeight.Black)
+                    Text(localized(TextKey.MatchReward), fontWeight = FontWeight.Black)
                     RewardAmounts(gold = gold, xp = xp, gems = 0)
                 }
             } else {
@@ -533,7 +542,7 @@ private fun MatchRewardCard(isDraw: Boolean, isWinner: Boolean) {
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text("Thưởng trận", fontWeight = FontWeight.Black)
+                    Text(localized(TextKey.MatchReward), fontWeight = FontWeight.Black)
                     RewardAmounts(gold = gold, xp = xp, gems = 0)
                 }
             }
@@ -549,20 +558,20 @@ private fun TournamentResultCard(state: GameState, onOpenTournament: () -> Unit)
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             Text(
-                if (state.currentTournamentRound == 2) "Trận chung kết" else "Trận bán kết",
+                localized(if (state.currentTournamentRound == 2) TextKey.FinalMatch else TextKey.SemifinalMatch),
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Black
             )
             Text(
                 if (state.currentTournamentRound == 2) {
-                    "Giải đấu đã hoàn tất. Mở nhánh đấu để xem nhà vô địch."
+                    localized(TextKey.TournamentFinishedDescription)
                 } else {
-                    "Nhánh đấu đã được cập nhật. Trận tiếp theo sẽ được tạo tự động."
+                    localized(TextKey.BracketUpdatedDescription)
                 },
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             ArcadeActionButton(
-                label = "Xem nhánh đấu",
+                label = localized(TextKey.ViewBracket),
                 onClick = onOpenTournament,
                 modifier = Modifier.fillMaxWidth().testTag("open_tournament_bracket"),
                 style = ArcadeActionStyle.GOLD
@@ -577,25 +586,25 @@ private fun MatchSummaryCard(state: GameState) {
     val accuracy = if (attempts == 0) 0 else state.player.correctSelections * 100 / attempts
     ArcadePanel(modifier = Modifier.fillMaxWidth(), accent = MaterialTheme.colorScheme.primary) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text("Tóm tắt của bạn", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Text(localized(TextKey.YourSummary), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
                 val stackMetrics = maxWidth < 330.dp || androidx.compose.ui.platform.LocalDensity.current.fontScale >= 1.35f
                 if (stackMetrics) {
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        SummaryMetric("Phản xạ TB", formatReaction(state.player.averageReactionMillis), Modifier.fillMaxWidth())
-                        SummaryMetric("Chính xác", "$accuracy%", Modifier.fillMaxWidth())
+                        SummaryMetric(localized(TextKey.AverageReaction), formatReaction(state.player.averageReactionMillis), Modifier.fillMaxWidth())
+                        SummaryMetric(localized(TextKey.Accuracy), "$accuracy%", Modifier.fillMaxWidth())
                         SummaryMetric("Combo", "x${state.player.combo}", Modifier.fillMaxWidth())
                     }
                 } else {
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        SummaryMetric("Phản xạ TB", formatReaction(state.player.averageReactionMillis), Modifier.weight(1f))
-                        SummaryMetric("Chính xác", "$accuracy%", Modifier.weight(1f))
+                        SummaryMetric(localized(TextKey.AverageReaction), formatReaction(state.player.averageReactionMillis), Modifier.weight(1f))
+                        SummaryMetric(localized(TextKey.Accuracy), "$accuracy%", Modifier.weight(1f))
                         SummaryMetric("Combo", "x${state.player.combo}", Modifier.weight(1f))
                     }
                 }
             }
             Text(
-                "Đúng ${state.player.correctSelections} • Sai ${state.player.wrongSelections} • ${formatDuration(state.lastMatchDurationMillis)}",
+                localized(TextKey.CorrectWrongDuration, "correct" to state.player.correctSelections, "wrong" to state.player.wrongSelections, "duration" to formatDuration(state.lastMatchDurationMillis)),
                 modifier = Modifier.fillMaxWidth(),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -610,21 +619,21 @@ private fun PaceAnalysisCard(player: PlayerState) {
     val hasAnalysis = player.fastestSegmentAverageMillis > 0L || player.slowestSegmentAverageMillis > 0L
     ArcadePanel(modifier = Modifier.fillMaxWidth(), accent = MaterialTheme.colorScheme.secondary) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text("Phân tích nhịp chơi", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Text(localized(TextKey.PaceAnalysis), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             if (!hasAnalysis) {
                 Text(
-                    "Chưa đủ dữ liệu để phân tích chặng nhanh và chậm.",
+                    localized(TextKey.InsufficientPaceAnalysis),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             } else {
                 Text(
-                    "Mỗi chặng gồm tối đa 10 số bạn đã tìm.",
+                    localized(TextKey.PaceSegmentHint),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 SegmentRow(
-                    label = "Nhanh nhất",
+                    label = localized(TextKey.Fastest),
                     start = player.fastestSegmentStart,
                     end = player.fastestSegmentEnd,
                     averageMillis = player.fastestSegmentAverageMillis,
@@ -635,7 +644,7 @@ private fun PaceAnalysisCard(player: PlayerState) {
                     player.slowestSegmentEnd != player.fastestSegmentEnd
                 ) {
                     SegmentRow(
-                        label = "Chậm nhất",
+                        label = localized(TextKey.Slowest),
                         start = player.slowestSegmentStart,
                         end = player.slowestSegmentEnd,
                         averageMillis = player.slowestSegmentAverageMillis,
@@ -668,7 +677,7 @@ private fun SegmentRow(
             Column {
                 Text(label, fontWeight = FontWeight.Bold)
                 Text(
-                    "Lượt $start–$end",
+                    localized(TextKey.TurnRange, "start" to start, "end" to end),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -715,7 +724,7 @@ private fun RematchCard(
     if (state.matchType == MatchType.RANKED) {
         Surface(shape = RoundedCornerShape(18.dp), color = MaterialTheme.colorScheme.surfaceContainer) {
             Text(
-                "Trận xếp hạng không hỗ trợ đấu lại. Hãy về sảnh để ghép một đối thủ mới.",
+                localized(TextKey.RankedNoRematch),
                 modifier = Modifier.fillMaxWidth().padding(16.dp),
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -736,30 +745,30 @@ private fun RematchCard(
 
     ArcadePanel(modifier = Modifier.fillMaxWidth(), accent = ArcadePalette.Violet600) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text("Đấu lại", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Text(localized(TextKey.Rematch), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             state.rematchNotice?.let {
                 Text(it, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             if ((state.isRematchRequestedByMe || state.isRematchRequestedByOpponent) && remainingSeconds != null) {
-                Text("Còn $remainingSeconds giây để phản hồi", style = MaterialTheme.typography.bodySmall)
+                Text(localized(TextKey.ResponseSeconds, "seconds" to remainingSeconds), style = MaterialTheme.typography.bodySmall)
             }
             when {
                 !state.hasOpponent -> ArcadeActionButton(
-                    label = "ĐỐI THỦ ĐÃ RỜI",
+                    label = localized(TextKey.OpponentLeft),
                     onClick = {},
                     modifier = Modifier.fillMaxWidth().testTag("result_rematch_action"),
                     style = ArcadeActionStyle.OUTLINE,
                     enabled = false
                 )
                 state.isRematchRequestedByOpponent -> ArcadeActionButton(
-                    label = if (state.isRematchActionPending) "ĐANG XỬ LÝ..." else "ĐANG CHỜ PHẢN HỒI",
+                    label = localized(if (state.isRematchActionPending) TextKey.Processing else TextKey.WaitingForResponse),
                     onClick = {},
                     modifier = Modifier.fillMaxWidth().testTag("result_rematch_action"),
                     style = ArcadeActionStyle.OUTLINE,
                     enabled = false
                 )
                 state.isRematchRequestedByMe -> ArcadeActionButton(
-                    label = "ĐÃ MỜI",
+                    label = localized(TextKey.Invited),
                     onClick = {},
                     modifier = Modifier.fillMaxWidth().testTag("result_rematch_action"),
                     icon = Icons.Rounded.RestartAlt,
@@ -767,7 +776,7 @@ private fun RematchCard(
                     enabled = false
                 )
                 else -> ArcadeActionButton(
-                    label = if (state.isRematchActionPending) "Đang gửi..." else "Mời đấu lại",
+                    label = localized(if (state.isRematchActionPending) TextKey.SendingShort else TextKey.InviteRematch),
                     onClick = onRematch,
                     icon = Icons.Rounded.RestartAlt,
                     modifier = Modifier.fillMaxWidth().testTag("result_rematch_action"),
@@ -783,19 +792,19 @@ private fun RematchCard(
 private fun OpponentActions(state: GameState, onConnect: () -> Unit, onBlock: () -> Unit) {
     if (state.profile == null) {
         Text(
-            "Đăng nhập để kết bạn hoặc chặn người chơi.",
+            localized(TextKey.LoginForSocial),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
         return
     }
     val friendLabel = when (state.postMatchFriendStatus) {
-        PostMatchFriendStatus.AVAILABLE -> "Kết bạn"
-        PostMatchFriendStatus.REQUEST_RECEIVED -> "Chấp nhận kết bạn"
-        PostMatchFriendStatus.REQUEST_SENT -> "Đã gửi lời mời"
-        PostMatchFriendStatus.FRIEND -> "Đã là bạn bè"
-        PostMatchFriendStatus.BLOCKED -> "Đã chặn"
-        PostMatchFriendStatus.UNAVAILABLE -> "Đang tải thông tin"
+        PostMatchFriendStatus.AVAILABLE -> localized(TextKey.AddFriend)
+        PostMatchFriendStatus.REQUEST_RECEIVED -> localized(TextKey.AcceptFriend)
+        PostMatchFriendStatus.REQUEST_SENT -> localized(TextKey.FriendRequestSent)
+        PostMatchFriendStatus.FRIEND -> localized(TextKey.AlreadyFriends)
+        PostMatchFriendStatus.BLOCKED -> localized(TextKey.Blocked)
+        PostMatchFriendStatus.UNAVAILABLE -> localized(TextKey.LoadingInfo)
     }
     val canConnect = state.postMatchFriendStatus in setOf(
         PostMatchFriendStatus.AVAILABLE,
@@ -838,7 +847,7 @@ private fun OpponentBlockButton(
     modifier: Modifier = Modifier
 ) {
     ArcadeActionButton(
-        label = "Chặn",
+        label = localized(TextKey.Block),
         onClick = onClick,
         enabled = enabled,
         icon = Icons.Rounded.Block,
@@ -870,29 +879,31 @@ private fun resultShareContent(
     isWinner: Boolean,
     playerScore: Int,
     opponentScore: Int,
-    is2v2: Boolean
+    is2v2: Boolean,
+    localization: com.hienthai.fastowin.localization.LocalizationService
 ): ResultShareContent {
     val teamPlayers = if (is2v2) listOf(state.player) + state.teammates else listOf(state.player)
     val correctSelections = teamPlayers.sumOf { it.correctSelections }
     val attempts = teamPlayers.sumOf { it.correctSelections + it.wrongSelections }
     val accuracy = if (attempts == 0) 0 else correctSelections * 100 / attempts
     return ResultShareContent(
-        result = when {
-            isDraw -> "HÒA"
-            isWinner -> "CHIẾN THẮNG"
-            else -> "THUA CUỘC"
-        },
-        playerName = if (is2v2) "Đội của bạn" else state.player.name,
+        result = localization.text(if (isDraw) TextKey.DrawResult else if (isWinner) TextKey.VictoryResult else TextKey.DefeatResult),
+        playerName = if (is2v2) localization.text(TextKey.YourTeam) else state.player.name,
         playerScore = playerScore,
-        opponentName = if (is2v2) "Đội đối thủ" else state.opponent.name,
+        opponentName = if (is2v2) localization.text(TextKey.OpponentTeam) else state.opponent.name,
         opponentScore = opponentScore,
-        gameMode = state.gameMode.title,
-        matchType = if (state.matchType == MatchType.RANKED) "Trận xếp hạng" else "Trận thường",
+        gameMode = localization.text(state.gameMode.titleKey),
+        matchType = localization.text(if (state.matchType == MatchType.RANKED) TextKey.Ranked else TextKey.Casual),
         duration = formatDuration(state.lastMatchDurationMillis),
         accuracy = "$accuracy%",
         elo = state.lastMatchEloChange?.takeIf { state.matchType == MatchType.RANKED }?.let {
             if (it >= 0) "+$it Elo" else "$it Elo"
-        }
+        },
+        caption = localization.text(TextKey.ShareResultCaption, mapOf("player" to (if (is2v2) localization.text(TextKey.YourTeam) else state.player.name), "playerScore" to playerScore, "opponentScore" to opponentScore, "opponent" to (if (is2v2) localization.text(TextKey.OpponentTeam) else state.opponent.name), "mode" to localization.text(state.gameMode.titleKey))),
+        timeLabel = localization.text(TextKey.ShareTimeLabel),
+        accuracyLabel = localization.text(TextKey.ShareAccuracyLabel),
+        slogan = localization.text(TextKey.ShareSlogan),
+        shareSheetTitle = localization.text(TextKey.ShareResultSheetTitle)
     )
 }
 
@@ -902,8 +913,8 @@ fun ResultScreenPreview() {
         ResultScreen(
             state = GameState(
                 isGameOver = true,
-                player = PlayerState("Hiền", score = 320, correctSelections = 32, wrongSelections = 2, averageReactionMillis = 640),
-                opponent = PlayerState("Hiếu", score = 180, correctSelections = 18, wrongSelections = 4),
+                player = PlayerState("Hien", score = 320, correctSelections = 32, wrongSelections = 2, averageReactionMillis = 640),
+                opponent = PlayerState("Hieu", score = 180, correctSelections = 18, wrongSelections = 4),
                 lastMatchDurationMillis = 43_000,
                 lastMatchEloChange = 12,
                 lastMatchEloRating = 1_124

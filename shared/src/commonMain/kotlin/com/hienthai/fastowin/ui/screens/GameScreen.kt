@@ -71,6 +71,8 @@ import com.hienthai.fastowin.state.GAME_NUMBER_COUNT
 import com.hienthai.fastowin.state.ConnectionStatus
 import com.hienthai.fastowin.state.GameState
 import com.hienthai.fastowin.state.PlayerState
+import com.hienthai.fastowin.localization.TextKey
+import com.hienthai.fastowin.localization.localized
 import com.hienthai.fastowin.data.preferences.AppPreferences
 import com.hienthai.fastowin.data.preferences.BoardStyle
 import com.hienthai.fastowin.platform.GameFeedbackEffect
@@ -90,18 +92,18 @@ import kotlin.math.abs
 
 private data class GameReaction(
     val id: String,
-    val label: String,
+    val labelKey: TextKey,
     val icon: ImageVector,
     val color: Color
 )
 
 private val gameReactions = listOf(
-    GameReaction("😀", "Vui vẻ", Icons.Rounded.SentimentSatisfiedAlt, Color(0xFFFFC83D)),
-    GameReaction("😂", "Cười lớn", Icons.Rounded.SentimentVerySatisfied, Color(0xFFFFA726)),
-    GameReaction("🔥", "Bùng cháy", Icons.Rounded.LocalFireDepartment, Color(0xFFFF5C5C)),
-    GameReaction("🏆", "Chiến thắng", Icons.Rounded.EmojiEvents, Color(0xFFFFD54F)),
-    GameReaction("❤️", "Yêu thích", Icons.Rounded.Favorite, Color(0xFFFF5C7A)),
-    GameReaction("⚡", "Tăng tốc", Icons.Rounded.Bolt, Color(0xFF68D8FF))
+    GameReaction("😀", TextKey.ReactionHappy, Icons.Rounded.SentimentSatisfiedAlt, Color(0xFFFFC83D)),
+    GameReaction("😂", TextKey.ReactionLaugh, Icons.Rounded.SentimentVerySatisfied, Color(0xFFFFA726)),
+    GameReaction("🔥", TextKey.ReactionFire, Icons.Rounded.LocalFireDepartment, Color(0xFFFF5C5C)),
+    GameReaction("🏆", TextKey.ReactionVictory, Icons.Rounded.EmojiEvents, Color(0xFFFFD54F)),
+    GameReaction("❤️", TextKey.ReactionLove, Icons.Rounded.Favorite, Color(0xFFFF5C7A)),
+    GameReaction("⚡", TextKey.ReactionSpeed, Icons.Rounded.Bolt, Color(0xFF68D8FF))
 )
 
 private fun reactionFor(id: String): GameReaction =
@@ -136,8 +138,8 @@ fun GameScreen(
     }
     if (showExitConfirmation && allowExit) {
         ArcadeDialog(
-            title = "Rời trận?",
-            subtitle = "Chủ động rời trận sẽ bị xử thua${if (state.matchType == MatchType.RANKED) " và mất Elo" else ""}.",
+            title = localized(TextKey.ExitMatchTitle),
+            subtitle = localized(if (state.matchType == MatchType.RANKED) TextKey.ForfeitRankedDescription else TextKey.ForfeitCasualDescription),
             onDismissRequest = { showExitConfirmation = false },
         ) {
             Column(
@@ -145,7 +147,7 @@ fun GameScreen(
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 ArcadeActionButton(
-                    label = "RỜI TRẬN",
+                    label = localized(TextKey.ExitMatch),
                     onClick = {
                         showExitConfirmation = false
                         onExit()
@@ -154,7 +156,7 @@ fun GameScreen(
                     modifier = Modifier.fillMaxWidth()
                 )
                 ArcadeActionButton(
-                    label = "TIẾP TỤC CHƠI",
+                    label = localized(TextKey.ContinuePlaying),
                     onClick = { showExitConfirmation = false },
                     style = ArcadeActionStyle.OUTLINE,
                     modifier = Modifier.fillMaxWidth()
@@ -171,8 +173,12 @@ fun GameScreen(
         containerColor = Color.Transparent,
         topBar = {
             FastToWinHeader(
-                title = "${state.gameMode.title} · ${if (state.matchType == MatchType.RANKED) "Xếp hạng" else "Đấu thường"}",
-                subtitle = state.currentRoomName ?: "Ván đấu 50 số",
+                title = localized(
+                    TextKey.GameHeader,
+                    "mode" to localized(state.gameMode.titleKey),
+                    "matchType" to localized(if (state.matchType == MatchType.RANKED) TextKey.Ranked else TextKey.Casual)
+                ),
+                subtitle = state.currentRoomName ?: localized(TextKey.GameDefaultRoom),
                 gold = 0,
                 gems = 0,
                 unreadNotifications = 0,
@@ -253,9 +259,9 @@ fun GameScreen(
 @Composable
 private fun GameConnectionNotice(state: GameState) {
     val message = when (state.connectionStatus) {
-        ConnectionStatus.DISCONNECTED -> "Mất kết nối. Đang thử kết nối lại…"
-        ConnectionStatus.RECONNECTING -> "Đang kết nối lại trận đấu…"
-        else -> state.message?.takeIf { it.contains("máy chủ", ignoreCase = true) }
+        ConnectionStatus.DISCONNECTED -> localized(TextKey.GameDisconnected)
+        ConnectionStatus.RECONNECTING -> localized(TextKey.GameReconnecting)
+        else -> null
     }
     Box(
         modifier = Modifier.fillMaxWidth().height(if (message == null) 4.dp else 32.dp),
@@ -292,8 +298,8 @@ private fun CloseScoreWarning(state: GameState) {
         border = BorderStroke(1.dp, ArcadePalette.Gold400.copy(alpha = 0.72f))
     ) {
         Text(
-            text = if (difference == 0) "Đang hòa điểm — lượt tiếp theo rất quan trọng!"
-            else "Bám rất sát — chỉ cách nhau $difference điểm",
+            text = if (difference == 0) localized(TextKey.TieScoreWarning)
+            else localized(TextKey.CloseScoreWarning, "difference" to difference),
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
             textAlign = TextAlign.Center,
             style = MaterialTheme.typography.labelMedium,
@@ -309,14 +315,15 @@ private fun LiveMetricsBar(state: GameState, onSendEmoji: (String) -> Unit) {
         (10_000L / it).coerceAtMost(99L) / 10.0
     }
     var showEmojiMenu by remember { mutableStateOf(false) }
+    val sendReactionLabel = localized(TextKey.SendReaction)
     Row(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
         val leading = when (state.gameMode) {
-            com.hienthai.fastowin.navigation.GameMode.SURVIVAL -> "${state.player.lives} mạng"
-            com.hienthai.fastowin.navigation.GameMode.SPEED_UP -> "NHỊP ${state.player.correctSelections + 1}/$GAME_NUMBER_COUNT"
+            com.hienthai.fastowin.navigation.GameMode.SURVIVAL -> localized(TextKey.LivesCount, "count" to state.player.lives)
+            com.hienthai.fastowin.navigation.GameMode.SPEED_UP -> localized(TextKey.PaceProgress, "current" to state.player.correctSelections + 1, "total" to GAME_NUMBER_COUNT)
             else -> "COMBO x${comboMultiplier(state.player.combo)}"
         }
         Surface(
@@ -346,7 +353,7 @@ private fun LiveMetricsBar(state: GameState, onSendEmoji: (String) -> Unit) {
             }
         }
         Text(
-            text = "TỐC ĐỘ  ${speed?.let { "$it số/s" } ?: "--"}",
+            text = localized(TextKey.SpeedValue, "speed" to (speed?.let { "$it/s" } ?: "--")),
             style = MaterialTheme.typography.labelMedium,
             fontWeight = FontWeight.Black,
             color = Color(0xFFA9BADC)
@@ -357,7 +364,7 @@ private fun LiveMetricsBar(state: GameState, onSendEmoji: (String) -> Unit) {
                 modifier = Modifier
                     .size(42.dp)
                     .testTag("open_emoji_menu")
-                    .semantics { contentDescription = "Gửi biểu cảm" },
+                    .semantics { contentDescription = sendReactionLabel },
                 shape = RoundedCornerShape(12.dp),
                 color = Color.White.copy(alpha = 0.08f),
                 contentColor = Color.White
@@ -371,6 +378,7 @@ private fun LiveMetricsBar(state: GameState, onSendEmoji: (String) -> Unit) {
                     gameReactions.chunked(3).forEach { row ->
                         Row {
                             row.forEach { reaction ->
+                                val reactionLabel = localized(reaction.labelKey)
                                 TextButton(
                                     onClick = {
                                         onSendEmoji(reaction.id)
@@ -380,7 +388,7 @@ private fun LiveMetricsBar(state: GameState, onSendEmoji: (String) -> Unit) {
                                     modifier = Modifier
                                         .defaultMinSize(minWidth = 48.dp, minHeight = 48.dp)
                                         .testTag("send_emoji:${reaction.id}")
-                                        .semantics { contentDescription = reaction.label }
+                                        .semantics { contentDescription = reactionLabel }
                                 ) {
                                     Icon(
                                         imageVector = reaction.icon,
@@ -414,12 +422,12 @@ private fun GameBottomSummary(state: GameState) {
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Text(
-                "Đúng ${state.player.correctSelections}  ·  Sai ${state.player.wrongSelections}",
+                localized(TextKey.CorrectWrongSummary, "correct" to state.player.correctSelections, "wrong" to state.player.wrongSelections),
                 style = MaterialTheme.typography.labelMedium,
                 color = Color(0xFFA9BADC)
             )
             Text(
-                "${speed?.let { "$it số/s" } ?: "Đang đo"}",
+                "${speed?.let { "$it/s" } ?: localized(TextKey.Measuring)}",
                 style = MaterialTheme.typography.labelMedium,
                 fontWeight = FontWeight.Black,
                 color = ArcadePalette.Blue300
@@ -493,8 +501,8 @@ private fun PlayerScoreBar(
     } else {
         state.opponent.score
     }
-    val labelMe = if (is2v2) "ĐỘI CỦA BẠN" else "BẠN"
-    val labelOpp = if (is2v2) "ĐỘI ĐỐI THỦ" else "ĐỐI THỦ"
+    val labelMe = localized(if (is2v2) TextKey.YourTeam else TextKey.LocalPlayerLabel)
+    val labelOpp = localized(if (is2v2) TextKey.OpponentTeam else TextKey.OpponentLabel)
     val nameMe = if (is2v2) "(${state.player.name} & ${state.teammates.firstOrNull()?.name ?: "..."})" else state.player.name
     val nameOpp = if (is2v2) "(${state.opponents.joinToString(" & ") { it.name }})" else state.opponent.name
 
@@ -515,7 +523,7 @@ private fun PlayerScoreBar(
             TimerBadge(timeLeftMillis)
         } else {
             Text(
-                text = "ĐẤU",
+                text = localized(TextKey.Versus),
                 style = MaterialTheme.typography.labelLarge,
                 fontWeight = FontWeight.Black,
                 color = MaterialTheme.colorScheme.outline
@@ -618,7 +626,7 @@ private fun TargetPanel(currentTarget: Int, completedCount: Int, compact: Boolea
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Text(
-                text = "SỐ TIẾP THEO",
+                text = localized(TextKey.NextNumber),
                 style = MaterialTheme.typography.labelMedium,
                 color = Color.White.copy(alpha = 0.78f),
                 fontWeight = FontWeight.Black
@@ -775,8 +783,8 @@ fun GameScreenMobilePreview() {
                 currentTarget = 12,
                 score = 70,
                 timeLeftMillis = 42_000,
-                player = PlayerState(name = "Hiền", score = 70, currentTarget = 12),
-                opponent = PlayerState(name = "Hiếu", score = 40, currentTarget = 12)
+                player = PlayerState(name = "Hien", score = 70, currentTarget = 12),
+                opponent = PlayerState(name = "Hieu", score = 40, currentTarget = 12)
             ),
             onNumberClick = {},
             onFinish = {}
@@ -816,7 +824,7 @@ private fun EmojiOverlay(emojis: List<com.hienthai.fastowin.state.EmojiEvent>) {
                     Box(contentAlignment = Alignment.Center) {
                         Icon(
                             imageVector = reaction.icon,
-                            contentDescription = reaction.label,
+                            contentDescription = localized(reaction.labelKey),
                             modifier = Modifier.size(38.dp),
                             tint = reaction.color
                         )

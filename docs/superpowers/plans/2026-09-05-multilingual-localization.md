@@ -514,6 +514,13 @@ git commit -m "feat: localize app shell and authentication"
 
 ### Task 5: Localize home, rooms, gameplay, result and practice
 
+**Progress (2026-09-06):** Implemented. Home, room browser/waiting,
+match gameplay, result, practice, deep-link sharing and generated result images
+now render through the shared localization catalog. Gameplay state survives a
+runtime language change. Validation failures use stable technical codes instead
+of Vietnamese exception strings. Focused Android UI coverage exercises English,
+German, Japanese, Russian and Thai; catalog validation covers all 12 languages.
+
 **Files:**
 - Modify: `shared/src/commonMain/kotlin/com/hienthai/fastowin/FastToWinApp.kt`
 - Modify: `shared/src/commonMain/kotlin/com/hienthai/fastowin/ui/screens/HomeScreen.kt`
@@ -541,20 +548,20 @@ git commit -m "feat: localize app shell and authentication"
 - Consumes: Tasks 1–4.
 - Produces: localized primary gameplay loop.
 
-- [ ] **Step 1: Write failing gameplay localization/state-retention tests**
+- [x] **Step 1: Write failing gameplay localization/state-retention tests**
 
 Test English and German on Home/Lobby, Japanese on Game, Russian on Result, and
 Thai on Practice. Start a practice board, select at least one number, switch the
 provider language, then assert the score/target state is unchanged while labels
 change.
 
-- [ ] **Step 2: Confirm RED**
+- [x] **Step 2: Confirm RED**
 
 ```powershell
 ./gradlew.bat :app:compileDevDebugAndroidTestKotlin --no-daemon
 ```
 
-- [ ] **Step 3: Migrate all literals in the five screens and GameIcons**
+- [x] **Step 3: Migrate all literals in the five screens and GameIcons**
 
 Replace `GameMode.title/description` strings with `titleKey/descriptionKey` and
 render them at the UI boundary. Replace the localized default player/opponent
@@ -572,13 +579,13 @@ spectator state, room visibility, match type, game mode, result analysis and
 rematch state. Use `quantity(...)` for player/round/match counts. Keep room name,
 player name and scores as named arguments.
 
-- [ ] **Step 4: Scan only this slice for remaining Vietnamese UI literals**
+- [x] **Step 4: Scan only this slice for remaining Vietnamese UI literals**
 
 ```powershell
 rg -n '"[^"\r\n]*[À-ỹ][^"\r\n]*"' shared/src/commonMain/kotlin/com/hienthai/fastowin/FastToWinApp.kt shared/src/commonMain/kotlin/com/hienthai/fastowin/navigation/GameMode.kt shared/src/commonMain/kotlin/com/hienthai/fastowin/platform/DeepLinks.kt shared/src/commonMain/kotlin/com/hienthai/fastowin/state/PracticeGame.kt shared/src/commonMain/kotlin/com/hienthai/fastowin/state/GameState.kt shared/src/commonMain/kotlin/com/hienthai/fastowin/platform/ResultImageShare.kt shared/src/androidMain/kotlin/com/hienthai/fastowin/platform/ResultImageShare.android.kt shared/src/iosMain/kotlin/com/hienthai/fastowin/platform/ResultImageShare.ios.kt shared/src/wasmJsMain/kotlin/com/hienthai/fastowin/platform/ResultImageShare.wasm.kt shared/src/commonMain/kotlin/com/hienthai/fastowin/ui/screens/HomeScreen.kt shared/src/commonMain/kotlin/com/hienthai/fastowin/ui/screens/LobbyScreen.kt shared/src/commonMain/kotlin/com/hienthai/fastowin/ui/screens/GameScreen.kt shared/src/commonMain/kotlin/com/hienthai/fastowin/ui/screens/ResultScreen.kt shared/src/commonMain/kotlin/com/hienthai/fastowin/ui/screens/PracticeScreen.kt shared/src/commonMain/kotlin/com/hienthai/fastowin/ui/components/GameIcons.kt
 ```
 
-- [ ] **Step 5: Run focused tests and commit**
+- [x] **Step 5: Run focused tests and commit**
 
 ```powershell
 ./gradlew.bat :protocol:jvmTest :app:connectedDevDebugAndroidTest `

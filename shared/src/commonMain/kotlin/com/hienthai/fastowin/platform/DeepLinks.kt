@@ -2,6 +2,9 @@ package com.hienthai.fastowin.platform
 
 import com.hienthai.fastowin.state.PracticeChallenge
 import com.hienthai.fastowin.state.parsePracticeChallenge
+import com.hienthai.fastowin.localization.AppLanguage
+import com.hienthai.fastowin.localization.LocalizationService
+import com.hienthai.fastowin.localization.TextKey
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -44,7 +47,7 @@ object ChallengeDeepLinkRouter {
 }
 
 fun buildRoomDeepLink(roomId: String): String {
-    require(isValidRoomId(roomId)) { "ID phòng không hợp lệ." }
+    require(isValidRoomId(roomId)) { INVALID_ROOM_ID }
     return "$ROOM_LINK_PREFIX$roomId"
 }
 
@@ -61,16 +64,12 @@ fun parseRoomDeepLink(uri: String): RoomDeepLink? {
 fun buildRoomShareText(
     roomName: String,
     roomId: String,
-    deepLink: String = buildRoomDeepLink(roomId)
-): String =
-    """
-    Tham gia phòng “${roomName.trim()}” trên Fast To Win:
-    $deepLink
-    Nếu phòng riêng tư, hãy nhập mật khẩu do chủ phòng gửi riêng.
-    """.trimIndent()
+    deepLink: String = buildRoomDeepLink(roomId),
+    localization: LocalizationService = LocalizationService(AppLanguage.VIETNAMESE)
+): String = localization.text(TextKey.RoomShareText, mapOf("room" to roomName.trim(), "link" to deepLink))
 
 fun buildChallengeDeepLink(code: String): String {
-    val challenge = requireNotNull(parsePracticeChallenge(code)) { "Mã thử thách không hợp lệ." }
+    val challenge = requireNotNull(parsePracticeChallenge(code)) { INVALID_CHALLENGE_CODE }
     return "$CHALLENGE_LINK_PREFIX${challenge.code}"
 }
 
@@ -88,3 +87,5 @@ private fun isValidRoomId(roomId: String): Boolean =
 
 private const val ROOM_LINK_PREFIX = "fasttowin://room/"
 private const val CHALLENGE_LINK_PREFIX = "fasttowin://challenge/"
+private const val INVALID_ROOM_ID = "invalid_room_id"
+private const val INVALID_CHALLENGE_CODE = "invalid_challenge_code"

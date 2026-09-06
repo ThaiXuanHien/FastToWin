@@ -123,9 +123,9 @@ fun createPracticeGame(
 ): PracticeGameState {
     val boardNumbers = challenge?.numbers ?: numbers
     require(boardNumbers.size == GAME_NUMBER_COUNT && boardNumbers.toSet() == (1..GAME_NUMBER_COUNT).toSet()) {
-        "Bàn luyện tập phải chứa đủ các số từ 1 đến $GAME_NUMBER_COUNT."
+        "invalid_practice_board"
     }
-    require(challenge == null || challenge.mode == mode) { "Chế độ chơi không khớp mã thử thách." }
+    require(challenge == null || challenge.mode == mode) { "challenge_mode_mismatch" }
     val targetOrder = challenge?.targetOrder
         ?: if (mode == GameMode.RANDOM_TARGET) boardNumbers.shuffled() else (1..GAME_NUMBER_COUNT).toList()
     return PracticeGameState(

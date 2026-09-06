@@ -12,7 +12,8 @@ import com.hienthai.fastowin.protocol.TournamentInvitationSnapshot
 import com.hienthai.fastowin.protocol.WalletTransactionSnapshot
 
 const val GAME_NUMBER_COUNT = 50
-const val DEFAULT_OPPONENT_NAME = "Đối thủ"
+const val DEFAULT_LOCAL_PLAYER_NAME = "Player"
+const val DEFAULT_OPPONENT_NAME = "Opponent"
 
 enum class LobbyStage {
     SELECT_MODE,
@@ -96,7 +97,7 @@ data class GameState(
     val lobbyStage: LobbyStage = LobbyStage.SELECT_MODE,
     
     // Multiplayer simulation
-    val player: PlayerState = PlayerState("Bạn"),
+    val player: PlayerState = PlayerState(DEFAULT_LOCAL_PLAYER_NAME),
     val opponent: PlayerState = PlayerState(DEFAULT_OPPONENT_NAME),
     val teammates: List<PlayerState> = emptyList(),
     val opponents: List<PlayerState> = emptyList(),

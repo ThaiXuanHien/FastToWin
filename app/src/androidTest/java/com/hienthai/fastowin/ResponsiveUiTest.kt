@@ -97,8 +97,8 @@ class ResponsiveUiTest {
             TestResponsiveLobby()
         }
 
-        val primary = composeRule.onNodeWithTag("home_action:Tạo phòng")
-        val secondary = composeRule.onNodeWithTag("home_action:Vào phòng")
+        val primary = composeRule.onNodeWithTag("home_action:create_room")
+        val secondary = composeRule.onNodeWithTag("home_action:join_room")
         primary.performScrollTo()
         secondary.performScrollTo()
 
@@ -122,7 +122,7 @@ class ResponsiveUiTest {
         composeRule.onNodeWithTag("home_screen").assertExists()
         composeRule.onNodeWithTag("daily_check_in_card").assertExists()
         composeRule.onNodeWithTag("home_quick_match").assertExists()
-        composeRule.onNodeWithTag("home_action:Tạo phòng").assertExists()
+        composeRule.onNodeWithTag("home_action:create_room").assertExists()
     }
 
     private fun setViewportContent(

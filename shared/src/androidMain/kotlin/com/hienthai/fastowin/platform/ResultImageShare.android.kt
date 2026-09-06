@@ -60,10 +60,10 @@ private class AndroidResultImageSharer(
             type = "image/png"
             putExtra(Intent.EXTRA_STREAM, uri)
             putExtra(Intent.EXTRA_TEXT, content.caption)
-            clipData = ClipData.newRawUri("Kết quả Fast To Win", uri)
+            clipData = ClipData.newRawUri(content.shareSheetTitle, uri)
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
-        val chooser = Intent.createChooser(shareIntent, "Chia sẻ kết quả")
+        val chooser = Intent.createChooser(shareIntent, content.shareSheetTitle)
         if (context !is Activity) chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         context.startActivity(chooser)
     }
@@ -103,8 +103,8 @@ private fun renderResultImage(content: ResultShareContent): Bitmap {
 
     paint.color = Color.argb(155, 28, 54, 80)
     canvas.drawRoundRect(RectF(70f, 865f, 1010f, 1115f), 42f, 42f, paint)
-    drawMetric(canvas, paint, "THỜI GIAN", content.duration, 230f)
-    drawMetric(canvas, paint, "CHÍNH XÁC", content.accuracy, 540f)
+    drawMetric(canvas, paint, content.timeLabel, content.duration, 230f)
+    drawMetric(canvas, paint, content.accuracyLabel, content.accuracy, 540f)
     drawMetric(canvas, paint, "ELO", content.elo ?: "—", 850f)
 
     drawFittedCenteredText(
@@ -118,7 +118,7 @@ private fun renderResultImage(content: ResultShareContent): Bitmap {
         Color.rgb(182, 208, 224),
         false
     )
-    drawCenteredText(canvas, paint, "Nhanh mắt • Nhanh tay • Chiến thắng", 540f, 1270f, 28f, Color.rgb(41, 211, 158), true)
+    drawCenteredText(canvas, paint, content.slogan, 540f, 1270f, 28f, Color.rgb(41, 211, 158), true)
     return bitmap
 }
 

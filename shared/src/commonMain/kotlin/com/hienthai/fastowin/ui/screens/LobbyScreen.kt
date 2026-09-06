@@ -58,6 +58,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.hienthai.fastowin.navigation.GameMode
+import com.hienthai.fastowin.localization.LocalLocalization
+import com.hienthai.fastowin.localization.TextKey
+import com.hienthai.fastowin.localization.localized
 import com.hienthai.fastowin.platform.epochMillis
 import com.hienthai.fastowin.protocol.MatchType
 import com.hienthai.fastowin.state.AvailableRoom
@@ -116,7 +119,8 @@ fun LobbyScreen(
 ) {
     val hasBottomNavigation = state.lobbyStage == LobbyStage.SELECT_MODE ||
         state.lobbyStage == LobbyStage.ROOM_BROWSER
-    val displayName = (state.profile?.displayName ?: state.player.name).ifBlank { "người chơi" }
+    val displayName = (state.profile?.displayName ?: state.player.name).ifBlank { localized(TextKey.Player) }
+    val localization = LocalLocalization.current
     val openRoomBrowserAction = {
         if (isGuest && state.player.name.isBlank()) {
             onModeSelected(state.gameMode)
@@ -137,14 +141,14 @@ fun LobbyScreen(
     Column(modifier = modifier.fillMaxSize().testTag("lobby_screen")) {
         FastToWinHeader(
             title = when (state.lobbyStage) {
-                LobbyStage.SELECT_MODE -> "Xin chào, $displayName!"
-                LobbyStage.ENTER_NAME -> "Tên hiển thị"
-                LobbyStage.ROOM_BROWSER -> "Phòng chơi"
-                LobbyStage.ROOM_WAITING -> "Sẵn sàng"
-                LobbyStage.MATCHMAKING -> "Ghép đối thủ"
-                LobbyStage.MATCHED -> "Đã ghép trận"
+                LobbyStage.SELECT_MODE -> localized(TextKey.GreetingPlayer, "player" to displayName)
+                LobbyStage.ENTER_NAME -> localized(TextKey.DisplayName)
+                LobbyStage.ROOM_BROWSER -> localized(TextKey.GameRooms)
+                LobbyStage.ROOM_WAITING -> localized(TextKey.Ready)
+                LobbyStage.MATCHMAKING -> localized(TextKey.Matchmaking)
+                LobbyStage.MATCHED -> localized(TextKey.MatchFound)
             },
-            subtitle = if (state.lobbyStage == LobbyStage.SELECT_MODE) "Sẵn sàng phá kỷ lục mới?" else null,
+            subtitle = if (state.lobbyStage == LobbyStage.SELECT_MODE) localized(TextKey.ReadyForRecord) else null,
             gold = state.profile?.progression?.gold ?: 0,
             gems = state.profile?.progression?.gems ?: 0,
             unreadNotifications = state.unreadNotificationCount,
@@ -260,12 +264,12 @@ private fun MatchmakingScreen(state: GameState, onCancel: () -> Unit) {
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         ArcadeIconHero(
-            kicker = if (state.matchType == MatchType.RANKED) "XẾP HẠNG" else "ĐẤU THƯỜNG",
-            title = "Đang tìm đối thủ...",
+            kicker = localized(if (state.matchType == MatchType.RANKED) TextKey.Ranked else TextKey.Casual).uppercase(),
+            title = localized(TextKey.FindingOpponent),
             subtitle = if (state.matchType == MatchType.RANKED) {
-                "Ưu tiên người chơi có Elo gần bạn."
+                localized(TextKey.RankedMatchmakingHint)
             } else {
-                "Đang ghép người chơi cùng chế độ."
+                localized(TextKey.CasualMatchmakingHint)
             },
             icon = Icons.Default.Search
         )
@@ -299,12 +303,12 @@ private fun MatchmakingScreen(state: GameState, onCancel: () -> Unit) {
             ) {
                 Column {
                     Text(
-                        if (state.matchType == MatchType.RANKED) "Khoảng Elo" else state.gameMode.displayName(),
+                        if (state.matchType == MatchType.RANKED) localized(TextKey.EloRange) else state.gameMode.displayName(),
                         fontWeight = FontWeight.Black,
                         color = Color.White
                     )
                     Text(
-                        if (state.matchType == MatchType.RANKED) "±$expandedRange" else "Không ảnh hưởng Elo",
+                        if (state.matchType == MatchType.RANKED) "±$expandedRange" else localized(TextKey.NoEloImpact),
                         style = MaterialTheme.typography.bodySmall,
                         color = Color(0xFFA9BADC)
                     )
@@ -321,7 +325,7 @@ private fun MatchmakingScreen(state: GameState, onCancel: () -> Unit) {
             Text(connectionQualityLabel(it), style = MaterialTheme.typography.bodySmall)
         }
         ArcadeActionButton(
-            label = "HỦY GHÉP TRẬN",
+            label = localized(TextKey.CancelMatchmaking),
             style = ArcadeActionStyle.OUTLINE,
             onClick = onCancel,
             modifier = Modifier.fillMaxWidth()
@@ -337,9 +341,9 @@ private fun NameEntry(onContinue: (String) -> Unit) {
         modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState())
     ) {
         ArcadeIconHero(
-            kicker = "CHẾ ĐỘ KHÁCH",
-            title = "Bạn muốn được gọi là gì?",
-            subtitle = "Tên này chỉ dùng trong phiên chơi hiện tại.",
+            kicker = localized(TextKey.GuestMode),
+            title = localized(TextKey.GuestNameTitle),
+            subtitle = localized(TextKey.GuestNameDescription),
             icon = Icons.Default.Person
         )
         Surface(
@@ -355,7 +359,7 @@ private fun NameEntry(onContinue: (String) -> Unit) {
                 OutlinedTextField(
                     value = name,
                     onValueChange = { name = it },
-                    label = { Text("Nhập biệt danh") },
+                    label = { Text(localized(TextKey.EnterNickname)) },
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
                     shape = RoundedCornerShape(14.dp),
@@ -363,7 +367,7 @@ private fun NameEntry(onContinue: (String) -> Unit) {
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done)
                 )
                 ArcadeActionButton(
-                    label = "TIẾP TỤC",
+                    label = localized(TextKey.Continue).uppercase(),
                     style = ArcadeActionStyle.GOLD,
                     onClick = { onContinue(name) },
                     enabled = name.isNotBlank(),
@@ -378,7 +382,7 @@ private fun NameEntry(onContinue: (String) -> Unit) {
             border = androidx.compose.foundation.BorderStroke(1.dp, ArcadePalette.OutlineDark.copy(alpha = 0.5f))
         ) {
             Text(
-                "Tạo tài khoản để giữ tên, Elo và lịch sử trên Android/iOS.",
+                localized(TextKey.SaveNameProgressDescription),
                 modifier = Modifier.padding(14.dp),
                 style = MaterialTheme.typography.bodySmall,
                 color = Color(0xFFA9BADC)
@@ -400,6 +404,7 @@ private fun RoomBrowser(
     onUpgradeGuest: () -> Unit,
     onResolveRoomLink: (String?) -> Unit
 ) {
+    val localization = LocalLocalization.current
     var selectedRoom by remember { mutableStateOf<AvailableRoom?>(null) }
     var showCreateMatchType by remember { mutableStateOf(false) }
     var createMatchType by remember { mutableStateOf<MatchType?>(null) }
@@ -431,7 +436,7 @@ private fun RoomBrowser(
         if (state.roomListVersion <= state.pendingRoomLinkListVersion) return@LaunchedEffect
         val linkedRoom = state.availableRooms.firstOrNull { it.id == roomId }
         if (linkedRoom == null) {
-            onResolveRoomLink("Phòng trong liên kết không còn tồn tại hoặc đã đủ người.")
+            onResolveRoomLink(localization.text(TextKey.RoomLinkUnavailable))
         } else {
             onResolveRoomLink(null)
             if (linkedRoom.requiresPassword) selectedRoom = linkedRoom
@@ -451,7 +456,7 @@ private fun RoomBrowser(
     }
     if (showCreateMatchType) {
         MatchTypePickerDialog(
-            title = "Chọn loại phòng",
+            title = localized(TextKey.ChooseRoomType),
             onDismiss = { showCreateMatchType = false },
             onSelect = { matchType ->
                 showCreateMatchType = false
@@ -462,9 +467,9 @@ private fun RoomBrowser(
     createMatchType?.takeIf { createGameMode == null }?.let { matchType ->
         GameModePickerDialog(
             title = if (matchType == MatchType.RANKED) {
-                "Chọn chế độ xếp hạng"
+                localized(TextKey.ChooseRankedMode)
             } else {
-                "Chọn chế độ đấu thường"
+                localized(TextKey.ChooseCasualMode)
             },
             playerLevel = state.profile?.progression?.level ?: 1,
             onDismiss = { createMatchType = null },
@@ -475,7 +480,7 @@ private fun RoomBrowser(
         val matchType = createMatchType ?: MatchType.CASUAL
         CreateRoomDialog(
             isLoading = state.isSearching,
-            defaultRoomName = "Phòng của ${state.player.name}",
+            defaultRoomName = localized(TextKey.DefaultRoomName, "player" to state.player.name),
             mode = mode,
             matchType = matchType,
             onDismiss = {
@@ -520,9 +525,9 @@ private fun RoomBrowser(
         ) {
             item(key = "room_hero") {
                 ArcadeIconHero(
-                    kicker = "PHÒNG CÔNG KHAI",
-                    title = "Tìm đối thủ phù hợp",
-                    subtitle = "Tạo phòng riêng hoặc tham gia phòng đang chờ.",
+                    kicker = localized(TextKey.PublicRooms),
+                    title = localized(TextKey.FindOpponent),
+                    subtitle = localized(TextKey.PublicRoomsDescription),
                     icon = Icons.Default.MeetingRoom
                 )
             }
@@ -536,7 +541,7 @@ private fun RoomBrowser(
             if (isGuest) {
                 item(key = "room_guest_upgrade") {
                     ArcadeActionButton(
-                        label = "LƯU TIẾN TRÌNH BẰNG EMAIL",
+                        label = localized(TextKey.SaveProgressEmail),
                         icon = Icons.Default.Person,
                         style = ArcadeActionStyle.OUTLINE,
                         enabled = state.connectionStatus == ConnectionStatus.CONNECTED,
@@ -564,7 +569,7 @@ private fun RoomBrowser(
                     onValueChange = { searchQuery = it },
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
-                    label = { Text("Tìm tên phòng hoặc chủ phòng") },
+                    label = { Text(localized(TextKey.SearchRooms)) },
                     leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
                     shape = RoundedCornerShape(14.dp)
                 )
@@ -572,7 +577,7 @@ private fun RoomBrowser(
 
             item(key = "room_filters") {
                 ArcadeSegmentedControl(
-                    labels = listOf("Tất cả", "Đấu thường", "Xếp hạng"),
+                    labels = listOf(localized(TextKey.All), localized(TextKey.Casual), localized(TextKey.Ranked)),
                     selectedIndex = when (matchTypeFilter) {
                         null -> 0
                         MatchType.CASUAL -> 1
@@ -594,9 +599,9 @@ private fun RoomBrowser(
                     verticalAlignment = Alignment.Bottom,
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Text("Đang chờ", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black)
+                    Text(localized(TextKey.Waiting), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black)
                     Text(
-                        "${filteredRooms.size} phòng",
+                        localized(TextKey.RoomCount, "count" to filteredRooms.size),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -613,9 +618,9 @@ private fun RoomBrowser(
                         CircularProgressIndicator(modifier = Modifier.size(24.dp))
                         Text(
                             when (state.connectionStatus) {
-                                ConnectionStatus.RECONNECTING -> "  Đang kết nối lại..."
-                                ConnectionStatus.AUTHENTICATING -> "  Đang xác thực phiên chơi..."
-                                else -> "  Đang kết nối..."
+                                ConnectionStatus.RECONNECTING -> localized(TextKey.Reconnecting)
+                                ConnectionStatus.AUTHENTICATING -> localized(TextKey.AuthenticatingSession)
+                                else -> localized(TextKey.Connecting)
                             }
                         )
                     }
@@ -624,9 +629,9 @@ private fun RoomBrowser(
                 visibleRooms.isEmpty() -> item(key = "room_empty") {
                     Text(
                         if (searchQuery.isBlank() && matchTypeFilter == null) {
-                            "Chưa có phòng đang chờ. Hãy tạo phòng mới hoặc kéo xuống để làm mới."
+                            localized(TextKey.NoWaitingRooms)
                         } else {
-                            "Không tìm thấy phòng phù hợp với bộ lọc."
+                            localized(TextKey.NoMatchingRooms)
                         },
                         modifier = Modifier.fillMaxWidth().padding(vertical = 32.dp),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -670,7 +675,7 @@ private fun RoomBrowserActions(
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         ArcadeActionButton(
-            label = "TẠO PHÒNG",
+            label = localized(TextKey.CreateRoom).uppercase(),
             icon = Icons.Default.Add,
             style = ArcadeActionStyle.GOLD,
             enabled = canCreate,
@@ -678,7 +683,7 @@ private fun RoomBrowserActions(
             modifier = Modifier.fillMaxWidth().testTag("create_room_open")
         )
         ArcadeActionButton(
-            label = "NHẬP MÃ",
+            label = localized(TextKey.EnterRoomCode).uppercase(),
             icon = Icons.Default.Lock,
             style = ArcadeActionStyle.OUTLINE,
             onClick = onJoinCode,
@@ -693,11 +698,12 @@ private fun JoinByCodeDialog(
     onDismiss: () -> Unit,
     onSelect: (AvailableRoom) -> Unit
 ) {
+    val localization = LocalLocalization.current
     var code by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
     ArcadeDialog(
-        title = "Nhập mã phòng",
-        subtitle = "Dán mã được chủ phòng chia sẻ.",
+        title = localized(TextKey.EnterRoomCode),
+        subtitle = localized(TextKey.PasteRoomCode),
         onDismissRequest = onDismiss
     ) {
         OutlinedTextField(
@@ -708,7 +714,7 @@ private fun JoinByCodeDialog(
             },
             modifier = Modifier.fillMaxWidth(),
             singleLine = true,
-            label = { Text("Mã phòng") },
+            label = { Text(localized(TextKey.RoomCode)) },
             leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null) },
             shape = RoundedCornerShape(14.dp)
         )
@@ -718,17 +724,17 @@ private fun JoinByCodeDialog(
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             ArcadeActionButton(
-                label = "TÌM PHÒNG",
+                label = localized(TextKey.FindRoom),
                 style = ArcadeActionStyle.GOLD,
                 enabled = code.isNotBlank(),
                 onClick = {
                     val room = rooms.firstOrNull { it.id.equals(code.trim(), ignoreCase = true) }
-                    if (room == null) error = "Không tìm thấy phòng với mã này." else onSelect(room)
+                    if (room == null) error = localization.text(TextKey.RoomCodeNotFound) else onSelect(room)
                 },
                 modifier = Modifier.fillMaxWidth()
             )
             ArcadeActionButton(
-                label = "HỦY",
+                label = localized(TextKey.Cancel).uppercase(),
                 style = ArcadeActionStyle.OUTLINE,
                 onClick = onDismiss,
                 modifier = Modifier.fillMaxWidth()
@@ -750,8 +756,8 @@ private fun CreateRoomDialog(
     var roomPassword by remember { mutableStateOf("") }
     var isPrivate by remember { mutableStateOf(false) }
     ArcadeDialog(
-        title = "Tạo phòng mới",
-        subtitle = "Bạn sẽ là chủ phòng.",
+        title = localized(TextKey.CreateNewRoom),
+        subtitle = localized(TextKey.YouAreHost),
         onDismissRequest = onDismiss
     ) {
         Column(
@@ -761,14 +767,14 @@ private fun CreateRoomDialog(
             OutlinedTextField(
                 value = roomName,
                 onValueChange = { roomName = it },
-                label = { Text("Tên phòng") },
+                label = { Text(localized(TextKey.RoomName)) },
                 placeholder = { Text(defaultRoomName) },
                 singleLine = true,
                 shape = RoundedCornerShape(14.dp),
                 modifier = Modifier.fillMaxWidth().testTag("create_room_name")
             )
             ArcadeSegmentedControl(
-                labels = listOf("Công khai", "Riêng tư"),
+                labels = listOf(localized(TextKey.Public), localized(TextKey.Private)),
                 selectedIndex = if (isPrivate) 1 else 0,
                 onSelected = { isPrivate = it == 1 },
                 itemTestTag = { index ->
@@ -776,7 +782,7 @@ private fun CreateRoomDialog(
                 }
             )
             Text(
-                if (isPrivate) "Người chơi cần nhập mật khẩu." else "Mọi người có thể tham gia, không cần mật khẩu.",
+                localized(if (isPrivate) TextKey.PrivatePasswordRequired else TextKey.PublicNoPassword),
                 style = MaterialTheme.typography.bodySmall,
                 color = Color(0xFFA9BADC)
             )
@@ -784,7 +790,7 @@ private fun CreateRoomDialog(
                 OutlinedTextField(
                     value = roomPassword,
                     onValueChange = { roomPassword = it },
-                    label = { Text("Mật khẩu phòng") },
+                    label = { Text(localized(TextKey.RoomPassword)) },
                     singleLine = true,
                     visualTransformation = PasswordVisualTransformation(),
                     leadingIcon = { Icon(Icons.Default.Lock, null) },
@@ -824,9 +830,9 @@ private fun CreateRoomDialog(
                         Text(mode.displayName(), color = Color.White, fontWeight = FontWeight.Black)
                         Text(
                             if (matchType == MatchType.RANKED) {
-                                "Đấu xếp hạng · Có ảnh hưởng Elo"
+                                localized(TextKey.RankedEloImpact)
                             } else {
-                                "Đấu thường · Không ảnh hưởng Elo"
+                                localized(TextKey.CasualNoEloImpact)
                             },
                             style = MaterialTheme.typography.bodySmall,
                             color = Color(0xFFA9BADC)
@@ -839,7 +845,7 @@ private fun CreateRoomDialog(
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 ArcadeActionButton(
-                    label = "TẠO PHÒNG",
+                    label = localized(TextKey.CreateRoom).uppercase(),
                     style = ArcadeActionStyle.GOLD,
                     enabled = !isLoading && (!isPrivate || roomPassword.isNotEmpty()),
                     onClick = {
@@ -856,7 +862,7 @@ private fun CreateRoomDialog(
                     }
                 )
                 ArcadeActionButton(
-                    label = "HỦY",
+                    label = localized(TextKey.Cancel).uppercase(),
                     style = ArcadeActionStyle.OUTLINE,
                     enabled = !isLoading,
                     onClick = onDismiss,
@@ -899,7 +905,7 @@ private fun RoomCard(room: AvailableRoom, onClick: () -> Unit) {
                 ) {
                     Icon(
                         if (room.requiresPassword) Icons.Default.Lock else Icons.Default.MeetingRoom,
-                        contentDescription = if (room.requiresPassword) "Phòng riêng" else "Phòng công khai",
+                        contentDescription = localized(if (room.requiresPassword) TextKey.PrivateRoom else TextKey.PublicRoom),
                         modifier = Modifier.size(22.dp)
                     )
                 }
@@ -913,7 +919,12 @@ private fun RoomCard(room: AvailableRoom, onClick: () -> Unit) {
                     overflow = TextOverflow.Ellipsis
                 )
                 Text(
-                    "${room.hostName} • ${room.gameMode.displayName()} • ${if (room.matchType == MatchType.RANKED) "Xếp hạng" else "Đấu thường"}",
+                    localized(
+                        TextKey.RoomListSummary,
+                        "host" to room.hostName,
+                        "mode" to room.gameMode.displayName(),
+                        "matchType" to localized(if (room.matchType == MatchType.RANKED) TextKey.Ranked else TextKey.Casual)
+                    ),
                     style = MaterialTheme.typography.bodySmall,
                     color = Color(0xFFA9BADC),
                     maxLines = 1,
@@ -926,7 +937,7 @@ private fun RoomCard(room: AvailableRoom, onClick: () -> Unit) {
                 border = androidx.compose.foundation.BorderStroke(1.dp, ArcadePalette.Blue300.copy(alpha = 0.72f))
             ) {
                 Text(
-                    "VÀO",
+                    localized(TextKey.EnterRoom),
                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp),
                     style = MaterialTheme.typography.labelMedium,
                     fontWeight = FontWeight.Black,
@@ -945,11 +956,11 @@ private fun JoinRoomDialog(
 ) {
     var password by remember(room.id) { mutableStateOf("") }
     ArcadeDialog(
-        title = if (room.requiresPassword) "Phòng riêng" else "Tham gia phòng",
+        title = localized(if (room.requiresPassword) TextKey.JoinPrivateRoom else TextKey.JoinRoomTitle),
         subtitle = if (room.requiresPassword) {
-            "Nhập mật khẩu để tham gia “${room.name}”."
+            localized(TextKey.PrivateJoinDescription, "room" to room.name)
         } else {
-            "${room.name} • Chủ phòng ${room.hostName}"
+            localized(TextKey.PublicJoinDescription, "room" to room.name, "host" to room.hostName)
         },
         onDismissRequest = onDismiss
     ) {
@@ -957,7 +968,7 @@ private fun JoinRoomDialog(
             OutlinedTextField(
                 value = password,
                 onValueChange = { password = it },
-                label = { Text("Mật khẩu phòng") },
+                label = { Text(localized(TextKey.RoomPassword)) },
                 visualTransformation = PasswordVisualTransformation(),
                 singleLine = true,
                 leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null) },
@@ -977,7 +988,7 @@ private fun JoinRoomDialog(
                 modifier = Modifier.fillMaxWidth().testTag("join_room_submit")
             )
             ArcadeActionButton(
-                label = "HỦY",
+                label = localized(TextKey.Cancel).uppercase(),
                 style = ArcadeActionStyle.OUTLINE,
                 onClick = onDismiss,
                 modifier = Modifier.fillMaxWidth()
@@ -999,6 +1010,8 @@ private fun RoomWaiting(
 ) {
     val opponentFriend = state.social.friends.firstOrNull { it.userId == state.opponent.id }
     var shareError by remember(state.currentRoomId) { mutableStateOf<String?>(null) }
+    val defaultRoomTitle = localized(TextKey.Rooms)
+    val shareSheetError = localized(TextKey.ShareSheetError)
     Column(
         horizontalAlignment = Alignment.Start,
         verticalArrangement = Arrangement.spacedBy(16.dp),
@@ -1006,12 +1019,12 @@ private fun RoomWaiting(
     ) {
         val roomCode = state.currentRoomId?.take(6)?.uppercase().orEmpty()
         ArcadeIconHero(
-            kicker = if (state.isRoomHost && roomCode.isNotBlank()) "MÃ PHÒNG • $roomCode" else "ĐÃ VÀO PHÒNG",
-            title = state.currentRoomName ?: "Phòng chơi",
+            kicker = if (state.isRoomHost && roomCode.isNotBlank()) localized(TextKey.JoinedRoomCode, "code" to roomCode) else localized(TextKey.JoinedRoom),
+            title = state.currentRoomName ?: localized(TextKey.GameRooms),
             subtitle = if (state.isRoomHost) {
-                "Chia sẻ mã để mời bạn bè."
+                localized(TextKey.ShareCodeHint)
             } else {
-                "Chờ chủ phòng bắt đầu trận."
+                localized(TextKey.WaitHostStart)
             },
             icon = Icons.Default.MeetingRoom
         )
@@ -1026,7 +1039,7 @@ private fun RoomWaiting(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.Bottom
         ) {
-            Text("Người chơi", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black)
+            Text(localized(TextKey.PlayersTitle), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black)
             Text(
                 "$playerCount / ${if (state.gameMode == GameMode.TEAM_2V2) 4 else 2}",
                 style = MaterialTheme.typography.labelSmall,
@@ -1035,38 +1048,38 @@ private fun RoomWaiting(
         }
 
         if (state.gameMode == GameMode.TEAM_2V2) {
-            val myTeamName = if (state.player.teamId == "TEAM_A") "Đội Xanh" else "Đội Đỏ"
-            val opponentTeamName = if (state.player.teamId == "TEAM_A") "Đội Đỏ" else "Đội Xanh"
+            val myTeamName = localized(if (state.player.teamId == "TEAM_A") TextKey.BlueTeam else TextKey.RedTeam)
+            val opponentTeamName = localized(if (state.player.teamId == "TEAM_A") TextKey.RedTeam else TextKey.BlueTeam)
 
             Text(myTeamName, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
-            RoomWaitingPlayerCard("Bạn", state.player, isLocal = true)
+            RoomWaitingPlayerCard(localized(TextKey.You), state.player, isLocal = true)
             if (state.teammates.isNotEmpty()) {
                 state.teammates.forEachIndexed { index, teammate ->
                     val friend = state.social.friends.firstOrNull { it.userId == teammate.id }
-                    RoomWaitingPlayerCard("Đồng đội ${index + 1}", teammate, isLocal = false, onViewInfo = if (friend == null) null else ({ onOpenFriendProfile(friend.userId) }))
+                    RoomWaitingPlayerCard(localized(TextKey.TeammateNumber, "number" to index + 1), teammate, isLocal = false, onViewInfo = if (friend == null) null else ({ onOpenFriendProfile(friend.userId) }))
                 }
             } else {
-                RoomWaitingPlayerCard("Đồng đội", PlayerState("Đang chờ..."), isLocal = false)
+                RoomWaitingPlayerCard(localized(TextKey.Teammate), PlayerState(localized(TextKey.WaitingPlayer)), isLocal = false)
             }
 
             Text(opponentTeamName, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 16.dp))
             val allOpponents = state.opponents.toMutableList()
             while (allOpponents.size < 2) {
-                allOpponents.add(PlayerState("Đang chờ..."))
+                allOpponents.add(PlayerState(localized(TextKey.WaitingPlayer)))
             }
             allOpponents.forEachIndexed { index, opp ->
                 val friend = state.social.friends.firstOrNull { it.userId == opp.id }
-                RoomWaitingPlayerCard("Đối thủ ${index + 1}", opp, isLocal = false, onViewInfo = if (friend == null) null else ({ onOpenFriendProfile(friend.userId) }))
+                RoomWaitingPlayerCard(localized(TextKey.OpponentNumber, "number" to index + 1), opp, isLocal = false, onViewInfo = if (friend == null) null else ({ onOpenFriendProfile(friend.userId) }))
             }
         } else {
             RoomWaitingPlayerCard(
-                if (state.isRoomHost) "Chủ phòng • Bạn" else "Bạn",
+                localized(if (state.isRoomHost) TextKey.HostYou else TextKey.You),
                 state.player,
                 isLocal = true
             )
             RoomWaitingPlayerCard(
-                if (state.isRoomHost) "Khách" else "Chủ phòng",
-                if (state.hasOpponent) state.opponent else PlayerState("Đang chờ người chơi..."),
+                localized(if (state.isRoomHost) TextKey.Guest else TextKey.Host),
+                if (state.hasOpponent) state.opponent else PlayerState(localized(TextKey.WaitingForPlayer)),
                 isLocal = false,
                 onViewInfo = if (opponentFriend == null) null else ({
                     onOpenFriendProfile(opponentFriend.userId)
@@ -1088,11 +1101,11 @@ private fun RoomWaiting(
             ) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        "${state.gameMode.displayName()} • 50 số",
+                        localized(TextKey.ModeNumberCount, "mode" to state.gameMode.displayName()),
                         fontWeight = FontWeight.Black
                     )
                     Text(
-                        if (state.matchType == MatchType.RANKED) "Xếp hạng • Có ảnh hưởng Elo" else "Đấu thường • Không ảnh hưởng Elo",
+                        localized(if (state.matchType == MatchType.RANKED) TextKey.RankedEloImpact else TextKey.CasualNoEloImpact),
                         style = MaterialTheme.typography.bodySmall,
                         color = Color(0xFFA9BADC)
                     )
@@ -1108,14 +1121,14 @@ private fun RoomWaiting(
         }
 
         ArcadeActionButton(
-            label = "CHIA SẺ MÃ PHÒNG",
+            label = localized(TextKey.ShareRoomCode),
             icon = Icons.Default.Share,
             style = ArcadeActionStyle.OUTLINE,
             onClick = {
                 val roomId = state.currentRoomId ?: return@ArcadeActionButton
                 shareError = null
-                onShareRoom(roomId, state.currentRoomName ?: "Phòng").onFailure {
-                    shareError = "Không thể mở bảng chia sẻ. Vui lòng thử lại."
+                onShareRoom(roomId, state.currentRoomName ?: defaultRoomTitle).onFailure {
+                    shareError = shareSheetError
                 }
             },
             enabled = state.currentRoomId != null,
@@ -1128,7 +1141,7 @@ private fun RoomWaiting(
         state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
 
         ArcadeActionButton(
-            label = if (state.player.isReady) "HỦY SẴN SÀNG" else "SẴN SÀNG",
+            label = localized(if (state.player.isReady) TextKey.CancelReady else TextKey.ReadyAction),
             style = ArcadeActionStyle.GOLD,
             onClick = { onSetReady(!state.player.isReady) },
             enabled = state.connectionStatus == ConnectionStatus.CONNECTED && state.hasOpponent,
@@ -1141,7 +1154,7 @@ private fun RoomWaiting(
                 state.hasOpponent && !state.opponent.isReady
             }
             if (waitingForOthers) {
-                Text("Đang chờ người khác sẵn sàng...", color = MaterialTheme.colorScheme.primary)
+                Text(localized(TextKey.WaitingForReady), color = MaterialTheme.colorScheme.primary)
             }
         }
 
@@ -1149,7 +1162,7 @@ private fun RoomWaiting(
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 if (!isGuest) {
                     ArcadeActionButton(
-                        label = "MỜI BẠN BÈ",
+                        label = localized(TextKey.InviteFriends),
                         icon = Icons.Default.Group,
                         style = ArcadeActionStyle.OUTLINE,
                         onClick = onOpenFriends,
@@ -1158,7 +1171,7 @@ private fun RoomWaiting(
                 }
                 if (state.hasOpponent) {
                     ArcadeActionButton(
-                        label = "MỜI RA",
+                        label = localized(TextKey.Kick),
                         style = ArcadeActionStyle.OUTLINE,
                         onClick = onKickOpponent,
                         modifier = Modifier.weight(1f)
@@ -1167,7 +1180,7 @@ private fun RoomWaiting(
             }
         }
         ArcadeActionButton(
-            label = if (state.isRoomHost) "ĐÓNG PHÒNG" else "RỜI PHÒNG",
+            label = localized(if (state.isRoomHost) TextKey.CloseRoom else TextKey.LeaveRoom),
             style = ArcadeActionStyle.DANGER,
             onClick = onLeaveRoom,
             modifier = Modifier.fillMaxWidth()
@@ -1217,7 +1230,7 @@ private fun RoomWaitingPlayerCard(
                 )
             ) {
                 Text(
-                    if (player.isReady) "SẴN SÀNG" else "ĐANG CHỜ",
+                    localized(if (player.isReady) TextKey.ReadyStatus else TextKey.WaitingStatus),
                     modifier = Modifier.padding(horizontal = 9.dp, vertical = 6.dp),
                     style = MaterialTheme.typography.labelSmall,
                     fontWeight = FontWeight.Black,
@@ -1228,10 +1241,11 @@ private fun RoomWaitingPlayerCard(
     }
 }
 
+@Composable
 private fun connectionQualityLabel(latencyMillis: Long): String = when {
-    latencyMillis < 80 -> "$latencyMillis ms • Tốt"
-    latencyMillis < 180 -> "$latencyMillis ms • Ổn định"
-    else -> "$latencyMillis ms • Chậm"
+    latencyMillis < 80 -> localized(TextKey.LatencyGood, "latency" to latencyMillis)
+    latencyMillis < 180 -> localized(TextKey.LatencyStable, "latency" to latencyMillis)
+    else -> localized(TextKey.LatencySlow, "latency" to latencyMillis)
 }
 
 @Composable
@@ -1243,9 +1257,12 @@ private fun MatchedStatus(state: GameState, onOpenFriendProfile: (String) -> Uni
         modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState())
     ) {
         ArcadeIconHero(
-            kicker = "ĐỐI THỦ ĐÃ SẴN SÀNG",
-            title = "Trận đấu sắp bắt đầu",
-            subtitle = "${state.gameMode.displayName()} • ${if (state.matchType == MatchType.RANKED) "Xếp hạng" else "Đấu thường"} • 50 số",
+            kicker = localized(TextKey.OpponentReady),
+            title = localized(TextKey.MatchStarting),
+            subtitle = localized(
+                TextKey.ModeNumberCount,
+                "mode" to "${state.gameMode.displayName()} • ${localized(if (state.matchType == MatchType.RANKED) TextKey.Ranked else TextKey.Casual)}"
+            ),
             icon = Icons.Default.Group,
             accent = ArcadePalette.Coral600
         )
@@ -1259,7 +1276,7 @@ private fun MatchedStatus(state: GameState, onOpenFriendProfile: (String) -> Uni
                 isLocal = true,
                 modifier = Modifier.weight(1f)
             )
-            Text("VS", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black, color = Color.White)
+            Text(localized(TextKey.Versus), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black, color = Color.White)
             PlayerMatchedCard(
                 player = state.opponent,
                 isLocal = false,
@@ -1300,7 +1317,7 @@ private fun PlayerMatchedCard(
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             Text(
-                if (isLocal) "BẠN" else "ĐỐI THỦ",
+                localized(if (isLocal) TextKey.LocalPlayerLabel else TextKey.OpponentLabel),
                 style = MaterialTheme.typography.labelSmall,
                 color = if (isLocal) ArcadePalette.Blue300 else ArcadePalette.Coral400,
                 fontWeight = FontWeight.Bold
@@ -1323,4 +1340,5 @@ private fun PlayerMatchedCard(
     }
 }
 
-private fun GameMode.displayName(): String = title
+@Composable
+private fun GameMode.displayName(): String = localized(titleKey)

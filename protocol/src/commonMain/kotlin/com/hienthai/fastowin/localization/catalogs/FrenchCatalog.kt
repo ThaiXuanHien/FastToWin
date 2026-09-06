@@ -26,7 +26,7 @@ internal val frenchCatalog = LocalizationCatalog(
         TextKey.Loading to "Chargement…",
         TextKey.UnknownError to "Une erreur est survenue. Réessayez.",
         TextKey.WelcomePlayer to "Bonjour {player} !"
-    ) + frenchShellAuthTexts,
+) + frenchShellAuthTexts + frenchGameplayTexts,
     quantities = mapOf(
         QuantityKey.Players to mapOf(
             PluralCategory.ONE to "{count} joueur",
