@@ -99,6 +99,10 @@ class LocalizationCatalogTest {
             25 to "25 игроков", 101 to "101 игрок", 111 to "111 игроков").forEach { (count, expected) ->
             assertEquals(expected, service.quantity(QuantityKey.Players, count))
         }
+        assertEquals("1 матч", service.quantity(QuantityKey.Matches, 1))
+        assertEquals("2 матча", service.quantity(QuantityKey.Matches, 2))
+        assertEquals("5 матчей", service.quantity(QuantityKey.Matches, 5))
+        assertEquals("21 сезон", service.quantity(QuantityKey.Seasons, 21))
     }
 
     @Test

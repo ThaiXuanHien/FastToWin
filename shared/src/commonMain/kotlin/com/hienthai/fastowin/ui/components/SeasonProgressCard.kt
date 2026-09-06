@@ -45,6 +45,11 @@ import com.hienthai.fastowin.protocol.SeasonSnapshot
 import com.hienthai.fastowin.protocol.SeasonRewardReceiptSnapshot
 import com.hienthai.fastowin.protocol.SeasonTierRewardSnapshot
 import com.hienthai.fastowin.protocol.rankedTierFor
+import com.hienthai.fastowin.localization.TextKey
+import com.hienthai.fastowin.localization.localized
+import com.hienthai.fastowin.localization.localizedRankedTierName
+import com.hienthai.fastowin.localization.AppLanguage
+import com.hienthai.fastowin.localization.LocalizationService
 import com.hienthai.fastowin.ui.theme.ArcadePalette
 import kotlinx.coroutines.delay
 
@@ -65,19 +70,30 @@ fun SeasonProgressCard(
     val isPlacement = season.placementMatchesPlayed < season.placementMatchesRequired
     val currentTier = rankedTierFor(season.rating)
     val nextTier = nextRankedTier(season.rating)
+    val currentTierName = localizedRankedTierName(currentTier)
+    val nextTierName = nextTier?.let { localizedRankedTierName(it) }
     val progress = if (isPlacement) {
         season.placementMatchesPlayed.toFloat() / season.placementMatchesRequired.coerceAtLeast(1)
     } else {
         ratingProgressWithinTier(season.rating)
     }.coerceIn(0f, 1f)
     val progressDescription = if (isPlacement) {
-        "Phân hạng ${season.placementMatchesPlayed} trên ${season.placementMatchesRequired} trận"
+        localized(
+            TextKey.SeasonProgressPlacement,
+            "played" to season.placementMatchesPlayed,
+            "required" to season.placementMatchesRequired
+        )
     } else if (nextTier == null) {
-        "Đã đạt bậc cao nhất"
+        localized(TextKey.HighestTierReached)
     } else {
-        "Còn ${(nextTier.minimumRating - season.rating).coerceAtLeast(0)} Elo để lên ${nextTier.displayName}"
+        localized(
+            TextKey.EloToNextTier,
+            "count" to (nextTier.minimumRating - season.rating).coerceAtLeast(0),
+            "tier" to requireNotNull(nextTierName)
+        )
     }
     val peakTier = rankedTierFor(season.peakRating)
+    val peakTierName = localizedRankedTierName(peakTier)
     val heldReward = if (isPlacement) null else season.tierRewards
         .lastOrNull { season.peakRating >= it.tier.minimumRating }
 
@@ -100,7 +116,7 @@ fun SeasonProgressCard(
                     onClick = { rewardsExpanded = !rewardsExpanded },
                     modifier = Modifier.align(Alignment.End).testTag("season_rewards_toggle")
                 ) {
-                    Text(if (rewardsExpanded) "Ẩn thưởng các bậc" else "Xem thưởng các bậc")
+                    Text(localized(if (rewardsExpanded) TextKey.HideTierRewards else TextKey.ViewTierRewards))
                     Icon(
                         if (rewardsExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
                         contentDescription = null
@@ -113,14 +129,14 @@ fun SeasonProgressCard(
             ) {
                 Icon(Icons.Default.Schedule, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                 Text(
-                    seasonTimeRemaining(season.endsAtEpochMillis, nowMillis),
+                    localizedSeasonTimeRemaining(season.endsAtEpochMillis, nowMillis),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
 
             Text(
-                if (isPlacement) "Đang phân hạng" else "${currentTier.displayName} • ${season.rating} Elo",
+                if (isPlacement) localized(TextKey.PlacementPending) else "$currentTierName • ${season.rating} Elo",
                 style = MaterialTheme.typography.titleMedium,
                 color = MaterialTheme.colorScheme.primary,
                 fontWeight = FontWeight.Bold
@@ -137,13 +153,13 @@ fun SeasonProgressCard(
 
             if (isPlacement) {
                 Text(
-                    "Hoàn thành phân hạng để chốt bậc và mở mốc thưởng.",
+                    localized(TextKey.FinishPlacementHint),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             } else {
                 Text(
-                    "Elo cao nhất mùa: ${season.peakRating} • ${peakTier.displayName}",
+                    localized(TextKey.SeasonPeakElo, "elo" to season.peakRating, "tier" to peakTierName),
                     style = MaterialTheme.typography.bodySmall,
                     fontWeight = FontWeight.SemiBold
                 )
@@ -158,7 +174,7 @@ fun SeasonProgressCard(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Column(modifier = Modifier.weight(1f)) {
-                                Text("Mốc thưởng đang giữ", style = MaterialTheme.typography.labelMedium)
+                                Text(localized(TextKey.HeldReward), style = MaterialTheme.typography.labelMedium)
                                 reward.cosmetic?.let { cosmetic ->
                                     Text(
                                         cosmetic.name,
@@ -213,12 +229,12 @@ private fun SeasonRewardRow(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column(modifier = Modifier.weight(1f)) {
-                Text(reward.tier.displayName, fontWeight = FontWeight.Bold)
+                Text(localizedRankedTierName(reward.tier), fontWeight = FontWeight.Bold)
                 Text(
                     when {
-                        current -> "Bậc cao nhất đã đạt"
-                        reached -> "Đã vượt qua"
-                        else -> "Từ ${reward.tier.minimumRating} Elo"
+                        current -> localized(TextKey.ReachedHighestTier)
+                        reached -> localized(TextKey.PassedTier)
+                        else -> localized(TextKey.TierStartsAtElo, "elo" to reward.tier.minimumRating)
                     },
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -242,12 +258,14 @@ fun SeasonRewardReceiptCard(
     receipt: SeasonRewardReceiptSnapshot,
     modifier: Modifier = Modifier
 ) {
+    val tierName = localizedRankedTierName(receipt.tier)
+    val receiptDescription = localized(TextKey.RewardReceiptDescription, "season" to receipt.seasonName, "tier" to tierName)
     ArcadePanel(
         modifier = modifier
             .fillMaxWidth()
             .testTag("season_reward_receipt")
             .semantics {
-                stateDescription = "Đã nhận thưởng ${receipt.seasonName}, bậc ${receipt.tier.displayName}"
+                stateDescription = receiptDescription
             },
         accent = ArcadePalette.Gold500
     ) {
@@ -275,14 +293,14 @@ fun SeasonRewardReceiptCard(
                     modifier = Modifier.weight(1f),
                     verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    Text("Thưởng mùa đã nhận", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    Text(localized(TextKey.SeasonRewardReceived), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                     Text(
-                        "${receipt.seasonName} • ${receipt.tier.displayName} • ${receipt.peakRating} Elo",
+                        "${receipt.seasonName} • $tierName • ${receipt.peakRating} Elo",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Text(
-                        "Đã cộng vào tài sản",
+                        localized(TextKey.SeasonRewardAdded),
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.primary
                     )
@@ -309,7 +327,7 @@ fun SeasonRewardSummaryDialog(
             Icon(Icons.Default.EmojiEvents, contentDescription = null)
         },
         title = {
-            Text("Tổng kết mùa", fontWeight = FontWeight.Black)
+            Text(localized(TextKey.SeasonSummaryTitle), fontWeight = FontWeight.Black)
         },
         text = {
             Column(
@@ -319,7 +337,7 @@ fun SeasonRewardSummaryDialog(
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 Text(
-                    "Chúc mừng! Thành tích và phần thưởng mùa của bạn đã được ghi nhận.",
+                    localized(TextKey.SeasonSummaryCongratulations),
                     style = MaterialTheme.typography.bodyMedium
                 )
                 SeasonRewardReceiptCard(receipt)
@@ -330,7 +348,7 @@ fun SeasonRewardSummaryDialog(
                 onClick = onAcknowledge,
                 modifier = Modifier.testTag("acknowledge_season_reward")
             ) {
-                Text("Tuyệt vời")
+                Text(localized(TextKey.Great))
             }
         }
     )
@@ -350,7 +368,7 @@ internal fun SeasonCosmeticRewardCard(cosmetic: SeasonCosmeticRewardSnapshot) {
         ) {
             if (cosmetic.type == CosmeticType.FRAME) {
                 PlayerAvatar(
-                    displayName = "Phần thưởng mùa",
+                    displayName = localized(TextKey.SeasonRewardAvatarName),
                     avatarId = "trophy",
                     frameId = cosmetic.id,
                     size = 48.dp
@@ -375,7 +393,7 @@ internal fun SeasonCosmeticRewardCard(cosmetic: SeasonCosmeticRewardSnapshot) {
                     color = MaterialTheme.colorScheme.onPrimaryContainer
                 )
                 Text(
-                    "Đã thêm vào Bộ sưu tập",
+                    localized(TextKey.AddedToCollection),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onPrimaryContainer
                 )
@@ -384,11 +402,12 @@ internal fun SeasonCosmeticRewardCard(cosmetic: SeasonCosmeticRewardSnapshot) {
     }
 }
 
-private fun CosmeticType.rewardTypeLabel(): String = when (this) {
-    CosmeticType.FRAME -> "Khung mùa độc quyền"
-    CosmeticType.TITLE -> "Danh hiệu mùa độc quyền"
-    else -> "Ngoại trang mùa độc quyền"
-}
+@Composable
+private fun CosmeticType.rewardTypeLabel(): String = localized(when (this) {
+    CosmeticType.FRAME -> TextKey.ExclusiveSeasonFrame
+    CosmeticType.TITLE -> TextKey.ExclusiveSeasonTitle
+    else -> TextKey.ExclusiveSeasonCosmetic
+})
 
 internal fun nextRankedTier(rating: Int): RankedTier? = RankedTier.entries
     .firstOrNull { it.minimumRating > rating }
@@ -401,17 +420,39 @@ internal fun ratingProgressWithinTier(rating: Int): Float {
 }
 
 internal fun seasonTimeRemaining(endsAtEpochMillis: Long, nowMillis: Long): String {
+    val localization = LocalizationService(AppLanguage.VIETNAMESE)
     val remainingMillis = (endsAtEpochMillis - nowMillis).coerceAtLeast(0L)
-    if (remainingMillis == 0L) return "Mùa đã kết thúc"
+    if (remainingMillis == 0L) return localization.text(TextKey.SeasonEnded)
     val totalMinutes = (remainingMillis + 59_999L) / 60_000L
     val totalHours = totalMinutes / 60L
     val minutes = totalMinutes % 60L
     if (totalHours >= 24L) {
         val days = totalHours / 24L
         val hours = totalHours % 24L
-        return if (hours == 0L) "Còn $days ngày" else "Còn $days ngày $hours giờ"
+        return if (hours == 0L) localization.text(TextKey.DaysRemaining, mapOf("days" to days))
+        else localization.text(TextKey.DaysHoursRemaining, mapOf("days" to days, "hours" to hours))
     }
-    return if (totalHours > 0L) "Còn $totalHours giờ $minutes phút" else "Còn $minutes phút"
+    return if (totalHours > 0L) localization.text(
+        TextKey.HoursMinutesRemaining,
+        mapOf("hours" to totalHours, "minutes" to minutes)
+    ) else localization.text(TextKey.MinutesRemaining, mapOf("minutes" to minutes))
+}
+
+@Composable
+private fun localizedSeasonTimeRemaining(endsAtEpochMillis: Long, nowMillis: Long): String {
+    val remainingMillis = (endsAtEpochMillis - nowMillis).coerceAtLeast(0L)
+    if (remainingMillis == 0L) return localized(TextKey.SeasonEnded)
+    val totalMinutes = (remainingMillis + 59_999L) / 60_000L
+    val totalHours = totalMinutes / 60L
+    val minutes = totalMinutes % 60L
+    if (totalHours >= 24L) {
+        val days = totalHours / 24L
+        val hours = totalHours % 24L
+        return if (hours == 0L) localized(TextKey.DaysRemaining, "days" to days)
+        else localized(TextKey.DaysHoursRemaining, "days" to days, "hours" to hours)
+    }
+    return if (totalHours > 0L) localized(TextKey.HoursMinutesRemaining, "hours" to totalHours, "minutes" to minutes)
+    else localized(TextKey.MinutesRemaining, "minutes" to minutes)
 }
 
 private const val SEASON_TIMER_REFRESH_MILLIS = 60_000L

@@ -123,6 +123,8 @@ import com.hienthai.fastowin.state.MAX_ACCOUNT_PASSWORD_LENGTH
 import com.hienthai.fastowin.state.accountPasswordConfirmationError
 import com.hienthai.fastowin.state.accountPasswordError
 import com.hienthai.fastowin.localization.localized
+import com.hienthai.fastowin.localization.TextKey
+import com.hienthai.fastowin.localization.LocalLocalization
 import com.hienthai.fastowin.ui.components.SystemBackHandler
 import com.hienthai.fastowin.platform.epochMillis
 import com.hienthai.fastowin.platform.createPlainTextClipEntry
@@ -243,14 +245,14 @@ fun ProfileScreen(
     }
     if (!isExternalProfile && showLogoutConfirmation) {
         ArcadeDialog(
-            title = "Đăng xuất?",
-            subtitle = "Bạn sẽ quay về màn đăng nhập trên thiết bị này.",
+            title = localized(TextKey.LogoutTitle),
+            subtitle = localized(TextKey.LogoutDescription),
             onDismissRequest = { showLogoutConfirmation = false },
             modifier = Modifier.testTag("logout_confirmation_dialog")
         ) {
             Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 ArcadeActionButton(
-                    label = "ĐĂNG XUẤT",
+                    label = localized(TextKey.LogoutAction),
                     onClick = {
                         showLogoutConfirmation = false
                         onLogout()
@@ -259,7 +261,7 @@ fun ProfileScreen(
                     modifier = Modifier.fillMaxWidth().testTag("confirm_logout")
                 )
                 ArcadeActionButton(
-                    label = "HỦY",
+                    label = localized(TextKey.Cancel).uppercase(),
                     onClick = { showLogoutConfirmation = false },
                     style = ArcadeActionStyle.OUTLINE,
                     modifier = Modifier.fillMaxWidth()
@@ -312,7 +314,7 @@ fun ProfileScreen(
         ) {
         if (showBackButton) {
             FastToWinHeader(
-                title = if (isExternalProfile) "Người chơi" else "Hồ sơ",
+                title = localized(if (isExternalProfile) TextKey.ExternalPlayerTitle else TextKey.ProfileTitle),
                 gold = state.profile?.progression?.gold ?: 0,
                 gems = state.profile?.progression?.gems ?: 0,
                 unreadNotifications = state.unreadNotificationCount,
@@ -329,7 +331,7 @@ fun ProfileScreen(
         }
 
         if (profile == null) {
-            Text("Chưa tải được hồ sơ. Hãy kiểm tra kết nối và thử lại.")
+            Text(localized(TextKey.ProfileLoadError))
             return@Column
         }
         val progression = profile.progression
@@ -353,7 +355,7 @@ fun ProfileScreen(
 
         if (isExternalProfile && onInviteToClan != null && state.profile?.clanId != null && profile.clanId == null) {
             ArcadeActionButton(
-                label = "MỜI VÀO BANG",
+                label = localized(TextKey.InviteToClan),
                 onClick = { onInviteToClan.invoke(profile.playerCode) },
                 style = ArcadeActionStyle.GOLD,
                 modifier = Modifier.fillMaxWidth()
@@ -366,11 +368,11 @@ fun ProfileScreen(
                     modifier = Modifier.fillMaxWidth().padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    Text("Chỉnh sửa hồ sơ", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
+                    Text(localized(TextKey.EditProfile), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
                     OutlinedTextField(
                         value = displayName,
                         onValueChange = { if (it.length <= MAX_PROFILE_DISPLAY_NAME_LENGTH) displayName = it },
-                        label = { Text("Biệt danh") },
+                        label = { Text(localized(TextKey.Nickname)) },
                         supportingText = { Text("${displayName.length}/$MAX_PROFILE_DISPLAY_NAME_LENGTH") },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth().testTag("profile_display_name")
@@ -380,14 +382,14 @@ fun ProfileScreen(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text("Ảnh đại diện", fontWeight = FontWeight.Medium)
+                        Text(localized(TextKey.Avatar), fontWeight = FontWeight.Medium)
                         com.hienthai.fastowin.platform.ImagePicker(
                             onImageSelected = { bytes ->
                                 if (bytes != null) onUploadAvatar(bytes)
                             }
                         ) { onClick ->
                             TextButton(onClick = onClick) {
-                                Text("Tải ảnh lên")
+                                Text(localized(TextKey.UploadImage))
                             }
                         }
                     }
@@ -396,14 +398,14 @@ fun ProfileScreen(
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         ArcadeActionButton(
-                            label = if (state.isProfileSaving) "Đang lưu..." else "Lưu",
+                            label = if (state.isProfileSaving) localized(TextKey.Saving) else localized(TextKey.Save),
                             onClick = { onSave(displayName, profile.avatarId) },
                             enabled = displayName.isNotBlank() && !state.isProfileSaving,
                             modifier = Modifier.fillMaxWidth(),
                             style = ArcadeActionStyle.GOLD
                         )
                         ArcadeActionButton(
-                            label = "Hủy",
+                            label = localized(TextKey.Cancel),
                             onClick = {
                                 displayName = profile.displayName
                                 isEditing = false
@@ -425,37 +427,37 @@ fun ProfileScreen(
         if (isExternalProfile) {
             ArcadeStatGrid(
                 stats = listOf(
-                    "Trận" to profile.statistics.totalMatches.toString(),
-                    "Thắng" to profile.statistics.wins.toString(),
+                    localized(TextKey.Matches) to profile.statistics.totalMatches.toString(),
+                    localized(TextKey.Wins) to profile.statistics.wins.toString(),
                     "Elo" to profile.statistics.eloRating.toString()
                 )
             )
-            Text("Thành tích nổi bật", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
+            Text(localized(TextKey.FeaturedAchievements), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
             ArcadeStatGrid(
                 stats = listOf(
-                    "Chuỗi tốt nhất" to profile.statistics.bestWinStreak.toString(),
-                    "Phản xạ TB" to "${profile.statistics.averageReactionMillis} ms"
+                    localized(TextKey.BestStreak) to profile.statistics.bestWinStreak.toString(),
+                    localized(TextKey.AverageReactionShort) to "${profile.statistics.averageReactionMillis} ms"
                 )
             )
         }
 
-        ProfileSectionTitle("Hoạt động")
+        ProfileSectionTitle(localized(TextKey.Activity))
         Column(
             modifier = Modifier.fillMaxWidth(),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
                 AccountActionRow(
                     icon = Icons.Default.Insights,
-                    title = "Thống kê & thành tích",
-                    subtitle = "Hiệu suất và mốc đã mở",
+                    title = localized(TextKey.StatisticsAchievements),
+                    subtitle = localized(TextKey.PerformanceMilestones),
                     onClick = { onOpenSection(ProfileSection.STATISTICS) },
                     modifier = Modifier.testTag("profile_section_statistics")
                 )
                 if (!isExternalProfile && canEdit) {
                     AccountActionRow(
                         icon = Icons.Default.AccountBalanceWallet,
-                        title = "Lịch sử tài sản",
-                        subtitle = "Vàng, Gem và XP",
+                        title = localized(TextKey.WalletHistory),
+                        subtitle = localized(TextKey.WalletHistorySubtitle),
                         onClick = { onOpenSection(ProfileSection.WALLET) },
                         modifier = Modifier.testTag("profile_section_wallet")
                     )
@@ -463,30 +465,30 @@ fun ProfileScreen(
                 if (!isExternalProfile) {
                     AccountActionRow(
                         icon = Icons.Default.DateRange,
-                        title = "Lịch sử điểm danh",
-                        subtitle = "Lịch điểm danh và các mốc chuyên cần",
+                        title = localized(TextKey.CheckInHistory),
+                        subtitle = localized(TextKey.CheckInHistorySubtitle),
                         onClick = { onOpenSection(ProfileSection.DAILY_CHECK_IN) },
                         modifier = Modifier.testTag("profile_section_daily_check_in")
                     )
                     AccountActionRow(
                         icon = Icons.AutoMirrored.Filled.Assignment,
-                        title = "Nhiệm vụ",
-                        subtitle = "Theo dõi và nhận thưởng",
+                        title = localized(TextKey.MissionsTitle),
+                        subtitle = localized(TextKey.MissionsSubtitle),
                         onClick = { onOpenSection(ProfileSection.MISSIONS) },
                         modifier = Modifier.testTag("profile_section_missions")
                     )
                     AccountActionRow(
                         icon = Icons.Default.Collections,
-                        title = "Bộ sưu tập",
-                        subtitle = "Khung và danh hiệu",
+                        title = localized(TextKey.CollectionTitle),
+                        subtitle = localized(TextKey.CollectionSubtitle),
                         onClick = { onOpenSection(ProfileSection.COLLECTION) },
                         modifier = Modifier.testTag("profile_section_collection")
                     )
                 }
                 AccountActionRow(
                     icon = Icons.Default.History,
-                    title = "Trận gần đây",
-                    subtitle = "Lịch sử thi đấu",
+                    title = localized(TextKey.RecentMatches),
+                    subtitle = localized(TextKey.MatchHistory),
                     onClick = { onOpenSection(ProfileSection.RECENT_MATCHES) },
                     modifier = Modifier.testTag("profile_section_recent_matches")
                 )
@@ -494,21 +496,21 @@ fun ProfileScreen(
 
         if (canEdit) {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                ProfileSectionTitle("Cài đặt & tài khoản")
+                ProfileSectionTitle(localized(TextKey.SettingsAccount))
                 Column(
                     modifier = Modifier.fillMaxWidth(),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                         AccountActionRow(
                             icon = Icons.Default.Settings,
-                            title = "Cài đặt ứng dụng",
+                            title = localized(TextKey.AppSettings),
                             subtitle = "",
                             onClick = onOpenSettings,
                             modifier = Modifier.testTag("profile_settings")
                         )
                         AccountActionRow(
                             icon = Icons.Default.Devices,
-                            title = "Thiết bị đăng nhập",
+                            title = localized(TextKey.LoginDevices),
                             subtitle = "",
                             onClick = {
                                 onClearAccountFeedback()
@@ -519,7 +521,7 @@ fun ProfileScreen(
                         )
                         AccountActionRow(
                             icon = Icons.Default.Lock,
-                            title = "Bảo mật tài khoản",
+                            title = localized(TextKey.AccountSecurity),
                             subtitle = "",
                             onClick = {
                                 onClearAccountFeedback()
@@ -529,10 +531,11 @@ fun ProfileScreen(
                         )
                         AccountActionRow(
                             icon = Icons.AutoMirrored.Filled.ExitToApp,
-                            title = "Đăng xuất",
+                            title = localized(TextKey.Logout),
                             subtitle = "",
                             isDestructive = true,
-                            onClick = { showLogoutConfirmation = true }
+                            onClick = { showLogoutConfirmation = true },
+                            modifier = Modifier.testTag("profile_logout")
                         )
                 }
             }
@@ -550,7 +553,7 @@ fun ProfileScreen(
                 color = MaterialTheme.colorScheme.inverseSurface
             ) {
                 Text(
-                    "Đã sao chép",
+                    localized(TextKey.Copied),
                     modifier = Modifier.padding(horizontal = 18.dp, vertical = 10.dp),
                     color = MaterialTheme.colorScheme.inverseOnSurface,
                     style = MaterialTheme.typography.labelLarge
@@ -578,7 +581,7 @@ private fun ProfileIdentityPanel(
     }?.id ?: "frame_default"
     val equippedTitle = progression.cosmetics.firstOrNull {
         it.type == CosmeticType.TITLE && it.equipped
-    }?.name ?: "Tân binh"
+    }?.name ?: localized(TextKey.Rookie)
 
     val panelShape = RoundedCornerShape(20.dp)
     Box(
@@ -660,7 +663,7 @@ private fun ProfileIdentityPanel(
                             Box(contentAlignment = Alignment.Center) {
                                 Icon(
                                     Icons.Default.Edit,
-                                    contentDescription = "Chỉnh sửa hồ sơ",
+                                    contentDescription = localized(TextKey.EditProfile),
                                     modifier = Modifier.size(18.dp),
                                     tint = Color.White
                                 )
@@ -698,7 +701,7 @@ private fun ProfileIdentityDetails(
             overflow = TextOverflow.Ellipsis
         )
         Text(
-            "Danh hiệu: $equippedTitle",
+            localized(TextKey.TitleValue, "title" to equippedTitle),
             color = ArcadePalette.Gold400,
             style = MaterialTheme.typography.bodySmall,
             fontWeight = FontWeight.SemiBold,
@@ -710,7 +713,7 @@ private fun ProfileIdentityDetails(
             horizontalArrangement = if (centered) Arrangement.Center else Arrangement.spacedBy(4.dp)
         ) {
             Text(
-                "Mã: ${profile.playerCode}",
+                localized(TextKey.PlayerCodeValue, "code" to profile.playerCode),
                 modifier = if (centered) Modifier else Modifier.weight(1f),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.bodySmall,
@@ -720,7 +723,7 @@ private fun ProfileIdentityDetails(
             IconButton(onClick = onCopyCode, modifier = Modifier.size(40.dp)) {
                 Icon(
                     Icons.Default.ContentCopy,
-                    contentDescription = "Sao chép mã người chơi",
+                    contentDescription = localized(TextKey.CopyPlayerCode),
                     modifier = Modifier.size(18.dp)
                 )
             }
@@ -731,7 +734,7 @@ private fun ProfileIdentityDetails(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                "Cấp ${progression.level}",
+                localized(TextKey.Level, "level" to progression.level),
                 modifier = Modifier.testTag("profile_level_label"),
                 style = MaterialTheme.typography.labelSmall,
                 fontWeight = FontWeight.Black,
@@ -821,12 +824,12 @@ fun ProfileSectionScreen(
     Column(modifier = Modifier.fillMaxSize().testTag("profile_section_screen:${section.name}")) {
         FastToWinHeader(
             title = when (section) {
-                ProfileSection.STATISTICS -> "Thống kê & thành tích"
-                ProfileSection.WALLET -> "Lịch sử tài sản"
-                ProfileSection.DAILY_CHECK_IN -> "Lịch sử điểm danh"
-                ProfileSection.MISSIONS -> "Nhiệm vụ"
-                ProfileSection.COLLECTION -> "Bộ sưu tập"
-                ProfileSection.RECENT_MATCHES -> "Trận gần đây"
+                ProfileSection.STATISTICS -> localized(TextKey.StatisticsAchievements)
+                ProfileSection.WALLET -> localized(TextKey.WalletHistory)
+                ProfileSection.DAILY_CHECK_IN -> localized(TextKey.CheckInHistory)
+                ProfileSection.MISSIONS -> localized(TextKey.MissionsTitle)
+                ProfileSection.COLLECTION -> localized(TextKey.CollectionTitle)
+                ProfileSection.RECENT_MATCHES -> localized(TextKey.RecentMatches)
             },
             gold = state.profile?.progression?.gold ?: 0,
             gems = state.profile?.progression?.gems ?: 0,
@@ -862,8 +865,8 @@ fun ProfileSectionScreen(
                         ProfileSection.WALLET -> {
                             ArcadeStatGrid(
                                 stats = listOf(
-                                    "Vàng" to profile.progression.gold.toString(),
-                                    "Gem" to profile.progression.gems.toString(),
+                                    localized(TextKey.Gold) to profile.progression.gold.toString(),
+                                    localized(TextKey.Gems) to profile.progression.gems.toString(),
                                     "XP" to profile.progression.currentLevelExperience.toString()
                                 )
                             )
@@ -910,33 +913,33 @@ fun ProfileSectionScreen(
 private fun ProfileSectionHero(section: ProfileSection) {
     val (title, subtitle, illustration) = when (section) {
         ProfileSection.STATISTICS -> Triple(
-            "Phong độ của bạn",
-            "Theo dõi tốc độ, độ chính xác và tiến bộ qua từng chế độ.",
+            localized(TextKey.ProfilePerformanceHero),
+            localized(TextKey.ProfilePerformanceDescription),
             Res.drawable.arcade_leaderboard_trophy
         )
         ProfileSection.WALLET -> Triple(
-            "Dòng tài sản",
-            "Mọi lần nhận và sử dụng Vàng, Gem, XP đều được lưu tại đây.",
+            localized(TextKey.WalletFlowHero),
+            localized(TextKey.WalletFlowDescription),
             Res.drawable.arcade_shop_chest
         )
         ProfileSection.DAILY_CHECK_IN -> Triple(
-            "Hành trình chuyên cần",
-            "Xem chuỗi ngày, lịch sử và tiến độ các mốc điểm danh.",
+            localized(TextKey.AttendanceJourney),
+            localized(TextKey.AttendanceJourneyDescription),
             Res.drawable.arcade_leaderboard_trophy
         )
         ProfileSection.MISSIONS -> Triple(
-            "Nhiệm vụ hôm nay",
-            "Hoàn thành thử thách, nhận thưởng và nâng cấp tài khoản.",
+            localized(TextKey.TodayMissions),
+            localized(TextKey.TodayMissionsDescription),
             Res.drawable.arcade_notifications_inbox
         )
         ProfileSection.COLLECTION -> Triple(
-            "Dấu ấn của bạn",
-            "Trang bị khung và danh hiệu đã mở khóa.",
+            localized(TextKey.PersonalCollectionHero),
+            localized(TextKey.PersonalCollectionDescription),
             Res.drawable.arcade_shop_chest
         )
         ProfileSection.RECENT_MATCHES -> Triple(
-            "Lịch sử thi đấu",
-            "Chạm một trận để xem điểm số và từng lượt bấm.",
+            localized(TextKey.RecentCompetitionHero),
+            localized(TextKey.RecentCompetitionDescription),
             Res.drawable.arcade_room_portal
         )
     }
@@ -974,7 +977,7 @@ private fun WalletHistorySectionContent(transactions: List<WalletTransactionSnap
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         ArcadeSegmentedControl(
-            labels = listOf("Tất cả", "Nhận", "Đã dùng"),
+            labels = listOf(localized(TextKey.RecentFilterAll), localized(TextKey.Received), localized(TextKey.Used)),
             selectedIndex = selectedFilter,
             onSelected = { selectedFilter = it },
             modifier = Modifier.testTag("wallet_history_tabs")
@@ -987,12 +990,12 @@ private fun WalletHistorySectionContent(transactions: List<WalletTransactionSnap
                     verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     Icon(Icons.Default.AccountBalanceWallet, contentDescription = null)
-                    Text("Chưa có giao dịch", fontWeight = FontWeight.Bold)
+                    Text(localized(TextKey.NoWalletActivity), fontWeight = FontWeight.Bold)
                     Text(
                         if (transactions.isEmpty()) {
-                            "Phần thưởng và vật phẩm đã mua sẽ xuất hiện tại đây."
+                            localized(TextKey.WalletRewardsAppear)
                         } else {
-                            "Chưa có giao dịch trong mục này."
+                            localized(TextKey.WalletNoActivityInFilter)
                         },
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -1062,31 +1065,34 @@ private fun walletSourceIcon(sourceType: String): ImageVector = when (sourceType
     else -> Icons.Default.AccountBalanceWallet
 }
 
-private fun walletSourceLabel(sourceType: String): String = when (sourceType) {
-    "DAILY_CHECK_IN" -> "Điểm danh hằng ngày"
-    "MISSION" -> "Thưởng nhiệm vụ"
-    "MATCH" -> "Thưởng trận đấu"
-    "CLAN_QUEST" -> "Nhiệm vụ bang hội"
-    "COSMETIC_PURCHASE" -> "Mua vật phẩm"
-    "TOURNAMENT_ENTRY" -> "Phí tham gia giải đấu"
-    "TOURNAMENT_PRIZE" -> "Giải thưởng vô địch"
-    "SEASON_REWARD" -> "Thưởng mùa giải"
-    "STORE_PURCHASE" -> "Nạp Gem"
-    else -> "Điều chỉnh tài sản"
-}
+@Composable
+private fun walletSourceLabel(sourceType: String): String = localized(when (sourceType) {
+    "DAILY_CHECK_IN" -> TextKey.DailyCheckInSource
+    "MISSION" -> TextKey.MissionRewardSource
+    "MATCH" -> TextKey.MatchRewardSource
+    "CLAN_QUEST" -> TextKey.ClanMissionSource
+    "COSMETIC_PURCHASE" -> TextKey.CosmeticPurchaseSource
+    "TOURNAMENT_ENTRY" -> TextKey.TournamentEntrySource
+    "TOURNAMENT_PRIZE" -> TextKey.TournamentPrizeSource
+    "SEASON_REWARD" -> TextKey.SeasonRewardSource
+    "STORE_PURCHASE" -> TextKey.GemTopUpSource
+    else -> TextKey.WalletAdjustmentSource
+})
 
+@Composable
 private fun walletRelativeTime(createdAtEpochMillis: Long, nowMillis: Long = epochMillis()): String {
     val elapsed = (nowMillis - createdAtEpochMillis).coerceAtLeast(0L)
     return when {
-        elapsed < 60_000L -> "Vừa xong"
-        elapsed < 3_600_000L -> "${elapsed / 60_000L} phút trước"
-        elapsed < 86_400_000L -> "${elapsed / 3_600_000L} giờ trước"
-        else -> "${elapsed / 86_400_000L} ngày trước"
+        elapsed < 60_000L -> localized(TextKey.JustNow)
+        elapsed < 3_600_000L -> localized(TextKey.MinutesAgo, "count" to elapsed / 60_000L)
+        elapsed < 86_400_000L -> localized(TextKey.HoursAgo, "count" to elapsed / 3_600_000L)
+        else -> localized(TextKey.DaysAgo, "count" to elapsed / 86_400_000L)
     }
 }
 
 @Composable
 private fun StatisticsAchievementsSectionContent(profile: PlayerProfileSnapshot) {
+    val localization = LocalLocalization.current
     val stats = profile.statistics
     val totalSelections = stats.correctSelections + stats.wrongSelections
     val accuracy = if (totalSelections == 0) 0 else stats.correctSelections * 100 / totalSelections
@@ -1097,9 +1103,9 @@ private fun StatisticsAchievementsSectionContent(profile: PlayerProfileSnapshot)
     ) {
         ArcadeStatGrid(
             stats = listOf(
-                "Tỷ lệ thắng" to "$winRate%",
-                "Phản xạ TB" to "${stats.averageReactionMillis} ms",
-                "Chính xác" to "$accuracy%"
+                localized(TextKey.WinRate) to "$winRate%",
+                localized(TextKey.AverageReactionShort) to "${stats.averageReactionMillis} ms",
+                localized(TextKey.AccuracyLabel) to "$accuracy%"
             )
         )
 
@@ -1108,25 +1114,27 @@ private fun StatisticsAchievementsSectionContent(profile: PlayerProfileSnapshot)
             val eloTrend = remember(stats.eloRating, profile.recentMatches) {
                 buildEloTrend(stats.eloRating, profile.recentMatches.take(10))
             }
-            TrendChart("Phong độ 10 trận gần nhất", scores) { "$it điểm" }
-            TrendChart("Biến động Elo", eloTrend) { "Elo $it" }
+            TrendChart(localized(TextKey.RecentFormTen), scores) {
+                localization.text(TextKey.PointsCount, mapOf("count" to it))
+            }
+            TrendChart(localized(TextKey.EloChange), eloTrend) { "Elo $it" }
         }
 
-        Text("Tổng quan", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
+        Text(localized(TextKey.Overview), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
         ArcadeStatGrid(
             stats = listOf(
-                "Trận" to stats.totalMatches.toString(),
-                "Thắng" to stats.wins.toString(),
-                "Thua" to stats.losses.toString(),
-                "Hòa" to stats.draws.toString(),
-                "Điểm cao" to stats.highestScore.toString(),
-                "Chuỗi tốt nhất" to stats.bestWinStreak.toString(),
-                "Đúng / Sai" to "${stats.correctSelections} / ${stats.wrongSelections}"
+                localized(TextKey.Matches) to stats.totalMatches.toString(),
+                localized(TextKey.Wins) to stats.wins.toString(),
+                localized(TextKey.Losses) to stats.losses.toString(),
+                localized(TextKey.DrawsLabel) to stats.draws.toString(),
+                localized(TextKey.HighScore) to stats.highestScore.toString(),
+                localized(TextKey.BestStreak) to stats.bestWinStreak.toString(),
+                localized(TextKey.CorrectWrongLabel) to "${stats.correctSelections} / ${stats.wrongSelections}"
             )
         )
 
         if (profile.modeStatistics.isNotEmpty()) {
-            Text("Thống kê theo chế độ", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            Text(localized(TextKey.ModeStatistics), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
             Column(
                 modifier = Modifier.fillMaxWidth().testTag("mode_statistics"),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
@@ -1137,11 +1145,11 @@ private fun StatisticsAchievementsSectionContent(profile: PlayerProfileSnapshot)
             }
         }
 
-        Text("Thành tích", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
+        Text(localized(TextKey.AchievementsTitle), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
         if (profile.achievements.isEmpty()) {
             ArcadePanel(modifier = Modifier.fillMaxWidth(), accent = ArcadeGold) {
                 Text(
-                    "Chưa mở khóa thành tích nào.",
+                    localized(TextKey.NoAchievements),
                     modifier = Modifier.padding(20.dp),
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -1177,9 +1185,9 @@ private fun StatisticsAchievementsSectionContent(profile: PlayerProfileSnapshot)
                                             }
                                         }
                                         Column(modifier = Modifier.weight(1f)) {
-                                            Text(achievement.title, fontWeight = FontWeight.Black)
+                                            Text(localizedAchievementTitle(achievement.code, achievement.title), fontWeight = FontWeight.Black)
                                             Text(
-                                                achievement.description,
+                                                localizedAchievementDescription(achievement.code, achievement.description),
                                                 style = MaterialTheme.typography.bodySmall,
                                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                                             )
@@ -1204,11 +1212,11 @@ private fun MissionSectionContent(
     onClaimMissionReward: (String) -> Unit
 ) {
     val missionGroups = listOf(
-        "Hằng ngày" to profile.progression.dailyMissions,
-        "Hằng tuần" to profile.progression.weeklyMissions
+        localized(TextKey.DailyMissions) to profile.progression.dailyMissions,
+        localized(TextKey.WeeklyMissions) to profile.progression.weeklyMissions
     )
     if (missionGroups.all { it.second.isEmpty() }) {
-        Text("Chưa có nhiệm vụ mới.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(localized(TextKey.NoMissions), color = MaterialTheme.colorScheme.onSurfaceVariant)
         return
     }
     missionGroups.forEach { (sectionTitle, missions) ->
@@ -1220,7 +1228,7 @@ private fun MissionSectionContent(
             ) {
                 Text(sectionTitle, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
                 Text(
-                    "${missions.count { it.completed }}/${missions.size} hoàn thành",
+                    localized(TextKey.MissionProgress, "completed" to missions.count { it.completed }, "total" to missions.size),
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -1294,7 +1302,7 @@ private fun MissionArcadeDetails(mission: MissionSnapshot, modifier: Modifier = 
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Text(mission.title, fontWeight = FontWeight.Black, modifier = Modifier.weight(1f))
+            Text(localizedMissionTitle(mission), fontWeight = FontWeight.Black, modifier = Modifier.weight(1f))
             MissionDifficultyBadge(mission.difficulty)
         }
         LinearProgressIndicator(
@@ -1312,6 +1320,33 @@ private fun MissionArcadeDetails(mission: MissionSnapshot, modifier: Modifier = 
 }
 
 @Composable
+private fun localizedAchievementTitle(code: String, fallback: String): String = when (code) {
+    "WIN_10" -> localized(TextKey.AchievementWinTenTitle)
+    "PERFECT_GAME" -> localized(TextKey.AchievementPerfectTitle)
+    "SPEED_50" -> localized(TextKey.AchievementSpeedTitle)
+    "DAILY_STREAK_7" -> localized(TextKey.AchievementCheckInTitle)
+    else -> fallback
+}
+
+@Composable
+private fun localizedAchievementDescription(code: String, fallback: String): String = when (code) {
+    "WIN_10" -> localized(TextKey.AchievementWinTenDescription)
+    "PERFECT_GAME" -> localized(TextKey.AchievementPerfectDescription)
+    "SPEED_50" -> localized(TextKey.AchievementSpeedDescription)
+    "DAILY_STREAK_7" -> localized(TextKey.AchievementCheckInDescription)
+    else -> fallback
+}
+
+@Composable
+private fun localizedMissionTitle(mission: MissionSnapshot): String = when (mission.code) {
+    "DAILY_PLAY_3" -> localized(TextKey.MissionPlayThree)
+    "DAILY_WIN_1" -> localized(TextKey.MissionWinOne)
+    "WEEKLY_CORRECT_100" -> localized(TextKey.MissionCorrectHundred)
+    "WEEKLY_PERFECT_1" -> localized(TextKey.MissionPerfectWin)
+    else -> mission.title
+}
+
+@Composable
 private fun MissionClaimControl(
     mission: MissionSnapshot,
     canEdit: Boolean,
@@ -1321,30 +1356,30 @@ private fun MissionClaimControl(
 ) {
     when {
         mission.rewardClaimed -> ArcadeActionButton(
-            label = "Đã nhận",
+            label = localized(TextKey.Claimed),
             onClick = {},
             enabled = false,
             style = ArcadeActionStyle.OUTLINE,
             modifier = modifier.heightIn(min = 48.dp).testTag("claim_mission:${mission.code}")
         )
         mission.completed && canEdit -> ArcadeActionButton(
-            label = if (claimingMissionCode == mission.code) "ĐANG NHẬN" else "NHẬN THƯỞNG",
+            label = localized(if (claimingMissionCode == mission.code) TextKey.Claiming else TextKey.ClaimReward),
             onClick = onClaim,
             enabled = claimingMissionCode == null,
             style = ArcadeActionStyle.GOLD,
             modifier = modifier.heightIn(min = 48.dp).testTag("claim_mission:${mission.code}")
         )
-        mission.completed -> Text("Hoàn thành", modifier = modifier, style = MaterialTheme.typography.bodySmall)
+        mission.completed -> Text(localized(TextKey.MissionCompleted), modifier = modifier, style = MaterialTheme.typography.bodySmall)
     }
 }
 
 @Composable
 private fun MissionDifficultyBadge(difficulty: MissionDifficulty) {
     val label = when (difficulty) {
-        MissionDifficulty.EASY -> "Dễ"
-        MissionDifficulty.NORMAL -> "Vừa"
-        MissionDifficulty.HARD -> "Khó"
-        MissionDifficulty.ELITE -> "Thử thách"
+        MissionDifficulty.EASY -> localized(TextKey.DifficultyEasy)
+        MissionDifficulty.NORMAL -> localized(TextKey.DifficultyNormal)
+        MissionDifficulty.HARD -> localized(TextKey.DifficultyHard)
+        MissionDifficulty.ELITE -> localized(TextKey.DifficultyElite)
     }
     val containerColor = when (difficulty) {
         MissionDifficulty.EASY -> MaterialTheme.colorScheme.secondaryContainer
@@ -1384,7 +1419,7 @@ private fun CollectionSectionContent(
 ) {
     val cosmetics = profile.progression.cosmetics
     if (cosmetics.isEmpty()) {
-        Text("Bộ sưu tập đang trống.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(localized(TextKey.EmptyCollection), color = MaterialTheme.colorScheme.onSurfaceVariant)
         return
     }
     val equippedFrame = cosmetics.firstOrNull { it.type == CosmeticType.FRAME && it.equipped }?.id
@@ -1392,7 +1427,7 @@ private fun CollectionSectionContent(
     val equippedTitle = cosmetics.firstOrNull { it.type == CosmeticType.TITLE && it.equipped }?.id
         ?: "title_rookie"
     val equippingCosmeticId = state.equippingCosmeticId
-    Text("Khung", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
+    Text(localized(TextKey.Frames), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
     val frames = cosmetics.filter { it.type == CosmeticType.FRAME }
     BoxWithConstraints(modifier = Modifier.fillMaxWidth().testTag("collection_frames")) {
         val columns = when {
@@ -1424,7 +1459,7 @@ private fun CollectionSectionContent(
             }
         }
     }
-    Text("Danh hiệu", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
+    Text(localized(TextKey.Titles), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
     val titles = cosmetics.filter { it.type == CosmeticType.TITLE }
     BoxWithConstraints(modifier = Modifier.fillMaxWidth().testTag("collection_titles")) {
         val columns = if (maxWidth >= 680.dp) 2 else 1
@@ -1501,12 +1536,12 @@ private fun CollectionTitleCard(
                 Text(cosmetic.name, fontWeight = FontWeight.Black)
                 Text(
                     when {
-                        isEquipping -> "Đang trang bị…"
-                        cosmetic.equipped -> "ĐANG TRANG BỊ"
-                        cosmetic.unlocked && canEquip -> "Chạm để trang bị"
-                        cosmetic.unlocked -> "Đã mở khóa"
-                        else -> cosmetic.unlockRequirement()?.let { "Mở khóa: $it" }
-                            ?: "Chưa mở khóa"
+                        isEquipping -> localized(TextKey.Equipping)
+                        cosmetic.equipped -> localized(TextKey.Equipped)
+                        cosmetic.unlocked && canEquip -> localized(TextKey.TapToEquip)
+                        cosmetic.unlocked -> localized(TextKey.Unlocked)
+                        else -> cosmetic.unlockRequirement()?.let { localized(TextKey.UnlockRequirement, "requirement" to it) }
+                            ?: localized(TextKey.Locked)
                     },
                     style = MaterialTheme.typography.bodySmall,
                     color = if (cosmetic.equipped) accent else MaterialTheme.colorScheme.onSurfaceVariant
@@ -1581,12 +1616,12 @@ private fun CollectionFrameCard(
             ) {
                 Text(
                     text = when {
-                        isEquipping -> "Đang trang bị…"
-                        cosmetic.equipped -> "ĐANG TRANG BỊ"
-                        cosmetic.unlocked && canEquip -> "TRANG BỊ"
-                        cosmetic.unlocked -> "Đã mở khóa"
-                        else -> cosmetic.unlockRequirement()?.let { "Mở khóa: $it" }
-                            ?: "Chưa mở khóa"
+                        isEquipping -> localized(TextKey.Equipping)
+                        cosmetic.equipped -> localized(TextKey.Equipped)
+                        cosmetic.unlocked && canEquip -> localized(TextKey.TapToEquip).uppercase()
+                        cosmetic.unlocked -> localized(TextKey.Unlocked)
+                        else -> cosmetic.unlockRequirement()?.let { localized(TextKey.UnlockRequirement, "requirement" to it) }
+                            ?: localized(TextKey.Locked)
                     },
                     modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp),
                     style = MaterialTheme.typography.labelSmall,
@@ -1609,7 +1644,7 @@ private fun RecentMatchesSectionContent(
 ) {
     var visibleMatchCount by remember(historyFilter) { mutableStateOf(DEFAULT_ARCADE_PAGE_SIZE) }
     ArcadeSegmentedControl(
-        labels = listOf("Tất cả", "Thắng", "Thua"),
+        labels = listOf(localized(TextKey.RecentFilterAll), localized(TextKey.RecentFilterWins), localized(TextKey.RecentFilterLosses)),
         selectedIndex = when (historyFilter) {
             null -> 0
             MatchHistoryOutcome.WIN -> 1
@@ -1638,11 +1673,11 @@ private fun RecentMatchesSectionContent(
     val visibleMatches = filteredMatches.take(visibleMatchCount)
     when {
         profile.recentMatches.isEmpty() -> Text(
-            "Chưa có trận đấu hoàn thành.",
+            localized(TextKey.NoCompletedMatches),
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
         filteredMatches.isEmpty() -> Text(
-            "Không có trận phù hợp với bộ lọc.",
+            localized(TextKey.NoMatchesForFilter),
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
         else -> {
@@ -1685,7 +1720,7 @@ private fun CurrentSessionDuration(sessionStartedAtMillis: Long) {
             tint = MaterialTheme.colorScheme.onSurfaceVariant
         )
         Text(
-            "Phiên hiện tại ${formatSessionDuration(elapsedSeconds)}",
+            localized(TextKey.CurrentSessionDuration, "duration" to formatSessionDuration(elapsedSeconds)),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
@@ -1785,8 +1820,8 @@ private fun AccountSecurityDialog(
     val confirmationError = accountPasswordConfirmationError(newPassword, confirmPassword)
     val passwordUnchanged = currentPassword.isNotEmpty() && currentPassword == newPassword
     ArcadeDialog(
-        title = "BẢO MẬT TÀI KHOẢN",
-        subtitle = "Đổi mật khẩu hoặc quản lý việc xóa tài khoản.",
+        title = localized(TextKey.AccountSecurityTitle),
+        subtitle = localized(TextKey.AccountSecurityDescription),
         onDismissRequest = onDismiss
     ) {
         Column(
@@ -1798,20 +1833,20 @@ private fun AccountSecurityDialog(
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     Icon(Icons.Default.Shield, contentDescription = null, tint = ArcadeGold)
-                    Text("Đổi mật khẩu", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black)
+                    Text(localized(TextKey.ChangePassword), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black)
                 }
-                SecurePasswordField(currentPassword, "Mật khẩu hiện tại") { currentPassword = it }
-                SecurePasswordField(newPassword, "Mật khẩu mới") { newPassword = it }
-                SecurePasswordField(confirmPassword, "Nhập lại mật khẩu mới") { confirmPassword = it }
+                SecurePasswordField(currentPassword, localized(TextKey.CurrentPassword)) { currentPassword = it }
+                SecurePasswordField(newPassword, localized(TextKey.NewPasswordLabel)) { newPassword = it }
+                SecurePasswordField(confirmPassword, localized(TextKey.ConfirmNewPasswordLabel)) { confirmPassword = it }
                 if (newPassword.isNotEmpty() && passwordError != null) {
                     Text(localized(passwordError), color = MaterialTheme.colorScheme.error)
                 }
                 confirmationError?.let { Text(localized(it), color = MaterialTheme.colorScheme.error) }
                 if (passwordUnchanged) {
-                    Text("Mật khẩu mới phải khác mật khẩu hiện tại.", color = MaterialTheme.colorScheme.error)
+                    Text(localized(TextKey.NewPasswordMustDiffer), color = MaterialTheme.colorScheme.error)
                 }
                 ArcadeActionButton(
-                    label = if (isLoading) "ĐANG CẬP NHẬT..." else "ĐỔI MẬT KHẨU",
+                    label = if (isLoading) localized(TextKey.UpdatingPassword) else localized(TextKey.ChangePassword).uppercase(),
                     onClick = { onChangePassword(currentPassword, newPassword) },
                     enabled = !isLoading && currentPassword.isNotBlank() && passwordError == null &&
                         confirmationError == null && confirmPassword.isNotEmpty() && !passwordUnchanged,
@@ -1821,18 +1856,18 @@ private fun AccountSecurityDialog(
                 error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
                 ArcadePanel(modifier = Modifier.fillMaxWidth(), accent = ArcadeOpponent) {
                     Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text("Vùng nguy hiểm", color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Black)
+                        Text(localized(TextKey.DangerZone), color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Black)
                         Text(
-                            "Xóa tài khoản sẽ xóa vĩnh viễn hồ sơ, Elo, lịch sử và thành tích.",
+                            localized(TextKey.DeleteAccountWarning),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 }
-                SecurePasswordField(deletePassword, "Nhập mật khẩu để xác nhận") { deletePassword = it }
+                SecurePasswordField(deletePassword, localized(TextKey.PasswordToConfirm)) { deletePassword = it }
                 if (!confirmDelete) {
                     ArcadeActionButton(
-                        label = "TÔI MUỐN XÓA TÀI KHOẢN",
+                        label = localized(TextKey.RequestDeleteAccount),
                         onClick = { confirmDelete = true },
                         enabled = !isLoading && deletePassword.isNotBlank(),
                         modifier = Modifier.fillMaxWidth(),
@@ -1840,7 +1875,7 @@ private fun AccountSecurityDialog(
                     )
                 } else {
                     ArcadeActionButton(
-                        label = if (isLoading) "ĐANG XÓA..." else "XÓA TÀI KHOẢN",
+                        label = if (isLoading) localized(TextKey.DeletingAccount) else localized(TextKey.Delete).uppercase(),
                         onClick = { onDeleteAccount(deletePassword) },
                         enabled = !isLoading,
                         modifier = Modifier.fillMaxWidth(),
@@ -1849,7 +1884,7 @@ private fun AccountSecurityDialog(
                 }
         }
         ArcadeActionButton(
-            label = "Đóng",
+            label = localized(TextKey.Close),
             onClick = onDismiss,
             enabled = !isLoading,
             modifier = Modifier.fillMaxWidth(),
@@ -1882,16 +1917,16 @@ private fun AccountSessionsDialog(
 
     sessionPendingRevoke?.let { session ->
         ArcadeDialog(
-            title = if (session.isCurrent) "ĐĂNG XUẤT THIẾT BỊ NÀY?" else "ĐĂNG XUẤT THIẾT BỊ?",
+            title = localized(if (session.isCurrent) TextKey.RevokeCurrentDeviceTitle else TextKey.RevokeDeviceTitle),
             subtitle = if (session.isCurrent) {
-                "Bạn sẽ quay về màn đăng nhập trên thiết bị hiện tại."
+                localized(TextKey.RevokeCurrentDeviceDescription)
             } else {
-                "Phiên trên ${sessionDeviceLabel(session.devicePlatform)} sẽ bị thu hồi ngay."
+                localized(TextKey.RevokeOtherDeviceDescription, "device" to sessionDeviceLabel(session.devicePlatform))
             },
             onDismissRequest = { sessionPendingRevoke = null }
         ) {
             ArcadeActionButton(
-                label = "Đăng xuất",
+                label = localized(TextKey.Logout),
                 onClick = {
                     sessionPendingRevoke = null
                     onRevokeSession(session.sessionId)
@@ -1900,7 +1935,7 @@ private fun AccountSessionsDialog(
                 style = ArcadeActionStyle.DANGER
             )
             ArcadeActionButton(
-                label = "Hủy",
+                label = localized(TextKey.Cancel),
                 onClick = { sessionPendingRevoke = null },
                 modifier = Modifier.fillMaxWidth(),
                 style = ArcadeActionStyle.OUTLINE
@@ -1909,12 +1944,12 @@ private fun AccountSessionsDialog(
     }
     if (confirmRevokeAll) {
         ArcadeDialog(
-            title = "ĐĂNG XUẤT TẤT CẢ THIẾT BỊ?",
-            subtitle = "Tất cả phiên, bao gồm thiết bị này, sẽ bị thu hồi và bạn cần đăng nhập lại.",
+            title = localized(TextKey.LogoutAllDevicesTitle),
+            subtitle = localized(TextKey.LogoutAllDevicesDescription),
             onDismissRequest = { confirmRevokeAll = false }
         ) {
             ArcadeActionButton(
-                label = "Đăng xuất tất cả",
+                label = localized(TextKey.LogoutAllDevices),
                 onClick = {
                     confirmRevokeAll = false
                     onRevokeAllSessions()
@@ -1923,7 +1958,7 @@ private fun AccountSessionsDialog(
                 style = ArcadeActionStyle.DANGER
             )
             ArcadeActionButton(
-                label = "Hủy",
+                label = localized(TextKey.Cancel),
                 onClick = { confirmRevokeAll = false },
                 modifier = Modifier.fillMaxWidth(),
                 style = ArcadeActionStyle.OUTLINE
@@ -1932,8 +1967,8 @@ private fun AccountSessionsDialog(
     }
 
     ArcadeDialog(
-        title = "THIẾT BỊ ĐĂNG NHẬP",
-        subtitle = "Kiểm tra và thu hồi những phiên bạn không còn sử dụng.",
+        title = localized(TextKey.LoginDevicesTitle),
+        subtitle = localized(TextKey.LoginDevicesDescription),
         onDismissRequest = onDismiss
     ) {
         Column(
@@ -1941,7 +1976,7 @@ private fun AccountSessionsDialog(
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
                 Text(
-                    "Bạn có thể thu hồi những phiên không còn sử dụng.",
+                    localized(TextKey.LoginDevicesDescription),
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 if (isLoading && sessions.isEmpty()) {
@@ -1949,9 +1984,11 @@ private fun AccountSessionsDialog(
                         CircularProgressIndicator()
                     }
                 } else if (sessions.isEmpty()) {
-                    Text("Không tìm thấy phiên đăng nhập đang hoạt động.")
+                    Text(localized(TextKey.NoActiveSessions))
                 } else {
                     sessions.forEach { session ->
+                        val deviceLabel = sessionDeviceLabel(session.devicePlatform)
+                        val currentDeviceLabel = localized(TextKey.CurrentDevice)
                         ArcadePanel(
                             modifier = Modifier.fillMaxWidth(),
                             accent = if (session.isCurrent) ArcadeSuccess else MaterialTheme.colorScheme.primary
@@ -1965,15 +2002,15 @@ private fun AccountSessionsDialog(
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text(
                                         buildString {
-                                            append(sessionDeviceLabel(session.devicePlatform))
-                                            if (session.isCurrent) append(" • Thiết bị này")
+                                            append(deviceLabel)
+                                            if (session.isCurrent) append(" • $currentDeviceLabel")
                                         },
                                         fontWeight = FontWeight.Bold,
                                         color = if (session.isCurrent) MaterialTheme.colorScheme.primary
                                             else MaterialTheme.colorScheme.onSurface
                                     )
                                     Text(
-                                        "Hoạt động ${relativeSessionTime(session.lastSeenAtEpochMillis)}",
+                                        localized(TextKey.ActivityTime, "time" to relativeSessionTime(session.lastSeenAtEpochMillis)),
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
@@ -1986,7 +2023,7 @@ private fun AccountSessionsDialog(
                                 TextButton(
                                     onClick = { sessionPendingRevoke = session },
                                     enabled = !isLoading
-                                ) { Text("Đăng xuất") }
+                                ) { Text(localized(TextKey.Logout)) }
                             }
                         }
                     }
@@ -1995,14 +2032,14 @@ private fun AccountSessionsDialog(
                 error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
         }
         ArcadeActionButton(
-            label = "Đăng xuất tất cả thiết bị",
+            label = localized(TextKey.LogoutAllDevices),
             onClick = { confirmRevokeAll = true },
             enabled = !isLoading && sessions.isNotEmpty(),
             modifier = Modifier.fillMaxWidth(),
             style = ArcadeActionStyle.DANGER
         )
         ArcadeActionButton(
-            label = "ĐÓNG",
+            label = localized(TextKey.Close).uppercase(),
             onClick = onDismiss,
             enabled = !isLoading,
             modifier = Modifier.fillMaxWidth().testTag("account_sessions_close"),
@@ -2011,28 +2048,31 @@ private fun AccountSessionsDialog(
     }
 }
 
+@Composable
 private fun sessionDeviceLabel(platform: String?): String = when (platform?.lowercase()) {
     "android" -> "Android"
     "ios" -> "iPhone / iPad"
-    else -> "Thiết bị không xác định"
+    else -> localized(TextKey.UnknownDevice)
 }
 
+@Composable
 private fun relativeSessionTime(timestampMillis: Long): String {
     val elapsed = (epochMillis() - timestampMillis).coerceAtLeast(0L)
     val minutes = elapsed / 60_000L
     val hours = elapsed / 3_600_000L
     val days = elapsed / 86_400_000L
     return when {
-        minutes < 1L -> "vừa xong"
-        hours < 1L -> "$minutes phút trước"
-        days < 1L -> "$hours giờ trước"
-        else -> "$days ngày trước"
+        minutes < 1L -> localized(TextKey.JustNow)
+        hours < 1L -> localized(TextKey.MinutesAgo, "count" to minutes)
+        days < 1L -> localized(TextKey.HoursAgo, "count" to hours)
+        else -> localized(TextKey.DaysAgo, "count" to days)
     }
 }
 
+@Composable
 private fun sessionExpiryLabel(expiresAtMillis: Long): String {
     val remainingDays = ((expiresAtMillis - epochMillis()).coerceAtLeast(0L) / 86_400_000L) + 1L
-    return "Phiên còn hiệu lực khoảng $remainingDays ngày"
+    return localized(TextKey.SessionExpiresInDays, "count" to remainingDays)
 }
 
 @Composable
@@ -2048,7 +2088,7 @@ private fun SecurePasswordField(value: String, label: String, onValueChange: (St
             IconButton(onClick = { isVisible = !isVisible }) {
                 Icon(
                     if (isVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
-                    contentDescription = if (isVisible) "Ẩn mật khẩu" else "Hiện mật khẩu"
+                    contentDescription = localized(if (isVisible) TextKey.HidePassword else TextKey.ShowPassword)
                 )
             }
         },
@@ -2077,14 +2117,14 @@ private fun ProfileDailyCheckInStrip(checkIn: DailyCheckInSnapshot) {
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            ProfileSectionTitle("Điểm danh")
+            ProfileSectionTitle(localized(TextKey.CheckIn))
             Surface(
                 shape = RoundedCornerShape(999.dp),
                 color = ArcadeGold.copy(alpha = 0.16f),
                 border = BorderStroke(1.dp, ArcadeGold.copy(alpha = 0.34f))
             ) {
                 Text(
-                    "Chuỗi ${checkIn.currentStreak} ngày",
+                    localized(TextKey.StreakDays, "count" to checkIn.currentStreak),
                     modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp),
                     color = ArcadePalette.Gold400,
                     style = MaterialTheme.typography.labelSmall,
@@ -2174,10 +2214,10 @@ private fun DailyCheckInCalendar(checkIn: DailyCheckInSnapshot) {
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text("Lịch sử điểm danh", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black)
+                Text(localized(TextKey.CheckInHistory), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black)
                 Surface(shape = RoundedCornerShape(999.dp), color = ArcadeGold.copy(alpha = 0.16f)) {
                     Text(
-                        "Chuỗi ${checkIn.currentStreak} ngày",
+                        localized(TextKey.StreakDays, "count" to checkIn.currentStreak),
                         modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
                         color = ArcadeGold,
                         style = MaterialTheme.typography.labelMedium,
@@ -2186,7 +2226,7 @@ private fun DailyCheckInCalendar(checkIn: DailyCheckInSnapshot) {
                 }
             }
             Text(
-                "Lịch điểm danh · Theo dõi tối đa 12 tháng gần nhất",
+                localized(TextKey.CheckInCalendarDescription),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -2199,21 +2239,21 @@ private fun DailyCheckInCalendar(checkIn: DailyCheckInSnapshot) {
                     onClick = { visibleMonth = visibleMonth.shift(-1) },
                     enabled = visibleMonth > earliestMonth
                 ) {
-                    Icon(Icons.Default.ChevronLeft, "Tháng trước")
+                    Icon(Icons.Default.ChevronLeft, localized(TextKey.PreviousMonth))
                 }
                 Text(
-                    "Tháng ${visibleMonth.month}/${visibleMonth.year}",
+                    localized(TextKey.MonthYear, "month" to visibleMonth.month, "year" to visibleMonth.year),
                     fontWeight = FontWeight.Bold
                 )
                 IconButton(
                     onClick = { visibleMonth = visibleMonth.shift(1) },
                     enabled = visibleMonth < currentMonth
                 ) {
-                    Icon(Icons.Default.ChevronRight, "Tháng sau")
+                    Icon(Icons.Default.ChevronRight, localized(TextKey.NextMonth))
                 }
             }
             Row(Modifier.fillMaxWidth()) {
-                PROFILE_CALENDAR_WEEKDAYS.forEach { label ->
+                localizedCalendarWeekdays().forEach { label ->
                     Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
                         Text(
                             label,
@@ -2275,7 +2315,7 @@ private fun DailyCheckInCalendar(checkIn: DailyCheckInSnapshot) {
                         .background(MaterialTheme.colorScheme.primary, CircleShape)
                 )
                 Text(
-                    "Đã điểm danh",
+                    localized(TextKey.CheckedIn),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.primary
                 )
@@ -2342,29 +2382,34 @@ private fun profileCalendarDaysInMonth(year: Int, month: Int): Int = when (month
 private fun profileCalendarDateKey(month: ProfileCalendarMonth, day: Int): String =
     "${month.year.toString().padStart(4, '0')}-${month.month.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}"
 
-private val PROFILE_CALENDAR_WEEKDAYS = listOf("T2", "T3", "T4", "T5", "T6", "T7", "CN")
+@Composable
+private fun localizedCalendarWeekdays() = listOf(
+    localized(TextKey.WeekMonday), localized(TextKey.WeekTuesday), localized(TextKey.WeekWednesday),
+    localized(TextKey.WeekThursday), localized(TextKey.WeekFriday), localized(TextKey.WeekSaturday),
+    localized(TextKey.WeekSunday)
+)
 
 @Composable
 private fun DailyCheckInMilestones(bestStreak: Int, totalCheckIns: Int) {
     val milestones = listOf(
         DailyCheckInMilestone(
             icon = Icons.Default.EmojiEvents,
-            title = "7 ngày liên tiếp",
-            reward = "Thành tích Khởi đầu đều đặn",
+            title = localized(TextKey.ConsecutiveDays, "count" to 7),
+            reward = localized(TextKey.SteadyStartAchievement),
             progress = bestStreak,
             target = DAILY_CHECK_IN_STREAK_ACHIEVEMENT_TARGET
         ),
         DailyCheckInMilestone(
             icon = Icons.Default.MilitaryTech,
-            title = "30 ngày liên tiếp",
-            reward = "Danh hiệu Chuyên cần",
+            title = localized(TextKey.ConsecutiveDays, "count" to 30),
+            reward = localized(TextKey.DiligentTitle),
             progress = bestStreak,
             target = DAILY_CHECK_IN_TITLE_TARGET
         ),
         DailyCheckInMilestone(
             icon = Icons.Default.Shield,
-            title = "100 lần điểm danh",
-            reward = "Khung Bền bỉ",
+            title = localized(TextKey.TotalCheckIns, "count" to 100),
+            reward = localized(TextKey.PersistentFrame),
             progress = totalCheckIns,
             target = DAILY_CHECK_IN_FRAME_TARGET
         )
@@ -2373,9 +2418,9 @@ private fun DailyCheckInMilestones(bestStreak: Int, totalCheckIns: Int) {
         modifier = Modifier.fillMaxWidth().testTag("daily_check_in_milestones"),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        Text("Mốc điểm danh", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+        Text(localized(TextKey.CheckInMilestones), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
         Text(
-            "Chuỗi tốt nhất $bestStreak ngày • Tổng $totalCheckIns lần",
+            localized(TextKey.CheckInSummary, "best" to bestStreak, "total" to totalCheckIns),
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             style = MaterialTheme.typography.bodySmall
         )
@@ -2514,15 +2559,21 @@ private fun ModeStatisticsCard(statistics: GameModeStatisticsSnapshot) {
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(statistics.gameMode.displayName(), fontWeight = FontWeight.Bold)
+                Text(statistics.gameMode.localizedDisplayName(), fontWeight = FontWeight.Bold)
                 Text(
-                    "$winRate% thắng",
+                    localized(TextKey.ModeWinRate, "rate" to winRate),
                     color = MaterialTheme.colorScheme.primary,
                     fontWeight = FontWeight.Bold
                 )
             }
             Text(
-                "${statistics.totalMatches} trận • ${statistics.wins} thắng • ${statistics.losses} thua • ${statistics.draws} hòa",
+                localized(
+                    TextKey.ModeMatchSummary,
+                    "matches" to statistics.totalMatches,
+                    "wins" to statistics.wins,
+                    "losses" to statistics.losses,
+                    "draws" to statistics.draws
+                ),
                 style = MaterialTheme.typography.bodyMedium
             )
             LinearProgressIndicator(
@@ -2531,7 +2582,7 @@ private fun ModeStatisticsCard(statistics: GameModeStatisticsSnapshot) {
                 color = if (winRate >= 50) ArcadeSuccess else MaterialTheme.colorScheme.primary
             )
             Text(
-                "Điểm cao ${statistics.highestScore} • Trung bình ${statistics.averageScore}",
+                localized(TextKey.ScoreAverage, "high" to statistics.highestScore, "average" to statistics.averageScore),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -2539,16 +2590,17 @@ private fun ModeStatisticsCard(statistics: GameModeStatisticsSnapshot) {
     }
 }
 
-private fun ProtocolGameMode.displayName(): String = when (this) {
-    ProtocolGameMode.ORDER -> "Cổ điển"
-    ProtocolGameMode.RANDOM_TARGET -> "Ngẫu nhiên"
-    ProtocolGameMode.TIME_BONUS -> "Cộng thời gian"
-    ProtocolGameMode.SPEED_UP -> "Tăng tốc"
-    ProtocolGameMode.SURVIVAL -> "Sinh tồn"
-    ProtocolGameMode.COMBO -> "Combo"
-    ProtocolGameMode.TIME_ATTACK -> "Đua 60 giây"
-    ProtocolGameMode.TEAM_2V2 -> "Đồng đội 2v2"
-}
+@Composable
+private fun ProtocolGameMode.localizedDisplayName(): String = localized(when (this) {
+    ProtocolGameMode.ORDER -> TextKey.ModeClassicTitle
+    ProtocolGameMode.RANDOM_TARGET -> TextKey.ModeRandomTitle
+    ProtocolGameMode.TIME_BONUS -> TextKey.ModeTimeBonusTitle
+    ProtocolGameMode.SPEED_UP -> TextKey.ModeSpeedUpTitle
+    ProtocolGameMode.SURVIVAL -> TextKey.ModeSurvivalTitle
+    ProtocolGameMode.COMBO -> TextKey.ModeComboTitle
+    ProtocolGameMode.TIME_ATTACK -> TextKey.ModeTimeAttackTitle
+    ProtocolGameMode.TEAM_2V2 -> TextKey.ModeTeamTitle
+})
 
 @Composable
 private fun TrendChart(title: String, values: List<Int>, valueLabel: (Int) -> String) {
@@ -2616,9 +2668,9 @@ private fun MatchDetailDialog(
 
     ArcadeDialog(
         onDismissRequest = onDismiss,
-        title = if (isLoading) "Đang tải trận đấu" else "Chi tiết trận",
+        title = localized(if (isLoading) TextKey.LoadingMatch else TextKey.MatchDetails),
         subtitle = detail?.let {
-            "${it.summary.gameMode.displayName()} · ${if (it.summary.matchType == MatchType.RANKED) "Xếp hạng" else "Đấu thường"}"
+            "${it.summary.gameMode.localizedDisplayName()} · ${localized(if (it.summary.matchType == MatchType.RANKED) TextKey.Ranked else TextKey.Casual)}"
         }
     ) {
         if (isLoading || detail == null) {
@@ -2648,17 +2700,22 @@ private fun MatchDetailDialog(
                     MatchDetailScoreboard(detail.summary)
                     ArcadeStatGrid(
                         stats = listOf(
-                            "Phản xạ" to if (averageReaction > 0) "${averageReaction} ms" else "--",
-                            "Chính xác" to "$accuracy%",
+                            localized(TextKey.ReactionLabel) to if (averageReaction > 0) "${averageReaction} ms" else "--",
+                            localized(TextKey.AccuracyLabel) to "$accuracy%",
                             "Elo" to if (detail.summary.matchType == MatchType.RANKED) {
                                 if (detail.summary.eloChange >= 0) "+${detail.summary.eloChange}" else detail.summary.eloChange.toString()
                             } else {
-                                "Không đổi"
+                                localized(TextKey.NoEloChange)
                             }
                         )
                     )
                     Text(
-                        "${formatMatchDuration(detail.durationMillis)} · Đúng $correct · Sai $wrong",
+                        localized(
+                            TextKey.MatchTapSummary,
+                            "duration" to formatMatchDuration(detail.durationMillis),
+                            "correct" to correct,
+                            "wrong" to wrong
+                        ),
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     if (reactionSamples.isNotEmpty()) {
@@ -2668,18 +2725,18 @@ private fun MatchDetailDialog(
                                 horizontalArrangement = Arrangement.spacedBy(12.dp)
                             ) {
                                 Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
-                                    Text("NHANH NHẤT", style = MaterialTheme.typography.labelSmall, color = ArcadeSuccess)
+                                    Text(localized(TextKey.Fastest).uppercase(), style = MaterialTheme.typography.labelSmall, color = ArcadeSuccess)
                                     Text("${reactionSamples.minOrNull()} ms", fontWeight = FontWeight.Black)
                                 }
                                 Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
-                                    Text("CHẬM NHẤT", style = MaterialTheme.typography.labelSmall, color = ArcadeOpponent)
+                                    Text(localized(TextKey.Slowest).uppercase(), style = MaterialTheme.typography.labelSmall, color = ArcadeOpponent)
                                     Text("${reactionSamples.maxOrNull()} ms", fontWeight = FontWeight.Black)
                                 }
                             }
                         }
                     }
                     if (events.isEmpty()) {
-                        Text("Trận này chưa có dữ liệu lượt bấm để phát lại.")
+                        Text(localized(TextKey.NoReplayData))
                     } else {
                         val event = events[replayIndex.coerceIn(events.indices)]
                         ArcadePanel(
@@ -2691,11 +2748,14 @@ private fun MatchDetailDialog(
                                 horizontalAlignment = Alignment.CenterHorizontally,
                                 verticalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
-                                Text("Lượt ${replayIndex + 1}/${events.size}", style = MaterialTheme.typography.labelMedium)
+                                Text(localized(TextKey.ReplayTurn, "current" to replayIndex + 1, "total" to events.size), style = MaterialTheme.typography.labelMedium)
                                 Text(event.playerName, fontWeight = FontWeight.Bold)
                                 Text(event.number.toString(), style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Black)
                                 Text(
-                                    if (event.accepted) "Chọn đúng số ${event.expectedNumber}" else "Chọn sai • Cần tìm ${event.expectedNumber}",
+                                    localized(
+                                        if (event.accepted) TextKey.CorrectSelection else TextKey.WrongSelectionNeed,
+                                        "number" to event.expectedNumber
+                                    ),
                                     color = if (event.accepted) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
                                 )
                             }
@@ -2715,7 +2775,7 @@ private fun MatchDetailDialog(
                 }
             }
         ArcadeActionButton(
-            label = "ĐÓNG",
+            label = localized(TextKey.Close).uppercase(),
             onClick = onDismiss,
             style = ArcadeActionStyle.GOLD,
             modifier = Modifier.fillMaxWidth()
@@ -2747,15 +2807,15 @@ private fun MatchReplayControls(
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         button(
-            if (isPlaying) "DỪNG" else "PHÁT LẠI",
+            localized(if (isPlaying) TextKey.StopReplay else TextKey.Replay),
             onPlayPause,
             true,
             ArcadeActionStyle.PRIMARY,
             Modifier.fillMaxWidth()
         )
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            button("TRƯỚC", onPrevious, canGoPrevious, ArcadeActionStyle.OUTLINE, Modifier.weight(1f))
-            button("SAU", onNext, canGoNext, ArcadeActionStyle.OUTLINE, Modifier.weight(1f))
+            button(localized(TextKey.Previous), onPrevious, canGoPrevious, ArcadeActionStyle.OUTLINE, Modifier.weight(1f))
+            button(localized(TextKey.Next), onNext, canGoNext, ArcadeActionStyle.OUTLINE, Modifier.weight(1f))
         }
     }
 }
@@ -2780,7 +2840,7 @@ private fun MatchDetailScoreboard(summary: MatchHistorySnapshot) {
                     fontWeight = FontWeight.Black,
                     color = MaterialTheme.colorScheme.primary
                 )
-                Text("BẠN", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Black)
+                Text(localized(TextKey.You).uppercase(), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Black)
             }
             Surface(shape = CircleShape, color = MaterialTheme.colorScheme.surfaceContainerHighest) {
                 Text(
@@ -2813,31 +2873,26 @@ private fun formatMatchDuration(millis: Long): String {
     return "${totalSeconds / 60}:${(totalSeconds % 60).toString().padStart(2, '0')}"
 }
 
-private fun CosmeticSnapshot.displayLabel(): String {
-    if (unlocked) return name
-    val requirement = unlockRequirement()
-    return if (requirement == null) "Đã khóa · $name" else "Đã khóa · $name · $requirement"
-}
-
+@Composable
 private fun CosmeticSnapshot.unlockRequirement(): String? = when (id) {
-    "frame_bronze" -> "Cấp 3"
-    "frame_silver" -> "Cấp 6"
-    "frame_gold" -> "Cấp 10"
-    "frame_perfect" -> "Cấp 15 + thắng không bấm sai"
-    "frame_persistent" -> "Điểm danh 100 lần"
-    "title_champion" -> "Thắng 10 trận"
-    "title_speed" -> "Thắng và chọn đủ 50 số trong 30 giây"
-    "title_diligent" -> "Điểm danh 30 ngày liên tiếp"
-    DAILY_CHECK_IN_AVATAR_ID -> "Điểm danh 50 lần"
+    "frame_bronze" -> localized(TextKey.UnlockLevel, "level" to 3)
+    "frame_silver" -> localized(TextKey.UnlockLevel, "level" to 6)
+    "frame_gold" -> localized(TextKey.UnlockLevel, "level" to 10)
+    "frame_perfect" -> localized(TextKey.UnlockPerfectFrame)
+    "frame_persistent" -> localized(TextKey.UnlockPersistentFrame)
+    "title_champion" -> localized(TextKey.UnlockChampionTitle)
+    "title_speed" -> localized(TextKey.UnlockSpeedTitle)
+    "title_diligent" -> localized(TextKey.UnlockDiligentTitle)
+    DAILY_CHECK_IN_AVATAR_ID -> localized(TextKey.UnlockCheckInAvatar)
     else -> null
 }
 
 @Composable
 private fun MatchHistoryCard(match: MatchHistorySnapshot, onClick: (() -> Unit)?) {
     val (result, accent) = when (match.outcome) {
-        MatchHistoryOutcome.WIN -> "THẮNG" to ArcadeSuccess
-        MatchHistoryOutcome.LOSS -> "THUA" to ArcadeOpponent
-        MatchHistoryOutcome.DRAW -> "HÒA" to ArcadeGold
+        MatchHistoryOutcome.WIN -> localized(TextKey.Win).uppercase() to ArcadeSuccess
+        MatchHistoryOutcome.LOSS -> localized(TextKey.Loss).uppercase() to ArcadeOpponent
+        MatchHistoryOutcome.DRAW -> localized(TextKey.Draw).uppercase() to ArcadeGold
     }
     Surface(
         modifier = Modifier.fillMaxWidth().testTag("match_history:${match.matchId}").then(
@@ -2860,7 +2915,7 @@ private fun MatchHistoryCard(match: MatchHistorySnapshot, onClick: (() -> Unit)?
                         overflow = TextOverflow.Ellipsis
                     )
                     Text(
-                        "${match.gameMode.displayName()} · ${if (match.matchType == MatchType.RANKED) "Xếp hạng" else "Đấu thường"}",
+                        "${match.gameMode.localizedDisplayName()} · ${localized(if (match.matchType == MatchType.RANKED) TextKey.Ranked else TextKey.Casual)}",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -2883,7 +2938,7 @@ private fun MatchHistoryCard(match: MatchHistorySnapshot, onClick: (() -> Unit)?
             }
             val elo: @Composable () -> Unit = {
                 Text(
-                    if (match.matchType == MatchType.RANKED) "$eloText Elo" else "Thường",
+                    if (match.matchType == MatchType.RANKED) "$eloText Elo" else localized(TextKey.Casual),
                     color = when {
                         match.matchType != MatchType.RANKED -> MaterialTheme.colorScheme.onSurfaceVariant
                         match.eloChange >= 0 -> ArcadeSuccess

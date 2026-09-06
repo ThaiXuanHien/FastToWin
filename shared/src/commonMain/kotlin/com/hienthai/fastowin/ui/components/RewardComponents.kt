@@ -21,6 +21,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.hienthai.fastowin.ui.theme.ArcadeGem
 import com.hienthai.fastowin.ui.theme.ArcadeGold
+import com.hienthai.fastowin.localization.LocalLocalization
+import com.hienthai.fastowin.localization.LocalizationService
+import com.hienthai.fastowin.localization.TextKey
 
 val GoldColor = ArcadeGold
 val GemColor = ArcadeGem
@@ -31,21 +34,25 @@ fun WalletBalanceRow(
     gems: Int,
     modifier: Modifier = Modifier
 ) {
+    val localization = LocalLocalization.current
     Row(
         modifier = modifier.semantics {
-            contentDescription = "$gold vàng, $gems gem"
+            contentDescription = localization.text(
+                TextKey.WalletBalanceDescription,
+                mapOf("gold" to gold, "gems" to gems)
+            )
         },
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         CurrencyPill(
             amount = gold,
-            label = "Vàng",
+            label = localization.text(TextKey.Gold),
             icon = { Icon(Icons.Default.MonetizationOn, null, tint = GoldColor, modifier = Modifier.size(20.dp)) }
         )
         CurrencyPill(
             amount = gems,
-            label = "Gem",
+            label = localization.text(TextKey.Gems),
             icon = { Icon(Icons.Default.Payments, null, tint = GemColor, modifier = Modifier.size(20.dp)) }
         )
     }
@@ -58,9 +65,10 @@ fun RewardAmounts(
     gems: Int,
     modifier: Modifier = Modifier
 ) {
+    val localization = LocalLocalization.current
     Row(
         modifier = modifier.semantics {
-            contentDescription = rewardDescription(gold, xp, gems)
+            contentDescription = rewardDescription(localization, gold, xp, gems)
         },
         horizontalArrangement = Arrangement.spacedBy(10.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -90,9 +98,10 @@ fun WalletDeltaAmounts(
     gems: Int,
     modifier: Modifier = Modifier
 ) {
+    val localization = LocalLocalization.current
     Row(
         modifier = modifier.semantics {
-            contentDescription = walletDeltaDescription(gold, xp, gems)
+            contentDescription = walletDeltaDescription(localization, gold, xp, gems)
         },
         horizontalArrangement = Arrangement.spacedBy(10.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -172,14 +181,14 @@ private fun WalletDeltaAmount(
     }
 }
 
-private fun rewardDescription(gold: Int, xp: Int, gems: Int): String = buildList {
-    if (gold > 0) add("$gold vàng")
-    if (xp > 0) add("$xp XP")
-    if (gems > 0) add("$gems gem")
+private fun rewardDescription(localization: LocalizationService, gold: Int, xp: Int, gems: Int): String = buildList {
+    if (gold > 0) add(localization.text(TextKey.RewardGoldDescription, mapOf("count" to gold)))
+    if (xp > 0) add(localization.text(TextKey.RewardXpDescription, mapOf("count" to xp)))
+    if (gems > 0) add(localization.text(TextKey.RewardGemsDescription, mapOf("count" to gems)))
 }.joinToString()
 
-private fun walletDeltaDescription(gold: Int, xp: Int, gems: Int): String = buildList {
-    if (gold != 0) add("${if (gold > 0) "nhận" else "dùng"} ${kotlin.math.abs(gold)} vàng")
-    if (xp != 0) add("${if (xp > 0) "nhận" else "dùng"} ${kotlin.math.abs(xp)} XP")
-    if (gems != 0) add("${if (gems > 0) "nhận" else "dùng"} ${kotlin.math.abs(gems)} gem")
+private fun walletDeltaDescription(localization: LocalizationService, gold: Int, xp: Int, gems: Int): String = buildList {
+    if (gold != 0) add(localization.text(if (gold > 0) TextKey.WalletReceivedGold else TextKey.WalletUsedGold, mapOf("count" to kotlin.math.abs(gold))))
+    if (xp != 0) add(localization.text(if (xp > 0) TextKey.WalletReceivedXp else TextKey.WalletUsedXp, mapOf("count" to kotlin.math.abs(xp))))
+    if (gems != 0) add(localization.text(if (gems > 0) TextKey.WalletReceivedGems else TextKey.WalletUsedGems, mapOf("count" to kotlin.math.abs(gems))))
 }.joinToString()

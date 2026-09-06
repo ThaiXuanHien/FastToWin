@@ -17,6 +17,10 @@ fun localized(text: LocalizedText): String =
     LocalLocalization.current.text(text.key, text.arguments)
 
 @Composable
+fun localizedQuantity(key: QuantityKey, count: Int, vararg arguments: Pair<String, Any?>): String =
+    LocalLocalization.current.quantity(key, count, arguments.toMap())
+
+@Composable
 fun ProvideLocalization(language: AppLanguage, content: @Composable () -> Unit) {
     val service = remember(language) { LocalizationService(language) }
     CompositionLocalProvider(LocalLocalization provides service, content = content)

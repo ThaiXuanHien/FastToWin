@@ -26,11 +26,11 @@ internal val brazilianPortugueseCatalog = LocalizationCatalog(
         TextKey.Loading to "Carregando…",
         TextKey.UnknownError to "Algo deu errado. Tente novamente.",
         TextKey.WelcomePlayer to "Olá, {player}!"
-) + brazilianPortugueseShellAuthTexts + brazilianPortugueseGameplayTexts,
+) + brazilianPortugueseShellAuthTexts + brazilianPortugueseGameplayTexts + brazilianPortugueseProfileTexts,
     quantities = mapOf(
         QuantityKey.Players to mapOf(
             PluralCategory.ONE to "{count} jogador",
             PluralCategory.OTHER to "{count} jogadores"
         )
-    )
+    ) + brazilianPortugueseProfileQuantities
 )

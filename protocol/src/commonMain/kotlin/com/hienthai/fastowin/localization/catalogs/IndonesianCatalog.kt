@@ -26,10 +26,10 @@ internal val indonesianCatalog = LocalizationCatalog(
         TextKey.Loading to "Memuat…",
         TextKey.UnknownError to "Terjadi kesalahan. Silakan coba lagi.",
         TextKey.WelcomePlayer to "Halo, {player}!"
-) + indonesianShellAuthTexts + indonesianGameplayTexts,
+) + indonesianShellAuthTexts + indonesianGameplayTexts + indonesianProfileTexts,
     quantities = mapOf(
         QuantityKey.Players to mapOf(
             PluralCategory.OTHER to "{count} pemain"
         )
-    )
+    ) + indonesianProfileQuantities
 )

@@ -26,10 +26,10 @@ internal val thaiCatalog = LocalizationCatalog(
         TextKey.Loading to "กำลังโหลด…",
         TextKey.UnknownError to "เกิดข้อผิดพลาด โปรดลองอีกครั้ง",
         TextKey.WelcomePlayer to "สวัสดี {player}!"
-) + thaiShellAuthTexts + thaiGameplayTexts,
+) + thaiShellAuthTexts + thaiGameplayTexts + thaiProfileTexts,
     quantities = mapOf(
         QuantityKey.Players to mapOf(
             PluralCategory.OTHER to "ผู้เล่น {count} คน"
         )
-    )
+    ) + thaiProfileQuantities
 )

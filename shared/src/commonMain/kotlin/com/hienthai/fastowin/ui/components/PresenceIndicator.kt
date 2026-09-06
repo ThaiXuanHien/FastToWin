@@ -19,6 +19,8 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.dp
 import com.hienthai.fastowin.protocol.FriendPresence
+import com.hienthai.fastowin.localization.TextKey
+import com.hienthai.fastowin.localization.localized
 
 private val PresenceOnline = Color(0xFF16A34A)
 private val PresenceOffline = Color(0xFFDC2626)
@@ -75,12 +77,13 @@ fun OnlineStatusIndicator(
     modifier = modifier
 )
 
-fun FriendPresence.accessibilityLabel(): String = when (this) {
-    FriendPresence.OFFLINE -> "Đang ngoại tuyến"
-    FriendPresence.ONLINE -> "Đang trực tuyến"
-    FriendPresence.IN_ROOM -> "Đang trong phòng"
-    FriendPresence.PLAYING -> "Đang trong trận"
-}
+@Composable
+fun FriendPresence.accessibilityLabel(): String = localized(when (this) {
+    FriendPresence.OFFLINE -> TextKey.PresenceOffline
+    FriendPresence.ONLINE -> TextKey.PresenceOnline
+    FriendPresence.IN_ROOM -> TextKey.PresenceInRoom
+    FriendPresence.PLAYING -> TextKey.PresencePlaying
+})
 
 private fun FriendPresence.accentColor(): Color = when (this) {
     FriendPresence.OFFLINE -> PresenceOffline

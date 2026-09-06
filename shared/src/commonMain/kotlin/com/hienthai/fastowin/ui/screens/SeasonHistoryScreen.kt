@@ -39,6 +39,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.hienthai.fastowin.protocol.SeasonHistoryEntrySnapshot
 import com.hienthai.fastowin.protocol.rankedTierFor
+import com.hienthai.fastowin.localization.TextKey
+import com.hienthai.fastowin.localization.localized
+import com.hienthai.fastowin.localization.localizedRankedTierName
+import com.hienthai.fastowin.localization.localizedQuantity
+import com.hienthai.fastowin.localization.QuantityKey
 import com.hienthai.fastowin.state.GameState
 import com.hienthai.fastowin.ui.components.ArcadeBackdrop
 import com.hienthai.fastowin.ui.components.FastToWinHeader
@@ -76,7 +81,7 @@ fun SeasonHistoryScreen(
             containerColor = Color.Transparent,
             topBar = {
                 FastToWinHeader(
-                    title = "Lịch sử mùa",
+                    title = localized(TextKey.SeasonHistoryTitle),
                     gold = state.profile?.progression?.gold ?: 0,
                     gems = state.profile?.progression?.gems ?: 0,
                     unreadNotifications = state.unreadNotificationCount,
@@ -103,8 +108,9 @@ fun SeasonHistoryScreen(
                         item(key = "season_history_hero") {
                             ArcadeFeatureHero(
                                 illustration = Res.drawable.arcade_leaderboard_trophy,
-                                title = if (history.isEmpty()) "Hành trình xếp hạng" else "${history.size} mùa đã thi đấu",
-                                subtitle = "Xem lại bậc, Elo cao nhất và phần thưởng qua từng mùa.",
+                                title = if (history.isEmpty()) localized(TextKey.RankedJourney)
+                                else localizedQuantity(QuantityKey.Seasons, history.size),
+                                subtitle = localized(TextKey.SeasonHistoryDescription),
                                 accent = MaterialTheme.colorScheme.tertiary
                             )
                         }
@@ -120,7 +126,7 @@ fun SeasonHistoryScreen(
                                         ) {
                                             CircularProgressIndicator()
                                             Text(
-                                                "Đang tải lịch sử mùa...",
+                                                localized(TextKey.LoadingSeasonHistory),
                                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                                             )
                                         }
@@ -137,7 +143,7 @@ fun SeasonHistoryScreen(
                             else -> {
                                 item(key = "history_summary") {
                                     Text(
-                                        "Thành tích qua các mùa",
+                                        localized(TextKey.SeasonAchievements),
                                         style = MaterialTheme.typography.titleLarge,
                                         fontWeight = FontWeight.Black
                                     )
@@ -167,7 +173,7 @@ fun SeasonHistoryScreen(
                         if (history.isNotEmpty()) {
                             item(key = "season_history_footer") {
                                 Text(
-                                    "Kéo xuống để cập nhật kết quả mùa mới nhất.",
+                                    localized(TextKey.SeasonHistoryRefreshHint),
                                     modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -186,8 +192,8 @@ private fun SeasonHistoryEmptyState(modifier: Modifier = Modifier) {
     ArcadePanel(modifier = modifier, accent = MaterialTheme.colorScheme.tertiary) {
         ArcadeEmptyState(
             illustration = Res.drawable.arcade_leaderboard_trophy,
-            title = "Chưa có lịch sử mùa",
-            description = "Hoàn thành trận xếp hạng để lưu dấu mùa giải đầu tiên."
+            title = localized(TextKey.NoSeasonHistory),
+            description = localized(TextKey.NoSeasonHistoryDescription)
         )
     }
 }
@@ -200,10 +206,11 @@ private fun SeasonHistoryCard(
     val ranked = season.placementMatchesPlayed >= season.placementMatchesRequired
     val reward = season.reward
     val tierName = if (ranked) {
-        reward?.tier?.displayName ?: rankedTierFor(season.peakRating).displayName
+        localizedRankedTierName(reward?.tier ?: rankedTierFor(season.peakRating))
     } else {
-        "Chưa phân hạng"
+        localized(TextKey.Unranked)
     }
+    val seasonStateDescription = "${season.seasonName}, $tierName, ${localized(TextKey.HighestElo)} ${season.peakRating}"
     val accent = if (highlighted) ArcadePalette.Gold500 else MaterialTheme.colorScheme.primary
     val metricValueColor = if (highlighted) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.primary
     ArcadePanel(
@@ -211,7 +218,7 @@ private fun SeasonHistoryCard(
             .fillMaxWidth()
             .testTag("season_history_item:${season.seasonNumber}")
             .semantics {
-                stateDescription = "${season.seasonName}, $tierName, Elo cao nhất ${season.peakRating}"
+                stateDescription = seasonStateDescription
             },
         accent = accent
     ) {
@@ -257,7 +264,7 @@ private fun SeasonHistoryCard(
                                 contentColor = ArcadePalette.Gold800
                             ) {
                                 Text(
-                                    "MỚI NHẤT",
+                                    localized(TextKey.Latest),
                                     modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
                                     style = MaterialTheme.typography.labelSmall,
                                     fontWeight = FontWeight.Black
@@ -266,7 +273,12 @@ private fun SeasonHistoryCard(
                         }
                     }
                     Text(
-                        "Mùa ${season.seasonNumber} • ${season.matchesPlayed} trận • $tierName",
+                        localized(
+                            TextKey.SeasonSummaryLine,
+                            "season" to season.seasonNumber,
+                            "matches" to localizedQuantity(QuantityKey.Matches, season.matchesPlayed),
+                            "tier" to tierName
+                        ),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -282,12 +294,12 @@ private fun SeasonHistoryCard(
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                     maxItemsInEachRow = if (useTwoColumns) 2 else 1
                 ) {
-                    SeasonMetric("Bậc cao nhất", tierName, metricValueColor, Modifier.width(metricWidth))
-                    SeasonMetric("Elo cao nhất", season.peakRating.toString(), metricValueColor, Modifier.width(metricWidth))
-                    SeasonMetric("Elo cuối mùa", season.finalRating.toString(), metricValueColor, Modifier.width(metricWidth))
+                    SeasonMetric(localized(TextKey.HighestTier), tierName, metricValueColor, Modifier.width(metricWidth))
+                    SeasonMetric(localized(TextKey.HighestElo), season.peakRating.toString(), metricValueColor, Modifier.width(metricWidth))
+                    SeasonMetric(localized(TextKey.FinalElo), season.finalRating.toString(), metricValueColor, Modifier.width(metricWidth))
                     SeasonMetric(
-                        "Hạng cuối mùa",
-                        season.finalRank?.let { "#$it" } ?: "Chưa xếp hạng",
+                        localized(TextKey.FinalRank),
+                        season.finalRank?.let { "#$it" } ?: localized(TextKey.NotRanked),
                         metricValueColor,
                         Modifier.width(metricWidth)
                     )
@@ -300,7 +312,7 @@ private fun SeasonHistoryCard(
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     Text(
-                        "Phần thưởng đã nhận",
+                        localized(TextKey.SeasonRewardReceived),
                         style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.Black
                     )
@@ -314,8 +326,8 @@ private fun SeasonHistoryCard(
                     color = MaterialTheme.colorScheme.surfaceContainerLow
                 ) {
                     Text(
-                        if (ranked) "Phần thưởng mùa đang được xử lý."
-                        else "Chưa đủ ${season.placementMatchesRequired} trận phân hạng nên mùa này không có thưởng.",
+                        if (ranked) localized(TextKey.SeasonRewardProcessing)
+                        else localized(TextKey.NoPlacementReward, "count" to season.placementMatchesRequired),
                         modifier = Modifier.padding(12.dp),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant

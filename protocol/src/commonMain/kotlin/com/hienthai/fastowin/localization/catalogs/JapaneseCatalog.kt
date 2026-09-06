@@ -26,10 +26,10 @@ internal val japaneseCatalog = LocalizationCatalog(
         TextKey.Loading to "読み込み中…",
         TextKey.UnknownError to "エラーが発生しました。もう一度お試しください。",
         TextKey.WelcomePlayer to "こんにちは、{player}！"
-) + japaneseShellAuthTexts + japaneseGameplayTexts,
+) + japaneseShellAuthTexts + japaneseGameplayTexts + japaneseProfileTexts,
     quantities = mapOf(
         QuantityKey.Players to mapOf(
             PluralCategory.OTHER to "プレイヤー{count}人"
         )
-    )
+    ) + japaneseProfileQuantities
 )

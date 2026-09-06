@@ -24,6 +24,12 @@ import com.hienthai.fastowin.data.network.toAvatarImageUrl
 import com.hienthai.fastowin.protocol.DAILY_CHECK_IN_AVATAR_ID
 import com.hienthai.fastowin.protocol.DEFAULT_FEMALE_AVATAR_ID
 import com.hienthai.fastowin.protocol.RankedTier
+import com.hienthai.fastowin.localization.TextKey
+import com.hienthai.fastowin.localization.localized
+import com.hienthai.fastowin.localization.localizedRankedTierName
+import com.hienthai.fastowin.localization.AppLanguage
+import com.hienthai.fastowin.localization.LocalizationService
+import com.hienthai.fastowin.localization.rankedTierTextKey
 import com.hienthai.fastowin.resources.Res
 import com.hienthai.fastowin.resources.arcade_frame_bronze
 import com.hienthai.fastowin.resources.arcade_frame_challenger
@@ -58,7 +64,8 @@ fun PlayerAvatar(
             ?.let { avatarServerUrl.toAvatarImageUrl(it, avatarRevision) }
             .orEmpty()
     }
-    val frameName = avatarFrameName(frameId)
+    val frameName = localizedAvatarFrameName(frameId)
+    val avatarDescription = localized(TextKey.AvatarOfPlayer, "player" to displayName)
     val frameResource = avatarFrameResource(frameId)
     val avatarSize = size * 0.78f
     val illustratedAvatar = if (avatarId in coralAvatarIds) {
@@ -72,7 +79,7 @@ fun PlayerAvatar(
             .size(size)
             .testTag("avatar_frame:$frameId")
             .semantics(mergeDescendants = true) {
-                contentDescription = "Ảnh đại diện của $displayName"
+                contentDescription = avatarDescription
                 stateDescription = frameName
         },
         contentAlignment = Alignment.Center
@@ -145,15 +152,36 @@ private fun avatarFrameResource(frameId: String): DrawableResource {
 }
 
 fun avatarFrameName(frameId: String): String {
-    seasonalFrameTier(frameId)?.let { return "Khung mùa • ${it.displayName}" }
-    return when (frameId) {
-        "frame_bronze" -> "Khung Đồng"
-        "frame_silver" -> "Khung Bạc"
-        "frame_gold" -> "Khung Vàng"
-        "frame_perfect" -> "Khung Hoàn hảo"
-        "frame_persistent" -> "Khung Bền bỉ"
-        else -> "Khung cơ bản"
+    val localization = LocalizationService(AppLanguage.VIETNAMESE)
+    seasonalFrameTier(frameId)?.let {
+        return localization.text(
+            TextKey.SeasonalFrame,
+            mapOf("tier" to localization.text(rankedTierTextKey(it)))
+        )
     }
+    return localization.text(when (frameId) {
+        "frame_bronze" -> TextKey.BronzeFrame
+        "frame_silver" -> TextKey.SilverFrame
+        "frame_gold" -> TextKey.GoldFrame
+        "frame_perfect" -> TextKey.PerfectFrame
+        "frame_persistent" -> TextKey.PersistentFrameName
+        else -> TextKey.BasicFrame
+    })
+}
+
+@Composable
+private fun localizedAvatarFrameName(frameId: String): String {
+    seasonalFrameTier(frameId)?.let {
+        return localized(TextKey.SeasonalFrame, "tier" to localizedRankedTierName(it))
+    }
+    return localized(when (frameId) {
+        "frame_bronze" -> TextKey.BronzeFrame
+        "frame_silver" -> TextKey.SilverFrame
+        "frame_gold" -> TextKey.GoldFrame
+        "frame_perfect" -> TextKey.PerfectFrame
+        "frame_persistent" -> TextKey.PersistentFrameName
+        else -> TextKey.BasicFrame
+    })
 }
 
 private fun seasonalFrameTier(frameId: String): RankedTier? {
