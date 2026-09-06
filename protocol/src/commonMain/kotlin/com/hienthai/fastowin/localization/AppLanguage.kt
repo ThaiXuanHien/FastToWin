@@ -12,7 +12,23 @@ enum class AppLanguage(val code: String, val languageTag: String, val nativeName
     GERMAN("de", "de", "Deutsch"),
     INDONESIAN("id", "id", "Bahasa Indonesia"),
     THAI("th", "th", "ไทย"),
-    RUSSIAN("ru", "ru", "Русский")
+    RUSSIAN("ru", "ru", "Русский");
+
+    /** Deliberately English secondary labels help users recover from an unfamiliar language. */
+    val englishName: String get() = when (this) {
+        VIETNAMESE -> "Vietnamese"
+        ENGLISH -> "English"
+        SIMPLIFIED_CHINESE -> "Simplified Chinese"
+        JAPANESE -> "Japanese"
+        KOREAN -> "Korean"
+        SPANISH -> "Spanish"
+        BRAZILIAN_PORTUGUESE -> "Portuguese (Brazil)"
+        FRENCH -> "French"
+        GERMAN -> "German"
+        INDONESIAN -> "Indonesian"
+        THAI -> "Thai"
+        RUSSIAN -> "Russian"
+    }
 }
 
 /** Unknown saved codes follow system preferences; unsupported devices use English. */

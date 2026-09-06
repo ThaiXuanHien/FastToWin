@@ -9,6 +9,13 @@ import com.hienthai.fastowin.localization.TextKey
 internal val englishCatalog = LocalizationCatalog(
     language = AppLanguage.ENGLISH,
     texts = mapOf(
+        TextKey.SettingsTitle to "Settings",
+        TextKey.LanguageTitle to "Language",
+        TextKey.ChooseLanguageTitle to "Choose language",
+        TextKey.SystemLanguage to "System default",
+        TextKey.ResolvedSystemLanguage to "System default · {language}",
+        TextKey.AppearanceTitle to "Appearance",
+        TextKey.AppearanceSubtitle to "Preferences are saved on this device.",
         TextKey.Back to "Back",
         TextKey.Cancel to "Cancel",
         TextKey.Confirm to "Confirm",

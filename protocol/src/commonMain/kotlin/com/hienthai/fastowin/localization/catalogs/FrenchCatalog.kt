@@ -9,6 +9,13 @@ import com.hienthai.fastowin.localization.TextKey
 internal val frenchCatalog = LocalizationCatalog(
     language = AppLanguage.FRENCH,
     texts = mapOf(
+        TextKey.SettingsTitle to "Paramètres",
+        TextKey.LanguageTitle to "Langue",
+        TextKey.ChooseLanguageTitle to "Choisir une langue",
+        TextKey.SystemLanguage to "Langue du système",
+        TextKey.ResolvedSystemLanguage to "Langue du système · {language}",
+        TextKey.AppearanceTitle to "Apparence",
+        TextKey.AppearanceSubtitle to "Les préférences sont enregistrées sur cet appareil.",
         TextKey.Back to "Retour",
         TextKey.Cancel to "Annuler",
         TextKey.Confirm to "Confirmer",

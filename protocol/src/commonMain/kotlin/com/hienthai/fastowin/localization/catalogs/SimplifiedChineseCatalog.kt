@@ -9,6 +9,13 @@ import com.hienthai.fastowin.localization.TextKey
 internal val simplifiedChineseCatalog = LocalizationCatalog(
     language = AppLanguage.SIMPLIFIED_CHINESE,
     texts = mapOf(
+        TextKey.SettingsTitle to "设置",
+        TextKey.LanguageTitle to "语言",
+        TextKey.ChooseLanguageTitle to "选择语言",
+        TextKey.SystemLanguage to "跟随系统",
+        TextKey.ResolvedSystemLanguage to "跟随系统 · {language}",
+        TextKey.AppearanceTitle to "外观",
+        TextKey.AppearanceSubtitle to "偏好设置保存在此设备上。",
         TextKey.Back to "返回",
         TextKey.Cancel to "取消",
         TextKey.Confirm to "确认",

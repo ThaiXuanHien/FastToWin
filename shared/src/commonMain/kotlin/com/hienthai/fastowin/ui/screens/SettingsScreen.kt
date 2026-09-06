@@ -16,6 +16,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.VolumeUp
@@ -28,6 +30,9 @@ import androidx.compose.material.icons.rounded.MeetingRoom
 import androidx.compose.material.icons.rounded.NotificationsActive
 import androidx.compose.material.icons.rounded.RestartAlt
 import androidx.compose.material.icons.rounded.Settings
+import androidx.compose.material.icons.rounded.Language
+import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
+import androidx.compose.material3.RadioButton
 import androidx.compose.material.icons.rounded.TaskAlt
 import androidx.compose.material.icons.rounded.Vibration
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -38,11 +43,17 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -55,6 +66,11 @@ import com.hienthai.fastowin.platform.AppPushStatus
 import com.hienthai.fastowin.platform.AppInstallStatus
 import com.hienthai.fastowin.protocol.PushPreferencesSnapshot
 import com.hienthai.fastowin.ui.components.ArcadeBackdrop
+import com.hienthai.fastowin.ui.components.ArcadeDialog
+import com.hienthai.fastowin.localization.AppLanguage
+import com.hienthai.fastowin.localization.LocalLocalization
+import com.hienthai.fastowin.localization.TextKey
+import com.hienthai.fastowin.localization.localized
 import com.hienthai.fastowin.ui.components.ArcadePanel
 import com.hienthai.fastowin.ui.components.ArcadeActionButton
 import com.hienthai.fastowin.ui.components.ArcadeActionStyle
@@ -86,6 +102,17 @@ fun SettingsScreen(
     onInstallApp: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
+    var showLanguageDialog by rememberSaveable { mutableStateOf(false) }
+    if (showLanguageDialog) {
+        LanguageDialog(
+            selectedCode = preferences.languageCode,
+            onSelected = { code ->
+                onPreferencesChange(preferences.copy(languageCode = code))
+                showLanguageDialog = false
+            },
+            onDismiss = { showLanguageDialog = false }
+        )
+    }
     SystemBackHandler(onBack = onBack)
     ArcadeBackdrop(modifier = modifier.fillMaxSize()) {
         Scaffold(
@@ -93,7 +120,7 @@ fun SettingsScreen(
             containerColor = Color.Transparent,
             topBar = {
                 FastToWinHeader(
-                    title = "Cài đặt",
+                    title = localized(TextKey.SettingsTitle),
                     gold = gold,
                     gems = gems,
                     unreadNotifications = unreadNotifications,
@@ -263,9 +290,10 @@ fun SettingsScreen(
                     }
 
                     SettingsSection(
-                        title = "Giao diện",
-                        subtitle = "Tùy chọn được lưu riêng trên thiết bị này."
+                        title = localized(TextKey.AppearanceTitle),
+                        subtitle = localized(TextKey.AppearanceSubtitle)
                     ) {
+                        LanguageSettingRow(preferences.languageCode) { showLanguageDialog = true }
                         SettingChoiceTitle(Icons.Rounded.ColorLens, "Chủ đề ứng dụng")
                         ChoiceRow(
                             entries = AppThemeMode.entries,
@@ -325,6 +353,93 @@ fun SettingsScreen(
                     )
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun LanguageSettingRow(code: String, onClick: () -> Unit) {
+    val selected = AppLanguage.entries.firstOrNull { it.code == code }
+    val resolved = LocalLocalization.current.language
+    Surface(
+        onClick = onClick,
+        modifier = Modifier.fillMaxWidth().testTag("language_setting"),
+        shape = MaterialTheme.shapes.medium,
+        color = MaterialTheme.colorScheme.surfaceVariant
+    ) {
+        Row(
+            modifier = Modifier.heightIn(min = 64.dp).padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Icon(Icons.Rounded.Language, contentDescription = null, tint = ArcadePalette.Blue300)
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(localized(TextKey.LanguageTitle), fontWeight = FontWeight.SemiBold)
+                Text(
+                    selected?.nativeName ?: localized(TextKey.ResolvedSystemLanguage, "language" to resolved.nativeName),
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
+            Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, contentDescription = null)
+        }
+    }
+}
+
+@Composable
+private fun LanguageDialog(selectedCode: String, onSelected: (String) -> Unit, onDismiss: () -> Unit) {
+    val selection = AppLanguage.entries.firstOrNull { it.code == selectedCode }?.code ?: "system"
+    val resolvedLanguage = LocalLocalization.current.language
+    ArcadeDialog(
+        title = localized(TextKey.ChooseLanguageTitle),
+        onDismissRequest = onDismiss,
+        modifier = Modifier.testTag("language_dialog")
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).selectableGroup(),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            LanguageOption(
+                code = "system",
+                title = localized(TextKey.SystemLanguage),
+                subtitle = localized(TextKey.ResolvedSystemLanguage, "language" to resolvedLanguage.nativeName),
+                isSelected = selection == "system"
+            ) {
+                onSelected("system")
+            }
+            AppLanguage.entries.forEach { language ->
+                LanguageOption(language.code, language.nativeName, language.englishName, selection == language.code) {
+                    onSelected(language.code)
+                }
+            }
+            ArcadeActionButton(
+                label = localized(TextKey.Close), onClick = onDismiss,
+                style = ArcadeActionStyle.OUTLINE,
+                modifier = Modifier.fillMaxWidth().testTag("language_close")
+            )
+        }
+    }
+}
+
+@Composable
+private fun LanguageOption(code: String, title: String, subtitle: String, isSelected: Boolean, onClick: () -> Unit) {
+    Surface(
+        shape = MaterialTheme.shapes.medium,
+        color = if (isSelected) ArcadePalette.Navy700 else Color.Transparent,
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().heightIn(min = 64.dp)
+                .testTag("language_option_$code")
+                .selectable(selected = isSelected, role = Role.RadioButton, onClick = onClick)
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(title, color = ArcadePalette.White, fontWeight = FontWeight.SemiBold)
+                if (subtitle != title) Text(subtitle, color = ArcadePalette.White, style = MaterialTheme.typography.bodySmall)
+            }
+            RadioButton(selected = isSelected, onClick = null)
         }
     }
 }

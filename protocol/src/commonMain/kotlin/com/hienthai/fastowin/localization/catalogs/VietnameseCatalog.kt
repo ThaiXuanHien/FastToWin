@@ -9,6 +9,13 @@ import com.hienthai.fastowin.localization.TextKey
 internal val vietnameseCatalog = LocalizationCatalog(
     language = AppLanguage.VIETNAMESE,
     texts = mapOf(
+        TextKey.SettingsTitle to "Cài đặt",
+        TextKey.LanguageTitle to "Ngôn ngữ",
+        TextKey.ChooseLanguageTitle to "Chọn ngôn ngữ",
+        TextKey.SystemLanguage to "Theo hệ thống",
+        TextKey.ResolvedSystemLanguage to "Theo hệ thống · {language}",
+        TextKey.AppearanceTitle to "Giao diện",
+        TextKey.AppearanceSubtitle to "Tùy chọn được lưu riêng trên thiết bị này.",
         TextKey.Back to "Quay lại",
         TextKey.Cancel to "Hủy",
         TextKey.Confirm to "Xác nhận",

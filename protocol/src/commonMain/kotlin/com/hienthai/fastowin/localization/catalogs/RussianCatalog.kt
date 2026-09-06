@@ -9,6 +9,13 @@ import com.hienthai.fastowin.localization.TextKey
 internal val russianCatalog = LocalizationCatalog(
     language = AppLanguage.RUSSIAN,
     texts = mapOf(
+        TextKey.SettingsTitle to "Настройки",
+        TextKey.LanguageTitle to "Язык",
+        TextKey.ChooseLanguageTitle to "Выбрать язык",
+        TextKey.SystemLanguage to "Язык системы",
+        TextKey.ResolvedSystemLanguage to "Язык системы · {language}",
+        TextKey.AppearanceTitle to "Оформление",
+        TextKey.AppearanceSubtitle to "Настройки сохраняются на этом устройстве.",
         TextKey.Back to "Назад",
         TextKey.Cancel to "Отмена",
         TextKey.Confirm to "Подтвердить",

@@ -68,6 +68,10 @@ import com.hienthai.fastowin.ui.screens.TournamentScreen
 import com.hienthai.fastowin.ui.screens.MaintenanceScreen
 import com.hienthai.fastowin.ui.screens.OfflineScreen
 import com.hienthai.fastowin.ui.theme.FastToWinTheme
+import com.hienthai.fastowin.localization.ProvideLocalization
+import com.hienthai.fastowin.localization.applyPlatformLanguageTag
+import com.hienthai.fastowin.localization.platformLanguageTags
+import com.hienthai.fastowin.localization.resolveSavedLanguage
 import com.hienthai.fastowin.platform.epochMillis
 import com.hienthai.fastowin.platform.RoomDeepLink
 import com.hienthai.fastowin.platform.RoomDeepLinkRouter
@@ -160,12 +164,18 @@ fun FastToWinApp(
         }
     }
 
-    FastToWinTheme(preferences = appPreferences) {
-        Surface(
-            modifier = Modifier.fillMaxSize(),
-            color = MaterialTheme.colorScheme.background,
-            contentColor = MaterialTheme.colorScheme.onBackground
-        ) {
+    val resolvedLanguage = resolveSavedLanguage(appPreferences.languageCode, platformLanguageTags())
+    LaunchedEffect(resolvedLanguage) {
+        applyPlatformLanguageTag(resolvedLanguage.languageTag)
+    }
+
+    ProvideLocalization(resolvedLanguage) {
+        FastToWinTheme(preferences = appPreferences) {
+            Surface(
+                modifier = Modifier.fillMaxSize(),
+                color = MaterialTheme.colorScheme.background,
+                contentColor = MaterialTheme.colorScheme.onBackground
+            ) {
             if (serviceReachable == true && serviceStatus?.maintenance == true) {
                 ArcadeBackdrop(modifier = Modifier.fillMaxSize()) {
                     MaintenanceScreen(message = serviceStatus?.message)
@@ -242,6 +252,7 @@ fun FastToWinApp(
                     onOfflinePracticeLaunched = { launchOfflinePractice = false },
                     pushBridge = pushBridge
                 )
+            }
             }
         }
     }

@@ -321,6 +321,12 @@ git commit -m "feat: resolve and persist app language"
 
 ### Task 3: Compose provider and Settings language selector
 
+**Progress (2026-09-06):** Implemented on `codex/multilingual-localization`.
+The language provider now wraps the existing app state without recreating navigation
+or controllers. Settings offers System plus all 12 languages in a scrollable,
+accessible selector and applies changes immediately. Android/shared/Web compilation
+passed, and all 3 focused selector UI tests passed on `emulator-5554`.
+
 **Files:**
 - Create: `shared/src/commonMain/kotlin/com/hienthai/fastowin/localization/LocalLocalization.kt`
 - Modify: `shared/src/commonMain/kotlin/com/hienthai/fastowin/FastToWinApp.kt`
@@ -331,7 +337,7 @@ git commit -m "feat: resolve and persist app language"
 - Consumes: Tasks 1–2.
 - Produces: `LocalLocalization`, `ProvideLocalization`, `localized`, test tags `language_setting`, `language_dialog`, and `language_option_{languageCode}`.
 
-- [ ] **Step 1: Write failing Compose UI tests**
+- [x] **Step 1: Write failing Compose UI tests**
 
 ```kotlin
 @Test
@@ -366,13 +372,13 @@ fun languageDialogContainsSystemAndTwelveLanguages() {
 }
 ```
 
-- [ ] **Step 2: Confirm RED**
+- [x] **Step 2: Confirm RED**
 
 ```powershell
 ./gradlew.bat :app:compileDevDebugAndroidTestKotlin --no-daemon
 ```
 
-- [ ] **Step 3: Implement the Compose adapter and root provider**
+- [x] **Step 3: Implement the Compose adapter and root provider**
 
 ```kotlin
 val LocalLocalization = staticCompositionLocalOf {
@@ -395,7 +401,7 @@ In `FastToWinApp`, resolve language from `appPreferences.languageCode` and
 wrap `FastToWinTheme` with `ProvideLocalization`. Do not key or recreate
 `AuthController`, `GameController`, or navigation state by language.
 
-- [ ] **Step 4: Implement the responsive selector**
+- [x] **Step 4: Implement the responsive selector**
 
 Add a Language section to Settings. Use `ArcadeDialog`, a vertically scrollable
 list, native name plus English name, selected semantics and the exact test tags
@@ -408,14 +414,14 @@ showLanguageDialog = false
 
 Add every Settings selector string to all 12 catalogs in the same commit.
 
-- [ ] **Step 5: Run the focused UI test**
+- [x] **Step 5: Run the focused UI test**
 
 ```powershell
 ./gradlew.bat :app:connectedDevDebugAndroidTest `
   "-Pandroid.testInstrumentationRunnerArguments.class=com.hienthai.fastowin.LocalizationSettingsUiTest" --no-daemon
 ```
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```powershell
 git add protocol/src/commonMain/kotlin/com/hienthai/fastowin/localization/catalogs shared/src/commonMain/kotlin/com/hienthai/fastowin/FastToWinApp.kt shared/src/commonMain/kotlin/com/hienthai/fastowin/localization shared/src/commonMain/kotlin/com/hienthai/fastowin/ui/screens/SettingsScreen.kt app/src/androidTest/java/com/hienthai/fastowin/LocalizationSettingsUiTest.kt

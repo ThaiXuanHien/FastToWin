@@ -9,6 +9,13 @@ import com.hienthai.fastowin.localization.TextKey
 internal val koreanCatalog = LocalizationCatalog(
     language = AppLanguage.KOREAN,
     texts = mapOf(
+        TextKey.SettingsTitle to "설정",
+        TextKey.LanguageTitle to "언어",
+        TextKey.ChooseLanguageTitle to "언어 선택",
+        TextKey.SystemLanguage to "시스템 설정 사용",
+        TextKey.ResolvedSystemLanguage to "시스템 설정 · {language}",
+        TextKey.AppearanceTitle to "화면 설정",
+        TextKey.AppearanceSubtitle to "설정은 이 기기에 저장됩니다.",
         TextKey.Back to "뒤로",
         TextKey.Cancel to "취소",
         TextKey.Confirm to "확인",
