@@ -263,7 +263,7 @@ fun unknownLanguageCodeResolvesThroughSystemInsteadOfResettingPreferences() {
 }
 ```
 
-- [x] **Step 2: Confirm RED**
+- [ ] **Step 2: Confirm RED**
 
 ```powershell
 ./gradlew.bat :shared:testAndroidHostTest --tests "*AppPreferencesTest" --tests "*LanguagePreferenceTest" --no-daemon
@@ -665,7 +665,7 @@ git commit -m "feat: localize profile and progression"
 **Interfaces:**
 - Produces: localized secondary feature screens and the visible `Mặt số` rename.
 
-- [ ] **Step 1: Write failing shop terminology and multilingual screen tests**
+- [x] **Step 1: Write failing shop terminology and multilingual screen tests**
 
 ```kotlin
 @Test
@@ -686,13 +686,13 @@ fun englishShopUsesNumberSkinsWithoutChangingIds() {
 Add screen assertions covering Chinese Friends, Japanese Clan, Korean
 Leaderboard, Indonesian Tournament, Thai Notifications and French Shop.
 
-- [ ] **Step 2: Confirm RED**
+- [x] **Step 2: Confirm RED**
 
 ```powershell
 ./gradlew.bat :app:compileDevDebugAndroidTestKotlin --no-daemon
 ```
 
-- [ ] **Step 3: Migrate every listed screen and product display name**
+- [x] **Step 3: Migrate every listed screen and product display name**
 
 Change `StoreBillingState.notice/error` into a stable `TextKey`, named arguments
 and optional platform raw fallback so Android/iOS/Web gateways do not emit
@@ -705,7 +705,7 @@ When editing `TournamentScreen.kt`, preserve the pre-existing 4 dp Spacer workin
 tree change. Stage localization hunks interactively so that unrelated line is not
 claimed by this task unless the owner commits it separately.
 
-- [ ] **Step 4: Verify terminology and remaining literals**
+- [x] **Step 4: Verify terminology and remaining literals**
 
 ```powershell
 rg -n -i "Mặt bài" shared protocol README.md BACKEND_SETUP.md docs --glob '!docs/superpowers/specs/**' --glob '!docs/superpowers/plans/**'
@@ -714,7 +714,7 @@ rg -n '"[^"\r\n]*[À-ỹ][^"\r\n]*"' shared/src/commonMain/kotlin/com/hienthai/f
 
 Expected: the first command has no matches; the second has no user-facing match.
 
-- [ ] **Step 5: Run focused tests and commit only scoped hunks**
+- [x] **Step 5: Run focused tests and commit only scoped hunks**
 
 ```powershell
 ./gradlew.bat :protocol:jvmTest :app:connectedDevDebugAndroidTest `

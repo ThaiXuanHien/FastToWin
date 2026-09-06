@@ -45,6 +45,8 @@ import androidx.compose.ui.unit.dp
 import com.hienthai.fastowin.protocol.FriendPresence
 import com.hienthai.fastowin.protocol.FriendSnapshot
 import com.hienthai.fastowin.protocol.ServerMessage
+import com.hienthai.fastowin.localization.TextKey
+import com.hienthai.fastowin.localization.localized
 import com.hienthai.fastowin.state.GameState
 import com.hienthai.fastowin.state.LobbyStage
 import com.hienthai.fastowin.ui.components.ArcadeActionButton
@@ -103,13 +105,13 @@ fun FriendsScreen(
 
     removeTarget?.let { target ->
         ArcadeDialog(
-            title = "Hủy kết bạn?",
-            subtitle = "Bạn và ${target.displayName} sẽ không còn trong danh sách bạn bè.",
+            title = localized(TextKey.RemoveFriendTitle),
+            subtitle = localized(TextKey.RemoveFriendDescription, "player" to target.displayName),
             onDismissRequest = { removeTarget = null }
         ) {
             Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 ArcadeActionButton(
-                    label = "Hủy kết bạn",
+                    label = localized(TextKey.RemoveFriendAction),
                     onClick = {
                         onRemoveFriend(target.userId)
                         removeTarget = null
@@ -118,7 +120,7 @@ fun FriendsScreen(
                     modifier = Modifier.fillMaxWidth()
                 )
                 ArcadeActionButton(
-                    label = "Quay lại",
+                    label = localized(TextKey.GoBack),
                     onClick = { removeTarget = null },
                     style = ArcadeActionStyle.OUTLINE,
                     modifier = Modifier.fillMaxWidth()
@@ -128,13 +130,13 @@ fun FriendsScreen(
     }
     blockTarget?.let { target ->
         ArcadeDialog(
-            title = "Chặn người chơi?",
-            subtitle = "${target.displayName} sẽ không thể gửi lời mời kết bạn hoặc lời mời vào phòng cho bạn.",
+            title = localized(TextKey.BlockPlayerTitle),
+            subtitle = localized(TextKey.BlockFriendDescription, "player" to target.displayName),
             onDismissRequest = { blockTarget = null }
         ) {
             Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 ArcadeActionButton(
-                    label = "Chặn",
+                    label = localized(TextKey.Block),
                     onClick = {
                         onBlockPlayer(target.userId)
                         blockTarget = null
@@ -143,7 +145,7 @@ fun FriendsScreen(
                     modifier = Modifier.fillMaxWidth()
                 )
                 ArcadeActionButton(
-                    label = "Quay lại",
+                    label = localized(TextKey.GoBack),
                     onClick = { blockTarget = null },
                     style = ArcadeActionStyle.OUTLINE,
                     modifier = Modifier.fillMaxWidth()
@@ -166,7 +168,7 @@ fun FriendsScreen(
             Column(modifier = Modifier.fillMaxSize().padding(vertical = 12.dp)) {
                 if (showBackButton) {
                     FastToWinHeader(
-                        title = "Bạn bè",
+                        title = localized(TextKey.Friends),
                         gold = state.profile?.progression?.gold ?: 0,
                         gems = state.profile?.progression?.gems ?: 0,
                         unreadNotifications = state.unreadNotificationCount,
@@ -182,9 +184,9 @@ fun FriendsScreen(
                 ) {
                     item {
                         ArcadeIconHero(
-                            kicker = "SOCIAL HUB",
-                            title = "Biệt đội của bạn",
-                            subtitle = "Kết nối bằng mã người chơi và mời bạn vào trận.",
+                            kicker = localized(TextKey.SocialHub),
+                            title = localized(TextKey.YourSquad),
+                            subtitle = localized(TextKey.YourSquadDescription),
                             icon = Icons.Default.Groups,
                             accent = ArcadePalette.Mint600
                         )
@@ -216,7 +218,7 @@ fun FriendsScreen(
                     } else {
                         if (state.roomInvitations.isNotEmpty()) {
                             item {
-                                SocialSectionTitle("Lời mời vào phòng", "${state.roomInvitations.size} mới")
+                                SocialSectionTitle(localized(TextKey.RoomInvitations), localized(TextKey.NewCount, "count" to state.roomInvitations.size))
                             }
                             items(
                                 state.roomInvitations.take(visibleRoomInvitationCount),
@@ -229,7 +231,7 @@ fun FriendsScreen(
                                     ) {
                                         Text(invitation.fromDisplayName, fontWeight = FontWeight.Black)
                                         Text(
-                                            "Mời bạn vào “${invitation.roomName}”",
+                                            localized(TextKey.RoomInvitationSummary, "room" to invitation.roomName),
                                             color = MaterialTheme.colorScheme.onSurfaceVariant
                                         )
                                         Column(
@@ -237,7 +239,7 @@ fun FriendsScreen(
                                             verticalArrangement = Arrangement.spacedBy(8.dp)
                                         ) {
                                             ArcadeActionButton(
-                                                label = "THAM GIA",
+                                                label = localized(TextKey.JoinRoom),
                                                 onClick = {
                                                     onRespondRoomInvitation(invitation.invitationId, true)
                                                 },
@@ -245,7 +247,7 @@ fun FriendsScreen(
                                                 modifier = Modifier.fillMaxWidth()
                                             )
                                             ArcadeActionButton(
-                                                label = "TỪ CHỐI",
+                                                label = localized(TextKey.Decline),
                                                 onClick = {
                                                     onRespondRoomInvitation(invitation.invitationId, false)
                                                 },
@@ -274,8 +276,8 @@ fun FriendsScreen(
                         if (state.social.incomingRequests.isNotEmpty()) {
                             item {
                                 SocialSectionTitle(
-                                    "Lời mời kết bạn",
-                                    "${state.social.incomingRequests.size} mới"
+                                    localized(TextKey.FriendRequests),
+                                    localized(TextKey.NewCount, "count" to state.social.incomingRequests.size)
                                 )
                             }
                             items(
@@ -301,7 +303,7 @@ fun FriendsScreen(
                                             Column(modifier = Modifier.weight(1f)) {
                                                 Text(request.displayName, fontWeight = FontWeight.Black)
                                                 Text(
-                                                    "Mã: ${request.playerCode}",
+                                                    localized(TextKey.PlayerCodeShort, "code" to request.playerCode),
                                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                                 )
                                             }
@@ -315,7 +317,7 @@ fun FriendsScreen(
                                             ) {
                                                 Icon(
                                                     Icons.Default.Block,
-                                                    contentDescription = "Chặn ${request.displayName}",
+                                                    contentDescription = localized(TextKey.BlockPlayerNamed, "player" to request.displayName),
                                                     tint = ArcadePalette.Coral400
                                                 )
                                             }
@@ -325,14 +327,14 @@ fun FriendsScreen(
                                             verticalArrangement = Arrangement.spacedBy(8.dp)
                                         ) {
                                             ArcadeActionButton(
-                                                label = "CHẤP NHẬN",
+                                                label = localized(TextKey.Accept),
                                                 onClick = {
                                                     onRespondRequest(request.requestId, true)
                                                 },
                                                 modifier = Modifier.fillMaxWidth()
                                             )
                                             ArcadeActionButton(
-                                                label = "TỪ CHỐI",
+                                                label = localized(TextKey.Decline),
                                                 onClick = {
                                                     onRespondRequest(request.requestId, false)
                                                 },
@@ -362,12 +364,12 @@ fun FriendsScreen(
                             it.presence != FriendPresence.OFFLINE
                         }
                         item {
-                            SocialSectionTitle("Danh sách bạn bè", "$activeFriends online")
+                            SocialSectionTitle(localized(TextKey.FriendList), localized(TextKey.ActiveFriends, "count" to activeFriends))
                         }
                         if (state.social.friends.isEmpty()) {
                             item {
                                 NoticePanel(
-                                    "Chưa có đồng đội. Nhập mã người chơi để gửi lời mời.",
+                                    localized(TextKey.NoFriendsDescription),
                                     ArcadePalette.Blue300
                                 )
                             }
@@ -409,7 +411,7 @@ fun FriendsScreen(
                         if (state.social.outgoingRequests.isNotEmpty()) {
                             item {
                                 SocialSectionTitle(
-                                    "Đang chờ phản hồi",
+                                    localized(TextKey.PendingReplies),
                                     state.social.outgoingRequests.size.toString()
                                 )
                             }
@@ -432,12 +434,12 @@ fun FriendsScreen(
                                         Column(modifier = Modifier.weight(1f)) {
                                             Text(request.displayName, fontWeight = FontWeight.Black)
                                             Text(
-                                                "Đã gửi lời mời · ${request.playerCode}",
+                                                localized(TextKey.SentFriendInvitation, "code" to request.playerCode),
                                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                                             )
                                         }
                                         ArcadeActionButton(
-                                            label = "HỦY",
+                                            label = localized(TextKey.Cancel),
                                             onClick = { onCancelRequest(request.requestId) },
                                             style = ArcadeActionStyle.OUTLINE,
                                             modifier = Modifier.width(104.dp)
@@ -463,7 +465,7 @@ fun FriendsScreen(
                         if (state.social.blockedPlayers.isNotEmpty()) {
                             item {
                                 SocialSectionTitle(
-                                    "Đã chặn",
+                                    localized(TextKey.BlockedPlayers),
                                     state.social.blockedPlayers.size.toString()
                                 )
                             }
@@ -486,12 +488,12 @@ fun FriendsScreen(
                                         Column(modifier = Modifier.weight(1f)) {
                                             Text(player.displayName, fontWeight = FontWeight.Black)
                                             Text(
-                                                "Mã: ${player.playerCode}",
+                                                localized(TextKey.PlayerCodeShort, "code" to player.playerCode),
                                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                                             )
                                         }
                                         ArcadeActionButton(
-                                            label = "BỎ CHẶN",
+                                            label = localized(TextKey.Unblock),
                                             onClick = { onUnblockPlayer(player.userId) },
                                             style = ArcadeActionStyle.OUTLINE,
                                             modifier = Modifier.width(118.dp)
@@ -533,7 +535,7 @@ private fun FriendCodeForm(
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     FriendCodeField(playerCode, onPlayerCodeChange, Modifier.fillMaxWidth())
                     ArcadeActionButton(
-                        label = "KẾT BẠN",
+                        label = localized(TextKey.AddFriend),
                         onClick = onSubmit,
                         enabled = enabled,
                         modifier = Modifier.fillMaxWidth()
@@ -547,7 +549,7 @@ private fun FriendCodeForm(
                 ) {
                     FriendCodeField(playerCode, onPlayerCodeChange, Modifier.weight(1f))
                     ArcadeActionButton(
-                        label = "KẾT BẠN",
+                        label = localized(TextKey.AddFriend),
                         onClick = onSubmit,
                         enabled = enabled,
                         modifier = Modifier.width(132.dp)
@@ -567,8 +569,8 @@ private fun FriendCodeField(
     OutlinedTextField(
         value = value,
         onValueChange = onValueChange,
-        label = { Text("Mã người chơi") },
-        placeholder = { Text("VD: FTW8X2Q") },
+        label = { Text(localized(TextKey.PlayerCodeLabel)) },
+        placeholder = { Text(localized(TextKey.PlayerCodeExample)) },
         singleLine = true,
         modifier = modifier
     )
@@ -685,7 +687,7 @@ private fun FriendCard(
                     ) {
                         Icon(
                             Icons.Default.MoreVert,
-                            contentDescription = "Thao tác với ${friend.displayName}"
+                            contentDescription = localized(TextKey.PlayerActions, "player" to friend.displayName)
                         )
                     }
                     DropdownMenu(
@@ -694,7 +696,7 @@ private fun FriendCard(
                         containerColor = ArcadePalette.Navy800
                     ) {
                         DropdownMenuItem(
-                            text = { Text("Hủy kết bạn", color = ArcadePalette.White) },
+                            text = { Text(localized(TextKey.RemoveFriendAction), color = ArcadePalette.White) },
                             leadingIcon = {
                                 Icon(
                                     Icons.Default.PersonRemove,
@@ -708,7 +710,7 @@ private fun FriendCard(
                             }
                         )
                         DropdownMenuItem(
-                            text = { Text("Chặn người chơi", color = ArcadePalette.Coral400) },
+                            text = { Text(localized(TextKey.Block), color = ArcadePalette.Coral400) },
                             leadingIcon = {
                                 Icon(
                                     Icons.Default.Block,
@@ -727,9 +729,9 @@ private fun FriendCard(
             if (canInvite) {
                 ArcadeActionButton(
                     label = when {
-                        isInvited -> "Đã mời"
-                        isSendingInvitation -> "Đang gửi…"
-                        else -> "Mời vào phòng"
+                        isInvited -> localized(TextKey.InviteSent)
+                        isSendingInvitation -> localized(TextKey.SendingInvitation)
+                        else -> localized(TextKey.InviteToRoom)
                     },
                     onClick = { onInviteFriend(friend.userId) },
                     enabled = friend.presence == FriendPresence.ONLINE &&
@@ -751,8 +753,8 @@ fun RoomInvitationDialog(
     onDefer: () -> Unit
 ) {
     ArcadeDialog(
-        title = "LỜI MỜI VÀO PHÒNG",
-        subtitle = "${invitation.fromDisplayName} đang chờ bạn",
+        title = localized(TextKey.RoomInvitationTitle),
+        subtitle = localized(TextKey.WaitingForYou, "player" to invitation.fromDisplayName),
         onDismissRequest = onDefer
     ) {
         Surface(
@@ -765,7 +767,7 @@ fun RoomInvitationDialog(
                 verticalArrangement = Arrangement.spacedBy(4.dp),
                 modifier = Modifier.padding(16.dp)
             ) {
-                Text("PHÒNG", style = MaterialTheme.typography.labelSmall, color = ArcadePalette.Blue100)
+                Text(localized(TextKey.RoomLabel), style = MaterialTheme.typography.labelSmall, color = ArcadePalette.Blue100)
                 Text(
                     invitation.roomName,
                     style = MaterialTheme.typography.titleMedium,
@@ -779,13 +781,13 @@ fun RoomInvitationDialog(
             modifier = Modifier.fillMaxWidth()
         ) {
             ArcadeActionButton(
-                label = "TỪ CHỐI",
+                label = localized(TextKey.Decline),
                 onClick = { onRespond(false) },
                 style = ArcadeActionStyle.DANGER,
                 modifier = Modifier.weight(1f)
             )
             ArcadeActionButton(
-                label = "THAM GIA",
+                label = localized(TextKey.JoinRoom),
                 onClick = { onRespond(true) },
                 style = ArcadeActionStyle.GOLD,
                 modifier = Modifier.weight(1f)

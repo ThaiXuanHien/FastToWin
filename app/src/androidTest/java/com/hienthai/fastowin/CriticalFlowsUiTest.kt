@@ -631,7 +631,7 @@ class CriticalFlowsUiTest {
         composeRule.onNodeWithText("Phân tích nhịp chơi").performScrollTo().assertIsDisplayed()
         composeRule.onNodeWithTag("share_result").performScrollTo().performClick()
         composeRule.runOnIdle {
-            assertEquals("CHIẾN THẮNG", sharedResult?.result)
+            assertEquals("CHIẾN THẮNG!", sharedResult?.result)
             assertEquals("Hiền", sharedResult?.playerName)
             assertEquals(500, sharedResult?.playerScore)
             assertEquals("Hiếu", sharedResult?.opponentName)

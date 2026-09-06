@@ -17,6 +17,8 @@ import com.android.billingclient.api.Purchase
 import com.android.billingclient.api.PurchasesUpdatedListener
 import com.android.billingclient.api.QueryProductDetailsParams
 import com.android.billingclient.api.QueryPurchasesParams
+import com.hienthai.fastowin.localization.LocalizedText
+import com.hienthai.fastowin.localization.TextKey
 import com.hienthai.fastowin.protocol.GemPackageSnapshot
 import com.hienthai.fastowin.protocol.StorePlatform
 import kotlinx.coroutines.flow.Flow
@@ -74,12 +76,12 @@ private class AndroidStoreBillingGateway(
                     queryProducts()
                     queryUnfinishedPurchases()
                 } else {
-                    useSandboxOrError("Google Play Billing chưa sẵn sàng.")
+                    useSandboxOrError(TextKey.BillingPlayNotReady)
                 }
             }
 
             override fun onBillingServiceDisconnected() {
-                _state.update { it.copy(isReady = false, notice = "Đang kết nối lại Google Play...") }
+                _state.update { it.copy(isReady = false, notice = LocalizedText(TextKey.BillingPlayReconnecting)) }
             }
         })
     }
@@ -94,13 +96,13 @@ private class AndroidStoreBillingGateway(
         val params = QueryProductDetailsParams.newBuilder().setProductList(products).build()
         billingClient.queryProductDetailsAsync(params) { result, queryResult ->
             if (result.responseCode != BillingClient.BillingResponseCode.OK) {
-                useSandboxOrError("Không tải được giá từ Google Play.")
+                useSandboxOrError(TextKey.BillingPriceLoadFailed)
                 return@queryProductDetailsAsync
             }
             productDetails.clear()
             queryResult.productDetailsList.forEach { productDetails[it.productId] = it }
             if (productDetails.isEmpty()) {
-                useSandboxOrError("Các gói Gem chưa được tạo trên Google Play Console.")
+                useSandboxOrError(TextKey.BillingProductsMissing)
                 return@queryProductDetailsAsync
             }
             val prices = productDetails.mapValues { (productId, details) ->
@@ -138,7 +140,7 @@ private class AndroidStoreBillingGateway(
         val details = productDetails[productId]
         if (details == null) {
             if (sandboxEnabled) emitSandboxPurchase(productId) else {
-                _state.update { it.copy(error = "Gói Gem này chưa sẵn sàng trên Google Play.") }
+                _state.update { it.copy(error = LocalizedText(TextKey.BillingProductUnavailable)) }
             }
             return
         }
@@ -157,7 +159,7 @@ private class AndroidStoreBillingGateway(
         val result = billingClient.launchBillingFlow(activity, flowParams)
         if (result.responseCode != BillingClient.BillingResponseCode.OK) {
             _state.update {
-                it.copy(purchasingProductId = null, error = "Không thể mở thanh toán Google Play.")
+                it.copy(purchasingProductId = null, error = LocalizedText(TextKey.BillingLaunchFailed))
             }
         }
     }
@@ -166,14 +168,14 @@ private class AndroidStoreBillingGateway(
         when (result.responseCode) {
             BillingClient.BillingResponseCode.OK -> processPurchases(purchases.orEmpty())
             BillingClient.BillingResponseCode.USER_CANCELED ->
-                _state.update { it.copy(purchasingProductId = null, notice = "Đã hủy thanh toán.") }
+                _state.update { it.copy(purchasingProductId = null, notice = LocalizedText(TextKey.BillingCancelled)) }
             BillingClient.BillingResponseCode.ITEM_ALREADY_OWNED -> {
-                _state.update { it.copy(purchasingProductId = null, notice = "Đang khôi phục giao dịch trước...") }
+                _state.update { it.copy(purchasingProductId = null, notice = LocalizedText(TextKey.BillingRestoring)) }
                 queryUnfinishedPurchases()
             }
             BillingClient.BillingResponseCode.BILLING_UNAVAILABLE ->
-                _state.update { it.copy(purchasingProductId = null, error = "Google Play Billing không khả dụng trên thiết bị.") }
-            else -> _state.update { it.copy(purchasingProductId = null, error = "Thanh toán chưa hoàn tất.") }
+                _state.update { it.copy(purchasingProductId = null, error = LocalizedText(TextKey.BillingUnavailable)) }
+            else -> _state.update { it.copy(purchasingProductId = null, error = LocalizedText(TextKey.BillingIncomplete)) }
         }
     }
 
@@ -191,10 +193,10 @@ private class AndroidStoreBillingGateway(
                             purchaseToken = purchase.purchaseToken
                         ))
                     }
-                    _state.update { it.copy(purchasingProductId = productId, notice = "Đang xác thực giao dịch...") }
+                    _state.update { it.copy(purchasingProductId = productId, notice = LocalizedText(TextKey.BillingVerifying)) }
                 }
                 Purchase.PurchaseState.PENDING -> _state.update {
-                    it.copy(purchasingProductId = null, notice = "Thanh toán đang chờ Google Play xử lý.")
+                    it.copy(purchasingProductId = null, notice = LocalizedText(TextKey.BillingPending))
                 }
                 else -> Unit
             }
@@ -203,7 +205,7 @@ private class AndroidStoreBillingGateway(
 
     private fun emitSandboxPurchase(productId: String) {
         val token = "dev:${StorePlatform.GOOGLE_PLAY.name}:$productId:${UUID.randomUUID()}"
-        _state.update { it.copy(purchasingProductId = productId, notice = "Đang xác thực giao dịch sandbox...") }
+        _state.update { it.copy(purchasingProductId = productId, notice = LocalizedText(TextKey.BillingSandboxVerifying)) }
         _purchases.tryEmit(PlatformStorePurchase(
             requestId = UUID.randomUUID().toString(),
             store = StorePlatform.GOOGLE_PLAY,
@@ -215,21 +217,21 @@ private class AndroidStoreBillingGateway(
     override fun finishPurchase(purchaseToken: String) {
         if (purchaseToken.startsWith("dev:")) {
             emittedTokens.remove(purchaseToken)
-            _state.update { it.copy(purchasingProductId = null, notice = "Đã cộng Gem vào tài khoản.") }
+            _state.update { it.copy(purchasingProductId = null, notice = LocalizedText(TextKey.BillingGemsAdded)) }
             return
         }
         val params = ConsumeParams.newBuilder().setPurchaseToken(purchaseToken).build()
         billingClient.consumeAsync(params) { result, token ->
             if (result.responseCode == BillingClient.BillingResponseCode.OK) {
                 emittedTokens.remove(token)
-                _state.update { it.copy(purchasingProductId = null, notice = "Đã cộng Gem vào tài khoản.") }
+                _state.update { it.copy(purchasingProductId = null, notice = LocalizedText(TextKey.BillingGemsAdded)) }
             } else {
-                _state.update { it.copy(purchasingProductId = null, notice = "Gem đã được cộng; giao dịch sẽ được hoàn tất lại sau.") }
+                _state.update { it.copy(purchasingProductId = null, notice = LocalizedText(TextKey.BillingFinishLater)) }
             }
         }
     }
 
-    private fun useSandboxOrError(message: String) {
+    private fun useSandboxOrError(messageKey: TextKey) {
         if (sandboxEnabled) {
             _state.update {
                 it.copy(
@@ -239,12 +241,12 @@ private class AndroidStoreBillingGateway(
                     prices = packages.associate { gemPackage ->
                         gemPackage.productId to StoreProductPrice(gemPackage.productId, "Sandbox")
                     },
-                    notice = "Đang dùng thanh toán thử nghiệm.",
+                    notice = LocalizedText(TextKey.BillingSandboxActive),
                     error = null
                 )
             }
         } else {
-            _state.update { it.copy(isLoading = false, isReady = false, error = message) }
+            _state.update { it.copy(isLoading = false, isReady = false, error = LocalizedText(messageKey)) }
         }
     }
 

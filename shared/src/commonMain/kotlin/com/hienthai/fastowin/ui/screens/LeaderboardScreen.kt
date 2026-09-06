@@ -40,6 +40,11 @@ import androidx.compose.ui.unit.dp
 import com.hienthai.fastowin.protocol.ClanLeaderboardEntrySnapshot
 import com.hienthai.fastowin.protocol.LeaderboardEntrySnapshot
 import com.hienthai.fastowin.protocol.rankedTierFor
+import com.hienthai.fastowin.localization.QuantityKey
+import com.hienthai.fastowin.localization.TextKey
+import com.hienthai.fastowin.localization.localized
+import com.hienthai.fastowin.localization.localizedQuantity
+import com.hienthai.fastowin.localization.localizedRankedTierName
 import com.hienthai.fastowin.resources.Res
 import com.hienthai.fastowin.resources.arcade_leaderboard_trophy
 import com.hienthai.fastowin.state.GameState
@@ -91,7 +96,7 @@ fun LeaderboardScreen(
             Column(modifier = Modifier.fillMaxSize().padding(vertical = 12.dp)) {
                 if (showBackButton) {
                     FastToWinHeader(
-                        title = "Xếp hạng",
+                        title = localized(TextKey.Leaderboard),
                         gold = state.profile?.progression?.gold ?: 0,
                         gems = state.profile?.progression?.gems ?: 0,
                         unreadNotifications = state.unreadNotificationCount,
@@ -143,13 +148,13 @@ private fun ArcadeLeaderboardTabs(
             horizontalArrangement = Arrangement.spacedBy(4.dp)
         ) {
             ArcadeLeaderboardTab(
-                label = "Cá nhân",
+                label = localized(TextKey.Individual),
                 selected = selectedIndex == 0,
                 onClick = { onSelect(0) },
                 modifier = Modifier.weight(1f).testTag("leaderboard_tab_players")
             )
             ArcadeLeaderboardTab(
-                label = "Bang hội",
+                label = localized(TextKey.Clan),
                 selected = selectedIndex == 1,
                 onClick = { onSelect(1) },
                 modifier = Modifier.weight(1f).testTag("leaderboard_tab_clans")
@@ -218,8 +223,8 @@ private fun PlayerLeaderboard(
         item(key = "leaderboard_hero") {
             ArcadeFeatureHero(
                 illustration = Res.drawable.arcade_leaderboard_trophy,
-                title = "Đường đua danh vọng",
-                subtitle = "Leo bậc, giữ chuỗi thắng và chiếm vị trí cao nhất.",
+                title = localized(TextKey.FameRace),
+                subtitle = localized(TextKey.FameRaceDescription),
                 accent = ArcadePalette.Gold500
             )
         }
@@ -234,11 +239,11 @@ private fun PlayerLeaderboard(
             ArcadeSegmentedControl(
                 labels = listOf(
                     when (selectedPeriod) {
-                        LeaderboardPeriod.CURRENT_SEASON -> leaderboard?.seasonName ?: "Mùa hiện tại"
-                        LeaderboardPeriod.PREVIOUS_SEASON -> leaderboard?.previousSeasonName ?: "Mùa trước"
-                        LeaderboardPeriod.ALL_TIME -> "Toàn thời gian"
+                        LeaderboardPeriod.CURRENT_SEASON -> leaderboard?.seasonName ?: localized(TextKey.CurrentSeason)
+                        LeaderboardPeriod.PREVIOUS_SEASON -> leaderboard?.previousSeasonName ?: localized(TextKey.PreviousSeason)
+                        LeaderboardPeriod.ALL_TIME -> localized(TextKey.AllTime)
                     },
-                    "Lịch sử"
+                    localized(TextKey.History)
                 ),
                 selectedIndex = 0,
                 onSelected = { index -> if (index == 1) onOpenSeasonHistory() },
@@ -260,15 +265,15 @@ private fun PlayerLeaderboard(
                 }
         }
         item(key = "top_players_title") {
-            LeaderboardSectionTitle("Top người chơi", "${displayedTop.size} chiến binh")
+            LeaderboardSectionTitle(localized(TextKey.TopPlayers), localizedQuantity(QuantityKey.Warriors, displayedTop.size))
         }
         if (displayedTop.isEmpty()) {
             item(key = "empty_players") {
                 LeaderboardEmptyPanel(
                     when (selectedPeriod) {
-                        LeaderboardPeriod.CURRENT_SEASON -> "Chưa có người chơi hoàn thành phân hạng mùa này."
-                        LeaderboardPeriod.PREVIOUS_SEASON -> "Mùa trước chưa có người chơi đủ điều kiện xếp hạng."
-                        LeaderboardPeriod.ALL_TIME -> "Chưa có người chơi hoàn thành trận đấu."
+                        LeaderboardPeriod.CURRENT_SEASON -> localized(TextKey.CurrentSeasonLeaderboardEmpty)
+                        LeaderboardPeriod.PREVIOUS_SEASON -> localized(TextKey.PreviousSeasonLeaderboardEmpty)
+                        LeaderboardPeriod.ALL_TIME -> localized(TextKey.AllTimeLeaderboardEmpty)
                     }
                 )
             }
@@ -307,7 +312,7 @@ private fun LeaderboardPeriodFilters(
         LeaderboardPeriod.ALL_TIME
     )
     ArcadeSegmentedControl(
-        labels = listOf("Hiện tại", "Mùa trước", "Toàn thời gian"),
+        labels = listOf(localized(TextKey.CurrentSeason), localized(TextKey.PreviousSeason), localized(TextKey.AllTime)),
         selectedIndex = periods.indexOf(selectedPeriod),
         onSelected = { onSelect(periods[it]) },
         enabled = { index -> index != 1 || previousSeasonAvailable },
@@ -333,7 +338,7 @@ private fun CurrentPlayerPanel(entry: LeaderboardEntrySnapshot) {
             ArcadeRankBadge(entry.rank)
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                 Text(
-                    "VỊ TRÍ CỦA BẠN",
+                    localized(TextKey.YourPosition),
                     style = MaterialTheme.typography.labelSmall,
                     fontWeight = FontWeight.Black,
                     color = ArcadePalette.Gold500
@@ -369,8 +374,8 @@ private fun ClanLeaderboard(state: GameState) {
         item(key = "clan_leaderboard_hero") {
             ArcadeFeatureHero(
                 illustration = Res.drawable.arcade_leaderboard_trophy,
-                title = "Bang hội mạnh nhất",
-                subtitle = "Tổng hợp sức mạnh Elo của toàn bộ thành viên.",
+                title = localized(TextKey.StrongestClans),
+                subtitle = localized(TextKey.StrongestClansDescription),
                 accent = ArcadePalette.Violet600
             )
         }
@@ -380,10 +385,10 @@ private fun ClanLeaderboard(state: GameState) {
             }
         }
         item(key = "top_clans_title") {
-            LeaderboardSectionTitle("Top bang hội", "${displayedTopClans.size} bang")
+            LeaderboardSectionTitle(localized(TextKey.TopClans), localizedQuantity(QuantityKey.Clans, displayedTopClans.size))
         }
         if (displayedTopClans.isEmpty()) {
-            item(key = "empty_clans") { LeaderboardEmptyPanel("Chưa có bang hội nào trên bảng xếp hạng.") }
+            item(key = "empty_clans") { LeaderboardEmptyPanel(localized(TextKey.ClanLeaderboardEmpty)) }
         } else {
             items(visibleTopClans, key = { it.clanId }) { entry ->
                 ClanLeaderboardCard(
@@ -416,7 +421,7 @@ private fun CurrentClanPanel(entry: ClanLeaderboardEntrySnapshot) {
             ArcadeRankBadge(entry.rank)
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                 Text(
-                    "BANG CỦA BẠN",
+                    localized(TextKey.YourClan),
                     style = MaterialTheme.typography.labelSmall,
                     fontWeight = FontWeight.Black,
                     color = ArcadePalette.Gold500
@@ -449,7 +454,7 @@ private fun LeaderboardEmptyPanel(message: String) {
     ArcadePanel(modifier = Modifier.fillMaxWidth(), accent = ArcadePalette.Blue300) {
         ArcadeEmptyState(
             illustration = Res.drawable.arcade_leaderboard_trophy,
-            title = "Đường đua đang chờ",
+            title = localized(TextKey.RankingAwaiting),
             description = message
         )
     }
@@ -469,20 +474,20 @@ private fun ClanLeaderboardCard(
             ArcadeRankBadge(entry.rank)
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    entry.clanName + if (highlighted) " · Bạn" else "",
+                    entry.clanName + if (highlighted) localized(TextKey.YouSuffix) else "",
                     fontWeight = FontWeight.Black,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
                 Text(
-                    "${entry.memberCount} thành viên",
+                    localizedQuantity(QuantityKey.Members, entry.memberCount),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
             Column(horizontalAlignment = Alignment.End) {
                 Text(formatArcadeNumber(entry.totalElo), fontWeight = FontWeight.Black, color = ArcadePalette.Gold500)
-                Text("Tổng Elo", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(localized(TextKey.TotalElo), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
     }
@@ -511,13 +516,18 @@ private fun LeaderboardCard(
             )
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(
-                    entry.displayName + if (highlighted) " · Bạn" else "",
+                    entry.displayName + if (highlighted) localized(TextKey.YouSuffix) else "",
                     fontWeight = FontWeight.Black,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
                 Text(
-                    "${rankedTierFor(entry.eloRating).displayName} · ${entry.wins} thắng · $winRate%",
+                    localized(
+                        TextKey.LeaderboardPlayerSummary,
+                        "tier" to localizedRankedTierName(rankedTierFor(entry.eloRating)),
+                        "wins" to entry.wins,
+                        "rate" to winRate
+                    ),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,

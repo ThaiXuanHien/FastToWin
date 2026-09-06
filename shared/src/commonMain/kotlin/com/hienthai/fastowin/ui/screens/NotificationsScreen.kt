@@ -44,6 +44,8 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.hienthai.fastowin.platform.epochMillis
+import com.hienthai.fastowin.localization.TextKey
+import com.hienthai.fastowin.localization.localized
 import com.hienthai.fastowin.state.AppNotification
 import com.hienthai.fastowin.state.AppNotificationKind
 import com.hienthai.fastowin.ui.components.SystemBackHandler
@@ -81,15 +83,15 @@ fun NotificationsScreen(
     if (confirmClear) {
         ArcadeDialog(
             onDismissRequest = { confirmClear = false },
-            title = "Xóa tất cả thông báo?",
-            subtitle = "Các thông báo đang hiển thị sẽ bị xóa và đồng bộ trên mọi thiết bị."
+            title = localized(TextKey.ClearAllNotificationsTitle),
+            subtitle = localized(TextKey.ClearAllNotificationsDescription)
         ) {
             Column(
                 modifier = Modifier.fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 ArcadeActionButton(
-                    label = "Xóa tất cả",
+                    label = localized(TextKey.ClearAllNotifications),
                     onClick = {
                         confirmClear = false
                         onClearAll()
@@ -98,7 +100,7 @@ fun NotificationsScreen(
                     modifier = Modifier.fillMaxWidth()
                 )
                 ArcadeActionButton(
-                    label = "Hủy",
+                    label = localized(TextKey.Cancel),
                     onClick = { confirmClear = false },
                     style = ArcadeActionStyle.OUTLINE,
                     modifier = Modifier.fillMaxWidth()
@@ -112,7 +114,7 @@ fun NotificationsScreen(
         containerColor = Color.Transparent,
         topBar = {
             FastToWinHeader(
-                title = "Thông báo",
+                title = localized(TextKey.Notifications),
                 gold = 0,
                 gems = 0,
                 unreadNotifications = notifications.count { !it.isRead },
@@ -125,13 +127,13 @@ fun NotificationsScreen(
                         onClick = onMarkAllRead,
                         enabled = notifications.any { !it.isRead }
                     ) {
-                        Icon(Icons.Default.DoneAll, contentDescription = "Đánh dấu tất cả đã đọc")
+                        Icon(Icons.Default.DoneAll, contentDescription = localized(TextKey.MarkAllRead))
                     }
                     ArcadeHeaderIconButton(
                         onClick = { confirmClear = true },
                         enabled = notifications.isNotEmpty()
                     ) {
-                        Icon(Icons.Default.Delete, contentDescription = "Xóa tất cả thông báo")
+                        Icon(Icons.Default.Delete, contentDescription = localized(TextKey.ClearAllNotificationsA11y))
                     }
                 }
             )
@@ -154,8 +156,8 @@ fun NotificationsScreen(
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     ArcadeEmptyState(
                         illustration = Res.drawable.arcade_notifications_inbox,
-                        title = "Hộp thư đang trống",
-                        description = "Lời mời, phần thưởng và tin mới sẽ xuất hiện tại đây."
+                        title = localized(TextKey.EmptyInbox),
+                        description = localized(TextKey.EmptyInboxDescription)
                     )
                 }
             } else {
@@ -166,8 +168,8 @@ fun NotificationsScreen(
                     item(key = "notifications_hero") {
                         ArcadeFeatureHero(
                             illustration = Res.drawable.arcade_notifications_inbox,
-                            title = "Tin mới dành cho bạn",
-                            subtitle = "Theo dõi lời mời, phần thưởng và hoạt động quan trọng.",
+                            title = localized(TextKey.NotificationsHero),
+                            subtitle = localized(TextKey.NotificationsHeroDescription),
                             accent = ArcadePalette.Violet400
                         )
                     }
@@ -200,12 +202,12 @@ fun NotificationsScreen(
     pendingDelete?.let { notification ->
         ArcadeDialog(
             onDismissRequest = { pendingDelete = null },
-            title = "Xóa thông báo?",
-            subtitle = "Thông báo “${notification.title}” sẽ bị xóa khỏi danh sách."
+            title = localized(TextKey.DeleteNotificationTitle),
+            subtitle = localized(TextKey.DeleteNotificationDescription, "title" to notification.title)
         ) {
             Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 ArcadeActionButton(
-                    label = "XÓA",
+                    label = localized(TextKey.Delete),
                     onClick = {
                         pendingDelete = null
                         onDismiss(notification.id)
@@ -214,7 +216,7 @@ fun NotificationsScreen(
                     modifier = Modifier.fillMaxWidth()
                 )
                 ArcadeActionButton(
-                    label = "HỦY",
+                    label = localized(TextKey.Cancel),
                     onClick = { pendingDelete = null },
                     style = ArcadeActionStyle.OUTLINE,
                     modifier = Modifier.fillMaxWidth()
@@ -284,7 +286,7 @@ private fun NotificationCard(
             IconButton(onClick = onDismiss) {
                 Icon(
                     Icons.Default.Delete,
-                    contentDescription = "Xóa thông báo",
+                    contentDescription = localized(TextKey.DeleteNotification),
                     tint = if (notification.isRead) MaterialTheme.colorScheme.onSurfaceVariant else ArcadePalette.Coral400
                 )
             }
@@ -301,15 +303,16 @@ private fun notificationIcon(kind: AppNotificationKind): ImageVector = when (kin
     AppNotificationKind.CLAN_INVITATION -> Icons.Default.PersonAdd
 }
 
+@Composable
 private fun relativeNotificationTime(createdAtMillis: Long): String {
     val elapsed = (epochMillis() - createdAtMillis).coerceAtLeast(0L)
     val minutes = elapsed / 60_000L
     val hours = elapsed / 3_600_000L
     val days = elapsed / 86_400_000L
     return when {
-        minutes < 1L -> "Vừa xong"
-        hours < 1L -> "$minutes phút trước"
-        days < 1L -> "$hours giờ trước"
-        else -> "$days ngày trước"
+        minutes < 1L -> localized(TextKey.JustNow)
+        hours < 1L -> localized(TextKey.MinutesAgo, "count" to minutes)
+        days < 1L -> localized(TextKey.HoursAgo, "count" to hours)
+        else -> localized(TextKey.DaysAgo, "count" to days)
     }
 }

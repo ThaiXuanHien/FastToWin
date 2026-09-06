@@ -87,6 +87,8 @@ Backend hiện dùng trạng thái realtime trong một instance. Không coi cá
 
 Đã có unit/integration test server/shared, Android Compose UI test và GitHub Actions. Chưa đánh đồng build xanh với toàn bộ trải nghiệm đa nền tảng đạt.
 
+- [x] Catalog giao diện dùng chung cho 12 ngôn ngữ; các màn cốt lõi, hồ sơ, xã hội, xếp hạng, giải đấu, thông báo và cửa hàng đã dùng khóa localization ổn định. Tiếng Việt/Anh đã phủ đầy đủ; 10 ngôn ngữ còn lại đã dịch các nội dung chính và dùng English fallback cho nội dung chưa qua kiểm duyệt ngôn ngữ ở bước audit cuối.
+- [ ] Chuẩn hóa thông báo động từ backend thành `messageKey/messageArgs`; nội dung cũ vẫn giữ raw fallback để tương thích.
 - [ ] Screenshot regression test với ảnh chuẩn đã review (ảnh chụp khi test lỗi chưa phải screenshot regression).
 - [ ] Báo cáo độ bao phủ test và ngưỡng phù hợp.
 - [x] Ma trận Playwright Chromium/Firefox/WebKit và JS fallback trong CI.
@@ -95,8 +97,9 @@ Backend hiện dùng trạng thái realtime trong một instance. Không coi cá
 
 ## Bước đang thực hiện
 
-**Chuẩn bị production**. Bộ cấu hình Docker/Caddy, release tag, backup tự động có
-xác minh/restore drill, bảo trì, health check, rollback và monitoring một instance
-đã có. Bước tiếp theo là smoke test trên staging domain thật. StoreKit/APNs
-production vẫn tạm hoãn vì phụ thuộc
-tài khoản Apple.
+**Hoàn thiện đa ngôn ngữ**. Giao diện client đã dùng catalog chung cho 12 ngôn
+ngữ từ luồng chính đến các màn xã hội, xếp hạng, giải đấu, thông báo và cửa hàng;
+các bản dịch dài còn lại sẽ được hoàn thiện và kiểm duyệt ở bước audit cuối.
+Bước tiếp theo là chuẩn hóa thông báo động từ backend thành khóa ổn định có raw
+fallback, sau đó mới quét và hồi quy toàn ứng dụng. StoreKit/APNs production vẫn
+tạm hoãn vì phụ thuộc tài khoản Apple.

@@ -2,6 +2,8 @@ package com.hienthai.fastowin.platform
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import com.hienthai.fastowin.localization.LocalizedText
+import com.hienthai.fastowin.localization.TextKey
 import com.hienthai.fastowin.protocol.GemPackageSnapshot
 import com.hienthai.fastowin.protocol.StorePlatform
 import kotlinx.coroutines.flow.Flow
@@ -19,7 +21,7 @@ private class WebUnavailableStoreBillingGateway : StoreBillingGateway {
         StoreBillingState(
             platform = StorePlatform.GOOGLE_PLAY,
             isReady = false,
-            error = "Mua Gem trên web chưa được hỗ trợ. Hãy dùng ứng dụng Android hoặc iOS."
+            error = LocalizedText(TextKey.BillingWebUnsupported)
         )
     )
     override val state: StateFlow<StoreBillingState> = mutableState

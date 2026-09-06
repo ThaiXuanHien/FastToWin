@@ -47,6 +47,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.hienthai.fastowin.navigation.GameMode
+import com.hienthai.fastowin.localization.TextKey
+import com.hienthai.fastowin.localization.localized
 import com.hienthai.fastowin.protocol.FriendPresence
 import com.hienthai.fastowin.protocol.ProtocolGameMode
 import com.hienthai.fastowin.protocol.TournamentInvitationSnapshot
@@ -91,7 +93,7 @@ fun TournamentScreen(
         containerColor = Color.Transparent,
         topBar = {
             FastToWinHeader(
-                title = "Đấu giải",
+                title = localized(TextKey.Tournament),
                 gold = state.profile?.progression?.gold ?: 0,
                 gems = state.profile?.progression?.gems ?: 0,
                 unreadNotifications = state.unreadNotificationCount,
@@ -112,23 +114,23 @@ fun TournamentScreen(
                 val heroTitle: String
                 val heroSubtitle: String
                 if (tournament == null) {
-                    heroTitle = "Đấu trường loại trực tiếp"
-                    heroSubtitle = "Tập hợp 4, 8 hoặc 16 chiến binh và chạm tay vào cúp vô địch."
+                    heroTitle = localized(TextKey.KnockoutArena)
+                    heroSubtitle = localized(TextKey.KnockoutArenaDescription)
                 } else {
                     val championName = tournament.players
                         .firstOrNull { it.playerId == tournament.championPlayerId }
                         ?.displayName
                     heroTitle = when (tournament.phase) {
-                        TournamentPhase.LOBBY -> "Sảnh giải đấu"
+                        TournamentPhase.LOBBY -> localized(TextKey.TournamentLobby)
                         TournamentPhase.RUNNING -> tournament.name
-                        TournamentPhase.FINISHED -> "Nhà vô địch: ${championName ?: "Đang cập nhật"}"
-                        TournamentPhase.CANCELLED -> "Giải đấu đã hủy"
+                        TournamentPhase.FINISHED -> localized(TextKey.ChampionName, "player" to (championName ?: localized(TextKey.TournamentUpdating)))
+                        TournamentPhase.CANCELLED -> localized(TextKey.TournamentCancelled)
                     }
                     heroSubtitle = when (tournament.phase) {
-                        TournamentPhase.LOBBY -> "${tournament.gameMode.title()} · ${tournament.players.size}/${tournament.maxPlayers} người · ${tournament.prizePool} vàng"
-                        TournamentPhase.RUNNING -> "Nhánh đấu đang diễn ra. Người thắng sẽ tiến vào vòng tiếp theo."
-                        TournamentPhase.FINISHED -> "Phần thưởng ${tournament.prizePool} vàng đã được trao."
-                        TournamentPhase.CANCELLED -> "Bạn có thể tạo một giải đấu mới ngay bây giờ."
+                        TournamentPhase.LOBBY -> localized(TextKey.TournamentLobbySummary, "mode" to tournament.gameMode.title(), "current" to tournament.players.size, "max" to tournament.maxPlayers, "prize" to tournament.prizePool)
+                        TournamentPhase.RUNNING -> localized(TextKey.BracketInProgress)
+                        TournamentPhase.FINISHED -> localized(TextKey.TournamentPrizeAwarded, "prize" to tournament.prizePool)
+                        TournamentPhase.CANCELLED -> localized(TextKey.CreateAnotherTournament)
                     }
                 }
                 ArcadeFeatureHero(
@@ -147,7 +149,7 @@ fun TournamentScreen(
                 }
                 if (tournament == null) {
                     if (state.tournamentHub.invitations.isNotEmpty()) {
-                        SectionLabel("Lời mời tham gia")
+                        SectionLabel(localized(TextKey.JoinInvitations))
                         state.tournamentHub.invitations.forEach { invitation ->
                             InvitationCard(invitation, onRespondInvitation)
                         }
@@ -158,7 +160,7 @@ fun TournamentScreen(
                         onCreate = onCreate
                     )
                     if (state.tournamentHub.recentTournaments.isNotEmpty()) {
-                        SectionLabel("Giải gần đây")
+                        SectionLabel(localized(TextKey.RecentTournaments))
                         state.tournamentHub.recentTournaments.forEach { history ->
                             TournamentHistoryCard(
                                 tournament = history,
@@ -189,8 +191,8 @@ fun TournamentInvitationDialog(
     onDefer: () -> Unit
 ) {
     ArcadeDialog(
-        title = "Lời mời đấu giải",
-        subtitle = "${invitation.hostDisplayName} mời bạn tham gia “${invitation.tournamentName}” · ${invitation.gameMode.title()} · ${invitation.maxPlayers} người.",
+        title = localized(TextKey.TournamentInvitationTitle),
+        subtitle = localized(TextKey.TournamentInvitationDescription, "host" to invitation.hostDisplayName, "tournament" to invitation.tournamentName, "mode" to invitation.gameMode.title(), "players" to invitation.maxPlayers),
         onDismissRequest = onDefer,
         modifier = Modifier.testTag("tournament_invitation_dialog")
     ) {
@@ -199,20 +201,20 @@ fun TournamentInvitationDialog(
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             ArcadeActionButton(
-                label = "THAM GIA",
+                label = localized(TextKey.JoinTournament),
                 onClick = { onRespond(true) },
                 style = ArcadeActionStyle.GOLD,
                 modifier = Modifier.fillMaxWidth()
             )
             ArcadeActionButton(
-                label = "ĐỂ SAU",
+                label = localized(TextKey.DecideLater),
                 onClick = onDefer,
                 style = ArcadeActionStyle.OUTLINE,
                 modifier = Modifier.fillMaxWidth()
             )
         }
         ArcadeActionButton(
-            label = "TỪ CHỐI",
+            label = localized(TextKey.Decline),
             onClick = { onRespond(false) },
             style = ArcadeActionStyle.DANGER,
             modifier = Modifier.fillMaxWidth()
@@ -232,7 +234,7 @@ private fun CreateTournamentCard(
     var showModePicker by remember { mutableStateOf(false) }
     if (showModePicker) {
         GameModePickerDialog(
-            title = "Chọn chế độ đấu giải",
+            title = localized(TextKey.ChooseTournamentMode),
             playerLevel = playerLevel,
             onDismiss = { showModePicker = false },
             onSelect = {
@@ -260,15 +262,15 @@ private fun CreateTournamentCard(
                 }
                 Column {
                     Text(
-                        "Tạo giải riêng",
+                        localized(TextKey.CreatePrivateTournament),
                         style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.Bold
                     )
                     Text(
                         when (maxPlayers) {
-                            4 -> "4 người • 2 bán kết • 1 chung kết"
-                            8 -> "8 người • 4 tứ kết • 2 bán kết • 1 chung kết"
-                            else -> "16 người • 8 vòng 1/8 • 4 tứ kết • 2 bán kết • 1 chung kết"
+                            4 -> localized(TextKey.TournamentFourFormat)
+                            8 -> localized(TextKey.TournamentEightFormat)
+                            else -> localized(TextKey.TournamentSixteenFormat)
                         },
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -278,7 +280,7 @@ private fun CreateTournamentCard(
 
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text(
-                    "Quy mô giải",
+                    localized(TextKey.TournamentSize),
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.Bold
                 )
@@ -326,8 +328,8 @@ private fun CreateTournamentCard(
             OutlinedTextField(
                 value = name,
                 onValueChange = { name = it.take(48) },
-                label = { Text("Tên giải đấu") },
-                placeholder = { Text("VD: Cúp Chiến Thần") },
+                label = { Text(localized(TextKey.TournamentName)) },
+                placeholder = { Text(localized(TextKey.TournamentNameExample)) },
                 singleLine = true,
                 shape = RoundedCornerShape(16.dp),
                 modifier = Modifier.fillMaxWidth().testTag("tournament_name")
@@ -349,7 +351,7 @@ private fun CreateTournamentCard(
                 ) {
                     Column {
                         Text(
-                            "Chế độ chơi",
+                            localized(TextKey.GameModeLabel),
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -374,7 +376,7 @@ private fun CreateTournamentCard(
 
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text(
-                    "Lệ phí tham gia (Vàng)",
+                    localized(TextKey.EntryFeeGold),
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.Bold
                 )
@@ -387,7 +389,7 @@ private fun CreateTournamentCard(
                 ) {
                     entryFeeOptions.forEach { fee ->
                         TournamentFeeChip(
-                            label = if (fee == 0) "Miễn phí" else "$fee",
+                            label = if (fee == 0) localized(TextKey.Free) else "$fee",
                             selected = !isCustomFee && entryFee == fee,
                             onClick = {
                                 isCustomFee = false
@@ -396,7 +398,7 @@ private fun CreateTournamentCard(
                         )
                     }
                     TournamentFeeChip(
-                        label = "Tùy chỉnh",
+                        label = localized(TextKey.Custom),
                         selected = isCustomFee,
                         onClick = { isCustomFee = true }
                     )
@@ -411,8 +413,8 @@ private fun CreateTournamentCard(
                                 entryFee = it.toIntOrNull() ?: 0
                             }
                         },
-                        label = { Text("Nhập số vàng lệ phí") },
-                        placeholder = { Text("VD: 750") },
+                        label = { Text(localized(TextKey.EnterEntryFee)) },
+                        placeholder = { Text(localized(TextKey.EntryFeeExample)) },
                         singleLine = true,
                         prefix = {
                             Icon(
@@ -422,7 +424,7 @@ private fun CreateTournamentCard(
                                 modifier = Modifier.size(20.dp)
                             )
                         },
-                        suffix = { Text("Vàng") },
+                        suffix = { Text(localized(TextKey.Gold)) },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                         shape = RoundedCornerShape(16.dp),
                         modifier = Modifier.fillMaxWidth().padding(top = 4.dp)
@@ -431,7 +433,7 @@ private fun CreateTournamentCard(
             }
 
             ArcadeActionButton(
-                label = "BẮT ĐẦU TẠO GIẢI",
+                label = localized(TextKey.CreateTournamentAction),
                 onClick = { onCreate(name.trim(), mode, entryFee, maxPlayers) },
                 enabled = enabled && name.trim().length >= 3 && (!isCustomFee || customFeeText.isNotEmpty()),
                 style = ArcadeActionStyle.GOLD,
@@ -443,7 +445,7 @@ private fun CreateTournamentCard(
                 shape = RoundedCornerShape(12.dp)
             ) {
                 Text(
-                    "Các trận đấu giải không ảnh hưởng Elo.",
+                    localized(TextKey.TournamentNoElo),
                     style = MaterialTheme.typography.bodySmall,
                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
                     color = MaterialTheme.colorScheme.onSecondaryContainer
@@ -483,7 +485,7 @@ private fun TournamentSizeChip(
             )
             Spacer(Modifier.size(7.dp))
             Text(
-                "$playerCount NGƯỜI",
+                localized(TextKey.PlayerCountUpper, "count" to playerCount),
                 color = ArcadePalette.White,
                 style = MaterialTheme.typography.labelLarge,
                 fontWeight = FontWeight.Black
@@ -583,20 +585,20 @@ private fun ActiveTournamentContent(
                 ) {
                     Column {
                         Text(
-                            "Lệ phí",
+                            localized(TextKey.EntryFee),
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.6f)
                         )
-                        Text("${tournament.entryFee} Vàng", fontWeight = FontWeight.SemiBold)
+                        Text(localized(TextKey.GoldAmount, "count" to tournament.entryFee), fontWeight = FontWeight.SemiBold)
                     }
                     Column(horizontalAlignment = Alignment.End) {
                         Text(
-                            "Giải thưởng",
+                            localized(TextKey.Prize),
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.6f)
                         )
                         Text(
-                            "${tournament.prizePool} Vàng",
+                            localized(TextKey.GoldAmount, "count" to tournament.prizePool),
                             fontWeight = FontWeight.Black,
                             color = MaterialTheme.colorScheme.primary
                         )
@@ -606,7 +608,7 @@ private fun ActiveTournamentContent(
         }
     }
 
-    SectionLabel("Người tham gia")
+    SectionLabel(localized(TextKey.Participants))
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         repeat(tournament.maxPlayers) { index ->
             val participant = tournament.players.getOrNull(index)
@@ -646,7 +648,7 @@ private fun ActiveTournamentContent(
                         }
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                participant?.displayName ?: "Đang chờ người chơi…",
+                                participant?.displayName ?: localized(TextKey.WaitingForPlayerEllipsis),
                                 fontWeight = if (participant != null) FontWeight.Bold else FontWeight.Normal,
                                 color = if (participant != null) MaterialTheme.colorScheme.onSurface
                                 else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
@@ -655,7 +657,7 @@ private fun ActiveTournamentContent(
                             )
                             if (isMe) {
                                 Text(
-                                    "Bạn",
+                                    localized(TextKey.You),
                                     style = MaterialTheme.typography.labelSmall,
                                     color = ArcadePalette.Blue300
                                 )
@@ -674,7 +676,7 @@ private fun ActiveTournamentContent(
                                     shape = RoundedCornerShape(8.dp)
                                 ) {
                                     Text(
-                                        "Chủ giải",
+                                        localized(TextKey.TournamentHost),
                                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
                                         style = MaterialTheme.typography.labelSmall,
                                         fontWeight = FontWeight.Bold,
@@ -695,7 +697,7 @@ private fun ActiveTournamentContent(
             friend.presence != FriendPresence.OFFLINE && tournament.players.none { it.playerId == friend.userId }
         }
         if (availableFriends.isNotEmpty() && tournament.players.size < tournament.maxPlayers) {
-            SectionLabel("Mời bạn bè")
+            SectionLabel(localized(TextKey.InviteFriends))
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 availableFriends.forEach { friend ->
                     Surface(
@@ -720,7 +722,7 @@ private fun ActiveTournamentContent(
                                 shape = RoundedCornerShape(12.dp)
                             ) {
                                 Icon(Icons.Rounded.GroupAdd, contentDescription = null, modifier = Modifier.size(18.dp))
-                                Text(" Mời")
+                                Text(localized(TextKey.InviteAction))
                             }
                         }
                     }
@@ -731,7 +733,7 @@ private fun ActiveTournamentContent(
         Spacer(Modifier.height(8.dp))
         
         ArcadeActionButton(
-            label = "BẮT ĐẦU GIẢI ĐẤU",
+            label = localized(TextKey.StartTournament),
             onClick = onStart,
             enabled = tournament.players.size == tournament.maxPlayers &&
                 tournament.players.all { it.isOnline } && !state.isTournamentLoading,
@@ -742,13 +744,13 @@ private fun ActiveTournamentContent(
     }
 
     if (tournament.phase != TournamentPhase.LOBBY || tournament.matches.any { it.playerOneId != null }) {
-        SectionLabel("Nhánh đấu")
+        SectionLabel(localized(TextKey.Bracket))
         TournamentBracket(tournament)
     }
 
     if (tournament.phase == TournamentPhase.LOBBY) {
         ArcadeActionButton(
-            label = if (isHost) "HỦY GIẢI ĐẤU" else "RỜI KHỎI GIẢI",
+            label = localized(if (isHost) TextKey.CancelTournament else TextKey.LeaveTournament),
             onClick = onLeave,
             enabled = !state.isTournamentLoading,
             style = ArcadeActionStyle.DANGER,
@@ -761,7 +763,7 @@ private fun ActiveTournamentContent(
             modifier = Modifier.fillMaxWidth()
         ) {
             Text(
-                "Các trận đấu được tạo tự động. Người thắng sẽ tiến vào vòng tiếp theo.",
+                localized(TextKey.AutomaticMatchesDescription),
                 modifier = Modifier.padding(12.dp),
                 textAlign = TextAlign.Center,
                 style = MaterialTheme.typography.bodySmall,
@@ -835,17 +837,18 @@ private fun TournamentBracket(tournament: TournamentSnapshot) {
 
         tournament.championPlayerId?.let { championId ->
             Spacer(Modifier.height(8.dp))
-            ChampionCard(names[championId] ?: "Người chơi")
+            ChampionCard(names[championId] ?: localized(TextKey.Player))
         }
     }
 }
 
+@Composable
 private fun tournamentRoundLabel(round: Int, finalRound: Int): String = when (round) {
-    finalRound -> "TRẬN CHUNG KẾT"
-    finalRound - 1 -> "VÒNG BÁN KẾT"
-    finalRound - 2 -> "VÒNG TỨ KẾT"
-    finalRound - 3 -> "VÒNG 1/8"
-    else -> "VÒNG $round"
+    finalRound -> localized(TextKey.FinalRound)
+    finalRound - 1 -> localized(TextKey.SemifinalRound)
+    finalRound - 2 -> localized(TextKey.QuarterfinalRound)
+    finalRound - 3 -> localized(TextKey.RoundOfSixteen)
+    else -> localized(TextKey.RoundNumber, "round" to round)
 }
 
 @Composable
@@ -864,7 +867,7 @@ private fun ChampionCard(name: String) {
             )
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Text(
-                    "NHÀ VÔ ĐỊCH",
+                    localized(TextKey.Champion),
                     style = MaterialTheme.typography.labelLarge,
                     color = ArcadePalette.Gold500,
                     fontWeight = FontWeight.Bold
@@ -923,9 +926,9 @@ private fun TournamentMatchCard(
                 ) {
                     Text(
                         when (match.phase) {
-                            TournamentMatchPhase.PENDING -> "CHỜ"
-                            TournamentMatchPhase.PLAYING -> "ĐANG ĐẤU"
-                            TournamentMatchPhase.FINISHED -> "XONG"
+                            TournamentMatchPhase.PENDING -> localized(TextKey.MatchPending)
+                            TournamentMatchPhase.PLAYING -> localized(TextKey.MatchPlaying)
+                            TournamentMatchPhase.FINISHED -> localized(TextKey.MatchFinished)
                         },
                         modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
                         style = MaterialTheme.typography.labelSmall,
@@ -956,7 +959,7 @@ private fun TournamentPlayerLine(
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(
-            text = playerId?.let { names[it] } ?: "Đang chờ…",
+            text = playerId?.let { names[it] } ?: localized(TextKey.WaitingEllipsis),
             style = if (compact) MaterialTheme.typography.bodySmall else MaterialTheme.typography.bodyMedium,
             fontWeight = if (isWinner) FontWeight.Bold else FontWeight.Normal,
             maxLines = 1,
@@ -984,7 +987,7 @@ private fun InvitationCard(
         Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text(invitation.tournamentName, fontWeight = FontWeight.Bold)
             Text(
-                "${invitation.hostDisplayName} mời bạn · ${invitation.gameMode.title()} · ${invitation.maxPlayers} người",
+                localized(TextKey.TournamentInviteCompact, "host" to invitation.hostDisplayName, "mode" to invitation.gameMode.title(), "players" to invitation.maxPlayers),
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             Column(
@@ -992,13 +995,13 @@ private fun InvitationCard(
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 ArcadeActionButton(
-                    label = "THAM GIA",
+                    label = localized(TextKey.JoinTournament),
                     onClick = { onRespond(invitation.invitationId, true) },
                     style = ArcadeActionStyle.GOLD,
                     modifier = Modifier.fillMaxWidth()
                 )
                 ArcadeActionButton(
-                    label = "TỪ CHỐI",
+                    label = localized(TextKey.Decline),
                     onClick = { onRespond(invitation.invitationId, false) },
                     style = ArcadeActionStyle.OUTLINE,
                     modifier = Modifier.fillMaxWidth()
@@ -1025,9 +1028,9 @@ private fun TournamentHistoryCard(
         Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(tournament.name, fontWeight = FontWeight.Bold)
             Text("${tournament.gameMode.title()} • ${tournament.phase.label()}")
-            champion?.let { Text("Vô địch: $it", color = ArcadePalette.Gold500, fontWeight = FontWeight.Bold) }
+            champion?.let { Text(localized(TextKey.ChampionCompact, "player" to it), color = ArcadePalette.Gold500, fontWeight = FontWeight.Bold) }
             Text(
-                if (expanded) "Ẩn nhánh đấu" else "Xem nhánh đấu",
+                localized(if (expanded) TextKey.HideBracket else TextKey.ViewBracket),
                 style = MaterialTheme.typography.labelMedium,
                 color = ArcadePalette.Blue300
             )
@@ -1064,20 +1067,22 @@ private fun MessageCard(message: String, isError: Boolean) {
     }
 }
 
-private fun ProtocolGameMode.title(): String = when (this) {
-    ProtocolGameMode.ORDER -> "Cổ điển"
-    ProtocolGameMode.RANDOM_TARGET -> "Ngẫu nhiên"
-    ProtocolGameMode.TIME_BONUS -> "Thưởng thời gian"
-    ProtocolGameMode.SPEED_UP -> "Tăng tốc"
-    ProtocolGameMode.SURVIVAL -> "Sinh tồn"
-    ProtocolGameMode.COMBO -> "Combo"
-    ProtocolGameMode.TIME_ATTACK -> "Đua 60 giây"
-    ProtocolGameMode.TEAM_2V2 -> "Đồng đội 2v2"
-}
+@Composable
+private fun ProtocolGameMode.title(): String = localized(when (this) {
+    ProtocolGameMode.ORDER -> TextKey.ModeClassicTitle
+    ProtocolGameMode.RANDOM_TARGET -> TextKey.ModeRandomTitle
+    ProtocolGameMode.TIME_BONUS -> TextKey.ModeTimeBonusTitle
+    ProtocolGameMode.SPEED_UP -> TextKey.ModeSpeedUpTitle
+    ProtocolGameMode.SURVIVAL -> TextKey.ModeSurvivalTitle
+    ProtocolGameMode.COMBO -> TextKey.ModeComboTitle
+    ProtocolGameMode.TIME_ATTACK -> TextKey.ModeTimeAttackTitle
+    ProtocolGameMode.TEAM_2V2 -> TextKey.ModeTeamTitle
+})
 
-private fun TournamentPhase.label(): String = when (this) {
-    TournamentPhase.LOBBY -> "Đang tập hợp"
-    TournamentPhase.RUNNING -> "Đang diễn ra"
-    TournamentPhase.FINISHED -> "Đã kết thúc"
-    TournamentPhase.CANCELLED -> "Đã hủy"
-}
+@Composable
+private fun TournamentPhase.label(): String = localized(when (this) {
+    TournamentPhase.LOBBY -> TextKey.TournamentPhaseLobby
+    TournamentPhase.RUNNING -> TextKey.TournamentPhaseRunning
+    TournamentPhase.FINISHED -> TextKey.TournamentPhaseFinished
+    TournamentPhase.CANCELLED -> TextKey.TournamentPhaseCancelled
+})

@@ -1,6 +1,7 @@
 package com.hienthai.fastowin.platform
 
 import androidx.compose.runtime.Composable
+import com.hienthai.fastowin.localization.LocalizedText
 import com.hienthai.fastowin.protocol.GemPackageSnapshot
 import com.hienthai.fastowin.protocol.StorePlatform
 import kotlinx.coroutines.flow.Flow
@@ -19,8 +20,10 @@ data class StoreBillingState(
     val isSandboxFallback: Boolean = false,
     val prices: Map<String, StoreProductPrice> = emptyMap(),
     val purchasingProductId: String? = null,
-    val notice: String? = null,
-    val error: String? = null
+    val notice: LocalizedText? = null,
+    val error: LocalizedText? = null,
+    val rawNoticeFallback: String? = null,
+    val rawErrorFallback: String? = null
 )
 
 data class PlatformStorePurchase(

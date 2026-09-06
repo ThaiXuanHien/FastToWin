@@ -71,6 +71,10 @@ import com.hienthai.fastowin.protocol.ClanQuestSnapshot
 import com.hienthai.fastowin.protocol.ClanRole
 import com.hienthai.fastowin.protocol.ClanSnapshot
 import com.hienthai.fastowin.protocol.ClanSummarySnapshot
+import com.hienthai.fastowin.localization.QuantityKey
+import com.hienthai.fastowin.localization.TextKey
+import com.hienthai.fastowin.localization.localized
+import com.hienthai.fastowin.localization.localizedQuantity
 import com.hienthai.fastowin.resources.Res
 import com.hienthai.fastowin.resources.arcade_clan_crest
 import com.hienthai.fastowin.ui.components.ArcadeActionButton
@@ -127,7 +131,7 @@ fun ClanScreen(
         topBar = {
             if (showBackButton) {
                 FastToWinHeader(
-                    title = "Bang hội",
+                    title = localized(TextKey.Clan),
                     gold = gold,
                     gems = gems,
                     unreadNotifications = unreadNotifications,
@@ -191,6 +195,7 @@ private fun ClanDiscoveryView(
     var searchQuery by remember { mutableStateOf("") }
     var visibleClanCount by remember { mutableStateOf(DEFAULT_ARCADE_PAGE_SIZE) }
     val visibleClans = clanList.take(visibleClanCount)
+    val searchActionDescription = localized(TextKey.SearchClanAction)
 
     LazyColumn(
         modifier = modifier.testTag("clan_discovery_list"),
@@ -200,8 +205,8 @@ private fun ClanDiscoveryView(
         item(key = "clan_hero") {
             ArcadeFeatureHero(
                 illustration = Res.drawable.arcade_clan_crest,
-                title = "Sát cánh tranh tài",
-                subtitle = "Gia nhập bang hội, hoàn thành nhiệm vụ và cùng nhau leo hạng.",
+                title = localized(TextKey.ClanTogetherTitle),
+                subtitle = localized(TextKey.ClanTogetherDescription),
                 accent = ArcadePalette.Violet600
             )
         }
@@ -212,8 +217,8 @@ private fun ClanDiscoveryView(
             OutlinedTextField(
                 value = searchQuery,
                 onValueChange = { searchQuery = it },
-                label = { Text("Tìm bang hội") },
-                placeholder = { Text("Nhập tên bang...") },
+                label = { Text(localized(TextKey.SearchClan)) },
+                placeholder = { Text(localized(TextKey.SearchClanPlaceholder)) },
                 modifier = Modifier.fillMaxWidth().testTag("clan_search_field"),
                 singleLine = true,
                 leadingIcon = { Icon(Icons.Rounded.Search, contentDescription = null) },
@@ -223,7 +228,7 @@ private fun ClanDiscoveryView(
                             visibleClanCount = DEFAULT_ARCADE_PAGE_SIZE
                             onSearch(searchQuery.trim().takeIf(String::isNotEmpty))
                         },
-                        modifier = Modifier.semantics { contentDescription = "Tìm kiếm bang hội" }
+                        modifier = Modifier.semantics { contentDescription = searchActionDescription }
                     ) {
                         Icon(Icons.Rounded.Search, contentDescription = null)
                     }
@@ -233,7 +238,7 @@ private fun ClanDiscoveryView(
 
         item(key = "create_clan") {
             ArcadeActionButton(
-                label = "TẠO BANG HỘI",
+                label = localized(TextKey.CreateClan),
                 onClick = { showCreateDialog = true },
                 icon = Icons.Rounded.Add,
                 style = ArcadeActionStyle.GOLD,
@@ -243,8 +248,8 @@ private fun ClanDiscoveryView(
 
         item(key = "clan_list_title") {
             ArcadeSectionHeading(
-                title = "Khám phá bang hội",
-                supporting = "${clanList.size} bang"
+                title = localized(TextKey.ExploreClans),
+                supporting = localizedQuantity(QuantityKey.Clans, clanList.size)
             )
         }
 
@@ -252,8 +257,8 @@ private fun ClanDiscoveryView(
             item(key = "clan_empty") {
                 ArcadeEmptyState(
                     illustration = Res.drawable.arcade_clan_crest,
-                    title = "Chưa tìm thấy bang hội",
-                    description = "Thử từ khóa khác hoặc tạo bang của riêng bạn."
+                    title = localized(TextKey.NoClansFound),
+                    description = localized(TextKey.NoClansFoundDescription)
                 )
             }
         } else {
@@ -333,7 +338,7 @@ private fun ClanSummaryIdentity(clan: ClanSummarySnapshot, modifier: Modifier = 
                 overflow = TextOverflow.Ellipsis
             )
             Text(
-                "${clan.memberCount}/${clan.maxMembers} thành viên · ${formatNumber(clan.trophies)} cúp",
+                localized(TextKey.ClanSummary, "members" to "${clan.memberCount}/${clan.maxMembers}", "trophies" to formatNumber(clan.trophies)),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -344,7 +349,7 @@ private fun ClanSummaryIdentity(clan: ClanSummarySnapshot, modifier: Modifier = 
 @Composable
 private fun ClanJoinButton(isPending: Boolean, onJoin: () -> Unit, modifier: Modifier = Modifier) {
     ArcadeActionButton(
-        label = if (isPending) "Đang chờ" else "Xin vào",
+        label = localized(if (isPending) TextKey.PendingApproval else TextKey.RequestToJoin),
         onClick = onJoin,
         enabled = !isPending,
         style = if (isPending) ArcadeActionStyle.OUTLINE else ArcadeActionStyle.PRIMARY,
@@ -358,15 +363,15 @@ private fun CreateClanDialog(onDismiss: () -> Unit, onCreate: (String, String) -
     var description by remember { mutableStateOf("") }
 
     ArcadeDialog(
-        title = "Tạo Bang Hội",
-        subtitle = "Chọn tên ngắn gọn, dễ nhớ để đồng đội tìm thấy bạn.",
+        title = localized(TextKey.CreateClanTitle),
+        subtitle = localized(TextKey.CreateClanDescription),
         onDismissRequest = onDismiss,
         modifier = Modifier.testTag("create_clan_dialog")
     ) {
         OutlinedTextField(
             value = name,
             onValueChange = { name = it.take(32) },
-            label = { Text("Tên bang") },
+            label = { Text(localized(TextKey.ClanName)) },
             leadingIcon = { Icon(Icons.Rounded.Shield, contentDescription = null) },
             singleLine = true,
             modifier = Modifier.fillMaxWidth().testTag("create_clan_name")
@@ -374,7 +379,7 @@ private fun CreateClanDialog(onDismiss: () -> Unit, onCreate: (String, String) -
         OutlinedTextField(
             value = description,
             onValueChange = { description = it.take(160) },
-            label = { Text("Mô tả bang hội") },
+            label = { Text(localized(TextKey.ClanDescription)) },
             minLines = 3,
             maxLines = 4,
             modifier = Modifier.fillMaxWidth().testTag("create_clan_description")
@@ -384,14 +389,14 @@ private fun CreateClanDialog(onDismiss: () -> Unit, onCreate: (String, String) -
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             ArcadeActionButton(
-                label = "TẠO",
+                label = localized(TextKey.CreateAction),
                 onClick = { onCreate(name.trim(), description.trim()) },
                 enabled = name.isNotBlank(),
                 style = ArcadeActionStyle.GOLD,
                 modifier = Modifier.fillMaxWidth()
             )
             ArcadeActionButton(
-                label = "HỦY",
+                label = localized(TextKey.Cancel),
                 onClick = onDismiss,
                 style = ArcadeActionStyle.OUTLINE,
                 modifier = Modifier.fillMaxWidth()
@@ -429,13 +434,13 @@ fun ClanDetailView(
     ) {
         item(key = "clan_detail_hero") {
             ArcadeIconHero(
-                kicker = "BANG HỘI",
+                kicker = localized(TextKey.Clan),
                 title = clan.name,
-                subtitle = clan.description.ifBlank { "Cùng đồng đội chinh phục bảng xếp hạng." },
+                subtitle = clan.description.ifBlank { localized(TextKey.DefaultClanDescription) },
                 icon = clanLogoIcon(clan.logoId),
                 accent = ArcadePalette.Violet600,
                 onIconClick = if (isOwner) ({ showLogoDialog = true }) else null,
-                iconContentDescription = if (isOwner) "Chọn logo bang" else "Logo bang"
+                iconContentDescription = localized(if (isOwner) TextKey.SelectClanLogo else TextKey.ClanLogo)
             )
         }
 
@@ -456,8 +461,8 @@ fun ClanDetailView(
         if (isOwner && clan.joinRequests.isNotEmpty()) {
             item(key = "join_request_heading") {
                 ArcadeSectionHeading(
-                    title = "Yêu cầu tham gia (${clan.joinRequests.size})",
-                    supporting = "${clan.joinRequests.size} mới"
+                    title = localized(TextKey.JoinRequestsCount, "count" to clan.joinRequests.size),
+                    supporting = localized(TextKey.NewCount, "count" to clan.joinRequests.size)
                 )
             }
             items(clan.joinRequests, key = { "request:${it.userId}" }) { request ->
@@ -471,7 +476,7 @@ fun ClanDetailView(
 
         item(key = "member_heading") {
             ArcadeSectionHeading(
-                title = "Thành viên",
+                title = localized(TextKey.ClanMembers),
                 supporting = "${clan.members.size}/${clan.maxMembers}"
             )
         }
@@ -498,7 +503,7 @@ fun ClanDetailView(
 
         item(key = "leave_clan") {
             ArcadeActionButton(
-                label = "RỜI BANG",
+                label = localized(TextKey.LeaveClan),
                 onClick = { showLeaveConfirmation = true },
                 style = ArcadeActionStyle.DANGER,
                 modifier = Modifier.fillMaxWidth().testTag("leave_clan")
@@ -508,14 +513,14 @@ fun ClanDetailView(
 
     if (showLeaveConfirmation) {
         ArcadeDialog(
-            title = "Rời bang?",
-            subtitle = "Bạn sẽ rời khỏi ${clan.name}.",
+            title = localized(TextKey.LeaveClanTitle),
+            subtitle = localized(TextKey.LeaveClanDescription, "clan" to clan.name),
             onDismissRequest = { showLeaveConfirmation = false },
             modifier = Modifier.testTag("leave_clan_confirmation_dialog")
         ) {
             Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 ArcadeActionButton(
-                    label = "RỜI BANG",
+                    label = localized(TextKey.LeaveClan),
                     onClick = {
                         showLeaveConfirmation = false
                         onLeave()
@@ -524,7 +529,7 @@ fun ClanDetailView(
                     modifier = Modifier.fillMaxWidth().testTag("confirm_leave_clan")
                 )
                 ArcadeActionButton(
-                    label = "HỦY",
+                    label = localized(TextKey.Cancel),
                     onClick = { showLeaveConfirmation = false },
                     style = ArcadeActionStyle.OUTLINE,
                     modifier = Modifier.fillMaxWidth()
@@ -535,14 +540,14 @@ fun ClanDetailView(
 
     kickTarget?.let { member ->
         ArcadeDialog(
-            title = "Mời thành viên rời bang?",
-            subtitle = "${member.displayName} sẽ bị xóa khỏi bang ${clan.name}.",
+            title = localized(TextKey.RemoveClanMemberTitle),
+            subtitle = localized(TextKey.RemoveClanMemberDescription, "player" to member.displayName, "clan" to clan.name),
             onDismissRequest = { kickTarget = null },
             modifier = Modifier.testTag("kick_clan_member_dialog")
         ) {
             Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 ArcadeActionButton(
-                    label = "MỜI RỜI BANG",
+                    label = localized(TextKey.RemoveClanMemberAction),
                     onClick = {
                         kickTarget = null
                         onKickMember(clan.id, member.userId)
@@ -551,7 +556,7 @@ fun ClanDetailView(
                     modifier = Modifier.fillMaxWidth().testTag("confirm_kick_clan_member")
                 )
                 ArcadeActionButton(
-                    label = "HỦY",
+                    label = localized(TextKey.Cancel),
                     onClick = { kickTarget = null },
                     style = ArcadeActionStyle.OUTLINE,
                     modifier = Modifier.fillMaxWidth()
@@ -578,15 +583,15 @@ private fun ClanStats(clan: ClanSnapshot) {
         val stack = maxWidth < 360.dp || LocalDensity.current.fontScale >= 1.35f
         if (stack) {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                ClanStatCard("${clan.members.size}", "Thành viên", Modifier.fillMaxWidth())
-                ClanStatCard(formatNumber(clan.trophies), "Cúp bang", Modifier.fillMaxWidth())
-                ClanStatCard(formatNumber(clan.members.sumOf { it.trophies }), "Cúp thành viên", Modifier.fillMaxWidth())
+                ClanStatCard("${clan.members.size}", localized(TextKey.ClanMembers), Modifier.fillMaxWidth())
+                ClanStatCard(formatNumber(clan.trophies), localized(TextKey.ClanTrophies), Modifier.fillMaxWidth())
+                ClanStatCard(formatNumber(clan.members.sumOf { it.trophies }), localized(TextKey.MemberTrophies), Modifier.fillMaxWidth())
             }
         } else {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                ClanStatCard("${clan.members.size}", "Thành viên", Modifier.weight(1f))
-                ClanStatCard(formatNumber(clan.trophies), "Cúp bang", Modifier.weight(1f))
-                ClanStatCard(formatNumber(clan.members.sumOf { it.trophies }), "Tổng cúp", Modifier.weight(1f))
+                ClanStatCard("${clan.members.size}", localized(TextKey.ClanMembers), Modifier.weight(1f))
+                ClanStatCard(formatNumber(clan.trophies), localized(TextKey.ClanTrophies), Modifier.weight(1f))
+                ClanStatCard(formatNumber(clan.members.sumOf { it.trophies }), localized(TextKey.TotalTrophies), Modifier.weight(1f))
             }
         }
     }
@@ -636,13 +641,13 @@ private fun ClanQuestCard(
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             Text(
-                "NHIỆM VỤ TUẦN",
+                localized(TextKey.WeeklyClanQuest),
                 style = MaterialTheme.typography.labelMedium,
                 color = ArcadePalette.Gold500,
                 fontWeight = FontWeight.Black
             )
             Text(
-                "Thắng ${quest.target} trận cùng bang hội",
+                localized(TextKey.WinClanMatches, "count" to quest.target),
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Black
             )
@@ -662,14 +667,14 @@ private fun ClanQuestCard(
             }
             when {
                 alreadyClaimed -> ArcadeActionButton(
-                    label = "Đã nhận",
+                    label = localized(TextKey.Claimed),
                     onClick = {},
                     enabled = false,
                     style = ArcadeActionStyle.OUTLINE,
                     modifier = Modifier.fillMaxWidth()
                 )
                 quest.progress >= quest.target -> ArcadeActionButton(
-                    label = "NHẬN THƯỞNG",
+                    label = localized(TextKey.ClaimReward),
                     onClick = onClaim,
                     style = ArcadeActionStyle.GOLD,
                     modifier = Modifier.fillMaxWidth()
@@ -698,7 +703,7 @@ private fun ClanJoinRequestCard(
                 Column(modifier = Modifier.weight(1f)) {
                     Text(request.displayName, fontWeight = FontWeight.Black)
                     Text(
-                        "Mã ${request.playerCode}",
+                        localized(TextKey.PlayerCodeShort, "code" to request.playerCode),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -709,13 +714,13 @@ private fun ClanJoinRequestCard(
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 ArcadeActionButton(
-                    label = "Duyệt",
+                    label = localized(TextKey.Approve),
                     onClick = onApprove,
                     style = ArcadeActionStyle.GOLD,
                     modifier = Modifier.fillMaxWidth()
                 )
                 ArcadeActionButton(
-                    label = "Từ chối",
+                    label = localized(TextKey.Decline),
                     onClick = onReject,
                     style = ArcadeActionStyle.OUTLINE,
                     modifier = Modifier.fillMaxWidth()
@@ -742,7 +747,7 @@ private fun ClanMemberCard(
             Column(modifier = Modifier.weight(1f)) {
                 Text(member.displayName, fontWeight = FontWeight.Black, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text(
-                    "${member.role.localizedName()} · ${formatNumber(member.trophies)} cúp",
+                    localized(TextKey.ClanMemberSummary, "role" to member.role.localizedName(), "trophies" to formatNumber(member.trophies)),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -754,7 +759,7 @@ private fun ClanMemberCard(
                 ) {
                     Icon(
                         Icons.Rounded.PersonRemove,
-                        contentDescription = "Mời ${member.displayName} rời bang",
+                        contentDescription = localized(TextKey.RemoveClanMemberNamed, "player" to member.displayName),
                         tint = ArcadePalette.Coral400
                     )
                 }
@@ -772,8 +777,8 @@ private fun ClanLogoDialog(
     onDismiss: () -> Unit
 ) {
     ArcadeDialog(
-        title = "Chọn Logo",
-        subtitle = "Chạm vào biểu tượng để áp dụng ngay.",
+        title = localized(TextKey.ChooseClanLogo),
+        subtitle = localized(TextKey.ChooseClanLogoDescription),
         onDismissRequest = onDismiss,
         modifier = Modifier.testTag("clan_logo_dialog")
     ) {
@@ -786,6 +791,7 @@ private fun ClanLogoDialog(
         ) {
             items(CLAN_AVATAR_IDS, key = { it }) { id ->
                 val isSelected = selectedLogoId == id
+                val logoDescription = localized(TextKey.ClanLogoNamed, "logo" to id.clanLogoLabel())
                 Surface(
                     onClick = { onSelect(id) },
                     modifier = Modifier
@@ -793,7 +799,7 @@ private fun ClanLogoDialog(
                         .semantics {
                             selected = isSelected
                             role = Role.Button
-                            contentDescription = "Logo ${id.clanLogoLabel()}"
+                            contentDescription = logoDescription
                         },
                     shape = RoundedCornerShape(18.dp),
                     color = if (isSelected) ArcadePalette.Blue700 else ArcadePalette.Navy900,
@@ -807,7 +813,7 @@ private fun ClanLogoDialog(
             }
         }
         ArcadeActionButton(
-            label = "ĐÓNG",
+            label = localized(TextKey.Close),
             onClick = onDismiss,
             style = ArcadeActionStyle.OUTLINE,
             modifier = Modifier.fillMaxWidth()
@@ -889,21 +895,26 @@ private fun ClanNotice(message: String) {
     }
 }
 
-private fun ClanRole.localizedName(): String = when (this) {
-    ClanRole.LEADER -> "Bang chủ"
-    ClanRole.CO_LEADER -> "Phó bang"
-    ClanRole.MEMBER -> "Thành viên"
-}
+@Composable
+private fun ClanRole.localizedName(): String = localized(when (this) {
+    ClanRole.LEADER -> TextKey.ClanRoleLeader
+    ClanRole.CO_LEADER -> TextKey.ClanRoleCoLeader
+    ClanRole.MEMBER -> TextKey.ClanRoleMember
+})
 
-private fun String.clanLogoLabel(): String = when (this) {
-    "shield" -> "Khiên"
-    "sword" -> "Song kiếm"
-    "flag" -> "Cờ"
-    "dragon" -> "Rồng"
-    "wolf" -> "Sói"
-    "eagle" -> "Đại bàng"
-    "crown" -> "Vương miện"
-    else -> this
+@Composable
+private fun String.clanLogoLabel(): String {
+    val key = when (this) {
+        "shield" -> TextKey.ClanLogoShield
+        "sword" -> TextKey.ClanLogoSwords
+        "flag" -> TextKey.ClanLogoFlag
+        "dragon" -> TextKey.ClanLogoDragon
+        "wolf" -> TextKey.ClanLogoWolf
+        "eagle" -> TextKey.ClanLogoEagle
+        "crown" -> TextKey.ClanLogoCrown
+        else -> return this
+    }
+    return localized(key)
 }
 
 private fun formatNumber(value: Int): String {

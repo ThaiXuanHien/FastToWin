@@ -88,6 +88,10 @@ class LocalizationCatalogTest {
         assertEquals("1 player", service.quantity(QuantityKey.Players, 1))
         assertEquals("0 players", service.quantity(QuantityKey.Players, 0))
         assertEquals("2 players", service.quantity(QuantityKey.Players, 2, mapOf("count" to 999)))
+        assertEquals("1 clan", service.quantity(QuantityKey.Clans, 1))
+        assertEquals("2 clans", service.quantity(QuantityKey.Clans, 2))
+        assertEquals("1 member", service.quantity(QuantityKey.Members, 1))
+        assertEquals("2 members", service.quantity(QuantityKey.Members, 2))
         assertFailsWith<IllegalArgumentException> { service.quantity(QuantityKey.Players, -1) }
     }
 
@@ -103,6 +107,9 @@ class LocalizationCatalogTest {
         assertEquals("2 матча", service.quantity(QuantityKey.Matches, 2))
         assertEquals("5 матчей", service.quantity(QuantityKey.Matches, 5))
         assertEquals("21 сезон", service.quantity(QuantityKey.Seasons, 21))
+        assertEquals("1 участник", service.quantity(QuantityKey.Members, 1))
+        assertEquals("2 участника", service.quantity(QuantityKey.Members, 2))
+        assertEquals("5 участников", service.quantity(QuantityKey.Members, 5))
     }
 
     @Test

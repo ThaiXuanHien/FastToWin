@@ -2,6 +2,8 @@ package com.hienthai.fastowin.platform
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import com.hienthai.fastowin.localization.LocalizedText
+import com.hienthai.fastowin.localization.TextKey
 import com.hienthai.fastowin.protocol.GemPackageSnapshot
 import com.hienthai.fastowin.protocol.StorePlatform
 import kotlinx.coroutines.flow.Flow
@@ -35,12 +37,12 @@ private class IosSandboxStoreBillingGateway : StoreBillingGateway {
                 prices = packages.associate {
                     it.productId to StoreProductPrice(it.productId, "Sandbox")
                 },
-                notice = "StoreKit sandbox cần được xác nhận trên macOS trước khi phát hành."
+                notice = LocalizedText(TextKey.BillingStoreKitSandboxNotice)
             )
         } else {
             StoreBillingState(
                 platform = StorePlatform.APP_STORE,
-                error = "App Store chưa được cấu hình cho bản production."
+                error = LocalizedText(TextKey.BillingAppStoreNotConfigured)
             )
         }
     }
@@ -50,7 +52,7 @@ private class IosSandboxStoreBillingGateway : StoreBillingGateway {
         val suffix = Random.nextLong().toString().replace("-", "")
         val token = "dev:${StorePlatform.APP_STORE.name}:$productId:$suffix"
         val requestId = "ios-$suffix"
-        _state.update { it.copy(purchasingProductId = productId, notice = "Đang xác thực giao dịch sandbox...") }
+        _state.update { it.copy(purchasingProductId = productId, notice = LocalizedText(TextKey.BillingSandboxVerifying)) }
         _purchases.tryEmit(PlatformStorePurchase(
             requestId = requestId,
             store = StorePlatform.APP_STORE,
@@ -60,7 +62,7 @@ private class IosSandboxStoreBillingGateway : StoreBillingGateway {
     }
 
     override fun finishPurchase(purchaseToken: String) {
-        _state.update { it.copy(purchasingProductId = null, notice = "Đã cộng Gem vào tài khoản.") }
+        _state.update { it.copy(purchasingProductId = null, notice = LocalizedText(TextKey.BillingGemsAdded)) }
     }
 
     override fun close() = Unit

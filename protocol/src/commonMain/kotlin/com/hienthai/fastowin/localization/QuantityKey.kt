@@ -1,6 +1,6 @@
 package com.hienthai.fastowin.localization
 
-enum class QuantityKey { Players, Matches, Seasons }
+enum class QuantityKey { Players, Matches, Seasons, Warriors, Clans, Members }
 
 enum class PluralCategory { ONE, FEW, MANY, OTHER }
 

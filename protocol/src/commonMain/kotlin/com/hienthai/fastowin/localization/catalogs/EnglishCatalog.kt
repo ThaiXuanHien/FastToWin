@@ -26,11 +26,11 @@ internal val englishCatalog = LocalizationCatalog(
         TextKey.Loading to "Loading…",
         TextKey.UnknownError to "Something went wrong. Please try again.",
         TextKey.WelcomePlayer to "Hello {player}!"
-) + englishShellAuthTexts + englishGameplayTexts + englishProfileTexts,
+) + englishShellAuthTexts + englishGameplayTexts + englishProfileTexts + englishSocialShopTexts,
     quantities = mapOf(
         QuantityKey.Players to mapOf(
             PluralCategory.ONE to "{count} player",
             PluralCategory.OTHER to "{count} players"
         )
-    ) + englishProfileQuantities
+    ) + englishProfileQuantities + englishSocialShopQuantities
 )

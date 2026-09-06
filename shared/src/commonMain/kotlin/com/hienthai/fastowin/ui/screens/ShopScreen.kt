@@ -32,6 +32,8 @@ import com.hienthai.fastowin.protocol.CosmeticType
 import com.hienthai.fastowin.protocol.SHOP_ITEMS
 import com.hienthai.fastowin.protocol.PlayerProgressionSnapshot
 import com.hienthai.fastowin.protocol.GemPackageSnapshot
+import com.hienthai.fastowin.localization.TextKey
+import com.hienthai.fastowin.localization.localized
 import com.hienthai.fastowin.platform.StoreBillingState
 import com.hienthai.fastowin.ui.components.SystemBackHandler
 import com.hienthai.fastowin.ui.components.GemColor
@@ -66,9 +68,9 @@ fun ShopScreen(
     SystemBackHandler(onBack = onClose)
     var selectedTab by remember { mutableStateOf("CARD_BACK") }
     val tabs = listOf(
-        "GEMS" to "Gem",
-        "CARD_BACK" to "Mặt số",
-        "BOARD_SKIN" to "Bàn số"
+        "GEMS" to localized(TextKey.GemTab),
+        "CARD_BACK" to localized(TextKey.NumberSkins),
+        "BOARD_SKIN" to localized(TextKey.NumberBoards)
     )
     
     val gold = progression?.gold ?: 0
@@ -82,7 +84,7 @@ fun ShopScreen(
         containerColor = androidx.compose.ui.graphics.Color.Transparent,
         topBar = {
             FastToWinHeader(
-                title = "Cửa hàng",
+                title = localized(TextKey.Shop),
                 gold = gold,
                 gems = gems,
                 unreadNotifications = unreadNotifications,
@@ -102,11 +104,11 @@ fun ShopScreen(
             ) {
                 ArcadeFeatureHero(
                     illustration = Res.drawable.arcade_shop_chest,
-                    title = if (selectedTab == "GEMS") "Kho Gem" else "Kho báu Arcade",
+                    title = localized(if (selectedTab == "GEMS") TextKey.GemVault else TextKey.ArcadeVault),
                     subtitle = if (selectedTab == "GEMS") {
-                        "Gem mở khóa vật phẩm hiếm và đồng bộ an toàn qua Store."
+                        localized(TextKey.GemVaultDescription)
                     } else {
-                        "Mở khóa diện mạo mới và tạo dấu ấn riêng trong mỗi trận đấu."
+                        localized(TextKey.ArcadeVaultDescription)
                     },
                     accent = if (selectedTab == "GEMS") ArcadePalette.Mint400 else ArcadePalette.Gold400
                 )
@@ -132,8 +134,8 @@ fun ShopScreen(
                     if (items.isEmpty()) {
                         ArcadeEmptyState(
                             illustration = Res.drawable.arcade_shop_chest,
-                            title = "Đang nhập hàng",
-                            description = "Vật phẩm mới sẽ sớm xuất hiện tại quầy này.",
+                            title = localized(TextKey.Restocking),
+                            description = localized(TextKey.RestockingDescription),
                             modifier = Modifier.weight(1f)
                         )
                     } else {
@@ -178,12 +180,12 @@ private fun GemStorePreview(
         contentPadding = PaddingValues(vertical = 4.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        item { Text("Chọn gói Gem", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black) }
+        item { Text(localized(TextKey.ChooseGemPackage), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black) }
         item {
-            Text("Gem mở khóa vật phẩm hiếm. Giá được hiển thị theo tài khoản Store của bạn.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(localized(TextKey.GemPackageDescription), color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         if (!isAccount) {
-            item { Text("Đăng nhập để mua và đồng bộ Gem trên các thiết bị.", color = MaterialTheme.colorScheme.error) }
+            item { Text(localized(TextKey.LoginToBuyGems), color = MaterialTheme.colorScheme.error) }
         }
         if (isCatalogLoading && packages.isEmpty()) {
             item {
@@ -193,7 +195,7 @@ private fun GemStorePreview(
             }
         }
         listItems(packages, key = GemPackageSnapshot::productId) { gemPackage ->
-            val price = billingState.prices[gemPackage.productId]?.formattedPrice ?: "Chưa có giá"
+            val price = billingState.prices[gemPackage.productId]?.formattedPrice ?: localized(TextKey.PriceUnavailable)
             val isPurchasing = billingState.purchasingProductId == gemPackage.productId
             GemPackageCard(
                 gemPackage = gemPackage,
@@ -204,14 +206,24 @@ private fun GemStorePreview(
             )
         }
         billingState.notice?.let { notice ->
-            item { Text(notice, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary) }
+            item { Text(localized(notice), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary) }
+        }
+        if (billingState.notice == null) {
+            billingState.rawNoticeFallback?.let { notice ->
+                item { Text(notice, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary) }
+            }
         }
         billingState.error?.let { error ->
-            item { Text(error, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
+            item { Text(localized(error), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
+        }
+        if (billingState.error == null) {
+            billingState.rawErrorFallback?.let { error ->
+                item { Text(error, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
+            }
         }
         item {
             Text(
-                "Bạn cũng có thể săn Gem qua điểm danh, nhiệm vụ khó và thành tích đặc biệt.",
+                localized(TextKey.EarnGemsDescription),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -254,10 +266,10 @@ private fun GemPackageCard(
                     }
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                         Text(gemPackage.title, fontWeight = FontWeight.Black, maxLines = 2)
-                        Text("${gemPackage.gems} Gem", color = GemColor, fontWeight = FontWeight.Bold)
+                        Text(localized(TextKey.GemAmount, "count" to gemPackage.gems), color = GemColor, fontWeight = FontWeight.Bold)
                         if (gemPackage.featured) {
                             Text(
-                                "PHỔ BIẾN",
+                                localized(TextKey.Popular),
                                 color = ArcadePalette.Gold500,
                                 style = MaterialTheme.typography.labelSmall,
                                 fontWeight = FontWeight.Black
@@ -270,7 +282,7 @@ private fun GemPackageCard(
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     packageInfo()
                     ArcadeActionButton(
-                        label = if (isPurchasing) "ĐANG XỬ LÝ" else price,
+                        label = if (isPurchasing) localized(TextKey.Processing) else price,
                         onClick = onBuy,
                         enabled = enabled,
                         style = if (gemPackage.featured) ArcadeActionStyle.GOLD else ArcadeActionStyle.PRIMARY,
@@ -285,7 +297,7 @@ private fun GemPackageCard(
                 ) {
                     Box(modifier = Modifier.weight(1f)) { packageInfo() }
                     ArcadeActionButton(
-                        label = if (isPurchasing) "ĐANG XỬ LÝ" else price,
+                        label = if (isPurchasing) localized(TextKey.Processing) else price,
                         onClick = onBuy,
                         enabled = enabled,
                         style = if (gemPackage.featured) ArcadeActionStyle.GOLD else ArcadeActionStyle.PRIMARY,
@@ -332,7 +344,7 @@ private fun ShopItemCard(
             
             Spacer(Modifier.height(8.dp))
             Text(
-                item.name,
+                item.localizedName(),
                 fontWeight = FontWeight.Black,
                 style = MaterialTheme.typography.bodyLarge,
                 maxLines = 2,
@@ -355,12 +367,12 @@ private fun ShopItemCard(
                         ) {
                             Icon(Icons.Default.CheckCircle, contentDescription = null, tint = ArcadePalette.Mint400, modifier = Modifier.size(18.dp))
                             Spacer(Modifier.width(6.dp))
-                            Text("ĐANG TRANG BỊ", style = MaterialTheme.typography.labelMedium, color = ArcadePalette.Mint100, fontWeight = FontWeight.Black)
+                            Text(localized(TextKey.EquippingNow), style = MaterialTheme.typography.labelMedium, color = ArcadePalette.Mint100, fontWeight = FontWeight.Black)
                         }
                     }
                 } else {
                     ArcadeActionButton(
-                        label = "TRANG BỊ",
+                        label = localized(TextKey.Equip),
                         onClick = onEquip,
                         style = ArcadeActionStyle.PRIMARY,
                         modifier = Modifier.fillMaxWidth()
@@ -378,6 +390,18 @@ private fun ShopItemCard(
             }
         }
     }
+}
+
+@Composable
+private fun ShopItem.localizedName(): String {
+    val key = when (id) {
+        "card_back_gold" -> TextKey.ShopItemGoldName
+        "card_back_diamond" -> TextKey.ShopItemDiamondName
+        "board_skin_dark" -> TextKey.ShopBoardDarkName
+        "board_skin_forest" -> TextKey.ShopBoardForestName
+        else -> return name
+    }
+    return localized(key)
 }
 
 @Composable

@@ -26,11 +26,11 @@ internal val spanishCatalog = LocalizationCatalog(
         TextKey.Loading to "Cargando…",
         TextKey.UnknownError to "Algo salió mal. Inténtalo de nuevo.",
         TextKey.WelcomePlayer to "¡Hola, {player}!"
-) + spanishShellAuthTexts + spanishGameplayTexts + spanishProfileTexts,
+) + spanishShellAuthTexts + spanishGameplayTexts + spanishProfileTexts + spanishSocialShopTexts,
     quantities = mapOf(
         QuantityKey.Players to mapOf(
             PluralCategory.ONE to "{count} jugador",
             PluralCategory.OTHER to "{count} jugadores"
         )
-    ) + spanishProfileQuantities
+    ) + spanishProfileQuantities + spanishSocialShopQuantities
 )
