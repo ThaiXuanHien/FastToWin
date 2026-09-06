@@ -888,6 +888,15 @@ git commit -m "feat: persist localizable notifications"
 
 ### Task 10: Localize push notifications and account emails
 
+**Progress (2026-09-06):** Implemented on `codex/multilingual-localization`.
+FCM registration now persists a canonical notification language and refreshes it
+when the in-app language changes. Tournament, room, mission and daily reminder
+pushes render from the shared 12-language catalog, including the Web Push language
+tag. Password-reset and verification requests remain backward compatible while
+localized SMTP email uses the requested language; missing and unsupported tags
+fall back to English. Protocol, backend, PostgreSQL migration, shared tests and
+Android/Wasm/JS compilation passed.
+
 **Files:**
 - Modify: `protocol/src/commonMain/kotlin/com/hienthai/fastowin/protocol/GameProtocol.kt`
 - Modify: `protocol/src/commonMain/kotlin/com/hienthai/fastowin/protocol/AuthProtocol.kt`
@@ -908,13 +917,13 @@ git commit -m "feat: persist localizable notifications"
 **Interfaces:**
 - Produces: locale-aware `UpdateFcmToken`, push target and auth email request contracts.
 
-- [ ] **Step 1: Write failing locale normalization, push and email tests**
+- [x] **Step 1: Write failing locale normalization, push and email tests**
 
 Assert `ja-JP` sends Japanese templates, `zh-CN` sends Simplified Chinese,
 `ar-EG` falls back to English, Web Push `language` equals the resolved tag, and
 legacy requests without `languageTag` decode and send English.
 
-- [ ] **Step 2: Add locale fields compatibly**
+- [x] **Step 2: Add locale fields compatibly**
 
 ```kotlin
 data class UpdateFcmToken(
@@ -937,7 +946,7 @@ Registration and guest upgrade do not send email in the current route flow, so d
 not add a locale field to those requests. Server normalization accepts only
 supported tags and stores `en` for missing/unsupported values.
 
-- [ ] **Step 3: Add the locale migration and repository contract**
+- [x] **Step 3: Add the locale migration and repository contract**
 
 ```sql
 ALTER TABLE users
@@ -948,14 +957,14 @@ Change `updateFcmToken(playerId, token, languageTag)` and return language from p
 target queries. On language change, resend the current token/tag without changing
 push opt-in preferences.
 
-- [ ] **Step 4: Render push and email from the shared pure Kotlin catalog**
+- [x] **Step 4: Render push and email from the shared pure Kotlin catalog**
 
 Change `PushNotificationService` call sites to pass a `TextKey` plus arguments,
 then render title/body using `LocalizationService`. Change `AuthEmailSender` to
 accept `AppLanguage`, localize subject/body, and keep tokens as arguments. Replace
 hard-coded `.setLanguage("vi")` with the resolved tag.
 
-- [ ] **Step 5: Run backend and compatibility tests, then commit**
+- [x] **Step 5: Run backend and compatibility tests, then commit**
 
 ```powershell
 ./gradlew.bat :protocol:jvmTest :server:test --tests "*PushNotificationServiceTest" --tests "*PushReminderServiceTest" --tests "*AuthEmailSenderTest" --tests "*AuthenticationTest" :shared:testAndroidHostTest --no-daemon

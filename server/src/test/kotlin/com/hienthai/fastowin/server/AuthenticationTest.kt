@@ -3,6 +3,7 @@ package com.hienthai.fastowin.server
 import com.hienthai.fastowin.protocol.AuthErrorResponse
 import com.hienthai.fastowin.protocol.AuthSessionResponse
 import com.hienthai.fastowin.protocol.AccountActionResponse
+import com.hienthai.fastowin.localization.AppLanguage
 import com.hienthai.fastowin.localization.TextKey
 import com.hienthai.fastowin.protocol.AccountSessionsRequest
 import com.hienthai.fastowin.protocol.AccountSessionsResponse
@@ -477,7 +478,7 @@ class AuthenticationTest {
 
         val existing = client.postJson(
             "/auth/password-reset/request",
-            PasswordResetRequest("reset-mail@example.com")
+            PasswordResetRequest("reset-mail@example.com", "ja-JP")
         ).decode<AccountActionResponse>()
         val missing = client.postJson(
             "/auth/password-reset/request",
@@ -489,6 +490,43 @@ class AuthenticationTest {
         assertNull(missing.devResetToken)
         assertEquals(1, sender.passwordResets.size)
         assertEquals("reset-mail@example.com", sender.passwordResets.single().first)
+        assertEquals(AppLanguage.JAPANESE, sender.passwordResets.single().third)
+    }
+
+    @Test
+    fun `legacy password reset request sends English email`() = testApplication {
+        val sender = RecordingAuthEmailSender()
+        application { gameModule(environment = "prod", authEmailSender = sender) }
+        client.postJson(
+            "/auth/register",
+            RegisterRequest("legacy-reset@example.com", PASSWORD, "Legacy reset", "android")
+        )
+
+        val response = client.post("/auth/password-reset/request") {
+            contentType(ContentType.Application.Json)
+            setBody("""{"email":"legacy-reset@example.com"}""")
+        }
+
+        assertEquals(HttpStatusCode.OK, response.status)
+        assertEquals(AppLanguage.ENGLISH, sender.passwordResets.single().third)
+    }
+
+    @Test
+    fun `production sends email verification in requested language`() = testApplication {
+        val sender = RecordingAuthEmailSender()
+        application { gameModule(environment = "prod", authEmailSender = sender) }
+        val registered = client.postJson(
+            "/auth/register",
+            RegisterRequest("verify-mail@example.com", PASSWORD, "Verify mail", "android")
+        ).decode<AuthSessionResponse>()
+
+        val response = client.postJson(
+            "/auth/email-verification/request",
+            EmailVerificationRequest(registered.accessToken, "zh-CN")
+        )
+
+        assertEquals(HttpStatusCode.OK, response.status)
+        assertEquals(AppLanguage.SIMPLIFIED_CHINESE, sender.emailVerifications.single().third)
     }
 
     @Test
@@ -552,12 +590,23 @@ class AuthenticationTest {
 
     private class RecordingAuthEmailSender : AuthEmailSender {
         override val isConfigured: Boolean = true
-        val passwordResets = mutableListOf<Pair<String, String>>()
+        val passwordResets = mutableListOf<Triple<String, String, AppLanguage>>()
+        val emailVerifications = mutableListOf<Triple<String, String, AppLanguage>>()
 
-        override suspend fun sendPasswordReset(recipient: String, resetToken: String) {
-            passwordResets += recipient to resetToken
+        override suspend fun sendPasswordReset(
+            recipient: String,
+            resetToken: String,
+            language: AppLanguage
+        ) {
+            passwordResets += Triple(recipient, resetToken, language)
         }
 
-        override suspend fun sendEmailVerification(recipient: String, verificationCode: String) = Unit
+        override suspend fun sendEmailVerification(
+            recipient: String,
+            verificationCode: String,
+            language: AppLanguage
+        ) {
+            emailVerifications += Triple(recipient, verificationCode, language)
+        }
     }
 }

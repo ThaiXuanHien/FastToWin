@@ -1,5 +1,7 @@
 package com.hienthai.fastowin.server
 
+import com.hienthai.fastowin.localization.TextKey
+import com.hienthai.fastowin.localization.AppLanguage
 import com.hienthai.fastowin.protocol.PlayerProfileSnapshot
 import kotlinx.coroutines.test.runTest
 import java.time.Clock
@@ -14,8 +16,8 @@ class PushReminderServiceTest {
     fun `daily reminder sends once after configured hour`() = runTest {
         val deliveredKeys = mutableSetOf<String>()
         val repository = reminderRepository(deliveredKeys)
-        val sentDestinations = mutableListOf<String>()
-        val push = recordingPushService(sentDestinations)
+        val sent = mutableListOf<RecordedPush>()
+        val push = recordingPushService(sent)
         val service = DailyPushReminderService(
             playerProfileRepository = repository,
             pushNotificationService = push,
@@ -26,23 +28,26 @@ class PushReminderServiceTest {
 
         assertEquals(1, service.sendDueReminders())
         assertEquals(0, service.sendDueReminders())
-        assertEquals(listOf("/account/check-in"), sentDestinations)
+        assertEquals(listOf("/account/check-in"), sent.map(RecordedPush::destination))
+        assertEquals(listOf(AppLanguage.JAPANESE), sent.map(RecordedPush::language))
+        assertEquals(TextKey.PushDailyCheckInTitle, sent.single().titleKey)
+        assertEquals(TextKey.PushDailyCheckInMessage, sent.single().bodyKey)
         assertEquals(setOf("daily-check-in:2026-09-02"), deliveredKeys)
     }
 
     @Test
     fun `daily reminder waits until configured hour`() = runTest {
-        val sentDestinations = mutableListOf<String>()
+        val sent = mutableListOf<RecordedPush>()
         val service = DailyPushReminderService(
             playerProfileRepository = reminderRepository(mutableSetOf()),
-            pushNotificationService = recordingPushService(sentDestinations),
+            pushNotificationService = recordingPushService(sent),
             zoneId = ZoneId.of("Asia/Ho_Chi_Minh"),
             reminderHour = 19,
             clock = Clock.fixed(Instant.parse("2026-09-02T10:00:00Z"), ZoneId.of("UTC"))
         )
 
         assertEquals(0, service.sendDueReminders())
-        assertEquals(0, sentDestinations.size)
+        assertEquals(0, sent.size)
     }
 
     @Test
@@ -64,8 +69,8 @@ class PushReminderServiceTest {
             pushNotificationService = object : PushNotificationService {
                 override suspend fun sendNotification(
                     fcmToken: String,
-                    title: String,
-                    body: String,
+                    language: AppLanguage,
+                    content: LocalizedPushContent,
                     destinationPath: String
                 ): PushDeliveryStatus = PushDeliveryStatus.INVALID_TOKEN
             },
@@ -94,7 +99,7 @@ class PushReminderServiceTest {
         ): List<PushReminderTarget> = if ("daily-check-in:$reminderDate" in deliveredKeys) {
             emptyList()
         } else {
-            listOf(PushReminderTarget("player-1", "token-1"))
+            listOf(PushReminderTarget("player-1", "token-1", AppLanguage.JAPANESE))
         }
 
         override suspend fun markPushReminderDelivered(
@@ -103,15 +108,22 @@ class PushReminderServiceTest {
         ): Boolean = deliveredKeys.add(reminderKey)
     }
 
-    private fun recordingPushService(destinations: MutableList<String>) = object : PushNotificationService {
+    private fun recordingPushService(sent: MutableList<RecordedPush>) = object : PushNotificationService {
         override suspend fun sendNotification(
             fcmToken: String,
-            title: String,
-            body: String,
+            language: AppLanguage,
+            content: LocalizedPushContent,
             destinationPath: String
         ): PushDeliveryStatus {
-            destinations += destinationPath
+            sent += RecordedPush(language, content.titleKey, content.bodyKey, destinationPath)
             return PushDeliveryStatus.SENT
         }
     }
+
+    private data class RecordedPush(
+        val language: AppLanguage,
+        val titleKey: TextKey,
+        val bodyKey: TextKey,
+        val destination: String
+    )
 }

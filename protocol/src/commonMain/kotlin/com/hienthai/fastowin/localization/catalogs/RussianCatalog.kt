@@ -26,7 +26,7 @@ internal val russianCatalog = LocalizationCatalog(
         TextKey.Loading to "Загрузка…",
         TextKey.UnknownError to "Произошла ошибка. Попробуйте ещё раз.",
         TextKey.WelcomePlayer to "Привет, {player}!"
-) + russianShellAuthTexts + russianGameplayTexts + russianProfileTexts + russianSocialShopTexts + russianProtocolMessageTexts,
+) + russianShellAuthTexts + russianGameplayTexts + russianProfileTexts + russianSocialShopTexts + russianProtocolMessageTexts + russianDeliveryTexts,
     quantities = mapOf(
         QuantityKey.Players to mapOf(
             PluralCategory.ONE to "{count} игрок",

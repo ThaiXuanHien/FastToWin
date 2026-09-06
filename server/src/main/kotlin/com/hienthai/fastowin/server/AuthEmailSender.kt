@@ -1,5 +1,8 @@
 package com.hienthai.fastowin.server
 
+import com.hienthai.fastowin.localization.AppLanguage
+import com.hienthai.fastowin.localization.LocalizationService
+import com.hienthai.fastowin.localization.TextKey
 import jakarta.mail.Authenticator
 import jakarta.mail.Message
 import jakarta.mail.PasswordAuthentication
@@ -16,17 +19,71 @@ import java.nio.file.Path
 interface AuthEmailSender {
     val isConfigured: Boolean
 
-    suspend fun sendPasswordReset(recipient: String, resetToken: String)
+    suspend fun sendPasswordReset(recipient: String, resetToken: String, language: AppLanguage)
 
-    suspend fun sendEmailVerification(recipient: String, verificationCode: String)
+    suspend fun sendEmailVerification(recipient: String, verificationCode: String, language: AppLanguage)
 }
 
 object DisabledAuthEmailSender : AuthEmailSender {
     override val isConfigured: Boolean = false
 
-    override suspend fun sendPasswordReset(recipient: String, resetToken: String) = Unit
+    override suspend fun sendPasswordReset(recipient: String, resetToken: String, language: AppLanguage) = Unit
 
-    override suspend fun sendEmailVerification(recipient: String, verificationCode: String) = Unit
+    override suspend fun sendEmailVerification(
+        recipient: String,
+        verificationCode: String,
+        language: AppLanguage
+    ) = Unit
+}
+
+internal data class AuthEmailContent(val subject: String, val html: String)
+
+internal fun passwordResetEmailContent(language: AppLanguage, resetToken: String): AuthEmailContent =
+    authEmailContent(
+        language = language,
+        headingKey = TextKey.ResetPasswordTitle,
+        descriptionKey = TextKey.EmailPasswordResetDescription,
+        code = resetToken
+    )
+
+internal fun emailVerificationContent(
+    language: AppLanguage,
+    verificationCode: String
+): AuthEmailContent = authEmailContent(
+    language = language,
+    headingKey = TextKey.VerifyEmailTitle,
+    descriptionKey = TextKey.EmailVerificationDescription,
+    code = verificationCode
+)
+
+private fun authEmailContent(
+    language: AppLanguage,
+    headingKey: TextKey,
+    descriptionKey: TextKey,
+    code: String
+): AuthEmailContent {
+    val localization = LocalizationService(language)
+    val heading = localization.text(headingKey)
+    val description = localization.text(descriptionKey)
+    val ignoreRequest = localization.text(TextKey.EmailIgnoreRequest)
+    return AuthEmailContent(
+        subject = "$heading • Fast To Win",
+        html = """
+            <!doctype html>
+            <html lang="${language.languageTag}">
+              <body style="margin:0;background:#f4f7fb;font-family:Arial,sans-serif;color:#172033">
+                <div style="max-width:560px;margin:32px auto;padding:28px;background:#ffffff;border-radius:18px">
+                  <div style="font-size:22px;font-weight:800;color:#1667d9">FAST TO WIN</div>
+                  <h1 style="font-size:24px;margin:24px 0 12px">$heading</h1>
+                  <p style="line-height:1.6">$description</p>
+                  <div style="margin:24px 0;padding:18px;border-radius:14px;background:#eef5ff;
+                              font-size:24px;font-weight:800;letter-spacing:2px;text-align:center">$code</div>
+                  <p style="font-size:13px;color:#667085">$ignoreRequest</p>
+                </div>
+              </body>
+            </html>
+        """.trimIndent()
+    )
 }
 
 data class SmtpEmailSettings(
@@ -102,57 +159,34 @@ class SmtpAuthEmailSender(private val settings: SmtpEmailSettings) : AuthEmailSe
         })
     }
 
-    override suspend fun sendPasswordReset(recipient: String, resetToken: String) {
-        send(
-            recipient = recipient,
-            subject = "Khôi phục mật khẩu Fast To Win",
-            heading = "Khôi phục mật khẩu",
-            description = "Dùng mã bên dưới để đặt lại mật khẩu. Mã có hiệu lực trong 15 phút.",
-            code = resetToken
-        )
+    override suspend fun sendPasswordReset(
+        recipient: String,
+        resetToken: String,
+        language: AppLanguage
+    ) {
+        send(recipient, passwordResetEmailContent(language, resetToken))
     }
 
-    override suspend fun sendEmailVerification(recipient: String, verificationCode: String) {
-        send(
-            recipient = recipient,
-            subject = "Xác minh email Fast To Win",
-            heading = "Xác minh email",
-            description = "Nhập mã 6 số bên dưới trong ứng dụng. Mã có hiệu lực trong 15 phút.",
-            code = verificationCode
-        )
+    override suspend fun sendEmailVerification(
+        recipient: String,
+        verificationCode: String,
+        language: AppLanguage
+    ) {
+        send(recipient, emailVerificationContent(language, verificationCode))
     }
 
     private suspend fun send(
         recipient: String,
-        subject: String,
-        heading: String,
-        description: String,
-        code: String
+        content: AuthEmailContent
     ) = withContext(Dispatchers.IO) {
         val message = MimeMessage(session).apply {
             setFrom(InternetAddress(settings.fromEmail, settings.fromName, Charsets.UTF_8.name()))
             setRecipient(Message.RecipientType.TO, InternetAddress(recipient))
-            setSubject(subject, Charsets.UTF_8.name())
-            setContent(emailHtml(heading, description, code), "text/html; charset=UTF-8")
+            setSubject(content.subject, Charsets.UTF_8.name())
+            setContent(content.html, "text/html; charset=UTF-8")
         }
         Transport.send(message)
     }
-
-    private fun emailHtml(heading: String, description: String, code: String): String = """
-        <!doctype html>
-        <html lang="vi">
-          <body style="margin:0;background:#f4f7fb;font-family:Arial,sans-serif;color:#172033">
-            <div style="max-width:560px;margin:32px auto;padding:28px;background:#ffffff;border-radius:18px">
-              <div style="font-size:22px;font-weight:800;color:#1667d9">FAST TO WIN</div>
-              <h1 style="font-size:24px;margin:24px 0 12px">$heading</h1>
-              <p style="line-height:1.6">$description</p>
-              <div style="margin:24px 0;padding:18px;border-radius:14px;background:#eef5ff;
-                          font-size:24px;font-weight:800;letter-spacing:2px;text-align:center">$code</div>
-              <p style="font-size:13px;color:#667085">Nếu bạn không thực hiện yêu cầu này, hãy bỏ qua email.</p>
-            </div>
-          </body>
-        </html>
-    """.trimIndent()
 
     private companion object {
         const val SMTP_TIMEOUT_MILLIS = 10_000

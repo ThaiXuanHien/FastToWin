@@ -69,6 +69,7 @@ class GameController(
     private var countdownJob: Job? = null
     private var latencyJob: Job? = null
     private var gameStarted = false
+    private var lastFcmToken: String? = null
 
     fun updateLanguage(language: AppLanguage) {
         if (localization.language == language) return
@@ -86,6 +87,7 @@ class GameController(
                 notifications = it.notifications.map { notification -> notification.relocalized(localization) }
             )
         }
+        lastFcmToken?.let(::sendFcmToken)
     }
 
     init {
@@ -1661,7 +1663,16 @@ class GameController(
         }
     }
     fun sendFcmToken(token: String) {
-        scope.launch { socket.sendMessage(ClientMessage.UpdateFcmToken(token)) }
+        val normalizedToken = token.trim().takeIf(String::isNotEmpty) ?: return
+        lastFcmToken = normalizedToken
+        scope.launch {
+            socket.sendMessage(
+                ClientMessage.UpdateFcmToken(
+                    token = normalizedToken,
+                    languageTag = localization.language.languageTag
+                )
+            )
+        }
     }
 
     fun updatePushPreferences(preferences: PushPreferencesSnapshot) {

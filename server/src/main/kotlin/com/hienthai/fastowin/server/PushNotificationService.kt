@@ -13,6 +13,10 @@ import com.google.firebase.messaging.Notification
 import com.google.firebase.messaging.WebpushConfig
 import com.google.firebase.messaging.WebpushFcmOptions
 import com.google.firebase.messaging.WebpushNotification
+import com.hienthai.fastowin.localization.AppLanguage
+import com.hienthai.fastowin.localization.LocalizationService
+import com.hienthai.fastowin.localization.TextKey
+import com.hienthai.fastowin.localization.resolveAppLanguage
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -24,10 +28,42 @@ import java.time.ZoneId
 interface PushNotificationService {
     suspend fun sendNotification(
         fcmToken: String,
-        title: String,
-        body: String,
+        language: AppLanguage,
+        content: LocalizedPushContent,
         destinationPath: String = "/notifications"
     ): PushDeliveryStatus
+}
+
+data class LocalizedPushContent(
+    val titleKey: TextKey,
+    val bodyKey: TextKey,
+    val titleArguments: Map<String, String> = emptyMap(),
+    val bodyArguments: Map<String, String> = emptyMap()
+)
+
+internal data class RenderedPushNotification(
+    val title: String,
+    val body: String,
+    val languageTag: String
+)
+
+internal fun resolveNotificationLanguage(languageTag: String?): AppLanguage =
+    languageTag
+        ?.trim()
+        ?.takeIf(String::isNotEmpty)
+        ?.let { resolveAppLanguage(savedCode = "", systemTags = listOf(it)) }
+        ?: AppLanguage.ENGLISH
+
+internal fun renderPushNotification(
+    language: AppLanguage,
+    content: LocalizedPushContent
+): RenderedPushNotification {
+    val localization = LocalizationService(language)
+    return RenderedPushNotification(
+        title = localization.text(content.titleKey, content.titleArguments),
+        body = localization.text(content.bodyKey, content.bodyArguments),
+        languageTag = language.languageTag
+    )
 }
 
 enum class PushDeliveryStatus {
@@ -39,8 +75,8 @@ enum class PushDeliveryStatus {
 object NoOpPushNotificationService : PushNotificationService {
     override suspend fun sendNotification(
         fcmToken: String,
-        title: String,
-        body: String,
+        language: AppLanguage,
+        content: LocalizedPushContent,
         destinationPath: String
     ): PushDeliveryStatus = PushDeliveryStatus.FAILED
 }
@@ -69,19 +105,28 @@ class FirebasePushNotificationService(
 
     override suspend fun sendNotification(
         fcmToken: String,
-        title: String,
-        body: String,
+        language: AppLanguage,
+        content: LocalizedPushContent,
         destinationPath: String
     ): PushDeliveryStatus {
         if (FirebaseApp.getApps().isEmpty() || fcmToken.isBlank()) {
             return PushDeliveryStatus.FAILED
         }
+        val renderedContent = renderPushNotification(
+            language = language,
+            content = content
+        )
         return withContext(Dispatchers.IO) {
             try {
                 val destination = normalizePushDestination(destinationPath)
                 val message = Message.builder()
                     .setToken(fcmToken)
-                    .setNotification(Notification.builder().setTitle(title).setBody(body).build())
+                    .setNotification(
+                        Notification.builder()
+                            .setTitle(renderedContent.title)
+                            .setBody(renderedContent.body)
+                            .build()
+                    )
                     .putData("destination", destination)
                     .setApnsConfig(
                         ApnsConfig.builder()
@@ -90,7 +135,7 @@ class FirebasePushNotificationService(
                             .build()
                     )
                     .apply {
-                        webPushConfig(title, body, destination)?.let { setWebpushConfig(it) }
+                        webPushConfig(renderedContent, destination)?.let { setWebpushConfig(it) }
                     }
                     .build()
                 FirebaseMessaging.getInstance().send(message)
@@ -110,8 +155,7 @@ class FirebasePushNotificationService(
     }
 
     private fun webPushConfig(
-        title: String,
-        body: String,
+        content: RenderedPushNotification,
         destinationPath: String
     ): WebpushConfig? {
         val baseUrl = webBaseUrl ?: return null
@@ -121,11 +165,11 @@ class FirebasePushNotificationService(
             .putData("destination", path)
             .setNotification(
                 WebpushNotification.builder()
-                    .setTitle(title)
-                    .setBody(body)
+                    .setTitle(content.title)
+                    .setBody(content.body)
                     .setIcon("$baseUrl/icons/icon-192.png")
                     .setBadge("$baseUrl/icons/icon-192.png")
-                    .setLanguage("vi")
+                    .setLanguage(content.languageTag)
                     .build()
             )
             .setFcmOptions(WebpushFcmOptions.withLink("$baseUrl$path"))
@@ -191,8 +235,11 @@ class DailyPushReminderService(
         playerProfileRepository.loadDailyPushReminderTargets(reminderDate.toString()).forEach { target ->
             val deliveryStatus = pushNotificationService.sendNotification(
                 fcmToken = target.fcmToken,
-                title = "Đừng quên điểm danh",
-                body = "Vào nhận Vàng, XP và giữ chuỗi chuyên cần hôm nay nhé!",
+                language = target.language,
+                content = LocalizedPushContent(
+                    titleKey = TextKey.PushDailyCheckInTitle,
+                    bodyKey = TextKey.PushDailyCheckInMessage
+                ),
                 destinationPath = "/account/check-in"
             )
             when (deliveryStatus) {

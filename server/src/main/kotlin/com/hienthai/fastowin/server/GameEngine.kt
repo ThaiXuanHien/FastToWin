@@ -3,6 +3,7 @@
 import com.hienthai.fastowin.protocol.ClientMessage
 import com.hienthai.fastowin.localization.protocolTextKeyForCode
 import com.hienthai.fastowin.localization.TextKey
+import com.hienthai.fastowin.localization.LocalizationService
 import com.hienthai.fastowin.protocol.CosmeticType
 import com.hienthai.fastowin.protocol.DAILY_CHECK_IN_AVATAR_ID
 import com.hienthai.fastowin.protocol.MAX_PROFILE_DISPLAY_NAME_LENGTH
@@ -344,7 +345,11 @@ class GameEngine(
                     HandleResult(emptyList())
                 }
                 is ClientMessage.UpdateFcmToken -> {
-                    playerProfileRepository.updateFcmToken(playerId, message.token.trim().take(4096))
+                    playerProfileRepository.updateFcmToken(
+                        playerId = playerId,
+                        token = message.token.trim().take(4096),
+                        languageTag = resolveNotificationLanguage(message.languageTag).languageTag
+                    )
                     HandleResult(emptyList())
                 }
                 is ClientMessage.UpdatePushPreferences -> HandleResult(emptyList())
@@ -557,16 +562,22 @@ class GameEngine(
             tournamentInvitations[invitation.id] = invitation
             
             // Send Push Notification
-            val fcmToken = playerProfileRepository.findPushToken(
+            val pushTarget = playerProfileRepository.findPushTarget(
                 friendId,
                 PushNotificationCategory.TOURNAMENT_INVITATIONS
             )
-            if (fcmToken != null) {
+            if (pushTarget != null) {
                 sendPushNotification(
                     playerId = friendId,
-                    fcmToken = fcmToken,
-                    title = "Lời mời giải đấu",
-                    body = "${invitation.hostDisplayName} đã mời bạn vào giải đấu ${invitation.tournamentName}",
+                    target = pushTarget,
+                    content = LocalizedPushContent(
+                        titleKey = TextKey.PushTournamentInvitationTitle,
+                        bodyKey = TextKey.PushTournamentInvitationMessage,
+                        bodyArguments = mapOf(
+                            "player" to invitation.hostDisplayName,
+                            "tournament" to invitation.tournamentName
+                        )
+                    ),
                     destinationPath = "/tournament"
                 )
             }
@@ -1071,16 +1082,22 @@ class GameEngine(
                 ))
             )
             
-            val fcmToken = playerProfileRepository.findPushToken(
+            val pushTarget = playerProfileRepository.findPushTarget(
                 invitation.inviteeId,
                 PushNotificationCategory.ROOM_INVITATIONS
             )
-            if (fcmToken != null) {
+            if (pushTarget != null) {
                 sendPushNotification(
                     playerId = invitation.inviteeId,
-                    fcmToken = fcmToken,
-                    title = "Lời mời chơi game",
-                    body = "${invitation.inviterDisplayName} đã mời bạn vào phòng ${invitation.roomName}",
+                    target = pushTarget,
+                    content = LocalizedPushContent(
+                        titleKey = TextKey.PushRoomInvitationTitle,
+                        bodyKey = TextKey.PushRoomInvitationMessage,
+                        bodyArguments = mapOf(
+                            "player" to invitation.inviterDisplayName,
+                            "room" to invitation.roomName
+                        )
+                    ),
                     destinationPath = "/friends"
                 )
             }
@@ -1465,18 +1482,25 @@ class GameEngine(
             ).filter { it.completed && it.code !in previouslyCompleted }
             if (newlyCompleted.isEmpty()) return@forEach
 
-            val token = runCatching {
-                playerProfileRepository.findPushToken(
+            val target = runCatching {
+                playerProfileRepository.findPushTarget(
                     player.playerId,
                     PushNotificationCategory.MISSION_REWARDS
                 )
             }.getOrNull() ?: return@forEach
             newlyCompleted.forEach { mission ->
+                val missionTitle = mission.titleKey
+                    ?.let { keyName -> TextKey.entries.firstOrNull { it.name == keyName } }
+                    ?.let { key -> LocalizationService(target.language).text(key) }
+                    ?: mission.title
                 sendPushNotification(
                     playerId = player.playerId,
-                    fcmToken = token,
-                    title = "Nhiệm vụ hoàn thành",
-                    body = "${mission.title} — vào nhận thưởng ngay!",
+                    target = target,
+                    content = LocalizedPushContent(
+                        titleKey = TextKey.PushMissionCompletedTitle,
+                        bodyKey = TextKey.PushMissionCompletedMessage,
+                        bodyArguments = mapOf("mission" to missionTitle)
+                    ),
                     destinationPath = "/account/missions"
                 )
             }
@@ -1485,20 +1509,19 @@ class GameEngine(
 
     private suspend fun sendPushNotification(
         playerId: String,
-        fcmToken: String,
-        title: String,
-        body: String,
+        target: PushTarget,
+        content: LocalizedPushContent,
         destinationPath: String
     ) {
         if (
             pushNotificationService.sendNotification(
-                fcmToken = fcmToken,
-                title = title,
-                body = body,
+                fcmToken = target.fcmToken,
+                language = target.language,
+                content = content,
                 destinationPath = destinationPath
             ) == PushDeliveryStatus.INVALID_TOKEN
         ) {
-            playerProfileRepository.clearFcmToken(playerId, fcmToken)
+            playerProfileRepository.clearFcmToken(playerId, target.fcmToken)
         }
     }
 

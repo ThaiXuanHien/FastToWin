@@ -343,7 +343,11 @@ fun Application.gameModule(
             val result = authService.requestPasswordReset(request.email)
             if (result is AccountActionResult.Success && result.resetToken != null && authEmailSender.isConfigured) {
                 runCatching {
-                    authEmailSender.sendPasswordReset(request.email.trim().lowercase(), result.resetToken)
+                    authEmailSender.sendPasswordReset(
+                        request.email.trim().lowercase(),
+                        result.resetToken,
+                        resolveNotificationLanguage(request.languageTag)
+                    )
                 }.onFailure { error ->
                     // Keep the response generic so delivery errors cannot reveal registered accounts.
                     System.err.println("Could not send password reset email: ${error.message}")
@@ -404,7 +408,8 @@ fun Application.gameModule(
                 try {
                     authEmailSender.sendEmailVerification(
                         result.emailRecipient,
-                        result.emailVerificationCode
+                        result.emailVerificationCode,
+                        resolveNotificationLanguage(request.languageTag)
                     )
                 } catch (error: Exception) {
                     System.err.println("Could not send email verification: ${error.message}")

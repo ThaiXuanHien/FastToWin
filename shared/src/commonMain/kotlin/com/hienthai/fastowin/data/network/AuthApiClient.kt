@@ -97,9 +97,12 @@ class AuthApiClient(
         ChangePasswordRequest(accessToken, currentPassword, newPassword)
     )
 
-    suspend fun requestPasswordReset(email: String): AccountActionResponse = executeAction(
+    suspend fun requestPasswordReset(
+        email: String,
+        languageTag: String
+    ): AccountActionResponse = executeAction(
         "$baseUrl/auth/password-reset/request",
-        PasswordResetRequest(email)
+        PasswordResetRequest(email, languageTag)
     )
 
     suspend fun confirmPasswordReset(
@@ -111,9 +114,12 @@ class AuthApiClient(
         PasswordResetConfirmRequest(email, resetToken, newPassword)
     )
 
-    suspend fun requestEmailVerification(accessToken: String): AccountActionResponse = executeAction(
+    suspend fun requestEmailVerification(
+        accessToken: String,
+        languageTag: String
+    ): AccountActionResponse = executeAction(
         "$baseUrl/auth/email-verification/request",
-        EmailVerificationRequest(accessToken)
+        EmailVerificationRequest(accessToken, languageTag)
     )
 
     suspend fun confirmEmailVerification(

@@ -1,6 +1,8 @@
 package com.hienthai.fastowin.server
 
 import com.hienthai.fastowin.localization.TextKey
+import com.hienthai.fastowin.localization.AppLanguage
+import com.hienthai.fastowin.protocol.PushNotificationCategory
 import com.zaxxer.hikari.HikariConfig
 import com.zaxxer.hikari.HikariDataSource
 import kotlinx.coroutines.test.runTest
@@ -14,6 +16,60 @@ import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
 
 class PostgresAuthenticationTest {
+    @Test
+    fun `fcm push target stores a canonical notification language`() = runTest {
+        val url = System.getenv("TEST_DATABASE_URL") ?: return@runTest
+        HikariDataSource(HikariConfig().apply {
+            jdbcUrl = url
+            username = System.getenv("TEST_DATABASE_USER") ?: "fasttowin"
+            password = System.getenv("TEST_DATABASE_PASSWORD") ?: "fasttowin"
+            maximumPoolSize = 2
+        }).use { dataSource ->
+            Flyway.configure()
+                .dataSource(dataSource)
+                .locations("classpath:db/migration")
+                .load()
+                .migrate()
+
+            val email = "push-locale-${UUID.randomUUID()}@example.com"
+            val authService = AuthenticationService(
+                repository = PostgresAuthRepository(dataSource),
+                passwordHasher = PasswordHasher(iterations = 1_000),
+                nowMillis = { NOW_MILLIS }
+            )
+            val registration = assertIs<AuthResult.Success>(
+                authService.register(email, PASSWORD, "Push locale", "android")
+            ).session
+            val profiles = PostgresPlayerProfileRepository(dataSource)
+            try {
+                assertTrue(profiles.updateFcmToken(registration.userId, "token-ja", "ja-JP"))
+                assertEquals(
+                    PushTarget("token-ja", AppLanguage.JAPANESE),
+                    profiles.findPushTarget(
+                        registration.userId,
+                        PushNotificationCategory.ROOM_INVITATIONS
+                    )
+                )
+
+                assertTrue(profiles.updateFcmToken(registration.userId, "token-en", "ar-EG"))
+                assertEquals(
+                    PushTarget("token-en", AppLanguage.ENGLISH),
+                    profiles.findPushTarget(
+                        registration.userId,
+                        PushNotificationCategory.ROOM_INVITATIONS
+                    )
+                )
+            } finally {
+                dataSource.connection.use { connection ->
+                    connection.prepareStatement("DELETE FROM users WHERE id = ?").use { statement ->
+                        statement.setObject(1, UUID.fromString(registration.userId))
+                        statement.executeUpdate()
+                    }
+                }
+            }
+        }
+    }
+
     @Test
     fun `development seed stores localizable notification templates`() = runTest {
         val url = System.getenv("TEST_DATABASE_URL") ?: return@runTest

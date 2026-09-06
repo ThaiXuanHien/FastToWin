@@ -858,7 +858,10 @@ sealed class ClientMessage {
 
     @Serializable
     @SerialName("update_fcm_token")
-    data class UpdateFcmToken(val token: String) : ClientMessage()
+    data class UpdateFcmToken(
+        val token: String,
+        val languageTag: String? = null
+    ) : ClientMessage()
 
     @Serializable
     @SerialName("update_push_preferences")

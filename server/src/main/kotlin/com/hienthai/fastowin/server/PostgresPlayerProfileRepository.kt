@@ -1083,7 +1083,11 @@ class PostgresPlayerProfileRepository(
         }
     }
 
-    override suspend fun updateFcmToken(playerId: String, token: String): Boolean = withContext(Dispatchers.IO) {
+    override suspend fun updateFcmToken(
+        playerId: String,
+        token: String,
+        languageTag: String
+    ): Boolean = withContext(Dispatchers.IO) {
         dataSource.connection.use { connection ->
             connection.autoCommit = false
             try {
@@ -1099,10 +1103,11 @@ class PostgresPlayerProfileRepository(
                     }
                 }
                 val updated = connection.prepareStatement(
-                    "UPDATE users SET fcm_token = ? WHERE id = ?"
+                    "UPDATE users SET fcm_token = ?, notification_language = ? WHERE id = ?"
                 ).use { statement ->
                     statement.setString(1, normalizedToken)
-                    statement.setObject(2, userId)
+                    statement.setString(2, resolveNotificationLanguage(languageTag).languageTag)
+                    statement.setObject(3, userId)
                     statement.executeUpdate() > 0
                 }
                 connection.commit()
@@ -1241,10 +1246,10 @@ class PostgresPlayerProfileRepository(
         }
     }
 
-    override suspend fun findPushToken(
+    override suspend fun findPushTarget(
         playerId: String,
         category: PushNotificationCategory
-    ): String? = withContext(Dispatchers.IO) {
+    ): PushTarget? = withContext(Dispatchers.IO) {
         val enabledColumn = when (category) {
             PushNotificationCategory.ROOM_INVITATIONS -> "push_room_invitations_enabled"
             PushNotificationCategory.TOURNAMENT_INVITATIONS -> "push_tournament_invitations_enabled"
@@ -1253,11 +1258,18 @@ class PostgresPlayerProfileRepository(
         }
         dataSource.connection.use { connection ->
             connection.prepareStatement(
-                "SELECT fcm_token FROM users WHERE id = ? AND $enabledColumn = TRUE"
+                "SELECT fcm_token, notification_language FROM users WHERE id = ? AND $enabledColumn = TRUE"
             ).use { statement ->
                 statement.setObject(1, UUID.fromString(playerId))
                 statement.executeQuery().use { result ->
-                    if (result.next()) result.getString("fcm_token") else null
+                    if (result.next()) {
+                        result.getString("fcm_token")?.let { token ->
+                            PushTarget(
+                                token,
+                                resolveNotificationLanguage(result.getString("notification_language"))
+                            )
+                        }
+                    } else null
                 }
             }
         }
@@ -1297,7 +1309,7 @@ class PostgresPlayerProfileRepository(
         dataSource.connection.use { connection ->
             connection.prepareStatement(
                 """
-                SELECT u.id, u.fcm_token
+                SELECT u.id, u.fcm_token, u.notification_language
                 FROM users u
                 LEFT JOIN player_stats ps ON ps.user_id = u.id
                 WHERE u.status = 'ACTIVE'
@@ -1322,7 +1334,10 @@ class PostgresPlayerProfileRepository(
                         while (result.next()) {
                             add(PushReminderTarget(
                                 playerId = result.getObject("id", UUID::class.java).toString(),
-                                fcmToken = result.getString("fcm_token")
+                                fcmToken = result.getString("fcm_token"),
+                                language = resolveNotificationLanguage(
+                                    result.getString("notification_language")
+                                )
                             ))
                         }
                     }

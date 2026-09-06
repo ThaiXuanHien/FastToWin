@@ -52,7 +52,10 @@ data class ChangePasswordRequest(
 )
 
 @Serializable
-data class PasswordResetRequest(val email: String)
+data class PasswordResetRequest(
+    val email: String,
+    val languageTag: String? = null
+)
 
 @Serializable
 data class PasswordResetConfirmRequest(
@@ -62,7 +65,10 @@ data class PasswordResetConfirmRequest(
 )
 
 @Serializable
-data class EmailVerificationRequest(val accessToken: String)
+data class EmailVerificationRequest(
+    val accessToken: String,
+    val languageTag: String? = null
+)
 
 @Serializable
 data class EmailVerificationConfirmRequest(

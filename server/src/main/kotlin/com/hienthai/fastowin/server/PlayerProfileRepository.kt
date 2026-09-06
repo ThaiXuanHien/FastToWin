@@ -1,5 +1,6 @@
 package com.hienthai.fastowin.server
 
+import com.hienthai.fastowin.localization.AppLanguage
 import com.hienthai.fastowin.protocol.PlayerProfileSnapshot
 import com.hienthai.fastowin.protocol.PushNotificationCategory
 import com.hienthai.fastowin.protocol.PushPreferencesSnapshot
@@ -21,13 +22,13 @@ interface PlayerProfileRepository {
     }
     suspend fun findByPlayerCode(playerCode: String): PlayerProfileSnapshot? = null
     suspend fun updateProfile(playerId: String, displayName: String, avatarId: String?): Boolean
-    suspend fun updateFcmToken(playerId: String, token: String): Boolean = false
+    suspend fun updateFcmToken(playerId: String, token: String, languageTag: String): Boolean = false
     suspend fun clearFcmToken(playerId: String, expectedToken: String): Boolean = false
     suspend fun findFcmToken(playerId: String): String? = null
-    suspend fun findPushToken(
+    suspend fun findPushTarget(
         playerId: String,
         category: PushNotificationCategory
-    ): String? = findFcmToken(playerId)
+    ): PushTarget? = findFcmToken(playerId)?.let { PushTarget(it, AppLanguage.ENGLISH) }
     suspend fun updatePushPreferences(
         playerId: String,
         preferences: PushPreferencesSnapshot
@@ -68,7 +69,13 @@ interface PlayerProfileRepository {
 
 data class PushReminderTarget(
     val playerId: String,
-    val fcmToken: String
+    val fcmToken: String,
+    val language: AppLanguage
+)
+
+data class PushTarget(
+    val fcmToken: String,
+    val language: AppLanguage
 )
 
 data class DailyCheckInClaimResult(

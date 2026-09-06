@@ -42,6 +42,34 @@ import java.util.UUID
 
 class GameEngineTest {
     @Test
+    fun `account fcm token update stores canonical notification language`() = runTest {
+        val playerId = UUID.randomUUID().toString()
+        var storedToken: String? = null
+        var storedLanguage: String? = null
+        val repository = object : PlayerProfileRepository {
+            override suspend fun updateFcmToken(
+                playerId: String,
+                token: String,
+                languageTag: String
+            ): Boolean {
+                storedToken = token
+                storedLanguage = languageTag
+                return true
+            }
+
+            override suspend fun findByPlayerId(playerId: String): PlayerProfileSnapshot? = null
+            override suspend fun updateProfile(playerId: String, displayName: String, avatarId: String?) = false
+        }
+        val engine = GameEngine(playerProfileRepository = repository)
+        engine.connectAccount(AuthenticatedAccount(UUID.fromString(playerId), "Player"))
+
+        engine.handle(playerId, ClientMessage.UpdateFcmToken(" token-ja ", "ja-JP"))
+
+        assertEquals("token-ja", storedToken)
+        assertEquals("ja", storedLanguage)
+    }
+
+    @Test
     fun `account notification sync accepts stable progression template arguments`() = runTest {
         val playerId = UUID.randomUUID().toString()
         val notifications = InMemoryNotificationRepository()

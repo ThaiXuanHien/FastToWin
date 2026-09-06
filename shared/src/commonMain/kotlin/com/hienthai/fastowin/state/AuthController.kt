@@ -189,7 +189,9 @@ class AuthController(
         if (_state.value.isLoading) return
         _state.update { it.copy(isLoading = true, error = null, notice = null) }
         scope.launch {
-            runCatching { api.requestPasswordReset(email) }
+            runCatching {
+                api.requestPasswordReset(email, messageMapper.language.languageTag)
+            }
                 .onSuccess { response ->
                     _state.update {
                         it.copy(
@@ -222,7 +224,9 @@ class AuthController(
         _state.update { it.copy(isLoading = true, error = null, notice = null) }
         scope.launch {
             val accessToken = validAccessToken() ?: return@launch
-            runCatching { api.requestEmailVerification(accessToken) }
+            runCatching {
+                api.requestEmailVerification(accessToken, messageMapper.language.languageTag)
+            }
                 .onSuccess { response ->
                     if (response.emailVerified == true) {
                         completeEmailVerification(messageMapper.message(response))
