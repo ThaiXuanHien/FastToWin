@@ -4,7 +4,7 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
-const val PROTOCOL_VERSION = 39
+const val PROTOCOL_VERSION = 40
 const val GAME_NUMBER_COUNT = 50
 const val MAX_PROFILE_DISPLAY_NAME_LENGTH = 32
 val DAILY_CHECK_IN_REWARDS_XP = listOf(10, 10, 15, 15, 20, 25, 40)
@@ -608,7 +608,11 @@ data class NotificationSnapshot(
     val createdAtEpochMillis: Long,
     val isRead: Boolean = false,
     val destination: NotificationDestination,
-    val actionData: String? = null
+    val actionData: String? = null,
+    val titleKey: String? = null,
+    val titleArgs: Map<String, String> = emptyMap(),
+    val messageKey: String? = null,
+    val messageArgs: Map<String, String> = emptyMap()
 )
 
 @Serializable

@@ -5,16 +5,45 @@ import com.hienthai.fastowin.protocol.CosmeticSnapshot
 import com.hienthai.fastowin.protocol.CosmeticType
 import com.hienthai.fastowin.protocol.FriendRequestSnapshot
 import com.hienthai.fastowin.protocol.MissionSnapshot
+import com.hienthai.fastowin.protocol.NotificationDestination
+import com.hienthai.fastowin.protocol.NotificationKind
+import com.hienthai.fastowin.protocol.NotificationSnapshot
 import com.hienthai.fastowin.protocol.PlayerProfileSnapshot
 import com.hienthai.fastowin.protocol.PlayerProgressionSnapshot
 import com.hienthai.fastowin.protocol.ServerMessage
 import com.hienthai.fastowin.localization.AppLanguage
 import com.hienthai.fastowin.localization.LocalizationService
+import com.hienthai.fastowin.localization.TextKey
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 class AppNotificationTest {
+    @Test
+    fun `keyed server notification rerenders without mutating stored fallback`() {
+        val snapshot = NotificationSnapshot(
+            id = "friend:server",
+            kind = NotificationKind.FRIEND_REQUEST,
+            title = "Lời mời kết bạn",
+            message = "Hiếu muốn kết bạn với bạn.",
+            createdAtEpochMillis = NOW,
+            destination = NotificationDestination.FRIENDS,
+            titleKey = TextKey.FriendRequests.name,
+            messageKey = TextKey.NotificationFriendRequestMessage.name,
+            messageArgs = mapOf("player" to "Hiếu")
+        )
+
+        val vietnamese = snapshot.toAppNotification(LocalizationService(AppLanguage.VIETNAMESE))
+        val english = snapshot.toAppNotification(LocalizationService(AppLanguage.ENGLISH))
+
+        assertEquals("Lời mời kết bạn", vietnamese.title)
+        assertEquals("Hiếu muốn kết bạn với bạn.", vietnamese.message)
+        assertEquals("Friend requests", english.title)
+        assertEquals("Hiếu wants to be your friend.", english.message)
+        assertEquals("Lời mời kết bạn", snapshot.title)
+        assertEquals("Hiếu muốn kết bạn với bạn.", snapshot.message)
+    }
+
     @Test
     fun `first profile load does not repeat historical unlocks`() {
         val current = profile(
@@ -164,6 +193,39 @@ class AppNotificationTest {
 
         assertEquals("Friend requests", english.title)
         assertEquals("Hieu wants to be your friend.", english.message)
+    }
+
+    @Test
+    fun `persisted progression templates rerender in another language`() {
+        val snapshots = progressionNotifications(
+            profile(false, false, false),
+            profile(true, true, true),
+            NOW,
+            vietnamese()
+        ).map(AppNotification::toNotificationSnapshot)
+
+        assertTrue(snapshots.all { it.titleKey != null && it.messageKey != null })
+        assertEquals(
+            mapOf(
+                "code" to "WIN_10",
+                "title" to "Thắng 10 trận",
+                "description" to "Thắng 10 trận."
+            ),
+            snapshots.single { it.kind == NotificationKind.ACHIEVEMENT }.messageArgs
+        )
+        val english = snapshots.map { it.toAppNotification(LocalizationService(AppLanguage.ENGLISH)) }
+        assertEquals(
+            "Ten victories: Win 10 matches",
+            english.single { it.kind == AppNotificationKind.ACHIEVEMENT }.message
+        )
+        assertEquals(
+            "You unlocked Gold frame.",
+            english.single { it.kind == AppNotificationKind.COSMETIC }.message
+        )
+        assertEquals(
+            "Win 1 match today • Claim 150 Gold + 25 XP + 2 Gems.",
+            english.single { it.kind == AppNotificationKind.MISSION }.message
+        )
     }
 
     private fun profile(

@@ -1,8 +1,11 @@
 package com.hienthai.fastowin.server
 
+import com.hienthai.fastowin.localization.TextKey
+import com.hienthai.fastowin.protocol.ProtocolJson
 import com.hienthai.fastowin.protocol.SHOP_ITEMS
 import com.zaxxer.hikari.HikariConfig
 import com.zaxxer.hikari.HikariDataSource
+import kotlinx.serialization.encodeToString
 import org.flywaydb.core.Flyway
 import java.nio.charset.StandardCharsets
 import java.sql.Connection
@@ -657,32 +660,73 @@ private fun seedClan(connection: Connection, userId: UUID, memberId: UUID, now: 
     }
 }
 
-private fun seedNotifications(connection: Connection, userId: UUID, now: Instant) {
+internal fun seedNotifications(connection: Connection, userId: UUID, now: Instant) {
     val notifications = listOf(
-        arrayOf("dev-achievement", "ACHIEVEMENT", "Đã mở mọi thành tích", "Tài khoản test đã sẵn sàng.", "PROFILE"),
-        arrayOf("dev-cosmetic", "COSMETIC", "Bộ sưu tập hoàn chỉnh", "Tất cả vật phẩm test đã được mở khóa.", "PROFILE"),
-        arrayOf("dev-mission", "MISSION", "Nhiệm vụ sẵn sàng", "Có nhiệm vụ hoàn thành đang chờ nhận thưởng.", "PROFILE")
+        SeedNotification(
+            id = "dev-achievement",
+            kind = "ACHIEVEMENT",
+            title = "Đã mở mọi thành tích",
+            message = "Tài khoản test đã sẵn sàng.",
+            titleKey = TextKey.AchievementsTitle,
+            messageKey = TextKey.NotificationAchievementMessage,
+            messageArgs = mapOf(
+                "code" to "FIRST_WIN",
+                "title" to "Chiến thắng đầu tiên",
+                "description" to "Thắng trận đầu tiên."
+            )
+        ),
+        SeedNotification(
+            id = "dev-cosmetic",
+            kind = "COSMETIC",
+            title = "Bộ sưu tập hoàn chỉnh",
+            message = "Tất cả vật phẩm test đã được mở khóa.",
+            titleKey = TextKey.Unlocked,
+            messageKey = TextKey.NotificationCosmeticMessage,
+            messageArgs = mapOf("id" to "frame_gold", "name" to "Khung Vàng")
+        ),
+        SeedNotification(
+            id = "dev-mission",
+            kind = "MISSION",
+            title = "Nhiệm vụ sẵn sàng",
+            message = "Có nhiệm vụ hoàn thành đang chờ nhận thưởng.",
+            titleKey = TextKey.MissionCompleted,
+            messageKey = TextKey.NotificationMissionMessage,
+            messageArgs = mapOf(
+                "code" to "DAILY_WIN_1",
+                "title" to "Thắng một trận",
+                "titleKey" to TextKey.MissionWinOne.name,
+                "rewardGold" to "150",
+                "rewardXp" to "25",
+                "rewardGems" to "2"
+            )
+        )
     )
     connection.prepareStatement(
         """
         INSERT INTO user_notifications (
-            user_id, notification_id, kind, title, message, destination, created_at, read_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            user_id, notification_id, kind, title, message, destination, created_at, read_at,
+            title_key, title_args, message_key, message_args
+        ) VALUES (?, ?, ?, ?, ?, 'PROFILE', ?, ?, ?, ?::jsonb, ?, ?::jsonb)
         ON CONFLICT (user_id, notification_id) DO UPDATE SET
             kind = EXCLUDED.kind, title = EXCLUDED.title, message = EXCLUDED.message,
             destination = EXCLUDED.destination, created_at = EXCLUDED.created_at,
-            read_at = EXCLUDED.read_at, dismissed_at = NULL
+            read_at = EXCLUDED.read_at, title_key = EXCLUDED.title_key,
+            title_args = EXCLUDED.title_args, message_key = EXCLUDED.message_key,
+            message_args = EXCLUDED.message_args, dismissed_at = NULL
         """.trimIndent()
     ).use { statement ->
-        notifications.forEachIndexed { index, row ->
+        notifications.forEachIndexed { index, notification ->
             statement.setObject(1, userId)
-            statement.setString(2, row[0])
-            statement.setString(3, row[1])
-            statement.setString(4, row[2])
-            statement.setString(5, row[3])
-            statement.setString(6, row[4])
-            statement.setTimestamp(7, Timestamp.from(now.minusSeconds((index + 1L) * 1_800L)))
-            statement.setTimestamp(8, if (index == 0) Timestamp.from(now.minusSeconds(900)) else null)
+            statement.setString(2, notification.id)
+            statement.setString(3, notification.kind)
+            statement.setString(4, notification.title)
+            statement.setString(5, notification.message)
+            statement.setTimestamp(6, Timestamp.from(now.minusSeconds((index + 1L) * 1_800L)))
+            statement.setTimestamp(7, if (index == 0) Timestamp.from(now.minusSeconds(900)) else null)
+            statement.setString(8, notification.titleKey.name)
+            statement.setString(9, ProtocolJson.encodeToString(emptyMap<String, String>()))
+            statement.setString(10, notification.messageKey.name)
+            statement.setString(11, ProtocolJson.encodeToString(notification.messageArgs))
             statement.addBatch()
         }
         statement.executeBatch()
@@ -771,6 +815,16 @@ private data class SeedSeason(
 )
 
 private data class SeedPlayer(val id: UUID, val name: String, val code: String, val avatarId: String)
+
+private data class SeedNotification(
+    val id: String,
+    val kind: String,
+    val title: String,
+    val message: String,
+    val titleKey: TextKey,
+    val messageKey: TextKey,
+    val messageArgs: Map<String, String>
+)
 
 private data class SeedWallet(
     val sourceType: String,

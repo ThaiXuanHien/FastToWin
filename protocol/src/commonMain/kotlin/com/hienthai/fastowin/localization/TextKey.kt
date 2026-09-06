@@ -242,6 +242,8 @@ enum class TextKey {
     AccountDeleted,
     NotificationFriendRequestMessage, NotificationRoomInvitationMessage,
     NotificationAchievementMessage, NotificationCosmeticMessage, NotificationMissionMessage,
+    NotificationClanJoinRequestMessage, NotificationClanJoinApprovedTitle,
+    NotificationClanJoinRejectedTitle, NotificationClanInvitationMessage,
     TournamentCreatedNotice, TournamentInvitationSentNotice, TournamentInvitationDeclinedNotice,
     TournamentInvitationDeclinedByFriendNotice, TournamentJoinedNotice,
     TournamentCancelledNotice, TournamentLeftNotice,

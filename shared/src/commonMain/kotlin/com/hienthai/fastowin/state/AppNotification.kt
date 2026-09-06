@@ -30,18 +30,26 @@ data class AppNotification(
     val isRead: Boolean = false,
     val destination: AppNotificationDestination,
     val actionData: String? = null,
+    val titleKey: String? = null,
+    val titleArgs: Map<String, String> = emptyMap(),
+    val messageKey: String? = null,
+    val messageArgs: Map<String, String> = emptyMap(),
     val localizationData: Map<String, String> = emptyMap()
 )
 
-internal fun NotificationSnapshot.toAppNotification() = AppNotification(
+internal fun NotificationSnapshot.toAppNotification(localization: LocalizationService) = AppNotification(
     id = id,
     kind = AppNotificationKind.valueOf(kind.name),
-    title = title,
-    message = message,
+    title = localizedNotificationText(localization, titleKey, titleArgs, title),
+    message = localizedNotificationText(localization, messageKey, messageArgs, message),
     createdAtEpochMillis = createdAtEpochMillis,
     isRead = isRead,
     destination = AppNotificationDestination.valueOf(destination.name),
-    actionData = actionData
+    actionData = actionData,
+    titleKey = titleKey,
+    titleArgs = titleArgs,
+    messageKey = messageKey,
+    messageArgs = messageArgs
 )
 
 internal fun AppNotification.toNotificationSnapshot() = NotificationSnapshot(
@@ -52,8 +60,61 @@ internal fun AppNotification.toNotificationSnapshot() = NotificationSnapshot(
     createdAtEpochMillis = createdAtEpochMillis,
     isRead = isRead,
     destination = NotificationDestination.valueOf(destination.name),
-    actionData = actionData
+    actionData = actionData,
+    titleKey = titleKey,
+    titleArgs = titleArgs,
+    messageKey = messageKey,
+    messageArgs = messageArgs
 )
+
+private fun localizedNotificationText(
+    localization: LocalizationService,
+    keyName: String?,
+    arguments: Map<String, String>,
+    fallback: String
+): String {
+    val key = keyName?.let { candidate -> TextKey.entries.firstOrNull { it.name == candidate } }
+        ?: return fallback
+    val localizedArguments = runCatching {
+        when (key) {
+            TextKey.NotificationAchievementMessage -> {
+                val code = arguments.getValue("code")
+                mapOf(
+                    "title" to localization.achievementTitle(code, arguments.getValue("title")),
+                    "description" to localization.achievementDescription(
+                        code,
+                        arguments.getValue("description")
+                    )
+                )
+            }
+            TextKey.NotificationCosmeticMessage -> mapOf(
+                "item" to localization.cosmeticName(
+                    arguments.getValue("id"),
+                    arguments.getValue("name")
+                )
+            )
+            TextKey.NotificationMissionMessage -> {
+                val mission = MissionSnapshot(
+                    code = arguments.getValue("code"),
+                    title = arguments.getValue("title"),
+                    progress = 1,
+                    target = 1,
+                    completed = true,
+                    rewardXp = arguments.getValue("rewardXp").toInt(),
+                    rewardGold = arguments.getValue("rewardGold").toInt(),
+                    rewardGems = arguments.getValue("rewardGems").toInt(),
+                    titleKey = arguments["titleKey"]
+                )
+                mapOf(
+                    "mission" to mission.localizedTitle(localization),
+                    "reward" to mission.rewardSummary(localization)
+                )
+            }
+            else -> arguments
+        }
+    }.getOrElse { return fallback }
+    return runCatching { localization.text(key, localizedArguments) }.getOrElse { fallback }
+}
 
 internal fun mergeNotifications(
     current: List<AppNotification>,
@@ -82,6 +143,9 @@ internal fun friendRequestNotifications(
         ),
         createdAtEpochMillis = nowMillis,
         destination = AppNotificationDestination.FRIENDS,
+        titleKey = TextKey.FriendRequests.name,
+        messageKey = TextKey.NotificationFriendRequestMessage.name,
+        messageArgs = mapOf("player" to request.displayName),
         localizationData = mapOf("type" to "friend", "player" to request.displayName)
     )
 }
@@ -100,6 +164,9 @@ internal fun roomInvitationNotification(
     ),
     createdAtEpochMillis = nowMillis,
     destination = AppNotificationDestination.FRIENDS,
+    titleKey = TextKey.RoomInvitationTitle.name,
+    messageKey = TextKey.NotificationRoomInvitationMessage.name,
+    messageArgs = mapOf("player" to invitation.fromDisplayName, "room" to invitation.roomName),
     localizationData = mapOf(
         "type" to "room",
         "player" to invitation.fromDisplayName,
@@ -131,6 +198,13 @@ internal fun progressionNotifications(
             ),
             createdAtEpochMillis = nowMillis,
             destination = AppNotificationDestination.PROFILE,
+            titleKey = TextKey.AchievementsTitle.name,
+            messageKey = TextKey.NotificationAchievementMessage.name,
+            messageArgs = mapOf(
+                "code" to achievement.code,
+                "title" to achievement.title,
+                "description" to achievement.description
+            ),
             localizationData = mapOf(
                 "type" to "achievement",
                 "code" to achievement.code,
@@ -154,6 +228,9 @@ internal fun progressionNotifications(
             ),
             createdAtEpochMillis = nowMillis,
             destination = AppNotificationDestination.PROFILE,
+            titleKey = TextKey.Unlocked.name,
+            messageKey = TextKey.NotificationCosmeticMessage.name,
+            messageArgs = mapOf("id" to cosmetic.id, "name" to cosmetic.name),
             localizationData = mapOf(
                 "type" to "cosmetic",
                 "id" to cosmetic.id,
@@ -203,6 +280,16 @@ private fun completedMissionNotifications(
             ),
             createdAtEpochMillis = nowMillis,
             destination = AppNotificationDestination.PROFILE,
+            titleKey = TextKey.MissionCompleted.name,
+            messageKey = TextKey.NotificationMissionMessage.name,
+            messageArgs = buildMap {
+                put("code", mission.code)
+                put("title", mission.title)
+                mission.titleKey?.let { put("titleKey", it) }
+                put("rewardGold", mission.rewardGold.toString())
+                put("rewardXp", mission.rewardXp.toString())
+                put("rewardGems", mission.rewardGems.toString())
+            },
             localizationData = buildMap {
                 put("type", "mission")
                 put("code", mission.code)
@@ -282,7 +369,10 @@ internal fun AppNotification.relocalized(localization: LocalizationService): App
             )
         )
     }
-    else -> this
+    else -> copy(
+        title = localizedNotificationText(localization, titleKey, titleArgs, title),
+        message = localizedNotificationText(localization, messageKey, messageArgs, message)
+    )
 }
 
 private fun MissionSnapshot.rewardSummary(localization: LocalizationService): String = buildList {

@@ -1,9 +1,11 @@
 package com.hienthai.fastowin.server
 
+import com.hienthai.fastowin.localization.TextKey
 import com.zaxxer.hikari.HikariConfig
 import com.zaxxer.hikari.HikariDataSource
 import kotlinx.coroutines.test.runTest
 import org.flywaydb.core.Flyway
+import java.time.Instant
 import java.util.UUID
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -12,6 +14,79 @@ import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
 
 class PostgresAuthenticationTest {
+    @Test
+    fun `development seed stores localizable notification templates`() = runTest {
+        val url = System.getenv("TEST_DATABASE_URL") ?: return@runTest
+        HikariDataSource(HikariConfig().apply {
+            jdbcUrl = url
+            username = System.getenv("TEST_DATABASE_USER") ?: "fasttowin"
+            password = System.getenv("TEST_DATABASE_PASSWORD") ?: "fasttowin"
+            maximumPoolSize = 2
+        }).use { dataSource ->
+            Flyway.configure()
+                .dataSource(dataSource)
+                .locations("classpath:db/migration")
+                .load()
+                .migrate()
+
+            val email = "dev-seed-${UUID.randomUUID()}@example.com"
+            val service = AuthenticationService(
+                repository = PostgresAuthRepository(dataSource),
+                passwordHasher = PasswordHasher(iterations = 1_000),
+                nowMillis = { NOW_MILLIS }
+            )
+            val registration = assertIs<AuthResult.Success>(
+                service.register(email, PASSWORD, "Seed Player", "android")
+            ).session
+            val userId = UUID.fromString(registration.userId)
+            try {
+                dataSource.connection.use { connection ->
+                    seedNotifications(connection, userId, Instant.ofEpochMilli(NOW_MILLIS))
+                    val templates = connection.prepareStatement(
+                        """
+                        SELECT kind, title_key, message_key, message_args::text
+                        FROM user_notifications
+                        WHERE user_id = ?
+                        ORDER BY kind
+                        """.trimIndent()
+                    ).use { statement ->
+                        statement.setObject(1, userId)
+                        statement.executeQuery().use { result ->
+                            buildMap {
+                                while (result.next()) {
+                                    put(
+                                        result.getString("kind"),
+                                        Triple(
+                                            result.getString("title_key"),
+                                            result.getString("message_key"),
+                                            result.getString("message_args")
+                                        )
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    assertEquals(
+                        TextKey.NotificationAchievementMessage.name,
+                        templates.getValue("ACHIEVEMENT").second
+                    )
+                    assertTrue(templates.getValue("ACHIEVEMENT").third.contains("\"code\""))
+                    assertEquals(TextKey.Unlocked.name, templates.getValue("COSMETIC").first)
+                    assertEquals(TextKey.NotificationMissionMessage.name, templates.getValue("MISSION").second)
+                    assertTrue(templates.getValue("MISSION").third.contains("\"rewardGold\""))
+                }
+            } finally {
+                dataSource.connection.use { connection ->
+                    connection.prepareStatement("DELETE FROM users WHERE id = ?").use { statement ->
+                        statement.setObject(1, userId)
+                        statement.executeUpdate()
+                    }
+                }
+            }
+        }
+    }
+
     @Test
     fun `guest upgrade preserves identity statistics and profile`() = runTest {
         val url = System.getenv("TEST_DATABASE_URL") ?: return@runTest

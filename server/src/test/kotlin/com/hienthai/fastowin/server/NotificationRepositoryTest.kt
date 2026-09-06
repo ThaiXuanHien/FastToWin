@@ -3,6 +3,7 @@ package com.hienthai.fastowin.server
 import com.hienthai.fastowin.protocol.NotificationDestination
 import com.hienthai.fastowin.protocol.NotificationKind
 import com.hienthai.fastowin.protocol.NotificationSnapshot
+import com.hienthai.fastowin.localization.TextKey
 import com.zaxxer.hikari.HikariConfig
 import com.zaxxer.hikari.HikariDataSource
 import kotlinx.coroutines.test.runTest
@@ -14,6 +15,21 @@ import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
 class NotificationRepositoryTest {
+    @Test
+    fun `keyed notification preserves unicode template arguments`() = runTest {
+        val repository = InMemoryNotificationRepository()
+        val userId = UUID.randomUUID().toString()
+        val notification = notification("friend:unicode", NOW).copy(
+            titleKey = TextKey.FriendRequests.name,
+            messageKey = TextKey.NotificationFriendRequestMessage.name,
+            messageArgs = mapOf("player" to "Hiếu {count} $")
+        )
+
+        repository.createNotifications(userId, listOf(notification))
+
+        assertEquals(notification, repository.loadNotifications(userId).single())
+    }
+
     @Test
     fun `notification read and dismissal state persists idempotently`() = runTest {
         val repository = InMemoryNotificationRepository()
@@ -86,6 +102,68 @@ class NotificationRepositoryTest {
                     connection.prepareStatement("DELETE FROM users WHERE id IN (?, ?)").use { statement ->
                         statement.setObject(1, UUID.fromString(first.userId))
                         statement.setObject(2, UUID.fromString(second.userId))
+                        statement.executeUpdate()
+                    }
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `postgres loads keyed and legacy notifications without rewriting fallbacks`() = runTest {
+        val url = System.getenv("TEST_DATABASE_URL") ?: return@runTest
+        HikariDataSource(HikariConfig().apply {
+            jdbcUrl = url
+            username = System.getenv("TEST_DATABASE_USER") ?: "fasttowin"
+            password = System.getenv("TEST_DATABASE_PASSWORD") ?: "fasttowin"
+            maximumPoolSize = 2
+        }).use { dataSource ->
+            Flyway.configure().dataSource(dataSource).locations("classpath:db/migration").load().migrate()
+            val auth = AuthenticationService(
+                PostgresAuthRepository(dataSource),
+                PasswordHasher(iterations = 1_000),
+                nowMillis = { NOW }
+            )
+            val session = assertIs<AuthResult.Success>(auth.register(
+                "notification-template-${UUID.randomUUID()}@example.com", PASSWORD, "Notify", "android"
+            )).session
+            val repository = PostgresNotificationRepository(dataSource)
+            val keyed = notification("friend:keyed", NOW).copy(
+                titleKey = TextKey.FriendRequests.name,
+                titleArgs = mapOf("label" to "Bạn bè"),
+                messageKey = TextKey.NotificationFriendRequestMessage.name,
+                messageArgs = mapOf("player" to "Hiếu 東京")
+            )
+            val legacyId = "legacy:${UUID.randomUUID()}"
+            try {
+                repository.createNotifications(session.userId, listOf(keyed))
+                dataSource.connection.use { connection ->
+                    connection.prepareStatement(
+                        """
+                        INSERT INTO user_notifications(
+                            user_id, notification_id, kind, title, message, destination, created_at
+                        ) VALUES (?, ?, 'ACHIEVEMENT', 'Tiêu đề cũ', 'Nội dung cũ', 'PROFILE', ?)
+                        """.trimIndent()
+                    ).use { statement ->
+                        statement.setObject(1, UUID.fromString(session.userId))
+                        statement.setString(2, legacyId)
+                        statement.setTimestamp(3, java.sql.Timestamp(NOW - 1))
+                        statement.executeUpdate()
+                    }
+                }
+
+                val loaded = repository.loadNotifications(session.userId).associateBy(NotificationSnapshot::id)
+                assertEquals(keyed, loaded.getValue(keyed.id))
+                assertEquals(null, loaded.getValue(legacyId).titleKey)
+                assertEquals(emptyMap(), loaded.getValue(legacyId).titleArgs)
+                assertEquals(null, loaded.getValue(legacyId).messageKey)
+                assertEquals(emptyMap(), loaded.getValue(legacyId).messageArgs)
+                assertEquals("Tiêu đề cũ", loaded.getValue(legacyId).title)
+                assertEquals("Nội dung cũ", loaded.getValue(legacyId).message)
+            } finally {
+                dataSource.connection.use { connection ->
+                    connection.prepareStatement("DELETE FROM users WHERE id = ?").use { statement ->
+                        statement.setObject(1, UUID.fromString(session.userId))
                         statement.executeUpdate()
                     }
                 }

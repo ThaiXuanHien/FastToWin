@@ -838,14 +838,14 @@ git commit -m "feat: localize protocol and client messages"
 **Interfaces:**
 - Produces: `NotificationSnapshot.titleKey/titleArgs/messageKey/messageArgs` and nullable PostgreSQL columns.
 
-- [ ] **Step 1: Write failing legacy/new notification persistence tests**
+- [x] **Step 1: Write failing legacy/new notification persistence tests**
 
 Test a new keyed notification round-trip with Unicode arguments, and insert a
 legacy row containing only title/message to prove it still loads with null keys.
 Assert changing `LocalizationService` language rerenders a keyed snapshot without
 rewriting the database row.
 
-- [ ] **Step 2: Add the additive migration**
+- [x] **Step 2: Add the additive migration**
 
 ```sql
 ALTER TABLE user_notifications
@@ -865,19 +865,19 @@ ALTER TABLE user_notifications
 
 Do not update existing rows.
 
-- [ ] **Step 3: Persist and create structured notifications**
+- [x] **Step 3: Persist and create structured notifications**
 
 Update repository SELECT/INSERT mappings and every `NotificationSnapshot(...)`
 created by `GameEngine` to include allowlisted keys and named arguments while
 retaining Vietnamese raw fallback for old clients.
 
-- [ ] **Step 4: Run in-memory and PostgreSQL tests**
+- [x] **Step 4: Run in-memory and PostgreSQL tests**
 
 ```powershell
 ./gradlew.bat :server:test --tests "*NotificationRepositoryTest" --tests "*GameEngineTest" --tests "*PostgresAuthenticationTest" --no-daemon
 ```
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```powershell
 git add protocol/src/commonMain/kotlin/com/hienthai/fastowin/protocol/GameProtocol.kt server/src/main/resources/db/migration/V41__localize_notifications.sql server/src/main/kotlin/com/hienthai/fastowin/server/NotificationRepository.kt server/src/main/kotlin/com/hienthai/fastowin/server/GameEngine.kt server/src/main/kotlin/com/hienthai/fastowin/server/DevFullAccountSeed.kt server/src/test/kotlin/com/hienthai/fastowin/server/NotificationRepositoryTest.kt server/src/test/kotlin/com/hienthai/fastowin/server/GameEngineTest.kt server/src/test/kotlin/com/hienthai/fastowin/server/PostgresAuthenticationTest.kt

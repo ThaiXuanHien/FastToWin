@@ -3,6 +3,7 @@ package com.hienthai.fastowin.server
 import com.hienthai.fastowin.protocol.NotificationDestination
 import com.hienthai.fastowin.protocol.NotificationKind
 import com.hienthai.fastowin.protocol.NotificationSnapshot
+import com.hienthai.fastowin.protocol.ProtocolJson
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.sync.Mutex
@@ -10,6 +11,8 @@ import kotlinx.coroutines.sync.withLock
 import java.sql.Timestamp
 import java.util.UUID
 import javax.sql.DataSource
+import kotlinx.serialization.decodeFromString
+import kotlinx.serialization.encodeToString
 
 data class StoredRoomInvitation(
     val id: String,
@@ -135,7 +138,8 @@ class PostgresNotificationRepository(private val dataSource: DataSource) : Notif
         dataSource.connection.use { connection ->
             connection.prepareStatement(
                 """
-                SELECT notification_id, kind, title, message, destination, created_at, read_at, action_data
+                SELECT notification_id, kind, title, message, destination, created_at, read_at, action_data,
+                       title_key, title_args, message_key, message_args
                 FROM user_notifications
                 WHERE user_id = ? AND dismissed_at IS NULL
                 ORDER BY created_at DESC
@@ -153,7 +157,11 @@ class PostgresNotificationRepository(private val dataSource: DataSource) : Notif
                             createdAtEpochMillis = result.getTimestamp("created_at").time,
                             isRead = result.getTimestamp("read_at") != null,
                             destination = NotificationDestination.valueOf(result.getString("destination")),
-                            actionData = result.getString("action_data")
+                            actionData = result.getString("action_data"),
+                            titleKey = result.getString("title_key"),
+                            titleArgs = ProtocolJson.decodeFromString(result.getString("title_args")),
+                            messageKey = result.getString("message_key"),
+                            messageArgs = ProtocolJson.decodeFromString(result.getString("message_args"))
                         ))
                     }
                 }
@@ -168,8 +176,9 @@ class PostgresNotificationRepository(private val dataSource: DataSource) : Notif
                 connection.prepareStatement(
                     """
                     INSERT INTO user_notifications(
-                        user_id, notification_id, kind, title, message, destination, created_at, action_data
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                        user_id, notification_id, kind, title, message, destination, created_at, action_data,
+                        title_key, title_args, message_key, message_args
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?, ?::jsonb)
                     ON CONFLICT (user_id, notification_id) DO NOTHING
                     """.trimIndent()
                 ).use { statement ->
@@ -182,6 +191,10 @@ class PostgresNotificationRepository(private val dataSource: DataSource) : Notif
                         statement.setString(6, notification.destination.name)
                         statement.setTimestamp(7, Timestamp(notification.createdAtEpochMillis))
                         statement.setString(8, notification.actionData)
+                        statement.setString(9, notification.titleKey)
+                        statement.setString(10, ProtocolJson.encodeToString(notification.titleArgs))
+                        statement.setString(11, notification.messageKey)
+                        statement.setString(12, ProtocolJson.encodeToString(notification.messageArgs))
                         statement.addBatch()
                     }
                     statement.executeBatch()

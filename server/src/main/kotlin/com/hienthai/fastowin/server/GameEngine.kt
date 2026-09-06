@@ -779,7 +779,10 @@ class GameEngine(
                 title = "Lời mời kết bạn",
                 message = "${request.displayName} muốn kết bạn với bạn.",
                 createdAtEpochMillis = nowMillis(),
-                destination = NotificationDestination.FRIENDS
+                destination = NotificationDestination.FRIENDS,
+                titleKey = TextKey.FriendRequests.name,
+                messageKey = TextKey.NotificationFriendRequestMessage.name,
+                messageArgs = mapOf("player" to request.displayName)
             )
         }
         notificationRepository.createNotifications(playerId, pendingFriendNotifications)
@@ -802,7 +805,8 @@ class GameEngine(
                 notification.id.length in 1..160 &&
                 notification.title.length in 1..120 &&
                 notification.message.length in 1..300 &&
-                notification.destination == NotificationDestination.PROFILE
+                notification.destination == NotificationDestination.PROFILE &&
+                notification.hasAllowedSyncTemplate()
         }.map { it.copy(createdAtEpochMillis = nowMillis(), isRead = false) }
         if (normalized.size != notifications.size) {
             return listOf(error(playerId, "INVALID_NOTIFICATIONS", "Dữ liệu thông báo không hợp lệ."))
@@ -856,7 +860,10 @@ class GameEngine(
                             title = "Lời mời kết bạn",
                             message = "${request.displayName} muốn kết bạn với bạn.",
                             createdAtEpochMillis = nowMillis(),
-                            destination = NotificationDestination.FRIENDS
+                            destination = NotificationDestination.FRIENDS,
+                            titleKey = TextKey.FriendRequests.name,
+                            messageKey = TextKey.NotificationFriendRequestMessage.name,
+                            messageArgs = mapOf("player" to request.displayName)
                         ))
                     )
                 }
@@ -1054,7 +1061,13 @@ class GameEngine(
                     title = "Lời mời vào phòng",
                     message = "${invitation.inviterDisplayName} mời bạn vào phòng ${invitation.roomName}.",
                     createdAtEpochMillis = nowMillis(),
-                    destination = NotificationDestination.FRIENDS
+                    destination = NotificationDestination.FRIENDS,
+                    titleKey = TextKey.RoomInvitationTitle.name,
+                    messageKey = TextKey.NotificationRoomInvitationMessage.name,
+                    messageArgs = mapOf(
+                        "player" to invitation.inviterDisplayName,
+                        "room" to invitation.roomName
+                    )
                 ))
             )
             
@@ -3377,7 +3390,13 @@ class GameEngine(
                     message = "${requester?.displayName ?: "Một người chơi"} muốn vào clan ${clan.name}.",
                     createdAtEpochMillis = nowMillis(),
                     destination = NotificationDestination.CLAN,
-                    actionData = clanId
+                    actionData = clanId,
+                    titleKey = TextKey.PendingApproval.name,
+                    messageKey = TextKey.NotificationClanJoinRequestMessage.name,
+                    messageArgs = mapOf(
+                        "player" to (requester?.displayName ?: "Một người chơi"),
+                        "clan" to clan.name
+                    )
                 )
                 notificationRepository.createNotifications(clan.ownerId, listOf(notification))
                 val updatedClan = clanRepository.getClanById(clanId)
@@ -3446,7 +3465,18 @@ class GameEngine(
                     message = requesterMessage,
                     createdAtEpochMillis = nowMillis(),
                     destination = NotificationDestination.CLAN,
-                    actionData = command.clanId
+                    actionData = command.clanId,
+                    titleKey = if (approved) {
+                        TextKey.NotificationClanJoinApprovedTitle.name
+                    } else {
+                        TextKey.NotificationClanJoinRejectedTitle.name
+                    },
+                    messageKey = if (approved) {
+                        TextKey.ClanJoinApprovedNotice.name
+                    } else {
+                        TextKey.ClanJoinRejectedNotice.name
+                    },
+                    messageArgs = mapOf("clan" to clan.name)
                 )
                 notificationRepository.createNotifications(command.userId, listOf(notification))
                 val updatedClan = clanRepository.getClanById(command.clanId)
@@ -3565,7 +3595,13 @@ class GameEngine(
             message = "${inviterProfile.displayName} mời bạn vào bang ${clan.name}",
             createdAtEpochMillis = System.currentTimeMillis(),
             destination = NotificationDestination.CLAN,
-            actionData = clanId
+            actionData = clanId,
+            titleKey = TextKey.InviteToClan.name,
+            messageKey = TextKey.NotificationClanInvitationMessage.name,
+            messageArgs = mapOf(
+                "player" to inviterProfile.displayName,
+                "clan" to clan.name
+            )
         )
 
         notificationRepository.createNotifications(targetPlayer.userId, listOf(notification))
@@ -3696,6 +3732,47 @@ class GameEngine(
             combo >= 5 -> 2
             else -> 1
         }
+    }
+
+    private fun NotificationSnapshot.hasAllowedSyncTemplate(): Boolean {
+        if (titleKey == null && messageKey == null) {
+            return titleArgs.isEmpty() && messageArgs.isEmpty()
+        }
+        val expected = when (kind) {
+            NotificationKind.MISSION -> TextKey.MissionCompleted to TextKey.NotificationMissionMessage
+            NotificationKind.ACHIEVEMENT -> TextKey.AchievementsTitle to TextKey.NotificationAchievementMessage
+            NotificationKind.COSMETIC -> TextKey.Unlocked to TextKey.NotificationCosmeticMessage
+            else -> return false
+        }
+        if (titleKey != expected.first.name || messageKey != expected.second.name || titleArgs.isNotEmpty()) {
+            return false
+        }
+        val validArguments = when (kind) {
+            NotificationKind.MISSION -> {
+                val required = setOf("code", "title", "rewardGold", "rewardXp", "rewardGems")
+                val allowed = required + "titleKey"
+                messageArgs.keys.containsAll(required) &&
+                    messageArgs.keys.all { it in allowed } &&
+                    listOf("rewardGold", "rewardXp", "rewardGems").all { argument ->
+                        messageArgs.getValue(argument).toIntOrNull()?.let { it >= 0 } == true
+                    } &&
+                    messageArgs["titleKey"]?.let { titleKeyName ->
+                        titleKeyName in setOf(
+                            TextKey.MissionPlayThree.name,
+                            TextKey.MissionWinOne.name,
+                            TextKey.MissionCorrectHundred.name,
+                            TextKey.MissionPerfectWin.name
+                        )
+                    } != false
+            }
+            NotificationKind.ACHIEVEMENT ->
+                messageArgs.keys == setOf("code", "title", "description")
+            NotificationKind.COSMETIC ->
+                messageArgs.keys == setOf("id", "name")
+            else -> false
+        }
+        return validArguments &&
+            messageArgs.all { (key, value) -> key.length <= 64 && value.length <= 300 }
     }
 
     private data class SelectionMetrics(

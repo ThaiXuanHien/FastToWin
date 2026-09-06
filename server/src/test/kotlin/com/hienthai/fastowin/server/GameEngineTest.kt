@@ -14,6 +14,9 @@ import com.hienthai.fastowin.protocol.ProtocolGameMode
 import com.hienthai.fastowin.protocol.PlayerProfileSnapshot
 import com.hienthai.fastowin.protocol.DailyCheckInSnapshot
 import com.hienthai.fastowin.protocol.MissionSnapshot
+import com.hienthai.fastowin.protocol.NotificationDestination
+import com.hienthai.fastowin.protocol.NotificationKind
+import com.hienthai.fastowin.protocol.NotificationSnapshot
 import com.hienthai.fastowin.protocol.MatchType
 import com.hienthai.fastowin.protocol.PlayerProgressionSnapshot
 import com.hienthai.fastowin.protocol.PushPreferencesSnapshot
@@ -38,6 +41,63 @@ import kotlin.test.assertTrue
 import java.util.UUID
 
 class GameEngineTest {
+    @Test
+    fun `account notification sync accepts stable progression template arguments`() = runTest {
+        val playerId = UUID.randomUUID().toString()
+        val notifications = InMemoryNotificationRepository()
+        val engine = GameEngine(notificationRepository = notifications)
+        engine.connectAccount(AuthenticatedAccount(UUID.fromString(playerId), "Player"))
+        val notification = NotificationSnapshot(
+            id = "mission:daily:DAILY_WIN_1",
+            kind = NotificationKind.MISSION,
+            title = "Hoàn thành",
+            message = "Thắng một trận • Nhận 150 Vàng + 25 XP + 2 Gem.",
+            createdAtEpochMillis = 1L,
+            destination = NotificationDestination.PROFILE,
+            titleKey = TextKey.MissionCompleted.name,
+            messageKey = TextKey.NotificationMissionMessage.name,
+            messageArgs = mapOf(
+                "code" to "DAILY_WIN_1",
+                "title" to "Thắng một trận",
+                "rewardGold" to "150",
+                "rewardXp" to "25",
+                "rewardGems" to "2"
+            )
+        )
+
+        val response = engine.handle(playerId, ClientMessage.SyncNotifications(listOf(notification)))
+
+        assertTrue(response.map(Delivery::message).any { it is ServerMessage.NotificationsData })
+        assertEquals(notification.messageArgs, notifications.loadNotifications(playerId).single().messageArgs)
+    }
+
+    @Test
+    fun `account notification sync rejects template keys outside the allowlist`() = runTest {
+        val playerId = UUID.randomUUID().toString()
+        val notifications = InMemoryNotificationRepository()
+        val engine = GameEngine(notificationRepository = notifications)
+        engine.connectAccount(AuthenticatedAccount(UUID.fromString(playerId), "Player"))
+        val unsafe = NotificationSnapshot(
+            id = "mission:unsafe",
+            kind = NotificationKind.MISSION,
+            title = "Nhiệm vụ",
+            message = "Nội dung",
+            createdAtEpochMillis = 1L,
+            destination = NotificationDestination.PROFILE,
+            titleKey = TextKey.PasswordChanged.name,
+            messageKey = TextKey.NotificationMissionMessage.name,
+            messageArgs = mapOf("mission" to "M", "reward" to "R")
+        )
+
+        val response = engine.handle(playerId, ClientMessage.SyncNotifications(listOf(unsafe)))
+
+        assertEquals(
+            "INVALID_NOTIFICATIONS",
+            response.map(Delivery::message).filterIsInstance<ServerMessage.Error>().single().code
+        )
+        assertTrue(notifications.loadNotifications(playerId).isEmpty())
+    }
+
     @Test
     fun `account can update synchronized push preferences`() = runTest {
         val playerId = UUID.randomUUID().toString()
@@ -889,6 +949,7 @@ class GameEngineTest {
         val clanId = UUID.randomUUID().toString()
         val members = linkedSetOf(ownerId)
         val pending = linkedSetOf<String>()
+        val notifications = InMemoryNotificationRepository()
         val profiles = mapOf(
             ownerId to PlayerProfileSnapshot(ownerId, "Bang chủ", "OWNER01", clanId = clanId, clanName = "Speed"),
             applicantId to PlayerProfileSnapshot(applicantId, "Tân binh", "NEWBIE01")
@@ -954,7 +1015,8 @@ class GameEngineTest {
         }
         val engine = GameEngine(
             playerProfileRepository = profileRepository,
-            clanRepository = clanRepository
+            clanRepository = clanRepository,
+            notificationRepository = notifications
         )
         engine.connectAccount(AuthenticatedAccount(UUID.fromString(ownerId), "Bang chủ"))
         engine.connectAccount(AuthenticatedAccount(UUID.fromString(applicantId), "Tân binh"))
@@ -965,6 +1027,13 @@ class GameEngineTest {
         assertEquals(
             "request_join_clan",
             request.map(Delivery::message).filterIsInstance<ServerMessage.ClanActionResult>().single().action
+        )
+        val joinRequestNotification = notifications.loadNotifications(ownerId).single()
+        assertEquals(TextKey.PendingApproval.name, joinRequestNotification.titleKey)
+        assertEquals(TextKey.NotificationClanJoinRequestMessage.name, joinRequestNotification.messageKey)
+        assertEquals(
+            mapOf("player" to "Tân binh", "clan" to "Speed"),
+            joinRequestNotification.messageArgs
         )
 
         val approval = engine.handle(
@@ -979,6 +1048,10 @@ class GameEngineTest {
                     (it.message as? ServerMessage.ClanActionResult)?.action == "join_clan_approved"
             }
         )
+        val approvalNotification = notifications.loadNotifications(applicantId).single()
+        assertEquals(TextKey.NotificationClanJoinApprovedTitle.name, approvalNotification.titleKey)
+        assertEquals(TextKey.ClanJoinApprovedNotice.name, approvalNotification.messageKey)
+        assertEquals(mapOf("clan" to "Speed"), approvalNotification.messageArgs)
     }
 
     @Test
@@ -1020,6 +1093,12 @@ class GameEngineTest {
             .map(Delivery::message).filterIsInstance<ServerMessage.NotificationsData>()
             .single().notifications.single()
         assertEquals("room:${invitation.invitationId}", restoredNotification.id)
+        assertEquals(TextKey.RoomInvitationTitle.name, restoredNotification.titleKey)
+        assertEquals(TextKey.NotificationRoomInvitationMessage.name, restoredNotification.messageKey)
+        assertEquals(
+            mapOf("player" to "Host", "room" to "Restart invitation"),
+            restoredNotification.messageArgs
+        )
     }
 
     @Test

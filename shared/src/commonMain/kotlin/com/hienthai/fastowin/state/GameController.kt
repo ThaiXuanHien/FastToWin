@@ -1136,7 +1136,7 @@ class GameController(
             is ServerMessage.NotificationsData -> {
                 _uiState.update { state ->
                     state.copy(
-                        notifications = message.notifications.map { it.toAppNotification() },
+                        notifications = message.notifications.map { it.toAppNotification(localization) },
                         dismissedNotificationIds = emptySet()
                     )
                 }
