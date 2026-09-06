@@ -754,7 +754,7 @@ git commit -m "feat: localize social and shop screens"
 **Interfaces:**
 - Produces: optional `messageKey/messageArgs` wire fields and localized code mapping with raw fallback.
 
-- [ ] **Step 1: Write failing compatibility and mapper tests**
+- [x] **Step 1: Write failing compatibility and mapper tests**
 
 ```kotlin
 @Test
@@ -776,7 +776,7 @@ fun oldJsonWithoutMessageKeyStillDecodes() {
 }
 ```
 
-- [ ] **Step 2: Add optional structured fields and bump protocol version once**
+- [x] **Step 2: Add optional structured fields and bump protocol version once**
 
 ```kotlin
 data class LocalizedMessage(
@@ -806,14 +806,14 @@ Vietnamese fragments that the client cannot translate. Platform-only storage and
 network exceptions, such as iOS Keychain failures, expose stable error codes to
 the controller; the active client catalog owns the displayed sentence.
 
-- [ ] **Step 3: Inject the current localization service without recreating controllers**
+- [x] **Step 3: Inject the current localization service without recreating controllers**
 
 Add `updateLanguage(language: AppLanguage)` to `AuthController` and
 `GameController`, backed by a mutable `LocalizationService`. Call both from a
 `LaunchedEffect(resolvedLanguage)` in `FastToWinApp`. Replace raw server message
 assignment with `LocalizedMessageMapper` output.
 
-- [ ] **Step 4: Run shared/protocol tests and commit**
+- [x] **Step 4: Run shared/protocol tests and commit**
 
 ```powershell
 ./gradlew.bat :protocol:jvmTest :shared:testAndroidHostTest :server:test --tests "*AuthenticationTest" --tests "*GameEngineTest" :app:compileDevDebugKotlin :webApp:compileKotlinWasmJs --no-daemon

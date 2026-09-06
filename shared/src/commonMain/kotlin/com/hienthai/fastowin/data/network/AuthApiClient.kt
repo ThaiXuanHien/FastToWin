@@ -183,7 +183,9 @@ class AuthApiClient(
         val error = runCatching { body<AuthErrorResponse>() }.getOrNull()
         return AuthApiException(
             code = error?.code ?: "NETWORK_ERROR",
-            message = error?.message ?: "Máy chủ không xử lý được yêu cầu đăng nhập."
+            message = error?.message ?: "Máy chủ không xử lý được yêu cầu đăng nhập.",
+            messageKey = error?.messageKey,
+            messageArgs = error?.messageArgs.orEmpty()
         )
     }
 
@@ -192,4 +194,9 @@ class AuthApiClient(
     }
 }
 
-class AuthApiException(val code: String, override val message: String) : Exception(message)
+class AuthApiException(
+    val code: String,
+    override val message: String,
+    val messageKey: String? = null,
+    val messageArgs: Map<String, String> = emptyMap()
+) : Exception(message)

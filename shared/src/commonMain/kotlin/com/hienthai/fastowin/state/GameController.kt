@@ -4,6 +4,9 @@ import com.hienthai.fastowin.data.network.GameSocketClient
 import com.hienthai.fastowin.data.network.ResumeTokenStore
 import com.hienthai.fastowin.data.network.SocketConnectionState
 import com.hienthai.fastowin.navigation.GameMode
+import com.hienthai.fastowin.localization.AppLanguage
+import com.hienthai.fastowin.localization.LocalizationService
+import com.hienthai.fastowin.localization.LocalizedMessageMapper
 import com.hienthai.fastowin.platform.epochMillis
 import com.hienthai.fastowin.protocol.ClientMessage
 import com.hienthai.fastowin.protocol.CosmeticType
@@ -37,8 +40,11 @@ class GameController(
     accountDisplayName: String? = null,
     accessTokenProvider: (suspend (forceRefresh: Boolean) -> String?)? = null,
     onAccountSessionExpired: ((String) -> Unit)? = null,
+    initialLanguage: AppLanguage = AppLanguage.VIETNAMESE,
     private val onProfileDisplayNameChanged: (String) -> Unit = {}
 ) {
+    private var localization = LocalizationService(initialLanguage)
+    private val messageMapper = LocalizedMessageMapper(localization)
     private var accountDisplayName = accountDisplayName
     private val _uiState = MutableStateFlow(GameState())
     val uiState: StateFlow<GameState> = _uiState.asStateFlow()
@@ -47,7 +53,11 @@ class GameController(
         serverUrl,
         resumeTokenStore,
         accessTokenProvider,
-        onAccountSessionExpired
+        onAccountSessionExpired = { code, fallback ->
+            onAccountSessionExpired?.invoke(
+                messageMapper.message(code, null, emptyMap(), fallback)
+            )
+        }
     )
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
@@ -59,6 +69,24 @@ class GameController(
     private var countdownJob: Job? = null
     private var latencyJob: Job? = null
     private var gameStarted = false
+
+    fun updateLanguage(language: AppLanguage) {
+        if (localization.language == language) return
+        localization = LocalizationService(language)
+        messageMapper.updateLanguage(language)
+        _uiState.update {
+            it.copy(
+                error = null,
+                rematchNotice = null,
+                rematchNoticeErrorCode = null,
+                clanNotice = null,
+                profileNotice = null,
+                socialNotice = null,
+                tournamentNotice = null,
+                notifications = it.notifications.map { notification -> notification.relocalized(localization) }
+            )
+        }
+    }
 
     init {
         accountDisplayName?.let { displayName ->
@@ -923,7 +951,8 @@ class GameController(
                 val newNotifications = progressionNotifications(
                     previous = _uiState.value.profile,
                     current = message.profile,
-                    nowMillis = epochMillis()
+                    nowMillis = epochMillis(),
+                    localization = localization
                 )
                 accountDisplayName = message.profile.displayName
                 onProfileDisplayNameChanged(message.profile.displayName)
@@ -998,7 +1027,7 @@ class GameController(
                     it.copy(
                         verifyingStorePurchaseRequestId = null,
                         storePurchaseResult = message,
-                        profileNotice = message.message,
+                        profileNotice = messageMapper.message(message),
                         error = null
                     )
                 }
@@ -1057,7 +1086,7 @@ class GameController(
                         isFriendsLoading = false,
                         notifications = if (accountDisplayName == null) mergeNotifications(
                             state.notifications,
-                            friendRequestNotifications(message.social.incomingRequests, epochMillis()),
+                            friendRequestNotifications(message.social.incomingRequests, epochMillis(), localization),
                             state.dismissedNotificationIds
                         ) else state.notifications,
                         error = null
@@ -1076,7 +1105,7 @@ class GameController(
                         } ?: message,
                         notifications = mergeNotifications(
                             state.notifications,
-                            listOf(roomInvitationNotification(message, epochMillis())),
+                            listOf(roomInvitationNotification(message, epochMillis(), localization)),
                             state.dismissedNotificationIds
                         ),
                         socialNotice = null
@@ -1094,7 +1123,7 @@ class GameController(
                         invitedRoomFriendIds = invitedFriendIds,
                         notifications = if (accountDisplayName == null) mergeNotifications(
                             state.notifications,
-                            message.invitations.map { roomInvitationNotification(it, epochMillis()) },
+                            message.invitations.map { roomInvitationNotification(it, epochMillis(), localization) },
                             state.dismissedNotificationIds
                         ) else state.notifications,
                         roomInvitationPrompt = state.roomInvitationPrompt?.takeIf {
@@ -1114,7 +1143,7 @@ class GameController(
             }
 
             is ServerMessage.SocialNotice -> {
-                _uiState.update { it.copy(socialNotice = message.message, isFriendsLoading = false, error = null) }
+                _uiState.update { it.copy(socialNotice = messageMapper.message(message), isFriendsLoading = false, error = null) }
             }
 
             is ServerMessage.TournamentHubData -> {
@@ -1167,7 +1196,7 @@ class GameController(
 
             is ServerMessage.TournamentNotice -> {
                 _uiState.update {
-                    it.copy(tournamentNotice = message.message, isTournamentLoading = false, error = null)
+                    it.copy(tournamentNotice = messageMapper.message(message), isTournamentLoading = false, error = null)
                 }
             }
 
@@ -1217,7 +1246,7 @@ class GameController(
                 }
             }
             is ServerMessage.ClanActionResult -> {
-                _uiState.update { it.copy(clanNotice = message.message, error = null) }
+                _uiState.update { it.copy(clanNotice = messageMapper.message(message), error = null) }
                 if (message.success) {
                     when (message.action) {
                         "create_clan", "join_clan_approved" -> {
@@ -1303,13 +1332,13 @@ class GameController(
                             it.copy(
                                 currentRoomId = null,
                                 isRoomHost = false,
-                                rematchNotice = message.reason,
+                                rematchNotice = messageMapper.message(message),
                                 rematchNoticeErrorCode = null,
                                 error = null
                             )
                         }
                     } else {
-                        returnToRoomBrowser(message.reason)
+                        returnToRoomBrowser(messageMapper.message(message))
                     }
                 }
             }
@@ -1521,13 +1550,14 @@ class GameController(
     }
 
     private fun handleServerError(error: ServerMessage.Error) {
+        val localizedError = messageMapper.message(error)
         if (error.code == "WRONG_NUMBER") {
             return
         }
 
         val opponentIsUnavailable = error.code in setOf("OPPONENT_LEFT", "NOT_IN_ROOM", "ROOM_NOT_FOUND")
         if (error.code in setOf("WRONG_PASSWORD", "ROOM_NOT_FOUND", "ROOM_FULL", "ALREADY_IN_ROOM")) {
-            returnToRoomBrowser(error.message)
+            returnToRoomBrowser(localizedError)
         } else {
             _uiState.update {
                 it.withRematchError(error).copy(
@@ -1561,7 +1591,7 @@ class GameController(
                             requestId = error.requestId.orEmpty(),
                             productId = "",
                             status = com.hienthai.fastowin.protocol.StorePurchaseStatus.FAILED,
-                            message = error.message
+                            message = localizedError
                         )
                     } else {
                         it.storePurchaseResult
@@ -1569,7 +1599,7 @@ class GameController(
                     isDailyCheckInClaiming = false,
                     claimingMissionCode = null,
                     hasOpponent = if (opponentIsUnavailable) false else it.hasOpponent,
-                    error = error.message
+                    error = localizedError
                 )
             }
         }

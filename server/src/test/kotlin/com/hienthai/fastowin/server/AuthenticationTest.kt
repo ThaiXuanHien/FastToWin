@@ -3,6 +3,7 @@ package com.hienthai.fastowin.server
 import com.hienthai.fastowin.protocol.AuthErrorResponse
 import com.hienthai.fastowin.protocol.AuthSessionResponse
 import com.hienthai.fastowin.protocol.AccountActionResponse
+import com.hienthai.fastowin.localization.TextKey
 import com.hienthai.fastowin.protocol.AccountSessionsRequest
 import com.hienthai.fastowin.protocol.AccountSessionsResponse
 import com.hienthai.fastowin.protocol.ChangePasswordRequest
@@ -368,7 +369,9 @@ class AuthenticationTest {
             ChangePasswordRequest(registered.accessToken, PASSWORD, NEW_PASSWORD)
         )
         assertEquals(HttpStatusCode.OK, changed.status)
-        assertTrue(changed.decode<AccountActionResponse>().message.isNotBlank())
+        val changedResponse = changed.decode<AccountActionResponse>()
+        assertTrue(changedResponse.message.isNotBlank())
+        assertEquals(TextKey.PasswordChanged.name, changedResponse.messageKey)
         val revokedRefresh = client.postJson(
             "/auth/refresh",
             RefreshTokenRequest(registered.refreshToken)
@@ -469,7 +472,7 @@ class AuthenticationTest {
         }
         client.postJson(
             "/auth/register",
-            RegisterRequest("reset-mail@example.com", PASSWORD, "Reset mail", "web")
+            RegisterRequest("reset-mail@example.com", PASSWORD, "Reset mail", "android")
         )
 
         val existing = client.postJson(

@@ -106,7 +106,9 @@ data class AccountActionResponse(
     val message: String,
     val devResetToken: String? = null,
     val devEmailVerificationCode: String? = null,
-    val emailVerified: Boolean? = null
+    val emailVerified: Boolean? = null,
+    val messageKey: String? = null,
+    val messageArgs: Map<String, String> = emptyMap()
 )
 
 @Serializable
@@ -123,5 +125,14 @@ data class AuthSessionResponse(
 @Serializable
 data class AuthErrorResponse(
     val code: String,
-    val message: String
+    val message: String,
+    val messageKey: String? = null,
+    val messageArgs: Map<String, String> = emptyMap()
+)
+
+@Serializable
+data class LocalizedMessage(
+    val key: String? = null,
+    val arguments: Map<String, String> = emptyMap(),
+    val fallback: String = ""
 )

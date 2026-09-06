@@ -2,6 +2,7 @@ package com.hienthai.fastowin.server
 
 import com.hienthai.fastowin.protocol.AuthSessionResponse
 import com.hienthai.fastowin.protocol.AccountSessionSnapshot
+import com.hienthai.fastowin.localization.TextKey
 import com.hienthai.fastowin.protocol.PlayerGender
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -122,7 +123,9 @@ sealed interface AccountActionResult {
         val resetToken: String? = null,
         val emailVerificationCode: String? = null,
         val emailRecipient: String? = null,
-        val emailVerified: Boolean? = null
+        val emailVerified: Boolean? = null,
+        val messageKey: String? = null,
+        val messageArgs: Map<String, String> = emptyMap()
     ) : AccountActionResult
     data class Failure(val code: String, val message: String) : AccountActionResult
 }
@@ -281,7 +284,7 @@ class AuthenticationService(
         val targetSessionId = runCatching { UUID.fromString(sessionId) }.getOrNull()
             ?: return AccountActionResult.Failure("INVALID_SESSION_ID", "Phiên đăng nhập không hợp lệ.")
         return if (repository.revokeSessionById(authenticated.userId, targetSessionId, nowMillis())) {
-            AccountActionResult.Success("Đã đăng xuất thiết bị.")
+            AccountActionResult.Success("Đã đăng xuất thiết bị.", messageKey = TextKey.SessionRevoked.name)
         } else {
             AccountActionResult.Failure("SESSION_NOT_FOUND", "Phiên đăng nhập không còn hoạt động.")
         }
@@ -291,7 +294,7 @@ class AuthenticationService(
         val authenticated = authenticateAccessToken(accessToken)
             ?: return invalidAccountSession()
         repository.revokeAllSessions(authenticated.userId, nowMillis())
-        return AccountActionResult.Success("Đã đăng xuất khỏi tất cả thiết bị.")
+        return AccountActionResult.Success("Đã đăng xuất khỏi tất cả thiết bị.", messageKey = TextKey.AllSessionsRevoked.name)
     }
 
     suspend fun changePassword(
@@ -318,7 +321,7 @@ class AuthenticationService(
         )
         val passwordHash = withContext(Dispatchers.Default) { passwordHasher.hash(newPassword) }
         return if (repository.updatePasswordAndRevokeSessions(authenticated.userId, passwordHash, nowMillis())) {
-            AccountActionResult.Success("Đã đổi mật khẩu. Vui lòng đăng nhập lại.")
+            AccountActionResult.Success("Đã đổi mật khẩu. Vui lòng đăng nhập lại.", messageKey = TextKey.PasswordChanged.name)
         } else invalidAccountSession()
     }
 
@@ -338,7 +341,8 @@ class AuthenticationService(
         )
         return AccountActionResult.Success(
             "Nếu email tồn tại, hướng dẫn khôi phục mật khẩu đã được tạo.",
-            resetToken = token.takeIf { created }
+            resetToken = token.takeIf { created },
+            messageKey = TextKey.PasswordResetSent.name
         )
     }
 
@@ -359,7 +363,7 @@ class AuthenticationService(
                 passwordHash,
                 nowMillis()
             )) {
-            AccountActionResult.Success("Đã đặt lại mật khẩu. Bạn có thể đăng nhập ngay.")
+            AccountActionResult.Success("Đã đặt lại mật khẩu. Bạn có thể đăng nhập ngay.", messageKey = TextKey.PasswordResetCompleted.name)
         } else invalidPasswordReset()
     }
 
@@ -380,13 +384,15 @@ class AuthenticationService(
         if (destination.alreadyVerified) {
             return AccountActionResult.Success(
                 message = "Email của bạn đã được xác minh.",
-                emailVerified = true
+                emailVerified = true,
+                messageKey = TextKey.EmailVerified.name
             )
         }
         return AccountActionResult.Success(
             message = "Mã xác minh đã được gửi tới email của bạn.",
             emailVerificationCode = code,
-            emailRecipient = destination.emailNormalized
+            emailRecipient = destination.emailNormalized,
+            messageKey = TextKey.EmailVerificationSent.name
         )
     }
 
@@ -405,7 +411,7 @@ class AuthenticationService(
                 hashToken(normalizedCode),
                 nowMillis()
             )) {
-            AccountActionResult.Success("Xác minh email thành công.", emailVerified = true)
+            AccountActionResult.Success("Xác minh email thành công.", emailVerified = true, messageKey = TextKey.EmailVerified.name)
         } else {
             invalidEmailVerification()
         }
@@ -424,7 +430,7 @@ class AuthenticationService(
             "Mật khẩu không đúng."
         )
         return if (repository.deleteAccount(authenticated.userId)) {
-            AccountActionResult.Success("Tài khoản và dữ liệu cá nhân đã được xóa.")
+            AccountActionResult.Success("Tài khoản và dữ liệu cá nhân đã được xóa.", messageKey = TextKey.AccountDeleted.name)
         } else invalidAccountSession()
     }
 

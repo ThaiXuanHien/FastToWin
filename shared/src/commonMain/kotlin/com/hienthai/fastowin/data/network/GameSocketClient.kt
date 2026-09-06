@@ -4,6 +4,7 @@ import com.hienthai.fastowin.protocol.ClientMessage
 import com.hienthai.fastowin.protocol.ProtocolJson
 import com.hienthai.fastowin.protocol.ServerMessage
 import com.hienthai.fastowin.protocol.SESSION_REPLACED_CLOSE_REASON
+import com.hienthai.fastowin.localization.protocolTextKeyForCode
 import io.ktor.client.HttpClient
 import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.plugins.websocket.DefaultClientWebSocketSession
@@ -40,7 +41,7 @@ class GameSocketClient(
     private val serverUrl: String,
     private val tokenStore: ResumeTokenStore,
     private val accessTokenProvider: (suspend (forceRefresh: Boolean) -> String?)? = null,
-    private val onAccountSessionExpired: ((String) -> Unit)? = null
+    private val onAccountSessionExpired: ((code: String, fallback: String) -> Unit)? = null
 ) {
     private val client = HttpClient {
         install(WebSockets)
@@ -87,6 +88,7 @@ class GameSocketClient(
                         if (accessToken == null) {
                             reconnectEnabled = false
                             onAccountSessionExpired?.invoke(
+                                "SESSION_EXPIRED",
                                 "Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại."
                             )
                             return@webSocket
@@ -105,7 +107,7 @@ class GameSocketClient(
                             ProtocolJson.decodeFromString<ServerMessage>(rawMessage)
                         } catch (error: Exception) {
                             _messages.send(
-                                ServerMessage.Error(
+                                socketClientError(
                                     code = "PROTOCOL_DECODE_FAILED",
                                     message = "Không đọc được phản hồi máy chủ: ${error.message}"
                                 )
@@ -139,10 +141,11 @@ class GameSocketClient(
                     if (!shouldReconnectAfterSocketClose(reason)) {
                         reconnectEnabled = false
                         onAccountSessionExpired?.invoke(
+                            "SESSION_REPLACED",
                             "Tài khoản đã đăng nhập trên thiết bị khác. Vui lòng đăng nhập lại."
                         )
                         _messages.send(
-                            ServerMessage.Error(
+                            socketClientError(
                                 code = "SESSION_REPLACED",
                                 message = "Tài khoản đã đăng nhập trên thiết bị khác."
                             )
@@ -153,7 +156,7 @@ class GameSocketClient(
                 throw cancelled
             } catch (error: Exception) {
                 _messages.send(
-                    ServerMessage.Error(
+                    socketClientError(
                         code = "CONNECTION_FAILED",
                         message = "Không thể kết nối $serverUrl: ${error.message}. Đang thử lại..."
                     )
@@ -179,7 +182,7 @@ class GameSocketClient(
         val activeSession = session
         if (activeSession == null) {
             _messages.send(
-                ServerMessage.Error(
+                socketClientError(
                     code = "CONNECTION_NOT_READY",
                     message = "Chưa kết nối được máy chủ. Vui lòng đợi hoặc thử lại."
                 )
@@ -190,7 +193,7 @@ class GameSocketClient(
             activeSession.send(Frame.Text(ProtocolJson.encodeToString<ClientMessage>(message)))
         } catch (error: Exception) {
             _messages.send(
-                ServerMessage.Error(
+                socketClientError(
                     code = "SEND_FAILED",
                     message = "Không gửi được dữ liệu: ${error.message}"
                 )
@@ -221,3 +224,10 @@ class GameSocketClient(
 
 internal fun shouldReconnectAfterSocketClose(reason: String?): Boolean =
     reason != SESSION_REPLACED_CLOSE_REASON
+
+internal fun socketClientError(code: String, message: String): ServerMessage.Error =
+    ServerMessage.Error(
+        code = code,
+        message = message,
+        messageKey = protocolTextKeyForCode(code)?.name
+    )

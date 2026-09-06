@@ -3,10 +3,14 @@ package com.hienthai.fastowin.state
 import com.hienthai.fastowin.data.network.AuthApiClient
 import com.hienthai.fastowin.data.network.AuthApiException
 import com.hienthai.fastowin.data.network.AuthSessionStore
+import com.hienthai.fastowin.data.network.AuthSessionStoreException
 import com.hienthai.fastowin.data.network.AuthRequestConfigurator
 import com.hienthai.fastowin.data.network.NoOpAuthRequestConfigurator
 import com.hienthai.fastowin.data.network.StoredAuthSession
 import com.hienthai.fastowin.data.network.ResumeTokenStore
+import com.hienthai.fastowin.localization.AppLanguage
+import com.hienthai.fastowin.localization.LocalizationService
+import com.hienthai.fastowin.localization.LocalizedMessageMapper
 import com.hienthai.fastowin.protocol.PlayerGender
 import com.hienthai.fastowin.platform.epochMillis
 import com.hienthai.fastowin.protocol.AuthSessionResponse
@@ -43,9 +47,11 @@ class AuthController(
     private val resumeTokenStore: ResumeTokenStore,
     private val devicePlatform: String,
     private val initialGuestSession: Boolean = false,
+    initialLanguage: AppLanguage = AppLanguage.VIETNAMESE,
     private val requestConfigurator: AuthRequestConfigurator = NoOpAuthRequestConfigurator,
     private val api: AuthApiClient = AuthApiClient(serverUrl, requestConfigurator)
 ) {
+    private val messageMapper = LocalizedMessageMapper(LocalizationService(initialLanguage))
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val initialSession = store.load(serverUrl).let { stored ->
         if (stored != null && stored.refreshExpiresAtEpochMillis <= epochMillis()) {
@@ -66,6 +72,12 @@ class AuthController(
         }
     )
     val state: StateFlow<AuthState> = _state.asStateFlow()
+
+    fun updateLanguage(language: AppLanguage) {
+        if (messageMapper.language == language) return
+        messageMapper.updateLanguage(language)
+        _state.update { it.copy(error = null, notice = null) }
+    }
 
     fun openLogin() = _state.update { it.copy(stage = AuthStage.LOGIN, error = null) }
     fun openRegister() = _state.update { it.copy(stage = AuthStage.REGISTER, error = null) }
@@ -148,8 +160,18 @@ class AuthController(
                 _state.update { it.copy(session = refreshed, isLoading = false, error = null) }
                 refreshed.accessToken
             }
-            .getOrElse {
-                expireSession("Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.")
+            .getOrElse { error ->
+                val message = if (error is AuthSessionStoreException) {
+                    messageMapper.message(error.code, null, emptyMap(), error.message.orEmpty())
+                } else {
+                    messageMapper.message(
+                        code = "SESSION_EXPIRED",
+                        keyName = null,
+                        arguments = emptyMap(),
+                        fallback = "Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại."
+                    )
+                }
+                expireSession(message)
                 null
             }
     }
@@ -172,7 +194,7 @@ class AuthController(
                     _state.update {
                         it.copy(
                             isLoading = false,
-                            notice = response.message,
+                            notice = messageMapper.message(response),
                             devResetToken = response.devResetToken,
                             passwordResetEmail = email.trim().lowercase(),
                             error = null
@@ -189,7 +211,7 @@ class AuthController(
         scope.launch {
             runCatching { api.confirmPasswordReset(email, resetToken, newPassword) }
                 .onSuccess { response ->
-                    _state.value = AuthState(stage = AuthStage.LOGIN, notice = response.message)
+                    _state.value = AuthState(stage = AuthStage.LOGIN, notice = messageMapper.message(response))
                 }
                 .onFailure(::showError)
         }
@@ -203,12 +225,12 @@ class AuthController(
             runCatching { api.requestEmailVerification(accessToken) }
                 .onSuccess { response ->
                     if (response.emailVerified == true) {
-                        completeEmailVerification(response.message)
+                        completeEmailVerification(messageMapper.message(response))
                     } else {
                         _state.update {
                             it.copy(
                                 isLoading = false,
-                                notice = response.message,
+                                notice = messageMapper.message(response),
                                 devEmailVerificationCode = response.devEmailVerificationCode,
                                 error = null
                             )
@@ -226,7 +248,7 @@ class AuthController(
             val accessToken = validAccessToken() ?: return@launch
             runCatching { api.confirmEmailVerification(accessToken, verificationCode) }
                 .onSuccess { response ->
-                    completeEmailVerification(response.message)
+                    completeEmailVerification(messageMapper.message(response))
                 }
                 .onFailure(::showError)
         }
@@ -241,7 +263,7 @@ class AuthController(
             runCatching { api.changePassword(accessToken, currentPassword, newPassword) }
                 .onSuccess { response ->
                     store.clear(serverUrl)
-                    _state.value = AuthState(stage = AuthStage.LOGIN, notice = response.message)
+                    _state.value = AuthState(stage = AuthStage.LOGIN, notice = messageMapper.message(response))
                 }
                 .onFailure(::showError)
         }
@@ -257,7 +279,7 @@ class AuthController(
                 .onSuccess { response ->
                     store.clear(serverUrl)
                     resumeTokenStore.clear(serverUrl)
-                    _state.value = AuthState(notice = response.message)
+                    _state.value = AuthState(notice = messageMapper.message(response))
                 }
                 .onFailure(::showError)
         }
@@ -292,10 +314,10 @@ class AuthController(
                 .onSuccess { response ->
                     if (target.isCurrent) {
                         store.clear(serverUrl)
-                        _state.value = AuthState(stage = AuthStage.LOGIN, notice = response.message)
+                        _state.value = AuthState(stage = AuthStage.LOGIN, notice = messageMapper.message(response))
                     } else {
                         _state.update {
-                            it.copy(areSessionsLoading = false, notice = response.message, error = null)
+                            it.copy(areSessionsLoading = false, notice = messageMapper.message(response), error = null)
                         }
                         loadSessions()
                     }
@@ -312,13 +334,20 @@ class AuthController(
             runCatching { api.revokeAllSessions(accessToken) }
                 .onSuccess { response ->
                     store.clear(serverUrl)
-                    _state.value = AuthState(stage = AuthStage.LOGIN, notice = response.message)
+                    _state.value = AuthState(stage = AuthStage.LOGIN, notice = messageMapper.message(response))
                 }
                 .onFailure(::showSessionsError)
         }
     }
 
-    fun expireSession(message: String = "Phiên đăng nhập không còn hợp lệ.") {
+    fun expireSession(
+        message: String = messageMapper.message(
+            code = "SESSION_EXPIRED",
+            keyName = null,
+            arguments = emptyMap(),
+            fallback = "Phiên đăng nhập không còn hợp lệ."
+        )
+    ) {
         val expiredSession = _state.value.session
         val storedSession = store.load(serverUrl)
         if (expiredSession == null || storedSession?.refreshToken == expiredSession.refreshToken) {
@@ -364,8 +393,17 @@ class AuthController(
         _state.update {
             it.copy(
                 isLoading = false,
-                error = (error as? AuthApiException)?.message
-                    ?: "Không thể kết nối máy chủ. Vui lòng thử lại."
+                error = when (error) {
+                    is AuthApiException -> messageMapper.message(
+                        error.code, error.messageKey, error.messageArgs, error.message
+                    )
+                    is AuthSessionStoreException -> messageMapper.message(
+                        error.code, null, emptyMap(), error.message.orEmpty()
+                    )
+                    else -> messageMapper.message(
+                        "NETWORK_ERROR", null, emptyMap(), "Không thể kết nối máy chủ. Vui lòng thử lại."
+                    )
+                }
             )
         }
     }
@@ -374,8 +412,9 @@ class AuthController(
         _state.update {
             it.copy(
                 areSessionsLoading = false,
-                error = (error as? AuthApiException)?.message
-                    ?: "Không thể tải danh sách thiết bị. Vui lòng thử lại."
+                error = (error as? AuthApiException)?.let {
+                    messageMapper.message(it.code, it.messageKey, it.messageArgs, it.message)
+                } ?: messageMapper.message("NETWORK_ERROR", null, emptyMap(), "Không thể tải danh sách thiết bị. Vui lòng thử lại.")
             )
         }
     }

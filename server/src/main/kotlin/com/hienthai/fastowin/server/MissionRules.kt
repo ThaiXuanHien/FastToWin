@@ -1,6 +1,7 @@
 package com.hienthai.fastowin.server
 
 import com.hienthai.fastowin.protocol.MissionDifficulty
+import com.hienthai.fastowin.localization.TextKey
 import java.time.DayOfWeek
 import java.time.Instant
 import java.time.LocalDate
@@ -12,6 +13,7 @@ internal enum class MissionPeriod { DAILY, WEEKLY }
 internal data class MissionDefinition(
     val code: String,
     val title: String,
+    val titleKey: TextKey,
     val target: Int,
     val rewardXp: Int,
     val rewardGold: Int,
@@ -22,19 +24,19 @@ internal data class MissionDefinition(
 
 internal val MISSION_DEFINITIONS = listOf(
     MissionDefinition(
-        "DAILY_PLAY_3", "Chơi 3 trận hôm nay", 3, 20, 100, 0,
+        "DAILY_PLAY_3", "Chơi 3 trận hôm nay", TextKey.MissionPlayThree, 3, 20, 100, 0,
         MissionPeriod.DAILY, MissionDifficulty.EASY
     ),
     MissionDefinition(
-        "DAILY_WIN_1", "Thắng 1 trận hôm nay", 1, 25, 150, 0,
+        "DAILY_WIN_1", "Thắng 1 trận hôm nay", TextKey.MissionWinOne, 1, 25, 150, 0,
         MissionPeriod.DAILY, MissionDifficulty.NORMAL
     ),
     MissionDefinition(
-        "WEEKLY_CORRECT_100", "Chọn đúng 100 số trong tuần", 100, 75, 400, 0,
+        "WEEKLY_CORRECT_100", "Chọn đúng 100 số trong tuần", TextKey.MissionCorrectHundred, 100, 75, 400, 0,
         MissionPeriod.WEEKLY, MissionDifficulty.HARD
     ),
     MissionDefinition(
-        "WEEKLY_PERFECT_1", "Thắng 1 trận không bấm sai", 1, 120, 600, 2,
+        "WEEKLY_PERFECT_1", "Thắng 1 trận không bấm sai", TextKey.MissionPerfectWin, 1, 120, 600, 2,
         MissionPeriod.WEEKLY, MissionDifficulty.ELITE
     )
 )

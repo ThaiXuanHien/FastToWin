@@ -3,6 +3,7 @@ package com.hienthai.fastowin.state
 import com.hienthai.fastowin.data.network.InMemoryAuthSessionStore
 import com.hienthai.fastowin.data.network.InMemoryResumeTokenStore
 import com.hienthai.fastowin.data.network.StoredAuthSession
+import com.hienthai.fastowin.localization.AppLanguage
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -136,6 +137,31 @@ class AuthControllerTest {
             assertEquals(AuthStage.LOGIN, controller.state.value.stage)
             assertEquals(null, controller.state.value.session)
             assertEquals(null, store.load(SERVER_URL))
+        } finally {
+            controller.close()
+        }
+    }
+
+    @Test
+    fun updateLanguageLocalizesSessionExpiryWithoutRecreatingController() {
+        val session = storedSession("language-refresh")
+        val store = InMemoryAuthSessionStore().apply { save(SERVER_URL, session) }
+        val controller = AuthController(
+            serverUrl = SERVER_URL,
+            store = store,
+            resumeTokenStore = InMemoryResumeTokenStore(),
+            devicePlatform = "test"
+        )
+
+        try {
+            controller.updateLanguage(AppLanguage.ENGLISH)
+            controller.expireSession()
+
+            assertEquals(AuthStage.LOGIN, controller.state.value.stage)
+            assertEquals(
+                "Your session has expired. Please sign in again.",
+                controller.state.value.error
+            )
         } finally {
             controller.close()
         }

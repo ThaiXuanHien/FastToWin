@@ -1,6 +1,7 @@
 package com.hienthai.fastowin.server
 
 import com.hienthai.fastowin.protocol.MissionDifficulty
+import com.hienthai.fastowin.localization.TextKey
 import java.time.LocalDate
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -28,6 +29,15 @@ class MissionRulesTest {
         )
         assertEquals(0, MISSION_DEFINITIONS.filterNot { it.difficulty == MissionDifficulty.ELITE }.sumOf { it.rewardGems })
         assertEquals(2, MISSION_DEFINITIONS.single { it.difficulty == MissionDifficulty.ELITE }.rewardGems)
+        assertEquals(
+            setOf(
+                TextKey.MissionPlayThree,
+                TextKey.MissionWinOne,
+                TextKey.MissionCorrectHundred,
+                TextKey.MissionPerfectWin
+            ),
+            MISSION_DEFINITIONS.mapTo(mutableSetOf(), MissionDefinition::titleKey)
+        )
     }
 
     @Test
@@ -39,5 +49,16 @@ class MissionRulesTest {
         assertEquals(sunday, missionPeriodStart(daily, sunday))
         assertEquals(LocalDate.of(2026, 8, 17), missionPeriodStart(weekly, sunday))
         assertEquals(LocalDate.of(2026, 8, 24), missionPeriodStart(weekly, sunday.plusDays(1)))
+    }
+
+    @Test
+    fun `generated season copy carries stable localization templates`() {
+        val name = defaultSeasonName(3)
+        val reward = defaultSeasonRewardDescription()
+
+        assertEquals(TextKey.SeasonDefaultName, name.key)
+        assertEquals(mapOf("season" to "3"), name.arguments)
+        assertEquals("Mùa 3", name.fallback)
+        assertEquals(TextKey.SeasonDefaultRewardDescription, reward.key)
     }
 }

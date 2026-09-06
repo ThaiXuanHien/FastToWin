@@ -81,6 +81,7 @@ import com.hienthai.fastowin.data.network.toAvatarImageUrl
 import com.hienthai.fastowin.navigation.GameMode
 import com.hienthai.fastowin.localization.TextKey
 import com.hienthai.fastowin.localization.localized
+import com.hienthai.fastowin.localization.localizedNetworkText
 import com.hienthai.fastowin.protocol.FriendPresence
 import com.hienthai.fastowin.protocol.DailyCheckInSnapshot
 import com.hienthai.fastowin.protocol.DAILY_CHECK_IN_REWARDS_XP
@@ -188,7 +189,11 @@ internal fun HomeDashboard(
             HomeMatchHero(
                 kicker = when {
                     isGuest -> localized(TextKey.GuestMode)
-                    season != null -> season.name.uppercase()
+                    season != null -> localizedNetworkText(
+                        season.nameKey,
+                        season.nameArgs,
+                        season.name
+                    ).uppercase()
                     else -> localized(TextKey.Ranked).uppercase()
                 },
                 description = if (isGuest) {

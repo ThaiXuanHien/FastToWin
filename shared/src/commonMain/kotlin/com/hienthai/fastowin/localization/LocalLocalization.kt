@@ -17,6 +17,18 @@ fun localized(text: LocalizedText): String =
     LocalLocalization.current.text(text.key, text.arguments)
 
 @Composable
+fun localizedNetworkText(
+    keyName: String?,
+    arguments: Map<String, String>,
+    fallback: String
+): String {
+    val localization = LocalLocalization.current
+    val key = keyName?.let { candidate -> TextKey.entries.firstOrNull { it.name == candidate } }
+        ?: return fallback
+    return runCatching { localization.text(key, arguments) }.getOrElse { fallback }
+}
+
+@Composable
 fun localizedQuantity(key: QuantityKey, count: Int, vararg arguments: Pair<String, Any?>): String =
     LocalLocalization.current.quantity(key, count, arguments.toMap())
 

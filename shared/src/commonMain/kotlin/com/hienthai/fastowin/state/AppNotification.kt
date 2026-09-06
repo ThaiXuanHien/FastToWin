@@ -1,5 +1,7 @@
 package com.hienthai.fastowin.state
 
+import com.hienthai.fastowin.localization.LocalizationService
+import com.hienthai.fastowin.localization.TextKey
 import com.hienthai.fastowin.protocol.FriendRequestSnapshot
 import com.hienthai.fastowin.protocol.MissionSnapshot
 import com.hienthai.fastowin.protocol.NotificationDestination
@@ -27,7 +29,8 @@ data class AppNotification(
     val createdAtEpochMillis: Long,
     val isRead: Boolean = false,
     val destination: AppNotificationDestination,
-    val actionData: String? = null
+    val actionData: String? = null,
+    val localizationData: Map<String, String> = emptyMap()
 )
 
 internal fun NotificationSnapshot.toAppNotification() = AppNotification(
@@ -66,34 +69,49 @@ internal fun mergeNotifications(
 
 internal fun friendRequestNotifications(
     requests: List<FriendRequestSnapshot>,
-    nowMillis: Long
+    nowMillis: Long,
+    localization: LocalizationService
 ): List<AppNotification> = requests.map { request ->
     AppNotification(
         id = "friend:${request.requestId}",
         kind = AppNotificationKind.FRIEND_REQUEST,
-        title = "Lời mời kết bạn",
-        message = "${request.displayName} muốn kết bạn với bạn.",
+        title = localization.text(TextKey.FriendRequests),
+        message = localization.text(
+            TextKey.NotificationFriendRequestMessage,
+            mapOf("player" to request.displayName)
+        ),
         createdAtEpochMillis = nowMillis,
-        destination = AppNotificationDestination.FRIENDS
+        destination = AppNotificationDestination.FRIENDS,
+        localizationData = mapOf("type" to "friend", "player" to request.displayName)
     )
 }
 
 internal fun roomInvitationNotification(
     invitation: ServerMessage.RoomInvitation,
-    nowMillis: Long
+    nowMillis: Long,
+    localization: LocalizationService
 ) = AppNotification(
     id = "room:${invitation.invitationId}",
     kind = AppNotificationKind.ROOM_INVITATION,
-    title = "Lời mời vào phòng",
-    message = "${invitation.fromDisplayName} mời bạn vào phòng ${invitation.roomName}.",
+    title = localization.text(TextKey.RoomInvitationTitle),
+    message = localization.text(
+        TextKey.NotificationRoomInvitationMessage,
+        mapOf("player" to invitation.fromDisplayName, "room" to invitation.roomName)
+    ),
     createdAtEpochMillis = nowMillis,
-    destination = AppNotificationDestination.FRIENDS
+    destination = AppNotificationDestination.FRIENDS,
+    localizationData = mapOf(
+        "type" to "room",
+        "player" to invitation.fromDisplayName,
+        "room" to invitation.roomName
+    )
 )
 
 internal fun progressionNotifications(
     previous: PlayerProfileSnapshot?,
     current: PlayerProfileSnapshot,
-    nowMillis: Long
+    nowMillis: Long,
+    localization: LocalizationService
 ): List<AppNotification> {
     if (previous == null) return emptyList()
     val result = mutableListOf<AppNotification>()
@@ -103,10 +121,22 @@ internal fun progressionNotifications(
         result += AppNotification(
             id = "achievement:${achievement.code}",
             kind = AppNotificationKind.ACHIEVEMENT,
-            title = "Mở khóa thành tích",
-            message = "${achievement.title}: ${achievement.description}",
+            title = localization.text(TextKey.AchievementsTitle),
+            message = localization.text(
+                TextKey.NotificationAchievementMessage,
+                mapOf(
+                    "title" to localization.achievementTitle(achievement.code, achievement.title),
+                    "description" to localization.achievementDescription(achievement.code, achievement.description)
+                )
+            ),
             createdAtEpochMillis = nowMillis,
-            destination = AppNotificationDestination.PROFILE
+            destination = AppNotificationDestination.PROFILE,
+            localizationData = mapOf(
+                "type" to "achievement",
+                "code" to achievement.code,
+                "title" to achievement.title,
+                "description" to achievement.description
+            )
         )
     }
 
@@ -117,10 +147,18 @@ internal fun progressionNotifications(
         result += AppNotification(
             id = "cosmetic:${cosmetic.id}",
             kind = AppNotificationKind.COSMETIC,
-            title = "Mở khóa vật phẩm",
-            message = "Bạn đã mở khóa ${cosmetic.name}.",
+            title = localization.text(TextKey.Unlocked),
+            message = localization.text(
+                TextKey.NotificationCosmeticMessage,
+                mapOf("item" to localization.cosmeticName(cosmetic.id, cosmetic.name))
+            ),
             createdAtEpochMillis = nowMillis,
-            destination = AppNotificationDestination.PROFILE
+            destination = AppNotificationDestination.PROFILE,
+            localizationData = mapOf(
+                "type" to "cosmetic",
+                "id" to cosmetic.id,
+                "name" to cosmetic.name
+            )
         )
     }
 
@@ -128,13 +166,15 @@ internal fun progressionNotifications(
         previous.progression.dailyMissions,
         current.progression.dailyMissions,
         "daily:${nowMillis / DAY_MILLIS}",
-        nowMillis
+        nowMillis,
+        localization
     )
     result += completedMissionNotifications(
         previous.progression.weeklyMissions,
         current.progression.weeklyMissions,
         "weekly:${nowMillis / WEEK_MILLIS}",
-        nowMillis
+        nowMillis,
+        localization
     )
     return result
 }
@@ -143,7 +183,8 @@ private fun completedMissionNotifications(
     previous: List<MissionSnapshot>,
     current: List<MissionSnapshot>,
     periodKey: String,
-    nowMillis: Long
+    nowMillis: Long,
+    localization: LocalizationService
 ): List<AppNotification> {
     val previousByCode = previous.associateBy(MissionSnapshot::code)
     return current.filter { mission ->
@@ -152,19 +193,167 @@ private fun completedMissionNotifications(
         AppNotification(
             id = "mission:$periodKey:${mission.code}",
             kind = AppNotificationKind.MISSION,
-            title = "Hoàn thành nhiệm vụ",
-            message = "${mission.title} • Nhận ${mission.rewardSummary()}.",
+            title = localization.text(TextKey.MissionCompleted),
+            message = localization.text(
+                TextKey.NotificationMissionMessage,
+                mapOf(
+                    "mission" to mission.localizedTitle(localization),
+                    "reward" to mission.rewardSummary(localization)
+                )
+            ),
             createdAtEpochMillis = nowMillis,
-            destination = AppNotificationDestination.PROFILE
+            destination = AppNotificationDestination.PROFILE,
+            localizationData = buildMap {
+                put("type", "mission")
+                put("code", mission.code)
+                put("title", mission.title)
+                mission.titleKey?.let { put("titleKey", it) }
+                put("rewardGold", mission.rewardGold.toString())
+                put("rewardXp", mission.rewardXp.toString())
+                put("rewardGems", mission.rewardGems.toString())
+            }
         )
     }
 }
 
-private fun MissionSnapshot.rewardSummary(): String = buildList {
-    if (rewardGold > 0) add("$rewardGold vàng")
+internal fun AppNotification.relocalized(localization: LocalizationService): AppNotification = when (localizationData["type"]) {
+    "friend" -> copy(
+        title = localization.text(TextKey.FriendRequests),
+        message = localization.text(
+            TextKey.NotificationFriendRequestMessage,
+            mapOf("player" to localizationData.getValue("player"))
+        )
+    )
+    "room" -> copy(
+        title = localization.text(TextKey.RoomInvitationTitle),
+        message = localization.text(
+            TextKey.NotificationRoomInvitationMessage,
+            mapOf(
+                "player" to localizationData.getValue("player"),
+                "room" to localizationData.getValue("room")
+            )
+        )
+    )
+    "achievement" -> {
+        val code = localizationData.getValue("code")
+        copy(
+            title = localization.text(TextKey.AchievementsTitle),
+            message = localization.text(
+                TextKey.NotificationAchievementMessage,
+                mapOf(
+                    "title" to localization.achievementTitle(code, localizationData.getValue("title")),
+                    "description" to localization.achievementDescription(code, localizationData.getValue("description"))
+                )
+            )
+        )
+    }
+    "cosmetic" -> copy(
+        title = localization.text(TextKey.Unlocked),
+        message = localization.text(
+            TextKey.NotificationCosmeticMessage,
+            mapOf(
+                "item" to localization.cosmeticName(
+                    localizationData.getValue("id"),
+                    localizationData.getValue("name")
+                )
+            )
+        )
+    )
+    "mission" -> {
+        val mission = MissionSnapshot(
+            code = localizationData.getValue("code"),
+            title = localizationData.getValue("title"),
+            progress = 1,
+            target = 1,
+            completed = true,
+            rewardXp = localizationData.getValue("rewardXp").toInt(),
+            rewardGold = localizationData.getValue("rewardGold").toInt(),
+            rewardGems = localizationData.getValue("rewardGems").toInt(),
+            titleKey = localizationData["titleKey"]
+        )
+        copy(
+            title = localization.text(TextKey.MissionCompleted),
+            message = localization.text(
+                TextKey.NotificationMissionMessage,
+                mapOf(
+                    "mission" to mission.localizedTitle(localization),
+                    "reward" to mission.rewardSummary(localization)
+                )
+            )
+        )
+    }
+    else -> this
+}
+
+private fun MissionSnapshot.rewardSummary(localization: LocalizationService): String = buildList {
+    if (rewardGold > 0) add("$rewardGold ${localization.text(TextKey.Gold)}")
     if (rewardXp > 0) add("$rewardXp XP")
-    if (rewardGems > 0) add("$rewardGems Gem")
-}.joinToString(" + ").ifEmpty { "thưởng" }
+    if (rewardGems > 0) add("$rewardGems ${localization.text(TextKey.Gems)}")
+}.joinToString(" + ")
+
+private fun MissionSnapshot.localizedTitle(localization: LocalizationService): String {
+    if (titleKey != null) {
+        return TextKey.entries.firstOrNull { it.name == titleKey }
+            ?.let { key -> runCatching { localization.text(key) }.getOrNull() }
+            ?: title
+    }
+    return when (code.uppercase()) {
+        "DAILY_PLAY_3" -> localization.text(TextKey.MissionPlayThree)
+        "DAILY_WIN_1" -> localization.text(TextKey.MissionWinOne)
+        "WEEKLY_CORRECT_100" -> localization.text(TextKey.MissionCorrectHundred)
+        "WEEKLY_PERFECT_1" -> localization.text(TextKey.MissionPerfectWin)
+        else -> title
+    }
+}
+
+private fun LocalizationService.achievementTitle(code: String, fallback: String): String = textOrFallback(
+    when (code.uppercase()) {
+        "FIRST_WIN" -> TextKey.AchievementFirstWinTitle
+        "WIN_10" -> TextKey.AchievementWinTenTitle
+        "PERFECT_GAME" -> TextKey.AchievementPerfectTitle
+        "SPEED_50" -> TextKey.AchievementSpeedTitle
+        "DAILY_STREAK_7" -> TextKey.AchievementCheckInTitle
+        else -> null
+    },
+    fallback
+)
+
+private fun LocalizationService.achievementDescription(code: String, fallback: String): String = textOrFallback(
+    when (code.uppercase()) {
+        "FIRST_WIN" -> TextKey.AchievementFirstWinDescription
+        "WIN_10" -> TextKey.AchievementWinTenDescription
+        "PERFECT_GAME" -> TextKey.AchievementPerfectDescription
+        "SPEED_50" -> TextKey.AchievementSpeedDescription
+        "DAILY_STREAK_7" -> TextKey.AchievementCheckInDescription
+        else -> null
+    },
+    fallback
+)
+
+private fun LocalizationService.cosmeticName(id: String, fallback: String): String = textOrFallback(
+    when (id) {
+        "frame_default" -> TextKey.BasicFrame
+        "frame_bronze" -> TextKey.BronzeFrame
+        "frame_silver" -> TextKey.SilverFrame
+        "frame_gold" -> TextKey.GoldFrame
+        "frame_perfect" -> TextKey.PerfectFrame
+        "frame_persistent" -> TextKey.PersistentFrameName
+        "title_rookie" -> TextKey.Rookie
+        "title_champion" -> TextKey.Champion
+        "title_speed" -> TextKey.AchievementSpeedTitle
+        "title_diligent" -> TextKey.DiligentTitle
+        "avatar_checkin_50" -> TextKey.SeasonRewardAvatarName
+        "card_back_gold" -> TextKey.ShopItemGoldName
+        "card_back_diamond" -> TextKey.ShopItemDiamondName
+        "board_skin_dark" -> TextKey.ShopBoardDarkName
+        "board_skin_forest" -> TextKey.ShopBoardForestName
+        else -> null
+    },
+    fallback
+)
+
+private fun LocalizationService.textOrFallback(key: TextKey?, fallback: String): String =
+    key?.let { runCatching { text(it) }.getOrNull() } ?: fallback
 
 private const val MAX_IN_APP_NOTIFICATIONS = 100
 private const val DAY_MILLIS = 86_400_000L

@@ -8,6 +8,8 @@ import com.hienthai.fastowin.protocol.MissionSnapshot
 import com.hienthai.fastowin.protocol.PlayerProfileSnapshot
 import com.hienthai.fastowin.protocol.PlayerProgressionSnapshot
 import com.hienthai.fastowin.protocol.ServerMessage
+import com.hienthai.fastowin.localization.AppLanguage
+import com.hienthai.fastowin.localization.LocalizationService
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -21,7 +23,7 @@ class AppNotificationTest {
             missionCompleted = true
         )
 
-        assertTrue(progressionNotifications(null, current, NOW).isEmpty())
+        assertTrue(progressionNotifications(null, current, NOW, vietnamese()).isEmpty())
     }
 
     @Test
@@ -29,7 +31,7 @@ class AppNotificationTest {
         val previous = profile(false, false, false)
         val current = profile(true, true, true)
 
-        val notifications = progressionNotifications(previous, current, NOW)
+        val notifications = progressionNotifications(previous, current, NOW, vietnamese())
 
         assertEquals(
             setOf(
@@ -42,7 +44,7 @@ class AppNotificationTest {
         assertEquals(3, notifications.size)
         assertTrue(notifications.all { !it.isRead })
         assertEquals(
-            "Thắng một trận • Nhận 150 vàng + 25 XP + 2 Gem.",
+            "Thắng 1 trận hôm nay • Nhận 150 Vàng + 25 XP + 2 Gem.",
             notifications.single { it.kind == AppNotificationKind.MISSION }.message
         )
     }
@@ -51,7 +53,8 @@ class AppNotificationTest {
     fun `social notifications are deduplicated by server id`() {
         val friend = friendRequestNotifications(
             listOf(FriendRequestSnapshot("request-1", "user-1", "Hiếu", "HIEU001")),
-            NOW
+            NOW,
+            vietnamese()
         ).single()
         val invitation = roomInvitationNotification(
             ServerMessage.RoomInvitation(
@@ -62,7 +65,8 @@ class AppNotificationTest {
                 roomName = "Phòng vui",
                 expiresAtEpochMillis = NOW + 60_000L
             ),
-            NOW
+            NOW,
+            vietnamese()
         )
 
         val firstMerge = mergeNotifications(emptyList(), listOf(friend, invitation))
@@ -76,6 +80,92 @@ class AppNotificationTest {
         )
     }
 
+    @Test
+    fun `generated notifications use the active language`() {
+        val english = LocalizationService(AppLanguage.ENGLISH)
+        val friend = friendRequestNotifications(
+            listOf(FriendRequestSnapshot("request-1", "user-1", "Hieu", "HIEU001")),
+            NOW,
+            english
+        ).single()
+        val invitation = roomInvitationNotification(
+            ServerMessage.RoomInvitation(
+                invitationId = "invite-1",
+                fromUserId = "user-2",
+                fromDisplayName = "Hien",
+                roomId = "room-1",
+                roomName = "Fast room",
+                expiresAtEpochMillis = NOW + 60_000L
+            ),
+            NOW,
+            english
+        )
+        val mission = progressionNotifications(
+            profile(false, false, false),
+            profile(false, false, true),
+            NOW,
+            english
+        ).single()
+        val progression = progressionNotifications(
+            profile(false, false, false),
+            profile(true, true, false),
+            NOW,
+            english
+        )
+
+        assertEquals("Friend requests", friend.title)
+        assertEquals("Hieu wants to be your friend.", friend.message)
+        assertEquals("ROOM INVITATION", invitation.title)
+        assertEquals("Hien invited you to Fast room.", invitation.message)
+        assertEquals("Completed", mission.title)
+        assertEquals("Win 1 match today • Claim 150 Gold + 25 XP + 2 Gems.", mission.message)
+        assertEquals(
+            "Ten victories: Win 10 matches",
+            progression.single { it.kind == AppNotificationKind.ACHIEVEMENT }.message
+        )
+        assertEquals(
+            "You unlocked Gold frame.",
+            progression.single { it.kind == AppNotificationKind.COSMETIC }.message
+        )
+    }
+
+    @Test
+    fun `malformed network mission title key keeps raw title`() {
+        val previous = profile(false, false, false)
+        val malformedMission = previous.progression.dailyMissions.single().copy(
+            title = "Legacy mission title",
+            progress = 1,
+            completed = true,
+            titleKey = "ServerRateLimited"
+        )
+        val current = previous.copy(
+            progression = previous.progression.copy(dailyMissions = listOf(malformedMission))
+        )
+
+        val notification = progressionNotifications(
+            previous,
+            current,
+            NOW,
+            LocalizationService(AppLanguage.ENGLISH)
+        ).single()
+
+        assertEquals("Legacy mission title • Claim 150 Gold + 25 XP + 2 Gems.", notification.message)
+    }
+
+    @Test
+    fun `generated notification can be rerendered after language changes`() {
+        val notification = friendRequestNotifications(
+            listOf(FriendRequestSnapshot("request-1", "user-1", "Hieu", "HIEU001")),
+            NOW,
+            vietnamese()
+        ).single()
+
+        val english = notification.relocalized(LocalizationService(AppLanguage.ENGLISH))
+
+        assertEquals("Friend requests", english.title)
+        assertEquals("Hieu wants to be your friend.", english.message)
+    }
+
     private fun profile(
         achievementUnlocked: Boolean,
         cosmeticUnlocked: Boolean,
@@ -85,14 +175,14 @@ class AppNotificationTest {
         displayName = "Player",
         playerCode = "PLAYER001",
         achievements = if (achievementUnlocked) {
-            listOf(AchievementSnapshot("first_win", "Chiến thắng đầu tiên", "Thắng một trận", NOW))
+            listOf(AchievementSnapshot("WIN_10", "Thắng 10 trận", "Thắng 10 trận.", NOW))
         } else {
             emptyList()
         },
         progression = PlayerProgressionSnapshot(
             dailyMissions = listOf(
                 MissionSnapshot(
-                    "daily_win",
+                    "DAILY_WIN_1",
                     "Thắng một trận",
                     if (missionCompleted) 1 else 0,
                     1,
@@ -103,10 +193,12 @@ class AppNotificationTest {
                 )
             ),
             cosmetics = listOf(
-                CosmeticSnapshot("gold_frame", "Khung vàng", CosmeticType.FRAME, cosmeticUnlocked, false)
+                CosmeticSnapshot("frame_gold", "Khung vàng", CosmeticType.FRAME, cosmeticUnlocked, false)
             )
         )
     )
+
+    private fun vietnamese() = LocalizationService(AppLanguage.VIETNAMESE)
 
     private companion object {
         const val NOW = 1_800_000_000_000L

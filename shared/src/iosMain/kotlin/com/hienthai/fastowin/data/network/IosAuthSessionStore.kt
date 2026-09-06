@@ -79,8 +79,11 @@ class IosAuthSessionStore : AuthSessionStore {
             nsString(kSecValueData) to data
         )
         val status = withCFDictionary(attributes) { SecItemAdd(it, null) }
-        check(status == errSecSuccess) {
-            "Không thể lưu phiên đăng nhập vào iOS Keychain."
+        if (status != errSecSuccess) {
+            throw AuthSessionStoreException(
+                code = "IOS_KEYCHAIN_SAVE_FAILED",
+                message = "Không thể lưu phiên đăng nhập vào iOS Keychain."
+            )
         }
     }
 

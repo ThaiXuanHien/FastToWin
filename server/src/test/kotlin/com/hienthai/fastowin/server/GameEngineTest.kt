@@ -1,5 +1,6 @@
 package com.hienthai.fastowin.server
 
+import com.hienthai.fastowin.localization.TextKey
 import com.hienthai.fastowin.protocol.ClientMessage
 import com.hienthai.fastowin.protocol.ClanJoinRequestSnapshot
 import com.hienthai.fastowin.protocol.ClanMemberSnapshot
@@ -368,17 +369,15 @@ class GameEngineTest {
             purchaseToken = "dev:GOOGLE_PLAY:fasttowin_gems_80:test"
         )
         val first = engine.handle(playerId, request).map(Delivery::message)
-        assertEquals(
-            StorePurchaseStatus.GRANTED,
-            first.filterIsInstance<ServerMessage.StorePurchaseResult>().single().status
-        )
+        val granted = first.filterIsInstance<ServerMessage.StorePurchaseResult>().single()
+        assertEquals(StorePurchaseStatus.GRANTED, granted.status)
+        assertEquals(TextKey.BillingGemsAdded.name, granted.messageKey)
         assertEquals(85, first.filterIsInstance<ServerMessage.ProfileData>().single().profile.progression.gems)
 
         val duplicate = engine.handle(playerId, request).map(Delivery::message)
-        assertEquals(
-            StorePurchaseStatus.ALREADY_GRANTED,
-            duplicate.filterIsInstance<ServerMessage.StorePurchaseResult>().single().status
-        )
+        val alreadyGranted = duplicate.filterIsInstance<ServerMessage.StorePurchaseResult>().single()
+        assertEquals(StorePurchaseStatus.ALREADY_GRANTED, alreadyGranted.status)
+        assertEquals(TextKey.ServerAlreadyExists.name, alreadyGranted.messageKey)
         assertEquals(1, grantedTransactions.size)
     }
 
@@ -1068,6 +1067,7 @@ class GameEngineTest {
 
         val error = assertIs<ServerMessage.Error>(deliveries.single().message)
         assertEquals("WRONG_PASSWORD", error.code)
+        assertEquals(TextKey.ServerWrongPassword.name, error.messageKey)
     }
 
     @Test

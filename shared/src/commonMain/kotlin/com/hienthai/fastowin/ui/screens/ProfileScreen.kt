@@ -1321,6 +1321,7 @@ private fun MissionArcadeDetails(mission: MissionSnapshot, modifier: Modifier = 
 
 @Composable
 private fun localizedAchievementTitle(code: String, fallback: String): String = when (code) {
+    "FIRST_WIN" -> localized(TextKey.AchievementFirstWinTitle)
     "WIN_10" -> localized(TextKey.AchievementWinTenTitle)
     "PERFECT_GAME" -> localized(TextKey.AchievementPerfectTitle)
     "SPEED_50" -> localized(TextKey.AchievementSpeedTitle)
@@ -1330,6 +1331,7 @@ private fun localizedAchievementTitle(code: String, fallback: String): String = 
 
 @Composable
 private fun localizedAchievementDescription(code: String, fallback: String): String = when (code) {
+    "FIRST_WIN" -> localized(TextKey.AchievementFirstWinDescription)
     "WIN_10" -> localized(TextKey.AchievementWinTenDescription)
     "PERFECT_GAME" -> localized(TextKey.AchievementPerfectDescription)
     "SPEED_50" -> localized(TextKey.AchievementSpeedDescription)

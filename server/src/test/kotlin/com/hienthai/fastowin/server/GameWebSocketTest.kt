@@ -331,7 +331,7 @@ class GameWebSocketTest {
                     LoginRequest(
                         email = "exclusive-login@example.com",
                         password = "strong-password-123",
-                        devicePlatform = "web"
+                        devicePlatform = "android"
                     )
                 ))
             }

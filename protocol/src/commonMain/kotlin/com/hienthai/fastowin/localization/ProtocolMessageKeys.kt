@@ -1,0 +1,87 @@
+package com.hienthai.fastowin.localization
+
+/** Maps stable server codes to client-owned copy without trusting arbitrary network keys. */
+fun protocolTextKeyForCode(code: String): TextKey? = when (code) {
+    "AUTH_REQUIRED", "ACCOUNT_REQUIRED" -> TextKey.ServerAuthRequired
+    "RATE_LIMITED", "TOO_MANY_REQUESTS" -> TextKey.ServerRateLimited
+    "INVALID_MESSAGE", "INVALID_REQUEST", "INVALID_WEB_SESSION_REQUEST", "INVALID_REQUEST_ID",
+    "PROTOCOL_DECODE_FAILED" -> TextKey.ServerInvalidRequest
+    "INVALID_ACCESS_TOKEN", "INVALID_REFRESH_TOKEN", "INVALID_RESET_TOKEN", "INVALID_SESSION_ID",
+    "SESSION_NOT_FOUND", "SESSION_EXPIRED", "SESSION_REPLACED" -> TextKey.ServerSessionExpired
+    "PROTOCOL_MISMATCH" -> TextKey.ServerProtocolMismatch
+    "EMAIL_NOT_VERIFIED" -> TextKey.ServerEmailNotVerified
+    "ROOM_NOT_FOUND", "ROOM_NOT_INVITABLE", "ROOM_NOT_WAITING" -> TextKey.ServerRoomNotFound
+    "WRONG_PASSWORD" -> TextKey.ServerWrongPassword
+    "ROOM_FULL" -> TextKey.ServerRoomFull
+    "NOT_IN_ROOM", "PLAYER_NOT_IN_ROOM" -> TextKey.ServerNotInRoom
+    "HOST_REQUIRED", "NOT_CLAN_OWNER" -> TextKey.ServerHostRequired
+    "MODE_LOCKED", "COSMETIC_LOCKED", "AVATAR_LOCKED" -> TextKey.ServerModeLocked
+    "NOT_ENOUGH_GOLD" -> TextKey.ServerNotEnoughGold
+    "PLAYER_BUSY", "FRIEND_BUSY", "TOURNAMENT_ACTIVE", "ALREADY_IN_ROOM" -> TextKey.ServerPlayerBusy
+    "PLAYER_NOT_FOUND", "PROFILE_NOT_FOUND", "FRIEND_PROFILE_NOT_FOUND", "MATCH_NOT_FOUND",
+    "CLAN_NOT_FOUND", "TOURNAMENT_NOT_FOUND", "FRIEND_REQUEST_NOT_FOUND",
+    "CLAN_JOIN_REQUEST_NOT_FOUND", "FRIEND_NOT_FOUND", "BLOCK_NOT_FOUND",
+    "SEASON_REWARD_NOT_FOUND" -> TextKey.ServerResourceNotFound
+    "ALREADY_CONNECTED", "FRIENDSHIP_EXISTS", "PLAYER_ALREADY_JOINED", "ALREADY_IN_CLAN",
+    "TOURNAMENT_ALREADY_ACTIVE", "TOURNAMENT_ALREADY_CREATED", "TOURNAMENT_ENTRY_ALREADY_PAID",
+    "ALREADY_CLAIMED", "MISSION_ALREADY_CLAIMED", "EMAIL_ALREADY_EXISTS" -> TextKey.ServerAlreadyExists
+    "DATABASE_REQUIRED", "FRIENDS_UNAVAILABLE", "NOTIFICATIONS_UNAVAILABLE", "NOT_NOTIFICATIONS_UNAVAILABLE",
+    "LEADERBOARD_UNAVAILABLE", "FRIEND_PROFILE_UNAVAILABLE", "EMAIL_DELIVERY_UNAVAILABLE",
+    "EMAIL_DELIVERY_FAILED", "NETWORK_ERROR", "CONNECTION_FAILED", "CONNECTION_NOT_READY",
+    "SEND_FAILED", "IOS_KEYCHAIN_SAVE_FAILED", "DAILY_CHECK_IN_UNAVAILABLE",
+    "MISSION_REWARD_UNAVAILABLE", "PASSWORD_RESET_DELIVERY_UNAVAILABLE",
+    "PROFILE_UPDATE_UNAVAILABLE", "PUSH_PREFERENCES_UNAVAILABLE",
+    "WALLET_HISTORY_UNAVAILABLE" -> TextKey.ServerUnavailable
+    "INVITATION_EXPIRED", "TOURNAMENT_INVITATION_EXPIRED" -> TextKey.ServerInvitationExpired
+    "INVALID_TOURNAMENT_NAME", "INVALID_TOURNAMENT_SIZE", "INVALID_NOTIFICATIONS",
+    "INVALID_NOTIFICATION_ID", "INVALID_PLAYER_CODE", "INVALID_FRIEND", "INVALID_AVATAR",
+    "INVALID_ROOM_NAME", "INVALID_CLAN_NAME", "INVALID_CREDENTIALS",
+    "INVALID_CURRENT_PASSWORD", "INVALID_DISPLAY_NAME", "INVALID_EMAIL",
+    "INVALID_GUEST_SESSION", "INVALID_MISSION", "INVALID_NAME", "INVALID_PASSWORD",
+    "INVALID_SOCIAL_ACTION", "INVALID_VERIFICATION_CODE", "PASSWORD_UNCHANGED" -> TextKey.ServerInvalidInput
+    "PASSWORD_CHANGED" -> TextKey.PasswordChanged
+    "PASSWORD_RESET_SENT" -> TextKey.PasswordResetSent
+    "PASSWORD_RESET_COMPLETED" -> TextKey.PasswordResetCompleted
+    "EMAIL_VERIFICATION_SENT" -> TextKey.EmailVerificationSent
+    "EMAIL_VERIFIED" -> TextKey.EmailVerified
+    "SESSION_REVOKED" -> TextKey.SessionRevoked
+    "ALL_SESSIONS_REVOKED" -> TextKey.AllSessionsRevoked
+    "ACCOUNT_DELETED" -> TextKey.AccountDeleted
+    "TOURNAMENT_CREATED" -> TextKey.TournamentCreatedNotice
+    "TOURNAMENT_INVITATION_SENT" -> TextKey.TournamentInvitationSentNotice
+    "TOURNAMENT_INVITATION_DECLINED" -> TextKey.TournamentInvitationDeclinedNotice
+    "TOURNAMENT_INVITATION_DECLINED_BY_FRIEND" -> TextKey.TournamentInvitationDeclinedByFriendNotice
+    "TOURNAMENT_JOINED" -> TextKey.TournamentJoinedNotice
+    "TOURNAMENT_CANCELLED" -> TextKey.TournamentCancelledNotice
+    "TOURNAMENT_LEFT" -> TextKey.TournamentLeftNotice
+    "FRIEND_REQUEST_SENT" -> TextKey.FriendRequestSentNotice
+    "INVITE_SENT" -> TextKey.InviteSent
+    "FRIEND_REQUEST_CANCELLED" -> TextKey.FriendRequestCancelledNotice
+    "FRIEND_REQUEST_ACCEPTED" -> TextKey.FriendRequestAcceptedNotice
+    "FRIEND_REQUEST_DECLINED" -> TextKey.FriendRequestDeclinedNotice
+    "FRIEND_REMOVED" -> TextKey.FriendRemovedNotice
+    "PLAYER_BLOCKED" -> TextKey.PlayerBlockedNotice
+    "PLAYER_UNBLOCKED" -> TextKey.PlayerUnblockedNotice
+    "ROOM_INVITATION_DECLINED" -> TextKey.RoomInvitationDeclinedNotice
+    "ROOM_INVITATION_DECLINED_BY_FRIEND" -> TextKey.RoomInvitationDeclinedByFriendNotice
+    "ROOM_KICKED" -> TextKey.RoomKickedNotice
+    "RESULTS_LEFT" -> TextKey.ResultsLeftNotice
+    "ROOM_HOST_LEFT" -> TextKey.RoomHostLeftNotice
+    "ROOM_PLAYER_LEFT" -> TextKey.RoomPlayerLeftNotice
+    "ROOM_DISCONNECTED_TOO_LONG" -> TextKey.RoomDisconnectedTooLongNotice
+    "create_clan" -> TextKey.ClanCreatedNotice
+    "request_join_clan" -> TextKey.ClanJoinRequestedNotice
+    "join_clan_approved" -> TextKey.ClanJoinApprovedNotice
+    "join_clan_rejected" -> TextKey.ClanJoinRejectedNotice
+    "leave_clan" -> TextKey.ClanLeftNotice
+    "SELF_FRIEND_REQUEST", "INTERACTION_BLOCKED", "NOT_FRIENDS", "FRIEND_PROFILE_FORBIDDEN",
+    "TOURNAMENT_NOT_INVITABLE", "TOURNAMENT_FULL", "TOURNAMENT_NOT_STARTABLE",
+    "TOURNAMENT_NOT_FULL", "TOURNAMENT_PLAYER_UNAVAILABLE", "TOURNAMENT_ALREADY_STARTED",
+    "GAME_NOT_PLAYING", "WRONG_NUMBER", "REMATCH_NOT_AVAILABLE", "OPPONENT_LEFT",
+    "REMATCH_NOT_PENDING", "TOURNAMENT_REMATCH_DISABLED", "CREATE_CLAN_FAILED", "CLAN_FULL",
+    "OWN_CLAN_JOIN_REQUEST", "JOIN_CLAN_FAILED", "CLAN_JOIN_RESPONSE_FAILED", "LEAVE_CLAN_FAILED",
+    "KICK_FAILED", "NOT_IN_CLAN", "NO_QUEST", "QUEST_NOT_FINISHED", "CLAIM_FAILED",
+    "UPLOAD_FAILED", "BUY_FAILED", "FORFEIT_WINNER_NOT_FOUND", "MISSION_NOT_COMPLETED",
+    "PLAYER_FINISHED", "RANKED_REMATCH_DISABLED" -> TextKey.ServerActionFailed
+    else -> null
+}

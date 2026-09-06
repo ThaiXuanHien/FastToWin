@@ -1,6 +1,8 @@
 ﻿package com.hienthai.fastowin.server
 
 import com.hienthai.fastowin.protocol.ClientMessage
+import com.hienthai.fastowin.localization.protocolTextKeyForCode
+import com.hienthai.fastowin.localization.TextKey
 import com.hienthai.fastowin.protocol.CosmeticType
 import com.hienthai.fastowin.protocol.DAILY_CHECK_IN_AVATAR_ID
 import com.hienthai.fastowin.protocol.MAX_PROFILE_DISPLAY_NAME_LENGTH
@@ -497,7 +499,12 @@ class GameEngine(
             listOf(
                 Delivery(ServerMessage.TournamentUpdated(snapshot), setOf(playerId)),
                 Delivery(
-                    ServerMessage.TournamentNotice("Đã tạo giải riêng ${command.maxPlayers} người."),
+                    ServerMessage.TournamentNotice(
+                        message = "Đã tạo giải riêng ${command.maxPlayers} người.",
+                        messageKey = TextKey.TournamentCreatedNotice.name,
+                        messageArgs = mapOf("players" to command.maxPlayers.toString()),
+                        code = "TOURNAMENT_CREATED"
+                    ),
                     setOf(playerId)
                 )
             )
@@ -566,7 +573,11 @@ class GameEngine(
             
             listOf(
                 Delivery(ServerMessage.TournamentInvitation(invitation.snapshot()), setOf(friendId)),
-                Delivery(ServerMessage.TournamentNotice("Đã gửi lời mời tham gia giải."), setOf(playerId))
+                Delivery(ServerMessage.TournamentNotice(
+                    message = "Đã gửi lời mời tham gia giải.",
+                    messageKey = TextKey.TournamentInvitationSentNotice.name,
+                    code = "TOURNAMENT_INVITATION_SENT"
+                ), setOf(playerId))
             )
         }
     }
@@ -583,8 +594,16 @@ class GameEngine(
                 ?: return@withLock listOf(error(playerId, "TOURNAMENT_INVITATION_EXPIRED", "Lời mời giải đấu đã hết hạn."))
             if (!command.accept) {
                 return@withLock listOf(
-                    Delivery(ServerMessage.TournamentNotice("Đã từ chối lời mời giải đấu."), setOf(playerId)),
-                    Delivery(ServerMessage.TournamentNotice("Một người bạn đã từ chối lời mời giải đấu."), setOf(invitation.hostId))
+                    Delivery(ServerMessage.TournamentNotice(
+                        "Đã từ chối lời mời giải đấu.",
+                        TextKey.TournamentInvitationDeclinedNotice.name,
+                        code = "TOURNAMENT_INVITATION_DECLINED"
+                    ), setOf(playerId)),
+                    Delivery(ServerMessage.TournamentNotice(
+                        "Một người bạn đã từ chối lời mời giải đấu.",
+                        TextKey.TournamentInvitationDeclinedByFriendNotice.name,
+                        code = "TOURNAMENT_INVITATION_DECLINED_BY_FRIEND"
+                    ), setOf(invitation.hostId))
                 )
             }
             val tournament = tournaments[invitation.tournamentId]
@@ -625,7 +644,12 @@ class GameEngine(
             snapshotToSave = snapshot
             listOf(
                 Delivery(ServerMessage.TournamentUpdated(snapshot), tournament.playerIds()),
-                Delivery(ServerMessage.TournamentNotice("Đã tham gia giải ${tournament.name}."), setOf(playerId))
+                Delivery(ServerMessage.TournamentNotice(
+                    message = "Đã tham gia giải ${tournament.name}.",
+                    messageKey = TextKey.TournamentJoinedNotice.name,
+                    messageArgs = mapOf("tournament" to tournament.name),
+                    code = "TOURNAMENT_JOINED"
+                ), setOf(playerId))
             )
         }
         snapshotToSave?.let { tournamentRepository.save(it) }
@@ -697,7 +721,11 @@ class GameEngine(
                 snapshotToSave = snapshot
                 listOf(
                     Delivery(ServerMessage.TournamentUpdated(snapshot), tournament.playerIds()),
-                    Delivery(ServerMessage.TournamentNotice("Chủ giải đã hủy giải đấu."), tournament.playerIds())
+                    Delivery(ServerMessage.TournamentNotice(
+                        "Chủ giải đã hủy giải đấu.",
+                        TextKey.TournamentCancelledNotice.name,
+                        code = "TOURNAMENT_CANCELLED"
+                    ), tournament.playerIds())
                 )
             } else {
                 tournament.participants.removeAll { it.playerId == playerId }
@@ -708,7 +736,11 @@ class GameEngine(
                 snapshotToSave = snapshot
                 listOf(
                     Delivery(ServerMessage.TournamentUpdated(snapshot), tournament.playerIds()),
-                    Delivery(ServerMessage.TournamentNotice("Đã rời giải đấu."), setOf(playerId))
+                    Delivery(ServerMessage.TournamentNotice(
+                        "Đã rời giải đấu.",
+                        TextKey.TournamentLeftNotice.name,
+                        code = "TOURNAMENT_LEFT"
+                    ), setOf(playerId))
                 )
             }
         }
@@ -828,7 +860,11 @@ class GameEngine(
                         ))
                     )
                 }
-                listOf(Delivery(ServerMessage.SocialNotice("Đã gửi lời mời kết bạn."), setOf(playerId))) +
+                listOf(Delivery(ServerMessage.SocialNotice(
+                    "Đã gửi lời mời kết bạn.",
+                    TextKey.FriendRequestSentNotice.name,
+                    code = "FRIEND_REQUEST_SENT"
+                ), setOf(playerId))) +
                     refreshSocialFor(setOf(playerId, result.recipientId)) +
                     refreshNotificationsFor(setOf(result.recipientId))
             }
@@ -848,7 +884,11 @@ class GameEngine(
         return when (val result = friendRepository.cancelRequest(playerId, requestId)) {
             is FriendCancellationResult.Success -> {
                 notificationRepository.dismissNotifications(result.recipientId, "friend:$requestId", nowMillis())
-                listOf(Delivery(ServerMessage.SocialNotice("Đã hủy lời mời kết bạn."), setOf(playerId))) +
+                listOf(Delivery(ServerMessage.SocialNotice(
+                    "Đã hủy lời mời kết bạn.",
+                    TextKey.FriendRequestCancelledNotice.name,
+                    code = "FRIEND_REQUEST_CANCELLED"
+                ), setOf(playerId))) +
                     refreshSocialFor(setOf(playerId, result.recipientId)) +
                     refreshNotificationsFor(setOf(result.recipientId))
             }
@@ -869,7 +909,13 @@ class GameEngine(
             is FriendResponseResult.Success -> {
                 notificationRepository.dismissNotifications(playerId, "friend:${command.requestId}", nowMillis())
                 val notice = if (command.accept) "Đã chấp nhận lời mời kết bạn." else "Đã từ chối lời mời kết bạn."
-                listOf(Delivery(ServerMessage.SocialNotice(notice), setOf(playerId))) +
+                val noticeKey = if (command.accept) TextKey.FriendRequestAcceptedNotice else TextKey.FriendRequestDeclinedNotice
+                val noticeCode = if (command.accept) "FRIEND_REQUEST_ACCEPTED" else "FRIEND_REQUEST_DECLINED"
+                listOf(Delivery(ServerMessage.SocialNotice(
+                    notice,
+                    noticeKey.name,
+                    code = noticeCode
+                ), setOf(playerId))) +
                     refreshSocialFor(setOf(playerId, result.requesterId)) +
                     refreshNotificationsFor(setOf(playerId))
             }
@@ -882,7 +928,9 @@ class GameEngine(
         return when (val result = friendRepository.removeFriend(playerId, friendUserId)) {
             is SocialMutationResult.Success -> {
                 clearRoomInvitationsBetween(playerId, result.otherUserId)
-                listOf(Delivery(ServerMessage.SocialNotice("Đã hủy kết bạn."), setOf(playerId))) +
+                listOf(Delivery(ServerMessage.SocialNotice(
+                    "Đã hủy kết bạn.", TextKey.FriendRemovedNotice.name, code = "FRIEND_REMOVED"
+                ), setOf(playerId))) +
                     refreshSocialFor(setOf(playerId, result.otherUserId)) +
                     refreshRoomInvitationsFor(setOf(playerId, result.otherUserId))
             }
@@ -904,7 +952,9 @@ class GameEngine(
         return when (val result = friendRepository.blockPlayer(playerId, playerUserId, nowMillis())) {
             is SocialMutationResult.Success -> {
                 clearRoomInvitationsBetween(playerId, result.otherUserId)
-                listOf(Delivery(ServerMessage.SocialNotice("Đã chặn người chơi."), setOf(playerId))) +
+                listOf(Delivery(ServerMessage.SocialNotice(
+                    "Đã chặn người chơi.", TextKey.PlayerBlockedNotice.name, code = "PLAYER_BLOCKED"
+                ), setOf(playerId))) +
                     refreshSocialFor(setOf(playerId, result.otherUserId)) +
                     refreshRoomInvitationsFor(setOf(playerId, result.otherUserId))
             }
@@ -925,7 +975,9 @@ class GameEngine(
         if (!isAccountSession(playerId)) return listOf(accountRequired(playerId))
         return when (val result = friendRepository.unblockPlayer(playerId, playerUserId)) {
             is SocialMutationResult.Success ->
-                listOf(Delivery(ServerMessage.SocialNotice("Đã bỏ chặn người chơi."), setOf(playerId))) +
+                listOf(Delivery(ServerMessage.SocialNotice(
+                    "Đã bỏ chặn người chơi.", TextKey.PlayerUnblockedNotice.name, code = "PLAYER_UNBLOCKED"
+                ), setOf(playerId))) +
                     refreshSocialFor(setOf(playerId, result.otherUserId))
             SocialMutationResult.NotFound -> listOf(error(
                 playerId,
@@ -1094,8 +1146,16 @@ class GameEngine(
             invitationConsumed = true
             if (!command.accept) {
                 return@withLock listOf(
-                    Delivery(ServerMessage.SocialNotice("Đã từ chối lời mời vào phòng."), setOf(playerId)),
-                    Delivery(ServerMessage.SocialNotice("Bạn bè đã từ chối lời mời vào phòng."), setOf(invitation.inviterId))
+                    Delivery(ServerMessage.SocialNotice(
+                        "Đã từ chối lời mời vào phòng.",
+                        TextKey.RoomInvitationDeclinedNotice.name,
+                        code = "ROOM_INVITATION_DECLINED"
+                    ), setOf(playerId)),
+                    Delivery(ServerMessage.SocialNotice(
+                        "Bạn bè đã từ chối lời mời vào phòng.",
+                        TextKey.RoomInvitationDeclinedByFriendNotice.name,
+                        code = "ROOM_INVITATION_DECLINED_BY_FRIEND"
+                    ), setOf(invitation.inviterId))
                 )
             }
             val player = sessionsByPlayerId[playerId]
@@ -1488,7 +1548,8 @@ class GameEngine(
                 playerId,
                 message,
                 StorePurchaseStatus.INVALID,
-                message = "Gói Gem không tồn tại."
+                message = "Gói Gem không tồn tại.",
+                messageKey = TextKey.ServerResourceNotFound.name
             )
         val verification = storePurchaseVerifier.verify(StorePurchaseVerification(
             userId = playerId,
@@ -1502,7 +1563,14 @@ class GameEngine(
             } else {
                 StorePurchaseStatus.UNAVAILABLE
             }
-            return storePurchaseResult(playerId, message, status, message = verification.message)
+            return storePurchaseResult(
+                playerId,
+                message,
+                status,
+                message = verification.message,
+                messageKey = verification.messageKey,
+                messageArgs = verification.messageArgs
+            )
         }
         val fingerprint = storePurchaseFingerprint(message.store, message.purchaseToken)
         val grantStatus = playerProfileRepository.grantStorePurchase(
@@ -1539,14 +1607,24 @@ class GameEngine(
         request: ClientMessage.VerifyStorePurchase,
         status: StorePurchaseStatus,
         gemsGranted: Int = 0,
-        message: String
+        message: String,
+        messageKey: String = when (status) {
+            StorePurchaseStatus.GRANTED -> TextKey.BillingGemsAdded.name
+            StorePurchaseStatus.ALREADY_GRANTED -> TextKey.ServerAlreadyExists.name
+            StorePurchaseStatus.INVALID -> TextKey.BillingIncomplete.name
+            StorePurchaseStatus.UNAVAILABLE -> TextKey.ServerUnavailable.name
+            StorePurchaseStatus.FAILED -> TextKey.ServerActionFailed.name
+        },
+        messageArgs: Map<String, String> = emptyMap()
     ) = listOf(Delivery(
         ServerMessage.StorePurchaseResult(
             requestId = request.requestId,
             productId = request.productId,
             status = status,
             gemsGranted = gemsGranted,
-            message = message
+            message = message,
+            messageKey = messageKey,
+            messageArgs = messageArgs
         ),
         setOf(playerId)
     ))
@@ -1896,7 +1974,9 @@ class GameEngine(
                         deliveries += Delivery(
                             ServerMessage.RoomClosed(
                                 roomId = room.id,
-                                reason = "Người chơi đã mất kết nối quá lâu."
+                                reason = "Người chơi đã mất kết nối quá lâu.",
+                                messageKey = TextKey.RoomDisconnectedTooLongNotice.name,
+                                code = "ROOM_DISCONNECTED_TOO_LONG"
                             ),
                             room.playerIds()
                         )
@@ -2082,7 +2162,12 @@ class GameEngine(
         room.sequence++
         return HandleResult(
             deliveries = listOf(
-                Delivery(ServerMessage.RoomClosed(room.id, "Chủ phòng đã mời bạn ra khỏi phòng."), setOf(kickedPlayerId)),
+                Delivery(ServerMessage.RoomClosed(
+                    room.id,
+                    "Chủ phòng đã mời bạn ra khỏi phòng.",
+                    TextKey.RoomKickedNotice.name,
+                    code = "ROOM_KICKED"
+                ), setOf(kickedPlayerId)),
                 Delivery(ServerMessage.RoomUpdated(room.snapshot()), setOf(room.hostId)),
                 Delivery(ServerMessage.RoomList(publicRooms()))
             ),
@@ -2138,7 +2223,12 @@ class GameEngine(
             return HandleResult(
                 deliveries = listOf(
                     Delivery(
-                        ServerMessage.RoomClosed(room.id, "Bạn đã rời màn kết quả."),
+                        ServerMessage.RoomClosed(
+                            room.id,
+                            "Bạn đã rời màn kết quả.",
+                            TextKey.ResultsLeftNotice.name,
+                            code = "RESULTS_LEFT"
+                        ),
                         setOf(player.playerId)
                     )
                 ),
@@ -2153,12 +2243,23 @@ class GameEngine(
                 deliveries = listOf(
                     Delivery(
                         ServerMessage.RoomClosed(
-                            room.id,
-                            if (player.playerId == room.hostId) {
+                            roomId = room.id,
+                            reason = if (player.playerId == room.hostId) {
                                 "Chủ phòng đã rời phòng."
                             } else {
                                 "${player.displayName} đã rời phòng."
-                            }
+                            },
+                            messageKey = if (player.playerId == room.hostId) {
+                                TextKey.RoomHostLeftNotice.name
+                            } else {
+                                TextKey.RoomPlayerLeftNotice.name
+                            },
+                            messageArgs = if (player.playerId == room.hostId) {
+                                emptyMap()
+                            } else {
+                                mapOf("player" to player.displayName)
+                            },
+                            code = if (player.playerId == room.hostId) "ROOM_HOST_LEFT" else "ROOM_PLAYER_LEFT"
                         ),
                         participants
                     ),
@@ -2172,7 +2273,12 @@ class GameEngine(
             rooms.remove(room.id)
             return HandleResult(
                 deliveries = listOf(
-                    Delivery(ServerMessage.RoomClosed(room.id, "Chủ phòng đã rời phòng."), participants),
+                    Delivery(ServerMessage.RoomClosed(
+                        room.id,
+                        "Chủ phòng đã rời phòng.",
+                        TextKey.RoomHostLeftNotice.name,
+                        code = "ROOM_HOST_LEFT"
+                    ), participants),
                     Delivery(ServerMessage.RoomList(publicRooms()))
                 ),
                 changedRoomId = room.id
@@ -3002,8 +3108,18 @@ class GameEngine(
         playerId: String,
         code: String,
         message: String,
-        requestId: String? = null
-    ) = Delivery(ServerMessage.Error(code, message, requestId), setOf(playerId))
+        requestId: String? = null,
+        messageArgs: Map<String, String> = emptyMap()
+    ) = Delivery(
+        ServerMessage.Error(
+            code = code,
+            message = message,
+            requestId = requestId,
+            messageKey = protocolTextKeyForCode(code)?.name,
+            messageArgs = messageArgs
+        ),
+        setOf(playerId)
+    )
 
     private data class GuestSession(
         val playerId: String,
@@ -3237,7 +3353,12 @@ class GameEngine(
         if (name.isBlank() || name.length > 32) return listOf(error(playerId, "INVALID_CLAN_NAME", "Tên clan không hợp lệ."))
         val clanId = clanRepository.createClan(playerId, name, description)
         return if (clanId != null) {
-            listOf(Delivery(ServerMessage.ClanActionResult(true, "Tạo clan thành công", "create_clan"), setOf(playerId)))
+            listOf(Delivery(ServerMessage.ClanActionResult(
+                true,
+                "Tạo clan thành công",
+                "create_clan",
+                TextKey.ClanCreatedNotice.name
+            ), setOf(playerId)))
         } else {
             listOf(error(playerId, "CREATE_CLAN_FAILED", "Tạo clan thất bại. Có thể bạn đã vào một clan khác hoặc tên bị trùng."))
         }
@@ -3265,7 +3386,8 @@ class GameEngine(
                         ServerMessage.ClanActionResult(
                             success = true,
                             message = "Đã gửi yêu cầu. Chờ bang chủ duyệt.",
-                            action = "request_join_clan"
+                            action = "request_join_clan",
+                            messageKey = TextKey.ClanJoinRequestedNotice.name
                         ),
                         setOf(playerId)
                     ))
@@ -3333,7 +3455,13 @@ class GameEngine(
                         ServerMessage.ClanActionResult(
                             success = true,
                             message = if (approved) "Đã duyệt ${requester.displayName}." else "Đã từ chối ${requester.displayName}.",
-                            action = "respond_clan_join_request"
+                            action = "respond_clan_join_request",
+                            messageKey = if (approved) {
+                                TextKey.ClanJoinApprovedOwnerNotice.name
+                            } else {
+                                TextKey.ClanJoinRejectedOwnerNotice.name
+                            },
+                            messageArgs = mapOf("player" to requester.displayName)
                         ),
                         setOf(playerId)
                     ))
@@ -3341,7 +3469,13 @@ class GameEngine(
                         ServerMessage.ClanActionResult(
                             success = true,
                             message = requesterMessage,
-                            action = if (approved) "join_clan_approved" else "join_clan_rejected"
+                            action = if (approved) "join_clan_approved" else "join_clan_rejected",
+                            messageKey = if (approved) {
+                                TextKey.ClanJoinApprovedNotice.name
+                            } else {
+                                TextKey.ClanJoinRejectedNotice.name
+                            },
+                            messageArgs = mapOf("clan" to clan.name)
                         ),
                         setOf(command.userId)
                     ))
@@ -3369,7 +3503,12 @@ class GameEngine(
     private suspend fun leaveClan(playerId: String): List<Delivery> {
         val success = clanRepository.leaveClan(playerId)
         return if (success) {
-            listOf(Delivery(ServerMessage.ClanActionResult(true, "Đã rời clan", "leave_clan"), setOf(playerId)))
+            listOf(Delivery(ServerMessage.ClanActionResult(
+                true,
+                "Đã rời clan",
+                "leave_clan",
+                TextKey.ClanLeftNotice.name
+            ), setOf(playerId)))
         } else {
             listOf(error(playerId, "LEAVE_CLAN_FAILED", "Rời clan thất bại."))
         }

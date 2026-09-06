@@ -3,6 +3,7 @@ package com.hienthai.fastowin.server
 import com.google.auth.oauth2.GoogleCredentials
 import com.hienthai.fastowin.protocol.GemPackageSnapshot
 import com.hienthai.fastowin.protocol.StorePlatform
+import com.hienthai.fastowin.localization.TextKey
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
@@ -36,7 +37,13 @@ enum class StoreVerificationStatus { PURCHASED, INVALID, UNAVAILABLE }
 
 data class StoreVerificationResult(
     val status: StoreVerificationStatus,
-    val message: String
+    val message: String,
+    val messageKey: String = when (status) {
+        StoreVerificationStatus.PURCHASED -> TextKey.BillingGemsAdded.name
+        StoreVerificationStatus.INVALID -> TextKey.BillingIncomplete.name
+        StoreVerificationStatus.UNAVAILABLE -> TextKey.ServerUnavailable.name
+    },
+    val messageArgs: Map<String, String> = emptyMap()
 )
 
 fun interface StorePurchaseVerifier {

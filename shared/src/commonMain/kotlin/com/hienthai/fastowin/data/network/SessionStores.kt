@@ -20,6 +20,11 @@ interface AuthSessionStore {
     fun clear(serverUrl: String)
 }
 
+class AuthSessionStoreException(
+    val code: String,
+    message: String
+) : IllegalStateException(message)
+
 class InMemoryAuthSessionStore : AuthSessionStore {
     private val sessions = mutableMapOf<String, StoredAuthSession>()
 

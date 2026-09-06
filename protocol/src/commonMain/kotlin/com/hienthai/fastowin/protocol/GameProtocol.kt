@@ -4,7 +4,7 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
-const val PROTOCOL_VERSION = 38
+const val PROTOCOL_VERSION = 39
 const val GAME_NUMBER_COUNT = 50
 const val MAX_PROFILE_DISPLAY_NAME_LENGTH = 32
 val DAILY_CHECK_IN_REWARDS_XP = listOf(10, 10, 15, 15, 20, 25, 40)
@@ -328,7 +328,8 @@ data class MissionSnapshot(
     val rewardGold: Int = 0,
     val rewardGems: Int = 0,
     val rewardClaimed: Boolean = false,
-    val difficulty: MissionDifficulty = MissionDifficulty.EASY
+    val difficulty: MissionDifficulty = MissionDifficulty.EASY,
+    val titleKey: String? = null
 )
 
 @Serializable
@@ -359,7 +360,12 @@ data class SeasonSnapshot(
     val placementMatchesPlayed: Int = 0,
     val placementMatchesRequired: Int = 5,
     val peakRating: Int = rating,
-    val tierRewards: List<SeasonTierRewardSnapshot> = emptyList()
+    val tierRewards: List<SeasonTierRewardSnapshot> = emptyList(),
+    val seasonNumber: Int = 0,
+    val nameKey: String? = null,
+    val nameArgs: Map<String, String> = emptyMap(),
+    val rewardDescriptionKey: String? = null,
+    val rewardDescriptionArgs: Map<String, String> = emptyMap()
 )
 
 @Serializable
@@ -939,7 +945,9 @@ sealed class ServerMessage {
         val productId: String,
         val status: StorePurchaseStatus,
         val gemsGranted: Int = 0,
-        val message: String
+        val message: String,
+        val messageKey: String? = null,
+        val messageArgs: Map<String, String> = emptyMap()
     ) : ServerMessage()
 
     @Serializable
@@ -1016,11 +1024,21 @@ sealed class ServerMessage {
 
     @Serializable
     @SerialName("tournament_notice")
-    data class TournamentNotice(val message: String) : ServerMessage()
+    data class TournamentNotice(
+        val message: String,
+        val messageKey: String? = null,
+        val messageArgs: Map<String, String> = emptyMap(),
+        val code: String? = null
+    ) : ServerMessage()
 
     @Serializable
     @SerialName("social_notice")
-    data class SocialNotice(val message: String) : ServerMessage()
+    data class SocialNotice(
+        val message: String,
+        val messageKey: String? = null,
+        val messageArgs: Map<String, String> = emptyMap(),
+        val code: String? = null
+    ) : ServerMessage()
 
     @Serializable
     @SerialName("room_created")
@@ -1070,7 +1088,13 @@ sealed class ServerMessage {
 
     @Serializable
     @SerialName("room_closed")
-    data class RoomClosed(val roomId: String, val reason: String) : ServerMessage()
+    data class RoomClosed(
+        val roomId: String,
+        val reason: String,
+        val messageKey: String? = null,
+        val messageArgs: Map<String, String> = emptyMap(),
+        val code: String? = null
+    ) : ServerMessage()
 
     @Serializable
     @SerialName("emoji_broadcast")
@@ -1089,14 +1113,22 @@ sealed class ServerMessage {
 
     @Serializable
     @SerialName("clan_action_result")
-    data class ClanActionResult(val success: Boolean, val message: String, val action: String) : ServerMessage()
+    data class ClanActionResult(
+        val success: Boolean,
+        val message: String,
+        val action: String,
+        val messageKey: String? = null,
+        val messageArgs: Map<String, String> = emptyMap()
+    ) : ServerMessage()
 
     @Serializable
     @SerialName("error")
     data class Error(
         val code: String,
         val message: String,
-        val requestId: String? = null
+        val requestId: String? = null,
+        val messageKey: String? = null,
+        val messageArgs: Map<String, String> = emptyMap()
     ) : ServerMessage()
 }
 @Serializable

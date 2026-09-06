@@ -170,6 +170,7 @@ fun FastToWinApp(
     val resolvedLanguage = resolveSavedLanguage(appPreferences.languageCode, platformLanguageTags())
     LaunchedEffect(resolvedLanguage) {
         applyPlatformLanguageTag(resolvedLanguage.languageTag)
+        authController.updateLanguage(resolvedLanguage)
     }
 
     ProvideLocalization(resolvedLanguage) {
@@ -253,7 +254,8 @@ fun FastToWinApp(
                     onRetryService = { serviceStatusRefreshKey += 1 },
                     launchOfflinePractice = launchOfflinePractice,
                     onOfflinePracticeLaunched = { launchOfflinePractice = false },
-                    pushBridge = pushBridge
+                    pushBridge = pushBridge,
+                    language = resolvedLanguage
                 )
             }
             }
@@ -294,7 +296,8 @@ private fun GameContent(
     onRetryService: () -> Unit,
     launchOfflinePractice: Boolean,
     onOfflinePracticeLaunched: () -> Unit,
-    pushBridge: AppPushBridge
+    pushBridge: AppPushBridge,
+    language: com.hienthai.fastowin.localization.AppLanguage
 ) {
     val controller = remember(serverUrl, resumeTokenStore, accountUserId) {
         GameController(
@@ -303,10 +306,14 @@ private fun GameContent(
             accountDisplayName = accountDisplayName,
             accessTokenProvider = accessTokenProvider,
             onAccountSessionExpired = onSessionExpired,
+            initialLanguage = language,
             onProfileDisplayNameChanged = onProfileDisplayNameChanged
         )
     }
     val state by controller.uiState.collectAsState()
+    LaunchedEffect(controller, language) {
+        controller.updateLanguage(language)
+    }
     val storeBillingGateway = rememberStoreBillingGateway()
     val storeBillingState by storeBillingGateway.state.collectAsState()
     val pendingStorePurchases = remember { mutableStateMapOf<String, PlatformStorePurchase>() }

@@ -351,7 +351,8 @@ class PostgresPlayerProfileRepository(
                     rewardGold = stored?.rewardGold?.takeIf { it > 0 } ?: definition.rewardGold,
                     rewardGems = stored?.rewardGems?.takeIf { it > 0 } ?: definition.rewardGems,
                     rewardClaimed = stored?.rewardClaimed == true,
-                    difficulty = definition.difficulty
+                    difficulty = definition.difficulty,
+                    titleKey = definition.titleKey.name
                 )
             }
             val season = connection.prepareStatement(
@@ -375,6 +376,10 @@ class PostgresPlayerProfileRepository(
                         val rating = result.getInt("rating")
                         val placementMatches = result.getInt("placement_matches")
                         val seasonName = result.getString("name")
+                        val seasonNumber = result.getInt("season_number")
+                        val defaultName = defaultSeasonName(seasonNumber)
+                        val rewardDescription = result.getString("reward_description")
+                        val defaultReward = defaultSeasonRewardDescription()
                         SeasonSnapshot(
                             name = seasonName,
                             tier = if (placementMatches < PLACEMENT_MATCHES_REQUIRED) {
@@ -384,10 +389,19 @@ class PostgresPlayerProfileRepository(
                             },
                             rating = rating,
                             endsAtEpochMillis = result.getTimestamp("ends_at").time,
-                            rewardDescription = result.getString("reward_description"),
+                            rewardDescription = rewardDescription,
                             placementMatchesPlayed = placementMatches,
                             peakRating = result.getInt("peak_rating"),
-                            tierRewards = seasonTierRewards(result.getInt("season_number"), seasonName)
+                            tierRewards = seasonTierRewards(seasonNumber, seasonName),
+                            seasonNumber = seasonNumber,
+                            nameKey = defaultName.key.name.takeIf { seasonName == defaultName.fallback },
+                            nameArgs = defaultName.arguments.takeIf { seasonName == defaultName.fallback }.orEmpty(),
+                            rewardDescriptionKey = defaultReward.key.name.takeIf {
+                                rewardDescription == defaultReward.fallback
+                            },
+                            rewardDescriptionArgs = defaultReward.arguments.takeIf {
+                                rewardDescription == defaultReward.fallback
+                            }.orEmpty()
                         )
                     }
                 }

@@ -48,6 +48,7 @@ import com.hienthai.fastowin.protocol.rankedTierFor
 import com.hienthai.fastowin.localization.TextKey
 import com.hienthai.fastowin.localization.localized
 import com.hienthai.fastowin.localization.localizedRankedTierName
+import com.hienthai.fastowin.localization.localizedNetworkText
 import com.hienthai.fastowin.localization.AppLanguage
 import com.hienthai.fastowin.localization.LocalizationService
 import com.hienthai.fastowin.ui.theme.ArcadePalette
@@ -106,7 +107,7 @@ fun SeasonProgressCard(
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             Text(
-                season.name,
+                localizedNetworkText(season.nameKey, season.nameArgs, season.name),
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Black,
                 color = ArcadePalette.Gold500
@@ -205,7 +206,14 @@ fun SeasonProgressCard(
                     }
                 }
             } else {
-                Text(season.rewardDescription, style = MaterialTheme.typography.bodySmall)
+                Text(
+                    localizedNetworkText(
+                        season.rewardDescriptionKey,
+                        season.rewardDescriptionArgs,
+                        season.rewardDescription
+                    ),
+                    style = MaterialTheme.typography.bodySmall
+                )
             }
         }
     }

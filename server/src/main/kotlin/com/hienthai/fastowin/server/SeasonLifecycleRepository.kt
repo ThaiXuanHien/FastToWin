@@ -1,5 +1,6 @@
 package com.hienthai.fastowin.server
 
+import com.hienthai.fastowin.localization.TextKey
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.sql.Connection
@@ -158,7 +159,7 @@ class PostgresSeasonLifecycleRepository(
         ).use { statement ->
             statement.setObject(1, UUID.randomUUID())
             statement.setInt(2, nextNumber)
-            statement.setString(3, "Mùa $nextNumber")
+            statement.setString(3, defaultSeasonName(nextNumber).fallback)
             if (latest == null) {
                 statement.setTimestamp(4, now)
                 statement.setTimestamp(5, now)
@@ -166,7 +167,7 @@ class PostgresSeasonLifecycleRepository(
                 statement.setTimestamp(4, latest.endsAt)
                 statement.setTimestamp(5, latest.endsAt)
             }
-            statement.setString(6, STANDARD_REWARD_DESCRIPTION)
+            statement.setString(6, defaultSeasonRewardDescription().fallback)
             statement.executeUpdate()
         }
     }
@@ -175,6 +176,22 @@ class PostgresSeasonLifecycleRepository(
 
     private companion object {
         const val SEASON_LIFECYCLE_LOCK_ID = 4_617_354_981L
-        const val STANDARD_REWARD_DESCRIPTION = "Vàng và Gem theo bậc xếp hạng cao nhất"
     }
 }
+
+internal data class ServerTextTemplate(
+    val key: TextKey,
+    val arguments: Map<String, String> = emptyMap(),
+    val fallback: String
+)
+
+internal fun defaultSeasonName(number: Int) = ServerTextTemplate(
+    key = TextKey.SeasonDefaultName,
+    arguments = mapOf("season" to number.toString()),
+    fallback = "Mùa $number"
+)
+
+internal fun defaultSeasonRewardDescription() = ServerTextTemplate(
+    key = TextKey.SeasonDefaultRewardDescription,
+    fallback = "Vàng và Gem theo bậc xếp hạng cao nhất"
+)
