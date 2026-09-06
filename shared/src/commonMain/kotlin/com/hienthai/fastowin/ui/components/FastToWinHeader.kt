@@ -42,6 +42,8 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.hienthai.fastowin.localization.TextKey
+import com.hienthai.fastowin.localization.localized
 import com.hienthai.fastowin.ui.theme.ArcadePalette
 
 @Composable
@@ -86,7 +88,7 @@ fun FastToWinHeader(
             ) {
                 if (onBack != null) {
                     ArcadeHeaderIconButton(onClick = onBack) {
-                        Icon(backIcon, contentDescription = "Quay lại")
+                        Icon(backIcon, contentDescription = localized(TextKey.Back))
                     }
                 }
                 if (showBrand && onBack == null) {
@@ -117,8 +119,8 @@ fun FastToWinHeader(
                     }
                 }
                 if (showBalances) {
-                    HeaderCurrency(amount = gold, label = "Vàng", isGem = false)
-                    HeaderCurrency(amount = gems, label = "Gem", isGem = true)
+                    HeaderCurrency(amount = gold, label = localized(TextKey.Gold), isGem = false)
+                    HeaderCurrency(amount = gems, label = localized(TextKey.Gems), isGem = true)
                 }
                 if (showNotifications) {
                     ArcadeHeaderIconButton(onClick = onNotifications) {
@@ -131,7 +133,7 @@ fun FastToWinHeader(
                                 }
                             }
                         ) {
-                            Icon(Icons.Default.Notifications, contentDescription = "Thông báo")
+                            Icon(Icons.Default.Notifications, contentDescription = localized(TextKey.Notifications))
                         }
                     }
                 }

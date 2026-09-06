@@ -122,6 +122,7 @@ import com.hienthai.fastowin.state.GameState
 import com.hienthai.fastowin.state.MAX_ACCOUNT_PASSWORD_LENGTH
 import com.hienthai.fastowin.state.accountPasswordConfirmationError
 import com.hienthai.fastowin.state.accountPasswordError
+import com.hienthai.fastowin.localization.localized
 import com.hienthai.fastowin.ui.components.SystemBackHandler
 import com.hienthai.fastowin.platform.epochMillis
 import com.hienthai.fastowin.platform.createPlainTextClipEntry
@@ -1803,9 +1804,9 @@ private fun AccountSecurityDialog(
                 SecurePasswordField(newPassword, "Mật khẩu mới") { newPassword = it }
                 SecurePasswordField(confirmPassword, "Nhập lại mật khẩu mới") { confirmPassword = it }
                 if (newPassword.isNotEmpty() && passwordError != null) {
-                    Text(passwordError, color = MaterialTheme.colorScheme.error)
+                    Text(localized(passwordError), color = MaterialTheme.colorScheme.error)
                 }
-                confirmationError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                confirmationError?.let { Text(localized(it), color = MaterialTheme.colorScheme.error) }
                 if (passwordUnchanged) {
                     Text("Mật khẩu mới phải khác mật khẩu hiện tại.", color = MaterialTheme.colorScheme.error)
                 }

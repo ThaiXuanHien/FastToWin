@@ -47,12 +47,15 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.hienthai.fastowin.state.AuthStage
 import com.hienthai.fastowin.state.AuthState
+import com.hienthai.fastowin.state.MIN_ACCOUNT_PASSWORD_LENGTH
 import com.hienthai.fastowin.state.MAX_ACCOUNT_PASSWORD_LENGTH
 import com.hienthai.fastowin.state.accountPasswordConfirmationError
 import com.hienthai.fastowin.state.accountPasswordError
 import com.hienthai.fastowin.protocol.DEFAULT_FEMALE_AVATAR_ID
 import com.hienthai.fastowin.protocol.DEFAULT_MALE_AVATAR_ID
 import com.hienthai.fastowin.protocol.PlayerGender
+import com.hienthai.fastowin.localization.TextKey
+import com.hienthai.fastowin.localization.localized
 import com.hienthai.fastowin.ui.components.ArcadeBackdrop
 import com.hienthai.fastowin.ui.components.ArcadeActionButton
 import com.hienthai.fastowin.ui.components.ArcadeActionStyle
@@ -137,15 +140,15 @@ private fun EmailVerificationContent(
     LaunchedEffect(state.devEmailVerificationCode) {
         state.devEmailVerificationCode?.let { code = it }
     }
-    AuthForm(title = "Xác minh email", state = state, onBack = onCancel) {
+    AuthForm(title = localized(TextKey.VerifyEmailTitle), state = state, onBack = onCancel) {
         Text(
-            "Nhập mã 6 số được gửi tới ${state.session?.email.orEmpty()}. Mã có hiệu lực trong 15 phút.",
+            localized(TextKey.VerifyEmailDescription, "email" to state.session?.email.orEmpty()),
             textAlign = TextAlign.Center,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
         state.devEmailVerificationCode?.let {
             Text(
-                "Môi trường dev – mã đã được tự điền: $it",
+                localized(TextKey.DevVerificationCode, "code" to it),
                 color = MaterialTheme.colorScheme.primary,
                 textAlign = TextAlign.Center
             )
@@ -153,7 +156,7 @@ private fun EmailVerificationContent(
         OutlinedTextField(
             value = code,
             onValueChange = { value -> code = value.filter(Char::isDigit).take(6) },
-            label = { Text("Mã xác minh") },
+            label = { Text(localized(TextKey.VerificationCode)) },
             keyboardOptions = KeyboardOptions(
                 keyboardType = KeyboardType.Number,
                 imeAction = ImeAction.Done
@@ -163,7 +166,7 @@ private fun EmailVerificationContent(
             modifier = Modifier.fillMaxWidth().testTag("auth_email_verification_code")
         )
         ArcadeActionButton(
-            label = if (state.isLoading) "ĐANG XÁC MINH..." else "XÁC MINH",
+            label = localized(if (state.isLoading) TextKey.Verifying else TextKey.Verify),
             onClick = { onConfirm(code) },
             enabled = code.length == 6 && !state.isLoading,
             modifier = Modifier.fillMaxWidth().testTag("auth_email_verification_confirm"),
@@ -171,14 +174,14 @@ private fun EmailVerificationContent(
             content = authLoadingContent(state.isLoading)
         )
         ArcadeActionButton(
-            label = "GỬI LẠI MÃ",
+            label = localized(TextKey.ResendCode),
             onClick = onRequest,
             enabled = !state.isLoading,
             modifier = Modifier.fillMaxWidth().testTag("auth_email_verification_resend"),
             style = ArcadeActionStyle.OUTLINE
         )
         TextButton(onClick = onCancel, enabled = !state.isLoading) {
-            Text("Đăng xuất")
+            Text(localized(TextKey.Logout))
         }
     }
 }
@@ -197,24 +200,24 @@ private fun WelcomeContent(
     ) {
         ArcadeBrandLockup()
         Text(
-            "Đăng nhập để đồng bộ Elo, lịch sử và thành tích trên mọi thiết bị.",
+            localized(TextKey.AuthWelcomeDescription),
             textAlign = TextAlign.Center,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
         Spacer(Modifier.height(24.dp))
         ArcadeActionButton(
-            label = "ĐĂNG NHẬP",
+            label = localized(TextKey.Login),
             onClick = onOpenLogin,
             modifier = Modifier.fillMaxWidth().testTag("auth_open_login"),
             style = ArcadeActionStyle.GOLD
         )
         ArcadeActionButton(
-            label = "TẠO TÀI KHOẢN",
+            label = localized(TextKey.CreateAccount),
             onClick = onOpenRegister,
             modifier = Modifier.fillMaxWidth().testTag("auth_open_register"),
             style = ArcadeActionStyle.OUTLINE
         )
-        TextButton(onClick = onPlayAsGuest) { Text("Chơi với tư cách khách") }
+        TextButton(onClick = onPlayAsGuest) { Text(localized(TextKey.PlayAsGuest)) }
         AuthFeedback(state)
     }
 }
@@ -228,11 +231,11 @@ private fun LoginContent(
 ) {
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
-    AuthForm(title = "Đăng nhập", state = state, onBack = onBack) {
+    AuthForm(title = localized(TextKey.AuthLoginTitle), state = state, onBack = onBack) {
         EmailField(email) { email = it }
-        PasswordField(password, "Mật khẩu") { password = it }
+        PasswordField(password, localized(TextKey.Password)) { password = it }
         ArcadeActionButton(
-            label = if (state.isLoading) "ĐANG ĐĂNG NHẬP..." else "ĐĂNG NHẬP",
+            label = localized(if (state.isLoading) TextKey.LoggingIn else TextKey.Login),
             onClick = { onLogin(email, password) },
             enabled = email.isNotBlank() && password.isNotBlank() && !state.isLoading,
             modifier = Modifier.fillMaxWidth().testTag("auth_login_submit"),
@@ -240,7 +243,7 @@ private fun LoginContent(
             content = authLoadingContent(state.isLoading)
         )
         TextButton(onClick = onOpenPasswordReset, enabled = !state.isLoading) {
-            Text("Quên mật khẩu?")
+            Text(localized(TextKey.ForgotPassword))
         }
     }
 }
@@ -263,16 +266,16 @@ private fun PasswordResetContent(
     LaunchedEffect(state.devResetToken) {
         state.devResetToken?.let { resetToken = it }
     }
-    AuthForm(title = "Khôi phục mật khẩu", state = state, onBack = onBack) {
+    AuthForm(title = localized(TextKey.ResetPasswordTitle), state = state, onBack = onBack) {
         Text(
-            "Nhập email để nhận mã khôi phục có hiệu lực trong 15 phút.",
+            localized(TextKey.ResetPasswordDescription),
             textAlign = TextAlign.Center,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
         EmailField(email, enabled = requestedEmail == null && !state.isLoading) { email = it }
         if (requestedEmail == null) {
             ArcadeActionButton(
-                label = if (state.isLoading) "ĐANG GỬI..." else "GỬI MÃ KHÔI PHỤC",
+                label = localized(if (state.isLoading) TextKey.Sending else TextKey.SendResetCode),
                 onClick = { onRequest(email) },
                 enabled = email.isNotBlank() && !state.isLoading,
                 modifier = Modifier.fillMaxWidth().testTag("auth_reset_request"),
@@ -282,7 +285,7 @@ private fun PasswordResetContent(
         } else {
             state.devResetToken?.let { token ->
                 Text(
-                    "Môi trường dev – mã đã được tự điền:\n$token",
+                    localized(TextKey.DevResetCode, "code" to token),
                     color = MaterialTheme.colorScheme.primary,
                     textAlign = TextAlign.Center
                 )
@@ -290,19 +293,22 @@ private fun PasswordResetContent(
             OutlinedTextField(
                 value = resetToken,
                 onValueChange = { resetToken = it.trim() },
-                label = { Text("Mã khôi phục") },
+                label = { Text(localized(TextKey.ResetCode)) },
                 singleLine = true,
                 shape = RoundedCornerShape(15.dp),
                 modifier = Modifier.fillMaxWidth().testTag("auth_reset_token")
             )
-            PasswordField(newPassword, "Mật khẩu mới (ít nhất 8 ký tự)") { newPassword = it }
-            PasswordField(confirmPassword, "Nhập lại mật khẩu mới") { confirmPassword = it }
+            PasswordField(
+                newPassword,
+                localized(TextKey.NewPassword, "minimum" to MIN_ACCOUNT_PASSWORD_LENGTH)
+            ) { newPassword = it }
+            PasswordField(confirmPassword, localized(TextKey.ConfirmNewPassword)) { confirmPassword = it }
             if (newPassword.isNotEmpty() && passwordError != null) {
-                Text(passwordError, color = MaterialTheme.colorScheme.error)
+                Text(localized(passwordError), color = MaterialTheme.colorScheme.error)
             }
-            confirmationError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+            confirmationError?.let { Text(localized(it), color = MaterialTheme.colorScheme.error) }
             ArcadeActionButton(
-                label = if (state.isLoading) "ĐANG CẬP NHẬT..." else "ĐẶT LẠI MẬT KHẨU",
+                label = localized(if (state.isLoading) TextKey.Updating else TextKey.ResetPasswordAction),
                 onClick = { onConfirm(requestedEmail, resetToken, newPassword) },
                 enabled = resetToken.isNotBlank() && passwordError == null &&
                     confirmationError == null && confirmPassword.isNotEmpty() && !state.isLoading,
@@ -311,7 +317,7 @@ private fun PasswordResetContent(
                 content = authLoadingContent(state.isLoading)
             )
             TextButton(onClick = onUseDifferentEmail, enabled = !state.isLoading) {
-                Text("Dùng email khác")
+                Text(localized(TextKey.UseDifferentEmail))
             }
         }
     }
@@ -330,41 +336,46 @@ private fun RegisterContent(
     var gender by remember { mutableStateOf(PlayerGender.MALE) }
     val passwordError = accountPasswordError(password)
     val confirmationError = accountPasswordConfirmationError(password, confirmPassword)
-    AuthForm(title = "Tạo tài khoản", state = state, onBack = onBack) {
+    AuthForm(title = localized(TextKey.CreateAccount), state = state, onBack = onBack) {
         OutlinedTextField(
             value = displayName,
             onValueChange = { displayName = it },
-            label = { Text("Biệt danh") },
+            label = { Text(localized(TextKey.DisplayName)) },
             leadingIcon = { Icon(Icons.Default.Person, null) },
             singleLine = true,
             shape = RoundedCornerShape(15.dp),
             modifier = Modifier.fillMaxWidth().testTag("auth_display_name")
         )
         Text(
-            "GIỚI TÍNH · ẢNH ĐẠI DIỆN MẶC ĐỊNH",
+            localized(TextKey.GenderDefaultAvatar),
             modifier = Modifier.fillMaxWidth(),
             style = MaterialTheme.typography.labelMedium,
             fontWeight = FontWeight.Black
         )
         ArcadeSegmentedControl(
-            labels = listOf("Nam", "Nữ"),
+            labels = listOf(localized(TextKey.Male), localized(TextKey.Female)),
             selectedIndex = if (gender == PlayerGender.MALE) 0 else 1,
             onSelected = { gender = if (it == 0) PlayerGender.MALE else PlayerGender.FEMALE },
             modifier = Modifier.fillMaxWidth().testTag("auth_gender"),
             itemTestTag = { if (it == 0) "auth_gender_male" else "auth_gender_female" }
         )
         PlayerAvatar(
-            displayName = displayName.ifBlank { "Người chơi" },
+            displayName = displayName.ifBlank { localized(TextKey.Player) },
             avatarId = if (gender == PlayerGender.MALE) DEFAULT_MALE_AVATAR_ID else DEFAULT_FEMALE_AVATAR_ID,
             size = 72.dp
         )
         EmailField(email) { email = it }
-        PasswordField(password, "Mật khẩu (ít nhất 8 ký tự)") { password = it }
-        PasswordField(confirmPassword, "Nhập lại mật khẩu") { confirmPassword = it }
-        if (password.isNotEmpty() && passwordError != null) Text(passwordError, color = MaterialTheme.colorScheme.error)
-        confirmationError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+        PasswordField(
+            password,
+            localized(TextKey.PasswordWithMinimum, "minimum" to MIN_ACCOUNT_PASSWORD_LENGTH)
+        ) { password = it }
+        PasswordField(confirmPassword, localized(TextKey.ConfirmPassword)) { confirmPassword = it }
+        if (password.isNotEmpty() && passwordError != null) {
+            Text(localized(passwordError), color = MaterialTheme.colorScheme.error)
+        }
+        confirmationError?.let { Text(localized(it), color = MaterialTheme.colorScheme.error) }
         ArcadeActionButton(
-            label = if (state.isLoading) "ĐANG TẠO..." else "TẠO TÀI KHOẢN",
+            label = localized(if (state.isLoading) TextKey.Creating else TextKey.CreateAccount),
             onClick = { onRegister(email, password, displayName, gender) },
             enabled = displayName.isNotBlank() && email.isNotBlank() && passwordError == null &&
                 confirmationError == null && confirmPassword.isNotEmpty() && !state.isLoading,
@@ -386,19 +397,24 @@ private fun UpgradeGuestContent(
     var confirmPassword by remember { mutableStateOf("") }
     val passwordError = accountPasswordError(password)
     val confirmationError = accountPasswordConfirmationError(password, confirmPassword)
-    AuthForm(title = "Lưu tài khoản khách", state = state, onBack = onBack) {
+    AuthForm(title = localized(TextKey.SaveGuestAccountTitle), state = state, onBack = onBack) {
         Text(
-            "Elo, lịch sử, thống kê và thành tích hiện tại sẽ được giữ nguyên.",
+            localized(TextKey.SaveGuestAccountDescription),
             textAlign = TextAlign.Center,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
         EmailField(email) { email = it }
-        PasswordField(password, "Mật khẩu (ít nhất 8 ký tự)") { password = it }
-        PasswordField(confirmPassword, "Nhập lại mật khẩu") { confirmPassword = it }
-        if (password.isNotEmpty() && passwordError != null) Text(passwordError, color = MaterialTheme.colorScheme.error)
-        confirmationError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+        PasswordField(
+            password,
+            localized(TextKey.PasswordWithMinimum, "minimum" to MIN_ACCOUNT_PASSWORD_LENGTH)
+        ) { password = it }
+        PasswordField(confirmPassword, localized(TextKey.ConfirmPassword)) { confirmPassword = it }
+        if (password.isNotEmpty() && passwordError != null) {
+            Text(localized(passwordError), color = MaterialTheme.colorScheme.error)
+        }
+        confirmationError?.let { Text(localized(it), color = MaterialTheme.colorScheme.error) }
         ArcadeActionButton(
-            label = if (state.isLoading) "ĐANG LƯU..." else "LƯU VÀ TẠO TÀI KHOẢN",
+            label = localized(if (state.isLoading) TextKey.Saving else TextKey.SaveAndCreateAccount),
             onClick = { onUpgradeGuest(email, password) },
             enabled = email.isNotBlank() && passwordError == null && confirmationError == null &&
                 confirmPassword.isNotEmpty() && !state.isLoading,
@@ -427,7 +443,7 @@ private fun AuthForm(
             content()
             AuthFeedback(state)
             ArcadeActionButton(
-                label = "QUAY LẠI",
+                label = localized(TextKey.Back),
                 onClick = onBack,
                 enabled = !state.isLoading,
                 modifier = Modifier.fillMaxWidth(),
@@ -446,7 +462,7 @@ private fun EmailField(
     OutlinedTextField(
         value = value,
         onValueChange = onValueChange,
-        label = { Text("Email") },
+        label = { Text(localized(TextKey.Email)) },
         leadingIcon = { Icon(Icons.Default.Email, null) },
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email, imeAction = ImeAction.Next),
         enabled = enabled,
@@ -469,7 +485,7 @@ private fun PasswordField(value: String, label: String, onValueChange: (String) 
             IconButton(onClick = { isVisible = !isVisible }) {
                 Icon(
                     if (isVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
-                    contentDescription = if (isVisible) "Ẩn mật khẩu" else "Hiện mật khẩu"
+                    contentDescription = localized(if (isVisible) TextKey.HidePassword else TextKey.ShowPassword)
                 )
             }
         },

@@ -28,6 +28,8 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.hienthai.fastowin.localization.TextKey
+import com.hienthai.fastowin.localization.localized
 import com.hienthai.fastowin.ui.theme.ArcadePalette
 
 @Composable
@@ -36,8 +38,8 @@ fun UpdateAvailableDialog(
     onDismiss: () -> Unit
 ) {
     ArcadeDialog(
-        title = "CẬP NHẬT GAME",
-        subtitle = "Phiên bản mới đã sẵn sàng",
+        title = localized(TextKey.UpdateGameTitle),
+        subtitle = localized(TextKey.UpdateAvailableSubtitle),
         onDismissRequest = onDismiss
     ) {
         Column(
@@ -86,13 +88,13 @@ fun UpdateAvailableDialog(
                     verticalArrangement = Arrangement.spacedBy(3.dp)
                 ) {
                     Text(
-                        text = "SẴN SÀNG TĂNG TỐC?",
+                        text = localized(TextKey.UpdateHeroTitle),
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Black,
                         color = Color.White
                     )
                     Text(
-                        text = "Nhận bản sửa lỗi và cải tiến mới nhất.",
+                        text = localized(TextKey.UpdateDescription),
                         style = MaterialTheme.typography.bodySmall,
                         color = Color(0xFFDDE8FF)
                     )
@@ -120,13 +122,13 @@ fun UpdateAvailableDialog(
                         verticalArrangement = Arrangement.spacedBy(2.dp)
                     ) {
                         Text(
-                            text = "Cập nhật nhanh, tự tải lại",
+                            text = localized(TextKey.UpdateAutoReload),
                             style = MaterialTheme.typography.bodyMedium,
                             fontWeight = FontWeight.Bold,
                             color = Color.White
                         )
                         Text(
-                            text = "Tài khoản và tiến trình của bạn vẫn được giữ nguyên.",
+                            text = localized(TextKey.UpdateProgressPreserved),
                             style = MaterialTheme.typography.bodySmall,
                             color = Color(0xFFA9BADC)
                         )
@@ -135,14 +137,14 @@ fun UpdateAvailableDialog(
             }
 
             ArcadeActionButton(
-                label = "CẬP NHẬT NGAY",
+                label = localized(TextKey.UpdateNow),
                 onClick = onUpdate,
                 modifier = Modifier.fillMaxWidth(),
                 icon = Icons.Rounded.Refresh,
                 style = ArcadeActionStyle.GOLD
             )
             ArcadeActionButton(
-                label = "ĐỂ SAU",
+                label = localized(TextKey.Later),
                 onClick = onDismiss,
                 modifier = Modifier.fillMaxWidth(),
                 style = ArcadeActionStyle.OUTLINE

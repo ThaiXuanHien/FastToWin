@@ -236,7 +236,7 @@ internal fun HomeDashboard(
                 )
                 HomeQuickAction(
                     "Cửa hàng",
-                    "Mở khóa mặt bài, bàn số và vật phẩm mới",
+                    "Mở khóa mặt số, bàn số và vật phẩm mới",
                     Icons.Default.ShoppingCart,
                     ArcadePalette.Violet600,
                     onOpenShop,

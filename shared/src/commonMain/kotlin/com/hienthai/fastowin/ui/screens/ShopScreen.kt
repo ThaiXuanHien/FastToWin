@@ -67,7 +67,7 @@ fun ShopScreen(
     var selectedTab by remember { mutableStateOf("CARD_BACK") }
     val tabs = listOf(
         "GEMS" to "Gem",
-        "CARD_BACK" to "Mặt bài",
+        "CARD_BACK" to "Mặt số",
         "BOARD_SKIN" to "Bàn số"
     )
     

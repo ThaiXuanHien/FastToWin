@@ -48,7 +48,7 @@ Mua hàng và APNs cần cấu hình Apple tương ứng; kiểm thử thiết b
 
 ## 3. Cửa hàng
 
-Danh mục bán hiện tại: Gem, Mặt bài Hoàng Kim, Mặt bài Kim Cương, Bàn số Bóng Đêm và Bàn số Rừng Xanh. Theo quyết định sản phẩm, Cửa hàng không hiển thị tab Khung và Biểu cảm; các phần thưởng này vẫn có thể mở khóa ở Bộ sưu tập/thành tích.
+Danh mục bán hiện tại: Gem, Mặt số Hoàng Kim, Mặt số Kim Cương, Bàn số Bóng Đêm và Bàn số Rừng Xanh. Theo quyết định sản phẩm, Cửa hàng không hiển thị tab Khung và Biểu cảm; các phần thưởng này vẫn có thể mở khóa ở Bộ sưu tập/thành tích.
 
 - [ ] Duyệt hình ảnh, giá Vàng/Gem và điều kiện mở khóa trước khi thêm danh mục.
 - [ ] Kiểm thử mua trùng, thiếu tài sản, trang bị/đồng bộ và lịch sử giao dịch.

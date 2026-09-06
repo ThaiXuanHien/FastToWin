@@ -39,6 +39,8 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import com.hienthai.fastowin.localization.TextKey
+import com.hienthai.fastowin.localization.localized
 import com.hienthai.fastowin.ui.components.ArcadeActionButton
 import com.hienthai.fastowin.ui.components.ArcadeActionStyle
 import com.hienthai.fastowin.ui.components.ArcadeBackdrop
@@ -51,29 +53,29 @@ import kotlinx.coroutines.launch
 
 private data class TutorialPage(
     val icon: ImageVector,
-    val title: String,
-    val description: String,
-    val hint: String
+    val title: TextKey,
+    val description: TextKey,
+    val hint: TextKey
 )
 
 private val tutorialPages = listOf(
     TutorialPage(
         icon = Icons.Rounded.LooksOne,
-        title = "Tìm số thật nhanh",
-        description = "Chạm lần lượt từ 1 đến 50. Mục tiêu luôn nổi bật phía trên bàn.",
-        hint = "Chạm sai được ghi vào thống kê độ chính xác."
+        title = TextKey.TutorialFindNumbersTitle,
+        description = TextKey.TutorialFindNumbersDescription,
+        hint = TextKey.TutorialFindNumbersHint
     ),
     TutorialPage(
         icon = Icons.Rounded.Groups,
-        title = "Cùng một mục tiêu",
-        description = "Hai người cùng nhìn một số. Người nhanh hơn ghi điểm và số bị khóa cả hai bên.",
-        hint = "Mỗi lượt đúng nhận 10 điểm."
+        title = TextKey.TutorialSharedTargetTitle,
+        description = TextKey.TutorialSharedTargetDescription,
+        hint = TextKey.TutorialSharedTargetHint
     ),
     TutorialPage(
         icon = Icons.Rounded.Security,
-        title = "Chọn cách bạn muốn chơi",
-        description = "Luyện tập offline, đấu thường hoặc xếp hạng ảnh hưởng Elo.",
-        hint = "Có thể xem lại hướng dẫn trong Cài đặt."
+        title = TextKey.TutorialChooseModeTitle,
+        description = TextKey.TutorialChooseModeDescription,
+        hint = TextKey.TutorialChooseModeHint
     )
 )
 
@@ -109,8 +111,8 @@ fun TutorialScreen(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text("HƯỚNG DẪN", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
-                    TextButton(onClick = onSkip) { Text("Bỏ qua") }
+                    Text(localized(TextKey.TutorialTitle), color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                    TextButton(onClick = onSkip) { Text(localized(TextKey.Skip)) }
                 }
 
                 // Swipeable pager
@@ -129,9 +131,13 @@ fun TutorialScreen(
                         verticalArrangement = Arrangement.Center
                     ) {
                         ArcadeIconHero(
-                            kicker = "BƯỚC ${pageIndex + 1} / ${tutorialPages.size}",
-                            title = page.title,
-                            subtitle = page.description,
+                            kicker = localized(
+                                TextKey.TutorialStep,
+                                "current" to pageIndex + 1,
+                                "total" to tutorialPages.size
+                            ),
+                            title = localized(page.title),
+                            subtitle = localized(page.description),
                             icon = page.icon,
                             accent = when (pageIndex) {
                                 0 -> ArcadePalette.Violet600
@@ -145,7 +151,7 @@ fun TutorialScreen(
                             accent = ArcadePalette.Gold500
                         ) {
                             Text(
-                                page.hint,
+                                localized(page.hint),
                                 modifier = Modifier.fillMaxWidth().padding(16.dp),
                                 textAlign = TextAlign.Center,
                                 style = MaterialTheme.typography.bodyMedium,
@@ -181,7 +187,7 @@ fun TutorialScreen(
                     label = "TutorialButtonLabel"
                 ) { isLastPage ->
                     ArcadeActionButton(
-                        label = if (isLastPage) "BẮT ĐẦU CHƠI" else "TIẾP TỤC",
+                        label = localized(if (isLastPage) TextKey.StartPlaying else TextKey.Continue),
                         onClick = {
                             if (isLastPage) {
                                 onComplete()

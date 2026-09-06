@@ -9,6 +9,8 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.v2.runComposeUiTest
 import com.hienthai.fastowin.data.preferences.AppPreferences
+import com.hienthai.fastowin.localization.AppLanguage
+import com.hienthai.fastowin.localization.ProvideLocalization
 import com.hienthai.fastowin.ui.components.ArcadeBackdrop
 import com.hienthai.fastowin.ui.screens.OfflineScreen
 import com.hienthai.fastowin.ui.theme.FastToWinTheme
@@ -23,12 +25,14 @@ class OfflineScreenUiTest {
         var openedPractice = false
 
         setContent {
-            FastToWinTheme(preferences = AppPreferences()) {
-                ArcadeBackdrop(modifier = Modifier.fillMaxSize()) {
-                    OfflineScreen(
-                        onRetry = { retried = true },
-                        onPractice = { openedPractice = true }
-                    )
+            ProvideLocalization(AppLanguage.VIETNAMESE) {
+                FastToWinTheme(preferences = AppPreferences()) {
+                    ArcadeBackdrop(modifier = Modifier.fillMaxSize()) {
+                        OfflineScreen(
+                            onRetry = { retried = true },
+                            onPractice = { openedPractice = true }
+                        )
+                    }
                 }
             }
         }
@@ -39,5 +43,21 @@ class OfflineScreenUiTest {
 
         assertTrue(retried)
         assertTrue(openedPractice)
+    }
+
+    @Test
+    fun offlineScreen_usesEnglishRecoveryLabels() = runComposeUiTest {
+        setContent {
+            ProvideLocalization(AppLanguage.ENGLISH) {
+                FastToWinTheme(preferences = AppPreferences()) {
+                    ArcadeBackdrop(modifier = Modifier.fillMaxSize()) {
+                        OfflineScreen(onRetry = {}, onPractice = {})
+                    }
+                }
+            }
+        }
+
+        onNodeWithText("RECONNECT").assertIsDisplayed()
+        onNodeWithText("OFFLINE PRACTICE").assertIsDisplayed()
     }
 }

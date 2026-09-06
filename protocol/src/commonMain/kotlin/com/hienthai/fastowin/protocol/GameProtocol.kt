@@ -1163,8 +1163,8 @@ data class ShopItem(
 )
 
 val SHOP_ITEMS = listOf(
-    ShopItem("card_back_gold", "Mặt bài Hoàng Kim", CosmeticType.CARD_BACK, 500, "GOLD"),
-    ShopItem("card_back_diamond", "Mặt bài Kim Cương", CosmeticType.CARD_BACK, 1500, "GOLD"),
+    ShopItem("card_back_gold", "Mặt số Hoàng Kim", CosmeticType.CARD_BACK, 500, "GOLD"),
+    ShopItem("card_back_diamond", "Mặt số Kim Cương", CosmeticType.CARD_BACK, 1500, "GOLD"),
     ShopItem("board_skin_dark", "Bàn số Bóng Đêm", CosmeticType.BOARD_SKIN, 1000, "GOLD"),
     ShopItem("board_skin_forest", "Bàn số Rừng Xanh", CosmeticType.BOARD_SKIN, 1000, "GOLD")
 )

@@ -57,6 +57,8 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.hienthai.fastowin.resources.Res
 import com.hienthai.fastowin.resources.fast_to_win_logo_banner
+import com.hienthai.fastowin.localization.TextKey
+import com.hienthai.fastowin.localization.localized
 import com.hienthai.fastowin.ui.theme.ArcadePalette
 import org.jetbrains.compose.resources.DrawableResource
 import org.jetbrains.compose.resources.painterResource
@@ -430,7 +432,7 @@ fun ArcadeLoadMoreButton(
     if (remaining == 0) return
 
     ArcadeActionButton(
-        label = "XEM THÊM ($remaining)",
+        label = localized(TextKey.ViewMoreCount, "count" to remaining),
         onClick = onLoadMore,
         style = ArcadeActionStyle.OUTLINE,
         modifier = modifier

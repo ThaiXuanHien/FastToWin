@@ -432,6 +432,15 @@ git commit -m "feat: add in-app language selector"
 
 ### Task 4: Localize the app shell, maintenance, offline and authentication
 
+**Progress (2026-09-06):** Implemented on `codex/multilingual-localization`.
+Localized the shared header, update dialog, load-more action, maintenance/offline
+states, tutorial, authentication flows, top-level titles and challenge shell copy
+for all 12 catalogs. Password validation now returns stable `LocalizedText` keys.
+Focused tests cover Vietnamese/English/Japanese rendering, localized accessibility
+labels, recovery actions and preservation of typed email across a language change.
+Verification passed for catalog/shared tests, Android test compilation, Wasm/JS
+compilation, all 12 focused shell/auth UI tests and the focused Shop terminology test.
+
 **Files:**
 - Modify: `shared/src/commonMain/kotlin/com/hienthai/fastowin/ui/components/ArcadeComponents.kt`
 - Modify: `shared/src/commonMain/kotlin/com/hienthai/fastowin/ui/components/FastToWinHeader.kt`
@@ -453,21 +462,21 @@ git commit -m "feat: add in-app language selector"
 - Consumes: `localized` and `LocalLocalization`.
 - Produces: localized shell/auth screens and reusable common-action keys.
 
-- [ ] **Step 1: Add failing Vietnamese/English/Japanese shell tests**
+- [x] **Step 1: Add failing Vietnamese/English/Japanese shell tests**
 
 Wrap direct screen tests in `ProvideLocalization`. Assert the same screen renders
 `Bảo trì`, `Maintenance`, and `メンテナンス` when only the provider changes. Add an
 Auth test that types an email, switches provider language and asserts the email
 field still contains its value.
 
-- [ ] **Step 2: Confirm RED with the four focused classes**
+- [x] **Step 2: Confirm RED with the four focused classes**
 
 ```powershell
 ./gradlew.bat :app:connectedDevDebugAndroidTest `
   "-Pandroid.testInstrumentationRunnerArguments.class=com.hienthai.fastowin.ArcadeShellUiTest,com.hienthai.fastowin.MaintenanceScreenUiTest,com.hienthai.fastowin.OfflineScreenUiTest,com.hienthai.fastowin.LocalizedAuthUiTest" --no-daemon
 ```
 
-- [ ] **Step 3: Replace every user-facing literal in the listed files**
+- [x] **Step 3: Replace every user-facing literal in the listed files**
 
 Use this pattern for static and parameterized content:
 
@@ -483,7 +492,7 @@ stable automation IDs, operator-supplied maintenance messages, and user input
 unchanged. Add a `TextKey` and all 12 translations for every replaced literal; do
 not concatenate translated fragments.
 
-- [ ] **Step 4: Prove the feature slice contains no Vietnamese UI literals**
+- [x] **Step 4: Prove the feature slice contains no Vietnamese UI literals**
 
 ```powershell
 rg -n '"[^"\r\n]*[À-ỹ][^"\r\n]*"' shared/src/commonMain/kotlin/com/hienthai/fastowin/FastToWinApp.kt shared/src/commonMain/kotlin/com/hienthai/fastowin/state/AccountValidation.kt shared/src/commonMain/kotlin/com/hienthai/fastowin/ui/components/ArcadeComponents.kt shared/src/commonMain/kotlin/com/hienthai/fastowin/ui/components/FastToWinHeader.kt shared/src/commonMain/kotlin/com/hienthai/fastowin/ui/components/AppUpdateDialog.kt shared/src/commonMain/kotlin/com/hienthai/fastowin/ui/screens/MaintenanceScreen.kt shared/src/commonMain/kotlin/com/hienthai/fastowin/ui/screens/OfflineScreen.kt shared/src/commonMain/kotlin/com/hienthai/fastowin/ui/screens/TutorialScreen.kt shared/src/commonMain/kotlin/com/hienthai/fastowin/ui/screens/AuthScreen.kt
@@ -492,7 +501,7 @@ rg -n '"[^"\r\n]*[À-ỹ][^"\r\n]*"' shared/src/commonMain/kotlin/com/hienthai/f
 Expected: no user-facing match; document any technical/test-only allowlist entry
 beside the scanner introduced in Task 11.
 
-- [ ] **Step 5: Run catalog and UI tests, then commit**
+- [x] **Step 5: Run catalog and UI tests, then commit**
 
 ```powershell
 ./gradlew.bat :protocol:jvmTest :app:connectedDevDebugAndroidTest `

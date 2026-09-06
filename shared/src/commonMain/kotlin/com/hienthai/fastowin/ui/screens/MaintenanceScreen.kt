@@ -37,6 +37,8 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import com.hienthai.fastowin.localization.TextKey
+import com.hienthai.fastowin.localization.localized
 import com.hienthai.fastowin.ui.components.SystemBackHandler
 import com.hienthai.fastowin.ui.layout.ResponsiveScreen
 import com.hienthai.fastowin.ui.theme.ArcadePalette
@@ -83,7 +85,7 @@ fun MaintenanceScreen(
                         modifier = Modifier.size(18.dp)
                     )
                     Text(
-                        "ĐANG BẢO TRÌ",
+                        localized(TextKey.MaintenanceBadge),
                         style = MaterialTheme.typography.labelMedium,
                         color = ArcadePalette.Gold500,
                         fontWeight = FontWeight.Black
@@ -96,7 +98,7 @@ fun MaintenanceScreen(
             Spacer(Modifier.height(22.dp))
 
             Text(
-                text = "MÁY CHỦ ĐANG\nNGHỈ GIỮA HIỆP",
+                text = localized(TextKey.MaintenanceTitle),
                 style = MaterialTheme.typography.headlineLarge,
                 color = Color.White,
                 fontWeight = FontWeight.Black,
@@ -104,7 +106,7 @@ fun MaintenanceScreen(
             )
             Text(
                 text = message?.takeIf { it.isNotBlank() }
-                    ?: "Đội kỹ thuật đang nâng cấp đấu trường. Quá trình này có thể kéo dài vài giờ.",
+                    ?: localized(TextKey.MaintenanceDefaultMessage),
                 modifier = Modifier.padding(top = 12.dp),
                 style = MaterialTheme.typography.bodyMedium,
                 color = ArcadePalette.Blue100.copy(alpha = 0.86f),
@@ -132,13 +134,13 @@ fun MaintenanceScreen(
                         )
                         Column(Modifier.weight(1f)) {
                             Text(
-                                "Hệ thống sẽ tự mở lại khi hoàn tất",
+                                localized(TextKey.MaintenanceAutoResume),
                                 style = MaterialTheme.typography.labelLarge,
                                 color = Color.White,
                                 fontWeight = FontWeight.Bold
                             )
                             Text(
-                                "Bạn không cần thao tác, đăng xuất hoặc cài lại ứng dụng.",
+                                localized(TextKey.MaintenanceNoAction),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = ArcadePalette.Blue100.copy(alpha = 0.72f)
                             )

@@ -69,7 +69,10 @@ import com.hienthai.fastowin.ui.screens.MaintenanceScreen
 import com.hienthai.fastowin.ui.screens.OfflineScreen
 import com.hienthai.fastowin.ui.theme.FastToWinTheme
 import com.hienthai.fastowin.localization.ProvideLocalization
+import com.hienthai.fastowin.localization.LocalLocalization
+import com.hienthai.fastowin.localization.TextKey
 import com.hienthai.fastowin.localization.applyPlatformLanguageTag
+import com.hienthai.fastowin.localization.localized
 import com.hienthai.fastowin.localization.platformLanguageTags
 import com.hienthai.fastowin.localization.resolveSavedLanguage
 import com.hienthai.fastowin.platform.epochMillis
@@ -363,6 +366,7 @@ private fun GameContent(
     val practiceChallenge = savedPracticeRoute?.let(::parsePracticeChallenge)
     val practiceMode = practiceChallenge?.mode
     var challengeLinkError by rememberSaveable { mutableStateOf<String?>(null) }
+    val localization = LocalLocalization.current
     var requestedAppRoute by remember(navigationBridge) {
         mutableStateOf(
             navigationBridge.initialRoute?.takeUnless { normalizeAppRoute(it) == "/" }
@@ -469,7 +473,8 @@ private fun GameContent(
         state.isMatchStarted,
         state.isGameOver,
         state.isMatchmaking,
-        isGuest
+        isGuest,
+        localization.language
     ) {
         val challenge = pendingChallenge ?: return@LaunchedEffect
         if (!isGuest && state.profile == null) return@LaunchedEffect
@@ -477,9 +482,12 @@ private fun GameContent(
         val playerLevel = state.profile?.progression?.level ?: 1
         challengeLinkError = when {
             state.currentRoomId != null || state.isMatchStarted || state.isGameOver || state.isMatchmaking ->
-                "Hãy kết thúc hoặc rời trận hiện tại trước khi mở thử thách."
+                localization.text(TextKey.FinishCurrentMatchBeforeChallenge)
             playerLevel < challenge.mode.unlockLevel ->
-                "Chế độ ${challenge.mode.title} mở khóa ở cấp ${challenge.mode.unlockLevel}."
+                localization.text(
+                    TextKey.ModeUnlockLevel,
+                    mapOf("mode" to challenge.mode.title, "level" to challenge.mode.unlockLevel)
+                )
             else -> null
         }
 
@@ -519,10 +527,10 @@ private fun GameContent(
         AlertDialog(
             onDismissRequest = { challengeLinkError = null },
             modifier = Modifier.widthIn(max = 420.dp).fillMaxWidth(),
-            title = { Text("Không thể mở thử thách") },
+            title = { Text(localized(TextKey.CannotOpenChallenge)) },
             text = { Text(message) },
             confirmButton = {
-                TextButton(onClick = { challengeLinkError = null }) { Text("Đã hiểu") }
+                TextButton(onClick = { challengeLinkError = null }) { Text(localized(TextKey.Understood)) }
             }
         )
     }
@@ -549,7 +557,7 @@ private fun GameContent(
     }
     if (showPracticeModePicker) {
         GameModePickerDialog(
-            title = "Chọn chế độ luyện tập",
+            title = localized(TextKey.ChoosePracticeMode),
             playerLevel = state.profile?.progression?.level ?: 1,
             onDismiss = { showPracticeModePicker = false },
             onSelect = { mode ->
@@ -1246,7 +1254,7 @@ private fun GameContent(
                                 roomId = roomId,
                                 deepLink = deepLink ?: buildRoomDeepLink(roomId)
                             ),
-                            "Chia sẻ phòng"
+                            localization.text(TextKey.ShareRoom)
                         )
                     },
                     onResolveRoomLink = controller::resolvePendingRoomLink,
@@ -1309,10 +1317,10 @@ private fun TopLevelTabIfNeeded(
         FastToWinHeader(
             title = when (selected) {
                 MainTab.HOME -> ""
-                MainTab.ROOMS -> "Phòng"
-                MainTab.LEADERBOARD -> "Xếp hạng"
-                MainTab.CLAN -> "Bang hội"
-                MainTab.ACCOUNT -> "Tài khoản"
+                MainTab.ROOMS -> localized(TextKey.Rooms)
+                MainTab.LEADERBOARD -> localized(TextKey.Leaderboard)
+                MainTab.CLAN -> localized(TextKey.Clan)
+                MainTab.ACCOUNT -> localized(TextKey.Account)
             },
             gold = state.profile?.progression?.gold ?: 0,
             gems = state.profile?.progression?.gems ?: 0,

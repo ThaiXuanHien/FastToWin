@@ -36,6 +36,8 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import com.hienthai.fastowin.localization.TextKey
+import com.hienthai.fastowin.localization.localized
 import com.hienthai.fastowin.ui.components.ArcadeActionButton
 import com.hienthai.fastowin.ui.components.ArcadeActionStyle
 import com.hienthai.fastowin.ui.components.ArcadePanel
@@ -83,7 +85,7 @@ fun OfflineScreen(
                         modifier = Modifier.size(18.dp)
                     )
                     Text(
-                        "OFFLINE",
+                        localized(TextKey.OfflineBadge),
                         style = MaterialTheme.typography.labelMedium,
                         color = ArcadePalette.Coral400,
                         fontWeight = FontWeight.Black
@@ -96,14 +98,14 @@ fun OfflineScreen(
             Spacer(Modifier.height(22.dp))
 
             Text(
-                text = "TẠM MẤT\nKẾT NỐI",
+                text = localized(TextKey.OfflineTitle),
                 style = MaterialTheme.typography.headlineLarge,
                 color = Color.White,
                 fontWeight = FontWeight.Black,
                 textAlign = TextAlign.Center
             )
             Text(
-                text = "Các trận online đang tạm dừng. Game sẽ tự kết nối lại khi mạng ổn định.",
+                text = localized(TextKey.OfflineDescription),
                 modifier = Modifier.padding(top = 12.dp),
                 style = MaterialTheme.typography.bodyMedium,
                 color = ArcadePalette.Blue100.copy(alpha = 0.86f),
@@ -127,13 +129,13 @@ fun OfflineScreen(
                     )
                     Column(Modifier.weight(1f)) {
                         Text(
-                            "Kiểm tra Wi-Fi hoặc dữ liệu di động",
+                            localized(TextKey.OfflineCheckNetwork),
                             style = MaterialTheme.typography.labelLarge,
                             color = Color.White,
                             fontWeight = FontWeight.Bold
                         )
                         Text(
-                            "Đây là lỗi kết nối, không phải máy chủ đang bảo trì.",
+                            localized(TextKey.OfflineNotMaintenance),
                             style = MaterialTheme.typography.bodySmall,
                             color = ArcadePalette.Blue100.copy(alpha = 0.72f)
                         )
@@ -142,7 +144,7 @@ fun OfflineScreen(
             }
 
             ArcadeActionButton(
-                label = "THỬ KẾT NỐI LẠI",
+                label = localized(TextKey.RetryConnection),
                 onClick = onRetry,
                 icon = Icons.Rounded.Refresh,
                 modifier = Modifier.fillMaxWidth().padding(top = 16.dp),
@@ -150,7 +152,7 @@ fun OfflineScreen(
             )
                 onPractice?.let {
                     ArcadeActionButton(
-                        label = "LUYỆN TẬP OFFLINE",
+                        label = localized(TextKey.OfflinePractice),
                         onClick = it,
                         icon = Icons.Rounded.SportsEsports,
                         modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
@@ -186,7 +188,7 @@ private fun OfflineIllustration() {
             Box(contentAlignment = Alignment.Center) {
                 Icon(
                     Icons.Rounded.WifiOff,
-                    contentDescription = "Không có kết nối mạng",
+                    contentDescription = localized(TextKey.NoNetwork),
                     tint = ArcadePalette.Coral400,
                     modifier = Modifier.size(58.dp)
                 )

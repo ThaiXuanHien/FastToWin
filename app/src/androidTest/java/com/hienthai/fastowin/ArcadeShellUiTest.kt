@@ -24,6 +24,8 @@ import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import com.hienthai.fastowin.protocol.PlayerProfileSnapshot
 import com.hienthai.fastowin.protocol.PlayerProgressionSnapshot
+import com.hienthai.fastowin.localization.AppLanguage
+import com.hienthai.fastowin.localization.ProvideLocalization
 import com.hienthai.fastowin.state.ConnectionStatus
 import com.hienthai.fastowin.state.GameState
 import com.hienthai.fastowin.state.LobbyStage
@@ -52,6 +54,26 @@ class ArcadeShellUiTest {
     @Test
     fun header_tablet_keepsLongCopyAndBalancesInsideViewport() =
         assertHeaderLayout(840.dp, 1_180.dp, fontScale = 1.6f)
+
+    @Test
+    fun header_usesEnglishAccessibilityLabels() {
+        setAdaptiveContent(320.dp, 568.dp, fontScale = 1f) {
+            ProvideLocalization(AppLanguage.ENGLISH) {
+                FastToWinHeader(
+                    title = "Account",
+                    gold = 10,
+                    gems = 5,
+                    unreadNotifications = 1,
+                    onNotifications = {},
+                    onBack = {}
+                )
+            }
+        }
+
+        composeRule.onNodeWithContentDescription("Back").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("Notifications").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("10 Gold").assertIsDisplayed()
+    }
 
     @Test
     fun bottomBar_smallPhoneLargeText_showsFiveTabsAndDispatchesCallbacks() =
@@ -237,7 +259,9 @@ class ArcadeShellUiTest {
                 DeviceConfigurationOverride.ForcedSize(DpSize(width, height)) then
                     DeviceConfigurationOverride.FontScale(fontScale)
             ) {
-                FastToWinTheme { content() }
+                ProvideLocalization(AppLanguage.VIETNAMESE) {
+                    FastToWinTheme { content() }
+                }
             }
         }
     }
