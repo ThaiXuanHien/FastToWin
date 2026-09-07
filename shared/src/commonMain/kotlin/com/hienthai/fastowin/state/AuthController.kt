@@ -11,6 +11,7 @@ import com.hienthai.fastowin.data.network.ResumeTokenStore
 import com.hienthai.fastowin.localization.AppLanguage
 import com.hienthai.fastowin.localization.LocalizationService
 import com.hienthai.fastowin.localization.LocalizedMessageMapper
+import com.hienthai.fastowin.localization.TextKey
 import com.hienthai.fastowin.protocol.PlayerGender
 import com.hienthai.fastowin.platform.epochMillis
 import com.hienthai.fastowin.protocol.AuthSessionResponse
@@ -133,7 +134,7 @@ class AuthController(
         val resumeToken = resumeTokenStore.load(serverUrl)
         if (resumeToken == null) {
             _state.update {
-                it.copy(error = "Chưa có phiên khách để lưu. Hãy vào danh sách phòng rồi thử lại.")
+                it.copy(error = messageMapper.text(TextKey.GuestSessionMissing))
             }
             return
         }
@@ -168,7 +169,7 @@ class AuthController(
                         code = "SESSION_EXPIRED",
                         keyName = null,
                         arguments = emptyMap(),
-                        fallback = "Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại."
+                        fallback = "Your session has expired. Please sign in again."
                     )
                 }
                 expireSession(message)
@@ -349,7 +350,7 @@ class AuthController(
             code = "SESSION_EXPIRED",
             keyName = null,
             arguments = emptyMap(),
-            fallback = "Phiên đăng nhập không còn hợp lệ."
+            fallback = "Your session is no longer valid."
         )
     ) {
         val expiredSession = _state.value.session
@@ -405,7 +406,7 @@ class AuthController(
                         error.code, null, emptyMap(), error.message.orEmpty()
                     )
                     else -> messageMapper.message(
-                        "NETWORK_ERROR", null, emptyMap(), "Không thể kết nối máy chủ. Vui lòng thử lại."
+                        "NETWORK_ERROR", null, emptyMap(), "Could not connect to the server. Please try again."
                     )
                 }
             )
@@ -418,7 +419,7 @@ class AuthController(
                 areSessionsLoading = false,
                 error = (error as? AuthApiException)?.let {
                     messageMapper.message(it.code, it.messageKey, it.messageArgs, it.message)
-                } ?: messageMapper.message("NETWORK_ERROR", null, emptyMap(), "Không thể tải danh sách thiết bị. Vui lòng thử lại.")
+                } ?: messageMapper.message("NETWORK_ERROR", null, emptyMap(), "Could not load signed-in devices. Please try again.")
             )
         }
     }

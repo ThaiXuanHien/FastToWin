@@ -7,6 +7,7 @@ import com.hienthai.fastowin.navigation.GameMode
 import com.hienthai.fastowin.localization.AppLanguage
 import com.hienthai.fastowin.localization.LocalizationService
 import com.hienthai.fastowin.localization.LocalizedMessageMapper
+import com.hienthai.fastowin.localization.TextKey
 import com.hienthai.fastowin.platform.epochMillis
 import com.hienthai.fastowin.protocol.ClientMessage
 import com.hienthai.fastowin.protocol.CosmeticType
@@ -84,6 +85,7 @@ class GameController(
                 profileNotice = null,
                 socialNotice = null,
                 tournamentNotice = null,
+                message = null,
                 notifications = it.notifications.map { notification -> notification.relocalized(localization) }
             )
         }
@@ -121,7 +123,7 @@ class GameController(
     fun openRoomLink(roomId: String) {
         val state = _uiState.value
         if (state.currentRoomId != null || state.isMatchStarted || state.isGameOver) {
-            _uiState.update { it.copy(error = "Hãy rời phòng hiện tại trước khi mở liên kết phòng khác.") }
+            _uiState.update { it.copy(error = messageMapper.text(TextKey.OpenRoomLinkBlocked)) }
             return
         }
         _uiState.update {
@@ -209,8 +211,9 @@ class GameController(
                 state.lobbyStage in setOf(LobbyStage.ROOM_BROWSER, LobbyStage.ROOM_WAITING)
             val reconnectMessage = when {
                 status == ConnectionStatus.RECONNECTING && state.isMatchStarted ->
-                    RECONNECTING_MATCH_MESSAGE
-                status == ConnectionStatus.CONNECTED && state.message == RECONNECTING_MATCH_MESSAGE -> null
+                    messageMapper.text(TextKey.ReconnectingMatch)
+                status == ConnectionStatus.CONNECTED &&
+                    state.connectionStatus == ConnectionStatus.RECONNECTING && state.isMatchStarted -> null
                 else -> state.message
             }
             state.copy(
@@ -309,12 +312,17 @@ class GameController(
         val safeName = displayName.trim()
         if (safeName.isEmpty() || safeName.length > MAX_PROFILE_DISPLAY_NAME_LENGTH) {
             _uiState.update {
-                it.copy(error = "Biệt danh phải có từ 1 đến $MAX_PROFILE_DISPLAY_NAME_LENGTH ký tự.")
+                it.copy(
+                    error = messageMapper.text(
+                        TextKey.InvalidProfileName,
+                        mapOf("maximum" to MAX_PROFILE_DISPLAY_NAME_LENGTH)
+                    )
+                )
             }
             return
         }
         if (avatarId != null && avatarId !in PROFILE_AVATAR_IDS) {
-            _uiState.update { it.copy(error = "Ảnh đại diện không hợp lệ.") }
+            _uiState.update { it.copy(error = messageMapper.text(TextKey.InvalidAvatar)) }
             return
         }
         _uiState.update { it.copy(isProfileSaving = true, profileNotice = null, error = null) }
@@ -645,7 +653,7 @@ class GameController(
 
     fun createRoom(mode: GameMode, matchType: MatchType, roomName: String, password: String) {
         if (roomName.isBlank()) {
-            _uiState.update { it.copy(error = "Vui lòng nhập tên phòng.") }
+            _uiState.update { it.copy(error = messageMapper.text(TextKey.RoomNameRequired)) }
             return
         }
         _uiState.update {
@@ -666,7 +674,7 @@ class GameController(
     fun joinRoom(roomId: String, password: String) {
         val room = _uiState.value.availableRooms.firstOrNull { it.id == roomId }
         if (room == null) {
-            _uiState.update { it.copy(error = "Phòng không còn khả dụng.") }
+            _uiState.update { it.copy(error = messageMapper.text(TextKey.RoomUnavailable)) }
             return
         }
         _uiState.update {
@@ -697,7 +705,7 @@ class GameController(
                     isRematchRequestedByMe = false,
                     isRematchRequestedByOpponent = false,
                     isRematchActionPending = false,
-                    rematchNotice = "Bạn đã chủ động rời trận và bị xử thua.",
+                    rematchNotice = messageMapper.text(TextKey.ForfeitResultDescription),
                     rematchNoticeErrorCode = null,
                     error = null
                 )
@@ -717,9 +725,9 @@ class GameController(
                 isRematchActionPending = true,
                 isRematchRequestedByMe = !isAcceptingInvitation,
                 rematchNotice = if (isAcceptingInvitation) {
-                    "Đang chấp nhận lời mời đấu lại..."
+                    messageMapper.text(TextKey.RematchAccepting)
                 } else {
-                    "Đã gửi lời mời đấu lại."
+                    messageMapper.text(TextKey.RematchSent)
                 },
                 rematchNoticeErrorCode = null,
                 error = null
@@ -776,7 +784,7 @@ class GameController(
             socket.sendMessage(ClientMessage.BlockPlayer(opponentId))
             if (roomId != null) socket.sendMessage(ClientMessage.LeaveRoom(roomId))
             returnToRoomBrowser()
-            _uiState.update { it.copy(socialNotice = "Đã chặn người chơi và rời phòng.") }
+            _uiState.update { it.copy(socialNotice = messageMapper.text(TextKey.PlayerBlockedAndLeft)) }
         }
     }
 
@@ -923,7 +931,7 @@ class GameController(
                         applyWaitingSnapshot(game)
                     }
                 } else if (wasRecoveringRoom) {
-                    returnToRoomBrowser("Phòng đã đóng vì quá thời gian kết nối lại.")
+                    returnToRoomBrowser(messageMapper.text(TextKey.RoomDisconnectedTooLongNotice))
                 }
             }
 
@@ -979,7 +987,7 @@ class GameController(
                         isProfileSaving = false,
                         isPushPreferencesSaving = false,
                         equippingCosmeticId = null,
-                        profileNotice = if (wasSaving) "Đã lưu hồ sơ." else null,
+                        profileNotice = if (wasSaving) messageMapper.text(TextKey.ProfileSaved) else null,
                         lastMatchEloChange = completedMatch?.eloChange ?: state.lastMatchEloChange,
                         lastMatchEloRating = if (completedMatch != null) {
                             message.profile.statistics.eloRating
@@ -1284,21 +1292,21 @@ class GameController(
                             isRematchRequestedByOpponent = requestStillPending && !actorIsMe,
                             rematchNotice = when (message.event) {
                                 RematchEvent.REQUESTED -> if (actorIsMe) {
-                                    "Đã gửi yêu cầu đấu lại."
+                                    messageMapper.text(TextKey.RematchRequestedByYou)
                                 } else {
-                                    "Đối thủ muốn đấu lại với bạn."
+                                    messageMapper.text(TextKey.RematchRequestedByOpponent)
                                 }
                                 RematchEvent.CANCELLED -> if (actorIsMe) {
-                                    "Bạn đã hủy yêu cầu đấu lại."
+                                    messageMapper.text(TextKey.RematchCancelledByYou)
                                 } else {
-                                    "Đối thủ đã hủy yêu cầu đấu lại."
+                                    messageMapper.text(TextKey.RematchCancelledByOpponent)
                                 }
                                 RematchEvent.DECLINED -> if (actorIsMe) {
-                                    "Bạn đã từ chối đấu lại."
+                                    messageMapper.text(TextKey.RematchDeclinedByYou)
                                 } else {
-                                    "Đối thủ đã từ chối đấu lại."
+                                    messageMapper.text(TextKey.RematchDeclinedByOpponent)
                                 }
-                                RematchEvent.EXPIRED -> "Yêu cầu đấu lại đã hết thời gian."
+                                RematchEvent.EXPIRED -> messageMapper.text(TextKey.RematchExpired)
                             },
                             rematchNoticeErrorCode = null
                         )
@@ -1403,9 +1411,9 @@ class GameController(
                 matchType = game.matchType,
                 player = meSnapshot?.toState(state.player.name, isSpectator = meSnapshot in game.spectators) ?: state.player,
                 opponent = opponent?.toState(DEFAULT_OPPONENT_NAME) ?: PlayerState(DEFAULT_OPPONENT_NAME),
-                teammates = teammateSnapshots.map { it.toState("Đồng đội") },
+                teammates = teammateSnapshots.map { it.toState(messageMapper.text(TextKey.Teammate)) },
                 opponents = opponentSnapshots.map { it.toState(DEFAULT_OPPONENT_NAME) },
-                spectators = spectatorSnapshots.map { it.toState("Khán giả", isSpectator = true) },
+                spectators = spectatorSnapshots.map { it.toState(messageMapper.text(TextKey.Spectator), isSpectator = true) },
                 hasOpponent = opponentSnapshots.isNotEmpty(),
                 isMatchmaking = false,
                 matchmakingStartedAtMillis = null,
@@ -1495,9 +1503,9 @@ class GameController(
                 matchType = game.matchType,
                 player = reconciledPlayer,
                 opponent = opponent?.toState(DEFAULT_OPPONENT_NAME) ?: PlayerState(DEFAULT_OPPONENT_NAME),
-                teammates = teammateSnapshots.map { it.toState("Đồng đội") },
+                teammates = teammateSnapshots.map { it.toState(messageMapper.text(TextKey.Teammate)) },
                 opponents = opponentSnapshots.map { it.toState(DEFAULT_OPPONENT_NAME) },
-                spectators = spectatorSnapshots.map { it.toState("Khán giả", isSpectator = true) },
+                spectators = spectatorSnapshots.map { it.toState(messageMapper.text(TextKey.Spectator), isSpectator = true) },
                 lobbyStage = LobbyStage.MATCHED,
                 currentRoomId = game.roomId,
                 currentRoomName = game.roomName,
@@ -1615,7 +1623,7 @@ class GameController(
                 val remaining = (deadline - epochMillis()).coerceAtLeast(0L)
                 _uiState.update { it.copy(timeLeftMillis = remaining) }
                 if (remaining == 0L) {
-                    _uiState.update { it.copy(message = "Đang chờ kết quả từ máy chủ...") }
+                    _uiState.update { it.copy(message = messageMapper.text(TextKey.WaitingForServerResult)) }
                     break
                 }
                 delay(250)
@@ -1870,9 +1878,16 @@ class GameController(
         scope.launch { socket.sendMessage(ClientMessage.EquipCosmetic(cosmeticId)) }
     }
 
+    private fun rewardNotice(gold: Int, xp: Int, gems: Int): String {
+        val rewards = buildList {
+            if (gold > 0) add("$gold ${messageMapper.text(TextKey.Gold)}")
+            if (xp > 0) add("$xp XP")
+            if (gems > 0) add("$gems ${messageMapper.text(TextKey.Gems)}")
+        }.joinToString(" + ")
+        return messageMapper.text(TextKey.RewardReceivedSummary, mapOf("rewards" to rewards))
+    }
+
     private companion object {
-        const val RECONNECTING_MATCH_MESSAGE =
-            "Mất kết nối. Đang khôi phục trận, phòng được giữ tối đa 30 giây..."
         val ROOM_INVITATION_ERROR_CODES = setOf(
             "INTERACTION_BLOCKED",
             "NOT_FRIENDS",
@@ -1882,9 +1897,3 @@ class GameController(
         )
     }
 }
-
-private fun rewardNotice(gold: Int, xp: Int, gems: Int): String = buildList {
-    if (gold > 0) add("$gold Vàng")
-    if (xp > 0) add("$xp XP")
-    if (gems > 0) add("$gems Gem")
-}.joinToString(prefix = "Đã nhận ", postfix = ".")

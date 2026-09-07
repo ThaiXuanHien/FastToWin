@@ -236,9 +236,14 @@ chính sách này được áp dụng.
 
 ```json
 {
-  "email": "player@example.com"
+  "email": "player@example.com",
+  "languageTag": "ja"
 }
 ```
+
+`languageTag` là tùy chọn. Server chấp nhận một trong 12 tag hỗ trợ và dùng nó
+để chọn ngôn ngữ email; khi bỏ trống hoặc gửi tag không hỗ trợ, server dùng
+tiếng Anh. Trường này không làm thay đổi định danh hay nội dung do người dùng nhập.
 
 - Thành công: `200 OK` với thông báo chung, không tiết lộ email có tồn tại hay
   không. Development có thể trả `devResetToken`; production gửi mã qua SMTP và
@@ -271,9 +276,13 @@ chính sách này được áp dụng.
 
 ```json
 {
-  "accessToken": "access-token"
+  "accessToken": "access-token",
+  "languageTag": "ja"
 }
 ```
+
+`languageTag` là tùy chọn và chỉ chọn ngôn ngữ email xác minh. Khi thiếu hoặc
+không được hỗ trợ, server dùng tiếng Anh.
 
 - Thành công: `200 OK` với response thao tác tài khoản. Development có thể trả
   `devEmailVerificationCode`; production gửi mã 6 số qua SMTP.

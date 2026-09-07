@@ -1,6 +1,6 @@
 # Lộ trình hoàn thiện Fast To Win
 
-Cập nhật: 05/09/2026. Đây là danh sách theo dõi thống nhất từ các hạng mục chủ dự án đã duyệt. Có code không đồng nghĩa đã kiểm thử hoặc sẵn sàng production.
+Cập nhật: 07/09/2026. Đây là danh sách theo dõi thống nhất từ các hạng mục chủ dự án đã duyệt. Có code không đồng nghĩa đã kiểm thử hoặc sẵn sàng production.
 
 ## Quy tắc thực hiện
 
@@ -88,18 +88,18 @@ Backend hiện dùng trạng thái realtime trong một instance. Không coi cá
 Đã có unit/integration test server/shared, Android Compose UI test và GitHub Actions. Chưa đánh đồng build xanh với toàn bộ trải nghiệm đa nền tảng đạt.
 
 - [x] Catalog giao diện dùng chung cho 12 ngôn ngữ; các màn cốt lõi, hồ sơ, xã hội, xếp hạng, giải đấu, thông báo và cửa hàng đã dùng khóa localization ổn định. Tiếng Việt/Anh đã phủ đầy đủ; 10 ngôn ngữ còn lại đã dịch các nội dung chính và dùng English fallback cho nội dung chưa qua kiểm duyệt ngôn ngữ ở bước audit cuối.
-- [ ] Chuẩn hóa thông báo động từ backend thành `messageKey/messageArgs`; nội dung cũ vẫn giữ raw fallback để tương thích.
+- [x] Chuẩn hóa thông báo động từ backend thành `messageKey/messageArgs`; trường protocol vẫn optional/default và raw fallback cũ được cô lập qua `legacyFallback(...)` để tương thích client cũ.
 - [ ] Screenshot regression test với ảnh chuẩn đã review (ảnh chụp khi test lỗi chưa phải screenshot regression).
 - [ ] Báo cáo độ bao phủ test và ngưỡng phù hợp.
 - [x] Ma trận Playwright Chromium/Firefox/WebKit và JS fallback trong CI.
 - [ ] Kiểm thử hai người trên iOS thật.
-- [ ] Cập nhật SRS/API/hướng dẫn dev khi hành vi hoặc cấu hình thay đổi.
+- [x] Cập nhật API, backend setup và hướng dẫn contributor cho hành vi localization, locale thông báo và quy trình kiểm tra tự động.
 
 ## Bước đang thực hiện
 
-**Hoàn thiện đa ngôn ngữ**. Giao diện client đã dùng catalog chung cho 12 ngôn
-ngữ từ luồng chính đến các màn xã hội, xếp hạng, giải đấu, thông báo và cửa hàng;
-các bản dịch dài còn lại sẽ được hoàn thiện và kiểm duyệt ở bước audit cuối.
-Bước tiếp theo là chuẩn hóa thông báo động từ backend thành khóa ổn định có raw
-fallback, sau đó mới quét và hồi quy toàn ứng dụng. StoreKit/APNs production vẫn
-tạm hoãn vì phụ thuộc tài khoản Apple.
+**Đa ngôn ngữ đã hoàn thiện về kiến trúc và kiểm tra tự động**. Giao diện client
+dùng đúng 12 catalog, đổi ngôn ngữ tức thời mà không mất trạng thái, fallback về
+tiếng Anh và giữ nguyên nội dung người dùng. Backend phát khóa ổn định kèm đối số,
+raw fallback tương thích được cô lập, scanner và Web persistence E2E chạy trong
+CI. Các bản dịch fallback tiếng Anh còn lại vẫn cần người bản ngữ kiểm duyệt.
+StoreKit/APNs production tiếp tục tạm hoãn vì phụ thuộc tài khoản Apple.

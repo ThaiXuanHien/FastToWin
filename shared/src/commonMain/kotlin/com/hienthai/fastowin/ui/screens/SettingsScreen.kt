@@ -144,17 +144,17 @@ fun SettingsScreen(
 
                     if (installStatus != AppInstallStatus.UNSUPPORTED) {
                         SettingsSection(
-                            title = "Cài Fast To Win",
-                            subtitle = "Mở game nhanh như một ứng dụng độc lập trên thiết bị này."
+                            title = localized(TextKey.SettingsInstallTitle),
+                            subtitle = localized(TextKey.SettingsInstallSubtitle)
                         ) {
                             SettingsInstallRow(installStatus)
                             when (installStatus) {
                                 AppInstallStatus.AVAILABLE,
                                 AppInstallStatus.ERROR -> ArcadeActionButton(
                                     label = if (installStatus == AppInstallStatus.ERROR) {
-                                        "THỬ MỞ TRÌNH CÀI ĐẶT"
+                                        localized(TextKey.SettingsInstallRetry)
                                     } else {
-                                        "CÀI FAST TO WIN"
+                                        localized(TextKey.SettingsInstallAction)
                                     },
                                     onClick = onInstallApp,
                                     icon = Icons.Rounded.InstallMobile,
@@ -163,7 +163,7 @@ fun SettingsScreen(
                                 )
 
                                 AppInstallStatus.INSTALLING -> ArcadeActionButton(
-                                    label = "ĐANG MỞ TRÌNH CÀI ĐẶT",
+                                    label = localized(TextKey.SettingsInstallOpening),
                                     onClick = {},
                                     enabled = false,
                                     icon = Icons.Rounded.InstallMobile,
@@ -171,8 +171,7 @@ fun SettingsScreen(
                                 )
 
                                 AppInstallStatus.MANUAL -> Text(
-                                    text = "Chrome/Edge: mở menu trình duyệt và chọn Cài đặt ứng dụng. " +
-                                        "Safari trên iPhone/iPad: chọn Chia sẻ → Thêm vào Màn hình chính.",
+                                    text = localized(TextKey.SettingsInstallManualInstructions),
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -189,14 +188,14 @@ fun SettingsScreen(
                     )
                     if (showDevicePushControl || pushPreferences != null) {
                         SettingsSection(
-                            title = "Thông báo",
-                            subtitle = "Chọn chính xác những cập nhật bạn muốn nhận."
+                            title = localized(TextKey.SettingsNotificationsTitle),
+                            subtitle = localized(TextKey.SettingsNotificationsSubtitle)
                         ) {
                             if (showDevicePushControl) {
                                 SettingsSwitchRow(
                                     icon = Icons.Rounded.NotificationsActive,
-                                    title = "Thông báo trên thiết bị",
-                                    subtitle = pushStatus.description(),
+                                    title = localized(TextKey.SettingsDeviceNotifications),
+                                    subtitle = localized(pushStatus.descriptionKey()),
                                     checked = pushStatus == AppPushStatus.ENABLED,
                                     enabled = pushStatus != AppPushStatus.REQUESTING,
                                     onCheckedChange = { enabled ->
@@ -207,8 +206,8 @@ fun SettingsScreen(
                             pushPreferences?.let { preferences ->
                                 SettingsSwitchRow(
                                     icon = Icons.Rounded.MeetingRoom,
-                                    title = "Lời mời phòng",
-                                    subtitle = "Khi bạn bè mời vào phòng chơi",
+                                    title = localized(TextKey.SettingsRoomInvitationsTitle),
+                                    subtitle = localized(TextKey.SettingsRoomInvitationsSubtitle),
                                     checked = preferences.roomInvitationsEnabled,
                                     enabled = !pushPreferencesSaving,
                                     onCheckedChange = {
@@ -217,8 +216,8 @@ fun SettingsScreen(
                                 )
                                 SettingsSwitchRow(
                                     icon = Icons.Rounded.EmojiEvents,
-                                    title = "Lời mời giải đấu",
-                                    subtitle = "Khi bạn bè mời tham gia giải",
+                                    title = localized(TextKey.SettingsTournamentInvitationsTitle),
+                                    subtitle = localized(TextKey.SettingsTournamentInvitationsSubtitle),
                                     checked = preferences.tournamentInvitationsEnabled,
                                     enabled = !pushPreferencesSaving,
                                     onCheckedChange = {
@@ -227,8 +226,8 @@ fun SettingsScreen(
                                 )
                                 SettingsSwitchRow(
                                     icon = Icons.Rounded.TaskAlt,
-                                    title = "Nhiệm vụ và phần thưởng",
-                                    subtitle = "Khi vừa hoàn thành một nhiệm vụ",
+                                    title = localized(TextKey.SettingsMissionRewardsTitle),
+                                    subtitle = localized(TextKey.SettingsMissionRewardsSubtitle),
                                     checked = preferences.missionRewardsEnabled,
                                     enabled = !pushPreferencesSaving,
                                     onCheckedChange = {
@@ -237,8 +236,8 @@ fun SettingsScreen(
                                 )
                                 SettingsSwitchRow(
                                     icon = Icons.Rounded.CalendarMonth,
-                                    title = "Nhắc điểm danh",
-                                    subtitle = "Một lần mỗi ngày nếu bạn chưa nhận quà",
+                                    title = localized(TextKey.SettingsDailyCheckInTitle),
+                                    subtitle = localized(TextKey.SettingsDailyCheckInSubtitle),
                                     checked = preferences.dailyCheckInEnabled,
                                     enabled = !pushPreferencesSaving,
                                     onCheckedChange = {
@@ -250,13 +249,13 @@ fun SettingsScreen(
                     }
 
                     SettingsSection(
-                        title = "Phản hồi khi chơi",
-                        subtitle = "Áp dụng ngay khi bạn chạm vào bàn số."
+                        title = localized(TextKey.SettingsFeedbackTitle),
+                        subtitle = localized(TextKey.SettingsFeedbackSubtitle)
                     ) {
                         SettingsSwitchRow(
                             icon = Icons.AutoMirrored.Rounded.VolumeUp,
-                            title = "Âm thanh hiệu ứng",
-                            subtitle = "Báo đúng, sai và kết thúc trận",
+                            title = localized(TextKey.SettingsSoundTitle),
+                            subtitle = localized(TextKey.SettingsSoundSubtitle),
                             checked = preferences.soundEnabled,
                             onCheckedChange = {
                                 onPreferencesChange(preferences.copy(soundEnabled = it))
@@ -265,22 +264,22 @@ fun SettingsScreen(
                         )
                         SettingsSwitchRow(
                             icon = Icons.Rounded.Vibration,
-                            title = "Rung phản hồi",
-                            subtitle = "Rung nhẹ khi chạm số",
+                            title = localized(TextKey.SettingsVibrationTitle),
+                            subtitle = localized(TextKey.SettingsVibrationSubtitle),
                             checked = preferences.vibrationEnabled,
                             onCheckedChange = { onPreferencesChange(preferences.copy(vibrationEnabled = it)) }
                         )
                         SettingsSwitchRow(
                             icon = Icons.Rounded.ColorLens,
-                            title = "Hiệu ứng hình ảnh",
-                            subtitle = "Combo và cảnh báo bám đuổi",
+                            title = localized(TextKey.SettingsVisualEffectsTitle),
+                            subtitle = localized(TextKey.SettingsVisualEffectsSubtitle),
                             checked = preferences.visualEffectsEnabled,
                             onCheckedChange = {
                                 onPreferencesChange(preferences.copy(visualEffectsEnabled = it))
                             }
                         )
                         ArcadeActionButton(
-                            label = "Nghe thử âm thanh",
+                            label = localized(TextKey.SettingsPreviewSound),
                             onClick = onPreviewSound,
                             enabled = preferences.soundEnabled,
                             icon = Icons.AutoMirrored.Rounded.VolumeUp,
@@ -293,59 +292,56 @@ fun SettingsScreen(
                         title = localized(TextKey.AppearanceTitle),
                         subtitle = localized(TextKey.AppearanceSubtitle)
                     ) {
+                        val themeLabels = mapOf(
+                            AppThemeMode.SYSTEM to localized(TextKey.ThemeSystem),
+                            AppThemeMode.LIGHT to localized(TextKey.ThemeLight),
+                            AppThemeMode.DARK to localized(TextKey.ThemeDark)
+                        )
+                        val boardStyleLabels = mapOf(
+                            BoardStyle.CLASSIC to localized(TextKey.BoardClassic),
+                            BoardStyle.OCEAN to localized(TextKey.BoardOcean),
+                            BoardStyle.HIGH_CONTRAST to localized(TextKey.BoardHighContrast)
+                        )
+                        val fontScaleLabels = mapOf(
+                            AppFontScale.COMPACT to localized(TextKey.FontCompact),
+                            AppFontScale.STANDARD to localized(TextKey.FontStandard),
+                            AppFontScale.LARGE to localized(TextKey.FontLarge)
+                        )
                         LanguageSettingRow(preferences.languageCode) { showLanguageDialog = true }
-                        SettingChoiceTitle(Icons.Rounded.ColorLens, "Chủ đề ứng dụng")
+                        SettingChoiceTitle(Icons.Rounded.ColorLens, localized(TextKey.SettingsThemeTitle))
                         ChoiceRow(
                             entries = AppThemeMode.entries,
                             selected = preferences.themeMode,
-                            label = {
-                                when (it) {
-                                    AppThemeMode.SYSTEM -> "Hệ thống"
-                                    AppThemeMode.LIGHT -> "Sáng"
-                                    AppThemeMode.DARK -> "Tối"
-                                }
-                            },
+                            label = themeLabels::getValue,
                             onSelected = { onPreferencesChange(preferences.copy(themeMode = it)) }
                         )
 
-                        SettingChoiceTitle(Icons.Rounded.ColorLens, "Màu bàn số")
+                        SettingChoiceTitle(Icons.Rounded.ColorLens, localized(TextKey.SettingsBoardStyleTitle))
                         ChoiceRow(
                             entries = BoardStyle.entries,
                             selected = preferences.boardStyle,
-                            label = {
-                                when (it) {
-                                    BoardStyle.CLASSIC -> "Cổ điển"
-                                    BoardStyle.OCEAN -> "Đại dương"
-                                    BoardStyle.HIGH_CONTRAST -> "Tương phản"
-                                }
-                            },
+                            label = boardStyleLabels::getValue,
                             onSelected = { onPreferencesChange(preferences.copy(boardStyle = it)) }
                         )
 
-                        SettingChoiceTitle(Icons.Rounded.FormatSize, "Kích thước chữ")
+                        SettingChoiceTitle(Icons.Rounded.FormatSize, localized(TextKey.SettingsFontSizeTitle))
                         ChoiceRow(
                             entries = AppFontScale.entries,
                             selected = preferences.fontScale,
-                            label = {
-                                when (it) {
-                                    AppFontScale.COMPACT -> "Nhỏ"
-                                    AppFontScale.STANDARD -> "Chuẩn"
-                                    AppFontScale.LARGE -> "Lớn"
-                                }
-                            },
+                            label = fontScaleLabels::getValue,
                             onSelected = { onPreferencesChange(preferences.copy(fontScale = it)) }
                         )
                     }
 
                     ArcadeActionButton(
-                        label = "Xem lại hướng dẫn chơi",
+                        label = localized(TextKey.SettingsOpenTutorial),
                         onClick = onOpenTutorial,
                         style = ArcadeActionStyle.PRIMARY,
                         modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)
                     )
 
                     ArcadeActionButton(
-                        label = "Khôi phục cài đặt mặc định",
+                        label = localized(TextKey.SettingsResetDefaults),
                         onClick = { onPreferencesChange(AppPreferences()) },
                         icon = Icons.Rounded.RestartAlt,
                         style = ArcadeActionStyle.OUTLINE,
@@ -446,14 +442,16 @@ private fun LanguageOption(code: String, title: String, subtitle: String, isSele
 
 @Composable
 private fun SettingsInstallRow(status: AppInstallStatus) {
-    val (title, subtitle) = when (status) {
-        AppInstallStatus.AVAILABLE -> "Sẵn sàng cài đặt" to "Không cần tải file, cập nhật tự động."
-        AppInstallStatus.INSTALLING -> "Đang chờ xác nhận" to "Hoàn tất trong cửa sổ của trình duyệt."
-        AppInstallStatus.INSTALLED -> "Đã cài trên thiết bị" to "Bạn có thể mở game từ màn hình chính."
-        AppInstallStatus.MANUAL -> "Cài từ menu trình duyệt" to "Trình duyệt này cần thao tác cài đặt thủ công."
-        AppInstallStatus.ERROR -> "Chưa mở được trình cài đặt" to "Bạn có thể thử lại hoặc cài từ menu trình duyệt."
-        AppInstallStatus.UNSUPPORTED -> "Không hỗ trợ cài đặt" to "Hãy tiếp tục chơi trực tiếp trên trình duyệt."
+    val (titleKey, subtitleKey) = when (status) {
+        AppInstallStatus.AVAILABLE -> TextKey.InstallAvailableTitle to TextKey.InstallAvailableSubtitle
+        AppInstallStatus.INSTALLING -> TextKey.InstallInstallingTitle to TextKey.InstallInstallingSubtitle
+        AppInstallStatus.INSTALLED -> TextKey.InstallInstalledTitle to TextKey.InstallInstalledSubtitle
+        AppInstallStatus.MANUAL -> TextKey.InstallManualTitle to TextKey.InstallManualSubtitle
+        AppInstallStatus.ERROR -> TextKey.InstallErrorTitle to TextKey.InstallErrorSubtitle
+        AppInstallStatus.UNSUPPORTED -> TextKey.InstallUnsupportedTitle to TextKey.InstallUnsupportedSubtitle
     }
+    val title = localized(titleKey)
+    val subtitle = localized(subtitleKey)
     Row(
         modifier = Modifier.fillMaxWidth().heightIn(min = 64.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -524,18 +522,18 @@ private fun SettingsHero() {
 private fun SettingsHeroText(modifier: Modifier = Modifier) {
     Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Text(
-            "PREFERENCES",
+            localized(TextKey.SettingsHeroEyebrow),
             style = MaterialTheme.typography.labelMedium,
             fontWeight = FontWeight.Black,
             color = ArcadePalette.Gold500
         )
         Text(
-            "Chơi theo cách của bạn",
+            localized(TextKey.SettingsHeroTitle),
             style = MaterialTheme.typography.headlineSmall,
             fontWeight = FontWeight.Black
         )
         Text(
-            "Âm thanh, rung và giao diện được lưu riêng trên thiết bị.",
+            localized(TextKey.SettingsHeroSubtitle),
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
@@ -629,15 +627,15 @@ private fun SettingsSwitchRow(
     }
 }
 
-private fun AppPushStatus.description(): String = when (this) {
-    AppPushStatus.PROMPT -> "Nhận lời mời phòng, giải đấu và nhắc phần thưởng"
-    AppPushStatus.REQUESTING -> "Đang chờ bạn cấp quyền thông báo…"
-    AppPushStatus.ENABLED -> "Đã bật lời mời, nhiệm vụ và nhắc điểm danh"
-    AppPushStatus.DISABLED -> "Đang tắt trên thiết bị này"
-    AppPushStatus.DENIED -> "Đã bị chặn — hãy cho phép trong cài đặt thiết bị"
-    AppPushStatus.ERROR -> "Chưa thể bật thông báo, vui lòng thử lại"
-    AppPushStatus.UNSUPPORTED -> "Thiết bị không hỗ trợ thông báo"
-    AppPushStatus.UNCONFIGURED -> "Thông báo chưa được cấu hình"
+private fun AppPushStatus.descriptionKey(): TextKey = when (this) {
+    AppPushStatus.PROMPT -> TextKey.PushPromptDescription
+    AppPushStatus.REQUESTING -> TextKey.PushRequestingDescription
+    AppPushStatus.ENABLED -> TextKey.PushEnabledDescription
+    AppPushStatus.DISABLED -> TextKey.PushDisabledDescription
+    AppPushStatus.DENIED -> TextKey.PushDeniedDescription
+    AppPushStatus.ERROR -> TextKey.PushErrorDescription
+    AppPushStatus.UNSUPPORTED -> TextKey.PushUnsupportedDescription
+    AppPushStatus.UNCONFIGURED -> TextKey.PushUnconfiguredDescription
 }
 
 @Composable

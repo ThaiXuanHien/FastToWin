@@ -26,7 +26,7 @@ internal val simplifiedChineseCatalog = LocalizationCatalog(
         TextKey.Loading to "加载中…",
         TextKey.UnknownError to "出了点问题，请重试。",
         TextKey.WelcomePlayer to "你好，{player}！"
-) + simplifiedChineseShellAuthTexts + simplifiedChineseGameplayTexts + simplifiedChineseProfileTexts + simplifiedChineseSocialShopTexts + simplifiedChineseProtocolMessageTexts + simplifiedChineseDeliveryTexts,
+) + simplifiedChineseShellAuthTexts + simplifiedChineseGameplayTexts + simplifiedChineseProfileTexts + simplifiedChineseSocialShopTexts + simplifiedChineseProtocolMessageTexts + simplifiedChineseDeliveryTexts + residualTexts(AppLanguage.SIMPLIFIED_CHINESE),
     quantities = mapOf(
         QuantityKey.Players to mapOf(
             PluralCategory.OTHER to "{count} 位玩家"

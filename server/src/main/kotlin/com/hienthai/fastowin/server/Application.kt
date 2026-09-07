@@ -320,7 +320,7 @@ fun Application.gameModule(
                     HttpStatusCode.ServiceUnavailable,
                     structuredAuthError(
                         "PASSWORD_RESET_DELIVERY_UNAVAILABLE",
-                        "Dịch vụ email chưa được cấu hình."
+                        legacyFallback("Dịch vụ email chưa được cấu hình.")
                     )
                 )
                 return@post
@@ -381,7 +381,7 @@ fun Application.gameModule(
             if (environment != "dev" && !authEmailSender.isConfigured) {
                 call.respond(
                     HttpStatusCode.ServiceUnavailable,
-                    structuredAuthError("EMAIL_DELIVERY_UNAVAILABLE", "Dịch vụ email chưa được cấu hình.")
+                    structuredAuthError("EMAIL_DELIVERY_UNAVAILABLE", legacyFallback("Dịch vụ email chưa được cấu hình."))
                 )
                 return@post
             }
@@ -415,7 +415,7 @@ fun Application.gameModule(
                     System.err.println("Could not send email verification: ${error.message}")
                     call.respond(
                         HttpStatusCode.ServiceUnavailable,
-                        structuredAuthError("EMAIL_DELIVERY_FAILED", "Chưa thể gửi email. Vui lòng thử lại sau.")
+                        structuredAuthError("EMAIL_DELIVERY_FAILED", legacyFallback("Chưa thể gửi email. Vui lòng thử lại sau."))
                     )
                     return@post
                 }
@@ -503,7 +503,7 @@ fun Application.gameModule(
                     }.getOrElse {
                         metrics.invalidWebSocketMessage()
                         send(ProtocolJson.encodeToString<ServerMessage>(
-                            structuredServerError("INVALID_MESSAGE", "Dữ liệu gửi lên không hợp lệ.")
+                            structuredServerError("INVALID_MESSAGE", legacyFallback("Dữ liệu gửi lên không hợp lệ."))
                         ))
                         continue
                     }
@@ -511,7 +511,7 @@ fun Application.gameModule(
                     if (playerId == null) {
                         if (message !is ClientMessage.ConnectGuest && message !is ClientMessage.ConnectAccount) {
                             send(ProtocolJson.encodeToString<ServerMessage>(
-                                structuredServerError("AUTH_REQUIRED", "Hãy khởi tạo phiên chơi trước.")
+                                structuredServerError("AUTH_REQUIRED", legacyFallback("Hãy khởi tạo phiên chơi trước."))
                             ))
                             continue
                         }
@@ -521,7 +521,7 @@ fun Application.gameModule(
                         }
                         if (protocolVersion != com.hienthai.fastowin.protocol.PROTOCOL_VERSION) {
                             send(ProtocolJson.encodeToString<ServerMessage>(
-                                structuredServerError("PROTOCOL_MISMATCH", "Phiên bản ứng dụng không tương thích.")
+                                structuredServerError("PROTOCOL_MISMATCH", legacyFallback("Phiên bản ứng dụng không tương thích."))
                             ))
                             continue
                         }
@@ -554,15 +554,15 @@ fun Application.gameModule(
                                 when (error) {
                                     is InvalidAccessTokenException -> structuredServerError(
                                         "INVALID_ACCESS_TOKEN",
-                                        "Phiên đăng nhập không hợp lệ hoặc đã hết hạn."
+                                        legacyFallback("Phiên đăng nhập không hợp lệ hoặc đã hết hạn.")
                                     )
                                     is UnverifiedEmailException -> structuredServerError(
                                         "EMAIL_NOT_VERIFIED",
-                                        "Vui lòng xác minh email trước khi vào game."
+                                        legacyFallback("Vui lòng xác minh email trước khi vào game.")
                                     )
                                     else -> structuredServerError(
                                         "INVALID_NAME",
-                                        error.message ?: "Tên người chơi không hợp lệ."
+                                        error.message ?: legacyFallback("Tên người chơi không hợp lệ.")
                                     )
                                 }
                             ))
@@ -624,7 +624,7 @@ fun Application.gameModule(
                         send(ProtocolJson.encodeToString<ServerMessage>(
                             structuredServerError(
                                 "INVALID_ACCESS_TOKEN",
-                                "Phiên đăng nhập không hợp lệ hoặc đã hết hạn."
+                                legacyFallback("Phiên đăng nhập không hợp lệ hoặc đã hết hạn.")
                             )
                         ))
                         close(CloseReason(CloseReason.Codes.NORMAL, "Account session revoked"))
@@ -662,7 +662,7 @@ private suspend fun ApplicationCall.consumeHttpRateLimit(
         HttpStatusCode.TooManyRequests,
         AuthErrorResponse(
             code = "RATE_LIMITED",
-            message = "Bạn thao tác quá nhanh. Vui lòng thử lại sau $retryAfterSeconds giây.",
+            message = legacyFallback("Bạn thao tác quá nhanh. Vui lòng thử lại sau $retryAfterSeconds giây."),
             messageKey = TextKey.ServerRateLimited.name,
             messageArgs = mapOf("seconds" to retryAfterSeconds.toString())
         )
@@ -735,7 +735,7 @@ private suspend fun DefaultWebSocketServerSession.sendRateLimited(
     send(ProtocolJson.encodeToString<ServerMessage>(
         ServerMessage.Error(
             code = "RATE_LIMITED",
-            message = "Bạn thao tác quá nhanh. Vui lòng thử lại sau $retryAfterSeconds giây.",
+            message = legacyFallback("Bạn thao tác quá nhanh. Vui lòng thử lại sau $retryAfterSeconds giây."),
             requestId = requestId,
             messageKey = TextKey.ServerRateLimited.name,
             messageArgs = mapOf("seconds" to retryAfterSeconds.toString())
@@ -753,7 +753,7 @@ private suspend inline fun <reified T : Any> ApplicationCall.receiveOrReject(): 
     runCatching { receive<T>() }.getOrElse {
         respond(
             HttpStatusCode.BadRequest,
-            structuredAuthError("INVALID_REQUEST", "Dữ liệu gửi lên không hợp lệ.")
+            structuredAuthError("INVALID_REQUEST", legacyFallback("Dữ liệu gửi lên không hợp lệ."))
         )
         null
     }
@@ -836,7 +836,7 @@ private suspend fun ApplicationCall.rejectWebSessionRequest() {
         HttpStatusCode.Forbidden,
         structuredAuthError(
             code = "INVALID_WEB_SESSION_REQUEST",
-            message = "Yêu cầu phiên Web không hợp lệ. Vui lòng tải lại trang."
+            message = legacyFallback("Yêu cầu phiên Web không hợp lệ. Vui lòng tải lại trang.")
         )
     )
 }

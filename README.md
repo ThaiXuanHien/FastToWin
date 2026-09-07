@@ -2,7 +2,7 @@
 
 Fast To Win là game tìm số 1–50 theo thời gian thực dành cho Android và iOS. Giao diện và phần lớn logic client dùng Compose Multiplatform; backend là Ktor WebSocket và PostgreSQL.
 
-Theo dõi các bước đã làm và còn lại tại [lộ trình phát triển](docs/roadmap.md). Kiểm thử: [tổng quan](docs/testing.md) và [Web E2E](docs/web-e2e.md). Khi chuẩn bị đưa lên máy chủ, dùng [hướng dẫn production](docs/production-deployment.md).
+Theo dõi các bước đã làm và còn lại tại [lộ trình phát triển](docs/roadmap.md). Kiểm thử: [tổng quan](docs/testing.md) và [Web E2E](docs/web-e2e.md). Quy tắc thêm hoặc sửa bản dịch nằm trong [hướng dẫn localization](docs/localization.md). Khi chuẩn bị đưa lên máy chủ, dùng [hướng dẫn production](docs/production-deployment.md).
 
 Vận hành production dùng `production-ops.sh` hoặc `production-ops.cmd` cho health,
 bảo trì, backup có xác minh/restore drill và rollback có kiểm soát; xem hướng dẫn
@@ -49,6 +49,16 @@ Cấu hình chính hiện tại:
 - Backend HTTP/WebSocket ở cổng `8080`.
 - PostgreSQL development ở cổng `5432`.
 - Mỗi tài khoản chỉ có một phiên đăng nhập hoạt động; đăng nhập ở thiết bị mới sẽ thu hồi token và đưa thiết bị cũ về màn đăng nhập.
+
+## Ngôn ngữ
+
+Fast To Win có đúng 12 catalog: Việt, Anh, Trung giản thể, Nhật, Hàn, Tây Ban Nha,
+Bồ Đào Nha (Brazil), Pháp, Đức, Indonesia, Thái và Nga. Người chơi có thể đổi
+ngôn ngữ ngay trong Cài đặt mà không mất màn hiện tại, dữ liệu form hoặc trạng
+thái trận. Nội dung do người chơi nhập luôn được giữ nguyên; nội dung chưa có bản
+dịch hoặc locale thiết bị không được hỗ trợ dùng tiếng Anh. Tùy chọn **Hệ thống**
+chỉ là chế độ chọn locale thiết bị, không phải catalog thứ 13. Thuật ngữ sản phẩm
+cho skin mặt thẻ/số là **Mặt số**.
 
 ## 1. Chuẩn bị môi trường Windows/Android
 

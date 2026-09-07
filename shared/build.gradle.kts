@@ -95,3 +95,79 @@ compose.resources {
     packageOfResClass = "com.hienthai.fastowin.resources"
     publicResClass = true
 }
+
+val localizedUiSourceSegments = listOf(
+    "/ui/screens/",
+    "/ui/components/",
+    "/state/",
+    "/navigation/",
+    "/data/network/",
+    "/platform/"
+)
+val localizationCatalogFiles = setOf(
+    "EnglishCatalog.kt",
+    "VietnameseCatalog.kt",
+    "SimplifiedChineseCatalog.kt",
+    "JapaneseCatalog.kt",
+    "KoreanCatalog.kt",
+    "SpanishCatalog.kt",
+    "BrazilianPortugueseCatalog.kt",
+    "FrenchCatalog.kt",
+    "GermanCatalog.kt",
+    "IndonesianCatalog.kt",
+    "ThaiCatalog.kt",
+    "RussianCatalog.kt"
+)
+val kotlinStringLiteral = Regex("\"\"\"[\\s\\S]*?\"\"\"|\"(?:\\\\.|[^\"\\\\])*\"")
+val vietnameseLetter = Regex("[À-ỹ]")
+val legacyFallbackCall = Regex(
+    "legacyFallback\\(\\s*(?:\"\"\"[\\s\\S]*?\"\"\"|\"(?:\\\\.|[^\"\\\\])*\")\\s*\\)"
+)
+
+val checkLocalizedUiText by tasks.registering {
+    group = "verification"
+    description = "Rejects Vietnamese string literals outside localization catalogs and compatibility boundaries."
+    notCompatibleWithConfigurationCache("The scanner intentionally reads source contents during execution.")
+
+    val sharedMainSources = fileTree(layout.projectDirectory.dir("src")) {
+        include("*Main/kotlin/**/*.kt")
+        exclude("**/localization/catalogs/**")
+    }.filter { source ->
+        val path = source.invariantSeparatorsPath
+        localizedUiSourceSegments.any(path::contains) && source.name !in localizationCatalogFiles
+    }
+    val backendSources = fileTree(rootProject.layout.projectDirectory.dir("server/src/main/kotlin")) {
+        include("**/*.kt")
+    }
+    inputs.files(sharedMainSources, backendSources)
+
+    doLast {
+        val violations = buildList {
+            (sharedMainSources + backendSources).sortedBy { it.invariantSeparatorsPath }.forEach { source ->
+                val content = source.readText()
+                val scannedContent = if (source in backendSources) {
+                    legacyFallbackCall.replace(content) { call ->
+                        call.value.map { character -> if (character == '\n') '\n' else ' ' }.joinToString("")
+                    }
+                } else content
+                kotlinStringLiteral.findAll(scannedContent).forEach { match ->
+                    if (vietnameseLetter.containsMatchIn(match.value)) {
+                        val lineNumber = scannedContent.take(match.range.first).count { it == '\n' } + 1
+                        val preview = match.value.lineSequence().first().trim()
+                        add("${source.relativeTo(rootProject.projectDir).invariantSeparatorsPath}:$lineNumber: $preview")
+                    }
+                }
+            }
+        }
+        check(violations.isEmpty()) {
+            "Vietnamese string literals must be moved to the 12 localization catalogs. " +
+                "Backend compatibility text must be wrapped by legacyFallback(...); " +
+                "operator-authored maintenance text must remain runtime data.\n" +
+                violations.joinToString(separator = "\n")
+        }
+    }
+}
+
+tasks.named("check") {
+    dependsOn(checkLocalizedUiText)
+}

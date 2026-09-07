@@ -1,4 +1,4 @@
-﻿package com.hienthai.fastowin.server
+package com.hienthai.fastowin.server
 
 import com.hienthai.fastowin.protocol.MatchHistoryOutcome
 import com.hienthai.fastowin.protocol.MatchHistorySnapshot
@@ -146,7 +146,7 @@ class PostgresPlayerProfileRepository(
             }
 
             val recentMatches = connection.prepareStatement(
-                """
+                legacyFallback("""
                 SELECT m.id, m.room_name, m.game_mode, m.match_type, m.ended_at,
                        mine.score AS player_score, mine.outcome,
                        COALESCE(rh.rating_change, 0) AS elo_change,
@@ -159,7 +159,7 @@ class PostgresPlayerProfileRepository(
                 WHERE mine.user_id = ?
                 ORDER BY m.ended_at DESC
                 LIMIT 20
-                """.trimIndent()
+                """).trimIndent()
             ).use { statement ->
                 statement.setObject(1, userId)
                 statement.executeQuery().use { result ->
@@ -383,7 +383,7 @@ class PostgresPlayerProfileRepository(
                         SeasonSnapshot(
                             name = seasonName,
                             tier = if (placementMatches < PLACEMENT_MATCHES_REQUIRED) {
-                                "Đang phân hạng"
+                                legacyFallback("Đang phân hạng")
                             } else {
                                 ratingTier(rating)
                             },
@@ -565,19 +565,19 @@ class PostgresPlayerProfileRepository(
             fun cosmetic(id: String, name: String, type: CosmeticType, unlocked: Boolean, equippedId: String?) =
                 CosmeticSnapshot(id, name, type, unlocked, unlocked && id == equippedId)
             val cosmetics = listOf(
-                cosmetic("frame_default", "Khung cơ bản", CosmeticType.FRAME, true, equippedFrameId),
-                cosmetic("frame_bronze", "Khung Đồng", CosmeticType.FRAME, "frame_bronze" in unlockedFrames, equippedFrameId),
-                cosmetic("frame_silver", "Khung Bạc", CosmeticType.FRAME, "frame_silver" in unlockedFrames, equippedFrameId),
-                cosmetic("frame_gold", "Khung Vàng", CosmeticType.FRAME, "frame_gold" in unlockedFrames, equippedFrameId),
-                cosmetic("frame_perfect", "Khung Hoàn hảo", CosmeticType.FRAME, "frame_perfect" in unlockedFrames, equippedFrameId),
-                cosmetic("frame_persistent", "Khung Bền bỉ", CosmeticType.FRAME, "frame_persistent" in unlockedFrames, equippedFrameId),
-                cosmetic("title_rookie", "Tân binh", CosmeticType.TITLE, true, equippedTitleId),
-                cosmetic("title_champion", "Nhà vô địch", CosmeticType.TITLE, "title_champion" in unlockedTitles, equippedTitleId),
-                cosmetic("title_speed", "Tia chớp", CosmeticType.TITLE, "title_speed" in unlockedTitles, equippedTitleId),
-                cosmetic("title_diligent", "Chuyên cần", CosmeticType.TITLE, "title_diligent" in unlockedTitles, equippedTitleId),
+                cosmetic("frame_default", legacyFallback("Khung cơ bản"), CosmeticType.FRAME, true, equippedFrameId),
+                cosmetic("frame_bronze", legacyFallback("Khung Đồng"), CosmeticType.FRAME, "frame_bronze" in unlockedFrames, equippedFrameId),
+                cosmetic("frame_silver", legacyFallback("Khung Bạc"), CosmeticType.FRAME, "frame_silver" in unlockedFrames, equippedFrameId),
+                cosmetic("frame_gold", legacyFallback("Khung Vàng"), CosmeticType.FRAME, "frame_gold" in unlockedFrames, equippedFrameId),
+                cosmetic("frame_perfect", legacyFallback("Khung Hoàn hảo"), CosmeticType.FRAME, "frame_perfect" in unlockedFrames, equippedFrameId),
+                cosmetic("frame_persistent", legacyFallback("Khung Bền bỉ"), CosmeticType.FRAME, "frame_persistent" in unlockedFrames, equippedFrameId),
+                cosmetic("title_rookie", legacyFallback("Tân binh"), CosmeticType.TITLE, true, equippedTitleId),
+                cosmetic("title_champion", legacyFallback("Nhà vô địch"), CosmeticType.TITLE, "title_champion" in unlockedTitles, equippedTitleId),
+                cosmetic("title_speed", legacyFallback("Tia chớp"), CosmeticType.TITLE, "title_speed" in unlockedTitles, equippedTitleId),
+                cosmetic("title_diligent", legacyFallback("Chuyên cần"), CosmeticType.TITLE, "title_diligent" in unlockedTitles, equippedTitleId),
                 cosmetic(
                     DAILY_CHECK_IN_AVATAR_ID,
-                    "Ảnh đại diện Điểm danh",
+                    legacyFallback("Ảnh đại diện Điểm danh"),
                     CosmeticType.AVATAR,
                     DAILY_CHECK_IN_AVATAR_ID in unlockedAvatars,
                     base.avatarId

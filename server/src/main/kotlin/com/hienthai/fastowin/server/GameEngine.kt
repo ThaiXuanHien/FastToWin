@@ -1,4 +1,4 @@
-﻿package com.hienthai.fastowin.server
+package com.hienthai.fastowin.server
 
 import com.hienthai.fastowin.protocol.ClientMessage
 import com.hienthai.fastowin.localization.protocolTextKeyForCode
@@ -83,7 +83,7 @@ class GameEngine(
     suspend fun connectGuest(displayName: String, resumeToken: String?): ConnectedPlayer {
         restoreActiveRooms()
         val safeName = displayName.trim().take(MAX_PLAYER_NAME_LENGTH)
-        require(safeName.isNotEmpty()) { "Tên người chơi không được để trống." }
+        require(safeName.isNotEmpty()) { "Player name must not be blank." }
         val identity = identityRepository.resolveGuest(safeName, resumeToken, nowMillis())
 
         return connectIdentity(identity.playerId, identity.displayName, identity.resumeToken)
@@ -284,7 +284,7 @@ class GameEngine(
         if (message is ClientMessage.CancelMatchmaking) return cancelMatchmaking(playerId)
         if (message is ClientMessage.CreateRoom) {
             if (message.matchType == MatchType.RANKED && !isAccountSession(playerId)) {
-                return listOf(error(playerId, "ACCOUNT_REQUIRED", "Hãy đăng nhập để tạo phòng xếp hạng."))
+                return listOf(error(playerId, "ACCOUNT_REQUIRED", legacyFallback("Hãy đăng nhập để tạo phòng xếp hạng.")))
             }
             validateModeAccess(playerId, message.gameMode)?.let { return listOf(it) }
         }
@@ -295,15 +295,15 @@ class GameEngine(
         val result = mutex.withLock {
             val player = sessionsByPlayerId[playerId]
                 ?: return@withLock HandleResult(
-                    listOf(error(playerId, "SESSION_NOT_FOUND", "Phiên chơi không còn hợp lệ."))
+                    listOf(error(playerId, "SESSION_NOT_FOUND", legacyFallback("Phiên chơi không còn hợp lệ.")))
                 )
 
             when (message) {
                 is ClientMessage.ConnectGuest -> HandleResult(listOf(
-                    error(playerId, "ALREADY_CONNECTED", "Phiên WebSocket đã được xác thực.")
+                    error(playerId, "ALREADY_CONNECTED", legacyFallback("Phiên WebSocket đã được xác thực."))
                 ))
                 is ClientMessage.ConnectAccount -> HandleResult(listOf(
-                    error(playerId, "ALREADY_CONNECTED", "Phiên WebSocket đã được xác thực.")
+                    error(playerId, "ALREADY_CONNECTED", legacyFallback("Phiên WebSocket đã được xác thực."))
                 ))
 
                 ClientMessage.ListRooms -> HandleResult(
@@ -450,22 +450,22 @@ class GameEngine(
         validateModeAccess(playerId, command.gameMode)?.let { return listOf(it) }
         val safeName = command.name.trim().take(MAX_TOURNAMENT_NAME_LENGTH)
         if (safeName.length < 3) {
-            return listOf(error(playerId, "INVALID_TOURNAMENT_NAME", "Tên giải cần có ít nhất 3 ký tự."))
+            return listOf(error(playerId, "INVALID_TOURNAMENT_NAME", legacyFallback("Tên giải cần có ít nhất 3 ký tự.")))
         }
         if (command.maxPlayers !in SUPPORTED_TOURNAMENT_PLAYER_COUNTS) {
-            return listOf(error(playerId, "INVALID_TOURNAMENT_SIZE", "Giải đấu chỉ hỗ trợ 4, 8 hoặc 16 người."))
+            return listOf(error(playerId, "INVALID_TOURNAMENT_SIZE", legacyFallback("Giải đấu chỉ hỗ trợ 4, 8 hoặc 16 người.")))
         }
         var snapshotToSave: TournamentSnapshot? = null
         val tournamentId = UUID.randomUUID().toString()
         val deliveries = mutex.withLock {
             val host = sessionsByPlayerId[playerId]
                 ?.takeIf { it.isConnected && it.resumeToken == null }
-                ?: return@withLock listOf(error(playerId, "SESSION_NOT_FOUND", "Phiên chơi không còn hợp lệ."))
+                ?: return@withLock listOf(error(playerId, "SESSION_NOT_FOUND", legacyFallback("Phiên chơi không còn hợp lệ.")))
             if (activeTournamentFor(playerId) != null) {
-                return@withLock listOf(error(playerId, "TOURNAMENT_ALREADY_ACTIVE", "Bạn đang tham gia một giải khác."))
+                return@withLock listOf(error(playerId, "TOURNAMENT_ALREADY_ACTIVE", legacyFallback("Bạn đang tham gia một giải khác.")))
             }
             if (roomFor(playerId) != null || playerId in matchmakingEntries) {
-                return@withLock listOf(error(playerId, "PLAYER_BUSY", "Hãy rời phòng hoặc hủy ghép trận trước khi tạo giải."))
+                return@withLock listOf(error(playerId, "PLAYER_BUSY", legacyFallback("Hãy rời phòng hoặc hủy ghép trận trước khi tạo giải.")))
             }
             if (command.entryFee > 0) {
                 when (playerProfileRepository.applyWalletTransaction(
@@ -476,13 +476,13 @@ class GameEngine(
                 )) {
                     WalletMutationStatus.APPLIED -> Unit
                     WalletMutationStatus.INSUFFICIENT_FUNDS -> return@withLock listOf(
-                        error(playerId, "NOT_ENOUGH_GOLD", "Bạn không đủ Vàng để tạo giải đấu.")
+                        error(playerId, "NOT_ENOUGH_GOLD", legacyFallback("Bạn không đủ Vàng để tạo giải đấu."))
                     )
                     WalletMutationStatus.DUPLICATE -> return@withLock listOf(
-                        error(playerId, "TOURNAMENT_ALREADY_CREATED", "Phí tạo giải đã được xử lý.")
+                        error(playerId, "TOURNAMENT_ALREADY_CREATED", legacyFallback("Phí tạo giải đã được xử lý."))
                     )
                     WalletMutationStatus.PLAYER_NOT_FOUND -> return@withLock listOf(
-                        error(playerId, "PROFILE_NOT_FOUND", "Không tìm thấy hồ sơ tài sản.")
+                        error(playerId, "PROFILE_NOT_FOUND", legacyFallback("Không tìm thấy hồ sơ tài sản."))
                     )
                 }
             }
@@ -505,7 +505,7 @@ class GameEngine(
                 Delivery(ServerMessage.TournamentUpdated(snapshot), setOf(playerId)),
                 Delivery(
                     ServerMessage.TournamentNotice(
-                        message = "Đã tạo giải riêng ${command.maxPlayers} người.",
+                        message = legacyFallback("Đã tạo giải riêng ${command.maxPlayers} người."),
                         messageKey = TextKey.TournamentCreatedNotice.name,
                         messageArgs = mapOf("players" to command.maxPlayers.toString()),
                         code = "TOURNAMENT_CREATED"
@@ -524,26 +524,26 @@ class GameEngine(
     ): List<Delivery> {
         if (!isAccountSession(playerId)) return listOf(accountRequired(playerId))
         if (friendRepository.isBlockedEitherWay(playerId, command.friendPlayerId)) {
-            return listOf(error(playerId, "INTERACTION_BLOCKED", "Không thể mời người chơi này vào giải."))
+            return listOf(error(playerId, "INTERACTION_BLOCKED", legacyFallback("Không thể mời người chơi này vào giải.")))
         }
         if (!friendRepository.areFriends(playerId, command.friendPlayerId)) {
-            return listOf(error(playerId, "NOT_FRIENDS", "Người chơi này chưa phải bạn bè."))
+            return listOf(error(playerId, "NOT_FRIENDS", legacyFallback("Người chơi này chưa phải bạn bè.")))
         }
         return mutex.withLock {
             val tournament = tournaments[command.tournamentId]
                 ?.takeIf { it.hostId == playerId && it.phase == TournamentPhase.LOBBY }
-                ?: return@withLock listOf(error(playerId, "TOURNAMENT_NOT_INVITABLE", "Giải không còn nhận lời mời."))
+                ?: return@withLock listOf(error(playerId, "TOURNAMENT_NOT_INVITABLE", legacyFallback("Giải không còn nhận lời mời.")))
             if (tournament.participants.size >= tournament.maxPlayers) {
                 return@withLock listOf(
-                    error(playerId, "TOURNAMENT_FULL", "Giải đã đủ ${tournament.maxPlayers} người.")
+                    error(playerId, "TOURNAMENT_FULL", legacyFallback("Giải đã đủ ${tournament.maxPlayers} người."))
                 )
             }
             if (command.friendPlayerId in tournament.playerIds()) {
-                return@withLock listOf(error(playerId, "PLAYER_ALREADY_JOINED", "Người chơi đã ở trong giải."))
+                return@withLock listOf(error(playerId, "PLAYER_ALREADY_JOINED", legacyFallback("Người chơi đã ở trong giải.")))
             }
             val friendId = command.friendPlayerId
             if (activeTournamentFor(friendId) != null || roomFor(friendId) != null) {
-                return@withLock listOf(error(playerId, "FRIEND_BUSY", "Bạn bè đang bận ở phòng hoặc giải khác."))
+                return@withLock listOf(error(playerId, "FRIEND_BUSY", legacyFallback("Bạn bè đang bận ở phòng hoặc giải khác.")))
             }
             tournamentInvitations.entries.removeAll { (_, invitation) ->
                 invitation.tournamentId == tournament.id && invitation.inviteeId == friendId
@@ -585,7 +585,7 @@ class GameEngine(
             listOf(
                 Delivery(ServerMessage.TournamentInvitation(invitation.snapshot()), setOf(friendId)),
                 Delivery(ServerMessage.TournamentNotice(
-                    message = "Đã gửi lời mời tham gia giải.",
+                    message = legacyFallback("Đã gửi lời mời tham gia giải."),
                     messageKey = TextKey.TournamentInvitationSentNotice.name,
                     code = "TOURNAMENT_INVITATION_SENT"
                 ), setOf(playerId))
@@ -602,16 +602,16 @@ class GameEngine(
         val deliveries = mutex.withLock {
             val invitation = tournamentInvitations.remove(command.invitationId)
                 ?.takeIf { it.inviteeId == playerId && it.expiresAtMillis > nowMillis() }
-                ?: return@withLock listOf(error(playerId, "TOURNAMENT_INVITATION_EXPIRED", "Lời mời giải đấu đã hết hạn."))
+                ?: return@withLock listOf(error(playerId, "TOURNAMENT_INVITATION_EXPIRED", legacyFallback("Lời mời giải đấu đã hết hạn.")))
             if (!command.accept) {
                 return@withLock listOf(
                     Delivery(ServerMessage.TournamentNotice(
-                        "Đã từ chối lời mời giải đấu.",
+                        legacyFallback("Đã từ chối lời mời giải đấu."),
                         TextKey.TournamentInvitationDeclinedNotice.name,
                         code = "TOURNAMENT_INVITATION_DECLINED"
                     ), setOf(playerId)),
                     Delivery(ServerMessage.TournamentNotice(
-                        "Một người bạn đã từ chối lời mời giải đấu.",
+                        legacyFallback("Một người bạn đã từ chối lời mời giải đấu."),
                         TextKey.TournamentInvitationDeclinedByFriendNotice.name,
                         code = "TOURNAMENT_INVITATION_DECLINED_BY_FRIEND"
                     ), setOf(invitation.hostId))
@@ -619,14 +619,14 @@ class GameEngine(
             }
             val tournament = tournaments[invitation.tournamentId]
                 ?.takeIf { it.phase == TournamentPhase.LOBBY }
-                ?: return@withLock listOf(error(playerId, "TOURNAMENT_NOT_FOUND", "Giải đấu không còn tồn tại."))
+                ?: return@withLock listOf(error(playerId, "TOURNAMENT_NOT_FOUND", legacyFallback("Giải đấu không còn tồn tại.")))
             if (tournament.participants.size >= tournament.maxPlayers) {
                 return@withLock listOf(
-                    error(playerId, "TOURNAMENT_FULL", "Giải đã đủ ${tournament.maxPlayers} người.")
+                    error(playerId, "TOURNAMENT_FULL", legacyFallback("Giải đã đủ ${tournament.maxPlayers} người."))
                 )
             }
             if (activeTournamentFor(playerId) != null || roomFor(playerId) != null || playerId in matchmakingEntries) {
-                return@withLock listOf(error(playerId, "PLAYER_BUSY", "Hãy rời phòng hoặc giải hiện tại trước."))
+                return@withLock listOf(error(playerId, "PLAYER_BUSY", legacyFallback("Hãy rời phòng hoặc giải hiện tại trước.")))
             }
             if (tournament.entryFee > 0) {
                 when (playerProfileRepository.applyWalletTransaction(
@@ -637,26 +637,26 @@ class GameEngine(
                 )) {
                     WalletMutationStatus.APPLIED -> tournament.prizePool += tournament.entryFee
                     WalletMutationStatus.INSUFFICIENT_FUNDS -> return@withLock listOf(
-                        error(playerId, "NOT_ENOUGH_GOLD", "Bạn không đủ Vàng để tham gia giải này.")
+                        error(playerId, "NOT_ENOUGH_GOLD", legacyFallback("Bạn không đủ Vàng để tham gia giải này."))
                     )
                     WalletMutationStatus.DUPLICATE -> return@withLock listOf(
-                        error(playerId, "TOURNAMENT_ENTRY_ALREADY_PAID", "Phí tham gia giải đã được xử lý.")
+                        error(playerId, "TOURNAMENT_ENTRY_ALREADY_PAID", legacyFallback("Phí tham gia giải đã được xử lý."))
                     )
                     WalletMutationStatus.PLAYER_NOT_FOUND -> return@withLock listOf(
-                        error(playerId, "PROFILE_NOT_FOUND", "Không tìm thấy hồ sơ tài sản.")
+                        error(playerId, "PROFILE_NOT_FOUND", legacyFallback("Không tìm thấy hồ sơ tài sản."))
                     )
                 }
             }
             val session = sessionsByPlayerId[playerId]
                 ?.takeIf { it.isConnected && it.resumeToken == null }
-                ?: return@withLock listOf(error(playerId, "SESSION_NOT_FOUND", "Phiên chơi không còn hợp lệ."))
+                ?: return@withLock listOf(error(playerId, "SESSION_NOT_FOUND", legacyFallback("Phiên chơi không còn hợp lệ.")))
             tournament.participants += TournamentParticipant(playerId, session.displayName)
             val snapshot = tournament.snapshot()
             snapshotToSave = snapshot
             listOf(
                 Delivery(ServerMessage.TournamentUpdated(snapshot), tournament.playerIds()),
                 Delivery(ServerMessage.TournamentNotice(
-                    message = "Đã tham gia giải ${tournament.name}.",
+                    message = legacyFallback("Đã tham gia giải ${tournament.name}."),
                     messageKey = TextKey.TournamentJoinedNotice.name,
                     messageArgs = mapOf("tournament" to tournament.name),
                     code = "TOURNAMENT_JOINED"
@@ -674,10 +674,10 @@ class GameEngine(
         val deliveries = mutex.withLock {
             val tournament = tournaments[tournamentId]
                 ?.takeIf { it.hostId == playerId && it.phase == TournamentPhase.LOBBY }
-                ?: return@withLock listOf(error(playerId, "TOURNAMENT_NOT_STARTABLE", "Bạn không thể bắt đầu giải này."))
+                ?: return@withLock listOf(error(playerId, "TOURNAMENT_NOT_STARTABLE", legacyFallback("Bạn không thể bắt đầu giải này.")))
             if (tournament.participants.size != tournament.maxPlayers) {
                 return@withLock listOf(
-                    error(playerId, "TOURNAMENT_NOT_FULL", "Cần đủ ${tournament.maxPlayers} người để bắt đầu.")
+                    error(playerId, "TOURNAMENT_NOT_FULL", legacyFallback("Cần đủ ${tournament.maxPlayers} người để bắt đầu."))
                 )
             }
             val unavailable = tournament.playerIds().firstOrNull { participantId ->
@@ -685,7 +685,7 @@ class GameEngine(
                     roomFor(participantId) != null || participantId in matchmakingEntries
             }
             if (unavailable != null) {
-                return@withLock listOf(error(playerId, "TOURNAMENT_PLAYER_UNAVAILABLE", "Tất cả người chơi phải online và không ở phòng khác."))
+                return@withLock listOf(error(playerId, "TOURNAMENT_PLAYER_UNAVAILABLE", legacyFallback("Tất cả người chơi phải online và không ở phòng khác.")))
             }
 
             tournament.phase = TournamentPhase.RUNNING
@@ -720,9 +720,9 @@ class GameEngine(
         val deliveries = mutex.withLock {
             val tournament = tournaments[tournamentId]
                 ?.takeIf { playerId in it.playerIds() }
-                ?: return@withLock listOf(error(playerId, "TOURNAMENT_NOT_FOUND", "Bạn không còn ở trong giải này."))
+                ?: return@withLock listOf(error(playerId, "TOURNAMENT_NOT_FOUND", legacyFallback("Bạn không còn ở trong giải này.")))
             if (tournament.phase != TournamentPhase.LOBBY) {
-                return@withLock listOf(error(playerId, "TOURNAMENT_ALREADY_STARTED", "Không thể rời giải sau khi đã bắt đầu."))
+                return@withLock listOf(error(playerId, "TOURNAMENT_ALREADY_STARTED", legacyFallback("Không thể rời giải sau khi đã bắt đầu.")))
             }
             if (tournament.hostId == playerId) {
                 tournament.phase = TournamentPhase.CANCELLED
@@ -733,7 +733,7 @@ class GameEngine(
                 listOf(
                     Delivery(ServerMessage.TournamentUpdated(snapshot), tournament.playerIds()),
                     Delivery(ServerMessage.TournamentNotice(
-                        "Chủ giải đã hủy giải đấu.",
+                        legacyFallback("Chủ giải đã hủy giải đấu."),
                         TextKey.TournamentCancelledNotice.name,
                         code = "TOURNAMENT_CANCELLED"
                     ), tournament.playerIds())
@@ -748,7 +748,7 @@ class GameEngine(
                 listOf(
                     Delivery(ServerMessage.TournamentUpdated(snapshot), tournament.playerIds()),
                     Delivery(ServerMessage.TournamentNotice(
-                        "Đã rời giải đấu.",
+                        legacyFallback("Đã rời giải đấu."),
                         TextKey.TournamentLeftNotice.name,
                         code = "TOURNAMENT_LEFT"
                     ), setOf(playerId))
@@ -762,7 +762,7 @@ class GameEngine(
     private suspend fun loadFriends(playerId: String): List<Delivery> {
         if (!isAccountSession(playerId)) return listOf(accountRequired(playerId))
         val stored = runCatching { friendRepository.load(playerId) }.getOrElse {
-            return listOf(error(playerId, "FRIENDS_UNAVAILABLE", "Chưa tải được danh sách bạn bè."))
+            return listOf(error(playerId, "FRIENDS_UNAVAILABLE", legacyFallback("Chưa tải được danh sách bạn bè.")))
         }
         val presence = mutex.withLock {
             stored.friends.associate { friend -> friend.userId to presenceOf(friend.userId) }
@@ -782,13 +782,13 @@ class GameEngine(
     private suspend fun loadNotifications(playerId: String): List<Delivery> {
         if (!isAccountSession(playerId)) return listOf(accountRequired(playerId))
         val pendingRequests = runCatching { friendRepository.load(playerId).incomingRequests }
-            .getOrElse { return listOf(error(playerId, "NOT_NOTIFICATIONS_UNAVAILABLE", "Chưa tải được thông báo.")) }
+            .getOrElse { return listOf(error(playerId, "NOT_NOTIFICATIONS_UNAVAILABLE", legacyFallback("Chưa tải được thông báo."))) }
         val pendingFriendNotifications = pendingRequests.map { request ->
             NotificationSnapshot(
                 id = "friend:${request.requestId}",
                 kind = NotificationKind.FRIEND_REQUEST,
-                title = "Lời mời kết bạn",
-                message = "${request.displayName} muốn kết bạn với bạn.",
+                title = legacyFallback("Lời mời kết bạn"),
+                message = legacyFallback("${request.displayName} muốn kết bạn với bạn."),
                 createdAtEpochMillis = nowMillis(),
                 destination = NotificationDestination.FRIENDS,
                 titleKey = TextKey.FriendRequests.name,
@@ -798,7 +798,7 @@ class GameEngine(
         }
         notificationRepository.createNotifications(playerId, pendingFriendNotifications)
         val notifications = runCatching { notificationRepository.loadNotifications(playerId) }
-            .getOrElse { return listOf(error(playerId, "NOTIFICATIONS_UNAVAILABLE", "Chưa tải được thông báo.")) }
+            .getOrElse { return listOf(error(playerId, "NOTIFICATIONS_UNAVAILABLE", legacyFallback("Chưa tải được thông báo."))) }
         return listOf(Delivery(ServerMessage.NotificationsData(notifications), setOf(playerId)))
     }
 
@@ -808,7 +808,7 @@ class GameEngine(
     ): List<Delivery> {
         if (!isAccountSession(playerId)) return listOf(accountRequired(playerId))
         if (notifications.size > MAX_NOTIFICATION_SYNC_BATCH) {
-            return listOf(error(playerId, "INVALID_NOTIFICATIONS", "Có quá nhiều thông báo cần đồng bộ."))
+            return listOf(error(playerId, "INVALID_NOTIFICATIONS", legacyFallback("Có quá nhiều thông báo cần đồng bộ.")))
         }
         val allowedKinds = setOf(NotificationKind.MISSION, NotificationKind.ACHIEVEMENT, NotificationKind.COSMETIC)
         val normalized = notifications.filter { notification ->
@@ -820,7 +820,7 @@ class GameEngine(
                 notification.hasAllowedSyncTemplate()
         }.map { it.copy(createdAtEpochMillis = nowMillis(), isRead = false) }
         if (normalized.size != notifications.size) {
-            return listOf(error(playerId, "INVALID_NOTIFICATIONS", "Dữ liệu thông báo không hợp lệ."))
+            return listOf(error(playerId, "INVALID_NOTIFICATIONS", legacyFallback("Dữ liệu thông báo không hợp lệ.")))
         }
         notificationRepository.createNotifications(playerId, normalized)
         return loadNotifications(playerId)
@@ -829,7 +829,7 @@ class GameEngine(
     private suspend fun markNotificationsRead(playerId: String, notificationId: String?): List<Delivery> {
         if (!isAccountSession(playerId)) return listOf(accountRequired(playerId))
         if (notificationId != null && notificationId.length !in 1..160) {
-            return listOf(error(playerId, "INVALID_NOTIFICATION_ID", "Mã thông báo không hợp lệ."))
+            return listOf(error(playerId, "INVALID_NOTIFICATION_ID", legacyFallback("Mã thông báo không hợp lệ.")))
         }
         notificationRepository.markNotificationsRead(playerId, notificationId, nowMillis())
         return loadNotifications(playerId)
@@ -838,7 +838,7 @@ class GameEngine(
     private suspend fun dismissNotifications(playerId: String, notificationId: String?): List<Delivery> {
         if (!isAccountSession(playerId)) return listOf(accountRequired(playerId))
         if (notificationId != null && notificationId.length !in 1..160) {
-            return listOf(error(playerId, "INVALID_NOTIFICATION_ID", "Mã thông báo không hợp lệ."))
+            return listOf(error(playerId, "INVALID_NOTIFICATION_ID", legacyFallback("Mã thông báo không hợp lệ.")))
         }
         notificationRepository.dismissNotifications(playerId, notificationId, nowMillis())
         return loadNotifications(playerId)
@@ -856,7 +856,7 @@ class GameEngine(
     private suspend fun sendFriendRequest(playerId: String, playerCode: String): List<Delivery> {
         if (!isAccountSession(playerId)) return listOf(accountRequired(playerId))
         if (playerCode.isBlank() || playerCode.length > 12) {
-            return listOf(error(playerId, "INVALID_PLAYER_CODE", "Mã người chơi không hợp lệ."))
+            return listOf(error(playerId, "INVALID_PLAYER_CODE", legacyFallback("Mã người chơi không hợp lệ.")))
         }
         return when (val result = friendRepository.sendRequest(playerId, playerCode, nowMillis())) {
             is FriendRequestResult.Success -> {
@@ -868,8 +868,8 @@ class GameEngine(
                         listOf(NotificationSnapshot(
                             id = "friend:${request.requestId}",
                             kind = NotificationKind.FRIEND_REQUEST,
-                            title = "Lời mời kết bạn",
-                            message = "${request.displayName} muốn kết bạn với bạn.",
+                            title = legacyFallback("Lời mời kết bạn"),
+                            message = legacyFallback("${request.displayName} muốn kết bạn với bạn."),
                             createdAtEpochMillis = nowMillis(),
                             destination = NotificationDestination.FRIENDS,
                             titleKey = TextKey.FriendRequests.name,
@@ -879,20 +879,20 @@ class GameEngine(
                     )
                 }
                 listOf(Delivery(ServerMessage.SocialNotice(
-                    "Đã gửi lời mời kết bạn.",
+                    legacyFallback("Đã gửi lời mời kết bạn."),
                     TextKey.FriendRequestSentNotice.name,
                     code = "FRIEND_REQUEST_SENT"
                 ), setOf(playerId))) +
                     refreshSocialFor(setOf(playerId, result.recipientId)) +
                     refreshNotificationsFor(setOf(result.recipientId))
             }
-            FriendRequestResult.PlayerNotFound -> listOf(error(playerId, "PLAYER_NOT_FOUND", "Không tìm thấy mã người chơi."))
-            FriendRequestResult.SelfRequest -> listOf(error(playerId, "SELF_FRIEND_REQUEST", "Bạn không thể tự kết bạn với mình."))
-            FriendRequestResult.AlreadyExists -> listOf(error(playerId, "FRIENDSHIP_EXISTS", "Hai người đã là bạn hoặc đang có lời mời."))
+            FriendRequestResult.PlayerNotFound -> listOf(error(playerId, "PLAYER_NOT_FOUND", legacyFallback("Không tìm thấy mã người chơi.")))
+            FriendRequestResult.SelfRequest -> listOf(error(playerId, "SELF_FRIEND_REQUEST", legacyFallback("Bạn không thể tự kết bạn với mình.")))
+            FriendRequestResult.AlreadyExists -> listOf(error(playerId, "FRIENDSHIP_EXISTS", legacyFallback("Hai người đã là bạn hoặc đang có lời mời.")))
             FriendRequestResult.Blocked -> listOf(error(
                 playerId,
                 "INTERACTION_BLOCKED",
-                "Không thể gửi lời mời kết bạn cho người chơi này."
+                legacyFallback("Không thể gửi lời mời kết bạn cho người chơi này.")
             ))
         }
     }
@@ -903,7 +903,7 @@ class GameEngine(
             is FriendCancellationResult.Success -> {
                 notificationRepository.dismissNotifications(result.recipientId, "friend:$requestId", nowMillis())
                 listOf(Delivery(ServerMessage.SocialNotice(
-                    "Đã hủy lời mời kết bạn.",
+                    legacyFallback("Đã hủy lời mời kết bạn."),
                     TextKey.FriendRequestCancelledNotice.name,
                     code = "FRIEND_REQUEST_CANCELLED"
                 ), setOf(playerId))) +
@@ -913,7 +913,7 @@ class GameEngine(
             FriendCancellationResult.NotFound -> listOf(error(
                 playerId,
                 "FRIEND_REQUEST_NOT_FOUND",
-                "Lời mời kết bạn không còn tồn tại hoặc không thuộc về bạn."
+                legacyFallback("Lời mời kết bạn không còn tồn tại hoặc không thuộc về bạn.")
             ))
         }
     }
@@ -926,7 +926,7 @@ class GameEngine(
         return when (val result = friendRepository.respond(playerId, command.requestId, command.accept, nowMillis())) {
             is FriendResponseResult.Success -> {
                 notificationRepository.dismissNotifications(playerId, "friend:${command.requestId}", nowMillis())
-                val notice = if (command.accept) "Đã chấp nhận lời mời kết bạn." else "Đã từ chối lời mời kết bạn."
+                val notice = if (command.accept) legacyFallback("Đã chấp nhận lời mời kết bạn.") else legacyFallback("Đã từ chối lời mời kết bạn.")
                 val noticeKey = if (command.accept) TextKey.FriendRequestAcceptedNotice else TextKey.FriendRequestDeclinedNotice
                 val noticeCode = if (command.accept) "FRIEND_REQUEST_ACCEPTED" else "FRIEND_REQUEST_DECLINED"
                 listOf(Delivery(ServerMessage.SocialNotice(
@@ -937,7 +937,7 @@ class GameEngine(
                     refreshSocialFor(setOf(playerId, result.requesterId)) +
                     refreshNotificationsFor(setOf(playerId))
             }
-            FriendResponseResult.NotFound -> listOf(error(playerId, "FRIEND_REQUEST_NOT_FOUND", "Lời mời không còn tồn tại."))
+            FriendResponseResult.NotFound -> listOf(error(playerId, "FRIEND_REQUEST_NOT_FOUND", legacyFallback("Lời mời không còn tồn tại.")))
         }
     }
 
@@ -947,7 +947,7 @@ class GameEngine(
             is SocialMutationResult.Success -> {
                 clearRoomInvitationsBetween(playerId, result.otherUserId)
                 listOf(Delivery(ServerMessage.SocialNotice(
-                    "Đã hủy kết bạn.", TextKey.FriendRemovedNotice.name, code = "FRIEND_REMOVED"
+                    legacyFallback("Đã hủy kết bạn."), TextKey.FriendRemovedNotice.name, code = "FRIEND_REMOVED"
                 ), setOf(playerId))) +
                     refreshSocialFor(setOf(playerId, result.otherUserId)) +
                     refreshRoomInvitationsFor(setOf(playerId, result.otherUserId))
@@ -955,12 +955,12 @@ class GameEngine(
             SocialMutationResult.NotFound -> listOf(error(
                 playerId,
                 "FRIEND_NOT_FOUND",
-                "Quan hệ bạn bè không còn tồn tại."
+                legacyFallback("Quan hệ bạn bè không còn tồn tại.")
             ))
             SocialMutationResult.SelfAction -> listOf(error(
                 playerId,
                 "INVALID_SOCIAL_ACTION",
-                "Không thể thực hiện thao tác này với chính bạn."
+                legacyFallback("Không thể thực hiện thao tác này với chính bạn.")
             ))
         }
     }
@@ -971,7 +971,7 @@ class GameEngine(
             is SocialMutationResult.Success -> {
                 clearRoomInvitationsBetween(playerId, result.otherUserId)
                 listOf(Delivery(ServerMessage.SocialNotice(
-                    "Đã chặn người chơi.", TextKey.PlayerBlockedNotice.name, code = "PLAYER_BLOCKED"
+                    legacyFallback("Đã chặn người chơi."), TextKey.PlayerBlockedNotice.name, code = "PLAYER_BLOCKED"
                 ), setOf(playerId))) +
                     refreshSocialFor(setOf(playerId, result.otherUserId)) +
                     refreshRoomInvitationsFor(setOf(playerId, result.otherUserId))
@@ -979,12 +979,12 @@ class GameEngine(
             SocialMutationResult.NotFound -> listOf(error(
                 playerId,
                 "PLAYER_NOT_FOUND",
-                "Không tìm thấy người chơi để chặn."
+                legacyFallback("Không tìm thấy người chơi để chặn.")
             ))
             SocialMutationResult.SelfAction -> listOf(error(
                 playerId,
                 "INVALID_SOCIAL_ACTION",
-                "Bạn không thể tự chặn chính mình."
+                legacyFallback("Bạn không thể tự chặn chính mình.")
             ))
         }
     }
@@ -994,18 +994,18 @@ class GameEngine(
         return when (val result = friendRepository.unblockPlayer(playerId, playerUserId)) {
             is SocialMutationResult.Success ->
                 listOf(Delivery(ServerMessage.SocialNotice(
-                    "Đã bỏ chặn người chơi.", TextKey.PlayerUnblockedNotice.name, code = "PLAYER_UNBLOCKED"
+                    legacyFallback("Đã bỏ chặn người chơi."), TextKey.PlayerUnblockedNotice.name, code = "PLAYER_UNBLOCKED"
                 ), setOf(playerId))) +
                     refreshSocialFor(setOf(playerId, result.otherUserId))
             SocialMutationResult.NotFound -> listOf(error(
                 playerId,
                 "BLOCK_NOT_FOUND",
-                "Người chơi này không còn trong danh sách chặn."
+                legacyFallback("Người chơi này không còn trong danh sách chặn.")
             ))
             SocialMutationResult.SelfAction -> listOf(error(
                 playerId,
                 "INVALID_SOCIAL_ACTION",
-                "Không thể thực hiện thao tác này với chính bạn."
+                legacyFallback("Không thể thực hiện thao tác này với chính bạn.")
             ))
         }
     }
@@ -1016,23 +1016,23 @@ class GameEngine(
             return listOf(error(
                 playerId,
                 "INTERACTION_BLOCKED",
-                "Không thể mời người chơi này vào phòng."
+                legacyFallback("Không thể mời người chơi này vào phòng.")
             ))
         }
         if (!friendRepository.areFriends(playerId, command.friendUserId)) {
-            return listOf(error(playerId, "NOT_FRIENDS", "Người chơi này chưa phải bạn bè."))
+            return listOf(error(playerId, "NOT_FRIENDS", legacyFallback("Người chơi này chưa phải bạn bè.")))
         }
         var createdInvitation: RoomInvitationRecord? = null
         val replacedInvitationIds = mutableListOf<String>()
         val deliveries = mutex.withLock {
             val inviter = sessionsByPlayerId[playerId]
-                ?: return@withLock listOf(error(playerId, "SESSION_NOT_FOUND", "Phiên chơi không còn hợp lệ."))
+                ?: return@withLock listOf(error(playerId, "SESSION_NOT_FOUND", legacyFallback("Phiên chơi không còn hợp lệ.")))
             val room = rooms[command.roomId]
                 ?.takeIf { it.hostId == playerId && it.phase == RoomPhase.WAITING && it.guestId == null }
-                ?: return@withLock listOf(error(playerId, "ROOM_NOT_INVITABLE", "Phòng không còn sẵn sàng để mời bạn."))
+                ?: return@withLock listOf(error(playerId, "ROOM_NOT_INVITABLE", legacyFallback("Phòng không còn sẵn sàng để mời bạn.")))
             val friendId = command.friendUserId
             if (roomFor(friendId) != null) {
-                return@withLock listOf(error(playerId, "FRIEND_BUSY", "Bạn bè đang ở trong phòng khác."))
+                return@withLock listOf(error(playerId, "FRIEND_BUSY", legacyFallback("Bạn bè đang ở trong phòng khác.")))
             }
             val invitation = RoomInvitationRecord(
                 id = UUID.randomUUID().toString(),
@@ -1069,8 +1069,8 @@ class GameEngine(
                 listOf(NotificationSnapshot(
                     id = "room:${invitation.id}",
                     kind = NotificationKind.ROOM_INVITATION,
-                    title = "Lời mời vào phòng",
-                    message = "${invitation.inviterDisplayName} mời bạn vào phòng ${invitation.roomName}.",
+                    title = legacyFallback("Lời mời vào phòng"),
+                    message = legacyFallback("${invitation.inviterDisplayName} mời bạn vào phòng ${invitation.roomName}."),
                     createdAtEpochMillis = nowMillis(),
                     destination = NotificationDestination.FRIENDS,
                     titleKey = TextKey.RoomInvitationTitle.name,
@@ -1172,30 +1172,30 @@ class GameEngine(
         val result = mutex.withLock {
             val invitation = roomInvitations.remove(command.invitationId)
                 ?.takeIf { it.inviteeId == playerId && it.expiresAtMillis > nowMillis() }
-                ?: return@withLock listOf(error(playerId, "INVITATION_EXPIRED", "Lời mời vào phòng đã hết hạn."))
+                ?: return@withLock listOf(error(playerId, "INVITATION_EXPIRED", legacyFallback("Lời mời vào phòng đã hết hạn.")))
             invitationConsumed = true
             if (!command.accept) {
                 return@withLock listOf(
                     Delivery(ServerMessage.SocialNotice(
-                        "Đã từ chối lời mời vào phòng.",
+                        legacyFallback("Đã từ chối lời mời vào phòng."),
                         TextKey.RoomInvitationDeclinedNotice.name,
                         code = "ROOM_INVITATION_DECLINED"
                     ), setOf(playerId)),
                     Delivery(ServerMessage.SocialNotice(
-                        "Bạn bè đã từ chối lời mời vào phòng.",
+                        legacyFallback("Bạn bè đã từ chối lời mời vào phòng."),
                         TextKey.RoomInvitationDeclinedByFriendNotice.name,
                         code = "ROOM_INVITATION_DECLINED_BY_FRIEND"
                     ), setOf(invitation.inviterId))
                 )
             }
             val player = sessionsByPlayerId[playerId]
-                ?: return@withLock listOf(error(playerId, "SESSION_NOT_FOUND", "Phiên chơi không còn hợp lệ."))
+                ?: return@withLock listOf(error(playerId, "SESSION_NOT_FOUND", legacyFallback("Phiên chơi không còn hợp lệ.")))
             if (roomFor(playerId) != null) {
-                return@withLock listOf(error(playerId, "ALREADY_IN_ROOM", "Bạn đang ở trong một phòng khác."))
+                return@withLock listOf(error(playerId, "ALREADY_IN_ROOM", legacyFallback("Bạn đang ở trong một phòng khác.")))
             }
             val room = rooms[invitation.roomId]
                 ?.takeIf { it.hostId == invitation.inviterId && it.phase == RoomPhase.WAITING && it.guestId == null }
-                ?: return@withLock listOf(error(playerId, "ROOM_NOT_FOUND", "Phòng được mời không còn sẵn sàng."))
+                ?: return@withLock listOf(error(playerId, "ROOM_NOT_FOUND", legacyFallback("Phòng được mời không còn sẵn sàng.")))
             room.guestId = player.playerId
             room.sequence++
             room.scores[player.playerId] = 0
@@ -1277,7 +1277,7 @@ class GameEngine(
             1
         }
         return if (level < mode.unlockLevel) {
-            error(playerId, "MODE_LOCKED", "Chế độ này mở khóa ở cấp ${mode.unlockLevel}.")
+            error(playerId, "MODE_LOCKED", legacyFallback("Chế độ này mở khóa ở cấp ${mode.unlockLevel}."))
         } else {
             null
         }
@@ -1295,10 +1295,10 @@ class GameEngine(
         command: ClientMessage.JoinMatchmaking
     ): List<Delivery> {
         if (!isAccountSession(playerId)) {
-            return listOf(error(playerId, "ACCOUNT_REQUIRED", "Hãy đăng nhập để ghép trận trực tuyến."))
+            return listOf(error(playerId, "ACCOUNT_REQUIRED", legacyFallback("Hãy đăng nhập để ghép trận trực tuyến.")))
         }
         if (mutex.withLock { activeTournamentFor(playerId) != null }) {
-            return listOf(error(playerId, "TOURNAMENT_ACTIVE", "Hãy rời hoặc hoàn tất giải đấu hiện tại trước."))
+            return listOf(error(playerId, "TOURNAMENT_ACTIVE", legacyFallback("Hãy rời hoặc hoàn tất giải đấu hiện tại trước.")))
         }
         val profile = playerProfileRepository.findByPlayerId(playerId)
         val level = profile?.progression?.level ?: 1
@@ -1306,7 +1306,7 @@ class GameEngine(
             return listOf(error(
                 playerId,
                 "MODE_LOCKED",
-                "Chế độ này mở khóa ở cấp ${command.gameMode.unlockLevel}."
+                legacyFallback("Chế độ này mở khóa ở cấp ${command.gameMode.unlockLevel}.")
             ))
         }
         val rating = profile?.statistics?.eloRating ?: DEFAULT_ELO_RATING
@@ -1343,10 +1343,10 @@ class GameEngine(
         val deliveries = mutex.withLock {
             val player = sessionsByPlayerId[playerId]
                 ?.takeIf { it.isConnected && it.resumeToken == null }
-                ?: return@withLock listOf(error(playerId, "SESSION_NOT_FOUND", "Phiên chơi không còn hợp lệ."))
+                ?: return@withLock listOf(error(playerId, "SESSION_NOT_FOUND", legacyFallback("Phiên chơi không còn hợp lệ.")))
             if (roomFor(playerId) != null) {
                 matchmakingEntries.remove(playerId)
-                return@withLock listOf(error(playerId, "ALREADY_IN_ROOM", "Bạn đang ở trong một phòng khác."))
+                return@withLock listOf(error(playerId, "ALREADY_IN_ROOM", legacyFallback("Bạn đang ở trong một phòng khác.")))
             }
 
             val queuedCandidate = candidate?.let { matchmakingEntries[it.playerId] }?.takeIf { queued ->
@@ -1389,7 +1389,7 @@ class GameEngine(
             matchmakingEntries.remove(playerId)
             val room = Room(
                 id = UUID.randomUUID().toString(),
-                name = "Đấu nhanh",
+                name = legacyFallback("Đấu nhanh"),
                 hostId = hostId,
                 password = null,
                 gameMode = command.gameMode,
@@ -1435,12 +1435,12 @@ class GameEngine(
     private fun accountRequired(playerId: String) = error(
         playerId,
         "ACCOUNT_REQUIRED",
-        "Hãy đăng nhập tài khoản để sử dụng tính năng này."
+        legacyFallback("Hãy đăng nhập tài khoản để sử dụng tính năng này.")
     )
 
     private suspend fun loadProfile(playerId: String): List<Delivery> {
         val session = mutex.withLock { sessionsByPlayerId[playerId]?.copy() }
-            ?: return listOf(error(playerId, "SESSION_NOT_FOUND", "Phiên chơi không còn hợp lệ."))
+            ?: return listOf(error(playerId, "SESSION_NOT_FOUND", legacyFallback("Phiên chơi không còn hợp lệ.")))
         if (session.resumeToken == null) {
             runCatching { playerProfileRepository.settleCompletedSeasonRewards(playerId) }
                 .onFailure { System.err.println("Could not settle season rewards for $playerId: ${it.message}") }
@@ -1538,7 +1538,7 @@ class GameEngine(
             listOf(error(
                 playerId,
                 "SEASON_REWARD_NOT_FOUND",
-                "Không tìm thấy phần thưởng mùa cần xác nhận."
+                legacyFallback("Không tìm thấy phần thưởng mùa cần xác nhận.")
             ))
         }
     }
@@ -1551,7 +1551,7 @@ class GameEngine(
                 return listOf(error(
                     playerId,
                     "WALLET_HISTORY_UNAVAILABLE",
-                    "Chưa thể tải lịch sử tài sản. Vui lòng thử lại."
+                    legacyFallback("Chưa thể tải lịch sử tài sản. Vui lòng thử lại.")
                 ))
             }
         return listOf(Delivery(ServerMessage.WalletHistory(transactions), setOf(playerId)))
@@ -1559,7 +1559,7 @@ class GameEngine(
 
     private suspend fun loadGemStoreCatalog(playerId: String): List<Delivery> {
         val hasSession = mutex.withLock { sessionsByPlayerId.containsKey(playerId) }
-        if (!hasSession) return listOf(error(playerId, "SESSION_NOT_FOUND", "Phiên chơi không còn hợp lệ."))
+        if (!hasSession) return listOf(error(playerId, "SESSION_NOT_FOUND", legacyFallback("Phiên chơi không còn hợp lệ.")))
         return listOf(Delivery(
             ServerMessage.GemStoreCatalog(GEM_STORE_PACKAGES, sandboxEnabled = storeSandboxEnabled),
             setOf(playerId)
@@ -1576,7 +1576,7 @@ class GameEngine(
                 playerId,
                 message,
                 StorePurchaseStatus.INVALID,
-                message = "Dữ liệu giao dịch không hợp lệ."
+                message = legacyFallback("Dữ liệu giao dịch không hợp lệ.")
             )
         }
         val gemPackage = GEM_STORE_PACKAGES.firstOrNull { it.productId == message.productId }
@@ -1584,7 +1584,7 @@ class GameEngine(
                 playerId,
                 message,
                 StorePurchaseStatus.INVALID,
-                message = "Gói Gem không tồn tại.",
+                message = legacyFallback("Gói Gem không tồn tại."),
                 messageKey = TextKey.ServerResourceNotFound.name
             )
         val verification = storePurchaseVerifier.verify(StorePurchaseVerification(
@@ -1618,15 +1618,15 @@ class GameEngine(
         )
         val result = when (grantStatus) {
             StorePurchaseGrantStatus.GRANTED -> StorePurchaseStatus.GRANTED to
-                "Đã nhận ${gemPackage.gems} Gem."
+                legacyFallback("Đã nhận ${gemPackage.gems} Gem.")
             StorePurchaseGrantStatus.ALREADY_GRANTED -> StorePurchaseStatus.ALREADY_GRANTED to
-                "Giao dịch này đã được nhận trước đó."
+                legacyFallback("Giao dịch này đã được nhận trước đó.")
             StorePurchaseGrantStatus.TOKEN_ALREADY_USED -> StorePurchaseStatus.INVALID to
-                "Giao dịch đã thuộc về tài khoản khác."
+                legacyFallback("Giao dịch đã thuộc về tài khoản khác.")
             StorePurchaseGrantStatus.PLAYER_NOT_FOUND -> StorePurchaseStatus.FAILED to
-                "Không tìm thấy hồ sơ người chơi."
+                legacyFallback("Không tìm thấy hồ sơ người chơi.")
             StorePurchaseGrantStatus.FAILED -> StorePurchaseStatus.FAILED to
-                "Chưa thể cộng Gem. Vui lòng thử lại."
+                legacyFallback("Chưa thể cộng Gem. Vui lòng thử lại.")
         }
         val delivery = storePurchaseResult(
             playerId,
@@ -1673,7 +1673,7 @@ class GameEngine(
             ?: return listOf(error(
                 playerId,
                 "DAILY_CHECK_IN_UNAVAILABLE",
-                "Chưa thể điểm danh. Vui lòng thử lại."
+                legacyFallback("Chưa thể điểm danh. Vui lòng thử lại.")
             ))
         return loadProfile(playerId) + Delivery(
             ServerMessage.DailyCheckInResult(
@@ -1695,7 +1695,7 @@ class GameEngine(
         }.getOrNull() ?: return listOf(error(
             playerId,
             "MISSION_REWARD_UNAVAILABLE",
-            "Chưa thể nhận thưởng nhiệm vụ. Vui lòng thử lại."
+            legacyFallback("Chưa thể nhận thưởng nhiệm vụ. Vui lòng thử lại.")
         ))
         return when (result.status) {
             MissionRewardClaimStatus.CLAIMED -> loadProfile(playerId) + Delivery(
@@ -1711,17 +1711,17 @@ class GameEngine(
             MissionRewardClaimStatus.ALREADY_CLAIMED -> listOf(error(
                 playerId,
                 "MISSION_ALREADY_CLAIMED",
-                "Phần thưởng nhiệm vụ này đã được nhận."
+                legacyFallback("Phần thưởng nhiệm vụ này đã được nhận.")
             ))
             MissionRewardClaimStatus.NOT_COMPLETED -> listOf(error(
                 playerId,
                 "MISSION_NOT_COMPLETED",
-                "Nhiệm vụ chưa hoàn thành."
+                legacyFallback("Nhiệm vụ chưa hoàn thành.")
             ))
             MissionRewardClaimStatus.INVALID_MISSION -> listOf(error(
                 playerId,
                 "INVALID_MISSION",
-                "Nhiệm vụ không hợp lệ."
+                legacyFallback("Nhiệm vụ không hợp lệ.")
             ))
         }
     }
@@ -1729,18 +1729,18 @@ class GameEngine(
     private suspend fun loadFriendProfile(playerId: String, friendUserId: String): List<Delivery> {
         if (!isAccountSession(playerId)) return listOf(accountRequired(playerId))
         if (friendUserId.isBlank() || friendUserId.length > 64 || friendUserId == playerId) {
-            return listOf(error(playerId, "INVALID_FRIEND", "Người chơi không hợp lệ."))
+            return listOf(error(playerId, "INVALID_FRIEND", legacyFallback("Người chơi không hợp lệ.")))
         }
         val areFriends = runCatching { friendRepository.areFriends(playerId, friendUserId) }
             .getOrElse {
-                return listOf(error(playerId, "FRIEND_PROFILE_UNAVAILABLE", "Chưa tải được hồ sơ bạn bè."))
+                return listOf(error(playerId, "FRIEND_PROFILE_UNAVAILABLE", legacyFallback("Chưa tải được hồ sơ bạn bè.")))
             }
         if (!areFriends) {
-            return listOf(error(playerId, "FRIEND_PROFILE_FORBIDDEN", "Bạn chỉ có thể xem hồ sơ của bạn bè."))
+            return listOf(error(playerId, "FRIEND_PROFILE_FORBIDDEN", legacyFallback("Bạn chỉ có thể xem hồ sơ của bạn bè.")))
         }
         val profile = runCatching { playerProfileRepository.findByPlayerId(friendUserId) }
             .getOrNull()
-            ?: return listOf(error(playerId, "FRIEND_PROFILE_NOT_FOUND", "Không tìm thấy hồ sơ người chơi."))
+            ?: return listOf(error(playerId, "FRIEND_PROFILE_NOT_FOUND", legacyFallback("Không tìm thấy hồ sơ người chơi.")))
         return listOf(Delivery(
             ServerMessage.FriendProfileData(
                 friendUserId,
@@ -1753,7 +1753,7 @@ class GameEngine(
     private suspend fun loadMatchDetail(playerId: String, matchId: String): List<Delivery> {
         if (!isAccountSession(playerId)) return listOf(accountRequired(playerId))
         val detail = runCatching { playerProfileRepository.findMatchDetail(playerId, matchId) }.getOrNull()
-            ?: return listOf(error(playerId, "MATCH_NOT_FOUND", "Không tìm thấy chi tiết trận đấu."))
+            ?: return listOf(error(playerId, "MATCH_NOT_FOUND", legacyFallback("Không tìm thấy chi tiết trận đấu.")))
         return listOf(Delivery(ServerMessage.MatchDetailData(detail), setOf(playerId)))
     }
 
@@ -1766,7 +1766,7 @@ class GameEngine(
             playerProfileRepository.equipCosmetics(playerId, command.frameId, command.titleId)
         }.getOrDefault(false)
         if (!updated) {
-            return listOf(error(playerId, "COSMETIC_LOCKED", "Vật phẩm chưa được mở khóa hoặc không hợp lệ."))
+            return listOf(error(playerId, "COSMETIC_LOCKED", legacyFallback("Vật phẩm chưa được mở khóa hoặc không hợp lệ.")))
         }
         val activeRoomId = mutex.withLock {
             sessionsByPlayerId[playerId]?.frameId = command.frameId
@@ -1785,21 +1785,21 @@ class GameEngine(
             return listOf(error(
                 playerId,
                 "INVALID_DISPLAY_NAME",
-                "Biệt danh phải có từ 1 đến $MAX_PROFILE_DISPLAY_NAME_LENGTH ký tự."
+                legacyFallback("Biệt danh phải có từ 1 đến $MAX_PROFILE_DISPLAY_NAME_LENGTH ký tự.")
             ))
         }
         if (command.avatarId != null && command.avatarId !in PROFILE_AVATAR_IDS) {
-            return listOf(error(playerId, "INVALID_AVATAR", "Ảnh đại diện không hợp lệ."))
+            return listOf(error(playerId, "INVALID_AVATAR", legacyFallback("Ảnh đại diện không hợp lệ.")))
         }
         val session = mutex.withLock { sessionsByPlayerId[playerId]?.copy() }
         if (session == null) {
-            return listOf(error(playerId, "SESSION_NOT_FOUND", "Phiên chơi không còn hợp lệ."))
+            return listOf(error(playerId, "SESSION_NOT_FOUND", legacyFallback("Phiên chơi không còn hợp lệ.")))
         }
         if (session.resumeToken != null) {
             return listOf(error(
                 playerId,
                 "ACCOUNT_REQUIRED",
-                "Hãy lưu tài khoản khách trước khi chỉnh sửa hồ sơ."
+                legacyFallback("Hãy lưu tài khoản khách trước khi chỉnh sửa hồ sơ.")
             ))
         }
         if (command.avatarId == DAILY_CHECK_IN_AVATAR_ID) {
@@ -1811,7 +1811,7 @@ class GameEngine(
                 return listOf(error(
                     playerId,
                     "AVATAR_LOCKED",
-                    "Ảnh đại diện này được mở khóa sau 50 lần điểm danh."
+                    legacyFallback("Ảnh đại diện này được mở khóa sau 50 lần điểm danh.")
                 ))
             }
         }
@@ -1824,7 +1824,7 @@ class GameEngine(
             return listOf(error(
                 playerId,
                 "PROFILE_UPDATE_UNAVAILABLE",
-                "Chưa thể lưu hồ sơ. Vui lòng thử lại."
+                legacyFallback("Chưa thể lưu hồ sơ. Vui lòng thử lại.")
             ))
         }
         val activeRoomId = mutex.withLock {
@@ -1852,7 +1852,7 @@ class GameEngine(
             listOf(error(
                 playerId,
                 "PUSH_PREFERENCES_UNAVAILABLE",
-                "Chưa thể lưu tùy chọn thông báo. Vui lòng thử lại."
+                legacyFallback("Chưa thể lưu tùy chọn thông báo. Vui lòng thử lại.")
             ))
         }
     }
@@ -1860,14 +1860,14 @@ class GameEngine(
     private suspend fun loadLeaderboard(playerId: String): List<Delivery> {
         val sessionExists = mutex.withLock { playerId in sessionsByPlayerId }
         if (!sessionExists) {
-            return listOf(error(playerId, "SESSION_NOT_FOUND", "Phiên chơi không còn hợp lệ."))
+            return listOf(error(playerId, "SESSION_NOT_FOUND", legacyFallback("Phiên chơi không còn hợp lệ.")))
         }
         val leaderboard = runCatching {
             leaderboardRepository.load(playerId, LEADERBOARD_SIZE)
         }.onFailure {
             System.err.println("Could not load leaderboard $playerId: ${it.message}")
         }.getOrElse {
-            return listOf(error(playerId, "LEADERBOARD_UNAVAILABLE", "Chưa tải được bảng xếp hạng."))
+            return listOf(error(playerId, "LEADERBOARD_UNAVAILABLE", legacyFallback("Chưa tải được bảng xếp hạng.")))
         }
         return listOf(Delivery(ServerMessage.LeaderboardData(leaderboard), setOf(playerId)))
     }
@@ -2010,7 +2010,7 @@ class GameEngine(
                         deliveries += Delivery(
                             ServerMessage.RoomClosed(
                                 roomId = room.id,
-                                reason = "Người chơi đã mất kết nối quá lâu.",
+                                reason = legacyFallback("Người chơi đã mất kết nối quá lâu."),
                                 messageKey = TextKey.RoomDisconnectedTooLongNotice.name,
                                 code = "ROOM_DISCONNECTED_TOO_LONG"
                             ),
@@ -2077,14 +2077,14 @@ class GameEngine(
 
     private fun createRoom(player: GuestSession, command: ClientMessage.CreateRoom): List<Delivery> {
         if (activeTournamentFor(player.playerId) != null) {
-            return listOf(error(player.playerId, "TOURNAMENT_ACTIVE", "Hãy rời hoặc hoàn tất giải đấu hiện tại trước."))
+            return listOf(error(player.playerId, "TOURNAMENT_ACTIVE", legacyFallback("Hãy rời hoặc hoàn tất giải đấu hiện tại trước.")))
         }
         if (roomFor(player.playerId) != null) {
-            return listOf(error(player.playerId, "ALREADY_IN_ROOM", "Bạn đang ở trong một phòng khác."))
+            return listOf(error(player.playerId, "ALREADY_IN_ROOM", legacyFallback("Bạn đang ở trong một phòng khác.")))
         }
         val name = command.roomName.trim().take(MAX_ROOM_NAME_LENGTH)
         if (name.isEmpty()) {
-            return listOf(error(player.playerId, "INVALID_ROOM_NAME", "Tên phòng không được để trống."))
+            return listOf(error(player.playerId, "INVALID_ROOM_NAME", legacyFallback("Tên phòng không được để trống.")))
         }
         matchmakingEntries.remove(player.playerId)
         val room = Room(
@@ -2104,15 +2104,15 @@ class GameEngine(
 
     private fun joinRoom(player: GuestSession, command: ClientMessage.JoinRoom): List<Delivery> {
         if (activeTournamentFor(player.playerId) != null) {
-            return listOf(error(player.playerId, "TOURNAMENT_ACTIVE", "Hãy rời hoặc hoàn tất giải đấu hiện tại trước."))
+            return listOf(error(player.playerId, "TOURNAMENT_ACTIVE", legacyFallback("Hãy rời hoặc hoàn tất giải đấu hiện tại trước.")))
         }
         if (roomFor(player.playerId) != null) {
-            return listOf(error(player.playerId, "ALREADY_IN_ROOM", "Bạn đang ở trong một phòng khác."))
+            return listOf(error(player.playerId, "ALREADY_IN_ROOM", legacyFallback("Bạn đang ở trong một phòng khác.")))
         }
         val room = rooms[command.roomId]
-            ?: return listOf(error(player.playerId, "ROOM_NOT_FOUND", "Phòng không còn tồn tại."))
+            ?: return listOf(error(player.playerId, "ROOM_NOT_FOUND", legacyFallback("Phòng không còn tồn tại.")))
         if (room.password != null && !room.password.matches(command.password)) {
-            return listOf(error(player.playerId, "WRONG_PASSWORD", "Mật khẩu phòng không đúng."))
+            return listOf(error(player.playerId, "WRONG_PASSWORD", legacyFallback("Mật khẩu phòng không đúng.")))
         }
 
         matchmakingEntries.remove(player.playerId)
@@ -2125,7 +2125,7 @@ class GameEngine(
 
         val maxPlayers = if (room.gameMode == com.hienthai.fastowin.protocol.ProtocolGameMode.TEAM_2V2) 4 else 2
         if (room.phase != RoomPhase.WAITING || room.playerIds().size >= maxPlayers) {
-            return listOf(error(player.playerId, "ROOM_FULL", "Phòng đã đầy hoặc đang chơi."))
+            return listOf(error(player.playerId, "ROOM_FULL", legacyFallback("Phòng đã đầy hoặc đang chơi.")))
         }
 
         if (room.guestId == null) {
@@ -2154,12 +2154,12 @@ class GameEngine(
 
     private fun setReady(player: GuestSession, command: ClientMessage.SetReady): HandleResult {
         val room = rooms[command.roomId]
-            ?: return HandleResult(listOf(error(player.playerId, "ROOM_NOT_FOUND", "Phòng không còn tồn tại.")))
+            ?: return HandleResult(listOf(error(player.playerId, "ROOM_NOT_FOUND", legacyFallback("Phòng không còn tồn tại."))))
         if (player.playerId !in room.activePlayerIds()) {
-            return HandleResult(listOf(error(player.playerId, "NOT_IN_ROOM", "Bạn không ở trong phòng này.")))
+            return HandleResult(listOf(error(player.playerId, "NOT_IN_ROOM", legacyFallback("Bạn không ở trong phòng này."))))
         }
         if (room.phase != RoomPhase.WAITING) {
-            return HandleResult(listOf(error(player.playerId, "ROOM_NOT_WAITING", "Phòng không còn ở trạng thái chờ.")))
+            return HandleResult(listOf(error(player.playerId, "ROOM_NOT_WAITING", legacyFallback("Phòng không còn ở trạng thái chờ."))))
         }
         if (command.ready) room.readyPlayerIds += player.playerId else room.readyPlayerIds -= player.playerId
         room.sequence++
@@ -2179,12 +2179,12 @@ class GameEngine(
 
     private fun kickPlayer(player: GuestSession, command: ClientMessage.KickPlayer): HandleResult {
         val room = rooms[command.roomId]
-            ?: return HandleResult(listOf(error(player.playerId, "ROOM_NOT_FOUND", "Phòng không còn tồn tại.")))
+            ?: return HandleResult(listOf(error(player.playerId, "ROOM_NOT_FOUND", legacyFallback("Phòng không còn tồn tại."))))
         if (room.hostId != player.playerId) {
-            return HandleResult(listOf(error(player.playerId, "HOST_REQUIRED", "Chỉ chủ phòng mới có thể mời người chơi ra ngoài.")))
+            return HandleResult(listOf(error(player.playerId, "HOST_REQUIRED", legacyFallback("Chỉ chủ phòng mới có thể mời người chơi ra ngoài."))))
         }
         if (room.phase != RoomPhase.WAITING || command.playerId !in room.playerIds()) {
-            return HandleResult(listOf(error(player.playerId, "PLAYER_NOT_IN_ROOM", "Người chơi không còn trong phòng.")))
+            return HandleResult(listOf(error(player.playerId, "PLAYER_NOT_IN_ROOM", legacyFallback("Người chơi không còn trong phòng."))))
         }
         val kickedPlayerId = command.playerId
         if (room.guestId == kickedPlayerId) {
@@ -2200,7 +2200,7 @@ class GameEngine(
             deliveries = listOf(
                 Delivery(ServerMessage.RoomClosed(
                     room.id,
-                    "Chủ phòng đã mời bạn ra khỏi phòng.",
+                    legacyFallback("Chủ phòng đã mời bạn ra khỏi phòng."),
                     TextKey.RoomKickedNotice.name,
                     code = "ROOM_KICKED"
                 ), setOf(kickedPlayerId)),
@@ -2213,9 +2213,9 @@ class GameEngine(
 
     private fun leaveRoom(player: GuestSession, command: ClientMessage.LeaveRoom): HandleResult {
         val room = rooms[command.roomId]
-            ?: return HandleResult(listOf(error(player.playerId, "ROOM_NOT_FOUND", "Phòng không còn tồn tại.")))
+            ?: return HandleResult(listOf(error(player.playerId, "ROOM_NOT_FOUND", legacyFallback("Phòng không còn tồn tại."))))
         if (player.playerId !in room.activePlayerIds() && player.playerId !in room.spectatorIds) {
-            return HandleResult(listOf(error(player.playerId, "NOT_IN_ROOM", "Bạn không ở trong phòng này.")))
+            return HandleResult(listOf(error(player.playerId, "NOT_IN_ROOM", legacyFallback("Bạn không ở trong phòng này."))))
         }
         if (player.playerId in room.spectatorIds) {
             room.spectatorIds.remove(player.playerId)
@@ -2234,7 +2234,7 @@ class GameEngine(
             } ?: return HandleResult(listOf(error(
                 player.playerId,
                 "FORFEIT_WINNER_NOT_FOUND",
-                "Chưa thể xử lý rời trận lúc này."
+                legacyFallback("Chưa thể xử lý rời trận lúc này.")
             )))
             room.forcedWinnerId = winnerId
             room.finishedPlayerIds += player.playerId
@@ -2261,7 +2261,7 @@ class GameEngine(
                     Delivery(
                         ServerMessage.RoomClosed(
                             room.id,
-                            "Bạn đã rời màn kết quả.",
+                            legacyFallback("Bạn đã rời màn kết quả."),
                             TextKey.ResultsLeftNotice.name,
                             code = "RESULTS_LEFT"
                         ),
@@ -2281,9 +2281,9 @@ class GameEngine(
                         ServerMessage.RoomClosed(
                             roomId = room.id,
                             reason = if (player.playerId == room.hostId) {
-                                "Chủ phòng đã rời phòng."
+                                legacyFallback("Chủ phòng đã rời phòng.")
                             } else {
-                                "${player.displayName} đã rời phòng."
+                                legacyFallback("${player.displayName} đã rời phòng.")
                             },
                             messageKey = if (player.playerId == room.hostId) {
                                 TextKey.RoomHostLeftNotice.name
@@ -2311,7 +2311,7 @@ class GameEngine(
                 deliveries = listOf(
                     Delivery(ServerMessage.RoomClosed(
                         room.id,
-                        "Chủ phòng đã rời phòng.",
+                        legacyFallback("Chủ phòng đã rời phòng."),
                         TextKey.RoomHostLeftNotice.name,
                         code = "ROOM_HOST_LEFT"
                     ), participants),
@@ -2345,12 +2345,12 @@ class GameEngine(
         accept: Boolean
     ): HandleResult {
         val room = rooms[roomId]
-            ?: return HandleResult(listOf(error(player.playerId, "ROOM_NOT_FOUND", "Phòng không còn tồn tại.")))
+            ?: return HandleResult(listOf(error(player.playerId, "ROOM_NOT_FOUND", legacyFallback("Phòng không còn tồn tại."))))
         if (player.playerId !in room.activePlayerIds()) {
-            return HandleResult(listOf(error(player.playerId, "NOT_IN_ROOM", "Bạn không ở trong phòng này.")))
+            return HandleResult(listOf(error(player.playerId, "NOT_IN_ROOM", legacyFallback("Bạn không ở trong phòng này."))))
         }
         if (room.tournamentId != null) {
-            return HandleResult(listOf(error(player.playerId, "TOURNAMENT_REMATCH_DISABLED", "Trận đấu giải không hỗ trợ đấu lại.")))
+            return HandleResult(listOf(error(player.playerId, "TOURNAMENT_REMATCH_DISABLED", legacyFallback("Trận đấu giải không hỗ trợ đấu lại."))))
         }
         if (room.matchType == MatchType.RANKED) {
             return HandleResult(
@@ -2358,16 +2358,16 @@ class GameEngine(
                     error(
                         player.playerId,
                         "RANKED_REMATCH_DISABLED",
-                        "Trận xếp hạng không hỗ trợ đấu lại. Hãy ghép một đối thủ mới."
+                        legacyFallback("Trận xếp hạng không hỗ trợ đấu lại. Hãy ghép một đối thủ mới.")
                     )
                 )
             )
         }
         if (room.phase != RoomPhase.FINISHED) {
-            return HandleResult(listOf(error(player.playerId, "REMATCH_NOT_AVAILABLE", "Chỉ có thể đấu lại sau khi trận kết thúc.")))
+            return HandleResult(listOf(error(player.playerId, "REMATCH_NOT_AVAILABLE", legacyFallback("Chỉ có thể đấu lại sau khi trận kết thúc."))))
         }
         if (room.activePlayerIds().size != 2) {
-            return HandleResult(listOf(error(player.playerId, "OPPONENT_LEFT", "Đối thủ đã rời phòng.")))
+            return HandleResult(listOf(error(player.playerId, "OPPONENT_LEFT", legacyFallback("Đối thủ đã rời phòng."))))
         }
 
         if (
@@ -2387,7 +2387,7 @@ class GameEngine(
 
         if (!accept) {
             if (room.rematchRequestedPlayerIds.isEmpty()) {
-                return HandleResult(listOf(error(player.playerId, "REMATCH_NOT_PENDING", "Không có yêu cầu đấu lại nào đang chờ.")))
+                return HandleResult(listOf(error(player.playerId, "REMATCH_NOT_PENDING", legacyFallback("Không có yêu cầu đấu lại nào đang chờ."))))
             }
             val event = if (player.playerId in room.rematchRequestedPlayerIds) {
                 RematchEvent.CANCELLED
@@ -2435,19 +2435,19 @@ class GameEngine(
 
     private fun selectNumber(player: GuestSession, command: ClientMessage.SelectNumber): HandleResult {
         val room = rooms[command.roomId]
-            ?: return HandleResult(listOf(error(player.playerId, "ROOM_NOT_FOUND", "Phòng không còn tồn tại.", command.requestId)))
+            ?: return HandleResult(listOf(error(player.playerId, "ROOM_NOT_FOUND", legacyFallback("Phòng không còn tồn tại."), command.requestId)))
         if (player.playerId !in room.playerIds()) {
-            return HandleResult(listOf(error(player.playerId, "NOT_IN_ROOM", "Bạn không ở trong phòng này.", command.requestId)))
+            return HandleResult(listOf(error(player.playerId, "NOT_IN_ROOM", legacyFallback("Bạn không ở trong phòng này."), command.requestId)))
         }
         if (command.requestId.isBlank() || command.requestId.length > MAX_REQUEST_ID_LENGTH) {
-            return HandleResult(listOf(error(player.playerId, "INVALID_REQUEST_ID", "Mã yêu cầu không hợp lệ.")))
+            return HandleResult(listOf(error(player.playerId, "INVALID_REQUEST_ID", legacyFallback("Mã yêu cầu không hợp lệ."))))
         }
         val requestKey = "${player.playerId}:${command.requestId}"
         room.processedRequests[requestKey]?.let { previous ->
             return HandleResult(listOf(Delivery(previous, setOf(player.playerId))))
         }
         if (room.processedRequests.size >= MAX_REQUESTS_PER_MATCH) {
-            return HandleResult(listOf(error(player.playerId, "TOO_MANY_REQUESTS", "Trận đấu có quá nhiều lượt gửi.")))
+            return HandleResult(listOf(error(player.playerId, "TOO_MANY_REQUESTS", legacyFallback("Trận đấu có quá nhiều lượt gửi."))))
         }
         val timedOut = room.finishIfTimedOut()
         if (room.phase != RoomPhase.PLAYING) {
@@ -2460,7 +2460,7 @@ class GameEngine(
             }
             val completedMatch = room.takeCompletedMatch()
             return HandleResult(
-                deliveries = listOf(error(player.playerId, "GAME_NOT_PLAYING", "Trận đấu chưa bắt đầu hoặc đã kết thúc.", command.requestId)),
+                deliveries = listOf(error(player.playerId, "GAME_NOT_PLAYING", legacyFallback("Trận đấu chưa bắt đầu hoặc đã kết thúc."), command.requestId)),
                 completedMatch = completedMatch,
                 changedRoomId = room.id.takeIf { completedMatch != null }
             )
@@ -2469,13 +2469,13 @@ class GameEngine(
             return HandleResult(listOf(error(
                 player.playerId,
                 "PLAYER_FINISHED",
-                "Lượt chơi của bạn đã kết thúc.",
+                legacyFallback("Lượt chơi của bạn đã kết thúc."),
                 command.requestId
             )))
         }
         val expectedNumber = room.targetFor(player.playerId)
         if (command.number != expectedNumber) {
-            val rejected = error(player.playerId, "WRONG_NUMBER", "Chưa đúng số, thử lại nhé!", command.requestId)
+            val rejected = error(player.playerId, "WRONG_NUMBER", legacyFallback("Chưa đúng số, thử lại nhé!"), command.requestId)
             room.processedRequests[requestKey] = rejected.message
             room.recordSelection(player.playerId, command, expectedNumber, SelectionResult.REJECTED)
             room.combos[player.playerId] = 0
@@ -2564,10 +2564,10 @@ class GameEngine(
 
     private fun sendEmoji(player: GuestSession, command: ClientMessage.SendEmoji): HandleResult {
         val room = rooms[command.roomId]
-            ?: return HandleResult(listOf(error(player.playerId, "ROOM_NOT_FOUND", "Không tìm thấy phòng.")))
+            ?: return HandleResult(listOf(error(player.playerId, "ROOM_NOT_FOUND", legacyFallback("Không tìm thấy phòng."))))
 
         if (player.playerId !in room.activePlayerIds() && player.playerId !in room.spectatorIds) {
-            return HandleResult(listOf(error(player.playerId, "NOT_IN_ROOM", "Bạn không ở trong phòng này.")))
+            return HandleResult(listOf(error(player.playerId, "NOT_IN_ROOM", legacyFallback("Bạn không ở trong phòng này."))))
         }
 
         val allParticipants = room.participantIds()
@@ -2599,11 +2599,11 @@ class GameEngine(
         val roomId = UUID.randomUUID().toString()
         val finalRound = tournament.matches.maxOf(TournamentMatch::round)
         val roundName = when (match.round) {
-            finalRound -> "Chung kết"
-            finalRound - 1 -> "Bán kết ${match.position}"
-            finalRound - 2 -> "Tứ kết ${match.position}"
-            finalRound - 3 -> "Vòng 1/8 ${match.position}"
-            else -> "Vòng ${match.round} • Trận ${match.position}"
+            finalRound -> legacyFallback("Chung kết")
+            finalRound - 1 -> legacyFallback("Bán kết ${match.position}")
+            finalRound - 2 -> legacyFallback("Tứ kết ${match.position}")
+            finalRound - 3 -> legacyFallback("Vòng 1/8 ${match.position}")
+            else -> legacyFallback("Vòng ${match.round} • Trận ${match.position}")
         }
         val room = Room(
             id = roomId,
@@ -3386,38 +3386,39 @@ class GameEngine(
     }
 
     private suspend fun createClan(playerId: String, name: String, description: String): List<Delivery> {
-        if (name.isBlank() || name.length > 32) return listOf(error(playerId, "INVALID_CLAN_NAME", "Tên clan không hợp lệ."))
+        if (name.isBlank() || name.length > 32) return listOf(error(playerId, "INVALID_CLAN_NAME", legacyFallback("Tên clan không hợp lệ.")))
         val clanId = clanRepository.createClan(playerId, name, description)
         return if (clanId != null) {
             listOf(Delivery(ServerMessage.ClanActionResult(
                 true,
-                "Tạo clan thành công",
+                legacyFallback("Tạo clan thành công"),
                 "create_clan",
                 TextKey.ClanCreatedNotice.name
             ), setOf(playerId)))
         } else {
-            listOf(error(playerId, "CREATE_CLAN_FAILED", "Tạo clan thất bại. Có thể bạn đã vào một clan khác hoặc tên bị trùng."))
+            listOf(error(playerId, "CREATE_CLAN_FAILED", legacyFallback("Tạo clan thất bại. Có thể bạn đã vào một clan khác hoặc tên bị trùng.")))
         }
     }
 
     private suspend fun joinClan(playerId: String, clanId: String): List<Delivery> {
         val clan = clanRepository.getClanById(clanId)
-            ?: return listOf(error(playerId, "CLAN_NOT_FOUND", "Không tìm thấy clan."))
+            ?: return listOf(error(playerId, "CLAN_NOT_FOUND", legacyFallback("Không tìm thấy clan.")))
         return when (clanRepository.requestJoinClan(playerId, clanId)) {
             ClanJoinRequestResult.REQUESTED -> {
                 val requester = playerProfileRepository.findByPlayerId(playerId)
+                val requesterName = requester?.displayName ?: legacyFallback("Một người chơi")
                 val notification = NotificationSnapshot(
                     id = UUID.randomUUID().toString(),
                     kind = NotificationKind.CLAN_INVITATION,
-                    title = "Yêu cầu vào clan",
-                    message = "${requester?.displayName ?: "Một người chơi"} muốn vào clan ${clan.name}.",
+                    title = legacyFallback("Yêu cầu vào clan"),
+                    message = legacyFallback("$requesterName muốn vào clan ${clan.name}."),
                     createdAtEpochMillis = nowMillis(),
                     destination = NotificationDestination.CLAN,
                     actionData = clanId,
                     titleKey = TextKey.PendingApproval.name,
                     messageKey = TextKey.NotificationClanJoinRequestMessage.name,
                     messageArgs = mapOf(
-                        "player" to (requester?.displayName ?: "Một người chơi"),
+                        "player" to requesterName,
                         "clan" to clan.name
                     )
                 )
@@ -3427,7 +3428,7 @@ class GameEngine(
                     add(Delivery(
                         ServerMessage.ClanActionResult(
                             success = true,
-                            message = "Đã gửi yêu cầu. Chờ bang chủ duyệt.",
+                            message = legacyFallback("Đã gửi yêu cầu. Chờ bang chủ duyệt."),
                             action = "request_join_clan",
                             messageKey = TextKey.ClanJoinRequestedNotice.name
                         ),
@@ -3443,15 +3444,15 @@ class GameEngine(
                 }
             }
             ClanJoinRequestResult.CLAN_NOT_FOUND ->
-                listOf(error(playerId, "CLAN_NOT_FOUND", "Không tìm thấy clan."))
+                listOf(error(playerId, "CLAN_NOT_FOUND", legacyFallback("Không tìm thấy clan.")))
             ClanJoinRequestResult.CLAN_FULL ->
-                listOf(error(playerId, "CLAN_FULL", "Clan đã đủ thành viên."))
+                listOf(error(playerId, "CLAN_FULL", legacyFallback("Clan đã đủ thành viên.")))
             ClanJoinRequestResult.OWN_CLAN ->
-                listOf(error(playerId, "OWN_CLAN_JOIN_REQUEST", "Bạn không thể xin vào bang do chính mình tạo."))
+                listOf(error(playerId, "OWN_CLAN_JOIN_REQUEST", legacyFallback("Bạn không thể xin vào bang do chính mình tạo.")))
             ClanJoinRequestResult.ALREADY_MEMBER ->
-                listOf(error(playerId, "ALREADY_IN_CLAN", "Bạn đã tham gia một clan."))
+                listOf(error(playerId, "ALREADY_IN_CLAN", legacyFallback("Bạn đã tham gia một clan.")))
             ClanJoinRequestResult.FAILED ->
-                listOf(error(playerId, "JOIN_CLAN_FAILED", "Không thể gửi yêu cầu vào clan này."))
+                listOf(error(playerId, "JOIN_CLAN_FAILED", legacyFallback("Không thể gửi yêu cầu vào clan này.")))
         }
     }
 
@@ -3460,12 +3461,12 @@ class GameEngine(
         command: ClientMessage.RespondClanJoinRequest
     ): List<Delivery> {
         val clan = clanRepository.getClanById(command.clanId)
-            ?: return listOf(error(playerId, "CLAN_NOT_FOUND", "Không tìm thấy clan."))
+            ?: return listOf(error(playerId, "CLAN_NOT_FOUND", legacyFallback("Không tìm thấy clan.")))
         if (clan.ownerId != playerId) {
-            return listOf(error(playerId, "NOT_CLAN_OWNER", "Chỉ bang chủ mới có thể duyệt thành viên."))
+            return listOf(error(playerId, "NOT_CLAN_OWNER", legacyFallback("Chỉ bang chủ mới có thể duyệt thành viên.")))
         }
         val requester = playerProfileRepository.findByPlayerId(command.userId)
-            ?: return listOf(error(playerId, "PLAYER_NOT_FOUND", "Không tìm thấy người chơi này."))
+            ?: return listOf(error(playerId, "PLAYER_NOT_FOUND", legacyFallback("Không tìm thấy người chơi này.")))
 
         return when (val result = clanRepository.respondJoinRequest(
             clanId = command.clanId,
@@ -3477,14 +3478,14 @@ class GameEngine(
             ClanJoinResponseResult.REJECTED -> {
                 val approved = result == ClanJoinResponseResult.APPROVED
                 val requesterMessage = if (approved) {
-                    "Yêu cầu vào clan ${clan.name} đã được duyệt."
+                    legacyFallback("Yêu cầu vào clan ${clan.name} đã được duyệt.")
                 } else {
-                    "Yêu cầu vào clan ${clan.name} đã bị từ chối."
+                    legacyFallback("Yêu cầu vào clan ${clan.name} đã bị từ chối.")
                 }
                 val notification = NotificationSnapshot(
                     id = UUID.randomUUID().toString(),
                     kind = NotificationKind.CLAN_INVITATION,
-                    title = if (approved) "Đã vào clan" else "Yêu cầu bị từ chối",
+                    title = if (approved) legacyFallback("Đã vào clan") else legacyFallback("Yêu cầu bị từ chối"),
                     message = requesterMessage,
                     createdAtEpochMillis = nowMillis(),
                     destination = NotificationDestination.CLAN,
@@ -3507,7 +3508,7 @@ class GameEngine(
                     add(Delivery(
                         ServerMessage.ClanActionResult(
                             success = true,
-                            message = if (approved) "Đã duyệt ${requester.displayName}." else "Đã từ chối ${requester.displayName}.",
+                            message = if (approved) legacyFallback("Đã duyệt ${requester.displayName}.") else legacyFallback("Đã từ chối ${requester.displayName}."),
                             action = "respond_clan_join_request",
                             messageKey = if (approved) {
                                 TextKey.ClanJoinApprovedOwnerNotice.name
@@ -3543,13 +3544,13 @@ class GameEngine(
                 }
             }
             ClanJoinResponseResult.REQUEST_NOT_FOUND ->
-                listOf(error(playerId, "CLAN_JOIN_REQUEST_NOT_FOUND", "Yêu cầu không còn tồn tại."))
+                listOf(error(playerId, "CLAN_JOIN_REQUEST_NOT_FOUND", legacyFallback("Yêu cầu không còn tồn tại.")))
             ClanJoinResponseResult.CLAN_FULL ->
-                listOf(error(playerId, "CLAN_FULL", "Clan đã đủ thành viên."))
+                listOf(error(playerId, "CLAN_FULL", legacyFallback("Clan đã đủ thành viên.")))
             ClanJoinResponseResult.ALREADY_MEMBER ->
-                listOf(error(playerId, "ALREADY_IN_CLAN", "Người chơi đã tham gia một clan khác."))
+                listOf(error(playerId, "ALREADY_IN_CLAN", legacyFallback("Người chơi đã tham gia một clan khác.")))
             ClanJoinResponseResult.FAILED ->
-                listOf(error(playerId, "CLAN_JOIN_RESPONSE_FAILED", "Không thể xử lý yêu cầu lúc này."))
+                listOf(error(playerId, "CLAN_JOIN_RESPONSE_FAILED", legacyFallback("Không thể xử lý yêu cầu lúc này.")))
         }
     }
 
@@ -3558,12 +3559,12 @@ class GameEngine(
         return if (success) {
             listOf(Delivery(ServerMessage.ClanActionResult(
                 true,
-                "Đã rời clan",
+                legacyFallback("Đã rời clan"),
                 "leave_clan",
                 TextKey.ClanLeftNotice.name
             ), setOf(playerId)))
         } else {
-            listOf(error(playerId, "LEAVE_CLAN_FAILED", "Rời clan thất bại."))
+            listOf(error(playerId, "LEAVE_CLAN_FAILED", legacyFallback("Rời clan thất bại.")))
         }
     }
 
@@ -3572,7 +3573,7 @@ class GameEngine(
         return if (clan != null) {
             listOf(Delivery(ServerMessage.ClanInfoData(clan), setOf(playerId)))
         } else {
-            listOf(error(playerId, "CLAN_NOT_FOUND", "Không tìm thấy clan."))
+            listOf(error(playerId, "CLAN_NOT_FOUND", legacyFallback("Không tìm thấy clan.")))
         }
     }
 
@@ -3584,38 +3585,38 @@ class GameEngine(
 
     private suspend fun kickClanMember(playerId: String, clanId: String, memberId: String): List<Delivery> {
         val clan = clanRepository.getClanById(clanId)
-            ?: return listOf(error(playerId, "CLAN_NOT_FOUND", "Không tìm thấy bang hội."))
+            ?: return listOf(error(playerId, "CLAN_NOT_FOUND", legacyFallback("Không tìm thấy bang hội.")))
         if (clan.ownerId != playerId) {
-            return listOf(error(playerId, "NOT_CLAN_OWNER", "Chỉ bang chủ mới có thể mời thành viên rời bang."))
+            return listOf(error(playerId, "NOT_CLAN_OWNER", legacyFallback("Chỉ bang chủ mới có thể mời thành viên rời bang.")))
         }
         val success = clanRepository.kickMember(clanId, playerId, memberId)
         return if (success) {
             getClanInfo(playerId, clanId)
         } else {
-            listOf(error(playerId, "KICK_FAILED", "Không thể mời thành viên này rời bang."))
+            listOf(error(playerId, "KICK_FAILED", legacyFallback("Không thể mời thành viên này rời bang.")))
         }
     }
 
     private suspend fun inviteToClan(playerId: String, playerCode: String): List<Delivery> {
         val inviterProfile = playerProfileRepository.findByPlayerId(playerId)
         val clanId = inviterProfile?.clanId
-            ?: return listOf(error(playerId, "NOT_IN_CLAN", "Bạn chưa tham gia bang hội nào."))
+            ?: return listOf(error(playerId, "NOT_IN_CLAN", legacyFallback("Bạn chưa tham gia bang hội nào.")))
         
         val clan = clanRepository.getClanById(clanId)
-            ?: return listOf(error(playerId, "CLAN_NOT_FOUND", "Không tìm thấy bang hội."))
+            ?: return listOf(error(playerId, "CLAN_NOT_FOUND", legacyFallback("Không tìm thấy bang hội.")))
 
         val targetPlayer = playerProfileRepository.findByPlayerCode(playerCode)
-            ?: return listOf(error(playerId, "PLAYER_NOT_FOUND", "Không tìm thấy người chơi này."))
+            ?: return listOf(error(playerId, "PLAYER_NOT_FOUND", legacyFallback("Không tìm thấy người chơi này.")))
         
         if (targetPlayer.clanId != null) {
-            return listOf(error(playerId, "ALREADY_IN_CLAN", "Người chơi này đã có bang hội."))
+            return listOf(error(playerId, "ALREADY_IN_CLAN", legacyFallback("Người chơi này đã có bang hội.")))
         }
 
         val notification = NotificationSnapshot(
             id = UUID.randomUUID().toString(),
             kind = NotificationKind.CLAN_INVITATION,
-            title = "Lời mời vào bang",
-            message = "${inviterProfile.displayName} mời bạn vào bang ${clan.name}",
+            title = legacyFallback("Lời mời vào bang"),
+            message = legacyFallback("${inviterProfile.displayName} mời bạn vào bang ${clan.name}"),
             createdAtEpochMillis = System.currentTimeMillis(),
             destination = NotificationDestination.CLAN,
             actionData = clanId,
@@ -3631,7 +3632,7 @@ class GameEngine(
         
         return listOf(
             Delivery(ServerMessage.NotificationsData(notificationRepository.loadNotifications(targetPlayer.userId)), setOf(targetPlayer.userId)),
-            error(playerId, "INVITE_SENT", "Đã gửi lời mời.")
+            error(playerId, "INVITE_SENT", legacyFallback("Đã gửi lời mời."))
         )
     }
     suspend fun getAvatarData(playerId: String): String? = playerProfileRepository.getAvatarData(playerId)
@@ -3642,7 +3643,7 @@ class GameEngine(
         if (success) {
             return loadProfile(playerId)
         }
-        return listOf(error(playerId, "UPLOAD_FAILED", "Không thể tải ảnh đại diện lên."))
+        return listOf(error(playerId, "UPLOAD_FAILED", legacyFallback("Không thể tải ảnh đại diện lên.")))
     }
 
 
@@ -3652,7 +3653,7 @@ class GameEngine(
         if (success) {
             return loadProfile(playerId)
         }
-        return listOf(error(playerId, "BUY_FAILED", "Không thể mua vật phẩm này."))
+        return listOf(error(playerId, "BUY_FAILED", legacyFallback("Không thể mua vật phẩm này.")))
     }
 
     private suspend fun equipCosmetic(playerId: String, cosmeticId: String): List<Delivery> {
@@ -3672,15 +3673,15 @@ class GameEngine(
     }
     private suspend fun updateClanLogo(playerId: String, clanId: String, logoId: String): List<Delivery> {
         val clan = clanRepository.getClanById(clanId)
-            ?: return listOf(error(playerId, "CLAN_NOT_FOUND", "Không tìm thấy bang hội."))
+            ?: return listOf(error(playerId, "CLAN_NOT_FOUND", legacyFallback("Không tìm thấy bang hội.")))
         if (clan.ownerId != playerId) {
-            return listOf(error(playerId, "NOT_CLAN_OWNER", "Chỉ đội trưởng mới có thể đổi logo."))
+            return listOf(error(playerId, "NOT_CLAN_OWNER", legacyFallback("Chỉ đội trưởng mới có thể đổi logo.")))
         }
         val success = clanRepository.updateLogoId(clanId, logoId)
         if (success) {
             return getClanInfo(playerId, clanId)
         }
-        return listOf(error(playerId, "UPLOAD_FAILED", "Không thể cập nhật logo."))
+        return listOf(error(playerId, "UPLOAD_FAILED", legacyFallback("Không thể cập nhật logo.")))
     }
 
     private suspend fun claimClanQuestReward(playerId: String, clanId: String): List<Delivery> {

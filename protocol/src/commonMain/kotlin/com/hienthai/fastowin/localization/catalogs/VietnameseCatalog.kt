@@ -26,7 +26,7 @@ internal val vietnameseCatalog = LocalizationCatalog(
         TextKey.Loading to "Đang tải…",
         TextKey.UnknownError to "Đã có lỗi xảy ra. Vui lòng thử lại.",
         TextKey.WelcomePlayer to "Chào {player}!"
-) + vietnameseShellAuthTexts + vietnameseGameplayTexts + vietnameseProfileTexts + vietnameseSocialShopTexts + vietnameseProtocolMessageTexts + vietnameseDeliveryTexts,
+) + vietnameseShellAuthTexts + vietnameseGameplayTexts + vietnameseProfileTexts + vietnameseSocialShopTexts + vietnameseProtocolMessageTexts + vietnameseDeliveryTexts + residualTexts(AppLanguage.VIETNAMESE),
     quantities = mapOf(
         QuantityKey.Players to mapOf(
             PluralCategory.OTHER to "{count} người chơi"

@@ -188,10 +188,10 @@ internal data class ServerTextTemplate(
 internal fun defaultSeasonName(number: Int) = ServerTextTemplate(
     key = TextKey.SeasonDefaultName,
     arguments = mapOf("season" to number.toString()),
-    fallback = "Mùa $number"
+    fallback = legacyFallback("Mùa $number")
 )
 
 internal fun defaultSeasonRewardDescription() = ServerTextTemplate(
     key = TextKey.SeasonDefaultRewardDescription,
-    fallback = "Vàng và Gem theo bậc xếp hạng cao nhất"
+    fallback = legacyFallback("Vàng và Gem theo bậc xếp hạng cao nhất")
 )

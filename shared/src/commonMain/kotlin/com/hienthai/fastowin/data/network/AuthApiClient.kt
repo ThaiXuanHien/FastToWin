@@ -189,7 +189,7 @@ class AuthApiClient(
         val error = runCatching { body<AuthErrorResponse>() }.getOrNull()
         return AuthApiException(
             code = error?.code ?: "NETWORK_ERROR",
-            message = error?.message ?: "Máy chủ không xử lý được yêu cầu đăng nhập.",
+            message = error?.message ?: "The server could not process the authentication request.",
             messageKey = error?.messageKey,
             messageArgs = error?.messageArgs.orEmpty()
         )

@@ -1,4 +1,4 @@
-import { test, expect, tag, click, login } from '../support/game.mjs';
+import { test, expect, tag, click, login, selectLanguage } from '../support/game.mjs';
 
 async function expectHorizontalFit(page, locator, label) {
   await expect(locator, `${label} is rendered`).toBeAttached();
@@ -48,4 +48,26 @@ test('top-level navigation and room creation fit the configured viewport', async
   await click(page, tag(page, 'game_mode:ORDER'));
   await expectHorizontalFit(page, tag(page, 'create_room_name'), 'Create room name field');
   await expectHorizontalFit(page, tag(page, 'create_room_submit'), 'Create room submit action');
+});
+
+test('language change keeps the active route and route history', async ({ actors }, testInfo) => {
+  test.skip(testInfo.project.name === 'chromium-landscape', 'Compact landscape Settings scrolling is covered by the layout test.');
+  const player = await actors(`Language route ${testInfo.project.name}`);
+  const { page } = player;
+  await login(player);
+
+  await click(page, tag(page, 'bottom_tab:rooms'));
+  await expect(page).toHaveURL(/\/rooms$/);
+  await click(page, tag(page, 'bottom_tab:account'));
+  await click(page, tag(page, 'profile_settings'));
+  await expect(page).toHaveURL(/\/settings$/);
+
+  await selectLanguage(page, 'de');
+  await expect(page.locator('html')).toHaveAttribute('lang', 'de');
+  await expect(page).toHaveURL(/\/settings$/);
+
+  await player.navigate(() => page.goBack());
+  await expect(page).toHaveURL(/\/account$/);
+  await player.navigate(() => page.goBack());
+  await expect(page).toHaveURL(/\/rooms$/);
 });

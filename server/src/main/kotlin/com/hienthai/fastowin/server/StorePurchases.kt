@@ -21,9 +21,9 @@ import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
 
 val GEM_STORE_PACKAGES = listOf(
-    GemPackageSnapshot("fasttowin_gems_80", "Gói Tân binh", 80),
-    GemPackageSnapshot("fasttowin_gems_250", "Gói Bứt tốc", 250, featured = true),
-    GemPackageSnapshot("fasttowin_gems_650", "Gói Cao thủ", 650)
+    GemPackageSnapshot("fasttowin_gems_80", legacyFallback("Gói Tân binh"), 80),
+    GemPackageSnapshot("fasttowin_gems_250", legacyFallback("Gói Bứt tốc"), 250, featured = true),
+    GemPackageSnapshot("fasttowin_gems_650", legacyFallback("Gói Cao thủ"), 650)
 )
 
 data class StorePurchaseVerification(
@@ -53,7 +53,7 @@ fun interface StorePurchaseVerifier {
 object RejectingStorePurchaseVerifier : StorePurchaseVerifier {
     override suspend fun verify(purchase: StorePurchaseVerification) = StoreVerificationResult(
         StoreVerificationStatus.UNAVAILABLE,
-        "Xác thực thanh toán chưa được cấu hình."
+        legacyFallback("Xác thực thanh toán chưa được cấu hình.")
     )
 }
 
@@ -64,14 +64,14 @@ class EnvironmentStorePurchaseVerifier(
 ) : StorePurchaseVerifier {
     override suspend fun verify(purchase: StorePurchaseVerification): StoreVerificationResult {
         if (environment == "dev" && purchase.purchaseToken.startsWith("dev:${purchase.store.name}:")) {
-            return StoreVerificationResult(StoreVerificationStatus.PURCHASED, "Giao dịch sandbox hợp lệ.")
+            return StoreVerificationResult(StoreVerificationStatus.PURCHASED, legacyFallback("Giao dịch sandbox hợp lệ."))
         }
         return when (purchase.store) {
             StorePlatform.GOOGLE_PLAY -> googlePlayVerifier
             StorePlatform.APP_STORE -> appStoreVerifier
         }?.verify(purchase) ?: StoreVerificationResult(
             StoreVerificationStatus.UNAVAILABLE,
-            "Store chưa được cấu hình trên máy chủ."
+            legacyFallback("Store chưa được cấu hình trên máy chủ.")
         )
     }
 }
@@ -107,7 +107,7 @@ class GooglePlayPurchaseVerifier(
                     } else {
                         StoreVerificationStatus.UNAVAILABLE
                     }
-                    return@withContext StoreVerificationResult(status, "Google Play từ chối giao dịch.")
+                    return@withContext StoreVerificationResult(status, legacyFallback("Google Play từ chối giao dịch."))
                 }
                 val payload = Json.parseToJsonElement(response.body()).jsonObject
                 val state = payload["purchaseStateContext"]
@@ -120,13 +120,13 @@ class GooglePlayPurchaseVerifier(
                     ?.jsonPrimitive?.contentOrNull
                 val accountMatches = purchasedAccount == null || purchasedAccount == expectedAccount
                 if (state == "PURCHASED" && productMatches && accountMatches) {
-                    StoreVerificationResult(StoreVerificationStatus.PURCHASED, "Google Play đã xác thực.")
+                    StoreVerificationResult(StoreVerificationStatus.PURCHASED, legacyFallback("Google Play đã xác thực."))
                 } else {
-                    StoreVerificationResult(StoreVerificationStatus.INVALID, "Giao dịch chưa hoàn tất hoặc không khớp tài khoản.")
+                    StoreVerificationResult(StoreVerificationStatus.INVALID, legacyFallback("Giao dịch chưa hoàn tất hoặc không khớp tài khoản."))
                 }
             } catch (error: Throwable) {
                 System.err.println("Google Play purchase verification failed: ${error.message}")
-                StoreVerificationResult(StoreVerificationStatus.UNAVAILABLE, "Chưa thể kết nối Google Play để xác thực.")
+                StoreVerificationResult(StoreVerificationStatus.UNAVAILABLE, legacyFallback("Chưa thể kết nối Google Play để xác thực."))
             }
         }
 }

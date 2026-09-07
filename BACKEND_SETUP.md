@@ -125,6 +125,17 @@ Mỗi trận cấp XP và vàng theo kết quả. Hồ sơ hiển thị cấp đ
 
 Trung tâm **Thông báo** của tài khoản được lưu trong PostgreSQL và đồng bộ trạng thái đã đọc/xóa qua WebSocket giữa các thiết bị. Server tạo thông báo lời mời kết bạn/phòng; client so sánh hai lần tải hồ sơ liên tiếp để phát hiện nhiệm vụ, thành tích hoặc vật phẩm vừa mở rồi đồng bộ idempotent lên server. Lần tải hồ sơ đầu tiên chỉ tạo mốc nên không báo lại toàn bộ phần thưởng cũ. Guest vẫn dùng thông báo theo phiên ứng dụng. Đây chưa phải push notification của hệ điều hành.
 
+Migration `V41__localize_notifications.sql` bổ sung `title_key`, `title_args`,
+`message_key` và `message_args`; các cột khóa là nullable và các map đối số mặc
+định là object rỗng để client cũ vẫn đọc raw `title`/`message`. Migration
+`V42__store_notification_locale.sql` bổ sung `users.notification_language` với
+giá trị mặc định `en`. Client cập nhật trường này khi đăng ký FCM token; server
+dùng nó cho push và email phát sinh sau đó. Tag bị thiếu hoặc không thuộc 12
+ngôn ngữ được chuẩn hóa về tiếng Anh. Khi rollback application qua V42, giữ cột
+này là an toàn; chỉ xóa cột sau khi mọi binary đang chạy không còn đọc/ghi nó.
+Không đưa email, token, mật khẩu hoặc secret vào `messageArgs`, log localization
+hay raw fallback.
+
 ## API tài khoản email
 
 Backend hỗ trợ tài khoản email/mật khẩu qua JSON API:

@@ -277,23 +277,23 @@ private fun seedSeasonData(
     now: Instant
 ) {
     val seasons = listOf(
-        SeedSeason(900001, "[DEV] Mùa Bứt Phá", 1_380, 1_420, 18, 24, "GOLD", 1_000, 1, "FRAME"),
-        SeedSeason(900002, "[DEV] Mùa Kim Cương", 1_860, 1_940, 6, 31, "DIAMOND", 2_500, 5, "FRAME"),
-        SeedSeason(900003, "[DEV] Mùa Thách Đấu", 2_430, 2_510, 1, 40, "CHALLENGER", 6_000, 12, "FRAME")
+        SeedSeason(900001, legacyFallback("[DEV] Mùa Bứt Phá"), 1_380, 1_420, 18, 24, "GOLD", 1_000, 1, "FRAME"),
+        SeedSeason(900002, legacyFallback("[DEV] Mùa Kim Cương"), 1_860, 1_940, 6, 31, "DIAMOND", 2_500, 5, "FRAME"),
+        SeedSeason(900003, legacyFallback("[DEV] Mùa Thách Đấu"), 2_430, 2_510, 1, 40, "CHALLENGER", 6_000, 12, "FRAME")
     )
     seasons.forEachIndexed { index, season ->
         val seasonId = stableUuid("season:${season.number}")
         val end = now.minusSeconds(((seasons.size - index) * 45L + 10L) * 86_400L)
         val start = end.minusSeconds(90L * 86_400L)
         connection.update(
-            """
+            legacyFallback("""
             INSERT INTO seasons (
                 id, name, starts_at, ends_at, reward_description, season_number, closed_at
             ) VALUES (?, ?, ?, ?, 'Thưởng đầy đủ cho tài khoản kiểm thử', ?, ?)
             ON CONFLICT (id) DO UPDATE SET
                 name = EXCLUDED.name, starts_at = EXCLUDED.starts_at, ends_at = EXCLUDED.ends_at,
                 reward_description = EXCLUDED.reward_description, closed_at = EXCLUDED.closed_at
-            """.trimIndent()
+            """).trimIndent()
         ) {
             it.setObject(1, seasonId)
             it.setString(2, season.name)
@@ -414,8 +414,8 @@ private fun seedSupportPlayers(
     passwordHash: String,
     now: Instant
 ): List<SeedPlayer> = listOf(
-    SeedPlayer(stableUuid("support:one"), "Đối thủ Dev", "DEVOPP001", "target"),
-    SeedPlayer(stableUuid("support:two"), "Bạn Dev", "DEVFRIEND1", "rocket")
+    SeedPlayer(stableUuid("support:one"), legacyFallback("Đối thủ Dev"), "DEVOPP001", "target"),
+    SeedPlayer(stableUuid("support:two"), legacyFallback("Bạn Dev"), "DEVFRIEND1", "rocket")
 ).onEachIndexed { index, player ->
     connection.update(
         """
@@ -618,7 +618,7 @@ private fun seedClan(connection: Connection, userId: UUID, memberId: UUID, now: 
         it.setObject(3, clanId)
     }
     connection.update(
-        """
+        legacyFallback("""
         INSERT INTO clans (
             id, name, description, owner_id, trophies, created_at, logo_id,
             quest_progress, quest_target, quest_reward_gold, quest_reward_xp, quest_reward_gems
@@ -631,7 +631,7 @@ private fun seedClan(connection: Connection, userId: UUID, memberId: UUID, now: 
             quest_reward_gold = EXCLUDED.quest_reward_gold,
             quest_reward_xp = EXCLUDED.quest_reward_xp,
             quest_reward_gems = EXCLUDED.quest_reward_gems
-        """.trimIndent()
+        """).trimIndent()
     ) {
         it.setObject(1, clanId)
         it.setObject(2, userId)
@@ -665,35 +665,35 @@ internal fun seedNotifications(connection: Connection, userId: UUID, now: Instan
         SeedNotification(
             id = "dev-achievement",
             kind = "ACHIEVEMENT",
-            title = "Đã mở mọi thành tích",
-            message = "Tài khoản test đã sẵn sàng.",
+            title = legacyFallback("Đã mở mọi thành tích"),
+            message = legacyFallback("Tài khoản test đã sẵn sàng."),
             titleKey = TextKey.AchievementsTitle,
             messageKey = TextKey.NotificationAchievementMessage,
             messageArgs = mapOf(
                 "code" to "FIRST_WIN",
-                "title" to "Chiến thắng đầu tiên",
-                "description" to "Thắng trận đầu tiên."
+                "title" to legacyFallback("Chiến thắng đầu tiên"),
+                "description" to legacyFallback("Thắng trận đầu tiên.")
             )
         ),
         SeedNotification(
             id = "dev-cosmetic",
             kind = "COSMETIC",
-            title = "Bộ sưu tập hoàn chỉnh",
-            message = "Tất cả vật phẩm test đã được mở khóa.",
+            title = legacyFallback("Bộ sưu tập hoàn chỉnh"),
+            message = legacyFallback("Tất cả vật phẩm test đã được mở khóa."),
             titleKey = TextKey.Unlocked,
             messageKey = TextKey.NotificationCosmeticMessage,
-            messageArgs = mapOf("id" to "frame_gold", "name" to "Khung Vàng")
+            messageArgs = mapOf("id" to "frame_gold", "name" to legacyFallback("Khung Vàng"))
         ),
         SeedNotification(
             id = "dev-mission",
             kind = "MISSION",
-            title = "Nhiệm vụ sẵn sàng",
-            message = "Có nhiệm vụ hoàn thành đang chờ nhận thưởng.",
+            title = legacyFallback("Nhiệm vụ sẵn sàng"),
+            message = legacyFallback("Có nhiệm vụ hoàn thành đang chờ nhận thưởng."),
             titleKey = TextKey.MissionCompleted,
             messageKey = TextKey.NotificationMissionMessage,
             messageArgs = mapOf(
                 "code" to "DAILY_WIN_1",
-                "title" to "Thắng một trận",
+                "title" to legacyFallback("Thắng một trận"),
                 "titleKey" to TextKey.MissionWinOne.name,
                 "rewardGold" to "150",
                 "rewardXp" to "25",

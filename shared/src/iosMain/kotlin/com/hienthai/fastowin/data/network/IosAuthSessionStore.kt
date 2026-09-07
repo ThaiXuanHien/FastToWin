@@ -82,7 +82,7 @@ class IosAuthSessionStore : AuthSessionStore {
         if (status != errSecSuccess) {
             throw AuthSessionStoreException(
                 code = "IOS_KEYCHAIN_SAVE_FAILED",
-                message = "Không thể lưu phiên đăng nhập vào iOS Keychain."
+                message = "Could not save the authentication session to iOS Keychain."
             )
         }
     }

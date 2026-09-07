@@ -119,8 +119,17 @@ export const test = base.extend({
         await actor.context?.close();
       } catch (error) { cleanupErrors.push(error); }
       try {
+        const cleanupSessionResponse = await request.post(`${process.env.E2E_API_URL}/auth/login`, {
+          data: {
+            email: actor.account.email,
+            password: actor.account.password,
+            devicePlatform: 'web-e2e-cleanup',
+          },
+        });
+        expect(cleanupSessionResponse.ok(), `Open cleanup session for ${actor.account.email}`).toBeTruthy();
+        const cleanupSession = await cleanupSessionResponse.json();
         const deleted = await request.post(`${process.env.E2E_API_URL}/auth/delete-account`, {
-          data: { accessToken: actor.accessToken, password: actor.account.password },
+          data: { accessToken: cleanupSession.accessToken, password: actor.account.password },
         });
         expect(deleted.ok(), `Clean up disposable account ${actor.account.email}`).toBeTruthy();
         expect(actor.errors, 'No uncaught browser errors').toEqual([]);
@@ -176,9 +185,26 @@ export async function login(actor) {
   await click(page, tag(page, 'auth_login_submit'));
   const loginResponse = await loginResponsePromise;
   expect(loginResponse.ok(), 'Login through the visible Web form').toBeTruthy();
-  actor.accessToken = (await loginResponse.json()).accessToken;
   await click(page, page.getByRole('button', { name: 'Bỏ qua', exact: true }));
   await expect(tag(page, 'home_screen')).toBeAttached();
+}
+
+export async function selectLanguage(page, languageCode) {
+  const dialog = tag(page, 'language_dialog');
+  const option = tag(page, `language_option_${languageCode}`);
+  for (let attempt = 0; attempt < 3 && await dialog.count() === 0; attempt++) {
+    await click(page, tag(page, 'language_setting'));
+    await page.waitForTimeout(250);
+  }
+  await expect(dialog).toBeAttached();
+  for (let attempt = 0; attempt < 12 && await option.count() === 0; attempt++) {
+    const bounds = await dialog.boundingBox();
+    if (!bounds) break;
+    await page.mouse.move(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
+    await page.mouse.wheel(0, 320);
+    await page.waitForTimeout(150);
+  }
+  await click(page, option);
 }
 
 export async function createRoom(actor) {

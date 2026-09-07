@@ -89,7 +89,7 @@ class GameSocketClient(
                             reconnectEnabled = false
                             onAccountSessionExpired?.invoke(
                                 "SESSION_EXPIRED",
-                                "Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại."
+                                "Your session has expired. Please sign in again."
                             )
                             return@webSocket
                         }
@@ -109,7 +109,7 @@ class GameSocketClient(
                             _messages.send(
                                 socketClientError(
                                     code = "PROTOCOL_DECODE_FAILED",
-                                    message = "Không đọc được phản hồi máy chủ: ${error.message}"
+                                    message = "Could not decode the server response: ${error.message}"
                                 )
                             )
                             continue
@@ -142,12 +142,12 @@ class GameSocketClient(
                         reconnectEnabled = false
                         onAccountSessionExpired?.invoke(
                             "SESSION_REPLACED",
-                            "Tài khoản đã đăng nhập trên thiết bị khác. Vui lòng đăng nhập lại."
+                            "Your account signed in on another device. Please sign in again."
                         )
                         _messages.send(
                             socketClientError(
                                 code = "SESSION_REPLACED",
-                                message = "Tài khoản đã đăng nhập trên thiết bị khác."
+                                message = "Your account signed in on another device."
                             )
                         )
                     }
@@ -158,7 +158,7 @@ class GameSocketClient(
                 _messages.send(
                     socketClientError(
                         code = "CONNECTION_FAILED",
-                        message = "Không thể kết nối $serverUrl: ${error.message}. Đang thử lại..."
+                        message = "Could not connect to $serverUrl: ${error.message}. Retrying…"
                     )
                 )
             } finally {
@@ -184,7 +184,7 @@ class GameSocketClient(
             _messages.send(
                 socketClientError(
                     code = "CONNECTION_NOT_READY",
-                    message = "Chưa kết nối được máy chủ. Vui lòng đợi hoặc thử lại."
+                    message = "The server connection is not ready. Please wait or try again."
                 )
             )
             return
@@ -195,7 +195,7 @@ class GameSocketClient(
             _messages.send(
                 socketClientError(
                     code = "SEND_FAILED",
-                    message = "Không gửi được dữ liệu: ${error.message}"
+                    message = "Could not send data: ${error.message}"
                 )
             )
         }

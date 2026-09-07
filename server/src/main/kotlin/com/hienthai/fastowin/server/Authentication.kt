@@ -148,14 +148,14 @@ class AuthenticationService(
         gender: PlayerGender = PlayerGender.MALE
     ): AuthResult {
         val normalizedEmail = normalizeEmail(email)
-            ?: return AuthResult.Failure("INVALID_EMAIL", "Email không hợp lệ.")
+            ?: return AuthResult.Failure("INVALID_EMAIL", legacyFallback("Email không hợp lệ."))
         val passwordError = validatePassword(password)
         if (passwordError != null) return AuthResult.Failure("INVALID_PASSWORD", passwordError)
         val safeName = displayName.trim()
         if (safeName.isEmpty() || safeName.length > MAX_DISPLAY_NAME_LENGTH) {
             return AuthResult.Failure(
                 "INVALID_DISPLAY_NAME",
-                "Biệt danh phải có từ 1 đến $MAX_DISPLAY_NAME_LENGTH ký tự."
+                legacyFallback("Biệt danh phải có từ 1 đến $MAX_DISPLAY_NAME_LENGTH ký tự.")
             )
         }
 
@@ -175,7 +175,7 @@ class AuthenticationService(
                 gender = gender
             )
         )
-        if (!created) return AuthResult.Failure("EMAIL_ALREADY_EXISTS", "Email này đã được sử dụng.")
+        if (!created) return AuthResult.Failure("EMAIL_ALREADY_EXISTS", legacyFallback("Email này đã được sử dụng."))
         return AuthResult.Success(issued.response)
     }
 
@@ -207,7 +207,7 @@ class AuthenticationService(
     ): AuthResult {
         if (!isValidTokenShape(resumeToken)) return invalidGuestSession()
         val normalizedEmail = normalizeEmail(email)
-            ?: return AuthResult.Failure("INVALID_EMAIL", "Email không hợp lệ.")
+            ?: return AuthResult.Failure("INVALID_EMAIL", legacyFallback("Email không hợp lệ."))
         val passwordError = validatePassword(password)
         if (passwordError != null) return AuthResult.Failure("INVALID_PASSWORD", passwordError)
 
@@ -233,11 +233,11 @@ class AuthenticationService(
             GuestUpgradeResult.InvalidGuestSession -> invalidGuestSession()
             GuestUpgradeResult.EmailAlreadyExists -> AuthResult.Failure(
                 "EMAIL_ALREADY_EXISTS",
-                "Email này đã được sử dụng."
+                legacyFallback("Email này đã được sử dụng.")
             )
             GuestUpgradeResult.Unsupported -> AuthResult.Failure(
                 "DATABASE_REQUIRED",
-                "Cần chạy server cùng PostgreSQL để lưu tài khoản khách."
+                legacyFallback("Cần chạy server cùng PostgreSQL để lưu tài khoản khách.")
             )
         }
     }
@@ -282,11 +282,11 @@ class AuthenticationService(
         val authenticated = authenticateAccessToken(accessToken)
             ?: return invalidAccountSession()
         val targetSessionId = runCatching { UUID.fromString(sessionId) }.getOrNull()
-            ?: return AccountActionResult.Failure("INVALID_SESSION_ID", "Phiên đăng nhập không hợp lệ.")
+            ?: return AccountActionResult.Failure("INVALID_SESSION_ID", legacyFallback("Phiên đăng nhập không hợp lệ."))
         return if (repository.revokeSessionById(authenticated.userId, targetSessionId, nowMillis())) {
-            AccountActionResult.Success("Đã đăng xuất thiết bị.", messageKey = TextKey.SessionRevoked.name)
+            AccountActionResult.Success(legacyFallback("Đã đăng xuất thiết bị."), messageKey = TextKey.SessionRevoked.name)
         } else {
-            AccountActionResult.Failure("SESSION_NOT_FOUND", "Phiên đăng nhập không còn hoạt động.")
+            AccountActionResult.Failure("SESSION_NOT_FOUND", legacyFallback("Phiên đăng nhập không còn hoạt động."))
         }
     }
 
@@ -294,7 +294,7 @@ class AuthenticationService(
         val authenticated = authenticateAccessToken(accessToken)
             ?: return invalidAccountSession()
         repository.revokeAllSessions(authenticated.userId, nowMillis())
-        return AccountActionResult.Success("Đã đăng xuất khỏi tất cả thiết bị.", messageKey = TextKey.AllSessionsRevoked.name)
+        return AccountActionResult.Success(legacyFallback("Đã đăng xuất khỏi tất cả thiết bị."), messageKey = TextKey.AllSessionsRevoked.name)
     }
 
     suspend fun changePassword(
@@ -311,23 +311,23 @@ class AuthenticationService(
         }
         if (!matches) return AccountActionResult.Failure(
             "INVALID_CURRENT_PASSWORD",
-            "Mật khẩu hiện tại không đúng."
+            legacyFallback("Mật khẩu hiện tại không đúng.")
         )
         val passwordError = validatePassword(newPassword)
         if (passwordError != null) return AccountActionResult.Failure("INVALID_PASSWORD", passwordError)
         if (currentPassword == newPassword) return AccountActionResult.Failure(
             "PASSWORD_UNCHANGED",
-            "Mật khẩu mới phải khác mật khẩu hiện tại."
+            legacyFallback("Mật khẩu mới phải khác mật khẩu hiện tại.")
         )
         val passwordHash = withContext(Dispatchers.Default) { passwordHasher.hash(newPassword) }
         return if (repository.updatePasswordAndRevokeSessions(authenticated.userId, passwordHash, nowMillis())) {
-            AccountActionResult.Success("Đã đổi mật khẩu. Vui lòng đăng nhập lại.", messageKey = TextKey.PasswordChanged.name)
+            AccountActionResult.Success(legacyFallback("Đã đổi mật khẩu. Vui lòng đăng nhập lại."), messageKey = TextKey.PasswordChanged.name)
         } else invalidAccountSession()
     }
 
     suspend fun requestPasswordReset(email: String): AccountActionResult {
         val normalizedEmail = normalizeEmail(email)
-            ?: return AccountActionResult.Failure("INVALID_EMAIL", "Email không hợp lệ.")
+            ?: return AccountActionResult.Failure("INVALID_EMAIL", legacyFallback("Email không hợp lệ."))
         val now = nowMillis()
         val token = newToken()
         val created = repository.createPasswordReset(
@@ -340,7 +340,7 @@ class AuthenticationService(
             )
         )
         return AccountActionResult.Success(
-            "Nếu email tồn tại, hướng dẫn khôi phục mật khẩu đã được tạo.",
+            legacyFallback("Nếu email tồn tại, hướng dẫn khôi phục mật khẩu đã được tạo."),
             resetToken = token.takeIf { created },
             messageKey = TextKey.PasswordResetSent.name
         )
@@ -363,7 +363,7 @@ class AuthenticationService(
                 passwordHash,
                 nowMillis()
             )) {
-            AccountActionResult.Success("Đã đặt lại mật khẩu. Bạn có thể đăng nhập ngay.", messageKey = TextKey.PasswordResetCompleted.name)
+            AccountActionResult.Success(legacyFallback("Đã đặt lại mật khẩu. Bạn có thể đăng nhập ngay."), messageKey = TextKey.PasswordResetCompleted.name)
         } else invalidPasswordReset()
     }
 
@@ -383,13 +383,13 @@ class AuthenticationService(
         ) ?: return invalidAccountSession()
         if (destination.alreadyVerified) {
             return AccountActionResult.Success(
-                message = "Email của bạn đã được xác minh.",
+                message = legacyFallback("Email của bạn đã được xác minh."),
                 emailVerified = true,
                 messageKey = TextKey.EmailVerified.name
             )
         }
         return AccountActionResult.Success(
-            message = "Mã xác minh đã được gửi tới email của bạn.",
+            message = legacyFallback("Mã xác minh đã được gửi tới email của bạn."),
             emailVerificationCode = code,
             emailRecipient = destination.emailNormalized,
             messageKey = TextKey.EmailVerificationSent.name
@@ -411,7 +411,7 @@ class AuthenticationService(
                 hashToken(normalizedCode),
                 nowMillis()
             )) {
-            AccountActionResult.Success("Xác minh email thành công.", emailVerified = true, messageKey = TextKey.EmailVerified.name)
+            AccountActionResult.Success(legacyFallback("Xác minh email thành công."), emailVerified = true, messageKey = TextKey.EmailVerified.name)
         } else {
             invalidEmailVerification()
         }
@@ -427,10 +427,10 @@ class AuthenticationService(
         }
         if (!matches) return AccountActionResult.Failure(
             "INVALID_CURRENT_PASSWORD",
-            "Mật khẩu không đúng."
+            legacyFallback("Mật khẩu không đúng.")
         )
         return if (repository.deleteAccount(authenticated.userId)) {
-            AccountActionResult.Success("Tài khoản và dữ liệu cá nhân đã được xóa.", messageKey = TextKey.AccountDeleted.name)
+            AccountActionResult.Success(legacyFallback("Tài khoản và dữ liệu cá nhân đã được xóa."), messageKey = TextKey.AccountDeleted.name)
         } else invalidAccountSession()
     }
 
@@ -472,8 +472,8 @@ class AuthenticationService(
     }
 
     private fun validatePassword(password: String): String? = when {
-        password.length < MIN_PASSWORD_LENGTH -> "Mật khẩu phải có ít nhất $MIN_PASSWORD_LENGTH ký tự."
-        password.length > MAX_PASSWORD_LENGTH -> "Mật khẩu không được vượt quá $MAX_PASSWORD_LENGTH ký tự."
+        password.length < MIN_PASSWORD_LENGTH -> legacyFallback("Mật khẩu phải có ít nhất $MIN_PASSWORD_LENGTH ký tự.")
+        password.length > MAX_PASSWORD_LENGTH -> legacyFallback("Mật khẩu không được vượt quá $MAX_PASSWORD_LENGTH ký tự.")
         else -> null
     }
 
@@ -485,37 +485,37 @@ class AuthenticationService(
 
     private fun invalidCredentials() = AuthResult.Failure(
         "INVALID_CREDENTIALS",
-        "Email hoặc mật khẩu không đúng."
+        legacyFallback("Email hoặc mật khẩu không đúng.")
     )
 
     private fun invalidRefreshToken() = AuthResult.Failure(
         "INVALID_REFRESH_TOKEN",
-        "Phiên đăng nhập không hợp lệ hoặc đã hết hạn."
+        legacyFallback("Phiên đăng nhập không hợp lệ hoặc đã hết hạn.")
     )
 
     private fun invalidGuestSession() = AuthResult.Failure(
         "INVALID_GUEST_SESSION",
-        "Phiên khách không hợp lệ hoặc đã hết hạn."
+        legacyFallback("Phiên khách không hợp lệ hoặc đã hết hạn.")
     )
 
     private fun invalidAccountSession() = AccountActionResult.Failure(
         "INVALID_ACCESS_TOKEN",
-        "Phiên đăng nhập không hợp lệ hoặc đã hết hạn."
+        legacyFallback("Phiên đăng nhập không hợp lệ hoặc đã hết hạn.")
     )
 
     private fun invalidAccountSessions() = AccountSessionsResult.Failure(
         "INVALID_ACCESS_TOKEN",
-        "Phiên đăng nhập không hợp lệ hoặc đã hết hạn."
+        legacyFallback("Phiên đăng nhập không hợp lệ hoặc đã hết hạn.")
     )
 
     private fun invalidPasswordReset() = AccountActionResult.Failure(
         "INVALID_RESET_TOKEN",
-        "Mã khôi phục không hợp lệ hoặc đã hết hạn."
+        legacyFallback("Mã khôi phục không hợp lệ hoặc đã hết hạn.")
     )
 
     private fun invalidEmailVerification() = AccountActionResult.Failure(
         "INVALID_VERIFICATION_CODE",
-        "Mã xác minh không hợp lệ hoặc đã hết hạn."
+        legacyFallback("Mã xác minh không hợp lệ hoặc đã hết hạn.")
     )
 
     private fun playerCode(userId: UUID): String = userId.toString().replace("-", "").take(10).uppercase()
