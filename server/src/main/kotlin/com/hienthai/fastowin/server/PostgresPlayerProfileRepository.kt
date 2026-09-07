@@ -421,11 +421,13 @@ class PostgresPlayerProfileRepository(
                 statement.setObject(1, userId)
                 statement.executeQuery().use { result ->
                     if (!result.next()) null else {
+                        val seasonNumber = result.getInt("season_number")
                         val seasonName = result.getString("name")
+                        val seasonNameMetadata = defaultSeasonNameMetadata(seasonNumber, seasonName)
                         val tier = com.hienthai.fastowin.protocol.RankedTier.valueOf(result.getString("tier"))
-                        val cosmetic = seasonCosmeticReward(result.getInt("season_number"), seasonName, tier)
+                        val cosmetic = seasonCosmeticReward(seasonNumber, seasonName, tier)
                         SeasonRewardReceiptSnapshot(
-                            seasonNumber = result.getInt("season_number"),
+                            seasonNumber = seasonNumber,
                             seasonName = seasonName,
                             tier = tier,
                             peakRating = result.getInt("peak_rating"),
@@ -436,7 +438,9 @@ class PostgresPlayerProfileRepository(
                                 id = result.getString("reward_cosmetic_id"),
                                 type = CosmeticType.valueOf(result.getString("reward_cosmetic_type"))
                             ),
-                            acknowledged = result.getTimestamp("viewed_at") != null
+                            acknowledged = result.getTimestamp("viewed_at") != null,
+                            seasonNameKey = seasonNameMetadata?.key?.name,
+                            seasonNameArgs = seasonNameMetadata?.arguments.orEmpty()
                         )
                     }
                 }
@@ -467,6 +471,7 @@ class PostgresPlayerProfileRepository(
                         while (result.next()) {
                             val seasonNumber = result.getInt("season_number")
                             val seasonName = result.getString("name")
+                            val seasonNameMetadata = defaultSeasonNameMetadata(seasonNumber, seasonName)
                             val finalRank = result.getInt("final_rank").takeUnless { result.wasNull() }
                             val tierName = result.getString("tier")
                             val reward = tierName?.let {
@@ -484,7 +489,9 @@ class PostgresPlayerProfileRepository(
                                     gems = result.getInt("reward_gems"),
                                     awardedAtEpochMillis = result.getTimestamp("awarded_at").time,
                                     cosmetic = cosmetic,
-                                    acknowledged = result.getTimestamp("viewed_at") != null
+                                    acknowledged = result.getTimestamp("viewed_at") != null,
+                                    seasonNameKey = seasonNameMetadata?.key?.name,
+                                    seasonNameArgs = seasonNameMetadata?.arguments.orEmpty()
                                 )
                             }
                             add(
@@ -498,7 +505,9 @@ class PostgresPlayerProfileRepository(
                                     matchesPlayed = result.getInt("matches_played"),
                                     placementMatchesPlayed = result.getInt("placement_matches"),
                                     placementMatchesRequired = PLACEMENT_MATCHES_REQUIRED,
-                                    reward = reward
+                                    reward = reward,
+                                    seasonNameKey = seasonNameMetadata?.key?.name,
+                                    seasonNameArgs = seasonNameMetadata?.arguments.orEmpty()
                                 )
                             )
                         }

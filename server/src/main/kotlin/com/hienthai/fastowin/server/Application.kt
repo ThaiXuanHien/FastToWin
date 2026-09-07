@@ -519,7 +519,7 @@ fun Application.gameModule(
                             is ClientMessage.ConnectGuest -> message.protocolVersion
                             is ClientMessage.ConnectAccount -> message.protocolVersion
                         }
-                        if (protocolVersion != com.hienthai.fastowin.protocol.PROTOCOL_VERSION) {
+                        if (!com.hienthai.fastowin.protocol.isCompatibleProtocolVersion(protocolVersion)) {
                             send(ProtocolJson.encodeToString<ServerMessage>(
                                 structuredServerError("PROTOCOL_MISMATCH", legacyFallback("Phiên bản ứng dụng không tương thích."))
                             ))

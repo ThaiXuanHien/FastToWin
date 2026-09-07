@@ -68,9 +68,10 @@ import com.hienthai.fastowin.protocol.PushPreferencesSnapshot
 import com.hienthai.fastowin.ui.components.ArcadeBackdrop
 import com.hienthai.fastowin.ui.components.ArcadeDialog
 import com.hienthai.fastowin.localization.AppLanguage
-import com.hienthai.fastowin.localization.LocalLocalization
 import com.hienthai.fastowin.localization.TextKey
 import com.hienthai.fastowin.localization.localized
+import com.hienthai.fastowin.localization.platformLanguageTags
+import com.hienthai.fastowin.localization.resolveSavedLanguage
 import com.hienthai.fastowin.ui.components.ArcadePanel
 import com.hienthai.fastowin.ui.components.ArcadeActionButton
 import com.hienthai.fastowin.ui.components.ArcadeActionStyle
@@ -100,12 +101,15 @@ fun SettingsScreen(
     onPushPreferencesChange: (PushPreferencesSnapshot) -> Unit = {},
     installStatus: AppInstallStatus = AppInstallStatus.UNSUPPORTED,
     onInstallApp: () -> Unit = {},
+    systemLanguageTags: List<String> = platformLanguageTags(),
     modifier: Modifier = Modifier
 ) {
     var showLanguageDialog by rememberSaveable { mutableStateOf(false) }
+    val systemLanguage = resolveSavedLanguage("system", systemLanguageTags)
     if (showLanguageDialog) {
         LanguageDialog(
             selectedCode = preferences.languageCode,
+            systemLanguage = systemLanguage,
             onSelected = { code ->
                 onPreferencesChange(preferences.copy(languageCode = code))
                 showLanguageDialog = false
@@ -307,7 +311,7 @@ fun SettingsScreen(
                             AppFontScale.STANDARD to localized(TextKey.FontStandard),
                             AppFontScale.LARGE to localized(TextKey.FontLarge)
                         )
-                        LanguageSettingRow(preferences.languageCode) { showLanguageDialog = true }
+                        LanguageSettingRow(preferences.languageCode, systemLanguage) { showLanguageDialog = true }
                         SettingChoiceTitle(Icons.Rounded.ColorLens, localized(TextKey.SettingsThemeTitle))
                         ChoiceRow(
                             entries = AppThemeMode.entries,
@@ -354,9 +358,8 @@ fun SettingsScreen(
 }
 
 @Composable
-private fun LanguageSettingRow(code: String, onClick: () -> Unit) {
+private fun LanguageSettingRow(code: String, systemLanguage: AppLanguage, onClick: () -> Unit) {
     val selected = AppLanguage.entries.firstOrNull { it.code == code }
-    val resolved = LocalLocalization.current.language
     Surface(
         onClick = onClick,
         modifier = Modifier.fillMaxWidth().testTag("language_setting"),
@@ -372,7 +375,8 @@ private fun LanguageSettingRow(code: String, onClick: () -> Unit) {
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(localized(TextKey.LanguageTitle), fontWeight = FontWeight.SemiBold)
                 Text(
-                    selected?.nativeName ?: localized(TextKey.ResolvedSystemLanguage, "language" to resolved.nativeName),
+                    selected?.nativeName
+                        ?: localized(TextKey.ResolvedSystemLanguage, "language" to systemLanguage.nativeName),
                     style = MaterialTheme.typography.bodySmall
                 )
             }
@@ -382,9 +386,13 @@ private fun LanguageSettingRow(code: String, onClick: () -> Unit) {
 }
 
 @Composable
-private fun LanguageDialog(selectedCode: String, onSelected: (String) -> Unit, onDismiss: () -> Unit) {
+private fun LanguageDialog(
+    selectedCode: String,
+    systemLanguage: AppLanguage,
+    onSelected: (String) -> Unit,
+    onDismiss: () -> Unit
+) {
     val selection = AppLanguage.entries.firstOrNull { it.code == selectedCode }?.code ?: "system"
-    val resolvedLanguage = LocalLocalization.current.language
     ArcadeDialog(
         title = localized(TextKey.ChooseLanguageTitle),
         onDismissRequest = onDismiss,
@@ -397,7 +405,7 @@ private fun LanguageDialog(selectedCode: String, onSelected: (String) -> Unit, o
             LanguageOption(
                 code = "system",
                 title = localized(TextKey.SystemLanguage),
-                subtitle = localized(TextKey.ResolvedSystemLanguage, "language" to resolvedLanguage.nativeName),
+                subtitle = localized(TextKey.ResolvedSystemLanguage, "language" to systemLanguage.nativeName),
                 isSelected = selection == "system"
             ) {
                 onSelected("system")

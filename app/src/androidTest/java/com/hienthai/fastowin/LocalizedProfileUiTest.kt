@@ -12,6 +12,8 @@ import com.hienthai.fastowin.localization.ProvideLocalization
 import com.hienthai.fastowin.protocol.PlayerProfileSnapshot
 import com.hienthai.fastowin.protocol.PlayerProgressionSnapshot
 import com.hienthai.fastowin.protocol.SeasonHistoryEntrySnapshot
+import com.hienthai.fastowin.protocol.SeasonRewardReceiptSnapshot
+import com.hienthai.fastowin.protocol.RankedTier
 import com.hienthai.fastowin.protocol.WalletTransactionSnapshot
 import com.hienthai.fastowin.state.GameState
 import com.hienthai.fastowin.ui.screens.ProfileScreen
@@ -83,7 +85,7 @@ class LocalizedProfileUiTest {
     }
 
     @Test
-    fun seasonHistoryUsesRussianCopy() {
+    fun defaultSeasonHistoryAndReceiptUseRussianCopyWhileCustomNameIsPreserved() {
         setLocalizedContent(AppLanguage.RUSSIAN) {
             SeasonHistoryScreen(
                 state = profileState().copy(
@@ -92,12 +94,31 @@ class LocalizedProfileUiTest {
                             seasonHistory = listOf(
                                 SeasonHistoryEntrySnapshot(
                                     seasonNumber = 1,
-                                    seasonName = "Стартовый сезон",
+                                    seasonName = "Mùa Khởi Đầu",
+                                    seasonNameKey = "SeasonInitialName",
                                     endedAtEpochMillis = 1L,
                                     finalRating = 1_100,
                                     peakRating = 1_200,
                                     matchesPlayed = 8,
-                                    placementMatchesPlayed = 5
+                                    placementMatchesPlayed = 5,
+                                    reward = SeasonRewardReceiptSnapshot(
+                                        seasonNumber = 1,
+                                        seasonName = "Mùa Khởi Đầu",
+                                        seasonNameKey = "SeasonInitialName",
+                                        tier = RankedTier.SILVER,
+                                        peakRating = 1_200,
+                                        gold = 600,
+                                        awardedAtEpochMillis = 1L,
+                                    ),
+                                ),
+                                SeasonHistoryEntrySnapshot(
+                                    seasonNumber = 8,
+                                    seasonName = "Creator Cup",
+                                    endedAtEpochMillis = 2L,
+                                    finalRating = 1_050,
+                                    peakRating = 1_100,
+                                    matchesPlayed = 6,
+                                    placementMatchesPlayed = 5,
                                 )
                             )
                         )
@@ -111,6 +132,9 @@ class LocalizedProfileUiTest {
 
         composeRule.onNodeWithText("История сезонов").assertIsDisplayed()
         composeRule.onNodeWithText("Достижения по сезонам").assertIsDisplayed()
+        composeRule.onNodeWithText("Стартовый сезон").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("Creator Cup").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("Mùa Khởi Đầu").assertDoesNotExist()
     }
 
     @Test

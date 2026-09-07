@@ -185,11 +185,21 @@ internal data class ServerTextTemplate(
     val fallback: String
 )
 
-internal fun defaultSeasonName(number: Int) = ServerTextTemplate(
-    key = TextKey.SeasonDefaultName,
-    arguments = mapOf("season" to number.toString()),
-    fallback = legacyFallback("Mùa $number")
-)
+internal fun defaultSeasonName(number: Int) = if (number == 1) {
+    ServerTextTemplate(
+        key = TextKey.SeasonInitialName,
+        fallback = legacyFallback("Mùa Khởi Đầu")
+    )
+} else {
+    ServerTextTemplate(
+        key = TextKey.SeasonDefaultName,
+        arguments = mapOf("season" to number.toString()),
+        fallback = legacyFallback("Mùa $number")
+    )
+}
+
+internal fun defaultSeasonNameMetadata(number: Int, storedName: String): ServerTextTemplate? =
+    defaultSeasonName(number).takeIf { it.fallback == storedName }
 
 internal fun defaultSeasonRewardDescription() = ServerTextTemplate(
     key = TextKey.SeasonDefaultRewardDescription,

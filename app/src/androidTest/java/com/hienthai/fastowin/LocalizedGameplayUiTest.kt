@@ -1,6 +1,7 @@
 package com.hienthai.fastowin
 
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.test.assertDoesNotExist
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.v2.createComposeRule
@@ -81,6 +82,31 @@ class LocalizedGameplayUiTest {
 
         composeRule.onNodeWithText("ПОБЕДА!").assertIsDisplayed()
         composeRule.onNodeWithText("Результат матча").assertIsDisplayed()
+    }
+
+    @Test
+    fun resultShowsLocalizedEnglishRematchFailure() {
+        setLocalizedContent(AppLanguage.ENGLISH) {
+            ResultScreen(
+                state = finishedGameState().copy(
+                    isRematchActionPending = false,
+                    rematchNotice = "The action could not be completed. Please try again.",
+                    rematchNoticeErrorCode = "OPPONENT_LEFT",
+                ),
+                onRestart = {},
+                onRematch = {},
+                onCancelRematch = {},
+                onDeclineRematch = {},
+                onConnectOpponent = {},
+                onBlockOpponent = {},
+                preferences = quietPreferences(),
+            )
+        }
+
+        composeRule.onNodeWithText("The action could not be completed. Please try again.")
+            .performScrollTo()
+            .assertIsDisplayed()
+        composeRule.onNodeWithText("Đối thủ đã rời phòng.").assertDoesNotExist()
     }
 
     @Test

@@ -39,6 +39,41 @@ import kotlin.test.assertTrue
 
 class GameWebSocketTest {
     @Test
+    fun `legacy additive protocol versions remain accepted`() = testApplication {
+        application { gameModule() }
+        val webSocketClient = createClient { install(WebSockets) }
+
+        for (version in 38..40) {
+            val socket = webSocketClient.webSocketSession("/game")
+            try {
+                socket.sendMessage(ClientMessage.ConnectGuest("Protocol $version", protocolVersion = version))
+                val session = withTimeout(2_000) { socket.receiveMessage<ServerMessage.SessionReady>() }
+                assertEquals(40, session.protocolVersion)
+                withTimeout(2_000) { socket.receiveMessage<ServerMessage.RoomList>() }
+            } finally {
+                socket.close()
+            }
+        }
+    }
+
+    @Test
+    fun `protocol versions outside the additive compatibility window are rejected`() = testApplication {
+        application { gameModule() }
+        val webSocketClient = createClient { install(WebSockets) }
+
+        for (version in listOf(37, 41)) {
+            val socket = webSocketClient.webSocketSession("/game")
+            try {
+                socket.sendMessage(ClientMessage.ConnectGuest("Protocol $version", protocolVersion = version))
+                val error = withTimeout(2_000) { socket.receiveMessage<ServerMessage.Error>() }
+                assertEquals("PROTOCOL_MISMATCH", error.code)
+            } finally {
+                socket.close()
+            }
+        }
+    }
+
+    @Test
     fun `websocket closes after player message burst exceeds limit`() = testApplication {
         val policies = ServerRateLimitPolicies().copy(
             websocketMessagesPerPlayer = RateLimitPolicy(capacity = 2, refillWindowMillis = 1_000L)

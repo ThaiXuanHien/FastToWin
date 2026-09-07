@@ -1,11 +1,37 @@
 package com.hienthai.fastowin.localization
 
+import com.hienthai.fastowin.localization.catalogs.residualTexts
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
 
 class LocalizationCatalogTest {
+    @Test
+    fun residualCopyIsTranslatedForEveryNonEnglishCatalog() {
+        val english = residualTexts(AppLanguage.ENGLISH)
+        val representativeKeys = listOf(
+            TextKey.SettingsInstallSubtitle,
+            TextKey.SettingsNotificationsSubtitle,
+            TextKey.SettingsFeedbackSubtitle,
+            TextKey.PushPromptDescription,
+            TextKey.GuestSessionMissing,
+            TextKey.ReconnectingMatch,
+            TextKey.RewardReceivedSummary,
+        )
+
+        AppLanguage.entries.filterNot { it in setOf(AppLanguage.ENGLISH, AppLanguage.VIETNAMESE) }
+            .forEach { language ->
+                val translated = residualTexts(language)
+                assertEquals(english.keys, translated.keys, language.code)
+                assertNotEquals(english, translated, language.code)
+                representativeKeys.forEach { key ->
+                    assertNotEquals(english.getValue(key), translated.getValue(key), "${language.code}/$key")
+                }
+            }
+    }
+
     @Test
     fun resolvesDeviceTagsWithoutSelectingUnsupportedScriptsOrRegions() {
         val cases = mapOf(

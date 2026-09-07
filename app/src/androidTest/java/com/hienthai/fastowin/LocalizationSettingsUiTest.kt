@@ -57,7 +57,17 @@ class LocalizationSettingsUiTest {
         composeRule.runOnIdle { assertEquals("vi", preferences.value.languageCode) }
     }
 
-    private fun renderSettings(): androidx.compose.runtime.MutableState<AppPreferences> {
+    @Test
+    fun systemOptionUsesDeviceLocaleInsteadOfCurrentAppLocale() {
+        renderSettings(systemLanguageTags = listOf("ja-JP"))
+
+        composeRule.onNodeWithTag("language_setting").performScrollTo().performClick()
+        composeRule.onNodeWithText("Theo hệ thống · 日本語").performScrollTo().assertIsDisplayed()
+    }
+
+    private fun renderSettings(
+        systemLanguageTags: List<String> = listOf("vi-VN")
+    ): androidx.compose.runtime.MutableState<AppPreferences> {
         val preferences = mutableStateOf(AppPreferences(languageCode = "vi"))
         composeRule.setContent {
             ProvideLocalization(resolveSavedLanguage(preferences.value.languageCode, listOf("vi-VN"))) {
@@ -65,7 +75,8 @@ class LocalizationSettingsUiTest {
                     SettingsScreen(
                         preferences = preferences.value,
                         onPreferencesChange = { preferences.value = it },
-                        onPreviewSound = {}, onOpenTutorial = {}, onBack = {}
+                        onPreviewSound = {}, onOpenTutorial = {}, onBack = {},
+                        systemLanguageTags = systemLanguageTags,
                     )
                 }
             }

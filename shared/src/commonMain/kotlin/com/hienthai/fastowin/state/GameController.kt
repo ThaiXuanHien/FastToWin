@@ -1570,7 +1570,7 @@ class GameController(
             returnToRoomBrowser(localizedError)
         } else {
             _uiState.update {
-                it.withRematchError(error).copy(
+                it.withRematchError(error, localizedError).copy(
                     isSearching = false,
                     isMatchmaking = false,
                     matchmakingStartedAtMillis = null,

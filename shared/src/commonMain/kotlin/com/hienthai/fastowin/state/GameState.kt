@@ -252,7 +252,10 @@ internal fun GameState.withReadySession(playerId: String): GameState {
     )
 }
 
-internal fun GameState.withRematchError(error: ServerMessage.Error): GameState {
+internal fun GameState.withRematchError(
+    error: ServerMessage.Error,
+    localizedMessage: String = error.message
+): GameState {
     if (!isGameOver || error.code !in REMATCH_ACTION_ERROR_CODES) return this
     // Background requests (including latency pings) are not rematch actions.
     if (error.code in REMATCH_CONNECTION_ERROR_CODES && !isRematchActionPending) return this
@@ -260,7 +263,7 @@ internal fun GameState.withRematchError(error: ServerMessage.Error): GameState {
         isRematchActionPending = false,
         isRematchRequestedByMe = false,
         isRematchRequestedByOpponent = false,
-        rematchNotice = error.message,
+        rematchNotice = localizedMessage,
         rematchNoticeErrorCode = error.code
     )
 }

@@ -53,9 +53,9 @@ fallback sang tiếng Anh.
 
 ## Thêm hoặc sửa ngôn ngữ
 
-1. Với câu mới, thêm một `TextKey` hoặc `QuantityKey`, rồi bổ sung English và
-   Vietnamese trước; các catalog khác có thể dùng English fallback cho tới khi
-   bản dịch được kiểm duyệt.
+1. Với câu mới, thêm một `TextKey` hoặc `QuantityKey` và bản dịch thực cho đủ
+   cả 12 catalog trong cùng thay đổi. English là hợp đồng canonical và fallback
+   an toàn ở runtime, không phải nội dung tạm để phát hành trong catalog khác.
 2. Điền khóa vào các map catalog dùng chung. Giữ đúng placeholder và không dịch
    ID, mã lỗi, route, test tag hoặc nội dung người dùng.
 3. Muốn thêm ngôn ngữ thứ 13 phải có quyết định sản phẩm: thêm `AppLanguage`, một

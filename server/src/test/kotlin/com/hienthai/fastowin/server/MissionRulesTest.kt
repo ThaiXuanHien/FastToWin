@@ -53,9 +53,14 @@ class MissionRulesTest {
 
     @Test
     fun `generated season copy carries stable localization templates`() {
+        val initial = defaultSeasonName(1)
         val name = defaultSeasonName(3)
         val reward = defaultSeasonRewardDescription()
 
+        assertEquals(TextKey.SeasonInitialName, initial.key)
+        assertEquals("Mùa Khởi Đầu", initial.fallback)
+        assertEquals(initial, defaultSeasonNameMetadata(1, "Mùa Khởi Đầu"))
+        assertEquals(null, defaultSeasonNameMetadata(1, "Creator Cup"))
         assertEquals(TextKey.SeasonDefaultName, name.key)
         assertEquals(mapOf("season" to "3"), name.arguments)
         assertEquals("Mùa 3", name.fallback)

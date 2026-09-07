@@ -267,7 +267,8 @@ fun SeasonRewardReceiptCard(
     modifier: Modifier = Modifier
 ) {
     val tierName = localizedRankedTierName(receipt.tier)
-    val receiptDescription = localized(TextKey.RewardReceiptDescription, "season" to receipt.seasonName, "tier" to tierName)
+    val seasonName = localizedNetworkText(receipt.seasonNameKey, receipt.seasonNameArgs, receipt.seasonName)
+    val receiptDescription = localized(TextKey.RewardReceiptDescription, "season" to seasonName, "tier" to tierName)
     ArcadePanel(
         modifier = modifier
             .fillMaxWidth()
@@ -303,7 +304,7 @@ fun SeasonRewardReceiptCard(
                 ) {
                     Text(localized(TextKey.SeasonRewardReceived), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                     Text(
-                        "${receipt.seasonName} • $tierName • ${receipt.peakRating} Elo",
+                        "$seasonName • $tierName • ${receipt.peakRating} Elo",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )

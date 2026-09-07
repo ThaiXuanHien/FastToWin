@@ -71,7 +71,8 @@ internal val englishProtocolMessageTexts = mapOf(
     TextKey.NotificationClanJoinRequestMessage to "{player} wants to join {clan}.",
     TextKey.NotificationClanJoinApprovedTitle to "Clan request approved",
     TextKey.NotificationClanJoinRejectedTitle to "Clan request declined",
-    TextKey.NotificationClanInvitationMessage to "{player} invited you to join {clan}."
+    TextKey.NotificationClanInvitationMessage to "{player} invited you to join {clan}.",
+    TextKey.SeasonInitialName to "Opening Season"
 )
 
 internal val vietnameseProtocolMessageTexts = englishProtocolMessageTexts + mapOf(
@@ -143,7 +144,8 @@ internal val vietnameseProtocolMessageTexts = englishProtocolMessageTexts + mapO
     TextKey.NotificationClanJoinRequestMessage to "{player} muốn vào bang {clan}.",
     TextKey.NotificationClanJoinApprovedTitle to "Đã vào bang",
     TextKey.NotificationClanJoinRejectedTitle to "Yêu cầu bị từ chối",
-    TextKey.NotificationClanInvitationMessage to "{player} mời bạn vào bang {clan}."
+    TextKey.NotificationClanInvitationMessage to "{player} mời bạn vào bang {clan}.",
+    TextKey.SeasonInitialName to "Mùa Khởi Đầu"
 )
 
 private fun protocolMessageTranslations(vararg values: String): Map<TextKey, String> {
@@ -178,7 +180,8 @@ internal val germanProtocolMessageTexts = protocolMessageTranslations(
     "{player} wurde angenommen.", "{player} wurde abgelehnt.", "Deine Anfrage für {clan} wurde angenommen.",
     "Deine Anfrage für {clan} wurde abgelehnt.", "Du hast den Clan verlassen.", "Saison {season}",
     "Gold und Gems basierend auf deinem höchsten Rang", "Erster Sieg", "Gewinne dein erstes Spiel",
-    "{player} möchte {clan} beitreten.", "Clan-Anfrage angenommen", "Clan-Anfrage abgelehnt", "{player} hat dich eingeladen, {clan} beizutreten."
+    "{player} möchte {clan} beitreten.", "Clan-Anfrage angenommen", "Clan-Anfrage abgelehnt", "{player} hat dich eingeladen, {clan} beizutreten.",
+    "Startsaison"
 )
 
 internal val japaneseProtocolMessageTexts = protocolMessageTranslations(
@@ -204,7 +207,8 @@ internal val japaneseProtocolMessageTexts = protocolMessageTranslations(
     "申請を送信しました。クランリーダーの承認をお待ちください。", "{player}さんを承認しました。", "{player}さんを拒否しました。",
     "{clan}への参加申請が承認されました。", "{clan}への参加申請が拒否されました。", "クランを脱退しました。",
     "シーズン{season}", "最高ランクに応じたゴールドとGem", "初勝利", "最初の対戦に勝利する",
-    "{player}さんが{clan}への参加を希望しています。", "クラン申請が承認されました", "クラン申請が拒否されました", "{player}さんが{clan}に招待しました。"
+    "{player}さんが{clan}への参加を希望しています。", "クラン申請が承認されました", "クラン申請が拒否されました", "{player}さんが{clan}に招待しました。",
+    "開幕シーズン"
 )
 
 internal val simplifiedChineseProtocolMessageTexts = protocolMessageTranslations(
@@ -224,7 +228,8 @@ internal val simplifiedChineseProtocolMessageTexts = protocolMessageTranslations
     "一名玩家断线时间过长。", "战队创建成功。", "申请已发送，等待战队队长审批。", "已批准{player}。",
     "已拒绝{player}。", "你加入{clan}的申请已获批准。", "你加入{clan}的申请已被拒绝。", "你已退出战队。",
     "第{season}赛季", "根据最高段位获得金币和Gem", "首场胜利", "赢得首场比赛",
-    "{player}想加入{clan}。", "战队申请已批准", "战队申请已拒绝", "{player}邀请你加入{clan}。"
+    "{player}想加入{clan}。", "战队申请已批准", "战队申请已拒绝", "{player}邀请你加入{clan}。",
+    "起始赛季"
 )
 
 internal val koreanProtocolMessageTexts = protocolMessageTranslations(
@@ -249,7 +254,8 @@ internal val koreanProtocolMessageTexts = protocolMessageTranslations(
     "가입 요청을 보냈습니다. 클랜장의 승인을 기다리세요.", "{player}님을 승인했습니다.", "{player}님을 거절했습니다.",
     "{clan} 가입 요청이 승인되었습니다.", "{clan} 가입 요청이 거절되었습니다.", "클랜에서 나갔습니다.",
     "시즌 {season}", "최고 티어에 따른 골드와 Gem", "첫 승리", "첫 경기에서 승리하세요",
-    "{player}님이 {clan} 가입을 요청했습니다.", "클랜 가입 승인", "클랜 가입 거절", "{player}님이 {clan}에 초대했습니다."
+    "{player}님이 {clan} 가입을 요청했습니다.", "클랜 가입 승인", "클랜 가입 거절", "{player}님이 {clan}에 초대했습니다.",
+    "시작 시즌"
 )
 
 internal val spanishProtocolMessageTexts = protocolMessageTranslations(
@@ -275,7 +281,8 @@ internal val spanishProtocolMessageTexts = protocolMessageTranslations(
     "Solicitud enviada. Espera la aprobación del líder del clan.", "Se aprobó a {player}.", "Se rechazó a {player}.",
     "Se aprobó tu solicitud para unirte a {clan}.", "Se rechazó tu solicitud para unirte a {clan}.", "Abandonaste el clan.",
     "Temporada {season}", "Oro y Gemas según tu rango más alto", "Primera victoria", "Gana tu primera partida",
-    "{player} quiere unirse a {clan}.", "Solicitud de clan aprobada", "Solicitud de clan rechazada", "{player} te invitó a unirte a {clan}."
+    "{player} quiere unirse a {clan}.", "Solicitud de clan aprobada", "Solicitud de clan rechazada", "{player} te invitó a unirte a {clan}.",
+    "Temporada inicial"
 )
 
 internal val brazilianPortugueseProtocolMessageTexts = protocolMessageTranslations(
@@ -301,7 +308,8 @@ internal val brazilianPortugueseProtocolMessageTexts = protocolMessageTranslatio
     "Clã criado.", "Solicitação enviada. Aguarde o líder do clã.", "{player} foi aprovado.", "{player} foi recusado.",
     "Sua solicitação para entrar em {clan} foi aprovada.", "Sua solicitação para entrar em {clan} foi recusada.",
     "Você saiu do clã.", "Temporada {season}", "Ouro e Gemas com base no seu maior ranque", "Primeira vitória", "Vença sua primeira partida",
-    "{player} quer entrar em {clan}.", "Solicitação de clã aprovada", "Solicitação de clã recusada", "{player} convidou você para entrar em {clan}."
+    "{player} quer entrar em {clan}.", "Solicitação de clã aprovada", "Solicitação de clã recusada", "{player} convidou você para entrar em {clan}.",
+    "Temporada inaugural"
 )
 
 internal val frenchProtocolMessageTexts = protocolMessageTranslations(
@@ -329,7 +337,8 @@ internal val frenchProtocolMessageTexts = protocolMessageTranslations(
     "Clan créé.", "Demande envoyée. Attendez l’accord du chef de clan.", "{player} a été accepté.", "{player} a été refusé.",
     "Votre demande pour rejoindre {clan} a été acceptée.", "Votre demande pour rejoindre {clan} a été refusée.",
     "Vous avez quitté le clan.", "Saison {season}", "Or et Gemmes selon votre meilleur rang", "Première victoire", "Remportez votre première partie",
-    "{player} souhaite rejoindre {clan}.", "Demande de clan acceptée", "Demande de clan refusée", "{player} vous a invité à rejoindre {clan}."
+    "{player} souhaite rejoindre {clan}.", "Demande de clan acceptée", "Demande de clan refusée", "{player} vous a invité à rejoindre {clan}.",
+    "Saison inaugurale"
 )
 
 internal val indonesianProtocolMessageTexts = protocolMessageTranslations(
@@ -356,7 +365,8 @@ internal val indonesianProtocolMessageTexts = protocolMessageTranslations(
     "Permintaan dikirim. Tunggu persetujuan ketua klan.", "{player} disetujui.", "{player} ditolak.",
     "Permintaan Anda untuk bergabung dengan {clan} disetujui.", "Permintaan Anda untuk bergabung dengan {clan} ditolak.",
     "Anda keluar dari klan.", "Musim {season}", "Gold dan Gem berdasarkan peringkat tertinggi Anda", "Kemenangan pertama", "Menangkan pertandingan pertama Anda",
-    "{player} ingin bergabung dengan {clan}.", "Permintaan klan disetujui", "Permintaan klan ditolak", "{player} mengundang Anda bergabung dengan {clan}."
+    "{player} ingin bergabung dengan {clan}.", "Permintaan klan disetujui", "Permintaan klan ditolak", "{player} mengundang Anda bergabung dengan {clan}.",
+    "Musim perdana"
 )
 
 internal val thaiProtocolMessageTexts = protocolMessageTranslations(
@@ -382,7 +392,8 @@ internal val thaiProtocolMessageTexts = protocolMessageTranslations(
     "ส่งคำขอแล้ว โปรดรอหัวหน้าแคลนอนุมัติ", "อนุมัติ {player} แล้ว", "ปฏิเสธ {player} แล้ว",
     "คำขอเข้าร่วม {clan} ของคุณได้รับการอนุมัติ", "คำขอเข้าร่วม {clan} ของคุณถูกปฏิเสธ",
     "คุณออกจากแคลนแล้ว", "ซีซัน {season}", "Gold และ Gem ตามแรงก์สูงสุดของคุณ", "ชัยชนะแรก", "ชนะการแข่งขันครั้งแรก",
-    "{player} ต้องการเข้าร่วม {clan}", "อนุมัติคำขอเข้าแคลนแล้ว", "ปฏิเสธคำขอเข้าแคลนแล้ว", "{player} เชิญคุณเข้าร่วม {clan}"
+    "{player} ต้องการเข้าร่วม {clan}", "อนุมัติคำขอเข้าแคลนแล้ว", "ปฏิเสธคำขอเข้าแคลนแล้ว", "{player} เชิญคุณเข้าร่วม {clan}",
+    "ซีซันเริ่มต้น"
 )
 
 internal val russianProtocolMessageTexts = protocolMessageTranslations(
@@ -408,5 +419,6 @@ internal val russianProtocolMessageTexts = protocolMessageTranslations(
     "Клан создан.", "Запрос отправлен. Ожидайте решения главы клана.", "Игрок {player} принят.", "Игрок {player} отклонён.",
     "Ваш запрос на вступление в {clan} принят.", "Ваш запрос на вступление в {clan} отклонён.",
     "Вы покинули клан.", "Сезон {season}", "Золото и Gem в зависимости от наивысшего ранга", "Первая победа", "Одержите первую победу",
-    "{player} хочет вступить в {clan}.", "Заявка в клан принята", "Заявка в клан отклонена", "{player} приглашает вас вступить в {clan}."
+    "{player} хочет вступить в {clan}.", "Заявка в клан принята", "Заявка в клан отклонена", "{player} приглашает вас вступить в {clan}.",
+    "Стартовый сезон"
 )

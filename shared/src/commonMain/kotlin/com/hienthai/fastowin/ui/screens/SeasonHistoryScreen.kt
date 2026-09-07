@@ -41,6 +41,7 @@ import com.hienthai.fastowin.protocol.SeasonHistoryEntrySnapshot
 import com.hienthai.fastowin.protocol.rankedTierFor
 import com.hienthai.fastowin.localization.TextKey
 import com.hienthai.fastowin.localization.localized
+import com.hienthai.fastowin.localization.localizedNetworkText
 import com.hienthai.fastowin.localization.localizedRankedTierName
 import com.hienthai.fastowin.localization.localizedQuantity
 import com.hienthai.fastowin.localization.QuantityKey
@@ -205,12 +206,13 @@ private fun SeasonHistoryCard(
 ) {
     val ranked = season.placementMatchesPlayed >= season.placementMatchesRequired
     val reward = season.reward
+    val seasonName = localizedNetworkText(season.seasonNameKey, season.seasonNameArgs, season.seasonName)
     val tierName = if (ranked) {
         localizedRankedTierName(reward?.tier ?: rankedTierFor(season.peakRating))
     } else {
         localized(TextKey.Unranked)
     }
-    val seasonStateDescription = "${season.seasonName}, $tierName, ${localized(TextKey.HighestElo)} ${season.peakRating}"
+    val seasonStateDescription = "$seasonName, $tierName, ${localized(TextKey.HighestElo)} ${season.peakRating}"
     val accent = if (highlighted) ArcadePalette.Gold500 else MaterialTheme.colorScheme.primary
     val metricValueColor = if (highlighted) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.primary
     ArcadePanel(
@@ -252,7 +254,7 @@ private fun SeasonHistoryCard(
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         Text(
-                            season.seasonName,
+                            seasonName,
                             modifier = Modifier.weight(1f),
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Black

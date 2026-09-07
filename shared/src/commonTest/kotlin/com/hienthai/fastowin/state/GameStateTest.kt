@@ -1,5 +1,8 @@
 package com.hienthai.fastowin.state
 
+import com.hienthai.fastowin.localization.AppLanguage
+import com.hienthai.fastowin.localization.LocalizationService
+import com.hienthai.fastowin.localization.LocalizedMessageMapper
 import com.hienthai.fastowin.protocol.FriendRequestSnapshot
 import com.hienthai.fastowin.protocol.FriendSnapshot
 import com.hienthai.fastowin.protocol.FriendsSnapshot
@@ -13,6 +16,22 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class GameStateTest {
+    @Test
+    fun `rematch failure reducer uses localized message instead of legacy fallback`() {
+        val error = ServerMessage.Error(
+            code = "OPPONENT_LEFT",
+            message = "Đối thủ đã rời phòng.",
+            messageKey = "ServerOpponentLeft",
+        )
+        val localized = LocalizedMessageMapper(LocalizationService(AppLanguage.ENGLISH)).message(error)
+
+        val failed = GameState(isGameOver = true, isRematchActionPending = true)
+            .withRematchError(error, localized)
+
+        assertEquals("The action could not be completed. Please try again.", failed.rematchNotice)
+        assertEquals("OPPONENT_LEFT", failed.rematchNoticeErrorCode)
+    }
+
     @Test
     fun `older snapshot from current room cannot overwrite rematch state`() {
         val state = GameState(

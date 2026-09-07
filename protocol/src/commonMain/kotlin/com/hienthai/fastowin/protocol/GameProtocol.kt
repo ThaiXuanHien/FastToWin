@@ -5,6 +5,11 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
 const val PROTOCOL_VERSION = 40
+const val MIN_COMPATIBLE_PROTOCOL_VERSION = 38
+
+fun isCompatibleProtocolVersion(version: Int): Boolean =
+    version in MIN_COMPATIBLE_PROTOCOL_VERSION..PROTOCOL_VERSION
+
 const val GAME_NUMBER_COUNT = 50
 const val MAX_PROFILE_DISPLAY_NAME_LENGTH = 32
 val DAILY_CHECK_IN_REWARDS_XP = listOf(10, 10, 15, 15, 20, 25, 40)
@@ -378,7 +383,9 @@ data class SeasonRewardReceiptSnapshot(
     val gems: Int = 0,
     val awardedAtEpochMillis: Long,
     val cosmetic: SeasonCosmeticRewardSnapshot? = null,
-    val acknowledged: Boolean = false
+    val acknowledged: Boolean = false,
+    val seasonNameKey: String? = null,
+    val seasonNameArgs: Map<String, String> = emptyMap()
 )
 
 @Serializable
@@ -392,7 +399,9 @@ data class SeasonHistoryEntrySnapshot(
     val matchesPlayed: Int = 0,
     val placementMatchesPlayed: Int = 0,
     val placementMatchesRequired: Int = 5,
-    val reward: SeasonRewardReceiptSnapshot? = null
+    val reward: SeasonRewardReceiptSnapshot? = null,
+    val seasonNameKey: String? = null,
+    val seasonNameArgs: Map<String, String> = emptyMap()
 )
 
 @Serializable

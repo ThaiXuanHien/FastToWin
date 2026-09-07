@@ -285,5 +285,5 @@ enum class TextKey {
     RoomDisconnectedTooLongNotice,
     ClanCreatedNotice, ClanJoinRequestedNotice, ClanJoinApprovedOwnerNotice,
     ClanJoinRejectedOwnerNotice, ClanJoinApprovedNotice, ClanJoinRejectedNotice, ClanLeftNotice,
-    SeasonDefaultName, SeasonDefaultRewardDescription
+    SeasonDefaultName, SeasonInitialName, SeasonDefaultRewardDescription
 }
