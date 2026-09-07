@@ -32,5 +32,5 @@ test('language selection persists across reload and updates html lang', async ({
   await player.navigate(() => page.reload());
   await expect(page).toHaveURL(/\/settings$/);
   await expect(page.locator('html')).toHaveAttribute('lang', 'ja');
-  await expect(page.getByText('設定', { exact: true })).toBeAttached();
+  await expect(tag(page, 'app_header').getByText('設定', { exact: true })).toBeAttached();
 });
