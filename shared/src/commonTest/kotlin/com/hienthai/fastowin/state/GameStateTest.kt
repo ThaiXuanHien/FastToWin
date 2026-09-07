@@ -21,7 +21,6 @@ class GameStateTest {
         val error = ServerMessage.Error(
             code = "OPPONENT_LEFT",
             message = "Đối thủ đã rời phòng.",
-            messageKey = "ServerOpponentLeft",
         )
         val localized = LocalizedMessageMapper(LocalizationService(AppLanguage.ENGLISH)).message(error)
 
