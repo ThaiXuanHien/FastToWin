@@ -9,6 +9,9 @@ import com.hienthai.fastowin.localization.AppLanguage
 import com.hienthai.fastowin.localization.ProvideLocalization
 import com.hienthai.fastowin.protocol.CosmeticType
 import com.hienthai.fastowin.protocol.SHOP_ITEMS
+import com.hienthai.fastowin.state.AppNotification
+import com.hienthai.fastowin.state.AppNotificationDestination
+import com.hienthai.fastowin.state.AppNotificationKind
 import com.hienthai.fastowin.state.GameState
 import com.hienthai.fastowin.ui.screens.ClanScreen
 import com.hienthai.fastowin.ui.screens.FriendsScreen
@@ -83,7 +86,17 @@ class LocalizedSocialShopUiTest {
     fun thaiNotificationsUsesLocalizedTitle() {
         render(AppLanguage.THAI) {
             NotificationsScreen(
-                notifications = emptyList(), onBack = {}, onOpen = {}, onDismiss = {},
+                notifications = listOf(
+                    AppNotification(
+                        id = "thai-localization",
+                        kind = AppNotificationKind.MISSION,
+                        title = "Test notification",
+                        message = "Test message",
+                        createdAtEpochMillis = 1L,
+                        destination = AppNotificationDestination.PROFILE
+                    )
+                ),
+                onBack = {}, onOpen = {}, onDismiss = {},
                 onMarkAllRead = {}, onClearAll = {}
             )
         }

@@ -22,6 +22,8 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.mutableStateOf
+import com.hienthai.fastowin.localization.AppLanguage
+import com.hienthai.fastowin.localization.ProvideLocalization
 import com.hienthai.fastowin.protocol.CosmeticSnapshot
 import com.hienthai.fastowin.protocol.CosmeticType
 import com.hienthai.fastowin.protocol.AchievementSnapshot
@@ -285,8 +287,8 @@ class ProfileSectionsUiTest {
             achievements = listOf(
                 AchievementSnapshot(
                     code = "FIRST_WIN",
-                    title = "Chiến thắng đầu tiên",
-                    description = "Thắng trận đầu tiên của bạn",
+                    title = "Legacy first victory",
+                    description = "Legacy first-victory description",
                     unlockedAtEpochMillis = 1L
                 )
             )
@@ -313,7 +315,7 @@ class ProfileSectionsUiTest {
         composeRule.onNodeWithTag("profile_section_screen:STATISTICS").assertIsDisplayed()
         composeRule.onNodeWithTag("profile_statistics_content").assertExists()
         composeRule.onNodeWithText("Thống kê theo chế độ").performScrollTo().assertIsDisplayed()
-        composeRule.onNodeWithText("Chiến thắng đầu tiên").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("Khởi đầu chiến thắng").performScrollTo().assertIsDisplayed()
     }
 
     @Test
@@ -603,7 +605,9 @@ class ProfileSectionsUiTest {
                 DeviceConfigurationOverride.ForcedSize(DpSize(width, height)) then
                     DeviceConfigurationOverride.FontScale(fontScale)
             ) {
-                FastToWinTheme { content() }
+                ProvideLocalization(AppLanguage.VIETNAMESE) {
+                    FastToWinTheme { content() }
+                }
             }
         }
     }

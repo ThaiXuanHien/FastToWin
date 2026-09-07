@@ -11,6 +11,7 @@ import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.v2.runComposeUiTest
 import com.hienthai.fastowin.data.network.InMemoryAuthSessionStore
 import com.hienthai.fastowin.data.network.InMemoryResumeTokenStore
+import com.hienthai.fastowin.data.preferences.AppPreferences
 import com.hienthai.fastowin.data.preferences.InMemoryAppPreferencesStore
 import org.junit.Test
 
@@ -21,7 +22,9 @@ class AppStateRestorationUiTest {
         val restorationTester = StateRestorationTester(this)
         val resumeTokenStore = InMemoryResumeTokenStore()
         val authSessionStore = InMemoryAuthSessionStore()
-        val preferencesStore = InMemoryAppPreferencesStore()
+        val preferencesStore = InMemoryAppPreferencesStore(
+            AppPreferences(languageCode = "vi")
+        )
 
         restorationTester.setContent {
             FastToWinApp(

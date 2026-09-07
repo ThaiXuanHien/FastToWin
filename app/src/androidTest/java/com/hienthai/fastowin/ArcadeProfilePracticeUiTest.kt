@@ -22,6 +22,8 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import com.hienthai.fastowin.data.preferences.AppPreferences
+import com.hienthai.fastowin.localization.AppLanguage
+import com.hienthai.fastowin.localization.ProvideLocalization
 import com.hienthai.fastowin.navigation.GameMode
 import com.hienthai.fastowin.platform.ResultShareContent
 import com.hienthai.fastowin.protocol.AccountSessionSnapshot
@@ -141,9 +143,9 @@ class ArcadeProfilePracticeUiTest {
 
         composeRule.onNodeWithTag("share_result").performScrollTo().performClick()
         composeRule.runOnIdle {
-            assertEquals("Đội của bạn", sharedResult?.playerName)
+            assertEquals("ĐỘI CỦA BẠN", sharedResult?.playerName)
             assertEquals(22, sharedResult?.playerScore)
-            assertEquals("Đội đối thủ", sharedResult?.opponentName)
+            assertEquals("ĐỘI ĐỐI THỦ", sharedResult?.opponentName)
             assertEquals(17, sharedResult?.opponentScore)
             assertEquals("88%", sharedResult?.accuracy)
         }
@@ -280,7 +282,9 @@ class ArcadeProfilePracticeUiTest {
                 DeviceConfigurationOverride.ForcedSize(DpSize(width, height)) then
                     DeviceConfigurationOverride.FontScale(fontScale)
             ) {
-                FastToWinTheme { content() }
+                ProvideLocalization(AppLanguage.VIETNAMESE) {
+                    FastToWinTheme { content() }
+                }
             }
         }
     }
