@@ -179,6 +179,11 @@ export async function login(actor) {
   await click(page, tag(page, 'auth_open_login'));
   await fill(page, tag(page, 'auth_email'), account.email);
   await fill(page, tag(page, 'auth_password'), account.password);
+  // Submit must not be the control that blurs the password field: Firefox can
+  // dispatch Compose's click before the pending text edit reaches Kotlin state.
+  await click(page, tag(page, 'auth_email'));
+  await expect(page.locator('input:focus')).toHaveValue(account.email);
+  await page.waitForTimeout(250);
   const loginResponsePromise = page.waitForResponse(response =>
     response.url() === `${process.env.E2E_API_URL}/auth/login` && response.request().method() === 'POST'
   );
