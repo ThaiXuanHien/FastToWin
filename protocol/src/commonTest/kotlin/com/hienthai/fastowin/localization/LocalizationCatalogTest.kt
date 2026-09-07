@@ -66,6 +66,22 @@ class LocalizationCatalogTest {
     }
 
     @Test
+    fun sensitiveAuthCopyRendersWithoutLocalizationArguments() {
+        val sensitiveKeys = listOf(
+            TextKey.VerifyEmailDescription,
+            TextKey.DevVerificationCode,
+            TextKey.DevResetCode,
+        )
+
+        AppLanguage.entries.forEach { language ->
+            val service = LocalizationService(language)
+            sensitiveKeys.forEach { key ->
+                assertTrue(service.text(key).isNotBlank(), "${language.code}/$key")
+            }
+        }
+    }
+
+    @Test
     fun missingArgumentFailsWithoutLeakingArgumentValues() {
         val error = assertFailsWith<IllegalArgumentException> {
             LocalizationService(AppLanguage.ENGLISH).text(TextKey.WelcomePlayer, mapOf("wrong" to "private-value"))

@@ -141,16 +141,20 @@ private fun EmailVerificationContent(
         state.devEmailVerificationCode?.let { code = it }
     }
     AuthForm(title = localized(TextKey.VerifyEmailTitle), state = state, onBack = onCancel) {
+        val email = state.session?.email.orEmpty()
+        val verificationDescription = localized(TextKey.VerifyEmailDescription)
         Text(
-            localized(TextKey.VerifyEmailDescription, "email" to state.session?.email.orEmpty()),
+            if (email.isBlank()) verificationDescription else "$verificationDescription\n$email",
             textAlign = TextAlign.Center,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.testTag("auth_verification_email")
         )
         state.devEmailVerificationCode?.let {
             Text(
-                localized(TextKey.DevVerificationCode, "code" to it),
+                "${localized(TextKey.DevVerificationCode)}\n$it",
                 color = MaterialTheme.colorScheme.primary,
-                textAlign = TextAlign.Center
+                textAlign = TextAlign.Center,
+                modifier = Modifier.testTag("auth_dev_verification_code")
             )
         }
         OutlinedTextField(
@@ -285,9 +289,10 @@ private fun PasswordResetContent(
         } else {
             state.devResetToken?.let { token ->
                 Text(
-                    localized(TextKey.DevResetCode, "code" to token),
+                    "${localized(TextKey.DevResetCode)}\n$token",
                     color = MaterialTheme.colorScheme.primary,
-                    textAlign = TextAlign.Center
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.testTag("auth_dev_reset_code")
                 )
             }
             OutlinedTextField(
