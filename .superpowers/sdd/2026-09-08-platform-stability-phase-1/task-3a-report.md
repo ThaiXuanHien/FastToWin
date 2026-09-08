@@ -2,7 +2,7 @@
 
 ## Implementation
 
-- Implementation commit: `24a6b4ade3503e484d725395da75dd76ea240988` (`fix: harden stalled websocket generation teardown`).
+- Implementation commit: `c9a7461e2904208493e252ebd23ffce6aafabe37` (`fix: harden stalled websocket generation teardown`).
 - `GameSocketClient` moves each generation's transport invocation into a generation-owned `CoroutineScope` that inherits the caller dispatcher but not the owner `Job`. This is not `GlobalScope`; it is cancelled when the generation completes.
 - The reconnect owner waits only for a bounded virtual-time-compatible shutdown window. A transport that does not cooperate with cancellation is cancelled, abandoned, and permanently generation-gated rather than joined indefinitely.
 - Session closes likewise run as owned work with the same bounded deadline. `disconnect()` acknowledges only after a clean transport end or the timed-out detached outcome; it then releases global connect ownership for reset/reconnect.
@@ -38,7 +38,7 @@ With local JBR, Android SDK, Gradle cache, and loopback temp directory configure
 ./gradlew.bat :shared:testAndroidHostTest --tests "*ReconnectStateMachineTest" --tests "*GameSocketClientTest" :app:compileDevDebugKotlin :webApp:compileKotlinWasmJs :webApp:compileKotlinJs --no-daemon
 ```
 
-Result: `BUILD SUCCESSFUL in 26s` (47 actionable tasks). XML results show 22 `GameSocketClientTest` and 5 `ReconnectStateMachineTest`, with zero failures, errors, or skips. `git diff --check` was clean before commit.
+Result: `BUILD SUCCESSFUL in 24s` (47 actionable tasks). XML results show 24 `GameSocketClientTest` and 5 `ReconnectStateMachineTest`, with zero failures, errors, or skips. `git diff --check` was clean before commit.
 
 ## Residual risk
 
