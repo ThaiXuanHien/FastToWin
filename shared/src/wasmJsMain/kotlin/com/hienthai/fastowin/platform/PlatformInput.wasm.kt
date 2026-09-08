@@ -16,7 +16,6 @@ actual fun createPlainTextClipEntry(text: String): ClipEntry = ClipEntry.withPla
 
 private fun browserHasTouchInput(): Boolean = js(
     """(
-        (navigator.maxTouchPoints || navigator.msMaxTouchPoints || 0) > 0 &&
-        (!window.matchMedia || window.matchMedia('(pointer: coarse)').matches)
+        (navigator.maxTouchPoints || navigator.msMaxTouchPoints || 0) > 0
     )"""
 )

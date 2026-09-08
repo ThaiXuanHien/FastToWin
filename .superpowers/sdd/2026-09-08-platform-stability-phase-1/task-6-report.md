@@ -22,3 +22,10 @@
 ## Residual risk
 
 The Kotlin compiler and browser execution could not run in this environment. A machine with Gradle loopback access and the Playwright dependencies/browser cache should run the Task 6 verification commands from the brief.
+
+## Round 1 follow-up
+
+- Corrected Web input detection so any positive `maxTouchPoints`/`msMaxTouchPoints` enables touch pull-to-refresh, including hybrid devices whose primary pointer is fine; the coarse-pointer media query is no longer a gate.
+- Split the adaptive-input E2E coverage into explicit Chromium desktop (`hasTouch: false`) and touch (`hasTouch: true`) projects. The test now asserts the configured context matches `navigator.maxTouchPoints`; desktop activation asserts the refresh action becomes disabled while the refresh callback is in flight instead of merely checking the pre-existing room list.
+- Made the desktop refresh affordance compact and right-aligned: it uses a 44dp minimum target, a 160dp maximum width, and the compact action layout rather than a full-width 55dp CTA. Existing `FastToWinPullRefresh` call sites and dialog/CSS contracts are unchanged.
+- `node --check e2e/playwright.config.mjs` and `node --check e2e/tests/adaptive-input.spec.mjs` passed; `git diff --check` passed. Playwright installation/test execution remains blocked by unavailable local tarballs and registry `EACCES`. Gradle compile remains blocked by `Unable to establish loopback connection`.

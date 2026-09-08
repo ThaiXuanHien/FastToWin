@@ -71,9 +71,14 @@ export default defineConfig({
       use: { browserName: 'chromium', viewport: { width: 932, height: 430 } },
     },
     {
-      name: 'chromium-adaptive-input',
+      name: 'chromium-adaptive-input-desktop',
       testMatch: /adaptive-input\.spec\.mjs/,
-      use: { browserName: 'chromium', viewport: { width: 320, height: 568 } },
+      use: { browserName: 'chromium', viewport: { width: 834, height: 640 }, hasTouch: false },
+    },
+    {
+      name: 'chromium-adaptive-input-touch',
+      testMatch: /adaptive-input\.spec\.mjs/,
+      use: { browserName: 'chromium', viewport: { width: 834, height: 640 }, hasTouch: true },
     },
     {
       name: 'firefox-smoke',

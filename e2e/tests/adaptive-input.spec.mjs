@@ -70,18 +70,20 @@ test('large text, long content and a compact keyboard viewport remain usable', a
   await expect(page.getByText(roomName, { exact: true })).toBeAttached();
 });
 
-test('refresh affordance follows the browser input mode', async ({ actors }) => {
+test('refresh affordance follows the configured browser input mode', async ({ actors }) => {
   const player = await actors('Refresh input');
   const { page } = player;
   await login(player);
   await click(page, tag(page, 'bottom_tab:rooms'));
 
   const hasTouch = await page.evaluate(() => navigator.maxTouchPoints > 0);
+  const isTouchProject = test.info().project.name.endsWith('-touch');
+  expect(hasTouch, 'Playwright project must expose its configured input mode').toBe(isTouchProject);
   if (hasTouch) {
     await expect(tag(page, 'pointer_refresh')).toHaveCount(0);
   } else {
     await expect(tag(page, 'pointer_refresh')).toBeAttached();
     await click(page, tag(page, 'pointer_refresh'));
-    await expect(tag(page, 'room_list')).toBeAttached();
+    await expect(tag(page, 'pointer_refresh')).toBeDisabled();
   }
 });

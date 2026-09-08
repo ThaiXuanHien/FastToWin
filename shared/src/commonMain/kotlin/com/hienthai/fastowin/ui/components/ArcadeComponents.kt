@@ -82,6 +82,7 @@ fun ArcadeActionButton(
     icon: ImageVector? = null,
     style: ArcadeActionStyle = ArcadeActionStyle.PRIMARY,
     enabled: Boolean = true,
+    compact: Boolean = false,
     content: (@Composable RowScope.() -> Unit)? = null
 ) {
     val shape = RoundedCornerShape(15.dp)
@@ -114,22 +115,22 @@ fun ArcadeActionButton(
 
     Box(
         modifier = modifier
-            .height(55.dp)
+            .height(if (compact) 44.dp else 55.dp)
             .semantics { if (!enabled) disabled() }
     ) {
         if (enabled && shadowColor != Color.Transparent) {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(50.dp)
-                    .offset(y = 5.dp)
+                    .height(if (compact) 40.dp else 50.dp)
+                    .then(if (compact) Modifier else Modifier.offset(y = 5.dp))
                     .background(shadowColor, shape)
             )
         }
         Surface(
             onClick = onClick,
             enabled = enabled,
-            modifier = Modifier.fillMaxWidth().height(50.dp),
+            modifier = Modifier.fillMaxWidth().height(if (compact) 40.dp else 50.dp),
             shape = shape,
             color = Color.Transparent,
             contentColor = contentColor,
