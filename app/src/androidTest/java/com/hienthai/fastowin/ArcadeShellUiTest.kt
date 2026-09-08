@@ -1,3 +1,5 @@
+@file:Suppress("INVISIBLE_MEMBER", "INVISIBLE_REFERENCE")
+
 package com.hienthai.fastowin
 
 import androidx.compose.foundation.layout.Box

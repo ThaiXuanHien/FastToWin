@@ -44,3 +44,9 @@
 - The controller's full gate compiled `buildSrc` and reported `Unresolved reference DisableCachingByDefault` at the scanner task annotations. The annotation belongs to `org.gradle.work`, not `org.gradle.api.tasks` for this Gradle API.
 - Corrected only that import; the task annotations and declared configuration-cache-safe inputs are unchanged.
 - This sandbox still cannot reach Gradle compilation because its daemon bootstrap fails with `java.io.IOException: Unable to establish loopback connection`; the controller must re-run the gate for GREEN evidence.
+
+## Round 4 Android-test compilation repair
+
+- The controller's full gate passed the buildSrc/scanner configuration-cache stages and reached Android test compilation. It found that `ArcadeShellUiTest` accesses internal `HomeDashboard`, and that this Compose version has no importable `androidx.compose.ui.test.assertDoesNotExist` symbol.
+- Added the same narrow file-level invisible-member suppression already used by `ReconnectOverlayUiTest`; `HomeDashboard` remains internal. Removed only the invalid explicit assertion import, leaving the existing node member calls unchanged.
+- `:app:compileDevDebugAndroidTestKotlin --no-daemon` was attempted locally but this sandbox again stopped before Gradle configuration with `java.io.IOException: Unable to establish loopback connection`. Controller rerun remains needed for GREEN output.
