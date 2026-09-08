@@ -25,6 +25,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -64,6 +65,7 @@ class GameController(
 
     private var playerId: String? = null
     private var sessionJob: Job? = null
+    private var resettingSocket = false
     private var messageJob: Job? = null
     private var connectionJob: Job? = null
     private var timerJob: Job? = null
@@ -180,6 +182,7 @@ class GameController(
     }
 
     private fun ensureSocketSession(displayName: String = _uiState.value.player.name) {
+        if (resettingSocket) return
         if (sessionJob?.isActive == true) {
             requestRoomList()
             return
@@ -1660,6 +1663,8 @@ class GameController(
     }
 
     fun resetGame() {
+        if (resettingSocket) return
+        resettingSocket = true
         val roomId = _uiState.value.currentRoomId
         val displayName = accountDisplayName ?: _uiState.value.player.name
         val activeSession = sessionJob
@@ -1668,11 +1673,15 @@ class GameController(
         gameStarted = false
         _uiState.value = GameState(player = PlayerState(displayName))
 
-        sessionJob = null
         scope.launch {
-            if (roomId != null) socket.sendMessage(ClientMessage.LeaveRoom(roomId))
-            socket.disconnect()
-            activeSession?.cancel()
+            try {
+                if (roomId != null) socket.sendMessage(ClientMessage.LeaveRoom(roomId))
+                socket.disconnect()
+                activeSession?.cancelAndJoin()
+                sessionJob = null
+            } finally {
+                resettingSocket = false
+            }
             ensureSocketSession(displayName)
         }
     }

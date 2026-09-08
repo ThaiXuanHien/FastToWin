@@ -5,7 +5,10 @@ import com.hienthai.fastowin.protocol.*
 import io.ktor.websocket.Frame
 import io.ktor.websocket.readText
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
@@ -20,6 +23,103 @@ import kotlin.test.*
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class GameSocketClientTest {
+    @Test fun `disconnect acknowledges cleanup and next connect does not inherit stop`() = runTest {
+        val f = Fixture(this)
+        f.start()
+        val old = f.transport.sessions.single()
+        old.closeGate = CompletableDeferred()
+        val stopping = launch(start = CoroutineStart.UNDISPATCHED) { f.client.disconnect() }
+        runCurrent()
+        val returnedBeforeClose = stopping.isCompleted
+        old.closeGate!!.complete(Unit)
+        stopping.join()
+        val replacement = backgroundScope.launch { f.client.connect("New player") }
+        runCurrent()
+        assertFalse(returnedBeforeClose)
+        assertTrue(old.closed)
+        assertEquals(2, f.transport.sessions.size)
+        assertFalse(f.transport.sessions.last().closed)
+        assertTrue(replacement.isActive)
+        assertEquals(ClientMessage.ConnectGuest("New player", null), f.transport.sessions.last().sent.single())
+    }
+
+    @Test fun `cancellation restart cannot overlap old transport or inherit unconsumed stop`() = runTest {
+        val f = Fixture(this)
+        f.start()
+        val old = f.transport.sessions.single()
+        old.closeGate = CompletableDeferred()
+        // Match the old resetGame race: request stop, cancel before its select
+        // consumes the signal, then start another connect without joining.
+        val stopping = launch(start = CoroutineStart.UNDISPATCHED) { f.client.disconnect() }
+        f.connection.cancel()
+        val replacement = backgroundScope.launch { f.client.connect("New player") }
+        runCurrent()
+        val attemptsDuringCleanup = f.transport.sessions.size
+        old.closeGate!!.complete(Unit)
+        runCurrent()
+        stopping.join()
+        f.connection.join()
+        assertEquals(1, attemptsDuringCleanup)
+        assertEquals(1, f.transport.maxConcurrentLiveSessions)
+        assertEquals(2, f.transport.sessions.size)
+        assertTrue(replacement.isActive)
+        assertFalse(f.transport.sessions.last().closed)
+        f.client.sendMessage(ClientMessage.GetProfile)
+        runCurrent()
+        assertEquals(ClientMessage.GetProfile, f.transport.sessions.last().sent.last())
+        assertEquals(emptyList(), f.transport.staleSends)
+    }
+
+    @Test fun `cancelled owner cleanup cannot detach or close replacement mailbox`() = runTest {
+        val f = Fixture(this)
+        f.start()
+        val old = f.transport.sessions.single()
+        old.closeGate = CompletableDeferred()
+        f.connection.cancel()
+        val replacement = backgroundScope.launch { f.client.connect("New player") }
+        runCurrent()
+        val attemptsDuringCleanup = f.transport.sessions.size
+        old.closeGate!!.complete(Unit)
+        runCurrent()
+        f.connection.join()
+        f.client.sendMessage(ClientMessage.GetProfile)
+        runCurrent()
+        assertEquals(1, attemptsDuringCleanup)
+        assertEquals(1, f.transport.maxConcurrentLiveSessions)
+        assertTrue(replacement.isActive)
+        assertFalse(f.transport.sessions.last().closed)
+        assertEquals(SocketConnectionState.AUTHENTICATING, f.client.connectionState.value)
+        assertTrue(f.client.isConnected.value)
+        assertEquals(ClientMessage.GetProfile, f.transport.sessions.last().sent.last())
+        assertEquals(emptyList(), f.errors)
+        assertEquals(emptyList(), f.transport.staleSends)
+    }
+
+    @Test fun `reset style disconnect join restart leaves only replacement alive`() = runTest {
+        val f = Fixture(this)
+        f.start()
+        val old = f.transport.sessions.single()
+        old.closeGate = CompletableDeferred()
+        val reset = launch {
+            f.client.disconnect()
+            f.connection.cancelAndJoin()
+            backgroundScope.launch { f.client.connect("New player") }
+        }
+        runCurrent()
+        val returnedBeforeClose = reset.isCompleted
+        old.closeGate!!.complete(Unit)
+        reset.join()
+        runCurrent()
+        assertFalse(returnedBeforeClose)
+        assertEquals(1, f.transport.maxConcurrentLiveSessions)
+        assertEquals(2, f.transport.sessions.size)
+        assertTrue(f.connection.isCompleted)
+        assertFalse(f.transport.sessions.last().closed)
+        f.client.sendMessage(ClientMessage.GetProfile)
+        runCurrent()
+        assertEquals(ClientMessage.GetProfile, f.transport.sessions.last().sent.last())
+    }
+
     @Test fun `closed attempt is discarded before retry`() = runTest {
         val f = Fixture(this)
         f.start()
@@ -262,9 +362,11 @@ private class Fixture(
     val messages = mutableListOf<ServerMessage>()
     val errors get() = messages.filterIsInstance<ServerMessage.Error>()
     val client = GameSocketClient("ws://test", store, provider, { code, _ -> expired += code }, sleeper, RetryJitter { 0L }, transport)
+    lateinit var connection: Job
+        private set
     fun start() {
         scope.backgroundScope.launch { client.messages.collect { messages += it } }
-        scope.backgroundScope.launch { client.connect("Hiền") }
+        connection = scope.backgroundScope.launch { client.connect("Hiền") }
         scope.runCurrent()
     }
 }
