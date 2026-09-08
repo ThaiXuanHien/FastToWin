@@ -42,6 +42,10 @@ class ReconnectStateMachine {
         private set
 
     fun reduce(event: ReconnectEvent): ReconnectDecision {
+        if (event == ReconnectEvent.Stop) {
+            state = SocketConnectionState.DISCONNECTED
+            return ReconnectDecision.Stop
+        }
         if (state == SocketConnectionState.TERMINAL) {
             return if (event == ReconnectEvent.SessionExpired || event == ReconnectEvent.ManualRetry) {
                 ReconnectDecision.Stop
@@ -50,25 +54,30 @@ class ReconnectStateMachine {
             }
         }
         return when (event) {
-            ReconnectEvent.Start -> {
+            ReconnectEvent.Start -> if (state == SocketConnectionState.DISCONNECTED) {
                 state = SocketConnectionState.CONNECTING
                 ReconnectDecision.ConnectNow
-            }
-            ReconnectEvent.TransportOpened -> {
+            } else ReconnectDecision.None
+            ReconnectEvent.TransportOpened -> if (state == SocketConnectionState.CONNECTING ||
+                state == SocketConnectionState.RECONNECTING
+            ) {
                 state = SocketConnectionState.AUTHENTICATING
                 ReconnectDecision.None
-            }
-            ReconnectEvent.Authenticated -> {
+            } else ReconnectDecision.None
+            ReconnectEvent.Authenticated -> if (state == SocketConnectionState.AUTHENTICATING) {
                 state = SocketConnectionState.CONNECTED
                 attempt = 0
                 ReconnectDecision.None
-            }
-            ReconnectEvent.TransportLost, ReconnectEvent.AttemptFailed -> {
+            } else ReconnectDecision.None
+            ReconnectEvent.TransportLost, ReconnectEvent.AttemptFailed -> if (
+                state == SocketConnectionState.CONNECTING || state == SocketConnectionState.AUTHENTICATING ||
+                state == SocketConnectionState.CONNECTED || state == SocketConnectionState.RECONNECTING
+            ) {
                 state = SocketConnectionState.RECONNECTING
                 val delay = reconnectDelayMillis(attempt)
                 attempt++
                 ReconnectDecision.RetryAfter(delay)
-            }
+            } else ReconnectDecision.None
             ReconnectEvent.ManualRetry -> {
                 state = SocketConnectionState.CONNECTING
                 attempt = 0
@@ -76,10 +85,6 @@ class ReconnectStateMachine {
             }
             ReconnectEvent.SessionExpired -> {
                 state = SocketConnectionState.TERMINAL
-                ReconnectDecision.Stop
-            }
-            ReconnectEvent.Stop -> {
-                state = SocketConnectionState.DISCONNECTED
                 ReconnectDecision.Stop
             }
         }

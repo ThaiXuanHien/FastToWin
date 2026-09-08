@@ -36,4 +36,27 @@ class ReconnectStateMachineTest {
         assertEquals(SocketConnectionState.TERMINAL, machine.state)
         assertEquals(ReconnectDecision.Stop, machine.reduce(ReconnectEvent.ManualRetry))
     }
+
+    @Test
+    fun `stop from terminal disconnects and ignores late transport callbacks`() {
+        val machine = ReconnectStateMachine()
+        machine.reduce(ReconnectEvent.SessionExpired)
+
+        assertEquals(ReconnectDecision.Stop, machine.reduce(ReconnectEvent.Stop))
+        assertEquals(SocketConnectionState.DISCONNECTED, machine.state)
+        assertEquals(ReconnectDecision.None, machine.reduce(ReconnectEvent.TransportLost))
+        assertEquals(ReconnectDecision.None, machine.reduce(ReconnectEvent.AttemptFailed))
+        assertEquals(SocketConnectionState.DISCONNECTED, machine.state)
+    }
+
+    @Test
+    fun `late transport callbacks after stop do not schedule retry`() {
+        val machine = ReconnectStateMachine()
+        machine.reduce(ReconnectEvent.Start)
+        machine.reduce(ReconnectEvent.Stop)
+
+        assertEquals(ReconnectDecision.None, machine.reduce(ReconnectEvent.TransportLost))
+        assertEquals(ReconnectDecision.None, machine.reduce(ReconnectEvent.AttemptFailed))
+        assertEquals(SocketConnectionState.DISCONNECTED, machine.state)
+    }
 }
