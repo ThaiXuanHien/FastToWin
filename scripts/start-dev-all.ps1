@@ -1,5 +1,6 @@
 param(
-    [switch]$NoBrowser
+    [switch]$NoBrowser,
+    [switch]$ReinstallAndroid
 )
 
 $ErrorActionPreference = 'Stop'
@@ -9,6 +10,8 @@ $serverProcess = $null
 $webProcess = $null
 $startedServer = $false
 $startedWeb = $false
+
+. (Join-Path $PSScriptRoot 'android-dev-install.ps1')
 
 function Invoke-Checked {
     param(
@@ -157,7 +160,12 @@ if ($serials.Count -eq 0) {
 
     foreach ($serial in $serials) {
         Write-Host "[FastToWin] Cai ban Android development tren $serial..."
-        Invoke-Checked $adb -s $serial install -r -t $androidApk
+        Install-AndroidDevApk `
+            -AdbPath $adb `
+            -Serial $serial `
+            -ApkPath $androidApk `
+            -PackageName 'com.hienthai.fastowin.dev' `
+            -ReinstallOnSignatureMismatch:$ReinstallAndroid
         & $adb -s $serial shell am start -W `
             -n 'com.hienthai.fastowin.dev/com.hienthai.fastowin.MainActivity' *> $null
         if ($LASTEXITCODE -ne 0) {
