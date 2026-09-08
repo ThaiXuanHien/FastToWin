@@ -519,7 +519,7 @@ private fun RoomBrowser(
         modifier = Modifier.fillMaxSize()
     ) {
         LazyColumn(
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier.fillMaxSize().testTag("room_list"),
             contentPadding = PaddingValues(bottom = 16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {

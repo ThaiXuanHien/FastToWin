@@ -1,6 +1,7 @@
 :root {
     color-scheme: dark;
     background: #071824;
+    background-color: #071824;
 }
 
 html,
@@ -14,10 +15,12 @@ body,
     margin: 0;
     padding: 0;
     overflow: hidden;
+    background-color: #071824;
 }
 
 body {
     background: #071824;
+    background-color: #071824;
     overscroll-behavior: none;
     -webkit-tap-highlight-color: transparent;
 }

@@ -256,6 +256,7 @@ fun ArcadeDialog(
             val dialogMaxHeight = (maxHeight - 24.dp).coerceAtLeast(240.dp)
             Surface(
                 modifier = modifier
+                    .testTag("arcade_dialog")
                     .widthIn(max = 420.dp)
                     .fillMaxWidth()
                     .heightIn(max = dialogMaxHeight)

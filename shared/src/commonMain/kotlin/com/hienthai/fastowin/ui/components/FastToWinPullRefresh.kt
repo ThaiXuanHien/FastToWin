@@ -2,16 +2,23 @@ package com.hienthai.fastowin.ui.components
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.weight
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
-import com.hienthai.fastowin.platform.supportsTouchPullToRefresh
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.unit.dp
+import com.hienthai.fastowin.localization.TextKey
+import com.hienthai.fastowin.localization.localized
+import com.hienthai.fastowin.platform.platformRefreshInput
 
 /**
- * Keeps native pull-to-refresh on touch devices while avoiding accidental refresh gestures from
- * a desktop browser's mouse wheel or trackpad. Browser reload remains available on non-touch web.
+ * Keeps native pull-to-refresh on touch devices while providing a visible action for pointer input.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -21,15 +28,30 @@ fun FastToWinPullRefresh(
     modifier: Modifier = Modifier,
     content: @Composable BoxScope.() -> Unit
 ) {
-    val gestureEnabled = remember { supportsTouchPullToRefresh() }
-    if (gestureEnabled) {
+    val refreshInput = remember { platformRefreshInput() }
+    if (refreshInput.touchPullEnabled) {
         PullToRefreshBox(
             isRefreshing = isRefreshing,
             onRefresh = onRefresh,
             modifier = modifier,
             content = content
         )
-    } else {
-        Box(modifier = modifier, content = content)
+        return
+    }
+
+    Column(modifier = modifier) {
+        if (refreshInput.pointerRefreshEnabled) {
+            ArcadeActionButton(
+                label = localized(TextKey.Retry),
+                onClick = onRefresh,
+                enabled = !isRefreshing,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp)
+                    .testTag("pointer_refresh"),
+                style = ArcadeActionStyle.OUTLINE
+            )
+        }
+        Box(modifier = Modifier.weight(1f), content = content)
     }
 }
