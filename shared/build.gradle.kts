@@ -211,6 +211,26 @@ fun findLegacyFallbackLiteralRanges(
     }.toList()
 }
 
+fun findLocalizedUiTextViolations(
+    source: String,
+    allowLegacyFallback: Boolean,
+    vietnameseLetter: Regex,
+): List<KotlinStringLiteral> {
+    val lexicalScan = KotlinStringLiteralScanner(source).scan()
+    val allowedFallbackRanges = if (allowLegacyFallback) {
+        findLegacyFallbackLiteralRanges(source, lexicalScan)
+    } else {
+        emptyList()
+    }
+    return lexicalScan.stringLiterals.filter { literal ->
+        val isLegacyFallback = allowedFallbackRanges.any { allowed ->
+            literal.startOffset >= allowed.startOffset &&
+                literal.endOffsetExclusive <= allowed.endOffsetExclusive
+        }
+        !isLegacyFallback && vietnameseLetter.containsMatchIn(literal.literalText)
+    }
+}
+
 plugins {
     alias(libs.plugins.kotlin.multiplatform)
     alias(libs.plugins.android.kotlin.multiplatform.library)
@@ -329,19 +349,37 @@ val localizationCatalogFiles = setOf(
 )
 val vietnameseLetter = Regex("[À-ỹ]")
 val localizationScannerFixtures = layout.projectDirectory.dir("src/localizationScannerFixtures")
+val reconnectOverlaySource = layout.projectDirectory.file(
+    "src/commonMain/kotlin/com/hienthai/fastowin/FastToWinApp.kt"
+).asFile
+
+fun isLocalizedUiSource(source: java.io.File): Boolean {
+    val path = source.invariantSeparatorsPath
+    return source.isFile && source.name !in localizationCatalogFiles &&
+        (path.endsWith("/FastToWinApp.kt") || localizedUiSourceSegments.any(path::contains))
+}
 
 val checkLocalizedUiTextScannerFixtures by tasks.registering {
     group = "verification"
     description = "Verifies Kotlin lexical coverage used by the localized UI source scanner."
     notCompatibleWithConfigurationCache("The fixture check exercises build-script lexical scanner code.")
     inputs.dir(localizationScannerFixtures)
+    inputs.file(reconnectOverlaySource)
 
     doLast {
+        val sourceSelectionFailures = listOf(reconnectOverlaySource).filterNot { source ->
+            isLocalizedUiSource(source)
+        }.map { source ->
+            "${source.invariantSeparatorsPath}: reconnect overlay source is excluded from the localized UI scan"
+        }
         val positiveFailures = fileTree(localizationScannerFixtures.dir("positive")) {
             include("**/*.kt")
         }.sortedBy { it.name }.mapNotNull { fixture ->
-            val violationCount = KotlinStringLiteralScanner(fixture.readText()).scan().stringLiterals
-                .count { vietnameseLetter.containsMatchIn(it.literalText) }
+            val violationCount = findLocalizedUiTextViolations(
+                fixture.readText(),
+                allowLegacyFallback = false,
+                vietnameseLetter = vietnameseLetter,
+            ).size
             fixture.takeIf { violationCount != 1 }?.let {
                 "${it.name}: expected 1 violation, found $violationCount"
             }
@@ -349,8 +387,11 @@ val checkLocalizedUiTextScannerFixtures by tasks.registering {
         val negativeFailures = fileTree(localizationScannerFixtures.dir("negative")) {
             include("**/*.kt")
         }.sortedBy { it.name }.mapNotNull { fixture ->
-            val violationCount = KotlinStringLiteralScanner(fixture.readText()).scan().stringLiterals
-                .count { vietnameseLetter.containsMatchIn(it.literalText) }
+            val violationCount = findLocalizedUiTextViolations(
+                fixture.readText(),
+                allowLegacyFallback = false,
+                vietnameseLetter = vietnameseLetter,
+            ).size
             fixture.takeIf { violationCount != 0 }?.let {
                 "${it.name}: expected 0 violations, found $violationCount"
             }
@@ -358,8 +399,11 @@ val checkLocalizedUiTextScannerFixtures by tasks.registering {
         val rejectedUiTextFailures = fileTree(localizationScannerFixtures.dir("reject")) {
             include("**/*.kt")
         }.sortedBy { it.name }.mapNotNull { fixture ->
-            val violationCount = KotlinStringLiteralScanner(fixture.readText()).scan().stringLiterals
-                .count { vietnameseLetter.containsMatchIn(it.literalText) }
+            val violationCount = findLocalizedUiTextViolations(
+                fixture.readText(),
+                allowLegacyFallback = false,
+                vietnameseLetter = vietnameseLetter,
+            ).size
             fixture.takeIf { violationCount != 1 }?.let {
                 "${it.name}: expected 1 rejected UI literal, found $violationCount"
             }
@@ -367,8 +411,11 @@ val checkLocalizedUiTextScannerFixtures by tasks.registering {
         val acceptedUiTextFailures = fileTree(localizationScannerFixtures.dir("accept")) {
             include("**/*.kt")
         }.sortedBy { it.name }.mapNotNull { fixture ->
-            val violationCount = KotlinStringLiteralScanner(fixture.readText()).scan().stringLiterals
-                .count { vietnameseLetter.containsMatchIn(it.literalText) }
+            val violationCount = findLocalizedUiTextViolations(
+                fixture.readText(),
+                allowLegacyFallback = fixture.invariantSeparatorsPath.contains("/server/"),
+                vietnameseLetter = vietnameseLetter,
+            ).size
             fixture.takeIf { violationCount != 0 }?.let {
                 "${it.name}: expected no rejected UI literals, found $violationCount"
             }
@@ -377,10 +424,11 @@ val checkLocalizedUiTextScannerFixtures by tasks.registering {
             positiveFailures.isEmpty() &&
                 negativeFailures.isEmpty() &&
                 rejectedUiTextFailures.isEmpty() &&
-                acceptedUiTextFailures.isEmpty(),
+                acceptedUiTextFailures.isEmpty() &&
+                sourceSelectionFailures.isEmpty(),
         ) {
             "Localization scanner fixture failures:\n" +
-                (positiveFailures + negativeFailures + rejectedUiTextFailures + acceptedUiTextFailures)
+                (positiveFailures + negativeFailures + rejectedUiTextFailures + acceptedUiTextFailures + sourceSelectionFailures)
                     .joinToString("\n")
         }
     }
@@ -394,10 +442,7 @@ val checkLocalizedUiText by tasks.registering {
     val sharedMainSources = fileTree(layout.projectDirectory.dir("src")) {
         include("*Main/kotlin/**/*.kt")
         exclude("**/localization/catalogs/**")
-    }.filter { source ->
-        val path = source.invariantSeparatorsPath
-        localizedUiSourceSegments.any(path::contains) && source.name !in localizationCatalogFiles
-    }
+    }.filter(::isLocalizedUiSource)
     val backendSources = fileTree(rootProject.layout.projectDirectory.dir("server/src/main/kotlin")) {
         include("**/*.kt")
     }
@@ -407,25 +452,17 @@ val checkLocalizedUiText by tasks.registering {
         val violations = buildList {
             (sharedMainSources + backendSources).sortedBy { it.invariantSeparatorsPath }.forEach { source ->
                 val content = source.readText()
-                val lexicalScan = KotlinStringLiteralScanner(content).scan()
-                val allowedFallbackRanges = if (source in backendSources) {
-                    findLegacyFallbackLiteralRanges(content, lexicalScan)
-                } else {
-                    emptyList()
-                }
-                lexicalScan.stringLiterals.forEach { literal ->
-                    val isLegacyFallback = allowedFallbackRanges.any { allowed ->
-                        literal.startOffset >= allowed.startOffset &&
-                            literal.endOffsetExclusive <= allowed.endOffsetExclusive
-                    }
-                    if (!isLegacyFallback && vietnameseLetter.containsMatchIn(literal.literalText)) {
-                        val lineNumber = content.take(literal.startOffset).count { it == '\n' } + 1
-                        val preview = content.substring(
-                            literal.startOffset,
-                            literal.endOffsetExclusive,
-                        ).lineSequence().first().trim()
-                        add("${source.relativeTo(rootProject.projectDir).invariantSeparatorsPath}:$lineNumber: $preview")
-                    }
+                findLocalizedUiTextViolations(
+                    source = content,
+                    allowLegacyFallback = source in backendSources,
+                    vietnameseLetter = vietnameseLetter,
+                ).forEach { literal ->
+                    val lineNumber = content.take(literal.startOffset).count { it == '\n' } + 1
+                    val preview = content.substring(
+                        literal.startOffset,
+                        literal.endOffsetExclusive,
+                    ).lineSequence().first().trim()
+                    add("${source.relativeTo(rootProject.projectDir).invariantSeparatorsPath}:$lineNumber: $preview")
                 }
             }
         }

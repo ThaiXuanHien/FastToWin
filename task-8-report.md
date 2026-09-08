@@ -23,3 +23,11 @@
 
 - Match-event persistence, match detail, and rematch identifiers remain present.
 - The raw `replay` scan still finds the retained practice/challenge `ReplaySameBoard` feature and replay-removal test names; it does not establish a clean no-match-replay result on its own.
+
+## Round 1 scanner boundary repair
+
+- `checkLocalizedUiText` now explicitly includes the shared root `FastToWinApp.kt`, where the reconnect overlay is rendered, while retaining the existing `*Main/kotlin` source boundary so test and generated sources are not added.
+- The fixture task asserts that the reconnect overlay source remains selected. Before the selector implementation, that assertion would reject the existing segment-only selector; Gradle could not reach the task because of the same loopback failure.
+- Production scanning and fixtures now both call `findLocalizedUiTextViolations`, including the narrow server-only `legacyFallback(...)` allowance. The fixture set covers a rejected Vietnamese reconnect `Text`, an accepted localized reconnect key, and an accepted server `legacyFallback` literal.
+- A direct text scan of `FastToWinApp.kt` found no Vietnamese literals, so expanding the selector did not require unrelated source changes.
+- Re-running `:shared:checkLocalizedUiText :protocol:jvmTest --tests "*LocalizationCatalogTest" --no-daemon` remained blocked before Gradle configuration with `java.io.IOException: Unable to establish loopback connection`.
