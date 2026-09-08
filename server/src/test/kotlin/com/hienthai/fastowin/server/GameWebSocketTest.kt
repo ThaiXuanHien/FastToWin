@@ -48,7 +48,7 @@ class GameWebSocketTest {
             try {
                 socket.sendMessage(ClientMessage.ConnectGuest("Protocol $version", protocolVersion = version))
                 val session = withTimeout(2_000) { socket.receiveMessage<ServerMessage.SessionReady>() }
-                assertEquals(40, session.protocolVersion)
+                assertEquals(41, session.protocolVersion)
                 withTimeout(2_000) { socket.receiveMessage<ServerMessage.RoomList>() }
             } finally {
                 socket.close()
@@ -61,7 +61,7 @@ class GameWebSocketTest {
         application { gameModule() }
         val webSocketClient = createClient { install(WebSockets) }
 
-        for (version in listOf(37, 41)) {
+        for (version in listOf(37, 42)) {
             val socket = webSocketClient.webSocketSession("/game")
             try {
                 socket.sendMessage(ClientMessage.ConnectGuest("Protocol $version", protocolVersion = version))
@@ -245,7 +245,7 @@ class GameWebSocketTest {
             authenticated.sendMessage(ClientMessage.ConnectAccount(authSession.accessToken))
             val ready = authenticated.receiveMessage<ServerMessage.SessionReady>()
             assertEquals(authSession.userId, ready.playerId)
-            assertEquals(null, ready.resumeToken)
+            assertNotNull(ready.resumeToken)
             authenticated.receiveMessage<ServerMessage.RoomList>()
             authenticated.sendMessage(ClientMessage.GetProfile)
             assertEquals(
@@ -422,7 +422,8 @@ class GameWebSocketTest {
 
             val resumedHost = webSocketClient.webSocketSession("/game")
             try {
-                resumedHost.sendMessage(ClientMessage.ConnectAccount(authSession.accessToken))
+                val accountResumeToken = assertNotNull(hostReady.resumeToken)
+                resumedHost.sendMessage(ClientMessage.ConnectAccount(authSession.accessToken, resumeToken = accountResumeToken))
                 val resumed = resumedHost.receiveMessage<ServerMessage.SessionReady>()
                 assertEquals(hostReady.playerId, resumed.playerId)
                 val snapshot = assertNotNull(resumed.currentGame)

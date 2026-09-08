@@ -593,7 +593,7 @@ class GameEngineTest {
         )
 
         assertEquals(guest.playerId, account.playerId)
-        assertEquals(null, account.resumeToken)
+        assertNotNull(account.resumeToken)
     }
 
     @Test
@@ -1276,13 +1276,10 @@ class GameEngineTest {
             nowMillis = { now }
         )
         val host = engine.connectGuest("Hiền", null)
-        val guest = engine.connectGuest("Hiếu", null)
         val created = engine.handle(
             host.playerId,
             ClientMessage.CreateRoom("Phòng hết hạn", PASSWORD, ProtocolGameMode.ORDER)
         ).map(Delivery::message).filterIsInstance<ServerMessage.RoomCreated>().single()
-        startRoom(engine, host.playerId, guest.playerId, created.game.roomId)
-
         engine.markDisconnected(host.playerId)
         now += 29_999L
         assertTrue(engine.cleanupExpiredSessions().isEmpty())
@@ -1291,11 +1288,6 @@ class GameEngineTest {
         val cleanupMessages = engine.cleanupExpiredSessions().map(Delivery::message)
         assertEquals(1, cleanupMessages.filterIsInstance<ServerMessage.RoomClosed>().size)
 
-        val result = engine.handle(
-            guest.playerId,
-            ClientMessage.SelectNumber(created.game.roomId, 1, "after-expiry")
-        )
-        assertEquals("ROOM_NOT_FOUND", assertIs<ServerMessage.Error>(result.single().message).code)
         assertTrue(activeRoomRepository.loadAll().isEmpty())
     }
 
@@ -2425,6 +2417,37 @@ class GameEngineTest {
         val created = deliveries.map(Delivery::message).filterIsInstance<ServerMessage.RoomCreated>().single()
         assertTrue(created.game.numbers.isEmpty())
         return Fixture(engine, host.playerId, guest.playerId, created.game.roomId)
+    }
+
+    @Test
+    fun `expired playing room records official forfeit`() = runTest {
+        var now = 1_000L
+        val savedMatches = mutableListOf<CompletedMatch>()
+        val engine = GameEngine(
+            matchResultRepository = MatchResultRepository { savedMatches += it },
+            nowMillis = { now }
+        )
+        val host = engine.connectGuest("Host", null)
+        val guest = engine.connectGuest("Guest", null)
+        val room = engine.handle(
+            host.playerId,
+            ClientMessage.CreateRoom("Reconnect expiry", PASSWORD, ProtocolGameMode.ORDER)
+        ).map(Delivery::message).filterIsInstance<ServerMessage.RoomCreated>().single().game
+        startRoom(engine, host.playerId, guest.playerId, room.roomId)
+
+        engine.markDisconnected(host.playerId)
+        now += 30_001L
+        val finished = engine.cleanupExpiredSessions().map(Delivery::message)
+            .filterIsInstance<ServerMessage.GameFinished>().single().game
+        val persisted = savedMatches.single()
+        val resumed = engine.connectGuest("Host", host.resumeToken)
+
+        assertEquals(guest.playerId, finished.winnerPlayerId)
+        assertEquals(MatchOutcome.LOSS, persisted.players.single { it.playerId == host.playerId }.outcome)
+        assertEquals(MatchOutcome.WIN, persisted.players.single { it.playerId == guest.playerId }.outcome)
+        assertEquals(com.hienthai.fastowin.protocol.RoomPhase.FINISHED, assertNotNull(resumed.currentGame).phase)
+        assertEquals(guest.playerId, resumed.currentGame?.winnerPlayerId)
+        assertEquals(null, engine.connectGuest("Host", host.resumeToken).currentGame)
     }
 
     private suspend fun startRoom(

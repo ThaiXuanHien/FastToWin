@@ -52,6 +52,8 @@ data class ConnectedPlayer(
     val currentGame: GameSnapshot?
 )
 
+class InvalidResumeTokenException : RuntimeException()
+
 class GameEngine(
     private val identityRepository: GuestIdentityRepository = InMemoryGuestIdentityRepository(),
     private val matchResultRepository: MatchResultRepository = NoOpMatchResultRepository,
@@ -74,6 +76,7 @@ class GameEngine(
     private val persistenceMutex = Mutex()
     private val sessionsByPlayerId = mutableMapOf<String, GuestSession>()
     private val rooms = mutableMapOf<String, Room>()
+    private val pendingReconnectResultsByPlayerId = mutableMapOf<String, GameSnapshot>()
     private val roomInvitations = mutableMapOf<String, RoomInvitationRecord>()
     private val matchmakingEntries = mutableMapOf<String, MatchmakingEntry>()
     private val tournaments = mutableMapOf<String, Tournament>()
@@ -89,8 +92,14 @@ class GameEngine(
         return connectIdentity(identity.playerId, identity.displayName, identity.resumeToken)
     }
 
-    suspend fun connectAccount(account: AuthenticatedAccount): ConnectedPlayer {
+    suspend fun connectAccount(account: AuthenticatedAccount, resumeToken: String? = null): ConnectedPlayer {
         restoreActiveRooms()
+        mutex.withLock {
+            val existing = sessionsByPlayerId[account.userId.toString()]
+            if (resumeToken != null && existing?.accountResumeToken != resumeToken) {
+                throw InvalidResumeTokenException()
+            }
+        }
         val appearance = runCatching {
             playerProfileRepository.findAppearance(account.userId.toString())
         }.getOrNull()
@@ -98,6 +107,7 @@ class GameEngine(
             identityPlayerId = account.userId.toString(),
             identityDisplayName = account.displayName,
             resumeToken = null,
+            accountResumeToken = resumeToken ?: newAccountResumeToken(),
             avatarId = appearance?.avatarId,
             frameId = appearance?.frameId ?: "frame_default"
         )
@@ -107,6 +117,7 @@ class GameEngine(
         identityPlayerId: String,
         identityDisplayName: String,
         resumeToken: String?,
+        accountResumeToken: String? = null,
         avatarId: String? = null,
         frameId: String = "frame_default"
     ): ConnectedPlayer {
@@ -114,12 +125,14 @@ class GameEngine(
             val session = sessionsByPlayerId[identityPlayerId]?.also { existing ->
                 existing.displayName = identityDisplayName
                 existing.resumeToken = resumeToken
+                existing.accountResumeToken = accountResumeToken ?: existing.accountResumeToken
                 existing.avatarId = avatarId
                 existing.frameId = frameId
             } ?: GuestSession(
                 playerId = identityPlayerId,
                 resumeToken = resumeToken,
                 displayName = identityDisplayName,
+                accountResumeToken = accountResumeToken,
                 avatarId = avatarId,
                 frameId = frameId
             ).also { created ->
@@ -130,12 +143,19 @@ class GameEngine(
 
             ConnectedPlayer(
                 playerId = session.playerId,
-                resumeToken = session.resumeToken,
+                resumeToken = session.accountResumeToken ?: session.resumeToken,
                 currentGame = roomFor(session.playerId)?.snapshot()
+                    ?: pendingReconnectResultsByPlayerId.remove(session.playerId)
             )
         }
         connected.currentGame?.roomId?.let { persistRoom(it) }
         return connected
+    }
+
+    private fun newAccountResumeToken(): String {
+        val bytes = ByteArray(32)
+        secureRandom.nextBytes(bytes)
+        return bytes.joinToString("") { "%02x".format(it) }
     }
 
     suspend fun restoreActiveRooms() {
@@ -2004,6 +2024,21 @@ class GameEngine(
                             ServerMessage.GameFinished(room.snapshot()),
                             room.activePlayerIds()
                         )
+                    } else if (room.phase == RoomPhase.PLAYING) {
+                        val forcedWinnerId = room.playerIds().firstOrNull { it != playerId }
+                        if (forcedWinnerId != null) {
+                            room.forcedWinnerId = forcedWinnerId
+                            room.finishedPlayerIds += playerId
+                            room.phase = RoomPhase.FINISHED
+                            room.finishedAtEpochMillis = now
+                            room.sequence++
+                            val snapshot = room.snapshot()
+                            pendingReconnectResultsByPlayerId[playerId] = snapshot
+                            room.takeCompletedMatch()?.let(completedMatches::add)
+                            deliveries += Delivery(ServerMessage.GameFinished(snapshot), room.activePlayerIds())
+                            rooms.remove(room.id)
+                            removedRoomIds += room.id
+                        }
                     } else {
                         removedRoomIds += room.id
                         rooms.remove(room.id)
@@ -3161,6 +3196,7 @@ class GameEngine(
         val playerId: String,
         var resumeToken: String?,
         var displayName: String,
+        var accountResumeToken: String? = null,
         var avatarId: String? = null,
         var frameId: String = "frame_default",
         var isConnected: Boolean = true,

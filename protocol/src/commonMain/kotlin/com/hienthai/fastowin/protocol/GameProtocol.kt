@@ -4,7 +4,7 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
-const val PROTOCOL_VERSION = 40
+const val PROTOCOL_VERSION = 41
 const val MIN_COMPATIBLE_PROTOCOL_VERSION = 38
 
 fun isCompatibleProtocolVersion(version: Int): Boolean =
@@ -638,6 +638,7 @@ sealed class ClientMessage {
     @SerialName("connect_account")
     data class ConnectAccount(
         val accessToken: String,
+        val resumeToken: String? = null,
         val protocolVersion: Int = PROTOCOL_VERSION
     ) : ClientMessage()
 

@@ -546,7 +546,7 @@ fun Application.gameModule(
                                         ?: throw InvalidAccessTokenException()
                                     if (!account.emailVerified) throw UnverifiedEmailException()
                                     accountAccessToken = message.accessToken
-                                    engine.connectAccount(account)
+                                    engine.connectAccount(account, message.resumeToken)
                                 }
                             }
                         }.getOrElse { error ->
@@ -559,6 +559,10 @@ fun Application.gameModule(
                                     is UnverifiedEmailException -> structuredServerError(
                                         "EMAIL_NOT_VERIFIED",
                                         legacyFallback("Vui lòng xác minh email trước khi vào game.")
+                                    )
+                                    is InvalidResumeTokenException -> structuredServerError(
+                                        "INVALID_RESUME_TOKEN",
+                                        legacyFallback("Token kết nối lại không hợp lệ.")
                                     )
                                     else -> structuredServerError(
                                         "INVALID_NAME",
