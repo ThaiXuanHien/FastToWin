@@ -474,7 +474,7 @@ private fun ArcadePlayerSummary(
         shadowElevation = 2.dp
     ) {
         Row(
-            modifier = Modifier.fillMaxWidth().padding(12.dp).testTag("home_header_content"),
+            modifier = Modifier.fillMaxWidth().padding(12.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(14.dp)
         ) {
@@ -487,7 +487,7 @@ private fun ArcadePlayerSummary(
             )
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth().testTag("home_header_content"),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {

@@ -6,3 +6,9 @@
 - `git diff --check`: passed.
 - Gradle verification attempted with `:app:compileDevDebugAndroidTestKotlin --no-daemon`; environment failed before compilation with `java.io.IOException: Unable to establish loopback connection`.
 - Instrumentation, Android release, and Wasm verification remain pending due to the Gradle JVM loopback failure.
+
+## Round 1 fix
+
+- Moved `home_header_content` to the display-name/level row so it is not an ancestor of the season tier node.
+- Updated the UI fixture with a real `SeasonSnapshot` and localized season-tier content.
+- Kept the accepted 8dp boundary padding contract.

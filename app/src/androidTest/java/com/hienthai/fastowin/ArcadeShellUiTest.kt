@@ -24,6 +24,8 @@ import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import com.hienthai.fastowin.protocol.PlayerProfileSnapshot
 import com.hienthai.fastowin.protocol.PlayerProgressionSnapshot
+import com.hienthai.fastowin.protocol.SeasonSnapshot
+import com.hienthai.fastowin.protocol.seasonTierRewards
 import com.hienthai.fastowin.localization.AppLanguage
 import com.hienthai.fastowin.localization.ProvideLocalization
 import com.hienthai.fastowin.state.ConnectionStatus
@@ -302,7 +304,20 @@ class ArcadeShellUiTest {
             userId = "arcade-shell-player",
             displayName = "Hiền",
             playerCode = "HIEN001",
-            progression = PlayerProgressionSnapshot(gold = 1_234_567, gems = 98_765)
+            progression = PlayerProgressionSnapshot(
+                gold = 1_234_567,
+                gems = 98_765,
+                season = SeasonSnapshot(
+                    name = "Mùa Khởi Đầu",
+                    tier = "Đấu sĩ",
+                    rating = 1_000,
+                    endsAtEpochMillis = 2_000_000_000_000L,
+                    rewardDescription = "Thưởng theo bậc cao nhất",
+                    placementMatchesPlayed = 5,
+                    peakRating = 1_000,
+                    tierRewards = seasonTierRewards(1, "Mùa Khởi Đầu")
+                )
+            )
         )
     )
 
