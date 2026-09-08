@@ -1,225 +1,156 @@
 package com.hienthai.fastowin.data.network
 
-import com.hienthai.fastowin.protocol.ClientMessage
-import com.hienthai.fastowin.protocol.ProtocolJson
-import com.hienthai.fastowin.protocol.ServerMessage
-import com.hienthai.fastowin.protocol.SESSION_REPLACED_CLOSE_REASON
 import com.hienthai.fastowin.localization.protocolTextKeyForCode
+import com.hienthai.fastowin.protocol.*
 import io.ktor.client.HttpClient
 import io.ktor.client.plugins.HttpTimeout
-import io.ktor.client.plugins.websocket.DefaultClientWebSocketSession
 import io.ktor.client.plugins.websocket.WebSockets
 import io.ktor.client.plugins.websocket.webSocket
 import io.ktor.websocket.Frame
-import io.ktor.websocket.CloseReason
-import io.ktor.websocket.close
 import io.ktor.websocket.readText
-import io.ktor.websocket.send
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.channels.ReceiveChannel
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.receiveAsFlow
+import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.selects.select
+import kotlinx.coroutines.coroutineScope
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
-import kotlin.random.Random
 
+internal fun interface RetrySleeper { suspend fun sleep(delayMillis: Long) }
+internal fun interface RetryJitter { fun nextMillis(): Long }
+internal interface SocketSession {
+    val incoming: ReceiveChannel<Frame>
+    suspend fun send(frame: Frame)
+    suspend fun close()
+    suspend fun closeReason(): String?
+}
+internal interface SocketTransport {
+    suspend fun webSocket(url: String, block: suspend (SocketSession) -> Unit)
+}
+private class KtorSocketTransport(private val client: HttpClient) : SocketTransport {
+    override suspend fun webSocket(url: String, block: suspend (SocketSession) -> Unit) {
+        client.webSocket(url) {
+            val session = object : SocketSession {
+                override val incoming get() = this@webSocket.incoming
+                override suspend fun send(frame: Frame) = this@webSocket.send(frame)
+                override suspend fun close() = this@webSocket.close()
+                override suspend fun closeReason() = this@webSocket.closeReason.await()?.message
+            }
+            try { block(session) } finally { session.close() }
+        }
+    }
+}
 class GameSocketClient(
     private val serverUrl: String,
     private val tokenStore: ResumeTokenStore,
     private val accessTokenProvider: (suspend (forceRefresh: Boolean) -> String?)? = null,
-    private val onAccountSessionExpired: ((code: String, fallback: String) -> Unit)? = null
+    private val onAccountSessionExpired: ((code: String, fallback: String) -> Unit)? = null,
+    internal val retrySleeper: RetrySleeper = RetrySleeper { delay(it) },
+    internal val retryJitter: RetryJitter = RetryJitter { 0L },
+    transport: SocketTransport? = null
 ) {
-    private val client = HttpClient {
-        install(WebSockets)
-        install(HttpTimeout) {
-            connectTimeoutMillis = CONNECT_TIMEOUT_MILLIS
-        }
-    }
-    private var session: DefaultClientWebSocketSession? = null
+    private val client = HttpClient { install(WebSockets); install(HttpTimeout) { connectTimeoutMillis = CONNECT_TIMEOUT_MILLIS } }
+    private val transport = transport ?: KtorSocketTransport(client)
+    private val machine = ReconnectStateMachine()
+    private val retryRequests = Channel<Unit>(Channel.CONFLATED)
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private var session: SocketSession? = null
     private var resumeToken: String? = tokenStore.load(serverUrl)
     private var reconnectEnabled = true
-    private var hasConnected = false
     private var forceAccessTokenRefresh = false
-
+    private var hasConnected = false
+    private var resumeRejected = false
     private val _messages = Channel<ServerMessage>(Channel.UNLIMITED)
     val messages: Flow<ServerMessage> = _messages.receiveAsFlow()
-
     private val _isConnected = MutableStateFlow(false)
     val isConnected: StateFlow<Boolean> = _isConnected.asStateFlow()
-
     private val _connectionState = MutableStateFlow(SocketConnectionState.DISCONNECTED)
     val connectionState: StateFlow<SocketConnectionState> = _connectionState.asStateFlow()
 
     suspend fun connect(displayName: String) {
         reconnectEnabled = true
-        var retryDelayMillis = INITIAL_RETRY_MILLIS
-
+        machine.reduce(ReconnectEvent.Start)
         while (currentCoroutineContext().isActive && reconnectEnabled) {
-            _connectionState.value = if (hasConnected) {
-                SocketConnectionState.RECONNECTING
-            } else {
-                SocketConnectionState.CONNECTING
-            }
+            _connectionState.value = if (hasConnected) SocketConnectionState.RECONNECTING else SocketConnectionState.CONNECTING
             try {
-                client.webSocket(serverUrl) {
-                    session = this
+                transport.webSocket(serverUrl) { attempt ->
+                    session = attempt
+                    machine.reduce(ReconnectEvent.TransportOpened)
                     _isConnected.value = true
                     _connectionState.value = SocketConnectionState.AUTHENTICATING
-                    retryDelayMillis = INITIAL_RETRY_MILLIS
-                    val helloMessage: ClientMessage = if (accessTokenProvider == null) {
-                        ClientMessage.ConnectGuest(displayName, resumeToken)
-                    } else {
-                        val accessToken = accessTokenProvider(forceAccessTokenRefresh)
+                    val hello = if (accessTokenProvider == null) ClientMessage.ConnectGuest(displayName, resumeToken)
+                    else {
+                        val access = accessTokenProvider(forceAccessTokenRefresh)
                         forceAccessTokenRefresh = false
-                        if (accessToken == null) {
-                            reconnectEnabled = false
-                            onAccountSessionExpired?.invoke(
-                                "SESSION_EXPIRED",
-                                "Your session has expired. Please sign in again."
-                            )
-                            return@webSocket
-                        }
-                        ClientMessage.ConnectAccount(accessToken)
+                        if (access == null) { terminal("SESSION_EXPIRED", "Your session has expired. Please sign in again."); return@webSocket }
+                        ClientMessage.ConnectAccount(access, resumeToken.takeUnless { resumeRejected })
                     }
-                    val hello = ProtocolJson.encodeToString<ClientMessage>(helloMessage)
-                    send(
-                        Frame.Text(hello)
-                    )
-
-                    for (frame in incoming) {
+                    attempt.send(Frame.Text(ProtocolJson.encodeToString<ClientMessage>(hello)))
+                    for (frame in attempt.incoming) {
                         if (frame !is Frame.Text) continue
-                        val rawMessage = frame.readText()
-                        val message = try {
-                            ProtocolJson.decodeFromString<ServerMessage>(rawMessage)
-                        } catch (error: Exception) {
-                            _messages.send(
-                                socketClientError(
-                                    code = "PROTOCOL_DECODE_FAILED",
-                                    message = "Could not decode the server response: ${error.message}"
-                                )
-                            )
-                            continue
-                        }
-                        if (message is ServerMessage.SessionReady) {
-                            message.resumeToken?.let { newResumeToken ->
-                                resumeToken = newResumeToken
-                                tokenStore.save(serverUrl, newResumeToken)
+                        val message = runCatching { ProtocolJson.decodeFromString<ServerMessage>(frame.readText()) }
+                            .getOrElse { socketClientError("PROTOCOL_DECODE_FAILED", "Could not decode the server response: ${it.message}") }
+                        when (message) {
+                            is ServerMessage.SessionReady -> {
+                                message.resumeToken?.let { resumeToken = it; tokenStore.save(serverUrl, it) }
+                                resumeRejected = false; hasConnected = true
+                                machine.reduce(ReconnectEvent.Authenticated); _connectionState.value = SocketConnectionState.CONNECTED
                             }
-                            hasConnected = true
-                            forceAccessTokenRefresh = false
-                            _connectionState.value = SocketConnectionState.CONNECTED
-                        }
-                        if (message is ServerMessage.Error && message.code == "INVALID_ACCESS_TOKEN") {
-                            if (accessTokenProvider != null) {
-                                forceAccessTokenRefresh = true
-                                this.close(
-                                    CloseReason(
-                                        CloseReason.Codes.NORMAL,
-                                        "Refreshing account session"
-                                    )
-                                )
-                                break
+                            is ServerMessage.Error -> when (message.code) {
+                                "INVALID_RESUME_TOKEN" -> { resumeToken = null; tokenStore.clear(serverUrl); resumeRejected = true }
+                                "INVALID_ACCESS_TOKEN" -> { forceAccessTokenRefresh = true; attempt.close() }
+                                "SESSION_EXPIRED" -> terminal(message.code, message.message)
                             }
+                            else -> Unit
                         }
                         _messages.send(message)
+                        if (!reconnectEnabled) break
                     }
-                    val reason = closeReason.await()?.message
-                    if (!shouldReconnectAfterSocketClose(reason)) {
-                        reconnectEnabled = false
-                        onAccountSessionExpired?.invoke(
-                            "SESSION_REPLACED",
-                            "Your account signed in on another device. Please sign in again."
-                        )
-                        _messages.send(
-                            socketClientError(
-                                code = "SESSION_REPLACED",
-                                message = "Your account signed in on another device."
-                            )
-                        )
+                    if (!shouldReconnectAfterSocketClose(attempt.closeReason())) {
+                        terminal("SESSION_REPLACED", "Your account signed in on another device.")
+                        _messages.send(socketClientError("SESSION_REPLACED", "Your account signed in on another device."))
                     }
                 }
-            } catch (cancelled: CancellationException) {
-                throw cancelled
-            } catch (error: Exception) {
-                _messages.send(
-                    socketClientError(
-                        code = "CONNECTION_FAILED",
-                        message = "Could not connect to $serverUrl: ${error.message}. Retrying…"
-                    )
-                )
-            } finally {
-                session = null
-                _isConnected.value = false
-                _connectionState.value = when {
-                    !reconnectEnabled -> SocketConnectionState.DISCONNECTED
-                    hasConnected -> SocketConnectionState.RECONNECTING
-                    else -> SocketConnectionState.CONNECTING
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (error: Exception) { _messages.send(socketClientError("CONNECTION_FAILED", "Could not connect to $serverUrl: ${error.message}. Retrying…")) }
+            finally { session = null; _isConnected.value = false }
+            if (!reconnectEnabled || !currentCoroutineContext().isActive) break
+            val delayMillis = (machine.reduce(ReconnectEvent.AttemptFailed) as? ReconnectDecision.RetryAfter)?.delayMillis ?: break
+            coroutineScope {
+                val sleeper = async { retrySleeper.sleep(delayMillis + retryJitter.nextMillis()) }
+                select<Unit> {
+                    retryRequests.onReceive { sleeper.cancel(); machine.reduce(ReconnectEvent.ManualRetry) }
+                    sleeper.onAwait { }
                 }
-            }
-
-            if (reconnectEnabled && currentCoroutineContext().isActive) {
-                delay(retryDelayMillis + Random.nextLong(RETRY_JITTER_MILLIS + 1))
-                retryDelayMillis = (retryDelayMillis * 2).coerceAtMost(MAX_RETRY_MILLIS)
             }
         }
     }
-
+    fun retryNow() {
+        if (machine.state != SocketConnectionState.TERMINAL) {
+            retryRequests.trySend(Unit)
+            session?.let { active -> scope.async { try { active.close() } catch (_: Exception) { } } }
+        }
+    }
     suspend fun sendMessage(message: ClientMessage) {
-        val activeSession = session
-        if (activeSession == null) {
-            _messages.send(
-                socketClientError(
-                    code = "CONNECTION_NOT_READY",
-                    message = "The server connection is not ready. Please wait or try again."
-                )
-            )
-            return
-        }
+        val active = session ?: run { _messages.send(socketClientError("CONNECTION_NOT_READY", "The server connection is not ready. Please wait or try again.")); return }
         try {
-            activeSession.send(Frame.Text(ProtocolJson.encodeToString<ClientMessage>(message)))
+            active.send(Frame.Text(ProtocolJson.encodeToString<ClientMessage>(message)))
         } catch (error: Exception) {
-            _messages.send(
-                socketClientError(
-                    code = "SEND_FAILED",
-                    message = "Could not send data: ${error.message}"
-                )
-            )
+            _messages.send(socketClientError("SEND_FAILED", "Could not send data: ${error.message}"))
         }
     }
-
-    suspend fun disconnect() {
-        reconnectEnabled = false
-        runCatching { session?.close() }
-        session = null
-        _isConnected.value = false
-        _connectionState.value = SocketConnectionState.DISCONNECTED
-    }
-
-    fun close() {
-        reconnectEnabled = false
-        client.close()
-    }
-
-    private companion object {
-        const val INITIAL_RETRY_MILLIS = 1_000L
-        const val MAX_RETRY_MILLIS = 5_000L
-        const val RETRY_JITTER_MILLIS = 750L
-        const val CONNECT_TIMEOUT_MILLIS = 7_000L
-    }
+    suspend fun disconnect() { reconnectEnabled = false; session?.close(); session = null; _isConnected.value = false; _connectionState.value = SocketConnectionState.DISCONNECTED; machine.reduce(ReconnectEvent.Stop) }
+    fun close() { reconnectEnabled = false; client.close() }
+    private fun terminal(code: String, fallback: String) { reconnectEnabled = false; machine.reduce(ReconnectEvent.SessionExpired); _connectionState.value = SocketConnectionState.TERMINAL; onAccountSessionExpired?.invoke(code, fallback) }
+    private companion object { const val CONNECT_TIMEOUT_MILLIS = 7_000L }
 }
-
-internal fun shouldReconnectAfterSocketClose(reason: String?): Boolean =
-    reason != SESSION_REPLACED_CLOSE_REASON
-
-internal fun socketClientError(code: String, message: String): ServerMessage.Error =
-    ServerMessage.Error(
-        code = code,
-        message = message,
-        messageKey = protocolTextKeyForCode(code)?.name
-    )
+internal fun shouldReconnectAfterSocketClose(reason: String?): Boolean = reason != SESSION_REPLACED_CLOSE_REASON
+internal fun socketClientError(code: String, message: String): ServerMessage.Error = ServerMessage.Error(code, message, protocolTextKeyForCode(code)?.name)

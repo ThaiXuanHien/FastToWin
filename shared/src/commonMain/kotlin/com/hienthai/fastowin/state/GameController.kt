@@ -234,6 +234,11 @@ class GameController(
         scope.launch { socket.sendMessage(ClientMessage.ListRooms) }
     }
 
+    fun retryConnection() {
+        _uiState.update { it.copy(error = null, message = null) }
+        socket.retryNow()
+    }
+
     fun openProfile() {
         _uiState.update {
             it.copy(
