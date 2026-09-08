@@ -355,9 +355,33 @@ val checkLocalizedUiTextScannerFixtures by tasks.registering {
                 "${it.name}: expected 0 violations, found $violationCount"
             }
         }
-        check(positiveFailures.isEmpty() && negativeFailures.isEmpty()) {
+        val rejectedUiTextFailures = fileTree(localizationScannerFixtures.dir("reject")) {
+            include("**/*.kt")
+        }.sortedBy { it.name }.mapNotNull { fixture ->
+            val violationCount = KotlinStringLiteralScanner(fixture.readText()).scan().stringLiterals
+                .count { vietnameseLetter.containsMatchIn(it.literalText) }
+            fixture.takeIf { violationCount != 1 }?.let {
+                "${it.name}: expected 1 rejected UI literal, found $violationCount"
+            }
+        }
+        val acceptedUiTextFailures = fileTree(localizationScannerFixtures.dir("accept")) {
+            include("**/*.kt")
+        }.sortedBy { it.name }.mapNotNull { fixture ->
+            val violationCount = KotlinStringLiteralScanner(fixture.readText()).scan().stringLiterals
+                .count { vietnameseLetter.containsMatchIn(it.literalText) }
+            fixture.takeIf { violationCount != 0 }?.let {
+                "${it.name}: expected no rejected UI literals, found $violationCount"
+            }
+        }
+        check(
+            positiveFailures.isEmpty() &&
+                negativeFailures.isEmpty() &&
+                rejectedUiTextFailures.isEmpty() &&
+                acceptedUiTextFailures.isEmpty(),
+        ) {
             "Localization scanner fixture failures:\n" +
-                (positiveFailures + negativeFailures).joinToString("\n")
+                (positiveFailures + negativeFailures + rejectedUiTextFailures + acceptedUiTextFailures)
+                    .joinToString("\n")
         }
     }
 }

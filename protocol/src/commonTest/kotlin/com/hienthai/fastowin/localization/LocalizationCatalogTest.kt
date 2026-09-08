@@ -9,6 +9,25 @@ import kotlin.test.assertTrue
 
 class LocalizationCatalogTest {
     @Test
+    fun phaseOneKeysAreTranslatedWithoutEnglishFallback() {
+        val keys = setOf(
+            TextKey.ReconnectingMatch,
+            TextKey.ReconnectAction,
+            TextKey.ReconnectBlockingHint,
+            TextKey.MatchExpiredOfficialLoss,
+        )
+        val english = allLocalizationCatalogs.getValue(AppLanguage.ENGLISH)
+        allLocalizationCatalogs
+            .filterKeys { it != AppLanguage.ENGLISH }
+            .forEach { (language, catalog) ->
+                keys.forEach { key ->
+                    assertTrue(catalog.texts.getValue(key).isNotBlank(), "$language/$key")
+                    assertNotEquals(english.texts.getValue(key), catalog.texts.getValue(key), "$language/$key")
+                }
+            }
+    }
+
+    @Test
     fun residualCopyIsTranslatedForEveryNonEnglishCatalog() {
         val english = residualTexts(AppLanguage.ENGLISH)
         val representativeKeys = listOf(

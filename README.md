@@ -118,6 +118,15 @@ Script khởi động PostgreSQL và backend, thiết lập `adb reverse`, build
 .\start-dev-all.cmd -NoBrowser
 ```
 
+### Checklist kết nối lại thủ công
+
+1. Chạy server, Web và hai thiết bị bằng start-dev-all.cmd.
+2. Cho hai tài khoản vào một trận và bấm ít nhất ba số.
+3. Tắt mạng thiết bị A trong 10 giây, xác nhận màn chơi còn dưới lớp phủ.
+4. Bật mạng, xác nhận target, điểm và số sai của hai máy trùng nhau.
+5. Lặp lại nhưng ngắt quá 30 giây, xác nhận A thấy kết quả thua và B thấy thắng.
+6. Thu hồi session A, xác nhận A về thẳng màn Đăng nhập và không tự reconnect.
+
 Nếu Android báo `INSTALL_FAILED_UPDATE_INCOMPATIBLE`, thiết bị đang có bản dev
 được ký bằng khóa khác. Chạy lại lệnh dưới đây để gỡ riêng bản dev cũ và cài
 lại. Thao tác này sẽ xóa dữ liệu cục bộ của `com.hienthai.fastowin.dev`; dữ
