@@ -31,4 +31,4 @@ Protocol is now version 41 with minimum compatible version 38. Account identity 
 
 ## Commit
 
-Commit: `b5d2e85dd952bd1c7a667203d2652370eaf07304`.
+Implementation commit: `87346c57c8aedb5c133e23d134fade4b4986a00c`.
