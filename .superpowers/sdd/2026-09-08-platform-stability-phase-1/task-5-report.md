@@ -35,3 +35,16 @@ execution with `java.io.IOException: Unable to establish loopback connection`
 Run the focused instrumentation and full Task 5 verification command on a
 machine where Gradle can establish its loopback connection and Compose
 instrumentation exposes a hierarchy.
+
+## Fix round 1
+
+- Removed the orphaned duplicate `@Composable` annotation left after deleting
+  replay controls.
+- Made the static contract test locate the repository root by walking upward
+  from `user.dir`, so it works whether Gradle or an IDE starts tests from the
+  server module or project root.
+- Kept the scanner focused on removed UI symbols and added boundary checks for
+  controller detail handling plus event read/write SQL; behavioral persistence
+  remains covered by `PostgresMatchResultRepositoryTest`.
+- Re-attempted the focused Gradle test; it remains blocked before test startup
+  by the environment's `Unable to establish loopback connection` failure.

@@ -2736,7 +2736,6 @@ private fun MatchDetailDialog(
 }
 
 @Composable
-@Composable
 private fun MatchDetailScoreboard(summary: MatchHistorySnapshot, modifier: Modifier = Modifier) {
     val outcomeAccent = when (summary.outcome) {
         MatchHistoryOutcome.WIN -> ArcadeSuccess
