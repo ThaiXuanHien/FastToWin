@@ -43,3 +43,7 @@ Result: `BUILD SUCCESSFUL in 24s` (47 actionable tasks). XML results show 24 `Ga
 ## Residual risk
 
 A transport/session that ignores cancellation can still retain its own underlying platform resources until that library or OS eventually releases them. The client deliberately does not join that orphan work: its explicitly owned generation scope is cancelled, and the generation gate prevents it from affecting current connection state or a later replacement. Live network/iOS runtime behavior remains outside these deterministic host tests.
+
+## Review round 2
+
+The late-callback fake intentionally models a detached transport that may remain live after cancellation. Its previous `maxOwnedSessions` counter only incremented on the first send, so it did not measure live-session containment and was removed. The test now asserts the concrete client contract instead: the stale callback starts and closes only its old session, sends no hello or payload, emits no message, leaves the replacement connected and unclosed, and cannot alter the replacement's exact sent-message sequence.

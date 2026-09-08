@@ -88,7 +88,6 @@ class GameSocketClientTest {
         assertEquals(SocketConnectionState.AUTHENTICATING, client.connectionState.value)
         assertEquals(emptyList(), messages)
         assertEquals(0, transport.old.sendCount)
-        assertEquals(1, transport.maxOwnedSessions)
         assertEquals(
             listOf<ClientMessage>(
                 ClientMessage.ConnectGuest("New player", null),
@@ -685,12 +684,9 @@ private class LateCallbackTransport : SocketTransport {
     val allowLateCallback = CompletableDeferred<Unit>()
     val lateCallbackStarted = CompletableDeferred<Unit>()
     val replacementStarted = CompletableDeferred<Unit>()
-    val old = OwnedRecordingSession { ownedSessions++ }
-    val replacement = OwnedRecordingSession { ownedSessions++ }
+    val old = OwnedRecordingSession()
+    val replacement = OwnedRecordingSession()
     private var calls = 0
-    private var ownedSessions = 0
-    var maxOwnedSessions = 0
-        private set
 
     override suspend fun webSocket(url: String, block: suspend (SocketSession) -> Unit) {
         calls++
@@ -711,7 +707,7 @@ private class LateCallbackTransport : SocketTransport {
         }
     }
 
-    inner class OwnedRecordingSession(private val onOwned: () -> Unit) : SocketSession {
+    inner class OwnedRecordingSession : SocketSession {
         override val incoming = Channel<Frame>(Channel.UNLIMITED)
         val sent = mutableListOf<ClientMessage>()
         val closeStarted = CompletableDeferred<Unit>()
@@ -720,10 +716,6 @@ private class LateCallbackTransport : SocketTransport {
 
         override suspend fun send(frame: Frame) {
             sendCount++
-            if (sendCount == 1) {
-                onOwned()
-                maxOwnedSessions = maxOf(maxOwnedSessions, ownedSessions)
-            }
             sent += ProtocolJson.decodeFromString<ClientMessage>((frame as Frame.Text).readText())
         }
 
