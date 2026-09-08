@@ -39,3 +39,11 @@ Used the requested `JAVA_HOME`, `ANDROID_HOME`, and process-only `JAVA_TOOL_OPTI
 
 - Gradle emits an existing SDK XML compatibility warning (tool understands XML up to version 3, SDK contains version 4); tests still pass.
 - Initial Gradle invocation hit Windows `Access is denied`, and the next invocation hit loopback setup failure; rerun succeeded with the brief's process-only workaround.
+
+## Review fix round 1
+
+- Files fixed: `ReconnectStateMachine.kt`, `ReconnectStateMachineTest.kt`.
+- RED: newly added regression tests failed 2/5 because `Stop` from terminal did not disconnect and stale transport callbacks scheduled retries.
+- GREEN: reran `./gradlew.bat :shared:testAndroidHostTest --tests "*ReconnectStateMachineTest" --tests "*GameSocketClientTest" --no-daemon` with the requested environment; `BUILD SUCCESSFUL in 26s`.
+- Fix commit: `497fb27b9bc954486f7911a0368d5c2af4b5e7b2` (`fix: ignore stale reconnect callbacks`).
+- Concerns: Gradle still reports the existing SDK XML compatibility warning in some invocations; no test failure or new warning remains from the state-machine code.
