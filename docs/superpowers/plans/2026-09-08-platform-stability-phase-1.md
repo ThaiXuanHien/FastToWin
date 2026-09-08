@@ -197,6 +197,13 @@ fun `version 40 connect account decodes without resume token`() {
     val decoded = ProtocolJson.decodeFromString<ClientMessage>(raw)
     assertEquals(ClientMessage.ConnectAccount("access", null, 40), decoded)
 }
+
+@Test
+fun `version 40 session ready decodes without resume token`() {
+    val raw = """{"type":"session_ready","playerId":"player-1","protocolVersion":40}"""
+    val decoded = ProtocolJson.decodeFromString<ServerMessage>(raw)
+    assertEquals(ServerMessage.SessionReady("player-1", null, null, 40), decoded)
+}
 ```
 
 Raise `PROTOCOL_VERSION` to 41 and keep `MIN_COMPATIBLE_PROTOCOL_VERSION = 38`.
@@ -217,6 +224,11 @@ val resumed = resumedHost.receiveMessage<ServerMessage.SessionReady>()
 assertEquals(hostReady.playerId, resumed.playerId)
 assertEquals(3, assertNotNull(resumed.currentGame).currentTarget)
 ```
+
+In `registered account authenticates websocket with access token`, replace the
+old `assertEquals(null, ready.resumeToken)` with
+`assertNotNull(ready.resumeToken)` so the original authentication test enforces
+the new additive contract too.
 
 Add this concrete expiry test to `GameEngineTest.kt`:
 
@@ -295,9 +307,10 @@ data class ConnectAccount(
 In `Application.kt`, authenticate `accessToken` first. Only after successful
 authentication pass `resumeToken` into `GameEngine.connectAccount`. Inside the
 engine, compare a supplied token with the existing session for that authenticated
-user; a mismatch must not switch identity or expose a room. Issue a fresh secure
-opaque token for the first valid account connection and return it through
-`ConnectedPlayer`/`SessionReady`.
+user. A missing token remains valid for protocol 40 clients; a non-null mismatch
+returns `ServerMessage.Error(code = "INVALID_RESUME_TOKEN")` without exposing a
+room. Issue a fresh secure opaque token for the first valid account connection
+and return it through `ConnectedPlayer`/`SessionReady`.
 
 - [ ] **Step 5: Persist a normal-match forfeit before room removal**
 
@@ -412,7 +425,9 @@ token returned by `SessionReady`.
 
 Map `INVALID_ACCESS_TOKEN`, `SESSION_EXPIRED` and the close reason
 `SESSION_REPLACED_CLOSE_REASON` to `ReconnectEvent.SessionExpired`; do not retry
-them. Network, timeout and non-terminal protocol errors remain retryable.
+them. On `INVALID_RESUME_TOKEN`, delete the saved resume token and immediately
+open one account-authenticated attempt without it; this is not terminal. Network,
+timeout and other non-terminal protocol errors remain retryable.
 
 - [ ] **Step 4: Nối controller với retry mới**
 
@@ -612,17 +627,16 @@ git commit -m "feat: restore matches from server snapshots"
 
 **Files:**
 - Modify: `shared/src/commonMain/kotlin/com/hienthai/fastowin/ui/screens/ProfileScreen.kt:2653-2825`
-- Modify: `shared/src/commonMain/kotlin/com/hienthai/fastowin/ui/screens/PracticeScreen.kt:470-515`
-- Modify: `protocol/src/commonMain/kotlin/com/hienthai/fastowin/localization/TextKey.kt:119,183-184`
-- Modify: `protocol/src/commonMain/kotlin/com/hienthai/fastowin/localization/catalogs/CorePlayCatalogTexts.kt`
+- Modify: `protocol/src/commonMain/kotlin/com/hienthai/fastowin/localization/TextKey.kt:183-184`
 - Modify: `protocol/src/commonMain/kotlin/com/hienthai/fastowin/localization/catalogs/ProfileCatalogTexts.kt`
 - Modify: `app/src/androidTest/java/com/hienthai/fastowin/ProfileSectionsUiTest.kt:558-590`
 - Test: `server/src/test/kotlin/com/hienthai/fastowin/server/PostgresMatchResultRepositoryTest.kt:90-120,250-275`
 
 **Interfaces:**
 - Preserves: `MatchEventSnapshot`, `MatchDetailSnapshot.events`, `ClientMessage.GetMatchDetail`, `ServerMessage.MatchDetailData`, DB table `match_events` and result sharing.
-- Removes: `MatchReplayControls`, replay index/timer state, `ReplaySameBoard`, `NoReplayData`, `ReplayTurn`, `CorrectSelection`, `WrongSelectionNeed`, `StopReplay`, `Replay` visible actions.
+- Removes: `MatchReplayControls`, replay index/timer state, `NoReplayData`, `ReplayTurn`, `CorrectSelection`, `WrongSelectionNeed`, `StopReplay`, `Replay` visible actions.
 - Preserves: rematch protocol and Result screen invitation flow; “Mời đấu lại” is not replay.
+- Preserves: `ReplaySameBoard` in offline Practice because it restarts a playable board and does not replay recorded match events.
 
 - [ ] **Step 1: Đổi UI test thành hợp đồng chi tiết trận không phát lại**
 
@@ -680,8 +694,7 @@ containers do not yet have stable tags.
 Remove `replayIndex`, `isPlaying`, the replay `LaunchedEffect`, event-by-event
 panel and `MatchReplayControls` from `MatchDetailDialog`. Keep scoreboard,
 duration, reaction metrics and close action. Tag the existing scoreboard and
-metrics containers `match_detail_scoreboard` and `match_detail_metrics`. In Practice result, remove only the
-“chơi lại cùng bàn” action; keep “tạo thử thách mới”, share and exit.
+metrics containers `match_detail_scoreboard` and `match_detail_metrics`.
 
 Remove replay-only text keys and their catalog values only after all call sites
 are gone. Do not remove event serialization or repository queries.
@@ -701,13 +714,14 @@ written to and read from `match_events`.
 rg -n -i "replay|phát lại|phat lai" shared protocol server app webApp --glob '*.kt'
 ```
 
-Expected: no replay UI/control/key match. Matches containing `rematch` or
-Vietnamese “Mời đấu lại” remain because they belong to the approved rematch flow.
+Expected: no match-event replay UI/control/key match. `ReplaySameBoard` remains
+only in offline Practice, while matches containing `rematch` or Vietnamese
+“Mời đấu lại” remain because they belong to approved playable flows.
 
 - [ ] **Step 6: Commit**
 
 ```powershell
-git add shared/src/commonMain/kotlin/com/hienthai/fastowin/ui/screens/ProfileScreen.kt shared/src/commonMain/kotlin/com/hienthai/fastowin/ui/screens/PracticeScreen.kt protocol/src/commonMain/kotlin/com/hienthai/fastowin/localization/TextKey.kt protocol/src/commonMain/kotlin/com/hienthai/fastowin/localization/catalogs/CorePlayCatalogTexts.kt protocol/src/commonMain/kotlin/com/hienthai/fastowin/localization/catalogs/ProfileCatalogTexts.kt app/src/androidTest/java/com/hienthai/fastowin/ProfileSectionsUiTest.kt
+git add shared/src/commonMain/kotlin/com/hienthai/fastowin/ui/screens/ProfileScreen.kt protocol/src/commonMain/kotlin/com/hienthai/fastowin/localization/TextKey.kt protocol/src/commonMain/kotlin/com/hienthai/fastowin/localization/catalogs/ProfileCatalogTexts.kt app/src/androidTest/java/com/hienthai/fastowin/ProfileSectionsUiTest.kt
 git commit -m "refactor: remove match replay controls"
 ```
 
