@@ -50,3 +50,11 @@ Lifecycle ownership now routes session replacement, send, disconnect, retry clos
 Added deterministic test methods: `repeated retry taps are conflated without parallel attempts`, `invalid resume clears token and immediately sends account hello without token`, `second invalid resume becomes terminal and does not loop`, `invalid access token terminal no retry`, `session expired terminal no retry`, `replacement close terminal no retry`, `account SessionReady saves token used next reconnect`, `guest SessionReady saves token used next reconnect`, and `send racing retry and disconnect never sends after close`. Scheduler tests are annotated with `ExperimentalCoroutinesApi`.
 
 The focused test/compile command was attempted after this round; this agent environment still fails Gradle startup with `Unable to establish loopback connection` before task execution. Controller's preceding fresh run had Android, Wasm and JS compile PASS.
+
+## Fix round 4
+
+The three test-source generic inference errors reported at lines 37, 162 and 220 were corrected with explicit `ClientMessage`/`ServerMessage` list element types. The controller could not rerun RED after those fixes because its external execution tool hit a usage limit. RED behavioral evidence remains the controller's earlier fresh run: `closed attempt is discarded before retry` and `repeated retry taps are conflated without parallel attempts` failed against the prior implementation; the review also identified stale hello/send and retry-close ownership races.
+
+`GameSocketClient` now owns transport lifecycle in one reconnect event loop. Each attempt has a private mailbox; public sends enqueue into the mailbox, and the owner alone sends/ closes the associated session. Retry and stop are selected alongside incoming frames and backoff, retry signals are conflated and drained around close, and token authentication is cancellable while waiting for retry/stop. This prevents a retry close job from closing a replacement and prevents hello/send work from using a detached session.
+
+Focused Gradle verification remains `UNVERIFIED`: the requested Gradle process is blocked in this agent environment by Windows process/loopback restrictions, and the controller's second RED run was blocked by usage limit. `git diff --check` passes.
