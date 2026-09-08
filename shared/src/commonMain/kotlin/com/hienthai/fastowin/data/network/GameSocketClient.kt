@@ -29,14 +29,6 @@ import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlin.random.Random
 
-enum class SocketConnectionState {
-    DISCONNECTED,
-    CONNECTING,
-    AUTHENTICATING,
-    CONNECTED,
-    RECONNECTING
-}
-
 class GameSocketClient(
     private val serverUrl: String,
     private val tokenStore: ResumeTokenStore,

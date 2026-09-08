@@ -1008,4 +1008,5 @@ private fun connectionKey(status: ConnectionStatus): TextKey = when (status) {
     ConnectionStatus.AUTHENTICATING -> TextKey.ConnectionAuthenticating
     ConnectionStatus.CONNECTED -> TextKey.ConnectionConnected
     ConnectionStatus.RECONNECTING -> TextKey.ConnectionReconnecting
+    ConnectionStatus.TERMINAL -> TextKey.ConnectionDisconnected
 }

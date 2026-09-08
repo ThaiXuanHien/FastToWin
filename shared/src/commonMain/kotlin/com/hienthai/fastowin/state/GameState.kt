@@ -29,7 +29,8 @@ enum class ConnectionStatus {
     CONNECTING,
     AUTHENTICATING,
     CONNECTED,
-    RECONNECTING
+    RECONNECTING,
+    TERMINAL
 }
 
 data class AvailableRoom(

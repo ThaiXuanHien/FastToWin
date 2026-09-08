@@ -205,6 +205,7 @@ class GameController(
             SocketConnectionState.AUTHENTICATING -> ConnectionStatus.AUTHENTICATING
             SocketConnectionState.CONNECTED -> ConnectionStatus.CONNECTED
             SocketConnectionState.RECONNECTING -> ConnectionStatus.RECONNECTING
+            SocketConnectionState.TERMINAL -> ConnectionStatus.TERMINAL
         }
         _uiState.update { state ->
             val waitingForConnection = status != ConnectionStatus.CONNECTED &&
