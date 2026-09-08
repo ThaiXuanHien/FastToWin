@@ -38,3 +38,9 @@
 - Removed only the invalid `weight` import and restored only `LaunchedEffect`; the composable remains inside a `ColumnScope`, where `Modifier.weight(1f)` is available without that import.
 - Moved scanner execution into typed `buildSrc` tasks with declared file/directory inputs. The shared scanner owns source selection, lexical scanning, and the server-only `legacyFallback(...)` allowlist; fixtures use that same implementation. The build script now only wires task inputs and dependencies.
 - The full gate and two configuration-cache-enabled scanner attempts were re-run in this sandbox with the prescribed JDK/SDK/IPv4 JVM environment, but each stopped before Gradle configuration with `java.io.IOException: Unable to establish loopback connection`. No GREEN output or configuration-cache reuse evidence is available from this environment.
+
+## Round 3 buildSrc compilation repair
+
+- The controller's full gate compiled `buildSrc` and reported `Unresolved reference DisableCachingByDefault` at the scanner task annotations. The annotation belongs to `org.gradle.work`, not `org.gradle.api.tasks` for this Gradle API.
+- Corrected only that import; the task annotations and declared configuration-cache-safe inputs are unchanged.
+- This sandbox still cannot reach Gradle compilation because its daemon bootstrap fails with `java.io.IOException: Unable to establish loopback connection`; the controller must re-run the gate for GREEN evidence.
