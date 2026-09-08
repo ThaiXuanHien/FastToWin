@@ -25,6 +25,83 @@ import kotlin.test.*
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class GameSocketClientTest {
+    @Test fun `retry and disconnect progress when outer transport teardown stalls`() = runTest {
+        val transport = OuterTeardownStallingTransport()
+        val client = GameSocketClient("ws://test", InMemoryResumeTokenStore(), transport = transport)
+        val connection = backgroundScope.launch { client.connect("Hiền") }
+        transport.firstSessionStarted.await()
+
+        client.retryNow()
+        transport.firstOuterTeardownStarted.await()
+        advanceTimeBy(SHUTDOWN_BOUND_MILLIS + 1)
+        runCurrent()
+        val replacementStartedWithinBound = transport.replacementStarted.isCompleted
+        if (!replacementStartedWithinBound) connection.cancelAndJoin()
+
+        if (replacementStartedWithinBound) {
+            client.sendMessage(ClientMessage.GetProfile)
+            runCurrent()
+            val disconnecting = launch { client.disconnect() }
+            advanceTimeBy(SHUTDOWN_BOUND_MILLIS + 1)
+            runCurrent()
+            disconnecting.join()
+            assertTrue(disconnecting.isCompleted)
+        }
+
+        assertTrue(replacementStartedWithinBound)
+        assertEquals(
+            listOf<ClientMessage>(ClientMessage.ConnectGuest("Hiền", null), ClientMessage.GetProfile),
+            transport.replacement.sent
+        )
+        assertEquals(SocketConnectionState.DISCONNECTED, client.connectionState.value)
+        transport.releaseFirstOuterTeardown.complete(Unit)
+        runCurrent()
+    }
+
+    @Test fun `late ignored transport callback cannot mutate replacement`() = runTest {
+        val transport = LateCallbackTransport()
+        val messages = mutableListOf<ServerMessage>()
+        val client = GameSocketClient("ws://test", InMemoryResumeTokenStore(), transport = transport)
+        backgroundScope.launch { client.messages.collect { messages += it } }
+        val oldConnection = backgroundScope.launch { client.connect("Hiền") }
+        transport.firstTransportStarted.await()
+
+        val disconnecting = launch { client.disconnect() }
+        runCurrent()
+        advanceTimeBy(SHUTDOWN_BOUND_MILLIS + 1)
+        runCurrent()
+        disconnecting.join()
+        oldConnection.join()
+        val replacement = backgroundScope.launch { client.connect("New player") }
+        transport.replacementStarted.await()
+        client.sendMessage(ClientMessage.GetProfile)
+        runCurrent()
+
+        transport.allowLateCallback.complete(Unit)
+        transport.lateCallbackStarted.await()
+        runCurrent()
+        val oldCloseWasStarted = transport.old.closeStarted.isCompleted
+        client.sendMessage(ClientMessage.ListRooms)
+        runCurrent()
+
+        assertTrue(oldCloseWasStarted)
+        assertEquals(SocketConnectionState.AUTHENTICATING, client.connectionState.value)
+        assertEquals(emptyList(), messages)
+        assertEquals(0, transport.old.sendCount)
+        assertEquals(1, transport.maxOwnedSessions)
+        assertEquals(
+            listOf<ClientMessage>(
+                ClientMessage.ConnectGuest("New player", null),
+                ClientMessage.GetProfile,
+                ClientMessage.ListRooms
+            ),
+            transport.replacement.sent
+        )
+        assertTrue(replacement.isActive)
+        assertFalse(transport.replacement.closeStarted.isCompleted)
+        replacement.cancelAndJoin()
+    }
+
     @Test fun `disconnect completes when transport never enters websocket block`() = runTest {
         val transport = HandshakeStallingTransport()
         val client = GameSocketClient("ws://test", InMemoryResumeTokenStore(), transport = transport)
@@ -578,6 +655,100 @@ private class FirstHandshakeStallsThenSessionTransport : SocketTransport {
 
         override suspend fun closeReason(): String? = null
     }
+}
+
+private class OuterTeardownStallingTransport : SocketTransport {
+    val firstSessionStarted = CompletableDeferred<Unit>()
+    val firstOuterTeardownStarted = CompletableDeferred<Unit>()
+    val replacementStarted = CompletableDeferred<Unit>()
+    val first = RecordingSession()
+    val replacement = RecordingSession()
+    val releaseFirstOuterTeardown = CompletableDeferred<Unit>()
+    private var calls = 0
+
+    override suspend fun webSocket(url: String, block: suspend (SocketSession) -> Unit) {
+        calls++
+        if (calls == 1) {
+            firstSessionStarted.complete(Unit)
+            block(first)
+            firstOuterTeardownStarted.complete(Unit)
+            withContext(NonCancellable) { releaseFirstOuterTeardown.await() }
+        } else {
+            replacementStarted.complete(Unit)
+            block(replacement)
+        }
+    }
+}
+
+private class LateCallbackTransport : SocketTransport {
+    val firstTransportStarted = CompletableDeferred<Unit>()
+    val allowLateCallback = CompletableDeferred<Unit>()
+    val lateCallbackStarted = CompletableDeferred<Unit>()
+    val replacementStarted = CompletableDeferred<Unit>()
+    val old = OwnedRecordingSession { ownedSessions++ }
+    val replacement = OwnedRecordingSession { ownedSessions++ }
+    private var calls = 0
+    private var ownedSessions = 0
+    var maxOwnedSessions = 0
+        private set
+
+    override suspend fun webSocket(url: String, block: suspend (SocketSession) -> Unit) {
+        calls++
+        if (calls == 1) {
+            firstTransportStarted.complete(Unit)
+            try {
+                awaitCancellation()
+            } catch (_: kotlinx.coroutines.CancellationException) {
+                withContext(NonCancellable) {
+                    allowLateCallback.await()
+                    lateCallbackStarted.complete(Unit)
+                    block(old)
+                }
+            }
+        } else {
+            replacementStarted.complete(Unit)
+            block(replacement)
+        }
+    }
+
+    inner class OwnedRecordingSession(private val onOwned: () -> Unit) : SocketSession {
+        override val incoming = Channel<Frame>(Channel.UNLIMITED)
+        val sent = mutableListOf<ClientMessage>()
+        val closeStarted = CompletableDeferred<Unit>()
+        var sendCount = 0
+            private set
+
+        override suspend fun send(frame: Frame) {
+            sendCount++
+            if (sendCount == 1) {
+                onOwned()
+                maxOwnedSessions = maxOf(maxOwnedSessions, ownedSessions)
+            }
+            sent += ProtocolJson.decodeFromString<ClientMessage>((frame as Frame.Text).readText())
+        }
+
+        override suspend fun close() {
+            closeStarted.complete(Unit)
+            incoming.close()
+        }
+
+        override suspend fun closeReason(): String? = null
+    }
+}
+
+private class RecordingSession : SocketSession {
+    override val incoming = Channel<Frame>(Channel.UNLIMITED)
+    val sent = mutableListOf<ClientMessage>()
+
+    override suspend fun send(frame: Frame) {
+        sent += ProtocolJson.decodeFromString<ClientMessage>((frame as Frame.Text).readText())
+    }
+
+    override suspend fun close() {
+        incoming.close()
+    }
+
+    override suspend fun closeReason(): String? = null
 }
 
 private const val SHUTDOWN_BOUND_MILLIS = 1_000L
