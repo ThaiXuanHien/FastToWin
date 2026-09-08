@@ -94,6 +94,28 @@ class AuthoritativeSnapshotTest {
         assertEquals(9, restored.opponent.score)
     }
 
+    @Test
+    fun `equal sequence snapshot still advances the authoritative application revision`() {
+        val current = GameState(
+            currentRoomId = "room-1",
+            latestGameSequence = 21L,
+            authoritativeSnapshotRevision = 4L,
+            player = PlayerState(id = "player-1", name = "Me", wrongSelections = 6)
+        )
+
+        val restored = current.applyAuthoritativeSnapshot(
+            playingSnapshot(
+                sequence = 21L,
+                player = player("player-1", "Me", wrongSelections = 1),
+                opponent = player("player-2", "Opponent")
+            ),
+            "player-1"
+        )
+
+        assertEquals(5L, restored.authoritativeSnapshotRevision)
+        assertEquals(1, restored.player.wrongSelections)
+    }
+
     private fun playingSnapshot(
         phase: RoomPhase = RoomPhase.PLAYING,
         sequence: Long,

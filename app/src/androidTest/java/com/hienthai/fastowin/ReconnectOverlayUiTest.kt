@@ -1,12 +1,15 @@
+@file:Suppress("INVISIBLE_MEMBER", "INVISIBLE_REFERENCE")
+
 package com.hienthai.fastowin
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.click
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
-import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTouchInput
 import com.hienthai.fastowin.localization.AppLanguage
 import com.hienthai.fastowin.localization.ProvideLocalization
 import com.hienthai.fastowin.state.ConnectionStatus
@@ -24,6 +27,7 @@ class ReconnectOverlayUiTest {
 
     @Test
     fun reconnectOverlay_keepsGameVisible_blocksBoard_andRetriesOnce() {
+        var numberClicks = 0
         var retries = 0
         val state = GameState(
             numbers = (1..50).toList(),
@@ -39,7 +43,7 @@ class ReconnectOverlayUiTest {
             ProvideLocalization(AppLanguage.VIETNAMESE) {
                 FastToWinTheme {
                     Box(Modifier.fillMaxSize()) {
-                        GameScreen(state = state, onNumberClick = {}, onFinish = {})
+                        GameScreen(state = state, onNumberClick = { numberClicks++ }, onFinish = {})
                         ReconnectOverlay(onRetry = { retries++ })
                     }
                 }
@@ -49,7 +53,11 @@ class ReconnectOverlayUiTest {
         composeRule.onNodeWithTag("game_board").assertIsDisplayed()
         composeRule.onNodeWithTag("reconnect_overlay").assertIsDisplayed()
         composeRule.onNodeWithTag("reconnect_blocker").assertIsDisplayed()
-        composeRule.onNodeWithTag("reconnect_retry").performClick()
-        composeRule.runOnIdle { assertEquals(1, retries) }
+        composeRule.onNodeWithTag("game_number_1").performTouchInput { click(center) }
+        composeRule.onNodeWithTag("reconnect_retry").performTouchInput { click(center) }
+        composeRule.runOnIdle {
+            assertEquals(0, numberClicks)
+            assertEquals(1, retries)
+        }
     }
 }

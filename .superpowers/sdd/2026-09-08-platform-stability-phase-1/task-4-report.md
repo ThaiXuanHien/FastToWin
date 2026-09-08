@@ -33,10 +33,9 @@ setting `ANDROID_HOME`, the test compilation reached the expected RED failures.
 - Added `ReconnectAction`, `ReconnectBlockingHint`, and
   `MatchExpiredOfficialLoss` in all twelve localization catalogs.
 
-`ReconnectOverlay` is public rather than `internal` because the Android test
-module depends on `shared` and Kotlin does not expose `internal` declarations
-across that module boundary. The test therefore invokes the real composable,
-not a copied test layout.
+`ReconnectOverlay` is internal. The Android test suppresses only Kotlin's
+cross-module visibility diagnostic so it invokes the real production composable
+without making it a public application API or adding a test-only wrapper.
 
 ## Verification
 
@@ -63,4 +62,21 @@ environment before Phase 1 is closed.
 
 ## Commit
 
-Pending commit at time of writing.
+Initial implementation: `7cd51b6f052d042bfc48238d6027ddd367aa142b`
+
+## Fix round 1
+
+- RED: the equal-sequence snapshot test did not compile until
+  `authoritativeSnapshotRevision` existed.
+- GREEN: every accepted authoritative snapshot increments that revision,
+  including snapshots with an equal server sequence. `GameScreen` clears local
+  wrong-number feedback from this revision rather than `latestGameSequence`, so
+  repeated snapshots cannot retain stale red feedback.
+- Restored `ReconnectOverlay` to `internal`; its test remains against the same
+  production composable, not a duplicate layout or public test wrapper.
+- The UI test performs a real touch on `game_number_1` while reconnecting and
+  asserts the production number callback remains at zero. It also verifies the
+  overlay, blocker, retry action, and one retry callback.
+- PASS: snapshot/state tests and Android UI-test compilation. The focused
+  instrumentation test still fails before hierarchy assertions with the same
+  known device Compose-harness failure seen in `ArcadeGameUiTest`.

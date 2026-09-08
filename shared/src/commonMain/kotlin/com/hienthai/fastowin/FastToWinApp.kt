@@ -1292,7 +1292,7 @@ private fun GameContent(
 }
 
 @Composable
-fun ReconnectOverlay(
+internal fun ReconnectOverlay(
     onRetry: () -> Unit,
     modifier: Modifier = Modifier
 ) {

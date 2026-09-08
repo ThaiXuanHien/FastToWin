@@ -133,7 +133,7 @@ fun GameScreen(
             wrongNumber = null
         }
     }
-    LaunchedEffect(state.latestGameSequence) {
+    LaunchedEffect(state.authoritativeSnapshotRevision) {
         wrongNumber = null
     }
     SystemBackHandler(enabled = allowExit) {
