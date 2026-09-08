@@ -43,4 +43,4 @@ Implementation commit: `87346c57c8aedb5c133e23d134fade4b4986a00c`.
 
 - RED basis: account loser reconnect with its valid token was rejected after cleanup because the session had been removed; coverage also exposed the need to retain a token only for the pending-result TTL.
 - GREEN: account loser now resumes the FINISHED snapshot exactly once through a TTL-bound token mapping; wrong tokens remain rejected. Full `:protocol:jvmTest` and server `GameEngineTest`/`GameWebSocketTest` suites PASS.
-- Commit: recorded below.
+- Implementation commit: `d24767333fbc065ea1e417731d87793c8c557308`.
