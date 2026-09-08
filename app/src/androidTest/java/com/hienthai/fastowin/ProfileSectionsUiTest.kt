@@ -7,6 +7,7 @@ import androidx.compose.ui.test.ForcedSize
 import androidx.compose.ui.test.then
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertDoesNotExist
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithTag
@@ -555,7 +556,7 @@ class ProfileSectionsUiTest {
     }
 
     @Test
-    fun matchDetail_smallPhoneReplaysEventsAndCloses() {
+    fun matchDetail_smallPhoneShowsSummaryWithoutReplayControlsAndCloses() {
         var closes = 0
         val profile = profileFixture()
         val summary = profile.recentMatches.first()
@@ -587,9 +588,10 @@ class ProfileSectionsUiTest {
         }
 
         composeRule.onNodeWithText("Chi tiết trận").assertIsDisplayed()
-        composeRule.onNodeWithText("Lượt 1/2").assertIsDisplayed()
-        composeRule.onNodeWithText("SAU").performScrollTo().performClick()
-        composeRule.onNodeWithText("Lượt 2/2").assertIsDisplayed()
+        composeRule.onNodeWithTag("match_detail_scoreboard").assertIsDisplayed()
+        composeRule.onNodeWithTag("match_detail_metrics").assertIsDisplayed()
+        composeRule.onNodeWithText("Lượt 1/2").assertDoesNotExist()
+        composeRule.onNodeWithText("PHÁT LẠI").assertDoesNotExist()
         composeRule.onNodeWithText("ĐÓNG").assertIsDisplayed().performClick()
         composeRule.runOnIdle { assertEquals(1, closes) }
     }

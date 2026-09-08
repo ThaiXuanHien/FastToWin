@@ -46,8 +46,6 @@ import androidx.compose.material.icons.filled.Payments
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material.icons.filled.Insights
@@ -70,7 +68,6 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -2655,18 +2652,7 @@ private fun MatchDetailDialog(
     isLoading: Boolean,
     onDismiss: () -> Unit
 ) {
-    var replayIndex by remember(detail?.summary?.matchId) { mutableStateOf(0) }
-    var isPlaying by remember(detail?.summary?.matchId) { mutableStateOf(false) }
     val events = detail?.events.orEmpty()
-    LaunchedEffect(isPlaying, replayIndex, events.size) {
-        if (!isPlaying) return@LaunchedEffect
-        if (replayIndex >= events.lastIndex) {
-            isPlaying = false
-            return@LaunchedEffect
-        }
-        delay(550)
-        replayIndex++
-    }
 
     ArcadeDialog(
         onDismissRequest = onDismiss,
@@ -2699,8 +2685,9 @@ private fun MatchDetailDialog(
                     modifier = Modifier.heightIn(max = 520.dp).verticalScroll(rememberScrollState()),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    MatchDetailScoreboard(detail.summary)
+                    MatchDetailScoreboard(detail.summary, Modifier.testTag("match_detail_scoreboard"))
                     ArcadeStatGrid(
+                        modifier = Modifier.testTag("match_detail_metrics"),
                         stats = listOf(
                             localized(TextKey.ReactionLabel) to if (averageReaction > 0) "${averageReaction} ms" else "--",
                             localized(TextKey.AccuracyLabel) to "$accuracy%",
@@ -2737,43 +2724,6 @@ private fun MatchDetailDialog(
                             }
                         }
                     }
-                    if (events.isEmpty()) {
-                        Text(localized(TextKey.NoReplayData))
-                    } else {
-                        val event = events[replayIndex.coerceIn(events.indices)]
-                        ArcadePanel(
-                            modifier = Modifier.fillMaxWidth(),
-                            accent = if (event.accepted) ArcadeSuccess else ArcadeOpponent
-                        ) {
-                            Column(
-                                Modifier.fillMaxWidth().padding(16.dp),
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                verticalArrangement = Arrangement.spacedBy(6.dp)
-                            ) {
-                                Text(localized(TextKey.ReplayTurn, "current" to replayIndex + 1, "total" to events.size), style = MaterialTheme.typography.labelMedium)
-                                Text(event.playerName, fontWeight = FontWeight.Bold)
-                                Text(event.number.toString(), style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Black)
-                                Text(
-                                    localized(
-                                        if (event.accepted) TextKey.CorrectSelection else TextKey.WrongSelectionNeed,
-                                        "number" to event.expectedNumber
-                                    ),
-                                    color = if (event.accepted) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
-                                )
-                            }
-                        }
-                        MatchReplayControls(
-                            isPlaying = isPlaying,
-                            canGoPrevious = replayIndex > 0,
-                            canGoNext = replayIndex < events.lastIndex,
-                            onPrevious = { replayIndex = (replayIndex - 1).coerceAtLeast(0) },
-                            onPlayPause = {
-                                if (replayIndex >= events.lastIndex) replayIndex = 0
-                                isPlaying = !isPlaying
-                            },
-                            onNext = { replayIndex = (replayIndex + 1).coerceAtMost(events.lastIndex) }
-                        )
-                    }
                 }
             }
         ArcadeActionButton(
@@ -2786,50 +2736,14 @@ private fun MatchDetailDialog(
 }
 
 @Composable
-private fun MatchReplayControls(
-    isPlaying: Boolean,
-    canGoPrevious: Boolean,
-    canGoNext: Boolean,
-    onPrevious: () -> Unit,
-    onPlayPause: () -> Unit,
-    onNext: () -> Unit
-) {
-    val button: @Composable (String, () -> Unit, Boolean, ArcadeActionStyle, Modifier) -> Unit =
-        { label, onClick, enabled, style, modifier ->
-            ArcadeActionButton(
-                label = label,
-                onClick = onClick,
-                enabled = enabled,
-                style = style,
-                modifier = modifier
-            )
-        }
-    Column(
-        modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        button(
-            localized(if (isPlaying) TextKey.StopReplay else TextKey.Replay),
-            onPlayPause,
-            true,
-            ArcadeActionStyle.PRIMARY,
-            Modifier.fillMaxWidth()
-        )
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            button(localized(TextKey.Previous), onPrevious, canGoPrevious, ArcadeActionStyle.OUTLINE, Modifier.weight(1f))
-            button(localized(TextKey.Next), onNext, canGoNext, ArcadeActionStyle.OUTLINE, Modifier.weight(1f))
-        }
-    }
-}
-
 @Composable
-private fun MatchDetailScoreboard(summary: MatchHistorySnapshot) {
+private fun MatchDetailScoreboard(summary: MatchHistorySnapshot, modifier: Modifier = Modifier) {
     val outcomeAccent = when (summary.outcome) {
         MatchHistoryOutcome.WIN -> ArcadeSuccess
         MatchHistoryOutcome.LOSS -> ArcadeOpponent
         MatchHistoryOutcome.DRAW -> ArcadeGold
     }
-    ArcadePanel(modifier = Modifier.fillMaxWidth(), accent = outcomeAccent) {
+    ArcadePanel(modifier = modifier.fillMaxWidth(), accent = outcomeAccent) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(16.dp),
             verticalAlignment = Alignment.CenterVertically,
