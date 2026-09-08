@@ -22,6 +22,8 @@ import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.selects.select
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 
@@ -72,6 +74,7 @@ internal class GameSocketClient(
     private var hasConnected = false
     private var resumeRejected = false
     private var resumeRetryUsed = false
+    private val lifecycleMutex = Mutex()
     private val _messages = Channel<ServerMessage>(Channel.UNLIMITED)
     val messages: Flow<ServerMessage> = _messages.receiveAsFlow()
     private val _isConnected = MutableStateFlow(false)
@@ -83,6 +86,7 @@ internal class GameSocketClient(
         reconnectEnabled = true
         machine.reduce(ReconnectEvent.Start)
         while (currentCoroutineContext().isActive && reconnectEnabled) {
+            var retryImmediately = false
             _connectionState.value = if (hasConnected) SocketConnectionState.RECONNECTING else SocketConnectionState.CONNECTING
             try {
                 transport.webSocket(serverUrl) { attempt ->
@@ -111,7 +115,7 @@ internal class GameSocketClient(
                             is ServerMessage.Error -> when (message.code) {
                                 "INVALID_RESUME_TOKEN" -> {
                                     if (resumeRetryUsed) terminal(message.code, message.message)
-                                    else { resumeRetryUsed = true; resumeToken = null; tokenStore.clear(serverUrl); resumeRejected = true; attempt.close() }
+                                    else { resumeRetryUsed = true; resumeToken = null; tokenStore.clear(serverUrl); resumeRejected = true; retryImmediately = true; attempt.close() }
                                 }
                                 "INVALID_ACCESS_TOKEN" -> terminal(message.code, message.message)
                                 "SESSION_EXPIRED" -> terminal(message.code, message.message)
@@ -130,6 +134,10 @@ internal class GameSocketClient(
             catch (error: Exception) { _messages.send(socketClientError("CONNECTION_FAILED", "Could not connect to $serverUrl: ${error.message}. Retrying…")) }
             finally { session = null; _isConnected.value = false }
             if (!reconnectEnabled || !currentCoroutineContext().isActive) break
+            if (retryImmediately) {
+                _connectionState.value = SocketConnectionState.CONNECTING
+                continue
+            }
             val delayMillis = (machine.reduce(ReconnectEvent.AttemptFailed) as? ReconnectDecision.RetryAfter)?.delayMillis ?: break
             _connectionState.value = SocketConnectionState.RECONNECTING
             coroutineScope {
@@ -146,21 +154,20 @@ internal class GameSocketClient(
             retryRequests.trySend(Unit)
             val active = session
             session = null
-            active?.let { scope.async { try { it.close() } catch (_: Exception) { } } }
+            active?.let { stale -> scope.async { lifecycleMutex.withLock { try { stale.close() } catch (_: Exception) { } } } }
         }
     }
     suspend fun sendMessage(message: ClientMessage) {
-        val active = session ?: run { _messages.send(socketClientError("CONNECTION_NOT_READY", "The server connection is not ready. Please wait or try again.")); return }
-        try {
-            active.send(Frame.Text(ProtocolJson.encodeToString<ClientMessage>(message)))
-        } catch (error: Exception) {
-            _messages.send(socketClientError("SEND_FAILED", "Could not send data: ${error.message}"))
+        lifecycleMutex.withLock {
+            val active = session ?: run { _messages.send(socketClientError("CONNECTION_NOT_READY", "The server connection is not ready. Please wait or try again.")); return@withLock }
+            try { active.send(Frame.Text(ProtocolJson.encodeToString<ClientMessage>(message))) }
+            catch (error: Exception) { _messages.send(socketClientError("SEND_FAILED", "Could not send data: ${error.message}")) }
         }
     }
-    suspend fun disconnect() { reconnectEnabled = false; session?.close(); session = null; _isConnected.value = false; _connectionState.value = SocketConnectionState.DISCONNECTED; machine.reduce(ReconnectEvent.Stop) }
+    suspend fun disconnect() { reconnectEnabled = false; lifecycleMutex.withLock { session?.close(); session = null }; _isConnected.value = false; _connectionState.value = SocketConnectionState.DISCONNECTED; machine.reduce(ReconnectEvent.Stop) }
     fun close() { reconnectEnabled = false; client.close() }
     private fun terminal(code: String, fallback: String) { reconnectEnabled = false; machine.reduce(ReconnectEvent.SessionExpired); _connectionState.value = SocketConnectionState.TERMINAL; onAccountSessionExpired?.invoke(code, fallback) }
     private companion object { const val CONNECT_TIMEOUT_MILLIS = 7_000L }
 }
 internal fun shouldReconnectAfterSocketClose(reason: String?): Boolean = reason != SESSION_REPLACED_CLOSE_REASON
-internal fun socketClientError(code: String, message: String): ServerMessage.Error = ServerMessage.Error(code, message, protocolTextKeyForCode(code)?.name)
+internal fun socketClientError(code: String, message: String): ServerMessage.Error = ServerMessage.Error(code = code, message = message, messageKey = protocolTextKeyForCode(code)?.name)
