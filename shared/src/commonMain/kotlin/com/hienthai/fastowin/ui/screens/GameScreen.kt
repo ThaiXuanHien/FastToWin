@@ -133,6 +133,9 @@ fun GameScreen(
             wrongNumber = null
         }
     }
+    LaunchedEffect(state.latestGameSequence) {
+        wrongNumber = null
+    }
     SystemBackHandler(enabled = allowExit) {
         if (allowExit) showExitConfirmation = true
     }
@@ -222,7 +225,10 @@ fun GameScreen(
 
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
 
-                Box(modifier = Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
+                Box(
+                    modifier = Modifier.fillMaxWidth().weight(1f).testTag("game_board"),
+                    contentAlignment = Alignment.Center
+                ) {
                     NumberGrid(
                         numbers = state.numbers,
                         selectedNumbers = state.player.selectedNumbers,

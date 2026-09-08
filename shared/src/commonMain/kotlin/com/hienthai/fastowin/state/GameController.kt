@@ -936,6 +936,11 @@ class GameController(
                     val game = currentGame
                     if (game.phase == RoomPhase.PLAYING || game.phase == RoomPhase.FINISHED) {
                         startGameWithSnapshot(game)
+                        if (wasRecoveringRoom && game.phase == RoomPhase.FINISHED) {
+                            _uiState.update {
+                                it.copy(message = messageMapper.text(TextKey.MatchExpiredOfficialLoss))
+                            }
+                        }
                     } else {
                         applyWaitingSnapshot(game)
                     }
@@ -1366,94 +1371,24 @@ class GameController(
         }
     }
 
-    private fun com.hienthai.fastowin.protocol.PlayerSnapshot.toState(
-        fallbackName: String,
-        isSpectator: Boolean = false
-    ): PlayerState = PlayerState(
-        name = name.takeIf { it.isNotBlank() } ?: fallbackName,
-        id = id,
-        avatarId = avatarId,
-        frameId = frameId,
-        teamId = teamId,
-        isReady = isReady,
-        score = score,
-        currentTarget = currentTarget,
-        correctSelections = correctSelections,
-        wrongSelections = wrongSelections,
-        averageReactionMillis = averageReactionMillis,
-        selectedNumbers = selectedNumbers,
-        combo = combo,
-        lives = lives,
-        isFinished = isFinished,
-        fastestSegmentStart = fastestSegmentStart,
-        fastestSegmentEnd = fastestSegmentEnd,
-        fastestSegmentAverageMillis = fastestSegmentAverageMillis,
-        slowestSegmentStart = slowestSegmentStart,
-        slowestSegmentEnd = slowestSegmentEnd,
-        slowestSegmentAverageMillis = slowestSegmentAverageMillis,
-        isSpectator = isSpectator
-    )
-
     private fun applyWaitingSnapshot(game: GameSnapshot) {
         val currentState = _uiState.value
         if (!currentState.canApplyGameSnapshot(game.roomId, game.sequence)) return
         gameStarted = false
-        val meSnapshot = game.players.firstOrNull { it.id == playerId }
-            ?: game.spectators.firstOrNull { it.id == playerId }
-        val myTeamId = meSnapshot?.teamId
-        val (teammateSnapshots, opponentSnapshots) = game.players.filter { it.id != playerId }
-            .partition { it.teamId != null && it.teamId == myTeamId }
-        val opponent = opponentSnapshots.firstOrNull()
-        val spectatorSnapshots = game.spectators.filter { it.id != playerId }
 
         _uiState.update { state ->
             val enteredRoom = state.currentRoomId != game.roomId
-            val opponentJoinedRoom = game.hostId == playerId &&
-                !state.hasOpponent && opponentSnapshots.isNotEmpty()
-            val waitingState = if (enteredRoom || opponentJoinedRoom) {
+            val opponentJoinedRoom = game.hostId == playerId && !state.hasOpponent &&
+                game.players.any { it.id != playerId }
+            val preparedState = if (enteredRoom || opponentJoinedRoom) {
                 state.prepareForRoomWaiting()
             } else {
                 state
             }
-            waitingState.copy(
-                gameMode = game.gameMode.toUi(),
-                matchType = game.matchType,
-                player = meSnapshot?.toState(state.player.name, isSpectator = meSnapshot in game.spectators) ?: state.player,
-                opponent = opponent?.toState(DEFAULT_OPPONENT_NAME) ?: PlayerState(DEFAULT_OPPONENT_NAME),
-                teammates = teammateSnapshots.map { it.toState(messageMapper.text(TextKey.Teammate)) },
-                opponents = opponentSnapshots.map { it.toState(DEFAULT_OPPONENT_NAME) },
-                spectators = spectatorSnapshots.map { it.toState(messageMapper.text(TextKey.Spectator), isSpectator = true) },
-                hasOpponent = opponentSnapshots.isNotEmpty(),
-                isMatchmaking = false,
-                matchmakingStartedAtMillis = null,
-                numbers = emptyList(),
-                currentTarget = 1,
-                isGameOver = false,
-                isMatchStarted = false,
-                currentMatchId = game.matchId,
-                currentTournamentId = game.tournamentId,
-                currentTournamentMatchId = game.tournamentMatchId,
-                currentTournamentRound = game.tournamentRound,
-                winnerPlayerId = game.winnerPlayerId,
-                didForfeitLastMatch = false,
-                isRematchRequestedByMe = false,
-                isRematchRequestedByOpponent = false,
-                isRematchActionPending = false,
-                rematchExpiresAtEpochMillis = null,
-                rematchNotice = null,
-                rematchNoticeErrorCode = null,
-                lastMatchDurationMillis = null,
-                lastMatchEloChange = null,
-                lastMatchEloRating = null,
-                lobbyStage = LobbyStage.ROOM_WAITING,
-                currentRoomId = game.roomId,
-                currentRoomName = game.roomName,
-                latestGameSequence = game.sequence,
-                isRoomHost = game.hostId == playerId,
-                isSearching = false,
+            preparedState.applyAuthoritativeSnapshot(game, requireNotNull(playerId)).copy(
                 roomInvitations = emptyList(),
                 roomInvitationPrompt = null,
-                error = null
+                lobbyStage = LobbyStage.ROOM_WAITING
             )
         }
     }
@@ -1478,85 +1413,16 @@ class GameController(
     private fun startGameWithSnapshot(game: GameSnapshot) {
         countdownJob?.cancel()
         gameStarted = game.phase == RoomPhase.PLAYING
-        applyGameSnapshot(game, forceStart = true)
+        applyGameSnapshot(game)
     }
 
-    private fun applyGameSnapshot(game: GameSnapshot, forceStart: Boolean = false): Boolean {
+    private fun applyGameSnapshot(game: GameSnapshot): Boolean {
         val currentState = _uiState.value
         if (!currentState.canApplyGameSnapshot(game.roomId, game.sequence)) return false
-        val meSnapshot = game.players.firstOrNull { it.id == playerId }
-            ?: game.spectators.firstOrNull { it.id == playerId }
-        val myTeamId = meSnapshot?.teamId
-        val (teammateSnapshots, opponentSnapshots) = game.players.filter { it.id != playerId }
-            .partition { it.teamId != null && it.teamId == myTeamId }
-        val opponent = opponentSnapshots.firstOrNull()
-        val spectatorSnapshots = game.spectators.filter { it.id != playerId }
         val finished = game.phase == RoomPhase.FINISHED
-        
-        _uiState.update { state ->
-            val authoritativePlayer = meSnapshot
-                ?.toState(state.player.name, isSpectator = meSnapshot in game.spectators)
-            val reconciledPlayer = authoritativePlayer?.let { player ->
-                if (!finished && player.wrongSelections < state.player.wrongSelections) {
-                    player.copy(wrongSelections = state.player.wrongSelections)
-                } else {
-                    player
-                }
-            } ?: state.player
-            state.copy(
-                numbers = if (game.numbers.isNotEmpty()) game.numbers else state.numbers,
-                currentTarget = meSnapshot?.currentTarget ?: game.currentTarget,
-                score = meSnapshot?.score ?: 0,
-                isGameOver = finished,
-                gameMode = game.gameMode.toUi(),
-                matchType = game.matchType,
-                player = reconciledPlayer,
-                opponent = opponent?.toState(DEFAULT_OPPONENT_NAME) ?: PlayerState(DEFAULT_OPPONENT_NAME),
-                teammates = teammateSnapshots.map { it.toState(messageMapper.text(TextKey.Teammate)) },
-                opponents = opponentSnapshots.map { it.toState(DEFAULT_OPPONENT_NAME) },
-                spectators = spectatorSnapshots.map { it.toState(messageMapper.text(TextKey.Spectator), isSpectator = true) },
-                lobbyStage = LobbyStage.MATCHED,
-                currentRoomId = game.roomId,
-                currentRoomName = game.roomName,
-                latestGameSequence = game.sequence,
-                isRoomHost = game.hostId == playerId,
-                hasOpponent = opponent != null,
-                isMatchmaking = false,
-                matchmakingStartedAtMillis = null,
-                isSearching = false,
-                isMatchStarted = forceStart || state.isMatchStarted,
-                currentMatchId = game.matchId,
-                currentTournamentId = game.tournamentId,
-                currentTournamentMatchId = game.tournamentMatchId,
-                currentTournamentRound = game.tournamentRound,
-                winnerPlayerId = game.winnerPlayerId,
-                isRematchRequestedByMe = playerId?.let { it in game.rematchRequestedPlayerIds } == true,
-                isRematchRequestedByOpponent = game.rematchRequestedPlayerIds.any { it != playerId },
-                isRematchActionPending = false,
-                rematchExpiresAtEpochMillis = game.rematchExpiresAtEpochMillis,
-                lastMatchDurationMillis = if (finished) {
-                    val startedAt = game.startedAtEpochMillis
-                    val finishedAt = game.finishedAtEpochMillis
-                    if (startedAt != null && finishedAt != null) {
-                        (finishedAt - startedAt).coerceAtLeast(0L)
-                    } else {
-                        state.lastMatchDurationMillis
-                    }
-                } else null,
-                lastMatchEloChange = if (finished) state.lastMatchEloChange else null,
-                lastMatchEloRating = if (finished) state.lastMatchEloRating else null,
-                countdown = null,
-                message = if (finished) null else state.message,
-                error = null
-            )
-        }
+        _uiState.update { it.applyAuthoritativeSnapshot(game, requireNotNull(playerId)) }
         if (game.phase == RoomPhase.PLAYING && game.gameMode.isTimed()) {
-            val countdownElapsed = if (forceStart) {
-                game.startedAtEpochMillis?.let { (epochMillis() - it).coerceAtLeast(0L) } ?: 0L
-            } else {
-                0L
-            }
-            startTimer(((meSnapshot?.timeLeftMillis ?: 0L) - countdownElapsed).coerceAtLeast(0L))
+            startTimer(_uiState.value.timeLeftMillis)
         } else if (!finished) {
             timerJob?.cancel()
             _uiState.update { it.copy(timeLeftMillis = 0L) }

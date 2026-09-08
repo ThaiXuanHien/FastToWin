@@ -10,6 +10,10 @@ import com.hienthai.fastowin.protocol.MatchType
 import com.hienthai.fastowin.protocol.TournamentHubSnapshot
 import com.hienthai.fastowin.protocol.TournamentInvitationSnapshot
 import com.hienthai.fastowin.protocol.WalletTransactionSnapshot
+import com.hienthai.fastowin.protocol.GameSnapshot
+import com.hienthai.fastowin.protocol.PlayerSnapshot
+import com.hienthai.fastowin.protocol.ProtocolGameMode
+import com.hienthai.fastowin.protocol.RoomPhase
 
 const val GAME_NUMBER_COUNT = 50
 const val DEFAULT_LOCAL_PLAYER_NAME = "Player"
@@ -241,6 +245,110 @@ internal fun GameState.registerOptimisticNumberSelection(number: Int): GameState
 
 internal fun GameState.canApplyGameSnapshot(roomId: String, sequence: Long): Boolean =
     currentRoomId != roomId || sequence >= latestGameSequence
+
+/** Copies the complete match view owned by the server; no optimistic match data survives. */
+internal fun GameState.applyAuthoritativeSnapshot(game: GameSnapshot, playerId: String): GameState {
+    val meSnapshot = game.players.firstOrNull { it.id == playerId }
+        ?: game.spectators.firstOrNull { it.id == playerId }
+    val myTeamId = meSnapshot?.teamId
+    val (teammateSnapshots, opponentSnapshots) = game.players.filter { it.id != playerId }
+        .partition { it.teamId != null && it.teamId == myTeamId }
+    val opponent = opponentSnapshots.firstOrNull()
+    val spectatorSnapshots = game.spectators.filter { it.id != playerId }
+    val finished = game.phase == RoomPhase.FINISHED
+    val playing = game.phase == RoomPhase.PLAYING
+    val authoritativePlayer = meSnapshot?.toAuthoritativePlayerState(
+        fallbackName = player.name,
+        isSpectator = meSnapshot in game.spectators
+    ) ?: player
+
+    return copy(
+        numbers = game.numbers,
+        currentTarget = meSnapshot?.currentTarget ?: game.currentTarget,
+        score = meSnapshot?.score ?: 0,
+        timeLeftMillis = meSnapshot?.timeLeftMillis ?: 0L,
+        isGameOver = finished,
+        gameMode = game.gameMode.toUiGameMode(),
+        matchType = game.matchType,
+        player = authoritativePlayer,
+        opponent = opponent?.toAuthoritativePlayerState(DEFAULT_OPPONENT_NAME) ?: PlayerState(DEFAULT_OPPONENT_NAME),
+        teammates = teammateSnapshots.map { it.toAuthoritativePlayerState(DEFAULT_LOCAL_PLAYER_NAME) },
+        opponents = opponentSnapshots.map { it.toAuthoritativePlayerState(DEFAULT_OPPONENT_NAME) },
+        spectators = spectatorSnapshots.map { it.toAuthoritativePlayerState(DEFAULT_OPPONENT_NAME, isSpectator = true) },
+        lobbyStage = if (playing || finished) LobbyStage.MATCHED else LobbyStage.ROOM_WAITING,
+        currentRoomId = game.roomId,
+        currentRoomName = game.roomName,
+        latestGameSequence = game.sequence,
+        isRoomHost = game.hostId == playerId,
+        hasOpponent = opponentSnapshots.isNotEmpty(),
+        isSearching = false,
+        isMatchmaking = false,
+        matchmakingStartedAtMillis = null,
+        isMatchStarted = playing,
+        currentMatchId = game.matchId,
+        currentTournamentId = game.tournamentId,
+        currentTournamentMatchId = game.tournamentMatchId,
+        currentTournamentRound = game.tournamentRound,
+        winnerPlayerId = game.winnerPlayerId,
+        winnerTeamId = game.winnerTeamId,
+        didForfeitLastMatch = false,
+        isRematchRequestedByMe = playerId in game.rematchRequestedPlayerIds,
+        isRematchRequestedByOpponent = game.rematchRequestedPlayerIds.any { it != playerId },
+        isRematchActionPending = false,
+        rematchExpiresAtEpochMillis = game.rematchExpiresAtEpochMillis,
+        rematchNotice = null,
+        rematchNoticeErrorCode = null,
+        lastMatchDurationMillis = if (finished) {
+            val startedAt = game.startedAtEpochMillis
+            val finishedAt = game.finishedAtEpochMillis
+            if (startedAt != null && finishedAt != null) (finishedAt - startedAt).coerceAtLeast(0L) else null
+        } else null,
+        lastMatchEloChange = null,
+        lastMatchEloRating = null,
+        countdown = null,
+        message = null,
+        error = null
+    )
+}
+
+private fun PlayerSnapshot.toAuthoritativePlayerState(
+    fallbackName: String,
+    isSpectator: Boolean = false
+): PlayerState = PlayerState(
+    name = name.takeIf { it.isNotBlank() } ?: fallbackName,
+    id = id,
+    avatarId = avatarId,
+    frameId = frameId,
+    teamId = teamId,
+    isReady = isReady,
+    score = score,
+    currentTarget = currentTarget,
+    correctSelections = correctSelections,
+    wrongSelections = wrongSelections,
+    averageReactionMillis = averageReactionMillis,
+    selectedNumbers = selectedNumbers,
+    combo = combo,
+    lives = lives,
+    isFinished = isFinished,
+    fastestSegmentStart = fastestSegmentStart,
+    fastestSegmentEnd = fastestSegmentEnd,
+    fastestSegmentAverageMillis = fastestSegmentAverageMillis,
+    slowestSegmentStart = slowestSegmentStart,
+    slowestSegmentEnd = slowestSegmentEnd,
+    slowestSegmentAverageMillis = slowestSegmentAverageMillis,
+    isSpectator = isSpectator
+)
+
+private fun ProtocolGameMode.toUiGameMode(): GameMode = when (this) {
+    ProtocolGameMode.ORDER -> GameMode.ORDER
+    ProtocolGameMode.RANDOM_TARGET -> GameMode.RANDOM_TARGET
+    ProtocolGameMode.TIME_BONUS -> GameMode.TIME_BONUS
+    ProtocolGameMode.SPEED_UP -> GameMode.SPEED_UP
+    ProtocolGameMode.SURVIVAL -> GameMode.SURVIVAL
+    ProtocolGameMode.COMBO -> GameMode.COMBO
+    ProtocolGameMode.TIME_ATTACK -> GameMode.TIME_ATTACK
+    ProtocolGameMode.TEAM_2V2 -> GameMode.TEAM_2V2
+}
 
 internal fun GameState.withReadySession(playerId: String): GameState {
     val clearRematchError = rematchNoticeErrorCode in REMATCH_CONNECTION_ERROR_CODES

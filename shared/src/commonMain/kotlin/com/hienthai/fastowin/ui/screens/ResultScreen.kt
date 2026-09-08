@@ -198,7 +198,7 @@ fun ResultScreen(
         isWinner -> localized(TextKey.VictoryResult)
         else -> localized(TextKey.DefeatResult)
     }
-    val resultDescription = when {
+    val resultDescription = state.message ?: when {
         state.didForfeitLastMatch -> localized(TextKey.ForfeitResultDescription)
         isDraw -> localized(TextKey.DrawResultDescription)
         isWinner -> localized(TextKey.VictoryResultDescription)

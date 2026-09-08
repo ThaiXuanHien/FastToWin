@@ -103,6 +103,9 @@ private val englishResidualTexts = mapOf(
     TextKey.Spectator to "Spectator",
     TextKey.WaitingForServerResult to "Waiting for the server result…",
     TextKey.ReconnectingMatch to "Connection lost. Restoring the match; the room is held for up to 30 seconds…",
+    TextKey.ReconnectAction to "RETRY NOW",
+    TextKey.ReconnectBlockingHint to "The board is locked until the server restores the match.",
+    TextKey.MatchExpiredOfficialLoss to "The room expired while you were disconnected. This match is an official loss.",
     TextKey.RewardReceivedSummary to "Received {rewards}."
 )
 
@@ -190,6 +193,9 @@ private val vietnameseResidualTexts = mapOf(
     TextKey.Spectator to "Khán giả",
     TextKey.WaitingForServerResult to "Đang chờ kết quả từ máy chủ…",
     TextKey.ReconnectingMatch to "Mất kết nối. Đang khôi phục trận, phòng được giữ tối đa 30 giây…",
+    TextKey.ReconnectAction to "THỬ LẠI NGAY",
+    TextKey.ReconnectBlockingHint to "Bàn số bị khóa cho đến khi máy chủ khôi phục trận.",
+    TextKey.MatchExpiredOfficialLoss to "Phòng đã hết hạn khi bạn mất kết nối. Trận này được tính là thua chính thức.",
     TextKey.RewardReceivedSummary to "Đã nhận {rewards}."
 )
 
@@ -277,6 +283,9 @@ private val japaneseResidualTexts = mapOf(
     TextKey.Spectator to "観戦者",
     TextKey.WaitingForServerResult to "サーバーの結果を待っています…",
     TextKey.ReconnectingMatch to "接続が切れました。対戦を復元しています。ルームは最大30秒間保持されます…",
+    TextKey.ReconnectAction to "今すぐ再試行",
+    TextKey.ReconnectBlockingHint to "サーバーが対戦を復元するまでボードはロックされています。",
+    TextKey.MatchExpiredOfficialLoss to "切断中にルームの期限が切れました。この対戦は公式の敗北として記録されます。",
     TextKey.RewardReceivedSummary to "{rewards}を受け取りました。"
 )
 
@@ -364,6 +373,9 @@ private val koreanResidualTexts = mapOf(
     TextKey.Spectator to "관전자",
     TextKey.WaitingForServerResult to "서버 결과를 기다리는 중…",
     TextKey.ReconnectingMatch to "연결이 끊겼습니다. 경기를 복원 중이며 방은 최대 30초 동안 유지됩니다…",
+    TextKey.ReconnectAction to "지금 재시도",
+    TextKey.ReconnectBlockingHint to "서버가 경기를 복원할 때까지 보드가 잠깁니다.",
+    TextKey.MatchExpiredOfficialLoss to "연결이 끊긴 동안 방이 만료되었습니다. 이 경기는 공식 패배로 기록됩니다.",
     TextKey.RewardReceivedSummary to "{rewards}을(를) 받았습니다."
 )
 
@@ -451,6 +463,9 @@ private val simplifiedChineseResidualTexts = mapOf(
     TextKey.Spectator to "观战者",
     TextKey.WaitingForServerResult to "正在等待服务器结果…",
     TextKey.ReconnectingMatch to "连接已断开。正在恢复比赛，房间最多保留 30 秒…",
+    TextKey.ReconnectAction to "立即重试",
+    TextKey.ReconnectBlockingHint to "服务器恢复比赛前，数字面板已锁定。",
+    TextKey.MatchExpiredOfficialLoss to "断线期间房间已过期。本场比赛将记为正式失利。",
     TextKey.RewardReceivedSummary to "已收到 {rewards}。"
 )
 
@@ -538,6 +553,9 @@ private val spanishResidualTexts = mapOf(
     TextKey.Spectator to "Espectador",
     TextKey.WaitingForServerResult to "Esperando el resultado del servidor…",
     TextKey.ReconnectingMatch to "Se perdió la conexión. Restaurando la partida; la sala se conserva hasta 30 segundos…",
+    TextKey.ReconnectAction to "REINTENTAR AHORA",
+    TextKey.ReconnectBlockingHint to "El tablero está bloqueado hasta que el servidor restaure la partida.",
+    TextKey.MatchExpiredOfficialLoss to "La sala expiró mientras estabas desconectado. Esta partida cuenta como derrota oficial.",
     TextKey.RewardReceivedSummary to "Has recibido {rewards}."
 )
 
@@ -625,6 +643,9 @@ private val brazilianPortugueseResidualTexts = mapOf(
     TextKey.Spectator to "Espectador",
     TextKey.WaitingForServerResult to "Aguardando o resultado do servidor…",
     TextKey.ReconnectingMatch to "A conexão foi perdida. Restaurando a partida; a sala fica reservada por até 30 segundos…",
+    TextKey.ReconnectAction to "TENTAR NOVAMENTE",
+    TextKey.ReconnectBlockingHint to "O tabuleiro fica bloqueado até o servidor restaurar a partida.",
+    TextKey.MatchExpiredOfficialLoss to "A sala expirou enquanto você estava desconectado. Esta partida conta como derrota oficial.",
     TextKey.RewardReceivedSummary to "Você recebeu {rewards}."
 )
 
@@ -712,6 +733,9 @@ private val frenchResidualTexts = mapOf(
     TextKey.Spectator to "Spectateur",
     TextKey.WaitingForServerResult to "En attente du résultat du serveur…",
     TextKey.ReconnectingMatch to "Connexion perdue. Restauration du match ; la salle est conservée jusqu’à 30 secondes…",
+    TextKey.ReconnectAction to "RÉESSAYER",
+    TextKey.ReconnectBlockingHint to "Le plateau est verrouillé jusqu’à ce que le serveur restaure le match.",
+    TextKey.MatchExpiredOfficialLoss to "La salle a expiré pendant votre déconnexion. Ce match compte comme une défaite officielle.",
     TextKey.RewardReceivedSummary to "Vous avez reçu {rewards}."
 )
 
@@ -799,6 +823,9 @@ private val germanResidualTexts = mapOf(
     TextKey.Spectator to "Zuschauer",
     TextKey.WaitingForServerResult to "Warten auf das Serverergebnis…",
     TextKey.ReconnectingMatch to "Verbindung verloren. Das Match wird wiederhergestellt; der Raum bleibt bis zu 30 Sekunden reserviert…",
+    TextKey.ReconnectAction to "JETZT ERNEUT VERSUCHEN",
+    TextKey.ReconnectBlockingHint to "Das Spielfeld ist gesperrt, bis der Server das Match wiederhergestellt hat.",
+    TextKey.MatchExpiredOfficialLoss to "Der Raum ist während deiner Trennung abgelaufen. Dieses Match zählt als offizielle Niederlage.",
     TextKey.RewardReceivedSummary to "{rewards} erhalten."
 )
 
@@ -886,6 +913,9 @@ private val indonesianResidualTexts = mapOf(
     TextKey.Spectator to "Penonton",
     TextKey.WaitingForServerResult to "Menunggu hasil dari server…",
     TextKey.ReconnectingMatch to "Koneksi terputus. Memulihkan pertandingan; room dipertahankan hingga 30 detik…",
+    TextKey.ReconnectAction to "COBA LAGI SEKARANG",
+    TextKey.ReconnectBlockingHint to "Papan terkunci sampai server memulihkan pertandingan.",
+    TextKey.MatchExpiredOfficialLoss to "Room berakhir saat Anda terputus. Pertandingan ini dihitung sebagai kekalahan resmi.",
     TextKey.RewardReceivedSummary to "Menerima {rewards}."
 )
 
@@ -973,6 +1003,9 @@ private val thaiResidualTexts = mapOf(
     TextKey.Spectator to "ผู้ชม",
     TextKey.WaitingForServerResult to "กำลังรอผลจากเซิร์ฟเวอร์…",
     TextKey.ReconnectingMatch to "การเชื่อมต่อขาดหาย กำลังกู้คืนการแข่งขัน ห้องจะถูกเก็บไว้นานสูงสุด 30 วินาที…",
+    TextKey.ReconnectAction to "ลองใหม่ทันที",
+    TextKey.ReconnectBlockingHint to "กระดานถูกล็อกจนกว่าเซิร์ฟเวอร์จะกู้คืนการแข่งขัน",
+    TextKey.MatchExpiredOfficialLoss to "ห้องหมดอายุขณะที่คุณขาดการเชื่อมต่อ การแข่งนี้นับเป็นการแพ้อย่างเป็นทางการ",
     TextKey.RewardReceivedSummary to "ได้รับ {rewards} แล้ว"
 )
 
@@ -1060,5 +1093,8 @@ private val russianResidualTexts = mapOf(
     TextKey.Spectator to "Зритель",
     TextKey.WaitingForServerResult to "Ожидание результата сервера…",
     TextKey.ReconnectingMatch to "Соединение потеряно. Матч восстанавливается; комната сохраняется до 30 секунд…",
+    TextKey.ReconnectAction to "ПОВТОРИТЬ СЕЙЧАС",
+    TextKey.ReconnectBlockingHint to "Поле заблокировано, пока сервер восстанавливает матч.",
+    TextKey.MatchExpiredOfficialLoss to "Комната истекла, пока вы были отключены. Этот матч засчитан как официальное поражение.",
     TextKey.RewardReceivedSummary to "Получено: {rewards}."
 )

@@ -265,7 +265,7 @@ enum class TextKey {
     PlayerBlockedAndLeft, ProfileSaved, RematchRequestedByYou, RematchRequestedByOpponent,
     RematchCancelledByYou, RematchCancelledByOpponent, RematchDeclinedByYou,
     RematchDeclinedByOpponent, RematchExpired, Spectator, WaitingForServerResult,
-    ReconnectingMatch, RewardReceivedSummary,
+    ReconnectingMatch, ReconnectAction, ReconnectBlockingHint, MatchExpiredOfficialLoss, RewardReceivedSummary,
     NotificationFriendRequestMessage, NotificationRoomInvitationMessage,
     NotificationAchievementMessage, NotificationCosmeticMessage, NotificationMissionMessage,
     NotificationClanJoinRequestMessage, NotificationClanJoinApprovedTitle,

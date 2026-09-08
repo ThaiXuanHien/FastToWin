@@ -1,5 +1,10 @@
 package com.hienthai.fastowin
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.Column
@@ -21,6 +26,9 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import com.hienthai.fastowin.state.GameController
 import com.hienthai.fastowin.state.AuthController
@@ -98,6 +106,8 @@ import com.hienthai.fastowin.ui.components.ArcadeBackdrop
 import com.hienthai.fastowin.ui.components.AvatarImageProvider
 import com.hienthai.fastowin.ui.components.SeasonRewardSummaryDialog
 import com.hienthai.fastowin.ui.components.UpdateAvailableDialog
+import com.hienthai.fastowin.ui.components.ArcadeActionButton
+import com.hienthai.fastowin.ui.components.ArcadeActionStyle
 import kotlinx.coroutines.delay
 
 @Composable
@@ -903,8 +913,9 @@ private fun GameContent(
     }
     AvatarImageProvider(serverUrl = serverUrl, revision = state.avatarRevision) {
         screenStateHolder.SaveableStateProvider(screenStateKey) {
-            ArcadeBackdrop(modifier = Modifier.fillMaxSize()) {
-                when {
+            Box(modifier = Modifier.fillMaxSize()) {
+                ArcadeBackdrop(modifier = Modifier.fillMaxSize()) {
+                    when {
                 serviceReachable == false &&
                     !continueOffline &&
                     state.currentRoomId == null &&
@@ -1268,8 +1279,52 @@ private fun GameContent(
                     onResolveRoomLink = controller::resolvePendingRoomLink,
                     onClaimDailyCheckIn = controller::claimDailyCheckIn
                 )
+                    }
+                }
+                if (state.connectionStatus == com.hienthai.fastowin.state.ConnectionStatus.RECONNECTING &&
+                    state.isMatchStarted
+                ) {
+                    ReconnectOverlay(onRetry = controller::retryConnection)
                 }
             }
+        }
+    }
+}
+
+@Composable
+fun ReconnectOverlay(
+    onRetry: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .background(Color(0xB8071824))
+            .clickable(onClick = {})
+            .testTag("reconnect_overlay"),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            modifier = Modifier.padding(24.dp).testTag("reconnect_blocker"),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            Text(
+                text = localized(TextKey.ReconnectingMatch),
+                style = MaterialTheme.typography.titleMedium,
+                color = Color.White
+            )
+            Text(
+                text = localized(TextKey.ReconnectBlockingHint),
+                style = MaterialTheme.typography.bodyMedium,
+                color = Color.White.copy(alpha = 0.82f)
+            )
+            ArcadeActionButton(
+                label = localized(TextKey.ReconnectAction),
+                onClick = onRetry,
+                style = ArcadeActionStyle.PRIMARY,
+                modifier = Modifier.fillMaxWidth().testTag("reconnect_retry")
+            )
         }
     }
 }
