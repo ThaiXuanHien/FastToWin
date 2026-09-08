@@ -1,6 +1,6 @@
 # Fast To Win
 
-Fast To Win là game tìm số 1–50 theo thời gian thực dành cho Android và iOS. Giao diện và phần lớn logic client dùng Compose Multiplatform; backend là Ktor WebSocket và PostgreSQL.
+Fast To Win là game tìm số 1–50 theo thời gian thực dành cho Android, iOS và Web. Giao diện và phần lớn logic client dùng Compose Multiplatform; backend là Ktor WebSocket và PostgreSQL.
 
 Theo dõi các bước đã làm và còn lại tại [lộ trình phát triển](docs/roadmap.md). Kiểm thử: [tổng quan](docs/testing.md) và [Web E2E](docs/web-e2e.md). Quy tắc thêm hoặc sửa bản dịch nằm trong [hướng dẫn localization](docs/localization.md). Khi chuẩn bị đưa lên máy chủ, dùng [hướng dẫn production](docs/production-deployment.md).
 
@@ -90,9 +90,46 @@ sdk.dir=C\:\\Users\\YOUR_USER\\AppData\\Local\\Android\\Sdk
 
 `local.properties` là cấu hình riêng của máy và không được commit.
 
-## 2. Chạy nhanh Android + backend + PostgreSQL
+## 2. Chạy nhanh trên Windows
 
-Đây là cách khuyến nghị cho một developer mới:
+Chọn entrypoint theo phần đang phát triển:
+
+| Nhu cầu | Lệnh | Ghi chú |
+| --- | --- | --- |
+| Android + Web + backend + PostgreSQL | `.\start-dev-all.cmd` | Khuyến nghị khi cần chạy toàn bộ project; yêu cầu Android online |
+| Backend + PostgreSQL cho Android | `.\start-dev-server-with-db.cmd` | Thiết lập luôn `adb reverse`; yêu cầu Android online |
+| Backend dùng bộ nhớ cho Android | `.\start-dev-server.cmd` | Không cần Docker; yêu cầu Android online và dữ liệu không được lưu bền vững |
+| Kết nối lại Android với backend | `.\connect-dev-device.cmd` | Chạy sau khi emulator/thiết bị được khởi động lại |
+
+### Chạy toàn bộ project
+
+1. Mở Docker Desktop.
+2. Mở một Android emulator hoặc kết nối thiết bị đã bật USB debugging.
+3. Mở Terminal trong Android Studio tại thư mục gốc project.
+4. Chạy:
+
+```powershell
+.\start-dev-all.cmd
+```
+
+Script khởi động PostgreSQL và backend, thiết lập `adb reverse`, build/cài/mở Android trên mọi thiết bị online, rồi chạy Web tại `http://localhost:8081`. Backend đang hoạt động ở `http://127.0.0.1:8080/health` sẽ được dùng lại. Log nền nằm trong `.artifacts/dev-all`; nhấn `Ctrl+C` để dừng các tiến trình do script khởi động. Thêm `-NoBrowser` nếu không muốn tự mở trình duyệt:
+
+```powershell
+.\start-dev-all.cmd -NoBrowser
+```
+
+Nếu Android báo `INSTALL_FAILED_UPDATE_INCOMPATIBLE`, thiết bị đang có bản dev
+được ký bằng khóa khác. Chạy lại lệnh dưới đây để gỡ riêng bản dev cũ và cài
+lại. Thao tác này sẽ xóa dữ liệu cục bộ của `com.hienthai.fastowin.dev`; dữ
+liệu tài khoản đã đồng bộ trên server không bị xóa:
+
+```powershell
+.\start-dev-all.cmd -ReinstallAndroid
+```
+
+### Chạy backend + PostgreSQL cho Android
+
+Đây là cách khuyến nghị khi chỉ phát triển Android và backend:
 
 1. Mở Docker Desktop.
 2. Mở một Android emulator hoặc kết nối thiết bị đã bật USB debugging.
@@ -312,7 +349,7 @@ ws://127.0.0.1:8080/game
 
 Với iPhone/iPad thật, thay `GAME_SERVER_URL` trong Debug build settings bằng địa chỉ LAN của Mac, ví dụ `ws://192.168.1.20:8080/game`, đồng thời mở firewall cổng 8080.
 
-Hướng dẫn đầy đủ từ cài Xcode/JDK/Docker, chạy simulator và thiết bị thật, kiểm thử hai người chơi đến xử lý lỗi nằm trong [IOS_SETUP.md](IOS_SETUP.md). Xem thêm ma trận thiết bị tại [docs/testing.md](docs/testing.md).
+Hướng dẫn đầy đủ từ cài Xcode/JDK/Docker, chạy simulator và thiết bị thật, kiểm thử hai người chơi đến xử lý lỗi nằm trong [docs/ios.md](docs/ios.md). Xem thêm ma trận thiết bị tại [docs/testing.md](docs/testing.md).
 
 ## 7. Build và test
 
@@ -359,15 +396,7 @@ app/build/reports/androidTests/connected/debug/flavors/dev/index.html
 
 ### Chạy phiên bản web thử nghiệm
 
-Để chạy PostgreSQL, backend, cài/mở Android và mở web bằng một lệnh trên Windows, hãy mở emulator hoặc cắm thiết bị trước rồi chạy:
-
-```powershell
-.\start-dev-all.cmd
-```
-
-Script dùng lại backend nếu `http://127.0.0.1:8080/health` đang hoạt động, mở Android trên mọi thiết bị online và mở web tại `http://localhost:8081`. Log nền nằm trong `.artifacts/dev-all`; nhấn `Ctrl+C` để dừng các tiến trình do script khởi động. Dùng `.\start-dev-all.cmd -NoBrowser` nếu không muốn tự mở trình duyệt.
-
-Khởi động backend ở cổng `8080`, sau đó mở terminal thứ hai:
+Nếu không dùng `.\start-dev-all.cmd`, hãy khởi động backend ở cổng `8080`, sau đó mở terminal thứ hai:
 
 ```powershell
 $env:JAVA_HOME='C:\Program Files\Android\Android Studio\jbr'
@@ -446,7 +475,7 @@ Trên iOS, project Xcode đã tích hợp Firebase Messaging, quyền Push Notif
 đăng ký APNs/FCM và điều hướng đến đúng màn khi chạm thông báo. Để nhận thông báo
 trên thiết bị thật, cần tải APNs Authentication Key lên Firebase Console và chọn
 Apple Development Team có quyền Push Notifications. Chi tiết nằm trong
-[IOS_SETUP.md](IOS_SETUP.md#73-bật-thông-báo-push-trên-ios).
+[docs/ios.md](docs/ios.md#73-bật-thông-báo-push-trên-ios).
 
 Khi phát hành một bản web mới có thay đổi client, tăng phiên bản
 `SHELL_CACHE` trong `webApp/src/wasmJsMain/resources/service-worker.js`. Sau đó
@@ -634,7 +663,7 @@ Kiểm tra process/container khác đang dùng cổng hoặc đổi port mapping
 
 ## Tài liệu chi tiết
 
-- [BACKEND_SETUP.md](BACKEND_SETUP.md): kiến trúc backend, API, bảo mật và production.
+- [docs/backend.md](docs/backend.md): kiến trúc backend, API, bảo mật và production.
 - [docs/account-api.md](docs/account-api.md): URL, method, request, response và mã lỗi của API tài khoản.
-- [IOS_SETUP.md](IOS_SETUP.md): chạy ứng dụng iOS.
+- [docs/ios.md](docs/ios.md): cài đặt và chạy ứng dụng iOS.
 - [docs/testing.md](docs/testing.md): test tự động và ma trận kiểm thử đa thiết bị.

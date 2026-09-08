@@ -708,7 +708,7 @@ claimed by this task unless the owner commits it separately.
 - [x] **Step 4: Verify terminology and remaining literals**
 
 ```powershell
-rg -n -i "Mặt bài" shared protocol README.md BACKEND_SETUP.md docs --glob '!docs/superpowers/specs/**' --glob '!docs/superpowers/plans/**'
+rg -n -i "Mặt bài" shared protocol README.md docs --glob '!docs/superpowers/specs/**' --glob '!docs/superpowers/plans/**'
 rg -n '"[^"\r\n]*[À-ỹ][^"\r\n]*"' shared/src/commonMain/kotlin/com/hienthai/fastowin/platform/StoreBilling.kt shared/src/androidMain/kotlin/com/hienthai/fastowin/platform/StoreBilling.android.kt shared/src/iosMain/kotlin/com/hienthai/fastowin/platform/StoreBilling.ios.kt shared/src/wasmJsMain/kotlin/com/hienthai/fastowin/platform/StoreBilling.wasm.kt shared/src/commonMain/kotlin/com/hienthai/fastowin/ui/screens/FriendsScreen.kt shared/src/commonMain/kotlin/com/hienthai/fastowin/ui/screens/ClanScreen.kt shared/src/commonMain/kotlin/com/hienthai/fastowin/ui/screens/LeaderboardScreen.kt shared/src/commonMain/kotlin/com/hienthai/fastowin/ui/screens/TournamentScreen.kt shared/src/commonMain/kotlin/com/hienthai/fastowin/ui/screens/NotificationsScreen.kt shared/src/commonMain/kotlin/com/hienthai/fastowin/ui/screens/ShopScreen.kt
 ```
 
@@ -981,7 +981,7 @@ git commit -m "feat: localize push and account email"
 - Modify: `e2e/tests/browser-smoke.spec.mjs`
 - Modify: `e2e/tests/responsive.spec.mjs`
 - Modify: `README.md`
-- Modify: `BACKEND_SETUP.md`
+- Modify: `docs/backend.md`
 - Modify: `docs/account-api.md`
 - Modify: `docs/roadmap.md`
 - Create: `docs/localization.md`
@@ -1045,7 +1045,7 @@ git diff --check
 - [ ] **Step 6: Commit**
 
 ```powershell
-git add shared/build.gradle.kts e2e/tests/browser-smoke.spec.mjs e2e/tests/responsive.spec.mjs .github/workflows/ci.yml README.md BACKEND_SETUP.md docs/account-api.md docs/roadmap.md docs/localization.md
+git add shared/build.gradle.kts e2e/tests/browser-smoke.spec.mjs e2e/tests/responsive.spec.mjs .github/workflows/ci.yml README.md docs/backend.md docs/account-api.md docs/roadmap.md docs/localization.md
 git commit -m "test: enforce multilingual UI coverage"
 ```
 
@@ -1084,7 +1084,7 @@ Set-Location ..
 - [ ] **Step 4: Audit translations and compatibility**
 
 ```powershell
-rg -n -i "Mặt bài" shared protocol README.md BACKEND_SETUP.md docs --glob '!docs/superpowers/specs/**' --glob '!docs/superpowers/plans/**'
+rg -n -i "Mặt bài" shared protocol README.md docs --glob '!docs/superpowers/specs/**' --glob '!docs/superpowers/plans/**'
 rg -n '"[^"\r\n]*[À-ỹ][^"\r\n]*"' shared/src/commonMain shared/src/androidMain shared/src/iosMain shared/src/wasmJsMain server/src/main --glob '!**/localization/catalogs/**'
 git diff --check
 git status --short

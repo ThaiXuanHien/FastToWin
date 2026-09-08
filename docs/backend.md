@@ -1,4 +1,4 @@
-# Fast To Win backend MVP
+# Backend Fast To Win
 
 Backend hiện tại là Ktor WebSocket server chạy JVM. Server là nơi duy nhất tạo phòng, xác minh mật khẩu, sinh bàn 50 số, kiểm tra lượt bấm và tính điểm. Khi bật PostgreSQL, guest identity, resume session và trạng thái phòng/trận đang diễn ra đều được lưu để khôi phục sau khi server restart.
 
@@ -158,7 +158,7 @@ Backend hỗ trợ tài khoản email/mật khẩu qua JSON API:
 | `POST` | `/auth/delete-account` | Xóa tài khoản sau khi xác nhận mật khẩu |
 
 Request, response, mã HTTP, mã lỗi và quy tắc cookie Web của từng endpoint được mô
-tả tại [đặc tả API tài khoản](docs/account-api.md).
+tả tại [đặc tả API tài khoản](account-api.md).
 
 Ví dụ đăng ký:
 
@@ -225,7 +225,7 @@ Máy tính và điện thoại phải cùng mạng, đồng thời firewall ph�
 Cách khuyến nghị là dùng `compose.production.yaml`: Caddy tự cấp HTTPS, phục vụ Web
 và reverse proxy HTTP/WebSocket; backend và PostgreSQL chỉ nằm trong mạng Docker.
 Xem đầy đủ DNS, secrets, build, health check, bảo trì và rollback tại
-[docs/production-deployment.md](docs/production-deployment.md).
+[hướng dẫn triển khai production](production-deployment.md).
 
 Android production:
 
@@ -263,8 +263,8 @@ Các biến bắt buộc ở production được backend kiểm tra lúc khởi 
 thật trong `FASTTOWIN_PUBLIC_URL` và `FASTTOWIN_WEB_ORIGINS`, PostgreSQL cùng mật
 khẩu ít nhất 12 ký tự, và SMTP cùng đúng một chế độ STARTTLS hoặc SSL. Cấu hình
 Docker đầy đủ, gồm push notification, bảo trì và secret mount từ file, nằm tại
-[`deploy/.env.production.example`](deploy/.env.production.example) và
-[`compose.production.yaml`](compose.production.yaml). Không dùng giá trị mẫu trong
+[`deploy/.env.production.example`](../deploy/.env.production.example) và
+[`compose.production.yaml`](../compose.production.yaml). Không dùng giá trị mẫu trong
 khối lệnh trên để triển khai thật.
 
 Backend cũng hỗ trợ `DATABASE_PASSWORD_FILE` và `FASTTOWIN_SMTP_PASSWORD_FILE` để
