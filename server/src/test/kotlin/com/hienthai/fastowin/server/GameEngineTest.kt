@@ -2485,6 +2485,24 @@ class GameEngineTest {
         assertTrue(saved.isEmpty())
     }
 
+    @Test
+    fun `expired account loser resumes pending finished result with token`() = runTest {
+        var now = 1_000L
+        val accountId = UUID.randomUUID()
+        val engine = GameEngine(nowMillis = { now })
+        val account = engine.connectAccount(AuthenticatedAccount(accountId, "Account"))
+        val guest = engine.connectGuest("Guest", null)
+        val room = engine.handle(account.playerId, ClientMessage.CreateRoom("Account expiry", PASSWORD, ProtocolGameMode.ORDER))
+            .map(Delivery::message).filterIsInstance<ServerMessage.RoomCreated>().single().game
+        startRoom(engine, account.playerId, guest.playerId, room.roomId)
+        engine.markDisconnected(account.playerId)
+        now += 30_001L
+        engine.cleanupExpiredSessions()
+        val resumed = engine.connectAccount(AuthenticatedAccount(accountId, "Account"), account.resumeToken)
+        assertEquals(com.hienthai.fastowin.protocol.RoomPhase.FINISHED, assertNotNull(resumed.currentGame).phase)
+        assertEquals(null, engine.connectAccount(AuthenticatedAccount(accountId, "Account"), account.resumeToken).currentGame)
+    }
+
     private suspend fun startRoom(
         engine: GameEngine,
         hostId: String,

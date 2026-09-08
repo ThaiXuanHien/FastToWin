@@ -38,3 +38,9 @@ Implementation commit: `87346c57c8aedb5c133e23d134fade4b4986a00c`.
 - RED basis: reviewer gaps were converted into tests for invalid-token disclosure/auth precedence, both-disconnected expiry, and pending-result TTL.
 - GREEN: `:protocol:jvmTest --no-daemon` and `:server:test --tests '*GameEngineTest' --tests '*GameWebSocketTest' --no-daemon` both PASS.
 - Normal PLAYING forfeit now selects only an actually connected opponent; if none exists, the room closes safely without persisting a match. Pending snapshots carry creation time and are evicted after the reconnect grace TTL. WebSocket authentication tests verify invalid resume handling and access-token-first ordering.
+
+## Fix round 2
+
+- RED basis: account loser reconnect with its valid token was rejected after cleanup because the session had been removed; coverage also exposed the need to retain a token only for the pending-result TTL.
+- GREEN: account loser now resumes the FINISHED snapshot exactly once through a TTL-bound token mapping; wrong tokens remain rejected. Full `:protocol:jvmTest` and server `GameEngineTest`/`GameWebSocketTest` suites PASS.
+- Commit: recorded below.

@@ -77,6 +77,7 @@ class GameEngine(
     private val sessionsByPlayerId = mutableMapOf<String, GuestSession>()
     private val rooms = mutableMapOf<String, Room>()
     private val pendingReconnectResultsByPlayerId = mutableMapOf<String, PendingReconnectResult>()
+    private val pendingAccountTokensByPlayerId = mutableMapOf<String, PendingAccountToken>()
     private val roomInvitations = mutableMapOf<String, RoomInvitationRecord>()
     private val matchmakingEntries = mutableMapOf<String, MatchmakingEntry>()
     private val tournaments = mutableMapOf<String, Tournament>()
@@ -96,7 +97,9 @@ class GameEngine(
         restoreActiveRooms()
         mutex.withLock {
             val existing = sessionsByPlayerId[account.userId.toString()]
-            if (resumeToken != null && existing?.accountResumeToken != resumeToken) {
+            val expectedToken = existing?.accountResumeToken
+                ?: pendingAccountTokensByPlayerId[account.userId.toString()]?.token
+            if (resumeToken != null && expectedToken != resumeToken) {
                 throw InvalidResumeTokenException()
             }
         }
@@ -145,7 +148,9 @@ class GameEngine(
                 playerId = session.playerId,
                 resumeToken = session.accountResumeToken ?: session.resumeToken,
                 currentGame = roomFor(session.playerId)?.snapshot()
-                    ?: pendingReconnectResultsByPlayerId.remove(session.playerId)?.snapshot
+                    ?: pendingReconnectResultsByPlayerId.remove(session.playerId)?.snapshot.also {
+                        pendingAccountTokensByPlayerId.remove(session.playerId)
+                    }
             )
         }
         connected.currentGame?.roomId?.let { persistRoom(it) }
@@ -1987,6 +1992,9 @@ class GameEngine(
             pendingReconnectResultsByPlayerId.entries.removeIf {
                 now - it.value.createdAtMillis >= ROOM_RECONNECT_GRACE_MILLIS
             }
+            pendingAccountTokensByPlayerId.entries.removeIf {
+                now - it.value.createdAtMillis >= ROOM_RECONNECT_GRACE_MILLIS
+            }
             val affectedInvitationUsers = roomInvitations.values
                 .filter { it.expiresAtMillis <= now }
                 .onEach(removedInvitations::add)
@@ -2039,6 +2047,9 @@ class GameEngine(
                             room.sequence++
                             val snapshot = room.snapshot()
                             pendingReconnectResultsByPlayerId[playerId] = PendingReconnectResult(snapshot, now)
+                            sessionsByPlayerId[playerId]?.accountResumeToken?.let {
+                                pendingAccountTokensByPlayerId[playerId] = PendingAccountToken(it, now)
+                            }
                             room.takeCompletedMatch()?.let(completedMatches::add)
                             deliveries += Delivery(ServerMessage.GameFinished(snapshot), room.activePlayerIds())
                             rooms.remove(room.id)
@@ -3225,6 +3236,8 @@ class GameEngine(
         val snapshot: GameSnapshot,
         val createdAtMillis: Long
     )
+
+    private data class PendingAccountToken(val token: String, val createdAtMillis: Long)
 
     private data class HandleResult(
         val deliveries: List<Delivery>,
