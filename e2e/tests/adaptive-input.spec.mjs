@@ -29,6 +29,7 @@ async function expectNoDocumentOverflow(page) {
 }
 
 test('large text, long content and a compact keyboard viewport remain usable', async ({ actors }) => {
+  test.skip(test.info().project.name.endsWith('-touch'), 'Large-text coverage runs in the desktop adaptive project');
   const displayName = 'Người chơi có biệt danh rất dài';
   const roomName = 'Phòng thử thách với tên rất dài';
   const player = await actors('Adaptive input', { displayName, preferences: largeTextPreferences });

@@ -36,7 +36,11 @@ export const test = base.extend({
       };
       actors.push(actor);
       const context = await browser.newContext({
-        baseURL, viewport: testInfo.project.use.viewport, locale: 'vi-VN', serviceWorkers: 'block',
+        baseURL,
+        viewport: testInfo.project.use.viewport,
+        locale: 'vi-VN',
+        serviceWorkers: 'block',
+        hasTouch: testInfo.project.use.hasTouch ?? false,
       });
       actor.context = context;
       if (options.preferences) {

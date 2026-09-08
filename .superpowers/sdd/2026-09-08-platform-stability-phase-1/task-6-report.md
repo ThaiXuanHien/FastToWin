@@ -29,3 +29,9 @@ The Kotlin compiler and browser execution could not run in this environment. A m
 - Split the adaptive-input E2E coverage into explicit Chromium desktop (`hasTouch: false`) and touch (`hasTouch: true`) projects. The test now asserts the configured context matches `navigator.maxTouchPoints`; desktop activation asserts the refresh action becomes disabled while the refresh callback is in flight instead of merely checking the pre-existing room list.
 - Made the desktop refresh affordance compact and right-aligned: it uses a 44dp minimum target, a 160dp maximum width, and the compact action layout rather than a full-width 55dp CTA. Existing `FastToWinPullRefresh` call sites and dialog/CSS contracts are unchanged.
 - `node --check e2e/playwright.config.mjs` and `node --check e2e/tests/adaptive-input.spec.mjs` passed; `git diff --check` passed. Playwright installation/test execution remains blocked by unavailable local tarballs and registry `EACCES`. Gradle compile remains blocked by `Unable to establish loopback connection`.
+
+## Round 2 follow-up
+
+- Forwarded each adaptive project’s exact `hasTouch` setting into the fixture’s manual `browser.newContext`, so touch coverage now observes a real positive `navigator.maxTouchPoints` value rather than only configuring the unused test browser context.
+- The unrelated large-text scenario is skipped only in the touch adaptive project; desktop keeps the existing scenario while both projects retain the input-mode test.
+- Compact refresh buttons now have a 44dp clickable Surface and 48dp outer target, preserving the 160dp width cap and compact pointer layout.
