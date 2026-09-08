@@ -31,3 +31,10 @@
 - Production scanning and fixtures now both call `findLocalizedUiTextViolations`, including the narrow server-only `legacyFallback(...)` allowance. The fixture set covers a rejected Vietnamese reconnect `Text`, an accepted localized reconnect key, and an accepted server `legacyFallback` literal.
 - A direct text scan of `FastToWinApp.kt` found no Vietnamese literals, so expanding the selector did not require unrelated source changes.
 - Re-running `:shared:checkLocalizedUiText :protocol:jvmTest --tests "*LocalizationCatalogTest" --no-daemon` remained blocked before Gradle configuration with `java.io.IOException: Unable to establish loopback connection`.
+
+## Round 2 integration-gate repair
+
+- The controller's full gate reached compilation and found the invalid `androidx.compose.foundation.layout.weight` import in `FastToWinPullRefresh.kt`, missing `LaunchedEffect` imports in `ProfileScreen.kt`, and three configuration-cache serialization failures from the scanner tasks' build-script `doLast` closures.
+- Removed only the invalid `weight` import and restored only `LaunchedEffect`; the composable remains inside a `ColumnScope`, where `Modifier.weight(1f)` is available without that import.
+- Moved scanner execution into typed `buildSrc` tasks with declared file/directory inputs. The shared scanner owns source selection, lexical scanning, and the server-only `legacyFallback(...)` allowlist; fixtures use that same implementation. The build script now only wires task inputs and dependencies.
+- The full gate and two configuration-cache-enabled scanner attempts were re-run in this sandbox with the prescribed JDK/SDK/IPv4 JVM environment, but each stopped before Gradle configuration with `java.io.IOException: Unable to establish loopback connection`. No GREEN output or configuration-cache reuse evidence is available from this environment.
