@@ -2450,6 +2450,41 @@ class GameEngineTest {
         assertEquals(null, engine.connectGuest("Host", host.resumeToken).currentGame)
     }
 
+    @Test
+    fun `expired result pending snapshot is bounded by ttl`() = runTest {
+        var now = 1_000L
+        val engine = GameEngine(nowMillis = { now })
+        val host = engine.connectGuest("Host", null)
+        val guest = engine.connectGuest("Guest", null)
+        val room = engine.handle(host.playerId, ClientMessage.CreateRoom("TTL", PASSWORD, ProtocolGameMode.ORDER))
+            .map(Delivery::message).filterIsInstance<ServerMessage.RoomCreated>().single().game
+        startRoom(engine, host.playerId, guest.playerId, room.roomId)
+        engine.markDisconnected(host.playerId)
+        now += 30_001L
+        engine.cleanupExpiredSessions()
+        now += 30_000L
+        engine.cleanupExpiredSessions()
+        assertEquals(null, engine.connectGuest("Host", host.resumeToken).currentGame)
+    }
+
+    @Test
+    fun `expired playing room with both disconnected players closes safely`() = runTest {
+        var now = 1_000L
+        val saved = mutableListOf<CompletedMatch>()
+        val engine = GameEngine(nowMillis = { now }, matchResultRepository = MatchResultRepository { saved += it })
+        val host = engine.connectGuest("Host", null)
+        val guest = engine.connectGuest("Guest", null)
+        val room = engine.handle(host.playerId, ClientMessage.CreateRoom("Both offline", PASSWORD, ProtocolGameMode.ORDER))
+            .map(Delivery::message).filterIsInstance<ServerMessage.RoomCreated>().single().game
+        startRoom(engine, host.playerId, guest.playerId, room.roomId)
+        engine.markDisconnected(host.playerId)
+        engine.markDisconnected(guest.playerId)
+        now += 30_001L
+        val messages = engine.cleanupExpiredSessions().map(Delivery::message)
+        assertTrue(messages.any { it is ServerMessage.RoomClosed })
+        assertTrue(saved.isEmpty())
+    }
+
     private suspend fun startRoom(
         engine: GameEngine,
         hostId: String,

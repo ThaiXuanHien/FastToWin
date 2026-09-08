@@ -76,7 +76,7 @@ class GameEngine(
     private val persistenceMutex = Mutex()
     private val sessionsByPlayerId = mutableMapOf<String, GuestSession>()
     private val rooms = mutableMapOf<String, Room>()
-    private val pendingReconnectResultsByPlayerId = mutableMapOf<String, GameSnapshot>()
+    private val pendingReconnectResultsByPlayerId = mutableMapOf<String, PendingReconnectResult>()
     private val roomInvitations = mutableMapOf<String, RoomInvitationRecord>()
     private val matchmakingEntries = mutableMapOf<String, MatchmakingEntry>()
     private val tournaments = mutableMapOf<String, Tournament>()
@@ -145,7 +145,7 @@ class GameEngine(
                 playerId = session.playerId,
                 resumeToken = session.accountResumeToken ?: session.resumeToken,
                 currentGame = roomFor(session.playerId)?.snapshot()
-                    ?: pendingReconnectResultsByPlayerId.remove(session.playerId)
+                    ?: pendingReconnectResultsByPlayerId.remove(session.playerId)?.snapshot
             )
         }
         connected.currentGame?.roomId?.let { persistRoom(it) }
@@ -1984,6 +1984,9 @@ class GameEngine(
         val removedInvitations = mutableListOf<RoomInvitationRecord>()
         val cleanup = mutex.withLock {
             val now = nowMillis()
+            pendingReconnectResultsByPlayerId.entries.removeIf {
+                now - it.value.createdAtMillis >= ROOM_RECONNECT_GRACE_MILLIS
+            }
             val affectedInvitationUsers = roomInvitations.values
                 .filter { it.expiresAtMillis <= now }
                 .onEach(removedInvitations::add)
@@ -2025,7 +2028,9 @@ class GameEngine(
                             room.activePlayerIds()
                         )
                     } else if (room.phase == RoomPhase.PLAYING) {
-                        val forcedWinnerId = room.playerIds().firstOrNull { it != playerId }
+                        val forcedWinnerId = room.playerIds().firstOrNull {
+                            it != playerId && sessionsByPlayerId[it]?.isConnected == true
+                        }
                         if (forcedWinnerId != null) {
                             room.forcedWinnerId = forcedWinnerId
                             room.finishedPlayerIds += playerId
@@ -2033,11 +2038,23 @@ class GameEngine(
                             room.finishedAtEpochMillis = now
                             room.sequence++
                             val snapshot = room.snapshot()
-                            pendingReconnectResultsByPlayerId[playerId] = snapshot
+                            pendingReconnectResultsByPlayerId[playerId] = PendingReconnectResult(snapshot, now)
                             room.takeCompletedMatch()?.let(completedMatches::add)
                             deliveries += Delivery(ServerMessage.GameFinished(snapshot), room.activePlayerIds())
                             rooms.remove(room.id)
                             removedRoomIds += room.id
+                        } else {
+                            removedRoomIds += room.id
+                            rooms.remove(room.id)
+                            deliveries += Delivery(
+                                ServerMessage.RoomClosed(
+                                    roomId = room.id,
+                                    reason = legacyFallback("Cả hai người chơi đã mất kết nối quá lâu."),
+                                    messageKey = TextKey.RoomDisconnectedTooLongNotice.name,
+                                    code = "ROOM_DISCONNECTED_TOO_LONG"
+                                ),
+                                room.playerIds()
+                            )
                         }
                     } else {
                         removedRoomIds += room.id
@@ -3202,6 +3219,11 @@ class GameEngine(
         var isConnected: Boolean = true,
         var disconnectedAtMillis: Long? = null,
         var latencyMillis: Long? = null
+    )
+
+    private data class PendingReconnectResult(
+        val snapshot: GameSnapshot,
+        val createdAtMillis: Long
     )
 
     private data class HandleResult(

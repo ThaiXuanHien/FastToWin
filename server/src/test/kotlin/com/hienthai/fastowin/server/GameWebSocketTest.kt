@@ -268,6 +268,30 @@ class GameWebSocketTest {
     }
 
     @Test
+    fun `valid access token with invalid resume token is rejected without session`() = testApplication {
+        val authService = AuthenticationService(InMemoryAuthRepository(), PasswordHasher(iterations = 1_000))
+        val registered = authService.registerVerified("invalid-resume@example.com", "strong-password-123", "Invalid resume")
+        application { gameModule(authService = authService) }
+        val client = createClient { install(WebSockets) }
+        val socket = client.webSocketSession("/game")
+        try {
+            socket.sendMessage(ClientMessage.ConnectAccount(registered.accessToken, resumeToken = "wrong-token"))
+            assertEquals("INVALID_RESUME_TOKEN", socket.receiveMessage<ServerMessage.Error>().code)
+        } finally { socket.close() }
+    }
+
+    @Test
+    fun `invalid access token is checked before resume token`() = testApplication {
+        application { gameModule() }
+        val client = createClient { install(WebSockets) }
+        val socket = client.webSocketSession("/game")
+        try {
+            socket.sendMessage(ClientMessage.ConnectAccount("invalid-access", resumeToken = "wrong-token"))
+            assertEquals("INVALID_ACCESS_TOKEN", socket.receiveMessage<ServerMessage.Error>().code)
+        } finally { socket.close() }
+    }
+
+    @Test
     fun `unverified account cannot authenticate game websocket`() = testApplication {
         val authService = AuthenticationService(
             repository = InMemoryAuthRepository(),
