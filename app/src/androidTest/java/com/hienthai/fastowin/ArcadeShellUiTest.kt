@@ -32,6 +32,7 @@ import com.hienthai.fastowin.state.LobbyStage
 import com.hienthai.fastowin.state.PlayerState
 import com.hienthai.fastowin.ui.components.FastToWinHeader
 import com.hienthai.fastowin.ui.screens.LobbyScreen
+import com.hienthai.fastowin.ui.screens.HomeDashboard
 import com.hienthai.fastowin.ui.theme.FastToWinTheme
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -86,6 +87,26 @@ class ArcadeShellUiTest {
     @Test
     fun bottomBar_tablet_showsFiveTabsInsideViewport() =
         assertBottomBarLayout(840.dp, 1_180.dp, fontScale = 1.6f)
+
+    @Test
+    fun homeSeasonTier_hasBreathingRoomAbove() {
+        setAdaptiveContent(320.dp, 568.dp, fontScale = 1f) {
+            HomeDashboard(
+                state = shellState(LobbyStage.SELECT_MODE), isGuest = false,
+                onQuickMatch = { _, _ -> }, onOpenRooms = {}, onOpenFriends = {},
+                onOpenLeaderboard = {}, onOpenProfile = {}, onOpenNotifications = {},
+                onOpenClan = {}, onOpenPractice = {}, onOpenTournament = {}, onOpenShop = {},
+                onClaimDailyCheckIn = {}, onUpgradeGuest = {}, onLogout = {}
+            )
+        }
+        val headerBottom = composeRule.onNodeWithTag("home_header_content")
+            .fetchSemanticsNode().boundsInRoot.bottom
+        val tierTop = composeRule.onNodeWithTag("home_season_tier")
+            .fetchSemanticsNode().boundsInRoot.top
+        composeRule.runOnIdle {
+            assertTrue(tierTop - headerBottom >= with(composeRule.density) { 8.dp.toPx() })
+        }
+    }
 
     private fun assertHeaderLayout(
         width: Dp,

@@ -466,7 +466,7 @@ private fun ArcadePlayerSummary(
 ) {
     Surface(
         onClick = onOpenProfile,
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth().testTag("home_season_card"),
         shape = RoundedCornerShape(20.dp),
         color = ArcadePalette.Navy800,
         contentColor = Color.White,
@@ -474,7 +474,7 @@ private fun ArcadePlayerSummary(
         shadowElevation = 2.dp
     ) {
         Row(
-            modifier = Modifier.fillMaxWidth().padding(12.dp),
+            modifier = Modifier.fillMaxWidth().padding(12.dp).testTag("home_header_content"),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(14.dp)
         ) {
@@ -518,7 +518,8 @@ private fun ArcadePlayerSummary(
                         elo?.let { append("  •  Elo ").append(it) }
                     },
                     style = MaterialTheme.typography.labelSmall,
-                    color = Color.White.copy(alpha = 0.76f)
+                    color = Color.White.copy(alpha = 0.76f),
+                    modifier = Modifier.padding(top = 8.dp).testTag("home_season_tier")
                 )
                 LinearProgressIndicator(
                     progress = { currentXp.toFloat() / nextXp.coerceAtLeast(1) },
