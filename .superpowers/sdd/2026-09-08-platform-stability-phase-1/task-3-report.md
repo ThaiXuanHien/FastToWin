@@ -27,3 +27,10 @@ RED tests were added for discarding closed attempts and immediate retry. The ini
 
 The Gradle daemon cannot establish its loopback pipe in this Windows sandbox, so compile/test GREEN evidence requires rerunning the brief commands in a host environment where Gradle Java loopback is available.
 
+## Fix round 1
+
+- INVALID_RESUME_TOKEN now clears the persisted token, closes the current attempt, and permits exactly one auth-only retry; a second invalid token is terminal.
+- INVALID_ACCESS_TOKEN is terminal per the reconnect contract; replacement close remains terminal.
+- RECONNECTING is published before every backoff, and retryNow detaches the session before asynchronously closing it to prevent stale sends.
+- Retry seams are no longer exposed by the public constructor; GameSocketClient is internal, and the Ktor close extension is imported for JS/Wasm.
+- Focused tests/compiler command was requested again; environment result is recorded below after execution.

@@ -8,6 +8,7 @@ import io.ktor.client.plugins.websocket.WebSockets
 import io.ktor.client.plugins.websocket.webSocket
 import io.ktor.websocket.Frame
 import io.ktor.websocket.readText
+import io.ktor.websocket.close
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -48,15 +49,17 @@ private class KtorSocketTransport(private val client: HttpClient) : SocketTransp
         }
     }
 }
-class GameSocketClient(
+internal class GameSocketClient(
     private val serverUrl: String,
     private val tokenStore: ResumeTokenStore,
     private val accessTokenProvider: (suspend (forceRefresh: Boolean) -> String?)? = null,
     private val onAccountSessionExpired: ((code: String, fallback: String) -> Unit)? = null,
-    internal val retrySleeper: RetrySleeper = RetrySleeper { delay(it) },
-    internal val retryJitter: RetryJitter = RetryJitter { 0L },
+    retrySleeper: RetrySleeper = RetrySleeper { delay(it) },
+    retryJitter: RetryJitter = RetryJitter { 0L },
     transport: SocketTransport? = null
 ) {
+    private val retrySleeper = retrySleeper
+    private val retryJitter = retryJitter
     private val client = HttpClient { install(WebSockets); install(HttpTimeout) { connectTimeoutMillis = CONNECT_TIMEOUT_MILLIS } }
     private val transport = transport ?: KtorSocketTransport(client)
     private val machine = ReconnectStateMachine()
@@ -68,6 +71,7 @@ class GameSocketClient(
     private var forceAccessTokenRefresh = false
     private var hasConnected = false
     private var resumeRejected = false
+    private var resumeRetryUsed = false
     private val _messages = Channel<ServerMessage>(Channel.UNLIMITED)
     val messages: Flow<ServerMessage> = _messages.receiveAsFlow()
     private val _isConnected = MutableStateFlow(false)
@@ -101,12 +105,15 @@ class GameSocketClient(
                         when (message) {
                             is ServerMessage.SessionReady -> {
                                 message.resumeToken?.let { resumeToken = it; tokenStore.save(serverUrl, it) }
-                                resumeRejected = false; hasConnected = true
+                                resumeRejected = false; resumeRetryUsed = false; hasConnected = true
                                 machine.reduce(ReconnectEvent.Authenticated); _connectionState.value = SocketConnectionState.CONNECTED
                             }
                             is ServerMessage.Error -> when (message.code) {
-                                "INVALID_RESUME_TOKEN" -> { resumeToken = null; tokenStore.clear(serverUrl); resumeRejected = true }
-                                "INVALID_ACCESS_TOKEN" -> { forceAccessTokenRefresh = true; attempt.close() }
+                                "INVALID_RESUME_TOKEN" -> {
+                                    if (resumeRetryUsed) terminal(message.code, message.message)
+                                    else { resumeRetryUsed = true; resumeToken = null; tokenStore.clear(serverUrl); resumeRejected = true; attempt.close() }
+                                }
+                                "INVALID_ACCESS_TOKEN" -> terminal(message.code, message.message)
                                 "SESSION_EXPIRED" -> terminal(message.code, message.message)
                             }
                             else -> Unit
@@ -124,6 +131,7 @@ class GameSocketClient(
             finally { session = null; _isConnected.value = false }
             if (!reconnectEnabled || !currentCoroutineContext().isActive) break
             val delayMillis = (machine.reduce(ReconnectEvent.AttemptFailed) as? ReconnectDecision.RetryAfter)?.delayMillis ?: break
+            _connectionState.value = SocketConnectionState.RECONNECTING
             coroutineScope {
                 val sleeper = async { retrySleeper.sleep(delayMillis + retryJitter.nextMillis()) }
                 select<Unit> {
@@ -136,7 +144,9 @@ class GameSocketClient(
     fun retryNow() {
         if (machine.state != SocketConnectionState.TERMINAL) {
             retryRequests.trySend(Unit)
-            session?.let { active -> scope.async { try { active.close() } catch (_: Exception) { } } }
+            val active = session
+            session = null
+            active?.let { scope.async { try { it.close() } catch (_: Exception) { } } }
         }
     }
     suspend fun sendMessage(message: ClientMessage) {
