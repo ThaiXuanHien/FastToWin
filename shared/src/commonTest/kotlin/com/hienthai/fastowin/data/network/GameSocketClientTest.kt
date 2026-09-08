@@ -8,11 +8,13 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withContext
@@ -23,6 +25,82 @@ import kotlin.test.*
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class GameSocketClientTest {
+    @Test fun `disconnect completes when transport never enters websocket block`() = runTest {
+        val transport = HandshakeStallingTransport()
+        val client = GameSocketClient("ws://test", InMemoryResumeTokenStore(), transport = transport)
+        val connection = backgroundScope.launch { client.connect("Hiền") }
+        transport.handshakeStarted.await()
+
+        val disconnecting = launch { client.disconnect() }
+        runCurrent()
+        advanceTimeBy(SHUTDOWN_BOUND_MILLIS + 1)
+        runCurrent()
+        val completedWithinBound = disconnecting.isCompleted
+        if (!completedWithinBound) connection.cancelAndJoin()
+        disconnecting.join()
+
+        assertTrue(completedWithinBound)
+        assertEquals(SocketConnectionState.DISCONNECTED, client.connectionState.value)
+        assertEquals(1, transport.handshakeCount)
+        assertFalse(connection.isActive)
+    }
+
+    @Test fun `disconnect completes when session close never returns`() = runTest {
+        val transport = CloseStallingTransport()
+        val errors = mutableListOf<ServerMessage.Error>()
+        val client = GameSocketClient("ws://test", InMemoryResumeTokenStore(), transport = transport)
+        backgroundScope.launch { client.messages.collect { if (it is ServerMessage.Error) errors += it } }
+        val connection = backgroundScope.launch { client.connect("Hiền") }
+        transport.sessionStarted.await()
+
+        val disconnecting = launch { client.disconnect() }
+        transport.session.closeStarted.await()
+        advanceTimeBy(SHUTDOWN_BOUND_MILLIS + 1)
+        runCurrent()
+        val completedWithinBound = disconnecting.isCompleted
+        if (!completedWithinBound) connection.cancelAndJoin()
+        disconnecting.join()
+        client.sendMessage(ClientMessage.GetProfile)
+        runCurrent()
+
+        assertTrue(completedWithinBound)
+        assertFalse(connection.isActive)
+        assertEquals(SocketConnectionState.DISCONNECTED, client.connectionState.value)
+        assertEquals(listOf<ClientMessage>(ClientMessage.ConnectGuest("Hiền", null)), transport.session.sent)
+        assertEquals(0, transport.staleSends)
+        assertEquals("CONNECTION_NOT_READY", errors.single().code)
+    }
+
+    @Test fun `reset can reconnect after stalled transport teardown`() = runTest {
+        val transport = FirstHandshakeStallsThenSessionTransport()
+        val client = GameSocketClient("ws://test", InMemoryResumeTokenStore(), transport = transport)
+        val oldConnection = backgroundScope.launch { client.connect("Hiền") }
+        transport.firstHandshakeStarted.await()
+
+        val reset = launch {
+            client.disconnect()
+            oldConnection.cancelAndJoin()
+            backgroundScope.launch { client.connect("New player") }
+        }
+        runCurrent()
+        advanceTimeBy(SHUTDOWN_BOUND_MILLIS + 1)
+        val completedWithinBound = reset.isCompleted
+        if (!completedWithinBound) oldConnection.cancelAndJoin()
+        reset.join()
+        transport.replacementStarted.await()
+        client.sendMessage(ClientMessage.GetProfile)
+        runCurrent()
+
+        assertTrue(completedWithinBound)
+        assertEquals(2, transport.connectionCount)
+        assertEquals(SocketConnectionState.AUTHENTICATING, client.connectionState.value)
+        assertEquals(
+            listOf(ClientMessage.ConnectGuest("New player", null), ClientMessage.GetProfile),
+            transport.replacement.sent
+        )
+        assertEquals(0, transport.staleSends)
+    }
+
     @Test fun `disconnect acknowledges cleanup and next connect does not inherit stop`() = runTest {
         val f = Fixture(this)
         f.start()
@@ -420,3 +498,86 @@ private class ScriptedSession(val id: Int, private val stale: (Int) -> Unit) : S
     suspend fun server(message: ServerMessage) { incoming.send(Frame.Text(ProtocolJson.encodeToString(message))) }
     fun remoteClose(reason: String? = null) { this.reason = reason; closed = true; incoming.close() }
 }
+
+private class HandshakeStallingTransport : SocketTransport {
+    val handshakeStarted = CompletableDeferred<Unit>()
+    var handshakeCount = 0
+        private set
+
+    override suspend fun webSocket(url: String, block: suspend (SocketSession) -> Unit) {
+        handshakeCount++
+        handshakeStarted.complete(Unit)
+        awaitCancellation()
+    }
+}
+
+private class CloseStallingTransport : SocketTransport {
+    val session = CloseStallingSession()
+    val sessionStarted = CompletableDeferred<Unit>()
+    var staleSends = 0
+        private set
+
+    override suspend fun webSocket(url: String, block: suspend (SocketSession) -> Unit) {
+        sessionStarted.complete(Unit)
+        block(session)
+    }
+
+    inner class CloseStallingSession : SocketSession {
+        override val incoming = Channel<Frame>(Channel.UNLIMITED)
+        val sent = mutableListOf<ClientMessage>()
+        val closeStarted = CompletableDeferred<Unit>()
+
+        override suspend fun send(frame: Frame) {
+            if (closeStarted.isCompleted) staleSends++
+            sent += ProtocolJson.decodeFromString<ClientMessage>((frame as Frame.Text).readText())
+        }
+
+        override suspend fun close() {
+            closeStarted.complete(Unit)
+            awaitCancellation()
+        }
+
+        override suspend fun closeReason(): String? = null
+    }
+}
+
+private class FirstHandshakeStallsThenSessionTransport : SocketTransport {
+    val firstHandshakeStarted = CompletableDeferred<Unit>()
+    val replacementStarted = CompletableDeferred<Unit>()
+    val replacement = ReplacementSession()
+    var connectionCount = 0
+        private set
+    var staleSends = 0
+        private set
+
+    override suspend fun webSocket(url: String, block: suspend (SocketSession) -> Unit) {
+        connectionCount++
+        if (connectionCount == 1) {
+            firstHandshakeStarted.complete(Unit)
+            awaitCancellation()
+        } else {
+            replacementStarted.complete(Unit)
+            block(replacement)
+        }
+    }
+
+    inner class ReplacementSession : SocketSession {
+        override val incoming = Channel<Frame>(Channel.UNLIMITED)
+        val sent = mutableListOf<ClientMessage>()
+        private var closed = false
+
+        override suspend fun send(frame: Frame) {
+            if (closed) staleSends++
+            sent += ProtocolJson.decodeFromString<ClientMessage>((frame as Frame.Text).readText())
+        }
+
+        override suspend fun close() {
+            closed = true
+            incoming.close()
+        }
+
+        override suspend fun closeReason(): String? = null
+    }
+}
+
+private const val SHUTDOWN_BOUND_MILLIS = 1_000L

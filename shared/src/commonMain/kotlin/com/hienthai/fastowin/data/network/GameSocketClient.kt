@@ -11,10 +11,12 @@ import io.ktor.websocket.close
 import io.ktor.websocket.readText
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
-import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.ReceiveChannel
 import kotlinx.coroutines.coroutineScope
@@ -26,10 +28,12 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.selects.select
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 
@@ -59,17 +63,10 @@ private class KtorSocketTransport(private val client: HttpClient) : SocketTransp
             try {
                 block(session)
             } finally {
-                withContext(NonCancellable) {
-                    try {
-                        session.close()
-                    } finally {
-                        // Ktor's outer response cleanup joins in the caller's
-                        // context, which may already be cancelled. Await the
-                        // transport jobs here, never the connect owner's job.
-                        this@webSocket.coroutineContext[Job]?.cancelAndJoin()
-                        this@webSocket.call.coroutineContext[Job]?.cancelAndJoin()
-                    }
-                }
+                // The owner enforces the bounded teardown deadline. Do not
+                // enter NonCancellable or join Ktor jobs here: a stuck
+                // transport must be detachable so it cannot hold resetGame.
+                session.close()
             }
         }
     }
@@ -118,6 +115,7 @@ internal class GameSocketClient(
     suspend fun connect(displayName: String) = connectMutex.withLock {
         if (closed.value) return@withLock
         val run = ConnectRun()
+        run.createTransportScope(currentCoroutineContext())
         currentRun.value = run
         try {
             // close() may have run between the closed check and publication.
@@ -132,7 +130,8 @@ internal class GameSocketClient(
                 }
                 currentRun.compareAndSet(run, null)
                 run.retryRequests.cancel()
-                run.stopRequests.cancel()
+                run.abandonTransport()
+                run.transportScope.cancel()
                 run.finished.complete(Unit)
             }
         }
@@ -210,37 +209,64 @@ internal class GameSocketClient(
 
     private suspend fun runAttempt(displayName: String, run: ConnectRun): AttemptResult {
         val mailbox = AttemptMailbox()
-        var result = AttemptResult.Retry
-        try {
-            transport.webSocket(serverUrl) { attempt ->
-                lifecycleMutex.withLock { currentMailbox = mailbox }
-                run.machine.reduce(ReconnectEvent.TransportOpened)
-                _isConnected.value = true
-                _connectionState.value = SocketConnectionState.AUTHENTICATING
-                result = runSocketAttempt(displayName, mailbox, attempt, run)
+        val completed = CompletableDeferred<AttemptResult>()
+        val transportJob = run.transportScope.launch {
+            var result = AttemptResult.Retry
+            try {
+                transport.webSocket(serverUrl) { attempt ->
+                    if (!attachMailbox(run, mailbox)) {
+                        closeDetachedAttempt(run, attempt)
+                        return@webSocket
+                    }
+                    if (!run.isAcceptingTransport) {
+                        detachMailbox(mailbox)
+                        closeDetachedAttempt(run, attempt)
+                        return@webSocket
+                    }
+                    run.machine.reduce(ReconnectEvent.TransportOpened)
+                    _isConnected.value = true
+                    _connectionState.value = SocketConnectionState.AUTHENTICATING
+                    result = runSocketAttempt(displayName, mailbox, attempt, run)
 
-                if (result == AttemptResult.Retry && run.isStopping) {
-                    result = AttemptResult.Stop
-                } else if (result == AttemptResult.Retry &&
-                    !shouldReconnectAfterSocketClose(attempt.closeReason())
-                ) {
-                    terminal(run, "SESSION_REPLACED", "Your account signed in on another device.")
-                    _messages.send(socketClientError("SESSION_REPLACED", "Your account signed in on another device."))
-                    result = AttemptResult.Terminal
+                    if (result == AttemptResult.Retry && run.isStopping) {
+                        result = AttemptResult.Stop
+                    } else if (result == AttemptResult.Retry && run.isAcceptingTransport &&
+                        !shouldReconnectAfterSocketClose(attempt.closeReason())
+                    ) {
+                        terminal(run, "SESSION_REPLACED", "Your account signed in on another device.")
+                        _messages.send(socketClientError("SESSION_REPLACED", "Your account signed in on another device."))
+                        result = AttemptResult.Terminal
+                    }
                 }
-            }
-        } catch (cancelled: CancellationException) {
-            throw cancelled
-        } catch (error: Exception) {
-            _messages.send(socketClientError("CONNECTION_FAILED", "Could not connect to $serverUrl: ${error.message}. Retrying…"))
-            result = AttemptResult.Retry
-        } finally {
-            withContext(NonCancellable) {
-                detachMailbox(mailbox)
-                _isConnected.value = false
+                completed.complete(result)
+            } catch (_: CancellationException) {
+                completed.complete(AttemptResult.Stop)
+            } catch (error: Exception) {
+                if (run.canMutateGeneration) {
+                    _messages.send(socketClientError("CONNECTION_FAILED", "Could not connect to $serverUrl: ${error.message}. Retrying…"))
+                }
+                completed.complete(AttemptResult.Retry)
             }
         }
-        return result
+        var result: AttemptResult? = null
+        try {
+            result = select {
+                completed.onAwait { it }
+                run.stopSignal.onAwait { AttemptResult.Stop }
+            }
+        } finally {
+            withContext(NonCancellable) {
+                if (result == null || run.isStopping) {
+                    run.abandonTransport()
+                    awaitTransportTerminal(transportJob, cancelImmediately = result == null)
+                } else {
+                    transportJob.join()
+                }
+                detachMailbox(mailbox)
+                if (currentRun.value === run) _isConnected.value = false
+            }
+        }
+        return result ?: AttemptResult.Stop
     }
 
     private suspend fun runSocketAttempt(
@@ -256,14 +282,14 @@ internal class GameSocketClient(
             is AuthResult.Ready -> Unit
         }
         val hello = auth.hello
-        if (run.isStopping) return@coroutineScope AttemptResult.Stop
+        if (!run.isAcceptingTransport) return@coroutineScope AttemptResult.Stop
 
         // The owner sends hello, so detach cannot race this send on a stale
         // SocketSession. retryNow is handled only at the next select point.
         attempt.send(Frame.Text(ProtocolJson.encodeToString<ClientMessage>(hello)))
 
         var result: AttemptResult? = null
-        while (result == null && !run.isStopping) {
+        while (result == null && run.isAcceptingTransport) {
             select<Unit> {
                 attempt.incoming.onReceiveCatching { received ->
                     val frame = received.getOrNull()
@@ -286,7 +312,7 @@ internal class GameSocketClient(
                     result = AttemptResult.ManualRetry
                     closeAttempt(mailbox, attempt, run)
                 }
-                run.stopRequests.onReceive {
+                run.stopSignal.onAwait {
                     result = AttemptResult.Stop
                     closeAttempt(mailbox, attempt, run)
                 }
@@ -323,7 +349,7 @@ internal class GameSocketClient(
                 closeAttempt(mailbox, attempt, run)
                 AuthResult.Retry
             }
-            run.stopRequests.onReceive {
+            run.stopSignal.onAwait {
                 access.cancel()
                 closeAttempt(mailbox, attempt, run)
                 AuthResult.Stop
@@ -339,6 +365,7 @@ internal class GameSocketClient(
         attempt: SocketSession,
         run: ConnectRun
     ): AttemptResult? {
+        if (!run.isAcceptingTransport) return AttemptResult.Stop
         val message = runCatching { ProtocolJson.decodeFromString<ServerMessage>(raw) }
             .getOrElse { socketClientError("PROTOCOL_DECODE_FAILED", "Could not decode the server response: ${it.message}") }
 
@@ -380,19 +407,13 @@ internal class GameSocketClient(
             }
             else -> Unit
         }
-        _messages.send(message)
+        if (run.canMutateGeneration) _messages.send(message)
         return result
     }
 
     private suspend fun closeAttempt(mailbox: AttemptMailbox, attempt: SocketSession, run: ConnectRun) {
         detachMailbox(mailbox)
-        try {
-            attempt.close()
-        } catch (cancelled: CancellationException) {
-            throw cancelled
-        } catch (_: Exception) {
-            // The transport may already have closed this attempt.
-        }
+        closeDetachedAttempt(run, attempt)
         // Taps received while close was suspended belong to the old attempt;
         // consume them before the loop creates its replacement.
         drainRetryRequests(run)
@@ -405,6 +426,43 @@ internal class GameSocketClient(
         }
     }
 
+    private suspend fun attachMailbox(run: ConnectRun, mailbox: AttemptMailbox): Boolean =
+        lifecycleMutex.withLock {
+            if (!run.isAcceptingTransport) return@withLock false
+            currentMailbox = mailbox
+            true
+        }
+
+    /**
+     * A close is best-effort. Its child belongs to the generation-owned
+     * transport scope, never to the owner awaiting disconnect(). On timeout
+     * it remains detached and is incapable of changing client state.
+     */
+    private suspend fun closeDetachedAttempt(run: ConnectRun, attempt: SocketSession) {
+        val closeJob = run.transportScope.launch {
+            try {
+                attempt.close()
+            } catch (_: CancellationException) {
+                // Cancellation is the explicit abandoned-and-detached outcome.
+            } catch (_: Exception) {
+                // The transport may already have closed this attempt.
+            }
+        }
+        if (withTimeoutOrNull(SHUTDOWN_TIMEOUT_MILLIS) { closeJob.join() } == null) {
+            closeJob.cancel()
+        }
+    }
+
+    private suspend fun awaitTransportTerminal(transportJob: Job, cancelImmediately: Boolean = false) {
+        // A non-cooperative transport is intentionally not joined after this
+        // bounded wait. Its generation gate prevents late callbacks from
+        // attaching a mailbox, publishing state, or sending on a replacement.
+        if (cancelImmediately) transportJob.cancel()
+        if (withTimeoutOrNull(SHUTDOWN_TIMEOUT_MILLIS) { transportJob.join() } == null) {
+            transportJob.cancel()
+        }
+    }
+
     private suspend fun awaitRetry(delayMillis: Long, run: ConnectRun): BackoffResult = coroutineScope {
         val sleeper = async { retrySleeper.sleep(delayMillis) }
         select {
@@ -413,7 +471,7 @@ internal class GameSocketClient(
                 drainRetryRequests(run)
                 BackoffResult.ManualRetry
             }
-            run.stopRequests.onReceive {
+            run.stopSignal.onAwait {
                 sleeper.cancel()
                 BackoffResult.Stop
             }
@@ -426,6 +484,7 @@ internal class GameSocketClient(
     }
 
     private fun terminal(run: ConnectRun, code: String, fallback: String) {
+        if (!run.canMutateGeneration) return
         run.requestStop()
         run.machine.reduce(ReconnectEvent.SessionExpired)
         _connectionState.value = SocketConnectionState.TERMINAL
@@ -439,14 +498,26 @@ internal class GameSocketClient(
     private class ConnectRun {
         val machine = ReconnectStateMachine()
         val retryRequests = Channel<Unit>(Channel.CONFLATED)
-        val stopRequests = Channel<Unit>(Channel.CONFLATED)
+        val stopSignal = CompletableDeferred<Unit>()
         val finished = CompletableDeferred<Unit>()
         private val stopping = MutableStateFlow(false)
+        private val transportAccepted = MutableStateFlow(true)
+        lateinit var transportScope: CoroutineScope
         val isStopping get() = stopping.value
+        val canMutateGeneration get() = transportAccepted.value
+        val isAcceptingTransport get() = canMutateGeneration && !isStopping
+
+        fun createTransportScope(ownerContext: kotlin.coroutines.CoroutineContext) {
+            transportScope = CoroutineScope(ownerContext.minusKey(Job) + SupervisorJob())
+        }
 
         fun requestStop() {
             stopping.value = true
-            stopRequests.trySend(Unit)
+            stopSignal.complete(Unit)
+        }
+
+        fun abandonTransport() {
+            transportAccepted.value = false
         }
     }
 
@@ -468,6 +539,8 @@ internal class GameSocketClient(
 
     private companion object {
         const val CONNECT_TIMEOUT_MILLIS = 7_000L
+        // resetGame must not make the UI wait for a broken TCP/WebSocket close.
+        const val SHUTDOWN_TIMEOUT_MILLIS = 1_000L
     }
 }
 
