@@ -90,7 +90,7 @@ internal class GameSocketClient(
             _connectionState.value = if (hasConnected) SocketConnectionState.RECONNECTING else SocketConnectionState.CONNECTING
             try {
                 transport.webSocket(serverUrl) { attempt ->
-                    session = attempt
+                    lifecycleMutex.withLock { session = attempt }
                     machine.reduce(ReconnectEvent.TransportOpened)
                     _isConnected.value = true
                     _connectionState.value = SocketConnectionState.AUTHENTICATING
@@ -115,7 +115,7 @@ internal class GameSocketClient(
                             is ServerMessage.Error -> when (message.code) {
                                 "INVALID_RESUME_TOKEN" -> {
                                     if (resumeRetryUsed) terminal(message.code, message.message)
-                                    else { resumeRetryUsed = true; resumeToken = null; tokenStore.clear(serverUrl); resumeRejected = true; retryImmediately = true; attempt.close() }
+                                    else { resumeRetryUsed = true; resumeToken = null; tokenStore.clear(serverUrl); resumeRejected = true; retryImmediately = true; lifecycleMutex.withLock { attempt.close() } }
                                 }
                                 "INVALID_ACCESS_TOKEN" -> terminal(message.code, message.message)
                                 "SESSION_EXPIRED" -> terminal(message.code, message.message)
@@ -132,7 +132,7 @@ internal class GameSocketClient(
                 }
             } catch (cancelled: CancellationException) { throw cancelled }
             catch (error: Exception) { _messages.send(socketClientError("CONNECTION_FAILED", "Could not connect to $serverUrl: ${error.message}. Retrying…")) }
-            finally { session = null; _isConnected.value = false }
+            finally { lifecycleMutex.withLock { session = null }; _isConnected.value = false }
             if (!reconnectEnabled || !currentCoroutineContext().isActive) break
             if (retryImmediately) {
                 _connectionState.value = SocketConnectionState.CONNECTING
@@ -152,9 +152,7 @@ internal class GameSocketClient(
     fun retryNow() {
         if (machine.state != SocketConnectionState.TERMINAL) {
             retryRequests.trySend(Unit)
-            val active = session
-            session = null
-            active?.let { stale -> scope.async { lifecycleMutex.withLock { try { stale.close() } catch (_: Exception) { } } } }
+            scope.async { lifecycleMutex.withLock { val active = session; session = null; try { active?.close() } catch (_: Exception) { } } }
         }
     }
     suspend fun sendMessage(message: ClientMessage) {

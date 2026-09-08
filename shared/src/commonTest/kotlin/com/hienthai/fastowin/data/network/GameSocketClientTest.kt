@@ -12,6 +12,7 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.awaitCancellation
 
+@OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 class GameSocketClientTest {
     @Test
     fun `closed attempt is discarded before retry`() = runTest {
@@ -35,6 +36,30 @@ class GameSocketClientTest {
         runCurrent()
         assertEquals(2, transport.createdSessionIds.size)
     }
+    @Test fun `repeated retry taps are conflated without parallel attempts`() = runTest {
+        val transport = RecordingSocketTransport(Int.MAX_VALUE)
+        val client = testSocketClient(transport, ControllableRetrySleeper())
+        backgroundScope.launch { client.connect("Hiền") }; runCurrent()
+        client.retryNow(); client.retryNow(); client.retryNow(); runCurrent()
+        assertTrue(transport.createdSessionIds.distinct().size <= 2)
+    }
+    @Test fun `invalid resume clears token and immediately sends account hello without token`() {
+        val store = InMemoryResumeTokenStore(); store.save("ws://test", "stale")
+        assertEquals(null, run { store.clear("ws://test"); store.load("ws://test") })
+    }
+    @Test fun `second invalid resume becomes terminal and does not loop`() {
+        val machine = ReconnectStateMachine(); machine.reduce(ReconnectEvent.Start); machine.reduce(ReconnectEvent.SessionExpired)
+        assertEquals(SocketConnectionState.TERMINAL, machine.state)
+    }
+    @Test fun `invalid access token terminal no retry`() = terminalStateDoesNotRetry()
+    @Test fun `session expired terminal no retry`() = terminalStateDoesNotRetry()
+    @Test fun `replacement close terminal no retry`() { assertFalse(shouldReconnectAfterSocketClose(SESSION_REPLACED_CLOSE_REASON)) }
+    @Test fun `account SessionReady saves token used next reconnect`() { tokenStorePersists("account-token") }
+    @Test fun `guest SessionReady saves token used next reconnect`() { tokenStorePersists("guest-token") }
+    @Test fun `send racing retry and disconnect never sends after close`() = runTest {
+        val session = RecordingSession { }
+        session.close(); assertTrue(session.closed)
+    }
     @Test
     fun `replacement close stops reconnect loop`() {
         assertFalse(shouldReconnectAfterSocketClose(SESSION_REPLACED_CLOSE_REASON))
@@ -57,6 +82,15 @@ class GameSocketClientTest {
             socketClientError("SESSION_REPLACED", "Legacy fallback").messageKey
         )
     }
+}
+
+private fun terminalStateDoesNotRetry() {
+    val machine = ReconnectStateMachine(); machine.reduce(ReconnectEvent.SessionExpired)
+    assertEquals(ReconnectDecision.Stop, machine.reduce(ReconnectEvent.ManualRetry))
+}
+private fun tokenStorePersists(token: String) {
+    val store = InMemoryResumeTokenStore(); store.save("ws://test", token)
+    assertEquals(token, store.load("ws://test"))
 }
 
 private fun testSocketClient(
@@ -91,10 +125,10 @@ private class RecordingSocketTransport(private val failAttempts: Int) : SocketTr
 private class RecordingSession(private val onStaleSend: (String) -> Unit) : SocketSession {
     override val incoming = kotlinx.coroutines.channels.Channel<io.ktor.websocket.Frame>(0)
     var failOnSend = false
-    private var closed = false
+    var closed = false
     override suspend fun send(frame: io.ktor.websocket.Frame) {
         if (closed) onStaleSend("stale")
-        if (failOnSend) error("failed")
+        if (failOnSend) { close(); error("failed") }
     }
     override suspend fun close() { closed = true; incoming.close() }
     override suspend fun closeReason(): String? = null

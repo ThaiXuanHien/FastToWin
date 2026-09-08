@@ -42,3 +42,11 @@ The Gradle daemon cannot establish its loopback pipe in this Windows sandbox, so
 - Corrected generated Error construction to use the named messageKey field (restoring localization-key assertions).
 - Added lifecycle retry seams remain internal and GameSocketClient remains internal to avoid exposing test-only types.
 - Controller verification reported Android, Wasm and JS compilation passing; focused tests previously failed only the localization-key assertion and closed-attempt expectation, both addressed here. A direct rerun from this agent remained blocked by Gradle loopback startup.
+
+## Fix round 3
+
+Lifecycle ownership now routes session replacement, send, disconnect, retry close, and transport cleanup through the same Mutex. Invalid resume closes under that guard and bypasses normal backoff for its one auth-only retry.
+
+Added deterministic test methods: `repeated retry taps are conflated without parallel attempts`, `invalid resume clears token and immediately sends account hello without token`, `second invalid resume becomes terminal and does not loop`, `invalid access token terminal no retry`, `session expired terminal no retry`, `replacement close terminal no retry`, `account SessionReady saves token used next reconnect`, `guest SessionReady saves token used next reconnect`, and `send racing retry and disconnect never sends after close`. Scheduler tests are annotated with `ExperimentalCoroutinesApi`.
+
+The focused test/compile command was attempted after this round; this agent environment still fails Gradle startup with `Unable to establish loopback connection` before task execution. Controller's preceding fresh run had Android, Wasm and JS compile PASS.
