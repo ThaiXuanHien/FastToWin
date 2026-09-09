@@ -1,6 +1,8 @@
 param(
     [switch]$NoBrowser,
-    [switch]$ReinstallAndroid
+    [switch]$ReinstallAndroid,
+    [switch]$Lan,
+    [string]$LanHost
 )
 
 $ErrorActionPreference = 'Stop'
@@ -12,6 +14,19 @@ $startedServer = $false
 $startedWeb = $false
 
 . (Join-Path $PSScriptRoot 'android-dev-install.ps1')
+. (Join-Path $PSScriptRoot 'dev-network.ps1')
+
+if ($LanHost -and -not $Lan) {
+    throw 'LanHost chi duoc dung cung tham so -Lan.'
+}
+$resolvedLanHost = if ($Lan) { Resolve-DevLanHost -RequestedHost $LanHost } else { $null }
+$webBaseUrl = if ($Lan) { "http://${resolvedLanHost}:8081" } else { 'http://localhost:8081' }
+$webGradleArguments = @(':webApp:wasmJsBrowserDevelopmentRun', '--no-daemon')
+if ($Lan) {
+    $env:FASTTOWIN_WEB_DEV_HOST = '0.0.0.0'
+} else {
+    Remove-Item Env:FASTTOWIN_WEB_DEV_HOST -ErrorAction SilentlyContinue
+}
 
 function Invoke-Checked {
     param(
@@ -95,7 +110,10 @@ $env:FASTTOWIN_ENV = 'dev'
 $env:DATABASE_URL = 'jdbc:postgresql://localhost:5432/fasttowin'
 $env:DATABASE_USER = 'fasttowin'
 $env:DATABASE_PASSWORD = 'fasttowin'
-$env:FASTTOWIN_WEB_BASE_URL = 'http://localhost:8081'
+$env:FASTTOWIN_WEB_BASE_URL = $webBaseUrl
+if ($Lan) {
+    $env:FASTTOWIN_WEB_ORIGINS = $webBaseUrl
+}
 
 if (-not (Test-HttpEndpoint 'http://127.0.0.1:8080/health')) {
     if (Test-TcpPort 8080) {
@@ -181,7 +199,7 @@ if (Test-TcpPort 8081) {
     Write-Host '[FastToWin] Khoi dong web Kotlin/Wasm...'
     $webProcess = Start-Process `
         -FilePath (Join-Path $projectDir 'gradlew.bat') `
-        -ArgumentList @(':webApp:wasmJsBrowserDevelopmentRun', '--no-daemon') `
+        -ArgumentList $webGradleArguments `
         -WorkingDirectory $projectDir `
         -RedirectStandardOutput (Join-Path $runtimeDir 'web.stdout.log') `
         -RedirectStandardError (Join-Path $runtimeDir 'web.stderr.log') `
@@ -204,11 +222,15 @@ if (Test-TcpPort 8081) {
 }
 
 Write-Host '[FastToWin] Android va web da san sang.' -ForegroundColor Green
-Write-Host '[FastToWin] Web: http://localhost:8081'
+Write-Host "[FastToWin] Web: $webBaseUrl"
+if ($Lan) {
+    Write-Host '[FastToWin] Dien thoai phai cung Wi-Fi voi may tinh.'
+    Write-Host '[FastToWin] Neu khong truy cap duoc, mo Windows Firewall cho TCP 8080 va 8081.' -ForegroundColor Yellow
+}
 Write-Host "[FastToWin] Log: $runtimeDir"
 
 if (-not $NoBrowser) {
-    Start-Process 'http://localhost:8081'
+    Start-Process $webBaseUrl
 }
 
 if ($startedServer -or $startedWeb) {

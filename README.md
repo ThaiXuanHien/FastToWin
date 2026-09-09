@@ -97,6 +97,7 @@ Chọn entrypoint theo phần đang phát triển:
 | Nhu cầu | Lệnh | Ghi chú |
 | --- | --- | --- |
 | Android + Web + backend + PostgreSQL | `.\start-dev-all.cmd` | Khuyến nghị khi cần chạy toàn bộ project; yêu cầu Android online |
+| Web trên điện thoại cùng Wi-Fi | `.\start-dev-all.cmd -Lan` | Tự nhận diện IPv4 LAN; không tự mở Windows Firewall |
 | Backend + PostgreSQL cho Android | `.\start-dev-server-with-db.cmd` | Thiết lập luôn `adb reverse`; yêu cầu Android online |
 | Backend dùng bộ nhớ cho Android | `.\start-dev-server.cmd` | Không cần Docker; yêu cầu Android online và dữ liệu không được lưu bền vững |
 | Kết nối lại Android với backend | `.\connect-dev-device.cmd` | Chạy sau khi emulator/thiết bị được khởi động lại |
@@ -117,6 +118,29 @@ Script khởi động PostgreSQL và backend, thiết lập `adb reverse`, build
 ```powershell
 .\start-dev-all.cmd -NoBrowser
 ```
+
+### Mở Web trên điện thoại cùng Wi-Fi
+
+Đóng server/Web development cũ, bảo đảm máy tính và điện thoại dùng cùng một
+mạng rồi chạy:
+
+```powershell
+.\start-dev-all.cmd -Lan
+```
+
+Script tự chọn IPv4 của card mạng có default gateway và in URL cần mở, ví dụ
+`http://192.168.1.141:8081`. Nếu máy có nhiều card mạng hoặc script chọn sai,
+chỉ định địa chỉ thủ công:
+
+```powershell
+.\start-dev-all.cmd -Lan -LanHost 192.168.1.141
+```
+
+Chỉ dùng IPv4 riêng thuộc dải `10.x`, `172.16-31.x` hoặc `192.168.x`. Chế độ
+LAN làm Web lắng nghe trên mọi interface, cấu hình origin backend theo đúng URL
+điện thoại và để WebSocket tự dùng hostname của trang Web. Nếu điện thoại không
+mở được URL, cho phép kết nối TCP đến cổng `8080` và `8081` trong Windows
+Firewall. Không dùng port forwarding Internet cho hai cổng development này.
 
 ### Checklist kết nối lại thủ công
 
@@ -412,7 +436,12 @@ $env:JAVA_HOME='C:\Program Files\Android\Android Studio\jbr'
 .\gradlew.bat :webApp:wasmJsBrowserDevelopmentRun
 ```
 
-Web development chạy tại `http://localhost:8081` và mặc định kết nối `ws://localhost:8080/game`. Có thể thay backend trong `webApp/src/wasmJsMain/resources/config.js` mà không sửa UI dùng chung. Nên dùng cùng hostname `localhost` cho cả hai cổng để cookie phiên đăng nhập hoạt động đúng chính sách `SameSite` của trình duyệt.
+Web development chạy tại `http://localhost:8081`; WebSocket tự dùng hostname của
+trang và cổng backend `8080`, nên mặc định là `ws://localhost:8080/game`. Có thể
+thay backend trong `webApp/src/wasmJsMain/resources/config.js` mà không sửa UI
+dùng chung. Nên dùng cùng hostname cho cả hai cổng để cookie phiên đăng nhập hoạt
+động đúng chính sách `SameSite` của trình duyệt. Để mở từ điện thoại, ưu tiên
+`.\start-dev-all.cmd -Lan` như hướng dẫn phía trên.
 
 Để kiểm tra riêng bản JavaScript fallback trên trình duyệt không hỗ trợ WasmGC:
 
