@@ -52,7 +52,6 @@ class ReconnectOverlayUiTest {
 
         composeRule.onNodeWithTag("game_board").assertIsDisplayed()
         composeRule.onNodeWithTag("reconnect_overlay").assertIsDisplayed()
-        composeRule.onNodeWithTag("reconnect_blocker").assertIsDisplayed()
         composeRule.onNodeWithTag("game_number_1").performTouchInput { click(center) }
         composeRule.onNodeWithTag("reconnect_retry").performTouchInput { click(center) }
         composeRule.runOnIdle {

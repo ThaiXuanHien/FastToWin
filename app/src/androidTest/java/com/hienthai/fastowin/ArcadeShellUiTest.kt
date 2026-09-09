@@ -105,7 +105,7 @@ class ArcadeShellUiTest {
         }
         val headerBottom = composeRule.onNodeWithTag("home_header_content", useUnmergedTree = true)
             .fetchSemanticsNode().boundsInRoot.bottom
-        val tierTop = composeRule.onNodeWithTag("home_season_tier")
+        val tierTop = composeRule.onNodeWithTag("home_season_tier", useUnmergedTree = true)
             .fetchSemanticsNode().boundsInRoot.top
         composeRule.runOnIdle {
             assertTrue(tierTop - headerBottom >= with(composeRule.density) { 8.dp.toPx() })
