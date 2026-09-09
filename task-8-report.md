@@ -50,3 +50,14 @@
 - The controller's full gate passed the buildSrc/scanner configuration-cache stages and reached Android test compilation. It found that `ArcadeShellUiTest` accesses internal `HomeDashboard`, and that this Compose version has no importable `androidx.compose.ui.test.assertDoesNotExist` symbol.
 - Added the same narrow file-level invisible-member suppression already used by `ReconnectOverlayUiTest`; `HomeDashboard` remains internal. Removed only the invalid explicit assertion import, leaving the existing node member calls unchanged.
 - `:app:compileDevDebugAndroidTestKotlin --no-daemon` was attempted locally but this sandbox again stopped before Gradle configuration with `java.io.IOException: Unable to establish loopback connection`. Controller rerun remains needed for GREEN output.
+
+## Round 5 Web dialog and refresh-state repair
+
+- Reproduced all four responsive dialog failures: the language dialog content was visible, but Playwright timed out on `arcade_dialog` because the `Surface` semantics tag was not exported by the Compose Web accessibility tree. Moved the single tag to the bounded inner content container; the test continues to measure the rendered dialog rather than introducing a Web-only UI.
+- Reproduced the desktop refresh failure: `pointer_refresh` stayed observable as enabled while the lobby was already searching. The refresh component now receives the combined local pending and external search state, so duplicate refresh requests stay blocked for both sources.
+- Compose Web does not expose the tagged wrapper as a natively disabled DOM control. The E2E contract therefore uses mutually exclusive state tags (`pointer_refresh` while idle and `pointer_refresh_busy` while loading), while the real `ArcadeActionButton` remains disabled from the same `isRefreshing` value. The touch project verifies that neither pointer-only tag exists.
+- RED evidence included four `arcade_dialog` locator timeouts, the previous `toBeDisabled()` failure, and a state-tag run that could not find `pointer_refresh_busy` before the production tag was added.
+- GREEN: `:shared:testAndroidHostTest :webApp:wasmJsBrowserDevelopmentWebpack --no-daemon` completed successfully (64 tasks).
+- GREEN: the focused desktop and touch refresh projects completed with `2 passed (10.1s)`.
+- GREEN: the four focused dialog projects (`small-phone`, `large-phone`, `tablet`, and `landscape`) completed with `4 passed (23.4s)`.
+- The approved specification status remains unchanged: Android instrumentation harness, Firefox startup, CI, and manual-device evidence remain outside this repair and Phase 1 is not declared deployed.

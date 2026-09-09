@@ -257,7 +257,6 @@ fun ArcadeDialog(
             val dialogMaxHeight = (maxHeight - 24.dp).coerceAtLeast(240.dp)
             Surface(
                 modifier = modifier
-                    .testTag("arcade_dialog")
                     .widthIn(max = 420.dp)
                     .fillMaxWidth()
                     .heightIn(max = dialogMaxHeight)
@@ -271,6 +270,7 @@ fun ArcadeDialog(
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
+                        .testTag("arcade_dialog")
                         .background(
                             Brush.verticalGradient(listOf(Color(0xFF123269), Color(0xFF091D43)))
                         )

@@ -52,7 +52,9 @@ fun FastToWinPullRefresh(
                     onClick = onRefresh,
                     enabled = !isRefreshing,
                     compact = true,
-                    modifier = Modifier.widthIn(min = 44.dp, max = 160.dp).testTag("pointer_refresh"),
+                    modifier = Modifier
+                        .widthIn(min = 44.dp, max = 160.dp)
+                        .testTag(if (isRefreshing) "pointer_refresh_busy" else "pointer_refresh"),
                     style = ArcadeActionStyle.OUTLINE
                 )
             }

@@ -505,7 +505,7 @@ private fun RoomBrowser(
         )
     }
     FastToWinPullRefresh(
-        isRefreshing = isPullRefreshing,
+        isRefreshing = isPullRefreshing || state.isSearching,
         onRefresh = {
             if (!state.isSearching) {
                 isPullRefreshing = true
