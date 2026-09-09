@@ -61,3 +61,12 @@
 - GREEN: the focused desktop and touch refresh projects completed with `2 passed (10.1s)`.
 - GREEN: the four focused dialog projects (`small-phone`, `large-phone`, `tablet`, and `landscape`) completed with `4 passed (23.4s)`.
 - The approved specification status remains unchanged: Android instrumentation harness, Firefox startup, CI, and manual-device evidence remain outside this repair and Phase 1 is not declared deployed.
+
+## Controller integration verification
+
+- The complete Gradle gate passed: `:protocol:jvmTest :server:test :shared:testAndroidHostTest :shared:checkLocalizedUiText :app:compileDevDebugAndroidTestKotlin :app:assembleDevDebug :webApp:compileKotlinWasmJs :webApp:compileKotlinJs` (`BUILD SUCCESSFUL`, 111 tasks).
+- The final Wasm bundle passed the executable Chromium/WebKit suite: `24 passed, 2 skipped` across gameplay, reconnect/F5, navigation history, responsive phone/tablet/landscape layouts, desktop/touch refresh, and WebKit smoke coverage.
+- The rebuilt JavaScript fallback passed both Chromium smoke scenarios: `2 passed`, covering login/reload/navigation and language persistence.
+- Firefox smoke could not start locally because Playwright returned `browserType.launch: spawn UNKNOWN`; WebKit and Chromium passed, so this remains a host executable limitation rather than an observed application failure.
+- Android instrumentation launched 126 tests, but the first five unrelated suites all failed before assertions with the shared harness error `No compose hierarchies found in the app`; execution was stopped and must be rerun on a working instrumentation environment.
+- Webpack must be built sequentially on this host with one worker and a 3 GiB Kotlin daemon heap. Running the JS and Wasm executable compilers together exhausted the default 2 GiB heap; both sequential builds completed successfully.
