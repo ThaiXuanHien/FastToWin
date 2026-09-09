@@ -90,6 +90,7 @@ test('language change keeps the active route and route history', async ({ actors
   await click(page, tag(page, 'bottom_tab:rooms'));
   await expect(page).toHaveURL(/\/rooms$/);
   await click(page, tag(page, 'bottom_tab:account'));
+  await expect(page).toHaveURL(/\/account$/);
   await click(page, tag(page, 'profile_settings'));
   await expect(page).toHaveURL(/\/settings$/);
 

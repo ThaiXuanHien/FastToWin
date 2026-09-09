@@ -680,6 +680,7 @@ private fun GameContent(
     val finishTutorial = {
         onPreferencesChange(appPreferences.copy(hasCompletedTutorial = true))
         showTutorial = false
+        navigationBridge.replace("/")
     }
 
     LaunchedEffect(
@@ -912,10 +913,13 @@ private fun GameContent(
         if (requestedAppRoute == null) {
             // Several top-level actions update related state fields in quick succession.
             // Publish only the settled route so browser Back does not stop on a transient screen.
+            // A popstate callback can arrive while this coroutine is suspended, before Compose
+            // has recomposed with the new request and cancelled this effect.
             delay(64)
-            navigationBridge.publish(appRoute)
+            if (requestedAppRoute == null) navigationBridge.publish(appRoute)
         }
     }
+
     AvatarImageProvider(serverUrl = serverUrl, revision = state.avatarRevision) {
         screenStateHolder.SaveableStateProvider(screenStateKey) {
             Box(modifier = Modifier.fillMaxSize()) {

@@ -11,6 +11,8 @@ interface AppNavigationBridge {
 
     fun publish(route: String)
 
+    fun replace(route: String) = publish(route)
+
     fun goBack(): Boolean
 
     fun publicUrl(route: String): String? = null

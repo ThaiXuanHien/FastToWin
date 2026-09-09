@@ -20,6 +20,10 @@ internal class WebAppNavigationBridge : AppNavigationBridge {
         publishBrowserRoute(normalizeRoute(route))
     }
 
+    override fun replace(route: String) {
+        replaceBrowserRoute(normalizeRoute(route))
+    }
+
     override fun goBack(): Boolean = goBackInBrowserHistory()
 
     override fun publicUrl(route: String): String = browserPublicUrl(normalizeRoute(route))
@@ -78,6 +82,15 @@ private fun publishBrowserRoute(route: String): Unit = js(
             ? history.state.fastToWinDepth
             : 0;
         history.pushState({ fastToWinDepth: currentDepth + 1 }, '', route);
+    }"""
+)
+
+private fun replaceBrowserRoute(route: String): Unit = js(
+    """{
+        const currentDepth = history.state && typeof history.state.fastToWinDepth === 'number'
+            ? history.state.fastToWinDepth
+            : 0;
+        history.replaceState({ fastToWinDepth: currentDepth }, '', route);
     }"""
 )
 
