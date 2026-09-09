@@ -16,8 +16,9 @@
 
 ## Remaining evidence
 
-- A successful scanner/catalog RED-to-GREEN run remains blocked by Gradle's loopback failure.
-- Complete local Gradle, connected Android instrumentation, Wasm E2E, Kotlin/JS fallback E2E, physical two-device reconnect testing, push, and the required CI jobs remain outstanding.
+- Local Gradle, scanner/catalog gates, Chromium/WebKit Wasm E2E and Kotlin/JS fallback smoke checks have passed; see the controller integration verification below.
+- Connected Android instrumentation, Firefox launch, physical two-device reconnect testing, push, and the required CI jobs remain outstanding.
+- The final independent Task 8 and broad branch reviewers stopped at the account usage limit without issuing review findings or approval. Controller inspection is not a substitute for independent approval.
 
 ## Scope scan
 
@@ -70,3 +71,8 @@
 - Firefox smoke could not start locally because Playwright returned `browserType.launch: spawn UNKNOWN`; WebKit and Chromium passed, so this remains a host executable limitation rather than an observed application failure.
 - Android instrumentation launched 126 tests, but the first five unrelated suites all failed before assertions with the shared harness error `No compose hierarchies found in the app`; execution was stopped and must be rerun on a working instrumentation environment.
 - Webpack must be built sequentially on this host with one worker and a 3 GiB Kotlin daemon heap. Running the JS and Wasm executable compilers together exhausted the default 2 GiB heap; both sequential builds completed successfully.
+
+## Controller review follow-up
+
+- Corrected `test:responsive` to select both `chromium-adaptive-input-desktop` and `chromium-adaptive-input-touch`; the script still referenced the removed `chromium-adaptive-input` project after the configuration split.
+- Main-checkout IDE and tournament edits remain untouched. Implementation stays isolated in `codex/platform-stability-phase-1` until integration is authorized.

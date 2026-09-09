@@ -7,7 +7,7 @@
   "scripts": {
     "test": "playwright test",
     "test:chromium": "playwright test --project=chromium",
-    "test:responsive": "playwright test --project=chromium-small-phone --project=chromium-large-phone --project=chromium-tablet --project=chromium-landscape --project=chromium-adaptive-input",
+    "test:responsive": "playwright test --project=chromium-small-phone --project=chromium-large-phone --project=chromium-tablet --project=chromium-landscape --project=chromium-adaptive-input-desktop --project=chromium-adaptive-input-touch",
     "test:cross-browser": "playwright test --project=firefox-smoke --project=webkit-smoke",
     "test:js-fallback": "node support/test-js-fallback.mjs",
     "test:all": "playwright test",
