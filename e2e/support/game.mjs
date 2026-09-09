@@ -199,13 +199,8 @@ export async function login(actor) {
 }
 
 export async function selectLanguage(page, languageCode) {
-  const dialog = tag(page, 'language_dialog');
+  const dialog = await openLanguageDialog(page);
   const option = tag(page, `language_option_${languageCode}`);
-  for (let attempt = 0; attempt < 3 && await dialog.count() === 0; attempt++) {
-    await click(page, tag(page, 'language_setting'));
-    await page.waitForTimeout(250);
-  }
-  await expect(dialog).toBeAttached();
   for (let attempt = 0; attempt < 12 && await option.count() === 0; attempt++) {
     const bounds = await dialog.boundingBox();
     if (!bounds) break;
@@ -214,6 +209,16 @@ export async function selectLanguage(page, languageCode) {
     await page.waitForTimeout(150);
   }
   await click(page, option);
+}
+
+export async function openLanguageDialog(page) {
+  const dialog = tag(page, 'language_dialog');
+  for (let attempt = 0; attempt < 3 && await dialog.count() === 0; attempt++) {
+    await click(page, tag(page, 'language_setting'));
+    await page.waitForTimeout(250);
+  }
+  await expect(dialog).toBeAttached();
+  return dialog;
 }
 
 export async function createRoom(actor) {

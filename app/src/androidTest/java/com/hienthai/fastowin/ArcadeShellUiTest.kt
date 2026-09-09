@@ -103,7 +103,7 @@ class ArcadeShellUiTest {
                 onClaimDailyCheckIn = {}, onUpgradeGuest = {}, onLogout = {}
             )
         }
-        val headerBottom = composeRule.onNodeWithTag("home_header_content")
+        val headerBottom = composeRule.onNodeWithTag("home_header_content", useUnmergedTree = true)
             .fetchSemanticsNode().boundsInRoot.bottom
         val tierTop = composeRule.onNodeWithTag("home_season_tier")
             .fetchSemanticsNode().boundsInRoot.top

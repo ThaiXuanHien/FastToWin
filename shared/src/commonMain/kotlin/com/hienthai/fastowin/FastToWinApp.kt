@@ -909,7 +909,12 @@ private fun GameContent(
         else -> "/"
     }
     LaunchedEffect(appRoute, requestedAppRoute) {
-        if (requestedAppRoute == null) navigationBridge.publish(appRoute)
+        if (requestedAppRoute == null) {
+            // Several top-level actions update related state fields in quick succession.
+            // Publish only the settled route so browser Back does not stop on a transient screen.
+            delay(64)
+            navigationBridge.publish(appRoute)
+        }
     }
     AvatarImageProvider(serverUrl = serverUrl, revision = state.avatarRevision) {
         screenStateHolder.SaveableStateProvider(screenStateKey) {
@@ -1305,7 +1310,11 @@ internal fun ReconnectOverlay(
         contentAlignment = Alignment.Center
     ) {
         Column(
-            modifier = Modifier.padding(24.dp).testTag("reconnect_blocker"),
+            modifier = Modifier
+                .fillMaxWidth()
+                .widthIn(max = 360.dp)
+                .padding(24.dp)
+                .testTag("reconnect_blocker"),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {

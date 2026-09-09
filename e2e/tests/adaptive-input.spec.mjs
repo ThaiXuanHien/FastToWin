@@ -61,14 +61,13 @@ test('large text, long content and a compact keyboard viewport remain usable', a
   await expectNoDocumentOverflow(page);
   await click(page, tag(page, 'create_room_submit'));
   await expect(page).toHaveURL(/\/room\/[\w-]+$/);
+  await expect(page.getByText(roomName, { exact: true })).toBeAttached();
 
   // A real mobile browser restores the visual viewport after the dialog closes
   // and its software keyboard is dismissed. Playwright's manual viewport does
-  // not do that automatically, so mirror the browser before reading Compose's
-  // refreshed accessibility tree on the waiting-room screen.
+  // not do that automatically, so mirror the browser before checking overflow.
   await page.setViewportSize({ width: 320, height: 640 });
   await expectNoDocumentOverflow(page);
-  await expect(page.getByText(roomName, { exact: true })).toBeAttached();
 });
 
 test('refresh affordance follows the configured browser input mode', async ({ actors }) => {

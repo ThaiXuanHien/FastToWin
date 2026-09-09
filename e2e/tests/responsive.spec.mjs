@@ -1,4 +1,4 @@
-import { test, expect, tag, click, login, selectLanguage } from '../support/game.mjs';
+import { test, expect, tag, click, login, openLanguageDialog, selectLanguage } from '../support/game.mjs';
 
 async function expectHorizontalFit(page, locator, label) {
   await expect(locator, `${label} is rendered`).toBeAttached();
@@ -73,7 +73,7 @@ test('dialog stays within ten-pixel insets on a narrow viewport', async ({ actor
   await login(player);
   await click(page, tag(page, 'bottom_tab:account'));
   await click(page, tag(page, 'profile_settings'));
-  await click(page, tag(page, 'language_setting'));
+  await openLanguageDialog(page);
 
   const dialog = await tag(page, 'arcade_dialog').boundingBox();
   expect(dialog).not.toBeNull();
