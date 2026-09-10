@@ -338,6 +338,7 @@ class GameEngine(
                 is ClientMessage.AcknowledgeSeasonReward -> HandleResult(emptyList())
                 ClientMessage.GetWalletHistory -> HandleResult(emptyList())
                 ClientMessage.GetGemStoreCatalog -> HandleResult(emptyList())
+                is ClientMessage.ExchangeGemsForGold -> HandleResult(emptyList())
                 is ClientMessage.VerifyStorePurchase -> HandleResult(emptyList())
                 ClientMessage.ClaimDailyCheckIn -> HandleResult(emptyList())
                 is ClientMessage.ClaimMissionReward -> HandleResult(emptyList())

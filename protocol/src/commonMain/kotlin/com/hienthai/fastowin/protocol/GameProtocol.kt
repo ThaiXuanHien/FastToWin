@@ -444,6 +444,22 @@ data class GemPackageSnapshot(
 )
 
 @Serializable
+data class GoldExchangeOffer(
+    val id: String,
+    val gemsCost: Int,
+    val goldAmount: Int
+)
+
+val GOLD_EXCHANGE_OFFERS = listOf(
+    GoldExchangeOffer(id = "gold_bag", gemsCost = 10, goldAmount = 1_000),
+    GoldExchangeOffer(id = "gold_chest", gemsCost = 45, goldAmount = 5_000),
+    GoldExchangeOffer(id = "gold_vault", gemsCost = 80, goldAmount = 10_000)
+)
+
+@Serializable
+enum class GoldExchangeStatus { GRANTED, ALREADY_GRANTED, INSUFFICIENT_GEMS, INVALID_OFFER, FAILED }
+
+@Serializable
 enum class StorePurchaseStatus { GRANTED, ALREADY_GRANTED, INVALID, UNAVAILABLE, FAILED }
 
 @Serializable
@@ -661,6 +677,13 @@ sealed class ClientMessage {
     @Serializable
     @SerialName("get_gem_store_catalog")
     data object GetGemStoreCatalog : ClientMessage()
+
+    @Serializable
+    @SerialName("exchange_gems_for_gold")
+    data class ExchangeGemsForGold(
+        val requestId: String,
+        val offerId: String
+    ) : ClientMessage()
 
     @Serializable
     @SerialName("verify_store_purchase")
@@ -953,6 +976,16 @@ sealed class ServerMessage {
     data class GemStoreCatalog(
         val packages: List<GemPackageSnapshot>,
         val sandboxEnabled: Boolean = false
+    ) : ServerMessage()
+
+    @Serializable
+    @SerialName("gold_exchange_result")
+    data class GoldExchangeResult(
+        val requestId: String,
+        val offerId: String,
+        val spentGems: Int = 0,
+        val receivedGold: Int = 0,
+        val status: GoldExchangeStatus
     ) : ServerMessage()
 
     @Serializable
