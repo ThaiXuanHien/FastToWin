@@ -12,6 +12,7 @@ import java.time.LocalDate
 import java.time.ZoneId
 import java.util.UUID
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
@@ -57,10 +58,45 @@ class PostgresDailyCheckInMilestoneTest {
 
                 assertFalse(repository.updateProfile(player.playerId, player.displayName, DAILY_CHECK_IN_AVATAR_ID))
                 assertTrue(repository.claimDailyCheckIn(player.playerId)!!.claimed)
+                assertFalse(repository.claimDailyCheckIn(player.playerId)!!.claimed)
                 val sevenDayProfile = repository.findByPlayerId(player.playerId)!!
-                assertTrue(sevenDayProfile.achievements.any { it.code == "DAILY_STREAK_7" })
+                assertTrue(sevenDayProfile.achievements.any { it.code == "CHECKIN_STREAK_7" })
+                assertFalse(sevenDayProfile.achievements.any { it.code == "DAILY_STREAK_7" })
+                assertEquals(60, sevenDayProfile.progression.experiencePoints)
+                assertEquals(300, sevenDayProfile.progression.gold)
+                assertEquals(1, sevenDayProfile.progression.gems)
                 assertTrue(today.toString() in sevenDayProfile.progression.dailyCheckIn.historyDates)
                 assertTrue(sevenDayProfile.progression.dailyCheckIn.todayDate == today.toString())
+                dataSource.connection.use { connection ->
+                    assertEquals(
+                        1,
+                        connection.prepareStatement(
+                            """
+                            SELECT COUNT(*)
+                            FROM wallet_transactions
+                            WHERE user_id = ? AND source_type = 'ACHIEVEMENT'
+                              AND source_id = 'CHECKIN_STREAK_7'
+                            """.trimIndent()
+                        ).use { statement ->
+                            statement.setObject(1, userId)
+                            statement.executeQuery().use { result -> result.next(); result.getInt(1) }
+                        }
+                    )
+                    assertEquals(
+                        1,
+                        connection.prepareStatement(
+                            """
+                            SELECT COUNT(*)
+                            FROM player_cosmetics
+                            WHERE user_id = ? AND cosmetic_id = 'frame_wildfire'
+                              AND cosmetic_type = 'FRAME'
+                            """.trimIndent()
+                        ).use { statement ->
+                            statement.setObject(1, userId)
+                            statement.executeQuery().use { result -> result.next(); result.getInt(1) }
+                        }
+                    )
+                }
 
                 dataSource.connection.use { connection ->
                     connection.prepareStatement(

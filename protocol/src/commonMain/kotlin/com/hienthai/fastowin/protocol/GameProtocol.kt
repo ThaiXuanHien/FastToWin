@@ -467,7 +467,16 @@ data class AchievementSnapshot(
     val code: String,
     val title: String,
     val description: String,
-    val unlockedAtEpochMillis: Long
+    val unlockedAtEpochMillis: Long,
+    val unlocked: Boolean = unlockedAtEpochMillis > 0L,
+    val progress: Int = if (unlocked) 1 else 0,
+    val target: Int = 1,
+    val difficulty: MissionDifficulty = MissionDifficulty.EASY,
+    val rewardXp: Int = 0,
+    val rewardGold: Int = 0,
+    val rewardGems: Int = 0,
+    val frameId: String? = null,
+    val titleId: String? = null
 )
 
 @Serializable

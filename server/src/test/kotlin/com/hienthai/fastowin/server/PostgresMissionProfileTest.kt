@@ -31,6 +31,20 @@ class PostgresMissionProfileTest {
             val clock = Clock.fixed(today.atTime(12, 0).atZone(zone).toInstant(), zone)
             val repository = PostgresPlayerProfileRepository(dataSource, clock)
             try {
+                dataSource.connection.use { connection ->
+                    connection.prepareStatement(
+                        """
+                        INSERT INTO player_stats (user_id, experience_points, updated_at)
+                        VALUES (?, 2880, CURRENT_TIMESTAMP)
+                        ON CONFLICT (user_id) DO UPDATE SET
+                            experience_points = 2880,
+                            updated_at = CURRENT_TIMESTAMP
+                        """.trimIndent()
+                    ).use { statement ->
+                        statement.setObject(1, userId)
+                        statement.executeUpdate()
+                    }
+                }
                 val initial = repository.findByPlayerId(player.playerId)!!.progression
                 assertEquals(
                     listOf(
@@ -71,6 +85,10 @@ class PostgresMissionProfileTest {
                         .single { it.code == "DAILY_CHECK_IN" }
                         .rewardClaimed
                 )
+                val levelAchievement = repository.findByPlayerId(player.playerId)!!.achievements
+                    .single { it.code == "PLAYER_LEVEL_30" }
+                assertTrue(levelAchievement.unlocked)
+                assertEquals(30, levelAchievement.progress)
             } finally {
                 dataSource.connection.use { connection ->
                     connection.prepareStatement("DELETE FROM users WHERE id = ?").use { statement ->

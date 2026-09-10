@@ -125,12 +125,12 @@ class PostgresMatchResultRepositoryTest {
                 assertEquals(16, profile.recentMatches.single().eloChange)
                 assertEquals(-16, guestProfile.recentMatches.single().eloChange)
                 assertEquals(
-                    setOf("FIRST_WIN", "PERFECT_GAME", "SPEED_50"),
-                    profile.achievements.map { it.code }.toSet()
+                    setOf("FIRST_WIN", "PERFECT_MATCH_1"),
+                    profile.achievements.filter { it.unlocked }.map { it.code }.toSet()
                 )
-                assertEquals(0, guestProfile.achievements.size)
-                assertEquals(30, profile.progression.experiencePoints)
-                assertEquals(100, profile.progression.gold)
+                assertEquals(0, guestProfile.achievements.count { it.unlocked })
+                assertEquals(70, profile.progression.experiencePoints)
+                assertEquals(300, profile.progression.gold)
                 assertEquals(1, profile.progression.level)
                 assertFalse(profile.progression.cosmetics.first { it.id == "frame_perfect" }.unlocked)
                 assertEquals("Mùa Khởi Đầu", profile.progression.season?.name)
@@ -147,8 +147,8 @@ class PostgresMatchResultRepositoryTest {
                 assertFalse(duplicateCheckIn.claimed)
                 assertEquals(0, duplicateCheckIn.rewardXp)
                 val checkedInProfile = profileRepository.findByPlayerId(host.playerId)!!
-                assertEquals(40, checkedInProfile.progression.experiencePoints)
-                assertEquals(150, checkedInProfile.progression.gold)
+                assertEquals(80, checkedInProfile.progression.experiencePoints)
+                assertEquals(350, checkedInProfile.progression.gold)
                 assertEquals(0, checkedInProfile.progression.gems)
                 assertTrue(checkedInProfile.progression.dailyCheckIn.claimedToday)
                 assertEquals(1, checkedInProfile.progression.dailyCheckIn.currentStreak)
@@ -181,18 +181,20 @@ class PostgresMatchResultRepositoryTest {
                     )
                 )
                 val walletHistory = profileRepository.loadWalletHistory(host.playerId)
-                assertEquals(4, walletHistory.size)
+                assertEquals(6, walletHistory.size)
                 assertEquals(
                     setOf(
                         "MATCH",
+                        "ACHIEVEMENT",
                         "DAILY_CHECK_IN",
                         "TOURNAMENT_ENTRY",
                         "TOURNAMENT_PRIZE"
                     ),
                     walletHistory.map { it.sourceType }.toSet()
                 )
+                assertEquals(2, walletHistory.count { it.sourceType == "ACHIEVEMENT" })
                 assertEquals(1, walletHistory.count { it.sourceType == "TOURNAMENT_ENTRY" })
-                assertEquals(350, profileRepository.findByPlayerId(host.playerId)!!.progression.gold)
+                assertEquals(550, profileRepository.findByPlayerId(host.playerId)!!.progression.gold)
                 val storeTransaction = storePurchaseFingerprint(
                     com.hienthai.fastowin.protocol.StorePlatform.GOOGLE_PLAY,
                     "integration-purchase-token"
@@ -228,7 +230,7 @@ class PostgresMatchResultRepositoryTest {
                     )
                 )
                 val walletAfterStore = profileRepository.loadWalletHistory(host.playerId)
-                assertEquals(5, walletAfterStore.size)
+                assertEquals(7, walletAfterStore.size)
                 assertEquals(1, walletAfterStore.count { it.sourceType == "STORE_PURCHASE" })
                 assertEquals(80, profileRepository.findByPlayerId(host.playerId)!!.progression.gems)
                 dataSource.connection.use { connection ->

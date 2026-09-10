@@ -17,9 +17,9 @@ import com.hienthai.fastowin.protocol.DailyCheckInSnapshot
 import com.hienthai.fastowin.protocol.DAILY_CHECK_IN_AVATAR_ID
 import com.hienthai.fastowin.protocol.DAILY_CHECK_IN_AVATAR_TARGET
 import com.hienthai.fastowin.protocol.DAILY_CHECK_IN_FRAME_TARGET
-import com.hienthai.fastowin.protocol.DAILY_CHECK_IN_STREAK_ACHIEVEMENT_TARGET
 import com.hienthai.fastowin.protocol.DAILY_CHECK_IN_TITLE_TARGET
 import com.hienthai.fastowin.protocol.MissionSnapshot
+import com.hienthai.fastowin.protocol.MissionDifficulty
 import com.hienthai.fastowin.protocol.PlayerProgressionSnapshot
 import com.hienthai.fastowin.protocol.PushNotificationCategory
 import com.hienthai.fastowin.protocol.PushPreferencesSnapshot
@@ -215,26 +215,54 @@ class PostgresPlayerProfileRepository(
                     }
                 }
             }
+            val achievementProgress = achievementProgress(connection, userId)
             val achievements = connection.prepareStatement(
                 """
-                SELECT a.code, a.title, a.description, ua.unlocked_at
-                FROM user_achievements ua
-                JOIN achievements a ON a.code = ua.achievement_code
-                WHERE ua.user_id = ?
+                SELECT a.code, a.title, a.description, a.difficulty, a.target,
+                       a.reward_xp, a.reward_gold, a.reward_gems, a.frame_id, a.title_id,
+                       ua.unlocked_at
+                FROM achievements a
+                LEFT JOIN user_achievements ua
+                  ON ua.achievement_code = a.code AND ua.user_id = ?
+                WHERE a.is_active = TRUE
                 ORDER BY a.sort_order
                 """.trimIndent()
             ).use { statement ->
                 statement.setObject(1, userId)
                 statement.executeQuery().use { result ->
                     buildList {
-                        while (result.next()) add(
-                            AchievementSnapshot(
-                                code = result.getString("code"),
-                                title = result.getString("title"),
-                                description = result.getString("description"),
-                                unlockedAtEpochMillis = result.getTimestamp("unlocked_at").time
+                        while (result.next()) {
+                            val code = result.getString("code")
+                            val unlockedAt = result.getTimestamp("unlocked_at")
+                            val target = result.getInt("target")
+                            add(
+                                AchievementSnapshot(
+                                    code = code,
+                                    title = result.getString("title"),
+                                    description = result.getString("description"),
+                                    unlockedAtEpochMillis = unlockedAt?.time ?: 0L,
+                                    unlocked = unlockedAt != null,
+                                    progress = if (unlockedAt != null) target else achievementProgress.getOrDefault(code, 0),
+                                    target = target,
+                                    difficulty = MissionDifficulty.valueOf(result.getString("difficulty")),
+                                    rewardXp = result.getInt("reward_xp"),
+                                    rewardGold = result.getInt("reward_gold"),
+                                    rewardGems = result.getInt("reward_gems"),
+                                    frameId = result.getString("frame_id"),
+                                    titleId = result.getString("title_id")
+                                )
                             )
-                        )
+                        }
+                    }
+                }
+            }
+            val historicalAchievementCodes = connection.prepareStatement(
+                "SELECT achievement_code FROM user_achievements WHERE user_id = ?"
+            ).use { statement ->
+                statement.setObject(1, userId)
+                statement.executeQuery().use { result ->
+                    buildSet {
+                        while (result.next()) add(result.getString("achievement_code"))
                     }
                 }
             }
@@ -548,17 +576,16 @@ class PostgresPlayerProfileRepository(
             }
             val experiencePoints = progressionRow.experiencePoints
             val level = experiencePoints / EXPERIENCE_PER_LEVEL + 1
-            val achievementCodes = achievements.mapTo(mutableSetOf()) { it.code }
             val unlockedFrames = unlockedFrameIds(
                 level,
-                achievementCodes,
+                historicalAchievementCodes,
                 progressionRow.totalDailyCheckIns
             ).toMutableSet().apply {
                 addAll(seasonCosmetics.filter { it.type == CosmeticType.FRAME }.map { it.id })
             }
             val unlockedTitles = unlockedTitleIds(
                 base.statistics.wins,
-                achievementCodes,
+                historicalAchievementCodes,
                 progressionRow.bestDailyCheckInStreak
             ).toMutableSet().apply {
                 addAll(seasonCosmetics.filter { it.type == CosmeticType.TITLE }.map { it.id })
@@ -999,19 +1026,27 @@ class PostgresPlayerProfileRepository(
                                     statement.executeUpdate()
                                 }
                             }
-                        if (decision.resultingStreak >= DAILY_CHECK_IN_STREAK_ACHIEVEMENT_TARGET) {
-                            connection.prepareStatement(
-                                """
-                                INSERT INTO user_achievements (
-                                    user_id, achievement_code, unlocked_at, match_id
-                                ) VALUES (?, 'DAILY_STREAK_7', CURRENT_TIMESTAMP, NULL)
-                                ON CONFLICT (user_id, achievement_code) DO NOTHING
-                                """.trimIndent()
-                            ).use { statement ->
-                                statement.setObject(1, userId)
-                                statement.executeUpdate()
-                            }
-                        }
+                        val occurredAt = clock.instant()
+                        grantNewAchievements(
+                            connection = connection,
+                            userId = userId,
+                            candidates = completedAchievementCodes(
+                                achievementProgress(connection, userId),
+                                CHECK_IN_ACHIEVEMENT_CODES
+                            ),
+                            occurredAt = occurredAt,
+                            matchId = null
+                        )
+                        grantNewAchievements(
+                            connection = connection,
+                            userId = userId,
+                            candidates = completedAchievementCodes(
+                                achievementProgress(connection, userId),
+                                setOf("PLAYER_LEVEL_30")
+                            ),
+                            occurredAt = occurredAt,
+                            matchId = null
+                        )
                         connection.commit()
                         DailyCheckInClaimResult(
                             claimed = true,
@@ -1106,6 +1141,16 @@ class PostgresPlayerProfileRepository(
                             gold = rewardGold,
                             gems = rewardGems,
                             xp = rewardXp
+                        )
+                        grantNewAchievements(
+                            connection = connection,
+                            userId = userId,
+                            candidates = completedAchievementCodes(
+                                achievementProgress(connection, userId),
+                                setOf("PLAYER_LEVEL_30")
+                            ),
+                            occurredAt = clock.instant(),
+                            matchId = null
                         )
                         MissionRewardClaimResult(
                             MissionRewardClaimStatus.CLAIMED,

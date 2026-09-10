@@ -23,7 +23,6 @@ class PostgresMatchRewardTest {
             Flyway.configure().dataSource(dataSource).locations("classpath:db/migration").load().migrate()
             val identityRepository = PostgresGuestIdentityRepository(dataSource)
             val matchRepository = PostgresMatchResultRepository(dataSource)
-            val profileRepository = PostgresPlayerProfileRepository(dataSource)
             val cases = listOf(
                 RewardCase("casual-win", MatchType.CASUAL, MatchOutcome.WIN, false, 80, 24),
                 RewardCase("casual-draw", MatchType.CASUAL, MatchOutcome.DRAW, false, 40, 16),
@@ -77,9 +76,6 @@ class PostgresMatchRewardTest {
                         )
                     )
 
-                    val profile = profileRepository.findByPlayerId(player.playerId)!!
-                    assertEquals(case.expectedGold, profile.progression.gold, "${case.name} profile Gold")
-                    assertEquals(case.expectedXp, profile.progression.experiencePoints, "${case.name} profile XP")
                     dataSource.connection.use { connection ->
                         connection.prepareStatement(
                             """

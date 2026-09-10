@@ -377,45 +377,26 @@ class PostgresMatchResultRepository(
     }
 
     private fun unlockAchievements(connection: Connection, match: CompletedMatch) {
-        val metricsByPlayer = calculateSelectionMetrics(match)
-        val matchDuration = (match.endedAtMillis - match.startedAtMillis).coerceAtLeast(0L)
-        connection.prepareStatement(
-            "SELECT wins, current_win_streak FROM player_stats WHERE user_id = ?"
-        ).use { statsStatement ->
-            connection.prepareStatement(
-                """
-                INSERT INTO user_achievements (user_id, achievement_code, unlocked_at, match_id)
-                VALUES (?, ?, ?, ?)
-                ON CONFLICT (user_id, achievement_code) DO NOTHING
-                """.trimIndent()
-            ).use { insertStatement ->
-                match.players.forEach { player ->
-                    val playerId = UUID.fromString(player.playerId)
-                    statsStatement.setObject(1, playerId)
-                    val (wins, streak) = statsStatement.executeQuery().use { result ->
-                        check(result.next()) { "Missing player stats for ${player.playerId}" }
-                        result.getInt("wins") to result.getInt("current_win_streak")
-                    }
-                    val metrics = metricsByPlayer[player.playerId] ?: SelectionMetrics()
-                    val unlocked = buildSet {
-                        if (wins >= 1) add("FIRST_WIN")
-                        if (wins >= 10) add("WIN_10")
-                        if (streak >= 5) add("STREAK_5")
-                        if (player.isPerfectWinner(metrics)) add("PERFECT_GAME")
-                        if (qualifiesForSpeed50(player.outcome, metrics.correct, matchDuration)) {
-                            add("SPEED_50")
-                        }
-                    }
-                    unlocked.forEach { achievementCode ->
-                        insertStatement.setObject(1, playerId)
-                        insertStatement.setString(2, achievementCode)
-                        insertStatement.setTimestamp(3, match.endedAtMillis.toTimestamp())
-                        insertStatement.setObject(4, UUID.fromString(match.matchId))
-                        insertStatement.addBatch()
-                    }
-                }
-                insertStatement.executeBatch()
-            }
+        val occurredAt = Instant.ofEpochMilli(match.endedAtMillis)
+        val matchId = UUID.fromString(match.matchId)
+        match.players.forEach { player ->
+            if (player.intentionalLeave) return@forEach
+            val playerId = UUID.fromString(player.playerId)
+            val candidates = completedAchievementCodes(
+                progress = achievementProgress(connection, playerId),
+                eligibleCodes = MATCH_ACHIEVEMENT_CODES
+            )
+            grantNewAchievements(connection, playerId, candidates, occurredAt, matchId)
+            grantNewAchievements(
+                connection = connection,
+                userId = playerId,
+                candidates = completedAchievementCodes(
+                    achievementProgress(connection, playerId),
+                    setOf("PLAYER_LEVEL_30")
+                ),
+                occurredAt = occurredAt,
+                matchId = matchId
+            )
         }
     }
 

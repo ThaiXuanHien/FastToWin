@@ -242,23 +242,23 @@ git commit -m "feat: add rotating mission catalog"
 - Extends `AchievementSnapshot` compatibly with `unlocked`, `progress`, `target`, `difficulty`, `rewardXp`, `rewardGold`, `rewardGems`, `frameId` and `titleId`, all with safe defaults.
 - Produces: `grantNewAchievements(connection, userId, candidates, occurredAt, matchId)` that inserts unlocks and wallet rewards once.
 
-- [ ] **Step 1: Write failing pure catalog tests** asserting exactly 20 stable codes and difficulty rewards: Easy `100/0/20`, Normal `250/0/50`, Hard `500/1/100`, Elite `1,000/3/200` as Gold/Gem/XP.
+- [x] **Step 1: Write failing pure catalog tests** asserting exactly 20 stable codes and difficulty rewards: Easy `100/0/20`, Normal `250/0/50`, Hard `500/1/100`, Elite `1,000/3/200` as Gold/Gem/XP.
 
-- [ ] **Step 2: Run and verify RED**.
+- [x] **Step 2: Run and verify RED**.
 
-- [ ] **Step 3: Implement the catalog and migration V44**. Add `difficulty`, `target`, `reward_xp`, `reward_gold`, `reward_gems`, `frame_id`, `title_id` and `is_active`; upsert the 20 approved definitions and mark legacy-only `WIN_10`, `STREAK_5`, `PERFECT_GAME` and `SPEED_50` inactive. Keep their historical `user_achievements` rows untouched. `FIRST_WIN` remains active under the same ID. New achievements are independently evaluated from persisted statistics/events, so a stricter new requirement is never unlocked merely because a legacy code existed.
+- [x] **Step 3: Implement the catalog and migration V44**. Add `difficulty`, `target`, `reward_xp`, `reward_gold`, `reward_gems`, `frame_id`, `title_id` and `is_active`; upsert the 20 approved definitions and mark legacy-only `WIN_10`, `STREAK_5`, `PERFECT_GAME` and `SPEED_50` inactive. Keep their historical `user_achievements` rows untouched. `FIRST_WIN` remains active under the same ID. New achievements are independently evaluated from persisted statistics/events, so a stricter new requirement is never unlocked merely because a legacy code existed.
 
-- [ ] **Step 4: Write failing PostgreSQL tests** proving a first unlock inserts one `user_achievements` row, one `ACHIEVEMENT` wallet transaction and the exact balance change; repeated evaluation changes nothing.
+- [x] **Step 4: Write failing PostgreSQL tests** proving a first unlock inserts one `user_achievements` row, one `ACHIEVEMENT` wallet transaction and the exact balance change; repeated evaluation changes nothing.
 
-- [ ] **Step 5: Implement atomic grant logic** using `INSERT ... ON CONFLICT DO NOTHING RETURNING achievement_code`; award only rows returned by the insert.
+- [x] **Step 5: Implement atomic grant logic** using `INSERT ... ON CONFLICT DO NOTHING RETURNING achievement_code`; award only rows returned by the insert.
 
-- [ ] **Step 6: Implement current match-driven progress** for wins, ranked wins, streak, perfect matches, accuracy and response-time achievements from persisted match/event data. Implement check-in and player-level achievements in the profile/check-in transaction. Keep the five clan achievements visible with zero/current progress until Task 3 of the parent roadmap provides authoritative clan counters.
+- [x] **Step 6: Implement current match-driven progress** for wins, ranked wins, streak, perfect matches, accuracy and response-time achievements from persisted match/event data. Implement check-in and player-level achievements in the profile/check-in transaction. Keep the five clan achievements visible with zero/current progress until Task 3 of the parent roadmap provides authoritative clan counters.
 
-- [ ] **Step 7: Return all 20 snapshots** by left-joining definitions with unlocks and calculating bounded progress; locked achievements use `unlockedAtEpochMillis = 0`.
+- [x] **Step 7: Return all 20 snapshots** by left-joining definitions with unlocks and calculating bounded progress; locked achievements use `unlockedAtEpochMillis = 0`.
 
-- [ ] **Step 8: Run achievement, profile, match and check-in tests and verify GREEN**.
+- [x] **Step 8: Run achievement, profile, match and check-in tests and verify GREEN**.
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
 ```bash
 git add protocol/src server/src
