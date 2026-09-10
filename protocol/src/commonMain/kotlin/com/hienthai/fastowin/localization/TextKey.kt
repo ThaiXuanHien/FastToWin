@@ -238,10 +238,12 @@ enum class TextKey {
     NotificationsHero, NotificationsHeroDescription, DeleteNotificationTitle,
     DeleteNotificationDescription, DeleteNotification,
 
-    GemTab, NumberSkins, NumberBoards, GemVault, ArcadeVault,
+    GemTab, GoldTab, NumberSkins, NumberBoards, GemVault, GoldVault, ArcadeVault,
     GemVaultDescription, ArcadeVaultDescription, Restocking, RestockingDescription,
     ChooseGemPackage, GemPackageDescription, LoginToBuyGems, PriceUnavailable,
     EarnGemsDescription, Popular, EquippingNow, Equip, GemAmount,
+    GoldVaultDescription, ExchangeGemsForGold, GoldExchangeConfirmation,
+    NotEnoughGems, GoldExchangeGranted, GoldExchangeAlreadyGranted, GoldExchangeFailed,
     ShopItemGoldName, ShopItemDiamondName, ShopBoardDarkName, ShopBoardForestName,
     BillingPlayNotReady, BillingPlayReconnecting, BillingPriceLoadFailed,
     BillingProductsMissing, BillingProductUnavailable, BillingLaunchFailed,

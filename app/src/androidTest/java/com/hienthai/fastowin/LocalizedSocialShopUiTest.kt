@@ -7,8 +7,6 @@ import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
 import com.hienthai.fastowin.localization.AppLanguage
 import com.hienthai.fastowin.localization.ProvideLocalization
-import com.hienthai.fastowin.protocol.CosmeticType
-import com.hienthai.fastowin.protocol.SHOP_ITEMS
 import com.hienthai.fastowin.state.AppNotification
 import com.hienthai.fastowin.state.AppNotificationDestination
 import com.hienthai.fastowin.state.AppNotificationKind
@@ -20,7 +18,6 @@ import com.hienthai.fastowin.ui.screens.NotificationsScreen
 import com.hienthai.fastowin.ui.screens.ShopScreen
 import com.hienthai.fastowin.ui.screens.TournamentScreen
 import com.hienthai.fastowin.ui.theme.FastToWinTheme
-import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
 
@@ -107,31 +104,29 @@ class LocalizedSocialShopUiTest {
     @Test
     fun frenchShopUsesLocalizedTitle() {
         render(AppLanguage.FRENCH) {
-            ShopScreen(progression = null, onBuy = {}, onEquip = {}, onClose = {})
+            ShopScreen(progression = null, onClose = {})
         }
         composeRule.onNodeWithText("Boutique").assertIsDisplayed()
-        composeRule.onNodeWithText("Coffre Arcade").assertIsDisplayed()
+        composeRule.onNodeWithText("Coffre de Gemmes").assertIsDisplayed()
     }
 
     @Test
-    fun vietnameseShopUsesNumberSkinTerminology() {
+    fun vietnameseShopUsesGemAndGoldTerminology() {
         render(AppLanguage.VIETNAMESE) {
-            ShopScreen(progression = null, onBuy = {}, onEquip = {}, onClose = {})
+            ShopScreen(progression = null, onClose = {})
         }
-        composeRule.onNodeWithText("Mặt số").assertIsDisplayed()
+        composeRule.onNodeWithText("Gem").assertIsDisplayed()
+        composeRule.onNodeWithText("Vàng").assertIsDisplayed()
         composeRule.onAllNodesWithText("Mặt bài").assertCountEquals(0)
     }
 
     @Test
-    fun englishShopUsesNumberSkinsWithoutChangingIds() {
-        assertEquals(
-            "card_back_gold",
-            SHOP_ITEMS.first { it.type == CosmeticType.CARD_BACK }.id
-        )
+    fun englishShopUsesGemAndGoldTabs() {
         render(AppLanguage.ENGLISH) {
-            ShopScreen(progression = null, onBuy = {}, onEquip = {}, onClose = {})
+            ShopScreen(progression = null, onClose = {})
         }
-        composeRule.onNodeWithText("Number Skins").assertIsDisplayed()
+        composeRule.onNodeWithText("Gems").assertIsDisplayed()
+        composeRule.onNodeWithText("Gold").assertIsDisplayed()
     }
 
     private fun render(language: AppLanguage, content: @androidx.compose.runtime.Composable () -> Unit) {

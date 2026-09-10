@@ -1164,8 +1164,9 @@ private fun GameContent(
                     onBuyGems = { productId ->
                         storeBillingGateway.purchase(productId, state.profile?.userId)
                     },
-                    onBuy = controller::buyCosmetic,
-                    onEquip = controller::equipCosmetic,
+                    onExchangeGold = { offerId -> controller.exchangeGemsForGold(offerId) },
+                    isGoldExchangePending = state.exchangingGoldRequestId != null,
+                    exchangeNotice = state.profileNotice,
                     onClose = { navigateBack(controller::closeShop) },
                     unreadNotifications = state.unreadNotificationCount,
                     onNotifications = controller::openNotifications

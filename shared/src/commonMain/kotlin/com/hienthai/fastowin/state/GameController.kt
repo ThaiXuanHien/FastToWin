@@ -12,6 +12,7 @@ import com.hienthai.fastowin.platform.epochMillis
 import com.hienthai.fastowin.protocol.ClientMessage
 import com.hienthai.fastowin.protocol.CosmeticType
 import com.hienthai.fastowin.protocol.GameSnapshot
+import com.hienthai.fastowin.protocol.GoldExchangeStatus
 import com.hienthai.fastowin.protocol.MAX_PROFILE_DISPLAY_NAME_LENGTH
 import com.hienthai.fastowin.protocol.PROFILE_AVATAR_IDS
 import com.hienthai.fastowin.protocol.ProtocolGameMode
@@ -1046,6 +1047,25 @@ class GameController(
                     )
                 }
             }
+            is ServerMessage.GoldExchangeResult -> {
+                _uiState.update {
+                    it.copy(
+                        exchangingGoldRequestId = null,
+                        goldExchangeResult = message,
+                        profileNotice = when (message.status) {
+                            GoldExchangeStatus.GRANTED -> messageMapper.text(
+                                TextKey.GoldExchangeGranted,
+                                mapOf("gold" to message.receivedGold)
+                            )
+                            GoldExchangeStatus.ALREADY_GRANTED -> messageMapper.text(TextKey.GoldExchangeAlreadyGranted)
+                            GoldExchangeStatus.INSUFFICIENT_GEMS -> messageMapper.text(TextKey.NotEnoughGems)
+                            GoldExchangeStatus.INVALID_OFFER,
+                            GoldExchangeStatus.FAILED -> messageMapper.text(TextKey.GoldExchangeFailed)
+                        },
+                        error = null
+                    )
+                }
+            }
             is ServerMessage.StorePurchaseResult -> {
                 _uiState.update {
                     it.copy(
@@ -1469,6 +1489,7 @@ class GameController(
                     isWalletHistoryLoading = false,
                     isGemStoreCatalogLoading = false,
                     verifyingStorePurchaseRequestId = null,
+                    exchangingGoldRequestId = null,
                     storePurchaseResult = if (
                         error.requestId != null && error.requestId == it.verifyingStorePurchaseRequestId
                     ) {
@@ -1714,7 +1735,15 @@ class GameController(
     }
 
     fun openShop() {
-        _uiState.update { it.copy(isShopOpen = true, isGemStoreCatalogLoading = true, error = null) }
+        _uiState.update {
+            it.copy(
+                isShopOpen = true,
+                isGemStoreCatalogLoading = true,
+                goldExchangeResult = null,
+                profileNotice = null,
+                error = null
+            )
+        }
         scope.launch { socket.sendMessage(ClientMessage.GetGemStoreCatalog) }
     }
 
@@ -1751,6 +1780,23 @@ class GameController(
         _uiState.update { it.copy(storePurchaseResult = null) }
     }
 
+    fun exchangeGemsForGold(offerId: String): Boolean {
+        if (_uiState.value.exchangingGoldRequestId != null) return false
+        val requestId = randomUuid()
+        _uiState.update {
+            it.copy(
+                exchangingGoldRequestId = requestId,
+                goldExchangeResult = null,
+                profileNotice = null,
+                error = null
+            )
+        }
+        scope.launch {
+            socket.sendMessage(ClientMessage.ExchangeGemsForGold(requestId, offerId))
+        }
+        return true
+    }
+
     fun buyCosmetic(cosmeticId: String) {
         scope.launch { socket.sendMessage(ClientMessage.BuyCosmetic(cosmeticId)) }
     }
@@ -1766,6 +1812,12 @@ class GameController(
             if (gems > 0) add("$gems ${messageMapper.text(TextKey.Gems)}")
         }.joinToString(" + ")
         return messageMapper.text(TextKey.RewardReceivedSummary, mapOf("rewards" to rewards))
+    }
+
+    private fun randomUuid(): String {
+        val raw = randomId()
+        return "${raw.take(8)}-${raw.substring(8, 12)}-${raw.substring(12, 16)}-" +
+            "${raw.substring(16, 20)}-${raw.substring(20, 32)}"
     }
 
     private companion object {

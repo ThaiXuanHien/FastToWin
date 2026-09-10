@@ -153,6 +153,8 @@ data class GameState(
     val storeSandboxEnabled: Boolean = false,
     val verifyingStorePurchaseRequestId: String? = null,
     val storePurchaseResult: com.hienthai.fastowin.protocol.ServerMessage.StorePurchaseResult? = null,
+    val exchangingGoldRequestId: String? = null,
+    val goldExchangeResult: com.hienthai.fastowin.protocol.ServerMessage.GoldExchangeResult? = null,
     val clanList: List<com.hienthai.fastowin.protocol.ClanSummarySnapshot> = emptyList(),
     val pendingClanJoinIds: Set<String> = emptySet(),
     val currentClan: com.hienthai.fastowin.protocol.ClanSnapshot? = null,

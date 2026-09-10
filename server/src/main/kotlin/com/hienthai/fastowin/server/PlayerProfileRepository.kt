@@ -7,6 +7,8 @@ import com.hienthai.fastowin.protocol.PushPreferencesSnapshot
 import com.hienthai.fastowin.protocol.CosmeticType
 import com.hienthai.fastowin.protocol.MatchDetailSnapshot
 import com.hienthai.fastowin.protocol.WalletTransactionSnapshot
+import com.hienthai.fastowin.protocol.GoldExchangeOffer
+import com.hienthai.fastowin.protocol.GoldExchangeStatus
 
 interface PlayerProfileRepository {
     suspend fun findByPlayerId(playerId: String): PlayerProfileSnapshot?
@@ -63,6 +65,11 @@ interface PlayerProfileRepository {
         transactionId: String,
         gems: Int
     ): StorePurchaseGrantStatus = StorePurchaseGrantStatus.PLAYER_NOT_FOUND
+    suspend fun exchangeGemsForGold(
+        playerId: String,
+        requestId: String,
+        offer: GoldExchangeOffer
+    ): GoldExchangeStatus = GoldExchangeStatus.FAILED
     suspend fun buyCosmetic(playerId: String, cosmeticId: String, cosmeticType: String, price: Int): Boolean = false
     suspend fun equipCosmetic(playerId: String, cosmeticId: String, cosmeticType: String): Boolean = false
 }

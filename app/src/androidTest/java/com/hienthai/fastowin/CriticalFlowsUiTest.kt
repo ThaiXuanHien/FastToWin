@@ -348,8 +348,6 @@ class CriticalFlowsUiTest {
             FastToWinTheme {
                 ShopScreen(
                     progression = PlayerProgressionSnapshot(gold = 2_000, gems = 25),
-                    onBuy = {},
-                    onEquip = {},
                     onClose = {},
                     gemPackages = listOf(gemPackage),
                     billingState = StoreBillingState(
@@ -365,11 +363,13 @@ class CriticalFlowsUiTest {
             }
         }
 
-        assertTrue(composeRule.onAllNodesWithText("Mặt số").fetchSemanticsNodes().isNotEmpty())
-        composeRule.onNodeWithText("Bàn số").assertIsDisplayed()
+        composeRule.onNodeWithTag("shop_tab:GEMS").assertIsDisplayed()
+        composeRule.onNodeWithTag("shop_tab:GOLD").assertIsDisplayed()
+        assertTrue(composeRule.onAllNodesWithTag("shop_tab:CARD_BACK").fetchSemanticsNodes().isEmpty())
+        assertTrue(composeRule.onAllNodesWithTag("shop_tab:BOARD_SKIN").fetchSemanticsNodes().isEmpty())
         assertTrue(composeRule.onAllNodesWithTag("shop_tab:FRAME").fetchSemanticsNodes().isEmpty())
         assertTrue(composeRule.onAllNodesWithTag("shop_tab:EMOJI").fetchSemanticsNodes().isEmpty())
-        val shopTabWidths = listOf("GEMS", "CARD_BACK", "BOARD_SKIN").map { tab ->
+        val shopTabWidths = listOf("GEMS", "GOLD").map { tab ->
             composeRule.onNodeWithTag("shop_tab:$tab").fetchSemanticsNode().boundsInRoot.width
         }
         assertTrue(shopTabWidths.all { width -> abs(width - shopTabWidths.first()) <= 1f })
@@ -386,8 +386,6 @@ class CriticalFlowsUiTest {
             FastToWinTheme {
                 ShopScreen(
                     progression = PlayerProgressionSnapshot(gold = 2_000, gems = 25),
-                    onBuy = {},
-                    onEquip = {},
                     onClose = {}
                 )
             }
@@ -396,7 +394,7 @@ class CriticalFlowsUiTest {
         val density = InstrumentationRegistry.getInstrumentation()
             .targetContext.resources.displayMetrics.density
         val expectedHeightPx = 48f * density
-        val shopTabHeights = listOf("GEMS", "CARD_BACK", "BOARD_SKIN").map { tab ->
+        val shopTabHeights = listOf("GEMS", "GOLD").map { tab ->
             composeRule.onNodeWithTag("shop_tab:$tab").fetchSemanticsNode().boundsInRoot.height
         }
 
@@ -404,6 +402,44 @@ class CriticalFlowsUiTest {
             "Shop tabs must stay at 48dp instead of matching the available screen height: $shopTabHeights",
             shopTabHeights.all { height -> abs(height - expectedHeightPx) <= 1f }
         )
+    }
+
+    @Test
+    fun shop_goldTabShowsOffersAndConfirmsAffordableExchange() {
+        var exchangedOfferId: String? = null
+        composeRule.setContent {
+            FastToWinTheme {
+                ShopScreen(
+                    progression = PlayerProgressionSnapshot(gold = 2_000, gems = 25),
+                    onExchangeGold = { exchangedOfferId = it },
+                    onClose = {}
+                )
+            }
+        }
+
+        composeRule.onNodeWithTag("shop_tab:GOLD").performClick()
+        listOf("gold_bag", "gold_chest", "gold_vault").forEach { offerId ->
+            composeRule.onNodeWithTag("gold_offer:$offerId").assertIsDisplayed()
+        }
+        composeRule.onNodeWithTag("gold_exchange:gold_bag").assertIsEnabled().performClick()
+        composeRule.onNodeWithTag("gold_exchange_confirmation").assertIsDisplayed()
+        composeRule.onNodeWithTag("gold_exchange_confirm").performClick()
+        composeRule.runOnIdle { assertEquals("gold_bag", exchangedOfferId) }
+    }
+
+    @Test
+    fun shop_goldExchangeIsDisabledWhenGemsAreInsufficient() {
+        composeRule.setContent {
+            FastToWinTheme {
+                ShopScreen(
+                    progression = PlayerProgressionSnapshot(gold = 0, gems = 5),
+                    onClose = {}
+                )
+            }
+        }
+
+        composeRule.onNodeWithTag("shop_tab:GOLD").performClick()
+        composeRule.onNodeWithTag("gold_exchange:gold_bag").assertIsNotEnabled()
     }
 
     @Test

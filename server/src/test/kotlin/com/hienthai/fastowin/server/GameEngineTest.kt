@@ -27,6 +27,9 @@ import com.hienthai.fastowin.protocol.ServerMessage
 import com.hienthai.fastowin.protocol.WalletTransactionSnapshot
 import com.hienthai.fastowin.protocol.StorePlatform
 import com.hienthai.fastowin.protocol.StorePurchaseStatus
+import com.hienthai.fastowin.protocol.GOLD_EXCHANGE_OFFERS
+import com.hienthai.fastowin.protocol.GoldExchangeOffer
+import com.hienthai.fastowin.protocol.GoldExchangeStatus
 import com.hienthai.fastowin.protocol.RankedTier
 import com.hienthai.fastowin.protocol.SeasonRewardReceiptSnapshot
 import kotlinx.coroutines.async
@@ -467,6 +470,67 @@ class GameEngineTest {
         assertEquals(StorePurchaseStatus.ALREADY_GRANTED, alreadyGranted.status)
         assertEquals(TextKey.ServerAlreadyExists.name, alreadyGranted.messageKey)
         assertEquals(1, grantedTransactions.size)
+    }
+
+    @Test
+    fun `account exchanges gems for gold once and receives refreshed profile`() = runTest {
+        val playerId = UUID.randomUUID().toString()
+        var profile = PlayerProfileSnapshot(
+            userId = playerId,
+            displayName = "Hiền",
+            playerCode = "HIEN123",
+            progression = PlayerProgressionSnapshot(gold = 0, gems = 20)
+        )
+        val grantedRequests = mutableSetOf<String>()
+        val repository = object : PlayerProfileRepository {
+            override suspend fun findByPlayerId(playerId: String) = profile
+            override suspend fun updateProfile(playerId: String, displayName: String, avatarId: String?) = false
+
+            override suspend fun exchangeGemsForGold(
+                playerId: String,
+                requestId: String,
+                offer: GoldExchangeOffer
+            ): GoldExchangeStatus {
+                if (requestId in grantedRequests) return GoldExchangeStatus.ALREADY_GRANTED
+                if (profile.progression.gems < offer.gemsCost) return GoldExchangeStatus.INSUFFICIENT_GEMS
+                grantedRequests += requestId
+                profile = profile.copy(
+                    progression = profile.progression.copy(
+                        gems = profile.progression.gems - offer.gemsCost,
+                        gold = profile.progression.gold + offer.goldAmount
+                    )
+                )
+                return GoldExchangeStatus.GRANTED
+            }
+        }
+        val engine = GameEngine(playerProfileRepository = repository)
+        engine.connectAccount(AuthenticatedAccount(UUID.fromString(playerId), "Hiền"))
+        val offer = GOLD_EXCHANGE_OFFERS.first()
+        val request = ClientMessage.ExchangeGemsForGold("exchange-1", offer.id)
+
+        val grantedMessages = engine.handle(playerId, request).map(Delivery::message)
+        with(grantedMessages.filterIsInstance<ServerMessage.GoldExchangeResult>().single()) {
+            assertEquals(GoldExchangeStatus.GRANTED, status)
+            assertEquals(10, spentGems)
+            assertEquals(1_000, receivedGold)
+        }
+        with(grantedMessages.filterIsInstance<ServerMessage.ProfileData>().single().profile.progression) {
+            assertEquals(10, gems)
+            assertEquals(1_000, gold)
+        }
+
+        val duplicate = engine.handle(playerId, request).map(Delivery::message)
+            .filterIsInstance<ServerMessage.GoldExchangeResult>().single()
+        assertEquals(GoldExchangeStatus.ALREADY_GRANTED, duplicate.status)
+        assertEquals(1, grantedRequests.size)
+
+        val insufficient = engine.handle(
+            playerId,
+            ClientMessage.ExchangeGemsForGold("exchange-2", GOLD_EXCHANGE_OFFERS.last().id)
+        ).map(Delivery::message).filterIsInstance<ServerMessage.GoldExchangeResult>().single()
+        assertEquals(GoldExchangeStatus.INSUFFICIENT_GEMS, insufficient.status)
+        assertEquals(0, insufficient.spentGems)
+        assertEquals(0, insufficient.receivedGold)
     }
 
     @Test

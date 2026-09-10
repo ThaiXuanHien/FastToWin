@@ -119,7 +119,7 @@ git commit -m "feat: centralize reward and exchange catalogs"
 - Consumes: the three `GOLD_EXCHANGE_OFFERS` from Task 1.
 - UI sends only stable offer ID and UUID request ID; server looks up amounts.
 
-- [ ] **Step 1: Write failing repository tests** proving sufficient balance exchanges atomically, insufficient balance changes nothing, and replaying the same request ID grants Gold once.
+- [x] **Step 1: Write failing repository tests** proving sufficient balance exchanges atomically, insufficient balance changes nothing, and replaying the same request ID grants Gold once.
 
 ```kotlin
 assertEquals(GoldExchangeStatus.GRANTED, repository.exchangeGemsForGold(id, requestId, GOLD_EXCHANGE_OFFERS[0]))
@@ -129,23 +129,23 @@ assertEquals(GoldExchangeStatus.ALREADY_GRANTED, repository.exchangeGemsForGold(
 assertEquals(1_000, repository.get(id)!!.progression.gold)
 ```
 
-- [ ] **Step 2: Run `PostgresGoldExchangeTest` and verify RED** because the migration and repository method are absent.
+- [x] **Step 2: Run `PostgresGoldExchangeTest` and verify RED** because the migration and repository method are absent.
 
-- [ ] **Step 3: Add migration V43** with `gold_exchange_requests(request_id UUID PRIMARY KEY, user_id UUID, offer_id VARCHAR(32), gems_spent INTEGER, gold_granted INTEGER, created_at TIMESTAMPTZ)` and a unique wallet source `(user_id, 'GOLD_EXCHANGE', request_id)` through the existing `wallet_transactions` constraint.
+- [x] **Step 3: Add migration V43** with `gold_exchange_requests(request_id UUID PRIMARY KEY, user_id UUID, offer_id VARCHAR(32), gems_spent INTEGER, gold_granted INTEGER, created_at TIMESTAMPTZ)` and a unique wallet source `(user_id, 'GOLD_EXCHANGE', request_id)` through the existing `wallet_transactions` constraint.
 
-- [ ] **Step 4: Implement the transaction**: lock `player_stats` with `FOR UPDATE`, detect duplicate request, reject insufficient Gem, subtract Gem, add Gold, insert `GOLD_EXCHANGE` wallet transaction and request receipt, then commit; rollback on every failure.
+- [x] **Step 4: Implement the transaction**: lock `player_stats` with `FOR UPDATE`, detect duplicate request, reject insufficient Gem, subtract Gem, add Gold, insert `GOLD_EXCHANGE` wallet transaction and request receipt, then commit; rollback on every failure.
 
-- [ ] **Step 5: Run repository tests and verify GREEN**.
+- [x] **Step 5: Run repository tests and verify GREEN**.
 
-- [ ] **Step 6: Write failing GameEngine protocol tests** for granted, insufficient and duplicate responses, then route `ExchangeGemsForGold` through the repository and refresh the profile snapshot.
+- [x] **Step 6: Write failing GameEngine protocol tests** for granted, insufficient and duplicate responses, then route `ExchangeGemsForGold` through the repository and refresh the profile snapshot.
 
-- [ ] **Step 7: Write failing Compose UI tests** asserting exactly two tabs (`GEMS`, `GOLD`), no number/board shop tabs, three offer cards, a disabled exchange button when Gem is insufficient, and a confirmation dialog before exchange.
+- [x] **Step 7: Write failing Compose UI tests** asserting exactly two tabs (`GEMS`, `GOLD`), no number/board shop tabs, three offer cards, a disabled exchange button when Gem is insufficient, and a confirmation dialog before exchange.
 
-- [ ] **Step 8: Replace cosmetic sales UI** with `GemStorePreview` and `GoldExchangeList`. Remove `onBuy`/`onEquip` from `ShopScreen`; do not remove equipped legacy cosmetics from profiles or gameplay rendering.
+- [x] **Step 8: Replace cosmetic sales UI** with `GemStorePreview` and `GoldExchangeList`. Remove `onBuy`/`onEquip` from `ShopScreen`; do not remove equipped legacy cosmetics from profiles or gameplay rendering.
 
-- [ ] **Step 9: Run focused server and Android compilation/UI tests and verify GREEN**.
+- [x] **Step 9: Run focused server and Android compilation/UI tests and verify GREEN**.
 
-- [ ] **Step 10: Commit**
+- [x] **Step 10: Commit**
 
 ```bash
 git add protocol/src server/src shared/src app/src/androidTest

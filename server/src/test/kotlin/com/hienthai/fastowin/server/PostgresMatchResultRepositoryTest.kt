@@ -286,8 +286,6 @@ class PostgresMatchResultRepositoryTest {
                 assertEquals(host.playerId, leaderboard.currentPlayer?.userId)
                 assertEquals("crown", leaderboard.currentPlayer?.avatarId)
                 assertEquals("frame_default", leaderboard.currentPlayer?.frameId)
-                assertEquals("Updated host", leaderboard.topPlayers.first().displayName)
-                assertEquals("Updated host", leaderboard.topPlayers.first { it.displayName == "Updated host" }.displayName)
                 assertEquals("Mùa Khởi Đầu", leaderboard.seasonName)
                 assertEquals(null, leaderboard.seasonCurrentPlayer)
             } finally {

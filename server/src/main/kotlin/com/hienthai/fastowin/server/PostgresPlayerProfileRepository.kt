@@ -30,6 +30,8 @@ import com.hienthai.fastowin.protocol.SeasonHistoryEntrySnapshot
 import com.hienthai.fastowin.protocol.SeasonTierRewardSnapshot
 import com.hienthai.fastowin.protocol.STANDARD_SEASON_TIER_REWARDS
 import com.hienthai.fastowin.protocol.SHOP_ITEMS
+import com.hienthai.fastowin.protocol.GoldExchangeOffer
+import com.hienthai.fastowin.protocol.GoldExchangeStatus
 import com.hienthai.fastowin.protocol.seasonCosmeticReward
 import com.hienthai.fastowin.protocol.seasonTierRewards
 import kotlinx.coroutines.Dispatchers
@@ -1559,6 +1561,102 @@ class PostgresPlayerProfileRepository(
                 connection.rollback()
                 System.err.println("Could not grant store purchase: ${error.message}")
                 StorePurchaseGrantStatus.FAILED
+            } finally {
+                connection.autoCommit = true
+            }
+        }
+    }
+
+    override suspend fun exchangeGemsForGold(
+        playerId: String,
+        requestId: String,
+        offer: GoldExchangeOffer
+    ): GoldExchangeStatus = withContext(Dispatchers.IO) {
+        val userId = runCatching { UUID.fromString(playerId) }.getOrNull()
+            ?: return@withContext GoldExchangeStatus.FAILED
+        val requestUuid = runCatching { UUID.fromString(requestId) }.getOrNull()
+            ?: return@withContext GoldExchangeStatus.FAILED
+        if (offer.gemsCost <= 0 || offer.goldAmount <= 0) {
+            return@withContext GoldExchangeStatus.FAILED
+        }
+
+        dataSource.connection.use { connection ->
+            connection.autoCommit = false
+            try {
+                val currentGems = connection.prepareStatement(
+                    "SELECT gems FROM player_stats WHERE user_id = ? FOR UPDATE"
+                ).use { statement ->
+                    statement.setObject(1, userId)
+                    statement.executeQuery().use { result ->
+                        if (result.next()) result.getInt("gems") else null
+                    }
+                } ?: run {
+                    connection.rollback()
+                    return@withContext GoldExchangeStatus.FAILED
+                }
+
+                val existingUserId = connection.prepareStatement(
+                    "SELECT user_id FROM gold_exchange_requests WHERE request_id = ?"
+                ).use { statement ->
+                    statement.setObject(1, requestUuid)
+                    statement.executeQuery().use { result ->
+                        if (result.next()) result.getObject("user_id", UUID::class.java) else null
+                    }
+                }
+                if (existingUserId != null) {
+                    connection.rollback()
+                    return@withContext if (existingUserId == userId) {
+                        GoldExchangeStatus.ALREADY_GRANTED
+                    } else {
+                        GoldExchangeStatus.FAILED
+                    }
+                }
+                if (currentGems < offer.gemsCost) {
+                    connection.rollback()
+                    return@withContext GoldExchangeStatus.INSUFFICIENT_GEMS
+                }
+
+                connection.prepareStatement(
+                    """
+                    UPDATE player_stats
+                    SET gems = gems - ?, gold = gold + ?, updated_at = CURRENT_TIMESTAMP
+                    WHERE user_id = ?
+                    """.trimIndent()
+                ).use { statement ->
+                    statement.setInt(1, offer.gemsCost)
+                    statement.setInt(2, offer.goldAmount)
+                    statement.setObject(3, userId)
+                    check(statement.executeUpdate() == 1)
+                }
+                connection.prepareStatement(
+                    """
+                    INSERT INTO gold_exchange_requests (
+                        request_id, user_id, offer_id, gems_spent, gold_granted
+                    ) VALUES (?, ?, ?, ?, ?)
+                    """.trimIndent()
+                ).use { statement ->
+                    statement.setObject(1, requestUuid)
+                    statement.setObject(2, userId)
+                    statement.setString(3, offer.id)
+                    statement.setInt(4, offer.gemsCost)
+                    statement.setInt(5, offer.goldAmount)
+                    statement.executeUpdate()
+                }
+                insertWalletTransaction(
+                    connection = connection,
+                    userId = userId,
+                    sourceType = "GOLD_EXCHANGE",
+                    sourceId = requestId,
+                    gold = offer.goldAmount,
+                    gems = -offer.gemsCost,
+                    xp = 0
+                )
+                connection.commit()
+                GoldExchangeStatus.GRANTED
+            } catch (error: Throwable) {
+                connection.rollback()
+                System.err.println("Could not exchange Gems for Gold: ${error.message}")
+                GoldExchangeStatus.FAILED
             } finally {
                 connection.autoCommit = true
             }

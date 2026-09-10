@@ -12,6 +12,7 @@ import com.hienthai.fastowin.protocol.GAME_NUMBER_COUNT
 import com.hienthai.fastowin.protocol.GameSnapshot
 import com.hienthai.fastowin.protocol.FriendPresence
 import com.hienthai.fastowin.protocol.FriendsSnapshot
+import com.hienthai.fastowin.protocol.GoldExchangeStatus
 import com.hienthai.fastowin.protocol.PlayerSnapshot
 import com.hienthai.fastowin.protocol.PlayerProfileSnapshot
 import com.hienthai.fastowin.protocol.PushNotificationCategory
@@ -255,6 +256,7 @@ class GameEngine(
         }
         if (message is ClientMessage.GetWalletHistory) return loadWalletHistory(playerId)
         if (message is ClientMessage.GetGemStoreCatalog) return loadGemStoreCatalog(playerId)
+        if (message is ClientMessage.ExchangeGemsForGold) return exchangeGemsForGold(playerId, message)
         if (message is ClientMessage.VerifyStorePurchase) return verifyStorePurchase(playerId, message)
         if (message is ClientMessage.ClaimDailyCheckIn) return claimDailyCheckIn(playerId)
         if (message is ClientMessage.ClaimMissionReward) return claimMissionReward(playerId, message.missionCode)
@@ -1590,6 +1592,62 @@ class GameEngine(
             ServerMessage.GemStoreCatalog(GEM_STORE_PACKAGES, sandboxEnabled = storeSandboxEnabled),
             setOf(playerId)
         ))
+    }
+
+    private suspend fun exchangeGemsForGold(
+        playerId: String,
+        message: ClientMessage.ExchangeGemsForGold
+    ): List<Delivery> {
+        if (!isAccountSession(playerId)) return listOf(accountRequired(playerId))
+
+        val offer = RewardEconomy.goldExchange(message.offerId)
+            ?: return listOf(Delivery(
+                ServerMessage.GoldExchangeResult(
+                    requestId = message.requestId,
+                    offerId = message.offerId,
+                    status = GoldExchangeStatus.INVALID_OFFER
+                ),
+                setOf(playerId)
+            ))
+        if (message.requestId.length !in 1..64) {
+            return listOf(Delivery(
+                ServerMessage.GoldExchangeResult(
+                    requestId = message.requestId,
+                    offerId = message.offerId,
+                    status = GoldExchangeStatus.FAILED
+                ),
+                setOf(playerId)
+            ))
+        }
+
+        val status = runCatching {
+            playerProfileRepository.exchangeGemsForGold(
+                playerId = playerId,
+                requestId = message.requestId,
+                offer = offer
+            )
+        }.onFailure {
+            System.err.println("Could not exchange Gems for Gold for $playerId: ${it.message}")
+        }.getOrDefault(GoldExchangeStatus.FAILED)
+
+        val result = Delivery(
+            ServerMessage.GoldExchangeResult(
+                requestId = message.requestId,
+                offerId = message.offerId,
+                spentGems = if (status == GoldExchangeStatus.GRANTED) offer.gemsCost else 0,
+                receivedGold = if (status == GoldExchangeStatus.GRANTED) offer.goldAmount else 0,
+                status = status
+            ),
+            setOf(playerId)
+        )
+        return if (
+            status == GoldExchangeStatus.GRANTED ||
+            status == GoldExchangeStatus.ALREADY_GRANTED
+        ) {
+            listOf(result) + loadProfile(playerId)
+        } else {
+            listOf(result)
+        }
     }
 
     private suspend fun verifyStorePurchase(
