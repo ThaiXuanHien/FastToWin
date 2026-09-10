@@ -3,12 +3,6 @@
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import com.hienthai.fastowin.protocol.MatchType
-import com.hienthai.fastowin.protocol.MATCH_DRAW_REWARD_GOLD
-import com.hienthai.fastowin.protocol.MATCH_DRAW_REWARD_XP
-import com.hienthai.fastowin.protocol.MATCH_LOSS_REWARD_GOLD
-import com.hienthai.fastowin.protocol.MATCH_LOSS_REWARD_XP
-import com.hienthai.fastowin.protocol.MATCH_WIN_REWARD_GOLD
-import com.hienthai.fastowin.protocol.MATCH_WIN_REWARD_XP
 import java.sql.Connection
 import java.sql.Timestamp
 import java.time.Instant
@@ -103,6 +97,13 @@ class PostgresMatchResultRepository(
 
     private fun updateStats(connection: Connection, match: CompletedMatch) {
         val metricsByPlayer = calculateSelectionMetrics(match)
+        val rewardsByPlayer = match.players.associate { player ->
+            player.playerId to RewardEconomy.matchReward(
+                matchType = match.matchType,
+                outcome = player.outcome,
+                intentionalLeave = player.intentionalLeave
+            )
+        }
         connection.prepareStatement(
             """
             INSERT INTO player_stats (
@@ -140,6 +141,7 @@ class PostgresMatchResultRepository(
             match.players.forEach { player ->
                 val won = if (player.outcome == MatchOutcome.WIN) 1 else 0
                 val metrics = metricsByPlayer[player.playerId] ?: SelectionMetrics()
+                val reward = requireNotNull(rewardsByPlayer[player.playerId])
                 statement.setObject(1, UUID.fromString(player.playerId))
                 statement.setInt(2, won)
                 statement.setInt(3, if (player.outcome == MatchOutcome.LOSS) 1 else 0)
@@ -151,31 +153,37 @@ class PostgresMatchResultRepository(
                 statement.setLong(9, metrics.wrong.toLong())
                 statement.setLong(10, metrics.reactionTimeTotalMillis)
                 statement.setLong(11, metrics.reactionSamples.toLong())
-                statement.setInt(12, matchExperienceReward(player.outcome))
-                statement.setInt(13, matchGoldReward(player.outcome))
+                statement.setInt(12, reward.xp)
+                statement.setInt(13, reward.gold)
                 statement.setTimestamp(14, match.endedAtMillis.toTimestamp())
                 statement.addBatch()
             }
             statement.executeBatch()
         }
-        connection.prepareStatement(
-            """
-            INSERT INTO wallet_transactions (
-                id, user_id, source_type, source_id, gold_delta, gems_delta, xp_delta, created_at
-            ) VALUES (?, ?, 'MATCH', ?, ?, 0, ?, ?)
-            ON CONFLICT (user_id, source_type, source_id) DO NOTHING
-            """.trimIndent()
-        ).use { statement ->
-            match.players.forEach { player ->
-                statement.setObject(1, UUID.randomUUID())
-                statement.setObject(2, UUID.fromString(player.playerId))
-                statement.setString(3, match.matchId)
-                statement.setInt(4, matchGoldReward(player.outcome))
-                statement.setInt(5, matchExperienceReward(player.outcome))
-                statement.setTimestamp(6, match.endedAtMillis.toTimestamp())
-                statement.addBatch()
+        val rewardedPlayers = match.players.mapNotNull { player ->
+            val reward = requireNotNull(rewardsByPlayer[player.playerId])
+            if (reward.gold == 0 && reward.xp == 0) null else player to reward
+        }
+        if (rewardedPlayers.isNotEmpty()) {
+            connection.prepareStatement(
+                """
+                INSERT INTO wallet_transactions (
+                    id, user_id, source_type, source_id, gold_delta, gems_delta, xp_delta, created_at
+                ) VALUES (?, ?, 'MATCH', ?, ?, 0, ?, ?)
+                ON CONFLICT (user_id, source_type, source_id) DO NOTHING
+                """.trimIndent()
+            ).use { statement ->
+                rewardedPlayers.forEach { (player, reward) ->
+                    statement.setObject(1, UUID.randomUUID())
+                    statement.setObject(2, UUID.fromString(player.playerId))
+                    statement.setString(3, match.matchId)
+                    statement.setInt(4, reward.gold)
+                    statement.setInt(5, reward.xp)
+                    statement.setTimestamp(6, match.endedAtMillis.toTimestamp())
+                    statement.addBatch()
+                }
+                statement.executeBatch()
             }
-            statement.executeBatch()
         }
     }
 
@@ -543,18 +551,6 @@ class PostgresMatchResultRepository(
         const val MIN_ELO = 100
         const val SEASON_INITIAL_RATING = 1_000
     }
-}
-
-private fun matchExperienceReward(outcome: MatchOutcome): Int = when (outcome) {
-    MatchOutcome.WIN -> MATCH_WIN_REWARD_XP
-    MatchOutcome.DRAW -> MATCH_DRAW_REWARD_XP
-    MatchOutcome.LOSS -> MATCH_LOSS_REWARD_XP
-}
-
-private fun matchGoldReward(outcome: MatchOutcome): Int = when (outcome) {
-    MatchOutcome.WIN -> MATCH_WIN_REWARD_GOLD
-    MatchOutcome.DRAW -> MATCH_DRAW_REWARD_GOLD
-    MatchOutcome.LOSS -> MATCH_LOSS_REWARD_GOLD
 }
 
 internal fun qualifiesForPerfectGame(

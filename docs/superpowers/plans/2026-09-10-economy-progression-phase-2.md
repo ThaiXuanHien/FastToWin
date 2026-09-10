@@ -165,17 +165,17 @@ git commit -m "feat: simplify shop to gem and gold"
 - Consumes: `RewardEconomy.matchReward` from Task 1.
 - `CompletedMatchPlayer` carries `intentionalLeave: Boolean = false`, preserving decoding/call-site compatibility.
 
-- [ ] **Step 1: Write failing table-driven integration tests** for all six Casual/Ranked W/D/L combinations and both intentional-leave variants using literal expected wallet deltas.
+- [x] **Step 1: Write failing table-driven integration tests** for all six Casual/Ranked W/D/L combinations and both intentional-leave variants using literal expected wallet deltas.
 
-- [ ] **Step 2: Run the focused tests and verify RED** against the current unified constants.
+- [x] **Step 2: Run the focused tests and verify RED** against the current unified constants.
 
-- [ ] **Step 3: Replace `matchExperienceReward` and `matchGoldReward`** with one `RewardEconomy.matchReward` decision per player and persist its Gold/XP values to `player_stats` and `wallet_transactions` in the existing match transaction.
+- [x] **Step 3: Replace `matchExperienceReward` and `matchGoldReward`** with one `RewardEconomy.matchReward` decision per player and persist its Gold/XP values to `player_stats` and `wallet_transactions` in the existing match transaction.
 
-- [ ] **Step 4: Ensure leave outcome propagation** marks the leaving player before `CompletedMatch` persistence; do not alter Elo loss behavior for Ranked.
+- [x] **Step 4: Ensure leave outcome propagation** marks the leaving player before `CompletedMatch` persistence; do not alter Elo loss behavior for Ranked.
 
-- [ ] **Step 5: Run focused tests and verify GREEN**, then run all server match tests.
+- [x] **Step 5: Run focused tests and verify GREEN**, then run all server match tests.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add server/src

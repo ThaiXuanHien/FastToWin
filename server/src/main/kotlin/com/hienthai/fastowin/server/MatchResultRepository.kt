@@ -16,7 +16,8 @@ data class CompletedMatchPlayer(
     val playerId: String,
     val displayName: String,
     val score: Int,
-    val outcome: MatchOutcome
+    val outcome: MatchOutcome,
+    val intentionalLeave: Boolean = false
 )
 
 @Serializable

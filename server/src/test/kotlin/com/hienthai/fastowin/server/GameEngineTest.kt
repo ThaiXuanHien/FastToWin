@@ -1452,8 +1452,12 @@ class GameEngineTest {
         assertTrue(repository.loadAll().single().departedPlayerIds.isEmpty())
         val saved = savedMatches.single()
         assertEquals(guest.playerId, saved.winnerPlayerId)
-        assertEquals(MatchOutcome.LOSS, saved.players.single { it.playerId == host.playerId }.outcome)
-        assertEquals(MatchOutcome.WIN, saved.players.single { it.playerId == guest.playerId }.outcome)
+        val savedHost = saved.players.single { it.playerId == host.playerId }
+        val savedGuest = saved.players.single { it.playerId == guest.playerId }
+        assertEquals(MatchOutcome.LOSS, savedHost.outcome)
+        assertTrue(savedHost.intentionalLeave)
+        assertEquals(MatchOutcome.WIN, savedGuest.outcome)
+        assertFalse(savedGuest.intentionalLeave)
 
         val rejected = engine.handle(
             guest.playerId,
@@ -2507,8 +2511,12 @@ class GameEngineTest {
         val resumed = engine.connectGuest("Host", host.resumeToken)
 
         assertEquals(guest.playerId, finished.winnerPlayerId)
-        assertEquals(MatchOutcome.LOSS, persisted.players.single { it.playerId == host.playerId }.outcome)
-        assertEquals(MatchOutcome.WIN, persisted.players.single { it.playerId == guest.playerId }.outcome)
+        val persistedHost = persisted.players.single { it.playerId == host.playerId }
+        val persistedGuest = persisted.players.single { it.playerId == guest.playerId }
+        assertEquals(MatchOutcome.LOSS, persistedHost.outcome)
+        assertFalse(persistedHost.intentionalLeave)
+        assertEquals(MatchOutcome.WIN, persistedGuest.outcome)
+        assertFalse(persistedGuest.intentionalLeave)
         assertEquals(com.hienthai.fastowin.protocol.RoomPhase.FINISHED, assertNotNull(resumed.currentGame).phase)
         assertEquals(guest.playerId, resumed.currentGame?.winnerPlayerId)
         assertEquals(null, engine.connectGuest("Host", host.resumeToken).currentGame)

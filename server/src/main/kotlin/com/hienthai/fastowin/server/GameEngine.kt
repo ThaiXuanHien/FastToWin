@@ -2359,6 +2359,7 @@ class GameEngine(
                 legacyFallback("Chưa thể xử lý rời trận lúc này.")
             )))
             room.forcedWinnerId = winnerId
+            room.intentionalLeavePlayerIds += player.playerId
             room.finishedPlayerIds += player.playerId
             room.phase = RoomPhase.FINISHED
             room.finishedAtEpochMillis = nowMillis()
@@ -3221,7 +3222,8 @@ class GameEngine(
                                     else -> MatchOutcome.LOSS
                                 }
                             }
-                        }
+                        },
+                        intentionalLeave = playerId in intentionalLeavePlayerIds
                     )
                 }
             },
@@ -3342,6 +3344,7 @@ class GameEngine(
         val deadlinesAtEpochMillis: MutableMap<String, Long> = mutableMapOf(),
         val finishedPlayerIds: MutableSet<String> = mutableSetOf(),
         val departedPlayerIds: MutableSet<String> = mutableSetOf(),
+        val intentionalLeavePlayerIds: MutableSet<String> = mutableSetOf(),
         var forcedWinnerId: String? = null,
         val scores: MutableMap<String, Int> = mutableMapOf(hostId to 0),
         var sequence: Long = 0,
@@ -3380,6 +3383,7 @@ class GameEngine(
             deadlinesAtEpochMillis.clear()
             finishedPlayerIds.clear()
             departedPlayerIds.clear()
+            intentionalLeavePlayerIds.clear()
             forcedWinnerId = null
             playerIds().forEach { id ->
                 scores[id] = 0
