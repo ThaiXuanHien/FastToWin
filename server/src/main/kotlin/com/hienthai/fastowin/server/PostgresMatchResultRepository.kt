@@ -421,6 +421,10 @@ class PostgresMatchResultRepository(
 
     private fun updateMissions(connection: Connection, match: CompletedMatch) {
         val metricsByPlayer = calculateSelectionMetrics(match)
+        val matchDate = missionDateAt(match.endedAtMillis)
+        val activeDefinitions =
+            MissionRotation.forPeriod(MissionPeriod.DAILY, matchDate) +
+                MissionRotation.forPeriod(MissionPeriod.WEEKLY, matchDate)
         connection.prepareStatement(
             """
             INSERT INTO user_missions (
@@ -441,21 +445,20 @@ class PostgresMatchResultRepository(
                 END
             """.trimIndent()
         ).use { statement ->
-            val matchDate = missionDateAt(match.endedAtMillis)
             match.players.forEach { player ->
                 val metrics = metricsByPlayer[player.playerId] ?: SelectionMetrics()
-                val missions = MISSION_DEFINITIONS.map { definition ->
-                    val increment = when (definition.code) {
-                        "DAILY_PLAY_3" -> 1
-                        "DAILY_WIN_1" -> if (player.outcome == MatchOutcome.WIN) 1 else 0
-                        "WEEKLY_CORRECT_100" -> metrics.correct
-                        "WEEKLY_PERFECT_1" -> if (player.isPerfectWinner(metrics)) 1 else 0
-                        else -> 0
-                    }
+                val currentStreak = currentWinStreak(connection, player.playerId)
+                val missions = activeDefinitions.map { definition ->
                     MissionProgress(
                         definition = definition,
                         periodStart = java.sql.Date.valueOf(missionPeriodStart(definition, matchDate)),
-                        increment = increment
+                        increment = missionIncrement(
+                            definition = definition,
+                            matchType = match.matchType,
+                            player = player,
+                            metrics = metrics,
+                            currentStreak = currentStreak
+                        )
                     )
                 }
                 missions.filter { it.increment > 0 }.forEach { mission ->
@@ -474,6 +477,44 @@ class PostgresMatchResultRepository(
                 }
             }
             statement.executeBatch()
+        }
+    }
+
+    private fun currentWinStreak(connection: Connection, playerId: String): Int =
+        connection.prepareStatement("SELECT current_win_streak FROM player_stats WHERE user_id = ?").use { statement ->
+            statement.setObject(1, UUID.fromString(playerId))
+            statement.executeQuery().use { result ->
+                check(result.next()) { "Missing player stats for $playerId" }
+                result.getInt("current_win_streak")
+            }
+        }
+
+    private fun missionIncrement(
+        definition: MissionDefinition,
+        matchType: MatchType,
+        player: CompletedMatchPlayer,
+        metrics: SelectionMetrics,
+        currentStreak: Int
+    ): Int {
+        if (player.intentionalLeave) return 0
+        val won = player.outcome == MatchOutcome.WIN
+        val perfectWin = player.isPerfectWinner(metrics)
+        val totalSelections = metrics.correct.toLong() + metrics.wrong.toLong()
+        val hasNinetyPercentAccuracy =
+            totalSelections > 0 && metrics.correct.toLong() * 100 >= totalSelections * 90
+        return when (definition.code) {
+            "DAILY_PLAY_1", "DAILY_PLAY_3", "WEEKLY_PLAY_15" -> 1
+            "DAILY_CASUAL_2" -> if (matchType == MatchType.CASUAL) 1 else 0
+            "DAILY_RANKED_2" -> if (matchType == MatchType.RANKED) 1 else 0
+            "DAILY_WIN_1", "WEEKLY_WIN_5" -> if (won) 1 else 0
+            "WEEKLY_RANKED_WIN_3" -> if (matchType == MatchType.RANKED && won) 1 else 0
+            "DAILY_CORRECT_100", "WEEKLY_CORRECT_500" -> metrics.correct
+            "DAILY_ACCURACY_90" -> if (hasNinetyPercentAccuracy) 1 else 0
+            "DAILY_PERFECT_WIN_1", "WEEKLY_PERFECT_3" -> if (perfectWin) 1 else 0
+            "WEEKLY_STREAK_3" -> if (currentStreak >= definition.target) definition.target else 0
+            "DAILY_CHECK_IN", "DAILY_DONATE_GOLD_500",
+            "WEEKLY_DONATE_GOLD_2000", "WEEKLY_DONATE_GEMS_5" -> 0
+            else -> 0
         }
     }
 

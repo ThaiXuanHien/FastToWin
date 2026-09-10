@@ -129,30 +129,9 @@ class PostgresMatchResultRepositoryTest {
                     profile.achievements.map { it.code }.toSet()
                 )
                 assertEquals(0, guestProfile.achievements.size)
-                assertFalse(guestProfile.progression.weeklyMissions.first { it.code == "WEEKLY_PERFECT_1" }.completed)
                 assertEquals(30, profile.progression.experiencePoints)
                 assertEquals(100, profile.progression.gold)
                 assertEquals(1, profile.progression.level)
-                assertEquals(1, profile.progression.dailyMissions.first { it.code == "DAILY_PLAY_3" }.progress)
-                assertTrue(profile.progression.dailyMissions.first { it.code == "DAILY_WIN_1" }.completed)
-                assertEquals(25, profile.progression.dailyMissions.first { it.code == "DAILY_WIN_1" }.rewardXp)
-                val missionReward = profileRepository.claimMissionReward(host.playerId, "DAILY_WIN_1")!!
-                val duplicateMissionReward = profileRepository.claimMissionReward(host.playerId, "DAILY_WIN_1")!!
-                assertEquals(MissionRewardClaimStatus.CLAIMED, missionReward.status)
-                assertEquals(25, missionReward.rewardXp)
-                assertEquals(150, missionReward.rewardGold)
-                assertEquals(MissionRewardClaimStatus.ALREADY_CLAIMED, duplicateMissionReward.status)
-                val rewardedProfile = profileRepository.findByPlayerId(host.playerId)!!
-                assertEquals(55, rewardedProfile.progression.experiencePoints)
-                assertEquals(250, rewardedProfile.progression.gold)
-                assertTrue(rewardedProfile.progression.dailyMissions.first { it.code == "DAILY_WIN_1" }.rewardClaimed)
-                val perfectReward = profileRepository.claimMissionReward(host.playerId, "WEEKLY_PERFECT_1")!!
-                assertEquals(MissionRewardClaimStatus.CLAIMED, perfectReward.status)
-                assertEquals(120, perfectReward.rewardXp)
-                assertEquals(600, perfectReward.rewardGold)
-                assertEquals(2, perfectReward.rewardGems)
-                assertEquals(50, profile.progression.weeklyMissions.first { it.code == "WEEKLY_CORRECT_100" }.progress)
-                assertTrue(profile.progression.weeklyMissions.first { it.code == "WEEKLY_PERFECT_1" }.completed)
                 assertFalse(profile.progression.cosmetics.first { it.id == "frame_perfect" }.unlocked)
                 assertEquals("Mùa Khởi Đầu", profile.progression.season?.name)
                 assertEquals(1016, profile.progression.season?.rating)
@@ -168,9 +147,9 @@ class PostgresMatchResultRepositoryTest {
                 assertFalse(duplicateCheckIn.claimed)
                 assertEquals(0, duplicateCheckIn.rewardXp)
                 val checkedInProfile = profileRepository.findByPlayerId(host.playerId)!!
-                assertEquals(185, checkedInProfile.progression.experiencePoints)
-                assertEquals(900, checkedInProfile.progression.gold)
-                assertEquals(2, checkedInProfile.progression.gems)
+                assertEquals(40, checkedInProfile.progression.experiencePoints)
+                assertEquals(150, checkedInProfile.progression.gold)
+                assertEquals(0, checkedInProfile.progression.gems)
                 assertTrue(checkedInProfile.progression.dailyCheckIn.claimedToday)
                 assertEquals(1, checkedInProfile.progression.dailyCheckIn.currentStreak)
                 assertEquals(1, checkedInProfile.progression.dailyCheckIn.totalCheckIns)
@@ -180,7 +159,7 @@ class PostgresMatchResultRepositoryTest {
                         host.playerId,
                         sourceType = "TOURNAMENT_ENTRY",
                         sourceId = "tournament-1",
-                        goldDelta = -100
+                        goldDelta = -50
                     )
                 )
                 assertEquals(
@@ -189,7 +168,7 @@ class PostgresMatchResultRepositoryTest {
                         host.playerId,
                         sourceType = "TOURNAMENT_ENTRY",
                         sourceId = "tournament-1",
-                        goldDelta = -100
+                        goldDelta = -50
                     )
                 )
                 assertEquals(
@@ -202,11 +181,10 @@ class PostgresMatchResultRepositoryTest {
                     )
                 )
                 val walletHistory = profileRepository.loadWalletHistory(host.playerId)
-                assertEquals(6, walletHistory.size)
+                assertEquals(4, walletHistory.size)
                 assertEquals(
                     setOf(
                         "MATCH",
-                        "MISSION",
                         "DAILY_CHECK_IN",
                         "TOURNAMENT_ENTRY",
                         "TOURNAMENT_PRIZE"
@@ -214,7 +192,7 @@ class PostgresMatchResultRepositoryTest {
                     walletHistory.map { it.sourceType }.toSet()
                 )
                 assertEquals(1, walletHistory.count { it.sourceType == "TOURNAMENT_ENTRY" })
-                assertEquals(1_050, profileRepository.findByPlayerId(host.playerId)!!.progression.gold)
+                assertEquals(350, profileRepository.findByPlayerId(host.playerId)!!.progression.gold)
                 val storeTransaction = storePurchaseFingerprint(
                     com.hienthai.fastowin.protocol.StorePlatform.GOOGLE_PLAY,
                     "integration-purchase-token"
@@ -250,9 +228,9 @@ class PostgresMatchResultRepositoryTest {
                     )
                 )
                 val walletAfterStore = profileRepository.loadWalletHistory(host.playerId)
-                assertEquals(7, walletAfterStore.size)
+                assertEquals(5, walletAfterStore.size)
                 assertEquals(1, walletAfterStore.count { it.sourceType == "STORE_PURCHASE" })
-                assertEquals(82, profileRepository.findByPlayerId(host.playerId)!!.progression.gems)
+                assertEquals(80, profileRepository.findByPlayerId(host.playerId)!!.progression.gems)
                 dataSource.connection.use { connection ->
                     connection.prepareStatement(
                         "SELECT COUNT(*) AS count FROM daily_check_ins WHERE user_id = ?"

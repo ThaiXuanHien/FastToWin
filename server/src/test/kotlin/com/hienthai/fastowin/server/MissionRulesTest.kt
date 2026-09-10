@@ -8,35 +8,38 @@ import kotlin.test.assertEquals
 
 class MissionRulesTest {
     @Test
-    fun `mission rewards increase with weekly difficulty`() {
+    fun `mission catalog contains the approved daily and weekly definitions`() {
         assertEquals(
-            mapOf(
-                "DAILY_PLAY_3" to Triple(20, 100, 0),
-                "DAILY_WIN_1" to Triple(25, 150, 0),
-                "WEEKLY_CORRECT_100" to Triple(75, 400, 0),
-                "WEEKLY_PERFECT_1" to Triple(120, 600, 2)
+            listOf(
+                ExpectedMission("DAILY_PLAY_1", 1, MissionDifficulty.EASY, 10, 50, 0),
+                ExpectedMission("DAILY_CASUAL_2", 2, MissionDifficulty.EASY, 15, 80, 0),
+                ExpectedMission("DAILY_PLAY_3", 3, MissionDifficulty.NORMAL, 20, 100, 0),
+                ExpectedMission("DAILY_WIN_1", 1, MissionDifficulty.NORMAL, 25, 150, 0),
+                ExpectedMission("DAILY_RANKED_2", 2, MissionDifficulty.NORMAL, 25, 120, 0),
+                ExpectedMission("DAILY_CORRECT_100", 100, MissionDifficulty.NORMAL, 25, 150, 0),
+                ExpectedMission("DAILY_ACCURACY_90", 1, MissionDifficulty.HARD, 35, 200, 0),
+                ExpectedMission("DAILY_PERFECT_WIN_1", 1, MissionDifficulty.ELITE, 40, 250, 1),
+                ExpectedMission("DAILY_CHECK_IN", 1, MissionDifficulty.EASY, 10, 50, 0),
+                ExpectedMission("DAILY_DONATE_GOLD_500", 500, MissionDifficulty.HARD, 30, 180, 0)
             ),
-            MISSION_DEFINITIONS.associate { it.code to Triple(it.rewardXp, it.rewardGold, it.rewardGems) }
+            MISSION_DEFINITIONS
+                .filter { it.period == MissionPeriod.DAILY }
+                .map { it.toExpectation() }
         )
         assertEquals(
             listOf(
-                MissionDifficulty.EASY,
-                MissionDifficulty.NORMAL,
-                MissionDifficulty.HARD,
-                MissionDifficulty.ELITE
+                ExpectedMission("WEEKLY_PLAY_15", 15, MissionDifficulty.NORMAL, 75, 400, 0),
+                ExpectedMission("WEEKLY_WIN_5", 5, MissionDifficulty.HARD, 100, 600, 0),
+                ExpectedMission("WEEKLY_RANKED_WIN_3", 3, MissionDifficulty.HARD, 120, 700, 1),
+                ExpectedMission("WEEKLY_CORRECT_500", 500, MissionDifficulty.HARD, 90, 500, 0),
+                ExpectedMission("WEEKLY_STREAK_3", 3, MissionDifficulty.ELITE, 140, 800, 1),
+                ExpectedMission("WEEKLY_PERFECT_3", 3, MissionDifficulty.ELITE, 180, 1_000, 3),
+                ExpectedMission("WEEKLY_DONATE_GOLD_2000", 2_000, MissionDifficulty.HARD, 100, 600, 0),
+                ExpectedMission("WEEKLY_DONATE_GEMS_5", 5, MissionDifficulty.ELITE, 120, 700, 2)
             ),
-            MISSION_DEFINITIONS.map(MissionDefinition::difficulty)
-        )
-        assertEquals(0, MISSION_DEFINITIONS.filterNot { it.difficulty == MissionDifficulty.ELITE }.sumOf { it.rewardGems })
-        assertEquals(2, MISSION_DEFINITIONS.single { it.difficulty == MissionDifficulty.ELITE }.rewardGems)
-        assertEquals(
-            setOf(
-                TextKey.MissionPlayThree,
-                TextKey.MissionWinOne,
-                TextKey.MissionCorrectHundred,
-                TextKey.MissionPerfectWin
-            ),
-            MISSION_DEFINITIONS.mapTo(mutableSetOf(), MissionDefinition::titleKey)
+            MISSION_DEFINITIONS
+                .filter { it.period == MissionPeriod.WEEKLY }
+                .map { it.toExpectation() }
         )
     }
 
@@ -44,7 +47,7 @@ class MissionRulesTest {
     fun `daily and weekly periods reset at their boundaries`() {
         val sunday = LocalDate.of(2026, 8, 23)
         val daily = missionDefinition("DAILY_PLAY_3")!!
-        val weekly = missionDefinition("WEEKLY_CORRECT_100")!!
+        val weekly = missionDefinition("WEEKLY_CORRECT_500")!!
 
         assertEquals(sunday, missionPeriodStart(daily, sunday))
         assertEquals(LocalDate.of(2026, 8, 17), missionPeriodStart(weekly, sunday))
@@ -66,4 +69,22 @@ class MissionRulesTest {
         assertEquals("Mùa 3", name.fallback)
         assertEquals(TextKey.SeasonDefaultRewardDescription, reward.key)
     }
+
+    private fun MissionDefinition.toExpectation() = ExpectedMission(
+        code = code,
+        target = target,
+        difficulty = difficulty,
+        rewardXp = rewardXp,
+        rewardGold = rewardGold,
+        rewardGems = rewardGems
+    )
+
+    private data class ExpectedMission(
+        val code: String,
+        val target: Int,
+        val difficulty: MissionDifficulty,
+        val rewardXp: Int,
+        val rewardGold: Int,
+        val rewardGems: Int
+    )
 }

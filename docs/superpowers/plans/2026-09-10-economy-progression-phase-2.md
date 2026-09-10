@@ -199,27 +199,27 @@ git commit -m "feat: balance rewards by match type"
 - The selector returns daily difficulties `[EASY, NORMAL, NORMAL, HARD-or-ELITE]` and weekly `[NORMAL, HARD, HARD, ELITE]`, deterministically seeded from the period date.
 - Clan donation mission definitions are present but receive progress only from the future `ClanProgression` module.
 
-- [ ] **Step 1: Expand `MissionRulesTest` first** to assert all exact 10 daily and 8 weekly definitions, targets, difficulties and reward tuples from spec section 6.4.
+- [x] **Step 1: Expand `MissionRulesTest` first** to assert all exact 10 daily and 8 weekly definitions, targets, difficulties and reward tuples from spec section 6.4.
 
-- [ ] **Step 2: Write rotation tests first** asserting four entries, required difficulty slots, no duplicates, stable output for the same date, and changed selection across representative consecutive dates/weeks.
+- [x] **Step 2: Write rotation tests first** asserting four entries, required difficulty slots, no duplicates, stable output for the same date, and changed selection across representative consecutive dates/weeks.
 
-- [ ] **Step 3: Run focused tests and verify RED** because 14 definitions and rotation are missing.
+- [x] **Step 3: Run focused tests and verify RED** because 14 definitions and rotation are missing.
 
-- [ ] **Step 4: Add the 18 definitions and pure deterministic selector** using a stable integer seed derived from ISO date, not `Random.Default` and not process-local state.
+- [x] **Step 4: Add the 18 definitions and pure deterministic selector** using a stable integer seed derived from ISO date, not `Random.Default` and not process-local state.
 
-- [ ] **Step 5: Run catalog/rotation tests and verify GREEN**.
+- [x] **Step 5: Run catalog/rotation tests and verify GREEN**.
 
-- [ ] **Step 6: Write failing match integration tests** for play, Casual, Ranked, win, correct-count, 90% accuracy, perfect win, weekly streak and weekly perfect progress. Assertions target only missions active for the fixture period.
+- [x] **Step 6: Write failing match integration tests** for play, Casual, Ranked, win, correct-count, 90% accuracy, perfect win, weekly streak and weekly perfect progress. Assertions target only missions active for the fixture period.
 
-- [ ] **Step 7: Generalize match mission progress** through `missionIncrement(definition, matchType, playerOutcome, metrics, currentStreak)` and upsert only active definitions.
+- [x] **Step 7: Generalize match mission progress** through `missionIncrement(definition, matchType, playerOutcome, metrics, currentStreak)` and upsert only active definitions.
 
-- [ ] **Step 8: Write a failing check-in integration test** for `DAILY_CHECK_IN`, then increment it in the same daily-check-in transaction. Leave donation mission increments absent until the clan phase rather than fabricating client-driven progress.
+- [x] **Step 8: Write a failing check-in integration test** for `DAILY_CHECK_IN`, then increment it in the same daily-check-in transaction. Leave donation mission increments absent until the clan phase rather than fabricating client-driven progress.
 
-- [ ] **Step 9: Change profile mission loading** to return the active four daily and four weekly definitions with stored progress defaulting to zero; retain old claimed rows for wallet history.
+- [x] **Step 9: Change profile mission loading** to return the active four daily and four weekly definitions with stored progress defaulting to zero; retain old claimed rows for wallet history.
 
-- [ ] **Step 10: Run all mission/check-in/match tests and verify GREEN**.
+- [x] **Step 10: Run all mission/check-in/match tests and verify GREEN**.
 
-- [ ] **Step 11: Commit**
+- [x] **Step 11: Commit**
 
 ```bash
 git add server/src

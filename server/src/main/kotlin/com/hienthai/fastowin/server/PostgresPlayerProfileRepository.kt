@@ -277,6 +277,8 @@ class PostgresPlayerProfileRepository(
                 }
             }
             val today = currentCheckInDate()
+            val activeDailyMissions = MissionRotation.forPeriod(MissionPeriod.DAILY, today)
+            val activeWeeklyMissions = MissionRotation.forPeriod(MissionPeriod.WEEKLY, today)
             val recentCheckInDates = connection.prepareStatement(
                 """
                 SELECT check_in_date
@@ -306,7 +308,7 @@ class PostgresPlayerProfileRepository(
                 statement.setObject(1, userId)
                 statement.setDate(2, Date.valueOf(today))
                 statement.setDate(3, Date.valueOf(missionPeriodStart(
-                    MISSION_DEFINITIONS.first { it.period == MissionPeriod.WEEKLY },
+                    activeWeeklyMissions.first(),
                     today
                 )))
                 statement.executeQuery().use { result ->
@@ -625,8 +627,8 @@ class PostgresPlayerProfileRepository(
                     gems = progressionRow.gems,
                     currentLevelExperience = experiencePoints % EXPERIENCE_PER_LEVEL,
                     nextLevelExperience = EXPERIENCE_PER_LEVEL,
-                    dailyMissions = MISSION_DEFINITIONS.filter { it.period == MissionPeriod.DAILY }.map(::mission),
-                    weeklyMissions = MISSION_DEFINITIONS.filter { it.period == MissionPeriod.WEEKLY }.map(::mission),
+                    dailyMissions = activeDailyMissions.map(::mission),
+                    weeklyMissions = activeWeeklyMissions.map(::mission),
                     dailyCheckIn = DailyCheckInSnapshot(
                         claimedToday = checkInDecision.claimedToday,
                         cycleDay = checkInDecision.cycleDay,
@@ -969,6 +971,34 @@ class PostgresPlayerProfileRepository(
                             gems = decision.rewardGems,
                             xp = decision.rewardXp
                         )
+                        MissionRotation.forPeriod(MissionPeriod.DAILY, today)
+                            .firstOrNull { it.code == "DAILY_CHECK_IN" }
+                            ?.let { definition ->
+                                connection.prepareStatement(
+                                    """
+                                    INSERT INTO user_missions (
+                                        user_id, mission_code, period_start, progress, target,
+                                        reward_xp, reward_gold, reward_gems, completed_at
+                                    ) VALUES (?, ?, ?, 1, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                                    ON CONFLICT (user_id, mission_code, period_start) DO UPDATE SET
+                                        progress = GREATEST(user_missions.progress, 1),
+                                        target = EXCLUDED.target,
+                                        reward_xp = EXCLUDED.reward_xp,
+                                        reward_gold = EXCLUDED.reward_gold,
+                                        reward_gems = EXCLUDED.reward_gems,
+                                        completed_at = COALESCE(user_missions.completed_at, CURRENT_TIMESTAMP)
+                                    """.trimIndent()
+                                ).use { statement ->
+                                    statement.setObject(1, userId)
+                                    statement.setString(2, definition.code)
+                                    statement.setDate(3, Date.valueOf(today))
+                                    statement.setInt(4, definition.target)
+                                    statement.setInt(5, definition.rewardXp)
+                                    statement.setInt(6, definition.rewardGold)
+                                    statement.setInt(7, definition.rewardGems)
+                                    statement.executeUpdate()
+                                }
+                            }
                         if (decision.resultingStreak >= DAILY_CHECK_IN_STREAK_ACHIEVEMENT_TARGET) {
                             connection.prepareStatement(
                                 """
