@@ -319,7 +319,9 @@ data class CosmeticSnapshot(
     val name: String,
     val type: CosmeticType,
     val unlocked: Boolean,
-    val equipped: Boolean
+    val equipped: Boolean,
+    val nameKey: String? = null,
+    val unlockDescriptionKey: String? = null
 )
 
 @Serializable
@@ -476,7 +478,9 @@ data class AchievementSnapshot(
     val rewardGold: Int = 0,
     val rewardGems: Int = 0,
     val frameId: String? = null,
-    val titleId: String? = null
+    val titleId: String? = null,
+    val titleKey: String? = null,
+    val descriptionKey: String? = null
 )
 
 @Serializable

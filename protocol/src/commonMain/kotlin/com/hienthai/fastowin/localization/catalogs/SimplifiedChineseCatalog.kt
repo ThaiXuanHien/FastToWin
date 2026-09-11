@@ -5,6 +5,7 @@ import com.hienthai.fastowin.localization.LocalizationCatalog
 import com.hienthai.fastowin.localization.PluralCategory
 import com.hienthai.fastowin.localization.QuantityKey
 import com.hienthai.fastowin.localization.TextKey
+import com.hienthai.fastowin.localization.economyProgressionTexts
 
 internal val simplifiedChineseCatalog = LocalizationCatalog(
     language = AppLanguage.SIMPLIFIED_CHINESE,
@@ -26,7 +27,7 @@ internal val simplifiedChineseCatalog = LocalizationCatalog(
         TextKey.Loading to "加载中…",
         TextKey.UnknownError to "出了点问题，请重试。",
         TextKey.WelcomePlayer to "你好，{player}！"
-) + simplifiedChineseShellAuthTexts + simplifiedChineseGameplayTexts + simplifiedChineseProfileTexts + simplifiedChineseSocialShopTexts + simplifiedChineseProtocolMessageTexts + simplifiedChineseDeliveryTexts + residualTexts(AppLanguage.SIMPLIFIED_CHINESE),
+) + simplifiedChineseShellAuthTexts + simplifiedChineseGameplayTexts + simplifiedChineseProfileTexts + simplifiedChineseSocialShopTexts + simplifiedChineseProtocolMessageTexts + simplifiedChineseDeliveryTexts + residualTexts(AppLanguage.SIMPLIFIED_CHINESE) + economyProgressionTexts.getValue(AppLanguage.SIMPLIFIED_CHINESE),
     quantities = mapOf(
         QuantityKey.Players to mapOf(
             PluralCategory.OTHER to "{count} 位玩家"

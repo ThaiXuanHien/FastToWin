@@ -4,6 +4,7 @@ data class ProgressionCosmeticDefinition(
     val id: String,
     val fallbackName: String,
     val nameKey: String,
+    val unlockDescriptionKey: String,
     val type: CosmeticType
 )
 
@@ -42,7 +43,19 @@ val TITLE_CATALOG = listOf(
 )
 
 private fun frame(id: String, fallbackName: String, nameKey: String) =
-    ProgressionCosmeticDefinition(id, fallbackName, nameKey, CosmeticType.FRAME)
+    ProgressionCosmeticDefinition(
+        id,
+        fallbackName,
+        nameKey,
+        nameKey.removeSuffix("Name") + "UnlockDescription",
+        CosmeticType.FRAME
+    )
 
 private fun title(id: String, fallbackName: String, nameKey: String) =
-    ProgressionCosmeticDefinition(id, fallbackName, nameKey, CosmeticType.TITLE)
+    ProgressionCosmeticDefinition(
+        id,
+        fallbackName,
+        nameKey,
+        nameKey.removeSuffix("Name") + "UnlockDescription",
+        CosmeticType.TITLE
+    )

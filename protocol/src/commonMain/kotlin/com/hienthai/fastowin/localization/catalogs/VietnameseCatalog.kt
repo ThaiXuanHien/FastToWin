@@ -5,6 +5,7 @@ import com.hienthai.fastowin.localization.LocalizationCatalog
 import com.hienthai.fastowin.localization.PluralCategory
 import com.hienthai.fastowin.localization.QuantityKey
 import com.hienthai.fastowin.localization.TextKey
+import com.hienthai.fastowin.localization.economyProgressionTexts
 
 internal val vietnameseCatalog = LocalizationCatalog(
     language = AppLanguage.VIETNAMESE,
@@ -26,7 +27,7 @@ internal val vietnameseCatalog = LocalizationCatalog(
         TextKey.Loading to "Đang tải…",
         TextKey.UnknownError to "Đã có lỗi xảy ra. Vui lòng thử lại.",
         TextKey.WelcomePlayer to "Chào {player}!"
-) + vietnameseShellAuthTexts + vietnameseGameplayTexts + vietnameseProfileTexts + vietnameseSocialShopTexts + vietnameseProtocolMessageTexts + vietnameseDeliveryTexts + residualTexts(AppLanguage.VIETNAMESE),
+) + vietnameseShellAuthTexts + vietnameseGameplayTexts + vietnameseProfileTexts + vietnameseSocialShopTexts + vietnameseProtocolMessageTexts + vietnameseDeliveryTexts + residualTexts(AppLanguage.VIETNAMESE) + economyProgressionTexts.getValue(AppLanguage.VIETNAMESE),
     quantities = mapOf(
         QuantityKey.Players to mapOf(
             PluralCategory.OTHER to "{count} người chơi"

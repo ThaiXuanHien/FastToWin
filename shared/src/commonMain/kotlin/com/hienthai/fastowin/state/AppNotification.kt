@@ -80,17 +80,23 @@ private fun localizedNotificationText(
             TextKey.NotificationAchievementMessage -> {
                 val code = arguments.getValue("code")
                 mapOf(
-                    "title" to localization.achievementTitle(code, arguments.getValue("title")),
+                    "title" to localization.achievementTitle(
+                        code,
+                        arguments.getValue("title"),
+                        arguments["titleKey"]
+                    ),
                     "description" to localization.achievementDescription(
                         code,
-                        arguments.getValue("description")
+                        arguments.getValue("description"),
+                        arguments["descriptionKey"]
                     )
                 )
             }
             TextKey.NotificationCosmeticMessage -> mapOf(
                 "item" to localization.cosmeticName(
                     arguments.getValue("id"),
-                    arguments.getValue("name")
+                    arguments.getValue("name"),
+                    arguments["nameKey"]
                 )
             )
             TextKey.NotificationMissionMessage -> {
@@ -183,8 +189,10 @@ internal fun progressionNotifications(
     if (previous == null) return emptyList()
     val result = mutableListOf<AppNotification>()
 
-    val previousAchievementCodes = previous.achievements.mapTo(mutableSetOf()) { it.code }
-    current.achievements.filterNot { it.code in previousAchievementCodes }.forEach { achievement ->
+    val previousAchievements = previous.achievements.associateBy { it.code }
+    current.achievements.filter { achievement ->
+        achievement.unlocked && previousAchievements[achievement.code]?.unlocked != true
+    }.forEach { achievement ->
         result += AppNotification(
             id = "achievement:${achievement.code}",
             kind = AppNotificationKind.ACHIEVEMENT,
@@ -192,25 +200,37 @@ internal fun progressionNotifications(
             message = localization.text(
                 TextKey.NotificationAchievementMessage,
                 mapOf(
-                    "title" to localization.achievementTitle(achievement.code, achievement.title),
-                    "description" to localization.achievementDescription(achievement.code, achievement.description)
+                    "title" to localization.achievementTitle(
+                        achievement.code,
+                        achievement.title,
+                        achievement.titleKey
+                    ),
+                    "description" to localization.achievementDescription(
+                        achievement.code,
+                        achievement.description,
+                        achievement.descriptionKey
+                    )
                 )
             ),
             createdAtEpochMillis = nowMillis,
             destination = AppNotificationDestination.PROFILE,
             titleKey = TextKey.AchievementsTitle.name,
             messageKey = TextKey.NotificationAchievementMessage.name,
-            messageArgs = mapOf(
-                "code" to achievement.code,
-                "title" to achievement.title,
-                "description" to achievement.description
-            ),
-            localizationData = mapOf(
-                "type" to "achievement",
-                "code" to achievement.code,
-                "title" to achievement.title,
-                "description" to achievement.description
-            )
+            messageArgs = buildMap {
+                put("code", achievement.code)
+                put("title", achievement.title)
+                put("description", achievement.description)
+                achievement.titleKey?.takeIf(String::isNotBlank)?.let { put("titleKey", it) }
+                achievement.descriptionKey?.takeIf(String::isNotBlank)?.let { put("descriptionKey", it) }
+            },
+            localizationData = buildMap {
+                put("type", "achievement")
+                put("code", achievement.code)
+                put("title", achievement.title)
+                put("description", achievement.description)
+                achievement.titleKey?.takeIf(String::isNotBlank)?.let { put("titleKey", it) }
+                achievement.descriptionKey?.takeIf(String::isNotBlank)?.let { put("descriptionKey", it) }
+            }
         )
     }
 
@@ -224,18 +244,23 @@ internal fun progressionNotifications(
             title = localization.text(TextKey.Unlocked),
             message = localization.text(
                 TextKey.NotificationCosmeticMessage,
-                mapOf("item" to localization.cosmeticName(cosmetic.id, cosmetic.name))
+                mapOf("item" to localization.cosmeticName(cosmetic.id, cosmetic.name, cosmetic.nameKey))
             ),
             createdAtEpochMillis = nowMillis,
             destination = AppNotificationDestination.PROFILE,
             titleKey = TextKey.Unlocked.name,
             messageKey = TextKey.NotificationCosmeticMessage.name,
-            messageArgs = mapOf("id" to cosmetic.id, "name" to cosmetic.name),
-            localizationData = mapOf(
-                "type" to "cosmetic",
-                "id" to cosmetic.id,
-                "name" to cosmetic.name
-            )
+            messageArgs = buildMap {
+                put("id", cosmetic.id)
+                put("name", cosmetic.name)
+                cosmetic.nameKey?.takeIf(String::isNotBlank)?.let { put("nameKey", it) }
+            },
+            localizationData = buildMap {
+                put("type", "cosmetic")
+                put("id", cosmetic.id)
+                put("name", cosmetic.name)
+                cosmetic.nameKey?.takeIf(String::isNotBlank)?.let { put("nameKey", it) }
+            }
         )
     }
 
@@ -328,8 +353,16 @@ internal fun AppNotification.relocalized(localization: LocalizationService): App
             message = localization.text(
                 TextKey.NotificationAchievementMessage,
                 mapOf(
-                    "title" to localization.achievementTitle(code, localizationData.getValue("title")),
-                    "description" to localization.achievementDescription(code, localizationData.getValue("description"))
+                    "title" to localization.achievementTitle(
+                        code,
+                        localizationData.getValue("title"),
+                        localizationData["titleKey"]
+                    ),
+                    "description" to localization.achievementDescription(
+                        code,
+                        localizationData.getValue("description"),
+                        localizationData["descriptionKey"]
+                    )
                 )
             )
         )
@@ -341,7 +374,8 @@ internal fun AppNotification.relocalized(localization: LocalizationService): App
             mapOf(
                 "item" to localization.cosmeticName(
                     localizationData.getValue("id"),
-                    localizationData.getValue("name")
+                    localizationData.getValue("name"),
+                    localizationData["nameKey"]
                 )
             )
         )
@@ -396,8 +430,12 @@ private fun MissionSnapshot.localizedTitle(localization: LocalizationService): S
     }
 }
 
-private fun LocalizationService.achievementTitle(code: String, fallback: String): String = textOrFallback(
-    when (code.uppercase()) {
+private fun LocalizationService.achievementTitle(
+    code: String,
+    fallback: String,
+    keyName: String? = null
+): String = textOrFallback(
+    keyName.toTextKey() ?: when (code.uppercase()) {
         "FIRST_WIN" -> TextKey.AchievementFirstWinTitle
         "WIN_10" -> TextKey.AchievementWinTenTitle
         "PERFECT_GAME" -> TextKey.AchievementPerfectTitle
@@ -408,8 +446,12 @@ private fun LocalizationService.achievementTitle(code: String, fallback: String)
     fallback
 )
 
-private fun LocalizationService.achievementDescription(code: String, fallback: String): String = textOrFallback(
-    when (code.uppercase()) {
+private fun LocalizationService.achievementDescription(
+    code: String,
+    fallback: String,
+    keyName: String? = null
+): String = textOrFallback(
+    keyName.toTextKey() ?: when (code.uppercase()) {
         "FIRST_WIN" -> TextKey.AchievementFirstWinDescription
         "WIN_10" -> TextKey.AchievementWinTenDescription
         "PERFECT_GAME" -> TextKey.AchievementPerfectDescription
@@ -420,8 +462,12 @@ private fun LocalizationService.achievementDescription(code: String, fallback: S
     fallback
 )
 
-private fun LocalizationService.cosmeticName(id: String, fallback: String): String = textOrFallback(
-    when (id) {
+private fun LocalizationService.cosmeticName(
+    id: String,
+    fallback: String,
+    keyName: String? = null
+): String = textOrFallback(
+    keyName.toTextKey() ?: when (id) {
         "frame_default" -> TextKey.BasicFrame
         "frame_bronze" -> TextKey.BronzeFrame
         "frame_silver" -> TextKey.SilverFrame
@@ -444,6 +490,11 @@ private fun LocalizationService.cosmeticName(id: String, fallback: String): Stri
 
 private fun LocalizationService.textOrFallback(key: TextKey?, fallback: String): String =
     key?.let { runCatching { text(it) }.getOrNull() } ?: fallback
+
+private fun String?.toTextKey(): TextKey? =
+    this?.takeIf(String::isNotBlank)?.let { candidate ->
+        TextKey.entries.firstOrNull { it.name == candidate }
+    }
 
 private const val MAX_IN_APP_NOTIFICATIONS = 100
 private const val DAY_MILLIS = 86_400_000L

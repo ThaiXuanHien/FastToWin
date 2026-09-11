@@ -5,6 +5,7 @@ import com.hienthai.fastowin.localization.LocalizationCatalog
 import com.hienthai.fastowin.localization.PluralCategory
 import com.hienthai.fastowin.localization.QuantityKey
 import com.hienthai.fastowin.localization.TextKey
+import com.hienthai.fastowin.localization.economyProgressionTexts
 
 internal val russianCatalog = LocalizationCatalog(
     language = AppLanguage.RUSSIAN,
@@ -26,7 +27,7 @@ internal val russianCatalog = LocalizationCatalog(
         TextKey.Loading to "Загрузка…",
         TextKey.UnknownError to "Произошла ошибка. Попробуйте ещё раз.",
         TextKey.WelcomePlayer to "Привет, {player}!"
-) + russianShellAuthTexts + russianGameplayTexts + russianProfileTexts + russianSocialShopTexts + russianProtocolMessageTexts + russianDeliveryTexts + residualTexts(AppLanguage.RUSSIAN),
+) + russianShellAuthTexts + russianGameplayTexts + russianProfileTexts + russianSocialShopTexts + russianProtocolMessageTexts + russianDeliveryTexts + residualTexts(AppLanguage.RUSSIAN) + economyProgressionTexts.getValue(AppLanguage.RUSSIAN),
     quantities = mapOf(
         QuantityKey.Players to mapOf(
             PluralCategory.ONE to "{count} игрок",

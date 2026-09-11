@@ -228,6 +228,36 @@ class AppNotificationTest {
         )
     }
 
+    @Test
+    fun `locked achievement transition creates a localized notification`() {
+        val locked = AchievementSnapshot(
+            code = "WINS_10",
+            title = "Cao Thủ",
+            description = "Thắng 10 trận online.",
+            unlockedAtEpochMillis = 0L,
+            unlocked = false,
+            progress = 9,
+            target = 10,
+            titleKey = TextKey.AchievementWins10Title.name,
+            descriptionKey = TextKey.AchievementWins10Description.name
+        )
+        val unlocked = locked.copy(
+            unlockedAtEpochMillis = NOW,
+            unlocked = true,
+            progress = 10
+        )
+        val notification = progressionNotifications(
+            profile(false, false, false).copy(achievements = listOf(locked)),
+            profile(false, false, false).copy(achievements = listOf(unlocked)),
+            NOW,
+            LocalizationService(AppLanguage.ENGLISH)
+        ).single { it.kind == AppNotificationKind.ACHIEVEMENT }
+
+        assertEquals("Master: Win 10 online matches.", notification.message)
+        assertEquals(TextKey.AchievementWins10Title.name, notification.messageArgs["titleKey"])
+        assertEquals(TextKey.AchievementWins10Description.name, notification.messageArgs["descriptionKey"])
+    }
+
     private fun profile(
         achievementUnlocked: Boolean,
         cosmeticUnlocked: Boolean,

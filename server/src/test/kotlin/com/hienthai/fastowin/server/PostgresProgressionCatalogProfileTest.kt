@@ -41,6 +41,11 @@ class PostgresProgressionCatalogProfileTest {
                 )
                 assertTrue(cosmetics.filter { it.id in FRAME_CATALOG.map { item -> item.id } }.none { it.unlocked })
                 assertTrue(cosmetics.filter { it.id in TITLE_CATALOG.map { item -> item.id } }.none { it.unlocked })
+                (FRAME_CATALOG + TITLE_CATALOG).forEach { definition ->
+                    val cosmetic = cosmetics.single { it.id == definition.id }
+                    assertEquals(definition.nameKey, cosmetic.nameKey)
+                    assertEquals(definition.unlockDescriptionKey, cosmetic.unlockDescriptionKey)
+                }
                 assertTrue(cosmetics.single { it.id == "frame_default" }.unlocked)
                 assertTrue(cosmetics.single { it.id == "title_rookie" }.unlocked)
             } finally {

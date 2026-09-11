@@ -5,6 +5,7 @@ import com.hienthai.fastowin.localization.LocalizationCatalog
 import com.hienthai.fastowin.localization.PluralCategory
 import com.hienthai.fastowin.localization.QuantityKey
 import com.hienthai.fastowin.localization.TextKey
+import com.hienthai.fastowin.localization.economyProgressionTexts
 
 internal val germanCatalog = LocalizationCatalog(
     language = AppLanguage.GERMAN,
@@ -26,7 +27,7 @@ internal val germanCatalog = LocalizationCatalog(
         TextKey.Loading to "Wird geladen…",
         TextKey.UnknownError to "Ein Fehler ist aufgetreten. Bitte versuche es erneut.",
         TextKey.WelcomePlayer to "Hallo {player}!"
-) + germanShellAuthTexts + germanGameplayTexts + germanProfileTexts + germanSocialShopTexts + germanProtocolMessageTexts + germanDeliveryTexts + residualTexts(AppLanguage.GERMAN),
+) + germanShellAuthTexts + germanGameplayTexts + germanProfileTexts + germanSocialShopTexts + germanProtocolMessageTexts + germanDeliveryTexts + residualTexts(AppLanguage.GERMAN) + economyProgressionTexts.getValue(AppLanguage.GERMAN),
     quantities = mapOf(
         QuantityKey.Players to mapOf(
             PluralCategory.ONE to "{count} Spieler",

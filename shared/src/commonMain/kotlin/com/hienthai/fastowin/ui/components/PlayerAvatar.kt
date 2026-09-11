@@ -27,6 +27,7 @@ import com.hienthai.fastowin.protocol.FRAME_CATALOG
 import com.hienthai.fastowin.protocol.RankedTier
 import com.hienthai.fastowin.localization.TextKey
 import com.hienthai.fastowin.localization.localized
+import com.hienthai.fastowin.localization.localizedNetworkText
 import com.hienthai.fastowin.localization.localizedRankedTierName
 import com.hienthai.fastowin.localization.AppLanguage
 import com.hienthai.fastowin.localization.LocalizationService
@@ -221,7 +222,10 @@ fun avatarFrameName(frameId: String): String {
             mapOf("tier" to localization.text(rankedTierTextKey(it)))
         )
     }
-    FRAME_CATALOG.firstOrNull { it.id == frameId }?.let { return it.fallbackName }
+    FRAME_CATALOG.firstOrNull { it.id == frameId }?.let { definition ->
+        val key = TextKey.entries.firstOrNull { it.name == definition.nameKey }
+        return key?.let { localization.text(it) } ?: definition.fallbackName
+    }
     return localization.text(when (frameId) {
         "frame_bronze" -> TextKey.BronzeFrame
         "frame_silver" -> TextKey.SilverFrame
@@ -237,7 +241,9 @@ private fun localizedAvatarFrameName(frameId: String): String {
     seasonalFrameTier(frameId)?.let {
         return localized(TextKey.SeasonalFrame, "tier" to localizedRankedTierName(it))
     }
-    FRAME_CATALOG.firstOrNull { it.id == frameId }?.let { return it.fallbackName }
+    FRAME_CATALOG.firstOrNull { it.id == frameId }?.let { definition ->
+        return localizedNetworkText(definition.nameKey, emptyMap(), definition.fallbackName)
+    }
     return localized(when (frameId) {
         "frame_bronze" -> TextKey.BronzeFrame
         "frame_silver" -> TextKey.SilverFrame

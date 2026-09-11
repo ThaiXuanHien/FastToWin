@@ -57,7 +57,12 @@ class ProgressionCatalogTest {
 
         assertEquals(catalog.size, catalog.map(ProgressionCosmeticDefinition::id).distinct().size)
         assertEquals(catalog.size, catalog.map(ProgressionCosmeticDefinition::nameKey).distinct().size)
+        assertEquals(
+            catalog.size,
+            catalog.map(ProgressionCosmeticDefinition::unlockDescriptionKey).distinct().size
+        )
         assertTrue(catalog.all { it.nameKey.isNotBlank() })
+        assertTrue(catalog.all { it.unlockDescriptionKey.isNotBlank() })
     }
 
     @Test

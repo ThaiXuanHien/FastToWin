@@ -5,6 +5,7 @@ import com.hienthai.fastowin.localization.LocalizationCatalog
 import com.hienthai.fastowin.localization.PluralCategory
 import com.hienthai.fastowin.localization.QuantityKey
 import com.hienthai.fastowin.localization.TextKey
+import com.hienthai.fastowin.localization.economyProgressionTexts
 
 internal val thaiCatalog = LocalizationCatalog(
     language = AppLanguage.THAI,
@@ -26,7 +27,7 @@ internal val thaiCatalog = LocalizationCatalog(
         TextKey.Loading to "กำลังโหลด…",
         TextKey.UnknownError to "เกิดข้อผิดพลาด โปรดลองอีกครั้ง",
         TextKey.WelcomePlayer to "สวัสดี {player}!"
-) + thaiShellAuthTexts + thaiGameplayTexts + thaiProfileTexts + thaiSocialShopTexts + thaiProtocolMessageTexts + thaiDeliveryTexts + residualTexts(AppLanguage.THAI),
+) + thaiShellAuthTexts + thaiGameplayTexts + thaiProfileTexts + thaiSocialShopTexts + thaiProtocolMessageTexts + thaiDeliveryTexts + residualTexts(AppLanguage.THAI) + economyProgressionTexts.getValue(AppLanguage.THAI),
     quantities = mapOf(
         QuantityKey.Players to mapOf(
             PluralCategory.OTHER to "ผู้เล่น {count} คน"

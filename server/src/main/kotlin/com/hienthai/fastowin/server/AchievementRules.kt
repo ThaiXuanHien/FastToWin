@@ -33,26 +33,26 @@ private val ACHIEVEMENT_REWARDS = mapOf(
 )
 
 internal val ACHIEVEMENT_DEFINITIONS = listOf(
-    achievement("FIRST_WIN", "Khai Chiến", "Thắng trận online đầu tiên.", MissionDifficulty.EASY, 1, titleId = "title_first_battle"),
-    achievement("WINS_10", "Cao Thủ", "Thắng 10 trận online.", MissionDifficulty.NORMAL, 10, "frame_warrior", "title_master"),
-    achievement("WINS_50", "Bách Chiến", "Thắng 50 trận online.", MissionDifficulty.HARD, 50, "frame_veteran", "title_veteran"),
-    achievement("RANKED_WINS_100", "Kẻ Chinh Phục", "Thắng 100 trận đấu hạng.", MissionDifficulty.ELITE, 100, "frame_diamond", "title_conqueror"),
-    achievement("WIN_STREAK_10", "Bất Bại", "Đạt chuỗi thắng 10 trận.", MissionDifficulty.ELITE, 10, "frame_unyielding", "title_undefeated"),
-    achievement("PERFECT_MATCH_1", "Nhất Kích", "Thắng một trận không chọn sai.", MissionDifficulty.EASY, 1, titleId = "title_one_strike"),
-    achievement("PERFECT_MATCHES_10", "Quán Quân", "Thắng 10 trận không chọn sai.", MissionDifficulty.HARD, 10, frameId = "frame_champion"),
-    achievement("ACCURACY_90_TEN", "Mắt Thần", "Đạt ít nhất 90% chính xác trong 10 trận.", MissionDifficulty.NORMAL, 10, titleId = "title_divine_eye"),
-    achievement("RESPONSE_2500_TEN", "Phản Xạ Vàng", "Phản ứng trung bình dưới 2,5 giây trong 10 trận.", MissionDifficulty.HARD, 10, "frame_speed_shadow", "title_golden_reflex"),
-    achievement("RESPONSE_1500_TEN", "Thần Tốc", "Phản ứng trung bình dưới 1,5 giây trong 10 trận.", MissionDifficulty.ELITE, 10, "frame_lightning", "title_godspeed"),
-    achievement("CHECKIN_STREAK_7", "Liệt Hỏa", "Điểm danh liên tiếp 7 ngày.", MissionDifficulty.EASY, 7, frameId = "frame_wildfire"),
-    achievement("CHECKIN_STREAK_30", "Bất Diệt", "Điểm danh liên tiếp 30 ngày.", MissionDifficulty.HARD, 30, frameId = "frame_immortal"),
-    achievement("CHECKINS_50", "Bền Bỉ", "Điểm danh tổng cộng 50 lần.", MissionDifficulty.NORMAL, 50),
-    achievement("CHECKINS_100", "Chí Tôn", "Điểm danh tổng cộng 100 lần.", MissionDifficulty.ELITE, 100, frameId = "frame_supreme"),
-    achievement("PLAYER_LEVEL_30", "Chiến Thần", "Đạt cấp người chơi 30.", MissionDifficulty.HARD, 30, "frame_legend", "title_war_god"),
-    achievement("CLAN_JOINED", "Vinh Quang", "Tham gia một bang.", MissionDifficulty.EASY, 1, frameId = "frame_glory"),
-    achievement("CLAN_GOLD_10000", "Long Uy", "Quyên góp tổng cộng 10.000 Vàng.", MissionDifficulty.HARD, 10_000, frameId = "frame_dragon_might"),
-    achievement("CLAN_GEMS_50", "Đế Vương", "Quyên góp tổng cộng 50 Gem.", MissionDifficulty.ELITE, 50, frameId = "frame_emperor"),
-    achievement("CLAN_QUESTS_10", "Trụ Cột", "Nhận thưởng 10 nhiệm vụ bang.", MissionDifficulty.HARD, 10, titleId = "title_pillar"),
-    achievement("CLAN_LEVEL_10", "Vô Song", "Thuộc bang khi bang đạt cấp 10.", MissionDifficulty.ELITE, 10, frameId = "frame_peerless")
+    achievement("FIRST_WIN", legacyFallback("Khai Chiến"), legacyFallback("Thắng trận online đầu tiên."), MissionDifficulty.EASY, 1, titleId = "title_first_battle"),
+    achievement("WINS_10", legacyFallback("Cao Thủ"), legacyFallback("Thắng 10 trận online."), MissionDifficulty.NORMAL, 10, "frame_warrior", "title_master"),
+    achievement("WINS_50", legacyFallback("Bách Chiến"), legacyFallback("Thắng 50 trận online."), MissionDifficulty.HARD, 50, "frame_veteran", "title_veteran"),
+    achievement("RANKED_WINS_100", legacyFallback("Kẻ Chinh Phục"), legacyFallback("Thắng 100 trận đấu hạng."), MissionDifficulty.ELITE, 100, "frame_diamond", "title_conqueror"),
+    achievement("WIN_STREAK_10", legacyFallback("Bất Bại"), legacyFallback("Đạt chuỗi thắng 10 trận."), MissionDifficulty.ELITE, 10, "frame_unyielding", "title_undefeated"),
+    achievement("PERFECT_MATCH_1", legacyFallback("Nhất Kích"), legacyFallback("Thắng một trận không chọn sai."), MissionDifficulty.EASY, 1, titleId = "title_one_strike"),
+    achievement("PERFECT_MATCHES_10", legacyFallback("Quán Quân"), legacyFallback("Thắng 10 trận không chọn sai."), MissionDifficulty.HARD, 10, frameId = "frame_champion"),
+    achievement("ACCURACY_90_TEN", legacyFallback("Mắt Thần"), legacyFallback("Đạt ít nhất 90% chính xác trong 10 trận."), MissionDifficulty.NORMAL, 10, titleId = "title_divine_eye"),
+    achievement("RESPONSE_2500_TEN", legacyFallback("Phản Xạ Vàng"), legacyFallback("Phản ứng trung bình dưới 2,5 giây trong 10 trận."), MissionDifficulty.HARD, 10, "frame_speed_shadow", "title_golden_reflex"),
+    achievement("RESPONSE_1500_TEN", legacyFallback("Thần Tốc"), legacyFallback("Phản ứng trung bình dưới 1,5 giây trong 10 trận."), MissionDifficulty.ELITE, 10, "frame_lightning", "title_godspeed"),
+    achievement("CHECKIN_STREAK_7", legacyFallback("Liệt Hỏa"), legacyFallback("Điểm danh liên tiếp 7 ngày."), MissionDifficulty.EASY, 7, frameId = "frame_wildfire"),
+    achievement("CHECKIN_STREAK_30", legacyFallback("Bất Diệt"), legacyFallback("Điểm danh liên tiếp 30 ngày."), MissionDifficulty.HARD, 30, frameId = "frame_immortal"),
+    achievement("CHECKINS_50", legacyFallback("Bền Bỉ"), legacyFallback("Điểm danh tổng cộng 50 lần."), MissionDifficulty.NORMAL, 50),
+    achievement("CHECKINS_100", legacyFallback("Chí Tôn"), legacyFallback("Điểm danh tổng cộng 100 lần."), MissionDifficulty.ELITE, 100, frameId = "frame_supreme"),
+    achievement("PLAYER_LEVEL_30", legacyFallback("Chiến Thần"), legacyFallback("Đạt cấp người chơi 30."), MissionDifficulty.HARD, 30, "frame_legend", "title_war_god"),
+    achievement("CLAN_JOINED", legacyFallback("Vinh Quang"), legacyFallback("Tham gia một bang."), MissionDifficulty.EASY, 1, frameId = "frame_glory"),
+    achievement("CLAN_GOLD_10000", legacyFallback("Long Uy"), legacyFallback("Quyên góp tổng cộng 10.000 Vàng."), MissionDifficulty.HARD, 10_000, frameId = "frame_dragon_might"),
+    achievement("CLAN_GEMS_50", legacyFallback("Đế Vương"), legacyFallback("Quyên góp tổng cộng 50 Gem."), MissionDifficulty.ELITE, 50, frameId = "frame_emperor"),
+    achievement("CLAN_QUESTS_10", legacyFallback("Trụ Cột"), legacyFallback("Nhận thưởng 10 nhiệm vụ bang."), MissionDifficulty.HARD, 10, titleId = "title_pillar"),
+    achievement("CLAN_LEVEL_10", legacyFallback("Vô Song"), legacyFallback("Thuộc bang khi bang đạt cấp 10."), MissionDifficulty.ELITE, 10, frameId = "frame_peerless")
 )
 
 internal fun achievementDefinition(code: String): AchievementDefinition? =
@@ -321,8 +321,8 @@ private fun achievement(
     titleId: String? = null
 ): AchievementDefinition = AchievementDefinition(
     code = code,
-    title = legacyFallback(title),
-    description = legacyFallback(description),
+    title = title,
+    description = description,
     titleKey = "Achievement${code.toPascalCase()}Title",
     descriptionKey = "Achievement${code.toPascalCase()}Description",
     difficulty = difficulty,

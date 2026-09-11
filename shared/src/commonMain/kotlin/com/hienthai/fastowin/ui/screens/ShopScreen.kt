@@ -228,9 +228,13 @@ private fun GoldExchangeList(
                             }
                             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                                 Text(
-                                    localized(TextKey.GoldAmount, "count" to offer.goldAmount),
+                                    localized(offer.nameKey()),
                                     fontWeight = FontWeight.Black,
                                     style = MaterialTheme.typography.titleMedium
+                                )
+                                Text(
+                                    localized(TextKey.GoldAmount, "count" to offer.goldAmount),
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                                 Text(
                                     localized(TextKey.GemAmount, "count" to offer.gemsCost),
@@ -273,6 +277,13 @@ private fun GoldExchangeList(
         }
     }
 }
+
+private fun GoldExchangeOffer.nameKey(): TextKey = when (id) {
+    "gold_bag" -> TextKey.GoldOfferBagName
+    "gold_chest" -> TextKey.GoldOfferChestName
+    else -> TextKey.GoldOfferVaultName
+}
+
 @Composable
 private fun GemStorePreview(
     packages: List<GemPackageSnapshot>,

@@ -121,6 +121,7 @@ import com.hienthai.fastowin.state.MAX_ACCOUNT_PASSWORD_LENGTH
 import com.hienthai.fastowin.state.accountPasswordConfirmationError
 import com.hienthai.fastowin.state.accountPasswordError
 import com.hienthai.fastowin.localization.localized
+import com.hienthai.fastowin.localization.localizedNetworkText
 import com.hienthai.fastowin.localization.TextKey
 import com.hienthai.fastowin.localization.LocalLocalization
 import com.hienthai.fastowin.ui.components.SystemBackHandler
@@ -579,7 +580,7 @@ private fun ProfileIdentityPanel(
     }?.id ?: "frame_default"
     val equippedTitle = progression.cosmetics.firstOrNull {
         it.type == CosmeticType.TITLE && it.equipped
-    }?.name ?: localized(TextKey.Rookie)
+    }?.localizedName() ?: localized(TextKey.Rookie)
 
     val panelShape = RoundedCornerShape(20.dp)
     Box(
@@ -1183,9 +1184,9 @@ private fun StatisticsAchievementsSectionContent(profile: PlayerProfileSnapshot)
                                             }
                                         }
                                         Column(modifier = Modifier.weight(1f)) {
-                                            Text(localizedAchievementTitle(achievement.code, achievement.title), fontWeight = FontWeight.Black)
+                                            Text(localizedAchievementTitle(achievement), fontWeight = FontWeight.Black)
                                             Text(
-                                                localizedAchievementDescription(achievement.code, achievement.description),
+                                                localizedAchievementDescription(achievement),
                                                 style = MaterialTheme.typography.bodySmall,
                                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                                             )
@@ -1318,33 +1319,52 @@ private fun MissionArcadeDetails(mission: MissionSnapshot, modifier: Modifier = 
 }
 
 @Composable
-private fun localizedAchievementTitle(code: String, fallback: String): String = when (code) {
-    "FIRST_WIN" -> localized(TextKey.AchievementFirstWinTitle)
-    "WIN_10" -> localized(TextKey.AchievementWinTenTitle)
-    "PERFECT_GAME" -> localized(TextKey.AchievementPerfectTitle)
-    "SPEED_50" -> localized(TextKey.AchievementSpeedTitle)
-    "DAILY_STREAK_7" -> localized(TextKey.AchievementCheckInTitle)
-    else -> fallback
+private fun localizedAchievementTitle(achievement: com.hienthai.fastowin.protocol.AchievementSnapshot): String =
+    localizedNetworkText(
+        achievement.titleKey ?: legacyAchievementTitleKey(achievement.code)?.name,
+        emptyMap(),
+        achievement.title
+    )
+
+private fun legacyAchievementTitleKey(code: String): TextKey? = when (code) {
+    "FIRST_WIN" -> TextKey.AchievementFirstWinTitle
+    "WIN_10" -> TextKey.AchievementWinTenTitle
+    "PERFECT_GAME" -> TextKey.AchievementPerfectTitle
+    "SPEED_50" -> TextKey.AchievementSpeedTitle
+    "DAILY_STREAK_7" -> TextKey.AchievementCheckInTitle
+    else -> null
 }
 
 @Composable
-private fun localizedAchievementDescription(code: String, fallback: String): String = when (code) {
-    "FIRST_WIN" -> localized(TextKey.AchievementFirstWinDescription)
-    "WIN_10" -> localized(TextKey.AchievementWinTenDescription)
-    "PERFECT_GAME" -> localized(TextKey.AchievementPerfectDescription)
-    "SPEED_50" -> localized(TextKey.AchievementSpeedDescription)
-    "DAILY_STREAK_7" -> localized(TextKey.AchievementCheckInDescription)
-    else -> fallback
+private fun localizedAchievementDescription(achievement: com.hienthai.fastowin.protocol.AchievementSnapshot): String =
+    localizedNetworkText(
+        achievement.descriptionKey ?: legacyAchievementDescriptionKey(achievement.code)?.name,
+        emptyMap(),
+        achievement.description
+    )
+
+private fun legacyAchievementDescriptionKey(code: String): TextKey? = when (code) {
+    "FIRST_WIN" -> TextKey.AchievementFirstWinDescription
+    "WIN_10" -> TextKey.AchievementWinTenDescription
+    "PERFECT_GAME" -> TextKey.AchievementPerfectDescription
+    "SPEED_50" -> TextKey.AchievementSpeedDescription
+    "DAILY_STREAK_7" -> TextKey.AchievementCheckInDescription
+    else -> null
 }
 
 @Composable
-private fun localizedMissionTitle(mission: MissionSnapshot): String = when (mission.code) {
-    "DAILY_PLAY_3" -> localized(TextKey.MissionPlayThree)
-    "DAILY_WIN_1" -> localized(TextKey.MissionWinOne)
-    "WEEKLY_CORRECT_100" -> localized(TextKey.MissionCorrectHundred)
-    "WEEKLY_PERFECT_1" -> localized(TextKey.MissionPerfectWin)
-    else -> mission.title
-}
+private fun localizedMissionTitle(mission: MissionSnapshot): String =
+    localizedNetworkText(
+        mission.titleKey ?: when (mission.code) {
+            "DAILY_PLAY_3" -> TextKey.MissionPlayThree.name
+            "DAILY_WIN_1" -> TextKey.MissionWinOne.name
+            "WEEKLY_CORRECT_100" -> TextKey.MissionCorrectHundred.name
+            "WEEKLY_PERFECT_1" -> TextKey.MissionPerfectWin.name
+            else -> null
+        },
+        emptyMap(),
+        mission.title
+    )
 
 @Composable
 private fun MissionClaimControl(
@@ -1533,14 +1553,16 @@ private fun CollectionTitleCard(
                 }
             }
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(cosmetic.name, fontWeight = FontWeight.Black)
+                Text(cosmetic.localizedName(), fontWeight = FontWeight.Black)
                 Text(
                     when {
                         isEquipping -> localized(TextKey.Equipping)
                         cosmetic.equipped -> localized(TextKey.Equipped)
                         cosmetic.unlocked && canEquip -> localized(TextKey.TapToEquip)
                         cosmetic.unlocked -> localized(TextKey.Unlocked)
-                        else -> cosmetic.unlockRequirement()?.let { localized(TextKey.UnlockRequirement, "requirement" to it) }
+                        else -> cosmetic.localizedUnlockRequirement()?.let {
+                            localized(TextKey.UnlockRequirement, "requirement" to it)
+                        }
                             ?: localized(TextKey.Locked)
                     },
                     style = MaterialTheme.typography.bodySmall,
@@ -1604,7 +1626,7 @@ private fun CollectionFrameCard(
                 }
             }
             Text(
-                cosmetic.name,
+                cosmetic.localizedName(),
                 fontWeight = FontWeight.Black,
                 textAlign = TextAlign.Center,
                 maxLines = 3,
@@ -1620,7 +1642,9 @@ private fun CollectionFrameCard(
                         cosmetic.equipped -> localized(TextKey.Equipped)
                         cosmetic.unlocked && canEquip -> localized(TextKey.TapToEquip).uppercase()
                         cosmetic.unlocked -> localized(TextKey.Unlocked)
-                        else -> cosmetic.unlockRequirement()?.let { localized(TextKey.UnlockRequirement, "requirement" to it) }
+                        else -> cosmetic.localizedUnlockRequirement()?.let {
+                            localized(TextKey.UnlockRequirement, "requirement" to it)
+                        }
                             ?: localized(TextKey.Locked)
                     },
                     modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp),
@@ -2790,7 +2814,16 @@ private fun formatMatchDuration(millis: Long): String {
 }
 
 @Composable
-private fun CosmeticSnapshot.unlockRequirement(): String? = when (id) {
+private fun CosmeticSnapshot.localizedName(): String =
+    localizedNetworkText(nameKey, emptyMap(), name)
+
+@Composable
+private fun CosmeticSnapshot.localizedUnlockRequirement(): String? =
+    unlockDescriptionKey?.let { localizedNetworkText(it, emptyMap(), "") }.takeUnless { it.isNullOrBlank() }
+        ?: legacyUnlockRequirement()
+
+@Composable
+private fun CosmeticSnapshot.legacyUnlockRequirement(): String? = when (id) {
     "frame_bronze" -> localized(TextKey.UnlockLevel, "level" to 3)
     "frame_silver" -> localized(TextKey.UnlockLevel, "level" to 6)
     "frame_gold" -> localized(TextKey.UnlockLevel, "level" to 10)

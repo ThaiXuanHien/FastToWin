@@ -5,6 +5,7 @@ import com.hienthai.fastowin.localization.LocalizationCatalog
 import com.hienthai.fastowin.localization.PluralCategory
 import com.hienthai.fastowin.localization.QuantityKey
 import com.hienthai.fastowin.localization.TextKey
+import com.hienthai.fastowin.localization.economyProgressionTexts
 
 internal val japaneseCatalog = LocalizationCatalog(
     language = AppLanguage.JAPANESE,
@@ -26,7 +27,7 @@ internal val japaneseCatalog = LocalizationCatalog(
         TextKey.Loading to "読み込み中…",
         TextKey.UnknownError to "エラーが発生しました。もう一度お試しください。",
         TextKey.WelcomePlayer to "こんにちは、{player}！"
-) + japaneseShellAuthTexts + japaneseGameplayTexts + japaneseProfileTexts + japaneseSocialShopTexts + japaneseProtocolMessageTexts + japaneseDeliveryTexts + residualTexts(AppLanguage.JAPANESE),
+) + japaneseShellAuthTexts + japaneseGameplayTexts + japaneseProfileTexts + japaneseSocialShopTexts + japaneseProtocolMessageTexts + japaneseDeliveryTexts + residualTexts(AppLanguage.JAPANESE) + economyProgressionTexts.getValue(AppLanguage.JAPANESE),
     quantities = mapOf(
         QuantityKey.Players to mapOf(
             PluralCategory.OTHER to "プレイヤー{count}人"

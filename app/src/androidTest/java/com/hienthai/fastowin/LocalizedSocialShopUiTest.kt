@@ -5,8 +5,10 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
 import com.hienthai.fastowin.localization.AppLanguage
 import com.hienthai.fastowin.localization.ProvideLocalization
+import com.hienthai.fastowin.protocol.PlayerProgressionSnapshot
 import com.hienthai.fastowin.state.AppNotification
 import com.hienthai.fastowin.state.AppNotificationDestination
 import com.hienthai.fastowin.state.AppNotificationKind
@@ -108,6 +110,21 @@ class LocalizedSocialShopUiTest {
         }
         composeRule.onNodeWithText("Boutique").assertIsDisplayed()
         composeRule.onNodeWithText("Coffre de Gemmes").assertIsDisplayed()
+    }
+
+    @Test
+    fun frenchGoldOffersUseLocalizedProgressionCopy() {
+        render(AppLanguage.FRENCH) {
+            ShopScreen(
+                progression = PlayerProgressionSnapshot(gems = 100),
+                onClose = {}
+            )
+        }
+
+        composeRule.onNodeWithText("Or").performClick()
+        composeRule.onNodeWithText("Sac d'Or").assertIsDisplayed()
+        composeRule.onNodeWithText("Coffre d'Or").assertIsDisplayed()
+        composeRule.onNodeWithText("Trésor d'Or").assertIsDisplayed()
     }
 
     @Test

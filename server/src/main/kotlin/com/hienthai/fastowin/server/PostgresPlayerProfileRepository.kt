@@ -237,6 +237,7 @@ class PostgresPlayerProfileRepository(
                     buildList {
                         while (result.next()) {
                             val code = result.getString("code")
+                            val definition = achievementDefinition(code)
                             val unlockedAt = result.getTimestamp("unlocked_at")
                             val target = result.getInt("target")
                             add(
@@ -253,7 +254,9 @@ class PostgresPlayerProfileRepository(
                                     rewardGold = result.getInt("reward_gold"),
                                     rewardGems = result.getInt("reward_gems"),
                                     frameId = result.getString("frame_id"),
-                                    titleId = result.getString("title_id")
+                                    titleId = result.getString("title_id"),
+                                    titleKey = definition?.titleKey,
+                                    descriptionKey = definition?.descriptionKey
                                 )
                             )
                         }
@@ -621,8 +624,23 @@ class PostgresPlayerProfileRepository(
                 today, today.minusDays(1) -> progressionRow.currentDailyCheckInStreak
                 else -> 0
             }
-            fun cosmetic(id: String, name: String, type: CosmeticType, unlocked: Boolean, equippedId: String?) =
-                CosmeticSnapshot(id, name, type, unlocked, unlocked && id == equippedId)
+            fun cosmetic(
+                id: String,
+                name: String,
+                type: CosmeticType,
+                unlocked: Boolean,
+                equippedId: String?,
+                nameKey: String? = null,
+                unlockDescriptionKey: String? = null
+            ) = CosmeticSnapshot(
+                id = id,
+                name = name,
+                type = type,
+                unlocked = unlocked,
+                equipped = unlocked && id == equippedId,
+                nameKey = nameKey,
+                unlockDescriptionKey = unlockDescriptionKey
+            )
             val legacyCosmetics = listOf(
                 cosmetic("frame_default", legacyFallback("Khung cơ bản"), CosmeticType.FRAME, true, equippedFrameId),
                 cosmetic("frame_bronze", legacyFallback("Khung Đồng"), CosmeticType.FRAME, "frame_bronze" in unlockedFrames, equippedFrameId),
@@ -648,7 +666,9 @@ class PostgresPlayerProfileRepository(
                     legacyFallback(definition.fallbackName),
                     definition.type,
                     definition.id in unlockedFrames,
-                    equippedFrameId
+                    equippedFrameId,
+                    definition.nameKey,
+                    definition.unlockDescriptionKey
                 )
             } + TITLE_CATALOG.map { definition ->
                 cosmetic(
@@ -656,7 +676,9 @@ class PostgresPlayerProfileRepository(
                     legacyFallback(definition.fallbackName),
                     definition.type,
                     definition.id in unlockedTitles,
-                    equippedTitleId
+                    equippedTitleId,
+                    definition.nameKey,
+                    definition.unlockDescriptionKey
                 )
             }
             val receiptCosmetics = seasonCosmetics.map { owned ->

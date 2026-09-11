@@ -332,17 +332,17 @@ git commit -m "feat: add frames and titles catalog"
 - Adds keys for Gold tab/offers/exchange states, 18 mission names, 20 achievement names/descriptions, 16 frame names/unlock descriptions and 12 title names/unlock descriptions.
 - Backend and protocol send key names plus arguments; Vietnamese fallback text remains only for backward compatibility.
 
-- [ ] **Step 1: Extend localization tests first** so all 12 explicit languages must resolve every new key without falling back to Vietnamese or English.
+- [x] **Step 1: Extend localization tests first** so all 12 explicit languages must resolve every new key without falling back to Vietnamese or English.
 
-- [ ] **Step 2: Run catalog tests and verify RED** with the missing key report.
+- [x] **Step 2: Run catalog tests and verify RED** with the missing key report.
 
-- [ ] **Step 3: Add all `TextKey` members and translations** for Vietnamese, English, Simplified Chinese, Japanese, Korean, Spanish, Brazilian Portuguese, French, German, Indonesian, Thai and Russian. Use concise game vocabulary and preserve `Gem`, numeric arguments and stable IDs unchanged.
+- [x] **Step 3: Add all `TextKey` members and translations** for Vietnamese, English, Simplified Chinese, Japanese, Korean, Spanish, Brazilian Portuguese, French, German, Indonesian, Thai and Russian. Use concise game vocabulary and preserve `Gem`, numeric arguments and stable IDs unchanged.
 
-- [ ] **Step 4: Replace shop/profile/mission/achievement hard-coded display names** with `localized(key, arguments)` and extend notification resolvers for exchange and achievement rewards.
+- [x] **Step 4: Replace shop/profile/mission/achievement hard-coded display names** with `localized(key, arguments)` and extend notification resolvers for exchange and achievement rewards.
 
-- [ ] **Step 5: Run localization catalog tests, UI text scanner and localized Compose tests; verify GREEN**.
+- [x] **Step 5: Run localization catalog tests, UI text scanner and localized Compose tests; verify GREEN**.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add protocol/src shared/src app/src/androidTest

@@ -5,6 +5,7 @@ import com.hienthai.fastowin.localization.LocalizationCatalog
 import com.hienthai.fastowin.localization.PluralCategory
 import com.hienthai.fastowin.localization.QuantityKey
 import com.hienthai.fastowin.localization.TextKey
+import com.hienthai.fastowin.localization.economyProgressionTexts
 
 internal val frenchCatalog = LocalizationCatalog(
     language = AppLanguage.FRENCH,
@@ -26,7 +27,7 @@ internal val frenchCatalog = LocalizationCatalog(
         TextKey.Loading to "Chargement…",
         TextKey.UnknownError to "Une erreur est survenue. Réessayez.",
         TextKey.WelcomePlayer to "Bonjour {player} !"
-) + frenchShellAuthTexts + frenchGameplayTexts + frenchProfileTexts + frenchSocialShopTexts + frenchProtocolMessageTexts + frenchDeliveryTexts + residualTexts(AppLanguage.FRENCH),
+) + frenchShellAuthTexts + frenchGameplayTexts + frenchProfileTexts + frenchSocialShopTexts + frenchProtocolMessageTexts + frenchDeliveryTexts + residualTexts(AppLanguage.FRENCH) + economyProgressionTexts.getValue(AppLanguage.FRENCH),
     quantities = mapOf(
         QuantityKey.Players to mapOf(
             PluralCategory.ONE to "{count} joueur",
