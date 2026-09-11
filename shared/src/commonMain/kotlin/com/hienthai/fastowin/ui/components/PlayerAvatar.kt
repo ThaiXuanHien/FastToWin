@@ -23,6 +23,7 @@ import androidx.compose.ui.unit.dp
 import com.hienthai.fastowin.data.network.toAvatarImageUrl
 import com.hienthai.fastowin.protocol.DAILY_CHECK_IN_AVATAR_ID
 import com.hienthai.fastowin.protocol.DEFAULT_FEMALE_AVATAR_ID
+import com.hienthai.fastowin.protocol.FRAME_CATALOG
 import com.hienthai.fastowin.protocol.RankedTier
 import com.hienthai.fastowin.localization.TextKey
 import com.hienthai.fastowin.localization.localized
@@ -33,14 +34,28 @@ import com.hienthai.fastowin.localization.rankedTierTextKey
 import com.hienthai.fastowin.resources.Res
 import com.hienthai.fastowin.resources.arcade_frame_bronze
 import com.hienthai.fastowin.resources.arcade_frame_challenger
+import com.hienthai.fastowin.resources.arcade_frame_champion
 import com.hienthai.fastowin.resources.arcade_frame_default
 import com.hienthai.fastowin.resources.arcade_frame_diamond
+import com.hienthai.fastowin.resources.arcade_frame_dragon_might
+import com.hienthai.fastowin.resources.arcade_frame_emperor
+import com.hienthai.fastowin.resources.arcade_frame_glory
 import com.hienthai.fastowin.resources.arcade_frame_gold
+import com.hienthai.fastowin.resources.arcade_frame_immortal
+import com.hienthai.fastowin.resources.arcade_frame_legend
+import com.hienthai.fastowin.resources.arcade_frame_lightning
 import com.hienthai.fastowin.resources.arcade_frame_master
+import com.hienthai.fastowin.resources.arcade_frame_peerless
 import com.hienthai.fastowin.resources.arcade_frame_perfect
 import com.hienthai.fastowin.resources.arcade_frame_persistent
 import com.hienthai.fastowin.resources.arcade_frame_platinum
 import com.hienthai.fastowin.resources.arcade_frame_silver
+import com.hienthai.fastowin.resources.arcade_frame_speed_shadow
+import com.hienthai.fastowin.resources.arcade_frame_supreme
+import com.hienthai.fastowin.resources.arcade_frame_unyielding
+import com.hienthai.fastowin.resources.arcade_frame_veteran
+import com.hienthai.fastowin.resources.arcade_frame_warrior
+import com.hienthai.fastowin.resources.arcade_frame_wildfire
 import com.hienthai.fastowin.resources.avatar_player_blue
 import com.hienthai.fastowin.resources.avatar_player_coral
 import org.jetbrains.compose.resources.DrawableResource
@@ -132,22 +147,69 @@ fun AvatarImageProvider(
 }
 
 private fun avatarFrameResource(frameId: String): DrawableResource {
-    return when (seasonalFrameTier(frameId)) {
-        RankedTier.BRONZE -> Res.drawable.arcade_frame_bronze
-        RankedTier.SILVER -> Res.drawable.arcade_frame_silver
-        RankedTier.GOLD -> Res.drawable.arcade_frame_gold
-        RankedTier.PLATINUM -> Res.drawable.arcade_frame_platinum
-        RankedTier.DIAMOND -> Res.drawable.arcade_frame_diamond
-        RankedTier.MASTER -> Res.drawable.arcade_frame_master
-        RankedTier.CHALLENGER -> Res.drawable.arcade_frame_challenger
-        null -> when (frameId) {
-            "frame_bronze" -> Res.drawable.arcade_frame_bronze
-            "frame_silver" -> Res.drawable.arcade_frame_silver
-            "frame_gold" -> Res.drawable.arcade_frame_gold
-            "frame_perfect" -> Res.drawable.arcade_frame_perfect
-            "frame_persistent" -> Res.drawable.arcade_frame_persistent
-            else -> Res.drawable.arcade_frame_default
+    return when (avatarFrameAssetName(frameId)) {
+        "arcade_frame_bronze" -> Res.drawable.arcade_frame_bronze
+        "arcade_frame_silver" -> Res.drawable.arcade_frame_silver
+        "arcade_frame_gold" -> Res.drawable.arcade_frame_gold
+        "arcade_frame_platinum" -> Res.drawable.arcade_frame_platinum
+        "arcade_frame_diamond" -> Res.drawable.arcade_frame_diamond
+        "arcade_frame_master" -> Res.drawable.arcade_frame_master
+        "arcade_frame_challenger" -> Res.drawable.arcade_frame_challenger
+        "arcade_frame_perfect" -> Res.drawable.arcade_frame_perfect
+        "arcade_frame_persistent" -> Res.drawable.arcade_frame_persistent
+        "arcade_frame_lightning" -> Res.drawable.arcade_frame_lightning
+        "arcade_frame_wildfire" -> Res.drawable.arcade_frame_wildfire
+        "arcade_frame_warrior" -> Res.drawable.arcade_frame_warrior
+        "arcade_frame_veteran" -> Res.drawable.arcade_frame_veteran
+        "arcade_frame_glory" -> Res.drawable.arcade_frame_glory
+        "arcade_frame_unyielding" -> Res.drawable.arcade_frame_unyielding
+        "arcade_frame_legend" -> Res.drawable.arcade_frame_legend
+        "arcade_frame_emperor" -> Res.drawable.arcade_frame_emperor
+        "arcade_frame_speed_shadow" -> Res.drawable.arcade_frame_speed_shadow
+        "arcade_frame_champion" -> Res.drawable.arcade_frame_champion
+        "arcade_frame_immortal" -> Res.drawable.arcade_frame_immortal
+        "arcade_frame_dragon_might" -> Res.drawable.arcade_frame_dragon_might
+        "arcade_frame_supreme" -> Res.drawable.arcade_frame_supreme
+        "arcade_frame_peerless" -> Res.drawable.arcade_frame_peerless
+        else -> Res.drawable.arcade_frame_default
+    }
+}
+
+internal fun avatarFrameAssetName(frameId: String): String {
+    seasonalFrameTier(frameId)?.let { tier ->
+        return when (tier) {
+            RankedTier.BRONZE -> "arcade_frame_bronze"
+            RankedTier.SILVER -> "arcade_frame_silver"
+            RankedTier.GOLD -> "arcade_frame_gold"
+            RankedTier.PLATINUM -> "arcade_frame_platinum"
+            RankedTier.DIAMOND -> "arcade_frame_diamond"
+            RankedTier.MASTER -> "arcade_frame_master"
+            RankedTier.CHALLENGER -> "arcade_frame_challenger"
         }
+    }
+    return when (frameId) {
+        "frame_bronze" -> "arcade_frame_bronze"
+        "frame_silver" -> "arcade_frame_silver"
+        "frame_gold" -> "arcade_frame_gold"
+        "frame_perfect" -> "arcade_frame_perfect"
+        "frame_persistent" -> "arcade_frame_persistent"
+        "frame_lightning" -> "arcade_frame_lightning"
+        "frame_wildfire" -> "arcade_frame_wildfire"
+        "frame_warrior" -> "arcade_frame_warrior"
+        "frame_veteran" -> "arcade_frame_veteran"
+        "frame_diamond" -> "arcade_frame_diamond"
+        "frame_challenger" -> "arcade_frame_challenger"
+        "frame_glory" -> "arcade_frame_glory"
+        "frame_unyielding" -> "arcade_frame_unyielding"
+        "frame_legend" -> "arcade_frame_legend"
+        "frame_emperor" -> "arcade_frame_emperor"
+        "frame_speed_shadow" -> "arcade_frame_speed_shadow"
+        "frame_champion" -> "arcade_frame_champion"
+        "frame_immortal" -> "arcade_frame_immortal"
+        "frame_dragon_might" -> "arcade_frame_dragon_might"
+        "frame_supreme" -> "arcade_frame_supreme"
+        "frame_peerless" -> "arcade_frame_peerless"
+        else -> "arcade_frame_default"
     }
 }
 
@@ -159,6 +221,7 @@ fun avatarFrameName(frameId: String): String {
             mapOf("tier" to localization.text(rankedTierTextKey(it)))
         )
     }
+    FRAME_CATALOG.firstOrNull { it.id == frameId }?.let { return it.fallbackName }
     return localization.text(when (frameId) {
         "frame_bronze" -> TextKey.BronzeFrame
         "frame_silver" -> TextKey.SilverFrame
@@ -174,6 +237,7 @@ private fun localizedAvatarFrameName(frameId: String): String {
     seasonalFrameTier(frameId)?.let {
         return localized(TextKey.SeasonalFrame, "tier" to localizedRankedTierName(it))
     }
+    FRAME_CATALOG.firstOrNull { it.id == frameId }?.let { return it.fallbackName }
     return localized(when (frameId) {
         "frame_bronze" -> TextKey.BronzeFrame
         "frame_silver" -> TextKey.SilverFrame

@@ -73,7 +73,7 @@ class AppNotificationTest {
         assertEquals(3, notifications.size)
         assertTrue(notifications.all { !it.isRead })
         assertEquals(
-            "Thắng 1 trận hôm nay • Nhận 150 Vàng + 25 XP + 2 Gem.",
+            "Thắng 1 trận online • Nhận 150 Vàng + 25 XP + 2 Gem.",
             notifications.single { it.kind == AppNotificationKind.MISSION }.message
         )
     }
@@ -147,7 +147,7 @@ class AppNotificationTest {
         assertEquals("ROOM INVITATION", invitation.title)
         assertEquals("Hien invited you to Fast room.", invitation.message)
         assertEquals("Completed", mission.title)
-        assertEquals("Win 1 match today • Claim 150 Gold + 25 XP + 2 Gems.", mission.message)
+        assertEquals("Win 1 online match • Claim 150 Gold + 25 XP + 2 Gems.", mission.message)
         assertEquals(
             "Ten victories: Win 10 matches",
             progression.single { it.kind == AppNotificationKind.ACHIEVEMENT }.message
@@ -223,7 +223,7 @@ class AppNotificationTest {
             english.single { it.kind == AppNotificationKind.COSMETIC }.message
         )
         assertEquals(
-            "Win 1 match today • Claim 150 Gold + 25 XP + 2 Gems.",
+            "Win 1 online match • Claim 150 Gold + 25 XP + 2 Gems.",
             english.single { it.kind == AppNotificationKind.MISSION }.message
         )
     }

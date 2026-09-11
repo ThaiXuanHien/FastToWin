@@ -294,23 +294,23 @@ git commit -m "feat: expand achievements and rewards"
 - Reuses existing Diamond and Challenger frame art where applicable; creates 14 distinct 2D Arcade vector treatments for the other named frames.
 - Legacy frame/title IDs remain renderable; they are not counted in the new catalogs.
 
-- [ ] **Step 1: Write failing catalog tests** asserting the exact 16 frame IDs/names, exact 12 title IDs/names, unique IDs and every achievement reward reference resolves to a catalog entry.
+- [x] **Step 1: Write failing catalog tests** asserting the exact 16 frame IDs/names, exact 12 title IDs/names, unique IDs and every achievement reward reference resolves to a catalog entry.
 
-- [ ] **Step 2: Run protocol tests and verify RED**.
+- [x] **Step 2: Run protocol tests and verify RED**.
 
-- [ ] **Step 3: Implement stable catalogs** and replace repository-local `unlockedFrameIds`/`unlockedTitleIds` conditionals with unlock IDs stored by achievement/season receipts.
+- [x] **Step 3: Implement stable catalogs** and replace repository-local `unlockedFrameIds`/`unlockedTitleIds` conditionals with unlock IDs stored by achievement/season receipts.
 
-- [ ] **Step 4: Add the 14 vector frame assets** with distinct silhouette, accent palette and glow/border treatment; map all 16 IDs in `PlayerAvatar.framePainter` and `frameDisplayName`.
+- [x] **Step 4: Add the 14 vector frame assets** with distinct silhouette, accent palette and glow/border treatment; map all 16 IDs in `PlayerAvatar.framePainter` and `frameDisplayName`.
 
-- [ ] **Step 5: Write failing profile tests** proving locked items are visible, unlocked items can equip, locked items cannot equip, and legacy equipped IDs still render after migration.
+- [x] **Step 5: Write failing profile tests** proving locked items are visible, unlocked items can equip, locked items cannot equip, and legacy equipped IDs still render after migration.
 
-- [ ] **Step 6: Implement profile collection rendering** from the catalogs plus owned legacy/season items. Preserve scroll position and avoid optimistic profile reload flicker when equipping.
+- [x] **Step 6: Implement profile collection rendering** from the catalogs plus owned legacy/season items. Preserve scroll position and avoid optimistic profile reload flicker when equipping.
 
-- [ ] **Step 7: Make a Challenger season receipt unlock `frame_challenger`; award `title_speed_king` only to final rank 1 during season settlement. Retain old `season_*` receipts as owned legacy entries and make both new grants idempotent through the existing season claim**.
+- [x] **Step 7: Make a Challenger season receipt unlock `frame_challenger`; award `title_speed_king` only to final rank 1 during season settlement. Retain old `season_*` receipts as owned legacy entries and make both new grants idempotent through the existing season claim**.
 
-- [ ] **Step 8: Run protocol, server profile and shared tests and verify GREEN**.
+- [x] **Step 8: Run protocol, server profile and shared tests and verify GREEN**.
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
 ```bash
 git add protocol/src server/src shared/src

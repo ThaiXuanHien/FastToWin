@@ -27,11 +27,15 @@ import com.hienthai.fastowin.protocol.WalletTransactionSnapshot
 import com.hienthai.fastowin.protocol.SeasonSnapshot
 import com.hienthai.fastowin.protocol.SeasonRewardReceiptSnapshot
 import com.hienthai.fastowin.protocol.SeasonHistoryEntrySnapshot
+import com.hienthai.fastowin.protocol.SeasonCosmeticRewardSnapshot
 import com.hienthai.fastowin.protocol.SeasonTierRewardSnapshot
+import com.hienthai.fastowin.protocol.RankedTier
 import com.hienthai.fastowin.protocol.STANDARD_SEASON_TIER_REWARDS
 import com.hienthai.fastowin.protocol.SHOP_ITEMS
 import com.hienthai.fastowin.protocol.GoldExchangeOffer
 import com.hienthai.fastowin.protocol.GoldExchangeStatus
+import com.hienthai.fastowin.protocol.FRAME_CATALOG
+import com.hienthai.fastowin.protocol.TITLE_CATALOG
 import com.hienthai.fastowin.protocol.seasonCosmeticReward
 import com.hienthai.fastowin.protocol.seasonTierRewards
 import kotlinx.coroutines.Dispatchers
@@ -360,13 +364,18 @@ class PostgresPlayerProfileRepository(
 
             val ownedCosmetics = connection.prepareStatement(
                 """
-                SELECT cosmetic_id FROM player_cosmetics WHERE user_id = ?
+                SELECT cosmetic_id, cosmetic_type FROM player_cosmetics WHERE user_id = ?
                 """.trimIndent()
             ).use { statement ->
                 statement.setObject(1, userId)
                 statement.executeQuery().use { result ->
-                    buildSet {
-                        while (result.next()) add(result.getString("cosmetic_id"))
+                    buildMap {
+                        while (result.next()) {
+                            put(
+                                result.getString("cosmetic_id"),
+                                CosmeticType.valueOf(result.getString("cosmetic_type"))
+                            )
+                        }
                     }
                 }
             }
@@ -457,7 +466,13 @@ class PostgresPlayerProfileRepository(
                         val seasonName = result.getString("name")
                         val seasonNameMetadata = defaultSeasonNameMetadata(seasonNumber, seasonName)
                         val tier = com.hienthai.fastowin.protocol.RankedTier.valueOf(result.getString("tier"))
-                        val cosmetic = seasonCosmeticReward(seasonNumber, seasonName, tier)
+                        val cosmetic = storedSeasonCosmetic(
+                            seasonNumber = seasonNumber,
+                            seasonName = seasonName,
+                            tier = tier,
+                            cosmeticId = result.getString("reward_cosmetic_id"),
+                            cosmeticType = CosmeticType.valueOf(result.getString("reward_cosmetic_type"))
+                        )
                         SeasonRewardReceiptSnapshot(
                             seasonNumber = seasonNumber,
                             seasonName = seasonName,
@@ -466,10 +481,7 @@ class PostgresPlayerProfileRepository(
                             gold = result.getInt("reward_gold"),
                             gems = result.getInt("reward_gems"),
                             awardedAtEpochMillis = result.getTimestamp("awarded_at").time,
-                            cosmetic = cosmetic.copy(
-                                id = result.getString("reward_cosmetic_id"),
-                                type = CosmeticType.valueOf(result.getString("reward_cosmetic_type"))
-                            ),
+                            cosmetic = cosmetic,
                             acknowledged = result.getTimestamp("viewed_at") != null,
                             seasonNameKey = seasonNameMetadata?.key?.name,
                             seasonNameArgs = seasonNameMetadata?.arguments.orEmpty()
@@ -508,9 +520,12 @@ class PostgresPlayerProfileRepository(
                             val tierName = result.getString("tier")
                             val reward = tierName?.let {
                                 val tier = com.hienthai.fastowin.protocol.RankedTier.valueOf(it)
-                                val cosmetic = seasonCosmeticReward(seasonNumber, seasonName, tier).copy(
-                                    id = result.getString("reward_cosmetic_id"),
-                                    type = CosmeticType.valueOf(result.getString("reward_cosmetic_type"))
+                                val cosmetic = storedSeasonCosmetic(
+                                    seasonNumber = seasonNumber,
+                                    seasonName = seasonName,
+                                    tier = tier,
+                                    cosmeticId = result.getString("reward_cosmetic_id"),
+                                    cosmeticType = CosmeticType.valueOf(result.getString("reward_cosmetic_type"))
                                 )
                                 SeasonRewardReceiptSnapshot(
                                     seasonNumber = seasonNumber,
@@ -564,10 +579,12 @@ class PostgresPlayerProfileRepository(
                             if (cosmeticId !in ownedCosmetics) continue
                             val type = CosmeticType.valueOf(result.getString("reward_cosmetic_type"))
                             val tier = com.hienthai.fastowin.protocol.RankedTier.valueOf(result.getString("tier"))
-                            val reward = seasonCosmeticReward(
-                                result.getInt("season_number"),
-                                result.getString("name"),
-                                tier
+                            val reward = storedSeasonCosmetic(
+                                seasonNumber = result.getInt("season_number"),
+                                seasonName = result.getString("name"),
+                                tier = tier,
+                                cosmeticId = cosmeticId,
+                                cosmeticType = type
                             )
                             add(OwnedSeasonCosmetic(cosmeticId, reward.name, type))
                         }
@@ -581,6 +598,7 @@ class PostgresPlayerProfileRepository(
                 historicalAchievementCodes,
                 progressionRow.totalDailyCheckIns
             ).toMutableSet().apply {
+                addAll(FRAME_CATALOG.filter { ownedCosmetics[it.id] == CosmeticType.FRAME }.map { it.id })
                 addAll(seasonCosmetics.filter { it.type == CosmeticType.FRAME }.map { it.id })
             }
             val unlockedTitles = unlockedTitleIds(
@@ -588,6 +606,7 @@ class PostgresPlayerProfileRepository(
                 historicalAchievementCodes,
                 progressionRow.bestDailyCheckInStreak
             ).toMutableSet().apply {
+                addAll(TITLE_CATALOG.filter { ownedCosmetics[it.id] == CosmeticType.TITLE }.map { it.id })
                 addAll(seasonCosmetics.filter { it.type == CosmeticType.TITLE }.map { it.id })
             }
             val unlockedAvatars = unlockedAvatarIds(progressionRow.totalDailyCheckIns)
@@ -604,7 +623,7 @@ class PostgresPlayerProfileRepository(
             }
             fun cosmetic(id: String, name: String, type: CosmeticType, unlocked: Boolean, equippedId: String?) =
                 CosmeticSnapshot(id, name, type, unlocked, unlocked && id == equippedId)
-            val cosmetics = listOf(
+            val legacyCosmetics = listOf(
                 cosmetic("frame_default", legacyFallback("Khung cơ bản"), CosmeticType.FRAME, true, equippedFrameId),
                 cosmetic("frame_bronze", legacyFallback("Khung Đồng"), CosmeticType.FRAME, "frame_bronze" in unlockedFrames, equippedFrameId),
                 cosmetic("frame_silver", legacyFallback("Khung Bạc"), CosmeticType.FRAME, "frame_silver" in unlockedFrames, equippedFrameId),
@@ -622,7 +641,25 @@ class PostgresPlayerProfileRepository(
                     DAILY_CHECK_IN_AVATAR_ID in unlockedAvatars,
                     base.avatarId
                 )
-            ) + seasonCosmetics.map { owned ->
+            )
+            val catalogCosmetics = FRAME_CATALOG.map { definition ->
+                cosmetic(
+                    definition.id,
+                    legacyFallback(definition.fallbackName),
+                    definition.type,
+                    definition.id in unlockedFrames,
+                    equippedFrameId
+                )
+            } + TITLE_CATALOG.map { definition ->
+                cosmetic(
+                    definition.id,
+                    legacyFallback(definition.fallbackName),
+                    definition.type,
+                    definition.id in unlockedTitles,
+                    equippedTitleId
+                )
+            }
+            val receiptCosmetics = seasonCosmetics.map { owned ->
                 cosmetic(
                     owned.id,
                     owned.name,
@@ -643,6 +680,8 @@ class PostgresPlayerProfileRepository(
                     }
                 )
             }
+            val cosmetics = (legacyCosmetics + catalogCosmetics + receiptCosmetics)
+                .distinctBy { it.type to it.id }
             base.copy(
                 recentMatches = recentMatches,
                 achievements = achievements,
@@ -707,9 +746,11 @@ class PostgresPlayerProfileRepository(
 
                 val completedSeasons = connection.prepareStatement(
                     """
-                    SELECT s.id, s.season_number, s.name, sr.peak_rating
+                    SELECT s.id, s.season_number, s.name, sr.peak_rating, sla.final_rank
                     FROM season_ratings sr
                     JOIN seasons s ON s.id = sr.season_id
+                    LEFT JOIN season_leaderboard_archive sla
+                      ON sla.season_id = s.id AND sla.user_id = sr.user_id
                     WHERE sr.user_id = ?
                       AND s.ends_at <= CURRENT_TIMESTAMP
                       AND sr.placement_matches >= ?
@@ -729,7 +770,8 @@ class PostgresPlayerProfileRepository(
                                     seasonId = result.getObject("id", UUID::class.java),
                                     seasonNumber = result.getInt("season_number"),
                                     seasonName = result.getString("name"),
-                                    peakRating = result.getInt("peak_rating")
+                                    peakRating = result.getInt("peak_rating"),
+                                    finalRank = result.getInt("final_rank").takeUnless { result.wasNull() }
                                 )
                             )
                         }
@@ -740,11 +782,7 @@ class PostgresPlayerProfileRepository(
                 var totalGems = 0
                 completedSeasons.forEach { completed ->
                     val reward = seasonRewardForPeakRating(completed.peakRating)
-                    val cosmetic = seasonCosmeticReward(
-                        completed.seasonNumber,
-                        completed.seasonName,
-                        reward.tier
-                    )
+                    val cosmetic = seasonSettlementCosmetic(completed, reward.tier)
                     val inserted = connection.prepareStatement(
                         """
                         INSERT INTO season_reward_claims (
@@ -765,17 +803,9 @@ class PostgresPlayerProfileRepository(
                         statement.executeUpdate() == 1
                     }
                     if (inserted) {
-                        connection.prepareStatement(
-                            """
-                            INSERT INTO player_cosmetics (user_id, cosmetic_id, cosmetic_type, acquired_at)
-                            VALUES (?, ?, ?, CURRENT_TIMESTAMP)
-                            ON CONFLICT (user_id, cosmetic_id) DO NOTHING
-                            """.trimIndent()
-                        ).use { statement ->
-                            statement.setObject(1, userId)
-                            statement.setString(2, cosmetic.id)
-                            statement.setString(3, cosmetic.type.name)
-                            statement.executeUpdate()
+                        insertOwnedCosmetic(connection, userId, cosmetic.id, cosmetic.type)
+                        if (completed.finalRank == 1) {
+                            insertOwnedCosmetic(connection, userId, "title_speed_king", CosmeticType.TITLE)
                         }
                         insertWalletTransaction(
                             connection = connection,
@@ -1854,8 +1884,54 @@ private data class CompletedSeasonReward(
     val seasonId: UUID,
     val seasonNumber: Int,
     val seasonName: String,
-    val peakRating: Int
+    val peakRating: Int,
+    val finalRank: Int?
 )
+
+private fun seasonSettlementCosmetic(
+    completed: CompletedSeasonReward,
+    tier: RankedTier
+): SeasonCosmeticRewardSnapshot = if (tier == RankedTier.CHALLENGER) {
+    val frame = FRAME_CATALOG.single { it.id == "frame_challenger" }
+    SeasonCosmeticRewardSnapshot(frame.id, frame.fallbackName, frame.type)
+} else {
+    seasonCosmeticReward(completed.seasonNumber, completed.seasonName, tier)
+}
+
+private fun storedSeasonCosmetic(
+    seasonNumber: Int,
+    seasonName: String,
+    tier: RankedTier,
+    cosmeticId: String,
+    cosmeticType: CosmeticType
+): SeasonCosmeticRewardSnapshot {
+    val catalogItem = (FRAME_CATALOG + TITLE_CATALOG).firstOrNull { it.id == cosmeticId }
+    return if (catalogItem != null) {
+        SeasonCosmeticRewardSnapshot(catalogItem.id, catalogItem.fallbackName, catalogItem.type)
+    } else {
+        seasonCosmeticReward(seasonNumber, seasonName, tier).copy(id = cosmeticId, type = cosmeticType)
+    }
+}
+
+private fun insertOwnedCosmetic(
+    connection: Connection,
+    userId: UUID,
+    cosmeticId: String,
+    cosmeticType: CosmeticType
+) {
+    connection.prepareStatement(
+        """
+        INSERT INTO player_cosmetics (user_id, cosmetic_id, cosmetic_type, acquired_at)
+        VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+        ON CONFLICT (user_id, cosmetic_id) DO NOTHING
+        """.trimIndent()
+    ).use { statement ->
+        statement.setObject(1, userId)
+        statement.setString(2, cosmeticId)
+        statement.setString(3, cosmeticType.name)
+        statement.executeUpdate()
+    }
+}
 
 private data class OwnedSeasonCosmetic(
     val id: String,
