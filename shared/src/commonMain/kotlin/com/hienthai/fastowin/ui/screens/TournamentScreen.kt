@@ -266,6 +266,7 @@ private fun CreateTournamentCard(
                         style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.Bold
                     )
+                    Spacer(modifier = Modifier.height(4.dp))
                     Text(
                         when (maxPlayers) {
                             4 -> localized(TextKey.TournamentFourFormat)

@@ -31,6 +31,7 @@ server/firebase-adminsdk.json
 /deploy/backups/
 /deploy/state/
 /.worktrees/
+/.pnpm-store/
 
 # Standalone Web E2E dependencies and failure diagnostics
 /e2e/node_modules/
