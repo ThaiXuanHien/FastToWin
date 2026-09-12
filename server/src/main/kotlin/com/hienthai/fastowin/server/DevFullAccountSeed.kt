@@ -1,8 +1,8 @@
 package com.hienthai.fastowin.server
 
 import com.hienthai.fastowin.localization.TextKey
+import com.hienthai.fastowin.protocol.CosmeticType
 import com.hienthai.fastowin.protocol.ProtocolJson
-import com.hienthai.fastowin.protocol.SHOP_ITEMS
 import com.zaxxer.hikari.HikariConfig
 import com.zaxxer.hikari.HikariDataSource
 import kotlinx.serialization.encodeToString
@@ -116,7 +116,7 @@ internal fun seedFullDevelopmentAccount(
     seedAchievements(connection, userId, now)
     seedMissions(connection, userId, today, now)
     seedDailyCheckIns(connection, userId, today)
-    seedShopCosmetics(connection, userId, now)
+    seedProgressionCosmetics(connection, userId, now)
     seedSeasonData(connection, userId, displayName, playerCode, now)
     val supportPlayers = seedSupportPlayers(connection, passwordHash, now)
     seedMatches(connection, userId, displayName, supportPlayers, now)
@@ -138,9 +138,9 @@ private fun seedPlayerStats(connection: Connection, userId: UUID, today: LocalDa
             best_daily_check_in_streak, total_daily_check_ins, last_daily_check_in_date,
             gold, gems, equipped_card_back_id, equipped_board_skin_id, updated_at
         ) VALUES (?, 120, 82, 28, 10, 50, 8, 18, 4980, 72, 612000, 4980,
-                  2350, 9900, 'season_900003_challenger', 'title_diligent',
-                  120, 120, 120, ?, 999999, 9999, 'card_back_diamond',
-                  'board_skin_forest', CURRENT_TIMESTAMP)
+                  2350, 9900, 'frame_lightning', 'title_godspeed',
+                  120, 120, 120, ?, 999999, 9999, 'card_back_default',
+                  'board_skin_default', CURRENT_TIMESTAMP)
         ON CONFLICT (user_id) DO UPDATE SET
             total_matches = EXCLUDED.total_matches, wins = EXCLUDED.wins,
             losses = EXCLUDED.losses, draws = EXCLUDED.draws,
@@ -171,15 +171,23 @@ private fun seedPlayerStats(connection: Connection, userId: UUID, today: LocalDa
 }
 
 private fun seedAchievements(connection: Connection, userId: UUID, now: Instant) {
-    connection.update(
+    val personalAchievementCodes = ACHIEVEMENT_DEFINITIONS
+        .filterNot { it.isClanAchievement }
+        .map { it.code }
+    connection.prepareStatement(
         """
         INSERT INTO user_achievements (user_id, achievement_code, unlocked_at, match_id)
-        SELECT ?, code, ?, NULL FROM achievements
+        VALUES (?, ?, ?, NULL)
         ON CONFLICT (user_id, achievement_code) DO UPDATE SET unlocked_at = EXCLUDED.unlocked_at
         """.trimIndent()
-    ) {
-        it.setObject(1, userId)
-        it.setTimestamp(2, Timestamp.from(now.minusSeconds(30L * 86_400L)))
+    ).use { statement ->
+        personalAchievementCodes.forEach { code ->
+            statement.setObject(1, userId)
+            statement.setString(2, code)
+            statement.setTimestamp(3, Timestamp.from(now.minusSeconds(30L * 86_400L)))
+            statement.addBatch()
+        }
+        statement.executeBatch()
     }
 }
 
@@ -250,7 +258,16 @@ private fun seedDailyCheckIns(connection: Connection, userId: UUID, today: Local
     }
 }
 
-private fun seedShopCosmetics(connection: Connection, userId: UUID, now: Instant) {
+private fun seedProgressionCosmetics(connection: Connection, userId: UUID, now: Instant) {
+    val cosmetics = ACHIEVEMENT_DEFINITIONS
+        .filterNot { it.isClanAchievement }
+        .flatMap { definition ->
+            listOfNotNull(
+                definition.frameId?.let { it to CosmeticType.FRAME },
+                definition.titleId?.let { it to CosmeticType.TITLE }
+            )
+        }
+        .distinctBy { it.first }
     connection.prepareStatement(
         """
         INSERT INTO player_cosmetics (user_id, cosmetic_id, cosmetic_type, acquired_at)
@@ -258,10 +275,10 @@ private fun seedShopCosmetics(connection: Connection, userId: UUID, now: Instant
         ON CONFLICT (user_id, cosmetic_id) DO UPDATE SET cosmetic_type = EXCLUDED.cosmetic_type
         """.trimIndent()
     ).use { statement ->
-        SHOP_ITEMS.forEach { item ->
+        cosmetics.forEach { (cosmeticId, cosmeticType) ->
             statement.setObject(1, userId)
-            statement.setString(2, item.id)
-            statement.setString(3, item.type.name)
+            statement.setString(2, cosmeticId)
+            statement.setString(3, cosmeticType.name)
             statement.setTimestamp(4, Timestamp.from(now.minusSeconds(20L * 86_400L)))
             statement.addBatch()
         }

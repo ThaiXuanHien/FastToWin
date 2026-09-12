@@ -305,7 +305,7 @@ class GameEngine(
         if (message is ClientMessage.ClaimClanQuestReward) return claimClanQuestReward(playerId, message.clanId)
         if (message is ClientMessage.UpdateAvatar) return updateAvatar(playerId, message.base64Data)
         if (message is ClientMessage.UpdateClanLogo) return updateClanLogo(playerId, message.clanId, message.logoId)
-        if (message is ClientMessage.BuyCosmetic) return buyCosmetic(playerId, message.cosmeticId)
+        if (message is ClientMessage.BuyCosmetic) return rejectLegacyCosmeticPurchase(playerId)
         if (message is ClientMessage.EquipCosmetic) return equipCosmetic(playerId, message.cosmeticId)
         if (message is ClientMessage.JoinMatchmaking) return joinMatchmaking(playerId, message)
         if (message is ClientMessage.CancelMatchmaking) return cancelMatchmaking(playerId)
@@ -3781,12 +3781,9 @@ class GameEngine(
     }
 
 
-    private suspend fun buyCosmetic(playerId: String, cosmeticId: String): List<Delivery> {
-        val item = com.hienthai.fastowin.protocol.SHOP_ITEMS.find { it.id == cosmeticId } ?: return emptyList()
-        val success = playerProfileRepository.buyCosmetic(playerId, cosmeticId, item.type.name, item.price)
-        if (success) {
-            return loadProfile(playerId)
-        }
+    private fun rejectLegacyCosmeticPurchase(playerId: String): List<Delivery> {
+        // Kept as a protocol compatibility path for older clients. Legacy card backs
+        // and board skins remain equippable when already owned, but are no longer sold.
         return listOf(error(playerId, "BUY_FAILED", legacyFallback("Không thể mua vật phẩm này.")))
     }
 

@@ -45,6 +45,36 @@ import java.util.UUID
 
 class GameEngineTest {
     @Test
+    fun `legacy cosmetic purchase command cannot buy removed shop inventory`() = runTest {
+        val playerId = UUID.randomUUID().toString()
+        var purchaseAttempted = false
+        val repository = object : PlayerProfileRepository {
+            override suspend fun buyCosmetic(
+                playerId: String,
+                cosmeticId: String,
+                cosmeticType: String,
+                price: Int
+            ): Boolean {
+                purchaseAttempted = true
+                return true
+            }
+
+            override suspend fun findByPlayerId(playerId: String): PlayerProfileSnapshot? = null
+            override suspend fun updateProfile(playerId: String, displayName: String, avatarId: String?) = false
+        }
+        val engine = GameEngine(playerProfileRepository = repository)
+        engine.connectAccount(AuthenticatedAccount(UUID.fromString(playerId), "Player"))
+
+        val response = engine.handle(playerId, ClientMessage.BuyCosmetic("card_back_gold"))
+
+        assertFalse(purchaseAttempted)
+        assertEquals(
+            "BUY_FAILED",
+            response.map(Delivery::message).filterIsInstance<ServerMessage.Error>().single().code
+        )
+    }
+
+    @Test
     fun `account fcm token update stores canonical notification language`() = runTest {
         val playerId = UUID.randomUUID().toString()
         var storedToken: String? = null

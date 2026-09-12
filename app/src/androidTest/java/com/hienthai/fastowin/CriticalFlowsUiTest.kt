@@ -1,6 +1,11 @@
 package com.hienthai.fastowin
 
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.test.DeviceConfigurationOverride
+import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.FontScale
+import androidx.compose.ui.test.ForcedSize
+import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
@@ -12,7 +17,12 @@ import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.then
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.DpSize
+import androidx.compose.ui.unit.dp
 import androidx.test.platform.app.InstrumentationRegistry
 import com.hienthai.fastowin.data.preferences.AppPreferences
 import com.hienthai.fastowin.navigation.GameMode
@@ -55,6 +65,7 @@ import org.junit.Test
 import java.io.File
 import kotlin.math.abs
 
+@OptIn(ExperimentalTestApi::class)
 class CriticalFlowsUiTest {
     @get:Rule
     val composeRule = createComposeRule()
@@ -225,7 +236,10 @@ class CriticalFlowsUiTest {
         composeRule.onNodeWithTag("tournament_screen").assertIsDisplayed()
         composeRule.onNodeWithTag("tournament_name").performTextInput("Cúp cuối tuần")
         composeRule.onNodeWithTag("tournament_size_16").performClick()
-        composeRule.onNodeWithTag("create_tournament").performClick()
+        composeRule.onNodeWithTag("create_tournament")
+            .performScrollTo()
+            .assertIsDisplayed()
+            .performClick()
 
         composeRule.runOnIdle {
             assertEquals("Cúp cuối tuần", submittedName)
@@ -441,6 +455,18 @@ class CriticalFlowsUiTest {
         composeRule.onNodeWithTag("shop_tab:GOLD").performClick()
         composeRule.onNodeWithTag("gold_exchange:gold_bag").assertIsNotEnabled()
     }
+
+    @Test
+    fun shop_smallPhoneLargeText_keepsExchangeContentWithinViewport() =
+        assertResponsiveGoldExchange(width = 320.dp, height = 568.dp, fontScale = 1.6f)
+
+    @Test
+    fun shop_largePhone_keepsExchangeContentWithinViewport() =
+        assertResponsiveGoldExchange(width = 430.dp, height = 932.dp)
+
+    @Test
+    fun shop_tablet_keepsExchangeContentBounded() =
+        assertResponsiveGoldExchange(width = 840.dp, height = 1_180.dp)
 
     @Test
     fun roomBrowser_createsPrivateRoomFromKeyboardInput() {
@@ -917,6 +943,69 @@ class CriticalFlowsUiTest {
         ),
         opponent = PlayerState("Hiếu", score = 420)
     )
+
+    private fun assertResponsiveGoldExchange(
+        width: Dp,
+        height: Dp,
+        fontScale: Float = 1f
+    ) {
+        composeRule.setContent {
+            DeviceConfigurationOverride(
+                DeviceConfigurationOverride.ForcedSize(DpSize(width, height)) then
+                    DeviceConfigurationOverride.FontScale(fontScale)
+            ) {
+                FastToWinTheme {
+                    ShopScreen(
+                        progression = PlayerProgressionSnapshot(gold = 2_000, gems = 250),
+                        onClose = {}
+                    )
+                }
+            }
+        }
+
+        val tabBounds = listOf("GEMS", "GOLD").map { tab ->
+            composeRule.onNodeWithTag("shop_tab:$tab").fetchSemanticsNode().boundsInRoot
+        }
+        assertTrue(tabBounds.all { bounds -> abs(bounds.height - tabBounds.first().height) <= 1f })
+        assertTrue(tabBounds.maxOf { it.right } <= with(composeRule.density) { width.toPx() } + 1f)
+
+        composeRule.onNodeWithTag("shop_tab:GOLD").performClick()
+        composeRule.onNodeWithTag("gold_exchange_list")
+            .performScrollToNode(hasTestTag("gold_offer:gold_bag"))
+        val offer = composeRule.onNodeWithTag("gold_offer:gold_bag")
+        offer.assertIsDisplayed()
+        val offerBounds = offer.fetchSemanticsNode().boundsInRoot
+        assertTrue(offerBounds.left >= -1f)
+        assertTrue(offerBounds.right <= with(composeRule.density) { width.toPx() } + 1f)
+
+        composeRule.onNodeWithTag("gold_exchange:gold_bag")
+            .performScrollTo()
+            .assertIsDisplayed()
+            .performClick()
+        val dialogBounds = composeRule
+            .onNodeWithTag("gold_exchange_confirmation")
+            .assertIsDisplayed()
+            .fetchSemanticsNode()
+            .boundsInRoot
+        // Android Dialog uses a separate platform window, so ForcedSize only constrains
+        // the screen content behind it. Validate the dialog against its real host window.
+        val displayMetrics = InstrumentationRegistry.getInstrumentation()
+            .targetContext.resources.displayMetrics
+        val expectedMaxDialogWidth = with(composeRule.density) {
+            minOf(420.dp.toPx(), displayMetrics.widthPixels - 20.dp.toPx())
+        }
+        val expectedMaxDialogHeight = with(composeRule.density) {
+            displayMetrics.heightPixels - 24.dp.toPx()
+        }
+        assertTrue(
+            "Gold dialog width must fit its Android window: ${dialogBounds.width}px > ${expectedMaxDialogWidth}px",
+            dialogBounds.width <= expectedMaxDialogWidth + 1f
+        )
+        assertTrue(
+            "Gold dialog height must fit its Android window: ${dialogBounds.height}px > ${expectedMaxDialogHeight}px",
+            dialogBounds.height <= expectedMaxDialogHeight + 1f
+        )
+    }
 }
 
 @androidx.compose.runtime.Composable

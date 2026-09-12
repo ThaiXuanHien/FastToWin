@@ -58,6 +58,9 @@ internal val ACHIEVEMENT_DEFINITIONS = listOf(
 internal fun achievementDefinition(code: String): AchievementDefinition? =
     ACHIEVEMENT_DEFINITIONS.firstOrNull { it.code == code }
 
+internal val AchievementDefinition.isClanAchievement: Boolean
+    get() = code.startsWith("CLAN_")
+
 internal val MATCH_ACHIEVEMENT_CODES = setOf(
     "FIRST_WIN", "WINS_10", "WINS_50", "RANKED_WINS_100", "WIN_STREAK_10",
     "PERFECT_MATCH_1", "PERFECT_MATCHES_10", "ACCURACY_90_TEN",

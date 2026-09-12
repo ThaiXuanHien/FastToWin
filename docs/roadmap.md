@@ -1,6 +1,6 @@
 # Lộ trình hoàn thiện Fast To Win
 
-Cập nhật: 07/09/2026. Đây là danh sách theo dõi thống nhất từ các hạng mục chủ dự án đã duyệt. Có code không đồng nghĩa đã kiểm thử hoặc sẵn sàng production.
+Cập nhật: 12/09/2026. Đây là danh sách theo dõi thống nhất từ các hạng mục chủ dự án đã duyệt. Có code không đồng nghĩa đã kiểm thử hoặc sẵn sàng production.
 
 ## Quy tắc thực hiện
 
@@ -48,10 +48,14 @@ Mua hàng và APNs cần cấu hình Apple tương ứng; kiểm thử thiết b
 
 ## 3. Cửa hàng
 
-Danh mục bán hiện tại: Gem, Mặt số Hoàng Kim, Mặt số Kim Cương, Bàn số Bóng Đêm và Bàn số Rừng Xanh. Theo quyết định sản phẩm, Cửa hàng không hiển thị tab Khung và Biểu cảm; các phần thưởng này vẫn có thể mở khóa ở Bộ sưu tập/thành tích.
+Danh mục bán hiện tại chỉ có hai tab **Gem** và **Vàng**. Vàng được đổi từ Gem
+theo ba gói do server quản lý; request đổi có mã chống xử lý lặp và giao dịch cập
+nhật ví nguyên tử. Mặt số/Bàn số cũ không còn được bán nhưng dữ liệu sở hữu, trang
+bị và lịch sử mua của tài khoản hiện hữu vẫn được giữ để tương thích.
 
-- [ ] Duyệt hình ảnh, giá Vàng/Gem và điều kiện mở khóa trước khi thêm danh mục.
-- [ ] Kiểm thử mua trùng, thiếu tài sản, trang bị/đồng bộ và lịch sử giao dịch.
+- [x] Cửa hàng hai tab Gem/Vàng, ba gói đổi 10/45/80 Gem thành 1.000/5.000/10.000 Vàng.
+- [x] Kiểm thử đổi trùng, thiếu Gem, cập nhật hồ sơ và lịch sử giao dịch.
+- [ ] Thanh toán Gem production vẫn phụ thuộc Google Play Billing/StoreKit và xác thực hóa đơn backend.
 
 ## 4. Giải đấu mở rộng
 
@@ -97,9 +101,19 @@ Backend hiện dùng trạng thái realtime trong một instance. Không coi cá
 
 ## Bước đang thực hiện
 
-**Đa ngôn ngữ đã hoàn thiện về kiến trúc và kiểm tra tự động**. Giao diện client
-dùng đúng 12 catalog, đổi ngôn ngữ tức thời mà không mất trạng thái, fallback về
-tiếng Anh và giữ nguyên nội dung người dùng. Backend phát khóa ổn định kèm đối số,
-raw fallback tương thích được cô lập, scanner và Web persistence E2E chạy trong
-CI. Các bản dịch fallback tiếng Anh còn lại vẫn cần người bản ngữ kiểm duyệt.
-StoreKit/APNs production tiếp tục tạm hoãn vì phụ thuộc tài khoản Apple.
+**Giai đoạn 2 — kinh tế và tiến trình cá nhân đã hoàn tất phần triển khai**:
+
+- [x] Server quyết định phần thưởng đấu thường/đấu hạng; chủ động rời sau khi trận bắt đầu không nhận thưởng.
+- [x] Bốn nhiệm vụ ngày và bốn nhiệm vụ tuần được chọn ổn định theo chu kỳ, tiến trình và nhận thưởng chống xử lý lặp.
+- [x] Có 20 thành tích, 16 Khung và 12 Danh hiệu; phần thưởng mở khóa được ghi cùng giao dịch và giữ tương thích vật phẩm cũ.
+- [x] Tên, mô tả, điều kiện mở khóa và thông báo kinh tế dùng đủ 12 catalog ngôn ngữ.
+- [x] Tài khoản dev đầy đủ có đủ Gem để thử mọi gói Vàng và sở hữu phần thưởng thành tích ngoài bang, không tự nhận Mặt số/Bàn số cũ.
+- [x] Cửa hàng và Bộ sưu tập có kiểm tra responsive trên điện thoại nhỏ, điện thoại lớn và tablet.
+
+**Giai đoạn 3 còn lại**: quyên góp Vàng/Gem cho bang, XP/cấp bang, xếp hạng bang,
+xếp hạng tài sản người chơi và tiến trình nhiệm vụ/thành tích liên quan đến quyên
+góp. Không đưa các tiến trình bang vào Giai đoạn 2 để tránh tạo dữ liệu mở khóa giả
+khi luồng quyên góp nguyên tử chưa được triển khai.
+
+StoreKit/APNs production tiếp tục tạm hoãn vì phụ thuộc tài khoản Apple. Các bản
+dịch fallback tiếng Anh còn lại vẫn cần người bản ngữ kiểm duyệt.

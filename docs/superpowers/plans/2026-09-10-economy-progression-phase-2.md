@@ -361,15 +361,15 @@ git commit -m "feat: localize economy progression content"
 - The dev full account owns all non-clan Phase 2 achievement rewards and enough Gem to test every Gold offer.
 - Existing production accounts retain balances, equipped legacy cosmetics, purchase history and mission claims.
 
-- [ ] **Step 1: Write a failing seed integration test** asserting the full account exposes the two-tab shop data, all new catalog items, a representative unlocked frame/title and no purchasable card/board item.
+- [x] **Step 1: Write a failing seed integration test** asserting the full account exposes the two-tab shop data, all new catalog items, a representative unlocked frame/title and no purchasable card/board item.
 
-- [ ] **Step 2: Run the seed test and verify RED**.
+- [x] **Step 2: Run the seed test and verify RED**.
 
-- [ ] **Step 3: Update the seed idempotently** without deleting user-created accounts or resetting existing production data.
+- [x] **Step 3: Update the seed idempotently** without deleting user-created accounts or resetting existing production data.
 
-- [ ] **Step 4: Add responsive UI assertions** for small phone, large phone and tablet widths: two equal fixed-height tabs, non-overflowing offer cards/dialog, and collection grid cards with bounded width.
+- [x] **Step 4: Add responsive UI assertions** for small phone, large phone and tablet widths: two equal fixed-height tabs, non-overflowing offer cards/dialog, and collection grid cards with bounded width.
 
-- [ ] **Step 5: Run the full verification suite**
+- [x] **Step 5: Run the full verification suite**
 
 ```powershell
 $env:JAVA_HOME='C:\Program Files\Android\Android Studio\jbr'
@@ -378,7 +378,7 @@ $env:JAVA_HOME='C:\Program Files\Android\Android Studio\jbr'
 
 Expected: `BUILD SUCCESSFUL`, zero failed tests.
 
-- [ ] **Step 6: When an emulator is available, run focused connected UI tests**
+- [x] **Step 6: When an emulator is available, run focused connected UI tests**
 
 ```powershell
 .\gradlew.bat :app:connectedDevDebugAndroidTest "-Pandroid.testInstrumentationRunnerArguments.class=com.hienthai.fastowin.CriticalFlowsUiTest,com.hienthai.fastowin.LocalizedSocialShopUiTest" --no-daemon
@@ -386,9 +386,9 @@ Expected: `BUILD SUCCESSFUL`, zero failed tests.
 
 Expected: all selected tests pass.
 
-- [ ] **Step 7: Update roadmap status** to mark Phase 2 complete and explicitly leave clan donation mission/achievement progress for Phase 3.
+- [x] **Step 7: Update roadmap status** to mark Phase 2 complete and explicitly leave clan donation mission/achievement progress for Phase 3.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add server/src docs/roadmap.md app/src/androidTest

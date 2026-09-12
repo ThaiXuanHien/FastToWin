@@ -472,6 +472,41 @@ class ProfileSectionsUiTest {
     }
 
     @Test
+    fun collection_tablet_keepsFrameCardsAtReadableBoundedWidth() {
+        val profile = profileFixture()
+
+        setAdaptiveContent(840.dp, 1_180.dp) {
+            ProfileSectionScreen(
+                state = GameState(profile = profile),
+                profile = profile,
+                section = ProfileSection.COLLECTION,
+                isExternalProfile = false,
+                canEdit = true,
+                onBack = {},
+                onRefresh = {},
+                onOpenMatchDetail = {},
+                onCloseMatchDetail = {},
+                onEquipCosmetics = { _, _ -> },
+                onClaimMissionReward = {},
+                onSave = { _, _ -> },
+                onOpenNotifications = {}
+            )
+        }
+
+        val frameBounds = composeRule
+            .onNodeWithTag("collection_frame:frame_silver")
+            .performScrollTo()
+            .assertIsDisplayed()
+            .fetchSemanticsNode()
+            .boundsInRoot
+        val maximumWidth = with(composeRule.density) { 240.dp.toPx() }
+        assertTrue(
+            "Collection frame cards must stay at or below 240dp, actual width=${frameBounds.width}px",
+            frameBounds.width <= maximumWidth + 1f
+        )
+    }
+
+    @Test
     fun collection_equippingFrameUsesStableItemProgressWithoutFullScreenReload() {
         val profile = profileFixture()
         val state = mutableStateOf(

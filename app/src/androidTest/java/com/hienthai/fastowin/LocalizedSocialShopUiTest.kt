@@ -2,10 +2,13 @@ package com.hienthai.fastowin
 
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollToNode
 import com.hienthai.fastowin.localization.AppLanguage
 import com.hienthai.fastowin.localization.ProvideLocalization
 import com.hienthai.fastowin.protocol.PlayerProgressionSnapshot
@@ -124,6 +127,8 @@ class LocalizedSocialShopUiTest {
         composeRule.onNodeWithText("Or").performClick()
         composeRule.onNodeWithText("Sac d'Or").assertIsDisplayed()
         composeRule.onNodeWithText("Coffre d'Or").assertIsDisplayed()
+        composeRule.onNodeWithTag("gold_exchange_list")
+            .performScrollToNode(hasText("Trésor d'Or"))
         composeRule.onNodeWithText("Trésor d'Or").assertIsDisplayed()
     }
 
