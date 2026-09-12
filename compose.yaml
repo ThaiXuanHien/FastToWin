@@ -1,3 +1,5 @@
+name: fasttowin
+
 services:
   database:
     image: postgres:17-alpine
@@ -17,3 +19,4 @@ services:
 
 volumes:
   fasttowin-postgres:
+    name: fasttowin-postgres
