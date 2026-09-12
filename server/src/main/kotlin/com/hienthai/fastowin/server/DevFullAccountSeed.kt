@@ -338,6 +338,25 @@ private fun seedSeasonData(
             it.setTimestamp(5, Timestamp.from(end))
             it.setInt(6, season.peakRating)
         }
+        val archiveRank = connection.findInt(
+            "SELECT final_rank FROM season_leaderboard_archive WHERE season_id = ? AND user_id = ?"
+        ) {
+            it.setObject(1, seasonId)
+            it.setObject(2, userId)
+        } ?: connection.findInt(
+            """
+            SELECT CASE
+                WHEN COUNT(*) FILTER (WHERE final_rank = ?) = 0 THEN ?
+                ELSE COALESCE(MAX(final_rank), 0) + 1
+            END
+            FROM season_leaderboard_archive
+            WHERE season_id = ?
+            """.trimIndent()
+        ) {
+            it.setInt(1, season.rank)
+            it.setInt(2, season.rank)
+            it.setObject(3, seasonId)
+        } ?: season.rank
         connection.update(
             """
             INSERT INTO season_leaderboard_archive (
@@ -353,7 +372,7 @@ private fun seedSeasonData(
         ) {
             it.setObject(1, seasonId)
             it.setObject(2, userId)
-            it.setInt(3, season.rank)
+            it.setInt(3, archiveRank)
             it.setString(4, displayName)
             it.setString(5, playerCode)
             it.setString(6, "season_${season.number}_${season.tier.lowercase()}")
@@ -802,6 +821,14 @@ private fun Connection.findString(sql: String, bind: (PreparedStatement) -> Unit
     prepareStatement(sql).use { statement ->
         bind(statement)
         statement.executeQuery().use { result -> if (result.next()) result.getString(1) else null }
+    }
+
+private fun Connection.findInt(sql: String, bind: (PreparedStatement) -> Unit): Int? =
+    prepareStatement(sql).use { statement ->
+        bind(statement)
+        statement.executeQuery().use { result ->
+            if (result.next()) result.getInt(1).takeUnless { result.wasNull() } else null
+        }
     }
 
 private fun stableUuid(key: String): UUID =

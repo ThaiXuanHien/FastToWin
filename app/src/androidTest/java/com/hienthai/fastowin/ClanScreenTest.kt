@@ -10,6 +10,7 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performScrollTo
 import com.hienthai.fastowin.protocol.ClanJoinRequestSnapshot
+import com.hienthai.fastowin.protocol.ClanDonationCurrency
 import com.hienthai.fastowin.protocol.ClanMemberSnapshot
 import com.hienthai.fastowin.protocol.ClanRole
 import com.hienthai.fastowin.protocol.ClanSnapshot
@@ -293,5 +294,58 @@ class ClanScreenTest {
 
         composeRule.onNodeWithTag("confirm_leave_clan").performClick()
         composeRule.runOnIdle { assertEquals(true, leftClan) }
+    }
+
+    @Test
+    fun clanMemberPreviewsDonationBeforeConfirmingIt() {
+        var donation: Pair<ClanDonationCurrency, Int>? = null
+        val clan = ClanSnapshot(
+            id = "clan-a",
+            name = "Bang Tốc Độ",
+            description = "Nhanh và chuẩn",
+            ownerId = "owner",
+            members = listOf(
+                ClanMemberSnapshot("member", "Thành viên", ClanRole.MEMBER, trophies = 25)
+            ),
+            trophies = 25,
+            level = 1,
+            experiencePoints = 200,
+            currentLevelExperience = 200,
+            nextLevelExperience = 1_000
+        )
+
+        composeRule.setContent {
+            FastToWinTheme {
+                ClanScreen(
+                    serverUrl = "ws://127.0.0.1:8080/game",
+                    currentUserId = "member",
+                    myClanId = clan.id,
+                    clanList = emptyList(),
+                    pendingJoinClanIds = emptySet(),
+                    currentClan = clan,
+                    notice = null,
+                    onCreateClan = { _, _ -> },
+                    onJoinClan = {},
+                    onLeaveClan = {},
+                    onSearch = {},
+                    onKickMember = { _, _ -> },
+                    onRespondJoinRequest = { _, _, _ -> },
+                    onUpdateLogo = { _, _ -> },
+                    onClaimQuest = {},
+                    onViewClan = {},
+                    onBack = {},
+                    gold = 500,
+                    gems = 2,
+                    onDonate = { _, currency, amount -> donation = currency to amount }
+                )
+            }
+        }
+
+        composeRule.onNodeWithTag("open_clan_donation").performScrollTo().performClick()
+        composeRule.onNodeWithTag("clan_donation_dialog").assertIsDisplayed()
+        composeRule.onNodeWithTag("donate_gold_500").performClick()
+        composeRule.runOnIdle { assertEquals(null, donation) }
+        composeRule.onNodeWithTag("confirm_clan_donation").performClick()
+        composeRule.runOnIdle { assertEquals(ClanDonationCurrency.GOLD to 500, donation) }
     }
 }

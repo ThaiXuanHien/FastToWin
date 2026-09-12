@@ -4,7 +4,7 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
-const val PROTOCOL_VERSION = 41
+const val PROTOCOL_VERSION = 43
 const val MIN_COMPATIBLE_PROTOCOL_VERSION = 38
 
 fun isCompatibleProtocolVersion(version: Int): Boolean =
@@ -465,6 +465,26 @@ enum class GoldExchangeStatus { GRANTED, ALREADY_GRANTED, INSUFFICIENT_GEMS, INV
 enum class StorePurchaseStatus { GRANTED, ALREADY_GRANTED, INVALID, UNAVAILABLE, FAILED }
 
 @Serializable
+enum class RewardedAdProvider { DEV_SIMULATED, ADMOB_ANDROID, ADMOB_IOS }
+
+@Serializable
+enum class RewardedAdAvailability { DEV_SIMULATED, MOBILE_PRODUCTION, UNAVAILABLE }
+
+@Serializable
+enum class RewardedAdBonusStatus { GRANTED, ALREADY_GRANTED, INVALID, UNAVAILABLE, FAILED }
+
+@Serializable
+data class PlayQuotaSnapshot(
+    val quotaDate: String,
+    val baseMatches: Int = 10,
+    val matchesConsumed: Int = 0,
+    val bonusMatchesGranted: Int = 0,
+    val remainingMatches: Int = 10,
+    val nextResetAtEpochMillis: Long,
+    val rewardedAdAvailability: RewardedAdAvailability = RewardedAdAvailability.UNAVAILABLE
+)
+
+@Serializable
 data class AchievementSnapshot(
     val code: String,
     val title: String,
@@ -512,7 +532,9 @@ data class LeaderboardEntrySnapshot(
     val eloRating: Int = 1000,
     val userId: String? = null,
     val avatarId: String? = null,
-    val frameId: String = "frame_default"
+    val frameId: String = "frame_default",
+    val lifetimeEarnedGold: Long = 0,
+    val lifetimeEarnedGems: Long = 0
 )
 
 @Serializable
@@ -521,7 +543,11 @@ data class ClanLeaderboardEntrySnapshot(
     val clanId: String,
     val clanName: String,
     val totalElo: Int,
-    val memberCount: Int
+    val memberCount: Int,
+    val level: Int = 1,
+    val experiencePoints: Long = 0,
+    val donatedGold: Long = 0,
+    val donatedGems: Long = 0
 )
 
 @Serializable
@@ -535,7 +561,17 @@ data class LeaderboardSnapshot(
     val previousSeasonTopPlayers: List<LeaderboardEntrySnapshot> = emptyList(),
     val previousSeasonCurrentPlayer: LeaderboardEntrySnapshot? = null,
     val topClans: List<ClanLeaderboardEntrySnapshot> = emptyList(),
-    val currentClan: ClanLeaderboardEntrySnapshot? = null
+    val currentClan: ClanLeaderboardEntrySnapshot? = null,
+    val topGoldPlayers: List<LeaderboardEntrySnapshot> = emptyList(),
+    val currentGoldPlayer: LeaderboardEntrySnapshot? = null,
+    val topGemPlayers: List<LeaderboardEntrySnapshot> = emptyList(),
+    val currentGemPlayer: LeaderboardEntrySnapshot? = null,
+    val topLevelClans: List<ClanLeaderboardEntrySnapshot> = emptyList(),
+    val currentLevelClan: ClanLeaderboardEntrySnapshot? = null,
+    val topGoldClans: List<ClanLeaderboardEntrySnapshot> = emptyList(),
+    val currentGoldClan: ClanLeaderboardEntrySnapshot? = null,
+    val topGemClans: List<ClanLeaderboardEntrySnapshot> = emptyList(),
+    val currentGemClan: ClanLeaderboardEntrySnapshot? = null
 )
 
 @Serializable
@@ -680,6 +716,10 @@ sealed class ClientMessage {
     data object GetProfile : ClientMessage()
 
     @Serializable
+    @SerialName("get_play_quota")
+    data object GetPlayQuota : ClientMessage()
+
+    @Serializable
     @SerialName("acknowledge_season_reward")
     data class AcknowledgeSeasonReward(val seasonNumber: Int) : ClientMessage()
 
@@ -705,6 +745,15 @@ sealed class ClientMessage {
         val store: StorePlatform,
         val productId: String,
         val purchaseToken: String
+    ) : ClientMessage()
+
+    @Serializable
+    @SerialName("claim_rewarded_ad_bonus")
+    data class ClaimRewardedAdBonus(
+        val requestId: String,
+        val provider: RewardedAdProvider,
+        val providerTransactionId: String,
+        val proof: String
     ) : ClientMessage()
 
     @Serializable
@@ -895,6 +944,15 @@ sealed class ClientMessage {
     data class ClaimClanQuestReward(val clanId: String) : ClientMessage()
 
     @Serializable
+    @SerialName("donate_to_clan")
+    data class DonateToClan(
+        val clanId: String,
+        val requestId: String,
+        val currency: ClanDonationCurrency,
+        val amount: Int
+    ) : ClientMessage()
+
+    @Serializable
     @SerialName("measure_latency")
     data class MeasureLatency(val clientSentAtEpochMillis: Long) : ClientMessage()
 
@@ -981,6 +1039,10 @@ sealed class ServerMessage {
     data class ProfileData(val profile: PlayerProfileSnapshot) : ServerMessage()
 
     @Serializable
+    @SerialName("play_quota_data")
+    data class PlayQuotaData(val quota: PlayQuotaSnapshot) : ServerMessage()
+
+    @Serializable
     @SerialName("wallet_history")
     data class WalletHistory(val transactions: List<WalletTransactionSnapshot>) : ServerMessage()
 
@@ -1011,6 +1073,14 @@ sealed class ServerMessage {
         val message: String,
         val messageKey: String? = null,
         val messageArgs: Map<String, String> = emptyMap()
+    ) : ServerMessage()
+
+    @Serializable
+    @SerialName("rewarded_ad_bonus_result")
+    data class RewardedAdBonusResult(
+        val requestId: String,
+        val status: RewardedAdBonusStatus,
+        val quota: PlayQuotaSnapshot
     ) : ServerMessage()
 
     @Serializable
@@ -1185,6 +1255,16 @@ sealed class ServerMessage {
     ) : ServerMessage()
 
     @Serializable
+    @SerialName("clan_donation_result")
+    data class ClanDonationResult(
+        val requestId: String,
+        val status: ClanDonationStatus,
+        val currency: ClanDonationCurrency,
+        val experienceGranted: Int = 0,
+        val clanLevel: Int = 0
+    ) : ServerMessage()
+
+    @Serializable
     @SerialName("error")
     data class Error(
         val code: String,
@@ -1198,13 +1278,30 @@ sealed class ServerMessage {
 enum class ClanRole { LEADER, CO_LEADER, MEMBER }
 
 @Serializable
+enum class ClanDonationCurrency { GOLD, GEMS }
+
+@Serializable
+enum class ClanDonationStatus {
+    APPLIED,
+    DUPLICATE,
+    INVALID_AMOUNT,
+    INSUFFICIENT_FUNDS,
+    PLAYER_NOT_FOUND,
+    CLAN_NOT_FOUND,
+    NOT_MEMBER,
+    FAILED
+}
+
+@Serializable
 data class ClanMemberSnapshot(
     val userId: String,
     val displayName: String,
     val role: ClanRole,
     val trophies: Int,
     val questContribution: Int = 0,
-    val questRewardClaimed: Boolean = false
+    val questRewardClaimed: Boolean = false,
+    val donatedGold: Long = 0,
+    val donatedGems: Long = 0
 )
 
 @Serializable
@@ -1235,7 +1332,13 @@ data class ClanSnapshot(
     val logoId: String? = null,
     val maxMembers: Int = 50,
     val quest: ClanQuestSnapshot? = null,
-    val joinRequests: List<ClanJoinRequestSnapshot> = emptyList()
+    val joinRequests: List<ClanJoinRequestSnapshot> = emptyList(),
+    val level: Int = 1,
+    val experiencePoints: Long = 0,
+    val currentLevelExperience: Int = 0,
+    val nextLevelExperience: Int = 1_000,
+    val donatedGold: Long = 0,
+    val donatedGems: Long = 0
 )
 
 @Serializable
@@ -1245,7 +1348,11 @@ data class ClanSummarySnapshot(
     val memberCount: Int,
     val maxMembers: Int,
     val trophies: Int,
-    val logoId: String? = null
+    val logoId: String? = null,
+    val level: Int = 1,
+    val experiencePoints: Long = 0,
+    val donatedGold: Long = 0,
+    val donatedGems: Long = 0
 )
 
 @Serializable

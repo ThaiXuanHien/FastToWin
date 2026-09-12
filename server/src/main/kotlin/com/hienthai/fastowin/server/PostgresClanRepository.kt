@@ -1,6 +1,8 @@
 ﻿package com.hienthai.fastowin.server
 
 import com.hienthai.fastowin.protocol.ClanMemberSnapshot
+import com.hienthai.fastowin.protocol.ClanDonationCurrency
+import com.hienthai.fastowin.protocol.ClanDonationStatus
 import com.hienthai.fastowin.protocol.ClanJoinRequestSnapshot
 import com.hienthai.fastowin.protocol.ClanRole
 import com.hienthai.fastowin.protocol.ClanQuestSnapshot
@@ -302,6 +304,8 @@ class PostgresClanRepository(
                 it.setObject(1, clanUuid)
                 it.executeQuery().use { rs ->
                     if (rs.next()) {
+                        val experiencePoints = rs.getLong("experience_points")
+                        val levelProgress = ClanProgression.progress(experiencePoints)
                         clan = ClanSnapshot(
                             id = rs.getString("id"),
                             name = rs.getString("name"),
@@ -317,7 +321,13 @@ class PostgresClanRepository(
                                 rewardGold = rs.getInt("quest_reward_gold"),
                                 rewardXp = rs.getInt("quest_reward_xp"),
                                 rewardGems = rs.getInt("quest_reward_gems")
-                            )
+                            ),
+                            level = levelProgress.level,
+                            experiencePoints = experiencePoints,
+                            currentLevelExperience = levelProgress.currentExperience,
+                            nextLevelExperience = levelProgress.nextLevelExperience,
+                            donatedGold = rs.getLong("donated_gold"),
+                            donatedGems = rs.getLong("donated_gems")
                         )
                     }
                 }
@@ -327,6 +337,7 @@ class PostgresClanRepository(
                 val members = mutableListOf<ClanMemberSnapshot>()
                 connection.prepareStatement(
                     "SELECT cm.user_id, cm.role, cm.quest_contribution, cm.quest_reward_claimed, " +
+                    "cm.donated_gold, cm.donated_gems, " +
                     "p.display_name, COALESCE(s.elo_rating, 1000) AS trophies " +
                     "FROM clan_members cm JOIN profiles p ON cm.user_id = p.user_id " +
                     "LEFT JOIN player_stats s ON cm.user_id = s.user_id " +
@@ -342,7 +353,9 @@ class PostgresClanRepository(
                                     role = ClanRole.valueOf(rs.getString("role")),
                                     trophies = rs.getInt("trophies"),
                                     questContribution = rs.getInt("quest_contribution"),
-                                    questRewardClaimed = rs.getBoolean("quest_reward_claimed")
+                                    questRewardClaimed = rs.getBoolean("quest_reward_claimed"),
+                                    donatedGold = rs.getLong("donated_gold"),
+                                    donatedGems = rs.getLong("donated_gems")
                                 )
                             )
                         }
@@ -378,12 +391,14 @@ class PostgresClanRepository(
         val list = mutableListOf<ClanSummarySnapshot>()
         dataSource.connection.use { connection ->
             val sql = if (query != null && query.isNotBlank()) {
-                "SELECT c.id, c.name, c.trophies, c.logo_id, COUNT(cm.user_id) AS member_count " +
+                "SELECT c.id, c.name, c.trophies, c.logo_id, c.level, c.experience_points, " +
+                    "c.donated_gold, c.donated_gems, COUNT(cm.user_id) AS member_count " +
                 "FROM clans c LEFT JOIN clan_members cm ON c.id = cm.clan_id " +
                 "WHERE c.name ILIKE ? " +
                 "GROUP BY c.id ORDER BY c.trophies DESC LIMIT ? OFFSET ?"
             } else {
-                "SELECT c.id, c.name, c.trophies, c.logo_id, COUNT(cm.user_id) AS member_count " +
+                "SELECT c.id, c.name, c.trophies, c.logo_id, c.level, c.experience_points, " +
+                    "c.donated_gold, c.donated_gems, COUNT(cm.user_id) AS member_count " +
                 "FROM clans c LEFT JOIN clan_members cm ON c.id = cm.clan_id " +
                 "GROUP BY c.id ORDER BY c.trophies DESC LIMIT ? OFFSET ?"
             }
@@ -403,7 +418,11 @@ class PostgresClanRepository(
                                 memberCount = rs.getInt("member_count"),
                                 maxMembers = 50,
                                 trophies = rs.getInt("trophies"),
-                                logoId = rs.getString("logo_id")
+                                logoId = rs.getString("logo_id"),
+                                level = rs.getInt("level"),
+                                experiencePoints = rs.getLong("experience_points"),
+                                donatedGold = rs.getLong("donated_gold"),
+                                donatedGems = rs.getLong("donated_gems")
                             )
                         )
                     }
@@ -554,6 +573,189 @@ class PostgresClanRepository(
             } catch (error: Throwable) {
                 connection.rollback()
                 false
+            } finally {
+                connection.autoCommit = true
+            }
+        }
+    }
+
+    override suspend fun donateToClan(
+        userId: String,
+        clanId: String,
+        requestId: String,
+        currency: ClanDonationCurrency,
+        amount: Int
+    ): ClanDonationResult = withContext(Dispatchers.IO) {
+        val experienceGranted = ClanProgression.donationExperience(currency, amount)
+            ?: return@withContext ClanDonationResult(ClanDonationStatus.INVALID_AMOUNT)
+        dataSource.connection.use { connection ->
+            connection.autoCommit = false
+            try {
+                val userUuid = UUID.fromString(userId)
+                val clanUuid = UUID.fromString(clanId)
+                val requestUuid = UUID.fromString(requestId)
+                val userExists = connection.prepareStatement(
+                    "SELECT 1 FROM users WHERE id = ? FOR UPDATE"
+                ).use { statement ->
+                    statement.setObject(1, userUuid)
+                    statement.executeQuery().use { it.next() }
+                }
+                if (!userExists) {
+                    connection.rollback()
+                    return@withContext ClanDonationResult(ClanDonationStatus.PLAYER_NOT_FOUND)
+                }
+                connection.prepareStatement(
+                    """
+                    INSERT INTO player_stats (user_id, updated_at)
+                    VALUES (?, CURRENT_TIMESTAMP)
+                    ON CONFLICT (user_id) DO NOTHING
+                    """.trimIndent()
+                ).use { statement ->
+                    statement.setObject(1, userUuid)
+                    statement.executeUpdate()
+                }
+                val wallet = connection.prepareStatement(
+                    "SELECT gold, gems FROM player_stats WHERE user_id = ? FOR UPDATE"
+                ).use { statement ->
+                    statement.setObject(1, userUuid)
+                    statement.executeQuery().use { result ->
+                        if (result.next()) {
+                            result.getInt("gold") to result.getInt("gems")
+                        } else {
+                            null
+                        }
+                    }
+                } ?: error("Player stats were not initialized for $userId")
+
+                val alreadyApplied = connection.prepareStatement(
+                    "SELECT 1 FROM clan_donations WHERE request_id = ?"
+                ).use { statement ->
+                    statement.setObject(1, requestUuid)
+                    statement.executeQuery().use { it.next() }
+                }
+                if (alreadyApplied) {
+                    connection.rollback()
+                    return@withContext ClanDonationResult(ClanDonationStatus.DUPLICATE)
+                }
+
+                val clanExperience = connection.prepareStatement(
+                    "SELECT experience_points FROM clans WHERE id = ? FOR UPDATE"
+                ).use { statement ->
+                    statement.setObject(1, clanUuid)
+                    statement.executeQuery().use { result ->
+                        if (result.next()) result.getLong("experience_points") else null
+                    }
+                } ?: run {
+                    connection.rollback()
+                    return@withContext ClanDonationResult(ClanDonationStatus.CLAN_NOT_FOUND)
+                }
+
+                val isMember = connection.prepareStatement(
+                    "SELECT 1 FROM clan_members WHERE clan_id = ? AND user_id = ? FOR UPDATE"
+                ).use { statement ->
+                    statement.setObject(1, clanUuid)
+                    statement.setObject(2, userUuid)
+                    statement.executeQuery().use { it.next() }
+                }
+                if (!isMember) {
+                    connection.rollback()
+                    return@withContext ClanDonationResult(ClanDonationStatus.NOT_MEMBER)
+                }
+
+                val goldSpent = if (currency == ClanDonationCurrency.GOLD) amount else 0
+                val gemsSpent = if (currency == ClanDonationCurrency.GEMS) amount else 0
+                if (wallet.first < goldSpent || wallet.second < gemsSpent) {
+                    connection.rollback()
+                    return@withContext ClanDonationResult(ClanDonationStatus.INSUFFICIENT_FUNDS)
+                }
+
+                connection.prepareStatement(
+                    """
+                    UPDATE player_stats
+                    SET gold = gold - ?, gems = gems - ?, updated_at = CURRENT_TIMESTAMP
+                    WHERE user_id = ?
+                    """.trimIndent()
+                ).use { statement ->
+                    statement.setInt(1, goldSpent)
+                    statement.setInt(2, gemsSpent)
+                    statement.setObject(3, userUuid)
+                    check(statement.executeUpdate() == 1)
+                }
+
+                connection.prepareStatement(
+                    """
+                    INSERT INTO wallet_transactions (
+                        id, user_id, source_type, source_id, gold_delta, gems_delta, xp_delta
+                    ) VALUES (?, ?, 'CLAN_DONATION', ?, ?, ?, 0)
+                    """.trimIndent()
+                ).use { statement ->
+                    statement.setObject(1, UUID.randomUUID())
+                    statement.setObject(2, userUuid)
+                    statement.setString(3, requestId)
+                    statement.setInt(4, -goldSpent)
+                    statement.setInt(5, -gemsSpent)
+                    check(statement.executeUpdate() == 1)
+                }
+
+                connection.prepareStatement(
+                    """
+                    UPDATE clan_members
+                    SET donated_gold = donated_gold + ?, donated_gems = donated_gems + ?
+                    WHERE clan_id = ? AND user_id = ?
+                    """.trimIndent()
+                ).use { statement ->
+                    statement.setInt(1, goldSpent)
+                    statement.setInt(2, gemsSpent)
+                    statement.setObject(3, clanUuid)
+                    statement.setObject(4, userUuid)
+                    check(statement.executeUpdate() == 1)
+                }
+
+                val newExperience = clanExperience + experienceGranted
+                val newLevel = ClanProgression.levelForExperience(newExperience)
+                connection.prepareStatement(
+                    """
+                    UPDATE clans
+                    SET experience_points = ?, level = ?,
+                        donated_gold = donated_gold + ?, donated_gems = donated_gems + ?,
+                        level_reached_at = CASE WHEN level < ? THEN CURRENT_TIMESTAMP ELSE level_reached_at END
+                    WHERE id = ?
+                    """.trimIndent()
+                ).use { statement ->
+                    statement.setLong(1, newExperience)
+                    statement.setInt(2, newLevel)
+                    statement.setInt(3, goldSpent)
+                    statement.setInt(4, gemsSpent)
+                    statement.setInt(5, newLevel)
+                    statement.setObject(6, clanUuid)
+                    check(statement.executeUpdate() == 1)
+                }
+
+                connection.prepareStatement(
+                    """
+                    INSERT INTO clan_donations (
+                        request_id, clan_id, user_id, currency, amount, experience_granted
+                    ) VALUES (?, ?, ?, ?, ?, ?)
+                    """.trimIndent()
+                ).use { statement ->
+                    statement.setObject(1, requestUuid)
+                    statement.setObject(2, clanUuid)
+                    statement.setObject(3, userUuid)
+                    statement.setString(4, currency.name)
+                    statement.setInt(5, amount)
+                    statement.setInt(6, experienceGranted)
+                    check(statement.executeUpdate() == 1)
+                }
+
+                connection.commit()
+                ClanDonationResult(
+                    status = ClanDonationStatus.APPLIED,
+                    experienceGranted = experienceGranted,
+                    clanLevel = newLevel
+                )
+            } catch (_: Throwable) {
+                connection.rollback()
+                ClanDonationResult(ClanDonationStatus.FAILED)
             } finally {
                 connection.autoCommit = true
             }

@@ -3,6 +3,7 @@ package com.hienthai.fastowin.localization
 /** Maps stable server codes to client-owned copy without trusting arbitrary network keys. */
 fun protocolTextKeyForCode(code: String): TextKey? = when (code) {
     "AUTH_REQUIRED", "ACCOUNT_REQUIRED" -> TextKey.ServerAuthRequired
+    "PLAY_QUOTA_EXHAUSTED" -> TextKey.OnlineQuotaExhaustedMessage
     "RATE_LIMITED", "TOO_MANY_REQUESTS" -> TextKey.ServerRateLimited
     "INVALID_MESSAGE", "INVALID_REQUEST", "INVALID_WEB_SESSION_REQUEST", "INVALID_REQUEST_ID",
     "PROTOCOL_DECODE_FAILED" -> TextKey.ServerInvalidRequest

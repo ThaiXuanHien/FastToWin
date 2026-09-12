@@ -1,6 +1,7 @@
 package com.hienthai.fastowin.server
 
 import com.hienthai.fastowin.protocol.ClientMessage
+import com.hienthai.fastowin.protocol.ClanDonationStatus
 import com.hienthai.fastowin.localization.protocolTextKeyForCode
 import com.hienthai.fastowin.localization.TextKey
 import com.hienthai.fastowin.localization.LocalizationService
@@ -20,6 +21,8 @@ import com.hienthai.fastowin.protocol.PushPreferencesSnapshot
 import com.hienthai.fastowin.protocol.ProtocolGameMode
 import com.hienthai.fastowin.protocol.MatchType
 import com.hienthai.fastowin.protocol.RematchEvent
+import com.hienthai.fastowin.protocol.RewardedAdAvailability
+import com.hienthai.fastowin.protocol.RewardedAdBonusStatus
 import com.hienthai.fastowin.protocol.NotificationDestination
 import com.hienthai.fastowin.protocol.NotificationKind
 import com.hienthai.fastowin.protocol.NotificationSnapshot
@@ -67,6 +70,9 @@ class GameEngine(
     private val clanRepository: ClanRepository = NoOpClanRepository,
     private val pushNotificationService: PushNotificationService = NoOpPushNotificationService,
     private val storePurchaseVerifier: StorePurchaseVerifier = RejectingStorePurchaseVerifier,
+    private val playQuotaRepository: PlayQuotaRepository = InMemoryPlayQuotaRepository(),
+    private val rewardedAdVerifier: RewardedAdVerifier = RejectingRewardedAdVerifier,
+    private val rewardedAdAvailability: RewardedAdAvailability = RewardedAdAvailability.UNAVAILABLE,
     private val storeSandboxEnabled: Boolean = false,
     private val timeAttackMillis: Long = DEFAULT_TIME_ATTACK_MILLIS,
     private val rematchTimeoutMillis: Long = DEFAULT_REMATCH_TIMEOUT_MILLIS,
@@ -251,6 +257,8 @@ class GameEngine(
     suspend fun handle(playerId: String, message: ClientMessage): List<Delivery> {
         restoreActiveRooms()
         if (message is ClientMessage.GetProfile) return loadProfile(playerId)
+        if (message is ClientMessage.GetPlayQuota) return loadPlayQuota(playerId)
+        if (message is ClientMessage.ClaimRewardedAdBonus) return claimRewardedAdBonus(playerId, message)
         if (message is ClientMessage.AcknowledgeSeasonReward) {
             return acknowledgeSeasonReward(playerId, message.seasonNumber)
         }
@@ -303,6 +311,7 @@ class GameEngine(
         if (message is ClientMessage.InviteToClan) return inviteToClan(playerId, message.playerCode)
         if (message is ClientMessage.KickClanMember) return kickClanMember(playerId, message.clanId, message.memberId)
         if (message is ClientMessage.ClaimClanQuestReward) return claimClanQuestReward(playerId, message.clanId)
+        if (message is ClientMessage.DonateToClan) return donateToClan(playerId, message)
         if (message is ClientMessage.UpdateAvatar) return updateAvatar(playerId, message.base64Data)
         if (message is ClientMessage.UpdateClanLogo) return updateClanLogo(playerId, message.clanId, message.logoId)
         if (message is ClientMessage.BuyCosmetic) return rejectLegacyCosmeticPurchase(playerId)
@@ -310,14 +319,31 @@ class GameEngine(
         if (message is ClientMessage.JoinMatchmaking) return joinMatchmaking(playerId, message)
         if (message is ClientMessage.CancelMatchmaking) return cancelMatchmaking(playerId)
         if (message is ClientMessage.CreateRoom) {
-            if (message.matchType == MatchType.RANKED && !isAccountSession(playerId)) {
-                return listOf(error(playerId, "ACCOUNT_REQUIRED", legacyFallback("Hãy đăng nhập để tạo phòng xếp hạng.")))
-            }
+            requireOnlineAccount(playerId)?.let { return listOf(it) }
+            rejectIfQuotaExhausted(playerId)?.let { return it }
             validateModeAccess(playerId, message.gameMode)?.let { return listOf(it) }
         }
         if (message is ClientMessage.JoinRoom) {
+            requireOnlineAccount(playerId)?.let { return listOf(it) }
+            if (!message.asSpectator) rejectIfQuotaExhausted(playerId)?.let { return it }
             val roomMode = mutex.withLock { rooms[message.roomId]?.gameMode }
             if (roomMode != null) validateModeAccess(playerId, roomMode)?.let { return listOf(it) }
+        }
+        if (
+            message is ClientMessage.SetReady ||
+            message is ClientMessage.RequestRematch ||
+            message is ClientMessage.RespondRematch
+        ) {
+            requireOnlineAccount(playerId)?.let { return listOf(it) }
+        }
+        if (message is ClientMessage.SetReady && message.ready) {
+            rejectIfQuotaExhausted(playerId)?.let { return it }
+        }
+        if (
+            message is ClientMessage.RequestRematch ||
+            (message is ClientMessage.RespondRematch && message.accept)
+        ) {
+            rejectIfQuotaExhausted(playerId)?.let { return it }
         }
         val result = mutex.withLock {
             val player = sessionsByPlayerId[playerId]
@@ -337,11 +363,13 @@ class GameEngine(
                     listOf(Delivery(ServerMessage.RoomList(publicRooms()), setOf(playerId)))
                 )
                 ClientMessage.GetProfile -> HandleResult(emptyList())
+                ClientMessage.GetPlayQuota -> HandleResult(emptyList())
                 is ClientMessage.AcknowledgeSeasonReward -> HandleResult(emptyList())
                 ClientMessage.GetWalletHistory -> HandleResult(emptyList())
                 ClientMessage.GetGemStoreCatalog -> HandleResult(emptyList())
                 is ClientMessage.ExchangeGemsForGold -> HandleResult(emptyList())
                 is ClientMessage.VerifyStorePurchase -> HandleResult(emptyList())
+                is ClientMessage.ClaimRewardedAdBonus -> HandleResult(emptyList())
                 ClientMessage.ClaimDailyCheckIn -> HandleResult(emptyList())
                 is ClientMessage.ClaimMissionReward -> HandleResult(emptyList())
                 is ClientMessage.GetFriendProfile -> HandleResult(emptyList())
@@ -392,6 +420,7 @@ class GameEngine(
                 is ClientMessage.InviteToClan -> HandleResult(emptyList())
                 is ClientMessage.KickClanMember -> HandleResult(emptyList())
                 is ClientMessage.ClaimClanQuestReward -> HandleResult(emptyList())
+                is ClientMessage.DonateToClan -> HandleResult(emptyList())
                 is ClientMessage.SendFriendRequest -> HandleResult(emptyList())
                 is ClientMessage.RespondFriendRequest -> HandleResult(emptyList())
                 is ClientMessage.CancelFriendRequest -> HandleResult(emptyList())
@@ -1195,6 +1224,7 @@ class GameEngine(
         command: ClientMessage.RespondRoomInvitation
     ): List<Delivery> {
         if (!isAccountSession(playerId)) return listOf(accountRequired(playerId))
+        if (command.accept) rejectIfQuotaExhausted(playerId)?.let { return it }
         var invitationConsumed = false
         val otherRemovedInvitations = mutableListOf<RoomInvitationRecord>()
         val result = mutex.withLock {
@@ -1322,9 +1352,8 @@ class GameEngine(
         playerId: String,
         command: ClientMessage.JoinMatchmaking
     ): List<Delivery> {
-        if (!isAccountSession(playerId)) {
-            return listOf(error(playerId, "ACCOUNT_REQUIRED", legacyFallback("Hãy đăng nhập để ghép trận trực tuyến.")))
-        }
+        requireOnlineAccount(playerId)?.let { return listOf(it) }
+        rejectIfQuotaExhausted(playerId)?.let { return it }
         if (mutex.withLock { activeTournamentFor(playerId) != null }) {
             return listOf(error(playerId, "TOURNAMENT_ACTIVE", legacyFallback("Hãy rời hoặc hoàn tất giải đấu hiện tại trước.")))
         }
@@ -1413,8 +1442,6 @@ class GameEngine(
             }
 
             val hostId = queuedCandidate.playerId
-            matchmakingEntries.remove(hostId)
-            matchmakingEntries.remove(playerId)
             val room = Room(
                 id = UUID.randomUUID().toString(),
                 name = legacyFallback("Đấu nhanh"),
@@ -1425,13 +1452,25 @@ class GameEngine(
                 guestId = playerId,
                 scores = mutableMapOf(hostId to 0, playerId to 0)
             )
+            val consumption = playQuotaRepository.consumeMatch(
+                userIds = room.activePlayerIds(),
+                matchId = room.matchId,
+                nowMillis = joinedAt
+            )
+            if (consumption.status == PlayQuotaConsumptionStatus.EXHAUSTED) {
+                matchmakingEntries.remove(hostId)
+                matchmakingEntries.remove(playerId)
+                return@withLock quotaRejectedDeliveries(room.activePlayerIds(), consumption)
+            }
+            matchmakingEntries.remove(hostId)
+            matchmakingEntries.remove(playerId)
             room.startMatch(joinedAt, timeAttackMillis)
             rooms[room.id] = room
             matchedRoomId = room.id
             listOf(
                 Delivery(ServerMessage.GameStarted(room.snapshot()), room.playerIds()),
                 Delivery(ServerMessage.RoomList(publicRooms()))
-            )
+            ) + quotaDataDeliveries(consumption.quotas)
         }
         matchedRoomId?.let { persistRoom(it) }
         val affectedPlayers = deliveries.flatMap { it.recipients.orEmpty() }.toSet()
@@ -1465,6 +1504,149 @@ class GameEngine(
         "ACCOUNT_REQUIRED",
         legacyFallback("Hãy đăng nhập tài khoản để sử dụng tính năng này.")
     )
+
+    private suspend fun requireOnlineAccount(playerId: String): Delivery? =
+        if (isAccountSession(playerId)) {
+            null
+        } else {
+            error(
+                playerId,
+                "ACCOUNT_REQUIRED",
+                legacyFallback("Hãy đăng nhập để chơi trực tuyến.")
+            )
+        }
+
+    private suspend fun rejectIfQuotaExhausted(playerId: String): List<Delivery>? {
+        val check = playQuotaRepository.canPlay(setOf(playerId), nowMillis())
+        if (check.allowed) return null
+        return quotaRejectedDeliveries(setOf(playerId), check.quotas)
+    }
+
+    private fun quotaRejectedDeliveries(
+        playerIds: Set<String>,
+        consumption: PlayQuotaConsumption
+    ): List<Delivery> = quotaRejectedDeliveries(playerIds, consumption.quotas)
+
+    private fun quotaRejectedDeliveries(
+        playerIds: Set<String>,
+        quotas: Map<String, com.hienthai.fastowin.protocol.PlayQuotaSnapshot>
+    ): List<Delivery> = quotaDataDeliveries(quotas) + playerIds.map { affectedPlayerId ->
+        error(
+            affectedPlayerId,
+            "PLAY_QUOTA_EXHAUSTED",
+            legacyFallback("Đã hết lượt đấu hôm nay. Xem quảng cáo để nhận thêm 2 lượt.")
+        )
+    }
+
+    private fun quotaDataDeliveries(
+        quotas: Map<String, com.hienthai.fastowin.protocol.PlayQuotaSnapshot>
+    ): List<Delivery> = quotas.map { (affectedPlayerId, quota) ->
+        Delivery(
+            ServerMessage.PlayQuotaData(quota.withRewardedAdAvailability()),
+            setOf(affectedPlayerId)
+        )
+    }
+
+    private suspend fun loadPlayQuota(playerId: String): List<Delivery> {
+        requireOnlineAccount(playerId)?.let { return listOf(it) }
+        val quota = playQuotaRepository.getSnapshot(playerId, nowMillis())
+        return listOf(
+            Delivery(
+                ServerMessage.PlayQuotaData(quota.withRewardedAdAvailability()),
+                setOf(playerId)
+            )
+        )
+    }
+
+    private suspend fun claimRewardedAdBonus(
+        playerId: String,
+        command: ClientMessage.ClaimRewardedAdBonus
+    ): List<Delivery> {
+        requireOnlineAccount(playerId)?.let { return listOf(it) }
+        val currentQuota: suspend () -> com.hienthai.fastowin.protocol.PlayQuotaSnapshot = {
+            playQuotaRepository.getSnapshot(playerId, nowMillis()).withRewardedAdAvailability()
+        }
+        if (
+            command.requestId.isBlank() || command.requestId.length > MAX_REQUEST_ID_LENGTH ||
+            command.providerTransactionId.isBlank() ||
+            command.providerTransactionId.length > MAX_REWARDED_AD_TRANSACTION_ID_LENGTH ||
+            command.proof.isBlank() || command.proof.length > MAX_REWARDED_AD_PROOF_LENGTH
+        ) {
+            return listOf(rewardedAdResult(
+                playerId,
+                command.requestId,
+                RewardedAdBonusStatus.INVALID,
+                currentQuota()
+            ))
+        }
+        if (rewardedAdAvailability == RewardedAdAvailability.UNAVAILABLE) {
+            return listOf(rewardedAdResult(
+                playerId,
+                command.requestId,
+                RewardedAdBonusStatus.UNAVAILABLE,
+                currentQuota()
+            ))
+        }
+        val verified = try {
+            rewardedAdVerifier.verify(
+                userId = playerId,
+                provider = command.provider,
+                providerTransactionId = command.providerTransactionId,
+                proof = command.proof
+            )
+        } catch (error: Throwable) {
+            System.err.println("Could not verify rewarded ad for $playerId: ${error.message}")
+            return listOf(rewardedAdResult(
+                playerId,
+                command.requestId,
+                RewardedAdBonusStatus.FAILED,
+                currentQuota()
+            ))
+        }
+        if (verified == null) {
+            return listOf(rewardedAdResult(
+                playerId,
+                command.requestId,
+                RewardedAdBonusStatus.INVALID,
+                currentQuota()
+            ))
+        }
+        val grant = try {
+            playQuotaRepository.grantRewardedAd(
+                userId = playerId,
+                provider = verified.provider,
+                providerTransactionId = verified.providerTransactionId,
+                nowMillis = nowMillis()
+            )
+        } catch (error: Throwable) {
+            System.err.println("Could not grant rewarded ad quota for $playerId: ${error.message}")
+            return listOf(rewardedAdResult(
+                playerId,
+                command.requestId,
+                RewardedAdBonusStatus.FAILED,
+                currentQuota()
+            ))
+        }
+        return listOf(rewardedAdResult(
+            playerId,
+            command.requestId,
+            grant.status,
+            grant.quota.withRewardedAdAvailability()
+        ))
+    }
+
+    private fun rewardedAdResult(
+        playerId: String,
+        requestId: String,
+        status: RewardedAdBonusStatus,
+        quota: com.hienthai.fastowin.protocol.PlayQuotaSnapshot
+    ) = Delivery(
+        ServerMessage.RewardedAdBonusResult(requestId, status, quota),
+        setOf(playerId)
+    )
+
+    private fun com.hienthai.fastowin.protocol.PlayQuotaSnapshot.withRewardedAdAvailability() =
+        copy(rewardedAdAvailability = this@GameEngine.rewardedAdAvailability)
 
     private suspend fun loadProfile(playerId: String): List<Delivery> {
         val session = mutex.withLock { sessionsByPlayerId[playerId]?.copy() }
@@ -2274,7 +2456,7 @@ class GameEngine(
         )
     }
 
-    private fun setReady(player: GuestSession, command: ClientMessage.SetReady): HandleResult {
+    private suspend fun setReady(player: GuestSession, command: ClientMessage.SetReady): HandleResult {
         val room = rooms[command.roomId]
             ?: return HandleResult(listOf(error(player.playerId, "ROOM_NOT_FOUND", legacyFallback("Phòng không còn tồn tại."))))
         if (player.playerId !in room.activePlayerIds()) {
@@ -2287,6 +2469,29 @@ class GameEngine(
         room.sequence++
         val participants = room.playerIds()
         if (participants.size == 2 && room.readyPlayerIds.containsAll(participants)) {
+            if (room.tournamentId == null) {
+                val consumption = playQuotaRepository.consumeMatch(
+                    userIds = room.activePlayerIds(),
+                    matchId = room.matchId,
+                    nowMillis = nowMillis()
+                )
+                if (consumption.status == PlayQuotaConsumptionStatus.EXHAUSTED) {
+                    room.readyPlayerIds.clear()
+                    room.sequence++
+                    return HandleResult(
+                        deliveries = quotaRejectedDeliveries(room.activePlayerIds(), consumption) +
+                            Delivery(ServerMessage.RoomUpdated(room.snapshot()), room.activePlayerIds()),
+                        changedRoomId = room.id
+                    )
+                }
+                room.startMatch(nowMillis(), timeAttackMillis)
+                return HandleResult(
+                    deliveries = listOf(
+                        Delivery(ServerMessage.GameStarted(room.snapshot()), participants)
+                    ) + quotaDataDeliveries(consumption.quotas),
+                    changedRoomId = room.id
+                )
+            }
             room.startMatch(nowMillis(), timeAttackMillis)
             return HandleResult(
                 deliveries = listOf(Delivery(ServerMessage.GameStarted(room.snapshot()), participants)),
@@ -2462,7 +2667,7 @@ class GameEngine(
         }
     }
 
-    private fun respondRematch(
+    private suspend fun respondRematch(
         player: GuestSession,
         roomId: String,
         accept: Boolean
@@ -2548,13 +2753,37 @@ class GameEngine(
             )
         }
 
-        room.matchId = UUID.randomUUID().toString()
+        val rematchId = rematchIdFor(room.matchId)
+        val consumption = playQuotaRepository.consumeMatch(
+            userIds = room.activePlayerIds(),
+            matchId = rematchId,
+            nowMillis = nowMillis()
+        )
+        if (consumption.status == PlayQuotaConsumptionStatus.EXHAUSTED) {
+            room.rematchRequestedPlayerIds.clear()
+            room.rematchExpiresAtEpochMillis = null
+            room.sequence++
+            return HandleResult(
+                deliveries = quotaRejectedDeliveries(room.activePlayerIds(), consumption) +
+                    Delivery(
+                        ServerMessage.RematchStatus(room.snapshot(), RematchEvent.CANCELLED),
+                        room.activePlayerIds()
+                    ),
+                changedRoomId = room.id
+            )
+        }
+        room.matchId = rematchId
         room.startMatch(nowMillis(), timeAttackMillis)
         return HandleResult(
-            deliveries = listOf(Delivery(ServerMessage.GameStarted(room.snapshot()), room.activePlayerIds())),
+            deliveries = listOf(Delivery(ServerMessage.GameStarted(room.snapshot()), room.activePlayerIds())) +
+                quotaDataDeliveries(consumption.quotas),
             changedRoomId = room.id
         )
     }
+
+    private fun rematchIdFor(previousMatchId: String): String = UUID.nameUUIDFromBytes(
+        "fasttowin-rematch:$previousMatchId".toByteArray(Charsets.UTF_8)
+    ).toString()
 
     private fun selectNumber(player: GuestSession, command: ClientMessage.SelectNumber): HandleResult {
         val room = rooms[command.roomId]
@@ -3711,6 +3940,39 @@ class GameEngine(
         }
     }
 
+    private suspend fun donateToClan(
+        playerId: String,
+        command: ClientMessage.DonateToClan
+    ): List<Delivery> {
+        val result = clanRepository.donateToClan(
+            userId = playerId,
+            clanId = command.clanId,
+            requestId = command.requestId,
+            currency = command.currency,
+            amount = command.amount
+        )
+        return buildList {
+            add(
+                Delivery(
+                    ServerMessage.ClanDonationResult(
+                        requestId = command.requestId,
+                        status = result.status,
+                        currency = command.currency,
+                        experienceGranted = result.experienceGranted,
+                        clanLevel = result.clanLevel
+                    ),
+                    setOf(playerId)
+                )
+            )
+            if (result.status == ClanDonationStatus.APPLIED || result.status == ClanDonationStatus.DUPLICATE) {
+                clanRepository.getClanById(command.clanId)?.let { clan ->
+                    add(Delivery(ServerMessage.ClanInfoData(clan), setOf(playerId)))
+                }
+                addAll(loadProfile(playerId))
+            }
+        }
+    }
+
     private suspend fun getClanList(playerId: String, query: String? = null): List<Delivery> {
         val list = clanRepository.getClanList(50, 0, query)
         val pendingJoinClanIds = clanRepository.getPendingJoinClanIds(playerId)
@@ -3846,6 +4108,8 @@ class GameEngine(
         const val MAX_ROOM_NAME_LENGTH = 48
         const val SCORE_PER_NUMBER = 10
         const val MAX_REQUEST_ID_LENGTH = 64
+        const val MAX_REWARDED_AD_TRANSACTION_ID_LENGTH = 256
+        const val MAX_REWARDED_AD_PROOF_LENGTH = 2_048
         const val MAX_REQUESTS_PER_MATCH = 2_000
         const val MAX_NOTIFICATION_SYNC_BATCH = 20
         const val LEADERBOARD_SIZE = 100

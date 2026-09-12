@@ -10,6 +10,7 @@ import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performScrollToNode
@@ -20,6 +21,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.mutableStateOf
 import com.hienthai.fastowin.data.preferences.AppPreferences
 import com.hienthai.fastowin.data.preferences.AppThemeMode
+import com.hienthai.fastowin.protocol.ClanLeaderboardEntrySnapshot
+import com.hienthai.fastowin.protocol.LeaderboardEntrySnapshot
 import com.hienthai.fastowin.protocol.LeaderboardSnapshot
 import com.hienthai.fastowin.protocol.PlayerProfileSnapshot
 import com.hienthai.fastowin.protocol.PlayerProgressionSnapshot
@@ -40,6 +43,84 @@ import org.junit.Assert.assertTrue
 class SeasonProgressUiTest {
     @get:Rule
     val composeRule = createComposeRule()
+
+    @Test
+    fun playerGoldRankingUsesItsOwnCompactMetricTabAndHidesSeasonFilters() {
+        composeRule.setContent {
+            DeviceConfigurationOverride(
+                DeviceConfigurationOverride.ForcedSize(DpSize(320.dp, 568.dp)) then
+                    DeviceConfigurationOverride.FontScale(1.4f)
+            ) {
+                FastToWinTheme {
+                    LeaderboardScreen(
+                        state = GameState(
+                            profile = seasonProfileFixture(),
+                            leaderboard = LeaderboardSnapshot(
+                                topGoldPlayers = listOf(
+                                    LeaderboardEntrySnapshot(
+                                        rank = 1,
+                                        displayName = "Hiền",
+                                        playerCode = "HIEN001",
+                                        wins = 3,
+                                        totalMatches = 5,
+                                        highestScore = 50,
+                                        lifetimeEarnedGold = 12_500
+                                    )
+                                )
+                            )
+                        ),
+                        onBack = {},
+                        onRefresh = {},
+                        onOpenFriendProfile = {},
+                        showBackButton = false
+                    )
+                }
+            }
+        }
+
+        composeRule.onNodeWithTag("leaderboard_player_metric_gold").performClick()
+        composeRule.onNodeWithTag("leaderboard_player_metric_filters").assertIsDisplayed()
+        composeRule.onNodeWithTag("leaderboard_period_filters").assertDoesNotExist()
+        composeRule.onNodeWithText("12.500").assertIsDisplayed()
+    }
+
+    @Test
+    fun clanGoldRankingUsesDonationTotalInItsOwnCompactMetricTab() {
+        composeRule.setContent {
+            DeviceConfigurationOverride(
+                DeviceConfigurationOverride.ForcedSize(DpSize(320.dp, 568.dp)) then
+                    DeviceConfigurationOverride.FontScale(1.4f)
+            ) {
+                FastToWinTheme {
+                    LeaderboardScreen(
+                        state = GameState(
+                            leaderboard = LeaderboardSnapshot(
+                                topGoldClans = listOf(
+                                    ClanLeaderboardEntrySnapshot(
+                                        rank = 1,
+                                        clanId = "clan-fast",
+                                        clanName = "Bang Thần Tốc",
+                                        totalElo = 8_000,
+                                        memberCount = 12,
+                                        donatedGold = 45_000
+                                    )
+                                )
+                            )
+                        ),
+                        onBack = {},
+                        onRefresh = {},
+                        onOpenFriendProfile = {},
+                        showBackButton = false
+                    )
+                }
+            }
+        }
+
+        composeRule.onNodeWithTag("leaderboard_tab_clans").performClick()
+        composeRule.onNodeWithTag("leaderboard_clan_metric_gold").performClick()
+        composeRule.onNodeWithTag("leaderboard_clan_metric_filters").assertIsDisplayed()
+        composeRule.onNodeWithText("45.000").assertIsDisplayed()
+    }
 
     @Test
     fun seasonProgressAndAllTierRewardsRemainReachableOnSmallPhoneWithLargeText() {

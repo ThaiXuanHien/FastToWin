@@ -73,6 +73,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -89,6 +90,7 @@ import com.hienthai.fastowin.protocol.DAILY_CHECK_IN_REWARDS_GOLD
 import com.hienthai.fastowin.protocol.DAILY_CHECK_IN_REWARDS_GEMS
 import com.hienthai.fastowin.protocol.CosmeticType
 import com.hienthai.fastowin.protocol.MatchType
+import com.hienthai.fastowin.protocol.PlayQuotaSnapshot
 import com.hienthai.fastowin.ui.components.ArcadeActionButton
 import com.hienthai.fastowin.ui.components.ArcadeActionStyle
 import com.hienthai.fastowin.ui.components.ArcadeDialog
@@ -122,6 +124,7 @@ internal fun HomeDashboard(
     onClaimDailyCheckIn: () -> Unit,
     onUpgradeGuest: () -> Unit,
     onLogout: () -> Unit,
+    onPlayQuotaExhausted: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val profile = state.profile
@@ -142,6 +145,11 @@ internal fun HomeDashboard(
     if (showMatchTypePicker) {
         MatchTypePickerDialog(
             title = localized(TextKey.ChooseMatchType),
+            quota = state.playQuota,
+            onQuotaExhausted = {
+                showMatchTypePicker = false
+                onPlayQuotaExhausted()
+            },
             onDismiss = { showMatchTypePicker = false },
             onSelect = { matchType ->
                 showMatchTypePicker = false
@@ -911,8 +919,10 @@ internal fun GameModePickerDialog(
 }
 
 @Composable
-internal fun MatchTypePickerDialog(
+fun MatchTypePickerDialog(
     title: String,
+    quota: PlayQuotaSnapshot? = null,
+    onQuotaExhausted: () -> Unit = {},
     onDismiss: () -> Unit,
     onSelect: (MatchType) -> Unit
 ) {
@@ -922,13 +932,32 @@ internal fun MatchTypePickerDialog(
         onDismissRequest = onDismiss
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            val remainingMatches = quota?.remainingMatches ?: 0
+            val totalMatches = (quota?.baseMatches ?: 10) + (quota?.bonusMatchesGranted ?: 0)
+            Text(
+                text = localized(
+                    TextKey.OnlineMatchesRemaining,
+                    "remaining" to remainingMatches,
+                    "total" to totalMatches
+                ),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("online_quota_remaining")
+                    .semantics { stateDescription = "$remainingMatches/$totalMatches" },
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.Black,
+                color = Color(0xFFFFE28B)
+            )
             ModeChoice(
                 title = localized(TextKey.CasualMatch),
                 subtitle = localized(TextKey.CasualMatchDescription),
                 icon = CrossedSwordsIcon,
                 enabled = true,
                 modifier = Modifier.testTag("match_type:CASUAL"),
-                onClick = { onSelect(MatchType.CASUAL) }
+                onClick = {
+                    if (quota?.remainingMatches == 0) onQuotaExhausted()
+                    else onSelect(MatchType.CASUAL)
+                }
             )
             ModeChoice(
                 title = localized(TextKey.RankedMatch),
@@ -936,7 +965,10 @@ internal fun MatchTypePickerDialog(
                 icon = Icons.Default.EmojiEvents,
                 enabled = true,
                 modifier = Modifier.testTag("match_type:RANKED"),
-                onClick = { onSelect(MatchType.RANKED) }
+                onClick = {
+                    if (quota?.remainingMatches == 0) onQuotaExhausted()
+                    else onSelect(MatchType.RANKED)
+                }
             )
         }
         ArcadeActionButton(

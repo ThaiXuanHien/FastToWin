@@ -2,6 +2,8 @@
 
 import com.hienthai.fastowin.protocol.ClanSnapshot
 import com.hienthai.fastowin.protocol.ClanSummarySnapshot
+import com.hienthai.fastowin.protocol.ClanDonationCurrency
+import com.hienthai.fastowin.protocol.ClanDonationStatus
 
 object NoOpClanRepository : ClanRepository {
     override suspend fun createClan(ownerId: String, name: String, description: String): String? = null
@@ -18,4 +20,11 @@ object NoOpClanRepository : ClanRepository {
     override suspend fun addClanTrophies(clanId: String, amount: Int): Boolean = false
     override suspend fun addQuestProgress(clanId: String, userId: String, amount: Int): Boolean = false
     override suspend fun claimQuestReward(clanId: String, userId: String): Boolean = false
+    override suspend fun donateToClan(
+        userId: String,
+        clanId: String,
+        requestId: String,
+        currency: ClanDonationCurrency,
+        amount: Int
+    ) = ClanDonationResult(ClanDonationStatus.FAILED)
 }

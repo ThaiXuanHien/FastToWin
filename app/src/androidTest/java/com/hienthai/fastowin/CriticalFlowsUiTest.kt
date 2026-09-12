@@ -16,6 +16,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performImeAction
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextInput
@@ -486,7 +487,8 @@ class CriticalFlowsUiTest {
         composeRule.onNodeWithTag("create_room_name").performTextInput("Phòng của Hiền")
         composeRule.onNodeWithTag("create_room_privacy_toggle").performClick()
         composeRule.onNodeWithTag("create_room_password").performTextInput("12345678")
-        composeRule.onNodeWithTag("create_room_submit").performClick()
+        composeRule.onNodeWithTag("create_room_password").performImeAction()
+        composeRule.onNodeWithTag("create_room_submit").performScrollTo().performClick()
 
         composeRule.runOnIdle { assertEquals("Phòng của Hiền" to "12345678", createdRoom) }
     }

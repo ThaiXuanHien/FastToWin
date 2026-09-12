@@ -9,7 +9,10 @@ import com.hienthai.fastowin.localization.LocalizationService
 import com.hienthai.fastowin.localization.LocalizedMessageMapper
 import com.hienthai.fastowin.localization.TextKey
 import com.hienthai.fastowin.platform.epochMillis
+import com.hienthai.fastowin.platform.RewardedAdReceipt
 import com.hienthai.fastowin.protocol.ClientMessage
+import com.hienthai.fastowin.protocol.ClanDonationCurrency
+import com.hienthai.fastowin.protocol.ClanDonationStatus
 import com.hienthai.fastowin.protocol.CosmeticType
 import com.hienthai.fastowin.protocol.GameSnapshot
 import com.hienthai.fastowin.protocol.GoldExchangeStatus
@@ -927,6 +930,7 @@ class GameController(
                         socket.sendMessage(ClientMessage.GetNotifications)
                         socket.sendMessage(ClientMessage.GetLeaderboard)
                         socket.sendMessage(ClientMessage.GetTournamentHub)
+                        socket.sendMessage(ClientMessage.GetPlayQuota)
                         _uiState.value.viewedFriendUserId?.let { friendUserId ->
                             socket.sendMessage(ClientMessage.GetFriendProfile(friendUserId))
                         }
@@ -1045,6 +1049,14 @@ class GameController(
                         isGemStoreCatalogLoading = false,
                         error = null
                     )
+                }
+            }
+            is ServerMessage.PlayQuotaData -> {
+                _uiState.update { it.withPlayQuota(message) }
+            }
+            is ServerMessage.RewardedAdBonusResult -> {
+                _uiState.update {
+                    it.withRewardedAdBonus(message, messageMapper.message(message))
                 }
             }
             is ServerMessage.GoldExchangeResult -> {
@@ -1312,6 +1324,35 @@ class GameController(
                     }
                 }
             }
+            is ServerMessage.ClanDonationResult -> {
+                val donationCurrency = messageMapper.text(
+                    if (message.currency == ClanDonationCurrency.GOLD) TextKey.Gold else TextKey.Gems
+                )
+                val notice = when (message.status) {
+                    ClanDonationStatus.APPLIED -> messageMapper.text(
+                        TextKey.DonationApplied,
+                        mapOf("xp" to message.experienceGranted.toString())
+                    )
+                    ClanDonationStatus.DUPLICATE -> messageMapper.text(TextKey.DonationDuplicate)
+                    ClanDonationStatus.INVALID_AMOUNT -> messageMapper.text(TextKey.DonationInvalidAmount)
+                    ClanDonationStatus.INSUFFICIENT_FUNDS -> messageMapper.text(
+                        TextKey.DonationInsufficientFunds,
+                        mapOf("currency" to donationCurrency)
+                    )
+                    ClanDonationStatus.NOT_MEMBER -> messageMapper.text(TextKey.DonationMembershipRequired)
+                    ClanDonationStatus.PLAYER_NOT_FOUND,
+                    ClanDonationStatus.CLAN_NOT_FOUND,
+                    ClanDonationStatus.FAILED -> messageMapper.text(TextKey.DonationFailed)
+                }
+                _uiState.update {
+                    it.copy(
+                        donatingClanRequestId = null,
+                        clanDonationResult = message,
+                        clanNotice = notice,
+                        error = null
+                    )
+                }
+            }
 
             is ServerMessage.RematchStatus -> {
                 if (applyGameSnapshot(message.game)) {
@@ -1459,6 +1500,11 @@ class GameController(
         if (error.code == "WRONG_NUMBER") {
             return
         }
+        if (error.code == "PLAY_QUOTA_EXHAUSTED") {
+            _uiState.update { it.withPlayQuotaError(error, localizedError) }
+            requestPlayQuota()
+            return
+        }
 
         val opponentIsUnavailable = error.code in setOf("OPPONENT_LEFT", "NOT_IN_ROOM", "ROOM_NOT_FOUND")
         if (error.code in setOf("WRONG_PASSWORD", "ROOM_NOT_FOUND", "ROOM_FULL", "ALREADY_IN_ROOM")) {
@@ -1490,6 +1536,9 @@ class GameController(
                     isGemStoreCatalogLoading = false,
                     verifyingStorePurchaseRequestId = null,
                     exchangingGoldRequestId = null,
+                    claimingRewardedAdRequestId = if (
+                        error.requestId != null && error.requestId == it.claimingRewardedAdRequestId
+                    ) null else it.claimingRewardedAdRequestId,
                     storePurchaseResult = if (
                         error.requestId != null && error.requestId == it.verifyingStorePurchaseRequestId
                     ) {
@@ -1732,6 +1781,66 @@ class GameController(
     fun claimClanQuestReward(clanId: String) {
         _uiState.update { it.copy(error = null) }
         scope.launch { socket.sendMessage(ClientMessage.ClaimClanQuestReward(clanId)) }
+    }
+
+    fun requestPlayQuota() {
+        if (accountDisplayName == null) return
+        scope.launch { socket.sendMessage(ClientMessage.GetPlayQuota) }
+    }
+
+    fun claimRewardedAdBonus(receipt: RewardedAdReceipt): Boolean {
+        if (accountDisplayName == null) return false
+        _uiState.update {
+            it.copy(
+                rewardedAdBonusResult = null,
+                claimingRewardedAdRequestId = receipt.requestId,
+                profileNotice = null,
+                error = null
+            )
+        }
+        scope.launch {
+            socket.sendMessage(
+                ClientMessage.ClaimRewardedAdBonus(
+                    requestId = receipt.requestId,
+                    provider = receipt.provider,
+                    providerTransactionId = receipt.providerTransactionId,
+                    proof = receipt.proof
+                )
+            )
+        }
+        return true
+    }
+
+    fun dismissPlayQuotaDialog() {
+        _uiState.update { it.copy(showPlayQuotaExhaustedDialog = false, error = null) }
+    }
+
+    fun showPlayQuotaDialog() {
+        _uiState.update { it.copy(showPlayQuotaExhaustedDialog = true, error = null) }
+    }
+
+    fun donateToClan(clanId: String, currency: ClanDonationCurrency, amount: Int): Boolean {
+        if (_uiState.value.donatingClanRequestId != null) return false
+        val requestId = randomUuid()
+        _uiState.update {
+            it.copy(
+                donatingClanRequestId = requestId,
+                clanDonationResult = null,
+                clanNotice = null,
+                error = null
+            )
+        }
+        scope.launch {
+            socket.sendMessage(
+                ClientMessage.DonateToClan(
+                    clanId = clanId,
+                    requestId = requestId,
+                    currency = currency,
+                    amount = amount
+                )
+            )
+        }
+        return true
     }
 
     fun openShop() {

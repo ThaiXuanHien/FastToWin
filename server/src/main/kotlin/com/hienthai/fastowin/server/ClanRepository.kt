@@ -2,6 +2,8 @@
 
 import com.hienthai.fastowin.protocol.ClanSnapshot
 import com.hienthai.fastowin.protocol.ClanSummarySnapshot
+import com.hienthai.fastowin.protocol.ClanDonationCurrency
+import com.hienthai.fastowin.protocol.ClanDonationStatus
 
 enum class ClanJoinRequestResult {
     REQUESTED,
@@ -20,6 +22,12 @@ enum class ClanJoinResponseResult {
     ALREADY_MEMBER,
     FAILED
 }
+
+data class ClanDonationResult(
+    val status: ClanDonationStatus,
+    val experienceGranted: Int = 0,
+    val clanLevel: Int = 0
+)
 
 interface ClanRepository {
     suspend fun createClan(ownerId: String, name: String, description: String): String?
@@ -40,4 +48,11 @@ interface ClanRepository {
     suspend fun addClanTrophies(clanId: String, amount: Int): Boolean
     suspend fun addQuestProgress(clanId: String, userId: String, amount: Int): Boolean
     suspend fun claimQuestReward(clanId: String, userId: String): Boolean
+    suspend fun donateToClan(
+        userId: String,
+        clanId: String,
+        requestId: String,
+        currency: ClanDonationCurrency,
+        amount: Int
+    ): ClanDonationResult = ClanDonationResult(ClanDonationStatus.FAILED)
 }

@@ -92,6 +92,7 @@ import com.hienthai.fastowin.platform.buildChallengeDeepLink
 import com.hienthai.fastowin.platform.parseRoomDeepLink
 import com.hienthai.fastowin.platform.rememberTextSharer
 import com.hienthai.fastowin.platform.rememberStoreBillingGateway
+import com.hienthai.fastowin.platform.rememberRewardedAdGateway
 import com.hienthai.fastowin.platform.PlatformStorePurchase
 import com.hienthai.fastowin.protocol.StorePurchaseStatus
 import com.hienthai.fastowin.navigation.GameMode
@@ -106,6 +107,7 @@ import com.hienthai.fastowin.ui.components.ArcadeBackdrop
 import com.hienthai.fastowin.ui.components.AvatarImageProvider
 import com.hienthai.fastowin.ui.components.SeasonRewardSummaryDialog
 import com.hienthai.fastowin.ui.components.UpdateAvailableDialog
+import com.hienthai.fastowin.ui.components.PlayQuotaExhaustedDialog
 import com.hienthai.fastowin.ui.components.ArcadeActionButton
 import com.hienthai.fastowin.ui.components.ArcadeActionStyle
 import kotlinx.coroutines.delay
@@ -327,6 +329,8 @@ private fun GameContent(
     val storeBillingGateway = rememberStoreBillingGateway()
     val storeBillingState by storeBillingGateway.state.collectAsState()
     val pendingStorePurchases = remember { mutableStateMapOf<String, PlatformStorePurchase>() }
+    val rewardedAdGateway = rememberRewardedAdGateway()
+    val rewardedAdState by rewardedAdGateway.state.collectAsState()
     val textSharer = rememberTextSharer()
     val sessionStartedAtMillis = rememberSaveable { epochMillis() }
     var showPracticeLauncher by rememberSaveable { mutableStateOf(false) }
@@ -354,6 +358,31 @@ private fun GameContent(
         if (state.gemStorePackages.isNotEmpty()) {
             storeBillingGateway.connect(state.gemStorePackages, state.storeSandboxEnabled)
         }
+    }
+
+    LaunchedEffect(state.playQuota?.rewardedAdAvailability) {
+        rewardedAdGateway.configure(
+            state.playQuota?.rewardedAdAvailability
+                ?: com.hienthai.fastowin.protocol.RewardedAdAvailability.UNAVAILABLE
+        )
+    }
+
+    LaunchedEffect(rewardedAdGateway) {
+        rewardedAdGateway.receipts.collect { receipt ->
+            controller.claimRewardedAdBonus(receipt)
+        }
+    }
+
+    if (state.showPlayQuotaExhaustedDialog) {
+        PlayQuotaExhaustedDialog(
+            quota = state.playQuota,
+            rewardedAdState = rewardedAdState,
+            isClaiming = state.claimingRewardedAdRequestId != null,
+            onWatchAd = {
+                (state.profile?.userId ?: accountUserId)?.let(rewardedAdGateway::show)
+            },
+            onDismiss = controller::dismissPlayQuotaDialog
+        )
     }
 
     LaunchedEffect(state.storePurchaseResult) {
@@ -1199,6 +1228,8 @@ private fun GameContent(
                      onRespondJoinRequest = controller::respondClanJoinRequest,
                     onUpdateLogo = controller::updateClanLogo,
                     onClaimQuest = controller::claimClanQuestReward,
+                    onDonate = controller::donateToClan,
+                    isDonationPending = state.donatingClanRequestId != null,
                     onViewClan = controller::viewClan,
                     onBack = {
                         navigateBack(if (showTopLevelNavigation) openHome else controller::closeClan)
@@ -1287,7 +1318,8 @@ private fun GameContent(
                         )
                     },
                     onResolveRoomLink = controller::resolvePendingRoomLink,
-                    onClaimDailyCheckIn = controller::claimDailyCheckIn
+                    onClaimDailyCheckIn = controller::claimDailyCheckIn,
+                    onPlayQuotaExhausted = controller::showPlayQuotaDialog
                 )
                     }
                 }

@@ -27,7 +27,7 @@ internal val russianCatalog = LocalizationCatalog(
         TextKey.Loading to "Загрузка…",
         TextKey.UnknownError to "Произошла ошибка. Попробуйте ещё раз.",
         TextKey.WelcomePlayer to "Привет, {player}!"
-) + russianShellAuthTexts + russianGameplayTexts + russianProfileTexts + russianSocialShopTexts + russianProtocolMessageTexts + russianDeliveryTexts + residualTexts(AppLanguage.RUSSIAN) + economyProgressionTexts.getValue(AppLanguage.RUSSIAN),
+) + russianShellAuthTexts + russianGameplayTexts + russianProfileTexts + russianSocialShopTexts + russianProtocolMessageTexts + russianDeliveryTexts + residualTexts(AppLanguage.RUSSIAN) + economyProgressionTexts.getValue(AppLanguage.RUSSIAN) + playQuotaTexts.getValue(AppLanguage.RUSSIAN),
     quantities = mapOf(
         QuantityKey.Players to mapOf(
             PluralCategory.ONE to "{count} игрок",

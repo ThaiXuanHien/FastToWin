@@ -80,6 +80,8 @@ fun LeaderboardScreen(
     SystemBackHandler(enabled = showBackButton, onBack = onBack)
     val leaderboard = state.leaderboard
     var selectedPeriod by remember { mutableStateOf(LeaderboardPeriod.CURRENT_SEASON) }
+    var selectedPlayerMetric by remember { mutableStateOf(PlayerLeaderboardMetric.ELO) }
+    var selectedClanMetric by remember { mutableStateOf(ClanLeaderboardMetric.LEVEL) }
     var selectedMainTab by remember { mutableIntStateOf(0) }
 
     ResponsiveScreen(
@@ -118,13 +120,19 @@ fun LeaderboardScreen(
                 } else if (selectedMainTab == 0) {
                     PlayerLeaderboard(
                         state = state,
+                        selectedMetric = selectedPlayerMetric,
+                        onSelectMetric = { selectedPlayerMetric = it },
                         selectedPeriod = selectedPeriod,
                         onSelectPeriod = { selectedPeriod = it },
                         onOpenFriendProfile = onOpenFriendProfile,
                         onOpenSeasonHistory = onOpenSeasonHistory
                     )
                 } else {
-                    ClanLeaderboard(state)
+                    ClanLeaderboard(
+                        state = state,
+                        selectedMetric = selectedClanMetric,
+                        onSelectMetric = { selectedClanMetric = it }
+                    )
                 }
             }
         }
@@ -191,23 +199,33 @@ private fun ArcadeLeaderboardTab(
 @Composable
 private fun PlayerLeaderboard(
     state: GameState,
+    selectedMetric: PlayerLeaderboardMetric,
+    onSelectMetric: (PlayerLeaderboardMetric) -> Unit,
     selectedPeriod: LeaderboardPeriod,
     onSelectPeriod: (LeaderboardPeriod) -> Unit,
     onOpenFriendProfile: (String) -> Unit,
     onOpenSeasonHistory: () -> Unit
 ) {
     val leaderboard = state.leaderboard
-    val displayedCurrent = when (selectedPeriod) {
-        LeaderboardPeriod.CURRENT_SEASON -> leaderboard?.seasonCurrentPlayer
-        LeaderboardPeriod.PREVIOUS_SEASON -> leaderboard?.previousSeasonCurrentPlayer
-        LeaderboardPeriod.ALL_TIME -> leaderboard?.currentPlayer
+    val displayedCurrent = when (selectedMetric) {
+        PlayerLeaderboardMetric.ELO -> when (selectedPeriod) {
+            LeaderboardPeriod.CURRENT_SEASON -> leaderboard?.seasonCurrentPlayer
+            LeaderboardPeriod.PREVIOUS_SEASON -> leaderboard?.previousSeasonCurrentPlayer
+            LeaderboardPeriod.ALL_TIME -> leaderboard?.currentPlayer
+        }
+        PlayerLeaderboardMetric.GOLD -> leaderboard?.currentGoldPlayer
+        PlayerLeaderboardMetric.GEMS -> leaderboard?.currentGemPlayer
     }
-    val displayedTop = when (selectedPeriod) {
-        LeaderboardPeriod.CURRENT_SEASON -> leaderboard?.seasonTopPlayers.orEmpty()
-        LeaderboardPeriod.PREVIOUS_SEASON -> leaderboard?.previousSeasonTopPlayers.orEmpty()
-        LeaderboardPeriod.ALL_TIME -> leaderboard?.topPlayers.orEmpty()
+    val displayedTop = when (selectedMetric) {
+        PlayerLeaderboardMetric.ELO -> when (selectedPeriod) {
+            LeaderboardPeriod.CURRENT_SEASON -> leaderboard?.seasonTopPlayers.orEmpty()
+            LeaderboardPeriod.PREVIOUS_SEASON -> leaderboard?.previousSeasonTopPlayers.orEmpty()
+            LeaderboardPeriod.ALL_TIME -> leaderboard?.topPlayers.orEmpty()
+        }
+        PlayerLeaderboardMetric.GOLD -> leaderboard?.topGoldPlayers.orEmpty()
+        PlayerLeaderboardMetric.GEMS -> leaderboard?.topGemPlayers.orEmpty()
     }
-    var visiblePlayerCount by remember(selectedPeriod) { mutableStateOf(DEFAULT_ARCADE_PAGE_SIZE) }
+    var visiblePlayerCount by remember(selectedPeriod, selectedMetric) { mutableStateOf(DEFAULT_ARCADE_PAGE_SIZE) }
     val visibleTopPlayers = displayedTop.take(visiblePlayerCount)
 
     LazyColumn(
@@ -215,49 +233,57 @@ private fun PlayerLeaderboard(
         contentPadding = PaddingValues(bottom = 24.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        if (selectedPeriod == LeaderboardPeriod.CURRENT_SEASON) {
+        item(key = "player_metric_filters") {
+            PlayerLeaderboardMetricFilters(
+                selectedMetric = selectedMetric,
+                onSelect = onSelectMetric
+            )
+        }
+        if (selectedMetric == PlayerLeaderboardMetric.ELO && selectedPeriod == LeaderboardPeriod.CURRENT_SEASON) {
             state.profile?.progression?.season?.let { season ->
                 item(key = "season_progress") { SeasonProgressCard(season) }
             }
         }
-        item(key = "leaderboard_hero") {
-            ArcadeFeatureHero(
-                illustration = Res.drawable.arcade_leaderboard_trophy,
-                title = localized(TextKey.FameRace),
-                subtitle = localized(TextKey.FameRaceDescription),
-                accent = ArcadePalette.Gold500
-            )
-        }
-        item(key = "ranking_filters") {
-            LeaderboardPeriodFilters(
-                selectedPeriod = selectedPeriod,
-                previousSeasonAvailable = leaderboard?.previousSeasonName != null,
-                onSelect = onSelectPeriod
-            )
-        }
-        item(key = "ranking_actions") {
-            ArcadeSegmentedControl(
-                labels = listOf(
-                    when (selectedPeriod) {
-                        LeaderboardPeriod.CURRENT_SEASON -> leaderboard?.seasonName ?: localized(TextKey.CurrentSeason)
-                        LeaderboardPeriod.PREVIOUS_SEASON -> leaderboard?.previousSeasonName ?: localized(TextKey.PreviousSeason)
-                        LeaderboardPeriod.ALL_TIME -> localized(TextKey.AllTime)
-                    },
-                    localized(TextKey.History)
-                ),
-                selectedIndex = 0,
-                onSelected = { index -> if (index == 1) onOpenSeasonHistory() },
-                enabled = { index -> index == 0 || state.profile != null },
-                itemTestTag = { index -> if (index == 1) "open_season_history" else "season_context_current" },
-                modifier = Modifier.testTag("season_context_tabs")
-            )
+        if (selectedMetric == PlayerLeaderboardMetric.ELO) {
+            item(key = "leaderboard_hero") {
+                ArcadeFeatureHero(
+                    illustration = Res.drawable.arcade_leaderboard_trophy,
+                    title = localized(TextKey.FameRace),
+                    subtitle = localized(TextKey.FameRaceDescription),
+                    accent = ArcadePalette.Gold500
+                )
+            }
+            item(key = "ranking_filters") {
+                LeaderboardPeriodFilters(
+                    selectedPeriod = selectedPeriod,
+                    previousSeasonAvailable = leaderboard?.previousSeasonName != null,
+                    onSelect = onSelectPeriod
+                )
+            }
+            item(key = "ranking_actions") {
+                ArcadeSegmentedControl(
+                    labels = listOf(
+                        when (selectedPeriod) {
+                            LeaderboardPeriod.CURRENT_SEASON -> leaderboard?.seasonName ?: localized(TextKey.CurrentSeason)
+                            LeaderboardPeriod.PREVIOUS_SEASON -> leaderboard?.previousSeasonName ?: localized(TextKey.PreviousSeason)
+                            LeaderboardPeriod.ALL_TIME -> localized(TextKey.AllTime)
+                        },
+                        localized(TextKey.History)
+                    ),
+                    selectedIndex = 0,
+                    onSelected = { index -> if (index == 1) onOpenSeasonHistory() },
+                    enabled = { index -> index == 0 || state.profile != null },
+                    itemTestTag = { index -> if (index == 1) "open_season_history" else "season_context_current" },
+                    modifier = Modifier.testTag("season_context_tabs")
+                )
+            }
         }
         displayedCurrent?.let { current ->
             item(key = "current_player") {
-                CurrentPlayerPanel(current)
+                CurrentPlayerPanel(current, selectedMetric)
             }
         }
-        if (selectedPeriod == LeaderboardPeriod.PREVIOUS_SEASON) {
+        if (selectedMetric == PlayerLeaderboardMetric.ELO && selectedPeriod == LeaderboardPeriod.PREVIOUS_SEASON) {
             state.profile?.progression?.latestSeasonReward
                 ?.takeIf { it.seasonName == leaderboard?.previousSeasonName }
                 ?.let { receipt ->
@@ -282,6 +308,7 @@ private fun PlayerLeaderboard(
                 val friend = state.social.friends.firstOrNull { it.playerCode == entry.playerCode }
                 LeaderboardCard(
                     entry = entry,
+                    metric = selectedMetric,
                     highlighted = entry.playerCode == displayedCurrent?.playerCode,
                     onClick = friend?.let { { onOpenFriendProfile(it.userId) } }
                 )
@@ -298,6 +325,27 @@ private fun PlayerLeaderboard(
             }
         }
     }
+}
+
+@Composable
+private fun PlayerLeaderboardMetricFilters(
+    selectedMetric: PlayerLeaderboardMetric,
+    onSelect: (PlayerLeaderboardMetric) -> Unit
+) {
+    val metrics = PlayerLeaderboardMetric.entries
+    ArcadeSegmentedControl(
+        labels = listOf("Elo", localized(TextKey.Gold), localized(TextKey.Gems)),
+        selectedIndex = metrics.indexOf(selectedMetric),
+        onSelected = { onSelect(metrics[it]) },
+        itemTestTag = { index ->
+            when (metrics[index]) {
+                PlayerLeaderboardMetric.ELO -> "leaderboard_player_metric_elo"
+                PlayerLeaderboardMetric.GOLD -> "leaderboard_player_metric_gold"
+                PlayerLeaderboardMetric.GEMS -> "leaderboard_player_metric_gems"
+            }
+        },
+        modifier = Modifier.testTag("leaderboard_player_metric_filters")
+    )
 }
 
 @Composable
@@ -328,7 +376,10 @@ private fun LeaderboardPeriodFilters(
 }
 
 @Composable
-private fun CurrentPlayerPanel(entry: LeaderboardEntrySnapshot) {
+private fun CurrentPlayerPanel(
+    entry: LeaderboardEntrySnapshot,
+    metric: PlayerLeaderboardMetric
+) {
     ArcadePanel(modifier = Modifier.fillMaxWidth(), accent = ArcadePalette.Gold500) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(16.dp),
@@ -352,7 +403,7 @@ private fun CurrentPlayerPanel(entry: LeaderboardEntrySnapshot) {
                 )
             }
             Text(
-                "${formatArcadeNumber(entry.eloRating)} Elo",
+                playerMetricText(entry, metric),
                 fontWeight = FontWeight.Black,
                 color = ArcadePalette.Gold500
             )
@@ -361,27 +412,50 @@ private fun CurrentPlayerPanel(entry: LeaderboardEntrySnapshot) {
 }
 
 @Composable
-private fun ClanLeaderboard(state: GameState) {
+private fun ClanLeaderboard(
+    state: GameState,
+    selectedMetric: ClanLeaderboardMetric,
+    onSelectMetric: (ClanLeaderboardMetric) -> Unit
+) {
     val leaderboard = state.leaderboard
-    val displayedTopClans = leaderboard?.topClans.orEmpty()
-    var visibleClanCount by remember { mutableStateOf(DEFAULT_ARCADE_PAGE_SIZE) }
+    val displayedTopClans = when (selectedMetric) {
+        ClanLeaderboardMetric.LEVEL -> leaderboard?.topLevelClans
+            ?.takeIf { it.isNotEmpty() }
+            ?: leaderboard?.topClans.orEmpty()
+        ClanLeaderboardMetric.GOLD -> leaderboard?.topGoldClans.orEmpty()
+        ClanLeaderboardMetric.GEMS -> leaderboard?.topGemClans.orEmpty()
+    }
+    val displayedCurrentClan = when (selectedMetric) {
+        ClanLeaderboardMetric.LEVEL -> leaderboard?.currentLevelClan ?: leaderboard?.currentClan
+        ClanLeaderboardMetric.GOLD -> leaderboard?.currentGoldClan
+        ClanLeaderboardMetric.GEMS -> leaderboard?.currentGemClan
+    }
+    var visibleClanCount by remember(selectedMetric) { mutableStateOf(DEFAULT_ARCADE_PAGE_SIZE) }
     val visibleTopClans = displayedTopClans.take(visibleClanCount)
     LazyColumn(
         modifier = Modifier.fillMaxWidth().testTag("leaderboard_clans_list"),
         contentPadding = PaddingValues(bottom = 24.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        item(key = "clan_leaderboard_hero") {
-            ArcadeFeatureHero(
-                illustration = Res.drawable.arcade_leaderboard_trophy,
-                title = localized(TextKey.StrongestClans),
-                subtitle = localized(TextKey.StrongestClansDescription),
-                accent = ArcadePalette.Violet600
+        item(key = "clan_metric_filters") {
+            ClanLeaderboardMetricFilters(
+                selectedMetric = selectedMetric,
+                onSelect = onSelectMetric
             )
         }
-        leaderboard?.currentClan?.let { currentClan ->
+        if (selectedMetric == ClanLeaderboardMetric.LEVEL) {
+            item(key = "clan_leaderboard_hero") {
+                ArcadeFeatureHero(
+                    illustration = Res.drawable.arcade_leaderboard_trophy,
+                    title = localized(TextKey.StrongestClans),
+                    subtitle = localized(TextKey.StrongestClansDescription),
+                    accent = ArcadePalette.Violet600
+                )
+            }
+        }
+        displayedCurrentClan?.let { currentClan ->
             item(key = "current_clan") {
-                CurrentClanPanel(currentClan)
+                CurrentClanPanel(currentClan, selectedMetric)
             }
         }
         item(key = "top_clans_title") {
@@ -393,7 +467,8 @@ private fun ClanLeaderboard(state: GameState) {
             items(visibleTopClans, key = { it.clanId }) { entry ->
                 ClanLeaderboardCard(
                     entry = entry,
-                    highlighted = entry.clanId == leaderboard?.currentClan?.clanId
+                    metric = selectedMetric,
+                    highlighted = entry.clanId == displayedCurrentClan?.clanId
                 )
             }
             item(key = "leaderboard_clans_load_more") {
@@ -411,7 +486,35 @@ private fun ClanLeaderboard(state: GameState) {
 }
 
 @Composable
-private fun CurrentClanPanel(entry: ClanLeaderboardEntrySnapshot) {
+private fun ClanLeaderboardMetricFilters(
+    selectedMetric: ClanLeaderboardMetric,
+    onSelect: (ClanLeaderboardMetric) -> Unit
+) {
+    val metrics = ClanLeaderboardMetric.entries
+    ArcadeSegmentedControl(
+        labels = listOf(
+            localized(TextKey.Level, "level" to "").trim(),
+            localized(TextKey.Gold),
+            localized(TextKey.Gems)
+        ),
+        selectedIndex = metrics.indexOf(selectedMetric),
+        onSelected = { onSelect(metrics[it]) },
+        itemTestTag = { index ->
+            when (metrics[index]) {
+                ClanLeaderboardMetric.LEVEL -> "leaderboard_clan_metric_level"
+                ClanLeaderboardMetric.GOLD -> "leaderboard_clan_metric_gold"
+                ClanLeaderboardMetric.GEMS -> "leaderboard_clan_metric_gems"
+            }
+        },
+        modifier = Modifier.testTag("leaderboard_clan_metric_filters")
+    )
+}
+
+@Composable
+private fun CurrentClanPanel(
+    entry: ClanLeaderboardEntrySnapshot,
+    metric: ClanLeaderboardMetric
+) {
     ArcadePanel(modifier = Modifier.fillMaxWidth(), accent = ArcadePalette.Gold500) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(16.dp),
@@ -429,7 +532,7 @@ private fun CurrentClanPanel(entry: ClanLeaderboardEntrySnapshot) {
                 Text(entry.clanName, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black)
             }
             Text(
-                formatArcadeNumber(entry.totalElo),
+                clanMetricText(entry, metric),
                 fontWeight = FontWeight.Black,
                 color = ArcadePalette.Gold500
             )
@@ -463,6 +566,7 @@ private fun LeaderboardEmptyPanel(message: String) {
 @Composable
 private fun ClanLeaderboardCard(
     entry: ClanLeaderboardEntrySnapshot,
+    metric: ClanLeaderboardMetric,
     highlighted: Boolean
 ) {
     LeaderboardSurface(highlighted = highlighted) {
@@ -486,8 +590,16 @@ private fun ClanLeaderboardCard(
                 )
             }
             Column(horizontalAlignment = Alignment.End) {
-                Text(formatArcadeNumber(entry.totalElo), fontWeight = FontWeight.Black, color = ArcadePalette.Gold500)
-                Text(localized(TextKey.TotalElo), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(
+                    clanMetricPrimaryText(entry, metric),
+                    fontWeight = FontWeight.Black,
+                    color = ArcadePalette.Gold500
+                )
+                Text(
+                    clanMetricSupportingText(entry, metric),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         }
     }
@@ -496,6 +608,7 @@ private fun ClanLeaderboardCard(
 @Composable
 private fun LeaderboardCard(
     entry: LeaderboardEntrySnapshot,
+    metric: PlayerLeaderboardMetric,
     highlighted: Boolean,
     onClick: (() -> Unit)? = null
 ) {
@@ -536,11 +649,15 @@ private fun LeaderboardCard(
             }
             Column(horizontalAlignment = Alignment.End) {
                 Text(
-                    formatArcadeNumber(entry.eloRating),
+                    formatArcadeNumber(playerMetricValue(entry, metric)),
                     fontWeight = FontWeight.Black,
                     color = if (highlighted) ArcadePalette.Gold500 else MaterialTheme.colorScheme.primary
                 )
-                Text("Elo", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(
+                    playerMetricLabel(metric),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         }
     }
@@ -580,7 +697,56 @@ private fun LeaderboardSurface(
 
 private enum class LeaderboardPeriod { CURRENT_SEASON, PREVIOUS_SEASON, ALL_TIME }
 
+private enum class PlayerLeaderboardMetric { ELO, GOLD, GEMS }
+
+private enum class ClanLeaderboardMetric { LEVEL, GOLD, GEMS }
+
+@Composable
+private fun playerMetricLabel(metric: PlayerLeaderboardMetric): String = when (metric) {
+    PlayerLeaderboardMetric.ELO -> "Elo"
+    PlayerLeaderboardMetric.GOLD -> localized(TextKey.Gold)
+    PlayerLeaderboardMetric.GEMS -> localized(TextKey.Gems)
+}
+
+private fun playerMetricValue(entry: LeaderboardEntrySnapshot, metric: PlayerLeaderboardMetric): Long = when (metric) {
+    PlayerLeaderboardMetric.ELO -> entry.eloRating.toLong()
+    PlayerLeaderboardMetric.GOLD -> entry.lifetimeEarnedGold
+    PlayerLeaderboardMetric.GEMS -> entry.lifetimeEarnedGems
+}
+
+@Composable
+private fun playerMetricText(entry: LeaderboardEntrySnapshot, metric: PlayerLeaderboardMetric): String =
+    "${formatArcadeNumber(playerMetricValue(entry, metric))} ${playerMetricLabel(metric)}"
+
+@Composable
+private fun clanMetricPrimaryText(entry: ClanLeaderboardEntrySnapshot, metric: ClanLeaderboardMetric): String =
+    when (metric) {
+        ClanLeaderboardMetric.LEVEL -> localized(TextKey.Level, "level" to entry.level)
+        ClanLeaderboardMetric.GOLD -> formatArcadeNumber(entry.donatedGold)
+        ClanLeaderboardMetric.GEMS -> formatArcadeNumber(entry.donatedGems)
+    }
+
+@Composable
+private fun clanMetricSupportingText(entry: ClanLeaderboardEntrySnapshot, metric: ClanLeaderboardMetric): String =
+    when (metric) {
+        ClanLeaderboardMetric.LEVEL -> "${formatArcadeNumber(entry.experiencePoints)} XP"
+        ClanLeaderboardMetric.GOLD -> localized(TextKey.Gold)
+        ClanLeaderboardMetric.GEMS -> localized(TextKey.Gems)
+    }
+
+@Composable
+private fun clanMetricText(entry: ClanLeaderboardEntrySnapshot, metric: ClanLeaderboardMetric): String =
+    when (metric) {
+        ClanLeaderboardMetric.LEVEL -> "${localized(TextKey.Level, "level" to entry.level)} · ${formatArcadeNumber(entry.experiencePoints)} XP"
+        ClanLeaderboardMetric.GOLD -> "${formatArcadeNumber(entry.donatedGold)} ${localized(TextKey.Gold)}"
+        ClanLeaderboardMetric.GEMS -> "${formatArcadeNumber(entry.donatedGems)} ${localized(TextKey.Gems)}"
+    }
+
 private fun formatArcadeNumber(value: Int): String = value
+    .toLong()
+    .let(::formatArcadeNumber)
+
+private fun formatArcadeNumber(value: Long): String = value
     .toString()
     .reversed()
     .chunked(3)

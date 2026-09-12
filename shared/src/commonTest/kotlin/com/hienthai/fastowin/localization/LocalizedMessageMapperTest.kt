@@ -2,6 +2,9 @@ package com.hienthai.fastowin.localization
 
 import com.hienthai.fastowin.protocol.AccountActionResponse
 import com.hienthai.fastowin.protocol.ProtocolJson
+import com.hienthai.fastowin.protocol.PlayQuotaSnapshot
+import com.hienthai.fastowin.protocol.RewardedAdAvailability
+import com.hienthai.fastowin.protocol.RewardedAdBonusStatus
 import com.hienthai.fastowin.protocol.ServerMessage
 import kotlinx.serialization.decodeFromString
 import kotlin.test.Test
@@ -10,6 +13,29 @@ import kotlin.test.assertNull
 
 class LocalizedMessageMapperTest {
     private val englishMapper = LocalizedMessageMapper(LocalizationService(AppLanguage.ENGLISH))
+
+    @Test
+    fun rewardedAdResultUsesLocalizedQuotaCopy() {
+        val quota = PlayQuotaSnapshot(
+            quotaDate = "2026-09-12",
+            remainingMatches = 2,
+            nextResetAtEpochMillis = 1_789_148_400_000L,
+            rewardedAdAvailability = RewardedAdAvailability.DEV_SIMULATED
+        )
+
+        assertEquals(
+            "2 online matches added",
+            englishMapper.message(
+                ServerMessage.RewardedAdBonusResult("request-1", RewardedAdBonusStatus.GRANTED, quota)
+            )
+        )
+        assertEquals(
+            "Rewarded ads are unavailable right now.",
+            englishMapper.message(
+                ServerMessage.RewardedAdBonusResult("request-2", RewardedAdBonusStatus.UNAVAILABLE, quota)
+            )
+        )
+    }
 
     @Test
     fun knownServerErrorUsesCurrentCatalog() {

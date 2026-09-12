@@ -7,7 +7,10 @@ import com.hienthai.fastowin.protocol.FriendRequestSnapshot
 import com.hienthai.fastowin.protocol.FriendSnapshot
 import com.hienthai.fastowin.protocol.FriendsSnapshot
 import com.hienthai.fastowin.protocol.PlayerProfileSnapshot
+import com.hienthai.fastowin.protocol.PlayQuotaSnapshot
 import com.hienthai.fastowin.protocol.RecentPlayerSnapshot
+import com.hienthai.fastowin.protocol.RewardedAdAvailability
+import com.hienthai.fastowin.protocol.RewardedAdBonusStatus
 import com.hienthai.fastowin.protocol.ServerMessage
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -16,6 +19,46 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class GameStateTest {
+    @Test
+    fun `quota messages replace local snapshot with server truth`() {
+        val staleQuota = quota(remaining = 3)
+        val refreshedQuota = quota(remaining = 5)
+
+        val loaded = GameState().withPlayQuota(ServerMessage.PlayQuotaData(staleQuota))
+        val rewarded = loaded.withRewardedAdBonus(
+            ServerMessage.RewardedAdBonusResult(
+                requestId = "request-1",
+                status = RewardedAdBonusStatus.GRANTED,
+                quota = refreshedQuota
+            ),
+            notice = "2 online matches added"
+        )
+
+        assertEquals(5, rewarded.playQuota?.remainingMatches)
+        assertEquals(RewardedAdBonusStatus.GRANTED, rewarded.rewardedAdBonusResult?.status)
+        assertEquals("2 online matches added", rewarded.profileNotice)
+        assertFalse(rewarded.showPlayQuotaExhaustedDialog)
+    }
+
+    @Test
+    fun `play quota exhausted opens dialog without changing lobby destination`() {
+        val state = GameState(
+            lobbyStage = LobbyStage.ROOM_BROWSER,
+            currentRoomId = null,
+            isProfileOpen = false
+        )
+
+        val updated = state.withPlayQuotaError(
+            ServerMessage.Error("PLAY_QUOTA_EXHAUSTED", "No online matches left"),
+            localizedMessage = "No online matches left"
+        )
+
+        assertTrue(updated.showPlayQuotaExhaustedDialog)
+        assertEquals(LobbyStage.ROOM_BROWSER, updated.lobbyStage)
+        assertFalse(updated.isProfileOpen)
+        assertEquals("No online matches left", updated.error)
+    }
+
     @Test
     fun `rematch failure reducer uses localized message instead of legacy fallback`() {
         val error = ServerMessage.Error(
@@ -289,5 +332,13 @@ class GameStateTest {
         userId = userId,
         displayName = userId,
         playerCode = userId.uppercase()
+    )
+
+    private fun quota(remaining: Int) = PlayQuotaSnapshot(
+        quotaDate = "2026-09-12",
+        matchesConsumed = 10 - remaining,
+        remainingMatches = remaining,
+        nextResetAtEpochMillis = 1_789_148_400_000L,
+        rewardedAdAvailability = RewardedAdAvailability.DEV_SIMULATED
     )
 }

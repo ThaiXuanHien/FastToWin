@@ -29,6 +29,9 @@ fun main() {
     val seasonLifecycleRepository = database?.seasonLifecycleRepository ?: NoOpSeasonLifecycleRepository
     val storage = if (database == null) "memory" else "postgresql"
     val storePurchaseVerifier = configuredStorePurchaseVerifier(environment)
+    val playQuotaRepository = database?.playQuotaRepository ?: InMemoryPlayQuotaRepository()
+    val rewardedAdVerifier = configuredRewardedAdVerifier(environment)
+    val rewardedAdAvailability = configuredRewardedAdAvailability(environment)
     val pushNotificationService = FirebasePushNotificationService()
     val pushReminderService = if (database == null) {
         NoOpPushReminderService
@@ -47,6 +50,9 @@ fun main() {
         clanRepository,
         pushNotificationService,
         storePurchaseVerifier = storePurchaseVerifier,
+        playQuotaRepository = playQuotaRepository,
+        rewardedAdVerifier = rewardedAdVerifier,
+        rewardedAdAvailability = rewardedAdAvailability,
         storeSandboxEnabled = environment == "dev"
     )
     runBlocking {

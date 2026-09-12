@@ -94,6 +94,7 @@ jobs:
         with:
           name: unit-and-integration-test-reports
           path: |
+            protocol/build/reports/tests/jvmTest/
             server/build/reports/tests/test/
             shared/build/reports/tests/testAndroidHostTest/
           if-no-files-found: warn

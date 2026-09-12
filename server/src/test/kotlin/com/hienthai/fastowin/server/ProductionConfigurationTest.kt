@@ -1,10 +1,46 @@
 package com.hienthai.fastowin.server
 
+import com.hienthai.fastowin.protocol.RewardedAdAvailability
+import com.hienthai.fastowin.protocol.RewardedAdProvider
+import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 
 class ProductionConfigurationTest {
+    @Test
+    fun `production rewarded ads reject development receipts by default`() = runTest {
+        val verifier = configuredRewardedAdVerifier("prod")
+
+        assertEquals(RewardedAdAvailability.UNAVAILABLE, configuredRewardedAdAvailability("prod"))
+        assertNull(
+            verifier.verify(
+                userId = "user-1",
+                provider = RewardedAdProvider.DEV_SIMULATED,
+                providerTransactionId = "transaction-1",
+                proof = devRewardedAdProof("user-1", "transaction-1")
+            )
+        )
+    }
+
+    @Test
+    fun `development rewarded ads expose only the simulated verifier`() = runTest {
+        val verifier = configuredRewardedAdVerifier("dev")
+
+        assertEquals(RewardedAdAvailability.DEV_SIMULATED, configuredRewardedAdAvailability("dev"))
+        assertNotNull(
+            verifier.verify(
+                userId = "user-1",
+                provider = RewardedAdProvider.DEV_SIMULATED,
+                providerTransactionId = "transaction-1",
+                proof = devRewardedAdProof("user-1", "transaction-1")
+            )
+        )
+        assertNull(verifier.verify("user-1", RewardedAdProvider.ADMOB_ANDROID, "transaction-2", "proof"))
+    }
+
     @Test
     fun `secret can be loaded from a mounted file`() {
         val value = readEnvironmentSecret(

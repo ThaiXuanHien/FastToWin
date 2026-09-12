@@ -28,6 +28,15 @@ production trước khi chạy.
 - Các giao dịch được ghi vào `wallet_transactions` để kiểm tra lịch sử và ngăn nhận trùng.
 - Migration V31 chuẩn bị `store_purchases` cho Google Play/App Store. Thanh toán thật chỉ được bật sau khi cấu hình Product ID và xác thực biên lai phía server.
 
+## Lượt đấu online và thưởng quảng cáo
+
+- Mỗi tài khoản có 10 lượt đấu online mỗi ngày, dùng chung cho đấu thường và đấu hạng. Luyện tập offline, đấu giải và hoạt động bang không dùng lượt này.
+- Lượt chỉ bị trừ khi phòng thực sự chuyển sang trạng thái đang chơi. Tạo, tham gia rồi hủy phòng khi còn ở màn chờ không mất lượt; đấu lại thành công tính là một trận mới.
+- Khi hết lượt, mỗi quảng cáo thưởng đã được server xác minh cộng thêm 2 lượt. Người chơi có thể xem nhiều lần, nhưng cùng một mã giao dịch quảng cáo chỉ được cộng một lần.
+- Ngày quota đổi lúc `00:00` theo múi giờ `Asia/Bangkok`. Backend tính ngày và thời điểm reset bằng thời gian server; client chỉ hiển thị snapshot nhận từ backend.
+- Trong môi trường `dev`, nút xem quảng cáo dùng receipt mô phỏng và được ghi rõ là chế độ phát triển. Đây không phải xác minh quảng cáo thật.
+- Trong production, thưởng quảng cáo mặc định bị tắt cho đến khi tích hợp nhà cung cấp quảng cáo và xác minh receipt phía server. Web production hiện hướng dẫn người chơi dùng ứng dụng mobile và không tự giả lập thưởng.
+
 ## Công nghệ và cấu trúc project
 
 | Thư mục | Vai trò |
@@ -419,6 +428,15 @@ $env:TEST_DATABASE_URL='jdbc:postgresql://localhost:5432/fasttowin'
 $env:TEST_DATABASE_USER='fasttowin'
 $env:TEST_DATABASE_PASSWORD='fasttowin'
 .\gradlew.bat :server:test --rerun-tasks --no-daemon
+```
+
+Chạy riêng repository quota hằng ngày và kiểm tra tính idempotent của lượt đấu/receipt quảng cáo:
+
+```powershell
+$env:TEST_DATABASE_URL='jdbc:postgresql://localhost:5432/fasttowin'
+$env:TEST_DATABASE_USER='fasttowin'
+$env:TEST_DATABASE_PASSWORD='fasttowin'
+.\gradlew.bat :server:test --tests "*PostgresPlayQuotaRepositoryTest" --no-daemon
 ```
 
 Báo cáo Compose UI test:

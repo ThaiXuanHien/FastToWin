@@ -27,7 +27,7 @@ internal val brazilianPortugueseCatalog = LocalizationCatalog(
         TextKey.Loading to "Carregando…",
         TextKey.UnknownError to "Algo deu errado. Tente novamente.",
         TextKey.WelcomePlayer to "Olá, {player}!"
-) + brazilianPortugueseShellAuthTexts + brazilianPortugueseGameplayTexts + brazilianPortugueseProfileTexts + brazilianPortugueseSocialShopTexts + brazilianPortugueseProtocolMessageTexts + brazilianPortugueseDeliveryTexts + residualTexts(AppLanguage.BRAZILIAN_PORTUGUESE) + economyProgressionTexts.getValue(AppLanguage.BRAZILIAN_PORTUGUESE),
+) + brazilianPortugueseShellAuthTexts + brazilianPortugueseGameplayTexts + brazilianPortugueseProfileTexts + brazilianPortugueseSocialShopTexts + brazilianPortugueseProtocolMessageTexts + brazilianPortugueseDeliveryTexts + residualTexts(AppLanguage.BRAZILIAN_PORTUGUESE) + economyProgressionTexts.getValue(AppLanguage.BRAZILIAN_PORTUGUESE) + playQuotaTexts.getValue(AppLanguage.BRAZILIAN_PORTUGUESE),
     quantities = mapOf(
         QuantityKey.Players to mapOf(
             PluralCategory.ONE to "{count} jogador",

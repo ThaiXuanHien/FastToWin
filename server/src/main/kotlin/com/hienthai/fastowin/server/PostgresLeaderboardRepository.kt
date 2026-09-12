@@ -1,9 +1,11 @@
 package com.hienthai.fastowin.server
 
+import com.hienthai.fastowin.protocol.ClanLeaderboardEntrySnapshot
 import com.hienthai.fastowin.protocol.LeaderboardEntrySnapshot
 import com.hienthai.fastowin.protocol.LeaderboardSnapshot
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.sql.Connection
 import java.util.UUID
 import javax.sql.DataSource
 
@@ -21,9 +23,12 @@ class PostgresLeaderboardRepository(
             val previousSeasonTopPlayers = mutableListOf<LeaderboardEntrySnapshot>()
             var previousSeasonCurrentPlayer: LeaderboardEntrySnapshot? = null
             var previousSeasonName: String? = null
-            
-            val topClans = mutableListOf<com.hienthai.fastowin.protocol.ClanLeaderboardEntrySnapshot>()
-            var currentClanEntry: com.hienthai.fastowin.protocol.ClanLeaderboardEntrySnapshot? = null
+            var goldLeaderboard = RankedPlayers()
+            var gemLeaderboard = RankedPlayers()
+            var levelClanLeaderboard = RankedClans()
+            var goldClanLeaderboard = RankedClans()
+            var gemClanLeaderboard = RankedClans()
+            val safeLimit = limit.coerceIn(1, MAX_LEADERBOARD_SIZE)
 
             dataSource.connection.use { connection ->
                 connection.prepareStatement(
@@ -52,7 +57,7 @@ class PostgresLeaderboardRepository(
                     SELECT * FROM ranked WHERE rank <= ? OR user_id = ? ORDER BY rank
                     """.trimIndent()
                 ).use { statement ->
-                    statement.setInt(1, limit.coerceIn(1, MAX_LEADERBOARD_SIZE))
+                    statement.setInt(1, safeLimit)
                     statement.setObject(2, currentId)
                     statement.executeQuery().use { result ->
                         while (result.next()) {
@@ -69,48 +74,15 @@ class PostgresLeaderboardRepository(
                                 frameId = result.getString("frame_id")
                             )
                             if (result.getObject("user_id", UUID::class.java) == currentId) currentPlayer = entry
-                            if (entry.rank <= limit) topPlayers += entry
+                            if (entry.rank <= safeLimit) topPlayers += entry
                         }
                     }
                 }
-                
-                connection.prepareStatement(
-                    """
-                    WITH clan_stats AS (
-                        SELECT c.id, c.name, COUNT(m.user_id) as member_count, COALESCE(SUM(ps.elo_rating), 0) as total_elo
-                        FROM clans c
-                        JOIN clan_members m ON c.id = m.clan_id
-                        JOIN player_stats ps ON m.user_id = ps.user_id
-                        GROUP BY c.id, c.name
-                    ),
-                    ranked_clans AS (
-                        SELECT id, name, member_count, total_elo,
-                               ROW_NUMBER() OVER (ORDER BY total_elo DESC, name ASC) AS rank
-                        FROM clan_stats
-                    )
-                    SELECT * FROM ranked_clans 
-                    WHERE rank <= ? OR id = (SELECT clan_id FROM clan_members WHERE user_id = ?) 
-                    ORDER BY rank
-                    """.trimIndent()
-                ).use { statement ->
-                    statement.setInt(1, limit.coerceIn(1, MAX_LEADERBOARD_SIZE))
-                    statement.setObject(2, currentId)
-                    statement.executeQuery().use { result ->
-                        while (result.next()) {
-                            val entry = com.hienthai.fastowin.protocol.ClanLeaderboardEntrySnapshot(
-                                rank = result.getInt("rank"),
-                                clanId = result.getObject("id", UUID::class.java).toString(),
-                                clanName = result.getString("name"),
-                                totalElo = result.getInt("total_elo"),
-                                memberCount = result.getInt("member_count")
-                            )
-                            val isMyClan = result.getInt("rank") > limit // Wait, how do I know if it's mine?
-                            // Actually, I can check if it's mine in Kotlin later. Or I can check if it matches my clan ID.
-                            // But I didn't fetch my clan ID! Let me fetch it inside the loop.
-                            topClans += entry // We will filter it below
-                        }
-                    }
-                }
+                goldLeaderboard = connection.loadAssetLeaderboard(currentId, safeLimit, PlayerAssetMetric.GOLD)
+                gemLeaderboard = connection.loadAssetLeaderboard(currentId, safeLimit, PlayerAssetMetric.GEMS)
+                levelClanLeaderboard = connection.loadClanLeaderboard(currentId, safeLimit, ClanMetric.LEVEL)
+                goldClanLeaderboard = connection.loadClanLeaderboard(currentId, safeLimit, ClanMetric.GOLD)
+                gemClanLeaderboard = connection.loadClanLeaderboard(currentId, safeLimit, ClanMetric.GEMS)
                 
                 connection.prepareStatement(
                     "SELECT id, name FROM seasons WHERE CURRENT_TIMESTAMP >= starts_at AND CURRENT_TIMESTAMP < ends_at ORDER BY starts_at DESC LIMIT 1"
@@ -139,7 +111,7 @@ class PostgresLeaderboardRepository(
                                 """.trimIndent()
                             ).use { seasonStatement ->
                                 seasonStatement.setObject(1, seasonId)
-                                seasonStatement.setInt(2, limit.coerceIn(1, MAX_LEADERBOARD_SIZE))
+                                seasonStatement.setInt(2, safeLimit)
                                 seasonStatement.setObject(3, currentId)
                                 seasonStatement.executeQuery().use { seasonResult ->
                                     while (seasonResult.next()) {
@@ -182,7 +154,7 @@ class PostgresLeaderboardRepository(
                                 """.trimIndent()
                             ).use { archiveStatement ->
                                 archiveStatement.setObject(1, seasonId)
-                                archiveStatement.setInt(2, limit.coerceIn(1, MAX_LEADERBOARD_SIZE))
+                                archiveStatement.setInt(2, safeLimit)
                                 archiveStatement.setObject(3, currentId)
                                 archiveStatement.executeQuery().use { archiveResult ->
                                     while (archiveResult.next()) {
@@ -208,17 +180,6 @@ class PostgresLeaderboardRepository(
                         }
                     }
                 }
-                
-                // Extract currentClanEntry
-                connection.prepareStatement("SELECT clan_id FROM clan_members WHERE user_id = ?").use { stmt ->
-                    stmt.setObject(1, currentId)
-                    stmt.executeQuery().use { rs ->
-                        if (rs.next()) {
-                            val myClanId = rs.getObject("clan_id", UUID::class.java).toString()
-                            currentClanEntry = topClans.firstOrNull { it.clanId == myClanId }
-                        }
-                    }
-                }
             }
             LeaderboardSnapshot(
                 topPlayers = topPlayers,
@@ -229,10 +190,156 @@ class PostgresLeaderboardRepository(
                 previousSeasonName = previousSeasonName,
                 previousSeasonTopPlayers = previousSeasonTopPlayers,
                 previousSeasonCurrentPlayer = previousSeasonCurrentPlayer,
-                topClans = topClans.filter { it.rank <= limit },
-                currentClan = currentClanEntry
+                topClans = levelClanLeaderboard.top,
+                currentClan = levelClanLeaderboard.current,
+                topGoldPlayers = goldLeaderboard.top,
+                currentGoldPlayer = goldLeaderboard.current,
+                topGemPlayers = gemLeaderboard.top,
+                currentGemPlayer = gemLeaderboard.current,
+                topLevelClans = levelClanLeaderboard.top,
+                currentLevelClan = levelClanLeaderboard.current,
+                topGoldClans = goldClanLeaderboard.top,
+                currentGoldClan = goldClanLeaderboard.current,
+                topGemClans = gemClanLeaderboard.top,
+                currentGemClan = gemClanLeaderboard.current
             )
         }
+
+    private fun Connection.loadAssetLeaderboard(
+        currentPlayerId: UUID,
+        limit: Int,
+        metric: PlayerAssetMetric
+    ): RankedPlayers {
+        val entries = mutableListOf<LeaderboardEntrySnapshot>()
+        var current: LeaderboardEntrySnapshot? = null
+        prepareStatement(
+            """
+            WITH ranked AS (
+                SELECT p.user_id, p.display_name, p.player_code, p.avatar_url,
+                       s.wins, s.total_matches, s.highest_score, s.elo_rating,
+                       s.lifetime_earned_gold, s.lifetime_earned_gems,
+                       COALESCE(s.equipped_frame_id, 'frame_default') AS frame_id,
+                       ROW_NUMBER() OVER (
+                           ORDER BY ${metric.valueColumn} DESC,
+                                    ${metric.reachedAtColumn} ASC NULLS LAST,
+                                    p.user_id ASC
+                       ) AS rank
+                FROM player_stats s
+                JOIN profiles p ON p.user_id = s.user_id
+                JOIN users u ON u.id = s.user_id
+                WHERE ${metric.valueColumn} > 0 AND u.status = 'ACTIVE'
+            )
+            SELECT * FROM ranked WHERE rank <= ? OR user_id = ? ORDER BY rank
+            """.trimIndent()
+        ).use { statement ->
+            statement.setInt(1, limit)
+            statement.setObject(2, currentPlayerId)
+            statement.executeQuery().use { result ->
+                while (result.next()) {
+                    val userId = result.getObject("user_id", UUID::class.java)
+                    val entry = LeaderboardEntrySnapshot(
+                        rank = result.getInt("rank"),
+                        displayName = result.getString("display_name"),
+                        playerCode = result.getString("player_code"),
+                        wins = result.getInt("wins"),
+                        totalMatches = result.getInt("total_matches"),
+                        highestScore = result.getInt("highest_score"),
+                        eloRating = result.getInt("elo_rating"),
+                        userId = userId.toString(),
+                        avatarId = result.getString("avatar_url"),
+                        frameId = result.getString("frame_id"),
+                        lifetimeEarnedGold = result.getLong("lifetime_earned_gold"),
+                        lifetimeEarnedGems = result.getLong("lifetime_earned_gems")
+                    )
+                    if (userId == currentPlayerId) current = entry
+                    if (entry.rank <= limit) entries += entry
+                }
+            }
+        }
+        return RankedPlayers(top = entries, current = current)
+    }
+
+    private fun Connection.loadClanLeaderboard(
+        currentPlayerId: UUID,
+        limit: Int,
+        metric: ClanMetric
+    ): RankedClans {
+        val entries = mutableListOf<ClanLeaderboardEntrySnapshot>()
+        var current: ClanLeaderboardEntrySnapshot? = null
+        val currentClanId = currentClanId(currentPlayerId)
+        prepareStatement(
+            """
+            WITH clan_stats AS (
+                SELECT c.id, c.name, c.level, c.experience_points,
+                       c.donated_gold, c.donated_gems, c.level_reached_at,
+                       COUNT(m.user_id) AS member_count,
+                       COALESCE(SUM(ps.elo_rating), 0) AS total_elo
+                FROM clans c
+                LEFT JOIN clan_members m ON m.clan_id = c.id
+                LEFT JOIN player_stats ps ON ps.user_id = m.user_id
+                GROUP BY c.id
+            ),
+            ranked AS (
+                SELECT *, ROW_NUMBER() OVER (ORDER BY ${metric.orderBy}) AS rank
+                FROM clan_stats
+            )
+            SELECT * FROM ranked
+            WHERE rank <= ? OR id = ?
+            ORDER BY rank
+            """.trimIndent()
+        ).use { statement ->
+            statement.setInt(1, limit)
+            statement.setObject(2, currentClanId)
+            statement.executeQuery().use { result ->
+                while (result.next()) {
+                    val clanUuid = result.getObject("id", UUID::class.java)
+                    val entry = ClanLeaderboardEntrySnapshot(
+                        rank = result.getInt("rank"),
+                        clanId = clanUuid.toString(),
+                        clanName = result.getString("name"),
+                        totalElo = result.getInt("total_elo"),
+                        memberCount = result.getInt("member_count"),
+                        level = result.getInt("level"),
+                        experiencePoints = result.getLong("experience_points"),
+                        donatedGold = result.getLong("donated_gold"),
+                        donatedGems = result.getLong("donated_gems")
+                    )
+                    if (clanUuid == currentClanId) current = entry
+                    if (entry.rank <= limit) entries += entry
+                }
+            }
+        }
+        return RankedClans(top = entries, current = current)
+    }
+
+    private fun Connection.currentClanId(playerId: UUID): UUID? =
+        prepareStatement("SELECT clan_id FROM clan_members WHERE user_id = ?").use { statement ->
+            statement.setObject(1, playerId)
+            statement.executeQuery().use { result ->
+                if (result.next()) result.getObject("clan_id", UUID::class.java) else null
+            }
+        }
+
+    private data class RankedPlayers(
+        val top: List<LeaderboardEntrySnapshot> = emptyList(),
+        val current: LeaderboardEntrySnapshot? = null
+    )
+
+    private data class RankedClans(
+        val top: List<ClanLeaderboardEntrySnapshot> = emptyList(),
+        val current: ClanLeaderboardEntrySnapshot? = null
+    )
+
+    private enum class PlayerAssetMetric(val valueColumn: String, val reachedAtColumn: String) {
+        GOLD("s.lifetime_earned_gold", "s.lifetime_earned_gold_reached_at"),
+        GEMS("s.lifetime_earned_gems", "s.lifetime_earned_gems_reached_at")
+    }
+
+    private enum class ClanMetric(val orderBy: String) {
+        LEVEL("level DESC, experience_points DESC, level_reached_at ASC, id ASC"),
+        GOLD("donated_gold DESC, level DESC, id ASC"),
+        GEMS("donated_gems DESC, level DESC, id ASC")
+    }
 
     private companion object {
         const val MAX_LEADERBOARD_SIZE = 100

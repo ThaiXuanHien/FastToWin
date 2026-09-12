@@ -65,6 +65,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.hienthai.fastowin.protocol.CLAN_AVATAR_IDS
+import com.hienthai.fastowin.protocol.ClanDonationCurrency
 import com.hienthai.fastowin.protocol.ClanJoinRequestSnapshot
 import com.hienthai.fastowin.protocol.ClanMemberSnapshot
 import com.hienthai.fastowin.protocol.ClanQuestSnapshot
@@ -85,6 +86,7 @@ import com.hienthai.fastowin.ui.components.ArcadeFeatureHero
 import com.hienthai.fastowin.ui.components.ArcadeIconHero
 import com.hienthai.fastowin.ui.components.ArcadeLoadMoreButton
 import com.hienthai.fastowin.ui.components.ArcadePanel
+import com.hienthai.fastowin.ui.components.ArcadeSegmentedControl
 import com.hienthai.fastowin.ui.components.CrossedSwordsIcon
 import com.hienthai.fastowin.ui.components.DEFAULT_ARCADE_PAGE_SIZE
 import com.hienthai.fastowin.ui.components.FastToWinHeader
@@ -115,6 +117,8 @@ fun ClanScreen(
     onClaimQuest: (String) -> Unit,
     onViewClan: (String) -> Unit,
     onBack: () -> Unit,
+    onDonate: (String, ClanDonationCurrency, Int) -> Unit = { _, _, _ -> },
+    isDonationPending: Boolean = false,
     gold: Int = 0,
     gems: Int = 0,
     unreadNotifications: Int = 0,
@@ -167,6 +171,10 @@ fun ClanScreen(
                     onRespondJoinRequest = onRespondJoinRequest,
                     onUpdateLogo = { logoId -> onUpdateLogo(currentClan.id, logoId) },
                     onClaimQuest = { onClaimQuest(currentClan.id) },
+                    gold = gold,
+                    gems = gems,
+                    isDonationPending = isDonationPending,
+                    onDonate = { currency, amount -> onDonate(currentClan.id, currency, amount) },
                     modifier = contentModifier
                 )
 
@@ -417,10 +425,15 @@ fun ClanDetailView(
     onRespondJoinRequest: (String, String, Boolean) -> Unit,
     onUpdateLogo: (String) -> Unit,
     onClaimQuest: () -> Unit,
+    gold: Int = 0,
+    gems: Int = 0,
+    isDonationPending: Boolean = false,
+    onDonate: (ClanDonationCurrency, Int) -> Unit = { _, _ -> },
     modifier: Modifier = Modifier
 ) {
     var showLogoDialog by remember { mutableStateOf(false) }
     var showLeaveConfirmation by remember { mutableStateOf(false) }
+    var showDonationDialog by remember { mutableStateOf(false) }
     var kickTarget by remember { mutableStateOf<ClanMemberSnapshot?>(null) }
     var visibleMemberCount by remember(clan.id) { mutableStateOf(DEFAULT_ARCADE_PAGE_SIZE) }
     val isOwner = clan.ownerId == currentUserId
@@ -447,6 +460,14 @@ fun ClanDetailView(
         notice?.let { item(key = "clan_detail_notice") { ClanNotice(it) } }
 
         item(key = "clan_stats") { ClanStats(clan) }
+
+        item(key = "clan_progress") {
+            ClanProgressCard(
+                clan = clan,
+                currentMember = currentMember,
+                onDonate = { showDonationDialog = true }
+            )
+        }
 
         clan.quest?.let { quest ->
             item(key = "clan_quest") {
@@ -538,6 +559,19 @@ fun ClanDetailView(
         }
     }
 
+    if (showDonationDialog) {
+        ClanDonationDialog(
+            gold = gold,
+            gems = gems,
+            isPending = isDonationPending,
+            onConfirm = { currency, amount ->
+                onDonate(currency, amount)
+                showDonationDialog = false
+            },
+            onDismiss = { showDonationDialog = false }
+        )
+    }
+
     kickTarget?.let { member ->
         ArcadeDialog(
             title = localized(TextKey.RemoveClanMemberTitle),
@@ -574,6 +608,147 @@ fun ClanDetailView(
             },
             onDismiss = { showLogoDialog = false }
         )
+    }
+}
+
+@Composable
+private fun ClanProgressCard(
+    clan: ClanSnapshot,
+    currentMember: ClanMemberSnapshot?,
+    onDonate: () -> Unit
+) {
+    val isMaxLevel = clan.level >= 50 || clan.nextLevelExperience <= 0
+    val progress = if (isMaxLevel) 1f else {
+        clan.currentLevelExperience.toFloat() / clan.nextLevelExperience.coerceAtLeast(1)
+    }.coerceIn(0f, 1f)
+    ArcadePanel(modifier = Modifier.fillMaxWidth(), accent = ArcadePalette.Violet600) {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    localized(TextKey.ClanProgress),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = ArcadePalette.Gold500,
+                    fontWeight = FontWeight.Black
+                )
+                Text(
+                    if (isMaxLevel) localized(TextKey.MaximumLevel) else localized(TextKey.Level, "level" to clan.level),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Black
+                )
+            }
+            LinearProgressIndicator(
+                progress = { progress },
+                modifier = Modifier.fillMaxWidth().height(9.dp),
+                color = ArcadePalette.Violet600,
+                trackColor = ArcadePalette.Navy700
+            )
+            Text(
+                if (isMaxLevel) "${formatNumber(clan.experiencePoints)} XP" else
+                    "${formatNumber(clan.currentLevelExperience)}/${formatNumber(clan.nextLevelExperience)} XP",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Text(
+                "${localized(TextKey.Gold)} ${formatNumber(clan.donatedGold)}  •  " +
+                    "${localized(TextKey.Gems)} ${formatNumber(clan.donatedGems)}",
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.Bold
+            )
+            currentMember?.let { member ->
+                Text(
+                    "${localized(TextKey.YourContribution)}: ${formatNumber(member.donatedGold)} " +
+                        "${localized(TextKey.Gold)} • ${formatNumber(member.donatedGems)} ${localized(TextKey.Gems)}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            ArcadeActionButton(
+                label = localized(TextKey.DonateToClan),
+                onClick = onDonate,
+                style = ArcadeActionStyle.GOLD,
+                modifier = Modifier.fillMaxWidth().testTag("open_clan_donation")
+            )
+        }
+    }
+}
+
+@Composable
+private fun ClanDonationDialog(
+    gold: Int,
+    gems: Int,
+    isPending: Boolean,
+    onConfirm: (ClanDonationCurrency, Int) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var currency by remember { mutableStateOf(ClanDonationCurrency.GOLD) }
+    var selectedIndex by remember(currency) { mutableStateOf(0) }
+    val amounts = if (currency == ClanDonationCurrency.GOLD) {
+        listOf(100, 500, 1_000, 5_000)
+    } else {
+        listOf(1, 5, 10, 50)
+    }
+    val amount = amounts[selectedIndex]
+    val balance = if (currency == ClanDonationCurrency.GOLD) gold else gems
+    val currencyLabel = localized(if (currency == ClanDonationCurrency.GOLD) TextKey.Gold else TextKey.Gems)
+    val experience = if (currency == ClanDonationCurrency.GOLD) amount / 10 else amount * 10
+    val canConfirm = !isPending && amount <= balance
+
+    ArcadeDialog(
+        title = localized(TextKey.DonateToClan),
+        subtitle = localized(TextKey.DonateToClanDescription),
+        onDismissRequest = onDismiss,
+        modifier = Modifier.testTag("clan_donation_dialog")
+    ) {
+        Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            ArcadeSegmentedControl(
+                labels = listOf(localized(TextKey.Gold), localized(TextKey.Gems)),
+                selectedIndex = currency.ordinal,
+                onSelected = { currency = ClanDonationCurrency.entries[it] },
+                itemTestTag = { "donation_currency_${ClanDonationCurrency.entries[it].name.lowercase()}" }
+            )
+            Text(
+                localized(TextKey.DonationBalance, "amount" to formatNumber(balance), "currency" to currencyLabel),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            ArcadeSegmentedControl(
+                labels = amounts.map { formatNumber(it) },
+                selectedIndex = selectedIndex,
+                onSelected = { selectedIndex = it },
+                itemTestTag = { index -> "donate_${currency.name.lowercase().removeSuffix("s")}_${amounts[index]}" }
+            )
+            Text(
+                localized(TextKey.DonationXpPreview, "xp" to experience),
+                style = MaterialTheme.typography.titleMedium,
+                color = ArcadePalette.Gold500,
+                fontWeight = FontWeight.Black
+            )
+            Text(
+                localized(TextKey.DonationCannotUndo),
+                style = MaterialTheme.typography.bodySmall,
+                color = ArcadePalette.Coral400
+            )
+            ArcadeActionButton(
+                label = localized(TextKey.Confirm),
+                onClick = { onConfirm(currency, amount) },
+                enabled = canConfirm,
+                style = ArcadeActionStyle.GOLD,
+                modifier = Modifier.fillMaxWidth().testTag("confirm_clan_donation")
+            )
+            ArcadeActionButton(
+                label = localized(TextKey.Cancel),
+                onClick = onDismiss,
+                style = ArcadeActionStyle.OUTLINE,
+                modifier = Modifier.fillMaxWidth()
+            )
+        }
     }
 }
 
@@ -918,6 +1093,11 @@ private fun String.clanLogoLabel(): String {
 }
 
 private fun formatNumber(value: Int): String {
+    val raw = value.toString()
+    return raw.reversed().chunked(3).joinToString(".").reversed()
+}
+
+private fun formatNumber(value: Long): String {
     val raw = value.toString()
     return raw.reversed().chunked(3).joinToString(".").reversed()
 }

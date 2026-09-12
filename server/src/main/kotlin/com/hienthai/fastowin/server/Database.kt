@@ -47,6 +47,7 @@ class DatabaseRuntime private constructor(
     val tournamentRepository: TournamentRepository,
     val clanRepository: ClanRepository,
     val seasonLifecycleRepository: SeasonLifecycleRepository,
+    val playQuotaRepository: PlayQuotaRepository,
     private val dataSource: HikariDataSource
 ) : AutoCloseable {
     override fun close() = dataSource.close()
@@ -82,6 +83,7 @@ class DatabaseRuntime private constructor(
                     tournamentRepository = PostgresTournamentRepository(dataSource),
                     clanRepository = PostgresClanRepository(dataSource),
                     seasonLifecycleRepository = PostgresSeasonLifecycleRepository(dataSource),
+                    playQuotaRepository = PostgresPlayQuotaRepository(dataSource),
                     dataSource = dataSource
                 )
             } catch (error: Throwable) {

@@ -3,6 +3,8 @@ package com.hienthai.fastowin.server
 import com.hienthai.fastowin.localization.TextKey
 import com.hienthai.fastowin.protocol.ClientMessage
 import com.hienthai.fastowin.protocol.ClanJoinRequestSnapshot
+import com.hienthai.fastowin.protocol.ClanDonationCurrency
+import com.hienthai.fastowin.protocol.ClanDonationStatus
 import com.hienthai.fastowin.protocol.ClanMemberSnapshot
 import com.hienthai.fastowin.protocol.ClanRole
 import com.hienthai.fastowin.protocol.ClanSnapshot
@@ -18,6 +20,7 @@ import com.hienthai.fastowin.protocol.NotificationDestination
 import com.hienthai.fastowin.protocol.NotificationKind
 import com.hienthai.fastowin.protocol.NotificationSnapshot
 import com.hienthai.fastowin.protocol.MatchType
+import com.hienthai.fastowin.protocol.PlayQuotaSnapshot
 import com.hienthai.fastowin.protocol.PlayerProgressionSnapshot
 import com.hienthai.fastowin.protocol.PushPreferencesSnapshot
 import com.hienthai.fastowin.protocol.FriendSnapshot
@@ -31,6 +34,9 @@ import com.hienthai.fastowin.protocol.GOLD_EXCHANGE_OFFERS
 import com.hienthai.fastowin.protocol.GoldExchangeOffer
 import com.hienthai.fastowin.protocol.GoldExchangeStatus
 import com.hienthai.fastowin.protocol.RankedTier
+import com.hienthai.fastowin.protocol.RewardedAdBonusStatus
+import com.hienthai.fastowin.protocol.RewardedAdAvailability
+import com.hienthai.fastowin.protocol.RewardedAdProvider
 import com.hienthai.fastowin.protocol.SeasonRewardReceiptSnapshot
 import kotlinx.coroutines.async
 import kotlinx.coroutines.test.runTest
@@ -44,6 +50,318 @@ import kotlin.test.assertTrue
 import java.util.UUID
 
 class GameEngineTest {
+    @Test
+    fun `verified rewarded ad grants two online matches exactly once`() = runTest {
+        val quota = InMemoryPlayQuotaRepository()
+        val engine = GameEngine(
+            playQuotaRepository = quota,
+            rewardedAdVerifier = DevRewardedAdVerifier(),
+            rewardedAdAvailability = RewardedAdAvailability.DEV_SIMULATED
+        )
+        val playerId = UUID.randomUUID()
+        engine.connectAccount(AuthenticatedAccount(playerId, "Rewarded"))
+        val transactionId = UUID.randomUUID().toString()
+        val claim = ClientMessage.ClaimRewardedAdBonus(
+            requestId = "reward-request-1",
+            provider = RewardedAdProvider.DEV_SIMULATED,
+            providerTransactionId = transactionId,
+            proof = devRewardedAdProof(playerId.toString(), transactionId)
+        )
+
+        val first = engine.handle(playerId.toString(), claim).singleRewardedAdResult()
+        val duplicate = engine.handle(
+            playerId.toString(),
+            claim.copy(requestId = "reward-request-2")
+        ).singleRewardedAdResult()
+
+        assertEquals(RewardedAdBonusStatus.GRANTED, first.status)
+        assertEquals(12, first.quota.remainingMatches)
+        assertEquals(RewardedAdAvailability.DEV_SIMULATED, first.quota.rewardedAdAvailability)
+        assertEquals(RewardedAdBonusStatus.ALREADY_GRANTED, duplicate.status)
+        assertEquals(12, duplicate.quota.remainingMatches)
+    }
+
+    @Test
+    fun `invalid rewarded ad proof provider and guest never receive quota`() = runTest {
+        val quota = InMemoryPlayQuotaRepository()
+        val engine = GameEngine(
+            playQuotaRepository = quota,
+            rewardedAdVerifier = DevRewardedAdVerifier(),
+            rewardedAdAvailability = RewardedAdAvailability.DEV_SIMULATED
+        )
+        val playerId = UUID.randomUUID()
+        engine.connectAccount(AuthenticatedAccount(playerId, "Rewarded"))
+        val invalidProof = engine.handle(
+            playerId.toString(),
+            ClientMessage.ClaimRewardedAdBonus(
+                requestId = "invalid-proof",
+                provider = RewardedAdProvider.DEV_SIMULATED,
+                providerTransactionId = "transaction-invalid-proof",
+                proof = "copied-proof"
+            )
+        ).singleRewardedAdResult()
+        val wrongProvider = engine.handle(
+            playerId.toString(),
+            ClientMessage.ClaimRewardedAdBonus(
+                requestId = "invalid-provider",
+                provider = RewardedAdProvider.ADMOB_ANDROID,
+                providerTransactionId = "transaction-invalid-provider",
+                proof = "production-proof"
+            )
+        ).singleRewardedAdResult()
+        val guest = engine.connectGuest("Guest", null)
+
+        assertEquals(RewardedAdBonusStatus.INVALID, invalidProof.status)
+        assertEquals(RewardedAdBonusStatus.INVALID, wrongProvider.status)
+        assertEquals(10, quota.getSnapshot(playerId.toString(), 0L).remainingMatches)
+        assertEquals(
+            "ACCOUNT_REQUIRED",
+            engine.handle(guest.playerId, ClientMessage.GetPlayQuota).singleErrorCode()
+        )
+        assertEquals(
+            "ACCOUNT_REQUIRED",
+            engine.handle(
+                guest.playerId,
+                ClientMessage.ClaimRewardedAdBonus(
+                    requestId = "guest-request",
+                    provider = RewardedAdProvider.DEV_SIMULATED,
+                    providerTransactionId = "guest-transaction",
+                    proof = devRewardedAdProof(guest.playerId, "guest-transaction")
+                )
+            ).singleErrorCode()
+        )
+    }
+
+    @Test
+    fun `play quota response carries configured rewarded ad availability`() = runTest {
+        val engine = GameEngine(
+            rewardedAdAvailability = RewardedAdAvailability.UNAVAILABLE
+        )
+        val playerId = UUID.randomUUID()
+        engine.connectAccount(AuthenticatedAccount(playerId, "Quota"))
+
+        val quota = engine.handle(playerId.toString(), ClientMessage.GetPlayQuota)
+            .map(Delivery::message).filterIsInstance<ServerMessage.PlayQuotaData>().single().quota
+
+        assertEquals(10, quota.remainingMatches)
+        assertEquals(RewardedAdAvailability.UNAVAILABLE, quota.rewardedAdAvailability)
+    }
+
+    @Test
+    fun `guest cannot create join or queue for online play`() = runTest {
+        val engine = GameEngine()
+        val guest = engine.connectGuest("Guest", null)
+        val accountId = UUID.randomUUID()
+        engine.connectAccount(AuthenticatedAccount(accountId, "Host"))
+        val room = engine.handle(
+            accountId.toString(),
+            ClientMessage.CreateRoom("Account room", "", ProtocolGameMode.ORDER)
+        ).map(Delivery::message).filterIsInstance<ServerMessage.RoomCreated>().single().game
+
+        assertEquals(
+            "ACCOUNT_REQUIRED",
+            engine.handle(
+                guest.playerId,
+                ClientMessage.CreateRoom("Guest room", "", ProtocolGameMode.ORDER)
+            ).singleErrorCode()
+        )
+        assertEquals(
+            "ACCOUNT_REQUIRED",
+            engine.handle(guest.playerId, ClientMessage.JoinRoom(room.roomId, "")).singleErrorCode()
+        )
+        assertEquals(
+            "ACCOUNT_REQUIRED",
+            engine.handle(
+                guest.playerId,
+                ClientMessage.JoinMatchmaking(ProtocolGameMode.ORDER, MatchType.CASUAL)
+            ).singleErrorCode()
+        )
+    }
+
+    @Test
+    fun `waiting room costs nothing and first playing transition consumes once`() = runTest {
+        val quota = RecordingPlayQuotaRepository()
+        val engine = GameEngine(playQuotaRepository = quota)
+        val hostId = UUID.randomUUID()
+        val guestId = UUID.randomUUID()
+        engine.connectAccount(AuthenticatedAccount(hostId, "Host"))
+        engine.connectAccount(AuthenticatedAccount(guestId, "Guest"))
+        val room = engine.handle(
+            hostId.toString(),
+            ClientMessage.CreateRoom("Quota room", "", ProtocolGameMode.ORDER)
+        ).map(Delivery::message).filterIsInstance<ServerMessage.RoomCreated>().single().game
+        engine.handle(guestId.toString(), ClientMessage.JoinRoom(room.roomId, ""))
+
+        assertTrue(quota.consumedMatchIds.isEmpty())
+        engine.handle(hostId.toString(), ClientMessage.SetReady(room.roomId, true))
+        assertTrue(quota.consumedMatchIds.isEmpty())
+
+        val started = engine.handle(guestId.toString(), ClientMessage.SetReady(room.roomId, true))
+        assertTrue(started.any { it.message is ServerMessage.GameStarted })
+        assertEquals(listOf(room.matchId), quota.consumedMatchIds)
+
+        engine.handle(guestId.toString(), ClientMessage.SetReady(room.roomId, true))
+        assertEquals(listOf(room.matchId), quota.consumedMatchIds)
+    }
+
+    @Test
+    fun `exhausted account cannot create an online room`() = runTest {
+        val playerId = UUID.randomUUID()
+        val quota = RecordingPlayQuotaRepository(remainingByUser = mutableMapOf(playerId.toString() to 0))
+        val engine = GameEngine(playQuotaRepository = quota)
+        engine.connectAccount(AuthenticatedAccount(playerId, "No quota"))
+
+        val messages = engine.handle(
+            playerId.toString(),
+            ClientMessage.CreateRoom("Blocked room", "", ProtocolGameMode.ORDER)
+        )
+
+        assertEquals("PLAY_QUOTA_EXHAUSTED", messages.singleErrorCode())
+        assertEquals(0, messages.map(Delivery::message)
+            .filterIsInstance<ServerMessage.PlayQuotaData>().single().quota.remainingMatches)
+    }
+
+    @Test
+    fun `matchmaking consumes one quota for each matched account`() = runTest {
+        val quota = RecordingPlayQuotaRepository()
+        val engine = GameEngine(playQuotaRepository = quota)
+        val firstId = UUID.randomUUID()
+        val secondId = UUID.randomUUID()
+        engine.connectAccount(AuthenticatedAccount(firstId, "First"))
+        engine.connectAccount(AuthenticatedAccount(secondId, "Second"))
+
+        engine.handle(
+            firstId.toString(),
+            ClientMessage.JoinMatchmaking(ProtocolGameMode.ORDER, MatchType.CASUAL)
+        )
+        val matched = engine.handle(
+            secondId.toString(),
+            ClientMessage.JoinMatchmaking(ProtocolGameMode.ORDER, MatchType.CASUAL)
+        ).map(Delivery::message)
+
+        val game = matched.filterIsInstance<ServerMessage.GameStarted>().single().game
+        assertEquals(listOf(game.matchId), quota.consumedMatchIds)
+        assertEquals(setOf(firstId.toString(), secondId.toString()), quota.consumedUserIds.single())
+        assertEquals(
+            listOf(9, 9),
+            matched.filterIsInstance<ServerMessage.PlayQuotaData>()
+                .map { it.quota.remainingMatches }
+                .sorted()
+        )
+    }
+
+    @Test
+    fun `one exhausted player prevents both players from being charged at match start`() = runTest {
+        val quota = RecordingPlayQuotaRepository()
+        val engine = GameEngine(playQuotaRepository = quota)
+        val hostId = UUID.randomUUID()
+        val guestId = UUID.randomUUID()
+        engine.connectAccount(AuthenticatedAccount(hostId, "Host"))
+        engine.connectAccount(AuthenticatedAccount(guestId, "Guest"))
+        val room = engine.handle(
+            hostId.toString(),
+            ClientMessage.CreateRoom("Atomic quota", "", ProtocolGameMode.ORDER)
+        ).map(Delivery::message).filterIsInstance<ServerMessage.RoomCreated>().single().game
+        engine.handle(guestId.toString(), ClientMessage.JoinRoom(room.roomId, ""))
+        engine.handle(hostId.toString(), ClientMessage.SetReady(room.roomId, true))
+        quota.setRemaining(hostId.toString(), 0)
+
+        val rejected = engine.handle(guestId.toString(), ClientMessage.SetReady(room.roomId, true))
+            .map(Delivery::message)
+
+        assertTrue(rejected.none { it is ServerMessage.GameStarted })
+        assertTrue(rejected.any { it is ServerMessage.Error && it.code == "PLAY_QUOTA_EXHAUSTED" })
+        assertEquals(
+            com.hienthai.fastowin.protocol.RoomPhase.WAITING,
+            rejected.filterIsInstance<ServerMessage.RoomUpdated>().single().game.phase
+        )
+        assertTrue(quota.consumedMatchIds.isEmpty())
+        assertEquals(10, quota.getSnapshot(guestId.toString(), 0L).remainingMatches)
+    }
+
+    @Test
+    fun `casual rematch consumes a new quota receipt`() = runTest {
+        val quota = RecordingPlayQuotaRepository()
+        val engine = GameEngine(playQuotaRepository = quota)
+        val hostId = UUID.randomUUID()
+        val guestId = UUID.randomUUID()
+        engine.connectAccount(AuthenticatedAccount(hostId, "Host"))
+        engine.connectAccount(AuthenticatedAccount(guestId, "Guest"))
+        val room = engine.handle(
+            hostId.toString(),
+            ClientMessage.CreateRoom("Rematch quota", "", ProtocolGameMode.ORDER)
+        ).map(Delivery::message).filterIsInstance<ServerMessage.RoomCreated>().single().game
+        startRoom(engine, hostId.toString(), guestId.toString(), room.roomId, "")
+        repeat(50) { index ->
+            engine.handle(
+                hostId.toString(),
+                ClientMessage.SelectNumber(room.roomId, index + 1, "quota-finish-$index")
+            )
+        }
+
+        engine.handle(hostId.toString(), ClientMessage.RequestRematch(room.roomId))
+        val rematch = engine.handle(guestId.toString(), ClientMessage.RequestRematch(room.roomId))
+            .map(Delivery::message).filterIsInstance<ServerMessage.GameStarted>().single().game
+
+        assertEquals(2, quota.consumedMatchIds.size)
+        assertEquals(2, quota.consumedMatchIds.distinct().size)
+        assertEquals(rematch.matchId, quota.consumedMatchIds.last())
+    }
+
+    @Test
+    fun `rejected casual rematch preserves the finished match identity`() = runTest {
+        val quota = RecordingPlayQuotaRepository()
+        val engine = GameEngine(playQuotaRepository = quota)
+        val hostId = UUID.randomUUID()
+        val guestId = UUID.randomUUID()
+        engine.connectAccount(AuthenticatedAccount(hostId, "Host"))
+        engine.connectAccount(AuthenticatedAccount(guestId, "Guest"))
+        val room = engine.handle(
+            hostId.toString(),
+            ClientMessage.CreateRoom("Rejected rematch", "", ProtocolGameMode.ORDER)
+        ).map(Delivery::message).filterIsInstance<ServerMessage.RoomCreated>().single().game
+        startRoom(engine, hostId.toString(), guestId.toString(), room.roomId, "")
+        repeat(50) { index ->
+            engine.handle(
+                hostId.toString(),
+                ClientMessage.SelectNumber(room.roomId, index + 1, "rejected-rematch-$index")
+            )
+        }
+        val finishedMatchId = quota.consumedMatchIds.single()
+        quota.exhaustNextConsumption = true
+
+        engine.handle(hostId.toString(), ClientMessage.RequestRematch(room.roomId))
+        val rejected = engine.handle(guestId.toString(), ClientMessage.RequestRematch(room.roomId))
+            .map(Delivery::message)
+
+        assertTrue(rejected.none { it is ServerMessage.GameStarted })
+        assertTrue(rejected.any { it is ServerMessage.Error && it.code == "PLAY_QUOTA_EXHAUSTED" })
+        assertEquals(
+            finishedMatchId,
+            rejected.filterIsInstance<ServerMessage.RematchStatus>().single().game.matchId
+        )
+
+        val rejectedRematchId = quota.attemptedMatchIds.last()
+        engine.handle(hostId.toString(), ClientMessage.RequestRematch(room.roomId))
+        val retried = engine.handle(guestId.toString(), ClientMessage.RequestRematch(room.roomId))
+            .map(Delivery::message).filterIsInstance<ServerMessage.GameStarted>().single().game
+
+        assertEquals(rejectedRematchId, retried.matchId)
+        assertEquals(1, quota.attemptedMatchIds.drop(1).distinct().size)
+    }
+
+    @Test
+    fun `tournament matches do not consume online play quota`() = runTest {
+        val quota = RecordingPlayQuotaRepository()
+        val fixture = createStartedTournamentFixture(
+            maxPlayers = 4,
+            playQuotaRepository = quota
+        )
+
+        assertEquals(2, fixture.games.size)
+        assertTrue(quota.consumedMatchIds.isEmpty())
+    }
+
     @Test
     fun `legacy cosmetic purchase command cannot buy removed shop inventory`() = runTest {
         val playerId = UUID.randomUUID().toString()
@@ -601,8 +919,8 @@ class GameEngineTest {
     @Test
     fun `public room can be created and joined without password`() = runTest {
         val engine = GameEngine()
-        val host = engine.connectGuest("Host", null)
-        val guest = engine.connectGuest("Guest", null)
+        val host = engine.connectOnlineTestPlayer("Host")
+        val guest = engine.connectOnlineTestPlayer("Guest")
 
         val created = engine.handle(
             host.playerId,
@@ -720,8 +1038,8 @@ class GameEngineTest {
             identityRepository = identityRepository,
             activeRoomRepository = activeRoomRepository
         )
-        val host = firstEngine.connectGuest("Host", null)
-        val guest = firstEngine.connectGuest("Guest", null)
+        val host = firstEngine.connectOnlineTestPlayer("Host")
+        val guest = firstEngine.connectOnlineTestPlayer("Guest")
         val created = firstEngine.handle(
             host.playerId,
             ClientMessage.CreateRoom("Restart room", PASSWORD, ProtocolGameMode.ORDER)
@@ -741,8 +1059,8 @@ class GameEngineTest {
             identityRepository = identityRepository,
             activeRoomRepository = activeRoomRepository
         )
-        val resumedHost = restartedEngine.connectGuest("Host renamed", host.resumeToken)
-        val resumedGuest = restartedEngine.connectGuest("Guest", guest.resumeToken)
+        val resumedHost = restartedEngine.connectOnlineTestPlayer("Host renamed", host.playerId)
+        val resumedGuest = restartedEngine.connectOnlineTestPlayer("Guest", guest.playerId)
         val restored = assertNotNull(resumedHost.currentGame)
 
         assertEquals(created.roomId, restored.roomId)
@@ -1038,11 +1356,11 @@ class GameEngineTest {
     }
 
     @Test
-    fun `guest leaving a waiting room closes it for the host`() = runTest {
+    fun `player leaving a waiting room closes it for the host`() = runTest {
         val repository = InMemoryActiveRoomRepository()
         val engine = GameEngine(activeRoomRepository = repository)
-        val host = engine.connectGuest("Host", null)
-        val guest = engine.connectGuest("Guest", null)
+        val host = engine.connectOnlineTestPlayer("Host")
+        val guest = engine.connectOnlineTestPlayer("Guest")
         val room = engine.handle(
             host.playerId,
             ClientMessage.CreateRoom("Waiting room", PASSWORD, ProtocolGameMode.ORDER)
@@ -1177,6 +1495,67 @@ class GameEngineTest {
     }
 
     @Test
+    fun `account donation returns authoritative result and refreshed clan`() = runTest {
+        val playerId = UUID.randomUUID().toString()
+        val clanId = UUID.randomUUID().toString()
+        val requestId = UUID.randomUUID().toString()
+        var recordedDonation: ClientMessage.DonateToClan? = null
+        val updatedClan = ClanSnapshot(
+            id = clanId,
+            name = "Speed",
+            description = "Nhanh là thắng",
+            ownerId = playerId,
+            members = emptyList(),
+            trophies = 1_000,
+            level = 2,
+            experiencePoints = 1_000,
+            nextLevelExperience = 1_500,
+            donatedGold = 10_000
+        )
+        val clans = object : ClanRepository by NoOpClanRepository {
+            override suspend fun donateToClan(
+                userId: String,
+                clanId: String,
+                requestId: String,
+                currency: ClanDonationCurrency,
+                amount: Int
+            ): ClanDonationResult {
+                recordedDonation = ClientMessage.DonateToClan(clanId, requestId, currency, amount)
+                return ClanDonationResult(
+                    status = ClanDonationStatus.APPLIED,
+                    experienceGranted = 1_000,
+                    clanLevel = 2
+                )
+            }
+
+            override suspend fun getClanById(clanId: String) = updatedClan.takeIf { it.id == clanId }
+        }
+        val engine = GameEngine(clanRepository = clans)
+        engine.connectAccount(AuthenticatedAccount(UUID.fromString(playerId), "Donor"))
+        val command = ClientMessage.DonateToClan(
+            clanId = clanId,
+            requestId = requestId,
+            currency = ClanDonationCurrency.GOLD,
+            amount = 10_000
+        )
+
+        val response = engine.handle(playerId, command).map(Delivery::message)
+
+        assertEquals(command, recordedDonation)
+        assertEquals(
+            ServerMessage.ClanDonationResult(
+                requestId = requestId,
+                status = ClanDonationStatus.APPLIED,
+                currency = ClanDonationCurrency.GOLD,
+                experienceGranted = 1_000,
+                clanLevel = 2
+            ),
+            response.filterIsInstance<ServerMessage.ClanDonationResult>().single()
+        )
+        assertEquals(updatedClan, response.filterIsInstance<ServerMessage.ClanInfoData>().single().clan)
+    }
+
+    @Test
     fun `room invitation and notification survive engine restart`() = runTest {
         val hostId = UUID.randomUUID().toString()
         val guestId = UUID.randomUUID().toString()
@@ -1266,7 +1645,7 @@ class GameEngineTest {
             ClientMessage.JoinRoom(fixture.roomId, "sai-mat-khau")
         )
 
-        val error = assertIs<ServerMessage.Error>(deliveries.single().message)
+        val error = deliveries.map(Delivery::message).filterIsInstance<ServerMessage.Error>().single()
         assertEquals("WRONG_PASSWORD", error.code)
         assertEquals(TextKey.ServerWrongPassword.name, error.messageKey)
     }
@@ -1279,14 +1658,17 @@ class GameEngineTest {
             override suspend fun delete(roomId: String) = error("Unexpected snapshot delete")
         }
         val engine = GameEngine(activeRoomRepository = repository)
-        val player = engine.connectGuest("Guest", null)
+        val player = engine.connectOnlineTestPlayer("Player")
 
         val response = engine.handle(
             player.playerId,
             ClientMessage.JoinRoom("not-a-uuid", PASSWORD)
         )
 
-        assertEquals("ROOM_NOT_FOUND", assertIs<ServerMessage.Error>(response.single().message).code)
+        assertEquals(
+            "ROOM_NOT_FOUND",
+            response.map(Delivery::message).filterIsInstance<ServerMessage.Error>().single().code
+        )
     }
 
     @Test
@@ -1344,7 +1726,7 @@ class GameEngineTest {
     fun `waiting room is hidden while host disconnects and restored on resume`() = runTest {
         var now = 1_000L
         val engine = GameEngine { now }
-        val host = engine.connectGuest("Hiền", null)
+        val host = engine.connectOnlineTestPlayer("Hiền")
         engine.handle(
             host.playerId,
             ClientMessage.CreateRoom("Phòng reconnect", PASSWORD, ProtocolGameMode.ORDER)
@@ -1355,7 +1737,7 @@ class GameEngineTest {
         assertTrue(engine.roomList().rooms.isEmpty())
 
         now += 10_000L
-        val resumed = engine.connectGuest("Hiền", host.resumeToken)
+        val resumed = engine.connectOnlineTestPlayer("Hiền", host.playerId, host.resumeToken)
         assertEquals(host.playerId, resumed.playerId)
         assertEquals(1, engine.roomList().rooms.size)
         assertEquals("Phòng reconnect", resumed.currentGame?.roomName)
@@ -1369,7 +1751,7 @@ class GameEngineTest {
             activeRoomRepository = activeRoomRepository,
             nowMillis = { now }
         )
-        val host = engine.connectGuest("Hiền", null)
+        val host = engine.connectOnlineTestPlayer("Hiền")
         val created = engine.handle(
             host.playerId,
             ClientMessage.CreateRoom("Phòng hết hạn", PASSWORD, ProtocolGameMode.ORDER)
@@ -1389,8 +1771,8 @@ class GameEngineTest {
     fun `disconnected player resumes current state after opponent continues playing`() = runTest {
         var now = 1_000L
         val engine = GameEngine(nowMillis = { now })
-        val host = engine.connectGuest("Host", null)
-        val guest = engine.connectGuest("Guest", null)
+        val host = engine.connectOnlineTestPlayer("Host")
+        val guest = engine.connectOnlineTestPlayer("Guest")
         val room = engine.handle(
             host.playerId,
             ClientMessage.CreateRoom("Reconnect during match", PASSWORD, ProtocolGameMode.ORDER)
@@ -1404,7 +1786,7 @@ class GameEngineTest {
         )
         now += 29_999L
 
-        val resumed = engine.connectGuest("Host", host.resumeToken)
+        val resumed = engine.connectOnlineTestPlayer("Host", host.playerId, host.resumeToken)
         val restored = assertNotNull(resumed.currentGame)
         assertEquals(room.roomId, restored.roomId)
         assertEquals(2, restored.currentTarget)
@@ -1463,8 +1845,8 @@ class GameEngineTest {
             activeRoomRepository = repository,
             matchResultRepository = MatchResultRepository { savedMatches += it }
         )
-        val host = engine.connectGuest("Host", null)
-        val guest = engine.connectGuest("Guest", null)
+        val host = engine.connectOnlineTestPlayer("Host")
+        val guest = engine.connectOnlineTestPlayer("Guest")
         val room = engine.handle(
             host.playerId,
             ClientMessage.CreateRoom("Leave active room", PASSWORD, ProtocolGameMode.ORDER)
@@ -1495,8 +1877,8 @@ class GameEngineTest {
         ).map(Delivery::message).filterIsInstance<ServerMessage.Error>().single()
         assertEquals("GAME_NOT_PLAYING", rejected.code)
 
-        val hostReconnect = engine.connectGuest("Host", host.resumeToken)
-        val guestReconnect = engine.connectGuest("Guest", guest.resumeToken)
+        val hostReconnect = engine.connectOnlineTestPlayer("Host", host.playerId, host.resumeToken)
+        val guestReconnect = engine.connectOnlineTestPlayer("Guest", guest.playerId, guest.resumeToken)
         assertEquals(room.roomId, hostReconnect.currentGame?.roomId)
         assertEquals(room.roomId, guestReconnect.currentGame?.roomId)
 
@@ -1521,8 +1903,8 @@ class GameEngineTest {
     fun `leaving a completed result only returns that player to lobby`() = runTest {
         val repository = InMemoryActiveRoomRepository()
         val engine = GameEngine(activeRoomRepository = repository)
-        val host = engine.connectGuest("Host", null)
-        val guest = engine.connectGuest("Guest", null)
+        val host = engine.connectOnlineTestPlayer("Host")
+        val guest = engine.connectOnlineTestPlayer("Guest")
         val room = engine.handle(
             host.playerId,
             ClientMessage.CreateRoom("Independent result exit", PASSWORD, ProtocolGameMode.ORDER)
@@ -1540,8 +1922,11 @@ class GameEngineTest {
         assertEquals(setOf(host.playerId), closed.recipients)
         assertTrue(hostExit.none { it.recipients?.contains(guest.playerId) == true })
         assertEquals(setOf(host.playerId), repository.loadAll().single().departedPlayerIds)
-        assertEquals(room.roomId, engine.connectGuest("Guest", guest.resumeToken).currentGame?.roomId)
-        assertEquals(null, engine.connectGuest("Host", host.resumeToken).currentGame)
+        assertEquals(
+            room.roomId,
+            engine.connectOnlineTestPlayer("Guest", guest.playerId, guest.resumeToken).currentGame?.roomId
+        )
+        assertEquals(null, engine.connectOnlineTestPlayer("Host", host.playerId, host.resumeToken).currentGame)
 
         engine.handle(guest.playerId, ClientMessage.LeaveRoom(room.roomId))
         assertTrue(repository.loadAll().isEmpty())
@@ -1550,8 +1935,8 @@ class GameEngineTest {
     @Test
     fun `emoji is broadcast to both players during a match`() = runTest {
         val engine = GameEngine()
-        val host = engine.connectGuest("Host", null)
-        val guest = engine.connectGuest("Guest", null)
+        val host = engine.connectOnlineTestPlayer("Host")
+        val guest = engine.connectOnlineTestPlayer("Guest")
         val room = engine.handle(
             host.playerId,
             ClientMessage.CreateRoom("Emoji room", PASSWORD, ProtocolGameMode.ORDER)
@@ -1570,8 +1955,8 @@ class GameEngineTest {
         val savedMatches = mutableListOf<CompletedMatch>()
         val repository = MatchResultRepository { match -> savedMatches += match }
         val engine = GameEngine(matchResultRepository = repository)
-        val host = engine.connectGuest("Hiền", null)
-        val guest = engine.connectGuest("Hiếu", null)
+        val host = engine.connectOnlineTestPlayer("Hiền")
+        val guest = engine.connectOnlineTestPlayer("Hiếu")
         val room = engine.handle(
             host.playerId,
             ClientMessage.CreateRoom("Phòng lịch sử", PASSWORD, ProtocolGameMode.ORDER)
@@ -1618,8 +2003,8 @@ class GameEngineTest {
     fun `rematch starts only after both players agree and uses a new match id`() = runTest {
         val savedMatches = mutableListOf<CompletedMatch>()
         val engine = GameEngine(matchResultRepository = MatchResultRepository { savedMatches += it })
-        val host = engine.connectGuest("Host", null)
-        val guest = engine.connectGuest("Guest", null)
+        val host = engine.connectOnlineTestPlayer("Host")
+        val guest = engine.connectOnlineTestPlayer("Guest")
         val room = engine.handle(
             host.playerId,
             ClientMessage.CreateRoom("Rematch room", PASSWORD, ProtocolGameMode.ORDER)
@@ -1649,8 +2034,8 @@ class GameEngineTest {
     @Test
     fun `player can cancel and opponent can decline a pending rematch`() = runTest {
         val engine = GameEngine()
-        val host = engine.connectGuest("Host", null)
-        val guest = engine.connectGuest("Guest", null)
+        val host = engine.connectOnlineTestPlayer("Host")
+        val guest = engine.connectOnlineTestPlayer("Guest")
         val room = engine.handle(
             host.playerId,
             ClientMessage.CreateRoom("Rematch response", PASSWORD, ProtocolGameMode.ORDER)
@@ -1680,8 +2065,8 @@ class GameEngineTest {
     fun `pending rematch expires on the server`() = runTest {
         var now = 10_000L
         val engine = GameEngine(rematchTimeoutMillis = 1_000L, nowMillis = { now })
-        val host = engine.connectGuest("Host", null)
-        val guest = engine.connectGuest("Guest", null)
+        val host = engine.connectOnlineTestPlayer("Host")
+        val guest = engine.connectOnlineTestPlayer("Guest")
         val room = engine.handle(
             host.playerId,
             ClientMessage.CreateRoom("Expiring rematch", PASSWORD, ProtocolGameMode.ORDER)
@@ -1707,8 +2092,8 @@ class GameEngineTest {
     fun `game snapshot reports per-player accuracy reaction and duration`() = runTest {
         var now = 1_000L
         val engine = GameEngine(nowMillis = { now })
-        val host = engine.connectGuest("Host", null)
-        val guest = engine.connectGuest("Guest", null)
+        val host = engine.connectOnlineTestPlayer("Host")
+        val guest = engine.connectOnlineTestPlayer("Guest")
         val room = engine.handle(
             host.playerId,
             ClientMessage.CreateRoom("Performance room", PASSWORD, ProtocolGameMode.ORDER)
@@ -1721,7 +2106,9 @@ class GameEngineTest {
             now += 100L
             engine.handle(host.playerId, ClientMessage.SelectNumber(room.roomId, index + 1, "correct-$index"))
         }
-        val finished = assertNotNull(engine.connectGuest("Host", host.resumeToken).currentGame)
+        val finished = assertNotNull(
+            engine.connectOnlineTestPlayer("Host", host.playerId, host.resumeToken).currentGame
+        )
         val hostResult = finished.players.single { it.id == host.playerId }
         assertEquals(50, hostResult.correctSelections)
         assertEquals(1, hostResult.wrongSelections)
@@ -1744,8 +2131,8 @@ class GameEngineTest {
             identityRepository = identityRepository,
             activeRoomRepository = activeRoomRepository
         )
-        val host = firstEngine.connectGuest("Host", null)
-        val guest = firstEngine.connectGuest("Guest", null)
+        val host = firstEngine.connectOnlineTestPlayer("Host")
+        val guest = firstEngine.connectOnlineTestPlayer("Guest")
         val room = firstEngine.handle(
             host.playerId,
             ClientMessage.CreateRoom("Persistent rematch", PASSWORD, ProtocolGameMode.ORDER)
@@ -1763,8 +2150,8 @@ class GameEngineTest {
             identityRepository = identityRepository,
             activeRoomRepository = activeRoomRepository
         )
-        val resumedHost = restartedEngine.connectGuest("Host", host.resumeToken)
-        restartedEngine.connectGuest("Guest", guest.resumeToken)
+        val resumedHost = restartedEngine.connectOnlineTestPlayer("Host", host.playerId)
+        restartedEngine.connectOnlineTestPlayer("Guest", guest.playerId)
         assertEquals(
             listOf(host.playerId),
             assertNotNull(resumedHost.currentGame).rematchRequestedPlayerIds
@@ -1785,8 +2172,8 @@ class GameEngineTest {
             matchResultRepository = MatchResultRepository { savedMatches += it },
             nowMillis = { now }
         )
-        val host = engine.connectGuest("Hiền", null)
-        val guest = engine.connectGuest("Hiếu", null)
+        val host = engine.connectOnlineTestPlayer("Hiền")
+        val guest = engine.connectOnlineTestPlayer("Hiếu")
         val room = engine.handle(
             host.playerId,
             ClientMessage.CreateRoom("Phòng 60 giây", PASSWORD, ProtocolGameMode.TIME_ATTACK)
@@ -1815,8 +2202,8 @@ class GameEngineTest {
             matchResultRepository = MatchResultRepository { savedMatches += it },
             nowMillis = { now }
         )
-        val host = engine.connectGuest("Host", null)
-        val guest = engine.connectGuest("Guest", null)
+        val host = engine.connectOnlineTestPlayer("Host")
+        val guest = engine.connectOnlineTestPlayer("Guest")
         val room = engine.handle(
             host.playerId,
             ClientMessage.CreateRoom("Timed race", PASSWORD, ProtocolGameMode.TIME_ATTACK)
@@ -1838,7 +2225,7 @@ class GameEngineTest {
     @Test
     fun `locked modes require the configured player level`() = runTest {
         val engine = GameEngine()
-        val guest = engine.connectGuest("Người mới", null)
+        val guest = engine.connectOnlineTestPlayer("Người mới")
 
         val result = engine.handle(
             guest.playerId,
@@ -1871,8 +2258,8 @@ class GameEngineTest {
     fun `shared board equal scores persist a draw even when guest selects last`() = runTest {
         val savedMatches = mutableListOf<CompletedMatch>()
         val engine = GameEngine(matchResultRepository = MatchResultRepository { savedMatches += it })
-        val host = engine.connectGuest("Host", null)
-        val guest = engine.connectGuest("Guest", null)
+        val host = engine.connectOnlineTestPlayer("Host")
+        val guest = engine.connectOnlineTestPlayer("Guest")
         val room = engine.handle(host.playerId, ClientMessage.CreateRoom(
             "Draw regression", PASSWORD, ProtocolGameMode.ORDER
         )).map(Delivery::message).filterIsInstance<ServerMessage.RoomCreated>().single().game
@@ -2357,6 +2744,7 @@ class GameEngineTest {
         entryFee: Int = 0,
         activeRoomRepository: ActiveRoomRepository = NoOpActiveRoomRepository,
         tournamentRepository: TournamentRepository = InMemoryTournamentRepository(),
+        playQuotaRepository: PlayQuotaRepository = InMemoryPlayQuotaRepository(),
         nowMillis: () -> Long = System::currentTimeMillis,
         walletMutation: suspend (String, String, String, Int) -> WalletMutationStatus =
             { _, _, _, _ -> WalletMutationStatus.PLAYER_NOT_FOUND }
@@ -2411,6 +2799,7 @@ class GameEngineTest {
             friendRepository = friendRepository,
             activeRoomRepository = activeRoomRepository,
             tournamentRepository = tournamentRepository,
+            playQuotaRepository = playQuotaRepository,
             nowMillis = nowMillis
         )
         playerIds.forEach { playerId ->
@@ -2506,8 +2895,8 @@ class GameEngineTest {
 
     private suspend fun createRoomFixture(): Fixture {
         val engine = GameEngine()
-        val host = engine.connectGuest("Hiền", null)
-        val guest = engine.connectGuest("Hiếu", null)
+        val host = engine.connectOnlineTestPlayer("Hiền")
+        val guest = engine.connectOnlineTestPlayer("Hiếu")
         val deliveries = engine.handle(
             host.playerId,
             ClientMessage.CreateRoom("Phòng test", PASSWORD, ProtocolGameMode.ORDER)
@@ -2515,6 +2904,87 @@ class GameEngineTest {
         val created = deliveries.map(Delivery::message).filterIsInstance<ServerMessage.RoomCreated>().single()
         assertTrue(created.game.numbers.isEmpty())
         return Fixture(engine, host.playerId, guest.playerId, created.game.roomId)
+    }
+
+    private fun List<Delivery>.singleErrorCode(): String =
+        map(Delivery::message).filterIsInstance<ServerMessage.Error>().single().code
+
+    private fun List<Delivery>.singleRewardedAdResult(): ServerMessage.RewardedAdBonusResult =
+        map(Delivery::message).filterIsInstance<ServerMessage.RewardedAdBonusResult>().single()
+
+    private class RecordingPlayQuotaRepository(
+        private val remainingByUser: MutableMap<String, Int> = mutableMapOf()
+    ) : PlayQuotaRepository {
+        val consumedMatchIds = mutableListOf<String>()
+        val consumedUserIds = mutableListOf<Set<String>>()
+        val attemptedMatchIds = mutableListOf<String>()
+        var exhaustNextConsumption = false
+
+        fun setRemaining(userId: String, remaining: Int) {
+            remainingByUser[userId] = remaining
+        }
+
+        override suspend fun getSnapshot(userId: String, nowMillis: Long): PlayQuotaSnapshot =
+            snapshot(userId)
+
+        override suspend fun canPlay(userIds: Set<String>, nowMillis: Long): PlayQuotaCheck {
+            val quotas = userIds.associateWith(::snapshot)
+            val exhausted = quotas.filterValues { it.remainingMatches <= 0 }.keys
+            return PlayQuotaCheck(exhausted.isEmpty(), quotas, exhausted)
+        }
+
+        override suspend fun consumeMatch(
+            userIds: Set<String>,
+            matchId: String,
+            nowMillis: Long
+        ): PlayQuotaConsumption {
+            attemptedMatchIds += matchId
+            if (exhaustNextConsumption) {
+                exhaustNextConsumption = false
+                return PlayQuotaConsumption(
+                    PlayQuotaConsumptionStatus.EXHAUSTED,
+                    userIds.associateWith(::snapshot),
+                    userIds
+                )
+            }
+            if (matchId in consumedMatchIds) {
+                return PlayQuotaConsumption(
+                    PlayQuotaConsumptionStatus.ALREADY_CONSUMED,
+                    userIds.associateWith(::snapshot)
+                )
+            }
+            val quotas = userIds.associateWith(::snapshot)
+            val exhausted = quotas.filterValues { it.remainingMatches <= 0 }.keys
+            if (exhausted.isNotEmpty()) {
+                return PlayQuotaConsumption(
+                    PlayQuotaConsumptionStatus.EXHAUSTED,
+                    quotas,
+                    exhausted
+                )
+            }
+            consumedMatchIds += matchId
+            consumedUserIds += userIds
+            userIds.forEach { userId ->
+                remainingByUser[userId] = (remainingByUser[userId] ?: 10) - 1
+            }
+            return PlayQuotaConsumption(
+                PlayQuotaConsumptionStatus.CONSUMED,
+                userIds.associateWith(::snapshot)
+            )
+        }
+
+        override suspend fun grantRewardedAd(
+            userId: String,
+            provider: RewardedAdProvider,
+            providerTransactionId: String,
+            nowMillis: Long
+        ) = PlayQuotaGrant(RewardedAdBonusStatus.GRANTED, snapshot(userId))
+
+        private fun snapshot(userId: String) = PlayQuotaSnapshot(
+            quotaDate = "2030-03-18",
+            remainingMatches = remainingByUser[userId] ?: 10,
+            nextResetAtEpochMillis = 1_900_000_000_000L
+        )
     }
 
     @Test
@@ -2525,8 +2995,8 @@ class GameEngineTest {
             matchResultRepository = MatchResultRepository { savedMatches += it },
             nowMillis = { now }
         )
-        val host = engine.connectGuest("Host", null)
-        val guest = engine.connectGuest("Guest", null)
+        val host = engine.connectOnlineTestPlayer("Host")
+        val guest = engine.connectOnlineTestPlayer("Guest")
         val room = engine.handle(
             host.playerId,
             ClientMessage.CreateRoom("Reconnect expiry", PASSWORD, ProtocolGameMode.ORDER)
@@ -2538,7 +3008,7 @@ class GameEngineTest {
         val finished = engine.cleanupExpiredSessions().map(Delivery::message)
             .filterIsInstance<ServerMessage.GameFinished>().single().game
         val persisted = savedMatches.single()
-        val resumed = engine.connectGuest("Host", host.resumeToken)
+        val resumed = engine.connectOnlineTestPlayer("Host", host.playerId, host.resumeToken)
 
         assertEquals(guest.playerId, finished.winnerPlayerId)
         val persistedHost = persisted.players.single { it.playerId == host.playerId }
@@ -2549,15 +3019,15 @@ class GameEngineTest {
         assertFalse(persistedGuest.intentionalLeave)
         assertEquals(com.hienthai.fastowin.protocol.RoomPhase.FINISHED, assertNotNull(resumed.currentGame).phase)
         assertEquals(guest.playerId, resumed.currentGame?.winnerPlayerId)
-        assertEquals(null, engine.connectGuest("Host", host.resumeToken).currentGame)
+        assertEquals(null, engine.connectOnlineTestPlayer("Host", host.playerId, host.resumeToken).currentGame)
     }
 
     @Test
     fun `expired result pending snapshot is bounded by ttl`() = runTest {
         var now = 1_000L
         val engine = GameEngine(nowMillis = { now })
-        val host = engine.connectGuest("Host", null)
-        val guest = engine.connectGuest("Guest", null)
+        val host = engine.connectOnlineTestPlayer("Host")
+        val guest = engine.connectOnlineTestPlayer("Guest")
         val room = engine.handle(host.playerId, ClientMessage.CreateRoom("TTL", PASSWORD, ProtocolGameMode.ORDER))
             .map(Delivery::message).filterIsInstance<ServerMessage.RoomCreated>().single().game
         startRoom(engine, host.playerId, guest.playerId, room.roomId)
@@ -2566,7 +3036,7 @@ class GameEngineTest {
         engine.cleanupExpiredSessions()
         now += 30_000L
         engine.cleanupExpiredSessions()
-        assertEquals(null, engine.connectGuest("Host", host.resumeToken).currentGame)
+        assertEquals(null, engine.connectOnlineTestPlayer("Host", host.playerId).currentGame)
     }
 
     @Test
@@ -2574,8 +3044,8 @@ class GameEngineTest {
         var now = 1_000L
         val saved = mutableListOf<CompletedMatch>()
         val engine = GameEngine(nowMillis = { now }, matchResultRepository = MatchResultRepository { saved += it })
-        val host = engine.connectGuest("Host", null)
-        val guest = engine.connectGuest("Guest", null)
+        val host = engine.connectOnlineTestPlayer("Host")
+        val guest = engine.connectOnlineTestPlayer("Guest")
         val room = engine.handle(host.playerId, ClientMessage.CreateRoom("Both offline", PASSWORD, ProtocolGameMode.ORDER))
             .map(Delivery::message).filterIsInstance<ServerMessage.RoomCreated>().single().game
         startRoom(engine, host.playerId, guest.playerId, room.roomId)
@@ -2593,7 +3063,7 @@ class GameEngineTest {
         val accountId = UUID.randomUUID()
         val engine = GameEngine(nowMillis = { now })
         val account = engine.connectAccount(AuthenticatedAccount(accountId, "Account"))
-        val guest = engine.connectGuest("Guest", null)
+        val guest = engine.connectOnlineTestPlayer("Opponent")
         val room = engine.handle(account.playerId, ClientMessage.CreateRoom("Account expiry", PASSWORD, ProtocolGameMode.ORDER))
             .map(Delivery::message).filterIsInstance<ServerMessage.RoomCreated>().single().game
         startRoom(engine, account.playerId, guest.playerId, room.roomId)
@@ -2621,6 +3091,15 @@ class GameEngineTest {
         assertEquals(com.hienthai.fastowin.protocol.RoomPhase.PLAYING, started.phase)
         return started
     }
+
+    private suspend fun GameEngine.connectOnlineTestPlayer(
+        displayName: String,
+        playerId: String = UUID.randomUUID().toString(),
+        resumeToken: String? = null
+    ): ConnectedPlayer = connectAccount(
+        account = AuthenticatedAccount(UUID.fromString(playerId), displayName),
+        resumeToken = resumeToken
+    )
 
     private suspend fun createUnlockedRoomFixture(
         mode: ProtocolGameMode,

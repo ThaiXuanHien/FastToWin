@@ -27,7 +27,7 @@ internal val indonesianCatalog = LocalizationCatalog(
         TextKey.Loading to "Memuat…",
         TextKey.UnknownError to "Terjadi kesalahan. Silakan coba lagi.",
         TextKey.WelcomePlayer to "Halo, {player}!"
-) + indonesianShellAuthTexts + indonesianGameplayTexts + indonesianProfileTexts + indonesianSocialShopTexts + indonesianProtocolMessageTexts + indonesianDeliveryTexts + residualTexts(AppLanguage.INDONESIAN) + economyProgressionTexts.getValue(AppLanguage.INDONESIAN),
+) + indonesianShellAuthTexts + indonesianGameplayTexts + indonesianProfileTexts + indonesianSocialShopTexts + indonesianProtocolMessageTexts + indonesianDeliveryTexts + residualTexts(AppLanguage.INDONESIAN) + economyProgressionTexts.getValue(AppLanguage.INDONESIAN) + playQuotaTexts.getValue(AppLanguage.INDONESIAN),
     quantities = mapOf(
         QuantityKey.Players to mapOf(
             PluralCategory.OTHER to "{count} pemain"

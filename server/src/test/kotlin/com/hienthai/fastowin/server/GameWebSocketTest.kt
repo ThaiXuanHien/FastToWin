@@ -5,6 +5,9 @@ import com.hienthai.fastowin.protocol.AuthSessionResponse
 import com.hienthai.fastowin.protocol.LoginRequest
 import com.hienthai.fastowin.protocol.ProtocolGameMode
 import com.hienthai.fastowin.protocol.ProtocolJson
+import com.hienthai.fastowin.protocol.RewardedAdAvailability
+import com.hienthai.fastowin.protocol.RewardedAdBonusStatus
+import com.hienthai.fastowin.protocol.RewardedAdProvider
 import com.hienthai.fastowin.protocol.ServerMessage
 import com.hienthai.fastowin.protocol.SESSION_REPLACED_CLOSE_REASON
 import com.zaxxer.hikari.HikariConfig
@@ -43,12 +46,12 @@ class GameWebSocketTest {
         application { gameModule() }
         val webSocketClient = createClient { install(WebSockets) }
 
-        for (version in 38..40) {
+        for (version in 38..42) {
             val socket = webSocketClient.webSocketSession("/game")
             try {
                 socket.sendMessage(ClientMessage.ConnectGuest("Protocol $version", protocolVersion = version))
                 val session = withTimeout(2_000) { socket.receiveMessage<ServerMessage.SessionReady>() }
-                assertEquals(41, session.protocolVersion)
+                assertEquals(43, session.protocolVersion)
                 withTimeout(2_000) { socket.receiveMessage<ServerMessage.RoomList>() }
             } finally {
                 socket.close()
@@ -61,7 +64,7 @@ class GameWebSocketTest {
         application { gameModule() }
         val webSocketClient = createClient { install(WebSockets) }
 
-        for (version in listOf(37, 42)) {
+        for (version in listOf(37, 44)) {
             val socket = webSocketClient.webSocketSession("/game")
             try {
                 socket.sendMessage(ClientMessage.ConnectGuest("Protocol $version", protocolVersion = version))
@@ -107,6 +110,20 @@ class GameWebSocketTest {
     @Test
     fun `room and selection actions are rate limited before game engine work`() = testApplication {
         var now = 1_000L
+        val authService = AuthenticationService(
+            repository = InMemoryAuthRepository(),
+            passwordHasher = PasswordHasher(iterations = 1_000)
+        )
+        val hostAccount = authService.registerVerified(
+            email = "limited-host@example.com",
+            password = "strong-password-123",
+            displayName = "Limited host"
+        )
+        val guestAccount = authService.registerVerified(
+            email = "limited-guest@example.com",
+            password = "strong-password-123",
+            displayName = "Limited guest"
+        )
         val policies = ServerRateLimitPolicies().copy(
             createRoomPerPlayer = RateLimitPolicy(capacity = 1, refillWindowMillis = 1_000L),
             createRoomPerIp = RateLimitPolicy(capacity = 1, refillWindowMillis = 1_000L),
@@ -116,6 +133,7 @@ class GameWebSocketTest {
         )
         application {
             gameModule(
+                authService = authService,
                 rateLimiter = InMemoryRateLimiter(nowMillis = { now }),
                 rateLimitPolicies = policies
             )
@@ -124,8 +142,8 @@ class GameWebSocketTest {
         val host = webSocketClient.webSocketSession("/game")
         val guest = webSocketClient.webSocketSession("/game")
         try {
-            host.sendMessage(ClientMessage.ConnectGuest("Limited host"))
-            guest.sendMessage(ClientMessage.ConnectGuest("Limited guest"))
+            host.sendMessage(ClientMessage.ConnectAccount(hostAccount.accessToken))
+            guest.sendMessage(ClientMessage.ConnectAccount(guestAccount.accessToken))
             host.receiveMessage<ServerMessage.SessionReady>()
             guest.receiveMessage<ServerMessage.SessionReady>()
             host.receiveMessage<ServerMessage.RoomList>()
@@ -264,6 +282,166 @@ class GameWebSocketTest {
             assertEquals("INVALID_ACCESS_TOKEN", error.code)
         } finally {
             revoked.close()
+        }
+    }
+
+    @Test
+    fun `play quota websocket consumes one match for both accounts when play starts`() = testApplication {
+        val authService = AuthenticationService(
+            repository = InMemoryAuthRepository(),
+            passwordHasher = PasswordHasher(iterations = 1_000)
+        )
+        val hostAccount = authService.registerVerified(
+            email = "quota-host@example.com",
+            password = "strong-password-123",
+            displayName = "Quota host"
+        )
+        val guestAccount = authService.registerVerified(
+            email = "quota-guest@example.com",
+            password = "strong-password-123",
+            displayName = "Quota guest"
+        )
+        val quotaRepository = InMemoryPlayQuotaRepository()
+        val engine = GameEngine(playQuotaRepository = quotaRepository)
+        application { gameModule(engine = engine, authService = authService) }
+        val client = createClient { install(WebSockets) }
+        val host = client.webSocketSession("/game")
+        val guest = client.webSocketSession("/game")
+
+        try {
+            host.sendMessage(ClientMessage.ConnectAccount(hostAccount.accessToken))
+            guest.sendMessage(ClientMessage.ConnectAccount(guestAccount.accessToken))
+            host.receiveMessage<ServerMessage.SessionReady>()
+            guest.receiveMessage<ServerMessage.SessionReady>()
+
+            host.sendMessage(ClientMessage.CreateRoom("Quota room", PASSWORD, ProtocolGameMode.ORDER))
+            val room = host.receiveMessage<ServerMessage.RoomCreated>().game
+            guest.sendMessage(ClientMessage.JoinRoom(room.roomId, PASSWORD))
+            host.receiveMessage<ServerMessage.RoomUpdated>()
+            guest.receiveMessage<ServerMessage.RoomUpdated>()
+
+            host.sendMessage(ClientMessage.SetReady(room.roomId, true))
+            host.receiveMessage<ServerMessage.RoomUpdated>()
+            guest.receiveMessage<ServerMessage.RoomUpdated>()
+            guest.sendMessage(ClientMessage.SetReady(room.roomId, true))
+            host.receiveMessage<ServerMessage.GameStarted>()
+            guest.receiveMessage<ServerMessage.GameStarted>()
+
+            val hostQuota = host.receiveMessage<ServerMessage.PlayQuotaData>().quota
+            val guestQuota = guest.receiveMessage<ServerMessage.PlayQuotaData>().quota
+            assertEquals(9, hostQuota.remainingMatches)
+            assertEquals(9, guestQuota.remainingMatches)
+            assertEquals(1, hostQuota.matchesConsumed)
+            assertEquals(1, guestQuota.matchesConsumed)
+        } finally {
+            host.close()
+            guest.close()
+        }
+    }
+
+    @Test
+    fun `play quota websocket blocks guest from online rooms`() = testApplication {
+        application { gameModule() }
+        val client = createClient { install(WebSockets) }
+        val guest = client.webSocketSession("/game")
+
+        try {
+            guest.sendMessage(ClientMessage.ConnectGuest("Practice guest"))
+            guest.receiveMessage<ServerMessage.SessionReady>()
+            guest.sendMessage(ClientMessage.CreateRoom("Guest room", PASSWORD, ProtocolGameMode.ORDER))
+
+            assertEquals("ACCOUNT_REQUIRED", guest.receiveMessage<ServerMessage.Error>().code)
+        } finally {
+            guest.close()
+        }
+    }
+
+    @Test
+    fun `play quota websocket keeps quota when waiting room is cancelled`() = testApplication {
+        val authService = AuthenticationService(
+            repository = InMemoryAuthRepository(),
+            passwordHasher = PasswordHasher(iterations = 1_000)
+        )
+        val hostAccount = authService.registerVerified(
+            email = "waiting-host@example.com",
+            password = "strong-password-123",
+            displayName = "Waiting host"
+        )
+        val guestAccount = authService.registerVerified(
+            email = "waiting-guest@example.com",
+            password = "strong-password-123",
+            displayName = "Waiting guest"
+        )
+        val engine = GameEngine(playQuotaRepository = InMemoryPlayQuotaRepository())
+        application { gameModule(engine = engine, authService = authService) }
+        val client = createClient { install(WebSockets) }
+        val host = client.webSocketSession("/game")
+        val guest = client.webSocketSession("/game")
+
+        try {
+            host.sendMessage(ClientMessage.ConnectAccount(hostAccount.accessToken))
+            guest.sendMessage(ClientMessage.ConnectAccount(guestAccount.accessToken))
+            host.receiveMessage<ServerMessage.SessionReady>()
+            guest.receiveMessage<ServerMessage.SessionReady>()
+
+            host.sendMessage(ClientMessage.CreateRoom("Waiting room", PASSWORD, ProtocolGameMode.ORDER))
+            val room = host.receiveMessage<ServerMessage.RoomCreated>().game
+            guest.sendMessage(ClientMessage.JoinRoom(room.roomId, PASSWORD))
+            host.receiveMessage<ServerMessage.RoomUpdated>()
+            guest.receiveMessage<ServerMessage.RoomUpdated>()
+            guest.sendMessage(ClientMessage.LeaveRoom(room.roomId))
+
+            host.sendMessage(ClientMessage.GetPlayQuota)
+            guest.sendMessage(ClientMessage.GetPlayQuota)
+            assertEquals(10, host.receiveMessage<ServerMessage.PlayQuotaData>().quota.remainingMatches)
+            assertEquals(10, guest.receiveMessage<ServerMessage.PlayQuotaData>().quota.remainingMatches)
+        } finally {
+            host.close()
+            guest.close()
+        }
+    }
+
+    @Test
+    fun `play quota websocket grants a verified rewarded ad only once`() = testApplication {
+        val authService = AuthenticationService(
+            repository = InMemoryAuthRepository(),
+            passwordHasher = PasswordHasher(iterations = 1_000)
+        )
+        val account = authService.registerVerified(
+            email = "rewarded-ad@example.com",
+            password = "strong-password-123",
+            displayName = "Rewarded ad player"
+        )
+        val engine = GameEngine(
+            playQuotaRepository = InMemoryPlayQuotaRepository(),
+            rewardedAdVerifier = DevRewardedAdVerifier(),
+            rewardedAdAvailability = RewardedAdAvailability.DEV_SIMULATED
+        )
+        application { gameModule(engine = engine, authService = authService) }
+        val client = createClient { install(WebSockets) }
+        val socket = client.webSocketSession("/game")
+        val providerTransactionId = "websocket-rewarded-ad-1"
+        val command = ClientMessage.ClaimRewardedAdBonus(
+            requestId = "rewarded-request-1",
+            provider = RewardedAdProvider.DEV_SIMULATED,
+            providerTransactionId = providerTransactionId,
+            proof = devRewardedAdProof(account.userId, providerTransactionId)
+        )
+
+        try {
+            socket.sendMessage(ClientMessage.ConnectAccount(account.accessToken))
+            socket.receiveMessage<ServerMessage.SessionReady>()
+            socket.sendMessage(command)
+            val granted = socket.receiveMessage<ServerMessage.RewardedAdBonusResult>()
+            assertEquals(RewardedAdBonusStatus.GRANTED, granted.status)
+            assertEquals(12, granted.quota.remainingMatches)
+
+            socket.sendMessage(command.copy(requestId = "rewarded-request-2"))
+            val duplicate = socket.receiveMessage<ServerMessage.RewardedAdBonusResult>()
+            assertEquals(RewardedAdBonusStatus.ALREADY_GRANTED, duplicate.status)
+            assertEquals(12, duplicate.quota.remainingMatches)
+        } finally {
+            socket.close()
         }
     }
 
@@ -415,6 +593,11 @@ class GameWebSocketTest {
             password = "strong-password-123",
             displayName = "Chủ phòng tài khoản"
         )
+        val guestAuthSession = authService.registerVerified(
+            email = "account-reconnect-guest@example.com",
+            password = "strong-password-123",
+            displayName = "Khách reconnect"
+        )
         application { gameModule(authService = authService) }
         val webSocketClient = createClient { install(WebSockets) }
         val host = webSocketClient.webSocketSession("/game")
@@ -422,7 +605,7 @@ class GameWebSocketTest {
 
         try {
             host.sendMessage(ClientMessage.ConnectAccount(authSession.accessToken))
-            guest.sendMessage(ClientMessage.ConnectGuest("Khách reconnect"))
+            guest.sendMessage(ClientMessage.ConnectAccount(guestAuthSession.accessToken))
             val hostReady = host.receiveMessage<ServerMessage.SessionReady>()
             val guestReady = guest.receiveMessage<ServerMessage.SessionReady>()
             host.receiveMessage<ServerMessage.RoomList>()
@@ -467,6 +650,21 @@ class GameWebSocketTest {
     @Test
     fun `two websocket clients continue their match after server application restart`() {
         val identityRepository = InMemoryGuestIdentityRepository()
+        val authService = AuthenticationService(
+            repository = InMemoryAuthRepository(),
+            passwordHasher = PasswordHasher(iterations = 1_000)
+        )
+        val (hostAccount, guestAccount) = runBlocking {
+            authService.registerVerified(
+                email = "restart-host@example.com",
+                password = "strong-password-123",
+                displayName = "Restart host"
+            ) to authService.registerVerified(
+                email = "restart-guest@example.com",
+                password = "strong-password-123",
+                displayName = "Restart guest"
+            )
+        }
         val dataSource = postgresTestDataSource()
         val activeRoomRepository = dataSource
             ?.let(::PostgresActiveRoomRepository)
@@ -479,17 +677,20 @@ class GameWebSocketTest {
         try {
             testApplication {
                 application {
-                    gameModule(GameEngine(
-                        identityRepository = identityRepository,
-                        activeRoomRepository = activeRoomRepository
-                    ))
+                    gameModule(
+                        engine = GameEngine(
+                            identityRepository = identityRepository,
+                            activeRoomRepository = activeRoomRepository
+                        ),
+                        authService = authService
+                    )
                 }
                 val webSocketClient = createClient { install(WebSockets) }
                 val host = webSocketClient.webSocketSession("/game")
                 val guest = webSocketClient.webSocketSession("/game")
                 try {
-                    host.sendMessage(ClientMessage.ConnectGuest("Restart host"))
-                    guest.sendMessage(ClientMessage.ConnectGuest("Restart guest"))
+                    host.sendMessage(ClientMessage.ConnectAccount(hostAccount.accessToken))
+                    guest.sendMessage(ClientMessage.ConnectAccount(guestAccount.accessToken))
                     hostSession = host.receiveMessage()
                     guestSession = guest.receiveMessage()
                     host.receiveMessage<ServerMessage.RoomList>()
@@ -517,21 +718,20 @@ class GameWebSocketTest {
 
             testApplication {
                 application {
-                    gameModule(GameEngine(
-                        identityRepository = identityRepository,
-                        activeRoomRepository = activeRoomRepository
-                    ))
+                    gameModule(
+                        engine = GameEngine(
+                            identityRepository = identityRepository,
+                            activeRoomRepository = activeRoomRepository
+                        ),
+                        authService = authService
+                    )
                 }
                 val webSocketClient = createClient { install(WebSockets) }
                 val host = webSocketClient.webSocketSession("/game")
                 val guest = webSocketClient.webSocketSession("/game")
                 try {
-                    host.sendMessage(
-                        ClientMessage.ConnectGuest("Restart host", resumeToken = hostSession.resumeToken)
-                    )
-                    guest.sendMessage(
-                        ClientMessage.ConnectGuest("Restart guest", resumeToken = guestSession.resumeToken)
-                    )
+                    host.sendMessage(ClientMessage.ConnectAccount(hostAccount.accessToken))
+                    guest.sendMessage(ClientMessage.ConnectAccount(guestAccount.accessToken))
                     val restoredHost = host.receiveMessage<ServerMessage.SessionReady>()
                     val restoredGuest = guest.receiveMessage<ServerMessage.SessionReady>()
                     assertEquals(hostSession.playerId, restoredHost.playerId)
@@ -571,13 +771,32 @@ class GameWebSocketTest {
 
     @Test
     fun `server broadcasts time attack finish without another player action`() = testApplication {
-        application { gameModule(GameEngine(timeAttackMillis = 50L)) }
+        val authService = AuthenticationService(
+            repository = InMemoryAuthRepository(),
+            passwordHasher = PasswordHasher(iterations = 1_000)
+        )
+        val hostAccount = authService.registerVerified(
+            email = "timer-host@example.com",
+            password = "strong-password-123",
+            displayName = "Hiền"
+        )
+        val guestAccount = authService.registerVerified(
+            email = "timer-guest@example.com",
+            password = "strong-password-123",
+            displayName = "Hiếu"
+        )
+        application {
+            gameModule(
+                engine = GameEngine(timeAttackMillis = 50L),
+                authService = authService
+            )
+        }
         val webSocketClient = createClient { install(WebSockets) }
         val host = webSocketClient.webSocketSession("/game")
         val guest = webSocketClient.webSocketSession("/game")
         try {
-            host.sendMessage(ClientMessage.ConnectGuest("Hiền"))
-            guest.sendMessage(ClientMessage.ConnectGuest("Hiếu"))
+            host.sendMessage(ClientMessage.ConnectAccount(hostAccount.accessToken))
+            guest.sendMessage(ClientMessage.ConnectAccount(guestAccount.accessToken))
             host.receiveMessage<ServerMessage.SessionReady>()
             guest.receiveMessage<ServerMessage.SessionReady>()
             host.receiveMessage<ServerMessage.RoomList>()
@@ -599,14 +818,28 @@ class GameWebSocketTest {
 
     @Test
     fun `two websocket clients can play and host can resume snapshot`() = testApplication {
-        application { gameModule(GameEngine()) }
+        val authService = AuthenticationService(
+            repository = InMemoryAuthRepository(),
+            passwordHasher = PasswordHasher(iterations = 1_000)
+        )
+        val hostAccount = authService.registerVerified(
+            email = "e2e-host@example.com",
+            password = "strong-password-123",
+            displayName = "Hiền"
+        )
+        val guestAccount = authService.registerVerified(
+            email = "e2e-guest@example.com",
+            password = "strong-password-123",
+            displayName = "Hiếu"
+        )
+        application { gameModule(engine = GameEngine(), authService = authService) }
         val webSocketClient = createClient { install(WebSockets) }
         val host = webSocketClient.webSocketSession("/game")
         val guest = webSocketClient.webSocketSession("/game")
 
         try {
-            host.sendMessage(ClientMessage.ConnectGuest("Hiền"))
-            guest.sendMessage(ClientMessage.ConnectGuest("Hiếu"))
+            host.sendMessage(ClientMessage.ConnectAccount(hostAccount.accessToken))
+            guest.sendMessage(ClientMessage.ConnectAccount(guestAccount.accessToken))
             val hostSession = host.receiveMessage<ServerMessage.SessionReady>()
             val guestSession = guest.receiveMessage<ServerMessage.SessionReady>()
             host.receiveMessage<ServerMessage.RoomList>()
@@ -652,7 +885,10 @@ class GameWebSocketTest {
             val resumedHost = webSocketClient.webSocketSession("/game")
             try {
                 resumedHost.sendMessage(
-                    ClientMessage.ConnectGuest("Hiền", resumeToken = hostSession.resumeToken)
+                    ClientMessage.ConnectAccount(
+                        hostAccount.accessToken,
+                        resumeToken = assertNotNull(hostSession.resumeToken)
+                    )
                 )
                 val resumed = resumedHost.receiveMessage<ServerMessage.SessionReady>()
                 assertEquals(hostSession.playerId, resumed.playerId)

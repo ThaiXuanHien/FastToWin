@@ -2,6 +2,7 @@ package com.hienthai.fastowin.localization
 
 import com.hienthai.fastowin.protocol.AccountActionResponse
 import com.hienthai.fastowin.protocol.ServerMessage
+import com.hienthai.fastowin.protocol.RewardedAdBonusStatus
 
 class LocalizedMessageMapper(
     private var localization: LocalizationService
@@ -35,6 +36,16 @@ class LocalizedMessageMapper(
 
     fun message(message: ServerMessage.StorePurchaseResult): String =
         resolve(message.messageKey, message.messageArgs, message.message)
+
+    fun message(message: ServerMessage.RewardedAdBonusResult): String = text(
+        when (message.status) {
+            RewardedAdBonusStatus.GRANTED,
+            RewardedAdBonusStatus.ALREADY_GRANTED -> TextKey.RewardedAdGranted
+            RewardedAdBonusStatus.INVALID,
+            RewardedAdBonusStatus.UNAVAILABLE,
+            RewardedAdBonusStatus.FAILED -> TextKey.RewardedAdUnavailable
+        }
+    )
 
     fun message(message: AccountActionResponse): String =
         resolve(message.messageKey, message.messageArgs, message.message)

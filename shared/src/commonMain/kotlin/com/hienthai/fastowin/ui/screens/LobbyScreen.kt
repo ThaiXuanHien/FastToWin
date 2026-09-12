@@ -21,6 +21,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -49,6 +50,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -114,6 +116,7 @@ fun LobbyScreen(
     onShareRoom: (String, String) -> Result<Unit>,
     onResolveRoomLink: (String?) -> Unit,
     onClaimDailyCheckIn: () -> Unit,
+    onPlayQuotaExhausted: () -> Unit = {},
     serverUrl: String = "",
     modifier: Modifier = Modifier
 ) {
@@ -199,7 +202,8 @@ fun LobbyScreen(
                     onOpenShop = onOpenShop,
                     onClaimDailyCheckIn = onClaimDailyCheckIn,
                     onUpgradeGuest = onUpgradeGuest,
-                    onLogout = onLogout
+                    onLogout = onLogout,
+                    onPlayQuotaExhausted = onPlayQuotaExhausted
                 )
                 LobbyStage.ENTER_NAME -> NameEntry(onOpenRoomBrowser)
                 LobbyStage.ROOM_BROWSER -> RoomBrowser(
@@ -211,7 +215,8 @@ fun LobbyScreen(
                     onOpenFriends = onOpenFriends,
                     isGuest = isGuest,
                     onUpgradeGuest = onUpgradeGuest,
-                    onResolveRoomLink = onResolveRoomLink
+                    onResolveRoomLink = onResolveRoomLink,
+                    onPlayQuotaExhausted = onPlayQuotaExhausted
                 )
                 LobbyStage.ROOM_WAITING -> RoomWaiting(
                     state = state,
@@ -402,7 +407,8 @@ private fun RoomBrowser(
     onOpenFriends: () -> Unit,
     isGuest: Boolean,
     onUpgradeGuest: () -> Unit,
-    onResolveRoomLink: (String?) -> Unit
+    onResolveRoomLink: (String?) -> Unit,
+    onPlayQuotaExhausted: () -> Unit
 ) {
     val localization = LocalLocalization.current
     var selectedRoom by remember { mutableStateOf<AvailableRoom?>(null) }
@@ -457,6 +463,11 @@ private fun RoomBrowser(
     if (showCreateMatchType) {
         MatchTypePickerDialog(
             title = localized(TextKey.ChooseRoomType),
+            quota = state.playQuota,
+            onQuotaExhausted = {
+                showCreateMatchType = false
+                onPlayQuotaExhausted()
+            },
             onDismiss = { showCreateMatchType = false },
             onSelect = { matchType ->
                 showCreateMatchType = false
@@ -752,6 +763,7 @@ private fun CreateRoomDialog(
     onDismiss: () -> Unit,
     onCreate: (String, String) -> Unit
 ) {
+    val focusManager = LocalFocusManager.current
     var roomName by remember(defaultRoomName) { mutableStateOf("") }
     var roomPassword by remember { mutableStateOf("") }
     var isPrivate by remember { mutableStateOf(false) }
@@ -794,6 +806,8 @@ private fun CreateRoomDialog(
                     singleLine = true,
                     visualTransformation = PasswordVisualTransformation(),
                     leadingIcon = { Icon(Icons.Default.Lock, null) },
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                    keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
                     shape = RoundedCornerShape(14.dp),
                     modifier = Modifier.fillMaxWidth().testTag("create_room_password")
                 )

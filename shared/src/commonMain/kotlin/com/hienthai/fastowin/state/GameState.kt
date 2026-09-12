@@ -13,6 +13,7 @@ import com.hienthai.fastowin.protocol.WalletTransactionSnapshot
 import com.hienthai.fastowin.protocol.GameSnapshot
 import com.hienthai.fastowin.protocol.PlayerSnapshot
 import com.hienthai.fastowin.protocol.ProtocolGameMode
+import com.hienthai.fastowin.protocol.PlayQuotaSnapshot
 import com.hienthai.fastowin.protocol.RoomPhase
 
 const val GAME_NUMBER_COUNT = 50
@@ -155,10 +156,16 @@ data class GameState(
     val storePurchaseResult: com.hienthai.fastowin.protocol.ServerMessage.StorePurchaseResult? = null,
     val exchangingGoldRequestId: String? = null,
     val goldExchangeResult: com.hienthai.fastowin.protocol.ServerMessage.GoldExchangeResult? = null,
+    val playQuota: PlayQuotaSnapshot? = null,
+    val showPlayQuotaExhaustedDialog: Boolean = false,
+    val rewardedAdBonusResult: ServerMessage.RewardedAdBonusResult? = null,
+    val claimingRewardedAdRequestId: String? = null,
     val clanList: List<com.hienthai.fastowin.protocol.ClanSummarySnapshot> = emptyList(),
     val pendingClanJoinIds: Set<String> = emptySet(),
     val currentClan: com.hienthai.fastowin.protocol.ClanSnapshot? = null,
     val clanNotice: String? = null,
+    val donatingClanRequestId: String? = null,
+    val clanDonationResult: com.hienthai.fastowin.protocol.ServerMessage.ClanDonationResult? = null,
     val profileNotice: String? = null,
     val profile: PlayerProfileSnapshot? = null,
     val avatarRevision: Long = 0L,
@@ -363,6 +370,39 @@ internal fun GameState.withReadySession(playerId: String): GameState {
         rematchNotice = if (clearRematchError) null else rematchNotice,
         rematchNoticeErrorCode = if (clearRematchError) null else rematchNoticeErrorCode
     )
+}
+
+internal fun GameState.withPlayQuota(message: ServerMessage.PlayQuotaData): GameState = copy(
+    playQuota = message.quota,
+    showPlayQuotaExhaustedDialog = showPlayQuotaExhaustedDialog && message.quota.remainingMatches <= 0,
+    error = null
+)
+
+internal fun GameState.withRewardedAdBonus(
+    message: ServerMessage.RewardedAdBonusResult,
+    notice: String
+): GameState = copy(
+    playQuota = message.quota,
+    rewardedAdBonusResult = message,
+    claimingRewardedAdRequestId = null,
+    showPlayQuotaExhaustedDialog = message.quota.remainingMatches <= 0,
+    profileNotice = notice,
+    error = null
+)
+
+internal fun GameState.withPlayQuotaError(
+    error: ServerMessage.Error,
+    localizedMessage: String = error.message
+): GameState = if (error.code == "PLAY_QUOTA_EXHAUSTED") {
+    copy(
+        showPlayQuotaExhaustedDialog = true,
+        isSearching = false,
+        isMatchmaking = false,
+        matchmakingStartedAtMillis = null,
+        error = localizedMessage
+    )
+} else {
+    this
 }
 
 internal fun GameState.withRematchError(

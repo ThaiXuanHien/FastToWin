@@ -60,6 +60,9 @@ enum class TextKey {
 
     ChooseMatchType, ChooseRankedMode, ChooseCasualMode, GuestMode, Ranked, Casual,
     RegisterToPlayOnline, CasualOrRankedDescription, LoginToPlay, PlayNow,
+    OnlineMatchesRemaining, OnlineQuotaExhaustedTitle, OnlineQuotaExhaustedMessage,
+    WatchAdForTwoMatches, RewardedAdGranted, RewardedAdCancelled,
+    RewardedAdUnavailable, RewardedAdUseMobile, OnlineAccountRequired,
     Explore, FeaturesAndActivities, Tournament, RegisterToJoin, TournamentDescription,
     Shop, ShopDiscoveryDescription, OfflinePracticeTitle, OfflinePracticeDescription,
     SaveProgress, SaveProgressDescription, ExitGuestMode, ChooseCompetitionType,
@@ -214,7 +217,11 @@ enum class TextKey {
     Approve, ClanMemberSummary, RemoveClanMemberNamed, ChooseClanLogo,
     ChooseClanLogoDescription, ClanRoleLeader, ClanRoleCoLeader, ClanRoleMember,
     ClanLogoShield, ClanLogoSwords, ClanLogoFlag, ClanLogoDragon, ClanLogoWolf,
-    ClanLogoEagle, ClanLogoCrown, ClanLogoNamed,
+    ClanLogoEagle, ClanLogoCrown, ClanLogoNamed, ClanProgress, DonateToClan,
+    DonateToClanDescription, DonationBalance, DonationXpPreview, DonationCannotUndo,
+    YourContribution, MaximumLevel, DonationApplied, DonationDuplicate,
+    DonationInvalidAmount, DonationInsufficientFunds, DonationMembershipRequired,
+    DonationFailed,
 
     Individual, FameRace, FameRaceDescription, CurrentSeason, PreviousSeason,
     AllTime, History, TopPlayers, WarriorsCount, CurrentSeasonLeaderboardEmpty,

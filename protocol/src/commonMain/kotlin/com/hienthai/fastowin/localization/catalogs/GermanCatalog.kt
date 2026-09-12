@@ -27,7 +27,7 @@ internal val germanCatalog = LocalizationCatalog(
         TextKey.Loading to "Wird geladen…",
         TextKey.UnknownError to "Ein Fehler ist aufgetreten. Bitte versuche es erneut.",
         TextKey.WelcomePlayer to "Hallo {player}!"
-) + germanShellAuthTexts + germanGameplayTexts + germanProfileTexts + germanSocialShopTexts + germanProtocolMessageTexts + germanDeliveryTexts + residualTexts(AppLanguage.GERMAN) + economyProgressionTexts.getValue(AppLanguage.GERMAN),
+) + germanShellAuthTexts + germanGameplayTexts + germanProfileTexts + germanSocialShopTexts + germanProtocolMessageTexts + germanDeliveryTexts + residualTexts(AppLanguage.GERMAN) + economyProgressionTexts.getValue(AppLanguage.GERMAN) + playQuotaTexts.getValue(AppLanguage.GERMAN),
     quantities = mapOf(
         QuantityKey.Players to mapOf(
             PluralCategory.ONE to "{count} Spieler",
