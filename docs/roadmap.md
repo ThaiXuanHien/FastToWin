@@ -52,7 +52,7 @@ tương ứng đều đã có. Các phần chi tiết ở dưới phải bám th
 
 ### Profile, avatar và tiến trình
 
-- [ ] Chọn/tải avatar chỉ tạo preview; chỉ lưu và tải lên khi bấm `Lưu`, bấm `Hủy` phải giữ avatar hiện tại.
+- [x] Chọn/tải avatar chỉ tạo preview; chỉ lưu và tải lên khi bấm `Lưu`, bấm `Hủy` phải giữ avatar hiện tại.
 - [ ] Xác minh avatar đồng bộ ở Home, Profile, phòng, ván chơi và các màn còn lại trên Mobile/Web.
 - [ ] Cấp 100 phải hiển thị XP phù hợp với cấp tối đa, không hiển thị sai `0/100 XP`.
 - [x] Tài khoản development đầy đủ có tài sản và vật phẩm tiến trình cần thiết để kiểm thử.
@@ -215,7 +215,7 @@ server; Web production không tự giả lập quảng cáo.
 
 **Giai đoạn 5 — hoàn thiện các yêu cầu bổ sung và audit giao diện**:
 
-- [ ] Avatar preview trước khi lưu; Hủy không thay đổi dữ liệu đã lưu.
+- [x] Avatar preview trước khi lưu; Hủy không thay đổi dữ liệu đã lưu.
 - [ ] Dọn lỗi link phòng khi quay về Trang chủ.
 - [ ] Sửa tỷ lệ ô số trên màn hình nhỏ và XP cấp 100.
 - [ ] Đưa hành động thử lại Web lên header, rút gọn `Xem thưởng` và chỉnh khoảng cách mùa giải.
