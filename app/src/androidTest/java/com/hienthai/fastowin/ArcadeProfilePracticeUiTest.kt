@@ -2,6 +2,7 @@ package com.hienthai.fastowin
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.DeviceConfigurationOverride
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.FontScale
@@ -17,6 +18,7 @@ import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.then
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.DpSize
@@ -38,6 +40,8 @@ import com.hienthai.fastowin.ui.screens.ResultScreen
 import com.hienthai.fastowin.ui.screens.SettingsScreen
 import com.hienthai.fastowin.ui.theme.FastToWinTheme
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertArrayEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -271,6 +275,106 @@ class ArcadeProfilePracticeUiTest {
         }
     }
 
+    @Test
+    fun profileEdit_selectingAvatarPreviewsWithoutUploadingUntilSave() {
+        var uploadedAvatar: ByteArray? = null
+        var uploadCount = 0
+        val selectedAvatar = onePixelPng()
+        setAdaptiveContent(360.dp, 720.dp, 1f) {
+            ProfileScreen(
+                serverUrl = "",
+                state = GameState(profile = profileFixture()),
+                onBack = {},
+                onRefresh = {},
+                onOpenMatchDetail = {},
+                onCloseMatchDetail = {},
+                onEquipCosmetics = { _, _ -> },
+                onClaimMissionReward = {},
+                onSave = { _, _ -> },
+                onUploadAvatar = {
+                    uploadCount += 1
+                    uploadedAvatar = it
+                },
+                imagePicker = { onImageSelected, content ->
+                    content { onImageSelected(selectedAvatar) }
+                },
+                canEdit = true,
+                isAccountLoading = false,
+                accountError = null,
+                accountNotice = null,
+                accountSessions = emptyList(),
+                areSessionsLoading = false,
+                onChangePassword = { _, _ -> },
+                onDeleteAccount = {},
+                onClearAccountFeedback = {},
+                onLoadSessions = {},
+                onRevokeSession = {},
+                onRevokeAllSessions = {},
+                onLogout = {},
+                showBackButton = false
+            )
+        }
+
+        composeRule.onNodeWithTag("profile_edit").performClick()
+        composeRule.onNodeWithTag("profile_avatar_picker").performScrollTo().performClick()
+        composeRule.onNodeWithTag("profile_avatar_preview").assertIsDisplayed()
+        composeRule.runOnIdle {
+            assertEquals(0, uploadCount)
+            assertNull(uploadedAvatar)
+        }
+
+        composeRule.onNodeWithText("Lưu").performScrollTo().performClick()
+        composeRule.runOnIdle {
+            assertEquals(1, uploadCount)
+            assertArrayEquals(selectedAvatar, uploadedAvatar)
+        }
+    }
+
+    @Test
+    fun profileEdit_cancellingAvatarPreviewKeepsStoredAvatar() {
+        var uploadedAvatar: ByteArray? = null
+        val selectedAvatar = onePixelPng()
+        setAdaptiveContent(360.dp, 720.dp, 1f) {
+            ProfileScreen(
+                serverUrl = "",
+                state = GameState(profile = profileFixture()),
+                onBack = {},
+                onRefresh = {},
+                onOpenMatchDetail = {},
+                onCloseMatchDetail = {},
+                onEquipCosmetics = { _, _ -> },
+                onClaimMissionReward = {},
+                onSave = { _, _ -> },
+                onUploadAvatar = { uploadedAvatar = it },
+                imagePicker = { onImageSelected, content ->
+                    content { onImageSelected(selectedAvatar) }
+                },
+                canEdit = true,
+                isAccountLoading = false,
+                accountError = null,
+                accountNotice = null,
+                accountSessions = emptyList(),
+                areSessionsLoading = false,
+                onChangePassword = { _, _ -> },
+                onDeleteAccount = {},
+                onClearAccountFeedback = {},
+                onLoadSessions = {},
+                onRevokeSession = {},
+                onRevokeAllSessions = {},
+                onLogout = {},
+                showBackButton = false
+            )
+        }
+
+        composeRule.onNodeWithTag("profile_edit").performClick()
+        composeRule.onNodeWithTag("profile_avatar_picker").performScrollTo().performClick()
+        composeRule.onNodeWithTag("profile_avatar_preview").assertIsDisplayed()
+        composeRule.onNodeWithText("Hủy").performScrollTo().performClick()
+
+        composeRule.onNodeWithTag("profile_avatar_preview").assertDoesNotExist()
+        composeRule.runOnIdle { assertNull(uploadedAvatar) }
+    }
+
     private fun setAdaptiveContent(
         width: Dp,
         height: Dp,
@@ -293,6 +397,11 @@ class ArcadeProfilePracticeUiTest {
         soundEnabled = false,
         vibrationEnabled = false,
         visualEffectsEnabled = false
+    )
+
+    private fun onePixelPng(): ByteArray = android.util.Base64.decode(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+        android.util.Base64.DEFAULT
     )
 
     private fun profileFixture() = PlayerProfileSnapshot(

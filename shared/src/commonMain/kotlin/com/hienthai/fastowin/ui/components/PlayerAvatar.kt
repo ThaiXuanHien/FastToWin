@@ -13,6 +13,7 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
@@ -70,6 +71,7 @@ fun PlayerAvatar(
     frameId: String = "frame_default",
     size: Dp = 48.dp,
     imageUrl: String = "",
+    previewBitmap: ImageBitmap? = null,
     modifier: Modifier = Modifier
 ) {
     val avatarServerUrl = LocalAvatarServerUrl.current
@@ -107,19 +109,28 @@ fun PlayerAvatar(
                 .background(MaterialTheme.colorScheme.surfaceContainerHighest),
             contentAlignment = Alignment.Center
         ) {
-            NetworkImage(
-                url = resolvedImageUrl,
-                modifier = Modifier.fillMaxSize(),
-                contentDescription = null,
-                fallback = {
-                    Image(
-                        painter = painterResource(illustratedAvatar),
-                        contentDescription = null,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize()
-                    )
-                }
-            )
+            if (previewBitmap != null) {
+                Image(
+                    bitmap = previewBitmap,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize()
+                )
+            } else {
+                NetworkImage(
+                    url = resolvedImageUrl,
+                    modifier = Modifier.fillMaxSize(),
+                    contentDescription = null,
+                    fallback = {
+                        Image(
+                            painter = painterResource(illustratedAvatar),
+                            contentDescription = null,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    }
+                )
+            }
         }
 
         Image(

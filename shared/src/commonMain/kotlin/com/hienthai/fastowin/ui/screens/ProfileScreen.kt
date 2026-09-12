@@ -80,6 +80,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
@@ -127,6 +128,7 @@ import com.hienthai.fastowin.localization.LocalLocalization
 import com.hienthai.fastowin.ui.components.SystemBackHandler
 import com.hienthai.fastowin.platform.epochMillis
 import com.hienthai.fastowin.platform.createPlainTextClipEntry
+import com.hienthai.fastowin.platform.toImageBitmap
 import com.hienthai.fastowin.ui.layout.ResponsiveScreen
 import com.hienthai.fastowin.ui.components.RewardAmounts
 import com.hienthai.fastowin.ui.components.ArcadeActionButton
@@ -199,6 +201,12 @@ fun ProfileScreen(
     onOpenSettings: () -> Unit = {},
     onOpenSection: (ProfileSection) -> Unit = {},
     showBackButton: Boolean = true,
+    imagePicker: @Composable (
+        onImageSelected: (ByteArray?) -> Unit,
+        content: @Composable (onClick: () -> Unit) -> Unit
+    ) -> Unit = { onImageSelected, content ->
+        com.hienthai.fastowin.platform.ImagePicker(onImageSelected, content)
+    },
     modifier: Modifier = Modifier
 ) {
     SystemBackHandler(enabled = showBackButton, onBack = onBack)
@@ -211,6 +219,8 @@ fun ProfileScreen(
     var showAccountSecurity by remember { mutableStateOf(false) }
     var showAccountSessions by remember { mutableStateOf(false) }
     var showLogoutConfirmation by remember { mutableStateOf(false) }
+    var pendingAvatarBytes by remember(profile?.userId) { mutableStateOf<ByteArray?>(null) }
+    var pendingAvatarBitmap by remember(profile?.userId) { mutableStateOf<ImageBitmap?>(null) }
     var isPlayerCodeCopied by remember(profile?.playerCode) { mutableStateOf(false) }
     if (!isExternalProfile && showAccountSecurity) {
         AccountSecurityDialog(
@@ -281,7 +291,11 @@ fun ProfileScreen(
         }
     }
     LaunchedEffect(state.profileNotice) {
-        if (state.profileNotice != null) isEditing = false
+        if (state.profileNotice != null) {
+            isEditing = false
+            pendingAvatarBytes = null
+            pendingAvatarBitmap = null
+        }
     }
     LaunchedEffect(isPlayerCodeCopied) {
         if (isPlayerCodeCopied) {
@@ -343,7 +357,13 @@ fun ProfileScreen(
             isSaving = state.isProfileSaving,
             isExternalProfile = isExternalProfile,
             sessionStartedAtMillis = sessionStartedAtMillis,
-            onEdit = { isEditing = !isEditing },
+            onEdit = {
+                if (isEditing) {
+                    pendingAvatarBytes = null
+                    pendingAvatarBitmap = null
+                }
+                isEditing = !isEditing
+            },
             onCopyCode = {
                 coroutineScope.launch {
                     clipboard.setClipEntry(createPlainTextClipEntry(profile.playerCode))
@@ -376,18 +396,45 @@ fun ProfileScreen(
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth().testTag("profile_display_name")
                     )
+                    pendingAvatarBitmap?.let { bitmap ->
+                        Box(
+                            modifier = Modifier.fillMaxWidth().testTag("profile_avatar_preview"),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            PlayerAvatar(
+                                displayName = displayName.ifBlank { profile.displayName },
+                                avatarId = profile.avatarId,
+                                userId = profile.userId,
+                                frameId = progression.cosmetics
+                                    .firstOrNull { it.type == CosmeticType.FRAME && it.equipped }
+                                    ?.id
+                                    ?: "frame_default",
+                                size = 96.dp,
+                                previewBitmap = bitmap
+                            )
+                        }
+                    }
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(localized(TextKey.Avatar), fontWeight = FontWeight.Medium)
-                        com.hienthai.fastowin.platform.ImagePicker(
-                            onImageSelected = { bytes ->
-                                if (bytes != null) onUploadAvatar(bytes)
+                        imagePicker(
+                            { bytes ->
+                                if (bytes != null) {
+                                    val bitmap = runCatching { bytes.toImageBitmap() }.getOrNull()
+                                    if (bitmap != null) {
+                                        pendingAvatarBytes = bytes
+                                        pendingAvatarBitmap = bitmap
+                                    }
+                                }
                             }
                         ) { onClick ->
-                            TextButton(onClick = onClick) {
+                            TextButton(
+                                onClick = onClick,
+                                modifier = Modifier.testTag("profile_avatar_picker")
+                            ) {
                                 Text(localized(TextKey.UploadImage))
                             }
                         }
@@ -398,7 +445,10 @@ fun ProfileScreen(
                     ) {
                         ArcadeActionButton(
                             label = if (state.isProfileSaving) localized(TextKey.Saving) else localized(TextKey.Save),
-                            onClick = { onSave(displayName, profile.avatarId) },
+                            onClick = {
+                                pendingAvatarBytes?.let(onUploadAvatar)
+                                onSave(displayName, profile.avatarId)
+                            },
                             enabled = displayName.isNotBlank() && !state.isProfileSaving,
                             modifier = Modifier.fillMaxWidth(),
                             style = ArcadeActionStyle.GOLD
@@ -407,6 +457,8 @@ fun ProfileScreen(
                             label = localized(TextKey.Cancel),
                             onClick = {
                                 displayName = profile.displayName
+                                pendingAvatarBytes = null
+                                pendingAvatarBitmap = null
                                 isEditing = false
                             },
                             enabled = !state.isProfileSaving,
