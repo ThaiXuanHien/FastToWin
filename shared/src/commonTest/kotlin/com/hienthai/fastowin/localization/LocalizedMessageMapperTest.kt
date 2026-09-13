@@ -45,6 +45,16 @@ class LocalizedMessageMapperTest {
     }
 
     @Test
+    fun invalidResumeTokenUsesLocalizedExpiredSessionCopy() {
+        val error = ServerMessage.Error(
+            code = "INVALID_RESUME_TOKEN",
+            message = "Phiên khôi phục không hợp lệ."
+        )
+
+        assertEquals("Your session has expired. Please sign in again.", englishMapper.message(error))
+    }
+
+    @Test
     fun explicitMessageKeyUsesNamedArguments() {
         val error = ServerMessage.Error(
             code = "RATE_LIMITED",

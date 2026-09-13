@@ -1009,7 +1009,7 @@ private fun JoinRoomDialog(
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             ArcadeActionButton(
-                label = "THAM GIA",
+                label = localized(TextKey.JoinRoom).uppercase(),
                 style = ArcadeActionStyle.GOLD,
                 enabled = !room.requiresPassword || password.isNotBlank(),
                 onClick = { onJoin(password) },

@@ -53,7 +53,7 @@ tương ứng đều đã có. Các phần chi tiết ở dưới phải bám th
 ### Profile, avatar và tiến trình
 
 - [x] Chọn/tải avatar chỉ tạo preview; chỉ lưu và tải lên khi bấm `Lưu`, bấm `Hủy` phải giữ avatar hiện tại.
-- [ ] Xác minh avatar đồng bộ ở Home, Profile, phòng, ván chơi và các màn còn lại trên Mobile/Web.
+- [x] Xác minh avatar đồng bộ ở Home, Profile, phòng, ván chơi và các màn còn lại trên Mobile/Web.
 - [x] Cấp 100 phải hiển thị XP phù hợp với cấp tối đa, không hiển thị sai `0/100 XP`.
 - [x] Tài khoản development đầy đủ có tài sản và vật phẩm tiến trình cần thiết để kiểm thử.
 
@@ -220,7 +220,7 @@ server; Web production không tự giả lập quảng cáo.
 - [x] Sửa tỷ lệ ô số trên màn hình nhỏ và XP cấp 100.
 - [x] Đưa hành động thử lại Web lên header, rút gọn `Xem thưởng` và chỉnh khoảng cách mùa giải.
 - [x] Hoàn thiện asset PNG theo cấp/độ hiếm cho đủ 16 Khung.
-- [ ] Audit chuỗi localization còn sót và xác minh avatar giữa mọi màn.
+- [x] Audit chuỗi localization còn sót và xác minh avatar giữa mọi màn.
 - [ ] Viết tài liệu kiến trúc/dịch vụ/chi phí production cho ba mốc tải đã yêu cầu.
 
 **Giai đoạn 6 — screenshot regression cho giao diện 2D Arcade**:

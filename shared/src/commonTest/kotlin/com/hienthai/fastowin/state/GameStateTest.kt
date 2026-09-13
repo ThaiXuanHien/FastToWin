@@ -6,11 +6,15 @@ import com.hienthai.fastowin.localization.LocalizedMessageMapper
 import com.hienthai.fastowin.protocol.FriendRequestSnapshot
 import com.hienthai.fastowin.protocol.FriendSnapshot
 import com.hienthai.fastowin.protocol.FriendsSnapshot
+import com.hienthai.fastowin.protocol.GameSnapshot
 import com.hienthai.fastowin.protocol.PlayerProfileSnapshot
+import com.hienthai.fastowin.protocol.PlayerSnapshot
 import com.hienthai.fastowin.protocol.PlayQuotaSnapshot
+import com.hienthai.fastowin.protocol.ProtocolGameMode
 import com.hienthai.fastowin.protocol.RecentPlayerSnapshot
 import com.hienthai.fastowin.protocol.RewardedAdAvailability
 import com.hienthai.fastowin.protocol.RewardedAdBonusStatus
+import com.hienthai.fastowin.protocol.RoomPhase
 import com.hienthai.fastowin.protocol.ServerMessage
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -19,6 +23,47 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class GameStateTest {
+    @Test
+    fun `authoritative room snapshot keeps avatar and frame synchronized for every player`() {
+        val snapshot = GameSnapshot(
+            roomId = "room-1",
+            roomName = "Avatar room",
+            hostId = "player-1",
+            gameMode = ProtocolGameMode.ORDER,
+            phase = RoomPhase.WAITING,
+            players = listOf(
+                PlayerSnapshot(
+                    id = "player-1",
+                    name = "Me",
+                    score = 0,
+                    avatarId = "avatar-uploaded",
+                    frameId = "frame_lightning"
+                ),
+                PlayerSnapshot(
+                    id = "player-2",
+                    name = "Opponent",
+                    score = 0,
+                    avatarId = "avatar-opponent",
+                    frameId = "frame_wildfire"
+                )
+            )
+        )
+
+        val synchronized = GameState(
+            player = PlayerState(
+                name = "Stale",
+                id = "player-1",
+                avatarId = "avatar-stale",
+                frameId = "frame_default"
+            )
+        ).applyAuthoritativeSnapshot(snapshot, "player-1")
+
+        assertEquals("avatar-uploaded", synchronized.player.avatarId)
+        assertEquals("frame_lightning", synchronized.player.frameId)
+        assertEquals("avatar-opponent", synchronized.opponent.avatarId)
+        assertEquals("frame_wildfire", synchronized.opponent.frameId)
+    }
+
     @Test
     fun `returning home clears a failed room deep link and its error`() {
         val state = GameState(
