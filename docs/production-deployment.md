@@ -1,5 +1,9 @@
 # Triển khai Fast To Win production
 
+Tài liệu này hướng dẫn triển khai một VPS cho beta/MVP. Trước khi cần nhiều
+backend hoặc hàng nghìn kết nối đồng thời, xem thêm
+[kiến trúc, dịch vụ và ngân sách production](production-capacity-and-cost.md).
+
 Kiến trúc production mặc định dùng một máy chủ Docker:
 
 ```text

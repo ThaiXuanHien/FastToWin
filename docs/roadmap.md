@@ -221,7 +221,7 @@ server; Web production không tự giả lập quảng cáo.
 - [x] Đưa hành động thử lại Web lên header, rút gọn `Xem thưởng` và chỉnh khoảng cách mùa giải.
 - [x] Hoàn thiện asset PNG theo cấp/độ hiếm cho đủ 16 Khung.
 - [x] Audit chuỗi localization còn sót và xác minh avatar giữa mọi màn.
-- [ ] Viết tài liệu kiến trúc/dịch vụ/chi phí production cho ba mốc tải đã yêu cầu.
+- [x] Viết tài liệu kiến trúc/dịch vụ/chi phí production cho ba mốc tải đã yêu cầu.
 
 **Giai đoạn 6 — screenshot regression cho giao diện 2D Arcade**:
 
