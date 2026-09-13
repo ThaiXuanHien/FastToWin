@@ -527,7 +527,7 @@ private fun ArcadePlayerSummary(
                     },
                     style = MaterialTheme.typography.labelSmall,
                     color = Color.White.copy(alpha = 0.76f),
-                    modifier = Modifier.padding(top = 8.dp).testTag("home_season_tier")
+                    modifier = Modifier.padding(top = 12.dp).testTag("home_season_tier")
                 )
                 LinearProgressIndicator(
                     progress = { currentXp.toFloat() / nextXp.coerceAtLeast(1) },

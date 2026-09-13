@@ -28,9 +28,9 @@ class PostgresLegacyAchievementCosmeticTest {
                         """
                         INSERT INTO player_stats (
                             user_id, experience_points, equipped_frame_id, equipped_title_id, updated_at
-                        ) VALUES (?, 1400, 'frame_perfect', 'title_speed', CURRENT_TIMESTAMP)
+                        ) VALUES (?, 2310, 'frame_perfect', 'title_speed', CURRENT_TIMESTAMP)
                         ON CONFLICT (user_id) DO UPDATE SET
-                            experience_points = 1400,
+                            experience_points = 2310,
                             equipped_frame_id = 'frame_perfect',
                             equipped_title_id = 'title_speed',
                             updated_at = CURRENT_TIMESTAMP

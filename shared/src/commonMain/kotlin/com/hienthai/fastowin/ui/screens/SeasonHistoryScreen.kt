@@ -49,6 +49,7 @@ import com.hienthai.fastowin.state.GameState
 import com.hienthai.fastowin.ui.components.ArcadeBackdrop
 import com.hienthai.fastowin.ui.components.FastToWinHeader
 import com.hienthai.fastowin.ui.components.FastToWinPullRefresh
+import com.hienthai.fastowin.ui.components.HeaderRefreshAction
 import com.hienthai.fastowin.ui.components.RewardAmounts
 import com.hienthai.fastowin.ui.components.SeasonCosmeticRewardCard
 import com.hienthai.fastowin.ui.components.SystemBackHandler
@@ -87,7 +88,13 @@ fun SeasonHistoryScreen(
                     gems = state.profile?.progression?.gems ?: 0,
                     unreadNotifications = state.unreadNotificationCount,
                     onNotifications = onOpenNotifications,
-                    onBack = onBack
+                    onBack = onBack,
+                    actions = {
+                        HeaderRefreshAction(
+                            isRefreshing = state.isProfileLoading,
+                            onRefresh = onRefresh
+                        )
+                    }
                 )
             }
         ) { paddingValues ->

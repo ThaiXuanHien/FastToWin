@@ -406,19 +406,7 @@ class GameController(
     }
 
     fun openHome() {
-        _uiState.update {
-            it.copy(
-                isProfileOpen = false,
-                isProfileLoading = false,
-                isLeaderboardOpen = false,
-                isLeaderboardLoading = false,
-                isFriendsOpen = false,
-                isFriendsLoading = false,
-                isClanOpen = false,
-                isNotificationsOpen = false,
-                error = null
-            )
-        }
+        _uiState.update(GameState::returnHome)
     }
 
     fun openNotifications() {
@@ -955,20 +943,35 @@ class GameController(
             }
 
             is ServerMessage.RoomList -> {
+                val availableRooms = message.rooms.map { room ->
+                    AvailableRoom(
+                        id = room.id,
+                        name = room.name,
+                        hostName = room.hostName,
+                        gameMode = room.gameMode.toUi(),
+                        matchType = room.matchType,
+                        requiresPassword = room.requiresPassword,
+                        lastSeenAtMillis = epochMillis()
+                    )
+                }
                 _uiState.update { state ->
+                    val pendingRoomUnavailable = state.pendingRoomLinkId?.let { pendingRoomId ->
+                        availableRooms.none { it.id == pendingRoomId }
+                    } == true
                     state.copy(
                         isSearching = false,
                         roomListVersion = state.roomListVersion + 1,
-                        availableRooms = message.rooms.map { room ->
-                            AvailableRoom(
-                                id = room.id,
-                                name = room.name,
-                                hostName = room.hostName,
-                                gameMode = room.gameMode.toUi(),
-                                matchType = room.matchType,
-                                requiresPassword = room.requiresPassword,
-                                lastSeenAtMillis = epochMillis()
-                            )
+                        availableRooms = availableRooms,
+                        pendingRoomLinkId = if (pendingRoomUnavailable) null else state.pendingRoomLinkId,
+                        pendingRoomLinkListVersion = if (pendingRoomUnavailable) {
+                            state.roomListVersion + 1
+                        } else {
+                            state.pendingRoomLinkListVersion
+                        },
+                        error = if (pendingRoomUnavailable) {
+                            messageMapper.text(TextKey.RoomLinkUnavailable)
+                        } else {
+                            state.error
                         }
                     )
                 }

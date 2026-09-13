@@ -34,11 +34,11 @@ class PostgresAchievementProgressTest {
                             user_id, wins, best_win_streak, experience_points,
                             current_daily_check_in_streak, best_daily_check_in_streak,
                             total_daily_check_ins, updated_at
-                        ) VALUES (?, 100, 10, 2900, 30, 30, 100, CURRENT_TIMESTAMP)
+                        ) VALUES (?, 100, 10, 6960, 30, 30, 100, CURRENT_TIMESTAMP)
                         ON CONFLICT (user_id) DO UPDATE SET
                             wins = 100,
                             best_win_streak = 10,
-                            experience_points = 2900,
+                            experience_points = 6960,
                             current_daily_check_in_streak = 30,
                             best_daily_check_in_streak = 30,
                             total_daily_check_ins = 100,

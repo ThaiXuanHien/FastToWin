@@ -57,6 +57,7 @@ import com.hienthai.fastowin.ui.components.ArcadeSegmentedControl
 import com.hienthai.fastowin.ui.components.DEFAULT_ARCADE_PAGE_SIZE
 import com.hienthai.fastowin.ui.components.FastToWinHeader
 import com.hienthai.fastowin.ui.components.FastToWinPullRefresh
+import com.hienthai.fastowin.ui.components.HeaderRefreshAction
 import com.hienthai.fastowin.ui.components.PlayerAvatar
 import com.hienthai.fastowin.ui.components.SeasonProgressCard
 import com.hienthai.fastowin.ui.components.SeasonRewardReceiptCard
@@ -104,7 +105,13 @@ fun LeaderboardScreen(
                         unreadNotifications = state.unreadNotificationCount,
                         onNotifications = onOpenNotifications,
                         onBack = onBack,
-                        applySafeDrawingInset = false
+                        applySafeDrawingInset = false,
+                        actions = {
+                            HeaderRefreshAction(
+                                isRefreshing = state.isLeaderboardLoading,
+                                onRefresh = onRefresh
+                            )
+                        }
                     )
                 }
                 ArcadeLeaderboardTabs(

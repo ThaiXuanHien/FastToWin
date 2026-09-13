@@ -88,7 +88,7 @@ internal val englishSocialShopTexts = mapOf(
     TextKey.DonateToClanDescription to "Contribute Gold or Gems to grow your clan.",
     TextKey.DonationBalance to "Balance: {amount} {currency}", TextKey.DonationXpPreview to "Clan XP gained: {xp}",
     TextKey.DonationCannotUndo to "Donations cannot be undone.", TextKey.YourContribution to "Your contribution",
-    TextKey.MaximumLevel to "MAX", TextKey.DonationApplied to "Your clan gained {xp} XP.",
+    TextKey.MaximumLevel to "Max level", TextKey.DonationApplied to "Your clan gained {xp} XP.",
     TextKey.DonationDuplicate to "This donation was already completed.", TextKey.DonationInvalidAmount to "Choose a valid donation amount.",
     TextKey.DonationInsufficientFunds to "You do not have enough {currency}.", TextKey.DonationMembershipRequired to "Join this clan before donating.",
     TextKey.DonationFailed to "Could not complete the donation. Please try again.",
@@ -195,7 +195,7 @@ internal val vietnameseSocialShopTexts = englishSocialShopTexts + mapOf(
     TextKey.DonateToClanDescription to "Góp Vàng hoặc Gem để cùng phát triển bang hội.",
     TextKey.DonationBalance to "Số dư: {amount} {currency}", TextKey.DonationXpPreview to "Bang nhận {xp} XP",
     TextKey.DonationCannotUndo to "Khoản quyên góp không thể hoàn tác.", TextKey.YourContribution to "Bạn đã góp",
-    TextKey.MaximumLevel to "MAX", TextKey.DonationApplied to "Bang đã nhận {xp} XP.",
+    TextKey.MaximumLevel to "Cấp tối đa", TextKey.DonationApplied to "Bang đã nhận {xp} XP.",
     TextKey.DonationDuplicate to "Khoản quyên góp này đã hoàn tất trước đó.", TextKey.DonationInvalidAmount to "Hãy chọn mức quyên góp hợp lệ.",
     TextKey.DonationInsufficientFunds to "Bạn không đủ {currency}.", TextKey.DonationMembershipRequired to "Hãy tham gia bang trước khi quyên góp.",
     TextKey.DonationFailed to "Chưa thể quyên góp. Vui lòng thử lại.",
@@ -256,32 +256,42 @@ internal val vietnameseSocialShopTexts = englishSocialShopTexts + mapOf(
 )
 
 internal val germanSocialShopTexts = englishSocialShopTexts + mapOf(
+    TextKey.MaximumLevel to "Maximalstufe",
     TextKey.PlayerCodeExample to "z. B. FTW8X2Q", TextKey.YourSquad to "Dein Team", TextKey.FriendList to "Freunde", TextKey.ClanTogetherTitle to "Gemeinsam antreten", TextKey.ExploreClans to "Clans entdecken", TextKey.FameRace to "Rennen um Ruhm", TextKey.CurrentSeason to "Aktuelle Saison", TextKey.KnockoutArena to "K.-o.-Arena", TextKey.RecentTournaments to "Letzte Turniere", TextKey.NotificationsHero to "Neuigkeiten für dich", TextKey.EmptyInbox to "Dein Postfach ist leer", TextKey.NumberSkins to "Zahlenflächen", TextKey.NumberBoards to "Zahlenbretter", TextKey.GemVault to "Gem-Tresor", TextKey.ArcadeVault to "Arcade-Tresor", TextKey.Restocking to "Nachschub unterwegs", TextKey.Equip to "AUSRÜSTEN"
 )
 internal val japaneseSocialShopTexts = englishSocialShopTexts + mapOf(
+    TextKey.MaximumLevel to "最大レベル",
     TextKey.PlayerCodeExample to "例：FTW8X2Q", TextKey.YourSquad to "あなたのチーム", TextKey.FriendList to "フレンド", TextKey.ClanTogetherTitle to "仲間と挑戦", TextKey.ExploreClans to "クランを探す", TextKey.FameRace to "栄光へのレース", TextKey.CurrentSeason to "今シーズン", TextKey.KnockoutArena to "勝ち抜きアリーナ", TextKey.RecentTournaments to "最近の大会", TextKey.NotificationsHero to "あなたへのお知らせ", TextKey.EmptyInbox to "通知はありません", TextKey.NumberSkins to "数字スキン", TextKey.NumberBoards to "数字ボード", TextKey.GemVault to "ジェム保管庫", TextKey.ArcadeVault to "アーケード保管庫", TextKey.Restocking to "入荷準備中", TextKey.Equip to "装備"
 )
 internal val simplifiedChineseSocialShopTexts = englishSocialShopTexts + mapOf(
+    TextKey.MaximumLevel to "最高等级",
     TextKey.PlayerCodeExample to "例如：FTW8X2Q", TextKey.YourSquad to "你的队伍", TextKey.FriendList to "好友列表", TextKey.ClanTogetherTitle to "并肩竞技", TextKey.ExploreClans to "探索战队", TextKey.FameRace to "荣耀竞速", TextKey.CurrentSeason to "当前赛季", TextKey.KnockoutArena to "淘汰赛场", TextKey.RecentTournaments to "最近赛事", TextKey.NotificationsHero to "你的新消息", TextKey.EmptyInbox to "暂无消息", TextKey.NumberSkins to "数字皮肤", TextKey.NumberBoards to "数字棋盘", TextKey.GemVault to "宝石仓库", TextKey.ArcadeVault to "街机仓库", TextKey.Restocking to "补货中", TextKey.Equip to "装备"
 )
 internal val koreanSocialShopTexts = englishSocialShopTexts + mapOf(
+    TextKey.MaximumLevel to "최고 레벨",
     TextKey.PlayerCodeExample to "예: FTW8X2Q", TextKey.YourSquad to "내 스쿼드", TextKey.FriendList to "친구", TextKey.ClanTogetherTitle to "함께 경쟁하세요", TextKey.ExploreClans to "클랜 탐색", TextKey.FameRace to "명예의 레이스", TextKey.CurrentSeason to "현재 시즌", TextKey.KnockoutArena to "토너먼트 아레나", TextKey.RecentTournaments to "최근 토너먼트", TextKey.NotificationsHero to "새 소식", TextKey.EmptyInbox to "알림이 없습니다", TextKey.NumberSkins to "숫자 스킨", TextKey.NumberBoards to "숫자 보드", TextKey.GemVault to "젬 보관소", TextKey.ArcadeVault to "아케이드 보관소", TextKey.Restocking to "상품 준비 중", TextKey.Equip to "장착"
 )
 internal val spanishSocialShopTexts = englishSocialShopTexts + mapOf(
+    TextKey.MaximumLevel to "Nivel máximo",
     TextKey.PlayerCodeExample to "p. ej., FTW8X2Q", TextKey.YourSquad to "Tu equipo", TextKey.FriendList to "Amigos", TextKey.ClanTogetherTitle to "Compitan juntos", TextKey.ExploreClans to "Explorar clanes", TextKey.FameRace to "Carrera por la gloria", TextKey.CurrentSeason to "Temporada actual", TextKey.KnockoutArena to "Arena eliminatoria", TextKey.RecentTournaments to "Torneos recientes", TextKey.NotificationsHero to "Novedades para ti", TextKey.EmptyInbox to "Tu bandeja está vacía", TextKey.NumberSkins to "Diseños de números", TextKey.NumberBoards to "Tableros numéricos", TextKey.GemVault to "Cámara de Gemas", TextKey.ArcadeVault to "Cámara Arcade", TextKey.Restocking to "Reponiendo", TextKey.Equip to "EQUIPAR"
 )
 internal val brazilianPortugueseSocialShopTexts = englishSocialShopTexts + mapOf(
+    TextKey.MaximumLevel to "Nível máximo",
     TextKey.PlayerCodeExample to "ex.: FTW8X2Q", TextKey.YourSquad to "Seu esquadrão", TextKey.FriendList to "Amigos", TextKey.ClanTogetherTitle to "Compitam juntos", TextKey.ExploreClans to "Explorar clãs", TextKey.FameRace to "Corrida pela glória", TextKey.CurrentSeason to "Temporada atual", TextKey.KnockoutArena to "Arena eliminatória", TextKey.RecentTournaments to "Torneios recentes", TextKey.NotificationsHero to "Novidades para você", TextKey.EmptyInbox to "Sua caixa está vazia", TextKey.NumberSkins to "Visuais de números", TextKey.NumberBoards to "Tabuleiros numéricos", TextKey.GemVault to "Cofre de Gemas", TextKey.ArcadeVault to "Cofre Arcade", TextKey.Restocking to "Repondo estoque", TextKey.Equip to "EQUIPAR"
 )
 internal val frenchSocialShopTexts = englishSocialShopTexts + mapOf(
+    TextKey.MaximumLevel to "Niveau maximum",
     TextKey.PlayerCodeExample to "ex. : FTW8X2Q", TextKey.YourSquad to "Ton équipe", TextKey.FriendList to "Amis", TextKey.ClanTogetherTitle to "Jouez ensemble", TextKey.ExploreClans to "Explorer les clans", TextKey.FameRace to "Course à la gloire", TextKey.CurrentSeason to "Saison actuelle", TextKey.KnockoutArena to "Arène à élimination", TextKey.RecentTournaments to "Tournois récents", TextKey.NotificationsHero to "Tes nouveautés", TextKey.EmptyInbox to "Ta boîte est vide", TextKey.NumberSkins to "Styles de nombres", TextKey.NumberBoards to "Plateaux numériques", TextKey.GemVault to "Coffre de Gemmes", TextKey.ArcadeVault to "Coffre Arcade", TextKey.Restocking to "Réapprovisionnement", TextKey.Equip to "ÉQUIPER"
 )
 internal val indonesianSocialShopTexts = englishSocialShopTexts + mapOf(
+    TextKey.MaximumLevel to "Level maksimum",
     TextKey.PlayerCodeExample to "mis. FTW8X2Q", TextKey.YourSquad to "Skuadmu", TextKey.FriendList to "Teman", TextKey.ClanTogetherTitle to "Bertanding bersama", TextKey.ExploreClans to "Jelajahi klan", TextKey.FameRace to "Perebutan kejayaan", TextKey.CurrentSeason to "Musim saat ini", TextKey.KnockoutArena to "Arena eliminasi", TextKey.RecentTournaments to "Turnamen terbaru", TextKey.NotificationsHero to "Kabar untukmu", TextKey.EmptyInbox to "Kotak masukmu kosong", TextKey.NumberSkins to "Skin angka", TextKey.NumberBoards to "Papan angka", TextKey.GemVault to "Brankas Gem", TextKey.ArcadeVault to "Brankas Arcade", TextKey.Restocking to "Mengisi stok", TextKey.Equip to "PAKAI"
 )
 internal val thaiSocialShopTexts = englishSocialShopTexts + mapOf(
+    TextKey.MaximumLevel to "เลเวลสูงสุด",
     TextKey.PlayerCodeExample to "เช่น FTW8X2Q", TextKey.YourSquad to "ทีมของคุณ", TextKey.FriendList to "เพื่อน", TextKey.ClanTogetherTitle to "แข่งขันไปด้วยกัน", TextKey.ExploreClans to "สำรวจแคลน", TextKey.FameRace to "เส้นทางแห่งเกียรติยศ", TextKey.CurrentSeason to "ฤดูกาลปัจจุบัน", TextKey.KnockoutArena to "สนามน็อกเอาต์", TextKey.RecentTournaments to "ทัวร์นาเมนต์ล่าสุด", TextKey.NotificationsHero to "ข่าวสารสำหรับคุณ", TextKey.EmptyInbox to "กล่องข้อความว่าง", TextKey.NumberSkins to "สกินตัวเลข", TextKey.NumberBoards to "กระดานตัวเลข", TextKey.GemVault to "คลัง Gem", TextKey.ArcadeVault to "คลัง Arcade", TextKey.Restocking to "กำลังเติมสินค้า", TextKey.Equip to "สวมใส่"
 )
 internal val russianSocialShopTexts = englishSocialShopTexts + mapOf(
+    TextKey.MaximumLevel to "Максимальный уровень",
     TextKey.PlayerCodeExample to "например, FTW8X2Q", TextKey.YourSquad to "Твоя команда", TextKey.FriendList to "Друзья", TextKey.ClanTogetherTitle to "Сражайтесь вместе", TextKey.ExploreClans to "Поиск кланов", TextKey.FameRace to "Гонка за славой", TextKey.CurrentSeason to "Текущий сезон", TextKey.KnockoutArena to "Арена на выбывание", TextKey.RecentTournaments to "Недавние турниры", TextKey.NotificationsHero to "Новости для тебя", TextKey.EmptyInbox to "Уведомлений нет", TextKey.NumberSkins to "Скины чисел", TextKey.NumberBoards to "Числовые поля", TextKey.GemVault to "Хранилище самоцветов", TextKey.ArcadeVault to "Аркадное хранилище", TextKey.Restocking to "Скоро пополнение", TextKey.Equip to "НАДЕТЬ"
 )

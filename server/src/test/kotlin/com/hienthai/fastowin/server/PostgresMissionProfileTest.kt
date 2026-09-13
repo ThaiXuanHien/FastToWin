@@ -35,9 +35,9 @@ class PostgresMissionProfileTest {
                     connection.prepareStatement(
                         """
                         INSERT INTO player_stats (user_id, experience_points, updated_at)
-                        VALUES (?, 2880, CURRENT_TIMESTAMP)
+                        VALUES (?, 6940, CURRENT_TIMESTAMP)
                         ON CONFLICT (user_id) DO UPDATE SET
-                            experience_points = 2880,
+                            experience_points = 6940,
                             updated_at = CURRENT_TIMESTAMP
                         """.trimIndent()
                     ).use { statement ->

@@ -595,7 +595,8 @@ class PostgresPlayerProfileRepository(
                 }
             }
             val experiencePoints = progressionRow.experiencePoints
-            val level = experiencePoints / EXPERIENCE_PER_LEVEL + 1
+            val levelProgress = PlayerProgression.progress(experiencePoints)
+            val level = levelProgress.level
             val unlockedFrames = unlockedFrameIds(
                 level,
                 historicalAchievementCodes,
@@ -713,8 +714,8 @@ class PostgresPlayerProfileRepository(
                     experiencePoints = experiencePoints,
                     gold = progressionRow.gold,
                     gems = progressionRow.gems,
-                    currentLevelExperience = experiencePoints % EXPERIENCE_PER_LEVEL,
-                    nextLevelExperience = EXPERIENCE_PER_LEVEL,
+                    currentLevelExperience = levelProgress.currentExperience,
+                    nextLevelExperience = levelProgress.nextLevelExperience,
                     dailyMissions = activeDailyMissions.map(::mission),
                     weeklyMissions = activeWeeklyMissions.map(::mission),
                     dailyCheckIn = DailyCheckInSnapshot(
@@ -1343,7 +1344,6 @@ class PostgresPlayerProfileRepository(
     private fun currentCheckInDate(): LocalDate = LocalDate.now(clock)
 
     private companion object {
-        const val EXPERIENCE_PER_LEVEL = 100
         const val PLACEMENT_MATCHES_REQUIRED = 5
         const val SEASON_INITIAL_RATING = 1_000
     }

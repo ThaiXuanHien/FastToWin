@@ -153,6 +153,8 @@ class SeasonProgressUiTest {
                 "Còn 100 Elo để lên Vàng"
             )
         )
+        composeRule.onNodeWithText("Xem thưởng", substring = false).assertIsDisplayed()
+        composeRule.onNodeWithText("Xem thưởng các bậc", substring = false).assertDoesNotExist()
         composeRule.onNodeWithTag("season_rewards_toggle").performClick()
         composeRule.onNodeWithTag("season_reward:CHALLENGER")
             .performScrollTo()

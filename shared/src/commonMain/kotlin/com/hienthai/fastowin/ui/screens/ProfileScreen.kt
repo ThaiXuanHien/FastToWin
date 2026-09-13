@@ -141,6 +141,7 @@ import com.hienthai.fastowin.ui.components.ArcadeSegmentedControl
 import com.hienthai.fastowin.ui.components.DEFAULT_ARCADE_PAGE_SIZE
 import com.hienthai.fastowin.ui.components.FastToWinHeader
 import com.hienthai.fastowin.ui.components.FastToWinPullRefresh
+import com.hienthai.fastowin.ui.components.HeaderRefreshAction
 import com.hienthai.fastowin.ui.components.WalletDeltaAmounts
 import com.hienthai.fastowin.ui.components.PlayerAvatar
 import com.hienthai.fastowin.ui.components.nextArcadePageItemCount
@@ -333,7 +334,13 @@ fun ProfileScreen(
                 unreadNotifications = state.unreadNotificationCount,
                 onNotifications = onOpenNotifications,
                 onBack = onBack,
-                applySafeDrawingInset = false
+                applySafeDrawingInset = false,
+                actions = {
+                    HeaderRefreshAction(
+                        isRefreshing = isProfileLoading,
+                        onRefresh = onRefresh
+                    )
+                }
             )
         }
         if (isProfileLoading && profile == null) {
@@ -792,7 +799,11 @@ private fun ProfileIdentityDetails(
                 color = ArcadePalette.Gold400
             )
             Text(
-                "${progression.currentLevelExperience}/${progression.nextLevelExperience} XP",
+                if (progression.level >= 100) {
+                    localized(TextKey.MaximumLevel)
+                } else {
+                    "${progression.currentLevelExperience}/${progression.nextLevelExperience} XP"
+                },
                 modifier = Modifier.testTag("profile_xp_count"),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -801,8 +812,10 @@ private fun ProfileIdentityDetails(
         }
         LinearProgressIndicator(
             progress = {
-                progression.currentLevelExperience.toFloat() /
-                    progression.nextLevelExperience.coerceAtLeast(1)
+                if (progression.level >= 100) 1f else {
+                    progression.currentLevelExperience.toFloat() /
+                        progression.nextLevelExperience.coerceAtLeast(1)
+                }
             },
             modifier = Modifier.fillMaxWidth().height(6.dp),
             color = ArcadeGold,
@@ -886,7 +899,13 @@ fun ProfileSectionScreen(
             gems = state.profile?.progression?.gems ?: 0,
             unreadNotifications = state.unreadNotificationCount,
             onNotifications = onOpenNotifications,
-            onBack = onBack
+            onBack = onBack,
+            actions = {
+                HeaderRefreshAction(
+                    isRefreshing = isLoading && state.equippingCosmeticId == null,
+                    onRefresh = onRefresh
+                )
+            }
         )
         ResponsiveScreen(
             modifier = Modifier.weight(1f),

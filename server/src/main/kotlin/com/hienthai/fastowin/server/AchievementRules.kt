@@ -185,7 +185,7 @@ internal fun achievementProgress(connection: Connection, userId: UUID): Map<Stri
         "CHECKIN_STREAK_30" to stats.bestCheckInStreak,
         "CHECKINS_50" to stats.totalCheckIns,
         "CHECKINS_100" to stats.totalCheckIns,
-        "PLAYER_LEVEL_30" to (stats.experiencePoints / 100 + 1)
+        "PLAYER_LEVEL_30" to PlayerProgression.levelForExperience(stats.experiencePoints)
     )
     return ACHIEVEMENT_DEFINITIONS.associate { definition ->
         definition.code to (rawProgress[definition.code] ?: 0).coerceIn(0, definition.target)

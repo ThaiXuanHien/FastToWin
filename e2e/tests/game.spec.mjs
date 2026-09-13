@@ -15,6 +15,29 @@ test('login, F5 and browser Back/Forward preserve the account', async ({ actors 
   await expect(tag(player.page, 'auth_open_login')).not.toBeAttached();
 });
 
+test('returning home clears an unavailable room link and its error', async ({ actors }) => {
+  const player = await actors('ExpiredLink');
+  await login(player);
+  await player.page.evaluate(() => {
+    history.pushState(
+      { ...(history.state || {}), fastToWinDepth: 1 },
+      '',
+      '/room/00000000-0000-0000-0000-000000000000',
+    );
+    window.dispatchEvent(new PopStateEvent('popstate'));
+  });
+  const unavailable = player.page.getByText(
+    'Phòng trong liên kết không còn tồn tại hoặc đã đủ người.',
+    { exact: true },
+  );
+  await expect(unavailable).toBeAttached();
+
+  await click(player.page, tag(player.page, 'bottom_tab:home'));
+  await expect(player.page).toHaveURL(/\/$/);
+  await expect(tag(player.page, 'home_screen')).toBeAttached();
+  await expect(unavailable).not.toBeAttached();
+});
+
 test('two players finish all 50 numbers, decline rematch and leave results independently', async ({ actors }) => {
   const host = await actors('Host');
   const guest = await actors('Guest');

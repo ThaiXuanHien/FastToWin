@@ -138,7 +138,7 @@ private fun seedPlayerStats(connection: Connection, userId: UUID, today: LocalDa
             best_daily_check_in_streak, total_daily_check_ins, last_daily_check_in_date,
             gold, gems, equipped_card_back_id, equipped_board_skin_id, updated_at
         ) VALUES (?, 120, 82, 28, 10, 50, 8, 18, 4980, 72, 612000, 4980,
-                  2350, 9900, 'frame_lightning', 'title_godspeed',
+                  2350, 58410, 'frame_lightning', 'title_godspeed',
                   120, 120, 120, ?, 999999, 9999, 'card_back_default',
                   'board_skin_default', CURRENT_TIMESTAMP)
         ON CONFLICT (user_id) DO UPDATE SET

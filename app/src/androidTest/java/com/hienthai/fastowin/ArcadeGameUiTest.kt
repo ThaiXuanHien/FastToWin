@@ -20,6 +20,7 @@ import com.hienthai.fastowin.ui.screens.GameScreen
 import com.hienthai.fastowin.ui.theme.FastToWinTheme
 import org.junit.Rule
 import org.junit.Test
+import org.junit.Assert.assertTrue
 
 @OptIn(ExperimentalTestApi::class)
 class ArcadeGameUiTest {
@@ -60,6 +61,15 @@ class ArcadeGameUiTest {
         composeRule.onNodeWithTag("number_grid")
             .assertIsDisplayed()
         composeRule.onNodeWithTag("game_number_50").assertIsDisplayed()
+        if (width <= 320.dp && height >= 568.dp) {
+            val cellBounds = composeRule.onNodeWithTag("game_number_1")
+                .fetchSemanticsNode().boundsInRoot
+            val aspectRatio = cellBounds.width / cellBounds.height
+            assertTrue(
+                "Small-screen number cells must remain close to square, actual ratio=$aspectRatio",
+                aspectRatio in 0.8f..1.25f
+            )
+        }
     }
 
     private fun gameState() = GameState(

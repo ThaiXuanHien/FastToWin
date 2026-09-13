@@ -47,22 +47,22 @@ tương ứng đều đã có. Các phần chi tiết ở dưới phải bám th
 - [x] Bỏ cơ chế phát lại.
 - [x] Thay cơ chế kết nối lại bằng state machine, transport mới cho từng lần thử và nút thử lại thực sự mở kết nối mới.
 - [ ] Xác minh thủ công kết nối lại trên hai thiết bị và các trường hợp chuyển mạng, đưa app nền/khôi phục app.
-- [ ] Lỗi phòng từ liên kết đã hết hạn hoặc đủ người phải được xóa khi người chơi chuyển sang Trang chủ.
-- [ ] Trên thiết bị màn hình nhỏ, ô số không bị bẹp và bàn số vẫn không cần cuộn.
+- [x] Lỗi phòng từ liên kết đã hết hạn hoặc đủ người phải được xóa khi người chơi chuyển sang Trang chủ.
+- [x] Trên thiết bị màn hình nhỏ, ô số không bị bẹp và bàn số vẫn không cần cuộn.
 
 ### Profile, avatar và tiến trình
 
 - [x] Chọn/tải avatar chỉ tạo preview; chỉ lưu và tải lên khi bấm `Lưu`, bấm `Hủy` phải giữ avatar hiện tại.
 - [ ] Xác minh avatar đồng bộ ở Home, Profile, phòng, ván chơi và các màn còn lại trên Mobile/Web.
-- [ ] Cấp 100 phải hiển thị XP phù hợp với cấp tối đa, không hiển thị sai `0/100 XP`.
+- [x] Cấp 100 phải hiển thị XP phù hợp với cấp tối đa, không hiển thị sai `0/100 XP`.
 - [x] Tài khoản development đầy đủ có tài sản và vật phẩm tiến trình cần thiết để kiểm thử.
 
 ### UI Web, xếp hạng và tài nguyên Khung
 
 - [x] Nền ngoài vùng nội dung Web dùng màu tối thay vì màu trắng.
-- [ ] Chuyển nút `Thử lại` cạnh header trên Web thành icon hành động trong header và không làm tràn bố cục.
-- [ ] Tăng khoảng cách phía trên phần `Đấu sĩ • Mùa khởi đầu`.
-- [ ] Đổi nhãn `Xem thưởng các bậc` thành `Xem thưởng` và giữ trên một dòng.
+- [x] Chuyển nút `Thử lại` cạnh header trên Web thành icon hành động trong header và không làm tràn bố cục.
+- [x] Tăng khoảng cách phía trên phần `Đấu sĩ • Mùa khởi đầu`.
+- [x] Đổi nhãn `Xem thưởng các bậc` thành `Xem thưởng` và giữ trên một dòng.
 - [ ] Thiết kế lại Khung theo cấp/độ hiếm; mọi Khung mới phải có asset PNG đồng nhất với định dạng Khung cũ.
 - [x] Popup/dialog và nội dung cửa hàng đã có ma trận responsive tự động; vẫn cần smoke test trên thiết bị Web thật.
 
@@ -216,9 +216,9 @@ server; Web production không tự giả lập quảng cáo.
 **Giai đoạn 5 — hoàn thiện các yêu cầu bổ sung và audit giao diện**:
 
 - [x] Avatar preview trước khi lưu; Hủy không thay đổi dữ liệu đã lưu.
-- [ ] Dọn lỗi link phòng khi quay về Trang chủ.
-- [ ] Sửa tỷ lệ ô số trên màn hình nhỏ và XP cấp 100.
-- [ ] Đưa hành động thử lại Web lên header, rút gọn `Xem thưởng` và chỉnh khoảng cách mùa giải.
+- [x] Dọn lỗi link phòng khi quay về Trang chủ.
+- [x] Sửa tỷ lệ ô số trên màn hình nhỏ và XP cấp 100.
+- [x] Đưa hành động thử lại Web lên header, rút gọn `Xem thưởng` và chỉnh khoảng cách mùa giải.
 - [ ] Hoàn thiện asset PNG theo cấp/độ hiếm cho đủ 16 Khung.
 - [ ] Audit chuỗi localization còn sót và xác minh avatar giữa mọi màn.
 - [ ] Viết tài liệu kiến trúc/dịch vụ/chi phí production cho ba mốc tải đã yêu cầu.

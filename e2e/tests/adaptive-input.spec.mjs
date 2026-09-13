@@ -80,11 +80,11 @@ test('refresh affordance follows the configured browser input mode', async ({ ac
   const isTouchProject = test.info().project.name.endsWith('-touch');
   expect(hasTouch, 'Playwright project must expose its configured input mode').toBe(isTouchProject);
   if (hasTouch) {
-    await expect(tag(page, 'pointer_refresh')).toHaveCount(0);
-    await expect(tag(page, 'pointer_refresh_busy')).toHaveCount(0);
+    await expect(tag(page, 'header_refresh')).toHaveCount(0);
+    await expect(tag(page, 'header_refresh_busy')).toHaveCount(0);
   } else {
-    await expect(tag(page, 'pointer_refresh')).toBeAttached({ timeout: 40_000 });
-    await click(page, tag(page, 'pointer_refresh'));
-    await expect(tag(page, 'pointer_refresh_busy')).toBeAttached();
+    await expect(tag(page, 'header_refresh')).toBeAttached({ timeout: 40_000 });
+    await click(page, tag(page, 'header_refresh'));
+    await expect(tag(page, 'header_refresh_busy')).toBeAttached();
   }
 });

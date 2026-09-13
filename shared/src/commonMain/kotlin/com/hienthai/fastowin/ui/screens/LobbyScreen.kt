@@ -74,6 +74,7 @@ import com.hienthai.fastowin.ui.components.SystemBackHandler
 import com.hienthai.fastowin.ui.components.PlayerAvatar
 import com.hienthai.fastowin.ui.components.FastToWinHeader
 import com.hienthai.fastowin.ui.components.FastToWinPullRefresh
+import com.hienthai.fastowin.ui.components.HeaderRefreshAction
 import com.hienthai.fastowin.ui.components.ArcadeActionButton
 import com.hienthai.fastowin.ui.components.ArcadeActionStyle
 import com.hienthai.fastowin.ui.components.ArcadeDialog
@@ -124,6 +125,18 @@ fun LobbyScreen(
         state.lobbyStage == LobbyStage.ROOM_BROWSER
     val displayName = (state.profile?.displayName ?: state.player.name).ifBlank { localized(TextKey.Player) }
     val localization = LocalLocalization.current
+    var isRoomListRefreshing by remember { mutableStateOf(false) }
+    val roomRefreshScope = rememberCoroutineScope()
+    val refreshRooms = {
+        if (!state.isSearching && !isRoomListRefreshing) {
+            isRoomListRefreshing = true
+            onRefreshRooms()
+            roomRefreshScope.launch {
+                delay(800)
+                isRoomListRefreshing = false
+            }
+        }
+    }
     val openRoomBrowserAction = {
         if (isGuest && state.player.name.isBlank()) {
             onModeSelected(state.gameMode)
@@ -161,6 +174,14 @@ fun LobbyScreen(
                 LobbyStage.ENTER_NAME -> onBackToMode
                 LobbyStage.ROOM_WAITING -> onLeaveRoom
                 LobbyStage.MATCHMAKING -> onCancelMatchmaking
+            },
+            actions = {
+                if (state.lobbyStage == LobbyStage.ROOM_BROWSER) {
+                    HeaderRefreshAction(
+                        isRefreshing = isRoomListRefreshing || state.isSearching,
+                        onRefresh = refreshRooms
+                    )
+                }
             }
         )
         ResponsiveScreen(
@@ -211,6 +232,8 @@ fun LobbyScreen(
                     onCreateRoom = onCreateRoom,
                     onJoinRoom = onJoinRoom,
                     onRefreshRooms = onRefreshRooms,
+                    isRefreshing = isRoomListRefreshing || state.isSearching,
+                    onRefresh = refreshRooms,
                     onOpenProfile = onOpenProfile,
                     onOpenFriends = onOpenFriends,
                     isGuest = isGuest,
@@ -403,6 +426,8 @@ private fun RoomBrowser(
     onCreateRoom: (GameMode, MatchType, String, String) -> Unit,
     onJoinRoom: (String, String) -> Unit,
     onRefreshRooms: () -> Unit,
+    isRefreshing: Boolean,
+    onRefresh: () -> Unit,
     onOpenProfile: () -> Unit,
     onOpenFriends: () -> Unit,
     isGuest: Boolean,
@@ -418,8 +443,6 @@ private fun RoomBrowser(
     var showJoinCode by remember { mutableStateOf(false) }
     var searchQuery by remember { mutableStateOf("") }
     var matchTypeFilter by remember { mutableStateOf<MatchType?>(null) }
-    var isPullRefreshing by remember { mutableStateOf(false) }
-    val pullRefreshScope = rememberCoroutineScope()
     val filteredRooms = remember(state.availableRooms, searchQuery, matchTypeFilter) {
         state.availableRooms.filter { room ->
             (searchQuery.isBlank() || room.name.contains(searchQuery.trim(), ignoreCase = true) ||
@@ -516,17 +539,8 @@ private fun RoomBrowser(
         )
     }
     FastToWinPullRefresh(
-        isRefreshing = isPullRefreshing || state.isSearching,
-        onRefresh = {
-            if (!state.isSearching) {
-                isPullRefreshing = true
-                onRefreshRooms()
-                pullRefreshScope.launch {
-                    delay(800)
-                    isPullRefreshing = false
-                }
-            }
-        },
+        isRefreshing = isRefreshing,
+        onRefresh = onRefresh,
         modifier = Modifier.fillMaxSize()
     ) {
         LazyColumn(

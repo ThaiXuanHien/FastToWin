@@ -20,6 +20,25 @@ import kotlin.test.assertTrue
 
 class GameStateTest {
     @Test
+    fun `returning home clears a failed room deep link and its error`() {
+        val state = GameState(
+            pendingRoomLinkId = "expired-room",
+            pendingRoomLinkListVersion = 7,
+            error = "Room no longer exists",
+            isSearching = true,
+            lobbyStage = LobbyStage.ROOM_BROWSER
+        )
+
+        val home = state.returnHome()
+
+        assertNull(home.pendingRoomLinkId)
+        assertEquals(home.roomListVersion, home.pendingRoomLinkListVersion)
+        assertNull(home.error)
+        assertFalse(home.isSearching)
+        assertEquals(LobbyStage.SELECT_MODE, home.lobbyStage)
+    }
+
+    @Test
     fun `quota messages replace local snapshot with server truth`() {
         val staleQuota = quota(remaining = 3)
         val refreshedQuota = quota(remaining = 5)

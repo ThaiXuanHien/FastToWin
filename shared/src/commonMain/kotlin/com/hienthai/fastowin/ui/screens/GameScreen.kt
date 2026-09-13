@@ -666,19 +666,32 @@ fun NumberGrid(
     modifier: Modifier = Modifier
 ) {
     BoxWithConstraints(modifier = modifier) {
-        val columnCount = when {
-            maxWidth >= 600.dp -> 10
-            maxWidth > maxHeight -> 10
-            else -> 5
+        fun paddingFor(columns: Int) = if (columns >= 8) 6.dp else 8.dp
+        fun spacingFor(columns: Int) = if (columns >= 8) 4.dp else 6.dp
+        val columnCount = (5..10).minBy { columns ->
+            val padding = paddingFor(columns)
+            val spacing = spacingFor(columns)
+            val rows = ((numbers.size + columns - 1) / columns).coerceAtLeast(1)
+            val cellWidth = (
+                maxWidth - (padding * 2) - (spacing * (columns - 1))
+            ) / columns
+            val cellHeight = (
+                (maxHeight - (padding * 2) - (spacing * (rows - 1))) / rows
+            ).coerceAtMost(54.dp)
+            abs(cellWidth.value - cellHeight.value)
         }
-        val gridPadding = if (columnCount == 10) 6.dp else 8.dp
-        val gridSpacing = if (columnCount == 10) 4.dp else 6.dp
+        val gridPadding = paddingFor(columnCount)
+        val gridSpacing = spacingFor(columnCount)
         val rowCount = ((numbers.size + columnCount - 1) / columnCount).coerceAtLeast(1)
+        val availableCellWidth = (
+            maxWidth - (gridPadding * 2) - (gridSpacing * (columnCount - 1))
+        ) / columnCount
         val availableCellHeight = (
             maxHeight - (gridPadding * 2) - (gridSpacing * (rowCount - 1))
         ) / rowCount
-        val cellHeight = availableCellHeight.coerceAtMost(if (columnCount == 10) 54.dp else 52.dp)
-        val compactCells = cellHeight < 46.dp
+        val cellHeight = availableCellHeight.coerceAtMost(54.dp)
+        val cellSize = minOf(availableCellWidth, cellHeight)
+        val compactCells = cellHeight < 46.dp || availableCellWidth < 46.dp
         LazyVerticalGrid(
             columns = GridCells.Fixed(columnCount),
             contentPadding = PaddingValues(gridPadding),
@@ -688,16 +701,21 @@ fun NumberGrid(
             modifier = Modifier.fillMaxSize().testTag("number_grid")
         ) {
             items(numbers, key = { it }) { number ->
-                NumberCell(
-                    number = number,
-                    isCompleted = number in selectedNumbers,
-                    isWrong = number == wrongNumber,
-                    enabled = enabled,
-                    boardStyle = boardStyle,
-                    compact = compactCells,
-                    modifier = Modifier.height(cellHeight),
-                    onClick = { onNumberClick(number) }
-                )
+                Box(
+                    modifier = Modifier.fillMaxWidth().height(cellHeight),
+                    contentAlignment = Alignment.Center
+                ) {
+                    NumberCell(
+                        number = number,
+                        isCompleted = number in selectedNumbers,
+                        isWrong = number == wrongNumber,
+                        enabled = enabled,
+                        boardStyle = boardStyle,
+                        compact = compactCells,
+                        modifier = Modifier.size(cellSize),
+                        onClick = { onNumberClick(number) }
+                    )
+                }
             }
         }
     }

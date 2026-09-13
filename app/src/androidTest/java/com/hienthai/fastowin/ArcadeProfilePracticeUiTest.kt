@@ -276,6 +276,34 @@ class ArcadeProfilePracticeUiTest {
     }
 
     @Test
+    fun profileAtLevelOneHundred_showsLocalizedMaximumAndFullProgress() {
+        val profile = profileFixture().copy(
+            progression = profileFixture().progression.copy(
+                level = 100,
+                experiencePoints = 58_410,
+                currentLevelExperience = 1_080,
+                nextLevelExperience = 1_080
+            )
+        )
+        setAdaptiveContent(320.dp, 568.dp, 1f) {
+            ProfileScreen(
+                serverUrl = "",
+                state = GameState(profile = profile),
+                onBack = {}, onRefresh = {}, onOpenMatchDetail = {}, onCloseMatchDetail = {},
+                onEquipCosmetics = { _, _ -> }, onClaimMissionReward = {}, onSave = { _, _ -> },
+                onUploadAvatar = {}, canEdit = true, isAccountLoading = false,
+                accountError = null, accountNotice = null, accountSessions = emptyList(),
+                areSessionsLoading = false, onChangePassword = { _, _ -> }, onDeleteAccount = {},
+                onClearAccountFeedback = {}, onLoadSessions = {}, onRevokeSession = {},
+                onRevokeAllSessions = {}, onLogout = {}, showBackButton = false
+            )
+        }
+
+        composeRule.onNodeWithTag("profile_level_label").assertIsDisplayed()
+        composeRule.onNodeWithText("Cấp tối đa").assertIsDisplayed()
+    }
+
+    @Test
     fun profileEdit_selectingAvatarPreviewsWithoutUploadingUntilSave() {
         var uploadedAvatar: ByteArray? = null
         var uploadCount = 0

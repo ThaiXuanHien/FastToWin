@@ -258,7 +258,7 @@ internal val vietnameseProfileTexts = englishProfileTexts + mapOf(
     TextKey.NotRanked to "Chưa xếp hạng", TextKey.SeasonRewardReceived to "Phần thưởng đã nhận", TextKey.SeasonRewardProcessing to "Phần thưởng mùa đang được xử lý.",
     TextKey.NoPlacementReward to "Chưa đủ {count} trận phân hạng nên mùa này không có thưởng.", TextKey.SeasonProgressPlacement to "Phân hạng {played} trên {required} trận",
     TextKey.HighestTierReached to "Đã đạt bậc cao nhất", TextKey.EloToNextTier to "Còn {count} Elo để lên {tier}", TextKey.HideTierRewards to "Ẩn thưởng các bậc",
-    TextKey.ViewTierRewards to "Xem thưởng các bậc", TextKey.FinishPlacementHint to "Hoàn thành phân hạng để chốt bậc và mở mốc thưởng.",
+    TextKey.ViewTierRewards to "Xem thưởng", TextKey.FinishPlacementHint to "Hoàn thành phân hạng để chốt bậc và mở mốc thưởng.",
     TextKey.SeasonPeakElo to "Elo cao nhất mùa: {elo} • {tier}", TextKey.HeldReward to "Mốc thưởng đang giữ", TextKey.ReachedHighestTier to "Bậc cao nhất đã đạt",
     TextKey.PassedTier to "Đã vượt qua", TextKey.TierStartsAtElo to "Từ {elo} Elo", TextKey.RewardReceiptDescription to "Đã nhận thưởng {season}, bậc {tier}",
     TextKey.SeasonRewardAdded to "Đã cộng vào tài sản", TextKey.SeasonSummaryTitle to "Tổng kết mùa",

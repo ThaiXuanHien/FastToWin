@@ -58,6 +58,7 @@ import com.hienthai.fastowin.ui.components.ArcadePanel
 import com.hienthai.fastowin.ui.components.DEFAULT_ARCADE_PAGE_SIZE
 import com.hienthai.fastowin.ui.components.FastToWinHeader
 import com.hienthai.fastowin.ui.components.FastToWinPullRefresh
+import com.hienthai.fastowin.ui.components.HeaderRefreshAction
 import com.hienthai.fastowin.ui.components.FriendPresenceIndicator
 import com.hienthai.fastowin.ui.components.PlayerAvatar
 import com.hienthai.fastowin.ui.components.SystemBackHandler
@@ -174,7 +175,13 @@ fun FriendsScreen(
                         unreadNotifications = state.unreadNotificationCount,
                         onNotifications = onOpenNotifications,
                         onBack = onBack,
-                        applySafeDrawingInset = false
+                        applySafeDrawingInset = false,
+                        actions = {
+                            HeaderRefreshAction(
+                                isRefreshing = state.isFriendsLoading,
+                                onRefresh = onRefresh
+                            )
+                        }
                     )
                 }
                 LazyColumn(

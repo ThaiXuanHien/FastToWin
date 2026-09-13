@@ -372,6 +372,22 @@ internal fun GameState.withReadySession(playerId: String): GameState {
     )
 }
 
+internal fun GameState.returnHome(): GameState = copy(
+    lobbyStage = LobbyStage.SELECT_MODE,
+    pendingRoomLinkId = null,
+    pendingRoomLinkListVersion = roomListVersion,
+    isSearching = false,
+    isProfileOpen = false,
+    isProfileLoading = false,
+    isLeaderboardOpen = false,
+    isLeaderboardLoading = false,
+    isFriendsOpen = false,
+    isFriendsLoading = false,
+    isClanOpen = false,
+    isNotificationsOpen = false,
+    error = null
+)
+
 internal fun GameState.withPlayQuota(message: ServerMessage.PlayQuotaData): GameState = copy(
     playQuota = message.quota,
     showPlayQuotaExhaustedDialog = showPlayQuotaExhaustedDialog && message.quota.remainingMatches <= 0,

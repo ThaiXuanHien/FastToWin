@@ -24,8 +24,10 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.MonetizationOn
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Payments
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -44,6 +46,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.hienthai.fastowin.localization.TextKey
 import com.hienthai.fastowin.localization.localized
+import com.hienthai.fastowin.platform.platformRefreshInput
 import com.hienthai.fastowin.ui.theme.ArcadePalette
 
 @Composable
@@ -162,6 +165,30 @@ fun ArcadeHeaderIconButton(
         contentColor = ArcadePalette.White
     ) {
         androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) { content() }
+    }
+}
+
+@Composable
+fun HeaderRefreshAction(
+    isRefreshing: Boolean,
+    onRefresh: () -> Unit,
+    visible: Boolean = platformRefreshInput().pointerRefreshEnabled
+) {
+    if (!visible) return
+    ArcadeHeaderIconButton(
+        onClick = onRefresh,
+        enabled = !isRefreshing,
+        modifier = Modifier.testTag(if (isRefreshing) "header_refresh_busy" else "header_refresh")
+    ) {
+        if (isRefreshing) {
+            CircularProgressIndicator(
+                modifier = Modifier.size(20.dp),
+                strokeWidth = 2.dp,
+                color = ArcadePalette.White
+            )
+        } else {
+            Icon(Icons.Default.Refresh, contentDescription = localized(TextKey.Retry))
+        }
     }
 }
 

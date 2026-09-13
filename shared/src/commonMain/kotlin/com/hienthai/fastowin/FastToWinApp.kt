@@ -103,6 +103,7 @@ import com.hienthai.fastowin.state.parsePracticeChallenge
 import com.hienthai.fastowin.data.network.AuthRequestConfigurator
 import com.hienthai.fastowin.data.network.NoOpAuthRequestConfigurator
 import com.hienthai.fastowin.ui.components.FastToWinHeader
+import com.hienthai.fastowin.ui.components.HeaderRefreshAction
 import com.hienthai.fastowin.ui.components.ArcadeBackdrop
 import com.hienthai.fastowin.ui.components.AvatarImageProvider
 import com.hienthai.fastowin.ui.components.SeasonRewardSummaryDialog
@@ -1121,7 +1122,9 @@ private fun GameContent(
                     onLeaderboard = controller::openLeaderboard,
                     onClan = openClanTab,
                     onAccount = openAccountTab,
-                    onNotifications = controller::openNotifications
+                    onNotifications = controller::openNotifications,
+                    isRefreshing = state.isLeaderboardLoading,
+                    onRefresh = controller::openLeaderboard
                 ) { contentModifier -> LeaderboardScreen(
                     state = state,
                     onBack = {
@@ -1145,7 +1148,9 @@ private fun GameContent(
                     onLeaderboard = openLeaderboardTab,
                     onClan = openClanTab,
                     onAccount = controller::openProfile,
-                    onNotifications = controller::openNotifications
+                    onNotifications = controller::openNotifications,
+                    isRefreshing = state.isProfileLoading,
+                    onRefresh = controller::openProfile
                 ) { contentModifier -> ProfileScreen(
                     serverUrl = serverUrl,
                     state = state,
@@ -1296,7 +1301,7 @@ private fun GameContent(
                     onOpenLeaderboard = openLeaderboardTab,
                     onOpenFriends = controller::openFriends,
                     onOpenFriendProfile = controller::openFriendProfile,
-                    onBackToMode = { navigateBack(controller::backToModeSelection) },
+                    onBackToMode = openHome,
                     onLogout = onLogout,
                     isGuest = isGuest,
                     onUpgradeGuest = onUpgradeGuest,
@@ -1416,6 +1421,8 @@ private fun TopLevelTabIfNeeded(
     onClan: () -> Unit,
     onAccount: () -> Unit,
     onNotifications: () -> Unit,
+    isRefreshing: Boolean = false,
+    onRefresh: (() -> Unit)? = null,
     content: @Composable (Modifier) -> Unit
 ) {
     if (!enabled) {
@@ -1435,7 +1442,12 @@ private fun TopLevelTabIfNeeded(
             gems = state.profile?.progression?.gems ?: 0,
             unreadNotifications = state.unreadNotificationCount,
             onNotifications = onNotifications,
-            onBack = null
+            onBack = null,
+            actions = {
+                onRefresh?.let { refresh ->
+                    HeaderRefreshAction(isRefreshing = isRefreshing, onRefresh = refresh)
+                }
+            }
         )
         content(Modifier.weight(1f))
         FastToWinBottomBar(

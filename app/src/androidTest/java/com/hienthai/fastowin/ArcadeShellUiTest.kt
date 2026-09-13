@@ -35,6 +35,7 @@ import com.hienthai.fastowin.state.GameState
 import com.hienthai.fastowin.state.LobbyStage
 import com.hienthai.fastowin.state.PlayerState
 import com.hienthai.fastowin.ui.components.FastToWinHeader
+import com.hienthai.fastowin.ui.components.HeaderRefreshAction
 import com.hienthai.fastowin.ui.screens.LobbyScreen
 import com.hienthai.fastowin.ui.screens.HomeDashboard
 import com.hienthai.fastowin.ui.theme.FastToWinTheme
@@ -81,6 +82,30 @@ class ArcadeShellUiTest {
     }
 
     @Test
+    fun pointerRefresh_isACompactHeaderAction() {
+        var refreshes = 0
+        setAdaptiveContent(320.dp, 568.dp, fontScale = 1f) {
+            FastToWinHeader(
+                title = "Phòng chơi",
+                gold = 0,
+                gems = 0,
+                unreadNotifications = 0,
+                onNotifications = {},
+                actions = {
+                    HeaderRefreshAction(
+                        isRefreshing = false,
+                        onRefresh = { refreshes += 1 },
+                        visible = true
+                    )
+                }
+            )
+        }
+
+        composeRule.onNodeWithTag("header_refresh").assertIsDisplayed().performClick()
+        composeRule.runOnIdle { assertEquals(1, refreshes) }
+    }
+
+    @Test
     fun bottomBar_smallPhoneLargeText_showsFiveTabsAndDispatchesCallbacks() =
         assertBottomBarLayout(320.dp, 568.dp, fontScale = 1.6f, verifyCallbacks = true)
 
@@ -108,7 +133,7 @@ class ArcadeShellUiTest {
         val tierTop = composeRule.onNodeWithTag("home_season_tier", useUnmergedTree = true)
             .fetchSemanticsNode().boundsInRoot.top
         composeRule.runOnIdle {
-            assertTrue(tierTop - headerBottom >= with(composeRule.density) { 8.dp.toPx() })
+            assertTrue(tierTop - headerBottom >= with(composeRule.density) { 12.dp.toPx() })
         }
     }
 
