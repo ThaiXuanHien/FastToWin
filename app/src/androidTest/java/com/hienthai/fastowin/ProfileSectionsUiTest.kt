@@ -315,7 +315,7 @@ class ProfileSectionsUiTest {
         composeRule.onNodeWithTag("profile_section_screen:STATISTICS").assertIsDisplayed()
         composeRule.onNodeWithTag("profile_statistics_content").assertExists()
         composeRule.onNodeWithText("Thống kê theo chế độ").performScrollTo().assertIsDisplayed()
-        composeRule.onNodeWithText("Khởi đầu chiến thắng").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithTag("profile_achievement:FIRST_WIN").performScrollTo().assertIsDisplayed()
     }
 
     @Test

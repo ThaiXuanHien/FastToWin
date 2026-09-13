@@ -1234,7 +1234,12 @@ private fun StatisticsAchievementsSectionContent(profile: PlayerProfileSnapshot)
                             horizontalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
                             achievements.forEach { achievement ->
-                                ArcadePanel(modifier = Modifier.weight(1f), accent = ArcadeGold) {
+                                ArcadePanel(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .testTag("profile_achievement:${achievement.code}"),
+                                    accent = ArcadeGold
+                                ) {
                                     Row(
                                         modifier = Modifier.fillMaxWidth().padding(14.dp),
                                         verticalAlignment = Alignment.CenterVertically,
