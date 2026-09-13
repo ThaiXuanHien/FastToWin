@@ -2,11 +2,15 @@ package com.hienthai.fastowin
 
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.hasContentDescription
+import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performScrollTo
 import com.hienthai.fastowin.protocol.ClanJoinRequestSnapshot
@@ -109,8 +113,11 @@ class ClanScreenTest {
             }
         }
 
-        composeRule.onNodeWithText("Yêu cầu tham gia (1)").assertIsDisplayed()
+        composeRule.onNodeWithTag("clan_detail_list")
+            .performScrollToNode(hasText("Người xin vào"))
         composeRule.onNodeWithText("Người xin vào").assertIsDisplayed()
+        composeRule.onNodeWithTag("clan_detail_list")
+            .performScrollToNode(hasText("Duyệt"))
         composeRule.onNodeWithText("Duyệt").performClick()
         composeRule.runOnIdle {
             assertEquals(Triple("clan-a", "applicant", true), approval)
@@ -239,9 +246,9 @@ class ClanScreenTest {
             }
         }
 
-        composeRule.onNodeWithContentDescription("Mời Thành viên thử rời bang")
-            .performScrollTo()
-            .performClick()
+        composeRule.onNodeWithTag("clan_detail_list")
+            .performScrollToNode(hasContentDescription("Mời Thành viên thử rời bang"))
+        composeRule.onNodeWithContentDescription("Mời Thành viên thử rời bang").performClick()
         composeRule.onNodeWithTag("kick_clan_member_dialog").assertIsDisplayed()
         composeRule.runOnIdle { assertEquals(null, kickedMember) }
 
@@ -288,7 +295,9 @@ class ClanScreenTest {
             }
         }
 
-        composeRule.onNodeWithTag("leave_clan").performScrollTo().performClick()
+        composeRule.onNodeWithTag("clan_detail_list")
+            .performScrollToNode(hasTestTag("leave_clan"))
+        composeRule.onNodeWithTag("leave_clan").performClick()
         composeRule.runOnIdle { assertEquals(false, leftClan) }
         composeRule.onNodeWithTag("leave_clan_confirmation_dialog").assertIsDisplayed()
 

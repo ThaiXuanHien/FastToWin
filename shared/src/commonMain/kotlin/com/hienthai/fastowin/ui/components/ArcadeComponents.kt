@@ -190,7 +190,9 @@ fun ArcadeIconHero(
     ) {
         val stack = maxWidth < 330.dp || LocalDensity.current.fontScale >= 1.4f
         Column(
-            modifier = Modifier.fillMaxWidth(if (stack) 1f else 0.72f),
+            modifier = Modifier
+                .fillMaxWidth(if (stack) 1f else 0.72f)
+                .padding(end = if (stack) 64.dp else 0.dp),
             verticalArrangement = Arrangement.spacedBy(7.dp)
         ) {
             Text(
@@ -211,7 +213,30 @@ fun ArcadeIconHero(
                 color = Color(0xFFE5EDFF)
             )
         }
-        if (!stack) {
+        if (stack) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .size(52.dp)
+                    .rotate(8f)
+                    .background(
+                        Brush.linearGradient(listOf(Color(0xFFFFE36F), Color(0xFFFF8D37))),
+                        RoundedCornerShape(18.dp)
+                    )
+                    .border(2.dp, Color.White.copy(alpha = 0.25f), RoundedCornerShape(18.dp))
+                    .then(
+                        if (onIconClick == null) Modifier else Modifier.clickable(onClick = onIconClick)
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    icon,
+                    contentDescription = iconContentDescription,
+                    tint = ArcadePalette.Navy800,
+                    modifier = Modifier.size(30.dp)
+                )
+            }
+        } else {
             Box(
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
