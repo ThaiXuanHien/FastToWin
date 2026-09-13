@@ -63,7 +63,7 @@ tương ứng đều đã có. Các phần chi tiết ở dưới phải bám th
 - [x] Chuyển nút `Thử lại` cạnh header trên Web thành icon hành động trong header và không làm tràn bố cục.
 - [x] Tăng khoảng cách phía trên phần `Đấu sĩ • Mùa khởi đầu`.
 - [x] Đổi nhãn `Xem thưởng các bậc` thành `Xem thưởng` và giữ trên một dòng.
-- [ ] Thiết kế lại Khung theo cấp/độ hiếm; mọi Khung mới phải có asset PNG đồng nhất với định dạng Khung cũ.
+- [x] Thiết kế lại Khung theo cấp/độ hiếm; mọi Khung mới có asset PNG trong suốt đồng nhất với định dạng Khung cũ.
 - [x] Popup/dialog và nội dung cửa hàng đã có ma trận responsive tự động; vẫn cần smoke test trên thiết bị Web thật.
 
 ### Đa ngôn ngữ
@@ -219,7 +219,7 @@ server; Web production không tự giả lập quảng cáo.
 - [x] Dọn lỗi link phòng khi quay về Trang chủ.
 - [x] Sửa tỷ lệ ô số trên màn hình nhỏ và XP cấp 100.
 - [x] Đưa hành động thử lại Web lên header, rút gọn `Xem thưởng` và chỉnh khoảng cách mùa giải.
-- [ ] Hoàn thiện asset PNG theo cấp/độ hiếm cho đủ 16 Khung.
+- [x] Hoàn thiện asset PNG theo cấp/độ hiếm cho đủ 16 Khung.
 - [ ] Audit chuỗi localization còn sót và xác minh avatar giữa mọi màn.
 - [ ] Viết tài liệu kiến trúc/dịch vụ/chi phí production cho ba mốc tải đã yêu cầu.
 
