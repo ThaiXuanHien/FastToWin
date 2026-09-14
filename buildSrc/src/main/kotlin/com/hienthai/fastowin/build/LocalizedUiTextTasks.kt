@@ -223,13 +223,15 @@ object LocalizedUiTextScanner {
             val visibleLiteralText = literal.literalText.replace(Regex("\\\\."), "")
             val isTechnicalUiLiteral = Regex("[A-Z0-9]+(?:-[A-Z0-9]+)+")
                 .matches(visibleLiteralText) ||
-                visibleLiteralText == "Fast To Win" ||
+                visibleLiteralText.equals("Fast To Win", ignoreCase = true) ||
                 Regex("[A-Za-z]+").findAll(visibleLiteralText)
                     .map { it.value }
                     .toList()
                     .takeIf(List<String>::isNotEmpty)
                     ?.all(technicalUiTokens::contains) == true
-            val isUserFacingText = isUserFacingArgument &&
+            val isLikelyDisplayPhrase = !allowLegacyFallback &&
+                Regex("[A-Z][A-Za-z]*(?:\\s+[A-Za-z][A-Za-z0-9]*)+").matches(visibleLiteralText)
+            val isUserFacingText = (isUserFacingArgument || isLikelyDisplayPhrase) &&
                 visibleLiteralText.any(Char::isLetter) &&
                 !isTechnicalUiLiteral
             !isLegacyFallback && (vietnameseLetter.containsMatchIn(literal.literalText) || isUserFacingText)

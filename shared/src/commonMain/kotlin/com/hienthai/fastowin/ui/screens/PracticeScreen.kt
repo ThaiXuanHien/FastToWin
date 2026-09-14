@@ -306,7 +306,7 @@ private fun PracticeStatus(game: PracticeGameState, compact: Boolean) {
                 )
                 when (game.mode) {
                     GameMode.SURVIVAL -> localized(TextKey.LivesCount, "count" to game.lives)
-                    GameMode.COMBO -> "Combo x${game.combo}"
+                    GameMode.COMBO -> "${localized(TextKey.ComboLabel)} x${game.combo}"
                     GameMode.SPEED_UP -> localized(TextKey.PaceProgress, "current" to game.correctSelections + 1, "total" to GAME_NUMBER_COUNT)
                     else -> null
                 }?.let { supporting ->

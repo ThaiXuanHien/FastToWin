@@ -330,7 +330,7 @@ private fun LiveMetricsBar(state: GameState, onSendEmoji: (String) -> Unit) {
         val leading = when (state.gameMode) {
             com.hienthai.fastowin.navigation.GameMode.SURVIVAL -> localized(TextKey.LivesCount, "count" to state.player.lives)
             com.hienthai.fastowin.navigation.GameMode.SPEED_UP -> localized(TextKey.PaceProgress, "current" to state.player.correctSelections + 1, "total" to GAME_NUMBER_COUNT)
-            else -> "COMBO x${comboMultiplier(state.player.combo)}"
+            else -> "${localized(TextKey.ComboLabel).uppercase()} x${comboMultiplier(state.player.combo)}"
         }
         Surface(
             shape = RoundedCornerShape(11.dp),
