@@ -169,7 +169,7 @@ class AuthController(
                         code = "SESSION_EXPIRED",
                         keyName = null,
                         arguments = emptyMap(),
-                        fallback = "Your session has expired. Please sign in again."
+                        fallback = messageMapper.text(TextKey.ServerSessionExpired)
                     )
                 }
                 expireSession(message)
@@ -350,7 +350,7 @@ class AuthController(
             code = "SESSION_EXPIRED",
             keyName = null,
             arguments = emptyMap(),
-            fallback = "Your session is no longer valid."
+            fallback = messageMapper.text(TextKey.ServerSessionExpired)
         )
     ) {
         val expiredSession = _state.value.session

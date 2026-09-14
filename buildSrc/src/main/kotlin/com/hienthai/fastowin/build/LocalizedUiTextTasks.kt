@@ -216,17 +216,20 @@ object LocalizedUiTextScanner {
                 literal.startOffset >= allowed.startOffset &&
                     literal.endOffsetExclusive <= allowed.endOffsetExclusive
             }
-            val isDirectTextArgument = Regex("\\bText\\s*\\(\\s*$")
+            val isUserFacingArgument = Regex(
+                "(?:\\bText\\s*\\(|\\b(?:contentDescription|fallback)\\s*=)\\s*$"
+            )
                 .containsMatchIn(structuralSource.take(literal.startOffset).takeLast(80))
             val visibleLiteralText = literal.literalText.replace(Regex("\\\\."), "")
             val isTechnicalUiLiteral = Regex("[A-Z0-9]+(?:-[A-Z0-9]+)+")
                 .matches(visibleLiteralText) ||
+                visibleLiteralText == "Fast To Win" ||
                 Regex("[A-Za-z]+").findAll(visibleLiteralText)
                     .map { it.value }
                     .toList()
                     .takeIf(List<String>::isNotEmpty)
                     ?.all(technicalUiTokens::contains) == true
-            val isUserFacingText = isDirectTextArgument &&
+            val isUserFacingText = isUserFacingArgument &&
                 visibleLiteralText.any(Char::isLetter) &&
                 !isTechnicalUiLiteral
             !isLegacyFallback && (vietnameseLetter.containsMatchIn(literal.literalText) || isUserFacingText)
