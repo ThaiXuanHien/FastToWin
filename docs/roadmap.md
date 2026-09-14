@@ -225,11 +225,11 @@ server; Web production không tự giả lập quảng cáo.
 
 **Giai đoạn 6 — screenshot regression cho giao diện 2D Arcade**:
 
-- [ ] Chốt bộ ảnh chuẩn đã được chủ dự án review cho các màn cốt lõi.
-- [ ] Chụp và so sánh tự động trên điện thoại nhỏ, điện thoại lớn và tablet.
-- [ ] Bao phủ ít nhất Home, phòng chơi, ván chơi, kết quả, Profile, Cửa hàng, Xếp hạng, Bang hội, Đấu giải và Thông báo.
-- [ ] Lưu ảnh chênh lệch làm artifact CI để có thể xem trực tiếp khi giao diện thay đổi ngoài ý muốn.
-- [ ] Tách cập nhật ảnh chuẩn thành thao tác có chủ ý, không tự ghi đè khi test thất bại.
+- [x] Chốt bộ ảnh chuẩn đã được chủ dự án review cho các màn cốt lõi.
+- [x] Chụp và so sánh tự động trên điện thoại nhỏ, điện thoại lớn và tablet.
+- [x] Bao phủ ít nhất Home, phòng chơi, ván chơi, kết quả, Profile, Cửa hàng, Xếp hạng, Bang hội, Đấu giải và Thông báo.
+- [x] Lưu ảnh chênh lệch làm artifact CI để có thể xem trực tiếp khi giao diện thay đổi ngoài ý muốn.
+- [x] Tách cập nhật ảnh chuẩn thành thao tác có chủ ý, không tự ghi đè khi test thất bại.
 
 StoreKit/APNs production tiếp tục tạm hoãn vì phụ thuộc tài khoản Apple. Các bản
 dịch fallback tiếng Anh còn lại vẫn cần người bản ngữ kiểm duyệt.
