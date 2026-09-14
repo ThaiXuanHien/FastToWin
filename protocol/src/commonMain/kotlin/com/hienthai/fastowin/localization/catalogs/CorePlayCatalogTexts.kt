@@ -215,7 +215,9 @@ internal val germanCorePlayTexts = mapOf(
     TextKey.RankedMatchmakingHint to "Spieler mit ähnlichem Elo werden bevorzugt.", TextKey.CasualMatchmakingHint to "Spieler im gleichen Modus werden gesucht.",
     TextKey.EloRange to "Elo-Bereich", TextKey.NoEloImpact to "Kein Elo-Einfluss", TextKey.CancelMatchmaking to "SPIELERSUCHE ABBRECHEN",
     TextKey.RoomCount to "{count} Räume", TextKey.NoWaitingRooms to "Keine Räume warten. Erstelle einen oder ziehe zum Aktualisieren nach unten.",
-    TextKey.NoMatchingRooms to "Keine Räume entsprechen diesen Filtern."
+    TextKey.NoMatchingRooms to "Keine Räume entsprechen diesen Filtern.", TextKey.Reconnecting to "Verbindung wird wiederhergestellt…",
+    TextKey.AuthenticatingSession to "Sitzung wird authentifiziert…", TextKey.Connecting to "Verbindung wird hergestellt…",
+    TextKey.RoomLinkUnavailable to "Der verknüpfte Raum existiert nicht mehr oder ist voll."
 )
 
 internal val japaneseCorePlayTexts = mapOf(
@@ -250,7 +252,9 @@ internal val japaneseCorePlayTexts = mapOf(
     TextKey.PublicRooms to "公開ルーム", TextKey.FindOpponent to "ぴったりの対戦相手を探す",
     TextKey.PublicRoomsDescription to "非公開ルームを作成するか、待機中のルームに参加しましょう。", TextKey.SearchRooms to "ルーム名またはホスト名を検索",
     TextKey.All to "すべて", TextKey.Waiting to "待機中", TextKey.RoomCount to "{count}ルーム",
-    TextKey.NoWaitingRooms to "待機中のルームはありません。作成するか、下に引いて更新してください。", TextKey.NoMatchingRooms to "条件に一致するルームがありません。"
+    TextKey.NoWaitingRooms to "待機中のルームはありません。作成するか、下に引いて更新してください。", TextKey.NoMatchingRooms to "条件に一致するルームがありません。",
+    TextKey.Reconnecting to "再接続中…", TextKey.AuthenticatingSession to "セッションを認証しています…", TextKey.Connecting to "接続中…",
+    TextKey.RoomLinkUnavailable to "リンク先のルームは存在しないか、満員です。"
 )
 
 internal val russianCorePlayTexts = mapOf(
@@ -287,7 +291,9 @@ internal val russianCorePlayTexts = mapOf(
     TextKey.PublicRoomsDescription to "Создайте закрытую комнату или войдите в комнату ожидания.", TextKey.SearchRooms to "Поиск комнаты или ведущего",
     TextKey.All to "Все", TextKey.Waiting to "Ожидание", TextKey.RoomCount to "Комнат: {count}",
     TextKey.NoWaitingRooms to "Нет комнат в ожидании. Создайте комнату или потяните вниз для обновления.",
-    TextKey.NoMatchingRooms to "Нет комнат, соответствующих этим фильтрам."
+    TextKey.NoMatchingRooms to "Нет комнат, соответствующих этим фильтрам.", TextKey.Reconnecting to "Повторное подключение…",
+    TextKey.AuthenticatingSession to "Проверка сеанса…", TextKey.Connecting to "Подключение…",
+    TextKey.RoomLinkUnavailable to "Комната по ссылке больше не существует или заполнена."
 )
 
 internal val thaiCorePlayTexts = mapOf(
@@ -327,7 +333,9 @@ internal val thaiCorePlayTexts = mapOf(
     TextKey.PublicRooms to "ห้องสาธารณะ", TextKey.FindOpponent to "ค้นหาคู่แข่งที่เหมาะสม",
     TextKey.PublicRoomsDescription to "สร้างห้องส่วนตัวหรือเข้าร่วมห้องที่กำลังรอ", TextKey.SearchRooms to "ค้นหาห้องหรือชื่อโฮสต์",
     TextKey.All to "ทั้งหมด", TextKey.Waiting to "กำลังรอ", TextKey.RoomCount to "{count} ห้อง",
-    TextKey.NoWaitingRooms to "ไม่มีห้องที่กำลังรอ สร้างห้องใหม่หรือดึงลงเพื่อรีเฟรช", TextKey.NoMatchingRooms to "ไม่มีห้องที่ตรงกับตัวกรองนี้"
+    TextKey.NoWaitingRooms to "ไม่มีห้องที่กำลังรอ สร้างห้องใหม่หรือดึงลงเพื่อรีเฟรช", TextKey.NoMatchingRooms to "ไม่มีห้องที่ตรงกับตัวกรองนี้",
+    TextKey.Reconnecting to "กำลังเชื่อมต่อใหม่…", TextKey.AuthenticatingSession to "กำลังยืนยันเซสชัน…", TextKey.Connecting to "กำลังเชื่อมต่อ…",
+    TextKey.RoomLinkUnavailable to "ห้องจากลิงก์ไม่มีอยู่แล้วหรือเต็ม"
 )
 
 internal val simplifiedChineseCorePlayTexts = mapOf(
@@ -354,7 +362,9 @@ internal val simplifiedChineseCorePlayTexts = mapOf(
     TextKey.EloRange to "Elo 范围", TextKey.NoEloImpact to "不影响 Elo", TextKey.CancelMatchmaking to "取消匹配",
     TextKey.PublicRooms to "公开房间", TextKey.FindOpponent to "寻找合适的对手", TextKey.PublicRoomsDescription to "创建私密房间或加入等待中的房间。",
     TextKey.SearchRooms to "搜索房间或房主名称", TextKey.All to "全部", TextKey.Waiting to "等待中", TextKey.RoomCount to "{count} 个房间",
-    TextKey.NoWaitingRooms to "暂无等待中的房间。请创建一个或下拉刷新。", TextKey.NoMatchingRooms to "没有符合筛选条件的房间。"
+    TextKey.NoWaitingRooms to "暂无等待中的房间。请创建一个或下拉刷新。", TextKey.NoMatchingRooms to "没有符合筛选条件的房间。",
+    TextKey.Reconnecting to "正在重新连接…", TextKey.AuthenticatingSession to "正在验证会话…", TextKey.Connecting to "正在连接…",
+    TextKey.RoomLinkUnavailable to "链接中的房间已不存在或已满。"
 )
 internal val koreanCorePlayTexts = mapOf(
     TextKey.WaitHostStart to "방장이 경기를 시작할 때까지 기다리세요.", TextKey.CancelReady to "준비 취소", TextKey.ReadyAction to "준비",
@@ -380,7 +390,9 @@ internal val koreanCorePlayTexts = mapOf(
     TextKey.EloRange to "Elo 범위", TextKey.NoEloImpact to "Elo에 영향 없음", TextKey.CancelMatchmaking to "매칭 취소",
     TextKey.PublicRooms to "공개 방", TextKey.FindOpponent to "알맞은 상대 찾기", TextKey.PublicRoomsDescription to "비공개 방을 만들거나 대기 중인 방에 참가하세요.",
     TextKey.SearchRooms to "방 또는 방장 이름 검색", TextKey.All to "전체", TextKey.Waiting to "대기 중", TextKey.RoomCount to "방 {count}개",
-    TextKey.NoWaitingRooms to "대기 중인 방이 없습니다. 새로 만들거나 아래로 당겨 새로고침하세요.", TextKey.NoMatchingRooms to "필터와 일치하는 방이 없습니다."
+    TextKey.NoWaitingRooms to "대기 중인 방이 없습니다. 새로 만들거나 아래로 당겨 새로고침하세요.", TextKey.NoMatchingRooms to "필터와 일치하는 방이 없습니다.",
+    TextKey.Reconnecting to "재연결 중…", TextKey.AuthenticatingSession to "세션 인증 중…", TextKey.Connecting to "연결 중…",
+    TextKey.RoomLinkUnavailable to "링크된 방이 더 이상 존재하지 않거나 가득 찼습니다."
 )
 internal val spanishCorePlayTexts = mapOf(
     TextKey.WaitHostStart to "Espera a que el anfitrión inicie la partida.", TextKey.CancelReady to "CANCELAR LISTO", TextKey.ReadyAction to "LISTO",
@@ -409,7 +421,9 @@ internal val spanishCorePlayTexts = mapOf(
     TextKey.PublicRoomsDescription to "Crea una sala privada o únete a una sala en espera.", TextKey.SearchRooms to "Buscar sala o anfitrión",
     TextKey.All to "Todas", TextKey.Waiting to "En espera", TextKey.RoomCount to "{count} salas",
     TextKey.NoWaitingRooms to "No hay salas en espera. Crea una o desliza hacia abajo para actualizar.",
-    TextKey.NoMatchingRooms to "No hay salas que coincidan con estos filtros."
+    TextKey.NoMatchingRooms to "No hay salas que coincidan con estos filtros.", TextKey.Reconnecting to "Reconectando…",
+    TextKey.AuthenticatingSession to "Autenticando sesión…", TextKey.Connecting to "Conectando…",
+    TextKey.RoomLinkUnavailable to "La sala del enlace ya no existe o está llena."
 )
 internal val brazilianPortugueseCorePlayTexts = mapOf(
     TextKey.WaitHostStart to "Aguarde o anfitrião iniciar a partida.", TextKey.CancelReady to "CANCELAR PRONTO", TextKey.ReadyAction to "PRONTO",
@@ -438,7 +452,9 @@ internal val brazilianPortugueseCorePlayTexts = mapOf(
     TextKey.PublicRoomsDescription to "Crie uma sala privada ou entre em uma sala em espera.", TextKey.SearchRooms to "Buscar sala ou anfitrião",
     TextKey.All to "Todas", TextKey.Waiting to "Aguardando", TextKey.RoomCount to "{count} salas",
     TextKey.NoWaitingRooms to "Nenhuma sala está aguardando. Crie uma ou puxe para atualizar.",
-    TextKey.NoMatchingRooms to "Nenhuma sala corresponde a estes filtros."
+    TextKey.NoMatchingRooms to "Nenhuma sala corresponde a estes filtros.", TextKey.Reconnecting to "Reconectando…",
+    TextKey.AuthenticatingSession to "Autenticando sessão…", TextKey.Connecting to "Conectando…",
+    TextKey.RoomLinkUnavailable to "A sala do link não existe mais ou está cheia."
 )
 internal val frenchCorePlayTexts = mapOf(
     TextKey.WaitHostStart to "Attends que l’hôte lance la partie.", TextKey.CancelReady to "ANNULER PRÊT", TextKey.ReadyAction to "PRÊT",
@@ -467,7 +483,9 @@ internal val frenchCorePlayTexts = mapOf(
     TextKey.PublicRoomsDescription to "Crée un salon privé ou rejoins un salon en attente.", TextKey.SearchRooms to "Rechercher un salon ou un hôte",
     TextKey.All to "Tous", TextKey.Waiting to "En attente", TextKey.RoomCount to "{count} salons",
     TextKey.NoWaitingRooms to "Aucun salon en attente. Crée-en un ou tire vers le bas pour actualiser.",
-    TextKey.NoMatchingRooms to "Aucun salon ne correspond à ces filtres."
+    TextKey.NoMatchingRooms to "Aucun salon ne correspond à ces filtres.", TextKey.Reconnecting to "Reconnexion…",
+    TextKey.AuthenticatingSession to "Authentification de la session…", TextKey.Connecting to "Connexion…",
+    TextKey.RoomLinkUnavailable to "Le salon lié n’existe plus ou est complet."
 )
 internal val indonesianCorePlayTexts = mapOf(
     TextKey.WaitHostStart to "Tunggu host memulai pertandingan.", TextKey.CancelReady to "BATAL SIAP", TextKey.ReadyAction to "SIAP",
@@ -496,5 +514,7 @@ internal val indonesianCorePlayTexts = mapOf(
     TextKey.PublicRoomsDescription to "Buat ruang privat atau gabung ke ruang yang sedang menunggu.", TextKey.SearchRooms to "Cari ruang atau nama host",
     TextKey.All to "Semua", TextKey.Waiting to "Menunggu", TextKey.RoomCount to "{count} ruang",
     TextKey.NoWaitingRooms to "Tidak ada ruang yang sedang menunggu. Buat ruang atau tarik ke bawah untuk menyegarkan.",
-    TextKey.NoMatchingRooms to "Tidak ada ruang yang cocok dengan filter ini."
+    TextKey.NoMatchingRooms to "Tidak ada ruang yang cocok dengan filter ini.", TextKey.Reconnecting to "Menghubungkan kembali…",
+    TextKey.AuthenticatingSession to "Mengautentikasi sesi…", TextKey.Connecting to "Menghubungkan…",
+    TextKey.RoomLinkUnavailable to "Ruang pada tautan sudah tidak ada atau penuh."
 )

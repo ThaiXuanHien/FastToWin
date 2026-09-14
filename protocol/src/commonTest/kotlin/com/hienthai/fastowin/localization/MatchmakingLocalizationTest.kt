@@ -70,4 +70,33 @@ class MatchmakingLocalizationTest {
             assertEquals(translations, keys.map(catalog.texts::getValue), language.code)
         }
     }
+
+    @Test
+    fun `room connection progress and invalid link resolve explicitly in all twelve languages`() {
+        val expected = mapOf(
+            AppLanguage.ENGLISH to listOf("Reconnecting…", "Authenticating session…", "Connecting…", "The linked room no longer exists or is full."),
+            AppLanguage.VIETNAMESE to listOf("Đang kết nối lại…", "Đang xác thực phiên chơi…", "Đang kết nối…", "Phòng trong liên kết không còn tồn tại hoặc đã đủ người."),
+            AppLanguage.SIMPLIFIED_CHINESE to listOf("正在重新连接…", "正在验证会话…", "正在连接…", "链接中的房间已不存在或已满。"),
+            AppLanguage.JAPANESE to listOf("再接続中…", "セッションを認証しています…", "接続中…", "リンク先のルームは存在しないか、満員です。"),
+            AppLanguage.KOREAN to listOf("재연결 중…", "세션 인증 중…", "연결 중…", "링크된 방이 더 이상 존재하지 않거나 가득 찼습니다."),
+            AppLanguage.SPANISH to listOf("Reconectando…", "Autenticando sesión…", "Conectando…", "La sala del enlace ya no existe o está llena."),
+            AppLanguage.BRAZILIAN_PORTUGUESE to listOf("Reconectando…", "Autenticando sessão…", "Conectando…", "A sala do link não existe mais ou está cheia."),
+            AppLanguage.FRENCH to listOf("Reconnexion…", "Authentification de la session…", "Connexion…", "Le salon lié n’existe plus ou est complet."),
+            AppLanguage.GERMAN to listOf("Verbindung wird wiederhergestellt…", "Sitzung wird authentifiziert…", "Verbindung wird hergestellt…", "Der verknüpfte Raum existiert nicht mehr oder ist voll."),
+            AppLanguage.INDONESIAN to listOf("Menghubungkan kembali…", "Mengautentikasi sesi…", "Menghubungkan…", "Ruang pada tautan sudah tidak ada atau penuh."),
+            AppLanguage.THAI to listOf("กำลังเชื่อมต่อใหม่…", "กำลังยืนยันเซสชัน…", "กำลังเชื่อมต่อ…", "ห้องจากลิงก์ไม่มีอยู่แล้วหรือเต็ม"),
+            AppLanguage.RUSSIAN to listOf("Повторное подключение…", "Проверка сеанса…", "Подключение…", "Комната по ссылке больше не существует или заполнена."),
+        )
+        val keys = listOf(
+            TextKey.Reconnecting,
+            TextKey.AuthenticatingSession,
+            TextKey.Connecting,
+            TextKey.RoomLinkUnavailable,
+        )
+
+        expected.forEach { (language, translations) ->
+            val catalog = allLocalizationCatalogs.getValue(language)
+            assertEquals(translations, keys.map(catalog.texts::getValue), language.code)
+        }
+    }
 }
