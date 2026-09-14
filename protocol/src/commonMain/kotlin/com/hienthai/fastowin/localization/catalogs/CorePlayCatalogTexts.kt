@@ -190,7 +190,11 @@ internal val vietnameseCorePlayTexts = mapOf(
 internal val germanCorePlayTexts = mapOf(
     TextKey.GameRooms to "Spielräume", TextKey.PublicRooms to "ÖFFENTLICHE RÄUME", TextKey.FindOpponent to "Passenden Gegner finden",
     TextKey.PublicRoomsDescription to "Erstelle einen privaten Raum oder tritt einem offenen Raum bei.", TextKey.CreateRoom to "Raum erstellen",
-    TextKey.JoinRoom to "Raum beitreten", TextKey.All to "Alle", TextKey.Waiting to "Wartend", TextKey.SearchRooms to "Raum oder Host suchen"
+    TextKey.JoinRoom to "Raum beitreten", TextKey.All to "Alle", TextKey.Waiting to "Wartend", TextKey.SearchRooms to "Raum oder Host suchen",
+    TextKey.WaitHostStart to "Warte, bis der Host das Match startet.", TextKey.CancelReady to "BEREITSCHAFT AUFHEBEN",
+    TextKey.ReadyAction to "BEREIT", TextKey.WaitingForReady to "Warten, bis alle bereit sind…",
+    TextKey.InviteFriends to "FREUNDE EINLADEN", TextKey.Kick to "ENTFERNEN", TextKey.CloseRoom to "RAUM SCHLIESSEN",
+    TextKey.LeaveRoom to "RAUM VERLASSEN", TextKey.ReadyStatus to "BEREIT", TextKey.WaitingStatus to "WARTET"
 )
 
 internal val japaneseCorePlayTexts = mapOf(
@@ -198,7 +202,11 @@ internal val japaneseCorePlayTexts = mapOf(
     TextKey.NextNumber to "次の数字", TextKey.ExitMatchTitle to "対戦を終了しますか？", TextKey.ExitMatch to "対戦を終了",
     TextKey.ContinuePlaying to "プレイを続ける", TextKey.GameDefaultRoom to "50数字対戦", TextKey.SendReaction to "リアクションを送る",
     TextKey.CorrectWrongSummary to "正解 {correct}  ·  ミス {wrong}", TextKey.Measuring to "計測中", TextKey.YourTeam to "あなたのチーム",
-    TextKey.OpponentTeam to "相手チーム", TextKey.OpponentLabel to "対戦相手", TextKey.LocalPlayerLabel to "あなた"
+    TextKey.OpponentTeam to "相手チーム", TextKey.OpponentLabel to "対戦相手", TextKey.LocalPlayerLabel to "あなた",
+    TextKey.WaitHostStart to "ホストが対戦を開始するまでお待ちください。", TextKey.CancelReady to "準備を解除",
+    TextKey.ReadyAction to "準備完了", TextKey.WaitingForReady to "全員の準備完了を待っています…",
+    TextKey.InviteFriends to "フレンドを招待", TextKey.Kick to "退出させる", TextKey.CloseRoom to "ルームを閉じる",
+    TextKey.LeaveRoom to "ルームを退出", TextKey.ReadyStatus to "準備完了", TextKey.WaitingStatus to "待機中"
 )
 
 internal val russianCorePlayTexts = mapOf(
@@ -207,7 +215,11 @@ internal val russianCorePlayTexts = mapOf(
     TextKey.ReturnToLobby to "Вернуться в лобби", TextKey.Draw to "Ничья", TextKey.Win to "Победа", TextKey.Loss to "Поражение",
     TextKey.YourSummary to "Ваш результат", TextKey.AverageReaction to "Средняя реакция", TextKey.Accuracy to "Точность",
     TextKey.PaceAnalysis to "Анализ темпа", TextKey.Fastest to "Самый быстрый", TextKey.Slowest to "Самый медленный",
-    TextKey.Rematch to "Реванш", TextKey.InviteRematch to "Предложить реванш", TextKey.MatchReward to "Награда за матч"
+    TextKey.Rematch to "Реванш", TextKey.InviteRematch to "Предложить реванш", TextKey.MatchReward to "Награда за матч",
+    TextKey.WaitHostStart to "Дождитесь, пока ведущий начнёт матч.", TextKey.CancelReady to "ОТМЕНИТЬ ГОТОВНОСТЬ",
+    TextKey.ReadyAction to "ГОТОВ", TextKey.WaitingForReady to "Ожидание готовности всех игроков…",
+    TextKey.InviteFriends to "ПРИГЛАСИТЬ ДРУЗЕЙ", TextKey.Kick to "ИСКЛЮЧИТЬ", TextKey.CloseRoom to "ЗАКРЫТЬ КОМНАТУ",
+    TextKey.LeaveRoom to "ПОКИНУТЬ КОМНАТУ", TextKey.ReadyStatus to "ГОТОВ", TextKey.WaitingStatus to "ОЖИДАНИЕ"
 )
 
 internal val thaiCorePlayTexts = mapOf(
@@ -221,12 +233,39 @@ internal val thaiCorePlayTexts = mapOf(
     TextKey.AveragePerNumber to "เฉลี่ยต่อตัวเลข", TextKey.PracticeHeroTitle to "ฝึกออฟไลน์",
     TextKey.PracticeHeroDescription to "ฝึกการตอบสนองทุกวันโดยไม่กระทบ Elo", TextKey.PracticeNoServerNeeded to "ไม่กระทบ Elo และไม่ต้องเชื่อมต่อเซิร์ฟเวอร์",
     TextKey.StartNewPractice to "เริ่มฝึกใหม่", TextKey.HaveChallengeCode to "มีรหัสชาเลนจ์ไหม?", TextKey.PlayChallenge to "เล่นชาเลนจ์",
-    TextKey.InvalidChallengeCode to "รหัสไม่ถูกต้องหรือพิมพ์ผิด"
+    TextKey.InvalidChallengeCode to "รหัสไม่ถูกต้องหรือพิมพ์ผิด", TextKey.WaitHostStart to "รอให้โฮสต์เริ่มการแข่งขัน",
+    TextKey.CancelReady to "ยกเลิกพร้อม", TextKey.ReadyAction to "พร้อม", TextKey.WaitingForReady to "กำลังรอให้ทุกคนพร้อม…",
+    TextKey.InviteFriends to "เชิญเพื่อน", TextKey.Kick to "นำออก", TextKey.CloseRoom to "ปิดห้อง",
+    TextKey.LeaveRoom to "ออกจากห้อง", TextKey.ReadyStatus to "พร้อม", TextKey.WaitingStatus to "รอ"
 )
 
-internal val simplifiedChineseCorePlayTexts = emptyMap<TextKey, String>()
-internal val koreanCorePlayTexts = emptyMap<TextKey, String>()
-internal val spanishCorePlayTexts = emptyMap<TextKey, String>()
-internal val brazilianPortugueseCorePlayTexts = emptyMap<TextKey, String>()
-internal val frenchCorePlayTexts = emptyMap<TextKey, String>()
-internal val indonesianCorePlayTexts = emptyMap<TextKey, String>()
+internal val simplifiedChineseCorePlayTexts = mapOf(
+    TextKey.WaitHostStart to "等待房主开始比赛。", TextKey.CancelReady to "取消准备", TextKey.ReadyAction to "准备",
+    TextKey.WaitingForReady to "等待所有人准备…", TextKey.InviteFriends to "邀请好友", TextKey.Kick to "踢出",
+    TextKey.CloseRoom to "关闭房间", TextKey.LeaveRoom to "离开房间", TextKey.ReadyStatus to "已准备", TextKey.WaitingStatus to "等待中"
+)
+internal val koreanCorePlayTexts = mapOf(
+    TextKey.WaitHostStart to "방장이 경기를 시작할 때까지 기다리세요.", TextKey.CancelReady to "준비 취소", TextKey.ReadyAction to "준비",
+    TextKey.WaitingForReady to "모두가 준비되기를 기다리는 중…", TextKey.InviteFriends to "친구 초대", TextKey.Kick to "내보내기",
+    TextKey.CloseRoom to "방 닫기", TextKey.LeaveRoom to "방 나가기", TextKey.ReadyStatus to "준비 완료", TextKey.WaitingStatus to "대기 중"
+)
+internal val spanishCorePlayTexts = mapOf(
+    TextKey.WaitHostStart to "Espera a que el anfitrión inicie la partida.", TextKey.CancelReady to "CANCELAR LISTO", TextKey.ReadyAction to "LISTO",
+    TextKey.WaitingForReady to "Esperando a que todos estén listos…", TextKey.InviteFriends to "INVITAR AMIGOS", TextKey.Kick to "EXPULSAR",
+    TextKey.CloseRoom to "CERRAR SALA", TextKey.LeaveRoom to "SALIR DE LA SALA", TextKey.ReadyStatus to "LISTO", TextKey.WaitingStatus to "EN ESPERA"
+)
+internal val brazilianPortugueseCorePlayTexts = mapOf(
+    TextKey.WaitHostStart to "Aguarde o anfitrião iniciar a partida.", TextKey.CancelReady to "CANCELAR PRONTO", TextKey.ReadyAction to "PRONTO",
+    TextKey.WaitingForReady to "Aguardando todos ficarem prontos…", TextKey.InviteFriends to "CONVIDAR AMIGOS", TextKey.Kick to "EXPULSAR",
+    TextKey.CloseRoom to "FECHAR SALA", TextKey.LeaveRoom to "SAIR DA SALA", TextKey.ReadyStatus to "PRONTO", TextKey.WaitingStatus to "AGUARDANDO"
+)
+internal val frenchCorePlayTexts = mapOf(
+    TextKey.WaitHostStart to "Attends que l’hôte lance la partie.", TextKey.CancelReady to "ANNULER PRÊT", TextKey.ReadyAction to "PRÊT",
+    TextKey.WaitingForReady to "En attente que tout le monde soit prêt…", TextKey.InviteFriends to "INVITER DES AMIS", TextKey.Kick to "EXCLURE",
+    TextKey.CloseRoom to "FERMER LE SALON", TextKey.LeaveRoom to "QUITTER LE SALON", TextKey.ReadyStatus to "PRÊT", TextKey.WaitingStatus to "EN ATTENTE"
+)
+internal val indonesianCorePlayTexts = mapOf(
+    TextKey.WaitHostStart to "Tunggu host memulai pertandingan.", TextKey.CancelReady to "BATAL SIAP", TextKey.ReadyAction to "SIAP",
+    TextKey.WaitingForReady to "Menunggu semua pemain siap…", TextKey.InviteFriends to "UNDANG TEMAN", TextKey.Kick to "KELUARKAN",
+    TextKey.CloseRoom to "TUTUP RUANG", TextKey.LeaveRoom to "KELUAR DARI RUANG", TextKey.ReadyStatus to "SIAP", TextKey.WaitingStatus to "MENUNGGU"
+)
