@@ -132,4 +132,35 @@ class SocialScreenLocalizationTest {
             assertEquals(translations, keys.map(catalog.texts::getValue), language.code)
         }
     }
+
+    @Test
+    fun `clan donation summary resolves explicitly in all twelve languages`() {
+        val expected = mapOf(
+            AppLanguage.ENGLISH to listOf("CLAN PROGRESS", "DONATE", "Contribute Gold or Gems to grow your clan.", "Balance: {amount} {currency}", "Clan XP gained: {xp}", "Your contribution"),
+            AppLanguage.VIETNAMESE to listOf("TIẾN TRÌNH BANG", "QUYÊN GÓP", "Góp Vàng hoặc Gem để cùng phát triển bang hội.", "Số dư: {amount} {currency}", "Bang nhận {xp} XP", "Bạn đã góp"),
+            AppLanguage.SIMPLIFIED_CHINESE to listOf("战队进度", "捐献", "捐献金币或宝石，助力战队成长。", "余额：{amount} {currency}", "获得战队经验：{xp}", "你的贡献"),
+            AppLanguage.JAPANESE to listOf("クラン進捗", "寄付", "ゴールドまたはジェムを寄付してクランを成長させましょう。", "残高：{amount} {currency}", "獲得クランXP：{xp}", "あなたの貢献"),
+            AppLanguage.KOREAN to listOf("클랜 진행도", "기부", "골드 또는 젬을 기부해 클랜을 성장시키세요.", "잔액: {amount} {currency}", "획득 클랜 XP: {xp}", "나의 기여"),
+            AppLanguage.SPANISH to listOf("PROGRESO DEL CLAN", "DONAR", "Aporta oro o gemas para hacer crecer tu clan.", "Saldo: {amount} {currency}", "XP de clan obtenida: {xp}", "Tu contribución"),
+            AppLanguage.BRAZILIAN_PORTUGUESE to listOf("PROGRESSO DO CLÃ", "DOAR", "Contribua com Ouro ou Gemas para fortalecer seu clã.", "Saldo: {amount} {currency}", "XP do clã recebida: {xp}", "Sua contribuição"),
+            AppLanguage.FRENCH to listOf("PROGRESSION DU CLAN", "DONNER", "Donne de l’Or ou des Gemmes pour développer ton clan.", "Solde : {amount} {currency}", "XP de clan gagnée : {xp}", "Ta contribution"),
+            AppLanguage.GERMAN to listOf("CLANFORTSCHRITT", "SPENDEN", "Spende Gold oder Juwelen, um deinen Clan zu stärken.", "Guthaben: {amount} {currency}", "Erhaltene Clan-XP: {xp}", "Dein Beitrag"),
+            AppLanguage.INDONESIAN to listOf("PROGRES KLAN", "DONASI", "Sumbangkan Emas atau Gem untuk mengembangkan klanmu.", "Saldo: {amount} {currency}", "XP klan diperoleh: {xp}", "Kontribusimu"),
+            AppLanguage.THAI to listOf("ความคืบหน้าแคลน", "บริจาค", "บริจาคทองหรือเจมเพื่อพัฒนาแคลนของคุณ", "ยอดคงเหลือ: {amount} {currency}", "XP แคลนที่ได้รับ: {xp}", "ผลงานของคุณ"),
+            AppLanguage.RUSSIAN to listOf("ПРОГРЕСС КЛАНА", "ПОЖЕРТВОВАТЬ", "Жертвуйте золото или кристаллы для развития клана.", "Баланс: {amount} {currency}", "Получено опыта клана: {xp}", "Ваш вклад"),
+        )
+        val keys = listOf(
+            TextKey.ClanProgress,
+            TextKey.DonateToClan,
+            TextKey.DonateToClanDescription,
+            TextKey.DonationBalance,
+            TextKey.DonationXpPreview,
+            TextKey.YourContribution,
+        )
+
+        expected.forEach { (language, translations) ->
+            val catalog = allLocalizationCatalogs.getValue(language)
+            assertEquals(translations, keys.map(catalog.texts::getValue), language.code)
+        }
+    }
 }

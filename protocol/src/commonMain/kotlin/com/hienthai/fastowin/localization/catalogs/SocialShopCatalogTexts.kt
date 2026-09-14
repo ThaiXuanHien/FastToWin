@@ -272,6 +272,9 @@ internal val germanSocialShopTexts = englishSocialShopTexts + mapOf(
     TextKey.NoClansFoundDescription to "Versuche ein anderes Stichwort oder erstelle deinen eigenen Clan.",
     TextKey.KnockoutArenaDescription to "Versammle 4, 8 oder 16 Teilnehmer und kämpfe um den Pokal.",
     TextKey.EmptyInboxDescription to "Einladungen, Belohnungen und Neuigkeiten erscheinen hier.", TextKey.RestockingDescription to "Neue Gegenstände sind bald verfügbar.",
+    TextKey.ClanProgress to "CLANFORTSCHRITT", TextKey.DonateToClan to "SPENDEN",
+    TextKey.DonateToClanDescription to "Spende Gold oder Juwelen, um deinen Clan zu stärken.",
+    TextKey.DonationBalance to "Guthaben: {amount} {currency}", TextKey.DonationXpPreview to "Erhaltene Clan-XP: {xp}", TextKey.YourContribution to "Dein Beitrag",
     TextKey.PlayerCodeExample to "z. B. FTW8X2Q", TextKey.YourSquad to "Dein Team", TextKey.FriendList to "Freunde", TextKey.ClanTogetherTitle to "Gemeinsam antreten", TextKey.ExploreClans to "Clans entdecken", TextKey.FameRace to "Rennen um Ruhm", TextKey.CurrentSeason to "Aktuelle Saison", TextKey.KnockoutArena to "K.-o.-Arena", TextKey.RecentTournaments to "Letzte Turniere", TextKey.NotificationsHero to "Neuigkeiten für dich", TextKey.EmptyInbox to "Dein Postfach ist leer", TextKey.NumberSkins to "Zahlenflächen", TextKey.NumberBoards to "Zahlenbretter", TextKey.GemVault to "Gem-Tresor", TextKey.ArcadeVault to "Arcade-Tresor", TextKey.Restocking to "Nachschub unterwegs", TextKey.Equip to "AUSRÜSTEN"
 )
 internal val japaneseSocialShopTexts = englishSocialShopTexts + mapOf(
@@ -291,6 +294,9 @@ internal val japaneseSocialShopTexts = englishSocialShopTexts + mapOf(
     TextKey.NoClansFoundDescription to "別のキーワードを試すか、自分のクランを作成してください。",
     TextKey.KnockoutArenaDescription to "4人、8人、16人の挑戦者を集め、優勝を目指しましょう。",
     TextKey.EmptyInboxDescription to "招待、報酬、新着情報がここに表示されます。", TextKey.RestockingDescription to "新しい商品がまもなく登場します。",
+    TextKey.ClanProgress to "クラン進捗", TextKey.DonateToClan to "寄付",
+    TextKey.DonateToClanDescription to "ゴールドまたはジェムを寄付してクランを成長させましょう。",
+    TextKey.DonationBalance to "残高：{amount} {currency}", TextKey.DonationXpPreview to "獲得クランXP：{xp}", TextKey.YourContribution to "あなたの貢献",
     TextKey.PlayerCodeExample to "例：FTW8X2Q", TextKey.YourSquad to "あなたのチーム", TextKey.FriendList to "フレンド", TextKey.ClanTogetherTitle to "仲間と挑戦", TextKey.ExploreClans to "クランを探す", TextKey.FameRace to "栄光へのレース", TextKey.CurrentSeason to "今シーズン", TextKey.KnockoutArena to "勝ち抜きアリーナ", TextKey.RecentTournaments to "最近の大会", TextKey.NotificationsHero to "あなたへのお知らせ", TextKey.EmptyInbox to "通知はありません", TextKey.NumberSkins to "数字スキン", TextKey.NumberBoards to "数字ボード", TextKey.GemVault to "ジェム保管庫", TextKey.ArcadeVault to "アーケード保管庫", TextKey.Restocking to "入荷準備中", TextKey.Equip to "装備"
 )
 internal val simplifiedChineseSocialShopTexts = englishSocialShopTexts + mapOf(
@@ -310,6 +316,9 @@ internal val simplifiedChineseSocialShopTexts = englishSocialShopTexts + mapOf(
     TextKey.NoClansFoundDescription to "尝试其他关键词，或创建自己的战队。",
     TextKey.KnockoutArenaDescription to "召集4、8或16名选手，向奖杯发起冲击。",
     TextKey.EmptyInboxDescription to "邀请、奖励和新消息会显示在这里。", TextKey.RestockingDescription to "新商品即将上架。",
+    TextKey.ClanProgress to "战队进度", TextKey.DonateToClan to "捐献",
+    TextKey.DonateToClanDescription to "捐献金币或宝石，助力战队成长。",
+    TextKey.DonationBalance to "余额：{amount} {currency}", TextKey.DonationXpPreview to "获得战队经验：{xp}", TextKey.YourContribution to "你的贡献",
     TextKey.PlayerCodeExample to "例如：FTW8X2Q", TextKey.YourSquad to "你的队伍", TextKey.FriendList to "好友列表", TextKey.ClanTogetherTitle to "并肩竞技", TextKey.ExploreClans to "探索战队", TextKey.FameRace to "荣耀竞速", TextKey.CurrentSeason to "当前赛季", TextKey.KnockoutArena to "淘汰赛场", TextKey.RecentTournaments to "最近赛事", TextKey.NotificationsHero to "你的新消息", TextKey.EmptyInbox to "暂无消息", TextKey.NumberSkins to "数字皮肤", TextKey.NumberBoards to "数字棋盘", TextKey.GemVault to "宝石仓库", TextKey.ArcadeVault to "街机仓库", TextKey.Restocking to "补货中", TextKey.Equip to "装备"
 )
 internal val koreanSocialShopTexts = englishSocialShopTexts + mapOf(
@@ -329,6 +338,9 @@ internal val koreanSocialShopTexts = englishSocialShopTexts + mapOf(
     TextKey.NoClansFoundDescription to "다른 검색어를 시도하거나 직접 클랜을 만드세요.",
     TextKey.KnockoutArenaDescription to "4명, 8명 또는 16명의 도전자를 모아 우승에 도전하세요.",
     TextKey.EmptyInboxDescription to "초대, 보상, 새로운 소식이 여기에 표시됩니다.", TextKey.RestockingDescription to "새로운 상품이 곧 추가됩니다.",
+    TextKey.ClanProgress to "클랜 진행도", TextKey.DonateToClan to "기부",
+    TextKey.DonateToClanDescription to "골드 또는 젬을 기부해 클랜을 성장시키세요.",
+    TextKey.DonationBalance to "잔액: {amount} {currency}", TextKey.DonationXpPreview to "획득 클랜 XP: {xp}", TextKey.YourContribution to "나의 기여",
     TextKey.PlayerCodeExample to "예: FTW8X2Q", TextKey.YourSquad to "내 스쿼드", TextKey.FriendList to "친구", TextKey.ClanTogetherTitle to "함께 경쟁하세요", TextKey.ExploreClans to "클랜 탐색", TextKey.FameRace to "명예의 레이스", TextKey.CurrentSeason to "현재 시즌", TextKey.KnockoutArena to "토너먼트 아레나", TextKey.RecentTournaments to "최근 토너먼트", TextKey.NotificationsHero to "새 소식", TextKey.EmptyInbox to "알림이 없습니다", TextKey.NumberSkins to "숫자 스킨", TextKey.NumberBoards to "숫자 보드", TextKey.GemVault to "젬 보관소", TextKey.ArcadeVault to "아케이드 보관소", TextKey.Restocking to "상품 준비 중", TextKey.Equip to "장착"
 )
 internal val spanishSocialShopTexts = englishSocialShopTexts + mapOf(
@@ -348,6 +360,9 @@ internal val spanishSocialShopTexts = englishSocialShopTexts + mapOf(
     TextKey.NoClansFoundDescription to "Prueba otra palabra o crea tu propio clan.",
     TextKey.KnockoutArenaDescription to "Reúne a 4, 8 o 16 participantes y ve por el trofeo.",
     TextKey.EmptyInboxDescription to "Aquí aparecerán invitaciones, recompensas y novedades.", TextKey.RestockingDescription to "Pronto llegarán nuevos artículos.",
+    TextKey.ClanProgress to "PROGRESO DEL CLAN", TextKey.DonateToClan to "DONAR",
+    TextKey.DonateToClanDescription to "Aporta oro o gemas para hacer crecer tu clan.",
+    TextKey.DonationBalance to "Saldo: {amount} {currency}", TextKey.DonationXpPreview to "XP de clan obtenida: {xp}", TextKey.YourContribution to "Tu contribución",
     TextKey.PlayerCodeExample to "p. ej., FTW8X2Q", TextKey.YourSquad to "Tu equipo", TextKey.FriendList to "Amigos", TextKey.ClanTogetherTitle to "Compitan juntos", TextKey.ExploreClans to "Explorar clanes", TextKey.FameRace to "Carrera por la gloria", TextKey.CurrentSeason to "Temporada actual", TextKey.KnockoutArena to "Arena eliminatoria", TextKey.RecentTournaments to "Torneos recientes", TextKey.NotificationsHero to "Novedades para ti", TextKey.EmptyInbox to "Tu bandeja está vacía", TextKey.NumberSkins to "Diseños de números", TextKey.NumberBoards to "Tableros numéricos", TextKey.GemVault to "Cámara de Gemas", TextKey.ArcadeVault to "Cámara Arcade", TextKey.Restocking to "Reponiendo", TextKey.Equip to "EQUIPAR"
 )
 internal val brazilianPortugueseSocialShopTexts = englishSocialShopTexts + mapOf(
@@ -367,6 +382,9 @@ internal val brazilianPortugueseSocialShopTexts = englishSocialShopTexts + mapOf
     TextKey.NoClansFoundDescription to "Tente outra palavra ou crie seu próprio clã.",
     TextKey.KnockoutArenaDescription to "Reúna 4, 8 ou 16 competidores e dispute o troféu.",
     TextKey.EmptyInboxDescription to "Convites, recompensas e novidades aparecerão aqui.", TextKey.RestockingDescription to "Novos itens chegarão em breve.",
+    TextKey.ClanProgress to "PROGRESSO DO CLÃ", TextKey.DonateToClan to "DOAR",
+    TextKey.DonateToClanDescription to "Contribua com Ouro ou Gemas para fortalecer seu clã.",
+    TextKey.DonationBalance to "Saldo: {amount} {currency}", TextKey.DonationXpPreview to "XP do clã recebida: {xp}", TextKey.YourContribution to "Sua contribuição",
     TextKey.PlayerCodeExample to "ex.: FTW8X2Q", TextKey.YourSquad to "Seu esquadrão", TextKey.FriendList to "Amigos", TextKey.ClanTogetherTitle to "Compitam juntos", TextKey.ExploreClans to "Explorar clãs", TextKey.FameRace to "Corrida pela glória", TextKey.CurrentSeason to "Temporada atual", TextKey.KnockoutArena to "Arena eliminatória", TextKey.RecentTournaments to "Torneios recentes", TextKey.NotificationsHero to "Novidades para você", TextKey.EmptyInbox to "Sua caixa está vazia", TextKey.NumberSkins to "Visuais de números", TextKey.NumberBoards to "Tabuleiros numéricos", TextKey.GemVault to "Cofre de Gemas", TextKey.ArcadeVault to "Cofre Arcade", TextKey.Restocking to "Repondo estoque", TextKey.Equip to "EQUIPAR"
 )
 internal val frenchSocialShopTexts = englishSocialShopTexts + mapOf(
@@ -386,6 +404,9 @@ internal val frenchSocialShopTexts = englishSocialShopTexts + mapOf(
     TextKey.NoClansFoundDescription to "Essaie un autre mot-clé ou crée ton propre clan.",
     TextKey.KnockoutArenaDescription to "Réunis 4, 8 ou 16 participants et vise le trophée.",
     TextKey.EmptyInboxDescription to "Les invitations, récompenses et nouveautés apparaîtront ici.", TextKey.RestockingDescription to "De nouveaux objets arriveront bientôt.",
+    TextKey.ClanProgress to "PROGRESSION DU CLAN", TextKey.DonateToClan to "DONNER",
+    TextKey.DonateToClanDescription to "Donne de l’Or ou des Gemmes pour développer ton clan.",
+    TextKey.DonationBalance to "Solde : {amount} {currency}", TextKey.DonationXpPreview to "XP de clan gagnée : {xp}", TextKey.YourContribution to "Ta contribution",
     TextKey.PlayerCodeExample to "ex. : FTW8X2Q", TextKey.YourSquad to "Ton équipe", TextKey.FriendList to "Amis", TextKey.ClanTogetherTitle to "Jouez ensemble", TextKey.ExploreClans to "Explorer les clans", TextKey.FameRace to "Course à la gloire", TextKey.CurrentSeason to "Saison actuelle", TextKey.KnockoutArena to "Arène à élimination", TextKey.RecentTournaments to "Tournois récents", TextKey.NotificationsHero to "Tes nouveautés", TextKey.EmptyInbox to "Ta boîte est vide", TextKey.NumberSkins to "Styles de nombres", TextKey.NumberBoards to "Plateaux numériques", TextKey.GemVault to "Coffre de Gemmes", TextKey.ArcadeVault to "Coffre Arcade", TextKey.Restocking to "Réapprovisionnement", TextKey.Equip to "ÉQUIPER"
 )
 internal val indonesianSocialShopTexts = englishSocialShopTexts + mapOf(
@@ -405,6 +426,9 @@ internal val indonesianSocialShopTexts = englishSocialShopTexts + mapOf(
     TextKey.NoClansFoundDescription to "Coba kata kunci lain atau buat klanmu sendiri.",
     TextKey.KnockoutArenaDescription to "Kumpulkan 4, 8, atau 16 peserta dan raih trofi.",
     TextKey.EmptyInboxDescription to "Undangan, hadiah, dan kabar baru akan muncul di sini.", TextKey.RestockingDescription to "Item baru akan segera hadir.",
+    TextKey.ClanProgress to "PROGRES KLAN", TextKey.DonateToClan to "DONASI",
+    TextKey.DonateToClanDescription to "Sumbangkan Emas atau Gem untuk mengembangkan klanmu.",
+    TextKey.DonationBalance to "Saldo: {amount} {currency}", TextKey.DonationXpPreview to "XP klan diperoleh: {xp}", TextKey.YourContribution to "Kontribusimu",
     TextKey.PlayerCodeExample to "mis. FTW8X2Q", TextKey.YourSquad to "Skuadmu", TextKey.FriendList to "Teman", TextKey.ClanTogetherTitle to "Bertanding bersama", TextKey.ExploreClans to "Jelajahi klan", TextKey.FameRace to "Perebutan kejayaan", TextKey.CurrentSeason to "Musim saat ini", TextKey.KnockoutArena to "Arena eliminasi", TextKey.RecentTournaments to "Turnamen terbaru", TextKey.NotificationsHero to "Kabar untukmu", TextKey.EmptyInbox to "Kotak masukmu kosong", TextKey.NumberSkins to "Skin angka", TextKey.NumberBoards to "Papan angka", TextKey.GemVault to "Brankas Gem", TextKey.ArcadeVault to "Brankas Arcade", TextKey.Restocking to "Mengisi stok", TextKey.Equip to "PAKAI"
 )
 internal val thaiSocialShopTexts = englishSocialShopTexts + mapOf(
@@ -424,6 +448,9 @@ internal val thaiSocialShopTexts = englishSocialShopTexts + mapOf(
     TextKey.NoClansFoundDescription to "ลองใช้คำค้นอื่นหรือสร้างแคลนของคุณเอง",
     TextKey.KnockoutArenaDescription to "รวมผู้เข้าแข่งขัน 4, 8 หรือ 16 คน แล้วมุ่งสู่ถ้วยรางวัล",
     TextKey.EmptyInboxDescription to "คำเชิญ รางวัล และข่าวสารจะแสดงที่นี่", TextKey.RestockingDescription to "ไอเทมใหม่กำลังจะมาเร็ว ๆ นี้",
+    TextKey.ClanProgress to "ความคืบหน้าแคลน", TextKey.DonateToClan to "บริจาค",
+    TextKey.DonateToClanDescription to "บริจาคทองหรือเจมเพื่อพัฒนาแคลนของคุณ",
+    TextKey.DonationBalance to "ยอดคงเหลือ: {amount} {currency}", TextKey.DonationXpPreview to "XP แคลนที่ได้รับ: {xp}", TextKey.YourContribution to "ผลงานของคุณ",
     TextKey.PlayerCodeExample to "เช่น FTW8X2Q", TextKey.YourSquad to "ทีมของคุณ", TextKey.FriendList to "เพื่อน", TextKey.ClanTogetherTitle to "แข่งขันไปด้วยกัน", TextKey.ExploreClans to "สำรวจแคลน", TextKey.FameRace to "เส้นทางแห่งเกียรติยศ", TextKey.CurrentSeason to "ฤดูกาลปัจจุบัน", TextKey.KnockoutArena to "สนามน็อกเอาต์", TextKey.RecentTournaments to "ทัวร์นาเมนต์ล่าสุด", TextKey.NotificationsHero to "ข่าวสารสำหรับคุณ", TextKey.EmptyInbox to "กล่องข้อความว่าง", TextKey.NumberSkins to "สกินตัวเลข", TextKey.NumberBoards to "กระดานตัวเลข", TextKey.GemVault to "คลัง Gem", TextKey.ArcadeVault to "คลัง Arcade", TextKey.Restocking to "กำลังเติมสินค้า", TextKey.Equip to "สวมใส่"
 )
 internal val russianSocialShopTexts = englishSocialShopTexts + mapOf(
@@ -443,5 +470,8 @@ internal val russianSocialShopTexts = englishSocialShopTexts + mapOf(
     TextKey.NoClansFoundDescription to "Попробуйте другое слово или создайте собственный клан.",
     TextKey.KnockoutArenaDescription to "Соберите 4, 8 или 16 участников и сразитесь за кубок.",
     TextKey.EmptyInboxDescription to "Здесь появятся приглашения, награды и новости.", TextKey.RestockingDescription to "Новые предметы скоро появятся.",
+    TextKey.ClanProgress to "ПРОГРЕСС КЛАНА", TextKey.DonateToClan to "ПОЖЕРТВОВАТЬ",
+    TextKey.DonateToClanDescription to "Жертвуйте золото или кристаллы для развития клана.",
+    TextKey.DonationBalance to "Баланс: {amount} {currency}", TextKey.DonationXpPreview to "Получено опыта клана: {xp}", TextKey.YourContribution to "Ваш вклад",
     TextKey.PlayerCodeExample to "например, FTW8X2Q", TextKey.YourSquad to "Твоя команда", TextKey.FriendList to "Друзья", TextKey.ClanTogetherTitle to "Сражайтесь вместе", TextKey.ExploreClans to "Поиск кланов", TextKey.FameRace to "Гонка за славой", TextKey.CurrentSeason to "Текущий сезон", TextKey.KnockoutArena to "Арена на выбывание", TextKey.RecentTournaments to "Недавние турниры", TextKey.NotificationsHero to "Новости для тебя", TextKey.EmptyInbox to "Уведомлений нет", TextKey.NumberSkins to "Скины чисел", TextKey.NumberBoards to "Числовые поля", TextKey.GemVault to "Хранилище самоцветов", TextKey.ArcadeVault to "Аркадное хранилище", TextKey.Restocking to "Скоро пополнение", TextKey.Equip to "НАДЕТЬ"
 )
