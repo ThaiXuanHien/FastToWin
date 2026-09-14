@@ -74,4 +74,40 @@ class RoomLobbyLocalizationTest {
             assertEquals(translations, keys.map(catalog.texts::getValue), language.code)
         }
     }
+
+    @Test
+    fun `room discovery and access copy resolves explicitly in all twelve languages`() {
+        val expected = mapOf(
+            AppLanguage.ENGLISH to listOf("Enter room code", "Paste the code shared by the host.", "Room code", "FIND ROOM", "No room was found with this code.", "Create new room", "Room name", "Public", "Private", "Room password", "Join room"),
+            AppLanguage.VIETNAMESE to listOf("Nhập mã phòng", "Dán mã được chủ phòng chia sẻ.", "Mã phòng", "TÌM PHÒNG", "Không tìm thấy phòng với mã này.", "Tạo phòng mới", "Tên phòng", "Công khai", "Riêng tư", "Mật khẩu phòng", "Tham gia phòng"),
+            AppLanguage.SIMPLIFIED_CHINESE to listOf("输入房间代码", "粘贴房主分享的代码。", "房间代码", "查找房间", "未找到使用此代码的房间。", "创建新房间", "房间名称", "公开", "私密", "房间密码", "加入房间"),
+            AppLanguage.JAPANESE to listOf("ルームコードを入力", "ホストが共有したコードを貼り付けてください。", "ルームコード", "ルームを検索", "このコードのルームが見つかりません。", "新しいルームを作成", "ルーム名", "公開", "非公開", "ルームパスワード", "ルームに参加"),
+            AppLanguage.KOREAN to listOf("방 코드 입력", "방장이 공유한 코드를 붙여넣으세요.", "방 코드", "방 찾기", "이 코드에 해당하는 방을 찾을 수 없습니다.", "새 방 만들기", "방 이름", "공개", "비공개", "방 비밀번호", "방 참가"),
+            AppLanguage.SPANISH to listOf("Introduce el código de la sala", "Pega el código compartido por el anfitrión.", "Código de sala", "BUSCAR SALA", "No se encontró ninguna sala con este código.", "Crear nueva sala", "Nombre de la sala", "Pública", "Privada", "Contraseña de la sala", "Unirse a la sala"),
+            AppLanguage.BRAZILIAN_PORTUGUESE to listOf("Digite o código da sala", "Cole o código compartilhado pelo anfitrião.", "Código da sala", "ENCONTRAR SALA", "Nenhuma sala foi encontrada com este código.", "Criar nova sala", "Nome da sala", "Pública", "Privada", "Senha da sala", "Entrar na sala"),
+            AppLanguage.FRENCH to listOf("Saisis le code du salon", "Colle le code partagé par l’hôte.", "Code du salon", "TROUVER LE SALON", "Aucun salon trouvé avec ce code.", "Créer un nouveau salon", "Nom du salon", "Public", "Privé", "Mot de passe du salon", "Rejoindre le salon"),
+            AppLanguage.GERMAN to listOf("Raumcode eingeben", "Füge den vom Host geteilten Code ein.", "Raumcode", "RAUM SUCHEN", "Mit diesem Code wurde kein Raum gefunden.", "Neuen Raum erstellen", "Raumname", "Öffentlich", "Privat", "Raumpasswort", "Raum beitreten"),
+            AppLanguage.INDONESIAN to listOf("Masukkan kode ruang", "Tempel kode yang dibagikan host.", "Kode ruang", "CARI RUANG", "Ruang dengan kode ini tidak ditemukan.", "Buat ruang baru", "Nama ruang", "Publik", "Privat", "Kata sandi ruang", "Gabung ruang"),
+            AppLanguage.THAI to listOf("กรอกรหัสห้อง", "วางรหัสที่โฮสต์แชร์", "รหัสห้อง", "ค้นหาห้อง", "ไม่พบห้องที่ใช้รหัสนี้", "สร้างห้องใหม่", "ชื่อห้อง", "สาธารณะ", "ส่วนตัว", "รหัสผ่านห้อง", "เข้าร่วมห้อง"),
+            AppLanguage.RUSSIAN to listOf("Введите код комнаты", "Вставьте код, которым поделился ведущий.", "Код комнаты", "НАЙТИ КОМНАТУ", "Комната с таким кодом не найдена.", "Создать новую комнату", "Название комнаты", "Открытая", "Закрытая", "Пароль комнаты", "Войти в комнату"),
+        )
+        val keys = listOf(
+            TextKey.EnterRoomCode,
+            TextKey.PasteRoomCode,
+            TextKey.RoomCode,
+            TextKey.FindRoom,
+            TextKey.RoomCodeNotFound,
+            TextKey.CreateNewRoom,
+            TextKey.RoomName,
+            TextKey.Public,
+            TextKey.Private,
+            TextKey.RoomPassword,
+            TextKey.JoinRoomTitle,
+        )
+
+        expected.forEach { (language, translations) ->
+            val catalog = allLocalizationCatalogs.getValue(language)
+            assertEquals(translations, keys.map(catalog.texts::getValue), language.code)
+        }
+    }
 }

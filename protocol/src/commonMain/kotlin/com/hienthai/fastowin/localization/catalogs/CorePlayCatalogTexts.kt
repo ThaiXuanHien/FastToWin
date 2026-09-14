@@ -197,7 +197,11 @@ internal val germanCorePlayTexts = mapOf(
     TextKey.LeaveRoom to "RAUM VERLASSEN", TextKey.ReadyStatus to "BEREIT", TextKey.WaitingStatus to "WARTET",
     TextKey.PlayersTitle to "Spieler", TextKey.BlueTeam to "Blaues Team", TextKey.RedTeam to "Rotes Team", TextKey.You to "Du",
     TextKey.Teammate to "Mitspieler", TextKey.Opponent to "Gegner", TextKey.WaitingPlayer to "Wartet…",
-    TextKey.HostYou to "Host • Du", TextKey.Guest to "Gast", TextKey.Host to "Host", TextKey.WaitingForPlayer to "Warte auf Spieler…"
+    TextKey.HostYou to "Host • Du", TextKey.Guest to "Gast", TextKey.Host to "Host", TextKey.WaitingForPlayer to "Warte auf Spieler…",
+    TextKey.EnterRoomCode to "Raumcode eingeben", TextKey.PasteRoomCode to "Füge den vom Host geteilten Code ein.", TextKey.RoomCode to "Raumcode",
+    TextKey.FindRoom to "RAUM SUCHEN", TextKey.RoomCodeNotFound to "Mit diesem Code wurde kein Raum gefunden.", TextKey.CreateNewRoom to "Neuen Raum erstellen",
+    TextKey.RoomName to "Raumname", TextKey.Public to "Öffentlich", TextKey.Private to "Privat", TextKey.RoomPassword to "Raumpasswort",
+    TextKey.JoinRoomTitle to "Raum beitreten"
 )
 
 internal val japaneseCorePlayTexts = mapOf(
@@ -212,7 +216,11 @@ internal val japaneseCorePlayTexts = mapOf(
     TextKey.LeaveRoom to "ルームを退出", TextKey.ReadyStatus to "準備完了", TextKey.WaitingStatus to "待機中",
     TextKey.PlayersTitle to "プレイヤー", TextKey.BlueTeam to "ブルーチーム", TextKey.RedTeam to "レッドチーム", TextKey.You to "あなた",
     TextKey.Teammate to "チームメイト", TextKey.Opponent to "対戦相手", TextKey.WaitingPlayer to "待機中…",
-    TextKey.HostYou to "ホスト • あなた", TextKey.Guest to "ゲスト", TextKey.Host to "ホスト", TextKey.WaitingForPlayer to "プレイヤーを待っています…"
+    TextKey.HostYou to "ホスト • あなた", TextKey.Guest to "ゲスト", TextKey.Host to "ホスト", TextKey.WaitingForPlayer to "プレイヤーを待っています…",
+    TextKey.EnterRoomCode to "ルームコードを入力", TextKey.PasteRoomCode to "ホストが共有したコードを貼り付けてください。", TextKey.RoomCode to "ルームコード",
+    TextKey.FindRoom to "ルームを検索", TextKey.RoomCodeNotFound to "このコードのルームが見つかりません。", TextKey.CreateNewRoom to "新しいルームを作成",
+    TextKey.RoomName to "ルーム名", TextKey.Public to "公開", TextKey.Private to "非公開", TextKey.RoomPassword to "ルームパスワード",
+    TextKey.JoinRoomTitle to "ルームに参加"
 )
 
 internal val russianCorePlayTexts = mapOf(
@@ -228,7 +236,11 @@ internal val russianCorePlayTexts = mapOf(
     TextKey.LeaveRoom to "ПОКИНУТЬ КОМНАТУ", TextKey.ReadyStatus to "ГОТОВ", TextKey.WaitingStatus to "ОЖИДАНИЕ",
     TextKey.PlayersTitle to "Игроки", TextKey.BlueTeam to "Синяя команда", TextKey.RedTeam to "Красная команда", TextKey.You to "Вы",
     TextKey.Teammate to "Союзник", TextKey.Opponent to "Соперник", TextKey.WaitingPlayer to "Ожидание…",
-    TextKey.HostYou to "Ведущий • Вы", TextKey.Guest to "Гость", TextKey.Host to "Ведущий", TextKey.WaitingForPlayer to "Ожидание игрока…"
+    TextKey.HostYou to "Ведущий • Вы", TextKey.Guest to "Гость", TextKey.Host to "Ведущий", TextKey.WaitingForPlayer to "Ожидание игрока…",
+    TextKey.EnterRoomCode to "Введите код комнаты", TextKey.PasteRoomCode to "Вставьте код, которым поделился ведущий.", TextKey.RoomCode to "Код комнаты",
+    TextKey.FindRoom to "НАЙТИ КОМНАТУ", TextKey.RoomCodeNotFound to "Комната с таким кодом не найдена.", TextKey.CreateNewRoom to "Создать новую комнату",
+    TextKey.RoomName to "Название комнаты", TextKey.Public to "Открытая", TextKey.Private to "Закрытая", TextKey.RoomPassword to "Пароль комнаты",
+    TextKey.JoinRoomTitle to "Войти в комнату"
 )
 
 internal val thaiCorePlayTexts = mapOf(
@@ -248,7 +260,11 @@ internal val thaiCorePlayTexts = mapOf(
     TextKey.LeaveRoom to "ออกจากห้อง", TextKey.ReadyStatus to "พร้อม", TextKey.WaitingStatus to "รอ",
     TextKey.PlayersTitle to "ผู้เล่น", TextKey.BlueTeam to "ทีมสีน้ำเงิน", TextKey.RedTeam to "ทีมสีแดง", TextKey.You to "คุณ",
     TextKey.Teammate to "เพื่อนร่วมทีม", TextKey.Opponent to "คู่แข่ง", TextKey.WaitingPlayer to "กำลังรอ…",
-    TextKey.HostYou to "โฮสต์ • คุณ", TextKey.Guest to "ผู้เล่นรับเชิญ", TextKey.Host to "โฮสต์", TextKey.WaitingForPlayer to "กำลังรอผู้เล่น…"
+    TextKey.HostYou to "โฮสต์ • คุณ", TextKey.Guest to "ผู้เล่นรับเชิญ", TextKey.Host to "โฮสต์", TextKey.WaitingForPlayer to "กำลังรอผู้เล่น…",
+    TextKey.EnterRoomCode to "กรอกรหัสห้อง", TextKey.PasteRoomCode to "วางรหัสที่โฮสต์แชร์", TextKey.RoomCode to "รหัสห้อง",
+    TextKey.FindRoom to "ค้นหาห้อง", TextKey.RoomCodeNotFound to "ไม่พบห้องที่ใช้รหัสนี้", TextKey.CreateNewRoom to "สร้างห้องใหม่",
+    TextKey.RoomName to "ชื่อห้อง", TextKey.Public to "สาธารณะ", TextKey.Private to "ส่วนตัว", TextKey.RoomPassword to "รหัสผ่านห้อง",
+    TextKey.JoinRoomTitle to "เข้าร่วมห้อง"
 )
 
 internal val simplifiedChineseCorePlayTexts = mapOf(
@@ -257,7 +273,11 @@ internal val simplifiedChineseCorePlayTexts = mapOf(
     TextKey.CloseRoom to "关闭房间", TextKey.LeaveRoom to "离开房间", TextKey.ReadyStatus to "已准备", TextKey.WaitingStatus to "等待中",
     TextKey.PlayersTitle to "玩家", TextKey.BlueTeam to "蓝队", TextKey.RedTeam to "红队", TextKey.You to "你",
     TextKey.Teammate to "队友", TextKey.Opponent to "对手", TextKey.WaitingPlayer to "等待中…",
-    TextKey.HostYou to "房主 • 你", TextKey.Guest to "客人", TextKey.Host to "房主", TextKey.WaitingForPlayer to "等待玩家…"
+    TextKey.HostYou to "房主 • 你", TextKey.Guest to "客人", TextKey.Host to "房主", TextKey.WaitingForPlayer to "等待玩家…",
+    TextKey.EnterRoomCode to "输入房间代码", TextKey.PasteRoomCode to "粘贴房主分享的代码。", TextKey.RoomCode to "房间代码",
+    TextKey.FindRoom to "查找房间", TextKey.RoomCodeNotFound to "未找到使用此代码的房间。", TextKey.CreateNewRoom to "创建新房间",
+    TextKey.RoomName to "房间名称", TextKey.Public to "公开", TextKey.Private to "私密", TextKey.RoomPassword to "房间密码",
+    TextKey.JoinRoomTitle to "加入房间"
 )
 internal val koreanCorePlayTexts = mapOf(
     TextKey.WaitHostStart to "방장이 경기를 시작할 때까지 기다리세요.", TextKey.CancelReady to "준비 취소", TextKey.ReadyAction to "준비",
@@ -265,7 +285,11 @@ internal val koreanCorePlayTexts = mapOf(
     TextKey.CloseRoom to "방 닫기", TextKey.LeaveRoom to "방 나가기", TextKey.ReadyStatus to "준비 완료", TextKey.WaitingStatus to "대기 중",
     TextKey.PlayersTitle to "플레이어", TextKey.BlueTeam to "블루 팀", TextKey.RedTeam to "레드 팀", TextKey.You to "나",
     TextKey.Teammate to "팀원", TextKey.Opponent to "상대", TextKey.WaitingPlayer to "대기 중…",
-    TextKey.HostYou to "방장 • 나", TextKey.Guest to "게스트", TextKey.Host to "방장", TextKey.WaitingForPlayer to "플레이어를 기다리는 중…"
+    TextKey.HostYou to "방장 • 나", TextKey.Guest to "게스트", TextKey.Host to "방장", TextKey.WaitingForPlayer to "플레이어를 기다리는 중…",
+    TextKey.EnterRoomCode to "방 코드 입력", TextKey.PasteRoomCode to "방장이 공유한 코드를 붙여넣으세요.", TextKey.RoomCode to "방 코드",
+    TextKey.FindRoom to "방 찾기", TextKey.RoomCodeNotFound to "이 코드에 해당하는 방을 찾을 수 없습니다.", TextKey.CreateNewRoom to "새 방 만들기",
+    TextKey.RoomName to "방 이름", TextKey.Public to "공개", TextKey.Private to "비공개", TextKey.RoomPassword to "방 비밀번호",
+    TextKey.JoinRoomTitle to "방 참가"
 )
 internal val spanishCorePlayTexts = mapOf(
     TextKey.WaitHostStart to "Espera a que el anfitrión inicie la partida.", TextKey.CancelReady to "CANCELAR LISTO", TextKey.ReadyAction to "LISTO",
@@ -273,7 +297,11 @@ internal val spanishCorePlayTexts = mapOf(
     TextKey.CloseRoom to "CERRAR SALA", TextKey.LeaveRoom to "SALIR DE LA SALA", TextKey.ReadyStatus to "LISTO", TextKey.WaitingStatus to "EN ESPERA",
     TextKey.PlayersTitle to "Jugadores", TextKey.BlueTeam to "Equipo azul", TextKey.RedTeam to "Equipo rojo", TextKey.You to "Tú",
     TextKey.Teammate to "Compañero", TextKey.Opponent to "Oponente", TextKey.WaitingPlayer to "Esperando…",
-    TextKey.HostYou to "Anfitrión • Tú", TextKey.Guest to "Invitado", TextKey.Host to "Anfitrión", TextKey.WaitingForPlayer to "Esperando jugador…"
+    TextKey.HostYou to "Anfitrión • Tú", TextKey.Guest to "Invitado", TextKey.Host to "Anfitrión", TextKey.WaitingForPlayer to "Esperando jugador…",
+    TextKey.EnterRoomCode to "Introduce el código de la sala", TextKey.PasteRoomCode to "Pega el código compartido por el anfitrión.", TextKey.RoomCode to "Código de sala",
+    TextKey.FindRoom to "BUSCAR SALA", TextKey.RoomCodeNotFound to "No se encontró ninguna sala con este código.", TextKey.CreateNewRoom to "Crear nueva sala",
+    TextKey.RoomName to "Nombre de la sala", TextKey.Public to "Pública", TextKey.Private to "Privada", TextKey.RoomPassword to "Contraseña de la sala",
+    TextKey.JoinRoomTitle to "Unirse a la sala"
 )
 internal val brazilianPortugueseCorePlayTexts = mapOf(
     TextKey.WaitHostStart to "Aguarde o anfitrião iniciar a partida.", TextKey.CancelReady to "CANCELAR PRONTO", TextKey.ReadyAction to "PRONTO",
@@ -281,7 +309,11 @@ internal val brazilianPortugueseCorePlayTexts = mapOf(
     TextKey.CloseRoom to "FECHAR SALA", TextKey.LeaveRoom to "SAIR DA SALA", TextKey.ReadyStatus to "PRONTO", TextKey.WaitingStatus to "AGUARDANDO",
     TextKey.PlayersTitle to "Jogadores", TextKey.BlueTeam to "Equipe Azul", TextKey.RedTeam to "Equipe Vermelha", TextKey.You to "Você",
     TextKey.Teammate to "Companheiro", TextKey.Opponent to "Adversário", TextKey.WaitingPlayer to "Aguardando…",
-    TextKey.HostYou to "Anfitrião • Você", TextKey.Guest to "Convidado", TextKey.Host to "Anfitrião", TextKey.WaitingForPlayer to "Aguardando jogador…"
+    TextKey.HostYou to "Anfitrião • Você", TextKey.Guest to "Convidado", TextKey.Host to "Anfitrião", TextKey.WaitingForPlayer to "Aguardando jogador…",
+    TextKey.EnterRoomCode to "Digite o código da sala", TextKey.PasteRoomCode to "Cole o código compartilhado pelo anfitrião.", TextKey.RoomCode to "Código da sala",
+    TextKey.FindRoom to "ENCONTRAR SALA", TextKey.RoomCodeNotFound to "Nenhuma sala foi encontrada com este código.", TextKey.CreateNewRoom to "Criar nova sala",
+    TextKey.RoomName to "Nome da sala", TextKey.Public to "Pública", TextKey.Private to "Privada", TextKey.RoomPassword to "Senha da sala",
+    TextKey.JoinRoomTitle to "Entrar na sala"
 )
 internal val frenchCorePlayTexts = mapOf(
     TextKey.WaitHostStart to "Attends que l’hôte lance la partie.", TextKey.CancelReady to "ANNULER PRÊT", TextKey.ReadyAction to "PRÊT",
@@ -289,7 +321,11 @@ internal val frenchCorePlayTexts = mapOf(
     TextKey.CloseRoom to "FERMER LE SALON", TextKey.LeaveRoom to "QUITTER LE SALON", TextKey.ReadyStatus to "PRÊT", TextKey.WaitingStatus to "EN ATTENTE",
     TextKey.PlayersTitle to "Joueurs", TextKey.BlueTeam to "Équipe bleue", TextKey.RedTeam to "Équipe rouge", TextKey.You to "Toi",
     TextKey.Teammate to "Coéquipier", TextKey.Opponent to "Adversaire", TextKey.WaitingPlayer to "En attente…",
-    TextKey.HostYou to "Hôte • Toi", TextKey.Guest to "Invité", TextKey.Host to "Hôte", TextKey.WaitingForPlayer to "En attente d’un joueur…"
+    TextKey.HostYou to "Hôte • Toi", TextKey.Guest to "Invité", TextKey.Host to "Hôte", TextKey.WaitingForPlayer to "En attente d’un joueur…",
+    TextKey.EnterRoomCode to "Saisis le code du salon", TextKey.PasteRoomCode to "Colle le code partagé par l’hôte.", TextKey.RoomCode to "Code du salon",
+    TextKey.FindRoom to "TROUVER LE SALON", TextKey.RoomCodeNotFound to "Aucun salon trouvé avec ce code.", TextKey.CreateNewRoom to "Créer un nouveau salon",
+    TextKey.RoomName to "Nom du salon", TextKey.Public to "Public", TextKey.Private to "Privé", TextKey.RoomPassword to "Mot de passe du salon",
+    TextKey.JoinRoomTitle to "Rejoindre le salon"
 )
 internal val indonesianCorePlayTexts = mapOf(
     TextKey.WaitHostStart to "Tunggu host memulai pertandingan.", TextKey.CancelReady to "BATAL SIAP", TextKey.ReadyAction to "SIAP",
@@ -297,5 +333,9 @@ internal val indonesianCorePlayTexts = mapOf(
     TextKey.CloseRoom to "TUTUP RUANG", TextKey.LeaveRoom to "KELUAR DARI RUANG", TextKey.ReadyStatus to "SIAP", TextKey.WaitingStatus to "MENUNGGU",
     TextKey.PlayersTitle to "Pemain", TextKey.BlueTeam to "Tim Biru", TextKey.RedTeam to "Tim Merah", TextKey.You to "Kamu",
     TextKey.Teammate to "Rekan tim", TextKey.Opponent to "Lawan", TextKey.WaitingPlayer to "Menunggu…",
-    TextKey.HostYou to "Host • Kamu", TextKey.Guest to "Tamu", TextKey.Host to "Host", TextKey.WaitingForPlayer to "Menunggu pemain…"
+    TextKey.HostYou to "Host • Kamu", TextKey.Guest to "Tamu", TextKey.Host to "Host", TextKey.WaitingForPlayer to "Menunggu pemain…",
+    TextKey.EnterRoomCode to "Masukkan kode ruang", TextKey.PasteRoomCode to "Tempel kode yang dibagikan host.", TextKey.RoomCode to "Kode ruang",
+    TextKey.FindRoom to "CARI RUANG", TextKey.RoomCodeNotFound to "Ruang dengan kode ini tidak ditemukan.", TextKey.CreateNewRoom to "Buat ruang baru",
+    TextKey.RoomName to "Nama ruang", TextKey.Public to "Publik", TextKey.Private to "Privat", TextKey.RoomPassword to "Kata sandi ruang",
+    TextKey.JoinRoomTitle to "Gabung ruang"
 )
