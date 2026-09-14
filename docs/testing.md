@@ -6,7 +6,8 @@
 - UI test Android dùng JUnit 4, AndroidJUnitRunner, Compose UI Test và Espresso trong `app/src/androidTest`.
 - Logic dùng `kotlin.test` và coroutine test trong `shared/src/commonTest`.
 - Backend dùng Kotlin Test/JUnit Platform, Ktor test host và coroutine test trong `server/src/test`.
-- Chưa cấu hình Robolectric, screenshot testing tự động hoặc JaCoCo.
+- Chưa cấu hình Robolectric hoặc JaCoCo; screenshot regression 2D Arcade đã
+  dùng Compose Preview Screenshot Testing trong module Android `app`.
 - Có bộ [Web E2E Playwright](web-e2e.md) cho Chromium, Firefox, WebKit và ma trận responsive; xem tài liệu này để phân biệt kiểm thử tự động với phần còn cần thiết bị/trình duyệt thật.
 
 ## Lệnh kiểm thử trên Windows
@@ -26,7 +27,7 @@ Lệnh hồi quy thống nhất, tương đương các bước biên dịch và 
 chính trong CI:
 
 ```powershell
-.\gradlew.bat :server:test :shared:testAndroidHostTest :app:compileDevDebugAndroidTestKotlin :app:assembleDevDebug :webApp:compileKotlinWasmJs --no-daemon
+.\gradlew.bat :server:test :shared:testAndroidHostTest :app:compileDevDebugAndroidTestKotlin :app:assembleDevDebug :app:validateDevDebugScreenshotTest :webApp:compileKotlinWasmJs --no-daemon --no-configuration-cache
 ```
 
 Có thể chỉ biên dịch APK test mà không cần thiết bị bằng:
@@ -48,6 +49,55 @@ Lệnh `connectedDevDebugAndroidTest` chạy bộ UI test trên tất cả thi�
 ```
 
 Với nhiều emulator Android 17, nên chạy lần lượt từng máy để tránh lỗi mất `window focus` của Espresso khi các emulator cùng hoạt động.
+
+## Screenshot regression 2D Arcade
+
+Bộ screenshot host-side bảo vệ 10 màn cốt lõi ở điện thoại nhỏ `320 x 568 dp`,
+điện thoại lớn `430 x 932 dp` và tablet `840 x 1180 dp`. Tổng cộng có đúng 30
+ảnh chuẩn, cố định giao diện tối, locale tiếng Việt, font scale `1.0` và fixture
+không dùng mạng, database hay thời gian thực. Bộ này kiểm tra thay đổi pixel;
+Compose UI test và Web E2E vẫn chịu trách nhiệm kiểm tra hành vi.
+
+Lệnh mặc định trên Windows là **xác thực**, không ghi đè ảnh chuẩn:
+
+```powershell
+$env:JAVA_HOME='C:\Program Files\Android\Android Studio\jbr'
+$env:ANDROID_HOME="$env:LOCALAPPDATA\Android\Sdk"
+$env:ANDROID_SDK_ROOT=$env:ANDROID_HOME
+.\gradlew.bat :app:validateDevDebugScreenshotTest --no-daemon --no-configuration-cache
+```
+
+Trên Linux/macOS:
+
+```bash
+./gradlew :app:validateDevDebugScreenshotTest --no-daemon --no-configuration-cache
+```
+
+Chỉ khi thay đổi UI là có chủ ý và đã xem lại đủ ảnh mới chạy lệnh cập nhật:
+
+```powershell
+.\gradlew.bat :app:updateDevDebugScreenshotTest --no-daemon --no-configuration-cache
+```
+
+```bash
+./gradlew :app:updateDevDebugScreenshotTest --no-daemon --no-configuration-cache
+```
+
+- Ảnh chuẩn nằm tại `app/src/screenshotTestDevDebug/reference/` và phải được
+  quản lý bằng task Gradle; không chỉnh PNG thủ công.
+- Report HTML nằm tại
+  `app/build/reports/screenshotTest/preview/debug/dev/index.html`.
+- Ảnh render thực tế và ảnh chênh lệch nằm dưới
+  `app/build/outputs/screenshotTest-results/preview/debug/dev/rendered/` và
+  `app/build/outputs/screenshotTest-results/preview/debug/dev/diffs/`.
+- Trước khi commit baseline, kiểm tra đúng 30 PNG, xem từng ảnh ở cả ba kích
+  thước, xem Git diff và chạy lại task `validate`.
+- CI chỉ chạy `validate` và luôn tải report/ảnh so sánh lên artifact; CI không
+  được chạy task `update` hoặc tự commit baseline.
+
+Plugin `com.android.compose.screenshot` hiện được pin ở `0.0.1-alpha15`. Khi
+nâng AGP, Kotlin hoặc plugin này, thực hiện trong thay đổi riêng và xác thực lại
+toàn bộ 30 ảnh trước khi merge.
 
 ## Phạm vi hồi quy chính
 
@@ -111,6 +161,8 @@ GitHub Actions chạy với mọi push, pull request và khi kích hoạt thủ 
 - Biên dịch Android UI test để phát hiện lỗi import/dependency trước khi khởi động emulator.
 - Build APK dev và biên dịch Web/Wasm.
 - Chạy Compose UI test trên Android emulator.
+- So sánh 30 ảnh chuẩn 2D Arcade trên host, không cần emulator; khi lỗi lưu
+  report HTML, ảnh thực tế và ảnh diff trong artifact riêng.
 - Chạy Web E2E game trên Chromium, responsive ở bốn kích thước, chữ lớn/nội dung dài/viewport bàn phím, smoke test Firefox/WebKit và bundle Kotlin/JS fallback với backend in-memory riêng; lưu trace/ảnh khi lỗi.
 - Lưu APK cùng báo cáo test thành artifact.
 
