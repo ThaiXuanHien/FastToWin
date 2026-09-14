@@ -414,6 +414,11 @@ class ProfileSectionsUiTest {
 
         composeRule.onNodeWithTag("profile_section_screen:COLLECTION").assertIsDisplayed()
         composeRule.onNodeWithText("Khung").assertIsDisplayed()
+        val middleFrameRowOffset = with(composeRule.density) { 380.dp.toPx() }
+        composeRule.onNodeWithTag("profile_section_scroll")
+            .performSemanticsAction(SemanticsActions.ScrollBy) { scrollBy ->
+                scrollBy(0f, middleFrameRowOffset)
+            }
         composeRule.onNodeWithTag("collection_frames").performScrollTo()
         composeRule.onNodeWithTag("collection_frame:frame_silver").assertIsDisplayed()
         composeRule.onNodeWithText("Khung Bạc").assertIsDisplayed()

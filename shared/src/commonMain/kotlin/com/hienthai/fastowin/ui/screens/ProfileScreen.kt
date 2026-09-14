@@ -928,6 +928,7 @@ fun ProfileSectionScreen(
                     modifier = Modifier
                         .fillMaxSize()
                         .verticalScroll(rememberScrollState())
+                        .testTag("profile_section_scroll")
                         .windowInsetsPadding(
                             WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal)
                         )
