@@ -36,4 +36,38 @@ class MatchmakingLocalizationTest {
             assertEquals(translations, keys.map(catalog.texts::getValue), language.code)
         }
     }
+
+    @Test
+    fun `public room list copy resolves explicitly in all twelve languages`() {
+        val expected = mapOf(
+            AppLanguage.ENGLISH to listOf("PUBLIC ROOMS", "Find the right opponent", "Create a private room or join a waiting room.", "Search room or host name", "All", "Waiting", "{count} rooms", "No rooms are waiting. Create one or pull down to refresh.", "No rooms match these filters."),
+            AppLanguage.VIETNAMESE to listOf("PHÒNG CÔNG KHAI", "Tìm đối thủ phù hợp", "Tạo phòng riêng hoặc tham gia phòng đang chờ.", "Tìm tên phòng hoặc chủ phòng", "Tất cả", "Đang chờ", "{count} phòng", "Chưa có phòng đang chờ. Hãy tạo phòng mới hoặc kéo xuống để làm mới.", "Không tìm thấy phòng phù hợp với bộ lọc."),
+            AppLanguage.SIMPLIFIED_CHINESE to listOf("公开房间", "寻找合适的对手", "创建私密房间或加入等待中的房间。", "搜索房间或房主名称", "全部", "等待中", "{count} 个房间", "暂无等待中的房间。请创建一个或下拉刷新。", "没有符合筛选条件的房间。"),
+            AppLanguage.JAPANESE to listOf("公開ルーム", "ぴったりの対戦相手を探す", "非公開ルームを作成するか、待機中のルームに参加しましょう。", "ルーム名またはホスト名を検索", "すべて", "待機中", "{count}ルーム", "待機中のルームはありません。作成するか、下に引いて更新してください。", "条件に一致するルームがありません。"),
+            AppLanguage.KOREAN to listOf("공개 방", "알맞은 상대 찾기", "비공개 방을 만들거나 대기 중인 방에 참가하세요.", "방 또는 방장 이름 검색", "전체", "대기 중", "방 {count}개", "대기 중인 방이 없습니다. 새로 만들거나 아래로 당겨 새로고침하세요.", "필터와 일치하는 방이 없습니다."),
+            AppLanguage.SPANISH to listOf("SALAS PÚBLICAS", "Encuentra al oponente adecuado", "Crea una sala privada o únete a una sala en espera.", "Buscar sala o anfitrión", "Todas", "En espera", "{count} salas", "No hay salas en espera. Crea una o desliza hacia abajo para actualizar.", "No hay salas que coincidan con estos filtros."),
+            AppLanguage.BRAZILIAN_PORTUGUESE to listOf("SALAS PÚBLICAS", "Encontre o adversário ideal", "Crie uma sala privada ou entre em uma sala em espera.", "Buscar sala ou anfitrião", "Todas", "Aguardando", "{count} salas", "Nenhuma sala está aguardando. Crie uma ou puxe para atualizar.", "Nenhuma sala corresponde a estes filtros."),
+            AppLanguage.FRENCH to listOf("SALONS PUBLICS", "Trouve le bon adversaire", "Crée un salon privé ou rejoins un salon en attente.", "Rechercher un salon ou un hôte", "Tous", "En attente", "{count} salons", "Aucun salon en attente. Crée-en un ou tire vers le bas pour actualiser.", "Aucun salon ne correspond à ces filtres."),
+            AppLanguage.GERMAN to listOf("ÖFFENTLICHE RÄUME", "Passenden Gegner finden", "Erstelle einen privaten Raum oder tritt einem offenen Raum bei.", "Raum oder Host suchen", "Alle", "Wartend", "{count} Räume", "Keine Räume warten. Erstelle einen oder ziehe zum Aktualisieren nach unten.", "Keine Räume entsprechen diesen Filtern."),
+            AppLanguage.INDONESIAN to listOf("RUANG PUBLIK", "Temukan lawan yang tepat", "Buat ruang privat atau gabung ke ruang yang sedang menunggu.", "Cari ruang atau nama host", "Semua", "Menunggu", "{count} ruang", "Tidak ada ruang yang sedang menunggu. Buat ruang atau tarik ke bawah untuk menyegarkan.", "Tidak ada ruang yang cocok dengan filter ini."),
+            AppLanguage.THAI to listOf("ห้องสาธารณะ", "ค้นหาคู่แข่งที่เหมาะสม", "สร้างห้องส่วนตัวหรือเข้าร่วมห้องที่กำลังรอ", "ค้นหาห้องหรือชื่อโฮสต์", "ทั้งหมด", "กำลังรอ", "{count} ห้อง", "ไม่มีห้องที่กำลังรอ สร้างห้องใหม่หรือดึงลงเพื่อรีเฟรช", "ไม่มีห้องที่ตรงกับตัวกรองนี้"),
+            AppLanguage.RUSSIAN to listOf("ОТКРЫТЫЕ КОМНАТЫ", "Найдите подходящего соперника", "Создайте закрытую комнату или войдите в комнату ожидания.", "Поиск комнаты или ведущего", "Все", "Ожидание", "Комнат: {count}", "Нет комнат в ожидании. Создайте комнату или потяните вниз для обновления.", "Нет комнат, соответствующих этим фильтрам."),
+        )
+        val keys = listOf(
+            TextKey.PublicRooms,
+            TextKey.FindOpponent,
+            TextKey.PublicRoomsDescription,
+            TextKey.SearchRooms,
+            TextKey.All,
+            TextKey.Waiting,
+            TextKey.RoomCount,
+            TextKey.NoWaitingRooms,
+            TextKey.NoMatchingRooms,
+        )
+
+        expected.forEach { (language, translations) ->
+            val catalog = allLocalizationCatalogs.getValue(language)
+            assertEquals(translations, keys.map(catalog.texts::getValue), language.code)
+        }
+    }
 }

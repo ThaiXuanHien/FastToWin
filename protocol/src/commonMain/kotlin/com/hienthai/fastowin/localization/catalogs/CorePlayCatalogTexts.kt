@@ -213,7 +213,9 @@ internal val germanCorePlayTexts = mapOf(
     TextKey.OpponentReady to "GEGNER BEREIT", TextKey.MatchStarting to "Das Match beginnt gleich",
     TextKey.Matchmaking to "Spielersuche", TextKey.MatchFound to "Gegner gefunden", TextKey.FindingOpponent to "Gegner wird gesucht…",
     TextKey.RankedMatchmakingHint to "Spieler mit ähnlichem Elo werden bevorzugt.", TextKey.CasualMatchmakingHint to "Spieler im gleichen Modus werden gesucht.",
-    TextKey.EloRange to "Elo-Bereich", TextKey.NoEloImpact to "Kein Elo-Einfluss", TextKey.CancelMatchmaking to "SPIELERSUCHE ABBRECHEN"
+    TextKey.EloRange to "Elo-Bereich", TextKey.NoEloImpact to "Kein Elo-Einfluss", TextKey.CancelMatchmaking to "SPIELERSUCHE ABBRECHEN",
+    TextKey.RoomCount to "{count} Räume", TextKey.NoWaitingRooms to "Keine Räume warten. Erstelle einen oder ziehe zum Aktualisieren nach unten.",
+    TextKey.NoMatchingRooms to "Keine Räume entsprechen diesen Filtern."
 )
 
 internal val japaneseCorePlayTexts = mapOf(
@@ -244,7 +246,11 @@ internal val japaneseCorePlayTexts = mapOf(
     TextKey.OpponentReady to "対戦相手は準備完了", TextKey.MatchStarting to "まもなく対戦開始",
     TextKey.Matchmaking to "マッチング", TextKey.MatchFound to "対戦相手が見つかりました", TextKey.FindingOpponent to "対戦相手を探しています…",
     TextKey.RankedMatchmakingHint to "Eloが近いプレイヤーを優先します。", TextKey.CasualMatchmakingHint to "同じモードのプレイヤーを探しています。",
-    TextKey.EloRange to "Elo範囲", TextKey.NoEloImpact to "Eloへの影響なし", TextKey.CancelMatchmaking to "マッチングをキャンセル"
+    TextKey.EloRange to "Elo範囲", TextKey.NoEloImpact to "Eloへの影響なし", TextKey.CancelMatchmaking to "マッチングをキャンセル",
+    TextKey.PublicRooms to "公開ルーム", TextKey.FindOpponent to "ぴったりの対戦相手を探す",
+    TextKey.PublicRoomsDescription to "非公開ルームを作成するか、待機中のルームに参加しましょう。", TextKey.SearchRooms to "ルーム名またはホスト名を検索",
+    TextKey.All to "すべて", TextKey.Waiting to "待機中", TextKey.RoomCount to "{count}ルーム",
+    TextKey.NoWaitingRooms to "待機中のルームはありません。作成するか、下に引いて更新してください。", TextKey.NoMatchingRooms to "条件に一致するルームがありません。"
 )
 
 internal val russianCorePlayTexts = mapOf(
@@ -276,7 +282,12 @@ internal val russianCorePlayTexts = mapOf(
     TextKey.OpponentReady to "СОПЕРНИК ГОТОВ", TextKey.MatchStarting to "Матч скоро начнётся",
     TextKey.Matchmaking to "Подбор соперника", TextKey.MatchFound to "Соперник найден", TextKey.FindingOpponent to "Поиск соперника…",
     TextKey.RankedMatchmakingHint to "Приоритет игрокам с близким Elo.", TextKey.CasualMatchmakingHint to "Поиск игроков в том же режиме.",
-    TextKey.EloRange to "Диапазон Elo", TextKey.NoEloImpact to "Не влияет на Elo", TextKey.CancelMatchmaking to "ОТМЕНИТЬ ПОИСК"
+    TextKey.EloRange to "Диапазон Elo", TextKey.NoEloImpact to "Не влияет на Elo", TextKey.CancelMatchmaking to "ОТМЕНИТЬ ПОИСК",
+    TextKey.PublicRooms to "ОТКРЫТЫЕ КОМНАТЫ", TextKey.FindOpponent to "Найдите подходящего соперника",
+    TextKey.PublicRoomsDescription to "Создайте закрытую комнату или войдите в комнату ожидания.", TextKey.SearchRooms to "Поиск комнаты или ведущего",
+    TextKey.All to "Все", TextKey.Waiting to "Ожидание", TextKey.RoomCount to "Комнат: {count}",
+    TextKey.NoWaitingRooms to "Нет комнат в ожидании. Создайте комнату или потяните вниз для обновления.",
+    TextKey.NoMatchingRooms to "Нет комнат, соответствующих этим фильтрам."
 )
 
 internal val thaiCorePlayTexts = mapOf(
@@ -312,7 +323,11 @@ internal val thaiCorePlayTexts = mapOf(
     TextKey.OpponentReady to "คู่แข่งพร้อมแล้ว", TextKey.MatchStarting to "การแข่งขันกำลังจะเริ่ม",
     TextKey.Matchmaking to "จับคู่", TextKey.MatchFound to "พบคู่แข่งแล้ว", TextKey.FindingOpponent to "กำลังค้นหาคู่แข่ง…",
     TextKey.RankedMatchmakingHint to "ให้ความสำคัญกับผู้เล่นที่มี Elo ใกล้เคียง", TextKey.CasualMatchmakingHint to "กำลังค้นหาผู้เล่นในโหมดเดียวกัน",
-    TextKey.EloRange to "ช่วง Elo", TextKey.NoEloImpact to "ไม่มีผลต่อ Elo", TextKey.CancelMatchmaking to "ยกเลิกการจับคู่"
+    TextKey.EloRange to "ช่วง Elo", TextKey.NoEloImpact to "ไม่มีผลต่อ Elo", TextKey.CancelMatchmaking to "ยกเลิกการจับคู่",
+    TextKey.PublicRooms to "ห้องสาธารณะ", TextKey.FindOpponent to "ค้นหาคู่แข่งที่เหมาะสม",
+    TextKey.PublicRoomsDescription to "สร้างห้องส่วนตัวหรือเข้าร่วมห้องที่กำลังรอ", TextKey.SearchRooms to "ค้นหาห้องหรือชื่อโฮสต์",
+    TextKey.All to "ทั้งหมด", TextKey.Waiting to "กำลังรอ", TextKey.RoomCount to "{count} ห้อง",
+    TextKey.NoWaitingRooms to "ไม่มีห้องที่กำลังรอ สร้างห้องใหม่หรือดึงลงเพื่อรีเฟรช", TextKey.NoMatchingRooms to "ไม่มีห้องที่ตรงกับตัวกรองนี้"
 )
 
 internal val simplifiedChineseCorePlayTexts = mapOf(
@@ -336,7 +351,10 @@ internal val simplifiedChineseCorePlayTexts = mapOf(
     TextKey.OpponentReady to "对手已准备", TextKey.MatchStarting to "比赛即将开始",
     TextKey.Matchmaking to "匹配对手", TextKey.MatchFound to "已找到对手", TextKey.FindingOpponent to "正在寻找对手…",
     TextKey.RankedMatchmakingHint to "优先匹配 Elo 接近的玩家。", TextKey.CasualMatchmakingHint to "正在匹配相同模式的玩家。",
-    TextKey.EloRange to "Elo 范围", TextKey.NoEloImpact to "不影响 Elo", TextKey.CancelMatchmaking to "取消匹配"
+    TextKey.EloRange to "Elo 范围", TextKey.NoEloImpact to "不影响 Elo", TextKey.CancelMatchmaking to "取消匹配",
+    TextKey.PublicRooms to "公开房间", TextKey.FindOpponent to "寻找合适的对手", TextKey.PublicRoomsDescription to "创建私密房间或加入等待中的房间。",
+    TextKey.SearchRooms to "搜索房间或房主名称", TextKey.All to "全部", TextKey.Waiting to "等待中", TextKey.RoomCount to "{count} 个房间",
+    TextKey.NoWaitingRooms to "暂无等待中的房间。请创建一个或下拉刷新。", TextKey.NoMatchingRooms to "没有符合筛选条件的房间。"
 )
 internal val koreanCorePlayTexts = mapOf(
     TextKey.WaitHostStart to "방장이 경기를 시작할 때까지 기다리세요.", TextKey.CancelReady to "준비 취소", TextKey.ReadyAction to "준비",
@@ -359,7 +377,10 @@ internal val koreanCorePlayTexts = mapOf(
     TextKey.OpponentReady to "상대 준비 완료", TextKey.MatchStarting to "곧 경기가 시작됩니다",
     TextKey.Matchmaking to "매칭", TextKey.MatchFound to "상대를 찾았습니다", TextKey.FindingOpponent to "상대를 찾는 중…",
     TextKey.RankedMatchmakingHint to "Elo가 비슷한 플레이어를 우선합니다.", TextKey.CasualMatchmakingHint to "같은 모드의 플레이어를 찾는 중입니다.",
-    TextKey.EloRange to "Elo 범위", TextKey.NoEloImpact to "Elo에 영향 없음", TextKey.CancelMatchmaking to "매칭 취소"
+    TextKey.EloRange to "Elo 범위", TextKey.NoEloImpact to "Elo에 영향 없음", TextKey.CancelMatchmaking to "매칭 취소",
+    TextKey.PublicRooms to "공개 방", TextKey.FindOpponent to "알맞은 상대 찾기", TextKey.PublicRoomsDescription to "비공개 방을 만들거나 대기 중인 방에 참가하세요.",
+    TextKey.SearchRooms to "방 또는 방장 이름 검색", TextKey.All to "전체", TextKey.Waiting to "대기 중", TextKey.RoomCount to "방 {count}개",
+    TextKey.NoWaitingRooms to "대기 중인 방이 없습니다. 새로 만들거나 아래로 당겨 새로고침하세요.", TextKey.NoMatchingRooms to "필터와 일치하는 방이 없습니다."
 )
 internal val spanishCorePlayTexts = mapOf(
     TextKey.WaitHostStart to "Espera a que el anfitrión inicie la partida.", TextKey.CancelReady to "CANCELAR LISTO", TextKey.ReadyAction to "LISTO",
@@ -383,7 +404,12 @@ internal val spanishCorePlayTexts = mapOf(
     TextKey.OpponentReady to "OPONENTE LISTO", TextKey.MatchStarting to "La partida está a punto de comenzar",
     TextKey.Matchmaking to "Emparejamiento", TextKey.MatchFound to "Partida encontrada", TextKey.FindingOpponent to "Buscando oponente…",
     TextKey.RankedMatchmakingHint to "Se priorizan jugadores con un Elo cercano.", TextKey.CasualMatchmakingHint to "Buscando jugadores del mismo modo.",
-    TextKey.EloRange to "Rango de Elo", TextKey.NoEloImpact to "No afecta al Elo", TextKey.CancelMatchmaking to "CANCELAR BÚSQUEDA"
+    TextKey.EloRange to "Rango de Elo", TextKey.NoEloImpact to "No afecta al Elo", TextKey.CancelMatchmaking to "CANCELAR BÚSQUEDA",
+    TextKey.PublicRooms to "SALAS PÚBLICAS", TextKey.FindOpponent to "Encuentra al oponente adecuado",
+    TextKey.PublicRoomsDescription to "Crea una sala privada o únete a una sala en espera.", TextKey.SearchRooms to "Buscar sala o anfitrión",
+    TextKey.All to "Todas", TextKey.Waiting to "En espera", TextKey.RoomCount to "{count} salas",
+    TextKey.NoWaitingRooms to "No hay salas en espera. Crea una o desliza hacia abajo para actualizar.",
+    TextKey.NoMatchingRooms to "No hay salas que coincidan con estos filtros."
 )
 internal val brazilianPortugueseCorePlayTexts = mapOf(
     TextKey.WaitHostStart to "Aguarde o anfitrião iniciar a partida.", TextKey.CancelReady to "CANCELAR PRONTO", TextKey.ReadyAction to "PRONTO",
@@ -407,7 +433,12 @@ internal val brazilianPortugueseCorePlayTexts = mapOf(
     TextKey.OpponentReady to "ADVERSÁRIO PRONTO", TextKey.MatchStarting to "A partida está prestes a começar",
     TextKey.Matchmaking to "Pareamento", TextKey.MatchFound to "Partida encontrada", TextKey.FindingOpponent to "Procurando adversário…",
     TextKey.RankedMatchmakingHint to "Priorizando jogadores com Elo próximo.", TextKey.CasualMatchmakingHint to "Procurando jogadores no mesmo modo.",
-    TextKey.EloRange to "Faixa de Elo", TextKey.NoEloImpact to "Não afeta o Elo", TextKey.CancelMatchmaking to "CANCELAR BUSCA"
+    TextKey.EloRange to "Faixa de Elo", TextKey.NoEloImpact to "Não afeta o Elo", TextKey.CancelMatchmaking to "CANCELAR BUSCA",
+    TextKey.PublicRooms to "SALAS PÚBLICAS", TextKey.FindOpponent to "Encontre o adversário ideal",
+    TextKey.PublicRoomsDescription to "Crie uma sala privada ou entre em uma sala em espera.", TextKey.SearchRooms to "Buscar sala ou anfitrião",
+    TextKey.All to "Todas", TextKey.Waiting to "Aguardando", TextKey.RoomCount to "{count} salas",
+    TextKey.NoWaitingRooms to "Nenhuma sala está aguardando. Crie uma ou puxe para atualizar.",
+    TextKey.NoMatchingRooms to "Nenhuma sala corresponde a estes filtros."
 )
 internal val frenchCorePlayTexts = mapOf(
     TextKey.WaitHostStart to "Attends que l’hôte lance la partie.", TextKey.CancelReady to "ANNULER PRÊT", TextKey.ReadyAction to "PRÊT",
@@ -431,7 +462,12 @@ internal val frenchCorePlayTexts = mapOf(
     TextKey.OpponentReady to "ADVERSAIRE PRÊT", TextKey.MatchStarting to "La partie va commencer",
     TextKey.Matchmaking to "Recherche d’adversaire", TextKey.MatchFound to "Adversaire trouvé", TextKey.FindingOpponent to "Recherche d’un adversaire…",
     TextKey.RankedMatchmakingHint to "Priorité aux joueurs avec un Elo proche.", TextKey.CasualMatchmakingHint to "Recherche de joueurs dans le même mode.",
-    TextKey.EloRange to "Plage d’Elo", TextKey.NoEloImpact to "Aucun impact sur l’Elo", TextKey.CancelMatchmaking to "ANNULER LA RECHERCHE"
+    TextKey.EloRange to "Plage d’Elo", TextKey.NoEloImpact to "Aucun impact sur l’Elo", TextKey.CancelMatchmaking to "ANNULER LA RECHERCHE",
+    TextKey.PublicRooms to "SALONS PUBLICS", TextKey.FindOpponent to "Trouve le bon adversaire",
+    TextKey.PublicRoomsDescription to "Crée un salon privé ou rejoins un salon en attente.", TextKey.SearchRooms to "Rechercher un salon ou un hôte",
+    TextKey.All to "Tous", TextKey.Waiting to "En attente", TextKey.RoomCount to "{count} salons",
+    TextKey.NoWaitingRooms to "Aucun salon en attente. Crée-en un ou tire vers le bas pour actualiser.",
+    TextKey.NoMatchingRooms to "Aucun salon ne correspond à ces filtres."
 )
 internal val indonesianCorePlayTexts = mapOf(
     TextKey.WaitHostStart to "Tunggu host memulai pertandingan.", TextKey.CancelReady to "BATAL SIAP", TextKey.ReadyAction to "SIAP",
@@ -455,5 +491,10 @@ internal val indonesianCorePlayTexts = mapOf(
     TextKey.OpponentReady to "LAWAN SIAP", TextKey.MatchStarting to "Pertandingan akan segera dimulai",
     TextKey.Matchmaking to "Pencarian lawan", TextKey.MatchFound to "Lawan ditemukan", TextKey.FindingOpponent to "Mencari lawan…",
     TextKey.RankedMatchmakingHint to "Memprioritaskan pemain dengan Elo yang berdekatan.", TextKey.CasualMatchmakingHint to "Mencari pemain dalam mode yang sama.",
-    TextKey.EloRange to "Rentang Elo", TextKey.NoEloImpact to "Tidak memengaruhi Elo", TextKey.CancelMatchmaking to "BATAL CARI LAWAN"
+    TextKey.EloRange to "Rentang Elo", TextKey.NoEloImpact to "Tidak memengaruhi Elo", TextKey.CancelMatchmaking to "BATAL CARI LAWAN",
+    TextKey.PublicRooms to "RUANG PUBLIK", TextKey.FindOpponent to "Temukan lawan yang tepat",
+    TextKey.PublicRoomsDescription to "Buat ruang privat atau gabung ke ruang yang sedang menunggu.", TextKey.SearchRooms to "Cari ruang atau nama host",
+    TextKey.All to "Semua", TextKey.Waiting to "Menunggu", TextKey.RoomCount to "{count} ruang",
+    TextKey.NoWaitingRooms to "Tidak ada ruang yang sedang menunggu. Buat ruang atau tarik ke bawah untuk menyegarkan.",
+    TextKey.NoMatchingRooms to "Tidak ada ruang yang cocok dengan filter ini."
 )
