@@ -347,7 +347,7 @@ Run:
 
 ```powershell
 .\gradlew.bat :app:updateDevDebugScreenshotTest --no-daemon
-(Get-ChildItem app\src\screenshotTestDevDebug\reference -Filter *.png).Count
+(Get-ChildItem app\src\screenshotTestDevDebug\reference -Recurse -Filter *.png).Count
 ```
 
 Expected: `15`. Nếu một screen phụ thuộc API Android không được Layoutlib hỗ
@@ -467,7 +467,7 @@ Run:
 ```powershell
 .\gradlew.bat :app:compileDevDebugScreenshotTestKotlin --no-daemon
 .\gradlew.bat :app:updateDevDebugScreenshotTest --no-daemon
-(Get-ChildItem app\src\screenshotTestDevDebug\reference -Filter *.png).Count
+(Get-ChildItem app\src\screenshotTestDevDebug\reference -Recurse -Filter *.png).Count
 ```
 
 Expected: BUILD SUCCESSFUL và count bằng `30`, không nhiều hơn hoặc ít hơn.
@@ -505,7 +505,7 @@ git commit -m "test: cover feature arcade screens with screenshot previews"
 Run:
 
 ```powershell
-$refs = Get-ChildItem app\src\screenshotTestDevDebug\reference -Filter *.png
+$refs = Get-ChildItem app\src\screenshotTestDevDebug\reference -Recurse -Filter *.png
 $refs.Count
 $refs | Sort-Object Name | Select-Object Name,Length
 ```
@@ -617,7 +617,7 @@ Dùng `apply_patch` đổi tạm màu `Surface` trong `ArcadeScreenshotFrame` t�
 ```
 
 Expected: FAIL và
-`app/build/reports/screenshotTest/preview/devDebug/index.html` tồn tại. Kiểm tra
+`app/build/reports/screenshotTest/preview/debug/dev/index.html` tồn tại. Kiểm tra
 report/output có reference, actual và diff cho các preview.
 
 - [ ] **Step 4: Hoàn tác đúng thay đổi thử nghiệm và validate lại**
@@ -658,7 +658,7 @@ $env:JAVA_HOME='C:\Program Files\Android\Android Studio\jbr'
 
 Giải thích validate là lệnh mặc định; update chỉ dùng khi UI thay đổi có chủ ý,
 reference nằm ở `app/src/screenshotTestDevDebug/reference`, report nằm ở
-`app/build/reports/screenshotTest/preview/devDebug/index.html`, và plugin đang
+`app/build/reports/screenshotTest/preview/debug/dev/index.html`, và plugin đang
 alpha. Thêm quy tắc không chỉnh PNG thủ công và phải review đủ ảnh trước commit.
 
 - [ ] **Step 2: Cập nhật roadmap đúng bằng chứng**
@@ -699,7 +699,7 @@ skip ngoài chủ ý.
 Run:
 
 ```powershell
-(Get-ChildItem app\src\screenshotTestDevDebug\reference -Filter *.png).Count
+(Get-ChildItem app\src\screenshotTestDevDebug\reference -Recurse -Filter *.png).Count
 git diff --check
 git status --short
 ```
