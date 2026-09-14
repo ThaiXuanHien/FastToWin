@@ -208,7 +208,9 @@ internal val germanCorePlayTexts = mapOf(
     TextKey.PrivateJoinDescription to "Gib das Passwort ein, um „{room}“ beizutreten.", TextKey.PublicJoinDescription to "{room} • Host: {host}",
     TextKey.JoinedRoomCode to "RAUMCODE • {code}", TextKey.JoinedRoom to "IM RAUM", TextKey.ShareCodeHint to "Teile den Code, um Freunde einzuladen.",
     TextKey.ModeNumberCount to "{mode} • 50 Zahlen", TextKey.ShareRoomCode to "RAUMCODE TEILEN",
-    TextKey.ShareSheetError to "Teilen konnte nicht geöffnet werden. Versuche es erneut."
+    TextKey.ShareSheetError to "Teilen konnte nicht geöffnet werden. Versuche es erneut.", TextKey.LatencyGood to "{latency} ms • Gut",
+    TextKey.LatencyStable to "{latency} ms • Stabil", TextKey.LatencySlow to "{latency} ms • Langsam",
+    TextKey.OpponentReady to "GEGNER BEREIT", TextKey.MatchStarting to "Das Match beginnt gleich"
 )
 
 internal val japaneseCorePlayTexts = mapOf(
@@ -234,7 +236,9 @@ internal val japaneseCorePlayTexts = mapOf(
     TextKey.PrivateJoinDescription to "「{room}」に参加するにはパスワードを入力してください。", TextKey.PublicJoinDescription to "{room} • ホスト {host}",
     TextKey.JoinedRoomCode to "ルームコード • {code}", TextKey.JoinedRoom to "ルーム参加中", TextKey.ShareCodeHint to "コードを共有してフレンドを招待しましょう。",
     TextKey.ModeNumberCount to "{mode} • 50個の数字", TextKey.ShareRoomCode to "ルームコードを共有",
-    TextKey.ShareSheetError to "共有画面を開けませんでした。もう一度お試しください。"
+    TextKey.ShareSheetError to "共有画面を開けませんでした。もう一度お試しください。", TextKey.LatencyGood to "{latency} ms • 良好",
+    TextKey.LatencyStable to "{latency} ms • 安定", TextKey.LatencySlow to "{latency} ms • 遅い",
+    TextKey.OpponentReady to "対戦相手は準備完了", TextKey.MatchStarting to "まもなく対戦開始"
 )
 
 internal val russianCorePlayTexts = mapOf(
@@ -261,7 +265,9 @@ internal val russianCorePlayTexts = mapOf(
     TextKey.PrivateJoinDescription to "Введите пароль, чтобы войти в «{room}».", TextKey.PublicJoinDescription to "{room} • Ведущий: {host}",
     TextKey.JoinedRoomCode to "КОД КОМНАТЫ • {code}", TextKey.JoinedRoom to "В КОМНАТЕ", TextKey.ShareCodeHint to "Поделитесь кодом, чтобы пригласить друзей.",
     TextKey.ModeNumberCount to "{mode} • 50 чисел", TextKey.ShareRoomCode to "ПОДЕЛИТЬСЯ КОДОМ",
-    TextKey.ShareSheetError to "Не удалось открыть меню «Поделиться». Попробуйте ещё раз."
+    TextKey.ShareSheetError to "Не удалось открыть меню «Поделиться». Попробуйте ещё раз.", TextKey.LatencyGood to "{latency} ms • Хорошо",
+    TextKey.LatencyStable to "{latency} ms • Стабильно", TextKey.LatencySlow to "{latency} ms • Медленно",
+    TextKey.OpponentReady to "СОПЕРНИК ГОТОВ", TextKey.MatchStarting to "Матч скоро начнётся"
 )
 
 internal val thaiCorePlayTexts = mapOf(
@@ -292,7 +298,9 @@ internal val thaiCorePlayTexts = mapOf(
     TextKey.PrivateJoinDescription to "กรอกรหัสผ่านเพื่อเข้าร่วม “{room}”", TextKey.PublicJoinDescription to "{room} • โฮสต์ {host}",
     TextKey.JoinedRoomCode to "รหัสห้อง • {code}", TextKey.JoinedRoom to "อยู่ในห้อง", TextKey.ShareCodeHint to "แชร์รหัสเพื่อเชิญเพื่อน",
     TextKey.ModeNumberCount to "{mode} • 50 ตัวเลข", TextKey.ShareRoomCode to "แชร์รหัสห้อง",
-    TextKey.ShareSheetError to "ไม่สามารถเปิดการแชร์ได้ โปรดลองอีกครั้ง"
+    TextKey.ShareSheetError to "ไม่สามารถเปิดการแชร์ได้ โปรดลองอีกครั้ง", TextKey.LatencyGood to "{latency} ms • ดี",
+    TextKey.LatencyStable to "{latency} ms • เสถียร", TextKey.LatencySlow to "{latency} ms • ช้า",
+    TextKey.OpponentReady to "คู่แข่งพร้อมแล้ว", TextKey.MatchStarting to "การแข่งขันกำลังจะเริ่ม"
 )
 
 internal val simplifiedChineseCorePlayTexts = mapOf(
@@ -311,7 +319,9 @@ internal val simplifiedChineseCorePlayTexts = mapOf(
     TextKey.RoomListSummary to "{host} • {mode} • {matchType}", TextKey.EnterRoom to "进入", TextKey.JoinPrivateRoom to "私密房间",
     TextKey.PrivateJoinDescription to "输入密码加入“{room}”。", TextKey.PublicJoinDescription to "{room} • 房主 {host}",
     TextKey.JoinedRoomCode to "房间代码 • {code}", TextKey.JoinedRoom to "已加入房间", TextKey.ShareCodeHint to "分享代码以邀请好友。",
-    TextKey.ModeNumberCount to "{mode} • 50个数字", TextKey.ShareRoomCode to "分享房间代码", TextKey.ShareSheetError to "无法打开分享，请重试。"
+    TextKey.ModeNumberCount to "{mode} • 50个数字", TextKey.ShareRoomCode to "分享房间代码", TextKey.ShareSheetError to "无法打开分享，请重试。",
+    TextKey.LatencyGood to "{latency} ms • 良好", TextKey.LatencyStable to "{latency} ms • 稳定", TextKey.LatencySlow to "{latency} ms • 较慢",
+    TextKey.OpponentReady to "对手已准备", TextKey.MatchStarting to "比赛即将开始"
 )
 internal val koreanCorePlayTexts = mapOf(
     TextKey.WaitHostStart to "방장이 경기를 시작할 때까지 기다리세요.", TextKey.CancelReady to "준비 취소", TextKey.ReadyAction to "준비",
@@ -329,7 +339,9 @@ internal val koreanCorePlayTexts = mapOf(
     TextKey.RoomListSummary to "{host} • {mode} • {matchType}", TextKey.EnterRoom to "입장", TextKey.JoinPrivateRoom to "비공개 방",
     TextKey.PrivateJoinDescription to "“{room}” 방에 참가하려면 비밀번호를 입력하세요.", TextKey.PublicJoinDescription to "{room} • 방장 {host}",
     TextKey.JoinedRoomCode to "방 코드 • {code}", TextKey.JoinedRoom to "방 참가 중", TextKey.ShareCodeHint to "코드를 공유해 친구를 초대하세요.",
-    TextKey.ModeNumberCount to "{mode} • 숫자 50개", TextKey.ShareRoomCode to "방 코드 공유", TextKey.ShareSheetError to "공유 창을 열 수 없습니다. 다시 시도하세요."
+    TextKey.ModeNumberCount to "{mode} • 숫자 50개", TextKey.ShareRoomCode to "방 코드 공유", TextKey.ShareSheetError to "공유 창을 열 수 없습니다. 다시 시도하세요.",
+    TextKey.LatencyGood to "{latency} ms • 좋음", TextKey.LatencyStable to "{latency} ms • 안정적", TextKey.LatencySlow to "{latency} ms • 느림",
+    TextKey.OpponentReady to "상대 준비 완료", TextKey.MatchStarting to "곧 경기가 시작됩니다"
 )
 internal val spanishCorePlayTexts = mapOf(
     TextKey.WaitHostStart to "Espera a que el anfitrión inicie la partida.", TextKey.CancelReady to "CANCELAR LISTO", TextKey.ReadyAction to "LISTO",
@@ -348,7 +360,9 @@ internal val spanishCorePlayTexts = mapOf(
     TextKey.PrivateJoinDescription to "Introduce la contraseña para unirte a “{room}”.", TextKey.PublicJoinDescription to "{room} • Anfitrión: {host}",
     TextKey.JoinedRoomCode to "CÓDIGO DE SALA • {code}", TextKey.JoinedRoom to "EN LA SALA", TextKey.ShareCodeHint to "Comparte el código para invitar a tus amigos.",
     TextKey.ModeNumberCount to "{mode} • 50 números", TextKey.ShareRoomCode to "COMPARTIR CÓDIGO DE SALA",
-    TextKey.ShareSheetError to "No se pudo abrir el menú para compartir. Inténtalo de nuevo."
+    TextKey.ShareSheetError to "No se pudo abrir el menú para compartir. Inténtalo de nuevo.", TextKey.LatencyGood to "{latency} ms • Buena",
+    TextKey.LatencyStable to "{latency} ms • Estable", TextKey.LatencySlow to "{latency} ms • Lenta",
+    TextKey.OpponentReady to "OPONENTE LISTO", TextKey.MatchStarting to "La partida está a punto de comenzar"
 )
 internal val brazilianPortugueseCorePlayTexts = mapOf(
     TextKey.WaitHostStart to "Aguarde o anfitrião iniciar a partida.", TextKey.CancelReady to "CANCELAR PRONTO", TextKey.ReadyAction to "PRONTO",
@@ -367,7 +381,9 @@ internal val brazilianPortugueseCorePlayTexts = mapOf(
     TextKey.PrivateJoinDescription to "Digite a senha para entrar em “{room}”.", TextKey.PublicJoinDescription to "{room} • Anfitrião: {host}",
     TextKey.JoinedRoomCode to "CÓDIGO DA SALA • {code}", TextKey.JoinedRoom to "NA SALA", TextKey.ShareCodeHint to "Compartilhe o código para convidar amigos.",
     TextKey.ModeNumberCount to "{mode} • 50 números", TextKey.ShareRoomCode to "COMPARTILHAR CÓDIGO DA SALA",
-    TextKey.ShareSheetError to "Não foi possível abrir o compartilhamento. Tente novamente."
+    TextKey.ShareSheetError to "Não foi possível abrir o compartilhamento. Tente novamente.", TextKey.LatencyGood to "{latency} ms • Boa",
+    TextKey.LatencyStable to "{latency} ms • Estável", TextKey.LatencySlow to "{latency} ms • Lenta",
+    TextKey.OpponentReady to "ADVERSÁRIO PRONTO", TextKey.MatchStarting to "A partida está prestes a começar"
 )
 internal val frenchCorePlayTexts = mapOf(
     TextKey.WaitHostStart to "Attends que l’hôte lance la partie.", TextKey.CancelReady to "ANNULER PRÊT", TextKey.ReadyAction to "PRÊT",
@@ -386,7 +402,9 @@ internal val frenchCorePlayTexts = mapOf(
     TextKey.PrivateJoinDescription to "Saisis le mot de passe pour rejoindre « {room} ».", TextKey.PublicJoinDescription to "{room} • Hôte : {host}",
     TextKey.JoinedRoomCode to "CODE DU SALON • {code}", TextKey.JoinedRoom to "DANS LE SALON", TextKey.ShareCodeHint to "Partage le code pour inviter tes amis.",
     TextKey.ModeNumberCount to "{mode} • 50 nombres", TextKey.ShareRoomCode to "PARTAGER LE CODE DU SALON",
-    TextKey.ShareSheetError to "Impossible d’ouvrir le partage. Réessaie."
+    TextKey.ShareSheetError to "Impossible d’ouvrir le partage. Réessaie.", TextKey.LatencyGood to "{latency} ms • Bonne",
+    TextKey.LatencyStable to "{latency} ms • Stable", TextKey.LatencySlow to "{latency} ms • Lente",
+    TextKey.OpponentReady to "ADVERSAIRE PRÊT", TextKey.MatchStarting to "La partie va commencer"
 )
 internal val indonesianCorePlayTexts = mapOf(
     TextKey.WaitHostStart to "Tunggu host memulai pertandingan.", TextKey.CancelReady to "BATAL SIAP", TextKey.ReadyAction to "SIAP",
@@ -405,5 +423,7 @@ internal val indonesianCorePlayTexts = mapOf(
     TextKey.PrivateJoinDescription to "Masukkan kata sandi untuk bergabung ke “{room}”.", TextKey.PublicJoinDescription to "{room} • Host {host}",
     TextKey.JoinedRoomCode to "KODE RUANG • {code}", TextKey.JoinedRoom to "DI DALAM RUANG", TextKey.ShareCodeHint to "Bagikan kode untuk mengundang teman.",
     TextKey.ModeNumberCount to "{mode} • 50 angka", TextKey.ShareRoomCode to "BAGIKAN KODE RUANG",
-    TextKey.ShareSheetError to "Tidak dapat membuka menu berbagi. Coba lagi."
+    TextKey.ShareSheetError to "Tidak dapat membuka menu berbagi. Coba lagi.", TextKey.LatencyGood to "{latency} ms • Bagus",
+    TextKey.LatencyStable to "{latency} ms • Stabil", TextKey.LatencySlow to "{latency} ms • Lambat",
+    TextKey.OpponentReady to "LAWAN SIAP", TextKey.MatchStarting to "Pertandingan akan segera dimulai"
 )

@@ -177,4 +177,34 @@ class RoomLobbyLocalizationTest {
             assertEquals(translations, keys.map(catalog.texts::getValue), language.code)
         }
     }
+
+    @Test
+    fun `room connection and match start status resolves explicitly in all twelve languages`() {
+        val expected = mapOf(
+            AppLanguage.ENGLISH to listOf("{latency} ms • Good", "{latency} ms • Stable", "{latency} ms • Slow", "OPPONENT READY", "The match is about to start"),
+            AppLanguage.VIETNAMESE to listOf("{latency} ms • Tốt", "{latency} ms • Ổn định", "{latency} ms • Chậm", "ĐỐI THỦ ĐÃ SẴN SÀNG", "Trận đấu sắp bắt đầu"),
+            AppLanguage.SIMPLIFIED_CHINESE to listOf("{latency} ms • 良好", "{latency} ms • 稳定", "{latency} ms • 较慢", "对手已准备", "比赛即将开始"),
+            AppLanguage.JAPANESE to listOf("{latency} ms • 良好", "{latency} ms • 安定", "{latency} ms • 遅い", "対戦相手は準備完了", "まもなく対戦開始"),
+            AppLanguage.KOREAN to listOf("{latency} ms • 좋음", "{latency} ms • 안정적", "{latency} ms • 느림", "상대 준비 완료", "곧 경기가 시작됩니다"),
+            AppLanguage.SPANISH to listOf("{latency} ms • Buena", "{latency} ms • Estable", "{latency} ms • Lenta", "OPONENTE LISTO", "La partida está a punto de comenzar"),
+            AppLanguage.BRAZILIAN_PORTUGUESE to listOf("{latency} ms • Boa", "{latency} ms • Estável", "{latency} ms • Lenta", "ADVERSÁRIO PRONTO", "A partida está prestes a começar"),
+            AppLanguage.FRENCH to listOf("{latency} ms • Bonne", "{latency} ms • Stable", "{latency} ms • Lente", "ADVERSAIRE PRÊT", "La partie va commencer"),
+            AppLanguage.GERMAN to listOf("{latency} ms • Gut", "{latency} ms • Stabil", "{latency} ms • Langsam", "GEGNER BEREIT", "Das Match beginnt gleich"),
+            AppLanguage.INDONESIAN to listOf("{latency} ms • Bagus", "{latency} ms • Stabil", "{latency} ms • Lambat", "LAWAN SIAP", "Pertandingan akan segera dimulai"),
+            AppLanguage.THAI to listOf("{latency} ms • ดี", "{latency} ms • เสถียร", "{latency} ms • ช้า", "คู่แข่งพร้อมแล้ว", "การแข่งขันกำลังจะเริ่ม"),
+            AppLanguage.RUSSIAN to listOf("{latency} ms • Хорошо", "{latency} ms • Стабильно", "{latency} ms • Медленно", "СОПЕРНИК ГОТОВ", "Матч скоро начнётся"),
+        )
+        val keys = listOf(
+            TextKey.LatencyGood,
+            TextKey.LatencyStable,
+            TextKey.LatencySlow,
+            TextKey.OpponentReady,
+            TextKey.MatchStarting,
+        )
+
+        expected.forEach { (language, translations) ->
+            val catalog = allLocalizationCatalogs.getValue(language)
+            assertEquals(translations, keys.map(catalog.texts::getValue), language.code)
+        }
+    }
 }
