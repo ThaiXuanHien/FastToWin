@@ -414,12 +414,18 @@ class ProfileSectionsUiTest {
 
         composeRule.onNodeWithTag("profile_section_screen:COLLECTION").assertIsDisplayed()
         composeRule.onNodeWithText("Khung").assertIsDisplayed()
+        composeRule.onNodeWithTag("collection_frames").performScrollTo()
         composeRule.onNodeWithTag("collection_frame:frame_silver").assertIsDisplayed()
         composeRule.onNodeWithText("Khung Bạc").assertIsDisplayed()
-        composeRule.onNodeWithText("Khung Bền bỉ").performClick()
+        composeRule.onNodeWithText("Danh hiệu").performScrollTo()
+        composeRule.onNodeWithTag("collection_frame:frame_persistent")
+            .performScrollTo()
+            .assertIsDisplayed()
+            .performClick()
         composeRule.runOnIdle {
             assertEquals("frame_persistent" to "title_rookie", equippedFrame)
         }
+        composeRule.onNodeWithText("Khung").performScrollTo()
         composeRule.onNodeWithTag("collection_frame:season_1_gold")
             .performScrollTo()
             .assertIsDisplayed()
@@ -464,6 +470,7 @@ class ProfileSectionsUiTest {
             )
         }
 
+        composeRule.onNodeWithTag("collection_frames").performScrollTo()
         composeRule.onNodeWithTag("collection_frame:frame_silver")
             .performScrollTo()
             .assertIsDisplayed()
