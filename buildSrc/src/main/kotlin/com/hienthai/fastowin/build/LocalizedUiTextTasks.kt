@@ -195,6 +195,7 @@ object LocalizedUiTextScanner {
         "RussianCatalog.kt",
     )
     private val vietnameseLetter = Regex("[À-ỹ]")
+    private val technicalUiTokens = setOf("Elo", "s", "ms")
 
     fun isLocalizedUiSource(source: File): Boolean {
         val path = source.invariantSeparatorsPath
@@ -204,6 +205,7 @@ object LocalizedUiTextScanner {
 
     fun findViolations(source: String, allowLegacyFallback: Boolean): List<KotlinStringLiteral> {
         val lexicalScan = KotlinStringLiteralScanner(source).scan()
+        val structuralSource = source.maskedBy(lexicalScan.maskedRanges)
         val allowedFallbackRanges = if (allowLegacyFallback) {
             findLegacyFallbackLiteralRanges(source, lexicalScan)
         } else {
@@ -214,21 +216,37 @@ object LocalizedUiTextScanner {
                 literal.startOffset >= allowed.startOffset &&
                     literal.endOffsetExclusive <= allowed.endOffsetExclusive
             }
-            !isLegacyFallback && vietnameseLetter.containsMatchIn(literal.literalText)
+            val isDirectTextArgument = Regex("\\bText\\s*\\(\\s*$")
+                .containsMatchIn(structuralSource.take(literal.startOffset).takeLast(80))
+            val visibleLiteralText = literal.literalText.replace(Regex("\\\\."), "")
+            val isTechnicalUiLiteral = Regex("[A-Z0-9]+(?:-[A-Z0-9]+)+")
+                .matches(visibleLiteralText) ||
+                Regex("[A-Za-z]+").findAll(visibleLiteralText)
+                    .map { it.value }
+                    .toList()
+                    .takeIf(List<String>::isNotEmpty)
+                    ?.all(technicalUiTokens::contains) == true
+            val isUserFacingText = isDirectTextArgument &&
+                visibleLiteralText.any(Char::isLetter) &&
+                !isTechnicalUiLiteral
+            !isLegacyFallback && (vietnameseLetter.containsMatchIn(literal.literalText) || isUserFacingText)
         }
     }
+
+    private fun String.maskedBy(ranges: List<KotlinLexicalRange>): String =
+        StringBuilder(this).apply {
+            ranges.forEach { range ->
+                for (offset in range.startOffset until range.endOffsetExclusive) {
+                    this[offset] = ' '
+                }
+            }
+        }.toString()
 
     private fun findLegacyFallbackLiteralRanges(
         source: String,
         lexicalScan: KotlinLexicalScan,
     ): List<KotlinLexicalRange> {
-        val structuralSource = StringBuilder(source)
-        lexicalScan.maskedRanges.forEach { range ->
-            for (offset in range.startOffset until range.endOffsetExclusive) {
-                structuralSource[offset] = ' '
-            }
-        }
-        val structure = structuralSource.toString()
+        val structure = source.maskedBy(lexicalScan.maskedRanges)
         val outermostStrings = lexicalScan.stringLiterals.filter { candidate ->
             lexicalScan.stringLiterals.none { other ->
                 other.startOffset < candidate.startOffset &&
@@ -301,7 +319,7 @@ abstract class CheckLocalizedUiTextTask : DefaultTask() {
                     }
             }
         check(violations.isEmpty()) {
-            "Vietnamese string literals must be moved to the 12 localization catalogs. " +
+            "User-facing string literals must be moved to the 12 localization catalogs. " +
                 "Backend compatibility text must be wrapped by legacyFallback(...); " +
                 "operator-authored maintenance text must remain runtime data.\n" +
                 violations.joinToString(separator = "\n")

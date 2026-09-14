@@ -2861,7 +2861,7 @@ private fun MatchDetailScoreboard(summary: MatchHistorySnapshot, modifier: Modif
             }
             Surface(shape = CircleShape, color = MaterialTheme.colorScheme.surfaceContainerHighest) {
                 Text(
-                    "VS",
+                    localized(TextKey.Versus),
                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
                     fontWeight = FontWeight.Black
                 )
@@ -2935,7 +2935,7 @@ private fun MatchHistoryCard(match: MatchHistorySnapshot, onClick: (() -> Unit)?
             val details: @Composable () -> Unit = {
                 Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                     Text(
-                        "vs ${match.opponentName} · ${match.playerScore} – ${match.opponentScore}",
+                        "${localized(TextKey.Versus)} ${match.opponentName} · ${match.playerScore} – ${match.opponentScore}",
                         fontWeight = FontWeight.Black,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis
