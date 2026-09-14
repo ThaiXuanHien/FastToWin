@@ -5,7 +5,8 @@
   "packageManager": "pnpm@11.19.0",
   "engines": { "node": ">=22" },
   "scripts": {
-    "test": "playwright test",
+    "test": "pnpm test:navigation-errors && playwright test",
+    "test:navigation-errors": "node --test support/navigation-errors.test.mjs",
     "test:chromium": "playwright test --project=chromium",
     "test:responsive": "playwright test --project=chromium-small-phone --project=chromium-large-phone --project=chromium-tablet --project=chromium-landscape --project=chromium-adaptive-input-desktop --project=chromium-adaptive-input-touch",
     "test:cross-browser": "playwright test --project=firefox-smoke --project=webkit-smoke",

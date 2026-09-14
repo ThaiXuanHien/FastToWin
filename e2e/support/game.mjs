@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { test as base, expect } from 'playwright/test';
+import { isExpectedNavigationAbort } from './navigation-errors.mjs';
 
 export { expect };
 export const test = base.extend({
@@ -79,18 +80,13 @@ export const test = base.extend({
         // the navigation promise settles on slower CI runners, so keep a short
         // grace window and accept only browser-specific cancellation messages.
         const message = error.message;
-        const webKitNavigationCancellation =
-          ['Load failed', 'The I/O read operation failed.'].includes(message) ||
-          (/^(?:https?:\/\/|ttps?:\/\/|\/)(?:localhost|127\.0\.0\.1):\d+\/.+ due to access control checks\.$/.test(message)) ||
-          (message.startsWith('Fatal exception in coroutines machinery for AwaitContinuation(') &&
-            message.includes('{Cancelled}'));
-        const firefoxNavigationCancellation =
-          message === 'NetworkError when attempting to fetch resource.';
         const browserName = testInfo.project.use.browserName;
-        const expectedNavigationAbort =
-          Date.now() <= actor.expectedNavigationAbortUntil &&
-          ((browserName === 'webkit' && webKitNavigationCancellation) ||
-            (browserName === 'firefox' && firefoxNavigationCancellation));
+        const expectedNavigationAbort = isExpectedNavigationAbort({
+          browserName,
+          message,
+          now: Date.now(),
+          expectedUntil: actor.expectedNavigationAbortUntil,
+        });
         if (expectedNavigationAbort) return;
         actor.errors.push(message);
       });
