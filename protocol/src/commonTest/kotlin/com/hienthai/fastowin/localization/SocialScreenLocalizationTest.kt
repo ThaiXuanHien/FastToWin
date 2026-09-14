@@ -163,4 +163,36 @@ class SocialScreenLocalizationTest {
             assertEquals(translations, keys.map(catalog.texts::getValue), language.code)
         }
     }
+
+    @Test
+    fun `clan donation feedback resolves explicitly in all twelve languages`() {
+        val expected = mapOf(
+            AppLanguage.ENGLISH to listOf("Donations cannot be undone.", "Your clan gained {xp} XP.", "This donation was already completed.", "Choose a valid donation amount.", "You do not have enough {currency}.", "Join this clan before donating.", "Could not complete the donation. Please try again."),
+            AppLanguage.VIETNAMESE to listOf("Khoản quyên góp không thể hoàn tác.", "Bang đã nhận {xp} XP.", "Khoản quyên góp này đã hoàn tất trước đó.", "Hãy chọn mức quyên góp hợp lệ.", "Bạn không đủ {currency}.", "Hãy tham gia bang trước khi quyên góp.", "Chưa thể quyên góp. Vui lòng thử lại."),
+            AppLanguage.SIMPLIFIED_CHINESE to listOf("捐献无法撤销。", "你的战队获得了 {xp} 经验。", "该捐献已完成。", "请选择有效的捐献数量。", "你的 {currency} 不足。", "请先加入该战队再进行捐献。", "无法完成捐献，请重试。"),
+            AppLanguage.JAPANESE to listOf("寄付は取り消せません。", "クランが {xp} XPを獲得しました。", "この寄付はすでに完了しています。", "有効な寄付額を選択してください。", "{currency}が足りません。", "寄付する前にこのクランに参加してください。", "寄付を完了できませんでした。もう一度お試しください。"),
+            AppLanguage.KOREAN to listOf("기부는 취소할 수 없습니다.", "클랜이 {xp} XP를 획득했습니다.", "이미 완료된 기부입니다.", "올바른 기부 금액을 선택하세요.", "{currency}이(가) 부족합니다.", "기부하기 전에 이 클랜에 가입하세요.", "기부를 완료할 수 없습니다. 다시 시도하세요."),
+            AppLanguage.SPANISH to listOf("Las donaciones no se pueden deshacer.", "Tu clan ha obtenido {xp} XP.", "Esta donación ya se completó.", "Elige una cantidad de donación válida.", "No tienes suficiente {currency}.", "Únete a este clan antes de donar.", "No se pudo completar la donación. Inténtalo de nuevo."),
+            AppLanguage.BRAZILIAN_PORTUGUESE to listOf("As doações não podem ser desfeitas.", "Seu clã recebeu {xp} XP.", "Esta doação já foi concluída.", "Escolha um valor de doação válido.", "Você não tem {currency} suficiente.", "Entre neste clã antes de doar.", "Não foi possível concluir a doação. Tente novamente."),
+            AppLanguage.FRENCH to listOf("Les dons ne peuvent pas être annulés.", "Ton clan a gagné {xp} XP.", "Ce don a déjà été effectué.", "Choisis un montant de don valide.", "Tu n’as pas assez de {currency}.", "Rejoins ce clan avant de faire un don.", "Impossible d’effectuer le don. Réessaie."),
+            AppLanguage.GERMAN to listOf("Spenden können nicht rückgängig gemacht werden.", "Dein Clan hat {xp} XP erhalten.", "Diese Spende wurde bereits abgeschlossen.", "Wähle einen gültigen Spendenbetrag.", "Du hast nicht genug {currency}.", "Tritt diesem Clan bei, bevor du spendest.", "Die Spende konnte nicht abgeschlossen werden. Versuche es erneut."),
+            AppLanguage.INDONESIAN to listOf("Donasi tidak dapat dibatalkan.", "Klanmu memperoleh {xp} XP.", "Donasi ini sudah selesai.", "Pilih jumlah donasi yang valid.", "{currency} milikmu tidak cukup.", "Gabung klan ini sebelum berdonasi.", "Donasi tidak dapat diselesaikan. Coba lagi."),
+            AppLanguage.THAI to listOf("ไม่สามารถยกเลิกการบริจาคได้", "แคลนของคุณได้รับ {xp} XP", "การบริจาคนี้เสร็จสิ้นแล้ว", "เลือกจำนวนบริจาคที่ถูกต้อง", "คุณมี {currency} ไม่เพียงพอ", "เข้าร่วมแคลนนี้ก่อนบริจาค", "ไม่สามารถดำเนินการบริจาคได้ โปรดลองอีกครั้ง"),
+            AppLanguage.RUSSIAN to listOf("Пожертвования нельзя отменить.", "Ваш клан получил {xp} опыта.", "Это пожертвование уже выполнено.", "Выберите допустимую сумму пожертвования.", "У вас недостаточно {currency}.", "Вступите в этот клан перед пожертвованием.", "Не удалось выполнить пожертвование. Попробуйте ещё раз."),
+        )
+        val keys = listOf(
+            TextKey.DonationCannotUndo,
+            TextKey.DonationApplied,
+            TextKey.DonationDuplicate,
+            TextKey.DonationInvalidAmount,
+            TextKey.DonationInsufficientFunds,
+            TextKey.DonationMembershipRequired,
+            TextKey.DonationFailed,
+        )
+
+        expected.forEach { (language, translations) ->
+            val catalog = allLocalizationCatalogs.getValue(language)
+            assertEquals(translations, keys.map(catalog.texts::getValue), language.code)
+        }
+    }
 }
