@@ -266,6 +266,12 @@ internal val germanSocialShopTexts = englishSocialShopTexts + mapOf(
     TextKey.RemoveFriendTitle to "Freund entfernen?", TextKey.NoClansFound to "Keine Clans gefunden", TextKey.LeaveClanTitle to "Clan verlassen?",
     TextKey.RemoveClanMemberTitle to "Clanmitglied entfernen?", TextKey.TournamentCancelled to "Turnier abgesagt",
     TextKey.ClearAllNotificationsTitle to "Alle Benachrichtigungen löschen?", TextKey.DeleteNotificationTitle to "Benachrichtigung löschen?",
+    TextKey.YourSquadDescription to "Verbinde dich per Spielercode und lade Freunde zu einem Match ein.",
+    TextKey.NoFriendsDescription to "Noch keine Mitspieler. Gib einen Spielercode ein, um eine Einladung zu senden.",
+    TextKey.ClanTogetherDescription to "Tritt einem Clan bei, erfülle Aufgaben und steigt gemeinsam auf.",
+    TextKey.NoClansFoundDescription to "Versuche ein anderes Stichwort oder erstelle deinen eigenen Clan.",
+    TextKey.KnockoutArenaDescription to "Versammle 4, 8 oder 16 Teilnehmer und kämpfe um den Pokal.",
+    TextKey.EmptyInboxDescription to "Einladungen, Belohnungen und Neuigkeiten erscheinen hier.", TextKey.RestockingDescription to "Neue Gegenstände sind bald verfügbar.",
     TextKey.PlayerCodeExample to "z. B. FTW8X2Q", TextKey.YourSquad to "Dein Team", TextKey.FriendList to "Freunde", TextKey.ClanTogetherTitle to "Gemeinsam antreten", TextKey.ExploreClans to "Clans entdecken", TextKey.FameRace to "Rennen um Ruhm", TextKey.CurrentSeason to "Aktuelle Saison", TextKey.KnockoutArena to "K.-o.-Arena", TextKey.RecentTournaments to "Letzte Turniere", TextKey.NotificationsHero to "Neuigkeiten für dich", TextKey.EmptyInbox to "Dein Postfach ist leer", TextKey.NumberSkins to "Zahlenflächen", TextKey.NumberBoards to "Zahlenbretter", TextKey.GemVault to "Gem-Tresor", TextKey.ArcadeVault to "Arcade-Tresor", TextKey.Restocking to "Nachschub unterwegs", TextKey.Equip to "AUSRÜSTEN"
 )
 internal val japaneseSocialShopTexts = englishSocialShopTexts + mapOf(
@@ -279,6 +285,12 @@ internal val japaneseSocialShopTexts = englishSocialShopTexts + mapOf(
     TextKey.RemoveFriendTitle to "フレンドを削除しますか？", TextKey.NoClansFound to "クランが見つかりません", TextKey.LeaveClanTitle to "クランを脱退しますか？",
     TextKey.RemoveClanMemberTitle to "クランメンバーを除名しますか？", TextKey.TournamentCancelled to "トーナメントは中止されました",
     TextKey.ClearAllNotificationsTitle to "すべての通知を削除しますか？", TextKey.DeleteNotificationTitle to "通知を削除しますか？",
+    TextKey.YourSquadDescription to "プレイヤーコードでつながり、フレンドを対戦に招待しましょう。",
+    TextKey.NoFriendsDescription to "まだ仲間がいません。プレイヤーコードを入力して招待を送りましょう。",
+    TextKey.ClanTogetherDescription to "クランに参加し、ミッションを達成して仲間とランクを上げましょう。",
+    TextKey.NoClansFoundDescription to "別のキーワードを試すか、自分のクランを作成してください。",
+    TextKey.KnockoutArenaDescription to "4人、8人、16人の挑戦者を集め、優勝を目指しましょう。",
+    TextKey.EmptyInboxDescription to "招待、報酬、新着情報がここに表示されます。", TextKey.RestockingDescription to "新しい商品がまもなく登場します。",
     TextKey.PlayerCodeExample to "例：FTW8X2Q", TextKey.YourSquad to "あなたのチーム", TextKey.FriendList to "フレンド", TextKey.ClanTogetherTitle to "仲間と挑戦", TextKey.ExploreClans to "クランを探す", TextKey.FameRace to "栄光へのレース", TextKey.CurrentSeason to "今シーズン", TextKey.KnockoutArena to "勝ち抜きアリーナ", TextKey.RecentTournaments to "最近の大会", TextKey.NotificationsHero to "あなたへのお知らせ", TextKey.EmptyInbox to "通知はありません", TextKey.NumberSkins to "数字スキン", TextKey.NumberBoards to "数字ボード", TextKey.GemVault to "ジェム保管庫", TextKey.ArcadeVault to "アーケード保管庫", TextKey.Restocking to "入荷準備中", TextKey.Equip to "装備"
 )
 internal val simplifiedChineseSocialShopTexts = englishSocialShopTexts + mapOf(
@@ -292,6 +304,12 @@ internal val simplifiedChineseSocialShopTexts = englishSocialShopTexts + mapOf(
     TextKey.RemoveFriendTitle to "删除好友？", TextKey.NoClansFound to "未找到战队", TextKey.LeaveClanTitle to "退出战队？",
     TextKey.RemoveClanMemberTitle to "移除战队成员？", TextKey.TournamentCancelled to "锦标赛已取消",
     TextKey.ClearAllNotificationsTitle to "清除所有通知？", TextKey.DeleteNotificationTitle to "删除通知？",
+    TextKey.YourSquadDescription to "通过玩家代码添加好友并邀请他们参加对战。",
+    TextKey.NoFriendsDescription to "还没有队友。输入玩家代码发送邀请。",
+    TextKey.ClanTogetherDescription to "加入战队、完成任务，与队友一起攀登排行榜。",
+    TextKey.NoClansFoundDescription to "尝试其他关键词，或创建自己的战队。",
+    TextKey.KnockoutArenaDescription to "召集4、8或16名选手，向奖杯发起冲击。",
+    TextKey.EmptyInboxDescription to "邀请、奖励和新消息会显示在这里。", TextKey.RestockingDescription to "新商品即将上架。",
     TextKey.PlayerCodeExample to "例如：FTW8X2Q", TextKey.YourSquad to "你的队伍", TextKey.FriendList to "好友列表", TextKey.ClanTogetherTitle to "并肩竞技", TextKey.ExploreClans to "探索战队", TextKey.FameRace to "荣耀竞速", TextKey.CurrentSeason to "当前赛季", TextKey.KnockoutArena to "淘汰赛场", TextKey.RecentTournaments to "最近赛事", TextKey.NotificationsHero to "你的新消息", TextKey.EmptyInbox to "暂无消息", TextKey.NumberSkins to "数字皮肤", TextKey.NumberBoards to "数字棋盘", TextKey.GemVault to "宝石仓库", TextKey.ArcadeVault to "街机仓库", TextKey.Restocking to "补货中", TextKey.Equip to "装备"
 )
 internal val koreanSocialShopTexts = englishSocialShopTexts + mapOf(
@@ -305,6 +323,12 @@ internal val koreanSocialShopTexts = englishSocialShopTexts + mapOf(
     TextKey.RemoveFriendTitle to "친구를 삭제할까요?", TextKey.NoClansFound to "클랜을 찾을 수 없습니다", TextKey.LeaveClanTitle to "클랜에서 탈퇴할까요?",
     TextKey.RemoveClanMemberTitle to "클랜 멤버를 추방할까요?", TextKey.TournamentCancelled to "토너먼트가 취소되었습니다",
     TextKey.ClearAllNotificationsTitle to "모든 알림을 삭제할까요?", TextKey.DeleteNotificationTitle to "알림을 삭제할까요?",
+    TextKey.YourSquadDescription to "플레이어 코드로 친구를 연결하고 대전에 초대하세요.",
+    TextKey.NoFriendsDescription to "아직 동료가 없습니다. 플레이어 코드를 입력해 초대를 보내세요.",
+    TextKey.ClanTogetherDescription to "클랜에 가입하고 임무를 완료하며 함께 순위를 올리세요.",
+    TextKey.NoClansFoundDescription to "다른 검색어를 시도하거나 직접 클랜을 만드세요.",
+    TextKey.KnockoutArenaDescription to "4명, 8명 또는 16명의 도전자를 모아 우승에 도전하세요.",
+    TextKey.EmptyInboxDescription to "초대, 보상, 새로운 소식이 여기에 표시됩니다.", TextKey.RestockingDescription to "새로운 상품이 곧 추가됩니다.",
     TextKey.PlayerCodeExample to "예: FTW8X2Q", TextKey.YourSquad to "내 스쿼드", TextKey.FriendList to "친구", TextKey.ClanTogetherTitle to "함께 경쟁하세요", TextKey.ExploreClans to "클랜 탐색", TextKey.FameRace to "명예의 레이스", TextKey.CurrentSeason to "현재 시즌", TextKey.KnockoutArena to "토너먼트 아레나", TextKey.RecentTournaments to "최근 토너먼트", TextKey.NotificationsHero to "새 소식", TextKey.EmptyInbox to "알림이 없습니다", TextKey.NumberSkins to "숫자 스킨", TextKey.NumberBoards to "숫자 보드", TextKey.GemVault to "젬 보관소", TextKey.ArcadeVault to "아케이드 보관소", TextKey.Restocking to "상품 준비 중", TextKey.Equip to "장착"
 )
 internal val spanishSocialShopTexts = englishSocialShopTexts + mapOf(
@@ -318,6 +342,12 @@ internal val spanishSocialShopTexts = englishSocialShopTexts + mapOf(
     TextKey.RemoveFriendTitle to "¿Eliminar amigo?", TextKey.NoClansFound to "No se encontraron clanes", TextKey.LeaveClanTitle to "¿Abandonar el clan?",
     TextKey.RemoveClanMemberTitle to "¿Expulsar miembro del clan?", TextKey.TournamentCancelled to "Torneo cancelado",
     TextKey.ClearAllNotificationsTitle to "¿Borrar todas las notificaciones?", TextKey.DeleteNotificationTitle to "¿Eliminar notificación?",
+    TextKey.YourSquadDescription to "Conecta con un código de jugador e invita a tus amigos a una partida.",
+    TextKey.NoFriendsDescription to "Aún no tienes compañeros. Introduce un código de jugador para enviar una invitación.",
+    TextKey.ClanTogetherDescription to "Únete a un clan, completa misiones y sube de rango en equipo.",
+    TextKey.NoClansFoundDescription to "Prueba otra palabra o crea tu propio clan.",
+    TextKey.KnockoutArenaDescription to "Reúne a 4, 8 o 16 participantes y ve por el trofeo.",
+    TextKey.EmptyInboxDescription to "Aquí aparecerán invitaciones, recompensas y novedades.", TextKey.RestockingDescription to "Pronto llegarán nuevos artículos.",
     TextKey.PlayerCodeExample to "p. ej., FTW8X2Q", TextKey.YourSquad to "Tu equipo", TextKey.FriendList to "Amigos", TextKey.ClanTogetherTitle to "Compitan juntos", TextKey.ExploreClans to "Explorar clanes", TextKey.FameRace to "Carrera por la gloria", TextKey.CurrentSeason to "Temporada actual", TextKey.KnockoutArena to "Arena eliminatoria", TextKey.RecentTournaments to "Torneos recientes", TextKey.NotificationsHero to "Novedades para ti", TextKey.EmptyInbox to "Tu bandeja está vacía", TextKey.NumberSkins to "Diseños de números", TextKey.NumberBoards to "Tableros numéricos", TextKey.GemVault to "Cámara de Gemas", TextKey.ArcadeVault to "Cámara Arcade", TextKey.Restocking to "Reponiendo", TextKey.Equip to "EQUIPAR"
 )
 internal val brazilianPortugueseSocialShopTexts = englishSocialShopTexts + mapOf(
@@ -331,6 +361,12 @@ internal val brazilianPortugueseSocialShopTexts = englishSocialShopTexts + mapOf
     TextKey.RemoveFriendTitle to "Remover amigo?", TextKey.NoClansFound to "Nenhum clã encontrado", TextKey.LeaveClanTitle to "Sair do clã?",
     TextKey.RemoveClanMemberTitle to "Remover membro do clã?", TextKey.TournamentCancelled to "Torneio cancelado",
     TextKey.ClearAllNotificationsTitle to "Limpar todas as notificações?", TextKey.DeleteNotificationTitle to "Excluir notificação?",
+    TextKey.YourSquadDescription to "Conecte-se com um código de jogador e convide amigos para uma partida.",
+    TextKey.NoFriendsDescription to "Ainda não há companheiros. Digite um código de jogador para enviar um convite.",
+    TextKey.ClanTogetherDescription to "Entre em um clã, cumpra missões e suba no ranking com sua equipe.",
+    TextKey.NoClansFoundDescription to "Tente outra palavra ou crie seu próprio clã.",
+    TextKey.KnockoutArenaDescription to "Reúna 4, 8 ou 16 competidores e dispute o troféu.",
+    TextKey.EmptyInboxDescription to "Convites, recompensas e novidades aparecerão aqui.", TextKey.RestockingDescription to "Novos itens chegarão em breve.",
     TextKey.PlayerCodeExample to "ex.: FTW8X2Q", TextKey.YourSquad to "Seu esquadrão", TextKey.FriendList to "Amigos", TextKey.ClanTogetherTitle to "Compitam juntos", TextKey.ExploreClans to "Explorar clãs", TextKey.FameRace to "Corrida pela glória", TextKey.CurrentSeason to "Temporada atual", TextKey.KnockoutArena to "Arena eliminatória", TextKey.RecentTournaments to "Torneios recentes", TextKey.NotificationsHero to "Novidades para você", TextKey.EmptyInbox to "Sua caixa está vazia", TextKey.NumberSkins to "Visuais de números", TextKey.NumberBoards to "Tabuleiros numéricos", TextKey.GemVault to "Cofre de Gemas", TextKey.ArcadeVault to "Cofre Arcade", TextKey.Restocking to "Repondo estoque", TextKey.Equip to "EQUIPAR"
 )
 internal val frenchSocialShopTexts = englishSocialShopTexts + mapOf(
@@ -344,6 +380,12 @@ internal val frenchSocialShopTexts = englishSocialShopTexts + mapOf(
     TextKey.RemoveFriendTitle to "Supprimer cet ami ?", TextKey.NoClansFound to "Aucun clan trouvé", TextKey.LeaveClanTitle to "Quitter le clan ?",
     TextKey.RemoveClanMemberTitle to "Exclure ce membre du clan ?", TextKey.TournamentCancelled to "Tournoi annulé",
     TextKey.ClearAllNotificationsTitle to "Effacer toutes les notifications ?", TextKey.DeleteNotificationTitle to "Supprimer la notification ?",
+    TextKey.YourSquadDescription to "Ajoute des joueurs avec leur code et invite tes amis à jouer.",
+    TextKey.NoFriendsDescription to "Aucun coéquipier pour le moment. Saisis un code joueur pour envoyer une invitation.",
+    TextKey.ClanTogetherDescription to "Rejoins un clan, accomplis des missions et grimpe au classement en équipe.",
+    TextKey.NoClansFoundDescription to "Essaie un autre mot-clé ou crée ton propre clan.",
+    TextKey.KnockoutArenaDescription to "Réunis 4, 8 ou 16 participants et vise le trophée.",
+    TextKey.EmptyInboxDescription to "Les invitations, récompenses et nouveautés apparaîtront ici.", TextKey.RestockingDescription to "De nouveaux objets arriveront bientôt.",
     TextKey.PlayerCodeExample to "ex. : FTW8X2Q", TextKey.YourSquad to "Ton équipe", TextKey.FriendList to "Amis", TextKey.ClanTogetherTitle to "Jouez ensemble", TextKey.ExploreClans to "Explorer les clans", TextKey.FameRace to "Course à la gloire", TextKey.CurrentSeason to "Saison actuelle", TextKey.KnockoutArena to "Arène à élimination", TextKey.RecentTournaments to "Tournois récents", TextKey.NotificationsHero to "Tes nouveautés", TextKey.EmptyInbox to "Ta boîte est vide", TextKey.NumberSkins to "Styles de nombres", TextKey.NumberBoards to "Plateaux numériques", TextKey.GemVault to "Coffre de Gemmes", TextKey.ArcadeVault to "Coffre Arcade", TextKey.Restocking to "Réapprovisionnement", TextKey.Equip to "ÉQUIPER"
 )
 internal val indonesianSocialShopTexts = englishSocialShopTexts + mapOf(
@@ -357,6 +399,12 @@ internal val indonesianSocialShopTexts = englishSocialShopTexts + mapOf(
     TextKey.RemoveFriendTitle to "Hapus teman?", TextKey.NoClansFound to "Klan tidak ditemukan", TextKey.LeaveClanTitle to "Keluar dari klan?",
     TextKey.RemoveClanMemberTitle to "Keluarkan anggota klan?", TextKey.TournamentCancelled to "Turnamen dibatalkan",
     TextKey.ClearAllNotificationsTitle to "Hapus semua notifikasi?", TextKey.DeleteNotificationTitle to "Hapus notifikasi?",
+    TextKey.YourSquadDescription to "Terhubung dengan kode pemain dan undang teman ke pertandingan.",
+    TextKey.NoFriendsDescription to "Belum ada rekan tim. Masukkan kode pemain untuk mengirim undangan.",
+    TextKey.ClanTogetherDescription to "Gabung klan, selesaikan misi, dan naik peringkat bersama.",
+    TextKey.NoClansFoundDescription to "Coba kata kunci lain atau buat klanmu sendiri.",
+    TextKey.KnockoutArenaDescription to "Kumpulkan 4, 8, atau 16 peserta dan raih trofi.",
+    TextKey.EmptyInboxDescription to "Undangan, hadiah, dan kabar baru akan muncul di sini.", TextKey.RestockingDescription to "Item baru akan segera hadir.",
     TextKey.PlayerCodeExample to "mis. FTW8X2Q", TextKey.YourSquad to "Skuadmu", TextKey.FriendList to "Teman", TextKey.ClanTogetherTitle to "Bertanding bersama", TextKey.ExploreClans to "Jelajahi klan", TextKey.FameRace to "Perebutan kejayaan", TextKey.CurrentSeason to "Musim saat ini", TextKey.KnockoutArena to "Arena eliminasi", TextKey.RecentTournaments to "Turnamen terbaru", TextKey.NotificationsHero to "Kabar untukmu", TextKey.EmptyInbox to "Kotak masukmu kosong", TextKey.NumberSkins to "Skin angka", TextKey.NumberBoards to "Papan angka", TextKey.GemVault to "Brankas Gem", TextKey.ArcadeVault to "Brankas Arcade", TextKey.Restocking to "Mengisi stok", TextKey.Equip to "PAKAI"
 )
 internal val thaiSocialShopTexts = englishSocialShopTexts + mapOf(
@@ -370,6 +418,12 @@ internal val thaiSocialShopTexts = englishSocialShopTexts + mapOf(
     TextKey.RemoveFriendTitle to "ลบเพื่อนหรือไม่?", TextKey.NoClansFound to "ไม่พบแคลน", TextKey.LeaveClanTitle to "ออกจากแคลนหรือไม่?",
     TextKey.RemoveClanMemberTitle to "นำสมาชิกออกจากแคลนหรือไม่?", TextKey.TournamentCancelled to "ยกเลิกทัวร์นาเมนต์แล้ว",
     TextKey.ClearAllNotificationsTitle to "ลบการแจ้งเตือนทั้งหมดหรือไม่?", TextKey.DeleteNotificationTitle to "ลบการแจ้งเตือนหรือไม่?",
+    TextKey.YourSquadDescription to "เชื่อมต่อด้วยรหัสผู้เล่นและชวนเพื่อนเข้าร่วมการแข่งขัน",
+    TextKey.NoFriendsDescription to "ยังไม่มีเพื่อนร่วมทีม กรอกรหัสผู้เล่นเพื่อส่งคำเชิญ",
+    TextKey.ClanTogetherDescription to "เข้าร่วมแคลน ทำภารกิจ และไต่อันดับไปด้วยกัน",
+    TextKey.NoClansFoundDescription to "ลองใช้คำค้นอื่นหรือสร้างแคลนของคุณเอง",
+    TextKey.KnockoutArenaDescription to "รวมผู้เข้าแข่งขัน 4, 8 หรือ 16 คน แล้วมุ่งสู่ถ้วยรางวัล",
+    TextKey.EmptyInboxDescription to "คำเชิญ รางวัล และข่าวสารจะแสดงที่นี่", TextKey.RestockingDescription to "ไอเทมใหม่กำลังจะมาเร็ว ๆ นี้",
     TextKey.PlayerCodeExample to "เช่น FTW8X2Q", TextKey.YourSquad to "ทีมของคุณ", TextKey.FriendList to "เพื่อน", TextKey.ClanTogetherTitle to "แข่งขันไปด้วยกัน", TextKey.ExploreClans to "สำรวจแคลน", TextKey.FameRace to "เส้นทางแห่งเกียรติยศ", TextKey.CurrentSeason to "ฤดูกาลปัจจุบัน", TextKey.KnockoutArena to "สนามน็อกเอาต์", TextKey.RecentTournaments to "ทัวร์นาเมนต์ล่าสุด", TextKey.NotificationsHero to "ข่าวสารสำหรับคุณ", TextKey.EmptyInbox to "กล่องข้อความว่าง", TextKey.NumberSkins to "สกินตัวเลข", TextKey.NumberBoards to "กระดานตัวเลข", TextKey.GemVault to "คลัง Gem", TextKey.ArcadeVault to "คลัง Arcade", TextKey.Restocking to "กำลังเติมสินค้า", TextKey.Equip to "สวมใส่"
 )
 internal val russianSocialShopTexts = englishSocialShopTexts + mapOf(
@@ -383,5 +437,11 @@ internal val russianSocialShopTexts = englishSocialShopTexts + mapOf(
     TextKey.RemoveFriendTitle to "Удалить друга?", TextKey.NoClansFound to "Кланы не найдены", TextKey.LeaveClanTitle to "Покинуть клан?",
     TextKey.RemoveClanMemberTitle to "Исключить участника клана?", TextKey.TournamentCancelled to "Турнир отменён",
     TextKey.ClearAllNotificationsTitle to "Удалить все уведомления?", TextKey.DeleteNotificationTitle to "Удалить уведомление?",
+    TextKey.YourSquadDescription to "Добавляйте друзей по коду игрока и приглашайте их в матч.",
+    TextKey.NoFriendsDescription to "У вас пока нет товарищей. Введите код игрока, чтобы отправить приглашение.",
+    TextKey.ClanTogetherDescription to "Вступайте в клан, выполняйте задания и поднимайтесь в рейтинге вместе.",
+    TextKey.NoClansFoundDescription to "Попробуйте другое слово или создайте собственный клан.",
+    TextKey.KnockoutArenaDescription to "Соберите 4, 8 или 16 участников и сразитесь за кубок.",
+    TextKey.EmptyInboxDescription to "Здесь появятся приглашения, награды и новости.", TextKey.RestockingDescription to "Новые предметы скоро появятся.",
     TextKey.PlayerCodeExample to "например, FTW8X2Q", TextKey.YourSquad to "Твоя команда", TextKey.FriendList to "Друзья", TextKey.ClanTogetherTitle to "Сражайтесь вместе", TextKey.ExploreClans to "Поиск кланов", TextKey.FameRace to "Гонка за славой", TextKey.CurrentSeason to "Текущий сезон", TextKey.KnockoutArena to "Арена на выбывание", TextKey.RecentTournaments to "Недавние турниры", TextKey.NotificationsHero to "Новости для тебя", TextKey.EmptyInbox to "Уведомлений нет", TextKey.NumberSkins to "Скины чисел", TextKey.NumberBoards to "Числовые поля", TextKey.GemVault to "Хранилище самоцветов", TextKey.ArcadeVault to "Аркадное хранилище", TextKey.Restocking to "Скоро пополнение", TextKey.Equip to "НАДЕТЬ"
 )
