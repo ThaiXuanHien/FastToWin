@@ -36,4 +36,36 @@ class SocialScreenLocalizationTest {
             assertEquals(translations, keys.map(catalog.texts::getValue), language.code)
         }
     }
+
+    @Test
+    fun `primary social and shop actions resolve explicitly in all twelve languages`() {
+        val expected = mapOf(
+            AppLanguage.ENGLISH to listOf("Search clans", "CREATE CLAN", "Join", "LEAVE CLAN", "START TOURNAMENT", "CREATE TOURNAMENT", "Clear all"),
+            AppLanguage.VIETNAMESE to listOf("Tìm kiếm bang hội", "TẠO BANG HỘI", "Xin vào", "RỜI BANG", "BẮT ĐẦU GIẢI ĐẤU", "BẮT ĐẦU TẠO GIẢI", "Xóa tất cả"),
+            AppLanguage.SIMPLIFIED_CHINESE to listOf("搜索战队", "创建战队", "加入", "退出战队", "开始锦标赛", "创建锦标赛", "全部清除"),
+            AppLanguage.JAPANESE to listOf("クラン検索", "クラン作成", "参加", "クランを脱退", "トーナメント開始", "トーナメント作成", "すべて削除"),
+            AppLanguage.KOREAN to listOf("클랜 검색", "클랜 만들기", "가입", "클랜 탈퇴", "토너먼트 시작", "토너먼트 만들기", "모두 삭제"),
+            AppLanguage.SPANISH to listOf("Buscar clanes", "CREAR CLAN", "Unirse", "ABANDONAR CLAN", "INICIAR TORNEO", "CREAR TORNEO", "Borrar todo"),
+            AppLanguage.BRAZILIAN_PORTUGUESE to listOf("Buscar clãs", "CRIAR CLÃ", "Entrar", "SAIR DO CLÃ", "INICIAR TORNEIO", "CRIAR TORNEIO", "Limpar tudo"),
+            AppLanguage.FRENCH to listOf("Rechercher des clans", "CRÉER UN CLAN", "Rejoindre", "QUITTER LE CLAN", "LANCER LE TOURNOI", "CRÉER LE TOURNOI", "Tout effacer"),
+            AppLanguage.GERMAN to listOf("Clans suchen", "CLAN ERSTELLEN", "Beitreten", "CLAN VERLASSEN", "TURNIER STARTEN", "TURNIER ERSTELLEN", "Alle löschen"),
+            AppLanguage.INDONESIAN to listOf("Cari klan", "BUAT KLAN", "Gabung", "KELUAR KLAN", "MULAI TURNAMEN", "BUAT TURNAMEN", "Hapus semua"),
+            AppLanguage.THAI to listOf("ค้นหาแคลน", "สร้างแคลน", "เข้าร่วม", "ออกจากแคลน", "เริ่มทัวร์นาเมนต์", "สร้างทัวร์นาเมนต์", "ล้างทั้งหมด"),
+            AppLanguage.RUSSIAN to listOf("Искать кланы", "СОЗДАТЬ КЛАН", "Вступить", "ПОКИНУТЬ КЛАН", "НАЧАТЬ ТУРНИР", "СОЗДАТЬ ТУРНИР", "Очистить все"),
+        )
+        val keys = listOf(
+            TextKey.SearchClanAction,
+            TextKey.CreateClan,
+            TextKey.RequestToJoin,
+            TextKey.LeaveClan,
+            TextKey.StartTournament,
+            TextKey.CreateTournamentAction,
+            TextKey.ClearAllNotifications,
+        )
+
+        expected.forEach { (language, translations) ->
+            val catalog = allLocalizationCatalogs.getValue(language)
+            assertEquals(translations, keys.map(catalog.texts::getValue), language.code)
+        }
+    }
 }
