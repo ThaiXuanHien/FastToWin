@@ -204,7 +204,11 @@ internal val germanCorePlayTexts = mapOf(
     TextKey.JoinRoomTitle to "Raum beitreten", TextKey.PrivatePasswordRequired to "Spieler benötigen ein Passwort.",
     TextKey.PublicNoPassword to "Jeder kann ohne Passwort beitreten.", TextKey.RankedEloImpact to "Rangliste · Beeinflusst Elo",
     TextKey.CasualNoEloImpact to "Normal · Kein Elo-Einfluss", TextKey.PrivateRoom to "Privater Raum", TextKey.PublicRoom to "Öffentlicher Raum",
-    TextKey.RoomListSummary to "{host} • {mode} • {matchType}", TextKey.EnterRoom to "BETRETEN", TextKey.JoinPrivateRoom to "Privater Raum"
+    TextKey.RoomListSummary to "{host} • {mode} • {matchType}", TextKey.EnterRoom to "BETRETEN", TextKey.JoinPrivateRoom to "Privater Raum",
+    TextKey.PrivateJoinDescription to "Gib das Passwort ein, um „{room}“ beizutreten.", TextKey.PublicJoinDescription to "{room} • Host: {host}",
+    TextKey.JoinedRoomCode to "RAUMCODE • {code}", TextKey.JoinedRoom to "IM RAUM", TextKey.ShareCodeHint to "Teile den Code, um Freunde einzuladen.",
+    TextKey.ModeNumberCount to "{mode} • 50 Zahlen", TextKey.ShareRoomCode to "RAUMCODE TEILEN",
+    TextKey.ShareSheetError to "Teilen konnte nicht geöffnet werden. Versuche es erneut."
 )
 
 internal val japaneseCorePlayTexts = mapOf(
@@ -226,7 +230,11 @@ internal val japaneseCorePlayTexts = mapOf(
     TextKey.JoinRoomTitle to "ルームに参加", TextKey.PrivatePasswordRequired to "参加者はパスワードが必要です。",
     TextKey.PublicNoPassword to "誰でもパスワードなしで参加できます。", TextKey.RankedEloImpact to "ランク戦 · Eloに影響",
     TextKey.CasualNoEloImpact to "通常戦 · Eloに影響なし", TextKey.PrivateRoom to "非公開ルーム", TextKey.PublicRoom to "公開ルーム",
-    TextKey.RoomListSummary to "{host} • {mode} • {matchType}", TextKey.EnterRoom to "入室", TextKey.JoinPrivateRoom to "非公開ルーム"
+    TextKey.RoomListSummary to "{host} • {mode} • {matchType}", TextKey.EnterRoom to "入室", TextKey.JoinPrivateRoom to "非公開ルーム",
+    TextKey.PrivateJoinDescription to "「{room}」に参加するにはパスワードを入力してください。", TextKey.PublicJoinDescription to "{room} • ホスト {host}",
+    TextKey.JoinedRoomCode to "ルームコード • {code}", TextKey.JoinedRoom to "ルーム参加中", TextKey.ShareCodeHint to "コードを共有してフレンドを招待しましょう。",
+    TextKey.ModeNumberCount to "{mode} • 50個の数字", TextKey.ShareRoomCode to "ルームコードを共有",
+    TextKey.ShareSheetError to "共有画面を開けませんでした。もう一度お試しください。"
 )
 
 internal val russianCorePlayTexts = mapOf(
@@ -249,7 +257,11 @@ internal val russianCorePlayTexts = mapOf(
     TextKey.JoinRoomTitle to "Войти в комнату", TextKey.PrivatePasswordRequired to "Игрокам нужен пароль.",
     TextKey.PublicNoPassword to "Любой может войти без пароля.", TextKey.RankedEloImpact to "Рейтинг · Влияет на Elo",
     TextKey.CasualNoEloImpact to "Обычная · Не влияет на Elo", TextKey.PrivateRoom to "Закрытая комната", TextKey.PublicRoom to "Открытая комната",
-    TextKey.RoomListSummary to "{host} • {mode} • {matchType}", TextKey.EnterRoom to "ВОЙТИ", TextKey.JoinPrivateRoom to "Закрытая комната"
+    TextKey.RoomListSummary to "{host} • {mode} • {matchType}", TextKey.EnterRoom to "ВОЙТИ", TextKey.JoinPrivateRoom to "Закрытая комната",
+    TextKey.PrivateJoinDescription to "Введите пароль, чтобы войти в «{room}».", TextKey.PublicJoinDescription to "{room} • Ведущий: {host}",
+    TextKey.JoinedRoomCode to "КОД КОМНАТЫ • {code}", TextKey.JoinedRoom to "В КОМНАТЕ", TextKey.ShareCodeHint to "Поделитесь кодом, чтобы пригласить друзей.",
+    TextKey.ModeNumberCount to "{mode} • 50 чисел", TextKey.ShareRoomCode to "ПОДЕЛИТЬСЯ КОДОМ",
+    TextKey.ShareSheetError to "Не удалось открыть меню «Поделиться». Попробуйте ещё раз."
 )
 
 internal val thaiCorePlayTexts = mapOf(
@@ -276,7 +288,11 @@ internal val thaiCorePlayTexts = mapOf(
     TextKey.JoinRoomTitle to "เข้าร่วมห้อง", TextKey.PrivatePasswordRequired to "ผู้เล่นต้องใช้รหัสผ่าน",
     TextKey.PublicNoPassword to "ทุกคนเข้าร่วมได้โดยไม่ต้องใช้รหัสผ่าน", TextKey.RankedEloImpact to "จัดอันดับ · มีผลต่อ Elo",
     TextKey.CasualNoEloImpact to "ทั่วไป · ไม่มีผลต่อ Elo", TextKey.PrivateRoom to "ห้องส่วนตัว", TextKey.PublicRoom to "ห้องสาธารณะ",
-    TextKey.RoomListSummary to "{host} • {mode} • {matchType}", TextKey.EnterRoom to "เข้า", TextKey.JoinPrivateRoom to "ห้องส่วนตัว"
+    TextKey.RoomListSummary to "{host} • {mode} • {matchType}", TextKey.EnterRoom to "เข้า", TextKey.JoinPrivateRoom to "ห้องส่วนตัว",
+    TextKey.PrivateJoinDescription to "กรอกรหัสผ่านเพื่อเข้าร่วม “{room}”", TextKey.PublicJoinDescription to "{room} • โฮสต์ {host}",
+    TextKey.JoinedRoomCode to "รหัสห้อง • {code}", TextKey.JoinedRoom to "อยู่ในห้อง", TextKey.ShareCodeHint to "แชร์รหัสเพื่อเชิญเพื่อน",
+    TextKey.ModeNumberCount to "{mode} • 50 ตัวเลข", TextKey.ShareRoomCode to "แชร์รหัสห้อง",
+    TextKey.ShareSheetError to "ไม่สามารถเปิดการแชร์ได้ โปรดลองอีกครั้ง"
 )
 
 internal val simplifiedChineseCorePlayTexts = mapOf(
@@ -292,7 +308,10 @@ internal val simplifiedChineseCorePlayTexts = mapOf(
     TextKey.JoinRoomTitle to "加入房间", TextKey.PrivatePasswordRequired to "玩家需要输入密码。",
     TextKey.PublicNoPassword to "任何人无需密码即可加入。", TextKey.RankedEloImpact to "排位赛 · 影响 Elo",
     TextKey.CasualNoEloImpact to "休闲赛 · 不影响 Elo", TextKey.PrivateRoom to "私密房间", TextKey.PublicRoom to "公开房间",
-    TextKey.RoomListSummary to "{host} • {mode} • {matchType}", TextKey.EnterRoom to "进入", TextKey.JoinPrivateRoom to "私密房间"
+    TextKey.RoomListSummary to "{host} • {mode} • {matchType}", TextKey.EnterRoom to "进入", TextKey.JoinPrivateRoom to "私密房间",
+    TextKey.PrivateJoinDescription to "输入密码加入“{room}”。", TextKey.PublicJoinDescription to "{room} • 房主 {host}",
+    TextKey.JoinedRoomCode to "房间代码 • {code}", TextKey.JoinedRoom to "已加入房间", TextKey.ShareCodeHint to "分享代码以邀请好友。",
+    TextKey.ModeNumberCount to "{mode} • 50个数字", TextKey.ShareRoomCode to "分享房间代码", TextKey.ShareSheetError to "无法打开分享，请重试。"
 )
 internal val koreanCorePlayTexts = mapOf(
     TextKey.WaitHostStart to "방장이 경기를 시작할 때까지 기다리세요.", TextKey.CancelReady to "준비 취소", TextKey.ReadyAction to "준비",
@@ -307,7 +326,10 @@ internal val koreanCorePlayTexts = mapOf(
     TextKey.JoinRoomTitle to "방 참가", TextKey.PrivatePasswordRequired to "플레이어는 비밀번호가 필요합니다.",
     TextKey.PublicNoPassword to "누구나 비밀번호 없이 참가할 수 있습니다.", TextKey.RankedEloImpact to "랭크전 · Elo에 영향",
     TextKey.CasualNoEloImpact to "일반전 · Elo에 영향 없음", TextKey.PrivateRoom to "비공개 방", TextKey.PublicRoom to "공개 방",
-    TextKey.RoomListSummary to "{host} • {mode} • {matchType}", TextKey.EnterRoom to "입장", TextKey.JoinPrivateRoom to "비공개 방"
+    TextKey.RoomListSummary to "{host} • {mode} • {matchType}", TextKey.EnterRoom to "입장", TextKey.JoinPrivateRoom to "비공개 방",
+    TextKey.PrivateJoinDescription to "“{room}” 방에 참가하려면 비밀번호를 입력하세요.", TextKey.PublicJoinDescription to "{room} • 방장 {host}",
+    TextKey.JoinedRoomCode to "방 코드 • {code}", TextKey.JoinedRoom to "방 참가 중", TextKey.ShareCodeHint to "코드를 공유해 친구를 초대하세요.",
+    TextKey.ModeNumberCount to "{mode} • 숫자 50개", TextKey.ShareRoomCode to "방 코드 공유", TextKey.ShareSheetError to "공유 창을 열 수 없습니다. 다시 시도하세요."
 )
 internal val spanishCorePlayTexts = mapOf(
     TextKey.WaitHostStart to "Espera a que el anfitrión inicie la partida.", TextKey.CancelReady to "CANCELAR LISTO", TextKey.ReadyAction to "LISTO",
@@ -322,7 +344,11 @@ internal val spanishCorePlayTexts = mapOf(
     TextKey.JoinRoomTitle to "Unirse a la sala", TextKey.PrivatePasswordRequired to "Los jugadores necesitan una contraseña.",
     TextKey.PublicNoPassword to "Cualquiera puede unirse sin contraseña.", TextKey.RankedEloImpact to "Clasificatoria · Afecta al Elo",
     TextKey.CasualNoEloImpact to "Casual · No afecta al Elo", TextKey.PrivateRoom to "Sala privada", TextKey.PublicRoom to "Sala pública",
-    TextKey.RoomListSummary to "{host} • {mode} • {matchType}", TextKey.EnterRoom to "ENTRAR", TextKey.JoinPrivateRoom to "Sala privada"
+    TextKey.RoomListSummary to "{host} • {mode} • {matchType}", TextKey.EnterRoom to "ENTRAR", TextKey.JoinPrivateRoom to "Sala privada",
+    TextKey.PrivateJoinDescription to "Introduce la contraseña para unirte a “{room}”.", TextKey.PublicJoinDescription to "{room} • Anfitrión: {host}",
+    TextKey.JoinedRoomCode to "CÓDIGO DE SALA • {code}", TextKey.JoinedRoom to "EN LA SALA", TextKey.ShareCodeHint to "Comparte el código para invitar a tus amigos.",
+    TextKey.ModeNumberCount to "{mode} • 50 números", TextKey.ShareRoomCode to "COMPARTIR CÓDIGO DE SALA",
+    TextKey.ShareSheetError to "No se pudo abrir el menú para compartir. Inténtalo de nuevo."
 )
 internal val brazilianPortugueseCorePlayTexts = mapOf(
     TextKey.WaitHostStart to "Aguarde o anfitrião iniciar a partida.", TextKey.CancelReady to "CANCELAR PRONTO", TextKey.ReadyAction to "PRONTO",
@@ -337,7 +363,11 @@ internal val brazilianPortugueseCorePlayTexts = mapOf(
     TextKey.JoinRoomTitle to "Entrar na sala", TextKey.PrivatePasswordRequired to "Os jogadores precisam de uma senha.",
     TextKey.PublicNoPassword to "Qualquer pessoa pode entrar sem senha.", TextKey.RankedEloImpact to "Ranqueada · Afeta o Elo",
     TextKey.CasualNoEloImpact to "Casual · Não afeta o Elo", TextKey.PrivateRoom to "Sala privada", TextKey.PublicRoom to "Sala pública",
-    TextKey.RoomListSummary to "{host} • {mode} • {matchType}", TextKey.EnterRoom to "ENTRAR", TextKey.JoinPrivateRoom to "Sala privada"
+    TextKey.RoomListSummary to "{host} • {mode} • {matchType}", TextKey.EnterRoom to "ENTRAR", TextKey.JoinPrivateRoom to "Sala privada",
+    TextKey.PrivateJoinDescription to "Digite a senha para entrar em “{room}”.", TextKey.PublicJoinDescription to "{room} • Anfitrião: {host}",
+    TextKey.JoinedRoomCode to "CÓDIGO DA SALA • {code}", TextKey.JoinedRoom to "NA SALA", TextKey.ShareCodeHint to "Compartilhe o código para convidar amigos.",
+    TextKey.ModeNumberCount to "{mode} • 50 números", TextKey.ShareRoomCode to "COMPARTILHAR CÓDIGO DA SALA",
+    TextKey.ShareSheetError to "Não foi possível abrir o compartilhamento. Tente novamente."
 )
 internal val frenchCorePlayTexts = mapOf(
     TextKey.WaitHostStart to "Attends que l’hôte lance la partie.", TextKey.CancelReady to "ANNULER PRÊT", TextKey.ReadyAction to "PRÊT",
@@ -352,7 +382,11 @@ internal val frenchCorePlayTexts = mapOf(
     TextKey.JoinRoomTitle to "Rejoindre le salon", TextKey.PrivatePasswordRequired to "Les joueurs ont besoin d’un mot de passe.",
     TextKey.PublicNoPassword to "Tout le monde peut rejoindre sans mot de passe.", TextKey.RankedEloImpact to "Classé · Affecte l’Elo",
     TextKey.CasualNoEloImpact to "Amical · Aucun impact sur l’Elo", TextKey.PrivateRoom to "Salon privé", TextKey.PublicRoom to "Salon public",
-    TextKey.RoomListSummary to "{host} • {mode} • {matchType}", TextKey.EnterRoom to "ENTRER", TextKey.JoinPrivateRoom to "Salon privé"
+    TextKey.RoomListSummary to "{host} • {mode} • {matchType}", TextKey.EnterRoom to "ENTRER", TextKey.JoinPrivateRoom to "Salon privé",
+    TextKey.PrivateJoinDescription to "Saisis le mot de passe pour rejoindre « {room} ».", TextKey.PublicJoinDescription to "{room} • Hôte : {host}",
+    TextKey.JoinedRoomCode to "CODE DU SALON • {code}", TextKey.JoinedRoom to "DANS LE SALON", TextKey.ShareCodeHint to "Partage le code pour inviter tes amis.",
+    TextKey.ModeNumberCount to "{mode} • 50 nombres", TextKey.ShareRoomCode to "PARTAGER LE CODE DU SALON",
+    TextKey.ShareSheetError to "Impossible d’ouvrir le partage. Réessaie."
 )
 internal val indonesianCorePlayTexts = mapOf(
     TextKey.WaitHostStart to "Tunggu host memulai pertandingan.", TextKey.CancelReady to "BATAL SIAP", TextKey.ReadyAction to "SIAP",
@@ -367,5 +401,9 @@ internal val indonesianCorePlayTexts = mapOf(
     TextKey.JoinRoomTitle to "Gabung ruang", TextKey.PrivatePasswordRequired to "Pemain memerlukan kata sandi.",
     TextKey.PublicNoPassword to "Siapa pun dapat bergabung tanpa kata sandi.", TextKey.RankedEloImpact to "Peringkat · Memengaruhi Elo",
     TextKey.CasualNoEloImpact to "Kasual · Tidak memengaruhi Elo", TextKey.PrivateRoom to "Ruang privat", TextKey.PublicRoom to "Ruang publik",
-    TextKey.RoomListSummary to "{host} • {mode} • {matchType}", TextKey.EnterRoom to "MASUK", TextKey.JoinPrivateRoom to "Ruang privat"
+    TextKey.RoomListSummary to "{host} • {mode} • {matchType}", TextKey.EnterRoom to "MASUK", TextKey.JoinPrivateRoom to "Ruang privat",
+    TextKey.PrivateJoinDescription to "Masukkan kata sandi untuk bergabung ke “{room}”.", TextKey.PublicJoinDescription to "{room} • Host {host}",
+    TextKey.JoinedRoomCode to "KODE RUANG • {code}", TextKey.JoinedRoom to "DI DALAM RUANG", TextKey.ShareCodeHint to "Bagikan kode untuk mengundang teman.",
+    TextKey.ModeNumberCount to "{mode} • 50 angka", TextKey.ShareRoomCode to "BAGIKAN KODE RUANG",
+    TextKey.ShareSheetError to "Tidak dapat membuka menu berbagi. Coba lagi."
 )

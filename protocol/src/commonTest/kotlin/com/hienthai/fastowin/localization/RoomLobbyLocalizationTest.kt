@@ -144,4 +144,37 @@ class RoomLobbyLocalizationTest {
             assertEquals(translations, keys.map(catalog.texts::getValue), language.code)
         }
     }
+
+    @Test
+    fun `joined room and sharing copy resolves explicitly in all twelve languages`() {
+        val expected = mapOf(
+            AppLanguage.ENGLISH to listOf("Enter the password to join “{room}”.", "{room} • Hosted by {host}", "ROOM CODE • {code}", "IN ROOM", "Share the code to invite friends.", "{mode} • 50 numbers", "SHARE ROOM CODE", "Could not open sharing. Please try again."),
+            AppLanguage.VIETNAMESE to listOf("Nhập mật khẩu để tham gia “{room}”.", "{room} • Chủ phòng {host}", "MÃ PHÒNG • {code}", "ĐÃ VÀO PHÒNG", "Chia sẻ mã để mời bạn bè.", "{mode} • 50 số", "CHIA SẺ MÃ PHÒNG", "Không thể mở bảng chia sẻ. Vui lòng thử lại."),
+            AppLanguage.SIMPLIFIED_CHINESE to listOf("输入密码加入“{room}”。", "{room} • 房主 {host}", "房间代码 • {code}", "已加入房间", "分享代码以邀请好友。", "{mode} • 50个数字", "分享房间代码", "无法打开分享，请重试。"),
+            AppLanguage.JAPANESE to listOf("「{room}」に参加するにはパスワードを入力してください。", "{room} • ホスト {host}", "ルームコード • {code}", "ルーム参加中", "コードを共有してフレンドを招待しましょう。", "{mode} • 50個の数字", "ルームコードを共有", "共有画面を開けませんでした。もう一度お試しください。"),
+            AppLanguage.KOREAN to listOf("“{room}” 방에 참가하려면 비밀번호를 입력하세요.", "{room} • 방장 {host}", "방 코드 • {code}", "방 참가 중", "코드를 공유해 친구를 초대하세요.", "{mode} • 숫자 50개", "방 코드 공유", "공유 창을 열 수 없습니다. 다시 시도하세요."),
+            AppLanguage.SPANISH to listOf("Introduce la contraseña para unirte a “{room}”.", "{room} • Anfitrión: {host}", "CÓDIGO DE SALA • {code}", "EN LA SALA", "Comparte el código para invitar a tus amigos.", "{mode} • 50 números", "COMPARTIR CÓDIGO DE SALA", "No se pudo abrir el menú para compartir. Inténtalo de nuevo."),
+            AppLanguage.BRAZILIAN_PORTUGUESE to listOf("Digite a senha para entrar em “{room}”.", "{room} • Anfitrião: {host}", "CÓDIGO DA SALA • {code}", "NA SALA", "Compartilhe o código para convidar amigos.", "{mode} • 50 números", "COMPARTILHAR CÓDIGO DA SALA", "Não foi possível abrir o compartilhamento. Tente novamente."),
+            AppLanguage.FRENCH to listOf("Saisis le mot de passe pour rejoindre « {room} ».", "{room} • Hôte : {host}", "CODE DU SALON • {code}", "DANS LE SALON", "Partage le code pour inviter tes amis.", "{mode} • 50 nombres", "PARTAGER LE CODE DU SALON", "Impossible d’ouvrir le partage. Réessaie."),
+            AppLanguage.GERMAN to listOf("Gib das Passwort ein, um „{room}“ beizutreten.", "{room} • Host: {host}", "RAUMCODE • {code}", "IM RAUM", "Teile den Code, um Freunde einzuladen.", "{mode} • 50 Zahlen", "RAUMCODE TEILEN", "Teilen konnte nicht geöffnet werden. Versuche es erneut."),
+            AppLanguage.INDONESIAN to listOf("Masukkan kata sandi untuk bergabung ke “{room}”.", "{room} • Host {host}", "KODE RUANG • {code}", "DI DALAM RUANG", "Bagikan kode untuk mengundang teman.", "{mode} • 50 angka", "BAGIKAN KODE RUANG", "Tidak dapat membuka menu berbagi. Coba lagi."),
+            AppLanguage.THAI to listOf("กรอกรหัสผ่านเพื่อเข้าร่วม “{room}”", "{room} • โฮสต์ {host}", "รหัสห้อง • {code}", "อยู่ในห้อง", "แชร์รหัสเพื่อเชิญเพื่อน", "{mode} • 50 ตัวเลข", "แชร์รหัสห้อง", "ไม่สามารถเปิดการแชร์ได้ โปรดลองอีกครั้ง"),
+            AppLanguage.RUSSIAN to listOf("Введите пароль, чтобы войти в «{room}».", "{room} • Ведущий: {host}", "КОД КОМНАТЫ • {code}", "В КОМНАТЕ", "Поделитесь кодом, чтобы пригласить друзей.", "{mode} • 50 чисел", "ПОДЕЛИТЬСЯ КОДОМ", "Не удалось открыть меню «Поделиться». Попробуйте ещё раз."),
+        )
+        val keys = listOf(
+            TextKey.PrivateJoinDescription,
+            TextKey.PublicJoinDescription,
+            TextKey.JoinedRoomCode,
+            TextKey.JoinedRoom,
+            TextKey.ShareCodeHint,
+            TextKey.ModeNumberCount,
+            TextKey.ShareRoomCode,
+            TextKey.ShareSheetError,
+        )
+
+        expected.forEach { (language, translations) ->
+            val catalog = allLocalizationCatalogs.getValue(language)
+            assertEquals(translations, keys.map(catalog.texts::getValue), language.code)
+        }
+    }
 }
