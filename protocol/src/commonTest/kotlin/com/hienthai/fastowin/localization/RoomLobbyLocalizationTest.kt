@@ -38,4 +38,40 @@ class RoomLobbyLocalizationTest {
             assertEquals(translations, keys.map(catalog.texts::getValue), language.code)
         }
     }
+
+    @Test
+    fun `room player labels resolve explicitly in all twelve languages`() {
+        val expected = mapOf(
+            AppLanguage.ENGLISH to listOf("Players", "Blue Team", "Red Team", "You", "Teammate", "Opponent", "Waiting…", "Host • You", "Guest", "Host", "Waiting for player…"),
+            AppLanguage.VIETNAMESE to listOf("Người chơi", "Đội Xanh", "Đội Đỏ", "Bạn", "Đồng đội", "Đối thủ", "Đang chờ…", "Chủ phòng • Bạn", "Khách", "Chủ phòng", "Đang chờ người chơi…"),
+            AppLanguage.SIMPLIFIED_CHINESE to listOf("玩家", "蓝队", "红队", "你", "队友", "对手", "等待中…", "房主 • 你", "客人", "房主", "等待玩家…"),
+            AppLanguage.JAPANESE to listOf("プレイヤー", "ブルーチーム", "レッドチーム", "あなた", "チームメイト", "対戦相手", "待機中…", "ホスト • あなた", "ゲスト", "ホスト", "プレイヤーを待っています…"),
+            AppLanguage.KOREAN to listOf("플레이어", "블루 팀", "레드 팀", "나", "팀원", "상대", "대기 중…", "방장 • 나", "게스트", "방장", "플레이어를 기다리는 중…"),
+            AppLanguage.SPANISH to listOf("Jugadores", "Equipo azul", "Equipo rojo", "Tú", "Compañero", "Oponente", "Esperando…", "Anfitrión • Tú", "Invitado", "Anfitrión", "Esperando jugador…"),
+            AppLanguage.BRAZILIAN_PORTUGUESE to listOf("Jogadores", "Equipe Azul", "Equipe Vermelha", "Você", "Companheiro", "Adversário", "Aguardando…", "Anfitrião • Você", "Convidado", "Anfitrião", "Aguardando jogador…"),
+            AppLanguage.FRENCH to listOf("Joueurs", "Équipe bleue", "Équipe rouge", "Toi", "Coéquipier", "Adversaire", "En attente…", "Hôte • Toi", "Invité", "Hôte", "En attente d’un joueur…"),
+            AppLanguage.GERMAN to listOf("Spieler", "Blaues Team", "Rotes Team", "Du", "Mitspieler", "Gegner", "Wartet…", "Host • Du", "Gast", "Host", "Warte auf Spieler…"),
+            AppLanguage.INDONESIAN to listOf("Pemain", "Tim Biru", "Tim Merah", "Kamu", "Rekan tim", "Lawan", "Menunggu…", "Host • Kamu", "Tamu", "Host", "Menunggu pemain…"),
+            AppLanguage.THAI to listOf("ผู้เล่น", "ทีมสีน้ำเงิน", "ทีมสีแดง", "คุณ", "เพื่อนร่วมทีม", "คู่แข่ง", "กำลังรอ…", "โฮสต์ • คุณ", "ผู้เล่นรับเชิญ", "โฮสต์", "กำลังรอผู้เล่น…"),
+            AppLanguage.RUSSIAN to listOf("Игроки", "Синяя команда", "Красная команда", "Вы", "Союзник", "Соперник", "Ожидание…", "Ведущий • Вы", "Гость", "Ведущий", "Ожидание игрока…"),
+        )
+        val keys = listOf(
+            TextKey.PlayersTitle,
+            TextKey.BlueTeam,
+            TextKey.RedTeam,
+            TextKey.You,
+            TextKey.Teammate,
+            TextKey.Opponent,
+            TextKey.WaitingPlayer,
+            TextKey.HostYou,
+            TextKey.Guest,
+            TextKey.Host,
+            TextKey.WaitingForPlayer,
+        )
+
+        expected.forEach { (language, translations) ->
+            val catalog = allLocalizationCatalogs.getValue(language)
+            assertEquals(translations, keys.map(catalog.texts::getValue), language.code)
+        }
+    }
 }

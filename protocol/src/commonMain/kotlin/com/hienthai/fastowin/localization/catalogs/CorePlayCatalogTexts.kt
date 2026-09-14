@@ -194,7 +194,10 @@ internal val germanCorePlayTexts = mapOf(
     TextKey.WaitHostStart to "Warte, bis der Host das Match startet.", TextKey.CancelReady to "BEREITSCHAFT AUFHEBEN",
     TextKey.ReadyAction to "BEREIT", TextKey.WaitingForReady to "Warten, bis alle bereit sind…",
     TextKey.InviteFriends to "FREUNDE EINLADEN", TextKey.Kick to "ENTFERNEN", TextKey.CloseRoom to "RAUM SCHLIESSEN",
-    TextKey.LeaveRoom to "RAUM VERLASSEN", TextKey.ReadyStatus to "BEREIT", TextKey.WaitingStatus to "WARTET"
+    TextKey.LeaveRoom to "RAUM VERLASSEN", TextKey.ReadyStatus to "BEREIT", TextKey.WaitingStatus to "WARTET",
+    TextKey.PlayersTitle to "Spieler", TextKey.BlueTeam to "Blaues Team", TextKey.RedTeam to "Rotes Team", TextKey.You to "Du",
+    TextKey.Teammate to "Mitspieler", TextKey.Opponent to "Gegner", TextKey.WaitingPlayer to "Wartet…",
+    TextKey.HostYou to "Host • Du", TextKey.Guest to "Gast", TextKey.Host to "Host", TextKey.WaitingForPlayer to "Warte auf Spieler…"
 )
 
 internal val japaneseCorePlayTexts = mapOf(
@@ -206,7 +209,10 @@ internal val japaneseCorePlayTexts = mapOf(
     TextKey.WaitHostStart to "ホストが対戦を開始するまでお待ちください。", TextKey.CancelReady to "準備を解除",
     TextKey.ReadyAction to "準備完了", TextKey.WaitingForReady to "全員の準備完了を待っています…",
     TextKey.InviteFriends to "フレンドを招待", TextKey.Kick to "退出させる", TextKey.CloseRoom to "ルームを閉じる",
-    TextKey.LeaveRoom to "ルームを退出", TextKey.ReadyStatus to "準備完了", TextKey.WaitingStatus to "待機中"
+    TextKey.LeaveRoom to "ルームを退出", TextKey.ReadyStatus to "準備完了", TextKey.WaitingStatus to "待機中",
+    TextKey.PlayersTitle to "プレイヤー", TextKey.BlueTeam to "ブルーチーム", TextKey.RedTeam to "レッドチーム", TextKey.You to "あなた",
+    TextKey.Teammate to "チームメイト", TextKey.Opponent to "対戦相手", TextKey.WaitingPlayer to "待機中…",
+    TextKey.HostYou to "ホスト • あなた", TextKey.Guest to "ゲスト", TextKey.Host to "ホスト", TextKey.WaitingForPlayer to "プレイヤーを待っています…"
 )
 
 internal val russianCorePlayTexts = mapOf(
@@ -219,7 +225,10 @@ internal val russianCorePlayTexts = mapOf(
     TextKey.WaitHostStart to "Дождитесь, пока ведущий начнёт матч.", TextKey.CancelReady to "ОТМЕНИТЬ ГОТОВНОСТЬ",
     TextKey.ReadyAction to "ГОТОВ", TextKey.WaitingForReady to "Ожидание готовности всех игроков…",
     TextKey.InviteFriends to "ПРИГЛАСИТЬ ДРУЗЕЙ", TextKey.Kick to "ИСКЛЮЧИТЬ", TextKey.CloseRoom to "ЗАКРЫТЬ КОМНАТУ",
-    TextKey.LeaveRoom to "ПОКИНУТЬ КОМНАТУ", TextKey.ReadyStatus to "ГОТОВ", TextKey.WaitingStatus to "ОЖИДАНИЕ"
+    TextKey.LeaveRoom to "ПОКИНУТЬ КОМНАТУ", TextKey.ReadyStatus to "ГОТОВ", TextKey.WaitingStatus to "ОЖИДАНИЕ",
+    TextKey.PlayersTitle to "Игроки", TextKey.BlueTeam to "Синяя команда", TextKey.RedTeam to "Красная команда", TextKey.You to "Вы",
+    TextKey.Teammate to "Союзник", TextKey.Opponent to "Соперник", TextKey.WaitingPlayer to "Ожидание…",
+    TextKey.HostYou to "Ведущий • Вы", TextKey.Guest to "Гость", TextKey.Host to "Ведущий", TextKey.WaitingForPlayer to "Ожидание игрока…"
 )
 
 internal val thaiCorePlayTexts = mapOf(
@@ -236,36 +245,57 @@ internal val thaiCorePlayTexts = mapOf(
     TextKey.InvalidChallengeCode to "รหัสไม่ถูกต้องหรือพิมพ์ผิด", TextKey.WaitHostStart to "รอให้โฮสต์เริ่มการแข่งขัน",
     TextKey.CancelReady to "ยกเลิกพร้อม", TextKey.ReadyAction to "พร้อม", TextKey.WaitingForReady to "กำลังรอให้ทุกคนพร้อม…",
     TextKey.InviteFriends to "เชิญเพื่อน", TextKey.Kick to "นำออก", TextKey.CloseRoom to "ปิดห้อง",
-    TextKey.LeaveRoom to "ออกจากห้อง", TextKey.ReadyStatus to "พร้อม", TextKey.WaitingStatus to "รอ"
+    TextKey.LeaveRoom to "ออกจากห้อง", TextKey.ReadyStatus to "พร้อม", TextKey.WaitingStatus to "รอ",
+    TextKey.PlayersTitle to "ผู้เล่น", TextKey.BlueTeam to "ทีมสีน้ำเงิน", TextKey.RedTeam to "ทีมสีแดง", TextKey.You to "คุณ",
+    TextKey.Teammate to "เพื่อนร่วมทีม", TextKey.Opponent to "คู่แข่ง", TextKey.WaitingPlayer to "กำลังรอ…",
+    TextKey.HostYou to "โฮสต์ • คุณ", TextKey.Guest to "ผู้เล่นรับเชิญ", TextKey.Host to "โฮสต์", TextKey.WaitingForPlayer to "กำลังรอผู้เล่น…"
 )
 
 internal val simplifiedChineseCorePlayTexts = mapOf(
     TextKey.WaitHostStart to "等待房主开始比赛。", TextKey.CancelReady to "取消准备", TextKey.ReadyAction to "准备",
     TextKey.WaitingForReady to "等待所有人准备…", TextKey.InviteFriends to "邀请好友", TextKey.Kick to "踢出",
-    TextKey.CloseRoom to "关闭房间", TextKey.LeaveRoom to "离开房间", TextKey.ReadyStatus to "已准备", TextKey.WaitingStatus to "等待中"
+    TextKey.CloseRoom to "关闭房间", TextKey.LeaveRoom to "离开房间", TextKey.ReadyStatus to "已准备", TextKey.WaitingStatus to "等待中",
+    TextKey.PlayersTitle to "玩家", TextKey.BlueTeam to "蓝队", TextKey.RedTeam to "红队", TextKey.You to "你",
+    TextKey.Teammate to "队友", TextKey.Opponent to "对手", TextKey.WaitingPlayer to "等待中…",
+    TextKey.HostYou to "房主 • 你", TextKey.Guest to "客人", TextKey.Host to "房主", TextKey.WaitingForPlayer to "等待玩家…"
 )
 internal val koreanCorePlayTexts = mapOf(
     TextKey.WaitHostStart to "방장이 경기를 시작할 때까지 기다리세요.", TextKey.CancelReady to "준비 취소", TextKey.ReadyAction to "준비",
     TextKey.WaitingForReady to "모두가 준비되기를 기다리는 중…", TextKey.InviteFriends to "친구 초대", TextKey.Kick to "내보내기",
-    TextKey.CloseRoom to "방 닫기", TextKey.LeaveRoom to "방 나가기", TextKey.ReadyStatus to "준비 완료", TextKey.WaitingStatus to "대기 중"
+    TextKey.CloseRoom to "방 닫기", TextKey.LeaveRoom to "방 나가기", TextKey.ReadyStatus to "준비 완료", TextKey.WaitingStatus to "대기 중",
+    TextKey.PlayersTitle to "플레이어", TextKey.BlueTeam to "블루 팀", TextKey.RedTeam to "레드 팀", TextKey.You to "나",
+    TextKey.Teammate to "팀원", TextKey.Opponent to "상대", TextKey.WaitingPlayer to "대기 중…",
+    TextKey.HostYou to "방장 • 나", TextKey.Guest to "게스트", TextKey.Host to "방장", TextKey.WaitingForPlayer to "플레이어를 기다리는 중…"
 )
 internal val spanishCorePlayTexts = mapOf(
     TextKey.WaitHostStart to "Espera a que el anfitrión inicie la partida.", TextKey.CancelReady to "CANCELAR LISTO", TextKey.ReadyAction to "LISTO",
     TextKey.WaitingForReady to "Esperando a que todos estén listos…", TextKey.InviteFriends to "INVITAR AMIGOS", TextKey.Kick to "EXPULSAR",
-    TextKey.CloseRoom to "CERRAR SALA", TextKey.LeaveRoom to "SALIR DE LA SALA", TextKey.ReadyStatus to "LISTO", TextKey.WaitingStatus to "EN ESPERA"
+    TextKey.CloseRoom to "CERRAR SALA", TextKey.LeaveRoom to "SALIR DE LA SALA", TextKey.ReadyStatus to "LISTO", TextKey.WaitingStatus to "EN ESPERA",
+    TextKey.PlayersTitle to "Jugadores", TextKey.BlueTeam to "Equipo azul", TextKey.RedTeam to "Equipo rojo", TextKey.You to "Tú",
+    TextKey.Teammate to "Compañero", TextKey.Opponent to "Oponente", TextKey.WaitingPlayer to "Esperando…",
+    TextKey.HostYou to "Anfitrión • Tú", TextKey.Guest to "Invitado", TextKey.Host to "Anfitrión", TextKey.WaitingForPlayer to "Esperando jugador…"
 )
 internal val brazilianPortugueseCorePlayTexts = mapOf(
     TextKey.WaitHostStart to "Aguarde o anfitrião iniciar a partida.", TextKey.CancelReady to "CANCELAR PRONTO", TextKey.ReadyAction to "PRONTO",
     TextKey.WaitingForReady to "Aguardando todos ficarem prontos…", TextKey.InviteFriends to "CONVIDAR AMIGOS", TextKey.Kick to "EXPULSAR",
-    TextKey.CloseRoom to "FECHAR SALA", TextKey.LeaveRoom to "SAIR DA SALA", TextKey.ReadyStatus to "PRONTO", TextKey.WaitingStatus to "AGUARDANDO"
+    TextKey.CloseRoom to "FECHAR SALA", TextKey.LeaveRoom to "SAIR DA SALA", TextKey.ReadyStatus to "PRONTO", TextKey.WaitingStatus to "AGUARDANDO",
+    TextKey.PlayersTitle to "Jogadores", TextKey.BlueTeam to "Equipe Azul", TextKey.RedTeam to "Equipe Vermelha", TextKey.You to "Você",
+    TextKey.Teammate to "Companheiro", TextKey.Opponent to "Adversário", TextKey.WaitingPlayer to "Aguardando…",
+    TextKey.HostYou to "Anfitrião • Você", TextKey.Guest to "Convidado", TextKey.Host to "Anfitrião", TextKey.WaitingForPlayer to "Aguardando jogador…"
 )
 internal val frenchCorePlayTexts = mapOf(
     TextKey.WaitHostStart to "Attends que l’hôte lance la partie.", TextKey.CancelReady to "ANNULER PRÊT", TextKey.ReadyAction to "PRÊT",
     TextKey.WaitingForReady to "En attente que tout le monde soit prêt…", TextKey.InviteFriends to "INVITER DES AMIS", TextKey.Kick to "EXCLURE",
-    TextKey.CloseRoom to "FERMER LE SALON", TextKey.LeaveRoom to "QUITTER LE SALON", TextKey.ReadyStatus to "PRÊT", TextKey.WaitingStatus to "EN ATTENTE"
+    TextKey.CloseRoom to "FERMER LE SALON", TextKey.LeaveRoom to "QUITTER LE SALON", TextKey.ReadyStatus to "PRÊT", TextKey.WaitingStatus to "EN ATTENTE",
+    TextKey.PlayersTitle to "Joueurs", TextKey.BlueTeam to "Équipe bleue", TextKey.RedTeam to "Équipe rouge", TextKey.You to "Toi",
+    TextKey.Teammate to "Coéquipier", TextKey.Opponent to "Adversaire", TextKey.WaitingPlayer to "En attente…",
+    TextKey.HostYou to "Hôte • Toi", TextKey.Guest to "Invité", TextKey.Host to "Hôte", TextKey.WaitingForPlayer to "En attente d’un joueur…"
 )
 internal val indonesianCorePlayTexts = mapOf(
     TextKey.WaitHostStart to "Tunggu host memulai pertandingan.", TextKey.CancelReady to "BATAL SIAP", TextKey.ReadyAction to "SIAP",
     TextKey.WaitingForReady to "Menunggu semua pemain siap…", TextKey.InviteFriends to "UNDANG TEMAN", TextKey.Kick to "KELUARKAN",
-    TextKey.CloseRoom to "TUTUP RUANG", TextKey.LeaveRoom to "KELUAR DARI RUANG", TextKey.ReadyStatus to "SIAP", TextKey.WaitingStatus to "MENUNGGU"
+    TextKey.CloseRoom to "TUTUP RUANG", TextKey.LeaveRoom to "KELUAR DARI RUANG", TextKey.ReadyStatus to "SIAP", TextKey.WaitingStatus to "MENUNGGU",
+    TextKey.PlayersTitle to "Pemain", TextKey.BlueTeam to "Tim Biru", TextKey.RedTeam to "Tim Merah", TextKey.You to "Kamu",
+    TextKey.Teammate to "Rekan tim", TextKey.Opponent to "Lawan", TextKey.WaitingPlayer to "Menunggu…",
+    TextKey.HostYou to "Host • Kamu", TextKey.Guest to "Tamu", TextKey.Host to "Host", TextKey.WaitingForPlayer to "Menunggu pemain…"
 )
