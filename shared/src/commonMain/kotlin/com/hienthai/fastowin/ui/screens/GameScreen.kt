@@ -512,38 +512,46 @@ private fun PlayerScoreBar(
     val nameMe = if (is2v2) "(${state.player.name} & ${state.teammates.firstOrNull()?.name ?: "..."})" else state.player.name
     val nameOpp = if (is2v2) "(${state.opponents.joinToString(" & ") { it.name }})" else state.opponent.name
 
-    Row(
-        modifier = modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        PlayerScoreCard(
-            label = labelMe,
-            name = nameMe,
-            score = myScore,
-            avatar = state.player,
-            isLocal = true,
-            modifier = Modifier.weight(1f)
-        )
-        if (timeLeftMillis > 0L) {
-            TimerBadge(timeLeftMillis)
-        } else {
-            Text(
-                text = localized(TextKey.Versus),
-                style = MaterialTheme.typography.labelLarge,
-                fontWeight = FontWeight.Black,
-                color = MaterialTheme.colorScheme.outline
+    BoxWithConstraints(modifier = modifier.fillMaxWidth()) {
+        val compact = maxWidth < 380.dp
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(
+                horizontal = if (compact) 6.dp else 12.dp,
+                vertical = 8.dp
+            ),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(if (compact) 6.dp else 8.dp)
+        ) {
+            PlayerScoreCard(
+                label = labelMe,
+                name = nameMe,
+                score = myScore,
+                avatar = state.player,
+                isLocal = true,
+                compact = compact,
+                modifier = Modifier.weight(1f).testTag("player_score_local")
+            )
+            if (timeLeftMillis > 0L) {
+                TimerBadge(timeLeftMillis)
+            } else {
+                Text(
+                    text = localized(TextKey.Versus),
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.Black,
+                    color = MaterialTheme.colorScheme.outline
+                )
+            }
+            PlayerScoreCard(
+                label = labelOpp,
+                name = nameOpp,
+                score = opponentScore,
+                avatar = state.opponents.firstOrNull() ?: state.opponent,
+                isLocal = false,
+                onViewInfo = onOpponentInfo,
+                compact = compact,
+                modifier = Modifier.weight(1f).testTag("player_score_opponent")
             )
         }
-        PlayerScoreCard(
-            label = labelOpp,
-            name = nameOpp,
-            score = opponentScore,
-            avatar = state.opponents.firstOrNull() ?: state.opponent,
-            isLocal = false,
-            onViewInfo = onOpponentInfo,
-            modifier = Modifier.weight(1f)
-        )
     }
 }
 
@@ -555,6 +563,7 @@ private fun PlayerScoreCard(
     avatar: PlayerState,
     isLocal: Boolean,
     onViewInfo: (() -> Unit)? = null,
+    compact: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     val containerColor = ArcadePalette.Navy800
@@ -570,42 +579,88 @@ private fun PlayerScoreCard(
         border = BorderStroke(2.dp, accentColor.copy(alpha = 0.55f)),
         shadowElevation = 0.dp
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(start = 9.dp, end = 7.dp, top = 11.dp, bottom = 11.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(7.dp)
-        ) {
-            PlayerAvatar(
-                displayName = avatar.name,
-                avatarId = avatar.avatarId,
-                userId = avatar.id,
-                frameId = avatar.frameId,
-                size = 40.dp
-            )
-            Column(modifier = Modifier.weight(1f)) {
+        if (compact) {
+            Column(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 5.dp, vertical = 7.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(2.dp)
+            ) {
                 Text(
                     text = label,
                     style = MaterialTheme.typography.labelSmall,
                     color = contentColor.copy(alpha = 0.7f),
-                    fontWeight = FontWeight.Bold
-                )
-                Text(
-                    text = name,
-                    style = MaterialTheme.typography.labelLarge,
-                    color = contentColor,
                     fontWeight = FontWeight.Bold,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    PlayerAvatar(
+                        displayName = avatar.name,
+                        avatarId = avatar.avatarId,
+                        userId = avatar.id,
+                        frameId = avatar.frameId,
+                        size = 34.dp
+                    )
+                    Text(
+                        text = score.toString(),
+                        style = MaterialTheme.typography.headlineSmall,
+                        color = contentColor,
+                        fontWeight = FontWeight.Black,
+                        fontSize = 25.sp
+                    )
+                }
+                Text(
+                    text = name,
+                    modifier = Modifier.fillMaxWidth(),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = contentColor.copy(alpha = 0.82f),
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    textAlign = TextAlign.Center
+                )
             }
-            Text(
-                text = score.toString(),
-                modifier = Modifier.padding(end = 5.dp),
-                style = MaterialTheme.typography.headlineSmall,
-                color = contentColor,
-                fontWeight = FontWeight.Black,
-                fontSize = 27.sp
-            )
+        } else {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(start = 9.dp, end = 7.dp, top = 11.dp, bottom = 11.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(7.dp)
+            ) {
+                PlayerAvatar(
+                    displayName = avatar.name,
+                    avatarId = avatar.avatarId,
+                    userId = avatar.id,
+                    frameId = avatar.frameId,
+                    size = 40.dp
+                )
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = label,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = contentColor.copy(alpha = 0.7f),
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = name,
+                        style = MaterialTheme.typography.labelLarge,
+                        color = contentColor,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                Text(
+                    text = score.toString(),
+                    modifier = Modifier.padding(end = 5.dp),
+                    style = MaterialTheme.typography.headlineSmall,
+                    color = contentColor,
+                    fontWeight = FontWeight.Black,
+                    fontSize = 27.sp
+                )
+            }
         }
     }
 }

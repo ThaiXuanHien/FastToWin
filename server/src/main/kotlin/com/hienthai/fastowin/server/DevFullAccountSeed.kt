@@ -294,9 +294,9 @@ private fun seedSeasonData(
     now: Instant
 ) {
     val seasons = listOf(
-        SeedSeason(900001, legacyFallback("[DEV] Mùa Bứt Phá"), 1_380, 1_420, 18, 24, "GOLD", 1_000, 1, "FRAME"),
-        SeedSeason(900002, legacyFallback("[DEV] Mùa Kim Cương"), 1_860, 1_940, 6, 31, "DIAMOND", 2_500, 5, "FRAME"),
-        SeedSeason(900003, legacyFallback("[DEV] Mùa Thách Đấu"), 2_430, 2_510, 1, 40, "CHALLENGER", 6_000, 12, "FRAME")
+        SeedSeason(900001, legacyFallback("Mùa Bứt Phá"), 1_380, 1_420, 18, 24, "GOLD", 1_000, 1, "FRAME"),
+        SeedSeason(900002, legacyFallback("Mùa Kim Cương"), 1_860, 1_940, 6, 31, "DIAMOND", 2_500, 5, "FRAME"),
+        SeedSeason(900003, legacyFallback("Mùa Thách Đấu"), 2_430, 2_510, 1, 40, "CHALLENGER", 6_000, 12, "FRAME")
     )
     seasons.forEachIndexed { index, season ->
         val seasonId = stableUuid("season:${season.number}")

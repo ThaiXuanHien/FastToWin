@@ -21,6 +21,8 @@ import com.hienthai.fastowin.ui.theme.FastToWinTheme
 import org.junit.Rule
 import org.junit.Test
 import org.junit.Assert.assertTrue
+import kotlin.math.max
+import kotlin.math.min
 
 @OptIn(ExperimentalTestApi::class)
 class ArcadeGameUiTest {
@@ -68,6 +70,16 @@ class ArcadeGameUiTest {
             assertTrue(
                 "Small-screen number cells must remain close to square, actual ratio=$aspectRatio",
                 aspectRatio in 0.8f..1.25f
+            )
+            val localScoreBounds = composeRule.onNodeWithTag("player_score_local")
+                .fetchSemanticsNode().boundsInRoot
+            val opponentScoreBounds = composeRule.onNodeWithTag("player_score_opponent")
+                .fetchSemanticsNode().boundsInRoot
+            val scoreCardHeightRatio = max(localScoreBounds.height, opponentScoreBounds.height) /
+                min(localScoreBounds.height, opponentScoreBounds.height)
+            assertTrue(
+                "Small-screen player cards must keep equal compact heights, actual ratio=$scoreCardHeightRatio",
+                scoreCardHeightRatio <= 1.1f
             )
         }
     }

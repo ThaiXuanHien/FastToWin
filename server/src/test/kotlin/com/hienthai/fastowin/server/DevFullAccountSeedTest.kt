@@ -74,6 +74,12 @@ class DevFullAccountSeedTest {
                 )
                 assertTrue(profile.achievements.filterNot { it.code in clanAchievementCodes }.all { it.unlocked })
                 assertTrue(profile.achievements.filter { it.code in clanAchievementCodes }.none { it.unlocked })
+                assertTrue(profile.progression.seasonHistory.isNotEmpty())
+                assertTrue(
+                    profile.progression.seasonHistory.none { history ->
+                        history.seasonName.startsWith("[DEV]")
+                    }
+                )
                 assertTrue(
                     cosmetics.none { cosmetic ->
                         cosmetic.unlocked && cosmetic.type in setOf(CosmeticType.CARD_BACK, CosmeticType.BOARD_SKIN)

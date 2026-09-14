@@ -9,6 +9,32 @@ import kotlin.test.assertTrue
 
 class LocalizationCatalogTest {
     @Test
+    fun shopDiscoveryCopyDescribesOnlyTheCurrentGemAndGoldEconomy() {
+        val expected = mapOf(
+            AppLanguage.VIETNAMESE to "Mua Gem hoặc đổi Gem lấy Vàng",
+            AppLanguage.ENGLISH to "Buy Gems or exchange Gems for Gold",
+            AppLanguage.SIMPLIFIED_CHINESE to "购买宝石，或用宝石兑换金币",
+            AppLanguage.JAPANESE to "ジェムを購入、またはジェムをゴールドに交換",
+            AppLanguage.KOREAN to "젬을 구매하거나 젬을 골드로 교환하세요",
+            AppLanguage.SPANISH to "Compra gemas o cámbialas por oro",
+            AppLanguage.BRAZILIAN_PORTUGUESE to "Compre Gemas ou troque Gemas por Ouro",
+            AppLanguage.FRENCH to "Achetez des Gemmes ou échangez-les contre de l'Or",
+            AppLanguage.GERMAN to "Kaufe Juwelen oder tausche sie gegen Gold",
+            AppLanguage.INDONESIAN to "Beli Gem atau tukarkan Gem dengan Emas",
+            AppLanguage.THAI to "ซื้อเจมหรือแลกเจมเป็นทอง",
+            AppLanguage.RUSSIAN to "Покупайте самоцветы или обменивайте их на золото",
+        )
+
+        expected.forEach { (language, copy) ->
+            assertEquals(
+                copy,
+                allLocalizationCatalogs.getValue(language).texts.getValue(TextKey.ShopDiscoveryDescription),
+                language.code,
+            )
+        }
+    }
+
+    @Test
     fun phaseOneKeysAreTranslatedWithoutEnglishFallback() {
         val keys = setOf(
             TextKey.ReconnectingMatch,

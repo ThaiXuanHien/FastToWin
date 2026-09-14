@@ -38,6 +38,8 @@ import com.hienthai.fastowin.ui.layout.ResponsiveScreen
 import com.hienthai.fastowin.resources.Res
 import com.hienthai.fastowin.resources.arcade_shop_chest
 
+enum class ShopTab { GEMS, GOLD }
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ShopScreen(
@@ -52,14 +54,15 @@ fun ShopScreen(
     isGoldExchangePending: Boolean = false,
     exchangeNotice: String? = null,
     unreadNotifications: Int = 0,
-    onNotifications: () -> Unit = {}
+    onNotifications: () -> Unit = {},
+    initialTab: ShopTab = ShopTab.GEMS
 ) {
     SystemBackHandler(onBack = onClose)
-    var selectedTab by remember { mutableStateOf("GEMS") }
+    var selectedTab by remember(initialTab) { mutableStateOf(initialTab) }
     var confirmingOffer by remember { mutableStateOf<GoldExchangeOffer?>(null) }
     val tabs = listOf(
-        "GEMS" to localized(TextKey.GemTab),
-        "GOLD" to localized(TextKey.GoldTab)
+        ShopTab.GEMS to localized(TextKey.GemTab),
+        ShopTab.GOLD to localized(TextKey.GoldTab)
     )
     
     val gold = progression?.gold ?: 0
@@ -120,13 +123,13 @@ fun ShopScreen(
             ) {
                 ArcadeFeatureHero(
                     illustration = Res.drawable.arcade_shop_chest,
-                    title = localized(if (selectedTab == "GEMS") TextKey.GemVault else TextKey.GoldVault),
-                    subtitle = if (selectedTab == "GEMS") {
+                    title = localized(if (selectedTab == ShopTab.GEMS) TextKey.GemVault else TextKey.GoldVault),
+                    subtitle = if (selectedTab == ShopTab.GEMS) {
                         localized(TextKey.GemVaultDescription)
                     } else {
                         localized(TextKey.GoldVaultDescription)
                     },
-                    accent = if (selectedTab == "GEMS") ArcadePalette.Mint400 else ArcadePalette.Gold400
+                    accent = if (selectedTab == ShopTab.GEMS) ArcadePalette.Mint400 else ArcadePalette.Gold400
                 )
                 ArcadeSegmentedControl(
                     labels = tabs.map { it.second },
@@ -136,7 +139,7 @@ fun ShopScreen(
                     itemTestTag = { index -> "shop_tab:${tabs[index].first}" }
                 )
 
-                if (selectedTab == "GEMS") {
+                if (selectedTab == ShopTab.GEMS) {
                     GemStorePreview(
                         packages = gemPackages,
                         billingState = billingState,

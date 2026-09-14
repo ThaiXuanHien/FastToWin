@@ -53,6 +53,7 @@ postgresql = "42.7.13"
 billing = "9.1.0"
 angusMail = "2.0.5"
 logback = "1.6.3"
+screenshot = "0.0.1-alpha15"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -112,6 +113,7 @@ postgresql = { group = "org.postgresql", name = "postgresql", version.ref = "pos
 play-billing = { group = "com.android.billingclient", name = "billing", version.ref = "billing" }
 angus-mail = { group = "org.eclipse.angus", name = "jakarta.mail", version.ref = "angusMail" }
 logback-classic = { group = "ch.qos.logback", name = "logback-classic", version.ref = "logback" }
+screenshot-validation-api = { group = "com.android.tools.screenshot", name = "screenshot-validation-api", version.ref = "screenshot" }
 ktor-client-core = { group = "io.ktor", name = "ktor-client-core", version.ref = "ktor" }
 ktor-client-websockets = { group = "io.ktor", name = "ktor-client-websockets", version.ref = "ktor" }
 ktor-client-cio = { group = "io.ktor", name = "ktor-client-cio", version.ref = "ktor" }
@@ -139,3 +141,4 @@ jetbrains-compose = { id = "org.jetbrains.compose", version.ref = "composeMultip
 kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
 google-devtools-ksp = { id = "com.google.devtools.ksp", version.ref = "googleDevtoolsKsp" }
 jetbrains-kotlin-plugin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "jetbrainsKotlinPluginSerialization" }
+compose-screenshot = { id = "com.android.compose.screenshot", version.ref = "screenshot" }

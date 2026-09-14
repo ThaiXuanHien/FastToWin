@@ -15,16 +15,21 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyHorizontalGrid
+import androidx.compose.foundation.lazy.grid.items as gridItems
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -1525,34 +1530,29 @@ private fun CollectionSectionContent(
     val equippingCosmeticId = state.equippingCosmeticId
     Text(localized(TextKey.Frames), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
     val frames = cosmetics.filter { it.type == CosmeticType.FRAME }
-    BoxWithConstraints(modifier = Modifier.fillMaxWidth().testTag("collection_frames")) {
-        val columns = when {
-            maxWidth >= 760.dp -> 4
-            maxWidth >= 520.dp -> 3
-            else -> 2
-        }
-        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            frames.chunked(columns).forEach { frameRow ->
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    frameRow.forEach { cosmetic ->
-                        val isEquipping = equippingCosmeticId == cosmetic.id
-                        val canEquip = canEdit && cosmetic.unlocked && !cosmetic.equipped &&
-                            !isLoading && equippingCosmeticId == null
-                        CollectionFrameCard(
-                            cosmetic = cosmetic,
-                            profile = profile,
-                            isEquipping = isEquipping,
-                            canEquip = canEquip,
-                            onClick = { onEquipCosmetics(cosmetic.id, equippedTitle) },
-                            modifier = Modifier.weight(1f)
-                        )
-                    }
-                    repeat(columns - frameRow.size) { Spacer(Modifier.weight(1f)) }
-                }
-            }
+    val frameCardHeight = if (LocalDensity.current.fontScale >= 1.5f) 244.dp else 208.dp
+    val frameGridHeight = frameCardHeight * 3 + 20.dp
+    LazyHorizontalGrid(
+        rows = GridCells.Fixed(3),
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(frameGridHeight)
+            .testTag("collection_frames"),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        gridItems(frames, key = { it.id }) { cosmetic ->
+            val isEquipping = equippingCosmeticId == cosmetic.id
+            val canEquip = canEdit && cosmetic.unlocked && !cosmetic.equipped &&
+                !isLoading && equippingCosmeticId == null
+            CollectionFrameCard(
+                cosmetic = cosmetic,
+                profile = profile,
+                isEquipping = isEquipping,
+                canEquip = canEquip,
+                onClick = { onEquipCosmetics(cosmetic.id, equippedTitle) },
+                modifier = Modifier.width(180.dp).fillMaxHeight()
+            )
         }
     }
     Text(localized(TextKey.Titles), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)

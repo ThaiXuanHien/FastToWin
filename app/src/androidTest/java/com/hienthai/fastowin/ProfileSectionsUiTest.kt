@@ -507,6 +507,45 @@ class ProfileSectionsUiTest {
     }
 
     @Test
+    fun collectionFramesUseThreeHorizontalRows() {
+        val profile = profileFixture()
+
+        setAdaptiveContent(840.dp, 1_180.dp) {
+            ProfileSectionScreen(
+                state = GameState(profile = profile),
+                profile = profile,
+                section = ProfileSection.COLLECTION,
+                isExternalProfile = false,
+                canEdit = true,
+                onBack = {},
+                onRefresh = {},
+                onOpenMatchDetail = {},
+                onCloseMatchDetail = {},
+                onEquipCosmetics = { _, _ -> },
+                onClaimMissionReward = {},
+                onSave = { _, _ -> },
+                onOpenNotifications = {}
+            )
+        }
+
+        val bounds = listOf(
+            "frame_default",
+            "frame_silver",
+            "frame_persistent",
+            "season_1_gold"
+        ).map { id ->
+            composeRule.onNodeWithTag("collection_frame:$id")
+                .fetchSemanticsNode().boundsInRoot
+        }
+
+        assertTrue(kotlin.math.abs(bounds[0].left - bounds[1].left) <= 1f)
+        assertTrue(kotlin.math.abs(bounds[1].left - bounds[2].left) <= 1f)
+        assertTrue(bounds[0].top < bounds[1].top && bounds[1].top < bounds[2].top)
+        assertTrue(bounds[3].left > bounds[0].left)
+        assertTrue(kotlin.math.abs(bounds[3].top - bounds[0].top) <= 1f)
+    }
+
+    @Test
     fun collection_equippingFrameUsesStableItemProgressWithoutFullScreenReload() {
         val profile = profileFixture()
         val state = mutableStateOf(

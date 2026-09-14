@@ -72,6 +72,7 @@ fun NotificationsScreen(
     onDismiss: (String) -> Unit,
     onMarkAllRead: () -> Unit,
     onClearAll: () -> Unit,
+    nowMillis: Long = epochMillis(),
     modifier: Modifier = Modifier
 ) {
     SystemBackHandler(onBack = onBack)
@@ -176,6 +177,7 @@ fun NotificationsScreen(
                     items(visibleNotifications, key = AppNotification::id) { notification ->
                         NotificationCard(
                             notification = notification,
+                            nowMillis = nowMillis,
                             onOpen = { onOpen(notification.id) },
                             onDismiss = { pendingDelete = notification }
                         )
@@ -229,6 +231,7 @@ fun NotificationsScreen(
 @Composable
 private fun NotificationCard(
     notification: AppNotification,
+    nowMillis: Long,
     onOpen: () -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -277,7 +280,7 @@ private fun NotificationCard(
                     color = if (notification.isRead) MaterialTheme.colorScheme.onSurfaceVariant else ArcadePalette.Blue100
                 )
                 Text(
-                    relativeNotificationTime(notification.createdAtEpochMillis),
+                    relativeNotificationTime(notification.createdAtEpochMillis, nowMillis),
                     style = MaterialTheme.typography.bodySmall,
                     color = if (notification.isRead) MaterialTheme.colorScheme.primary else ArcadePalette.Gold500,
                     fontWeight = FontWeight.Bold
@@ -304,8 +307,8 @@ private fun notificationIcon(kind: AppNotificationKind): ImageVector = when (kin
 }
 
 @Composable
-private fun relativeNotificationTime(createdAtMillis: Long): String {
-    val elapsed = (epochMillis() - createdAtMillis).coerceAtLeast(0L)
+private fun relativeNotificationTime(createdAtMillis: Long, nowMillis: Long): String {
+    val elapsed = (nowMillis - createdAtMillis).coerceAtLeast(0L)
     val minutes = elapsed / 60_000L
     val hours = elapsed / 3_600_000L
     val days = elapsed / 86_400_000L

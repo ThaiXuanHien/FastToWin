@@ -1,12 +1,14 @@
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
+    alias(libs.plugins.compose.screenshot)
     id("com.google.gms.google-services")
 }
 
 android {
     namespace = "com.hienthai.fastowin"
     compileSdk = 37
+    experimentalProperties["android.experimental.enableScreenshotTest"] = true
 
     defaultConfig {
         applicationId = "com.hienthai.fastowin"
@@ -71,4 +73,11 @@ dependencies {
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
     androidTestImplementation(libs.jetbrains.compose.foundation)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
+    screenshotTestImplementation(libs.screenshot.validation.api)
+    screenshotTestImplementation(libs.androidx.compose.ui.tooling)
+    screenshotTestImplementation(project(":shared"))
+    screenshotTestImplementation(project(":protocol"))
+    screenshotTestImplementation(libs.jetbrains.compose.foundation)
+    // Compose Multiplatform 1.11.1 currently pins Material 3 to 1.9.0.
+    screenshotTestImplementation("org.jetbrains.compose.material3:material3:1.9.0")
 }

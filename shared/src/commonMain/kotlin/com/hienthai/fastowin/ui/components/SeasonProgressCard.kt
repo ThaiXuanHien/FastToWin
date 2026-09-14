@@ -106,22 +106,29 @@ fun SeasonProgressCard(
             modifier = Modifier.fillMaxWidth().padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            Text(
-                localizedNetworkText(season.nameKey, season.nameArgs, season.name),
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Black,
-                color = ArcadePalette.Gold500
-            )
-            if (season.tierRewards.isNotEmpty()) {
-                TextButton(
-                    onClick = { rewardsExpanded = !rewardsExpanded },
-                    modifier = Modifier.align(Alignment.End).testTag("season_rewards_toggle")
-                ) {
-                    Text(localized(if (rewardsExpanded) TextKey.HideTierRewards else TextKey.ViewTierRewards))
-                    Icon(
-                        if (rewardsExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                        contentDescription = null
-                    )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    localizedNetworkText(season.nameKey, season.nameArgs, season.name),
+                    modifier = Modifier.weight(1f),
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Black,
+                    color = ArcadePalette.Gold500
+                )
+                if (season.tierRewards.isNotEmpty()) {
+                    TextButton(
+                        onClick = { rewardsExpanded = !rewardsExpanded },
+                        modifier = Modifier.testTag("season_rewards_toggle")
+                    ) {
+                        Text(localized(if (rewardsExpanded) TextKey.HideTierRewards else TextKey.ViewTierRewards))
+                        Icon(
+                            if (rewardsExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                            contentDescription = null
+                        )
+                    }
                 }
             }
             Row(
@@ -174,7 +181,10 @@ fun SeasonProgressCard(
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Column(modifier = Modifier.weight(1f)) {
+                            Column(
+                                modifier = Modifier.weight(1f),
+                                verticalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
                                 Text(localized(TextKey.HeldReward), style = MaterialTheme.typography.labelMedium)
                                 reward.cosmetic?.let { cosmetic ->
                                     Text(

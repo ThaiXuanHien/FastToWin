@@ -33,6 +33,7 @@ import com.hienthai.fastowin.protocol.seasonCosmeticReward
 import com.hienthai.fastowin.protocol.seasonTierRewards
 import com.hienthai.fastowin.state.GameState
 import com.hienthai.fastowin.ui.components.SeasonRewardSummaryDialog
+import com.hienthai.fastowin.ui.components.SeasonProgressCard
 import com.hienthai.fastowin.ui.screens.LeaderboardScreen
 import com.hienthai.fastowin.ui.theme.FastToWinTheme
 import org.junit.Rule
@@ -43,6 +44,57 @@ import org.junit.Assert.assertTrue
 class SeasonProgressUiTest {
     @get:Rule
     val composeRule = createComposeRule()
+
+    @Test
+    fun seasonNameAndRewardsToggleStayVerticallyAligned() {
+        val season = checkNotNull(seasonProfileFixture().progression.season)
+
+        composeRule.setContent {
+            DeviceConfigurationOverride(
+                DeviceConfigurationOverride.ForcedSize(DpSize(430.dp, 932.dp))
+            ) {
+                FastToWinTheme {
+                    SeasonProgressCard(season)
+                }
+            }
+        }
+
+        val titleBounds = composeRule.onNodeWithText("Mùa Bứt Phá", substring = false)
+            .fetchSemanticsNode().boundsInRoot
+        val actionBounds = composeRule.onNodeWithTag("season_rewards_toggle")
+            .fetchSemanticsNode().boundsInRoot
+
+        assertTrue(
+            "Tên mùa và nút Xem thưởng phải nằm cùng một hàng",
+            kotlin.math.abs(titleBounds.center.y - actionBounds.center.y) <= 2f
+        )
+    }
+
+    @Test
+    fun heldRewardLabelKeepsEightDpGapFromSeasonFrameName() {
+        val season = checkNotNull(seasonProfileFixture().progression.season)
+
+        composeRule.setContent {
+            DeviceConfigurationOverride(
+                DeviceConfigurationOverride.ForcedSize(DpSize(430.dp, 932.dp))
+            ) {
+                FastToWinTheme {
+                    SeasonProgressCard(season)
+                }
+            }
+        }
+
+        val labelBounds = composeRule.onNodeWithText("Mốc thưởng đang giữ", substring = false)
+            .fetchSemanticsNode().boundsInRoot
+        val frameBounds = composeRule.onNodeWithText("Khung Mùa Bứt Phá • Vàng", substring = false)
+            .fetchSemanticsNode().boundsInRoot
+        val minimumGap = with(composeRule.density) { 8.dp.toPx() }
+
+        assertTrue(
+            "Tên khung mùa phải cách nhãn mốc thưởng ít nhất 8dp",
+            frameBounds.top - labelBounds.bottom >= minimumGap - 1f
+        )
+    }
 
     @Test
     fun playerGoldRankingUsesItsOwnCompactMetricTabAndHidesSeasonFilters() {
