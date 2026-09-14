@@ -68,4 +68,36 @@ class SocialScreenLocalizationTest {
             assertEquals(translations, keys.map(catalog.texts::getValue), language.code)
         }
     }
+
+    @Test
+    fun `social confirmations and empty states resolve explicitly in all twelve languages`() {
+        val expected = mapOf(
+            AppLanguage.ENGLISH to listOf("Remove friend?", "No clans found", "Leave clan?", "Remove clan member?", "Tournament cancelled", "Clear all notifications?", "Delete notification?"),
+            AppLanguage.VIETNAMESE to listOf("Hủy kết bạn?", "Chưa tìm thấy bang hội", "Rời bang?", "Mời thành viên rời bang?", "Giải đấu đã hủy", "Xóa tất cả thông báo?", "Xóa thông báo?"),
+            AppLanguage.SIMPLIFIED_CHINESE to listOf("删除好友？", "未找到战队", "退出战队？", "移除战队成员？", "锦标赛已取消", "清除所有通知？", "删除通知？"),
+            AppLanguage.JAPANESE to listOf("フレンドを削除しますか？", "クランが見つかりません", "クランを脱退しますか？", "クランメンバーを除名しますか？", "トーナメントは中止されました", "すべての通知を削除しますか？", "通知を削除しますか？"),
+            AppLanguage.KOREAN to listOf("친구를 삭제할까요?", "클랜을 찾을 수 없습니다", "클랜에서 탈퇴할까요?", "클랜 멤버를 추방할까요?", "토너먼트가 취소되었습니다", "모든 알림을 삭제할까요?", "알림을 삭제할까요?"),
+            AppLanguage.SPANISH to listOf("¿Eliminar amigo?", "No se encontraron clanes", "¿Abandonar el clan?", "¿Expulsar miembro del clan?", "Torneo cancelado", "¿Borrar todas las notificaciones?", "¿Eliminar notificación?"),
+            AppLanguage.BRAZILIAN_PORTUGUESE to listOf("Remover amigo?", "Nenhum clã encontrado", "Sair do clã?", "Remover membro do clã?", "Torneio cancelado", "Limpar todas as notificações?", "Excluir notificação?"),
+            AppLanguage.FRENCH to listOf("Supprimer cet ami ?", "Aucun clan trouvé", "Quitter le clan ?", "Exclure ce membre du clan ?", "Tournoi annulé", "Effacer toutes les notifications ?", "Supprimer la notification ?"),
+            AppLanguage.GERMAN to listOf("Freund entfernen?", "Keine Clans gefunden", "Clan verlassen?", "Clanmitglied entfernen?", "Turnier abgesagt", "Alle Benachrichtigungen löschen?", "Benachrichtigung löschen?"),
+            AppLanguage.INDONESIAN to listOf("Hapus teman?", "Klan tidak ditemukan", "Keluar dari klan?", "Keluarkan anggota klan?", "Turnamen dibatalkan", "Hapus semua notifikasi?", "Hapus notifikasi?"),
+            AppLanguage.THAI to listOf("ลบเพื่อนหรือไม่?", "ไม่พบแคลน", "ออกจากแคลนหรือไม่?", "นำสมาชิกออกจากแคลนหรือไม่?", "ยกเลิกทัวร์นาเมนต์แล้ว", "ลบการแจ้งเตือนทั้งหมดหรือไม่?", "ลบการแจ้งเตือนหรือไม่?"),
+            AppLanguage.RUSSIAN to listOf("Удалить друга?", "Кланы не найдены", "Покинуть клан?", "Исключить участника клана?", "Турнир отменён", "Удалить все уведомления?", "Удалить уведомление?"),
+        )
+        val keys = listOf(
+            TextKey.RemoveFriendTitle,
+            TextKey.NoClansFound,
+            TextKey.LeaveClanTitle,
+            TextKey.RemoveClanMemberTitle,
+            TextKey.TournamentCancelled,
+            TextKey.ClearAllNotificationsTitle,
+            TextKey.DeleteNotificationTitle,
+        )
+
+        expected.forEach { (language, translations) ->
+            val catalog = allLocalizationCatalogs.getValue(language)
+            assertEquals(translations, keys.map(catalog.texts::getValue), language.code)
+        }
+    }
 }
