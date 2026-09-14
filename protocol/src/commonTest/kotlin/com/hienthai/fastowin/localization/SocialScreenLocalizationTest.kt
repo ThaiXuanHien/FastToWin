@@ -260,4 +260,37 @@ class SocialScreenLocalizationTest {
             assertEquals(translations, keys.map(catalog.texts::getValue), language.code)
         }
     }
+
+    @Test
+    fun `tournament phases resolve explicitly in all twelve languages`() {
+        val expected = mapOf(
+            AppLanguage.ENGLISH to listOf("Updating", "Gathering", "In progress", "Finished", "Cancelled", "WAITING", "PLAYING", "DONE"),
+            AppLanguage.VIETNAMESE to listOf("Đang cập nhật", "Đang tập hợp", "Đang diễn ra", "Đã kết thúc", "Đã hủy", "CHỜ", "ĐANG ĐẤU", "XONG"),
+            AppLanguage.SIMPLIFIED_CHINESE to listOf("更新中", "集结中", "进行中", "已结束", "已取消", "等待中", "对战中", "完成"),
+            AppLanguage.JAPANESE to listOf("更新中", "参加者募集中", "進行中", "終了", "中止", "待機中", "対戦中", "完了"),
+            AppLanguage.KOREAN to listOf("업데이트 중", "참가자 모집 중", "진행 중", "종료", "취소됨", "대기 중", "경기 중", "완료"),
+            AppLanguage.SPANISH to listOf("Actualizando", "Reuniendo jugadores", "En curso", "Finalizado", "Cancelado", "EN ESPERA", "EN JUEGO", "HECHO"),
+            AppLanguage.BRAZILIAN_PORTUGUESE to listOf("Atualizando", "Reunindo jogadores", "Em andamento", "Encerrado", "Cancelado", "AGUARDANDO", "EM JOGO", "CONCLUÍDO"),
+            AppLanguage.FRENCH to listOf("Mise à jour", "Rassemblement", "En cours", "Terminé", "Annulé", "EN ATTENTE", "EN JEU", "TERMINÉ"),
+            AppLanguage.GERMAN to listOf("Wird aktualisiert", "Teilnehmer werden gesammelt", "Läuft", "Beendet", "Abgesagt", "WARTET", "LÄUFT", "FERTIG"),
+            AppLanguage.INDONESIAN to listOf("Memperbarui", "Mengumpulkan pemain", "Sedang berlangsung", "Selesai", "Dibatalkan", "MENUNGGU", "BERMAIN", "SELESAI"),
+            AppLanguage.THAI to listOf("กำลังอัปเดต", "กำลังรวมผู้เล่น", "กำลังดำเนินการ", "เสร็จสิ้น", "ยกเลิกแล้ว", "รอ", "กำลังเล่น", "เสร็จแล้ว"),
+            AppLanguage.RUSSIAN to listOf("Обновление", "Сбор участников", "Идёт", "Завершён", "Отменён", "ОЖИДАНИЕ", "ИГРА", "ГОТОВО"),
+        )
+        val keys = listOf(
+            TextKey.TournamentUpdating,
+            TextKey.TournamentPhaseLobby,
+            TextKey.TournamentPhaseRunning,
+            TextKey.TournamentPhaseFinished,
+            TextKey.TournamentPhaseCancelled,
+            TextKey.MatchPending,
+            TextKey.MatchPlaying,
+            TextKey.MatchFinished,
+        )
+
+        expected.forEach { (language, translations) ->
+            val catalog = allLocalizationCatalogs.getValue(language)
+            assertEquals(translations, keys.map(catalog.texts::getValue), language.code)
+        }
+    }
 }

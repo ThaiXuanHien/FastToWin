@@ -286,6 +286,9 @@ internal val germanSocialShopTexts = englishSocialShopTexts + mapOf(
     TextKey.JoinRequestsCount to "Beitrittsanfragen ({count})", TextKey.Approve to "Genehmigen",
     TextKey.ClanMemberSummary to "{role} · {trophies} Trophäen", TextKey.RemoveClanMemberNamed to "{player} aus dem Clan entfernen",
     TextKey.ChooseClanLogo to "Logo wählen", TextKey.ClanRoleLeader to "Anführer", TextKey.ClanRoleCoLeader to "Co-Anführer", TextKey.ClanRoleMember to "Mitglied",
+    TextKey.TournamentUpdating to "Wird aktualisiert", TextKey.TournamentPhaseLobby to "Teilnehmer werden gesammelt",
+    TextKey.TournamentPhaseRunning to "Läuft", TextKey.TournamentPhaseFinished to "Beendet", TextKey.TournamentPhaseCancelled to "Abgesagt",
+    TextKey.MatchPending to "WARTET", TextKey.MatchPlaying to "LÄUFT", TextKey.MatchFinished to "FERTIG",
     TextKey.PlayerCodeExample to "z. B. FTW8X2Q", TextKey.YourSquad to "Dein Team", TextKey.FriendList to "Freunde", TextKey.ClanTogetherTitle to "Gemeinsam antreten", TextKey.ExploreClans to "Clans entdecken", TextKey.FameRace to "Rennen um Ruhm", TextKey.CurrentSeason to "Aktuelle Saison", TextKey.KnockoutArena to "K.-o.-Arena", TextKey.RecentTournaments to "Letzte Turniere", TextKey.NotificationsHero to "Neuigkeiten für dich", TextKey.EmptyInbox to "Dein Postfach ist leer", TextKey.NumberSkins to "Zahlenflächen", TextKey.NumberBoards to "Zahlenbretter", TextKey.GemVault to "Gem-Tresor", TextKey.ArcadeVault to "Arcade-Tresor", TextKey.Restocking to "Nachschub unterwegs", TextKey.Equip to "AUSRÜSTEN"
 )
 internal val japaneseSocialShopTexts = englishSocialShopTexts + mapOf(
@@ -319,6 +322,9 @@ internal val japaneseSocialShopTexts = englishSocialShopTexts + mapOf(
     TextKey.JoinRequestsCount to "参加申請（{count}）", TextKey.Approve to "承認",
     TextKey.ClanMemberSummary to "{role} · トロフィー{trophies}個", TextKey.RemoveClanMemberNamed to "{player}をクランから除名",
     TextKey.ChooseClanLogo to "ロゴを選択", TextKey.ClanRoleLeader to "リーダー", TextKey.ClanRoleCoLeader to "サブリーダー", TextKey.ClanRoleMember to "メンバー",
+    TextKey.TournamentUpdating to "更新中", TextKey.TournamentPhaseLobby to "参加者募集中",
+    TextKey.TournamentPhaseRunning to "進行中", TextKey.TournamentPhaseFinished to "終了", TextKey.TournamentPhaseCancelled to "中止",
+    TextKey.MatchPending to "待機中", TextKey.MatchPlaying to "対戦中", TextKey.MatchFinished to "完了",
     TextKey.PlayerCodeExample to "例：FTW8X2Q", TextKey.YourSquad to "あなたのチーム", TextKey.FriendList to "フレンド", TextKey.ClanTogetherTitle to "仲間と挑戦", TextKey.ExploreClans to "クランを探す", TextKey.FameRace to "栄光へのレース", TextKey.CurrentSeason to "今シーズン", TextKey.KnockoutArena to "勝ち抜きアリーナ", TextKey.RecentTournaments to "最近の大会", TextKey.NotificationsHero to "あなたへのお知らせ", TextKey.EmptyInbox to "通知はありません", TextKey.NumberSkins to "数字スキン", TextKey.NumberBoards to "数字ボード", TextKey.GemVault to "ジェム保管庫", TextKey.ArcadeVault to "アーケード保管庫", TextKey.Restocking to "入荷準備中", TextKey.Equip to "装備"
 )
 internal val simplifiedChineseSocialShopTexts = englishSocialShopTexts + mapOf(
@@ -352,6 +358,9 @@ internal val simplifiedChineseSocialShopTexts = englishSocialShopTexts + mapOf(
     TextKey.JoinRequestsCount to "加入申请（{count}）", TextKey.Approve to "批准",
     TextKey.ClanMemberSummary to "{role} · {trophies} 个奖杯", TextKey.RemoveClanMemberNamed to "将 {player} 移出战队",
     TextKey.ChooseClanLogo to "选择徽标", TextKey.ClanRoleLeader to "队长", TextKey.ClanRoleCoLeader to "副队长", TextKey.ClanRoleMember to "成员",
+    TextKey.TournamentUpdating to "更新中", TextKey.TournamentPhaseLobby to "集结中",
+    TextKey.TournamentPhaseRunning to "进行中", TextKey.TournamentPhaseFinished to "已结束", TextKey.TournamentPhaseCancelled to "已取消",
+    TextKey.MatchPending to "等待中", TextKey.MatchPlaying to "对战中", TextKey.MatchFinished to "完成",
     TextKey.PlayerCodeExample to "例如：FTW8X2Q", TextKey.YourSquad to "你的队伍", TextKey.FriendList to "好友列表", TextKey.ClanTogetherTitle to "并肩竞技", TextKey.ExploreClans to "探索战队", TextKey.FameRace to "荣耀竞速", TextKey.CurrentSeason to "当前赛季", TextKey.KnockoutArena to "淘汰赛场", TextKey.RecentTournaments to "最近赛事", TextKey.NotificationsHero to "你的新消息", TextKey.EmptyInbox to "暂无消息", TextKey.NumberSkins to "数字皮肤", TextKey.NumberBoards to "数字棋盘", TextKey.GemVault to "宝石仓库", TextKey.ArcadeVault to "街机仓库", TextKey.Restocking to "补货中", TextKey.Equip to "装备"
 )
 internal val koreanSocialShopTexts = englishSocialShopTexts + mapOf(
@@ -385,6 +394,9 @@ internal val koreanSocialShopTexts = englishSocialShopTexts + mapOf(
     TextKey.JoinRequestsCount to "가입 요청 ({count})", TextKey.Approve to "승인",
     TextKey.ClanMemberSummary to "{role} · 트로피 {trophies}개", TextKey.RemoveClanMemberNamed to "{player}님을 클랜에서 추방",
     TextKey.ChooseClanLogo to "로고 선택", TextKey.ClanRoleLeader to "클랜장", TextKey.ClanRoleCoLeader to "부클랜장", TextKey.ClanRoleMember to "멤버",
+    TextKey.TournamentUpdating to "업데이트 중", TextKey.TournamentPhaseLobby to "참가자 모집 중",
+    TextKey.TournamentPhaseRunning to "진행 중", TextKey.TournamentPhaseFinished to "종료", TextKey.TournamentPhaseCancelled to "취소됨",
+    TextKey.MatchPending to "대기 중", TextKey.MatchPlaying to "경기 중", TextKey.MatchFinished to "완료",
     TextKey.PlayerCodeExample to "예: FTW8X2Q", TextKey.YourSquad to "내 스쿼드", TextKey.FriendList to "친구", TextKey.ClanTogetherTitle to "함께 경쟁하세요", TextKey.ExploreClans to "클랜 탐색", TextKey.FameRace to "명예의 레이스", TextKey.CurrentSeason to "현재 시즌", TextKey.KnockoutArena to "토너먼트 아레나", TextKey.RecentTournaments to "최근 토너먼트", TextKey.NotificationsHero to "새 소식", TextKey.EmptyInbox to "알림이 없습니다", TextKey.NumberSkins to "숫자 스킨", TextKey.NumberBoards to "숫자 보드", TextKey.GemVault to "젬 보관소", TextKey.ArcadeVault to "아케이드 보관소", TextKey.Restocking to "상품 준비 중", TextKey.Equip to "장착"
 )
 internal val spanishSocialShopTexts = englishSocialShopTexts + mapOf(
@@ -418,6 +430,9 @@ internal val spanishSocialShopTexts = englishSocialShopTexts + mapOf(
     TextKey.JoinRequestsCount to "Solicitudes de ingreso ({count})", TextKey.Approve to "Aprobar",
     TextKey.ClanMemberSummary to "{role} · {trophies} trofeos", TextKey.RemoveClanMemberNamed to "Expulsar a {player} del clan",
     TextKey.ChooseClanLogo to "Elegir logo", TextKey.ClanRoleLeader to "Líder", TextKey.ClanRoleCoLeader to "Colíder", TextKey.ClanRoleMember to "Miembro",
+    TextKey.TournamentUpdating to "Actualizando", TextKey.TournamentPhaseLobby to "Reuniendo jugadores",
+    TextKey.TournamentPhaseRunning to "En curso", TextKey.TournamentPhaseFinished to "Finalizado", TextKey.TournamentPhaseCancelled to "Cancelado",
+    TextKey.MatchPending to "EN ESPERA", TextKey.MatchPlaying to "EN JUEGO", TextKey.MatchFinished to "HECHO",
     TextKey.PlayerCodeExample to "p. ej., FTW8X2Q", TextKey.YourSquad to "Tu equipo", TextKey.FriendList to "Amigos", TextKey.ClanTogetherTitle to "Compitan juntos", TextKey.ExploreClans to "Explorar clanes", TextKey.FameRace to "Carrera por la gloria", TextKey.CurrentSeason to "Temporada actual", TextKey.KnockoutArena to "Arena eliminatoria", TextKey.RecentTournaments to "Torneos recientes", TextKey.NotificationsHero to "Novedades para ti", TextKey.EmptyInbox to "Tu bandeja está vacía", TextKey.NumberSkins to "Diseños de números", TextKey.NumberBoards to "Tableros numéricos", TextKey.GemVault to "Cámara de Gemas", TextKey.ArcadeVault to "Cámara Arcade", TextKey.Restocking to "Reponiendo", TextKey.Equip to "EQUIPAR"
 )
 internal val brazilianPortugueseSocialShopTexts = englishSocialShopTexts + mapOf(
@@ -451,6 +466,9 @@ internal val brazilianPortugueseSocialShopTexts = englishSocialShopTexts + mapOf
     TextKey.JoinRequestsCount to "Solicitações de entrada ({count})", TextKey.Approve to "Aprovar",
     TextKey.ClanMemberSummary to "{role} · {trophies} troféus", TextKey.RemoveClanMemberNamed to "Remover {player} do clã",
     TextKey.ChooseClanLogo to "Escolher logo", TextKey.ClanRoleLeader to "Líder", TextKey.ClanRoleCoLeader to "Vice-líder", TextKey.ClanRoleMember to "Membro",
+    TextKey.TournamentUpdating to "Atualizando", TextKey.TournamentPhaseLobby to "Reunindo jogadores",
+    TextKey.TournamentPhaseRunning to "Em andamento", TextKey.TournamentPhaseFinished to "Encerrado", TextKey.TournamentPhaseCancelled to "Cancelado",
+    TextKey.MatchPending to "AGUARDANDO", TextKey.MatchPlaying to "EM JOGO", TextKey.MatchFinished to "CONCLUÍDO",
     TextKey.PlayerCodeExample to "ex.: FTW8X2Q", TextKey.YourSquad to "Seu esquadrão", TextKey.FriendList to "Amigos", TextKey.ClanTogetherTitle to "Compitam juntos", TextKey.ExploreClans to "Explorar clãs", TextKey.FameRace to "Corrida pela glória", TextKey.CurrentSeason to "Temporada atual", TextKey.KnockoutArena to "Arena eliminatória", TextKey.RecentTournaments to "Torneios recentes", TextKey.NotificationsHero to "Novidades para você", TextKey.EmptyInbox to "Sua caixa está vazia", TextKey.NumberSkins to "Visuais de números", TextKey.NumberBoards to "Tabuleiros numéricos", TextKey.GemVault to "Cofre de Gemas", TextKey.ArcadeVault to "Cofre Arcade", TextKey.Restocking to "Repondo estoque", TextKey.Equip to "EQUIPAR"
 )
 internal val frenchSocialShopTexts = englishSocialShopTexts + mapOf(
@@ -484,6 +502,9 @@ internal val frenchSocialShopTexts = englishSocialShopTexts + mapOf(
     TextKey.JoinRequestsCount to "Demandes d’adhésion ({count})", TextKey.Approve to "Approuver",
     TextKey.ClanMemberSummary to "{role} · {trophies} trophées", TextKey.RemoveClanMemberNamed to "Exclure {player} du clan",
     TextKey.ChooseClanLogo to "Choisir le logo", TextKey.ClanRoleLeader to "Chef", TextKey.ClanRoleCoLeader to "Chef adjoint", TextKey.ClanRoleMember to "Membre",
+    TextKey.TournamentUpdating to "Mise à jour", TextKey.TournamentPhaseLobby to "Rassemblement",
+    TextKey.TournamentPhaseRunning to "En cours", TextKey.TournamentPhaseFinished to "Terminé", TextKey.TournamentPhaseCancelled to "Annulé",
+    TextKey.MatchPending to "EN ATTENTE", TextKey.MatchPlaying to "EN JEU", TextKey.MatchFinished to "TERMINÉ",
     TextKey.PlayerCodeExample to "ex. : FTW8X2Q", TextKey.YourSquad to "Ton équipe", TextKey.FriendList to "Amis", TextKey.ClanTogetherTitle to "Jouez ensemble", TextKey.ExploreClans to "Explorer les clans", TextKey.FameRace to "Course à la gloire", TextKey.CurrentSeason to "Saison actuelle", TextKey.KnockoutArena to "Arène à élimination", TextKey.RecentTournaments to "Tournois récents", TextKey.NotificationsHero to "Tes nouveautés", TextKey.EmptyInbox to "Ta boîte est vide", TextKey.NumberSkins to "Styles de nombres", TextKey.NumberBoards to "Plateaux numériques", TextKey.GemVault to "Coffre de Gemmes", TextKey.ArcadeVault to "Coffre Arcade", TextKey.Restocking to "Réapprovisionnement", TextKey.Equip to "ÉQUIPER"
 )
 internal val indonesianSocialShopTexts = englishSocialShopTexts + mapOf(
@@ -517,6 +538,9 @@ internal val indonesianSocialShopTexts = englishSocialShopTexts + mapOf(
     TextKey.JoinRequestsCount to "Permintaan bergabung ({count})", TextKey.Approve to "Setujui",
     TextKey.ClanMemberSummary to "{role} · {trophies} trofi", TextKey.RemoveClanMemberNamed to "Keluarkan {player} dari klan",
     TextKey.ChooseClanLogo to "Pilih logo", TextKey.ClanRoleLeader to "Pemimpin", TextKey.ClanRoleCoLeader to "Wakil pemimpin", TextKey.ClanRoleMember to "Anggota",
+    TextKey.TournamentUpdating to "Memperbarui", TextKey.TournamentPhaseLobby to "Mengumpulkan pemain",
+    TextKey.TournamentPhaseRunning to "Sedang berlangsung", TextKey.TournamentPhaseFinished to "Selesai", TextKey.TournamentPhaseCancelled to "Dibatalkan",
+    TextKey.MatchPending to "MENUNGGU", TextKey.MatchPlaying to "BERMAIN", TextKey.MatchFinished to "SELESAI",
     TextKey.PlayerCodeExample to "mis. FTW8X2Q", TextKey.YourSquad to "Skuadmu", TextKey.FriendList to "Teman", TextKey.ClanTogetherTitle to "Bertanding bersama", TextKey.ExploreClans to "Jelajahi klan", TextKey.FameRace to "Perebutan kejayaan", TextKey.CurrentSeason to "Musim saat ini", TextKey.KnockoutArena to "Arena eliminasi", TextKey.RecentTournaments to "Turnamen terbaru", TextKey.NotificationsHero to "Kabar untukmu", TextKey.EmptyInbox to "Kotak masukmu kosong", TextKey.NumberSkins to "Skin angka", TextKey.NumberBoards to "Papan angka", TextKey.GemVault to "Brankas Gem", TextKey.ArcadeVault to "Brankas Arcade", TextKey.Restocking to "Mengisi stok", TextKey.Equip to "PAKAI"
 )
 internal val thaiSocialShopTexts = englishSocialShopTexts + mapOf(
@@ -550,6 +574,9 @@ internal val thaiSocialShopTexts = englishSocialShopTexts + mapOf(
     TextKey.JoinRequestsCount to "คำขอเข้าร่วม ({count})", TextKey.Approve to "อนุมัติ",
     TextKey.ClanMemberSummary to "{role} · {trophies} ถ้วย", TextKey.RemoveClanMemberNamed to "นำ {player} ออกจากแคลน",
     TextKey.ChooseClanLogo to "เลือกโลโก้", TextKey.ClanRoleLeader to "หัวหน้า", TextKey.ClanRoleCoLeader to "รองหัวหน้า", TextKey.ClanRoleMember to "สมาชิก",
+    TextKey.TournamentUpdating to "กำลังอัปเดต", TextKey.TournamentPhaseLobby to "กำลังรวมผู้เล่น",
+    TextKey.TournamentPhaseRunning to "กำลังดำเนินการ", TextKey.TournamentPhaseFinished to "เสร็จสิ้น", TextKey.TournamentPhaseCancelled to "ยกเลิกแล้ว",
+    TextKey.MatchPending to "รอ", TextKey.MatchPlaying to "กำลังเล่น", TextKey.MatchFinished to "เสร็จแล้ว",
     TextKey.PlayerCodeExample to "เช่น FTW8X2Q", TextKey.YourSquad to "ทีมของคุณ", TextKey.FriendList to "เพื่อน", TextKey.ClanTogetherTitle to "แข่งขันไปด้วยกัน", TextKey.ExploreClans to "สำรวจแคลน", TextKey.FameRace to "เส้นทางแห่งเกียรติยศ", TextKey.CurrentSeason to "ฤดูกาลปัจจุบัน", TextKey.KnockoutArena to "สนามน็อกเอาต์", TextKey.RecentTournaments to "ทัวร์นาเมนต์ล่าสุด", TextKey.NotificationsHero to "ข่าวสารสำหรับคุณ", TextKey.EmptyInbox to "กล่องข้อความว่าง", TextKey.NumberSkins to "สกินตัวเลข", TextKey.NumberBoards to "กระดานตัวเลข", TextKey.GemVault to "คลัง Gem", TextKey.ArcadeVault to "คลัง Arcade", TextKey.Restocking to "กำลังเติมสินค้า", TextKey.Equip to "สวมใส่"
 )
 internal val russianSocialShopTexts = englishSocialShopTexts + mapOf(
@@ -583,5 +610,8 @@ internal val russianSocialShopTexts = englishSocialShopTexts + mapOf(
     TextKey.JoinRequestsCount to "Заявки на вступление ({count})", TextKey.Approve to "Одобрить",
     TextKey.ClanMemberSummary to "{role} · {trophies} трофеев", TextKey.RemoveClanMemberNamed to "Исключить {player} из клана",
     TextKey.ChooseClanLogo to "Выбрать эмблему", TextKey.ClanRoleLeader to "Лидер", TextKey.ClanRoleCoLeader to "Заместитель", TextKey.ClanRoleMember to "Участник",
+    TextKey.TournamentUpdating to "Обновление", TextKey.TournamentPhaseLobby to "Сбор участников",
+    TextKey.TournamentPhaseRunning to "Идёт", TextKey.TournamentPhaseFinished to "Завершён", TextKey.TournamentPhaseCancelled to "Отменён",
+    TextKey.MatchPending to "ОЖИДАНИЕ", TextKey.MatchPlaying to "ИГРА", TextKey.MatchFinished to "ГОТОВО",
     TextKey.PlayerCodeExample to "например, FTW8X2Q", TextKey.YourSquad to "Твоя команда", TextKey.FriendList to "Друзья", TextKey.ClanTogetherTitle to "Сражайтесь вместе", TextKey.ExploreClans to "Поиск кланов", TextKey.FameRace to "Гонка за славой", TextKey.CurrentSeason to "Текущий сезон", TextKey.KnockoutArena to "Арена на выбывание", TextKey.RecentTournaments to "Недавние турниры", TextKey.NotificationsHero to "Новости для тебя", TextKey.EmptyInbox to "Уведомлений нет", TextKey.NumberSkins to "Скины чисел", TextKey.NumberBoards to "Числовые поля", TextKey.GemVault to "Хранилище самоцветов", TextKey.ArcadeVault to "Аркадное хранилище", TextKey.Restocking to "Скоро пополнение", TextKey.Equip to "НАДЕТЬ"
 )
