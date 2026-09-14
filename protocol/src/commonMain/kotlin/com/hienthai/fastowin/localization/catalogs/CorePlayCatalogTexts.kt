@@ -210,7 +210,10 @@ internal val germanCorePlayTexts = mapOf(
     TextKey.ModeNumberCount to "{mode} • 50 Zahlen", TextKey.ShareRoomCode to "RAUMCODE TEILEN",
     TextKey.ShareSheetError to "Teilen konnte nicht geöffnet werden. Versuche es erneut.", TextKey.LatencyGood to "{latency} ms • Gut",
     TextKey.LatencyStable to "{latency} ms • Stabil", TextKey.LatencySlow to "{latency} ms • Langsam",
-    TextKey.OpponentReady to "GEGNER BEREIT", TextKey.MatchStarting to "Das Match beginnt gleich"
+    TextKey.OpponentReady to "GEGNER BEREIT", TextKey.MatchStarting to "Das Match beginnt gleich",
+    TextKey.Matchmaking to "Spielersuche", TextKey.MatchFound to "Gegner gefunden", TextKey.FindingOpponent to "Gegner wird gesucht…",
+    TextKey.RankedMatchmakingHint to "Spieler mit ähnlichem Elo werden bevorzugt.", TextKey.CasualMatchmakingHint to "Spieler im gleichen Modus werden gesucht.",
+    TextKey.EloRange to "Elo-Bereich", TextKey.NoEloImpact to "Kein Elo-Einfluss", TextKey.CancelMatchmaking to "SPIELERSUCHE ABBRECHEN"
 )
 
 internal val japaneseCorePlayTexts = mapOf(
@@ -238,7 +241,10 @@ internal val japaneseCorePlayTexts = mapOf(
     TextKey.ModeNumberCount to "{mode} • 50個の数字", TextKey.ShareRoomCode to "ルームコードを共有",
     TextKey.ShareSheetError to "共有画面を開けませんでした。もう一度お試しください。", TextKey.LatencyGood to "{latency} ms • 良好",
     TextKey.LatencyStable to "{latency} ms • 安定", TextKey.LatencySlow to "{latency} ms • 遅い",
-    TextKey.OpponentReady to "対戦相手は準備完了", TextKey.MatchStarting to "まもなく対戦開始"
+    TextKey.OpponentReady to "対戦相手は準備完了", TextKey.MatchStarting to "まもなく対戦開始",
+    TextKey.Matchmaking to "マッチング", TextKey.MatchFound to "対戦相手が見つかりました", TextKey.FindingOpponent to "対戦相手を探しています…",
+    TextKey.RankedMatchmakingHint to "Eloが近いプレイヤーを優先します。", TextKey.CasualMatchmakingHint to "同じモードのプレイヤーを探しています。",
+    TextKey.EloRange to "Elo範囲", TextKey.NoEloImpact to "Eloへの影響なし", TextKey.CancelMatchmaking to "マッチングをキャンセル"
 )
 
 internal val russianCorePlayTexts = mapOf(
@@ -267,7 +273,10 @@ internal val russianCorePlayTexts = mapOf(
     TextKey.ModeNumberCount to "{mode} • 50 чисел", TextKey.ShareRoomCode to "ПОДЕЛИТЬСЯ КОДОМ",
     TextKey.ShareSheetError to "Не удалось открыть меню «Поделиться». Попробуйте ещё раз.", TextKey.LatencyGood to "{latency} ms • Хорошо",
     TextKey.LatencyStable to "{latency} ms • Стабильно", TextKey.LatencySlow to "{latency} ms • Медленно",
-    TextKey.OpponentReady to "СОПЕРНИК ГОТОВ", TextKey.MatchStarting to "Матч скоро начнётся"
+    TextKey.OpponentReady to "СОПЕРНИК ГОТОВ", TextKey.MatchStarting to "Матч скоро начнётся",
+    TextKey.Matchmaking to "Подбор соперника", TextKey.MatchFound to "Соперник найден", TextKey.FindingOpponent to "Поиск соперника…",
+    TextKey.RankedMatchmakingHint to "Приоритет игрокам с близким Elo.", TextKey.CasualMatchmakingHint to "Поиск игроков в том же режиме.",
+    TextKey.EloRange to "Диапазон Elo", TextKey.NoEloImpact to "Не влияет на Elo", TextKey.CancelMatchmaking to "ОТМЕНИТЬ ПОИСК"
 )
 
 internal val thaiCorePlayTexts = mapOf(
@@ -300,7 +309,10 @@ internal val thaiCorePlayTexts = mapOf(
     TextKey.ModeNumberCount to "{mode} • 50 ตัวเลข", TextKey.ShareRoomCode to "แชร์รหัสห้อง",
     TextKey.ShareSheetError to "ไม่สามารถเปิดการแชร์ได้ โปรดลองอีกครั้ง", TextKey.LatencyGood to "{latency} ms • ดี",
     TextKey.LatencyStable to "{latency} ms • เสถียร", TextKey.LatencySlow to "{latency} ms • ช้า",
-    TextKey.OpponentReady to "คู่แข่งพร้อมแล้ว", TextKey.MatchStarting to "การแข่งขันกำลังจะเริ่ม"
+    TextKey.OpponentReady to "คู่แข่งพร้อมแล้ว", TextKey.MatchStarting to "การแข่งขันกำลังจะเริ่ม",
+    TextKey.Matchmaking to "จับคู่", TextKey.MatchFound to "พบคู่แข่งแล้ว", TextKey.FindingOpponent to "กำลังค้นหาคู่แข่ง…",
+    TextKey.RankedMatchmakingHint to "ให้ความสำคัญกับผู้เล่นที่มี Elo ใกล้เคียง", TextKey.CasualMatchmakingHint to "กำลังค้นหาผู้เล่นในโหมดเดียวกัน",
+    TextKey.EloRange to "ช่วง Elo", TextKey.NoEloImpact to "ไม่มีผลต่อ Elo", TextKey.CancelMatchmaking to "ยกเลิกการจับคู่"
 )
 
 internal val simplifiedChineseCorePlayTexts = mapOf(
@@ -321,7 +333,10 @@ internal val simplifiedChineseCorePlayTexts = mapOf(
     TextKey.JoinedRoomCode to "房间代码 • {code}", TextKey.JoinedRoom to "已加入房间", TextKey.ShareCodeHint to "分享代码以邀请好友。",
     TextKey.ModeNumberCount to "{mode} • 50个数字", TextKey.ShareRoomCode to "分享房间代码", TextKey.ShareSheetError to "无法打开分享，请重试。",
     TextKey.LatencyGood to "{latency} ms • 良好", TextKey.LatencyStable to "{latency} ms • 稳定", TextKey.LatencySlow to "{latency} ms • 较慢",
-    TextKey.OpponentReady to "对手已准备", TextKey.MatchStarting to "比赛即将开始"
+    TextKey.OpponentReady to "对手已准备", TextKey.MatchStarting to "比赛即将开始",
+    TextKey.Matchmaking to "匹配对手", TextKey.MatchFound to "已找到对手", TextKey.FindingOpponent to "正在寻找对手…",
+    TextKey.RankedMatchmakingHint to "优先匹配 Elo 接近的玩家。", TextKey.CasualMatchmakingHint to "正在匹配相同模式的玩家。",
+    TextKey.EloRange to "Elo 范围", TextKey.NoEloImpact to "不影响 Elo", TextKey.CancelMatchmaking to "取消匹配"
 )
 internal val koreanCorePlayTexts = mapOf(
     TextKey.WaitHostStart to "방장이 경기를 시작할 때까지 기다리세요.", TextKey.CancelReady to "준비 취소", TextKey.ReadyAction to "준비",
@@ -341,7 +356,10 @@ internal val koreanCorePlayTexts = mapOf(
     TextKey.JoinedRoomCode to "방 코드 • {code}", TextKey.JoinedRoom to "방 참가 중", TextKey.ShareCodeHint to "코드를 공유해 친구를 초대하세요.",
     TextKey.ModeNumberCount to "{mode} • 숫자 50개", TextKey.ShareRoomCode to "방 코드 공유", TextKey.ShareSheetError to "공유 창을 열 수 없습니다. 다시 시도하세요.",
     TextKey.LatencyGood to "{latency} ms • 좋음", TextKey.LatencyStable to "{latency} ms • 안정적", TextKey.LatencySlow to "{latency} ms • 느림",
-    TextKey.OpponentReady to "상대 준비 완료", TextKey.MatchStarting to "곧 경기가 시작됩니다"
+    TextKey.OpponentReady to "상대 준비 완료", TextKey.MatchStarting to "곧 경기가 시작됩니다",
+    TextKey.Matchmaking to "매칭", TextKey.MatchFound to "상대를 찾았습니다", TextKey.FindingOpponent to "상대를 찾는 중…",
+    TextKey.RankedMatchmakingHint to "Elo가 비슷한 플레이어를 우선합니다.", TextKey.CasualMatchmakingHint to "같은 모드의 플레이어를 찾는 중입니다.",
+    TextKey.EloRange to "Elo 범위", TextKey.NoEloImpact to "Elo에 영향 없음", TextKey.CancelMatchmaking to "매칭 취소"
 )
 internal val spanishCorePlayTexts = mapOf(
     TextKey.WaitHostStart to "Espera a que el anfitrión inicie la partida.", TextKey.CancelReady to "CANCELAR LISTO", TextKey.ReadyAction to "LISTO",
@@ -362,7 +380,10 @@ internal val spanishCorePlayTexts = mapOf(
     TextKey.ModeNumberCount to "{mode} • 50 números", TextKey.ShareRoomCode to "COMPARTIR CÓDIGO DE SALA",
     TextKey.ShareSheetError to "No se pudo abrir el menú para compartir. Inténtalo de nuevo.", TextKey.LatencyGood to "{latency} ms • Buena",
     TextKey.LatencyStable to "{latency} ms • Estable", TextKey.LatencySlow to "{latency} ms • Lenta",
-    TextKey.OpponentReady to "OPONENTE LISTO", TextKey.MatchStarting to "La partida está a punto de comenzar"
+    TextKey.OpponentReady to "OPONENTE LISTO", TextKey.MatchStarting to "La partida está a punto de comenzar",
+    TextKey.Matchmaking to "Emparejamiento", TextKey.MatchFound to "Partida encontrada", TextKey.FindingOpponent to "Buscando oponente…",
+    TextKey.RankedMatchmakingHint to "Se priorizan jugadores con un Elo cercano.", TextKey.CasualMatchmakingHint to "Buscando jugadores del mismo modo.",
+    TextKey.EloRange to "Rango de Elo", TextKey.NoEloImpact to "No afecta al Elo", TextKey.CancelMatchmaking to "CANCELAR BÚSQUEDA"
 )
 internal val brazilianPortugueseCorePlayTexts = mapOf(
     TextKey.WaitHostStart to "Aguarde o anfitrião iniciar a partida.", TextKey.CancelReady to "CANCELAR PRONTO", TextKey.ReadyAction to "PRONTO",
@@ -383,7 +404,10 @@ internal val brazilianPortugueseCorePlayTexts = mapOf(
     TextKey.ModeNumberCount to "{mode} • 50 números", TextKey.ShareRoomCode to "COMPARTILHAR CÓDIGO DA SALA",
     TextKey.ShareSheetError to "Não foi possível abrir o compartilhamento. Tente novamente.", TextKey.LatencyGood to "{latency} ms • Boa",
     TextKey.LatencyStable to "{latency} ms • Estável", TextKey.LatencySlow to "{latency} ms • Lenta",
-    TextKey.OpponentReady to "ADVERSÁRIO PRONTO", TextKey.MatchStarting to "A partida está prestes a começar"
+    TextKey.OpponentReady to "ADVERSÁRIO PRONTO", TextKey.MatchStarting to "A partida está prestes a começar",
+    TextKey.Matchmaking to "Pareamento", TextKey.MatchFound to "Partida encontrada", TextKey.FindingOpponent to "Procurando adversário…",
+    TextKey.RankedMatchmakingHint to "Priorizando jogadores com Elo próximo.", TextKey.CasualMatchmakingHint to "Procurando jogadores no mesmo modo.",
+    TextKey.EloRange to "Faixa de Elo", TextKey.NoEloImpact to "Não afeta o Elo", TextKey.CancelMatchmaking to "CANCELAR BUSCA"
 )
 internal val frenchCorePlayTexts = mapOf(
     TextKey.WaitHostStart to "Attends que l’hôte lance la partie.", TextKey.CancelReady to "ANNULER PRÊT", TextKey.ReadyAction to "PRÊT",
@@ -404,7 +428,10 @@ internal val frenchCorePlayTexts = mapOf(
     TextKey.ModeNumberCount to "{mode} • 50 nombres", TextKey.ShareRoomCode to "PARTAGER LE CODE DU SALON",
     TextKey.ShareSheetError to "Impossible d’ouvrir le partage. Réessaie.", TextKey.LatencyGood to "{latency} ms • Bonne",
     TextKey.LatencyStable to "{latency} ms • Stable", TextKey.LatencySlow to "{latency} ms • Lente",
-    TextKey.OpponentReady to "ADVERSAIRE PRÊT", TextKey.MatchStarting to "La partie va commencer"
+    TextKey.OpponentReady to "ADVERSAIRE PRÊT", TextKey.MatchStarting to "La partie va commencer",
+    TextKey.Matchmaking to "Recherche d’adversaire", TextKey.MatchFound to "Adversaire trouvé", TextKey.FindingOpponent to "Recherche d’un adversaire…",
+    TextKey.RankedMatchmakingHint to "Priorité aux joueurs avec un Elo proche.", TextKey.CasualMatchmakingHint to "Recherche de joueurs dans le même mode.",
+    TextKey.EloRange to "Plage d’Elo", TextKey.NoEloImpact to "Aucun impact sur l’Elo", TextKey.CancelMatchmaking to "ANNULER LA RECHERCHE"
 )
 internal val indonesianCorePlayTexts = mapOf(
     TextKey.WaitHostStart to "Tunggu host memulai pertandingan.", TextKey.CancelReady to "BATAL SIAP", TextKey.ReadyAction to "SIAP",
@@ -425,5 +452,8 @@ internal val indonesianCorePlayTexts = mapOf(
     TextKey.ModeNumberCount to "{mode} • 50 angka", TextKey.ShareRoomCode to "BAGIKAN KODE RUANG",
     TextKey.ShareSheetError to "Tidak dapat membuka menu berbagi. Coba lagi.", TextKey.LatencyGood to "{latency} ms • Bagus",
     TextKey.LatencyStable to "{latency} ms • Stabil", TextKey.LatencySlow to "{latency} ms • Lambat",
-    TextKey.OpponentReady to "LAWAN SIAP", TextKey.MatchStarting to "Pertandingan akan segera dimulai"
+    TextKey.OpponentReady to "LAWAN SIAP", TextKey.MatchStarting to "Pertandingan akan segera dimulai",
+    TextKey.Matchmaking to "Pencarian lawan", TextKey.MatchFound to "Lawan ditemukan", TextKey.FindingOpponent to "Mencari lawan…",
+    TextKey.RankedMatchmakingHint to "Memprioritaskan pemain dengan Elo yang berdekatan.", TextKey.CasualMatchmakingHint to "Mencari pemain dalam mode yang sama.",
+    TextKey.EloRange to "Rentang Elo", TextKey.NoEloImpact to "Tidak memengaruhi Elo", TextKey.CancelMatchmaking to "BATAL CARI LAWAN"
 )
