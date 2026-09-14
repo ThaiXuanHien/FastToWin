@@ -179,10 +179,10 @@ export async function login(actor) {
   await click(page, tag(page, 'auth_open_login'));
   await fill(page, tag(page, 'auth_email'), account.email);
   await fill(page, tag(page, 'auth_password'), account.password);
-  // Submit must not be the control that blurs the password field: Firefox can
-  // dispatch Compose's click before the pending text edit reaches Kotlin state.
-  await click(page, tag(page, 'auth_email'));
-  await expect(page.locator('input:focus')).toHaveValue(account.email);
+  // Commit the pending Compose text edit on an inert canvas edge. Refocusing
+  // the email field can replay its edit in Firefox and duplicate the address.
+  await page.mouse.click(4, 4);
+  await expect(page.locator('input:focus')).toHaveCount(0);
   await page.waitForTimeout(250);
   const loginResponsePromise = page.waitForResponse(response =>
     response.url() === `${process.env.E2E_API_URL}/auth/login` && response.request().method() === 'POST'
@@ -208,6 +208,9 @@ export async function selectLanguage(page, languageCode) {
 }
 
 export async function openLanguageDialog(page) {
+  // The URL changes before WebKit finishes publishing the Compose semantics
+  // tree on slower CI runners, so wait for the destination screen itself.
+  await expect(tag(page, 'settings_screen')).toBeAttached({ timeout: 30_000 });
   const dialog = tag(page, 'language_dialog');
   for (let attempt = 0; attempt < 3 && await dialog.count() === 0; attempt++) {
     await click(page, tag(page, 'language_setting'));

@@ -118,7 +118,7 @@ fun SettingsScreen(
         )
     }
     SystemBackHandler(onBack = onBack)
-    ArcadeBackdrop(modifier = modifier.fillMaxSize()) {
+    ArcadeBackdrop(modifier = modifier.fillMaxSize().testTag("settings_screen")) {
         Scaffold(
             modifier = Modifier.fillMaxSize(),
             containerColor = Color.Transparent,
