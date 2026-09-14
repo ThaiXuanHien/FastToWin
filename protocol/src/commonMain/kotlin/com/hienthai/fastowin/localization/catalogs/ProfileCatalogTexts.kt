@@ -325,6 +325,7 @@ internal val vietnameseProfileTexts = englishProfileTexts + mapOf(
 )
 
 internal val spanishProfileTexts = englishProfileTexts + mapOf(
+    TextKey.RecentFilterAll to "Todo", TextKey.RecentFilterWins to "Victorias", TextKey.RecentFilterLosses to "Derrotas", TextKey.Received to "Recibidos", TextKey.Used to "Usados",
     TextKey.ProfileTitle to "Perfil", TextKey.ExternalPlayerTitle to "Jugador", TextKey.Activity to "Actividad",
     TextKey.StatisticsAchievements to "Estadísticas y logros", TextKey.WalletHistory to "Historial de recursos",
     TextKey.CheckInHistory to "Historial de asistencia", TextKey.CollectionTitle to "Colección", TextKey.RecentMatches to "Partidas recientes",
@@ -335,12 +336,14 @@ internal val spanishProfileTexts = englishProfileTexts + mapOf(
 )
 
 internal val brazilianPortugueseProfileTexts = englishProfileTexts + mapOf(
+    TextKey.RecentFilterWins to "Vitórias", TextKey.RecentFilterLosses to "Derrotas",
     TextKey.ProfileTitle to "Perfil", TextKey.Activity to "Atividade", TextKey.StatisticsAchievements to "Estatísticas e conquistas",
     TextKey.WalletHistory to "Histórico de recursos", TextKey.RecentFilterAll to "Todos", TextKey.Received to "Recebidos", TextKey.Used to "Usados",
     TextKey.AppSettings to "Configurações do app", TextKey.CheckInHistory to "Histórico de check-in", TextKey.SeasonHistoryTitle to "Histórico de temporadas"
 )
 
 internal val frenchProfileTexts = englishProfileTexts + mapOf(
+    TextKey.RecentFilterAll to "Tout", TextKey.RecentFilterWins to "Victoires", TextKey.RecentFilterLosses to "Défaites", TextKey.Received to "Reçus", TextKey.Used to "Utilisés",
     TextKey.ProfileTitle to "Profil", TextKey.Activity to "Activité", TextKey.StatisticsAchievements to "Statistiques et succès",
     TextKey.WalletHistory to "Historique des ressources", TextKey.CheckInHistory to "Historique des pointages",
     TextKey.AttendanceJourney to "Parcours d’assiduité", TextKey.CollectionTitle to "Collection", TextKey.AppSettings to "Réglages de l’application",
@@ -349,6 +352,7 @@ internal val frenchProfileTexts = englishProfileTexts + mapOf(
 )
 
 internal val germanProfileTexts = englishProfileTexts + mapOf(
+    TextKey.RecentFilterAll to "Alle", TextKey.RecentFilterWins to "Siege", TextKey.RecentFilterLosses to "Niederlagen", TextKey.Received to "Erhalten", TextKey.Used to "Verwendet",
     TextKey.ProfileTitle to "Profil", TextKey.Activity to "Aktivität", TextKey.StatisticsAchievements to "Statistiken und Erfolge",
     TextKey.WalletHistory to "Ressourcenverlauf", TextKey.CheckInHistory to "Check-in-Verlauf", TextKey.CollectionTitle to "Sammlung",
     TextKey.AppSettings to "App-Einstellungen", TextKey.LoginDevices to "Angemeldete Geräte", TextKey.AccountSecurity to "Kontosicherheit",
@@ -358,6 +362,7 @@ internal val germanProfileTexts = englishProfileTexts + mapOf(
 )
 
 internal val russianProfileTexts = englishProfileTexts + mapOf(
+    TextKey.RecentFilterAll to "Все", TextKey.RecentFilterWins to "Победы", TextKey.RecentFilterLosses to "Поражения", TextKey.Received to "Получено", TextKey.Used to "Использовано",
     TextKey.ProfileTitle to "Профиль", TextKey.Activity to "Активность", TextKey.StatisticsAchievements to "Статистика и достижения",
     TextKey.WalletHistory to "История ресурсов", TextKey.CheckInHistory to "История отметок", TextKey.CollectionTitle to "Коллекция",
     TextKey.AppSettings to "Настройки приложения", TextKey.SeasonHistoryTitle to "История сезонов", TextKey.RankedJourney to "Путь в рейтинге",
@@ -367,6 +372,7 @@ internal val russianProfileTexts = englishProfileTexts + mapOf(
 )
 
 internal val simplifiedChineseProfileTexts = englishProfileTexts + mapOf(
+    TextKey.RecentFilterAll to "全部", TextKey.RecentFilterWins to "胜利", TextKey.RecentFilterLosses to "失败", TextKey.Received to "已获得", TextKey.Used to "已使用",
     TextKey.ProfileTitle to "个人资料", TextKey.ExternalPlayerTitle to "玩家", TextKey.Activity to "活动", TextKey.StatisticsAchievements to "统计与成就",
     TextKey.WalletHistory to "资源记录", TextKey.CheckInHistory to "签到记录", TextKey.CollectionTitle to "收藏", TextKey.RecentMatches to "最近对局",
     TextKey.AppSettings to "应用设置", TextKey.LoginDevices to "登录设备", TextKey.AccountSecurity to "账户安全", TextKey.SeasonHistoryTitle to "赛季历史",
@@ -375,6 +381,7 @@ internal val simplifiedChineseProfileTexts = englishProfileTexts + mapOf(
 )
 
 internal val japaneseProfileTexts = englishProfileTexts + mapOf(
+    TextKey.RecentFilterAll to "すべて", TextKey.RecentFilterWins to "勝利", TextKey.RecentFilterLosses to "敗北", TextKey.Received to "受取", TextKey.Used to "使用済み",
     TextKey.ProfileTitle to "プロフィール", TextKey.ExternalPlayerTitle to "プレイヤー", TextKey.Activity to "アクティビティ",
     TextKey.StatisticsAchievements to "統計と実績", TextKey.WalletHistory to "資産履歴", TextKey.CheckInHistory to "ログイン履歴",
     TextKey.CollectionTitle to "コレクション", TextKey.RecentMatches to "最近の対戦", TextKey.AppSettings to "アプリ設定",
@@ -384,6 +391,7 @@ internal val japaneseProfileTexts = englishProfileTexts + mapOf(
 )
 
 internal val koreanProfileTexts = englishProfileTexts + mapOf(
+    TextKey.RecentFilterAll to "전체", TextKey.RecentFilterWins to "승리", TextKey.RecentFilterLosses to "패배", TextKey.Received to "획득", TextKey.Used to "사용함",
     TextKey.ProfileTitle to "프로필", TextKey.ExternalPlayerTitle to "플레이어", TextKey.Activity to "활동", TextKey.StatisticsAchievements to "통계 및 업적",
     TextKey.WalletHistory to "재화 내역", TextKey.CheckInHistory to "출석 기록", TextKey.CollectionTitle to "컬렉션", TextKey.RecentMatches to "최근 경기",
     TextKey.AppSettings to "앱 설정", TextKey.LoginDevices to "로그인 기기", TextKey.AccountSecurity to "계정 보안", TextKey.SeasonHistoryTitle to "시즌 기록",
@@ -392,6 +400,7 @@ internal val koreanProfileTexts = englishProfileTexts + mapOf(
 )
 
 internal val indonesianProfileTexts = englishProfileTexts + mapOf(
+    TextKey.RecentFilterAll to "Semua", TextKey.RecentFilterWins to "Menang", TextKey.RecentFilterLosses to "Kalah", TextKey.Received to "Diterima", TextKey.Used to "Digunakan",
     TextKey.ProfileTitle to "Profil", TextKey.ExternalPlayerTitle to "Pemain", TextKey.Activity to "Aktivitas",
     TextKey.StatisticsAchievements to "Statistik dan pencapaian", TextKey.WalletHistory to "Riwayat sumber daya",
     TextKey.CheckInHistory to "Riwayat absen", TextKey.CollectionTitle to "Koleksi", TextKey.RecentMatches to "Pertandingan terbaru",
@@ -401,6 +410,7 @@ internal val indonesianProfileTexts = englishProfileTexts + mapOf(
 )
 
 internal val thaiProfileTexts = englishProfileTexts + mapOf(
+    TextKey.RecentFilterAll to "ทั้งหมด", TextKey.RecentFilterWins to "ชนะ", TextKey.RecentFilterLosses to "แพ้", TextKey.Received to "ได้รับ", TextKey.Used to "ใช้แล้ว",
     TextKey.ProfileTitle to "โปรไฟล์", TextKey.ExternalPlayerTitle to "ผู้เล่น", TextKey.Activity to "กิจกรรม",
     TextKey.StatisticsAchievements to "สถิติและความสำเร็จ", TextKey.WalletHistory to "ประวัติทรัพยากร",
     TextKey.CheckInHistory to "ประวัติเช็กอิน", TextKey.CollectionTitle to "คอลเลกชัน", TextKey.RecentMatches to "แมตช์ล่าสุด",
