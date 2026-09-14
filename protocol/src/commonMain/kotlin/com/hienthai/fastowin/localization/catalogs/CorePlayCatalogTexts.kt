@@ -217,7 +217,11 @@ internal val germanCorePlayTexts = mapOf(
     TextKey.RoomCount to "{count} Räume", TextKey.NoWaitingRooms to "Keine Räume warten. Erstelle einen oder ziehe zum Aktualisieren nach unten.",
     TextKey.NoMatchingRooms to "Keine Räume entsprechen diesen Filtern.", TextKey.Reconnecting to "Verbindung wird wiederhergestellt…",
     TextKey.AuthenticatingSession to "Sitzung wird authentifiziert…", TextKey.Connecting to "Verbindung wird hergestellt…",
-    TextKey.RoomLinkUnavailable to "Der verknüpfte Raum existiert nicht mehr oder ist voll."
+    TextKey.RoomLinkUnavailable to "Der verknüpfte Raum existiert nicht mehr oder ist voll.", TextKey.GreetingPlayer to "Hallo, {player}!",
+    TextKey.ReadyForRecord to "Bereit für einen neuen Rekord?", TextKey.GuestNameTitle to "Wie sollen wir dich nennen?",
+    TextKey.GuestNameDescription to "Dieser Name wird nur für diese Spielsitzung verwendet.", TextKey.EnterNickname to "Spitzname eingeben",
+    TextKey.SaveNameProgressDescription to "Erstelle ein Konto, um deinen Namen, dein Elo und deinen Verlauf auf Android/iOS zu speichern.",
+    TextKey.ChooseRoomType to "Raumtyp auswählen", TextKey.DefaultRoomName to "{player}s Raum", TextKey.SaveProgressEmail to "FORTSCHRITT PER E-MAIL SPEICHERN"
 )
 
 internal val japaneseCorePlayTexts = mapOf(
@@ -254,7 +258,11 @@ internal val japaneseCorePlayTexts = mapOf(
     TextKey.All to "すべて", TextKey.Waiting to "待機中", TextKey.RoomCount to "{count}ルーム",
     TextKey.NoWaitingRooms to "待機中のルームはありません。作成するか、下に引いて更新してください。", TextKey.NoMatchingRooms to "条件に一致するルームがありません。",
     TextKey.Reconnecting to "再接続中…", TextKey.AuthenticatingSession to "セッションを認証しています…", TextKey.Connecting to "接続中…",
-    TextKey.RoomLinkUnavailable to "リンク先のルームは存在しないか、満員です。"
+    TextKey.RoomLinkUnavailable to "リンク先のルームは存在しないか、満員です。", TextKey.GreetingPlayer to "こんにちは、{player}！",
+    TextKey.ReadyForRecord to "新記録を目指す準備はできましたか？", TextKey.GuestNameTitle to "お名前を教えてください",
+    TextKey.GuestNameDescription to "この名前は今回のプレイセッションでのみ使用されます。", TextKey.EnterNickname to "ニックネームを入力",
+    TextKey.SaveNameProgressDescription to "アカウントを作成すると、Android/iOSで名前、Elo、履歴を保存できます。",
+    TextKey.ChooseRoomType to "ルームタイプを選択", TextKey.DefaultRoomName to "{player}のルーム", TextKey.SaveProgressEmail to "メールで進行状況を保存"
 )
 
 internal val russianCorePlayTexts = mapOf(
@@ -293,7 +301,12 @@ internal val russianCorePlayTexts = mapOf(
     TextKey.NoWaitingRooms to "Нет комнат в ожидании. Создайте комнату или потяните вниз для обновления.",
     TextKey.NoMatchingRooms to "Нет комнат, соответствующих этим фильтрам.", TextKey.Reconnecting to "Повторное подключение…",
     TextKey.AuthenticatingSession to "Проверка сеанса…", TextKey.Connecting to "Подключение…",
-    TextKey.RoomLinkUnavailable to "Комната по ссылке больше не существует или заполнена."
+    TextKey.RoomLinkUnavailable to "Комната по ссылке больше не существует или заполнена.", TextKey.GreetingPlayer to "Привет, {player}!",
+    TextKey.ReadyForRecord to "Готовы установить новый рекорд?", TextKey.GuestNameTitle to "Как вас называть?",
+    TextKey.GuestNameDescription to "Это имя используется только в текущем игровом сеансе.", TextKey.EnterNickname to "Введите ник",
+    TextKey.SaveNameProgressDescription to "Создайте аккаунт, чтобы сохранить имя, Elo и историю на Android/iOS.",
+    TextKey.ChooseRoomType to "Выберите тип комнаты", TextKey.DefaultRoomName to "Комната игрока {player}",
+    TextKey.SaveProgressEmail to "СОХРАНИТЬ ПРОГРЕСС ЧЕРЕЗ EMAIL"
 )
 
 internal val thaiCorePlayTexts = mapOf(
@@ -335,7 +348,11 @@ internal val thaiCorePlayTexts = mapOf(
     TextKey.All to "ทั้งหมด", TextKey.Waiting to "กำลังรอ", TextKey.RoomCount to "{count} ห้อง",
     TextKey.NoWaitingRooms to "ไม่มีห้องที่กำลังรอ สร้างห้องใหม่หรือดึงลงเพื่อรีเฟรช", TextKey.NoMatchingRooms to "ไม่มีห้องที่ตรงกับตัวกรองนี้",
     TextKey.Reconnecting to "กำลังเชื่อมต่อใหม่…", TextKey.AuthenticatingSession to "กำลังยืนยันเซสชัน…", TextKey.Connecting to "กำลังเชื่อมต่อ…",
-    TextKey.RoomLinkUnavailable to "ห้องจากลิงก์ไม่มีอยู่แล้วหรือเต็ม"
+    TextKey.RoomLinkUnavailable to "ห้องจากลิงก์ไม่มีอยู่แล้วหรือเต็ม", TextKey.GreetingPlayer to "สวัสดี {player}!",
+    TextKey.ReadyForRecord to "พร้อมสร้างสถิติใหม่หรือยัง?", TextKey.GuestNameTitle to "อยากให้เราเรียกคุณว่าอะไร?",
+    TextKey.GuestNameDescription to "ชื่อนี้ใช้เฉพาะในเซสชันการเล่นนี้", TextKey.EnterNickname to "กรอกชื่อเล่น",
+    TextKey.SaveNameProgressDescription to "สร้างบัญชีเพื่อบันทึกชื่อ Elo และประวัติของคุณบน Android/iOS",
+    TextKey.ChooseRoomType to "เลือกประเภทห้อง", TextKey.DefaultRoomName to "ห้องของ {player}", TextKey.SaveProgressEmail to "บันทึกความคืบหน้าด้วยอีเมล"
 )
 
 internal val simplifiedChineseCorePlayTexts = mapOf(
@@ -364,7 +381,11 @@ internal val simplifiedChineseCorePlayTexts = mapOf(
     TextKey.SearchRooms to "搜索房间或房主名称", TextKey.All to "全部", TextKey.Waiting to "等待中", TextKey.RoomCount to "{count} 个房间",
     TextKey.NoWaitingRooms to "暂无等待中的房间。请创建一个或下拉刷新。", TextKey.NoMatchingRooms to "没有符合筛选条件的房间。",
     TextKey.Reconnecting to "正在重新连接…", TextKey.AuthenticatingSession to "正在验证会话…", TextKey.Connecting to "正在连接…",
-    TextKey.RoomLinkUnavailable to "链接中的房间已不存在或已满。"
+    TextKey.RoomLinkUnavailable to "链接中的房间已不存在或已满。", TextKey.GreetingPlayer to "你好，{player}！",
+    TextKey.ReadyForRecord to "准备好刷新纪录了吗？", TextKey.GuestNameTitle to "怎么称呼你？",
+    TextKey.GuestNameDescription to "此名称仅用于本次游戏会话。", TextKey.EnterNickname to "输入昵称",
+    TextKey.SaveNameProgressDescription to "创建账户以在 Android/iOS 上保存名称、Elo 和历史记录。",
+    TextKey.ChooseRoomType to "选择房间类型", TextKey.DefaultRoomName to "{player} 的房间", TextKey.SaveProgressEmail to "使用邮箱保存进度"
 )
 internal val koreanCorePlayTexts = mapOf(
     TextKey.WaitHostStart to "방장이 경기를 시작할 때까지 기다리세요.", TextKey.CancelReady to "준비 취소", TextKey.ReadyAction to "준비",
@@ -392,7 +413,11 @@ internal val koreanCorePlayTexts = mapOf(
     TextKey.SearchRooms to "방 또는 방장 이름 검색", TextKey.All to "전체", TextKey.Waiting to "대기 중", TextKey.RoomCount to "방 {count}개",
     TextKey.NoWaitingRooms to "대기 중인 방이 없습니다. 새로 만들거나 아래로 당겨 새로고침하세요.", TextKey.NoMatchingRooms to "필터와 일치하는 방이 없습니다.",
     TextKey.Reconnecting to "재연결 중…", TextKey.AuthenticatingSession to "세션 인증 중…", TextKey.Connecting to "연결 중…",
-    TextKey.RoomLinkUnavailable to "링크된 방이 더 이상 존재하지 않거나 가득 찼습니다."
+    TextKey.RoomLinkUnavailable to "링크된 방이 더 이상 존재하지 않거나 가득 찼습니다.", TextKey.GreetingPlayer to "안녕하세요, {player}님!",
+    TextKey.ReadyForRecord to "새 기록에 도전할 준비가 되었나요?", TextKey.GuestNameTitle to "어떻게 불러 드릴까요?",
+    TextKey.GuestNameDescription to "이 이름은 현재 플레이 세션에서만 사용됩니다.", TextKey.EnterNickname to "닉네임 입력",
+    TextKey.SaveNameProgressDescription to "계정을 만들어 Android/iOS에서 이름, Elo 및 기록을 저장하세요.",
+    TextKey.ChooseRoomType to "방 유형 선택", TextKey.DefaultRoomName to "{player}님의 방", TextKey.SaveProgressEmail to "이메일로 진행 상황 저장"
 )
 internal val spanishCorePlayTexts = mapOf(
     TextKey.WaitHostStart to "Espera a que el anfitrión inicie la partida.", TextKey.CancelReady to "CANCELAR LISTO", TextKey.ReadyAction to "LISTO",
@@ -423,7 +448,11 @@ internal val spanishCorePlayTexts = mapOf(
     TextKey.NoWaitingRooms to "No hay salas en espera. Crea una o desliza hacia abajo para actualizar.",
     TextKey.NoMatchingRooms to "No hay salas que coincidan con estos filtros.", TextKey.Reconnecting to "Reconectando…",
     TextKey.AuthenticatingSession to "Autenticando sesión…", TextKey.Connecting to "Conectando…",
-    TextKey.RoomLinkUnavailable to "La sala del enlace ya no existe o está llena."
+    TextKey.RoomLinkUnavailable to "La sala del enlace ya no existe o está llena.", TextKey.GreetingPlayer to "¡Hola, {player}!",
+    TextKey.ReadyForRecord to "¿Listo para batir un nuevo récord?", TextKey.GuestNameTitle to "¿Cómo quieres que te llamemos?",
+    TextKey.GuestNameDescription to "Este nombre solo se usa durante esta sesión de juego.", TextKey.EnterNickname to "Introduce un apodo",
+    TextKey.SaveNameProgressDescription to "Crea una cuenta para guardar tu nombre, Elo e historial en Android/iOS.",
+    TextKey.ChooseRoomType to "Elige el tipo de sala", TextKey.DefaultRoomName to "Sala de {player}", TextKey.SaveProgressEmail to "GUARDAR PROGRESO CON EMAIL"
 )
 internal val brazilianPortugueseCorePlayTexts = mapOf(
     TextKey.WaitHostStart to "Aguarde o anfitrião iniciar a partida.", TextKey.CancelReady to "CANCELAR PRONTO", TextKey.ReadyAction to "PRONTO",
@@ -454,7 +483,11 @@ internal val brazilianPortugueseCorePlayTexts = mapOf(
     TextKey.NoWaitingRooms to "Nenhuma sala está aguardando. Crie uma ou puxe para atualizar.",
     TextKey.NoMatchingRooms to "Nenhuma sala corresponde a estes filtros.", TextKey.Reconnecting to "Reconectando…",
     TextKey.AuthenticatingSession to "Autenticando sessão…", TextKey.Connecting to "Conectando…",
-    TextKey.RoomLinkUnavailable to "A sala do link não existe mais ou está cheia."
+    TextKey.RoomLinkUnavailable to "A sala do link não existe mais ou está cheia.", TextKey.GreetingPlayer to "Olá, {player}!",
+    TextKey.ReadyForRecord to "Pronto para bater um novo recorde?", TextKey.GuestNameTitle to "Como devemos chamar você?",
+    TextKey.GuestNameDescription to "Este nome é usado apenas nesta sessão de jogo.", TextKey.EnterNickname to "Digite um apelido",
+    TextKey.SaveNameProgressDescription to "Crie uma conta para salvar seu nome, Elo e histórico no Android/iOS.",
+    TextKey.ChooseRoomType to "Escolha o tipo de sala", TextKey.DefaultRoomName to "Sala de {player}", TextKey.SaveProgressEmail to "SALVAR PROGRESSO COM E-MAIL"
 )
 internal val frenchCorePlayTexts = mapOf(
     TextKey.WaitHostStart to "Attends que l’hôte lance la partie.", TextKey.CancelReady to "ANNULER PRÊT", TextKey.ReadyAction to "PRÊT",
@@ -485,7 +518,11 @@ internal val frenchCorePlayTexts = mapOf(
     TextKey.NoWaitingRooms to "Aucun salon en attente. Crée-en un ou tire vers le bas pour actualiser.",
     TextKey.NoMatchingRooms to "Aucun salon ne correspond à ces filtres.", TextKey.Reconnecting to "Reconnexion…",
     TextKey.AuthenticatingSession to "Authentification de la session…", TextKey.Connecting to "Connexion…",
-    TextKey.RoomLinkUnavailable to "Le salon lié n’existe plus ou est complet."
+    TextKey.RoomLinkUnavailable to "Le salon lié n’existe plus ou est complet.", TextKey.GreetingPlayer to "Bonjour, {player} !",
+    TextKey.ReadyForRecord to "Prêt à battre un nouveau record ?", TextKey.GuestNameTitle to "Comment doit-on t’appeler ?",
+    TextKey.GuestNameDescription to "Ce nom est utilisé uniquement pour cette session de jeu.", TextKey.EnterNickname to "Saisis un pseudo",
+    TextKey.SaveNameProgressDescription to "Crée un compte pour conserver ton nom, ton Elo et ton historique sur Android/iOS.",
+    TextKey.ChooseRoomType to "Choisis le type de salon", TextKey.DefaultRoomName to "Salon de {player}", TextKey.SaveProgressEmail to "ENREGISTRER AVEC UN E-MAIL"
 )
 internal val indonesianCorePlayTexts = mapOf(
     TextKey.WaitHostStart to "Tunggu host memulai pertandingan.", TextKey.CancelReady to "BATAL SIAP", TextKey.ReadyAction to "SIAP",
@@ -516,5 +553,9 @@ internal val indonesianCorePlayTexts = mapOf(
     TextKey.NoWaitingRooms to "Tidak ada ruang yang sedang menunggu. Buat ruang atau tarik ke bawah untuk menyegarkan.",
     TextKey.NoMatchingRooms to "Tidak ada ruang yang cocok dengan filter ini.", TextKey.Reconnecting to "Menghubungkan kembali…",
     TextKey.AuthenticatingSession to "Mengautentikasi sesi…", TextKey.Connecting to "Menghubungkan…",
-    TextKey.RoomLinkUnavailable to "Ruang pada tautan sudah tidak ada atau penuh."
+    TextKey.RoomLinkUnavailable to "Ruang pada tautan sudah tidak ada atau penuh.", TextKey.GreetingPlayer to "Halo, {player}!",
+    TextKey.ReadyForRecord to "Siap mencetak rekor baru?", TextKey.GuestNameTitle to "Kami harus memanggilmu apa?",
+    TextKey.GuestNameDescription to "Nama ini hanya digunakan untuk sesi bermain ini.", TextKey.EnterNickname to "Masukkan nama panggilan",
+    TextKey.SaveNameProgressDescription to "Buat akun untuk menyimpan nama, Elo, dan riwayatmu di Android/iOS.",
+    TextKey.ChooseRoomType to "Pilih jenis ruang", TextKey.DefaultRoomName to "Ruang {player}", TextKey.SaveProgressEmail to "SIMPAN PROGRES DENGAN EMAIL"
 )
