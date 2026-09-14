@@ -227,4 +227,37 @@ class SocialScreenLocalizationTest {
             assertEquals(translations, keys.map(catalog.texts::getValue), language.code)
         }
     }
+
+    @Test
+    fun `clan member management resolves explicitly in all twelve languages`() {
+        val expected = mapOf(
+            AppLanguage.ENGLISH to listOf("Join requests ({count})", "Approve", "{role} · {trophies} trophies", "Remove {player} from clan", "Choose Logo", "Leader", "Co-leader", "Member"),
+            AppLanguage.VIETNAMESE to listOf("Yêu cầu tham gia ({count})", "Duyệt", "{role} · {trophies} cúp", "Mời {player} rời bang", "Chọn Logo", "Bang chủ", "Phó bang", "Thành viên"),
+            AppLanguage.SIMPLIFIED_CHINESE to listOf("加入申请（{count}）", "批准", "{role} · {trophies} 个奖杯", "将 {player} 移出战队", "选择徽标", "队长", "副队长", "成员"),
+            AppLanguage.JAPANESE to listOf("参加申請（{count}）", "承認", "{role} · トロフィー{trophies}個", "{player}をクランから除名", "ロゴを選択", "リーダー", "サブリーダー", "メンバー"),
+            AppLanguage.KOREAN to listOf("가입 요청 ({count})", "승인", "{role} · 트로피 {trophies}개", "{player}님을 클랜에서 추방", "로고 선택", "클랜장", "부클랜장", "멤버"),
+            AppLanguage.SPANISH to listOf("Solicitudes de ingreso ({count})", "Aprobar", "{role} · {trophies} trofeos", "Expulsar a {player} del clan", "Elegir logo", "Líder", "Colíder", "Miembro"),
+            AppLanguage.BRAZILIAN_PORTUGUESE to listOf("Solicitações de entrada ({count})", "Aprovar", "{role} · {trophies} troféus", "Remover {player} do clã", "Escolher logo", "Líder", "Vice-líder", "Membro"),
+            AppLanguage.FRENCH to listOf("Demandes d’adhésion ({count})", "Approuver", "{role} · {trophies} trophées", "Exclure {player} du clan", "Choisir le logo", "Chef", "Chef adjoint", "Membre"),
+            AppLanguage.GERMAN to listOf("Beitrittsanfragen ({count})", "Genehmigen", "{role} · {trophies} Trophäen", "{player} aus dem Clan entfernen", "Logo wählen", "Anführer", "Co-Anführer", "Mitglied"),
+            AppLanguage.INDONESIAN to listOf("Permintaan bergabung ({count})", "Setujui", "{role} · {trophies} trofi", "Keluarkan {player} dari klan", "Pilih logo", "Pemimpin", "Wakil pemimpin", "Anggota"),
+            AppLanguage.THAI to listOf("คำขอเข้าร่วม ({count})", "อนุมัติ", "{role} · {trophies} ถ้วย", "นำ {player} ออกจากแคลน", "เลือกโลโก้", "หัวหน้า", "รองหัวหน้า", "สมาชิก"),
+            AppLanguage.RUSSIAN to listOf("Заявки на вступление ({count})", "Одобрить", "{role} · {trophies} трофеев", "Исключить {player} из клана", "Выбрать эмблему", "Лидер", "Заместитель", "Участник"),
+        )
+        val keys = listOf(
+            TextKey.JoinRequestsCount,
+            TextKey.Approve,
+            TextKey.ClanMemberSummary,
+            TextKey.RemoveClanMemberNamed,
+            TextKey.ChooseClanLogo,
+            TextKey.ClanRoleLeader,
+            TextKey.ClanRoleCoLeader,
+            TextKey.ClanRoleMember,
+        )
+
+        expected.forEach { (language, translations) ->
+            val catalog = allLocalizationCatalogs.getValue(language)
+            assertEquals(translations, keys.map(catalog.texts::getValue), language.code)
+        }
+    }
 }
