@@ -195,4 +195,36 @@ class SocialScreenLocalizationTest {
             assertEquals(translations, keys.map(catalog.texts::getValue), language.code)
         }
     }
+
+    @Test
+    fun `room and tournament invitations resolve explicitly in all twelve languages`() {
+        val expected = mapOf(
+            AppLanguage.ENGLISH to listOf("Invited you to “{room}”", "ROOM INVITATION", "{player} is waiting for you", "ROOM", "Tournament invitation", "{host} invited you to “{tournament}” · {mode} · {players} players.", "{host} invited you · {mode} · {players} players"),
+            AppLanguage.VIETNAMESE to listOf("Mời bạn vào “{room}”", "LỜI MỜI VÀO PHÒNG", "{player} đang chờ bạn", "PHÒNG", "Lời mời đấu giải", "{host} mời bạn tham gia “{tournament}” · {mode} · {players} người.", "{host} mời bạn · {mode} · {players} người"),
+            AppLanguage.SIMPLIFIED_CHINESE to listOf("邀请你加入“{room}”", "房间邀请", "{player} 正在等你", "房间", "锦标赛邀请", "{host} 邀请你参加“{tournament}” · {mode} · {players} 名玩家。", "{host} 邀请你 · {mode} · {players} 名玩家"),
+            AppLanguage.JAPANESE to listOf("「{room}」に招待されました", "ルーム招待", "{player}があなたを待っています", "ルーム", "トーナメント招待", "{host}が「{tournament}」に招待しました · {mode} · {players}人。", "{host}からの招待 · {mode} · {players}人"),
+            AppLanguage.KOREAN to listOf("“{room}” 방으로 초대했습니다", "방 초대", "{player}님이 기다리고 있습니다", "방", "토너먼트 초대", "{host}님이 “{tournament}”에 초대했습니다 · {mode} · {players}명.", "{host}님의 초대 · {mode} · {players}명"),
+            AppLanguage.SPANISH to listOf("Te invitó a “{room}”", "INVITACIÓN A SALA", "{player} te está esperando", "SALA", "Invitación a torneo", "{host} te invitó a “{tournament}” · {mode} · {players} jugadores.", "Invitación de {host} · {mode} · {players} jugadores"),
+            AppLanguage.BRAZILIAN_PORTUGUESE to listOf("Convidou você para “{room}”", "CONVITE PARA SALA", "{player} está esperando por você", "SALA", "Convite para torneio", "{host} convidou você para “{tournament}” · {mode} · {players} jogadores.", "Convite de {host} · {mode} · {players} jogadores"),
+            AppLanguage.FRENCH to listOf("T’a invité dans « {room} »", "INVITATION DE SALON", "{player} t’attend", "SALON", "Invitation à un tournoi", "{host} t’a invité au tournoi « {tournament} » · {mode} · {players} joueurs.", "Invitation de {host} · {mode} · {players} joueurs"),
+            AppLanguage.GERMAN to listOf("Hat dich in „{room}“ eingeladen", "RAUMEINLADUNG", "{player} wartet auf dich", "RAUM", "Turniereinladung", "{host} hat dich zu „{tournament}“ eingeladen · {mode} · {players} Spieler.", "Einladung von {host} · {mode} · {players} Spieler"),
+            AppLanguage.INDONESIAN to listOf("Mengundangmu ke “{room}”", "UNDANGAN RUANG", "{player} sedang menunggumu", "RUANG", "Undangan turnamen", "{host} mengundangmu ke “{tournament}” · {mode} · {players} pemain.", "Undangan dari {host} · {mode} · {players} pemain"),
+            AppLanguage.THAI to listOf("เชิญคุณเข้าร่วม “{room}”", "คำเชิญเข้าห้อง", "{player} กำลังรอคุณ", "ห้อง", "คำเชิญเข้าร่วมทัวร์นาเมนต์", "{host} เชิญคุณเข้าร่วม “{tournament}” · {mode} · {players} คน", "คำเชิญจาก {host} · {mode} · {players} คน"),
+            AppLanguage.RUSSIAN to listOf("Приглашает вас в «{room}»", "ПРИГЛАШЕНИЕ В КОМНАТУ", "{player} ждёт вас", "КОМНАТА", "Приглашение на турнир", "{host} приглашает вас на «{tournament}» · {mode} · {players} игроков.", "Приглашение от {host} · {mode} · {players} игроков"),
+        )
+        val keys = listOf(
+            TextKey.RoomInvitationSummary,
+            TextKey.RoomInvitationTitle,
+            TextKey.WaitingForYou,
+            TextKey.RoomLabel,
+            TextKey.TournamentInvitationTitle,
+            TextKey.TournamentInvitationDescription,
+            TextKey.TournamentInviteCompact,
+        )
+
+        expected.forEach { (language, translations) ->
+            val catalog = allLocalizationCatalogs.getValue(language)
+            assertEquals(translations, keys.map(catalog.texts::getValue), language.code)
+        }
+    }
 }

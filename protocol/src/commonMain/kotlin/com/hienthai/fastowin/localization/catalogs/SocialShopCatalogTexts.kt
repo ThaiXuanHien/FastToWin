@@ -279,6 +279,10 @@ internal val germanSocialShopTexts = englishSocialShopTexts + mapOf(
     TextKey.DonationDuplicate to "Diese Spende wurde bereits abgeschlossen.", TextKey.DonationInvalidAmount to "Wähle einen gültigen Spendenbetrag.",
     TextKey.DonationInsufficientFunds to "Du hast nicht genug {currency}.", TextKey.DonationMembershipRequired to "Tritt diesem Clan bei, bevor du spendest.",
     TextKey.DonationFailed to "Die Spende konnte nicht abgeschlossen werden. Versuche es erneut.",
+    TextKey.RoomInvitationSummary to "Hat dich in „{room}“ eingeladen", TextKey.RoomInvitationTitle to "RAUMEINLADUNG",
+    TextKey.WaitingForYou to "{player} wartet auf dich", TextKey.RoomLabel to "RAUM", TextKey.TournamentInvitationTitle to "Turniereinladung",
+    TextKey.TournamentInvitationDescription to "{host} hat dich zu „{tournament}“ eingeladen · {mode} · {players} Spieler.",
+    TextKey.TournamentInviteCompact to "Einladung von {host} · {mode} · {players} Spieler",
     TextKey.PlayerCodeExample to "z. B. FTW8X2Q", TextKey.YourSquad to "Dein Team", TextKey.FriendList to "Freunde", TextKey.ClanTogetherTitle to "Gemeinsam antreten", TextKey.ExploreClans to "Clans entdecken", TextKey.FameRace to "Rennen um Ruhm", TextKey.CurrentSeason to "Aktuelle Saison", TextKey.KnockoutArena to "K.-o.-Arena", TextKey.RecentTournaments to "Letzte Turniere", TextKey.NotificationsHero to "Neuigkeiten für dich", TextKey.EmptyInbox to "Dein Postfach ist leer", TextKey.NumberSkins to "Zahlenflächen", TextKey.NumberBoards to "Zahlenbretter", TextKey.GemVault to "Gem-Tresor", TextKey.ArcadeVault to "Arcade-Tresor", TextKey.Restocking to "Nachschub unterwegs", TextKey.Equip to "AUSRÜSTEN"
 )
 internal val japaneseSocialShopTexts = englishSocialShopTexts + mapOf(
@@ -305,6 +309,10 @@ internal val japaneseSocialShopTexts = englishSocialShopTexts + mapOf(
     TextKey.DonationDuplicate to "この寄付はすでに完了しています。", TextKey.DonationInvalidAmount to "有効な寄付額を選択してください。",
     TextKey.DonationInsufficientFunds to "{currency}が足りません。", TextKey.DonationMembershipRequired to "寄付する前にこのクランに参加してください。",
     TextKey.DonationFailed to "寄付を完了できませんでした。もう一度お試しください。",
+    TextKey.RoomInvitationSummary to "「{room}」に招待されました", TextKey.RoomInvitationTitle to "ルーム招待",
+    TextKey.WaitingForYou to "{player}があなたを待っています", TextKey.RoomLabel to "ルーム", TextKey.TournamentInvitationTitle to "トーナメント招待",
+    TextKey.TournamentInvitationDescription to "{host}が「{tournament}」に招待しました · {mode} · {players}人。",
+    TextKey.TournamentInviteCompact to "{host}からの招待 · {mode} · {players}人",
     TextKey.PlayerCodeExample to "例：FTW8X2Q", TextKey.YourSquad to "あなたのチーム", TextKey.FriendList to "フレンド", TextKey.ClanTogetherTitle to "仲間と挑戦", TextKey.ExploreClans to "クランを探す", TextKey.FameRace to "栄光へのレース", TextKey.CurrentSeason to "今シーズン", TextKey.KnockoutArena to "勝ち抜きアリーナ", TextKey.RecentTournaments to "最近の大会", TextKey.NotificationsHero to "あなたへのお知らせ", TextKey.EmptyInbox to "通知はありません", TextKey.NumberSkins to "数字スキン", TextKey.NumberBoards to "数字ボード", TextKey.GemVault to "ジェム保管庫", TextKey.ArcadeVault to "アーケード保管庫", TextKey.Restocking to "入荷準備中", TextKey.Equip to "装備"
 )
 internal val simplifiedChineseSocialShopTexts = englishSocialShopTexts + mapOf(
@@ -331,6 +339,10 @@ internal val simplifiedChineseSocialShopTexts = englishSocialShopTexts + mapOf(
     TextKey.DonationDuplicate to "该捐献已完成。", TextKey.DonationInvalidAmount to "请选择有效的捐献数量。",
     TextKey.DonationInsufficientFunds to "你的 {currency} 不足。", TextKey.DonationMembershipRequired to "请先加入该战队再进行捐献。",
     TextKey.DonationFailed to "无法完成捐献，请重试。",
+    TextKey.RoomInvitationSummary to "邀请你加入“{room}”", TextKey.RoomInvitationTitle to "房间邀请",
+    TextKey.WaitingForYou to "{player} 正在等你", TextKey.RoomLabel to "房间", TextKey.TournamentInvitationTitle to "锦标赛邀请",
+    TextKey.TournamentInvitationDescription to "{host} 邀请你参加“{tournament}” · {mode} · {players} 名玩家。",
+    TextKey.TournamentInviteCompact to "{host} 邀请你 · {mode} · {players} 名玩家",
     TextKey.PlayerCodeExample to "例如：FTW8X2Q", TextKey.YourSquad to "你的队伍", TextKey.FriendList to "好友列表", TextKey.ClanTogetherTitle to "并肩竞技", TextKey.ExploreClans to "探索战队", TextKey.FameRace to "荣耀竞速", TextKey.CurrentSeason to "当前赛季", TextKey.KnockoutArena to "淘汰赛场", TextKey.RecentTournaments to "最近赛事", TextKey.NotificationsHero to "你的新消息", TextKey.EmptyInbox to "暂无消息", TextKey.NumberSkins to "数字皮肤", TextKey.NumberBoards to "数字棋盘", TextKey.GemVault to "宝石仓库", TextKey.ArcadeVault to "街机仓库", TextKey.Restocking to "补货中", TextKey.Equip to "装备"
 )
 internal val koreanSocialShopTexts = englishSocialShopTexts + mapOf(
@@ -357,6 +369,10 @@ internal val koreanSocialShopTexts = englishSocialShopTexts + mapOf(
     TextKey.DonationDuplicate to "이미 완료된 기부입니다.", TextKey.DonationInvalidAmount to "올바른 기부 금액을 선택하세요.",
     TextKey.DonationInsufficientFunds to "{currency}이(가) 부족합니다.", TextKey.DonationMembershipRequired to "기부하기 전에 이 클랜에 가입하세요.",
     TextKey.DonationFailed to "기부를 완료할 수 없습니다. 다시 시도하세요.",
+    TextKey.RoomInvitationSummary to "“{room}” 방으로 초대했습니다", TextKey.RoomInvitationTitle to "방 초대",
+    TextKey.WaitingForYou to "{player}님이 기다리고 있습니다", TextKey.RoomLabel to "방", TextKey.TournamentInvitationTitle to "토너먼트 초대",
+    TextKey.TournamentInvitationDescription to "{host}님이 “{tournament}”에 초대했습니다 · {mode} · {players}명.",
+    TextKey.TournamentInviteCompact to "{host}님의 초대 · {mode} · {players}명",
     TextKey.PlayerCodeExample to "예: FTW8X2Q", TextKey.YourSquad to "내 스쿼드", TextKey.FriendList to "친구", TextKey.ClanTogetherTitle to "함께 경쟁하세요", TextKey.ExploreClans to "클랜 탐색", TextKey.FameRace to "명예의 레이스", TextKey.CurrentSeason to "현재 시즌", TextKey.KnockoutArena to "토너먼트 아레나", TextKey.RecentTournaments to "최근 토너먼트", TextKey.NotificationsHero to "새 소식", TextKey.EmptyInbox to "알림이 없습니다", TextKey.NumberSkins to "숫자 스킨", TextKey.NumberBoards to "숫자 보드", TextKey.GemVault to "젬 보관소", TextKey.ArcadeVault to "아케이드 보관소", TextKey.Restocking to "상품 준비 중", TextKey.Equip to "장착"
 )
 internal val spanishSocialShopTexts = englishSocialShopTexts + mapOf(
@@ -383,6 +399,10 @@ internal val spanishSocialShopTexts = englishSocialShopTexts + mapOf(
     TextKey.DonationDuplicate to "Esta donación ya se completó.", TextKey.DonationInvalidAmount to "Elige una cantidad de donación válida.",
     TextKey.DonationInsufficientFunds to "No tienes suficiente {currency}.", TextKey.DonationMembershipRequired to "Únete a este clan antes de donar.",
     TextKey.DonationFailed to "No se pudo completar la donación. Inténtalo de nuevo.",
+    TextKey.RoomInvitationSummary to "Te invitó a “{room}”", TextKey.RoomInvitationTitle to "INVITACIÓN A SALA",
+    TextKey.WaitingForYou to "{player} te está esperando", TextKey.RoomLabel to "SALA", TextKey.TournamentInvitationTitle to "Invitación a torneo",
+    TextKey.TournamentInvitationDescription to "{host} te invitó a “{tournament}” · {mode} · {players} jugadores.",
+    TextKey.TournamentInviteCompact to "Invitación de {host} · {mode} · {players} jugadores",
     TextKey.PlayerCodeExample to "p. ej., FTW8X2Q", TextKey.YourSquad to "Tu equipo", TextKey.FriendList to "Amigos", TextKey.ClanTogetherTitle to "Compitan juntos", TextKey.ExploreClans to "Explorar clanes", TextKey.FameRace to "Carrera por la gloria", TextKey.CurrentSeason to "Temporada actual", TextKey.KnockoutArena to "Arena eliminatoria", TextKey.RecentTournaments to "Torneos recientes", TextKey.NotificationsHero to "Novedades para ti", TextKey.EmptyInbox to "Tu bandeja está vacía", TextKey.NumberSkins to "Diseños de números", TextKey.NumberBoards to "Tableros numéricos", TextKey.GemVault to "Cámara de Gemas", TextKey.ArcadeVault to "Cámara Arcade", TextKey.Restocking to "Reponiendo", TextKey.Equip to "EQUIPAR"
 )
 internal val brazilianPortugueseSocialShopTexts = englishSocialShopTexts + mapOf(
@@ -409,6 +429,10 @@ internal val brazilianPortugueseSocialShopTexts = englishSocialShopTexts + mapOf
     TextKey.DonationDuplicate to "Esta doação já foi concluída.", TextKey.DonationInvalidAmount to "Escolha um valor de doação válido.",
     TextKey.DonationInsufficientFunds to "Você não tem {currency} suficiente.", TextKey.DonationMembershipRequired to "Entre neste clã antes de doar.",
     TextKey.DonationFailed to "Não foi possível concluir a doação. Tente novamente.",
+    TextKey.RoomInvitationSummary to "Convidou você para “{room}”", TextKey.RoomInvitationTitle to "CONVITE PARA SALA",
+    TextKey.WaitingForYou to "{player} está esperando por você", TextKey.RoomLabel to "SALA", TextKey.TournamentInvitationTitle to "Convite para torneio",
+    TextKey.TournamentInvitationDescription to "{host} convidou você para “{tournament}” · {mode} · {players} jogadores.",
+    TextKey.TournamentInviteCompact to "Convite de {host} · {mode} · {players} jogadores",
     TextKey.PlayerCodeExample to "ex.: FTW8X2Q", TextKey.YourSquad to "Seu esquadrão", TextKey.FriendList to "Amigos", TextKey.ClanTogetherTitle to "Compitam juntos", TextKey.ExploreClans to "Explorar clãs", TextKey.FameRace to "Corrida pela glória", TextKey.CurrentSeason to "Temporada atual", TextKey.KnockoutArena to "Arena eliminatória", TextKey.RecentTournaments to "Torneios recentes", TextKey.NotificationsHero to "Novidades para você", TextKey.EmptyInbox to "Sua caixa está vazia", TextKey.NumberSkins to "Visuais de números", TextKey.NumberBoards to "Tabuleiros numéricos", TextKey.GemVault to "Cofre de Gemas", TextKey.ArcadeVault to "Cofre Arcade", TextKey.Restocking to "Repondo estoque", TextKey.Equip to "EQUIPAR"
 )
 internal val frenchSocialShopTexts = englishSocialShopTexts + mapOf(
@@ -435,6 +459,10 @@ internal val frenchSocialShopTexts = englishSocialShopTexts + mapOf(
     TextKey.DonationDuplicate to "Ce don a déjà été effectué.", TextKey.DonationInvalidAmount to "Choisis un montant de don valide.",
     TextKey.DonationInsufficientFunds to "Tu n’as pas assez de {currency}.", TextKey.DonationMembershipRequired to "Rejoins ce clan avant de faire un don.",
     TextKey.DonationFailed to "Impossible d’effectuer le don. Réessaie.",
+    TextKey.RoomInvitationSummary to "T’a invité dans « {room} »", TextKey.RoomInvitationTitle to "INVITATION DE SALON",
+    TextKey.WaitingForYou to "{player} t’attend", TextKey.RoomLabel to "SALON", TextKey.TournamentInvitationTitle to "Invitation à un tournoi",
+    TextKey.TournamentInvitationDescription to "{host} t’a invité au tournoi « {tournament} » · {mode} · {players} joueurs.",
+    TextKey.TournamentInviteCompact to "Invitation de {host} · {mode} · {players} joueurs",
     TextKey.PlayerCodeExample to "ex. : FTW8X2Q", TextKey.YourSquad to "Ton équipe", TextKey.FriendList to "Amis", TextKey.ClanTogetherTitle to "Jouez ensemble", TextKey.ExploreClans to "Explorer les clans", TextKey.FameRace to "Course à la gloire", TextKey.CurrentSeason to "Saison actuelle", TextKey.KnockoutArena to "Arène à élimination", TextKey.RecentTournaments to "Tournois récents", TextKey.NotificationsHero to "Tes nouveautés", TextKey.EmptyInbox to "Ta boîte est vide", TextKey.NumberSkins to "Styles de nombres", TextKey.NumberBoards to "Plateaux numériques", TextKey.GemVault to "Coffre de Gemmes", TextKey.ArcadeVault to "Coffre Arcade", TextKey.Restocking to "Réapprovisionnement", TextKey.Equip to "ÉQUIPER"
 )
 internal val indonesianSocialShopTexts = englishSocialShopTexts + mapOf(
@@ -461,6 +489,10 @@ internal val indonesianSocialShopTexts = englishSocialShopTexts + mapOf(
     TextKey.DonationDuplicate to "Donasi ini sudah selesai.", TextKey.DonationInvalidAmount to "Pilih jumlah donasi yang valid.",
     TextKey.DonationInsufficientFunds to "{currency} milikmu tidak cukup.", TextKey.DonationMembershipRequired to "Gabung klan ini sebelum berdonasi.",
     TextKey.DonationFailed to "Donasi tidak dapat diselesaikan. Coba lagi.",
+    TextKey.RoomInvitationSummary to "Mengundangmu ke “{room}”", TextKey.RoomInvitationTitle to "UNDANGAN RUANG",
+    TextKey.WaitingForYou to "{player} sedang menunggumu", TextKey.RoomLabel to "RUANG", TextKey.TournamentInvitationTitle to "Undangan turnamen",
+    TextKey.TournamentInvitationDescription to "{host} mengundangmu ke “{tournament}” · {mode} · {players} pemain.",
+    TextKey.TournamentInviteCompact to "Undangan dari {host} · {mode} · {players} pemain",
     TextKey.PlayerCodeExample to "mis. FTW8X2Q", TextKey.YourSquad to "Skuadmu", TextKey.FriendList to "Teman", TextKey.ClanTogetherTitle to "Bertanding bersama", TextKey.ExploreClans to "Jelajahi klan", TextKey.FameRace to "Perebutan kejayaan", TextKey.CurrentSeason to "Musim saat ini", TextKey.KnockoutArena to "Arena eliminasi", TextKey.RecentTournaments to "Turnamen terbaru", TextKey.NotificationsHero to "Kabar untukmu", TextKey.EmptyInbox to "Kotak masukmu kosong", TextKey.NumberSkins to "Skin angka", TextKey.NumberBoards to "Papan angka", TextKey.GemVault to "Brankas Gem", TextKey.ArcadeVault to "Brankas Arcade", TextKey.Restocking to "Mengisi stok", TextKey.Equip to "PAKAI"
 )
 internal val thaiSocialShopTexts = englishSocialShopTexts + mapOf(
@@ -487,6 +519,10 @@ internal val thaiSocialShopTexts = englishSocialShopTexts + mapOf(
     TextKey.DonationDuplicate to "การบริจาคนี้เสร็จสิ้นแล้ว", TextKey.DonationInvalidAmount to "เลือกจำนวนบริจาคที่ถูกต้อง",
     TextKey.DonationInsufficientFunds to "คุณมี {currency} ไม่เพียงพอ", TextKey.DonationMembershipRequired to "เข้าร่วมแคลนนี้ก่อนบริจาค",
     TextKey.DonationFailed to "ไม่สามารถดำเนินการบริจาคได้ โปรดลองอีกครั้ง",
+    TextKey.RoomInvitationSummary to "เชิญคุณเข้าร่วม “{room}”", TextKey.RoomInvitationTitle to "คำเชิญเข้าห้อง",
+    TextKey.WaitingForYou to "{player} กำลังรอคุณ", TextKey.RoomLabel to "ห้อง", TextKey.TournamentInvitationTitle to "คำเชิญเข้าร่วมทัวร์นาเมนต์",
+    TextKey.TournamentInvitationDescription to "{host} เชิญคุณเข้าร่วม “{tournament}” · {mode} · {players} คน",
+    TextKey.TournamentInviteCompact to "คำเชิญจาก {host} · {mode} · {players} คน",
     TextKey.PlayerCodeExample to "เช่น FTW8X2Q", TextKey.YourSquad to "ทีมของคุณ", TextKey.FriendList to "เพื่อน", TextKey.ClanTogetherTitle to "แข่งขันไปด้วยกัน", TextKey.ExploreClans to "สำรวจแคลน", TextKey.FameRace to "เส้นทางแห่งเกียรติยศ", TextKey.CurrentSeason to "ฤดูกาลปัจจุบัน", TextKey.KnockoutArena to "สนามน็อกเอาต์", TextKey.RecentTournaments to "ทัวร์นาเมนต์ล่าสุด", TextKey.NotificationsHero to "ข่าวสารสำหรับคุณ", TextKey.EmptyInbox to "กล่องข้อความว่าง", TextKey.NumberSkins to "สกินตัวเลข", TextKey.NumberBoards to "กระดานตัวเลข", TextKey.GemVault to "คลัง Gem", TextKey.ArcadeVault to "คลัง Arcade", TextKey.Restocking to "กำลังเติมสินค้า", TextKey.Equip to "สวมใส่"
 )
 internal val russianSocialShopTexts = englishSocialShopTexts + mapOf(
@@ -513,5 +549,9 @@ internal val russianSocialShopTexts = englishSocialShopTexts + mapOf(
     TextKey.DonationDuplicate to "Это пожертвование уже выполнено.", TextKey.DonationInvalidAmount to "Выберите допустимую сумму пожертвования.",
     TextKey.DonationInsufficientFunds to "У вас недостаточно {currency}.", TextKey.DonationMembershipRequired to "Вступите в этот клан перед пожертвованием.",
     TextKey.DonationFailed to "Не удалось выполнить пожертвование. Попробуйте ещё раз.",
+    TextKey.RoomInvitationSummary to "Приглашает вас в «{room}»", TextKey.RoomInvitationTitle to "ПРИГЛАШЕНИЕ В КОМНАТУ",
+    TextKey.WaitingForYou to "{player} ждёт вас", TextKey.RoomLabel to "КОМНАТА", TextKey.TournamentInvitationTitle to "Приглашение на турнир",
+    TextKey.TournamentInvitationDescription to "{host} приглашает вас на «{tournament}» · {mode} · {players} игроков.",
+    TextKey.TournamentInviteCompact to "Приглашение от {host} · {mode} · {players} игроков",
     TextKey.PlayerCodeExample to "например, FTW8X2Q", TextKey.YourSquad to "Твоя команда", TextKey.FriendList to "Друзья", TextKey.ClanTogetherTitle to "Сражайтесь вместе", TextKey.ExploreClans to "Поиск кланов", TextKey.FameRace to "Гонка за славой", TextKey.CurrentSeason to "Текущий сезон", TextKey.KnockoutArena to "Арена на выбывание", TextKey.RecentTournaments to "Недавние турниры", TextKey.NotificationsHero to "Новости для тебя", TextKey.EmptyInbox to "Уведомлений нет", TextKey.NumberSkins to "Скины чисел", TextKey.NumberBoards to "Числовые поля", TextKey.GemVault to "Хранилище самоцветов", TextKey.ArcadeVault to "Аркадное хранилище", TextKey.Restocking to "Скоро пополнение", TextKey.Equip to "НАДЕТЬ"
 )
