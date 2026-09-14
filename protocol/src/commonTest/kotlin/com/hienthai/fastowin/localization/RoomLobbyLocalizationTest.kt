@@ -110,4 +110,38 @@ class RoomLobbyLocalizationTest {
             assertEquals(translations, keys.map(catalog.texts::getValue), language.code)
         }
     }
+
+    @Test
+    fun `room visibility and match type copy resolves explicitly in all twelve languages`() {
+        val expected = mapOf(
+            AppLanguage.ENGLISH to listOf("Players need a password.", "Anyone can join without a password.", "Ranked · Affects Elo", "Casual · No Elo impact", "Private room", "Public room", "{host} • {mode} • {matchType}", "ENTER", "Private room"),
+            AppLanguage.VIETNAMESE to listOf("Người chơi cần nhập mật khẩu.", "Mọi người có thể tham gia, không cần mật khẩu.", "Đấu xếp hạng · Có ảnh hưởng Elo", "Đấu thường · Không ảnh hưởng Elo", "Phòng riêng", "Phòng công khai", "{host} • {mode} • {matchType}", "VÀO", "Phòng riêng"),
+            AppLanguage.SIMPLIFIED_CHINESE to listOf("玩家需要输入密码。", "任何人无需密码即可加入。", "排位赛 · 影响 Elo", "休闲赛 · 不影响 Elo", "私密房间", "公开房间", "{host} • {mode} • {matchType}", "进入", "私密房间"),
+            AppLanguage.JAPANESE to listOf("参加者はパスワードが必要です。", "誰でもパスワードなしで参加できます。", "ランク戦 · Eloに影響", "通常戦 · Eloに影響なし", "非公開ルーム", "公開ルーム", "{host} • {mode} • {matchType}", "入室", "非公開ルーム"),
+            AppLanguage.KOREAN to listOf("플레이어는 비밀번호가 필요합니다.", "누구나 비밀번호 없이 참가할 수 있습니다.", "랭크전 · Elo에 영향", "일반전 · Elo에 영향 없음", "비공개 방", "공개 방", "{host} • {mode} • {matchType}", "입장", "비공개 방"),
+            AppLanguage.SPANISH to listOf("Los jugadores necesitan una contraseña.", "Cualquiera puede unirse sin contraseña.", "Clasificatoria · Afecta al Elo", "Casual · No afecta al Elo", "Sala privada", "Sala pública", "{host} • {mode} • {matchType}", "ENTRAR", "Sala privada"),
+            AppLanguage.BRAZILIAN_PORTUGUESE to listOf("Os jogadores precisam de uma senha.", "Qualquer pessoa pode entrar sem senha.", "Ranqueada · Afeta o Elo", "Casual · Não afeta o Elo", "Sala privada", "Sala pública", "{host} • {mode} • {matchType}", "ENTRAR", "Sala privada"),
+            AppLanguage.FRENCH to listOf("Les joueurs ont besoin d’un mot de passe.", "Tout le monde peut rejoindre sans mot de passe.", "Classé · Affecte l’Elo", "Amical · Aucun impact sur l’Elo", "Salon privé", "Salon public", "{host} • {mode} • {matchType}", "ENTRER", "Salon privé"),
+            AppLanguage.GERMAN to listOf("Spieler benötigen ein Passwort.", "Jeder kann ohne Passwort beitreten.", "Rangliste · Beeinflusst Elo", "Normal · Kein Elo-Einfluss", "Privater Raum", "Öffentlicher Raum", "{host} • {mode} • {matchType}", "BETRETEN", "Privater Raum"),
+            AppLanguage.INDONESIAN to listOf("Pemain memerlukan kata sandi.", "Siapa pun dapat bergabung tanpa kata sandi.", "Peringkat · Memengaruhi Elo", "Kasual · Tidak memengaruhi Elo", "Ruang privat", "Ruang publik", "{host} • {mode} • {matchType}", "MASUK", "Ruang privat"),
+            AppLanguage.THAI to listOf("ผู้เล่นต้องใช้รหัสผ่าน", "ทุกคนเข้าร่วมได้โดยไม่ต้องใช้รหัสผ่าน", "จัดอันดับ · มีผลต่อ Elo", "ทั่วไป · ไม่มีผลต่อ Elo", "ห้องส่วนตัว", "ห้องสาธารณะ", "{host} • {mode} • {matchType}", "เข้า", "ห้องส่วนตัว"),
+            AppLanguage.RUSSIAN to listOf("Игрокам нужен пароль.", "Любой может войти без пароля.", "Рейтинг · Влияет на Elo", "Обычная · Не влияет на Elo", "Закрытая комната", "Открытая комната", "{host} • {mode} • {matchType}", "ВОЙТИ", "Закрытая комната"),
+        )
+        val keys = listOf(
+            TextKey.PrivatePasswordRequired,
+            TextKey.PublicNoPassword,
+            TextKey.RankedEloImpact,
+            TextKey.CasualNoEloImpact,
+            TextKey.PrivateRoom,
+            TextKey.PublicRoom,
+            TextKey.RoomListSummary,
+            TextKey.EnterRoom,
+            TextKey.JoinPrivateRoom,
+        )
+
+        expected.forEach { (language, translations) ->
+            val catalog = allLocalizationCatalogs.getValue(language)
+            assertEquals(translations, keys.map(catalog.texts::getValue), language.code)
+        }
+    }
 }

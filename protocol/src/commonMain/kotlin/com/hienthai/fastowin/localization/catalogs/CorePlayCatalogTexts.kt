@@ -201,7 +201,10 @@ internal val germanCorePlayTexts = mapOf(
     TextKey.EnterRoomCode to "Raumcode eingeben", TextKey.PasteRoomCode to "Füge den vom Host geteilten Code ein.", TextKey.RoomCode to "Raumcode",
     TextKey.FindRoom to "RAUM SUCHEN", TextKey.RoomCodeNotFound to "Mit diesem Code wurde kein Raum gefunden.", TextKey.CreateNewRoom to "Neuen Raum erstellen",
     TextKey.RoomName to "Raumname", TextKey.Public to "Öffentlich", TextKey.Private to "Privat", TextKey.RoomPassword to "Raumpasswort",
-    TextKey.JoinRoomTitle to "Raum beitreten"
+    TextKey.JoinRoomTitle to "Raum beitreten", TextKey.PrivatePasswordRequired to "Spieler benötigen ein Passwort.",
+    TextKey.PublicNoPassword to "Jeder kann ohne Passwort beitreten.", TextKey.RankedEloImpact to "Rangliste · Beeinflusst Elo",
+    TextKey.CasualNoEloImpact to "Normal · Kein Elo-Einfluss", TextKey.PrivateRoom to "Privater Raum", TextKey.PublicRoom to "Öffentlicher Raum",
+    TextKey.RoomListSummary to "{host} • {mode} • {matchType}", TextKey.EnterRoom to "BETRETEN", TextKey.JoinPrivateRoom to "Privater Raum"
 )
 
 internal val japaneseCorePlayTexts = mapOf(
@@ -220,7 +223,10 @@ internal val japaneseCorePlayTexts = mapOf(
     TextKey.EnterRoomCode to "ルームコードを入力", TextKey.PasteRoomCode to "ホストが共有したコードを貼り付けてください。", TextKey.RoomCode to "ルームコード",
     TextKey.FindRoom to "ルームを検索", TextKey.RoomCodeNotFound to "このコードのルームが見つかりません。", TextKey.CreateNewRoom to "新しいルームを作成",
     TextKey.RoomName to "ルーム名", TextKey.Public to "公開", TextKey.Private to "非公開", TextKey.RoomPassword to "ルームパスワード",
-    TextKey.JoinRoomTitle to "ルームに参加"
+    TextKey.JoinRoomTitle to "ルームに参加", TextKey.PrivatePasswordRequired to "参加者はパスワードが必要です。",
+    TextKey.PublicNoPassword to "誰でもパスワードなしで参加できます。", TextKey.RankedEloImpact to "ランク戦 · Eloに影響",
+    TextKey.CasualNoEloImpact to "通常戦 · Eloに影響なし", TextKey.PrivateRoom to "非公開ルーム", TextKey.PublicRoom to "公開ルーム",
+    TextKey.RoomListSummary to "{host} • {mode} • {matchType}", TextKey.EnterRoom to "入室", TextKey.JoinPrivateRoom to "非公開ルーム"
 )
 
 internal val russianCorePlayTexts = mapOf(
@@ -240,7 +246,10 @@ internal val russianCorePlayTexts = mapOf(
     TextKey.EnterRoomCode to "Введите код комнаты", TextKey.PasteRoomCode to "Вставьте код, которым поделился ведущий.", TextKey.RoomCode to "Код комнаты",
     TextKey.FindRoom to "НАЙТИ КОМНАТУ", TextKey.RoomCodeNotFound to "Комната с таким кодом не найдена.", TextKey.CreateNewRoom to "Создать новую комнату",
     TextKey.RoomName to "Название комнаты", TextKey.Public to "Открытая", TextKey.Private to "Закрытая", TextKey.RoomPassword to "Пароль комнаты",
-    TextKey.JoinRoomTitle to "Войти в комнату"
+    TextKey.JoinRoomTitle to "Войти в комнату", TextKey.PrivatePasswordRequired to "Игрокам нужен пароль.",
+    TextKey.PublicNoPassword to "Любой может войти без пароля.", TextKey.RankedEloImpact to "Рейтинг · Влияет на Elo",
+    TextKey.CasualNoEloImpact to "Обычная · Не влияет на Elo", TextKey.PrivateRoom to "Закрытая комната", TextKey.PublicRoom to "Открытая комната",
+    TextKey.RoomListSummary to "{host} • {mode} • {matchType}", TextKey.EnterRoom to "ВОЙТИ", TextKey.JoinPrivateRoom to "Закрытая комната"
 )
 
 internal val thaiCorePlayTexts = mapOf(
@@ -264,7 +273,10 @@ internal val thaiCorePlayTexts = mapOf(
     TextKey.EnterRoomCode to "กรอกรหัสห้อง", TextKey.PasteRoomCode to "วางรหัสที่โฮสต์แชร์", TextKey.RoomCode to "รหัสห้อง",
     TextKey.FindRoom to "ค้นหาห้อง", TextKey.RoomCodeNotFound to "ไม่พบห้องที่ใช้รหัสนี้", TextKey.CreateNewRoom to "สร้างห้องใหม่",
     TextKey.RoomName to "ชื่อห้อง", TextKey.Public to "สาธารณะ", TextKey.Private to "ส่วนตัว", TextKey.RoomPassword to "รหัสผ่านห้อง",
-    TextKey.JoinRoomTitle to "เข้าร่วมห้อง"
+    TextKey.JoinRoomTitle to "เข้าร่วมห้อง", TextKey.PrivatePasswordRequired to "ผู้เล่นต้องใช้รหัสผ่าน",
+    TextKey.PublicNoPassword to "ทุกคนเข้าร่วมได้โดยไม่ต้องใช้รหัสผ่าน", TextKey.RankedEloImpact to "จัดอันดับ · มีผลต่อ Elo",
+    TextKey.CasualNoEloImpact to "ทั่วไป · ไม่มีผลต่อ Elo", TextKey.PrivateRoom to "ห้องส่วนตัว", TextKey.PublicRoom to "ห้องสาธารณะ",
+    TextKey.RoomListSummary to "{host} • {mode} • {matchType}", TextKey.EnterRoom to "เข้า", TextKey.JoinPrivateRoom to "ห้องส่วนตัว"
 )
 
 internal val simplifiedChineseCorePlayTexts = mapOf(
@@ -277,7 +289,10 @@ internal val simplifiedChineseCorePlayTexts = mapOf(
     TextKey.EnterRoomCode to "输入房间代码", TextKey.PasteRoomCode to "粘贴房主分享的代码。", TextKey.RoomCode to "房间代码",
     TextKey.FindRoom to "查找房间", TextKey.RoomCodeNotFound to "未找到使用此代码的房间。", TextKey.CreateNewRoom to "创建新房间",
     TextKey.RoomName to "房间名称", TextKey.Public to "公开", TextKey.Private to "私密", TextKey.RoomPassword to "房间密码",
-    TextKey.JoinRoomTitle to "加入房间"
+    TextKey.JoinRoomTitle to "加入房间", TextKey.PrivatePasswordRequired to "玩家需要输入密码。",
+    TextKey.PublicNoPassword to "任何人无需密码即可加入。", TextKey.RankedEloImpact to "排位赛 · 影响 Elo",
+    TextKey.CasualNoEloImpact to "休闲赛 · 不影响 Elo", TextKey.PrivateRoom to "私密房间", TextKey.PublicRoom to "公开房间",
+    TextKey.RoomListSummary to "{host} • {mode} • {matchType}", TextKey.EnterRoom to "进入", TextKey.JoinPrivateRoom to "私密房间"
 )
 internal val koreanCorePlayTexts = mapOf(
     TextKey.WaitHostStart to "방장이 경기를 시작할 때까지 기다리세요.", TextKey.CancelReady to "준비 취소", TextKey.ReadyAction to "준비",
@@ -289,7 +304,10 @@ internal val koreanCorePlayTexts = mapOf(
     TextKey.EnterRoomCode to "방 코드 입력", TextKey.PasteRoomCode to "방장이 공유한 코드를 붙여넣으세요.", TextKey.RoomCode to "방 코드",
     TextKey.FindRoom to "방 찾기", TextKey.RoomCodeNotFound to "이 코드에 해당하는 방을 찾을 수 없습니다.", TextKey.CreateNewRoom to "새 방 만들기",
     TextKey.RoomName to "방 이름", TextKey.Public to "공개", TextKey.Private to "비공개", TextKey.RoomPassword to "방 비밀번호",
-    TextKey.JoinRoomTitle to "방 참가"
+    TextKey.JoinRoomTitle to "방 참가", TextKey.PrivatePasswordRequired to "플레이어는 비밀번호가 필요합니다.",
+    TextKey.PublicNoPassword to "누구나 비밀번호 없이 참가할 수 있습니다.", TextKey.RankedEloImpact to "랭크전 · Elo에 영향",
+    TextKey.CasualNoEloImpact to "일반전 · Elo에 영향 없음", TextKey.PrivateRoom to "비공개 방", TextKey.PublicRoom to "공개 방",
+    TextKey.RoomListSummary to "{host} • {mode} • {matchType}", TextKey.EnterRoom to "입장", TextKey.JoinPrivateRoom to "비공개 방"
 )
 internal val spanishCorePlayTexts = mapOf(
     TextKey.WaitHostStart to "Espera a que el anfitrión inicie la partida.", TextKey.CancelReady to "CANCELAR LISTO", TextKey.ReadyAction to "LISTO",
@@ -301,7 +319,10 @@ internal val spanishCorePlayTexts = mapOf(
     TextKey.EnterRoomCode to "Introduce el código de la sala", TextKey.PasteRoomCode to "Pega el código compartido por el anfitrión.", TextKey.RoomCode to "Código de sala",
     TextKey.FindRoom to "BUSCAR SALA", TextKey.RoomCodeNotFound to "No se encontró ninguna sala con este código.", TextKey.CreateNewRoom to "Crear nueva sala",
     TextKey.RoomName to "Nombre de la sala", TextKey.Public to "Pública", TextKey.Private to "Privada", TextKey.RoomPassword to "Contraseña de la sala",
-    TextKey.JoinRoomTitle to "Unirse a la sala"
+    TextKey.JoinRoomTitle to "Unirse a la sala", TextKey.PrivatePasswordRequired to "Los jugadores necesitan una contraseña.",
+    TextKey.PublicNoPassword to "Cualquiera puede unirse sin contraseña.", TextKey.RankedEloImpact to "Clasificatoria · Afecta al Elo",
+    TextKey.CasualNoEloImpact to "Casual · No afecta al Elo", TextKey.PrivateRoom to "Sala privada", TextKey.PublicRoom to "Sala pública",
+    TextKey.RoomListSummary to "{host} • {mode} • {matchType}", TextKey.EnterRoom to "ENTRAR", TextKey.JoinPrivateRoom to "Sala privada"
 )
 internal val brazilianPortugueseCorePlayTexts = mapOf(
     TextKey.WaitHostStart to "Aguarde o anfitrião iniciar a partida.", TextKey.CancelReady to "CANCELAR PRONTO", TextKey.ReadyAction to "PRONTO",
@@ -313,7 +334,10 @@ internal val brazilianPortugueseCorePlayTexts = mapOf(
     TextKey.EnterRoomCode to "Digite o código da sala", TextKey.PasteRoomCode to "Cole o código compartilhado pelo anfitrião.", TextKey.RoomCode to "Código da sala",
     TextKey.FindRoom to "ENCONTRAR SALA", TextKey.RoomCodeNotFound to "Nenhuma sala foi encontrada com este código.", TextKey.CreateNewRoom to "Criar nova sala",
     TextKey.RoomName to "Nome da sala", TextKey.Public to "Pública", TextKey.Private to "Privada", TextKey.RoomPassword to "Senha da sala",
-    TextKey.JoinRoomTitle to "Entrar na sala"
+    TextKey.JoinRoomTitle to "Entrar na sala", TextKey.PrivatePasswordRequired to "Os jogadores precisam de uma senha.",
+    TextKey.PublicNoPassword to "Qualquer pessoa pode entrar sem senha.", TextKey.RankedEloImpact to "Ranqueada · Afeta o Elo",
+    TextKey.CasualNoEloImpact to "Casual · Não afeta o Elo", TextKey.PrivateRoom to "Sala privada", TextKey.PublicRoom to "Sala pública",
+    TextKey.RoomListSummary to "{host} • {mode} • {matchType}", TextKey.EnterRoom to "ENTRAR", TextKey.JoinPrivateRoom to "Sala privada"
 )
 internal val frenchCorePlayTexts = mapOf(
     TextKey.WaitHostStart to "Attends que l’hôte lance la partie.", TextKey.CancelReady to "ANNULER PRÊT", TextKey.ReadyAction to "PRÊT",
@@ -325,7 +349,10 @@ internal val frenchCorePlayTexts = mapOf(
     TextKey.EnterRoomCode to "Saisis le code du salon", TextKey.PasteRoomCode to "Colle le code partagé par l’hôte.", TextKey.RoomCode to "Code du salon",
     TextKey.FindRoom to "TROUVER LE SALON", TextKey.RoomCodeNotFound to "Aucun salon trouvé avec ce code.", TextKey.CreateNewRoom to "Créer un nouveau salon",
     TextKey.RoomName to "Nom du salon", TextKey.Public to "Public", TextKey.Private to "Privé", TextKey.RoomPassword to "Mot de passe du salon",
-    TextKey.JoinRoomTitle to "Rejoindre le salon"
+    TextKey.JoinRoomTitle to "Rejoindre le salon", TextKey.PrivatePasswordRequired to "Les joueurs ont besoin d’un mot de passe.",
+    TextKey.PublicNoPassword to "Tout le monde peut rejoindre sans mot de passe.", TextKey.RankedEloImpact to "Classé · Affecte l’Elo",
+    TextKey.CasualNoEloImpact to "Amical · Aucun impact sur l’Elo", TextKey.PrivateRoom to "Salon privé", TextKey.PublicRoom to "Salon public",
+    TextKey.RoomListSummary to "{host} • {mode} • {matchType}", TextKey.EnterRoom to "ENTRER", TextKey.JoinPrivateRoom to "Salon privé"
 )
 internal val indonesianCorePlayTexts = mapOf(
     TextKey.WaitHostStart to "Tunggu host memulai pertandingan.", TextKey.CancelReady to "BATAL SIAP", TextKey.ReadyAction to "SIAP",
@@ -337,5 +364,8 @@ internal val indonesianCorePlayTexts = mapOf(
     TextKey.EnterRoomCode to "Masukkan kode ruang", TextKey.PasteRoomCode to "Tempel kode yang dibagikan host.", TextKey.RoomCode to "Kode ruang",
     TextKey.FindRoom to "CARI RUANG", TextKey.RoomCodeNotFound to "Ruang dengan kode ini tidak ditemukan.", TextKey.CreateNewRoom to "Buat ruang baru",
     TextKey.RoomName to "Nama ruang", TextKey.Public to "Publik", TextKey.Private to "Privat", TextKey.RoomPassword to "Kata sandi ruang",
-    TextKey.JoinRoomTitle to "Gabung ruang"
+    TextKey.JoinRoomTitle to "Gabung ruang", TextKey.PrivatePasswordRequired to "Pemain memerlukan kata sandi.",
+    TextKey.PublicNoPassword to "Siapa pun dapat bergabung tanpa kata sandi.", TextKey.RankedEloImpact to "Peringkat · Memengaruhi Elo",
+    TextKey.CasualNoEloImpact to "Kasual · Tidak memengaruhi Elo", TextKey.PrivateRoom to "Ruang privat", TextKey.PublicRoom to "Ruang publik",
+    TextKey.RoomListSummary to "{host} • {mode} • {matchType}", TextKey.EnterRoom to "MASUK", TextKey.JoinPrivateRoom to "Ruang privat"
 )
