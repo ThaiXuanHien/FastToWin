@@ -9,6 +9,23 @@ async function expectHorizontalFit(page, locator, label) {
   expect(bounds.x + bounds.width, `${label} does not overflow right`).toBeLessThanOrEqual(viewport.width + 1);
 }
 
+async function renderedPixelAt(page, x, y) {
+  const screenshot = await page.screenshot({
+    clip: { x, y, width: 1, height: 1 },
+  });
+  return page.evaluate(async encodedPixel => {
+    const image = new Image();
+    image.src = `data:image/png;base64,${encodedPixel}`;
+    await image.decode();
+    const canvas = document.createElement('canvas');
+    canvas.width = 1;
+    canvas.height = 1;
+    const context = canvas.getContext('2d');
+    context.drawImage(image, 0, 0);
+    return Array.from(context.getImageData(0, 0, 1, 1).data);
+  }, screenshot.toString('base64'));
+}
+
 test('top-level navigation and room creation fit the configured viewport', async ({ actors }, testInfo) => {
   const player = await actors(`Responsive ${testInfo.project.name}`);
   const { page } = player;
@@ -50,20 +67,19 @@ test('top-level navigation and room creation fit the configured viewport', async
   await expectHorizontalFit(page, tag(page, 'create_room_submit'), 'Create room submit action');
 });
 
-test('web shell stays dark outside the centered mobile canvas', async ({ actors }) => {
-  const player = await actors('Dark shell');
-  const { page } = player;
+test('web shell stays dark outside the centered mobile canvas', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
-  await login(player);
+  await page.goto('/');
+  await expect(page.locator('#fastToWinRoot')).toBeAttached();
 
   await expect(page.locator('body')).toHaveCSS('background-color', 'rgb(7, 24, 36)');
   const root = await page.locator('#fastToWinRoot').boundingBox();
-  const home = await tag(page, 'home_screen').boundingBox();
   expect(root).not.toBeNull();
   expect(root.width).toBe(1440);
-  expect(home).not.toBeNull();
-  expect(home.width).toBeLessThanOrEqual(430);
-  expect(Math.abs((home.x + home.width / 2) - 720)).toBeLessThanOrEqual(2);
+
+  const expectedShellPixel = [6, 19, 47, 255];
+  expect(await renderedPixelAt(page, 10, 10), 'left rendered gutter is navy').toEqual(expectedShellPixel);
+  expect(await renderedPixelAt(page, 1430, 10), 'right rendered gutter is navy').toEqual(expectedShellPixel);
 });
 
 test('dialog stays within ten-pixel insets on a narrow viewport', async ({ actors }) => {

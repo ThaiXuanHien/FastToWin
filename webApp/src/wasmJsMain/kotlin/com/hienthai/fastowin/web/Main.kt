@@ -2,6 +2,7 @@
 
 package com.hienthai.fastowin.web
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.widthIn
@@ -13,6 +14,7 @@ import androidx.compose.ui.window.ComposeViewport
 import androidx.compose.runtime.remember
 import com.hienthai.fastowin.FastToWinApp
 import com.hienthai.fastowin.data.network.AuthRequestConfigurator
+import com.hienthai.fastowin.ui.theme.ArcadePalette
 import io.ktor.client.fetchOptions
 import io.ktor.client.request.header
 import kotlin.js.toJsString
@@ -20,7 +22,12 @@ import kotlin.js.toJsString
 @OptIn(ExperimentalComposeUiApi::class)
 fun main() {
     ComposeViewport(viewportContainerId = "fastToWinRoot") {
-        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(ArcadePalette.Navy950),
+            contentAlignment = Alignment.TopCenter
+        ) {
             Box(
                 modifier = Modifier
                     .widthIn(max = 430.dp)
