@@ -39,7 +39,7 @@ android {
             buildConfigField(
                 "String",
                 "GAME_SERVER_URL",
-                "\"${providers.gradleProperty("FASTTOWIN_PROD_WS_URL").orElse("wss://configure-production-server.invalid/game").get()}\""
+                "\"${providers.gradleProperty("FASTTOWIN_PROD_WS_URL").orElse("wss://fasttowin.up.railway.app/game").get()}\""
             )
             resValue("string", "app_name", "Fast To Win")
         }
