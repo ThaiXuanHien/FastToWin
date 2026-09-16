@@ -60,7 +60,7 @@ fun main() {
         engine.restoreActiveRooms()
     }
 
-    val emailDelivery = if (authEmailSender.isConfigured) "smtp" else "disabled"
+    val emailDelivery = if (authEmailSender.isConfigured) configuredAuthEmailProvider().name.lowercase() else "disabled"
     println(
         "Starting Fast To Win server: environment=$environment, host=$host, port=$port, " +
             "storage=$storage, email=$emailDelivery"

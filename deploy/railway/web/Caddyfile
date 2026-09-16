@@ -1,0 +1,38 @@
+{
+    admin off
+    auto_https off
+}
+
+:{$PORT:8080} {
+    encode zstd gzip
+
+    @internal path /internal /internal/*
+    handle @internal {
+        respond 404
+    }
+
+    @backend path /game /auth/* /api/* /status /health
+    handle @backend {
+        reverse_proxy {$BACKEND_UPSTREAM} {
+            # This service is reached only through Railway's HTTPS edge.
+            header_up X-Forwarded-Proto https
+        }
+    }
+
+    handle {
+        root * /srv
+        try_files {path} /index.html
+        file_server
+    }
+
+    @runtime path / /index.html /config.js /service-worker.js
+    header @runtime Cache-Control "no-store"
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        X-Content-Type-Options "nosniff"
+        Referrer-Policy "strict-origin-when-cross-origin"
+        X-Frame-Options "DENY"
+        Permissions-Policy "camera=(), microphone=(), geolocation=()"
+        Content-Security-Policy "default-src 'self'; script-src 'self' https://www.gstatic.com 'wasm-unsafe-eval'; connect-src 'self' https://*.googleapis.com https://*.google.com wss:; img-src 'self' data: blob: https:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'"
+    }
+}

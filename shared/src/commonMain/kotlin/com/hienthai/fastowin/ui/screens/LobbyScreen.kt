@@ -37,7 +37,7 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
+import com.hienthai.fastowin.ui.components.AppOutlinedTextField as OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -387,7 +387,7 @@ private fun NameEntry(onContinue: (String) -> Unit) {
                 OutlinedTextField(
                     value = name,
                     onValueChange = { name = it },
-                    label = { Text(localized(TextKey.EnterNickname)) },
+                    label = localized(TextKey.EnterNickname),
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
                     shape = RoundedCornerShape(14.dp),
@@ -594,7 +594,7 @@ private fun RoomBrowser(
                     onValueChange = { searchQuery = it },
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
-                    label = { Text(localized(TextKey.SearchRooms)) },
+                    label = localized(TextKey.SearchRooms),
                     leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
                     shape = RoundedCornerShape(14.dp)
                 )
@@ -739,7 +739,7 @@ private fun JoinByCodeDialog(
             },
             modifier = Modifier.fillMaxWidth(),
             singleLine = true,
-            label = { Text(localized(TextKey.RoomCode)) },
+            label = localized(TextKey.RoomCode),
             leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null) },
             shape = RoundedCornerShape(14.dp)
         )
@@ -793,8 +793,8 @@ private fun CreateRoomDialog(
             OutlinedTextField(
                 value = roomName,
                 onValueChange = { roomName = it },
-                label = { Text(localized(TextKey.RoomName)) },
-                placeholder = { Text(defaultRoomName) },
+                label = localized(TextKey.RoomName),
+                placeholder = defaultRoomName,
                 singleLine = true,
                 shape = RoundedCornerShape(14.dp),
                 modifier = Modifier.fillMaxWidth().testTag("create_room_name")
@@ -816,7 +816,7 @@ private fun CreateRoomDialog(
                 OutlinedTextField(
                     value = roomPassword,
                     onValueChange = { roomPassword = it },
-                    label = { Text(localized(TextKey.RoomPassword)) },
+                    label = localized(TextKey.RoomPassword),
                     singleLine = true,
                     visualTransformation = PasswordVisualTransformation(),
                     leadingIcon = { Icon(Icons.Default.Lock, null) },
@@ -996,7 +996,7 @@ private fun JoinRoomDialog(
             OutlinedTextField(
                 value = password,
                 onValueChange = { password = it },
-                label = { Text(localized(TextKey.RoomPassword)) },
+                label = localized(TextKey.RoomPassword),
                 visualTransformation = PasswordVisualTransformation(),
                 singleLine = true,
                 leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null) },

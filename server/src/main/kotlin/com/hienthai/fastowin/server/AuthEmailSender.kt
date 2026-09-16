@@ -193,5 +193,20 @@ class SmtpAuthEmailSender(private val settings: SmtpEmailSettings) : AuthEmailSe
     }
 }
 
-internal fun configuredAuthEmailSender(): AuthEmailSender =
-    SmtpEmailSettings.fromEnvironment()?.let(::SmtpAuthEmailSender) ?: DisabledAuthEmailSender
+internal enum class AuthEmailProvider { SMTP, BREVO }
+
+internal fun configuredAuthEmailProvider(values: Map<String, String> = System.getenv()): AuthEmailProvider =
+    when (values["FASTTOWIN_EMAIL_PROVIDER"]?.trim()?.lowercase().orEmpty()) {
+        "", "smtp" -> AuthEmailProvider.SMTP
+        "brevo" -> AuthEmailProvider.BREVO
+        else -> throw IllegalArgumentException("FASTTOWIN_EMAIL_PROVIDER must be 'smtp' or 'brevo'.")
+    }
+
+internal fun configuredAuthEmailSender(
+    values: Map<String, String> = System.getenv(),
+    fileReader: (String) -> String = { Files.readString(Path.of(it)) }
+): AuthEmailSender = when (configuredAuthEmailProvider(values)) {
+    AuthEmailProvider.SMTP -> SmtpEmailSettings.fromEnvironment(values, fileReader)
+        ?.let(::SmtpAuthEmailSender) ?: DisabledAuthEmailSender
+    AuthEmailProvider.BREVO -> BrevoAuthEmailSender(BrevoEmailSettings.fromEnvironment(values, fileReader))
+}

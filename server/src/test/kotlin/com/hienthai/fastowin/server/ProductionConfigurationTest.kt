@@ -124,4 +124,29 @@ class ProductionConfigurationTest {
         "FASTTOWIN_SMTP_PASSWORD_FILE" to "/run/secrets/smtp_password",
         "FASTTOWIN_SMTP_FROM_EMAIL" to "no-reply@fasttowin.vn"
     )
+
+    @Test
+    fun `production Brevo accepts HTTPS email configuration without SMTP`() {
+        validateProductionEnvironment(
+            values = brevoValues(),
+            fileReader = { "database-password-123" }
+        )
+    }
+
+    @Test
+    fun `production Brevo rejects missing API key instead of disabling email`() {
+        val error = assertFailsWith<IllegalArgumentException> {
+            validateProductionEnvironment(
+                values = brevoValues() - "FASTTOWIN_BREVO_API_KEY",
+                fileReader = { "database-password-123" }
+            )
+        }
+        kotlin.test.assertContains(error.message.orEmpty(), "FASTTOWIN_BREVO_API_KEY")
+    }
+
+    private fun brevoValues() = productionValues().filterKeys { !it.startsWith("FASTTOWIN_SMTP_") } + mapOf(
+        "FASTTOWIN_EMAIL_PROVIDER" to "brevo",
+        "FASTTOWIN_BREVO_API_KEY" to "test-brevo-key-not-a-real-credential",
+        "FASTTOWIN_EMAIL_FROM_EMAIL" to "no-reply@fasttowin.vn"
+    )
 }

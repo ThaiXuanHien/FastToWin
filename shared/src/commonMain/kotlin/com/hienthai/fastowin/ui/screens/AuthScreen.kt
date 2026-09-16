@@ -25,7 +25,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.OutlinedTextField
+import com.hienthai.fastowin.ui.components.AppOutlinedTextField as OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -160,7 +160,7 @@ private fun EmailVerificationContent(
         OutlinedTextField(
             value = code,
             onValueChange = { value -> code = value.filter(Char::isDigit).take(6) },
-            label = { Text(localized(TextKey.VerificationCode)) },
+            label = localized(TextKey.VerificationCode),
             keyboardOptions = KeyboardOptions(
                 keyboardType = KeyboardType.Number,
                 imeAction = ImeAction.Done
@@ -298,7 +298,7 @@ private fun PasswordResetContent(
             OutlinedTextField(
                 value = resetToken,
                 onValueChange = { resetToken = it.trim() },
-                label = { Text(localized(TextKey.ResetCode)) },
+                label = localized(TextKey.ResetCode),
                 singleLine = true,
                 shape = RoundedCornerShape(15.dp),
                 modifier = Modifier.fillMaxWidth().testTag("auth_reset_token")
@@ -345,7 +345,7 @@ private fun RegisterContent(
         OutlinedTextField(
             value = displayName,
             onValueChange = { displayName = it },
-            label = { Text(localized(TextKey.DisplayName)) },
+            label = localized(TextKey.DisplayName),
             leadingIcon = { Icon(Icons.Default.Person, null) },
             singleLine = true,
             shape = RoundedCornerShape(15.dp),
@@ -467,7 +467,7 @@ private fun EmailField(
     OutlinedTextField(
         value = value,
         onValueChange = onValueChange,
-        label = { Text(localized(TextKey.Email)) },
+        label = localized(TextKey.Email),
         leadingIcon = { Icon(Icons.Default.Email, null) },
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email, imeAction = ImeAction.Next),
         enabled = enabled,
@@ -483,7 +483,7 @@ private fun PasswordField(value: String, label: String, onValueChange: (String) 
     OutlinedTextField(
         value = value,
         onValueChange = { if (it.length <= MAX_ACCOUNT_PASSWORD_LENGTH) onValueChange(it) },
-        label = { Text(label) },
+        label = label,
         leadingIcon = { Icon(Icons.Default.Lock, null) },
         visualTransformation = if (isVisible) VisualTransformation.None else PasswordVisualTransformation(),
         trailingIcon = {

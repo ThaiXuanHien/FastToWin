@@ -29,7 +29,7 @@ import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
+import com.hienthai.fastowin.ui.components.AppOutlinedTextField as OutlinedTextField
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
@@ -645,8 +645,8 @@ fun PracticeLauncherDialog(
                         code = it.uppercase().take(20)
                         error = null
                     },
-                    label = { Text(localized(TextKey.ChallengeCode)) },
-                    placeholder = { Text("FTW-CL-12345678-AB") },
+                    label = localized(TextKey.ChallengeCode),
+                    placeholder = "FTW-CL-12345678-AB",
                     singleLine = true,
                     isError = error != null,
                     supportingText = error?.let { message -> ({ Text(message) }) },

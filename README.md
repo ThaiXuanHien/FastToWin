@@ -4,6 +4,10 @@ Fast To Win là game tìm số 1–50 theo thời gian thực dành cho Android,
 
 Theo dõi các bước đã làm và còn lại tại [lộ trình phát triển](docs/roadmap.md). Kiểm thử: [tổng quan](docs/testing.md) và [Web E2E](docs/web-e2e.md). Quy tắc thêm hoặc sửa bản dịch nằm trong [hướng dẫn localization](docs/localization.md). Khi chuẩn bị đưa lên máy chủ, dùng [hướng dẫn production](docs/production-deployment.md) và [kiến trúc, dịch vụ, ngân sách production](docs/production-capacity-and-cost.md).
 
+Triển khai alpha trên Railway dùng [hướng dẫn riêng](docs/railway-deployment.md)
+và `scripts/prepare-railway.ps1` để build, kiểm tra và đóng gói artifact trước
+khi upload; không thay đổi các lệnh development hiện tại.
+
 Vận hành production dùng `production-ops.sh` hoặc `production-ops.cmd` cho health,
 bảo trì, backup có xác minh/restore drill và rollback có kiểm soát; xem hướng dẫn
 production trước khi chạy.
@@ -619,7 +623,16 @@ Endpoint production mặc định trong project chỉ là placeholder và không
 
 ### Email tài khoản
 
-Production cần cấu hình SMTP trước khi gửi mã khôi phục mật khẩu hoặc mã xác minh email. Dùng tài khoản SMTP/API key riêng của nhà cung cấp; không dùng mật khẩu đăng nhập email cá nhân và không commit secret vào Git.
+Production cần cấu hình một nhà cung cấp email trước khi gửi mã khôi phục mật khẩu hoặc mã xác minh email. Mặc định backend dùng SMTP để tương thích ngược. Railway Trial/Hobby chặn outbound SMTP, vì vậy bản alpha trên Railway dùng Brevo qua HTTPS API:
+
+```powershell
+$env:FASTTOWIN_EMAIL_PROVIDER='brevo'
+$env:FASTTOWIN_BREVO_API_KEY='replace-with-a-brevo-api-key'
+$env:FASTTOWIN_EMAIL_FROM_EMAIL='verified-sender@example.com'
+$env:FASTTOWIN_EMAIL_FROM_NAME='Fast To Win'
+```
+
+Dùng API key riêng của nhà cung cấp, nhập trực tiếp trong secret manager và không commit secret vào Git. Backend chỉ gửi tới endpoint HTTPS cố định của Brevo, không tự động gửi lại khi timeout và không ghi API key, email người nhận hoặc mã xác minh vào log.
 
 - Port `587`: đặt `FASTTOWIN_SMTP_STARTTLS=true`, `FASTTOWIN_SMTP_SSL=false`.
 - Port `465`: đặt `FASTTOWIN_SMTP_STARTTLS=false`, `FASTTOWIN_SMTP_SSL=true`.

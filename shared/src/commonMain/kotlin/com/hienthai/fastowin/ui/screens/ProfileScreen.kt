@@ -68,7 +68,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
+import com.hienthai.fastowin.ui.components.AppOutlinedTextField as OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -403,7 +403,7 @@ fun ProfileScreen(
                     OutlinedTextField(
                         value = displayName,
                         onValueChange = { if (it.length <= MAX_PROFILE_DISPLAY_NAME_LENGTH) displayName = it },
-                        label = { Text(localized(TextKey.Nickname)) },
+                        label = localized(TextKey.Nickname),
                         supportingText = { Text("${displayName.length}/$MAX_PROFILE_DISPLAY_NAME_LENGTH") },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth().testTag("profile_display_name")
@@ -2182,7 +2182,7 @@ private fun SecurePasswordField(value: String, label: String, onValueChange: (St
     OutlinedTextField(
         value = value,
         onValueChange = { if (it.length <= MAX_ACCOUNT_PASSWORD_LENGTH) onValueChange(it) },
-        label = { Text(label) },
+        label = label,
         leadingIcon = { Icon(Icons.Default.Lock, null) },
         visualTransformation = if (isVisible) VisualTransformation.None else PasswordVisualTransformation(),
         trailingIcon = {

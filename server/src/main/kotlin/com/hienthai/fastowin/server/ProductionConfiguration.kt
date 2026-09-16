@@ -104,6 +104,14 @@ internal fun validateProductionEnvironment(
         "Use a non-default DATABASE_PASSWORD with at least 12 characters in production."
     }
 
+    if (configuredAuthEmailProvider(values) == AuthEmailProvider.BREVO) {
+        val settings = BrevoEmailSettings.fromEnvironment(values, fileReader)
+        require(settings.apiKey.length >= 8 && settings.apiKey != "brevo-secret") {
+            "FASTTOWIN_BREVO_API_KEY is too weak or still a placeholder."
+        }
+        return
+    }
+
     values.required("FASTTOWIN_SMTP_HOST")
     values.required("FASTTOWIN_SMTP_USERNAME")
     values.required("FASTTOWIN_SMTP_FROM_EMAIL")

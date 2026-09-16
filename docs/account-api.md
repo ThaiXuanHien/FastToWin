@@ -246,10 +246,10 @@ chính sách này được áp dụng.
 tiếng Anh. Trường này không làm thay đổi định danh hay nội dung do người dùng nhập.
 
 - Thành công: `200 OK` với thông báo chung, không tiết lộ email có tồn tại hay
-  không. Development có thể trả `devResetToken`; production gửi mã qua SMTP và
+  không. Development có thể trả `devResetToken`; production gửi mã qua nhà cung cấp email và
   không trả token.
 - Lỗi chính: `400 INVALID_EMAIL`, `429 RATE_LIMITED`,
-  `503 PASSWORD_RESET_DELIVERY_UNAVAILABLE` khi production chưa cấu hình SMTP.
+  `503 PASSWORD_RESET_DELIVERY_UNAVAILABLE` khi production chưa cấu hình email.
 
 ### 11. Xác nhận khôi phục mật khẩu
 
@@ -285,7 +285,7 @@ tiếng Anh. Trường này không làm thay đổi định danh hay nội dung 
 không được hỗ trợ, server dùng tiếng Anh.
 
 - Thành công: `200 OK` với response thao tác tài khoản. Development có thể trả
-  `devEmailVerificationCode`; production gửi mã 6 số qua SMTP.
+  `devEmailVerificationCode`; production gửi mã 6 số qua nhà cung cấp email.
 - Lỗi chính: `401 INVALID_ACCESS_TOKEN`, `429 RATE_LIMITED`,
   `503 EMAIL_DELIVERY_UNAVAILABLE`, `503 EMAIL_DELIVERY_FAILED`.
 
@@ -360,4 +360,4 @@ Redis hoặc kho dùng chung trước khi scale ngang.
 
 Token gốc không được lưu trong PostgreSQL; backend chỉ lưu SHA-256 hash. Mật khẩu
 được dẫn xuất bằng PBKDF2-HMAC-SHA256 với salt riêng. Không ghi email, mật khẩu,
-token, session ID hoặc nội dung SMTP secret vào log production.
+token, session ID hoặc secret của nhà cung cấp email vào log production.

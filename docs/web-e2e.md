@@ -96,11 +96,36 @@ Playwright WebKit không thay thế Safari/iOS thật; Chromium không thay th�
 ## Ghi chú Compose Web
 
 - Compose 1.11.1 xuất `testTag` thành DOM `id` trong shadow root, nên cấu hình `testIdAttribute: 'id'`.
-- Accessibility DOM trong suốt; helper lấy bounds từ semantics và click canvas bằng chuột thật. Nhập liệu dùng bàn phím vì Compose thay input khi focus.
+- Accessibility DOM trong suốt; helper lấy bounds từ semantics và click canvas bằng chuột thật. Các ô nhập của app dùng HTML native trên Web qua `HtmlElementView`; viền, nhãn và icon vẫn là Material. Helper bàn phím cũ vẫn nhập được vào những ô này.
 - Không khẳng định nút disabled qua HTML: semantics hiện chưa xuất đủ thuộc tính disabled. Bộ này kiểm tra chữ **ĐÃ MỜI**, popup người nhận và trạng thái sau từ chối; kiểm tra màu tối/khóa bấm cần screenshot/UI test riêng.
 - F5 tại phòng chờ và kết quả là các bước kiểm tra rõ ràng trong kịch bản, không phải retry ngầm. Bộ này chưa đảm bảo cây accessibility được khôi phục đầy đủ sau mọi dialog.
 
 Cách quản lý server và ngắt WebSocket dựa trên [Playwright webServer](https://playwright.dev/docs/test-webserver) và [WebSocketRoute](https://playwright.dev/docs/api/class-websocketroute).
+
+## Ô nhập native — thử nghiệm Safari, 16/09/2026
+
+`AppOutlinedTextField` dùng input/textarea HTML hiển thị sẵn trên cả Wasm và JS,
+không chờ Compose tạo ô ẩn sau khi focus. Android/iOS app tiếp tục dùng
+`OutlinedTextField` Material. Nhãn HTML lấy từ cùng bản dịch với nhãn giao diện;
+email, số và nút bàn phím sử dụng `inputmode`/`enterkeyhint` tương ứng.
+
+Từ thư mục `e2e/`, sau khi build Web:
+
+```powershell
+pnpm exec playwright test --project=chromium-native-input --project=webkit-native-input --project=webkit-smoke
+```
+
+Đã chạy đạt 8 ca trên Windows: chạm vào input thật và giữ focus, che/hiện mật
+khẩu không mất giá trị, gửi đúng email/mật khẩu giả tới backend loopback,
+composition tiếng Trung và chèn giữa chuỗi, giữ vị trí con trỏ khi giá trị nhập
+vượt giới hạn bị khôi phục, gỡ input khi quay lại, đăng nhập
+tài khoản dùng một lần/F5/Back–Forward và lưu ngôn ngữ qua reload.
+
+Chưa xác nhận bàn phím ảo trên Safari iPhone thật. Sau khi deploy bản mới,
+kiểm tra Safari và bản thêm vào màn hình chính: đăng nhập/đăng ký, quên mật khẩu,
+sửa biệt danh, tìm/tạo phòng và nhập trong dialog. Kiểm tra bàn phím mở, ô đang
+nhập không bị che, chuyển ô và nút Xong, gõ tiếng Việt/Trung/Nhật, dán và autofill.
+Nếu PWA còn giữ phiên bản cũ, áp dụng bản cập nhật hoặc đóng/mở lại trước khi test.
 
 ## Xác minh — 04/09/2026
 

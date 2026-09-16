@@ -29,7 +29,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
+import com.hienthai.fastowin.ui.components.AppOutlinedTextField as OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -329,8 +329,8 @@ private fun CreateTournamentCard(
             OutlinedTextField(
                 value = name,
                 onValueChange = { name = it.take(48) },
-                label = { Text(localized(TextKey.TournamentName)) },
-                placeholder = { Text(localized(TextKey.TournamentNameExample)) },
+                label = localized(TextKey.TournamentName),
+                placeholder = localized(TextKey.TournamentNameExample),
                 singleLine = true,
                 shape = RoundedCornerShape(16.dp),
                 modifier = Modifier.fillMaxWidth().testTag("tournament_name")
@@ -414,8 +414,8 @@ private fun CreateTournamentCard(
                                 entryFee = it.toIntOrNull() ?: 0
                             }
                         },
-                        label = { Text(localized(TextKey.EnterEntryFee)) },
-                        placeholder = { Text(localized(TextKey.EntryFeeExample)) },
+                        label = localized(TextKey.EnterEntryFee),
+                        placeholder = localized(TextKey.EntryFeeExample),
                         singleLine = true,
                         prefix = {
                             Icon(

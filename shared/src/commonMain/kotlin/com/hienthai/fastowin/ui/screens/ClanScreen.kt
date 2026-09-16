@@ -39,7 +39,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
+import com.hienthai.fastowin.ui.components.AppOutlinedTextField as OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.ScaffoldDefaults
 import androidx.compose.material3.Surface
@@ -225,8 +225,8 @@ private fun ClanDiscoveryView(
             OutlinedTextField(
                 value = searchQuery,
                 onValueChange = { searchQuery = it },
-                label = { Text(localized(TextKey.SearchClan)) },
-                placeholder = { Text(localized(TextKey.SearchClanPlaceholder)) },
+                label = localized(TextKey.SearchClan),
+                placeholder = localized(TextKey.SearchClanPlaceholder),
                 modifier = Modifier.fillMaxWidth().testTag("clan_search_field"),
                 singleLine = true,
                 leadingIcon = { Icon(Icons.Rounded.Search, contentDescription = null) },
@@ -379,7 +379,7 @@ private fun CreateClanDialog(onDismiss: () -> Unit, onCreate: (String, String) -
         OutlinedTextField(
             value = name,
             onValueChange = { name = it.take(32) },
-            label = { Text(localized(TextKey.ClanName)) },
+            label = localized(TextKey.ClanName),
             leadingIcon = { Icon(Icons.Rounded.Shield, contentDescription = null) },
             singleLine = true,
             modifier = Modifier.fillMaxWidth().testTag("create_clan_name")
@@ -387,7 +387,7 @@ private fun CreateClanDialog(onDismiss: () -> Unit, onCreate: (String, String) -
         OutlinedTextField(
             value = description,
             onValueChange = { description = it.take(160) },
-            label = { Text(localized(TextKey.ClanDescription)) },
+            label = localized(TextKey.ClanDescription),
             minLines = 3,
             maxLines = 4,
             modifier = Modifier.fillMaxWidth().testTag("create_clan_description")

@@ -178,7 +178,7 @@ Trên Web, refresh token không được trả trong JSON hoặc lưu trong `loc
 
 Compose Multiplatform có màn hình đăng nhập, đăng ký và lựa chọn chơi khách. Android mã hóa phiên bằng AES-GCM với khóa trong Android Keystore; iOS lưu phiên trong Keychain. Ứng dụng tự refresh access token trước khi hết hạn và tài khoản dùng `connect_account` để xác thực WebSocket. Server tự lấy player ID và biệt danh từ phiên đăng nhập, không nhận các giá trị này từ client. Chế độ khách vẫn dùng `connect_guest` và resume token cũ.
 
-Trong màn **Hồ sơ**, tài khoản có thể đổi biệt danh/avatar và mở phần **Bảo mật** để đổi mật khẩu. Đổi mật khẩu thành công thu hồi mọi phiên hiện có và đưa ứng dụng về màn đăng nhập. Luồng **Quên mật khẩu** khóa email sau khi gửi yêu cầu, nhận mã có hiệu lực 15 phút và đặt mật khẩu mới. Ở môi trường dev mã được hiển thị và tự điền; production gửi qua SMTP và không trả token trong API response. Tài khoản mới cũng phải nhập mã email 6 số trước khi vào game. Client và backend cùng áp dụng giới hạn mật khẩu từ 8 đến 128 ký tự.
+Trong màn **Hồ sơ**, tài khoản có thể đổi biệt danh/avatar và mở phần **Bảo mật** để đổi mật khẩu. Đổi mật khẩu thành công thu hồi mọi phiên hiện có và đưa ứng dụng về màn đăng nhập. Luồng **Quên mật khẩu** khóa email sau khi gửi yêu cầu, nhận mã có hiệu lực 15 phút và đặt mật khẩu mới. Ở môi trường dev mã được hiển thị và tự điền; production gửi qua nhà cung cấp email đã chọn và không trả token trong API response. Tài khoản mới cũng phải nhập mã email 6 số trước khi vào game. Client và backend cùng áp dụng giới hạn mật khẩu từ 8 đến 128 ký tự.
 
 Mỗi tài khoản chỉ có một phiên đăng nhập hoạt động. Khi đăng nhập thành công trên thiết bị mới, backend thu hồi toàn bộ access/refresh token cũ, đóng WebSocket cũ với lý do `Account signed in elsewhere` và đưa thiết bị cũ về màn đăng nhập. Thiết bị mới giữ nguyên player ID và có thể nhận lại snapshot phòng/trận của tài khoản. Việc thay thế socket không đánh dấu người chơi offline và không làm mất phòng.
 
@@ -259,15 +259,26 @@ $env:FASTTOWIN_SMTP_SSL="false"
 
 Không commit SMTP secret vào Git. Dùng STARTTLS với port 587; nếu nhà cung cấp yêu cầu SSL port 465 thì đặt `FASTTOWIN_SMTP_STARTTLS=false` và `FASTTOWIN_SMTP_SSL=true`.
 
+Khi hạ tầng chặn outbound SMTP (ví dụ Railway Trial/Hobby), chọn Brevo HTTPS API
+thay cho toàn bộ biến SMTP:
+
+```powershell
+$env:FASTTOWIN_EMAIL_PROVIDER="brevo"
+$env:FASTTOWIN_BREVO_API_KEY="thay-bang-brevo-api-key"
+$env:FASTTOWIN_EMAIL_FROM_EMAIL="dia-chi-da-xac-minh@example.com"
+$env:FASTTOWIN_EMAIL_FROM_NAME="Fast To Win"
+```
+
 Các biến bắt buộc ở production được backend kiểm tra lúc khởi động: origin HTTPS
 thật trong `FASTTOWIN_PUBLIC_URL` và `FASTTOWIN_WEB_ORIGINS`, PostgreSQL cùng mật
-khẩu ít nhất 12 ký tự, và SMTP cùng đúng một chế độ STARTTLS hoặc SSL. Cấu hình
+khẩu ít nhất 12 ký tự, và cấu hình đầy đủ cho SMTP hoặc Brevo. Với SMTP phải bật
+đúng một chế độ STARTTLS hoặc SSL. Cấu hình
 Docker đầy đủ, gồm push notification, bảo trì và secret mount từ file, nằm tại
 [`deploy/.env.production.example`](../deploy/.env.production.example) và
 [`compose.production.yaml`](../compose.production.yaml). Không dùng giá trị mẫu trong
 khối lệnh trên để triển khai thật.
 
-Backend cũng hỗ trợ `DATABASE_PASSWORD_FILE` và `FASTTOWIN_SMTP_PASSWORD_FILE` để
+Backend cũng hỗ trợ `DATABASE_PASSWORD_FILE`, `FASTTOWIN_SMTP_PASSWORD_FILE` và `FASTTOWIN_BREVO_API_KEY_FILE` để
 đọc secret được mount từ file. Không đặt đồng thời biến trực tiếp và biến `_FILE`.
 Nếu bật `FASTTOWIN_TRUST_PROXY_HEADERS=true`, phải bảo đảm backend chỉ nhận traffic
 từ reverse proxy đáng tin cậy; cấu hình Compose production đã bảo đảm điều này bằng
@@ -315,7 +326,7 @@ Test backend bao gồm:
 - Lời mời bạn bè vào phòng của tài khoản được lưu với thời hạn trong PostgreSQL và khôi phục cùng phòng sau khi server restart; chế độ chạy thuần bộ nhớ vẫn mất dữ liệu này.
 - Snapshot hiện dành cho một tiến trình backend; khi chạy nhiều instance cần chuyển trạng thái realtime sang Redis hoặc kho trạng thái phân tán.
 - Rate limit hiện nằm trong bộ nhớ từng tiến trình và được làm mới khi server restart; nhiều instance cần dùng Redis.
-- SMTP gửi mã khôi phục/xác minh và API đăng xuất tất cả thiết bị đã được triển khai; production sẽ từ chối khởi động nếu thiếu cấu hình SMTP bắt buộc.
+- SMTP hoặc Brevo HTTPS API gửi mã khôi phục/xác minh và API đăng xuất tất cả thiết bị đã được triển khai; production sẽ từ chối khởi động nếu thiếu cấu hình email bắt buộc.
 - Theo dõi log tác vụ vòng đời mùa; backend kiểm tra mỗi phút, đóng băng bảng xếp hạng mùa cũ và tự tạo mùa kế tiếp.
 - Cấu hình local dùng `ws://`; môi trường production phải dùng `wss://`.
 
