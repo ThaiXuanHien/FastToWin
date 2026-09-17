@@ -42,16 +42,16 @@ class PostgresAuthenticationTest {
             ).session
             val profiles = PostgresPlayerProfileRepository(dataSource)
             try {
-                assertTrue(profiles.updateFcmToken(registration.userId, "token-ja", "ja-JP"))
+                assertTrue(profiles.updateFcmToken(registration.userId, "token-vi", "vi-VN"))
                 assertEquals(
-                    PushTarget("token-ja", AppLanguage.JAPANESE),
+                    PushTarget("token-vi", AppLanguage.VIETNAMESE),
                     profiles.findPushTarget(
                         registration.userId,
                         PushNotificationCategory.ROOM_INVITATIONS
                     )
                 )
 
-                assertTrue(profiles.updateFcmToken(registration.userId, "token-en", "ar-EG"))
+                assertTrue(profiles.updateFcmToken(registration.userId, "token-en", "ja-JP"))
                 assertEquals(
                     PushTarget("token-en", AppLanguage.ENGLISH),
                     profiles.findPushTarget(

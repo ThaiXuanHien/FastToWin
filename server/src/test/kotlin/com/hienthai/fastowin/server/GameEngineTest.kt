@@ -393,7 +393,7 @@ class GameEngineTest {
     }
 
     @Test
-    fun `account fcm token update stores canonical notification language`() = runTest {
+    fun `account fcm token update falls back unsupported notification language to English`() = runTest {
         val playerId = UUID.randomUUID().toString()
         var storedToken: String? = null
         var storedLanguage: String? = null
@@ -417,7 +417,7 @@ class GameEngineTest {
         engine.handle(playerId, ClientMessage.UpdateFcmToken(" token-ja ", "ja-JP"))
 
         assertEquals("token-ja", storedToken)
-        assertEquals("ja", storedLanguage)
+        assertEquals("en", storedLanguage)
     }
 
     @Test
