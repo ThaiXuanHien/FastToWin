@@ -85,7 +85,7 @@ internal class SharedResourceCache<K, S, V>(
     private val mutex = Mutex()
     private val exact = LinkedHashMap<K, V>()
     private val latest = LinkedHashMap<S, V>()
-    private val latestRequestedKey = mutableMapOf<S, K>()
+    private val latestRequestedKey = LinkedHashMap<S, K>()
     private val pending = mutableMapOf<K, Deferred<V>>()
 
     fun peekExact(key: K): V? = exact[key]
@@ -95,6 +95,7 @@ internal class SharedResourceCache<K, S, V>(
     suspend fun load(key: K, source: S): V {
         val sharedLoad = mutex.withLock {
             latestRequestedKey[source] = key
+            latestRequestedKey.trimCache(maxEntries)
             exact[key]?.let { value ->
                 latest[source] = value
                 latest.trimCache(maxEntries)

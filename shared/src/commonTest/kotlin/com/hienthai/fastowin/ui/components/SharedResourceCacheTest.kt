@@ -64,4 +64,32 @@ class SharedResourceCacheTest {
         assertEquals("old bitmap", cache.peekExact("avatar?v=1"))
         assertEquals("new bitmap", cache.peekLatest("avatar"))
     }
+
+    @Test
+    fun `latest revision tracking stays within the cache source limit`() = runTest {
+        val finishes = mapOf(
+            "first?v=1" to CompletableDeferred<String>(),
+            "second?v=1" to CompletableDeferred<String>()
+        )
+        val cache = SharedResourceCache<String, String, String>(
+            scope = backgroundScope,
+            maxEntries = 1,
+            loader = { key -> finishes.getValue(key).await() }
+        )
+
+        val firstLoad = async { cache.load("first?v=1", "first") }
+        runCurrent()
+        val secondLoad = async { cache.load("second?v=1", "second") }
+        runCurrent()
+
+        finishes.getValue("first?v=1").complete("first bitmap")
+        runCurrent()
+        firstLoad.await()
+        finishes.getValue("second?v=1").complete("second bitmap")
+        runCurrent()
+        secondLoad.await()
+
+        assertEquals(null, cache.peekLatest("first"))
+        assertEquals("second bitmap", cache.peekLatest("second"))
+    }
 }
