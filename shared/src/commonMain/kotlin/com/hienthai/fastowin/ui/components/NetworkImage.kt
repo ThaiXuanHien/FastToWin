@@ -84,21 +84,20 @@ internal class SharedResourceCache<K, S, V>(
 ) {
     private val mutex = Mutex()
     private val exact = LinkedHashMap<K, V>()
-    private val latest = LinkedHashMap<S, V>()
-    private val latestRequestedKey = LinkedHashMap<S, K>()
+    private val latest = LinkedHashMap<S, LatestResource<K, V>>()
     private val pending = mutableMapOf<K, Deferred<V>>()
 
     fun peekExact(key: K): V? = exact[key]
 
-    fun peekLatest(source: S): V? = latest[source]
+    fun peekLatest(source: S): V? = latest[source]?.value
 
     suspend fun load(key: K, source: S): V {
         val sharedLoad = mutex.withLock {
-            latestRequestedKey[source] = key
-            latestRequestedKey.trimCache(maxEntries)
+            val previous = latest.remove(source)
+            latest[source] = LatestResource(requestedKey = key, value = previous?.value)
+            latest.trimCache(maxEntries)
             exact[key]?.let { value ->
-                latest[source] = value
-                latest.trimCache(maxEntries)
+                latest[source] = LatestResource(requestedKey = key, value = value)
                 return value
             }
             pending[key] ?: createLoad(key, source).also { pending[key] = it }
@@ -112,11 +111,11 @@ internal class SharedResourceCache<K, S, V>(
             val value = loader(key)
             mutex.withLock {
                 exact[key] = value
-                if (latestRequestedKey[source] == key) {
-                    latest[source] = value
+                val sourceState = latest[source]
+                if (sourceState?.requestedKey == key) {
+                    latest[source] = sourceState.copy(value = value)
                 }
                 exact.trimCache(maxEntries)
-                latest.trimCache(maxEntries)
             }
             value
         }
@@ -131,6 +130,11 @@ internal class SharedResourceCache<K, S, V>(
         return sharedLoad
     }
 }
+
+private data class LatestResource<K, V>(
+    val requestedKey: K,
+    val value: V?
+)
 
 private fun <K, V> LinkedHashMap<K, V>.trimCache(maxEntries: Int) {
     while (size > maxEntries) remove(keys.first())

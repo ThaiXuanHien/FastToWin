@@ -92,4 +92,47 @@ class SharedResourceCacheTest {
         assertEquals(null, cache.peekLatest("first"))
         assertEquals("second bitmap", cache.peekLatest("second"))
     }
+
+    @Test
+    fun `requesting a newer revision promotes its source before another source is evicted`() = runTest {
+        val finishes = mapOf(
+            "a?v=1" to CompletableDeferred<String>(),
+            "b?v=1" to CompletableDeferred<String>(),
+            "a?v=2" to CompletableDeferred<String>(),
+            "c?v=1" to CompletableDeferred<String>()
+        )
+        val cache = SharedResourceCache<String, String, String>(
+            scope = backgroundScope,
+            maxEntries = 2,
+            loader = { key -> finishes.getValue(key).await() }
+        )
+
+        val firstA = async { cache.load("a?v=1", "a") }
+        runCurrent()
+        finishes.getValue("a?v=1").complete("old a")
+        runCurrent()
+        firstA.await()
+
+        val firstB = async { cache.load("b?v=1", "b") }
+        runCurrent()
+        finishes.getValue("b?v=1").complete("b")
+        runCurrent()
+        firstB.await()
+
+        val newA = async { cache.load("a?v=2", "a") }
+        runCurrent()
+        val firstC = async { cache.load("c?v=1", "c") }
+        runCurrent()
+
+        finishes.getValue("c?v=1").complete("c")
+        runCurrent()
+        firstC.await()
+        finishes.getValue("a?v=2").complete("new a")
+        runCurrent()
+        newA.await()
+
+        assertEquals("new a", cache.peekLatest("a"))
+        assertEquals(null, cache.peekLatest("b"))
+        assertEquals("c", cache.peekLatest("c"))
+    }
 }
