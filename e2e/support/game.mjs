@@ -211,9 +211,20 @@ export async function openLanguageDialog(page) {
   // The URL changes before WebKit finishes publishing the Compose semantics
   // tree on slower CI runners, so wait for the destination screen itself.
   await expect(tag(page, 'settings_screen')).toBeAttached({ timeout: 30_000 });
+  const setting = tag(page, 'language_setting');
+  // WebKit exposes only the currently materialized portion of Compose's
+  // accessibility tree. The language row sits below optional install/push
+  // sections, so reveal it before asking the generic click helper for bounds.
+  for (let attempt = 0; attempt < 12 && await setting.count() === 0; attempt++) {
+    const viewport = page.viewportSize();
+    await page.mouse.move(viewport.width / 2, viewport.height / 2);
+    await page.mouse.wheel(0, 450);
+    await page.waitForTimeout(150);
+  }
+  await expect(setting).toBeAttached();
   const dialog = tag(page, 'language_dialog');
   for (let attempt = 0; attempt < 3 && await dialog.count() === 0; attempt++) {
-    await click(page, tag(page, 'language_setting'));
+    await click(page, setting);
     await page.waitForTimeout(250);
   }
   await expect(dialog).toBeAttached();

@@ -29,6 +29,8 @@ import org.w3c.dom.events.KeyboardEvent
 
 internal actual val usesNativeWebTextInput = true
 
+private const val CONTROLLED_RECONCILIATION_DELAY_MS = 50
+
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
 internal actual fun NativeWebTextInput(
@@ -43,7 +45,7 @@ internal actual fun NativeWebTextInput(
     val options by rememberUpdatedState(keyboardOptions)
     val editable by rememberUpdatedState(enabled && !readOnly)
     var composing by remember { mutableStateOf(false) }
-    // Force a controlled-value update even when validation rejects an edit.
+    val browserEditState = remember { BrowserEditState() }
     var editRevision by remember { mutableStateOf(0) }
     var focus by remember { mutableStateOf<FocusInteraction.Focus?>(null) }
     val density = LocalDensity.current
@@ -78,21 +80,20 @@ internal actual fun NativeWebTextInput(
             element.addEventListener("compositionstart", { composing = true })
             element.addEventListener("compositionend", {
                 composing = false
-                if (editable) change(element.inputValue())
-                // Let Compose consume the browser-authored value before checking
-                // whether validation rejected it. An immediate controlled write
-                // races the callback and moves the caret to the start on Safari.
-                window.setTimeout({
-                    editRevision++
-                    null
-                }, 0)
+                if (editable) publishBrowserEdit(
+                    element = element,
+                    state = browserEditState,
+                    onReconciliationReady = { editRevision++ },
+                    onValueChange = change,
+                )
             })
             element.addEventListener("input", {
-                if (!composing && editable) change(element.inputValue())
-                window.setTimeout({
-                    editRevision++
-                    null
-                }, 0)
+                if (!composing && editable) publishBrowserEdit(
+                    element = element,
+                    state = browserEditState,
+                    onReconciliationReady = { editRevision++ },
+                    onValueChange = change,
+                )
             })
             element.addEventListener("keydown", { event ->
                 val key = event as KeyboardEvent
@@ -118,7 +119,7 @@ internal actual fun NativeWebTextInput(
         },
         modifier = modifier,
         update = { element ->
-            editRevision // Read so rejected edits also restore the controlled value.
+            editRevision // Re-run after the latest browser edit can be reconciled.
             val type = when {
                 visualTransformation is PasswordVisualTransformation -> "password"
                 keyboardOptions.keyboardType == KeyboardType.Email -> "email"
@@ -165,7 +166,21 @@ internal actual fun NativeWebTextInput(
             element.style.color = "#" + textStyle.color.toArgb().toUInt().toString(16).padStart(8, '0').takeLast(6)
             // Never rewrite equal values or in-progress IME text: assigning value
             // resets the selection and can terminate Japanese/Chinese composition.
-            if (!composing && element.inputValue() != value) element.setInputValue(value)
+            if (!composing) {
+                val pending = browserEditState.pendingValue
+                when {
+                    pending == null && element.inputValue() != value -> element.setInputValue(value)
+                    pending == value -> {
+                        browserEditState.pendingValue = null
+                        browserEditState.reconciliationReady = false
+                    }
+                    browserEditState.reconciliationReady -> {
+                        element.setInputValue(value)
+                        browserEditState.pendingValue = null
+                        browserEditState.reconciliationReady = false
+                    }
+                }
+            }
         },
         onRelease = { element ->
             element.blur()
@@ -173,6 +188,37 @@ internal actual fun NativeWebTextInput(
             focus = null
         },
     )
+}
+
+private class BrowserEditState(
+    var pendingValue: String? = null,
+    var generation: Int = 0,
+    var reconciliationReady: Boolean = false,
+)
+
+private fun publishBrowserEdit(
+    element: HTMLElement,
+    state: BrowserEditState,
+    onReconciliationReady: () -> Unit,
+    onValueChange: (String) -> Unit,
+) {
+    val browserValue = element.inputValue()
+    val currentGeneration = ++state.generation
+    state.pendingValue = browserValue
+    state.reconciliationReady = false
+    onValueChange(browserValue)
+    // Compose may publish the old controlled value before the parent consumes
+    // this DOM event. Ignore that transient value so WebKit keeps its caret and
+    // typed order. Reconcile only after Compose has had time to render the
+    // accepted state; this still restores a rejected value (for example a
+    // password over the length limit) without racing rapid Safari input events.
+    window.setTimeout({
+        if (state.generation == currentGeneration) {
+            state.reconciliationReady = true
+            onReconciliationReady()
+        }
+        null
+    }, CONTROLLED_RECONCILIATION_DELAY_MS)
 }
 
 private fun HTMLElement.inputValue(): String = when (this) {
