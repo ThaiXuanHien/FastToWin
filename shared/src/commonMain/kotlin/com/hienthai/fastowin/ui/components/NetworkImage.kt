@@ -15,6 +15,7 @@ import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -66,23 +67,27 @@ fun NetworkImage(
 
 private suspend fun loadNetworkImage(url: String, sourceKey: String): ImageBitmap {
     val pending = imageCacheMutex.withLock {
+        memoryImageCache[sourceKey]?.let { return it }
         pendingImageLoads[url] ?: imageLoadScope.async {
             val bytes = httpClient.get(url).readRawBytes()
-            withContext(Dispatchers.Default) { bytes.toImageBitmap() }
-        }.also { pendingImageLoads[url] = it }
-    }
-    return try {
-        pending.await().also { bitmap ->
+            val bitmap = withContext(Dispatchers.Default) { bytes.toImageBitmap() }
             imageCacheMutex.withLock {
                 memoryImageCache[sourceKey] = bitmap
                 while (memoryImageCache.size > MAX_MEMORY_IMAGE_CACHE_ENTRIES) {
                     memoryImageCache.remove(memoryImageCache.keys.first())
                 }
             }
-        }
-    } finally {
-        imageCacheMutex.withLock {
-            if (pendingImageLoads[url] === pending) pendingImageLoads.remove(url)
+            bitmap
+        }.also { deferred ->
+            pendingImageLoads[url] = deferred
+            deferred.invokeOnCompletion {
+                imageLoadScope.launch {
+                    imageCacheMutex.withLock {
+                        if (pendingImageLoads[url] === deferred) pendingImageLoads.remove(url)
+                    }
+                }
+            }
         }
     }
+    return pending.await()
 }

@@ -99,7 +99,7 @@ class LocalizationCatalogTest {
 
     @Test
     fun explicitPreferenceWinsAndUnknownPreferenceUsesDevice() {
-        assertEquals(AppLanguage.VIETNAMESE, resolveAppLanguage("de", listOf("vi-VN")))
+        assertEquals(AppLanguage.ENGLISH, resolveAppLanguage("de", listOf("vi-VN")))
         assertEquals(AppLanguage.ENGLISH, resolveAppLanguage("future", listOf("ja-JP")))
         assertEquals(AppLanguage.ENGLISH, resolveAppLanguage("system", emptyList()))
         assertEquals(AppLanguage.ENGLISH, resolveAppLanguage("system", listOf("ar", "fr-CA")))

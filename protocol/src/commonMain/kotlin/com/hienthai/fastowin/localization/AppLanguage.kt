@@ -35,10 +35,14 @@ enum class AppLanguage(val code: String, val languageTag: String, val nativeName
 val selectableAppLanguages: List<AppLanguage> = listOf(AppLanguage.VIETNAMESE, AppLanguage.ENGLISH)
 
 /** Unsupported saved/system languages deliberately migrate to English. */
-fun resolveAppLanguage(savedCode: String, systemTags: List<String>): AppLanguage =
-    selectableAppLanguages.firstOrNull { it.code.equals(savedCode.trim(), ignoreCase = true) }
-        ?: systemTags.firstNotNullOfOrNull(::languageForTag)
-        ?: AppLanguage.ENGLISH
+fun resolveAppLanguage(savedCode: String, systemTags: List<String>): AppLanguage {
+    val normalizedCode = savedCode.trim()
+    selectableAppLanguages.firstOrNull {
+        it.code.equals(normalizedCode, ignoreCase = true)
+    }?.let { return it }
+    if (!normalizedCode.equals("system", ignoreCase = true)) return AppLanguage.ENGLISH
+    return systemTags.firstNotNullOfOrNull(::languageForTag) ?: AppLanguage.ENGLISH
+}
 
 private fun languageForTag(tag: String): AppLanguage? {
     val parts = tag.trim().replace('_', '-').lowercase().split('-')
