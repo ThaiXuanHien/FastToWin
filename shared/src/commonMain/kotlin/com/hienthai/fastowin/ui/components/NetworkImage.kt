@@ -11,6 +11,7 @@ import io.ktor.client.request.*
 import io.ktor.client.statement.*
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -22,15 +23,15 @@ import kotlinx.coroutines.withContext
 
 private val httpClient = HttpClient()
 private const val MAX_MEMORY_IMAGE_CACHE_ENTRIES = 96
-private val imageLoadScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-private val imageCacheMutex = Mutex()
-// Exact URLs keep cache-busting revisions distinct. The source cache is only a
-// visual placeholder while a newer revision of the same avatar is downloaded.
-// Both maps are read and written from the Compose effect context; background
-// workers only fetch/decode bytes and never mutate them.
-private val exactImageCache = LinkedHashMap<String, ImageBitmap>()
-private val latestSourceImageCache = LinkedHashMap<String, ImageBitmap>()
-private val pendingImageLoads = mutableMapOf<String, Deferred<ImageBitmap>>()
+private val imageLoadScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+private val imageCache = SharedResourceCache<String, String, ImageBitmap>(
+    scope = imageLoadScope,
+    maxEntries = MAX_MEMORY_IMAGE_CACHE_ENTRIES,
+    loader = { url ->
+        val bytes = httpClient.get(url).readRawBytes()
+        withContext(Dispatchers.Default) { bytes.toImageBitmap() }
+    }
+)
 
 @Composable
 fun NetworkImage(
@@ -44,13 +45,13 @@ fun NetworkImage(
     // A different player URL still resets immediately and cannot show another user's avatar.
     val sourceKey = url.substringBefore('?')
     var imageBitmap by remember(sourceKey) {
-        mutableStateOf(exactImageCache[url] ?: latestSourceImageCache[sourceKey])
+        mutableStateOf(imageCache.peekExact(url) ?: imageCache.peekLatest(sourceKey))
     }
 
     LaunchedEffect(url) {
         if (url.isEmpty()) return@LaunchedEffect
         try {
-            val bitmap = loadNetworkImage(url, sourceKey)
+            val bitmap = imageCache.load(url, sourceKey)
             imageBitmap = bitmap
         } catch (cancelled: CancellationException) {
             throw cancelled
@@ -72,45 +73,56 @@ fun NetworkImage(
     }
 }
 
-private suspend fun loadNetworkImage(url: String, sourceKey: String): ImageBitmap {
-    val pending = imageCacheMutex.withLock {
-        exactImageCache[url]?.let { return it }
-        pendingImageLoads[url] ?: imageLoadScope.async {
-            val bytes = httpClient.get(url).readRawBytes()
-            withContext(Dispatchers.Default) { bytes.toImageBitmap() }
-        }.also { deferred ->
-            pendingImageLoads[url] = deferred
+/**
+ * Owns in-flight work and cache commits independently from any composable waiter.
+ * All synchronous peeks and cache writes are confined to [scope].
+ */
+internal class SharedResourceCache<K, S, V>(
+    private val scope: CoroutineScope,
+    private val maxEntries: Int,
+    private val loader: suspend (K) -> V
+) {
+    private val mutex = Mutex()
+    private val exact = LinkedHashMap<K, V>()
+    private val latest = LinkedHashMap<S, V>()
+    private val pending = mutableMapOf<K, Deferred<V>>()
+
+    fun peekExact(key: K): V? = exact[key]
+
+    fun peekLatest(source: S): V? = latest[source]
+
+    suspend fun load(key: K, source: S): V {
+        val sharedLoad = mutex.withLock {
+            exact[key]?.let { return it }
+            pending[key] ?: createLoad(key, source).also { pending[key] = it }
         }
+        return sharedLoad.await()
     }
-    return try {
-        val bitmap = pending.await()
-        imageCacheMutex.withLock {
-            exactImageCache[url] = bitmap
-            latestSourceImageCache[sourceKey] = bitmap
-            exactImageCache.trimImageCache()
-            latestSourceImageCache.trimImageCache()
-            if (pendingImageLoads[url] === pending) pendingImageLoads.remove(url)
-        }
-        bitmap
-    } catch (error: Throwable) {
-        if (pending.isCompleted) {
-            imageCacheMutex.withLock {
-                if (pendingImageLoads[url] === pending) pendingImageLoads.remove(url)
+
+    private fun createLoad(key: K, source: S): Deferred<V> {
+        lateinit var sharedLoad: Deferred<V>
+        sharedLoad = scope.async(start = CoroutineStart.LAZY) {
+            val value = loader(key)
+            mutex.withLock {
+                exact[key] = value
+                latest[source] = value
+                exact.trimCache(maxEntries)
+                latest.trimCache(maxEntries)
             }
-        } else {
-            // The shared request outlives an individual composition. Clean up
-            // after it finishes without removing it while another avatar waits.
-            imageLoadScope.launch {
-                runCatching { pending.await() }
-                imageCacheMutex.withLock {
-                    if (pendingImageLoads[url] === pending) pendingImageLoads.remove(url)
+            value
+        }
+        sharedLoad.invokeOnCompletion {
+            scope.launch {
+                mutex.withLock {
+                    if (pending[key] === sharedLoad) pending.remove(key)
                 }
             }
         }
-        throw error
+        sharedLoad.start()
+        return sharedLoad
     }
 }
 
-private fun LinkedHashMap<String, ImageBitmap>.trimImageCache() {
-    while (size > MAX_MEMORY_IMAGE_CACHE_ENTRIES) remove(keys.first())
+private fun <K, V> LinkedHashMap<K, V>.trimCache(maxEntries: Int) {
+    while (size > maxEntries) remove(keys.first())
 }

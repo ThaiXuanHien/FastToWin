@@ -69,6 +69,7 @@ import com.hienthai.fastowin.ui.components.ArcadeBackdrop
 import com.hienthai.fastowin.ui.components.ArcadeDialog
 import com.hienthai.fastowin.localization.AppLanguage
 import com.hienthai.fastowin.localization.selectableAppLanguages
+import com.hienthai.fastowin.localization.normalizeAppLanguageSelection
 import com.hienthai.fastowin.localization.TextKey
 import com.hienthai.fastowin.localization.localized
 import com.hienthai.fastowin.localization.platformLanguageTags
@@ -360,7 +361,8 @@ fun SettingsScreen(
 
 @Composable
 private fun LanguageSettingRow(code: String, systemLanguage: AppLanguage, onClick: () -> Unit) {
-    val selected = selectableAppLanguages.firstOrNull { it.code == code }
+    val selection = normalizeAppLanguageSelection(code)
+    val selected = selectableAppLanguages.firstOrNull { it.code == selection }
     Surface(
         onClick = onClick,
         modifier = Modifier.fillMaxWidth().testTag("language_setting"),
@@ -376,8 +378,11 @@ private fun LanguageSettingRow(code: String, systemLanguage: AppLanguage, onClic
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(localized(TextKey.LanguageTitle), fontWeight = FontWeight.SemiBold)
                 Text(
-                    selected?.nativeName
-                        ?: localized(TextKey.ResolvedSystemLanguage, "language" to systemLanguage.nativeName),
+                    if (selection == "system") {
+                        localized(TextKey.ResolvedSystemLanguage, "language" to systemLanguage.nativeName)
+                    } else {
+                        selected?.nativeName ?: AppLanguage.ENGLISH.nativeName
+                    },
                     style = MaterialTheme.typography.bodySmall
                 )
             }
@@ -393,7 +398,7 @@ private fun LanguageDialog(
     onSelected: (String) -> Unit,
     onDismiss: () -> Unit
 ) {
-    val selection = selectableAppLanguages.firstOrNull { it.code == selectedCode }?.code ?: "system"
+    val selection = normalizeAppLanguageSelection(selectedCode)
     ArcadeDialog(
         title = localized(TextKey.ChooseLanguageTitle),
         onDismissRequest = onDismiss,

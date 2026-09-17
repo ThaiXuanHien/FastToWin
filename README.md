@@ -65,13 +65,12 @@ Cấu hình chính hiện tại:
 
 ## Ngôn ngữ
 
-Fast To Win có đúng 12 catalog: Việt, Anh, Trung giản thể, Nhật, Hàn, Tây Ban Nha,
-Bồ Đào Nha (Brazil), Pháp, Đức, Indonesia, Thái và Nga. Người chơi có thể đổi
-ngôn ngữ ngay trong Cài đặt mà không mất màn hiện tại, dữ liệu form hoặc trạng
-thái trận. Nội dung do người chơi nhập luôn được giữ nguyên; nội dung chưa có bản
-dịch hoặc locale thiết bị không được hỗ trợ dùng tiếng Anh. Tùy chọn **Hệ thống**
-chỉ là chế độ chọn locale thiết bị, không phải catalog thứ 13. Thuật ngữ sản phẩm
-cho skin mặt thẻ/số là **Mặt số**.
+Fast To Win hiện cho phép chọn **Tiếng Việt** hoặc **English**. Người chơi có thể
+đổi ngôn ngữ ngay trong Cài đặt mà không mất màn hiện tại, dữ liệu form hoặc trạng
+thái trận. Nội dung do người chơi nhập luôn được giữ nguyên; mã ngôn ngữ cũ, nội
+dung chưa có bản dịch hoặc locale thiết bị không được hỗ trợ đều dùng tiếng Anh.
+Tùy chọn **Hệ thống** chỉ phân giải sang Tiếng Việt hoặc English. Các catalog cũ
+được giữ trong mã nguồn để đọc dữ liệu tương thích, nhưng không xuất hiện trong UI.
 
 ## 1. Chuẩn bị môi trường Windows/Android
 

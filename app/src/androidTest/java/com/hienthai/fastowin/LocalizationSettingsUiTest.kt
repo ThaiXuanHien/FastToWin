@@ -65,10 +65,19 @@ class LocalizationSettingsUiTest {
         composeRule.onNodeWithText("Theo hệ thống · English").performScrollTo().assertIsDisplayed()
     }
 
+    @Test
+    fun unsupportedLegacySelectionIsShownAsEnglishInsteadOfSystem() {
+        renderSettings(initialLanguageCode = "ja", systemLanguageTags = listOf("vi-VN"))
+
+        composeRule.onNodeWithTag("language_setting").performScrollTo().performClick()
+        composeRule.onNodeWithTag("language_option_en").assertIsSelected()
+    }
+
     private fun renderSettings(
+        initialLanguageCode: String = "vi",
         systemLanguageTags: List<String> = listOf("vi-VN")
     ): androidx.compose.runtime.MutableState<AppPreferences> {
-        val preferences = mutableStateOf(AppPreferences(languageCode = "vi"))
+        val preferences = mutableStateOf(AppPreferences(languageCode = initialLanguageCode))
         composeRule.setContent {
             ProvideLocalization(resolveSavedLanguage(preferences.value.languageCode, listOf("vi-VN"))) {
                 FastToWinTheme(preferences.value) {

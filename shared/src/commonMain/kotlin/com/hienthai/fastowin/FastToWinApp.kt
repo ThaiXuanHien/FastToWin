@@ -579,7 +579,34 @@ private fun GameContent(
             !state.isMatchStarted &&
             !state.isGameOver
     }
-    friendRequestPrompt?.let { request ->
+    val pendingSeasonReward = state.profile?.progression?.latestSeasonReward?.takeIf {
+        !it.acknowledged && it.seasonNumber > 0
+    }
+    val canShowWebUpdate = serviceReachable != false &&
+        webUpdateAvailable &&
+        state.currentRoomId == null &&
+        !state.isMatchmaking &&
+        !state.isMatchStarted &&
+        !state.isGameOver
+    val canShowSeasonSummary = pendingSeasonReward != null &&
+        state.currentRoomId == null &&
+        !state.isMatchmaking &&
+        !showTutorial &&
+        !showSettings &&
+        !showSeasonHistory &&
+        !showPracticeLauncher &&
+        !showPracticeModePicker &&
+        practiceMode == null
+    val globalPrompt = selectGlobalPrompt(
+        hasRoomInvitation = state.roomInvitationPrompt != null,
+        hasTournamentInvitation = state.tournamentInvitationPrompt != null,
+        hasChallengeError = challengeLinkError != null,
+        hasFriendRequest = friendRequestPrompt != null,
+        canShowWebUpdate = canShowWebUpdate,
+        canShowSeasonSummary = canShowSeasonSummary
+    )
+
+    friendRequestPrompt?.takeIf { globalPrompt == GlobalPrompt.FRIEND_REQUEST }?.let { request ->
         FriendRequestDialog(
             request = request,
             isResponding = state.isFriendsLoading,
@@ -593,21 +620,21 @@ private fun GameContent(
         )
     }
 
-    state.roomInvitationPrompt?.let { invitation ->
+    state.roomInvitationPrompt?.takeIf { globalPrompt == GlobalPrompt.ROOM_INVITATION }?.let { invitation ->
         RoomInvitationDialog(
             invitation = invitation,
             onRespond = { accept -> controller.respondRoomInvitation(invitation.invitationId, accept) },
             onDefer = controller::dismissRoomInvitationPrompt
         )
     }
-    state.tournamentInvitationPrompt?.let { invitation ->
+    state.tournamentInvitationPrompt?.takeIf { globalPrompt == GlobalPrompt.TOURNAMENT_INVITATION }?.let { invitation ->
         TournamentInvitationDialog(
             invitation = invitation,
             onRespond = { accept -> controller.respondTournamentInvitation(invitation.invitationId, accept) },
             onDefer = controller::dismissTournamentInvitationPrompt
         )
     }
-    challengeLinkError?.let { message ->
+    challengeLinkError?.takeIf { globalPrompt == GlobalPrompt.CHALLENGE_ERROR }?.let { message ->
         AlertDialog(
             onDismissRequest = { challengeLinkError = null },
             modifier = Modifier.widthIn(max = 420.dp).fillMaxWidth(),
@@ -618,15 +645,7 @@ private fun GameContent(
             }
         )
     }
-    val canShowWebUpdate = serviceReachable != false &&
-        webUpdateAvailable &&
-        state.currentRoomId == null &&
-        !state.isMatchmaking &&
-        !state.isMatchStarted &&
-        !state.isGameOver &&
-        state.roomInvitationPrompt == null &&
-        state.tournamentInvitationPrompt == null
-    if (canShowWebUpdate) {
+    if (globalPrompt == GlobalPrompt.WEB_UPDATE) {
         val dismissUpdate = {
             webUpdateAvailable = false
             updateBridge.dismissUpdate()
@@ -671,21 +690,7 @@ private fun GameContent(
         )
     }
 
-    val pendingSeasonReward = state.profile?.progression?.latestSeasonReward?.takeIf {
-        !it.acknowledged && it.seasonNumber > 0
-    }
-    val canShowSeasonSummary = pendingSeasonReward != null &&
-        state.currentRoomId == null &&
-        !state.isMatchmaking &&
-        state.roomInvitationPrompt == null &&
-        state.tournamentInvitationPrompt == null &&
-        !showTutorial &&
-        !showSettings &&
-        !showSeasonHistory &&
-        !showPracticeLauncher &&
-        !showPracticeModePicker &&
-        practiceMode == null
-    pendingSeasonReward?.takeIf { canShowSeasonSummary }?.let { receipt ->
+    pendingSeasonReward?.takeIf { globalPrompt == GlobalPrompt.SEASON_SUMMARY }?.let { receipt ->
         SeasonRewardSummaryDialog(
             receipt = receipt,
             onAcknowledge = {
@@ -1422,6 +1427,32 @@ internal fun ReconnectOverlay(
             )
         }
     }
+}
+
+internal enum class GlobalPrompt {
+    ROOM_INVITATION,
+    TOURNAMENT_INVITATION,
+    CHALLENGE_ERROR,
+    FRIEND_REQUEST,
+    WEB_UPDATE,
+    SEASON_SUMMARY
+}
+
+internal fun selectGlobalPrompt(
+    hasRoomInvitation: Boolean,
+    hasTournamentInvitation: Boolean,
+    hasChallengeError: Boolean,
+    hasFriendRequest: Boolean,
+    canShowWebUpdate: Boolean,
+    canShowSeasonSummary: Boolean
+): GlobalPrompt? = when {
+    hasRoomInvitation -> GlobalPrompt.ROOM_INVITATION
+    hasTournamentInvitation -> GlobalPrompt.TOURNAMENT_INVITATION
+    hasChallengeError -> GlobalPrompt.CHALLENGE_ERROR
+    hasFriendRequest -> GlobalPrompt.FRIEND_REQUEST
+    canShowWebUpdate -> GlobalPrompt.WEB_UPDATE
+    canShowSeasonSummary -> GlobalPrompt.SEASON_SUMMARY
+    else -> null
 }
 
 private fun normalizeAppRoute(route: String): String {

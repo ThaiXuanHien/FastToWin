@@ -34,13 +34,19 @@ enum class AppLanguage(val code: String, val languageTag: String, val nativeName
 /** Languages currently exposed by FastToWin. Legacy catalogs remain decodable for compatibility. */
 val selectableAppLanguages: List<AppLanguage> = listOf(AppLanguage.VIETNAMESE, AppLanguage.ENGLISH)
 
+/** Normalizes the persisted selector without treating an unsupported legacy code as System. */
+fun normalizeAppLanguageSelection(savedCode: String): String {
+    val normalizedCode = savedCode.trim()
+    if (normalizedCode.equals("system", ignoreCase = true)) return "system"
+    return selectableAppLanguages.firstOrNull {
+        it.code.equals(normalizedCode, ignoreCase = true)
+    }?.code ?: AppLanguage.ENGLISH.code
+}
+
 /** Unsupported saved/system languages deliberately migrate to English. */
 fun resolveAppLanguage(savedCode: String, systemTags: List<String>): AppLanguage {
-    val normalizedCode = savedCode.trim()
-    selectableAppLanguages.firstOrNull {
-        it.code.equals(normalizedCode, ignoreCase = true)
-    }?.let { return it }
-    if (!normalizedCode.equals("system", ignoreCase = true)) return AppLanguage.ENGLISH
+    val selection = normalizeAppLanguageSelection(savedCode)
+    selectableAppLanguages.firstOrNull { it.code == selection }?.let { return it }
     return systemTags.firstNotNullOfOrNull(::languageForTag) ?: AppLanguage.ENGLISH
 }
 

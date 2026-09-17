@@ -31,4 +31,12 @@ class LanguagePreferenceTest {
         assertEquals(false, preferences.soundEnabled)
         assertEquals(AppLanguage.ENGLISH, resolveSavedLanguage("", emptyList()))
     }
+
+    @Test
+    fun unsupportedSavedCodeIsPresentedAsEnglishInsteadOfSystem() {
+        assertEquals("en", normalizeAppLanguageSelection("ja"))
+        assertEquals("en", normalizeAppLanguageSelection("future-code"))
+        assertEquals("system", normalizeAppLanguageSelection("system"))
+        assertEquals("vi", normalizeAppLanguageSelection("VI"))
+    }
 }

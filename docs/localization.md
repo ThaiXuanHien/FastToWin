@@ -1,8 +1,9 @@
 # Localization
 
-Fast To Win dùng catalog Kotlin chung cho Android, iOS và Web. Trạng thái hiện
-tại có đúng 12 catalog; `system` là lựa chọn theo locale thiết bị, không phải
-catalog thứ 13.
+Fast To Win dùng catalog Kotlin chung cho Android, iOS và Web. Runtime hiện chỉ
+cho phép chọn `vi`, `en` hoặc `system`; `system` phân giải sang Tiếng Việt hoặc
+English. Mười catalog cũ còn lại chỉ được giữ để tương thích dữ liệu/source cũ và
+không xuất hiện trong giao diện chọn ngôn ngữ.
 
 | Mã | Ngôn ngữ |
 | --- | --- |
@@ -27,8 +28,9 @@ catalog thứ 13.
 - Lựa chọn được lưu trên thiết bị. Web đồng thời cập nhật thuộc tính `lang` của
   phần tử `html`.
 - Locale/tag không được hỗ trợ và khóa bị thiếu hoặc rỗng đều fallback về catalog
-  tiếng Anh. `system` chỉ phân giải một trong 12 ngôn ngữ; nếu thiết bị không
-  khớp thì dùng tiếng Anh.
+  tiếng Anh. `system` chỉ phân giải sang Tiếng Việt hoặc English; nếu thiết bị
+  không khớp thì dùng tiếng Anh. Mã đã lưu của ngôn ngữ legacy cũng được trình bày
+  và chạy như English, không bị hiểu nhầm là `system`.
 - Tên người chơi, tên phòng, tên clan và mọi nội dung do người dùng nhập không
   được dịch hay chuẩn hóa qua catalog. ID, route, error code và test tag giữ nguyên.
 - Thuật ngữ hiển thị tiếng Việt cho card-back/number skin là **Mặt số**.
@@ -53,13 +55,13 @@ fallback sang tiếng Anh.
 
 ## Thêm hoặc sửa ngôn ngữ
 
-1. Với câu mới, thêm một `TextKey` hoặc `QuantityKey` và bản dịch thực cho đủ
-   cả 12 catalog trong cùng thay đổi. English là hợp đồng canonical và fallback
-   an toàn ở runtime, không phải nội dung tạm để phát hành trong catalog khác.
+1. Với câu mới, thêm một `TextKey` hoặc `QuantityKey` và bản dịch thực cho `vi`
+   và `en`. English là hợp đồng canonical và fallback an toàn ở runtime. Chỉ cập
+   nhật catalog legacy khi thay đổi đó phục vụ tương thích dữ liệu cũ.
 2. Điền khóa vào các map catalog dùng chung. Giữ đúng placeholder và không dịch
    ID, mã lỗi, route, test tag hoặc nội dung người dùng.
-3. Muốn thêm ngôn ngữ thứ 13 phải có quyết định sản phẩm: thêm `AppLanguage`, một
-   catalog gốc, quy tắc tag/plural, lựa chọn UI và cập nhật test đếm catalog trong
+3. Muốn mở lại hoặc thêm một ngôn ngữ phải có quyết định sản phẩm: cập nhật
+   `selectableAppLanguages`, catalog, quy tắc tag/plural, lựa chọn UI và test trong
    cùng thay đổi. Không dùng `system` làm catalog.
 4. Chạy toàn bộ lệnh kiểm tra bên dưới và thử đổi ngôn ngữ giữa một luồng đang có
    dữ liệu để xác nhận route/form/controller không bị reset.
