@@ -119,6 +119,7 @@ Các tên dịch vụ trong reference phải đúng tên đã tạo trên Dashbo
 | `FASTTOWIN_EMAIL_PROVIDER` | `brevo` |
 | `FASTTOWIN_BREVO_API_KEY` | API key tạo trong Brevo; nhập như secret |
 | `FASTTOWIN_EMAIL_FROM_EMAIL` | Địa chỉ người gửi đã xác minh trong Brevo |
+| `FASTTOWIN_FIREBASE_SERVICE_ACCOUNT_JSON` | Toàn bộ JSON service account Firebase Admin; nhập như secret, không commit |
 | `FASTTOWIN_EMAIL_FROM_NAME` | `Fast To Win` |
 
 Không gán `DATABASE_URL` bằng nguyên PostgreSQL URL chứa username/password:
@@ -138,9 +139,10 @@ Chỉ sau khi xác nhận công khai Web, chọn web → Settings → Networking
 Generate Domain với target port 8080. URL này dùng cho ba biến origin/base URL
 của server. Không cần mua domain để alpha.
 
-Push thực tế cần server credential Firebase qua cơ chế secret riêng; bộ
-package không chứa credential này. Không đưa service-account JSON vào Docker
-image. Chưa có credential thì chưa coi kiểm thử push là hoàn tất. Quảng cáo
+Push thực tế cần server credential Firebase qua Railway secret
+`FASTTOWIN_FIREBASE_SERVICE_ACCOUNT_JSON`; bộ package không chứa credential
+này. Không đưa service-account JSON vào Docker image hoặc Git. Chưa có
+credential thì chưa coi kiểm thử push là hoàn tất. Quảng cáo
 thưởng và mua Gem production giữ chế độ an toàn mặc định, không giả lập receipt.
 
 ## 4. Upload artifact qua CLI

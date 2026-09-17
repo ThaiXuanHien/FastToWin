@@ -7,6 +7,20 @@ import kotlin.test.assertEquals
 
 class PushNotificationServiceTest {
     @Test
+    fun `uses inline Firebase service account JSON for managed hosting`() {
+        val json = """{"type":"service_account","project_id":"fast-to-win"}"""
+
+        val source = resolveFirebaseCredentialSource(
+            environment = mapOf(
+                "FASTTOWIN_FIREBASE_SERVICE_ACCOUNT_JSON" to json,
+                "GOOGLE_APPLICATION_CREDENTIALS" to "/run/secrets/firebase.json"
+            )
+        )
+
+        assertEquals(FirebaseCredentialSource.InlineJson(json), source)
+    }
+
+    @Test
     fun `normalizes supported regional tags and falls back to English`() {
         assertEquals(AppLanguage.JAPANESE, resolveNotificationLanguage("ja-JP"))
         assertEquals(AppLanguage.SIMPLIFIED_CHINESE, resolveNotificationLanguage("zh-CN"))

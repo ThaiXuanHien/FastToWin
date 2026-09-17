@@ -19,9 +19,12 @@ import com.hienthai.fastowin.localization.TextKey
 import com.hienthai.fastowin.localization.resolveAppLanguage
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.io.ByteArrayInputStream
 import java.io.File
 import java.io.FileInputStream
+import java.io.InputStream
 import java.net.URI
+import java.nio.charset.StandardCharsets
 import java.time.Clock
 import java.time.ZoneId
 
@@ -87,8 +90,7 @@ class FirebasePushNotificationService(
     init {
         if (FirebaseApp.getApps().isEmpty()) {
             runCatching {
-                val credentialFile = configuredFirebaseCredentialFile()
-                FileInputStream(credentialFile).use { serviceAccount ->
+                configuredFirebaseCredentialStream().use { serviceAccount ->
                     val options = FirebaseOptions.builder()
                         .setCredentials(GoogleCredentials.fromStream(serviceAccount))
                         .build()
@@ -198,17 +200,38 @@ internal fun normalizePushDestination(destinationPath: String): String {
     return normalized.takeIf { it.length in 2..256 } ?: "/notifications"
 }
 
-private fun configuredFirebaseCredentialFile(): File {
-    val configuredCredential = System.getenv("GOOGLE_APPLICATION_CREDENTIALS")
+internal sealed interface FirebaseCredentialSource {
+    data class InlineJson(val value: String) : FirebaseCredentialSource
+    data class FilePath(val value: String) : FirebaseCredentialSource
+}
+
+internal fun resolveFirebaseCredentialSource(
+    environment: Map<String, String> = System.getenv()
+): FirebaseCredentialSource {
+    val inlineJson = environment["FASTTOWIN_FIREBASE_SERVICE_ACCOUNT_JSON"]
         ?.trim()
         ?.takeIf(String::isNotEmpty)
-    if (configuredCredential != null) return File(configuredCredential)
+    if (inlineJson != null) return FirebaseCredentialSource.InlineJson(inlineJson)
 
-    return sequenceOf(
+    val configuredCredential = environment["GOOGLE_APPLICATION_CREDENTIALS"]
+        ?.trim()
+        ?.takeIf(String::isNotEmpty)
+    if (configuredCredential != null) return FirebaseCredentialSource.FilePath(configuredCredential)
+
+    val fallback = sequenceOf(
         File("firebase-adminsdk.json"),
         File("server/firebase-adminsdk.json")
     ).firstOrNull(File::isFile) ?: File("firebase-adminsdk.json")
+    return FirebaseCredentialSource.FilePath(fallback.path)
 }
+
+private fun configuredFirebaseCredentialStream(): InputStream =
+    when (val source = resolveFirebaseCredentialSource()) {
+        is FirebaseCredentialSource.InlineJson -> ByteArrayInputStream(
+            source.value.toByteArray(StandardCharsets.UTF_8)
+        )
+        is FirebaseCredentialSource.FilePath -> FileInputStream(source.value)
+    }
 
 fun interface PushReminderService {
     suspend fun sendDueReminders(): Int
