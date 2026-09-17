@@ -54,7 +54,7 @@ internal fun resolveNotificationLanguage(languageTag: String?): AppLanguage =
     languageTag
         ?.trim()
         ?.takeIf(String::isNotEmpty)
-        ?.let { resolveAppLanguage(savedCode = "", systemTags = listOf(it)) }
+        ?.let { resolveAppLanguage(savedCode = "system", systemTags = listOf(it)) }
         ?: AppLanguage.ENGLISH
 
 internal fun renderPushNotification(
