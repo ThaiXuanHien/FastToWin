@@ -45,6 +45,23 @@ class LocalizedMessageMapperTest {
     }
 
     @Test
+    fun clanCreationInsufficientFundsNeverLeaksVietnameseFallbackToEnglish() {
+        val error = ServerMessage.Error(
+            "CLAN_CREATION_INSUFFICIENT_FUNDS",
+            "Cần 2.000 vàng và 20 Gem để tạo bang."
+        )
+
+        assertEquals(
+            "You need 2,000 Gold and 20 Gems to create a clan.",
+            englishMapper.message(error)
+        )
+        assertEquals(
+            "Cần 2.000 Vàng và 20 Gem để tạo bang.",
+            LocalizedMessageMapper(LocalizationService(AppLanguage.VIETNAMESE)).message(error)
+        )
+    }
+
+    @Test
     fun invalidResumeTokenUsesLocalizedExpiredSessionCopy() {
         val error = ServerMessage.Error(
             code = "INVALID_RESUME_TOKEN",

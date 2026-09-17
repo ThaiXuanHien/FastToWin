@@ -18,6 +18,7 @@ fun protocolTextKeyForCode(code: String): TextKey? = when (code) {
     "HOST_REQUIRED", "NOT_CLAN_OWNER" -> TextKey.ServerHostRequired
     "MODE_LOCKED", "COSMETIC_LOCKED", "AVATAR_LOCKED" -> TextKey.ServerModeLocked
     "NOT_ENOUGH_GOLD" -> TextKey.ServerNotEnoughGold
+    "CLAN_CREATION_INSUFFICIENT_FUNDS" -> TextKey.ServerClanCreationInsufficientFunds
     "PLAYER_BUSY", "FRIEND_BUSY", "TOURNAMENT_ACTIVE", "ALREADY_IN_ROOM" -> TextKey.ServerPlayerBusy
     "PLAYER_NOT_FOUND", "PROFILE_NOT_FOUND", "FRIEND_PROFILE_NOT_FOUND", "MATCH_NOT_FOUND",
     "CLAN_NOT_FOUND", "TOURNAMENT_NOT_FOUND", "FRIEND_REQUEST_NOT_FOUND",

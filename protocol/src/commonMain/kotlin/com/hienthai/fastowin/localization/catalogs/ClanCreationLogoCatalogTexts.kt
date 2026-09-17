@@ -80,3 +80,14 @@ internal val clanCreationLogoTexts: Map<AppLanguage, Map<TextKey, String>> = map
         "Волк", "Орёл", "Корона", "Эмблема {logo}", "Личный рейтинг", " · Вы",
     ),
 )
+
+/** VI/EN are selectable; legacy catalogs keep a safe English fallback. */
+internal val clanCreationCostTexts: Map<AppLanguage, Map<TextKey, String>> =
+    AppLanguage.entries.associateWith { language ->
+        mapOf(
+            TextKey.ServerClanCreationInsufficientFunds to when (language) {
+                AppLanguage.VIETNAMESE -> "Cần 2.000 Vàng và 20 Gem để tạo bang."
+                else -> "You need 2,000 Gold and 20 Gems to create a clan."
+            }
+        )
+    }
