@@ -77,9 +77,17 @@ test('web shell stays dark outside the centered mobile canvas', async ({ page })
   expect(root).not.toBeNull();
   expect(root.width).toBe(1440);
 
-  const expectedShellPixel = [6, 19, 47, 255];
-  expect(await renderedPixelAt(page, 10, 10), 'left rendered gutter is navy').toEqual(expectedShellPixel);
-  expect(await renderedPixelAt(page, 1430, 10), 'right rendered gutter is navy').toEqual(expectedShellPixel);
+  // The CSS fallback prevents a white flash while Compose starts. Once the
+  // canvas paints it uses Navy950, so either intentional dark shell colour is
+  // valid at this boundary; a light/white regression still fails this test.
+  const expectedShellPixels = [
+    [7, 24, 36, 255], // styles.css: #071824
+    [6, 19, 47, 255], // ArcadePalette.Navy950: #06132F
+  ];
+  expect(expectedShellPixels, 'left rendered gutter is navy')
+    .toContainEqual(await renderedPixelAt(page, 10, 10));
+  expect(expectedShellPixels, 'right rendered gutter is navy')
+    .toContainEqual(await renderedPixelAt(page, 1430, 10));
 });
 
 test('dialog stays within ten-pixel insets on a narrow viewport', async ({ actors }) => {

@@ -61,7 +61,10 @@ test('large text, long content and a compact keyboard viewport remain usable', a
   await expectNoDocumentOverflow(page);
   await click(page, tag(page, 'create_room_submit'));
   await expect(page).toHaveURL(/\/room\/[\w-]+$/);
-  await expect(page.getByText(roomName, { exact: true })).toBeAttached();
+  // At 360px high with large text the hero title can be outside Compose's
+  // published accessibility window. The share action is a stable marker that
+  // the server-created room has reached the waiting-room stage.
+  await expect(tag(page, 'share_room')).toBeAttached();
 
   // A real mobile browser restores the visual viewport after the dialog closes
   // and its software keyboard is dismissed. Playwright's manual viewport does
