@@ -76,6 +76,9 @@ test('web shell stays dark outside the centered mobile canvas', async ({ page })
   const root = await page.locator('#fastToWinRoot').boundingBox();
   expect(root).not.toBeNull();
   expect(root.width).toBe(1440);
+  await expect(page.locator('#fastToWinRoot')).toHaveCSS('position', 'fixed');
+  expect(root.y, 'safe-area root starts inside the visual viewport').toBeGreaterThanOrEqual(0);
+  expect(root.y + root.height, 'safe-area root ends inside the visual viewport').toBeLessThanOrEqual(900);
 
   // The CSS fallback prevents a white flash while Compose starts. Once the
   // canvas paints it uses Navy950, so either intentional dark shell colour is
@@ -118,8 +121,8 @@ test('language change keeps the active route and route history', async ({ actors
   await click(page, tag(page, 'profile_settings'));
   await expect(page).toHaveURL(/\/settings$/);
 
-  await selectLanguage(page, 'de');
-  await expect(page.locator('html')).toHaveAttribute('lang', 'de');
+  await selectLanguage(page, 'en');
+  await expect(page.locator('html')).toHaveAttribute('lang', 'en');
   await expect(page).toHaveURL(/\/settings$/);
 
   await player.navigate(() => page.goBack());

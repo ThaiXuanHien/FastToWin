@@ -68,6 +68,7 @@ import com.hienthai.fastowin.protocol.PushPreferencesSnapshot
 import com.hienthai.fastowin.ui.components.ArcadeBackdrop
 import com.hienthai.fastowin.ui.components.ArcadeDialog
 import com.hienthai.fastowin.localization.AppLanguage
+import com.hienthai.fastowin.localization.selectableAppLanguages
 import com.hienthai.fastowin.localization.TextKey
 import com.hienthai.fastowin.localization.localized
 import com.hienthai.fastowin.localization.platformLanguageTags
@@ -359,7 +360,7 @@ fun SettingsScreen(
 
 @Composable
 private fun LanguageSettingRow(code: String, systemLanguage: AppLanguage, onClick: () -> Unit) {
-    val selected = AppLanguage.entries.firstOrNull { it.code == code }
+    val selected = selectableAppLanguages.firstOrNull { it.code == code }
     Surface(
         onClick = onClick,
         modifier = Modifier.fillMaxWidth().testTag("language_setting"),
@@ -392,7 +393,7 @@ private fun LanguageDialog(
     onSelected: (String) -> Unit,
     onDismiss: () -> Unit
 ) {
-    val selection = AppLanguage.entries.firstOrNull { it.code == selectedCode }?.code ?: "system"
+    val selection = selectableAppLanguages.firstOrNull { it.code == selectedCode }?.code ?: "system"
     ArcadeDialog(
         title = localized(TextKey.ChooseLanguageTitle),
         onDismissRequest = onDismiss,
@@ -410,7 +411,7 @@ private fun LanguageDialog(
             ) {
                 onSelected("system")
             }
-            AppLanguage.entries.forEach { language ->
+            selectableAppLanguages.forEach { language ->
                 LanguageOption(language.code, language.nativeName, language.englishName, selection == language.code) {
                     onSelected(language.code)
                 }

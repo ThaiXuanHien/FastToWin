@@ -31,9 +31,12 @@ enum class AppLanguage(val code: String, val languageTag: String, val nativeName
     }
 }
 
-/** Unknown saved codes follow system preferences; unsupported devices use English. */
+/** Languages currently exposed by FastToWin. Legacy catalogs remain decodable for compatibility. */
+val selectableAppLanguages: List<AppLanguage> = listOf(AppLanguage.VIETNAMESE, AppLanguage.ENGLISH)
+
+/** Unsupported saved/system languages deliberately migrate to English. */
 fun resolveAppLanguage(savedCode: String, systemTags: List<String>): AppLanguage =
-    AppLanguage.entries.firstOrNull { it.code.equals(savedCode.trim(), ignoreCase = true) }
+    selectableAppLanguages.firstOrNull { it.code.equals(savedCode.trim(), ignoreCase = true) }
         ?: systemTags.firstNotNullOfOrNull(::languageForTag)
         ?: AppLanguage.ENGLISH
 
@@ -41,14 +44,9 @@ private fun languageForTag(tag: String): AppLanguage? {
     val parts = tag.trim().replace('_', '-').lowercase().split('-')
     val base = parts.firstOrNull() ?: return null
     // Only read the core tag, not region-looking values inside extensions/private use.
-    val subtags = parts.drop(1).takeWhile { it.length > 1 }
-    val script = subtags.firstOrNull { it.length == 4 }
-    val region = subtags.firstOrNull { it.length == 2 || it.length == 3 && it.all(Char::isDigit) }
     return when (base) {
-        "zh" -> if (script == "hans" || script == null && region in setOf("cn", "sg")) {
-            AppLanguage.SIMPLIFIED_CHINESE
-        } else null
-        "pt" -> AppLanguage.BRAZILIAN_PORTUGUESE.takeIf { region == "br" }
-        else -> AppLanguage.entries.firstOrNull { it.code.lowercase() == base }
+        "vi" -> AppLanguage.VIETNAMESE
+        "en" -> AppLanguage.ENGLISH
+        else -> null
     }
 }

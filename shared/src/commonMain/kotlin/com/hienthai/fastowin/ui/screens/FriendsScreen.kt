@@ -43,6 +43,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.hienthai.fastowin.protocol.FriendPresence
+import com.hienthai.fastowin.protocol.FriendRequestSnapshot
 import com.hienthai.fastowin.protocol.FriendSnapshot
 import com.hienthai.fastowin.protocol.ServerMessage
 import com.hienthai.fastowin.localization.TextKey
@@ -752,6 +753,71 @@ private fun FriendCard(
 }
 
 private data class PlayerActionTarget(val userId: String, val displayName: String)
+
+internal fun nextFriendRequestPrompt(
+    incomingRequests: List<FriendRequestSnapshot>,
+    deferredRequestIds: Set<String>
+): FriendRequestSnapshot? = incomingRequests.firstOrNull { it.requestId !in deferredRequestIds }
+
+@Composable
+fun FriendRequestDialog(
+    request: FriendRequestSnapshot,
+    isResponding: Boolean,
+    onAccept: () -> Unit,
+    onDefer: () -> Unit,
+    onDecline: () -> Unit
+) {
+    ArcadeDialog(
+        title = localized(TextKey.FriendRequests),
+        subtitle = localized(TextKey.NotificationFriendRequestMessage, "player" to request.displayName),
+        onDismissRequest = onDefer
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            PlayerAvatar(
+                displayName = request.displayName,
+                avatarId = request.avatarId,
+                userId = request.userId,
+                frameId = request.frameId
+            )
+            Column(modifier = Modifier.weight(1f)) {
+                Text(request.displayName, fontWeight = FontWeight.Black)
+                Text(
+                    localized(TextKey.PlayerCodeShort, "code" to request.playerCode),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            ArcadeActionButton(
+                label = localized(if (isResponding) TextKey.Processing else TextKey.Accept),
+                onClick = onAccept,
+                enabled = !isResponding,
+                modifier = Modifier.fillMaxWidth()
+            )
+            ArcadeActionButton(
+                label = localized(TextKey.Later),
+                onClick = onDefer,
+                enabled = !isResponding,
+                style = ArcadeActionStyle.OUTLINE,
+                modifier = Modifier.fillMaxWidth()
+            )
+            ArcadeActionButton(
+                label = localized(TextKey.Decline),
+                onClick = onDecline,
+                enabled = !isResponding,
+                style = ArcadeActionStyle.DANGER,
+                modifier = Modifier.fillMaxWidth()
+            )
+        }
+    }
+}
 
 @Composable
 fun RoomInvitationDialog(

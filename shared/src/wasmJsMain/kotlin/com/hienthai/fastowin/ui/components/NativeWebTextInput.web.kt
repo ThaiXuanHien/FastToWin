@@ -21,6 +21,7 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.viewinterop.HtmlElementView
 import androidx.compose.ui.unit.isUnspecified
 import kotlinx.browser.document
+import kotlinx.browser.window
 import org.w3c.dom.HTMLElement
 import org.w3c.dom.HTMLInputElement
 import org.w3c.dom.HTMLTextAreaElement
@@ -78,11 +79,14 @@ internal actual fun NativeWebTextInput(
             element.addEventListener("compositionend", {
                 composing = false
                 if (editable) change(element.inputValue())
-                editRevision++
+                // Let Compose consume the browser-authored value before checking
+                // whether validation rejected it. An immediate controlled write
+                // races the callback and moves the caret to the start on Safari.
+                window.setTimeout({ editRevision++ }, 0)
             })
             element.addEventListener("input", {
                 if (!composing && editable) change(element.inputValue())
-                editRevision++
+                window.setTimeout({ editRevision++ }, 0)
             })
             element.addEventListener("keydown", { event ->
                 val key = event as KeyboardEvent
@@ -143,11 +147,13 @@ internal actual fun NativeWebTextInput(
                 ImeAction.Go -> "go"
                 else -> "done"
             })
-            if (type == "password" || keyboardOptions.keyboardType == KeyboardType.Email) {
-                element.setAttribute("autocapitalize", "none")
-                element.setAttribute("autocorrect", "off")
-                element.setAttribute("spellcheck", "false")
-            }
+            element.setAttribute("autocorrect", "off")
+            element.setAttribute("spellcheck", "false")
+            // iOS Safari may reinterpret plain text as accented/capitalized text
+            // while Compose is reconciling the controlled value. The game does
+            // not need prose assistance, so keep browser text mutation disabled
+            // consistently for every field type.
+            element.setAttribute("autocapitalize", "none")
             element.style.fontSize = "${fontSize}px"
             element.style.lineHeight = "1.5"
             element.style.color = "#" + textStyle.color.toArgb().toUInt().toString(16).padStart(8, '0').takeLast(6)

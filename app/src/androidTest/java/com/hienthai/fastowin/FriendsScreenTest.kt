@@ -8,11 +8,13 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import com.hienthai.fastowin.protocol.FriendPresence
+import com.hienthai.fastowin.protocol.FriendRequestSnapshot
 import com.hienthai.fastowin.protocol.FriendSnapshot
 import com.hienthai.fastowin.protocol.FriendsSnapshot
 import com.hienthai.fastowin.protocol.RecentPlayerSnapshot
 import com.hienthai.fastowin.state.GameState
 import com.hienthai.fastowin.ui.screens.FriendsScreen
+import com.hienthai.fastowin.ui.screens.FriendRequestDialog
 import com.hienthai.fastowin.ui.theme.FastToWinTheme
 import org.junit.Rule
 import org.junit.Test
@@ -21,6 +23,36 @@ import org.junit.Assert.assertEquals
 class FriendsScreenTest {
     @get:Rule
     val composeRule = createComposeRule()
+
+    @Test
+    fun incomingFriendRequestPromptSupportsAcceptLaterAndDecline() {
+        val request = FriendRequestSnapshot(
+            requestId = "request-1",
+            userId = "player-1",
+            displayName = "Hiếu",
+            playerCode = "HIEU001"
+        )
+        var action = ""
+        composeRule.setContent {
+            FastToWinTheme {
+                FriendRequestDialog(
+                    request = request,
+                    isResponding = false,
+                    onAccept = { action = "accept" },
+                    onDefer = { action = "later" },
+                    onDecline = { action = "decline" }
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("Hiếu muốn kết bạn với bạn.").assertIsDisplayed()
+        composeRule.onNodeWithText("CHẤP NHẬN").performClick()
+        composeRule.runOnIdle { assertEquals("accept", action) }
+        composeRule.onNodeWithText("ĐỂ SAU").performClick()
+        composeRule.runOnIdle { assertEquals("later", action) }
+        composeRule.onNodeWithText("TỪ CHỐI").performClick()
+        composeRule.runOnIdle { assertEquals("decline", action) }
+    }
 
     @Test
     fun recentPlayersAreNotShownInFriendsScreen() {

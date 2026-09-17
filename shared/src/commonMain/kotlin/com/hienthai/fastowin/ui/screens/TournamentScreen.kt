@@ -392,6 +392,7 @@ private fun CreateTournamentCard(
                         TournamentFeeChip(
                             label = if (fee == 0) localized(TextKey.Free) else "$fee",
                             selected = !isCustomFee && entryFee == fee,
+                            modifier = Modifier.testTag("tournament_fee_$fee"),
                             onClick = {
                                 isCustomFee = false
                                 entryFee = fee
@@ -401,35 +402,44 @@ private fun CreateTournamentCard(
                     TournamentFeeChip(
                         label = localized(TextKey.Custom),
                         selected = isCustomFee,
+                        modifier = Modifier.testTag("tournament_fee_custom"),
                         onClick = { isCustomFee = true }
                     )
                 }
 
-                if (isCustomFee) {
-                    OutlinedTextField(
-                        value = customFeeText,
-                        onValueChange = {
-                            if (it.isEmpty() || (it.length <= 6 && it.all { char -> char.isDigit() })) {
-                                customFeeText = it
-                                entryFee = it.toIntOrNull() ?: 0
-                            }
-                        },
-                        label = localized(TextKey.EnterEntryFee),
-                        placeholder = localized(TextKey.EntryFeeExample),
-                        singleLine = true,
-                        prefix = {
-                            Icon(
-                                Icons.Filled.MonetizationOn,
-                                contentDescription = null,
-                                tint = ArcadePalette.Gold500,
-                                modifier = Modifier.size(20.dp)
-                            )
-                        },
-                        suffix = { Text(localized(TextKey.Gold)) },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        shape = RoundedCornerShape(16.dp),
-                        modifier = Modifier.fillMaxWidth().padding(top = 4.dp)
-                    )
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(68.dp)
+                        .testTag("tournament_custom_fee_slot")
+                ) {
+                    if (isCustomFee) {
+                        OutlinedTextField(
+                            value = customFeeText,
+                            onValueChange = {
+                                if (it.isEmpty() || (it.length <= 6 && it.all { char -> char.isDigit() })) {
+                                    customFeeText = it
+                                    entryFee = it.toIntOrNull() ?: 0
+                                }
+                            },
+                            label = localized(TextKey.EnterEntryFee),
+                            placeholder = localized(TextKey.EntryFeeExample),
+                            singleLine = true,
+                            prefix = {
+                                Icon(
+                                    Icons.Filled.MonetizationOn,
+                                    contentDescription = null,
+                                    tint = ArcadePalette.Gold500,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            },
+                            suffix = { Text(localized(TextKey.Gold)) },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            shape = RoundedCornerShape(16.dp),
+                            modifier = Modifier.fillMaxWidth().padding(top = 4.dp)
+                                .testTag("tournament_custom_fee_input")
+                        )
+                    }
                 }
             }
 
@@ -499,11 +509,12 @@ private fun TournamentSizeChip(
 private fun TournamentFeeChip(
     label: String,
     selected: Boolean,
+    modifier: Modifier = Modifier,
     onClick: () -> Unit
 ) {
     Surface(
         onClick = onClick,
-        modifier = Modifier.heightIn(min = 48.dp),
+        modifier = modifier.heightIn(min = 48.dp),
         shape = RoundedCornerShape(12.dp),
         color = if (selected) ArcadePalette.Blue700 else ArcadePalette.Navy800,
         border = androidx.compose.foundation.BorderStroke(

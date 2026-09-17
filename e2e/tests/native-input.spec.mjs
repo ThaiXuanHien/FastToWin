@@ -1,5 +1,4 @@
-import { test, expect } from 'playwright/test';
-import { click, tag } from '../support/game.mjs';
+import { test, expect, click, tag, login } from '../support/game.mjs';
 
 // These checks use only dummy credentials on the loopback backend, never create
 // an account, and exercise
@@ -63,4 +62,42 @@ test('rejecting an overlength middle edit preserves the password caret', async (
   await password.press('b');
   await expect(password).toHaveValue('a'.repeat(128));
   await expect.poll(() => password.evaluate(input => input.selectionStart)).toBe(1);
+});
+
+test('rapid and middle password edits preserve browser order and selection', async ({ page }) => {
+  await page.goto('/');
+  await click(page, tag(page, 'auth_open_login'));
+  const password = page.locator('input[data-fasttowin-native-input][type=password]');
+  await expect(password).toBeVisible();
+  await password.focus();
+  await password.pressSequentially('123', { delay: 0 });
+  await expect(password).toHaveValue('123');
+  await expect.poll(() => password.evaluate(input => input.selectionStart)).toBe(3);
+  await password.press('Home');
+  await password.press('ArrowRight');
+  await password.press('9');
+  await expect(password).toHaveValue('1923');
+  await expect.poll(() => password.evaluate(input => input.selectionStart)).toBe(2);
+  await expect(password).toHaveAttribute('autocorrect', 'off');
+  await expect(password).toHaveAttribute('spellcheck', 'false');
+  await expect(password).toHaveAttribute('autocapitalize', 'none');
+});
+
+test('numeric tournament fee keeps typed digits in browser order', async ({ actors }) => {
+  const player = await actors('Numeric input');
+  await login(player);
+  await click(player.page, tag(player.page, 'home_tournament'));
+  await expect(tag(player.page, 'tournament_screen')).toBeAttached();
+  await click(player.page, tag(player.page, 'tournament_fee_custom'));
+
+  const numeric = player.page.locator(
+    'input[data-fasttowin-native-input][inputmode=numeric]',
+  );
+  await expect(numeric).toBeVisible();
+  await numeric.focus();
+  await numeric.pressSequentially('12345', { delay: 0 });
+
+  await expect(numeric).toHaveValue('12345');
+  await expect.poll(() => numeric.evaluate(input => input.selectionStart)).toBe(5);
+  await expect(numeric).toHaveAttribute('autocapitalize', 'none');
 });

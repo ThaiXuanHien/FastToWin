@@ -26,11 +26,11 @@ test('language selection persists across reload and updates html lang', async ({
   await click(page, tag(page, 'bottom_tab:account'));
   await click(page, tag(page, 'profile_settings'));
   await expect(page).toHaveURL(/\/settings$/);
-  await selectLanguage(page, 'ja');
+  await selectLanguage(page, 'en');
 
-  await expect(page.locator('html')).toHaveAttribute('lang', 'ja');
+  await expect(page.locator('html')).toHaveAttribute('lang', 'en');
   await player.navigate(() => page.reload());
   await expect(page).toHaveURL(/\/settings$/);
-  await expect(page.locator('html')).toHaveAttribute('lang', 'ja');
-  await expect(tag(page, 'app_header').getByText('設定', { exact: true })).toBeAttached();
+  await expect(page.locator('html')).toHaveAttribute('lang', 'en');
+  await expect(tag(page, 'app_header').getByText('Settings', { exact: true })).toBeAttached();
 });

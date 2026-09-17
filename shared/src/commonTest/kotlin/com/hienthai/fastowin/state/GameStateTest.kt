@@ -381,6 +381,17 @@ class GameStateTest {
     }
 
     @Test
+    fun `background transport failures use connection state instead of a stale global error`() {
+        for (code in listOf("CONNECTION_NOT_READY", "CONNECTION_FAILED", "SEND_FAILED")) {
+            assertNull(globalErrorMessage(ServerMessage.Error(code, "Connection failed"), "Unavailable"))
+        }
+        assertEquals(
+            "Wrong password",
+            globalErrorMessage(ServerMessage.Error("WRONG_PASSWORD", "Wrong password"), "Wrong password")
+        )
+    }
+
+    @Test
     fun `unrelated server errors leave rematch state unchanged`() {
         val state = GameState(
             isGameOver = true,

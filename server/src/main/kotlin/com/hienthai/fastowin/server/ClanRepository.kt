@@ -29,8 +29,21 @@ data class ClanDonationResult(
     val clanLevel: Int = 0
 )
 
+enum class ClanCreationStatus {
+    CREATED,
+    INSUFFICIENT_FUNDS,
+    ALREADY_MEMBER,
+    PLAYER_NOT_FOUND,
+    FAILED
+}
+
+data class ClanCreationResult(
+    val status: ClanCreationStatus,
+    val clanId: String? = null
+)
+
 interface ClanRepository {
-    suspend fun createClan(ownerId: String, name: String, description: String): String?
+    suspend fun createClan(ownerId: String, name: String, description: String): ClanCreationResult
     suspend fun requestJoinClan(userId: String, clanId: String): ClanJoinRequestResult
     suspend fun respondJoinRequest(
         clanId: String,

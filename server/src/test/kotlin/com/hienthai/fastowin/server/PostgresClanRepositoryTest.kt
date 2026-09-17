@@ -38,9 +38,24 @@ class PostgresClanRepositoryTest {
             ).session
             try {
                 val clans = PostgresClanRepository(dataSource)
+                dataSource.connection.use { connection ->
+                    connection.prepareStatement(
+                        """
+                        INSERT INTO player_stats (user_id, gold, gems, updated_at)
+                        VALUES (?, 5000, 50, CURRENT_TIMESTAMP)
+                        ON CONFLICT (user_id) DO UPDATE SET gold = 5000, gems = 50
+                        """.trimIndent()
+                    ).use { statement ->
+                        listOf(firstOwner.userId, secondOwner.userId).forEach { id ->
+                            statement.setObject(1, UUID.fromString(id))
+                            statement.addBatch()
+                        }
+                        statement.executeBatch()
+                    }
+                }
                 val shortSuffix = suffix.take(8)
-                val firstClanId = requireNotNull(clans.createClan(firstOwner.userId, "Clan A $shortSuffix", "A"))
-                val secondClanId = requireNotNull(clans.createClan(secondOwner.userId, "Clan B $shortSuffix", "B"))
+                val firstClanId = requireNotNull(clans.createClan(firstOwner.userId, "Clan A $shortSuffix", "A").clanId)
+                val secondClanId = requireNotNull(clans.createClan(secondOwner.userId, "Clan B $shortSuffix", "B").clanId)
 
                 assertEquals(
                     ClanJoinRequestResult.OWN_CLAN,

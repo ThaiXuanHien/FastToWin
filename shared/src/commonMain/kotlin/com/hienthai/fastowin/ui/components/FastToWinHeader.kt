@@ -34,6 +34,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -48,6 +50,25 @@ import com.hienthai.fastowin.localization.TextKey
 import com.hienthai.fastowin.localization.localized
 import com.hienthai.fastowin.platform.platformRefreshInput
 import com.hienthai.fastowin.ui.theme.ArcadePalette
+
+private data class HeaderWalletNavigation(
+    val onGold: () -> Unit = {},
+    val onGems: () -> Unit = {}
+)
+
+private val LocalHeaderWalletNavigation = staticCompositionLocalOf { HeaderWalletNavigation() }
+
+@Composable
+fun HeaderWalletNavigationProvider(
+    onGold: () -> Unit,
+    onGems: () -> Unit,
+    content: @Composable () -> Unit
+) {
+    CompositionLocalProvider(
+        LocalHeaderWalletNavigation provides HeaderWalletNavigation(onGold, onGems),
+        content = content
+    )
+}
 
 @Composable
 fun FastToWinHeader(
@@ -66,6 +87,7 @@ fun FastToWinHeader(
     backIcon: ImageVector = Icons.AutoMirrored.Filled.ArrowBack,
     actions: @Composable RowScope.() -> Unit = {}
 ) {
+    val walletNavigation = LocalHeaderWalletNavigation.current
     Surface(
         modifier = modifier.fillMaxWidth().testTag("app_header"),
         color = if (applySafeDrawingInset) ArcadePalette.Navy900 else Color.Transparent,
@@ -122,8 +144,18 @@ fun FastToWinHeader(
                     }
                 }
                 if (showBalances) {
-                    HeaderCurrency(amount = gold, label = localized(TextKey.Gold), isGem = false)
-                    HeaderCurrency(amount = gems, label = localized(TextKey.Gems), isGem = true)
+                    HeaderCurrency(
+                        amount = gold,
+                        label = localized(TextKey.Gold),
+                        isGem = false,
+                        onClick = walletNavigation.onGold
+                    )
+                    HeaderCurrency(
+                        amount = gems,
+                        label = localized(TextKey.Gems),
+                        isGem = true,
+                        onClick = walletNavigation.onGems
+                    )
                 }
                 if (showNotifications) {
                     ArcadeHeaderIconButton(onClick = onNotifications) {
@@ -193,9 +225,10 @@ fun HeaderRefreshAction(
 }
 
 @Composable
-private fun HeaderCurrency(amount: Int, label: String, isGem: Boolean) {
+private fun HeaderCurrency(amount: Int, label: String, isGem: Boolean, onClick: () -> Unit) {
     val accent = if (isGem) GemColor else GoldColor
     Surface(
+        onClick = onClick,
         modifier = Modifier
             .testTag(if (isGem) "header_gem" else "header_gold")
             .semantics { contentDescription = "${formatHeaderAmount(amount)} $label" },

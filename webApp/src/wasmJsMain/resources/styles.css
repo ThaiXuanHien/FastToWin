@@ -5,8 +5,7 @@
 }
 
 html,
-body,
-#fastToWinRoot {
+body {
     width: 100%;
     min-width: 320px;
     height: 100%;
@@ -14,6 +13,18 @@ body,
     min-height: 100%;
     margin: 0;
     padding: 0;
+    overflow: hidden;
+    background-color: #071824;
+}
+
+#fastToWinRoot {
+    position: fixed;
+    top: env(safe-area-inset-top, 0px);
+    right: env(safe-area-inset-right, 0px);
+    bottom: env(safe-area-inset-bottom, 0px);
+    left: env(safe-area-inset-left, 0px);
+    min-width: 0;
+    min-height: 0;
     overflow: hidden;
     background-color: #071824;
 }

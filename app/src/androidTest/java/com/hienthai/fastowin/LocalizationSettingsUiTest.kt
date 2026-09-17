@@ -2,6 +2,7 @@ package com.hienthai.fastowin
 
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertDoesNotExist
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
@@ -34,15 +35,15 @@ class LocalizationSettingsUiTest {
     }
 
     @Test
-    fun allThirteenOptionsCanBeReachedAndSystemUsesDeviceLanguage() {
+    fun onlyVietnameseEnglishAndSystemModesAreSelectable() {
         val preferences = renderSettings()
         composeRule.onNodeWithTag("language_setting").performScrollTo().performClick()
-        listOf("system", "vi", "en", "zh-Hans", "ja", "ko", "es", "pt-BR", "fr", "de", "id", "th", "ru").forEach {
+        listOf("system", "vi", "en").forEach {
             composeRule.onNodeWithTag("language_option_$it").performScrollTo().assertIsDisplayed()
         }
-        composeRule.onNodeWithTag("language_option_ru").performClick()
-        composeRule.onNodeWithText("Настройки").assertIsDisplayed()
-        composeRule.onNodeWithTag("language_setting").performScrollTo().performClick()
+        listOf("zh-Hans", "ja", "ko", "es", "pt-BR", "fr", "de", "id", "th", "ru").forEach {
+            composeRule.onNodeWithTag("language_option_$it").assertDoesNotExist()
+        }
         composeRule.onNodeWithTag("language_option_system").performScrollTo().performClick()
         composeRule.onNodeWithText("Cài đặt").assertIsDisplayed()
         composeRule.runOnIdle { assertEquals("system", preferences.value.languageCode) }
@@ -58,11 +59,11 @@ class LocalizationSettingsUiTest {
     }
 
     @Test
-    fun systemOptionUsesDeviceLocaleInsteadOfCurrentAppLocale() {
+    fun unsupportedSystemLocaleFallsBackToEnglish() {
         renderSettings(systemLanguageTags = listOf("ja-JP"))
 
         composeRule.onNodeWithTag("language_setting").performScrollTo().performClick()
-        composeRule.onNodeWithText("Theo hệ thống · 日本語").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("Theo hệ thống · English").performScrollTo().assertIsDisplayed()
     }
 
     private fun renderSettings(

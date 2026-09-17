@@ -6,7 +6,8 @@ import com.hienthai.fastowin.protocol.ClanDonationCurrency
 import com.hienthai.fastowin.protocol.ClanDonationStatus
 
 object NoOpClanRepository : ClanRepository {
-    override suspend fun createClan(ownerId: String, name: String, description: String): String? = null
+    override suspend fun createClan(ownerId: String, name: String, description: String) =
+        ClanCreationResult(ClanCreationStatus.FAILED)
     override suspend fun requestJoinClan(userId: String, clanId: String) = ClanJoinRequestResult.FAILED
     override suspend fun respondJoinRequest(clanId: String, ownerId: String, userId: String, accept: Boolean) =
         ClanJoinResponseResult.FAILED

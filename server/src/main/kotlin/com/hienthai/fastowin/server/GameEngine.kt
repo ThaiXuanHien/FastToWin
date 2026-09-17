@@ -3750,16 +3750,26 @@ class GameEngine(
 
     private suspend fun createClan(playerId: String, name: String, description: String): List<Delivery> {
         if (name.isBlank() || name.length > 32) return listOf(error(playerId, "INVALID_CLAN_NAME", legacyFallback("Tên clan không hợp lệ.")))
-        val clanId = clanRepository.createClan(playerId, name, description)
-        return if (clanId != null) {
-            listOf(Delivery(ServerMessage.ClanActionResult(
+        return when (clanRepository.createClan(playerId, name, description).status) {
+            ClanCreationStatus.CREATED -> listOf(Delivery(ServerMessage.ClanActionResult(
                 true,
                 legacyFallback("Tạo clan thành công"),
                 "create_clan",
                 TextKey.ClanCreatedNotice.name
             ), setOf(playerId)))
-        } else {
-            listOf(error(playerId, "CREATE_CLAN_FAILED", legacyFallback("Tạo clan thất bại. Có thể bạn đã vào một clan khác hoặc tên bị trùng.")))
+            ClanCreationStatus.INSUFFICIENT_FUNDS -> listOf(
+                error(
+                    playerId,
+                    "CLAN_CREATION_INSUFFICIENT_FUNDS",
+                    legacyFallback("Cần 2.000 vàng và 20 Gem để tạo bang.")
+                )
+            )
+            ClanCreationStatus.ALREADY_MEMBER ->
+                listOf(error(playerId, "ALREADY_IN_CLAN", legacyFallback("Bạn đã tham gia một clan.")))
+            ClanCreationStatus.PLAYER_NOT_FOUND ->
+                listOf(error(playerId, "PROFILE_NOT_FOUND", legacyFallback("Không tìm thấy hồ sơ người chơi.")))
+            ClanCreationStatus.FAILED ->
+                listOf(error(playerId, "CREATE_CLAN_FAILED", legacyFallback("Tạo clan thất bại. Có thể tên đã được sử dụng.")))
         }
     }
 

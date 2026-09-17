@@ -82,14 +82,14 @@ class LocalizationCatalogTest {
         val cases = mapOf(
             "vi-VN" to AppLanguage.VIETNAMESE,
             "EN_us" to AppLanguage.ENGLISH,
-            "zh-CN" to AppLanguage.SIMPLIFIED_CHINESE,
-            "zh-SG" to AppLanguage.SIMPLIFIED_CHINESE,
-            "zh-Hans-CN" to AppLanguage.SIMPLIFIED_CHINESE,
+            "zh-CN" to AppLanguage.ENGLISH,
+            "zh-SG" to AppLanguage.ENGLISH,
+            "zh-Hans-CN" to AppLanguage.ENGLISH,
             "zh-Hant-CN" to AppLanguage.ENGLISH,
             "zh-TW" to AppLanguage.ENGLISH,
-            "pt-BR" to AppLanguage.BRAZILIAN_PORTUGUESE,
+            "pt-BR" to AppLanguage.ENGLISH,
             "pt-PT" to AppLanguage.ENGLISH,
-            "ja-JP" to AppLanguage.JAPANESE,
+            "ja-JP" to AppLanguage.ENGLISH,
             "ar-EG" to AppLanguage.ENGLISH,
         )
         cases.forEach { (tag, expected) ->
@@ -99,10 +99,14 @@ class LocalizationCatalogTest {
 
     @Test
     fun explicitPreferenceWinsAndUnknownPreferenceUsesDevice() {
-        assertEquals(AppLanguage.GERMAN, resolveAppLanguage("de", listOf("vi-VN")))
-        assertEquals(AppLanguage.JAPANESE, resolveAppLanguage("future", listOf("ja-JP")))
+        assertEquals(AppLanguage.VIETNAMESE, resolveAppLanguage("de", listOf("vi-VN")))
+        assertEquals(AppLanguage.ENGLISH, resolveAppLanguage("future", listOf("ja-JP")))
         assertEquals(AppLanguage.ENGLISH, resolveAppLanguage("system", emptyList()))
-        assertEquals(AppLanguage.FRENCH, resolveAppLanguage("system", listOf("ar", "fr-CA")))
+        assertEquals(AppLanguage.ENGLISH, resolveAppLanguage("system", listOf("ar", "fr-CA")))
+        assertEquals(
+            listOf(AppLanguage.VIETNAMESE, AppLanguage.ENGLISH),
+            selectableAppLanguages
+        )
     }
 
     @Test

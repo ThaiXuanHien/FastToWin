@@ -84,6 +84,7 @@ import com.hienthai.fastowin.localization.TextKey
 import com.hienthai.fastowin.localization.localized
 import com.hienthai.fastowin.localization.localizedNetworkText
 import com.hienthai.fastowin.protocol.FriendPresence
+import com.hienthai.fastowin.protocol.LeaderboardSnapshot
 import com.hienthai.fastowin.protocol.DailyCheckInSnapshot
 import com.hienthai.fastowin.protocol.DAILY_CHECK_IN_REWARDS_XP
 import com.hienthai.fastowin.protocol.DAILY_CHECK_IN_REWARDS_GOLD
@@ -137,7 +138,7 @@ internal fun HomeDashboard(
         it.type == CosmeticType.FRAME && it.equipped
     }?.id ?: state.player.frameId
     val elo = profile?.statistics?.eloRating
-    val rank = state.leaderboard?.currentPlayer?.rank
+    val rank = state.leaderboard?.homeRank()
     val onlineFriends = state.social.friends.count { it.presence != FriendPresence.OFFLINE }
     val openSocial = if (isGuest) onUpgradeGuest else onOpenFriends
     var showMatchTypePicker by remember { mutableStateOf(false) }
@@ -302,6 +303,9 @@ internal fun HomeDashboard(
         }
     }
 }
+
+internal fun LeaderboardSnapshot.homeRank(): Int? =
+    seasonCurrentPlayer?.rank ?: currentPlayer?.rank
 
 @Composable
 private fun HomeMatchHero(

@@ -73,6 +73,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.key
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -1316,12 +1317,14 @@ private fun MissionSectionContent(
             }
         }
         missions.forEach { mission ->
-            MissionArcadeCard(
-                mission = mission,
-                canEdit = canEdit,
-                claimingMissionCode = state.claimingMissionCode,
-                onClaim = { onClaimMissionReward(mission.code) }
-            )
+            key(mission.code) {
+                MissionArcadeCard(
+                    mission = mission,
+                    canEdit = canEdit,
+                    claimingMissionCode = state.claimingMissionCode,
+                    onClaim = { onClaimMissionReward(mission.code) }
+                )
+            }
         }
     }
 }
@@ -1467,7 +1470,9 @@ private fun MissionClaimControl(
         mission.completed && canEdit -> ArcadeActionButton(
             label = localized(if (claimingMissionCode == mission.code) TextKey.Claiming else TextKey.ClaimReward),
             onClick = onClaim,
-            enabled = claimingMissionCode == null,
+            // Keep sibling mission actions visually stable while one request is
+            // pending. GameController still serializes claims authoritatively.
+            enabled = claimingMissionCode != mission.code,
             style = ArcadeActionStyle.GOLD,
             modifier = modifier.heightIn(min = 48.dp).testTag("claim_mission:${mission.code}")
         )

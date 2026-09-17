@@ -36,6 +36,7 @@ import com.hienthai.fastowin.state.LobbyStage
 import com.hienthai.fastowin.state.PlayerState
 import com.hienthai.fastowin.ui.components.FastToWinHeader
 import com.hienthai.fastowin.ui.components.HeaderRefreshAction
+import com.hienthai.fastowin.ui.components.HeaderWalletNavigationProvider
 import com.hienthai.fastowin.ui.screens.LobbyScreen
 import com.hienthai.fastowin.ui.screens.HomeDashboard
 import com.hienthai.fastowin.ui.theme.FastToWinTheme
@@ -116,6 +117,35 @@ class ArcadeShellUiTest {
     @Test
     fun bottomBar_tablet_showsFiveTabsInsideViewport() =
         assertBottomBarLayout(840.dp, 1_180.dp, fontScale = 1.6f)
+
+    @Test
+    fun headerBalancesOpenTheirMatchingShopDestinations() {
+        var goldClicks = 0
+        var gemClicks = 0
+        composeRule.setContent {
+            FastToWinTheme {
+                HeaderWalletNavigationProvider(
+                    onGold = { goldClicks++ },
+                    onGems = { gemClicks++ }
+                ) {
+                    FastToWinHeader(
+                        title = "Fast To Win",
+                        gold = 2_000,
+                        gems = 20,
+                        unreadNotifications = 0,
+                        onNotifications = {}
+                    )
+                }
+            }
+        }
+
+        composeRule.onNodeWithTag("header_gold").performClick()
+        composeRule.onNodeWithTag("header_gem").performClick()
+        composeRule.runOnIdle {
+            assertEquals(1, goldClicks)
+            assertEquals(1, gemClicks)
+        }
+    }
 
     @Test
     fun homeSeasonTier_hasBreathingRoomAbove() {

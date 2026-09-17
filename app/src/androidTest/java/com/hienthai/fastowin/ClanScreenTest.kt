@@ -138,6 +138,8 @@ class ClanScreenTest {
                     pendingJoinClanIds = emptySet(),
                     currentClan = null,
                     notice = null,
+                    gold = 2_000,
+                    gems = 20,
                     onCreateClan = { name, description -> createdClan = name to description },
                     onJoinClan = {},
                     onLeaveClan = {},
@@ -161,6 +163,35 @@ class ClanScreenTest {
         composeRule.runOnIdle {
             assertEquals("Tia Chớp" to "Nhanh và chính xác", createdClan)
         }
+    }
+
+    @Test
+    fun createClanShowsBothCostsAndDisablesSubmitWhenEitherBalanceIsMissing() {
+        composeRule.setContent {
+            FastToWinTheme {
+                ClanScreen(
+                    serverUrl = "ws://127.0.0.1:8080/game",
+                    currentUserId = "player",
+                    myClanId = null,
+                    clanList = emptyList(),
+                    pendingJoinClanIds = emptySet(),
+                    currentClan = null,
+                    notice = null,
+                    gold = 2_000,
+                    gems = 19,
+                    onCreateClan = { _, _ -> },
+                    onJoinClan = {}, onLeaveClan = {}, onSearch = {},
+                    onKickMember = { _, _ -> },
+                    onRespondJoinRequest = { _, _, _ -> },
+                    onUpdateLogo = { _, _ -> }, onClaimQuest = {}, onViewClan = {}, onBack = {}
+                )
+            }
+        }
+
+        composeRule.onNodeWithTag("open_create_clan").performClick()
+        composeRule.onNodeWithTag("create_clan_cost").assertIsDisplayed()
+        composeRule.onNodeWithTag("create_clan_name").performTextInput("Thiếu Gem")
+        composeRule.onNodeWithText("TẠO").assertIsNotEnabled()
     }
 
     @Test

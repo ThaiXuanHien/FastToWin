@@ -34,14 +34,11 @@ class PostgresClanDonationTest {
             val ownerId = UUID.fromString(owner.userId)
             val repository = PostgresClanRepository(dataSource)
             try {
-                val clanId = requireNotNull(
-                    repository.createClan(owner.userId, "Donate ${suffix.take(8)}", "Clan donation test")
-                )
                 dataSource.connection.use { connection ->
                     connection.prepareStatement(
                         """
                         INSERT INTO player_stats (user_id, gold, gems, updated_at)
-                        VALUES (?, 20000, 10, CURRENT_TIMESTAMP)
+                        VALUES (?, 20000, 30, CURRENT_TIMESTAMP)
                         ON CONFLICT (user_id) DO UPDATE SET
                             gold = EXCLUDED.gold,
                             gems = EXCLUDED.gems,
@@ -52,6 +49,9 @@ class PostgresClanDonationTest {
                         statement.executeUpdate()
                     }
                 }
+                val clanId = requireNotNull(
+                    repository.createClan(owner.userId, "Donate ${suffix.take(8)}", "Clan donation test").clanId
+                )
 
                 val goldRequest = UUID.randomUUID().toString()
                 assertEquals(
@@ -123,7 +123,7 @@ class PostgresClanDonationTest {
                         statement.setObject(3, ownerId)
                         statement.executeQuery().use { result ->
                             check(result.next())
-                            assertEquals(10_200, result.getInt("gold"))
+                            assertEquals(8_200, result.getInt("gold"))
                             assertEquals(8, result.getInt("gems"))
                             assertEquals(2, result.getInt("level"))
                             assertEquals(1_000L, result.getLong("experience_points"))

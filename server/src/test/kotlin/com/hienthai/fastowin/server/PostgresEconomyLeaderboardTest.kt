@@ -59,9 +59,9 @@ class PostgresEconomyLeaderboardTest {
                 dataSource.connection.use { connection ->
                     connection.prepareStatement(
                         """
-                        INSERT INTO player_stats (user_id, updated_at)
-                        VALUES (?, CURRENT_TIMESTAMP)
-                        ON CONFLICT (user_id) DO NOTHING
+                        INSERT INTO player_stats (user_id, gold, gems, updated_at)
+                        VALUES (?, 10000, 100, CURRENT_TIMESTAMP)
+                        ON CONFLICT (user_id) DO UPDATE SET gold = 10000, gems = 100
                         """.trimIndent()
                     ).use { statement ->
                         userIds.forEach { userId ->
@@ -89,8 +89,8 @@ class PostgresEconomyLeaderboardTest {
                     profileRepository.applyWalletTransaction(current.userId, "STORE_PURCHASE", "store-b", gemsDelta = 100)
                 )
 
-                val firstClan = requireNotNull(clanRepository.createClan(first.userId, "Alpha ${suffix.take(6)}", ""))
-                val currentClan = requireNotNull(clanRepository.createClan(current.userId, "Bravo ${suffix.take(6)}", ""))
+                val firstClan = requireNotNull(clanRepository.createClan(first.userId, "Alpha ${suffix.take(6)}", "").clanId)
+                val currentClan = requireNotNull(clanRepository.createClan(current.userId, "Bravo ${suffix.take(6)}", "").clanId)
                 dataSource.connection.use { connection ->
                     connection.prepareStatement(
                         """

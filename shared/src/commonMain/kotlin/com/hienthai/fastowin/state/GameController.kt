@@ -1557,7 +1557,7 @@ class GameController(
                     isDailyCheckInClaiming = false,
                     claimingMissionCode = null,
                     hasOpponent = if (opponentIsUnavailable) false else it.hasOpponent,
-                    error = localizedError
+                    error = globalErrorMessage(error, localizedError)
                 )
             }
         }

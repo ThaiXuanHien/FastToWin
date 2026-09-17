@@ -20,12 +20,41 @@ import com.hienthai.fastowin.state.PlayerState
 import com.hienthai.fastowin.ui.screens.TournamentScreen
 import com.hienthai.fastowin.ui.theme.FastToWinTheme
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 
 class TournamentScreenTest {
     @get:Rule
     val composeRule = createComposeRule()
+
+    @Test
+    fun selectingCustomEntryFeeKeepsTheFeeSectionHeightStable() {
+        composeRule.setContent {
+            FastToWinTheme {
+                TournamentScreen(
+                    state = GameState(player = PlayerState("Hiền", id = "player-hien")),
+                    onBack = {},
+                    onCreate = { _, _, _, _ -> },
+                    onInvite = {},
+                    onRespondInvitation = { _, _ -> },
+                    onStart = {},
+                    onLeave = {},
+                    onOpenFriendProfile = {}
+                )
+            }
+        }
+
+        val before = composeRule.onNodeWithTag("tournament_custom_fee_slot")
+            .performScrollTo()
+            .fetchSemanticsNode().boundsInRoot.height
+        composeRule.onNodeWithTag("tournament_fee_custom").performScrollTo().performClick()
+        val after = composeRule.onNodeWithTag("tournament_custom_fee_slot")
+            .fetchSemanticsNode().boundsInRoot.height
+
+        composeRule.onNodeWithTag("tournament_custom_fee_input").assertIsDisplayed()
+        composeRule.runOnIdle { assertTrue(kotlin.math.abs(before - after) < 1f) }
+    }
 
     @Test
     fun invitation_acceptsSelectedTournament() {

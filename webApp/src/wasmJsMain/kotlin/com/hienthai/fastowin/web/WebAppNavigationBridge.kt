@@ -56,7 +56,14 @@ private fun addBrowserRouteListener(onRoute: (String) -> Unit): Int = js(
         const registry = window.__fastToWinRouteListeners ||
             (window.__fastToWinRouteListeners = { nextId: 1, handlers: new Map() });
         const id = registry.nextId++;
-        const handler = () => onRoute(window.location.pathname || '/');
+        const handler = () => {
+            window.__fastToWinBackPending = false;
+            window.__fastToWinHandlingPopstate = true;
+            onRoute(window.location.pathname || '/');
+            window.setTimeout(() => {
+                window.__fastToWinHandlingPopstate = false;
+            }, 100);
+        };
         registry.handlers.set(id, handler);
         window.addEventListener('popstate', handler);
         return id;
@@ -78,6 +85,7 @@ private fun publishBrowserRoute(route: String): Unit = js(
     """{
         const current = window.location.pathname || '/';
         if (current === route) return;
+        if (window.__fastToWinBackPending || window.__fastToWinHandlingPopstate) return;
         const currentDepth = history.state && typeof history.state.fastToWinDepth === 'number'
             ? history.state.fastToWinDepth
             : 0;
@@ -100,6 +108,8 @@ private fun goBackInBrowserHistory(): Boolean = js(
             ? history.state.fastToWinDepth
             : 0;
         if (depth <= 0) return false;
+        if (window.__fastToWinBackPending) return true;
+        window.__fastToWinBackPending = true;
         history.back();
         return true;
     }"""

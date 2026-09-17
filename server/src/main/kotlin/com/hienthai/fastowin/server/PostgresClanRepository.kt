@@ -3,6 +3,8 @@
 import com.hienthai.fastowin.protocol.ClanMemberSnapshot
 import com.hienthai.fastowin.protocol.ClanDonationCurrency
 import com.hienthai.fastowin.protocol.ClanDonationStatus
+import com.hienthai.fastowin.protocol.CLAN_CREATION_GEM_COST
+import com.hienthai.fastowin.protocol.CLAN_CREATION_GOLD_COST
 import com.hienthai.fastowin.protocol.ClanJoinRequestSnapshot
 import com.hienthai.fastowin.protocol.ClanRole
 import com.hienthai.fastowin.protocol.ClanQuestSnapshot
@@ -18,7 +20,7 @@ private const val CLAN_MAX_MEMBERS = 50
 class PostgresClanRepository(
     private val dataSource: DataSource
 ) : ClanRepository {
-    override suspend fun createClan(ownerId: String, name: String, description: String): String? = withContext(Dispatchers.IO) {
+    override suspend fun createClan(ownerId: String, name: String, description: String): ClanCreationResult = withContext(Dispatchers.IO) {
         dataSource.connection.use { connection ->
             val ownerUuid = UUID.fromString(ownerId)
             val clanId = UUID.randomUUID()
@@ -30,7 +32,7 @@ class PostgresClanRepository(
                     it.executeQuery().use { result ->
                         if (!result.next()) {
                             connection.rollback()
-                            return@withContext null
+                            return@withContext ClanCreationResult(ClanCreationStatus.PLAYER_NOT_FOUND)
                         }
                     }
                 }
@@ -40,7 +42,31 @@ class PostgresClanRepository(
                 }
                 if (check) {
                     connection.rollback()
-                    return@withContext null
+                    return@withContext ClanCreationResult(ClanCreationStatus.ALREADY_MEMBER)
+                }
+
+                connection.prepareStatement(
+                    """
+                    INSERT INTO player_stats (user_id, updated_at)
+                    VALUES (?, CURRENT_TIMESTAMP)
+                    ON CONFLICT (user_id) DO NOTHING
+                    """.trimIndent()
+                ).use {
+                    it.setObject(1, ownerUuid)
+                    it.executeUpdate()
+                }
+                val wallet = connection.prepareStatement(
+                    "SELECT gold, gems FROM player_stats WHERE user_id = ? FOR UPDATE"
+                ).use {
+                    it.setObject(1, ownerUuid)
+                    it.executeQuery().use { result ->
+                        check(result.next())
+                        result.getInt("gold") to result.getInt("gems")
+                    }
+                }
+                if (wallet.first < CLAN_CREATION_GOLD_COST || wallet.second < CLAN_CREATION_GEM_COST) {
+                    connection.rollback()
+                    return@withContext ClanCreationResult(ClanCreationStatus.INSUFFICIENT_FUNDS)
                 }
 
                 connection.prepareStatement("DELETE FROM clan_join_requests WHERE user_id = ?").use {
@@ -62,11 +88,38 @@ class PostgresClanRepository(
                     it.executeUpdate()
                 }
 
+                connection.prepareStatement(
+                    """
+                    UPDATE player_stats
+                    SET gold = gold - ?, gems = gems - ?, updated_at = CURRENT_TIMESTAMP
+                    WHERE user_id = ?
+                    """.trimIndent()
+                ).use {
+                    it.setInt(1, CLAN_CREATION_GOLD_COST)
+                    it.setInt(2, CLAN_CREATION_GEM_COST)
+                    it.setObject(3, ownerUuid)
+                    check(it.executeUpdate() == 1)
+                }
+                connection.prepareStatement(
+                    """
+                    INSERT INTO wallet_transactions (
+                        id, user_id, source_type, source_id, gold_delta, gems_delta, xp_delta
+                    ) VALUES (?, ?, 'CLAN_CREATION', ?, ?, ?, 0)
+                    """.trimIndent()
+                ).use {
+                    it.setObject(1, UUID.randomUUID())
+                    it.setObject(2, ownerUuid)
+                    it.setString(3, clanId.toString())
+                    it.setInt(4, -CLAN_CREATION_GOLD_COST)
+                    it.setInt(5, -CLAN_CREATION_GEM_COST)
+                    check(it.executeUpdate() == 1)
+                }
+
                 connection.commit()
-                clanId.toString()
+                ClanCreationResult(ClanCreationStatus.CREATED, clanId.toString())
             } catch (e: Exception) {
                 connection.rollback()
-                null
+                ClanCreationResult(ClanCreationStatus.FAILED)
             } finally {
                 connection.autoCommit = true
             }
@@ -268,16 +321,88 @@ class PostgresClanRepository(
     override suspend fun leaveClan(userId: String): Boolean = withContext(Dispatchers.IO) {
         dataSource.connection.use { connection ->
             try {
+                connection.autoCommit = false
                 val userUuid = UUID.fromString(userId)
-                
-                // If leader leaves, what happens? For simplicity, we just let them leave.
-                // Or maybe prevent leader from leaving if not empty.
-                connection.prepareStatement("DELETE FROM clan_members WHERE user_id = ?").use {
+
+                val membership = connection.prepareStatement(
+                    "SELECT clan_id, role FROM clan_members WHERE user_id = ? FOR UPDATE"
+                ).use {
                     it.setObject(1, userUuid)
-                    it.executeUpdate() > 0
+                    it.executeQuery().use { result ->
+                        if (result.next()) {
+                            result.getObject("clan_id", UUID::class.java) to result.getString("role")
+                        } else null
+                    }
+                } ?: run {
+                    connection.rollback()
+                    return@withContext false
                 }
+                val clanId = membership.first
+                connection.prepareStatement("SELECT owner_id FROM clans WHERE id = ? FOR UPDATE").use {
+                    it.setObject(1, clanId)
+                    it.executeQuery().use { result ->
+                        if (!result.next()) {
+                            connection.rollback()
+                            return@withContext false
+                        }
+                    }
+                }
+
+                if (membership.second == "LEADER") {
+                    val successor = connection.prepareStatement(
+                        """
+                        SELECT user_id
+                        FROM clan_members
+                        WHERE clan_id = ? AND user_id <> ?
+                        ORDER BY joined_at ASC, user_id ASC
+                        LIMIT 1
+                        FOR UPDATE
+                        """.trimIndent()
+                    ).use {
+                        it.setObject(1, clanId)
+                        it.setObject(2, userUuid)
+                        it.executeQuery().use { result ->
+                            if (result.next()) result.getObject("user_id", UUID::class.java) else null
+                        }
+                    }
+                    if (successor == null) {
+                        connection.prepareStatement("DELETE FROM clans WHERE id = ?").use {
+                            it.setObject(1, clanId)
+                            check(it.executeUpdate() == 1)
+                        }
+                    } else {
+                        connection.prepareStatement("UPDATE clans SET owner_id = ? WHERE id = ?").use {
+                            it.setObject(1, successor)
+                            it.setObject(2, clanId)
+                            check(it.executeUpdate() == 1)
+                        }
+                        connection.prepareStatement(
+                            "UPDATE clan_members SET role = 'LEADER' WHERE clan_id = ? AND user_id = ?"
+                        ).use {
+                            it.setObject(1, clanId)
+                            it.setObject(2, successor)
+                            check(it.executeUpdate() == 1)
+                        }
+                        connection.prepareStatement("DELETE FROM clan_members WHERE clan_id = ? AND user_id = ?").use {
+                            it.setObject(1, clanId)
+                            it.setObject(2, userUuid)
+                            check(it.executeUpdate() == 1)
+                        }
+                    }
+                } else {
+                    connection.prepareStatement("DELETE FROM clan_members WHERE clan_id = ? AND user_id = ?").use {
+                        it.setObject(1, clanId)
+                        it.setObject(2, userUuid)
+                        check(it.executeUpdate() == 1)
+                    }
+                }
+                connection.commit()
+                true
             } catch (e: Exception) {
+                connection.rollback()
                 false
+            } finally {
+                connection.autoCommit = true
             }
         }
     }

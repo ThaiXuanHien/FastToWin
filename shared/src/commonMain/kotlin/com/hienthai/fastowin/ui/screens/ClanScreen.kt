@@ -65,6 +65,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.hienthai.fastowin.protocol.CLAN_AVATAR_IDS
+import com.hienthai.fastowin.protocol.CLAN_CREATION_GEM_COST
+import com.hienthai.fastowin.protocol.CLAN_CREATION_GOLD_COST
 import com.hienthai.fastowin.protocol.ClanDonationCurrency
 import com.hienthai.fastowin.protocol.ClanJoinRequestSnapshot
 import com.hienthai.fastowin.protocol.ClanMemberSnapshot
@@ -158,6 +160,8 @@ fun ClanScreen(
                     onCreateClan = onCreateClan,
                     onJoinClan = onJoinClan,
                     onSearch = onSearch,
+                    gold = gold,
+                    gems = gems,
                     modifier = contentModifier
                 )
 
@@ -197,6 +201,8 @@ private fun ClanDiscoveryView(
     onCreateClan: (String, String) -> Unit,
     onJoinClan: (String) -> Unit,
     onSearch: (String?) -> Unit,
+    gold: Int,
+    gems: Int,
     modifier: Modifier = Modifier
 ) {
     var showCreateDialog by remember { mutableStateOf(false) }
@@ -292,6 +298,8 @@ private fun ClanDiscoveryView(
 
     if (showCreateDialog) {
         CreateClanDialog(
+            gold = gold,
+            gems = gems,
             onDismiss = { showCreateDialog = false },
             onCreate = { name, description ->
                 onCreateClan(name, description)
@@ -366,7 +374,12 @@ private fun ClanJoinButton(isPending: Boolean, onJoin: () -> Unit, modifier: Mod
 }
 
 @Composable
-private fun CreateClanDialog(onDismiss: () -> Unit, onCreate: (String, String) -> Unit) {
+private fun CreateClanDialog(
+    gold: Int,
+    gems: Int,
+    onDismiss: () -> Unit,
+    onCreate: (String, String) -> Unit
+) {
     var name by remember { mutableStateOf("") }
     var description by remember { mutableStateOf("") }
 
@@ -392,6 +405,18 @@ private fun CreateClanDialog(onDismiss: () -> Unit, onCreate: (String, String) -
             maxLines = 4,
             modifier = Modifier.fillMaxWidth().testTag("create_clan_description")
         )
+        Text(
+            "${formatNumber(CLAN_CREATION_GOLD_COST)} ${localized(TextKey.Gold)} • " +
+                "${formatNumber(CLAN_CREATION_GEM_COST)} ${localized(TextKey.Gems)}",
+            modifier = Modifier.testTag("create_clan_cost"),
+            color = if (gold >= CLAN_CREATION_GOLD_COST && gems >= CLAN_CREATION_GEM_COST) {
+                ArcadePalette.Gold500
+            } else {
+                ArcadePalette.Coral400
+            },
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.Black
+        )
         Column(
             modifier = Modifier.fillMaxWidth(),
             verticalArrangement = Arrangement.spacedBy(10.dp)
@@ -399,7 +424,9 @@ private fun CreateClanDialog(onDismiss: () -> Unit, onCreate: (String, String) -
             ArcadeActionButton(
                 label = localized(TextKey.CreateAction),
                 onClick = { onCreate(name.trim(), description.trim()) },
-                enabled = name.isNotBlank(),
+                enabled = name.isNotBlank() &&
+                    gold >= CLAN_CREATION_GOLD_COST &&
+                    gems >= CLAN_CREATION_GEM_COST,
                 style = ArcadeActionStyle.GOLD,
                 modifier = Modifier.fillMaxWidth()
             )

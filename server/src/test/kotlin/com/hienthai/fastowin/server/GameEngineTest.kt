@@ -1423,7 +1423,8 @@ class GameEngineTest {
                 }
             )
 
-            override suspend fun createClan(ownerId: String, name: String, description: String) = null
+            override suspend fun createClan(ownerId: String, name: String, description: String) =
+                ClanCreationResult(ClanCreationStatus.FAILED)
             override suspend fun requestJoinClan(userId: String, clanId: String): ClanJoinRequestResult {
                 if (userId in members) return ClanJoinRequestResult.ALREADY_MEMBER
                 pending += userId

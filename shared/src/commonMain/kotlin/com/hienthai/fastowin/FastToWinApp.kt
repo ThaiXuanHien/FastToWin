@@ -54,6 +54,8 @@ import com.hienthai.fastowin.ui.screens.AuthScreen
 import com.hienthai.fastowin.ui.screens.GameScreen
 import com.hienthai.fastowin.ui.screens.ClanScreen
 import com.hienthai.fastowin.ui.screens.FriendsScreen
+import com.hienthai.fastowin.ui.screens.FriendRequestDialog
+import com.hienthai.fastowin.ui.screens.nextFriendRequestPrompt
 import com.hienthai.fastowin.ui.screens.RoomInvitationDialog
 import com.hienthai.fastowin.ui.screens.LobbyScreen
 import com.hienthai.fastowin.ui.screens.ProfileScreen
@@ -66,6 +68,7 @@ import com.hienthai.fastowin.ui.screens.FastToWinBottomBar
 import com.hienthai.fastowin.ui.screens.GameModePickerDialog
 import com.hienthai.fastowin.ui.screens.MainTab
 import com.hienthai.fastowin.ui.screens.ShopScreen
+import com.hienthai.fastowin.ui.screens.ShopTab
 import com.hienthai.fastowin.ui.screens.SettingsScreen
 import com.hienthai.fastowin.ui.screens.TutorialScreen
 import com.hienthai.fastowin.ui.screens.PracticeScreen
@@ -104,6 +107,7 @@ import com.hienthai.fastowin.data.network.AuthRequestConfigurator
 import com.hienthai.fastowin.data.network.NoOpAuthRequestConfigurator
 import com.hienthai.fastowin.ui.components.FastToWinHeader
 import com.hienthai.fastowin.ui.components.HeaderRefreshAction
+import com.hienthai.fastowin.ui.components.HeaderWalletNavigationProvider
 import com.hienthai.fastowin.ui.components.ArcadeBackdrop
 import com.hienthai.fastowin.ui.components.AvatarImageProvider
 import com.hienthai.fastowin.ui.components.SeasonRewardSummaryDialog
@@ -330,6 +334,7 @@ private fun GameContent(
     val storeBillingGateway = rememberStoreBillingGateway()
     val storeBillingState by storeBillingGateway.state.collectAsState()
     val pendingStorePurchases = remember { mutableStateMapOf<String, PlatformStorePurchase>() }
+    val deferredFriendRequestIds = remember(accountUserId) { mutableStateMapOf<String, Boolean>() }
     val rewardedAdGateway = rememberRewardedAdGateway()
     val rewardedAdState by rewardedAdGateway.state.collectAsState()
     val textSharer = rememberTextSharer()
@@ -413,6 +418,7 @@ private fun GameContent(
     val practiceChallenge = savedPracticeRoute?.let(::parsePracticeChallenge)
     val practiceMode = practiceChallenge?.mode
     var challengeLinkError by rememberSaveable { mutableStateOf<String?>(null) }
+    var shopInitialTab by rememberSaveable { mutableStateOf(ShopTab.GEMS) }
     val localization = LocalLocalization.current
     var requestedAppRoute by remember(navigationBridge) {
         mutableStateOf(
@@ -448,6 +454,12 @@ private fun GameContent(
         controller.closeTournament()
         controller.closeShop()
         controller.closeClan()
+    }
+    val openShopTab: (ShopTab) -> Unit = { tab ->
+        shopInitialTab = tab
+        closeLocalScreens()
+        controller.openHome()
+        controller.openShop()
     }
     
     LaunchedEffect(fcmToken, pendingPushToken, state.connectionStatus) {
@@ -554,6 +566,25 @@ private fun GameContent(
 
     DisposableEffect(controller) {
         onDispose { controller.close() }
+    }
+
+    val friendRequestPrompt = nextFriendRequestPrompt(
+        incomingRequests = state.social.incomingRequests,
+        deferredRequestIds = deferredFriendRequestIds.keys
+    )?.takeIf {
+        state.currentRoomId == null &&
+            !state.isMatchmaking &&
+            !state.isMatchStarted &&
+            !state.isGameOver
+    }
+    friendRequestPrompt?.let { request ->
+        FriendRequestDialog(
+            request = request,
+            isResponding = state.isFriendsLoading,
+            onAccept = { controller.respondFriendRequest(request.requestId, accept = true) },
+            onDefer = { deferredFriendRequestIds[request.requestId] = true },
+            onDecline = { controller.respondFriendRequest(request.requestId, accept = false) }
+        )
     }
 
     state.roomInvitationPrompt?.let { invitation ->
@@ -845,6 +876,7 @@ private fun GameContent(
             route == "/shop" -> {
                 closeLocalScreens()
                 controller.openHome()
+                shopInitialTab = ShopTab.GEMS
                 controller.openShop()
             }
             route == "/tournament" -> {
@@ -951,10 +983,14 @@ private fun GameContent(
     }
 
     AvatarImageProvider(serverUrl = serverUrl, revision = state.avatarRevision) {
-        screenStateHolder.SaveableStateProvider(screenStateKey) {
-            Box(modifier = Modifier.fillMaxSize()) {
-                ArcadeBackdrop(modifier = Modifier.fillMaxSize()) {
-                    when {
+        HeaderWalletNavigationProvider(
+            onGold = { openShopTab(ShopTab.GOLD) },
+            onGems = { openShopTab(ShopTab.GEMS) }
+        ) {
+            screenStateHolder.SaveableStateProvider(screenStateKey) {
+                Box(modifier = Modifier.fillMaxSize()) {
+                    ArcadeBackdrop(modifier = Modifier.fillMaxSize()) {
+                        when {
                 serviceReachable == false &&
                     !continueOffline &&
                     state.currentRoomId == null &&
@@ -1203,7 +1239,8 @@ private fun GameContent(
                     exchangeNotice = state.profileNotice,
                     onClose = { navigateBack(controller::closeShop) },
                     unreadNotifications = state.unreadNotificationCount,
-                    onNotifications = controller::openNotifications
+                    onNotifications = controller::openNotifications,
+                    initialTab = shopInitialTab
                 )
 
                 state.isClanOpen -> TopLevelTabIfNeeded(
@@ -1284,7 +1321,7 @@ private fun GameContent(
                     }
                 )
 
-                else -> LobbyScreen(
+                            else -> LobbyScreen(
                     state = state,
                     serverUrl = serverUrl,
                     onModeSelected = controller::selectMode,
@@ -1325,13 +1362,14 @@ private fun GameContent(
                     onResolveRoomLink = controller::resolvePendingRoomLink,
                     onClaimDailyCheckIn = controller::claimDailyCheckIn,
                     onPlayQuotaExhausted = controller::showPlayQuotaDialog
-                )
+                            )
+                        }
                     }
-                }
-                if (state.connectionStatus == com.hienthai.fastowin.state.ConnectionStatus.RECONNECTING &&
-                    state.isMatchStarted
-                ) {
-                    ReconnectOverlay(onRetry = controller::retryConnection)
+                    if (state.connectionStatus == com.hienthai.fastowin.state.ConnectionStatus.RECONNECTING &&
+                        state.isMatchStarted
+                    ) {
+                        ReconnectOverlay(onRetry = controller::retryConnection)
+                    }
                 }
             }
         }
