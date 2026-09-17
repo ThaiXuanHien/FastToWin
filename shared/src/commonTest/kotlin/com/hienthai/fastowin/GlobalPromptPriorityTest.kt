@@ -7,6 +7,45 @@ class GlobalPromptPriorityTest {
     @Test
     fun `only the highest priority global prompt is selected`() {
         assertEquals(
+            GlobalPrompt.PLAY_QUOTA,
+            selectGlobalPrompt(
+                hasPlayQuotaDialog = true,
+                hasPracticeModePicker = true,
+                hasPracticeLauncher = true,
+                hasRoomInvitation = true,
+                hasTournamentInvitation = true,
+                hasChallengeError = true,
+                hasFriendRequest = true,
+                canShowWebUpdate = true,
+                canShowSeasonSummary = true
+            )
+        )
+        assertEquals(
+            GlobalPrompt.PRACTICE_MODE_PICKER,
+            selectGlobalPrompt(
+                hasPracticeModePicker = true,
+                hasPracticeLauncher = true,
+                hasRoomInvitation = true,
+                hasTournamentInvitation = true,
+                hasChallengeError = true,
+                hasFriendRequest = true,
+                canShowWebUpdate = true,
+                canShowSeasonSummary = true
+            )
+        )
+        assertEquals(
+            GlobalPrompt.PRACTICE_LAUNCHER,
+            selectGlobalPrompt(
+                hasPracticeLauncher = true,
+                hasRoomInvitation = true,
+                hasTournamentInvitation = true,
+                hasChallengeError = true,
+                hasFriendRequest = true,
+                canShowWebUpdate = true,
+                canShowSeasonSummary = true
+            )
+        )
+        assertEquals(
             GlobalPrompt.ROOM_INVITATION,
             selectGlobalPrompt(
                 hasRoomInvitation = true,

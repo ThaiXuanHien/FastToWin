@@ -381,18 +381,6 @@ private fun GameContent(
         }
     }
 
-    if (state.showPlayQuotaExhaustedDialog) {
-        PlayQuotaExhaustedDialog(
-            quota = state.playQuota,
-            rewardedAdState = rewardedAdState,
-            isClaiming = state.claimingRewardedAdRequestId != null,
-            onWatchAd = {
-                (state.profile?.userId ?: accountUserId)?.let(rewardedAdGateway::show)
-            },
-            onDismiss = controller::dismissPlayQuotaDialog
-        )
-    }
-
     LaunchedEffect(state.storePurchaseResult) {
         val result = state.storePurchaseResult ?: return@LaunchedEffect
         val purchase = pendingStorePurchases.remove(result.requestId)
@@ -598,6 +586,9 @@ private fun GameContent(
         !showPracticeModePicker &&
         practiceMode == null
     val globalPrompt = selectGlobalPrompt(
+        hasPlayQuotaDialog = state.showPlayQuotaExhaustedDialog,
+        hasPracticeModePicker = showPracticeModePicker,
+        hasPracticeLauncher = showPracticeLauncher,
         hasRoomInvitation = state.roomInvitationPrompt != null,
         hasTournamentInvitation = state.tournamentInvitationPrompt != null,
         hasChallengeError = challengeLinkError != null,
@@ -606,59 +597,18 @@ private fun GameContent(
         canShowSeasonSummary = canShowSeasonSummary
     )
 
-    friendRequestPrompt?.takeIf { globalPrompt == GlobalPrompt.FRIEND_REQUEST }?.let { request ->
-        FriendRequestDialog(
-            request = request,
-            isResponding = state.isFriendsLoading,
-            onAccept = { controller.respondFriendRequest(request.requestId, accept = true) },
-            onDefer = {
-                if (request.requestId !in deferredFriendRequestIds) {
-                    deferredFriendRequestIds = deferredFriendRequestIds + request.requestId
-                }
+    GlobalPromptSlot(globalPrompt, GlobalPrompt.PLAY_QUOTA) {
+        PlayQuotaExhaustedDialog(
+            quota = state.playQuota,
+            rewardedAdState = rewardedAdState,
+            isClaiming = state.claimingRewardedAdRequestId != null,
+            onWatchAd = {
+                (state.profile?.userId ?: accountUserId)?.let(rewardedAdGateway::show)
             },
-            onDecline = { controller.respondFriendRequest(request.requestId, accept = false) }
+            onDismiss = controller::dismissPlayQuotaDialog
         )
     }
-
-    state.roomInvitationPrompt?.takeIf { globalPrompt == GlobalPrompt.ROOM_INVITATION }?.let { invitation ->
-        RoomInvitationDialog(
-            invitation = invitation,
-            onRespond = { accept -> controller.respondRoomInvitation(invitation.invitationId, accept) },
-            onDefer = controller::dismissRoomInvitationPrompt
-        )
-    }
-    state.tournamentInvitationPrompt?.takeIf { globalPrompt == GlobalPrompt.TOURNAMENT_INVITATION }?.let { invitation ->
-        TournamentInvitationDialog(
-            invitation = invitation,
-            onRespond = { accept -> controller.respondTournamentInvitation(invitation.invitationId, accept) },
-            onDefer = controller::dismissTournamentInvitationPrompt
-        )
-    }
-    challengeLinkError?.takeIf { globalPrompt == GlobalPrompt.CHALLENGE_ERROR }?.let { message ->
-        AlertDialog(
-            onDismissRequest = { challengeLinkError = null },
-            modifier = Modifier.widthIn(max = 420.dp).fillMaxWidth(),
-            title = { Text(localized(TextKey.CannotOpenChallenge)) },
-            text = { Text(message) },
-            confirmButton = {
-                TextButton(onClick = { challengeLinkError = null }) { Text(localized(TextKey.Understood)) }
-            }
-        )
-    }
-    if (globalPrompt == GlobalPrompt.WEB_UPDATE) {
-        val dismissUpdate = {
-            webUpdateAvailable = false
-            updateBridge.dismissUpdate()
-        }
-        UpdateAvailableDialog(
-            onUpdate = {
-                webUpdateAvailable = false
-                updateBridge.applyUpdate()
-            },
-            onDismiss = dismissUpdate
-        )
-    }
-    if (showPracticeModePicker) {
+    GlobalPromptSlot(globalPrompt, GlobalPrompt.PRACTICE_MODE_PICKER) {
         GameModePickerDialog(
             title = localized(TextKey.ChoosePracticeMode),
             playerLevel = state.profile?.progression?.level ?: 1,
@@ -674,7 +624,7 @@ private fun GameContent(
             }
         )
     }
-    if (showPracticeLauncher) {
+    GlobalPromptSlot(globalPrompt, GlobalPrompt.PRACTICE_LAUNCHER) {
         PracticeLauncherDialog(
             onDismiss = { showPracticeLauncher = false },
             onStartNew = {
@@ -689,14 +639,74 @@ private fun GameContent(
             playerLevel = state.profile?.progression?.level ?: 1
         )
     }
-
-    pendingSeasonReward?.takeIf { globalPrompt == GlobalPrompt.SEASON_SUMMARY }?.let { receipt ->
-        SeasonRewardSummaryDialog(
-            receipt = receipt,
-            onAcknowledge = {
-                controller.acknowledgeSeasonReward(receipt.seasonNumber)
-            }
+    GlobalPromptSlot(globalPrompt, GlobalPrompt.FRIEND_REQUEST) {
+        friendRequestPrompt?.let { request ->
+            FriendRequestDialog(
+                request = request,
+                isResponding = state.isFriendsLoading,
+                onAccept = { controller.respondFriendRequest(request.requestId, accept = true) },
+                onDefer = {
+                    if (request.requestId !in deferredFriendRequestIds) {
+                        deferredFriendRequestIds = deferredFriendRequestIds + request.requestId
+                    }
+                },
+                onDecline = { controller.respondFriendRequest(request.requestId, accept = false) }
+            )
+        }
+    }
+    GlobalPromptSlot(globalPrompt, GlobalPrompt.ROOM_INVITATION) {
+        state.roomInvitationPrompt?.let { invitation ->
+            RoomInvitationDialog(
+                invitation = invitation,
+                onRespond = { accept -> controller.respondRoomInvitation(invitation.invitationId, accept) },
+                onDefer = controller::dismissRoomInvitationPrompt
+            )
+        }
+    }
+    GlobalPromptSlot(globalPrompt, GlobalPrompt.TOURNAMENT_INVITATION) {
+        state.tournamentInvitationPrompt?.let { invitation ->
+            TournamentInvitationDialog(
+                invitation = invitation,
+                onRespond = { accept -> controller.respondTournamentInvitation(invitation.invitationId, accept) },
+                onDefer = controller::dismissTournamentInvitationPrompt
+            )
+        }
+    }
+    GlobalPromptSlot(globalPrompt, GlobalPrompt.CHALLENGE_ERROR) {
+        challengeLinkError?.let { message ->
+            AlertDialog(
+                onDismissRequest = { challengeLinkError = null },
+                modifier = Modifier.widthIn(max = 420.dp).fillMaxWidth(),
+                title = { Text(localized(TextKey.CannotOpenChallenge)) },
+                text = { Text(message) },
+                confirmButton = {
+                    TextButton(onClick = { challengeLinkError = null }) { Text(localized(TextKey.Understood)) }
+                }
+            )
+        }
+    }
+    GlobalPromptSlot(globalPrompt, GlobalPrompt.WEB_UPDATE) {
+        val dismissUpdate = {
+            webUpdateAvailable = false
+            updateBridge.dismissUpdate()
+        }
+        UpdateAvailableDialog(
+            onUpdate = {
+                webUpdateAvailable = false
+                updateBridge.applyUpdate()
+            },
+            onDismiss = dismissUpdate
         )
+    }
+    GlobalPromptSlot(globalPrompt, GlobalPrompt.SEASON_SUMMARY) {
+        pendingSeasonReward?.let { receipt ->
+            SeasonRewardSummaryDialog(
+                receipt = receipt,
+                onAcknowledge = {
+                    controller.acknowledgeSeasonReward(receipt.seasonNumber)
+                }
+            )
+        }
     }
 
     val showTopLevelNavigation = state.lobbyStage == com.hienthai.fastowin.state.LobbyStage.SELECT_MODE
@@ -1430,6 +1440,9 @@ internal fun ReconnectOverlay(
 }
 
 internal enum class GlobalPrompt {
+    PLAY_QUOTA,
+    PRACTICE_MODE_PICKER,
+    PRACTICE_LAUNCHER,
     ROOM_INVITATION,
     TOURNAMENT_INVITATION,
     CHALLENGE_ERROR,
@@ -1439,6 +1452,9 @@ internal enum class GlobalPrompt {
 }
 
 internal fun selectGlobalPrompt(
+    hasPlayQuotaDialog: Boolean = false,
+    hasPracticeModePicker: Boolean = false,
+    hasPracticeLauncher: Boolean = false,
     hasRoomInvitation: Boolean,
     hasTournamentInvitation: Boolean,
     hasChallengeError: Boolean,
@@ -1446,6 +1462,9 @@ internal fun selectGlobalPrompt(
     canShowWebUpdate: Boolean,
     canShowSeasonSummary: Boolean
 ): GlobalPrompt? = when {
+    hasPlayQuotaDialog -> GlobalPrompt.PLAY_QUOTA
+    hasPracticeModePicker -> GlobalPrompt.PRACTICE_MODE_PICKER
+    hasPracticeLauncher -> GlobalPrompt.PRACTICE_LAUNCHER
     hasRoomInvitation -> GlobalPrompt.ROOM_INVITATION
     hasTournamentInvitation -> GlobalPrompt.TOURNAMENT_INVITATION
     hasChallengeError -> GlobalPrompt.CHALLENGE_ERROR
@@ -1453,6 +1472,15 @@ internal fun selectGlobalPrompt(
     canShowWebUpdate -> GlobalPrompt.WEB_UPDATE
     canShowSeasonSummary -> GlobalPrompt.SEASON_SUMMARY
     else -> null
+}
+
+@Composable
+internal fun GlobalPromptSlot(
+    selectedPrompt: GlobalPrompt?,
+    prompt: GlobalPrompt,
+    content: @Composable () -> Unit
+) {
+    if (selectedPrompt == prompt) content()
 }
 
 private fun normalizeAppRoute(route: String): String {
