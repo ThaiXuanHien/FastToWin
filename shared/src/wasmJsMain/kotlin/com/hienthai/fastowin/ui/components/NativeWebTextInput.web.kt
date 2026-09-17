@@ -82,11 +82,17 @@ internal actual fun NativeWebTextInput(
                 // Let Compose consume the browser-authored value before checking
                 // whether validation rejected it. An immediate controlled write
                 // races the callback and moves the caret to the start on Safari.
-                window.setTimeout({ editRevision++ }, 0)
+                window.setTimeout({
+                    editRevision++
+                    null
+                }, 0)
             })
             element.addEventListener("input", {
                 if (!composing && editable) change(element.inputValue())
-                window.setTimeout({ editRevision++ }, 0)
+                window.setTimeout({
+                    editRevision++
+                    null
+                }, 0)
             })
             element.addEventListener("keydown", { event ->
                 val key = event as KeyboardEvent

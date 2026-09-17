@@ -2,6 +2,7 @@ package com.hienthai.fastowin.ui.components
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -228,9 +229,9 @@ fun HeaderRefreshAction(
 private fun HeaderCurrency(amount: Int, label: String, isGem: Boolean, onClick: () -> Unit) {
     val accent = if (isGem) GemColor else GoldColor
     Surface(
-        onClick = onClick,
         modifier = Modifier
             .testTag(if (isGem) "header_gem" else "header_gold")
+            .clickable(onClick = onClick)
             .semantics { contentDescription = "${formatHeaderAmount(amount)} $label" },
         shape = RoundedCornerShape(999.dp),
         color = Color.White.copy(alpha = 0.08f),
