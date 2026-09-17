@@ -324,20 +324,21 @@ class PostgresClanRepository(
                 connection.autoCommit = false
                 val userUuid = UUID.fromString(userId)
 
-                val membership = connection.prepareStatement(
-                    "SELECT clan_id, role FROM clan_members WHERE user_id = ? FOR UPDATE"
+                // Discover the clan first, then lock every departure in the same
+                // order: clan row -> all membership rows. Locking the caller's
+                // membership before the clan can deadlock with a concurrent
+                // leader/successor departure.
+                val clanId = connection.prepareStatement(
+                    "SELECT clan_id FROM clan_members WHERE user_id = ?"
                 ).use {
                     it.setObject(1, userUuid)
                     it.executeQuery().use { result ->
-                        if (result.next()) {
-                            result.getObject("clan_id", UUID::class.java) to result.getString("role")
-                        } else null
+                        if (result.next()) result.getObject("clan_id", UUID::class.java) else null
                     }
                 } ?: run {
                     connection.rollback()
                     return@withContext false
                 }
-                val clanId = membership.first
                 connection.prepareStatement("SELECT owner_id FROM clans WHERE id = ? FOR UPDATE").use {
                     it.setObject(1, clanId)
                     it.executeQuery().use { result ->
@@ -347,24 +348,31 @@ class PostgresClanRepository(
                         }
                     }
                 }
-
-                if (membership.second == "LEADER") {
-                    val successor = connection.prepareStatement(
-                        """
-                        SELECT user_id
-                        FROM clan_members
-                        WHERE clan_id = ? AND user_id <> ?
-                        ORDER BY joined_at ASC, user_id ASC
-                        LIMIT 1
-                        FOR UPDATE
-                        """.trimIndent()
-                    ).use {
-                        it.setObject(1, clanId)
-                        it.setObject(2, userUuid)
-                        it.executeQuery().use { result ->
-                            if (result.next()) result.getObject("user_id", UUID::class.java) else null
+                val lockedMembers = connection.prepareStatement(
+                    """
+                    SELECT user_id, role
+                    FROM clan_members
+                    WHERE clan_id = ?
+                    ORDER BY joined_at ASC, user_id ASC
+                    FOR UPDATE
+                    """.trimIndent()
+                ).use {
+                    it.setObject(1, clanId)
+                    it.executeQuery().use { result ->
+                        buildList {
+                            while (result.next()) {
+                                add(result.getObject("user_id", UUID::class.java) to result.getString("role"))
+                            }
                         }
                     }
+                }
+                val membership = lockedMembers.firstOrNull { it.first == userUuid } ?: run {
+                    connection.rollback()
+                    return@withContext false
+                }
+
+                if (membership.second == "LEADER") {
+                    val successor = lockedMembers.firstOrNull { it.first != userUuid }?.first
                     if (successor == null) {
                         connection.prepareStatement("DELETE FROM clans WHERE id = ?").use {
                             it.setObject(1, clanId)

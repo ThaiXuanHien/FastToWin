@@ -305,7 +305,7 @@ internal fun HomeDashboard(
 }
 
 internal fun LeaderboardSnapshot.homeRank(): Int? =
-    seasonCurrentPlayer?.rank ?: currentPlayer?.rank
+    seasonCurrentPlayer?.rank
 
 @Composable
 private fun HomeMatchHero(

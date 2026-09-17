@@ -130,3 +130,35 @@ test('language change keeps the active route and route history', async ({ actors
   await player.navigate(() => page.goBack());
   await expect(page).toHaveURL(/\/rooms$/);
 });
+
+test('browser Back followed by immediate app navigation publishes the new route', async ({ actors }) => {
+  const player = await actors('Back then navigate');
+  const { page } = player;
+  await login(player);
+
+  await click(page, tag(page, 'bottom_tab:rooms'));
+  await click(page, tag(page, 'bottom_tab:account'));
+  await player.navigate(() => page.goBack());
+  await click(page, tag(page, 'bottom_tab:leaderboard'));
+
+  await expect(page).toHaveURL(/\/leaderboard$/);
+  await expect(tag(page, 'leaderboard_screen')).toBeAttached();
+});
+
+test('invalid friend profile route is canonicalized without a stale address', async ({ actors }) => {
+  const player = await actors('Invalid friend route');
+  const { page } = player;
+  await login(player);
+
+  await page.evaluate(() => {
+    history.pushState(
+      { ...(history.state || {}), fastToWinDepth: 1 },
+      '',
+      '/friends/missing-player',
+    );
+    window.dispatchEvent(new PopStateEvent('popstate'));
+  });
+
+  await expect(tag(page, 'friends_screen')).toBeAttached();
+  await expect(page).toHaveURL(/\/friends$/);
+});

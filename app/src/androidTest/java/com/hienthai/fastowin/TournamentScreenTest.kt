@@ -1,5 +1,9 @@
 package com.hienthai.fastowin
 
+import androidx.compose.ui.test.DeviceConfigurationOverride
+import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.FontScale
+import androidx.compose.ui.test.ForcedSize
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.v2.createComposeRule
@@ -7,6 +11,9 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.then
+import androidx.compose.ui.unit.DpSize
+import androidx.compose.ui.unit.dp
 import com.hienthai.fastowin.navigation.GameMode
 import com.hienthai.fastowin.protocol.ProtocolGameMode
 import com.hienthai.fastowin.protocol.TournamentHubSnapshot
@@ -24,6 +31,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 
+@OptIn(ExperimentalTestApi::class)
 class TournamentScreenTest {
     @get:Rule
     val composeRule = createComposeRule()
@@ -31,25 +39,30 @@ class TournamentScreenTest {
     @Test
     fun selectingCustomEntryFeeKeepsTheFeeSectionHeightStable() {
         composeRule.setContent {
-            FastToWinTheme {
-                TournamentScreen(
-                    state = GameState(player = PlayerState("Hiền", id = "player-hien")),
-                    onBack = {},
-                    onCreate = { _, _, _, _ -> },
-                    onInvite = {},
-                    onRespondInvitation = { _, _ -> },
-                    onStart = {},
-                    onLeave = {},
-                    onOpenFriendProfile = {}
-                )
+            DeviceConfigurationOverride(
+                DeviceConfigurationOverride.ForcedSize(DpSize(320.dp, 568.dp)) then
+                    DeviceConfigurationOverride.FontScale(1.4f)
+            ) {
+                FastToWinTheme {
+                    TournamentScreen(
+                        state = GameState(player = PlayerState("Hiền", id = "player-hien")),
+                        onBack = {},
+                        onCreate = { _, _, _, _ -> },
+                        onInvite = {},
+                        onRespondInvitation = { _, _ -> },
+                        onStart = {},
+                        onLeave = {},
+                        onOpenFriendProfile = {}
+                    )
+                }
             }
         }
 
-        val before = composeRule.onNodeWithTag("tournament_custom_fee_slot")
+        val before = composeRule.onNodeWithTag("tournament_fee_section")
             .performScrollTo()
             .fetchSemanticsNode().boundsInRoot.height
         composeRule.onNodeWithTag("tournament_fee_custom").performScrollTo().performClick()
-        val after = composeRule.onNodeWithTag("tournament_custom_fee_slot")
+        val after = composeRule.onNodeWithTag("tournament_fee_section")
             .fetchSemanticsNode().boundsInRoot.height
 
         composeRule.onNodeWithTag("tournament_custom_fee_input").assertIsDisplayed()

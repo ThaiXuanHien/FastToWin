@@ -381,9 +381,11 @@ class GameStateTest {
     }
 
     @Test
-    fun `background transport failures use connection state instead of a stale global error`() {
+    fun `transport failures remain visible until an authenticated session recovers`() {
         for (code in listOf("CONNECTION_NOT_READY", "CONNECTION_FAILED", "SEND_FAILED")) {
-            assertNull(globalErrorMessage(ServerMessage.Error(code, "Connection failed"), "Unavailable"))
+            val failed = GameState(error = globalErrorMessage(ServerMessage.Error(code, "Connection failed"), "Unavailable"))
+            assertEquals("Unavailable", failed.error)
+            assertNull(failed.withReadySession("me").error)
         }
         assertEquals(
             "Wrong password",

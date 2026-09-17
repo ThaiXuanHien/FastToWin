@@ -375,7 +375,10 @@ private fun CreateTournamentCard(
             var isCustomFee by remember { mutableStateOf(false) }
             var customFeeText by remember { mutableStateOf("") }
 
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Column(
+                modifier = Modifier.testTag("tournament_fee_section"),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
                 Text(
                     localized(TextKey.EntryFeeGold),
                     style = MaterialTheme.typography.titleSmall,
@@ -527,14 +530,14 @@ private fun TournamentFeeChip(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
-            if (selected) {
-                Icon(
-                    Icons.Filled.MonetizationOn,
-                    contentDescription = null,
-                    modifier = Modifier.size(16.dp),
-                    tint = ArcadePalette.Gold500
-                )
-            }
+            // Preserve the icon footprint for both states so selection cannot
+            // resize a chip and make FlowRow jump between lines.
+            Icon(
+                Icons.Filled.MonetizationOn,
+                contentDescription = null,
+                modifier = Modifier.size(16.dp).alpha(if (selected) 1f else 0f),
+                tint = ArcadePalette.Gold500
+            )
             Text(
                 text = label,
                 color = ArcadePalette.White,

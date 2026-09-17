@@ -804,7 +804,7 @@ private fun GameContent(
                 } else if (state.profile == null) {
                     if (state.isProfileOpen && !state.isProfileLoading) {
                         requestedAppRoute = null
-                        navigationBridge.publish("/account")
+                        navigationBridge.replace("/account")
                         return@LaunchedEffect
                     }
                     openAccountTab()
@@ -830,7 +830,7 @@ private fun GameContent(
                 if (friend == null) {
                     if (state.isFriendsOpen && !state.isFriendsLoading) {
                         requestedAppRoute = null
-                        navigationBridge.publish("/friends")
+                        navigationBridge.replace("/friends")
                         return@LaunchedEffect
                     }
                     openFriendsTab()
@@ -848,7 +848,7 @@ private fun GameContent(
                     if (state.friendProfile == null) {
                         if (!state.isFriendProfileLoading) {
                             requestedAppRoute = null
-                            navigationBridge.publish("/friends/$friendId")
+                            navigationBridge.replace("/friends/$friendId")
                         }
                         return@LaunchedEffect
                     }

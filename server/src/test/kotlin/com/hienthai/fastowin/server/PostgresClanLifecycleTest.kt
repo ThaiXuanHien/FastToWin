@@ -3,6 +3,11 @@ package com.hienthai.fastowin.server
 import com.zaxxer.hikari.HikariConfig
 import com.zaxxer.hikari.HikariDataSource
 import com.hienthai.fastowin.protocol.AuthSessionResponse
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.test.runTest
 import org.flywaydb.core.Flyway
 import java.sql.Connection
@@ -94,6 +99,50 @@ class PostgresClanLifecycleTest {
 
             assertTrue(repository.leaveClan(solo.userId))
             assertNull(repository.getClanById(soloClanId))
+        }
+    }
+
+    @Test
+    fun `concurrent leader and successor departures both complete without deadlock`() = runTest {
+        withDatabase { dataSource ->
+            val leader = register(dataSource, "concurrent-leader")
+            val successor = register(dataSource, "concurrent-successor")
+            val remaining = register(dataSource, "concurrent-remaining")
+            fund(dataSource.connection, leader.userId, 5_000, 50)
+            val repository = PostgresClanRepository(dataSource)
+            val clanId = requireNotNull(
+                repository.createClan(leader.userId, uniqueName("Concurrent"), "").clanId
+            )
+            dataSource.connection.use { connection ->
+                connection.prepareStatement(
+                    "INSERT INTO clan_members (clan_id, user_id, role, joined_at) VALUES (?, ?, 'MEMBER', ?)"
+                ).use { statement ->
+                    statement.setObject(1, UUID.fromString(clanId))
+                    statement.setObject(2, UUID.fromString(successor.userId))
+                    statement.setTimestamp(3, java.sql.Timestamp(1_000))
+                    statement.addBatch()
+                    statement.setObject(1, UUID.fromString(clanId))
+                    statement.setObject(2, UUID.fromString(remaining.userId))
+                    statement.setTimestamp(3, java.sql.Timestamp(2_000))
+                    statement.addBatch()
+                    statement.executeBatch()
+                }
+            }
+
+            val start = CompletableDeferred<Unit>()
+            val results = coroutineScope {
+                listOf(leader.userId, successor.userId).map { userId ->
+                    async(Dispatchers.IO) {
+                        start.await()
+                        PostgresClanRepository(dataSource).leaveClan(userId)
+                    }
+                }.also { start.complete(Unit) }.awaitAll()
+            }
+
+            assertTrue(results.all { it })
+            val clan = requireNotNull(repository.getClanById(clanId))
+            assertEquals(listOf(remaining.userId), clan.members.map { it.userId })
+            assertEquals(remaining.userId, clan.ownerId)
         }
     }
 

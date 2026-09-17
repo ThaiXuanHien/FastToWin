@@ -24,7 +24,12 @@ private val httpClient = HttpClient()
 private const val MAX_MEMORY_IMAGE_CACHE_ENTRIES = 96
 private val imageLoadScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 private val imageCacheMutex = Mutex()
-private val memoryImageCache = LinkedHashMap<String, ImageBitmap>()
+// Exact URLs keep cache-busting revisions distinct. The source cache is only a
+// visual placeholder while a newer revision of the same avatar is downloaded.
+// Both maps are read and written from the Compose effect context; background
+// workers only fetch/decode bytes and never mutate them.
+private val exactImageCache = LinkedHashMap<String, ImageBitmap>()
+private val latestSourceImageCache = LinkedHashMap<String, ImageBitmap>()
 private val pendingImageLoads = mutableMapOf<String, Deferred<ImageBitmap>>()
 
 @Composable
@@ -38,7 +43,9 @@ fun NetworkImage(
     // Keep the previous bitmap while only the cache-busting revision changes.
     // A different player URL still resets immediately and cannot show another user's avatar.
     val sourceKey = url.substringBefore('?')
-    var imageBitmap by remember(sourceKey) { mutableStateOf(memoryImageCache[sourceKey]) }
+    var imageBitmap by remember(sourceKey) {
+        mutableStateOf(exactImageCache[url] ?: latestSourceImageCache[sourceKey])
+    }
 
     LaunchedEffect(url) {
         if (url.isEmpty()) return@LaunchedEffect
@@ -67,27 +74,43 @@ fun NetworkImage(
 
 private suspend fun loadNetworkImage(url: String, sourceKey: String): ImageBitmap {
     val pending = imageCacheMutex.withLock {
-        memoryImageCache[sourceKey]?.let { return it }
+        exactImageCache[url]?.let { return it }
         pendingImageLoads[url] ?: imageLoadScope.async {
             val bytes = httpClient.get(url).readRawBytes()
-            val bitmap = withContext(Dispatchers.Default) { bytes.toImageBitmap() }
-            imageCacheMutex.withLock {
-                memoryImageCache[sourceKey] = bitmap
-                while (memoryImageCache.size > MAX_MEMORY_IMAGE_CACHE_ENTRIES) {
-                    memoryImageCache.remove(memoryImageCache.keys.first())
-                }
-            }
-            bitmap
+            withContext(Dispatchers.Default) { bytes.toImageBitmap() }
         }.also { deferred ->
             pendingImageLoads[url] = deferred
-            deferred.invokeOnCompletion {
-                imageLoadScope.launch {
-                    imageCacheMutex.withLock {
-                        if (pendingImageLoads[url] === deferred) pendingImageLoads.remove(url)
-                    }
+        }
+    }
+    return try {
+        val bitmap = pending.await()
+        imageCacheMutex.withLock {
+            exactImageCache[url] = bitmap
+            latestSourceImageCache[sourceKey] = bitmap
+            exactImageCache.trimImageCache()
+            latestSourceImageCache.trimImageCache()
+            if (pendingImageLoads[url] === pending) pendingImageLoads.remove(url)
+        }
+        bitmap
+    } catch (error: Throwable) {
+        if (pending.isCompleted) {
+            imageCacheMutex.withLock {
+                if (pendingImageLoads[url] === pending) pendingImageLoads.remove(url)
+            }
+        } else {
+            // The shared request outlives an individual composition. Clean up
+            // after it finishes without removing it while another avatar waits.
+            imageLoadScope.launch {
+                runCatching { pending.await() }
+                imageCacheMutex.withLock {
+                    if (pendingImageLoads[url] === pending) pendingImageLoads.remove(url)
                 }
             }
         }
+        throw error
     }
-    return pending.await()
+}
+
+private fun LinkedHashMap<String, ImageBitmap>.trimImageCache() {
+    while (size > MAX_MEMORY_IMAGE_CACHE_ENTRIES) remove(keys.first())
 }

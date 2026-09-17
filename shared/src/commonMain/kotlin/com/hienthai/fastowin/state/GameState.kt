@@ -441,8 +441,8 @@ private val REMATCH_CONNECTION_ERROR_CODES = setOf(
     "CONNECTION_NOT_READY", "CONNECTION_FAILED", "SEND_FAILED"
 )
 
-internal fun globalErrorMessage(error: ServerMessage.Error, localizedMessage: String): String? =
-    localizedMessage.takeUnless { error.code in REMATCH_CONNECTION_ERROR_CODES }
+internal fun globalErrorMessage(error: ServerMessage.Error, localizedMessage: String): String =
+    localizedMessage
 
 private val REMATCH_ACTION_ERROR_CODES = REMATCH_CONNECTION_ERROR_CODES + setOf(
     "RATE_LIMITED", "NOT_IN_ROOM", "OPPONENT_LEFT", "TOURNAMENT_REMATCH_DISABLED",

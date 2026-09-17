@@ -86,7 +86,7 @@ fun LeaderboardScreen(
     var selectedMainTab by remember { mutableIntStateOf(0) }
 
     ResponsiveScreen(
-        modifier = modifier,
+        modifier = modifier.testTag("leaderboard_screen"),
         maxContentWidth = 920.dp,
         applySafeDrawingInsets = showBackButton,
         includeBottomSafeDrawingInset = showBackButton

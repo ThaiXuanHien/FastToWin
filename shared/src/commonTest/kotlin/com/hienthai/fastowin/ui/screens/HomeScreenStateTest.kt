@@ -4,6 +4,7 @@ import com.hienthai.fastowin.protocol.LeaderboardEntrySnapshot
 import com.hienthai.fastowin.protocol.LeaderboardSnapshot
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
 
 class HomeScreenStateTest {
     @Test
@@ -17,10 +18,10 @@ class HomeScreenStateTest {
     }
 
     @Test
-    fun `home rank falls back to all time when current season has no placement`() {
+    fun `home rank stays unranked when current season has no placement`() {
         val leaderboard = LeaderboardSnapshot(currentPlayer = entry(rank = 4))
 
-        assertEquals(4, leaderboard.homeRank())
+        assertNull(leaderboard.homeRank())
     }
 
     private fun entry(rank: Int) = LeaderboardEntrySnapshot(

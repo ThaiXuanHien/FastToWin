@@ -157,7 +157,7 @@ fun FriendsScreen(
     }
 
     ResponsiveScreen(
-        modifier = modifier,
+        modifier = modifier.testTag("friends_screen"),
         maxContentWidth = 920.dp,
         applySafeDrawingInsets = showBackButton,
         includeBottomSafeDrawingInset = showBackButton

@@ -58,11 +58,7 @@ private fun addBrowserRouteListener(onRoute: (String) -> Unit): Int = js(
         const id = registry.nextId++;
         const handler = () => {
             window.__fastToWinBackPending = false;
-            window.__fastToWinHandlingPopstate = true;
             onRoute(window.location.pathname || '/');
-            window.setTimeout(() => {
-                window.__fastToWinHandlingPopstate = false;
-            }, 100);
         };
         registry.handlers.set(id, handler);
         window.addEventListener('popstate', handler);
@@ -85,7 +81,7 @@ private fun publishBrowserRoute(route: String): Unit = js(
     """{
         const current = window.location.pathname || '/';
         if (current === route) return;
-        if (window.__fastToWinBackPending || window.__fastToWinHandlingPopstate) return;
+        if (window.__fastToWinBackPending) return;
         const currentDepth = history.state && typeof history.state.fastToWinDepth === 'number'
             ? history.state.fastToWinDepth
             : 0;
