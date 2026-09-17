@@ -334,7 +334,9 @@ private fun GameContent(
     val storeBillingGateway = rememberStoreBillingGateway()
     val storeBillingState by storeBillingGateway.state.collectAsState()
     val pendingStorePurchases = remember { mutableStateMapOf<String, PlatformStorePurchase>() }
-    val deferredFriendRequestIds = remember(accountUserId) { mutableStateMapOf<String, Boolean>() }
+    var deferredFriendRequestIds by rememberSaveable(accountUserId) {
+        mutableStateOf(emptyList<String>())
+    }
     val rewardedAdGateway = rememberRewardedAdGateway()
     val rewardedAdState by rewardedAdGateway.state.collectAsState()
     val textSharer = rememberTextSharer()
@@ -570,7 +572,7 @@ private fun GameContent(
 
     val friendRequestPrompt = nextFriendRequestPrompt(
         incomingRequests = state.social.incomingRequests,
-        deferredRequestIds = deferredFriendRequestIds.keys
+        deferredRequestIds = deferredFriendRequestIds.toSet()
     )?.takeIf {
         state.currentRoomId == null &&
             !state.isMatchmaking &&
@@ -582,7 +584,11 @@ private fun GameContent(
             request = request,
             isResponding = state.isFriendsLoading,
             onAccept = { controller.respondFriendRequest(request.requestId, accept = true) },
-            onDefer = { deferredFriendRequestIds[request.requestId] = true },
+            onDefer = {
+                if (request.requestId !in deferredFriendRequestIds) {
+                    deferredFriendRequestIds = deferredFriendRequestIds + request.requestId
+                }
+            },
             onDecline = { controller.respondFriendRequest(request.requestId, accept = false) }
         )
     }
