@@ -21,17 +21,19 @@ class PushNotificationServiceTest {
     }
 
     @Test
-    fun `normalizes supported regional tags and falls back to English`() {
-        assertEquals(AppLanguage.JAPANESE, resolveNotificationLanguage("ja-JP"))
-        assertEquals(AppLanguage.SIMPLIFIED_CHINESE, resolveNotificationLanguage("zh-CN"))
+    fun `normalizes Vietnamese and English regional tags and falls back to English`() {
+        assertEquals(AppLanguage.VIETNAMESE, resolveNotificationLanguage("vi-VN"))
+        assertEquals(AppLanguage.ENGLISH, resolveNotificationLanguage("en-US"))
+        assertEquals(AppLanguage.ENGLISH, resolveNotificationLanguage("ja-JP"))
+        assertEquals(AppLanguage.ENGLISH, resolveNotificationLanguage("zh-CN"))
         assertEquals(AppLanguage.ENGLISH, resolveNotificationLanguage("ar-EG"))
         assertEquals(AppLanguage.ENGLISH, resolveNotificationLanguage(null))
     }
 
     @Test
-    fun `renders Japanese push and exposes canonical Web Push language`() {
+    fun `renders Vietnamese push and exposes canonical Web Push language`() {
         val content = renderPushNotification(
-            language = resolveNotificationLanguage("ja-JP"),
+            language = resolveNotificationLanguage("vi-VN"),
             content = LocalizedPushContent(
                 titleKey = TextKey.PushTournamentInvitationTitle,
                 bodyKey = TextKey.PushTournamentInvitationMessage,
@@ -39,14 +41,14 @@ class PushNotificationServiceTest {
             )
         )
 
-        assertEquals("大会への招待", content.title)
-        assertEquals("Hienさんが大会「Summer Cup」に招待しました。", content.body)
-        assertEquals("ja", content.languageTag)
+        assertEquals("Lời mời giải đấu", content.title)
+        assertEquals("Hien đã mời bạn vào giải đấu Summer Cup.", content.body)
+        assertEquals("vi", content.languageTag)
     }
 
     @Test
-    fun `renders Simplified Chinese and unsupported locale falls back to English`() {
-        val chinese = renderPushNotification(
+    fun `renders unsupported locales in English`() {
+        val unsupportedChinese = renderPushNotification(
             language = resolveNotificationLanguage("zh-CN"),
             content = LocalizedPushContent(
                 titleKey = TextKey.PushRoomInvitationTitle,
@@ -63,9 +65,9 @@ class PushNotificationServiceTest {
             )
         )
 
-        assertEquals("房间邀请", chinese.title)
-        assertEquals("Hien 邀请你加入房间“极速房”。", chinese.body)
-        assertEquals("zh-Hans", chinese.languageTag)
+        assertEquals("Room invitation", unsupportedChinese.title)
+        assertEquals("Hien invited you to room 极速房.", unsupportedChinese.body)
+        assertEquals("en", unsupportedChinese.languageTag)
         assertEquals("Room invitation", fallback.title)
         assertEquals("Hien invited you to room Fast room.", fallback.body)
         assertEquals("en", fallback.languageTag)

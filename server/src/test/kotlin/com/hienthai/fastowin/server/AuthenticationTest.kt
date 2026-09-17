@@ -466,7 +466,7 @@ class AuthenticationTest {
     }
 
     @Test
-    fun `production sends reset email without exposing token or account existence`() = testApplication {
+    fun `production sends reset email in English for unsupported requested language`() = testApplication {
         val sender = RecordingAuthEmailSender()
         application {
             gameModule(environment = "prod", authEmailSender = sender)
@@ -490,7 +490,7 @@ class AuthenticationTest {
         assertNull(missing.devResetToken)
         assertEquals(1, sender.passwordResets.size)
         assertEquals("reset-mail@example.com", sender.passwordResets.single().first)
-        assertEquals(AppLanguage.JAPANESE, sender.passwordResets.single().third)
+        assertEquals(AppLanguage.ENGLISH, sender.passwordResets.single().third)
     }
 
     @Test
@@ -512,7 +512,7 @@ class AuthenticationTest {
     }
 
     @Test
-    fun `production sends email verification in requested language`() = testApplication {
+    fun `production sends email verification in English for unsupported requested language`() = testApplication {
         val sender = RecordingAuthEmailSender()
         application { gameModule(environment = "prod", authEmailSender = sender) }
         val registered = client.postJson(
@@ -526,7 +526,7 @@ class AuthenticationTest {
         )
 
         assertEquals(HttpStatusCode.OK, response.status)
-        assertEquals(AppLanguage.SIMPLIFIED_CHINESE, sender.emailVerifications.single().third)
+        assertEquals(AppLanguage.ENGLISH, sender.emailVerifications.single().third)
     }
 
     @Test
