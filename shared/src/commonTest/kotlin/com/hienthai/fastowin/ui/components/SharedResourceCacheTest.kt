@@ -1,13 +1,15 @@
 package com.hienthai.fastowin.ui.components
 
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancelAndJoin
-import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
+@OptIn(ExperimentalCoroutinesApi::class)
 class SharedResourceCacheTest {
     @Test
     fun `successful shared load is cached after the original waiter is cancelled`() = runTest {
@@ -28,7 +30,7 @@ class SharedResourceCacheTest {
         loadStarted.await()
         originalWaiter.cancelAndJoin()
         finishLoad.complete("bitmap")
-        advanceUntilIdle()
+        runCurrent()
 
         assertEquals("bitmap", cache.peekExact("avatar?v=1"))
         assertEquals("bitmap", cache.load("avatar?v=1", "avatar"))
