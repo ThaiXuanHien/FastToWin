@@ -145,12 +145,28 @@ export const tag = (page, id) => page.getByTestId(id);
 // Click its real canvas position, not a JS controller or a synthetic server response.
 export async function click(page, locator) {
   await expect(locator).toBeAttached();
+  let scrolled = false;
   for (let attempt = 0; attempt < 12; attempt++) {
     const bounds = await locator.boundingBox();
     const viewport = page.viewportSize();
     if (bounds && bounds.width > 0 && bounds.height > 0) {
       const y = bounds.y + bounds.height / 2;
       if (y >= 0 && y < viewport.height) {
+        // WebKit can briefly publish stale Compose semantics bounds while a
+        // LazyColumn is still settling after a wheel event. Clicking that
+        // transient position targets unrelated canvas content. Require the
+        // offscreen item to keep the same bounds across two layout frames.
+        if (scrolled) {
+          await page.waitForTimeout(150);
+          const stableBounds = await locator.boundingBox();
+          const isStable = stableBounds &&
+            stableBounds.width > 0 && stableBounds.height > 0 &&
+            Math.abs(stableBounds.x - bounds.x) <= 1 &&
+            Math.abs(stableBounds.y - bounds.y) <= 1 &&
+            Math.abs(stableBounds.width - bounds.width) <= 1 &&
+            Math.abs(stableBounds.height - bounds.height) <= 1;
+          if (!isStable) continue;
+        }
         await page.mouse.click(bounds.x + bounds.width / 2, y);
         return;
       }
@@ -158,6 +174,7 @@ export async function click(page, locator) {
     // Offscreen Compose semantics can have a zero-sized box until the canvas scrolls.
     await page.mouse.move(viewport.width / 2, viewport.height / 2);
     await page.mouse.wheel(0, bounds && bounds.y < 0 ? -450 : 450);
+    scrolled = true;
     await page.waitForTimeout(150); // Allow Compose's debounced semantics/layout sync after scroll.
   }
   throw new Error('UI element could not be brought into the viewport.');
