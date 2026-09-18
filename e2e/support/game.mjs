@@ -147,7 +147,11 @@ export async function click(page, locator) {
   await expect(locator).toBeAttached();
   let scrolled = false;
   for (let attempt = 0; attempt < 12; attempt++) {
-    const bounds = await locator.boundingBox();
+    // Compose rebuilds its transparent semantics nodes while a LazyColumn is
+    // settling. Resolve a short-lived handle for each attempt so a detached
+    // WebKit node is retried instead of consuming the locator's full timeout.
+    const handle = await locator.elementHandle({ timeout: 500 }).catch(() => null);
+    const bounds = handle ? await handle.boundingBox().catch(() => null) : null;
     const viewport = page.viewportSize();
     if (bounds && bounds.width > 0 && bounds.height > 0) {
       const y = bounds.y + bounds.height / 2;
@@ -158,7 +162,8 @@ export async function click(page, locator) {
         // offscreen item to keep the same bounds across two layout frames.
         if (scrolled) {
           await page.waitForTimeout(150);
-          const stableBounds = await locator.boundingBox();
+          const stableHandle = await locator.elementHandle({ timeout: 500 }).catch(() => null);
+          const stableBounds = stableHandle ? await stableHandle.boundingBox().catch(() => null) : null;
           const isStable = stableBounds &&
             stableBounds.width > 0 && stableBounds.height > 0 &&
             Math.abs(stableBounds.x - bounds.x) <= 1 &&
