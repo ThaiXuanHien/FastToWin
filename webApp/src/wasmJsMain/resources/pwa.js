@@ -1,5 +1,79 @@
 (function () {
     const pwa = window.FASTTOWIN_PWA = window.FASTTOWIN_PWA || {};
+    const registry = { nextId: 1, handlers: new Map() };
+
+    function isIosStandalone() {
+        const standalone = window.matchMedia('(display-mode: standalone)').matches ||
+            window.navigator.standalone === true;
+        return standalone && /iPad|iPhone|iPod/i.test(window.navigator.userAgent || '');
+    }
+
+    function currentDepth() {
+        return window.history.state && typeof window.history.state.fastToWinDepth === 'number'
+            ? window.history.state.fastToWinDepth
+            : 0;
+    }
+
+    function replace(route, depth = currentDepth()) {
+        window.history.replaceState({
+            ...(window.history.state || {}),
+            fastToWinDepth: depth
+        }, '', route);
+    }
+
+    pwa.navigation = {
+        prepare() {
+            if (typeof window.history.state?.fastToWinDepth !== 'number') {
+                replace(window.location.href, 0);
+            }
+        },
+        addRouteListener(onRoute) {
+            const id = registry.nextId++;
+            const handler = function () {
+                window.__fastToWinBackPending = false;
+                onRoute(window.location.pathname || '/');
+            };
+            registry.handlers.set(id, handler);
+            window.addEventListener('popstate', handler);
+            return id;
+        },
+        removeRouteListener(id) {
+            const handler = registry.handlers.get(id);
+            if (!handler) return;
+            window.removeEventListener('popstate', handler);
+            registry.handlers.delete(id);
+        },
+        publish(route) {
+            const current = window.location.pathname || '/';
+            if (current === route || window.__fastToWinBackPending) return;
+            if (isIosStandalone()) {
+                replace(route, 0);
+                return;
+            }
+            window.history.pushState({
+                ...(window.history.state || {}),
+                fastToWinDepth: currentDepth() + 1
+            }, '', route);
+        },
+        replace(route) {
+            replace(route, isIosStandalone() ? 0 : currentDepth());
+        },
+        goBack() {
+            if (isIosStandalone()) return false;
+            if (currentDepth() <= 0) return false;
+            if (window.__fastToWinBackPending) return true;
+            window.__fastToWinBackPending = true;
+            window.history.back();
+            return true;
+        },
+        publicUrl(route) {
+            return window.location.origin + route;
+        }
+    };
+})();
+
+(function () {
+    const pwa = window.FASTTOWIN_PWA = window.FASTTOWIN_PWA || {};
     pwa.updateAvailable = false;
     pwa.registration = null;
     pwa.isApplyingUpdate = false;

@@ -6,10 +6,10 @@
   "engines": { "node": ">=22" },
   "scripts": {
     "test": "pnpm test:navigation-errors && playwright test",
-    "test:navigation-errors": "node --test support/navigation-errors.test.mjs",
+    "test:navigation-errors": "node --test support/navigation-errors.test.mjs support/pwa-navigation.test.mjs",
     "test:chromium": "playwright test --project=chromium",
     "test:responsive": "playwright test --project=chromium-small-phone --project=chromium-large-phone --project=chromium-tablet --project=chromium-landscape --project=chromium-adaptive-input-desktop --project=chromium-adaptive-input-touch",
-    "test:cross-browser": "playwright test --project=firefox-smoke --project=webkit-smoke",
+    "test:cross-browser": "playwright test --project=firefox-smoke --project=webkit-smoke --project=webkit-history --project=webkit-pwa-ios",
     "test:js-fallback": "node support/test-js-fallback.mjs",
     "test:all": "playwright test",
     "test:list": "playwright test --list",

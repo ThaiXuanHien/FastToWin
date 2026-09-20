@@ -107,6 +107,17 @@ export default defineConfig({
       testMatch: /browser-smoke\.spec\.mjs/,
       use: { browserName: 'webkit', viewport: { width: 390, height: 844 } },
     },
+    {
+      name: 'webkit-history',
+      testMatch: /responsive\.spec\.mjs/,
+      grep: /top-level history is published before Compose paints/,
+      use: { browserName: 'webkit', viewport: { width: 390, height: 844 }, hasTouch: true },
+    },
+    {
+      name: 'webkit-pwa-ios',
+      testMatch: /pwa-ios\.spec\.mjs/,
+      use: { browserName: 'webkit', viewport: { width: 390, height: 844 }, hasTouch: true },
+    },
   ],
   webServer: reuse ? undefined : {
     command: 'node support/serve.mjs',

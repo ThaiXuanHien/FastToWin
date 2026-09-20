@@ -43,74 +43,29 @@ private fun currentBrowserRoute(): String = js(
 )
 
 private fun prepareBrowserHistory(): Unit = js(
-    """{
-        const existing = history.state || {};
-        if (typeof existing.fastToWinDepth !== 'number') {
-            history.replaceState({ ...existing, fastToWinDepth: 0 }, '', window.location.href);
-        }
-    }"""
+    "window.FASTTOWIN_PWA.navigation.prepare()"
 )
 
 private fun addBrowserRouteListener(onRoute: (String) -> Unit): Int = js(
-    """{
-        const registry = window.__fastToWinRouteListeners ||
-            (window.__fastToWinRouteListeners = { nextId: 1, handlers: new Map() });
-        const id = registry.nextId++;
-        const handler = () => {
-            window.__fastToWinBackPending = false;
-            onRoute(window.location.pathname || '/');
-        };
-        registry.handlers.set(id, handler);
-        window.addEventListener('popstate', handler);
-        return id;
-    }"""
+    "window.FASTTOWIN_PWA.navigation.addRouteListener(onRoute)"
 )
 
 private fun removeBrowserRouteListener(listenerId: Int): Unit = js(
-    """{
-        const registry = window.__fastToWinRouteListeners;
-        const handler = registry && registry.handlers.get(listenerId);
-        if (handler) {
-            window.removeEventListener('popstate', handler);
-            registry.handlers.delete(listenerId);
-        }
-    }"""
+    "window.FASTTOWIN_PWA.navigation.removeRouteListener(listenerId)"
 )
 
 private fun publishBrowserRoute(route: String): Unit = js(
-    """{
-        const current = window.location.pathname || '/';
-        if (current === route) return;
-        if (window.__fastToWinBackPending) return;
-        const currentDepth = history.state && typeof history.state.fastToWinDepth === 'number'
-            ? history.state.fastToWinDepth
-            : 0;
-        history.pushState({ fastToWinDepth: currentDepth + 1 }, '', route);
-    }"""
+    "window.FASTTOWIN_PWA.navigation.publish(route)"
 )
 
 private fun replaceBrowserRoute(route: String): Unit = js(
-    """{
-        const currentDepth = history.state && typeof history.state.fastToWinDepth === 'number'
-            ? history.state.fastToWinDepth
-            : 0;
-        history.replaceState({ fastToWinDepth: currentDepth }, '', route);
-    }"""
+    "window.FASTTOWIN_PWA.navigation.replace(route)"
 )
 
 private fun goBackInBrowserHistory(): Boolean = js(
-    """{
-        const depth = history.state && typeof history.state.fastToWinDepth === 'number'
-            ? history.state.fastToWinDepth
-            : 0;
-        if (depth <= 0) return false;
-        if (window.__fastToWinBackPending) return true;
-        window.__fastToWinBackPending = true;
-        history.back();
-        return true;
-    }"""
+    "window.FASTTOWIN_PWA.navigation.goBack()"
 )
 
 private fun browserPublicUrl(route: String): String = js(
-    "window.location.origin + route"
+    "window.FASTTOWIN_PWA.navigation.publicUrl(route)"
 )

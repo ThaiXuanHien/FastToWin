@@ -1,4 +1,8 @@
 :root {
+    --fast-to-win-safe-top: env(safe-area-inset-top, 0px);
+    --fast-to-win-safe-right: env(safe-area-inset-right, 0px);
+    --fast-to-win-safe-bottom: env(safe-area-inset-bottom, 0px);
+    --fast-to-win-safe-left: env(safe-area-inset-left, 0px);
     color-scheme: dark;
     background: #071824;
     background-color: #071824;
@@ -19,14 +23,17 @@ body {
 
 #fastToWinRoot {
     position: fixed;
-    top: env(safe-area-inset-top, 0px);
-    right: env(safe-area-inset-right, 0px);
-    bottom: env(safe-area-inset-bottom, 0px);
-    left: env(safe-area-inset-left, 0px);
+    inset: 0;
+    box-sizing: border-box;
+    padding:
+        var(--fast-to-win-safe-top)
+        var(--fast-to-win-safe-right)
+        var(--fast-to-win-safe-bottom)
+        var(--fast-to-win-safe-left);
     min-width: 0;
     min-height: 0;
     overflow: hidden;
-    background-color: #071824;
+    background-color: #071a44;
 }
 
 body {

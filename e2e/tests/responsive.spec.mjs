@@ -145,6 +145,35 @@ test('browser Back followed by immediate app navigation publishes the new route'
   await expect(tag(page, 'leaderboard_screen')).toBeAttached();
 });
 
+test('top-level history is published before Compose paints the destination screen', async ({ actors }) => {
+  const player = await actors('History snapshot ordering');
+  const { page } = player;
+  await login(player);
+
+  await page.evaluate(() => {
+    const originalPushState = history.pushState.bind(history);
+    window.__fastToWinHistorySnapshots = [];
+    history.pushState = (state, unused, url) => {
+      window.__fastToWinHistorySnapshots.push({
+        url: String(url),
+        destinationWasAlreadyPainted: document.getElementById('leaderboard_screen') !== null,
+      });
+      return originalPushState(state, unused, url);
+    };
+  });
+
+  await click(page, tag(page, 'bottom_tab:leaderboard'));
+  await expect(page).toHaveURL(/\/leaderboard$/);
+  await expect(tag(page, 'leaderboard_screen')).toBeAttached();
+
+  const snapshot = await page.evaluate(() => window.__fastToWinHistorySnapshots.at(-1));
+  expect(snapshot.url).toBe('/leaderboard');
+  expect(
+    snapshot.destinationWasAlreadyPainted,
+    'Safari must capture the previous screen before the destination is painted',
+  ).toBe(false);
+});
+
 test('invalid friend profile route is canonicalized without a stale address', async ({ actors }) => {
   const player = await actors('Invalid friend route');
   const { page } = player;

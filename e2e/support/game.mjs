@@ -49,6 +49,18 @@ export const test = base.extend({
           window.localStorage.setItem('fasttowin.preferences', JSON.stringify(preferences));
         }, options.preferences);
       }
+      if (options.iosStandalone) {
+        await context.addInitScript(() => {
+          Object.defineProperty(window.navigator, 'standalone', {
+            configurable: true,
+            get: () => true,
+          });
+          Object.defineProperty(window.navigator, 'userAgent', {
+            configurable: true,
+            get: () => 'Mozilla/5.0 (iPhone; CPU iPhone OS 27_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148',
+          });
+        });
+      }
       // Use only the chosen local test backend; disable push/PWA configuration.
       await context.route('**/config.js', route => route.fulfill({
         contentType: 'text/javascript',

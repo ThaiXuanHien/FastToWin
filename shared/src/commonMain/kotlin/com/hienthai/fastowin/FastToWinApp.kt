@@ -446,10 +446,12 @@ private fun GameContent(
         controller.closeClan()
     }
     val openShopTab: (ShopTab) -> Unit = { tab ->
-        shopInitialTab = tab
-        closeLocalScreens()
-        controller.openHome()
-        controller.openShop()
+        navigateToRoute(navigationBridge, "/shop") {
+            shopInitialTab = tab
+            closeLocalScreens()
+            controller.openHome()
+            controller.openShop()
+        }
     }
     
     LaunchedEffect(fcmToken, pendingPushToken, state.connectionStatus) {
@@ -711,45 +713,96 @@ private fun GameContent(
 
     val showTopLevelNavigation = state.lobbyStage == com.hienthai.fastowin.state.LobbyStage.SELECT_MODE
     val openHome = {
-        profileSection = null
-        showSeasonHistory = false
-        controller.openHome()
+        navigateToRoute(navigationBridge, "/") {
+            profileSection = null
+            showSeasonHistory = false
+            controller.openHome()
+        }
     }
     val openLeaderboardTab = {
-        profileSection = null
-        showSeasonHistory = false
-        controller.backToModeSelection()
-        controller.openLeaderboard()
+        navigateToRoute(navigationBridge, "/leaderboard") {
+            profileSection = null
+            showSeasonHistory = false
+            controller.backToModeSelection()
+            controller.openLeaderboard()
+        }
     }
     val openRoomsTab = {
-        profileSection = null
-        showSeasonHistory = false
-        controller.openRoomBrowser(state.profile?.displayName ?: state.player.name)
+        navigateToRoute(navigationBridge, "/rooms") {
+            profileSection = null
+            showSeasonHistory = false
+            controller.openRoomBrowser(state.profile?.displayName ?: state.player.name)
+        }
     }
     val openFriendsTab = {
         if (isGuest) onUpgradeGuest() else {
-            profileSection = null
-            showSeasonHistory = false
-            controller.openFriends()
+            navigateToRoute(navigationBridge, "/friends") {
+                profileSection = null
+                showSeasonHistory = false
+                controller.openFriends()
+            }
         }
     }
     val openAccountTab = {
         if (isGuest) onUpgradeGuest() else {
-            profileSection = null
-            showSeasonHistory = false
-            controller.backToModeSelection()
-            controller.openProfile()
+            navigateToRoute(navigationBridge, "/account") {
+                profileSection = null
+                showSeasonHistory = false
+                controller.backToModeSelection()
+                controller.openProfile()
+            }
         }
     }
     val openClanTab = {
         if (isGuest) onUpgradeGuest() else {
-            profileSection = null
-            showSeasonHistory = false
-            controller.backToModeSelection()
-            controller.openClan()
+            navigateToRoute(navigationBridge, "/clan") {
+                profileSection = null
+                showSeasonHistory = false
+                controller.backToModeSelection()
+                controller.openClan()
+            }
         }
     }
-    val openSettingsTab = { showSettings = true }
+    val openNotifications = {
+        navigateToRoute(navigationBridge, "/notifications", controller::openNotifications)
+    }
+    val openSettingsTab = {
+        navigateToRoute(navigationBridge, "/settings") { showSettings = true }
+    }
+    val openTutorial = {
+        navigateToRoute(navigationBridge, "/tutorial") { showTutorial = true }
+    }
+    val openTournament = {
+        navigateToRoute(navigationBridge, "/tournament", controller::openTournament)
+    }
+    val openShop = {
+        navigateToRoute(navigationBridge, "/shop", controller::openShop)
+    }
+    val openPractice = {
+        navigateToRoute(navigationBridge, "/practice") { showPracticeLauncher = true }
+    }
+    val openSeasonHistory = {
+        navigateToRoute(navigationBridge, "/season-history") { showSeasonHistory = true }
+    }
+    val openFriendProfile: (String) -> Unit = { userId ->
+        navigateToRoute(navigationBridge, "/friends/$userId") {
+            controller.openFriendProfile(userId)
+        }
+    }
+    val openOwnProfileSection: (ProfileSection) -> Unit = { section ->
+        navigateToRoute(navigationBridge, "/account/${profileSectionRoute(section)}") {
+            profileSectionExternal = false
+            profileSection = section
+            if (section == ProfileSection.WALLET) controller.refreshWalletHistory()
+        }
+    }
+    val openExternalProfileSection: (ProfileSection) -> Unit = { section ->
+        val userId = state.viewedFriendUserId.orEmpty()
+        navigateToRoute(navigationBridge, "/friends/$userId/${profileSectionRoute(section)}") {
+            profileSectionExternal = true
+            profileSection = section
+        }
+    }
     val navigateBack: (() -> Unit) -> Unit = { fallback ->
         if (!navigationBridge.goBack()) fallback()
     }
@@ -1024,7 +1077,9 @@ private fun GameContent(
                         closeLocalScreens()
                         controller.backToModeSelection()
                         controller.openHome()
-                        showPracticeLauncher = true
+                        navigateToRoute(navigationBridge, "/practice") {
+                            showPracticeLauncher = true
+                        }
                     }
                 )
 
@@ -1047,13 +1102,13 @@ private fun GameContent(
                     onPreferencesChange = onPreferencesChange,
                     onPreviewSound = { playFeedbackSound(GameFeedbackEffect.CORRECT) },
                     onOpenTutorial = {
-                        showTutorial = true
+                        openTutorial()
                     },
                     onBack = { navigateBack { showSettings = false } },
                     gold = state.profile?.progression?.gold ?: 0,
                     gems = state.profile?.progression?.gems ?: 0,
                     unreadNotifications = state.unreadNotificationCount,
-                    onOpenNotifications = controller::openNotifications,
+                    onOpenNotifications = openNotifications,
                     pushStatus = pushStatus,
                     onEnablePush = pushBridge::enable,
                     onDisablePush = pushBridge::disable,
@@ -1079,11 +1134,8 @@ private fun GameContent(
                     onSave = { _, _ -> },
                     onUploadAvatar = {},
                     onInviteToClan = controller::inviteToClan,
-                    onOpenNotifications = controller::openNotifications,
-                    onOpenSection = { section ->
-                        profileSectionExternal = true
-                        profileSection = section
-                    },
+                    onOpenNotifications = openNotifications,
+                    onOpenSection = openExternalProfileSection,
                     canEdit = false,
                     isAccountLoading = false,
                     accountError = null,
@@ -1122,7 +1174,7 @@ private fun GameContent(
                             onEquipCosmetics = controller::equipCosmetics,
                             onClaimMissionReward = controller::claimMissionReward,
                             onSave = controller::updateProfile,
-                            onOpenNotifications = controller::openNotifications
+                            onOpenNotifications = openNotifications
                         )
                     }
                 }
@@ -1135,8 +1187,8 @@ private fun GameContent(
                     onRespondInvitation = controller::respondTournamentInvitation,
                     onStart = controller::startTournament,
                     onLeave = controller::leaveTournament,
-                    onOpenFriendProfile = controller::openFriendProfile,
-                    onOpenNotifications = controller::openNotifications
+                    onOpenFriendProfile = openFriendProfile,
+                    onOpenNotifications = openNotifications
                 )
 
                 showSeasonHistory -> SeasonHistoryScreen(
@@ -1148,7 +1200,7 @@ private fun GameContent(
                         }
                     },
                     onRefresh = controller::refreshProfile,
-                    onOpenNotifications = controller::openNotifications
+                    onOpenNotifications = openNotifications
                 )
 
                 state.isFriendsOpen -> FriendsScreen(
@@ -1163,8 +1215,8 @@ private fun GameContent(
                     onUnblockPlayer = controller::unblockPlayer,
                     onInviteFriend = controller::inviteFriend,
                     onRespondRoomInvitation = controller::respondRoomInvitation,
-                    onOpenFriendProfile = controller::openFriendProfile,
-                    onOpenNotifications = controller::openNotifications,
+                    onOpenFriendProfile = openFriendProfile,
+                    onOpenNotifications = openNotifications,
                     showBackButton = true,
                     modifier = Modifier.fillMaxSize()
                 )
@@ -1179,7 +1231,7 @@ private fun GameContent(
                     onLeaderboard = controller::openLeaderboard,
                     onClan = openClanTab,
                     onAccount = openAccountTab,
-                    onNotifications = controller::openNotifications,
+                    onNotifications = openNotifications,
                     isRefreshing = state.isLeaderboardLoading,
                     onRefresh = controller::openLeaderboard
                 ) { contentModifier -> LeaderboardScreen(
@@ -1188,9 +1240,9 @@ private fun GameContent(
                         navigateBack(if (showTopLevelNavigation) openHome else controller::closeLeaderboard)
                     },
                     onRefresh = controller::openLeaderboard,
-                    onOpenFriendProfile = controller::openFriendProfile,
-                    onOpenSeasonHistory = { showSeasonHistory = true },
-                    onOpenNotifications = controller::openNotifications,
+                    onOpenFriendProfile = openFriendProfile,
+                    onOpenSeasonHistory = openSeasonHistory,
+                    onOpenNotifications = openNotifications,
                     showBackButton = !showTopLevelNavigation,
                     modifier = contentModifier
                 ) }
@@ -1205,7 +1257,7 @@ private fun GameContent(
                     onLeaderboard = openLeaderboardTab,
                     onClan = openClanTab,
                     onAccount = controller::openProfile,
-                    onNotifications = controller::openNotifications,
+                    onNotifications = openNotifications,
                     isRefreshing = state.isProfileLoading,
                     onRefresh = controller::openProfile
                 ) { contentModifier -> ProfileScreen(
@@ -1235,13 +1287,9 @@ private fun GameContent(
                     onRevokeAllSessions = onRevokeAllSessions,
                     onLogout = onLogout,
                     sessionStartedAtMillis = sessionStartedAtMillis,
-                    onOpenNotifications = controller::openNotifications,
+                    onOpenNotifications = openNotifications,
                     onOpenSettings = openSettingsTab,
-                    onOpenSection = { section ->
-                        profileSectionExternal = false
-                        profileSection = section
-                        if (section == ProfileSection.WALLET) controller.refreshWalletHistory()
-                    },
+                    onOpenSection = openOwnProfileSection,
                     showBackButton = !showTopLevelNavigation,
                     modifier = contentModifier
                 ) }
@@ -1260,7 +1308,7 @@ private fun GameContent(
                     exchangeNotice = state.profileNotice,
                     onClose = { navigateBack(controller::closeShop) },
                     unreadNotifications = state.unreadNotificationCount,
-                    onNotifications = controller::openNotifications,
+                    onNotifications = openNotifications,
                     initialTab = shopInitialTab
                 )
 
@@ -1274,7 +1322,7 @@ private fun GameContent(
                     onLeaderboard = openLeaderboardTab,
                     onClan = controller::openClan,
                     onAccount = openAccountTab,
-                    onNotifications = controller::openNotifications
+                    onNotifications = openNotifications
                 ) { contentModifier -> ClanScreen(
                      serverUrl = serverUrl,
                      currentUserId = state.profile?.userId,
@@ -1300,7 +1348,7 @@ private fun GameContent(
                     gold = state.profile?.progression?.gold ?: 0,
                     gems = state.profile?.progression?.gems ?: 0,
                     unreadNotifications = state.unreadNotificationCount,
-                    onOpenNotifications = controller::openNotifications,
+                    onOpenNotifications = openNotifications,
                     showBackButton = !showTopLevelNavigation,
                     modifier = contentModifier
                 ) }
@@ -1314,7 +1362,7 @@ private fun GameContent(
                     onDeclineRematch = controller::declineRematch,
                     onConnectOpponent = controller::connectWithOpponent,
                     onBlockOpponent = controller::blockOpponentAfterMatch,
-                    onOpenFriendProfile = controller::openFriendProfile,
+                    onOpenFriendProfile = openFriendProfile,
                     onOpenTournament = controller::openTournamentAfterMatch,
                     preferences = appPreferences
                 )
@@ -1323,7 +1371,7 @@ private fun GameContent(
                     state = state,
                     onNumberClick = controller::onNumberClicked,
                     onFinish = {},
-                    onOpenFriendProfile = controller::openFriendProfile,
+                    onOpenFriendProfile = openFriendProfile,
                     onExit = controller::leaveRoom,
                     allowExit = !state.isTournamentMatch,
                     onSendEmoji = controller::sendEmoji,
@@ -1348,7 +1396,7 @@ private fun GameContent(
                     onModeSelected = controller::selectMode,
                     onStartMatchmaking = controller::startMatchmaking,
                     onCancelMatchmaking = controller::cancelMatchmaking,
-                    onOpenRoomBrowser = controller::openRoomBrowser,
+                    onOpenRoomBrowser = { openRoomsTab() },
                     onCreateRoom = controller::createRoom,
                     onJoinRoom = controller::joinRoom,
                     onLeaveRoom = { navigateBack(controller::leaveRoom) },
@@ -1357,17 +1405,17 @@ private fun GameContent(
                     onRefreshRooms = controller::requestRoomList,
                     onOpenProfile = openAccountTab,
                     onOpenLeaderboard = openLeaderboardTab,
-                    onOpenFriends = controller::openFriends,
-                    onOpenFriendProfile = controller::openFriendProfile,
+                    onOpenFriends = openFriendsTab,
+                    onOpenFriendProfile = openFriendProfile,
                     onBackToMode = openHome,
                     onLogout = onLogout,
                     isGuest = isGuest,
                     onUpgradeGuest = onUpgradeGuest,
-                    onOpenNotifications = controller::openNotifications,
+                    onOpenNotifications = openNotifications,
                     onOpenClan = openClanTab,
-                    onOpenPractice = { showPracticeLauncher = true },
-                    onOpenTournament = controller::openTournament,
-                    onOpenShop = controller::openShop,
+                    onOpenPractice = openPractice,
+                    onOpenTournament = openTournament,
+                    onOpenShop = openShop,
                     onShareRoom = { roomId, roomName ->
                         val deepLink = navigationBridge.publicUrl("/room/$roomId")
                         textSharer.share(
@@ -1395,6 +1443,18 @@ private fun GameContent(
             }
         }
     }
+}
+
+internal fun navigateToRoute(
+    navigationBridge: AppNavigationBridge,
+    route: String,
+    navigate: () -> Unit
+) {
+    // Safari captures the outgoing page for its edge-swipe preview when pushState runs.
+    // Publish first so it stores the screen the player is actually leaving, not the
+    // destination that Compose has already painted.
+    navigationBridge.publish(route)
+    navigate()
 }
 
 @Composable
