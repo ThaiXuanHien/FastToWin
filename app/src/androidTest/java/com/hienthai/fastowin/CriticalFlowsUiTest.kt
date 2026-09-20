@@ -102,7 +102,12 @@ class CriticalFlowsUiTest {
 
         composeRule.onNodeWithTag("auth_email").performTextInput("hien@example.com")
         composeRule.onNodeWithTag("auth_password").performTextInput("12345678")
-        composeRule.onNodeWithTag("auth_login_submit").performScrollTo().performClick()
+        composeRule.onNodeWithTag("auth_password").performImeAction()
+        composeRule.onNodeWithTag("auth_login_submit")
+            .performScrollTo()
+            .assertIsEnabled()
+            .performClick()
+        composeRule.waitUntil(timeoutMillis = 5_000) { submittedEmail != null }
 
         composeRule.runOnIdle {
             assertEquals("hien@example.com", submittedEmail)

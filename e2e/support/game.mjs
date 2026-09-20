@@ -214,6 +214,11 @@ export async function login(actor) {
   expect(loginResponse.ok(), 'Login through the visible Web form').toBeTruthy();
   await click(page, page.getByRole('button', { name: 'Bỏ qua', exact: true }));
   await expect(tag(page, 'home_screen')).toBeAttached();
+  // The shell reaches Home before the authoritative profile snapshot is
+  // applied. That snapshot inserts the daily check-in card and moves every
+  // discovery action below it. Wait for the profile-backed layout so callers
+  // never click a transient accessibility position from the pre-profile UI.
+  await expect(tag(page, 'daily_check_in_card')).toBeAttached();
 }
 
 export async function selectLanguage(page, languageCode) {
