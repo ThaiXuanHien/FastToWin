@@ -245,11 +245,12 @@ export async function openLanguageDialog(page) {
   }
   await expect(setting).toBeAttached();
   const dialog = tag(page, 'language_dialog');
-  for (let attempt = 0; attempt < 3 && await dialog.count() === 0; attempt++) {
-    await click(page, setting);
-    await page.waitForTimeout(250);
-  }
-  await expect(dialog).toBeAttached();
+  // A successful canvas click opens the dialog before WebKit publishes the
+  // dialog semantics node. Retrying the click during that gap targets the
+  // now-covered setting row and can scroll the modal instead. Click once and
+  // wait for the resulting state transition.
+  await click(page, setting);
+  await expect(dialog).toBeAttached({ timeout: 5_000 });
   return dialog;
 }
 
