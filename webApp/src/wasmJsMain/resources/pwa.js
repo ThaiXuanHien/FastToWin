@@ -1,4 +1,52 @@
 (function () {
+    const iosStandalone = (
+        window.matchMedia('(display-mode: standalone)').matches ||
+        window.navigator.standalone === true
+    ) && /iPad|iPhone|iPod/i.test(window.navigator.userAgent || '');
+    if (!iosStandalone) return;
+
+    let pendingFrame = 0;
+
+    function currentViewportHeight() {
+        const viewport = window.visualViewport;
+        const height = viewport ? viewport.height + viewport.offsetTop : window.innerHeight;
+        return Math.max(1, Math.round(height * 100) / 100);
+    }
+
+    function publishViewportHeight() {
+        document.documentElement.style.setProperty(
+            '--fast-to-win-viewport-height',
+            `${currentViewportHeight()}px`
+        );
+        window.dispatchEvent(new CustomEvent('fasttowin-viewport-change'));
+    }
+
+    function syncViewportHeight() {
+        publishViewportHeight();
+        if (pendingFrame) window.cancelAnimationFrame(pendingFrame);
+        pendingFrame = window.requestAnimationFrame(function () {
+            publishViewportHeight();
+            pendingFrame = window.requestAnimationFrame(function () {
+                pendingFrame = 0;
+                publishViewportHeight();
+            });
+        });
+    }
+
+    window.addEventListener('resize', syncViewportHeight);
+    window.addEventListener('pageshow', syncViewportHeight);
+    window.addEventListener('focus', syncViewportHeight);
+    document.addEventListener('visibilitychange', function () {
+        if (document.visibilityState === 'visible') syncViewportHeight();
+    });
+    if (window.visualViewport) {
+        window.visualViewport.addEventListener('resize', syncViewportHeight);
+        window.visualViewport.addEventListener('scroll', syncViewportHeight);
+    }
+    syncViewportHeight();
+})();
+
+(function () {
     const pwa = window.FASTTOWIN_PWA = window.FASTTOWIN_PWA || {};
     const registry = { nextId: 1, handlers: new Map() };
 

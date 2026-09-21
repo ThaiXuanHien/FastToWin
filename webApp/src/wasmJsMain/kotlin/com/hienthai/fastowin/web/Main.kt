@@ -118,6 +118,17 @@ private fun addWebSafeAreaListener(onChanged: () -> Unit): Int = js(
         registry.handlers.set(id, handler);
         window.addEventListener('resize', handler);
         window.addEventListener('orientationchange', handler);
+        window.addEventListener('pageshow', handler);
+        window.addEventListener('focus', handler);
+        window.addEventListener('fasttowin-viewport-change', handler);
+        if (window.visualViewport) {
+            window.visualViewport.addEventListener('resize', handler);
+        }
+        const visibilityHandler = () => {
+            if (document.visibilityState === 'visible') handler();
+        };
+        registry.handlers.set('visibility-' + id, visibilityHandler);
+        document.addEventListener('visibilitychange', visibilityHandler);
         return id;
     }"""
 )
@@ -129,6 +140,17 @@ private fun removeWebSafeAreaListener(listenerId: Int): Unit = js(
         if (handler) {
             window.removeEventListener('resize', handler);
             window.removeEventListener('orientationchange', handler);
+            window.removeEventListener('pageshow', handler);
+            window.removeEventListener('focus', handler);
+            window.removeEventListener('fasttowin-viewport-change', handler);
+            if (window.visualViewport) {
+                window.visualViewport.removeEventListener('resize', handler);
+            }
+            const visibilityHandler = registry.handlers.get('visibility-' + listenerId);
+            if (visibilityHandler) {
+                document.removeEventListener('visibilitychange', visibilityHandler);
+                registry.handlers.delete('visibility-' + listenerId);
+            }
             registry.handlers.delete(listenerId);
         }
     }"""

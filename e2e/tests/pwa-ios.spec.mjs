@@ -31,13 +31,130 @@ test('iOS standalone keeps the Compose viewport edge to edge', async ({ page }) 
 
   const viewport = page.viewportSize();
   const rootBounds = await root.boundingBox();
-  expect(rootBounds).toEqual({
-    x: 0,
-    y: 0,
-    width: viewport.width,
-    height: viewport.height,
-  });
+  expect(rootBounds.x).toBe(0);
+  expect(rootBounds.y).toBe(0);
+  expect(rootBounds.width).toBe(viewport.width);
+  expect(rootBounds.height).toBeCloseTo(viewport.height, 0);
   await expect(page.locator('#composeScene')).toHaveCSS('transform', 'none');
+});
+
+test('iOS standalone refreshes a stale first-paint viewport on pageshow', async ({ page }) => {
+  const pwaScript = await readFile(
+    new URL('../../webApp/src/wasmJsMain/resources/pwa.js', import.meta.url),
+    'utf8',
+  );
+  await page.setContent(`
+    <style>
+      #fastToWinRoot {
+        width: 100%;
+        height: var(--fast-to-win-viewport-height, 760px);
+      }
+    </style>
+    <main id="fastToWinRoot" aria-label="Fast To Win"></main>
+  `);
+  await page.evaluate(() => {
+    let viewportHeight = 760;
+    const listeners = new Map();
+    Object.defineProperty(window.navigator, 'standalone', {
+      configurable: true,
+      value: true,
+    });
+    Object.defineProperty(window.navigator, 'userAgent', {
+      configurable: true,
+      value: 'Mozilla/5.0 (iPhone; CPU iPhone OS 27_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148',
+    });
+    Object.defineProperty(window, 'visualViewport', {
+      configurable: true,
+      value: {
+        get height() { return viewportHeight; },
+        offsetTop: 0,
+        addEventListener(type, listener) { listeners.set(type, listener); },
+        removeEventListener(type) { listeners.delete(type); },
+      },
+    });
+    window.__setFastToWinViewportHeight = height => {
+      viewportHeight = height;
+      listeners.get('resize')?.(new Event('resize'));
+    };
+  });
+  await page.addScriptTag({ content: pwaScript });
+
+  await expect(page.locator('#fastToWinRoot')).toHaveCSS('height', '760px');
+  await page.evaluate(() => {
+    window.__setFastToWinViewportHeight(844);
+    window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true }));
+  });
+
+  await expect(page.locator('#fastToWinRoot')).toHaveCSS('height', '844px');
+});
+
+test('Android standalone keeps the focused input stable while the keyboard opens', async ({ page }) => {
+  const pwaScript = await readFile(
+    new URL('../../webApp/src/wasmJsMain/resources/pwa.js', import.meta.url),
+    'utf8',
+  );
+  await page.setContent(`
+    <style>
+      #fastToWinRoot {
+        width: 100%;
+        height: var(--fast-to-win-viewport-height, 844px);
+      }
+    </style>
+    <main id="fastToWinRoot" aria-label="Fast To Win">
+      <input type="password" data-fasttowin-native-input>
+    </main>
+  `);
+  await page.evaluate(() => {
+    let viewportHeight = 844;
+    const listeners = new Map();
+    Object.defineProperty(window.navigator, 'standalone', {
+      configurable: true,
+      value: true,
+    });
+    Object.defineProperty(window.navigator, 'userAgent', {
+      configurable: true,
+      value: 'Mozilla/5.0 (Linux; Android 16; Pixel 9) AppleWebKit/537.36 Chrome/140.0 Mobile Safari/537.36',
+    });
+    Object.defineProperty(window, 'visualViewport', {
+      configurable: true,
+      value: {
+        get height() { return viewportHeight; },
+        offsetTop: 0,
+        addEventListener(type, listener) { listeners.set(type, listener); },
+        removeEventListener(type) { listeners.delete(type); },
+      },
+    });
+    window.__openFastToWinAndroidKeyboard = () => {
+      viewportHeight = 500;
+      listeners.get('resize')?.(new Event('resize'));
+    };
+  });
+  await page.addScriptTag({ content: pwaScript });
+
+  const password = page.locator('input[type=password]');
+  await password.focus();
+  await page.evaluate(() => window.__openFastToWinAndroidKeyboard());
+
+  await expect(password).toBeFocused();
+  await expect(page.locator('#fastToWinRoot')).toHaveCSS('height', '844px');
+});
+
+test('iOS standalone keeps only a compact bottom breathing space', async ({ page }) => {
+  const styles = await readFile(
+    new URL('../../webApp/src/wasmJsMain/resources/styles.css', import.meta.url),
+    'utf8',
+  );
+  await page.setContent(`
+    <style>${styles}</style>
+    <div id="fastToWinSafeAreaProbe" aria-hidden="true"></div>
+    <main id="fastToWinRoot" aria-label="Fast To Win"></main>
+  `);
+
+  await page.locator('html').evaluate(element => {
+    element.style.setProperty('--fast-to-win-raw-safe-bottom', '34px');
+  });
+
+  await expect(page.locator('#fastToWinSafeAreaProbe')).toHaveCSS('padding-bottom', '12px');
 });
 
 test('iOS home-indicator fallback continues the arcade backdrop', async ({ page }) => {
@@ -54,7 +171,7 @@ test('iOS home-indicator fallback continues the arcade backdrop', async ({ page 
   // an equivalent strip outside Compose and verify the document fallback joins
   // the terminal color of ArcadeBackdrop instead of showing a black frame.
   await page.locator('#fastToWinRoot').evaluate(element => {
-    element.style.bottom = '34px';
+    element.style.height = 'calc(var(--fast-to-win-viewport-height) - 34px)';
   });
 
   const viewport = page.viewportSize();

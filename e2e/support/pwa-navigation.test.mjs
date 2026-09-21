@@ -35,8 +35,10 @@ function loadPwa({ standalone, userAgent }) {
     matches: standalone,
     addEventListener() {},
   });
+  const rootStyle = new Map();
   const window = {
     innerWidth: 390,
+    innerHeight: 844,
     history,
     location,
     navigator: { standalone, userAgent },
@@ -52,11 +54,21 @@ function loadPwa({ standalone, userAgent }) {
     dispatchEvent(event) {
       for (const listener of listeners.get(event.type) || []) listener(event);
     },
+    requestAnimationFrame(callback) {
+      callback();
+      return 1;
+    },
+    cancelAnimationFrame() {},
     setInterval() {},
     setTimeout() {},
   };
   const document = {
     visibilityState: 'visible',
+    documentElement: {
+      style: {
+        setProperty(name, value) { rootStyle.set(name, value); },
+      },
+    },
     addEventListener(type, listener) {
       const handlers = documentListeners.get(type) || [];
       handlers.push(listener);
