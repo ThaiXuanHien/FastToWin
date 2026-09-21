@@ -25,7 +25,7 @@ test('iOS standalone keeps the Compose viewport edge to edge', async ({ page }) 
   });
 
   await expect(root).toHaveCSS('background-color', 'rgb(6, 19, 47)');
-  await expect(page.locator('body')).toHaveCSS('background-color', 'rgb(7, 24, 36)');
+  await expect(page.locator('body')).toHaveCSS('background-color', 'rgb(7, 26, 59)');
   await expect(page.locator('#fastToWinSafeAreaProbe')).toHaveCSS('padding-top', '47px');
   await expect(page.locator('#fastToWinSafeAreaProbe')).toHaveCSS('padding-bottom', '34px');
 
@@ -38,6 +38,38 @@ test('iOS standalone keeps the Compose viewport edge to edge', async ({ page }) 
     height: viewport.height,
   });
   await expect(page.locator('#composeScene')).toHaveCSS('transform', 'none');
+});
+
+test('iOS home-indicator fallback continues the arcade backdrop', async ({ page }) => {
+  const styles = await readFile(
+    new URL('../../webApp/src/wasmJsMain/resources/styles.css', import.meta.url),
+    'utf8',
+  );
+  await page.setContent(`
+    <style>${styles}</style>
+    <main id="fastToWinRoot" aria-label="Fast To Win"></main>
+  `);
+
+  // iOS can composite the home-indicator region below the CSS viewport. Leave
+  // an equivalent strip outside Compose and verify the document fallback joins
+  // the terminal color of ArcadeBackdrop instead of showing a black frame.
+  await page.locator('#fastToWinRoot').evaluate(element => {
+    element.style.bottom = '34px';
+  });
+
+  const viewport = page.viewportSize();
+  const fallback = await page.evaluate(({ x, y }) => {
+    const element = document.elementFromPoint(x, y);
+    return {
+      tagName: element?.tagName,
+      backgroundColor: getComputedStyle(document.body).backgroundColor,
+    };
+  }, { x: Math.floor(viewport.width / 2), y: viewport.height - 1 });
+
+  expect(fallback).toEqual({
+    tagName: 'BODY',
+    backgroundColor: 'rgb(7, 26, 59)',
+  });
 });
 
 test('iOS standalone keeps real header and bottom bar inside the safe area', async ({ actors }) => {
