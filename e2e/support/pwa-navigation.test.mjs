@@ -11,6 +11,7 @@ const pwaScript = await readFile(
 function loadPwa({ standalone, userAgent }) {
   const historyCalls = [];
   const listeners = new Map();
+  const documentListeners = new Map();
   const location = { pathname: '/', origin: 'https://fasttowin.example' };
   const history = {
     state: null,
@@ -35,6 +36,7 @@ function loadPwa({ standalone, userAgent }) {
     addEventListener() {},
   });
   const window = {
+    innerWidth: 390,
     history,
     location,
     navigator: { standalone, userAgent },
@@ -55,7 +57,20 @@ function loadPwa({ standalone, userAgent }) {
   };
   const document = {
     visibilityState: 'visible',
-    addEventListener() {},
+    addEventListener(type, listener) {
+      const handlers = documentListeners.get(type) || [];
+      handlers.push(listener);
+      documentListeners.set(type, handlers);
+    },
+    removeEventListener(type, listener) {
+      documentListeners.set(
+        type,
+        (documentListeners.get(type) || []).filter(handler => handler !== listener),
+      );
+    },
+    dispatchEvent(event) {
+      for (const listener of documentListeners.get(event.type) || []) listener(event);
+    },
     head: { appendChild() {} },
     querySelector() { return null; },
     createElement() { return {}; },
@@ -73,7 +88,24 @@ function loadPwa({ standalone, userAgent }) {
     console,
   });
   vm.runInContext(pwaScript, context);
-  return { navigation: window.FASTTOWIN_PWA.navigation, history, historyCalls, location };
+  return {
+    navigation: window.FASTTOWIN_PWA.navigation,
+    document,
+    history,
+    historyCalls,
+    location,
+  };
+}
+
+function dispatchTouch(document, type, clientX) {
+  let prevented = false;
+  document.dispatchEvent({
+    type,
+    touches: type === 'touchend' ? [] : [{ clientX }],
+    changedTouches: [{ clientX }],
+    preventDefault() { prevented = true; },
+  });
+  return prevented;
 }
 
 test('iOS standalone PWA replaces routes and declines native Back', () => {
@@ -109,4 +141,32 @@ test('normal browser keeps native route history and Back', () => {
   assert.equal(browser.history.state.fastToWinDepth, 1);
   assert.equal(browser.navigation.goBack(), true);
   assert.equal(browser.historyCalls.at(-1).type, 'back');
+});
+
+test('iOS standalone PWA prevents navigation swipes from both screen edges', () => {
+  const browser = loadPwa({
+    standalone: true,
+    userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 27_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148',
+  });
+
+  assert.equal(dispatchTouch(browser.document, 'touchstart', 2), true);
+  assert.equal(dispatchTouch(browser.document, 'touchmove', 48), true);
+  assert.equal(dispatchTouch(browser.document, 'touchend', 48), false);
+
+  assert.equal(dispatchTouch(browser.document, 'touchstart', 388), true);
+  assert.equal(dispatchTouch(browser.document, 'touchmove', 340), true);
+  assert.equal(dispatchTouch(browser.document, 'touchend', 340), false);
+
+  assert.equal(dispatchTouch(browser.document, 'touchstart', 195), false);
+  assert.equal(dispatchTouch(browser.document, 'touchmove', 210), false);
+});
+
+test('Safari tab keeps native edge gestures', () => {
+  const browser = loadPwa({
+    standalone: false,
+    userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 27_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148',
+  });
+
+  assert.equal(dispatchTouch(browser.document, 'touchstart', 2), false);
+  assert.equal(dispatchTouch(browser.document, 'touchstart', 388), false);
 });

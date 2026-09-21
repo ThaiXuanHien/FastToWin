@@ -4,8 +4,8 @@
     --fast-to-win-safe-bottom: env(safe-area-inset-bottom, 0px);
     --fast-to-win-safe-left: env(safe-area-inset-left, 0px);
     color-scheme: dark;
-    background: #071824;
-    background-color: #071824;
+    background: #06132f;
+    background-color: #06132f;
 }
 
 html,
@@ -18,27 +18,26 @@ body {
     margin: 0;
     padding: 0;
     overflow: hidden;
-    background-color: #071824;
+    background-color: #06132f;
+    overscroll-behavior: none;
 }
 
 #fastToWinRoot {
     position: fixed;
-    inset: 0;
-    box-sizing: border-box;
-    padding:
-        var(--fast-to-win-safe-top)
-        var(--fast-to-win-safe-right)
-        var(--fast-to-win-safe-bottom)
-        var(--fast-to-win-safe-left);
+    top: var(--fast-to-win-safe-top);
+    right: var(--fast-to-win-safe-right);
+    bottom: var(--fast-to-win-safe-bottom);
+    left: var(--fast-to-win-safe-left);
     min-width: 0;
     min-height: 0;
     overflow: hidden;
-    background-color: #071a44;
+    overscroll-behavior: none;
+    background-color: #06132f;
 }
 
 body {
-    background: #071824;
-    background-color: #071824;
+    background: #06132f;
+    background-color: #06132f;
     overscroll-behavior: none;
     -webkit-tap-highlight-color: transparent;
 }

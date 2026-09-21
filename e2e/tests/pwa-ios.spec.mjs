@@ -1,7 +1,7 @@
 import { test, expect, tag, click, login } from '../support/game.mjs';
 import { readFile } from 'node:fs/promises';
 
-test('iOS standalone safe areas reserve content space without exposing a black frame', async ({ page }) => {
+test('iOS standalone gives Compose a safe viewport without exposing a black frame', async ({ page }) => {
   const styles = await readFile(
     new URL('../../webApp/src/wasmJsMain/resources/styles.css', import.meta.url),
     'utf8',
@@ -9,7 +9,7 @@ test('iOS standalone safe areas reserve content space without exposing a black f
   await page.setContent(`
     <style>${styles}</style>
     <main id="fastToWinRoot" aria-label="Fast To Win">
-      <canvas style="width: 100%; height: 100%"></canvas>
+      <div id="composeLayer" style="position: relative; width: 100%; height: 100%"></div>
     </main>
   `);
   const root = page.locator('#fastToWinRoot');
@@ -22,16 +22,21 @@ test('iOS standalone safe areas reserve content space without exposing a black f
     element.style.setProperty('--fast-to-win-safe-left', '0px');
   });
 
-  await expect(root).toHaveCSS('padding-top', '47px');
-  await expect(root).toHaveCSS('padding-bottom', '34px');
-  await expect(root).toHaveCSS('background-color', 'rgb(7, 26, 68)');
+  await expect(root).toHaveCSS('padding-top', '0px');
+  await expect(root).toHaveCSS('padding-bottom', '0px');
+  await expect(root).toHaveCSS('background-color', 'rgb(6, 19, 47)');
+  await expect(page.locator('body')).toHaveCSS('background-color', 'rgb(6, 19, 47)');
 
   const viewport = page.viewportSize();
   const rootBounds = await root.boundingBox();
-  const canvasBounds = await page.locator('canvas').first().boundingBox();
-  expect(rootBounds).toEqual({ x: 0, y: 0, width: viewport.width, height: viewport.height });
-  expect(canvasBounds.y).toBeGreaterThanOrEqual(47);
-  expect(canvasBounds.y + canvasBounds.height).toBeLessThanOrEqual(viewport.height - 34);
+  const composeBounds = await page.locator('#composeLayer').boundingBox();
+  expect(rootBounds).toEqual({
+    x: 0,
+    y: 47,
+    width: viewport.width,
+    height: viewport.height - 47 - 34,
+  });
+  expect(composeBounds).toEqual(rootBounds);
 });
 
 test('iOS standalone uses only in-app Back and does not create swipe history entries', async ({ actors }) => {

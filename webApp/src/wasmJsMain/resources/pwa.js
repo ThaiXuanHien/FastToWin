@@ -21,6 +21,37 @@
         }, '', route);
     }
 
+    function preventIosStandaloneEdgeNavigation() {
+        if (!isIosStandalone()) return;
+        const edgeWidth = 24;
+        let edgeGestureActive = false;
+        const firstTouch = event => event.touches && event.touches[0];
+        const startsAtScreenEdge = touch => touch && (
+            touch.clientX <= edgeWidth ||
+            touch.clientX >= window.innerWidth - edgeWidth
+        );
+        const preventIfEdgeGesture = event => {
+            if (edgeGestureActive && event.cancelable !== false) event.preventDefault();
+        };
+
+        document.addEventListener('touchstart', event => {
+            edgeGestureActive = startsAtScreenEdge(firstTouch(event));
+            preventIfEdgeGesture(event);
+        }, { capture: true, passive: false });
+        document.addEventListener('touchmove', preventIfEdgeGesture, {
+            capture: true,
+            passive: false
+        });
+        document.addEventListener('touchend', () => {
+            edgeGestureActive = false;
+        }, { capture: true, passive: true });
+        document.addEventListener('touchcancel', () => {
+            edgeGestureActive = false;
+        }, { capture: true, passive: true });
+    }
+
+    preventIosStandaloneEdgeNavigation();
+
     pwa.navigation = {
         prepare() {
             if (typeof window.history.state?.fastToWinDepth !== 'number') {
