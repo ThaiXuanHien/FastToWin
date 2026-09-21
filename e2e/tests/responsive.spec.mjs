@@ -26,6 +26,14 @@ async function renderedPixelAt(page, x, y) {
   }, screenshot.toString('base64'));
 }
 
+function expectDarkNavyPixel(pixel, label) {
+  const [red, green, blue, alpha] = pixel;
+  expect(alpha, `${label} is opaque`).toBe(255);
+  expect(blue, `${label} keeps a navy hue`).toBeGreaterThan(red);
+  expect(blue, `${label} keeps a navy hue`).toBeGreaterThan(green);
+  expect(Math.max(red, green, blue), `${label} stays dark`).toBeLessThanOrEqual(96);
+}
+
 test('top-level navigation and room creation fit the configured viewport', async ({ actors }, testInfo) => {
   const player = await actors(`Responsive ${testInfo.project.name}`);
   const { page } = player;
@@ -81,16 +89,10 @@ test('web shell stays dark outside the centered mobile canvas', async ({ page })
   expect(root.y + root.height, 'safe-area root ends inside the visual viewport').toBeLessThanOrEqual(900);
 
   // The CSS fallback prevents a white flash while Compose starts. Once the
-  // canvas paints it uses Navy950, so either intentional dark shell colour is
-  // valid at this boundary; a light/white regression still fails this test.
-  const expectedShellPixels = [
-    [7, 24, 36, 255], // styles.css: #071824
-    [6, 19, 47, 255], // ArcadePalette.Navy950: #06132F
-  ];
-  expect(expectedShellPixels, 'left rendered gutter is navy')
-    .toContainEqual(await renderedPixelAt(page, 10, 10));
-  expect(expectedShellPixels, 'right rendered gutter is navy')
-    .toContainEqual(await renderedPixelAt(page, 1430, 10));
+  // canvas paints, ArcadeBackdrop adds a dark navy gradient and glows, so test
+  // the visual contract instead of coupling the regression to one exact pixel.
+  expectDarkNavyPixel(await renderedPixelAt(page, 10, 10), 'left rendered gutter');
+  expectDarkNavyPixel(await renderedPixelAt(page, 1430, 10), 'right rendered gutter');
 });
 
 test('dialog stays within ten-pixel insets on a narrow viewport', async ({ actors }) => {
