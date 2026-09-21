@@ -111,7 +111,10 @@ private fun addWebSafeAreaListener(onChanged: () -> Unit): Int = js(
         const registry = window.__fastToWinSafeAreaListeners ||
             (window.__fastToWinSafeAreaListeners = { nextId: 1, handlers: new Map() });
         const id = registry.nextId++;
-        const handler = () => window.requestAnimationFrame(() => onChanged());
+        const handler = () => {
+            onChanged();
+            window.requestAnimationFrame(() => onChanged());
+        };
         registry.handlers.set(id, handler);
         window.addEventListener('resize', handler);
         window.addEventListener('orientationchange', handler);

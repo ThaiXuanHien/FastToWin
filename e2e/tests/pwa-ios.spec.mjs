@@ -25,7 +25,7 @@ test('iOS standalone keeps the Compose viewport edge to edge', async ({ page }) 
   });
 
   await expect(root).toHaveCSS('background-color', 'rgb(6, 19, 47)');
-  await expect(page.locator('body')).toHaveCSS('background-color', 'rgb(6, 19, 47)');
+  await expect(page.locator('body')).toHaveCSS('background-color', 'rgb(7, 24, 36)');
   await expect(page.locator('#fastToWinSafeAreaProbe')).toHaveCSS('padding-top', '47px');
   await expect(page.locator('#fastToWinSafeAreaProbe')).toHaveCSS('padding-bottom', '34px');
 
@@ -55,6 +55,15 @@ test('iOS standalone keeps real header and bottom bar inside the safe area', asy
 
   await expect(tag(page, 'app_header')).toBeAttached();
   await expect(tag(page, 'bottom_bar')).toBeAttached();
+  await expect.poll(async () => (await tag(page, 'app_header').boundingBox())?.y ?? -1, {
+    message: 'header stays below the iOS status area after Compose applies safe-area insets',
+  }).toBeGreaterThanOrEqual(47);
+  await expect.poll(async () => {
+    const bounds = await tag(page, 'bottom_bar').boundingBox();
+    return bounds ? bounds.y + bounds.height : Number.POSITIVE_INFINITY;
+  }, {
+    message: 'bottom bar stays above the iOS home-indicator area after Compose applies safe-area insets',
+  }).toBeLessThanOrEqual(page.viewportSize().height - 34);
   const viewport = page.viewportSize();
   const rootBounds = await page.locator('#fastToWinRoot').boundingBox();
   const headerBounds = await tag(page, 'app_header').boundingBox();
