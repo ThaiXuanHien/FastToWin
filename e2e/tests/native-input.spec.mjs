@@ -31,6 +31,22 @@ test('login exposes directly tappable native email and password inputs', async (
   });
 });
 
+test('focused login input survives a mobile safe-area recomposition', async ({ page }) => {
+  await page.goto('/');
+  await click(page, tag(page, 'auth_open_login'));
+  const email = page.locator('input[data-fasttowin-native-input][type=email]');
+  await email.tap();
+  await expect(email).toBeFocused();
+
+  await page.locator('html').evaluate(element => {
+    element.style.setProperty('--fast-to-win-safe-top', '1px');
+    window.dispatchEvent(new Event('resize'));
+  });
+
+  await expect(email).toBeFocused();
+  await expect(page.locator('input[data-fasttowin-native-input]')).toHaveCount(2);
+});
+
 test('registration preserves IME composition and removes native fields on back', async ({ page }) => {
   await page.goto('/');
   await click(page, tag(page, 'auth_open_register'));

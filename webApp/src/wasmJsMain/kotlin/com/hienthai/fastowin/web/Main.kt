@@ -28,6 +28,9 @@ import kotlin.js.toJsString
 fun main() {
     ComposeViewport(viewportContainerId = "fastToWinRoot") {
         val safeArea = rememberWebSafeAreaInsets()
+        val resumeTokenStore = remember { WebResumeTokenStore() }
+        val authSessionStore = remember { WebAuthSessionStore() }
+        val preferencesStore = remember { WebAppPreferencesStore() }
         ArcadeBackdrop(
             modifier = Modifier.fillMaxSize(),
             darkBackdrop = true
@@ -50,9 +53,9 @@ fun main() {
                 ) {
                     FastToWinApp(
                         serverUrl = configuredServerUrl(),
-                        resumeTokenStore = WebResumeTokenStore(),
-                        authSessionStore = WebAuthSessionStore(),
-                        preferencesStore = WebAppPreferencesStore(),
+                        resumeTokenStore = resumeTokenStore,
+                        authSessionStore = authSessionStore,
+                        preferencesStore = preferencesStore,
                         devicePlatform = "web",
                         authRequestConfigurator = WebCookieAuthRequestConfigurator,
                         navigationBridge = remember { WebAppNavigationBridge() },
