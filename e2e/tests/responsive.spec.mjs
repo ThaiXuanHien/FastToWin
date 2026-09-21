@@ -80,7 +80,7 @@ test('web shell stays dark outside the centered mobile canvas', async ({ page })
   await page.goto('/');
   await expect(page.locator('#fastToWinRoot')).toBeAttached();
 
-  await expect(page.locator('body')).toHaveCSS('background-color', 'rgb(7, 24, 36)');
+  await expect(page.locator('body')).toHaveCSS('background-color', 'rgb(7, 26, 59)');
   const root = await page.locator('#fastToWinRoot').boundingBox();
   expect(root).not.toBeNull();
   expect(root.width).toBe(1440);
