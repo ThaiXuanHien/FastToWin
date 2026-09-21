@@ -502,9 +502,9 @@ fun ArcadeChoiceChip(
 @Composable
 fun ArcadeBackdrop(
     modifier: Modifier = Modifier,
+    darkBackdrop: Boolean = MaterialTheme.colorScheme.background.luminance() < 0.5f,
     content: @Composable BoxScope.() -> Unit
 ) {
-    val darkBackdrop = MaterialTheme.colorScheme.background.luminance() < 0.5f
     val backdropColors = if (darkBackdrop) {
         listOf(Color(0xFF071837), Color(0xFF06132F), Color(0xFF071A3B))
     } else {

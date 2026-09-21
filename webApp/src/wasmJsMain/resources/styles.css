@@ -24,15 +24,25 @@ body {
 
 #fastToWinRoot {
     position: fixed;
-    top: var(--fast-to-win-safe-top);
-    right: var(--fast-to-win-safe-right);
-    bottom: var(--fast-to-win-safe-bottom);
-    left: var(--fast-to-win-safe-left);
+    inset: 0;
     min-width: 0;
     min-height: 0;
     overflow: hidden;
     overscroll-behavior: none;
     background-color: #06132f;
+}
+
+#fastToWinSafeAreaProbe {
+    position: fixed;
+    inset: 0;
+    box-sizing: border-box;
+    padding:
+        var(--fast-to-win-safe-top)
+        var(--fast-to-win-safe-right)
+        var(--fast-to-win-safe-bottom)
+        var(--fast-to-win-safe-left);
+    visibility: hidden;
+    pointer-events: none;
 }
 
 body {
