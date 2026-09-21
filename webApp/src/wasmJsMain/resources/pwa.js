@@ -1,11 +1,18 @@
 (function () {
-    const iosStandalone = (
+    const pwa = window.FASTTOWIN_PWA = window.FASTTOWIN_PWA || {};
+    const standalone = (
         window.matchMedia('(display-mode: standalone)').matches ||
         window.navigator.standalone === true
-    ) && /iPad|iPhone|iPod/i.test(window.navigator.userAgent || '');
-    if (!iosStandalone) return;
+    );
+    const iosStandalone = standalone &&
+        /iPad|iPhone|iPod/i.test(window.navigator.userAgent || '');
+    // Android standalone already receives the usable app window from Chrome.
+    // Browser tabs still report a larger 100vh that includes hidden browser UI,
+    // while iOS standalone can publish a stale first-paint height.
+    if (standalone && !iosStandalone) return;
 
     let pendingFrame = 0;
+    let pendingSettle = 0;
 
     function currentViewportHeight() {
         const viewport = window.visualViewport;
@@ -24,6 +31,7 @@
     function syncViewportHeight() {
         publishViewportHeight();
         if (pendingFrame) window.cancelAnimationFrame(pendingFrame);
+        if (pendingSettle) window.clearTimeout(pendingSettle);
         pendingFrame = window.requestAnimationFrame(function () {
             publishViewportHeight();
             pendingFrame = window.requestAnimationFrame(function () {
@@ -31,7 +39,13 @@
                 publishViewportHeight();
             });
         });
+        pendingSettle = window.setTimeout(function () {
+            pendingSettle = 0;
+            publishViewportHeight();
+        }, 160);
     }
+
+    pwa.viewport = { sync: syncViewportHeight };
 
     window.addEventListener('resize', syncViewportHeight);
     window.addEventListener('pageshow', syncViewportHeight);
@@ -67,6 +81,7 @@
             ...(window.history.state || {}),
             fastToWinDepth: depth
         }, '', route);
+        pwa.viewport?.sync?.();
     }
 
     function preventIosStandaloneEdgeNavigation() {
@@ -133,6 +148,7 @@
                 ...(window.history.state || {}),
                 fastToWinDepth: currentDepth() + 1
             }, '', route);
+            pwa.viewport?.sync?.();
         },
         replace(route) {
             replace(route, isIosStandalone() ? 0 : currentDepth());

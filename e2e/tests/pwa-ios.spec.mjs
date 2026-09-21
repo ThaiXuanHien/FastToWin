@@ -88,6 +88,93 @@ test('iOS standalone refreshes a stale first-paint viewport on pageshow', async 
   await expect(page.locator('#fastToWinRoot')).toHaveCSS('height', '844px');
 });
 
+test('Android browser uses the visible viewport instead of the hidden browser chrome area', async ({ page }) => {
+  const pwaScript = await readFile(
+    new URL('../../webApp/src/wasmJsMain/resources/pwa.js', import.meta.url),
+    'utf8',
+  );
+  await page.setContent(`
+    <style>
+      :root { --fast-to-win-viewport-height: 844px; }
+      #fastToWinRoot {
+        width: 100%;
+        height: var(--fast-to-win-viewport-height);
+      }
+    </style>
+    <main id="fastToWinRoot" aria-label="Fast To Win"></main>
+  `);
+  await page.evaluate(() => {
+    Object.defineProperty(window.navigator, 'standalone', {
+      configurable: true,
+      value: false,
+    });
+    Object.defineProperty(window.navigator, 'userAgent', {
+      configurable: true,
+      value: 'Mozilla/5.0 (Linux; Android 16; Pixel 9) AppleWebKit/537.36 Chrome/140.0 Mobile Safari/537.36',
+    });
+    Object.defineProperty(window, 'visualViewport', {
+      configurable: true,
+      value: {
+        height: 743,
+        offsetTop: 0,
+        addEventListener() {},
+        removeEventListener() {},
+      },
+    });
+  });
+  await page.addScriptTag({ content: pwaScript });
+
+  await expect(page.locator('#fastToWinRoot')).toHaveCSS('height', '743px');
+});
+
+test('iOS first tutorial completion remeasures the viewport before showing Home', async ({ page }) => {
+  const pwaScript = await readFile(
+    new URL('../../webApp/src/wasmJsMain/resources/pwa.js', import.meta.url),
+    'utf8',
+  );
+  await page.setContent(`
+    <style>
+      #fastToWinRoot {
+        width: 100%;
+        height: var(--fast-to-win-viewport-height, 760px);
+      }
+    </style>
+    <main id="fastToWinRoot" aria-label="Fast To Win"></main>
+  `);
+  await page.evaluate(() => {
+    let viewportHeight = 760;
+    Object.defineProperty(window.navigator, 'standalone', {
+      configurable: true,
+      value: true,
+    });
+    Object.defineProperty(window.navigator, 'userAgent', {
+      configurable: true,
+      value: 'Mozilla/5.0 (iPhone; CPU iPhone OS 27_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148',
+    });
+    Object.defineProperty(window, 'visualViewport', {
+      configurable: true,
+      value: {
+        get height() { return viewportHeight; },
+        offsetTop: 0,
+        addEventListener() {},
+        removeEventListener() {},
+      },
+    });
+    window.__settleFastToWinIosViewport = height => {
+      viewportHeight = height;
+    };
+  });
+  await page.addScriptTag({ content: pwaScript });
+
+  await expect(page.locator('#fastToWinRoot')).toHaveCSS('height', '760px');
+  await page.evaluate(() => {
+    window.FASTTOWIN_PWA.navigation.replace('#home');
+    window.setTimeout(() => window.__settleFastToWinIosViewport(844), 80);
+  });
+
+  await expect(page.locator('#fastToWinRoot')).toHaveCSS('height', '844px');
+});
+
 test('Android standalone keeps the focused input stable while the keyboard opens', async ({ page }) => {
   const pwaScript = await readFile(
     new URL('../../webApp/src/wasmJsMain/resources/pwa.js', import.meta.url),
