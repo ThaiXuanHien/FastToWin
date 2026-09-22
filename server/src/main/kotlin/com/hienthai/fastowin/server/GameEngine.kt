@@ -13,6 +13,7 @@ import com.hienthai.fastowin.protocol.GAME_NUMBER_COUNT
 import com.hienthai.fastowin.protocol.GameSnapshot
 import com.hienthai.fastowin.protocol.FriendPresence
 import com.hienthai.fastowin.protocol.FriendsSnapshot
+import com.hienthai.fastowin.protocol.FRAME_CATALOG
 import com.hienthai.fastowin.protocol.GoldExchangeStatus
 import com.hienthai.fastowin.protocol.PlayerSnapshot
 import com.hienthai.fastowin.protocol.PlayerProfileSnapshot
@@ -37,6 +38,7 @@ import com.hienthai.fastowin.protocol.TournamentMatchSnapshot
 import com.hienthai.fastowin.protocol.TournamentPhase
 import com.hienthai.fastowin.protocol.TournamentPlayerSnapshot
 import com.hienthai.fastowin.protocol.TournamentSnapshot
+import com.hienthai.fastowin.protocol.TITLE_CATALOG
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.security.MessageDigest
@@ -4194,10 +4196,25 @@ class GameEngine(
                         )
                     } != false
             }
-            NotificationKind.ACHIEVEMENT ->
-                messageArgs.keys == setOf("code", "title", "description")
-            NotificationKind.COSMETIC ->
-                messageArgs.keys == setOf("id", "name")
+            NotificationKind.ACHIEVEMENT -> {
+                val required = setOf("code", "title", "description")
+                val allowed = required + setOf("titleKey", "descriptionKey")
+                val definition = messageArgs["code"]?.let(::achievementDefinition)
+                messageArgs.keys.containsAll(required) &&
+                    messageArgs.keys.all { it in allowed } &&
+                    messageArgs["titleKey"]?.let { it == definition?.titleKey } != false &&
+                    messageArgs["descriptionKey"]?.let { it == definition?.descriptionKey } != false
+            }
+            NotificationKind.COSMETIC -> {
+                val required = setOf("id", "name")
+                val allowed = required + "nameKey"
+                val definition = messageArgs["id"]?.let { id ->
+                    (FRAME_CATALOG + TITLE_CATALOG).firstOrNull { it.id == id }
+                }
+                messageArgs.keys.containsAll(required) &&
+                    messageArgs.keys.all { it in allowed } &&
+                    messageArgs["nameKey"]?.let { it == definition?.nameKey } != false
+            }
             else -> false
         }
         return validArguments &&

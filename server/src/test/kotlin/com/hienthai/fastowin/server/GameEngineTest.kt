@@ -451,6 +451,57 @@ class GameEngineTest {
     }
 
     @Test
+    fun `account notification sync accepts localized achievement and cosmetic arguments`() = runTest {
+        val playerId = UUID.randomUUID().toString()
+        val notifications = InMemoryNotificationRepository()
+        val engine = GameEngine(notificationRepository = notifications)
+        engine.connectAccount(AuthenticatedAccount(UUID.fromString(playerId), "Player"))
+        val achievement = NotificationSnapshot(
+            id = "achievement:FIRST_WIN",
+            kind = NotificationKind.ACHIEVEMENT,
+            title = "Thành tích",
+            message = "Khai Chiến: Hoàn thành trận đấu đầu tiên.",
+            createdAtEpochMillis = 1L,
+            destination = NotificationDestination.PROFILE,
+            titleKey = TextKey.AchievementsTitle.name,
+            messageKey = TextKey.NotificationAchievementMessage.name,
+            messageArgs = mapOf(
+                "code" to "FIRST_WIN",
+                "title" to "Khai Chiến",
+                "description" to "Hoàn thành trận đấu đầu tiên.",
+                "titleKey" to TextKey.AchievementFirstWinTitle.name,
+                "descriptionKey" to TextKey.AchievementFirstWinDescription.name
+            )
+        )
+        val cosmetic = NotificationSnapshot(
+            id = "cosmetic:frame_lightning",
+            kind = NotificationKind.COSMETIC,
+            title = "Đã mở khóa",
+            message = "Bạn đã mở khóa Tia Chớp.",
+            createdAtEpochMillis = 1L,
+            destination = NotificationDestination.PROFILE,
+            titleKey = TextKey.Unlocked.name,
+            messageKey = TextKey.NotificationCosmeticMessage.name,
+            messageArgs = mapOf(
+                "id" to "frame_lightning",
+                "name" to "Tia Chớp",
+                "nameKey" to TextKey.FrameLightningName.name
+            )
+        )
+
+        val response = engine.handle(
+            playerId,
+            ClientMessage.SyncNotifications(listOf(achievement, cosmetic))
+        )
+
+        assertTrue(response.map(Delivery::message).any { it is ServerMessage.NotificationsData })
+        assertTrue(response.map(Delivery::message).none { it is ServerMessage.Error })
+        val stored = notifications.loadNotifications(playerId).associateBy(NotificationSnapshot::id)
+        assertEquals(achievement.messageArgs, stored.getValue(achievement.id).messageArgs)
+        assertEquals(cosmetic.messageArgs, stored.getValue(cosmetic.id).messageArgs)
+    }
+
+    @Test
     fun `account notification sync rejects template keys outside the allowlist`() = runTest {
         val playerId = UUID.randomUUID().toString()
         val notifications = InMemoryNotificationRepository()
@@ -466,6 +517,39 @@ class GameEngineTest {
             titleKey = TextKey.PasswordChanged.name,
             messageKey = TextKey.NotificationMissionMessage.name,
             messageArgs = mapOf("mission" to "M", "reward" to "R")
+        )
+
+        val response = engine.handle(playerId, ClientMessage.SyncNotifications(listOf(unsafe)))
+
+        assertEquals(
+            "INVALID_NOTIFICATIONS",
+            response.map(Delivery::message).filterIsInstance<ServerMessage.Error>().single().code
+        )
+        assertTrue(notifications.loadNotifications(playerId).isEmpty())
+    }
+
+    @Test
+    fun `account notification sync rejects mismatched localized progression keys`() = runTest {
+        val playerId = UUID.randomUUID().toString()
+        val notifications = InMemoryNotificationRepository()
+        val engine = GameEngine(notificationRepository = notifications)
+        engine.connectAccount(AuthenticatedAccount(UUID.fromString(playerId), "Player"))
+        val unsafe = NotificationSnapshot(
+            id = "achievement:FIRST_WIN",
+            kind = NotificationKind.ACHIEVEMENT,
+            title = "Achievement",
+            message = "First Battle: Win the first online match.",
+            createdAtEpochMillis = 1L,
+            destination = NotificationDestination.PROFILE,
+            titleKey = TextKey.AchievementsTitle.name,
+            messageKey = TextKey.NotificationAchievementMessage.name,
+            messageArgs = mapOf(
+                "code" to "FIRST_WIN",
+                "title" to "First Battle",
+                "description" to "Win the first online match.",
+                "titleKey" to TextKey.PasswordChanged.name,
+                "descriptionKey" to TextKey.AchievementFirstWinDescription.name
+            )
         )
 
         val response = engine.handle(playerId, ClientMessage.SyncNotifications(listOf(unsafe)))
