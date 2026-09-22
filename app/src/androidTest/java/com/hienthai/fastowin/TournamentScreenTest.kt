@@ -37,6 +37,76 @@ class TournamentScreenTest {
     val composeRule = createComposeRule()
 
     @Test
+    fun compactTournamentContentUsesTheSameWideGutterAsOtherScreens() {
+        composeRule.setContent {
+            DeviceConfigurationOverride(
+                DeviceConfigurationOverride.ForcedSize(DpSize(384.dp, 832.dp))
+            ) {
+                FastToWinTheme {
+                    TournamentScreen(
+                        state = GameState(player = PlayerState("Hiền", id = "player-hien")),
+                        onBack = {},
+                        onCreate = { _, _, _, _ -> },
+                        onInvite = {},
+                        onRespondInvitation = { _, _ -> },
+                        onStart = {},
+                        onLeave = {},
+                        onOpenFriendProfile = {}
+                    )
+                }
+            }
+        }
+
+        val screenWidth = composeRule.onNodeWithTag("tournament_screen")
+            .fetchSemanticsNode().boundsInRoot.width
+        val contentWidth = composeRule.onNodeWithTag("tournament_content")
+            .fetchSemanticsNode().boundsInRoot.width
+
+        composeRule.runOnIdle { assertTrue(contentWidth >= screenWidth * 0.9f) }
+    }
+
+    @Test
+    fun entryFeesUseEqualThreeColumnRowsAndShowGoldForUnselectedOptions() {
+        composeRule.setContent {
+            DeviceConfigurationOverride(
+                DeviceConfigurationOverride.ForcedSize(DpSize(384.dp, 832.dp))
+            ) {
+                FastToWinTheme {
+                    TournamentScreen(
+                        state = GameState(player = PlayerState("Hiền", id = "player-hien")),
+                        onBack = {},
+                        onCreate = { _, _, _, _ -> },
+                        onInvite = {},
+                        onRespondInvitation = { _, _ -> },
+                        onStart = {},
+                        onLeave = {},
+                        onOpenFriendProfile = {}
+                    )
+                }
+            }
+        }
+
+        composeRule.onNodeWithTag("tournament_fee_section").performScrollTo()
+        val optionWidths = listOf(0, 50, 100, 200, 500, 1000).map { fee ->
+            composeRule.onNodeWithTag("tournament_fee_$fee")
+                .fetchSemanticsNode().boundsInRoot.width
+        }
+        composeRule.onNodeWithTag(
+            testTag = "tournament_fee_icon_50",
+            useUnmergedTree = true
+        )
+            .performScrollTo()
+            .assertIsDisplayed()
+        composeRule.runOnIdle {
+            val widthDelta = optionWidths.max() - optionWidths.min()
+            assertTrue(
+                "Entry fee widths must differ by at most one physical pixel: $optionWidths",
+                widthDelta <= 1f
+            )
+        }
+    }
+
+    @Test
     fun selectingCustomEntryFeeKeepsTheFeeSectionHeightStable() {
         composeRule.setContent {
             DeviceConfigurationOverride(

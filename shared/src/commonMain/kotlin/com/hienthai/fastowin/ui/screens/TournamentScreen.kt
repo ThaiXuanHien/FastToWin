@@ -5,12 +5,10 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.size
-import androidx.compose.ui.draw.alpha
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -40,6 +38,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
@@ -104,11 +103,14 @@ fun TournamentScreen(
     ) { paddingValues ->
         ResponsiveScreen(
             modifier = Modifier.padding(paddingValues),
-            maxContentWidth = 760.dp,
+            maxContentWidth = 920.dp,
             applySafeDrawingInsets = false
         ) { contentModifier ->
             Column(
-                modifier = contentModifier.verticalScroll(rememberScrollState()).padding(16.dp),
+                modifier = contentModifier
+                    .testTag("tournament_content")
+                    .verticalScroll(rememberScrollState())
+                    .padding(vertical = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
                 val heroTitle: String
@@ -385,29 +387,40 @@ private fun CreateTournamentCard(
                     fontWeight = FontWeight.Bold
                 )
                 
-                @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
-                FlowRow(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    entryFeeOptions.forEach { fee ->
-                        TournamentFeeChip(
-                            label = if (fee == 0) localized(TextKey.Free) else "$fee",
-                            selected = !isCustomFee && entryFee == fee,
-                            modifier = Modifier.testTag("tournament_fee_$fee"),
-                            onClick = {
-                                isCustomFee = false
-                                entryFee = fee
+                BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+                    val columnCount = if (maxWidth < 280.dp) 2 else 3
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        entryFeeOptions.chunked(columnCount).forEach { rowOptions ->
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                rowOptions.forEach { fee ->
+                                    TournamentFeeChip(
+                                        label = if (fee == 0) localized(TextKey.Free) else "$fee",
+                                        selected = !isCustomFee && entryFee == fee,
+                                        iconTestTag = "tournament_fee_icon_$fee",
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .testTag("tournament_fee_$fee"),
+                                        onClick = {
+                                            isCustomFee = false
+                                            entryFee = fee
+                                        }
+                                    )
+                                }
                             }
+                        }
+                        TournamentFeeChip(
+                            label = localized(TextKey.Custom),
+                            selected = isCustomFee,
+                            iconTestTag = "tournament_fee_icon_custom",
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("tournament_fee_custom"),
+                            onClick = { isCustomFee = true }
                         )
                     }
-                    TournamentFeeChip(
-                        label = localized(TextKey.Custom),
-                        selected = isCustomFee,
-                        modifier = Modifier.testTag("tournament_fee_custom"),
-                        onClick = { isCustomFee = true }
-                    )
                 }
 
                 Box(
@@ -512,6 +525,7 @@ private fun TournamentSizeChip(
 private fun TournamentFeeChip(
     label: String,
     selected: Boolean,
+    iconTestTag: String,
     modifier: Modifier = Modifier,
     onClick: () -> Unit
 ) {
@@ -526,23 +540,23 @@ private fun TournamentFeeChip(
         )
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp)
+            horizontalArrangement = Arrangement.Center
         ) {
-            // Preserve the icon footprint for both states so selection cannot
-            // resize a chip and make FlowRow jump between lines.
             Icon(
                 Icons.Filled.MonetizationOn,
                 contentDescription = null,
-                modifier = Modifier.size(16.dp).alpha(if (selected) 1f else 0f),
+                modifier = Modifier.size(16.dp).testTag(iconTestTag),
                 tint = ArcadePalette.Gold500
             )
+            Spacer(Modifier.size(6.dp))
             Text(
                 text = label,
                 color = ArcadePalette.White,
                 style = MaterialTheme.typography.labelLarge,
-                fontWeight = FontWeight.Bold
+                fontWeight = FontWeight.Bold,
+                maxLines = 1
             )
         }
     }
