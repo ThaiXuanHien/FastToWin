@@ -15,6 +15,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -33,6 +35,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -234,6 +237,7 @@ private fun CreateTournamentCard(
     var mode by remember { mutableStateOf(GameMode.ORDER) }
     var maxPlayers by remember { mutableStateOf(4) }
     var showModePicker by remember { mutableStateOf(false) }
+    val customFeeBringIntoViewRequester = remember { BringIntoViewRequester() }
     if (showModePicker) {
         GameModePickerDialog(
             title = localized(TextKey.ChooseTournamentMode),
@@ -377,6 +381,12 @@ private fun CreateTournamentCard(
             var isCustomFee by remember { mutableStateOf(false) }
             var customFeeText by remember { mutableStateOf("") }
 
+            LaunchedEffect(isCustomFee) {
+                if (isCustomFee) {
+                    customFeeBringIntoViewRequester.bringIntoView()
+                }
+            }
+
             Column(
                 modifier = Modifier.testTag("tournament_fee_section"),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
@@ -427,6 +437,7 @@ private fun CreateTournamentCard(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(68.dp)
+                        .bringIntoViewRequester(customFeeBringIntoViewRequester)
                         .testTag("tournament_custom_fee_slot")
                 ) {
                     if (isCustomFee) {
