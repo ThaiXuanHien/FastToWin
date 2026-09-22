@@ -106,6 +106,12 @@ test('numeric tournament fee keeps typed digits in browser order', async ({ acto
   await expect(tag(player.page, 'tournament_screen')).toBeAttached();
   await click(player.page, tag(player.page, 'tournament_fee_custom'));
 
+  // The fixed three-column preset grid is taller than the old FlowRow on
+  // compact viewports. Scroll the newly revealed field into the Compose
+  // viewport before asserting its native HTML overlay; offscreen interop
+  // elements are intentionally hidden by Compose.
+  await click(player.page, tag(player.page, 'tournament_custom_fee_input'));
+
   const numeric = player.page.locator(
     'input[data-fasttowin-native-input][inputmode=numeric]',
   );
