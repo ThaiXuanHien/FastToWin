@@ -98,9 +98,10 @@ The current viewport bridge samples `visualViewport` immediately, over animation
 
 The PWA bridge will add focus-driven recovery:
 
+- native-input `focusin` records the last full pre-keyboard viewport height;
 - native-input `focusout` begins a bounded stabilization cycle;
 - the cycle samples `visualViewport.height + offsetTop` over animation frames and timed checkpoints;
-- it stops after two equal samples at least 100 ms apart, or after a 1.2-second deadline;
+- it stops after the viewport has returned to the pre-keyboard height and two equal samples are at least 100 ms apart, or after a 1.2-second deadline;
 - each accepted height updates `--fast-to-win-viewport-height`;
 - the final stable height emits `fasttowin-viewport-change`, forcing Compose to reread safe-area values.
 
