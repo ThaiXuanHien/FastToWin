@@ -156,6 +156,34 @@ data class TournamentMatchSnapshot(
 )
 
 @Serializable
+enum class TournamentVisibility { PUBLIC, PRIVATE }
+
+@Serializable
+enum class TournamentFeeFilter { ALL, FREE, PAID }
+
+@Serializable
+data class PublicTournamentQuery(
+    val nameQuery: String = "",
+    val gameMode: ProtocolGameMode? = null,
+    val maxPlayers: Int? = null,
+    val fee: TournamentFeeFilter = TournamentFeeFilter.ALL,
+)
+
+@Serializable
+data class PublicTournamentSummary(
+    val tournamentId: String,
+    val name: String,
+    val hostPlayerId: String,
+    val hostDisplayName: String,
+    val gameMode: ProtocolGameMode,
+    val playerCount: Int,
+    val maxPlayers: Int,
+    val entryFee: Int,
+    val prizePool: Int,
+    val createdAtEpochMillis: Long,
+)
+
+@Serializable
 data class TournamentSnapshot(
     val tournamentId: String,
     val name: String,
@@ -170,7 +198,8 @@ data class TournamentSnapshot(
     val championPlayerId: String? = null,
     val createdAtEpochMillis: Long,
     val startedAtEpochMillis: Long? = null,
-    val finishedAtEpochMillis: Long? = null
+    val finishedAtEpochMillis: Long? = null,
+    val visibility: TournamentVisibility = TournamentVisibility.PRIVATE
 )
 
 @Serializable
@@ -836,12 +865,21 @@ sealed class ClientMessage {
     data object GetTournamentHub : ClientMessage()
 
     @Serializable
+    @SerialName("get_public_tournaments")
+    data class GetPublicTournaments(val query: PublicTournamentQuery = PublicTournamentQuery()) : ClientMessage()
+
+    @Serializable
+    @SerialName("join_public_tournament")
+    data class JoinPublicTournament(val tournamentId: String) : ClientMessage()
+
+    @Serializable
     @SerialName("create_tournament")
     data class CreateTournament(
         val name: String,
         val gameMode: ProtocolGameMode,
         val entryFee: Int = 0,
-        val maxPlayers: Int = 4
+        val maxPlayers: Int = 4,
+        val visibility: TournamentVisibility = TournamentVisibility.PUBLIC
     ) : ClientMessage()
 
     @Serializable
@@ -1146,6 +1184,14 @@ sealed class ServerMessage {
     @Serializable
     @SerialName("tournament_hub_data")
     data class TournamentHubData(val hub: TournamentHubSnapshot) : ServerMessage()
+
+    @Serializable
+    @SerialName("public_tournaments_data")
+    data class PublicTournamentsData(val tournaments: List<PublicTournamentSummary>) : ServerMessage()
+
+    @Serializable
+    @SerialName("public_tournaments_invalidated")
+    data object PublicTournamentsInvalidated : ServerMessage()
 
     @Serializable
     @SerialName("tournament_updated")

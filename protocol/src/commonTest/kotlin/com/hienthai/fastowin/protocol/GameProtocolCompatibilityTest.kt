@@ -52,4 +52,55 @@ class GameProtocolCompatibilityTest {
 
         assertEquals(message, ProtocolJson.decodeFromString<ClientMessage>(encoded))
     }
+
+    @Test
+    fun `legacy tournament snapshot defaults to private`() {
+        val decoded = ProtocolJson.decodeFromString<TournamentSnapshot>(
+            """{"tournamentId":"00000000-0000-0000-0000-000000000001","name":"Legacy","hostPlayerId":"00000000-0000-0000-0000-000000000002","gameMode":"ORDER","phase":"LOBBY","createdAtEpochMillis":1}"""
+        )
+
+        assertEquals(TournamentVisibility.PRIVATE, decoded.visibility)
+    }
+
+    @Test
+    fun `create tournament payload without visibility defaults to public`() {
+        val decoded = ProtocolJson.decodeFromString<ClientMessage>(
+            """{"type":"create_tournament","name":"Cup","gameMode":"ORDER"}"""
+        )
+
+        assertEquals(
+            ClientMessage.CreateTournament("Cup", ProtocolGameMode.ORDER, visibility = TournamentVisibility.PUBLIC),
+            decoded
+        )
+    }
+
+    @Test
+    fun `public tournament query and response round trip`() {
+        val query: ClientMessage = ClientMessage.GetPublicTournaments(
+            PublicTournamentQuery("cup", ProtocolGameMode.ORDER, 8, TournamentFeeFilter.PAID)
+        )
+        assertEquals(query, ProtocolJson.decodeFromString<ClientMessage>(ProtocolJson.encodeToString(query)))
+
+        val join: ClientMessage = ClientMessage.JoinPublicTournament("00000000-0000-0000-0000-000000000001")
+        assertEquals(join, ProtocolJson.decodeFromString<ClientMessage>(ProtocolJson.encodeToString(join)))
+
+        val response: ServerMessage = ServerMessage.PublicTournamentsData(
+            listOf(PublicTournamentSummary(
+                tournamentId = "00000000-0000-0000-0000-000000000001",
+                name = "Cup",
+                hostPlayerId = "00000000-0000-0000-0000-000000000002",
+                hostDisplayName = "Host",
+                gameMode = ProtocolGameMode.ORDER,
+                playerCount = 2,
+                maxPlayers = 4,
+                entryFee = 100,
+                prizePool = 200,
+                createdAtEpochMillis = 1L,
+            ))
+        )
+        assertEquals(response, ProtocolJson.decodeFromString<ServerMessage>(ProtocolJson.encodeToString(response)))
+
+        val invalidated: ServerMessage = ServerMessage.PublicTournamentsInvalidated
+        assertEquals(invalidated, ProtocolJson.decodeFromString<ServerMessage>(ProtocolJson.encodeToString(invalidated)))
+    }
 }
