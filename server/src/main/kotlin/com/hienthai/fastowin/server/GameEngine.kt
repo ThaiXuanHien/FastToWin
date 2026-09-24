@@ -627,7 +627,7 @@ class GameEngine(
                 Delivery(ServerMessage.TournamentUpdated(snapshot), setOf(playerId)),
                 Delivery(
                     ServerMessage.TournamentNotice(
-                        message = legacyFallback("Đã tạo giải riêng ${command.maxPlayers} người."),
+                        message = legacyFallback("Đã tạo giải ${command.maxPlayers} người."),
                         messageKey = TextKey.TournamentCreatedNotice.name,
                         messageArgs = mapOf("players" to command.maxPlayers.toString()),
                         code = "TOURNAMENT_CREATED"
@@ -720,51 +720,91 @@ class GameEngine(
         command: ClientMessage.RespondTournamentInvitation
     ): List<Delivery> {
         if (!isAccountSession(playerId)) return listOf(accountRequired(playerId))
-        val deliveries = mutex.withLock {
-            val invitation = tournamentInvitations[command.invitationId]
-                ?.takeIf { it.inviteeId == playerId && it.expiresAtMillis > nowMillis() }
-                ?: return@withLock listOf(error(playerId, "TOURNAMENT_INVITATION_EXPIRED", legacyFallback("Lời mời giải đấu đã hết hạn.")))
-            tournamentInvitations.remove(command.invitationId)
-            if (!command.accept) {
-                return@withLock listOf(
-                    Delivery(ServerMessage.TournamentNotice(
-                        legacyFallback("Đã từ chối lời mời giải đấu."),
-                        TextKey.TournamentInvitationDeclinedNotice.name,
-                        code = "TOURNAMENT_INVITATION_DECLINED"
-                    ), setOf(playerId)),
-                    Delivery(ServerMessage.TournamentNotice(
-                        legacyFallback("Một người bạn đã từ chối lời mời giải đấu."),
-                        TextKey.TournamentInvitationDeclinedByFriendNotice.name,
-                        code = "TOURNAMENT_INVITATION_DECLINED_BY_FRIEND"
-                    ), setOf(invitation.hostId))
-                )
+        val deliveries = persistenceMutex.withLock {
+            mutex.withLock {
+                val invitation = tournamentInvitations[command.invitationId]
+                    ?.takeIf { it.inviteeId == playerId && it.expiresAtMillis > nowMillis() }
+                    ?: return@withLock listOf(error(playerId, "TOURNAMENT_INVITATION_EXPIRED", legacyFallback("Lời mời giải đấu đã hết hạn.")))
+                tournamentInvitations.remove(command.invitationId)
+                if (!command.accept) {
+                    return@withLock listOf(
+                        Delivery(ServerMessage.TournamentNotice(
+                            legacyFallback("Đã từ chối lời mời giải đấu."),
+                            TextKey.TournamentInvitationDeclinedNotice.name,
+                            code = "TOURNAMENT_INVITATION_DECLINED"
+                        ), setOf(playerId)),
+                        Delivery(ServerMessage.TournamentNotice(
+                            legacyFallback("Một người bạn đã từ chối lời mời giải đấu."),
+                            TextKey.TournamentInvitationDeclinedByFriendNotice.name,
+                            code = "TOURNAMENT_INVITATION_DECLINED_BY_FRIEND"
+                        ), setOf(invitation.hostId))
+                    )
+                }
+                val tournament = tournaments[invitation.tournamentId]
+                    ?.takeIf { it.phase == TournamentPhase.LOBBY }
+                    ?: return@withLock listOf(error(playerId, "TOURNAMENT_NOT_FOUND", legacyFallback("Giải đấu không còn tồn tại.")))
+                admitTournamentPlayerAndPersistLocked(playerId, tournament, TournamentAdmissionSource.INVITATION)
             }
-            val tournament = tournaments[invitation.tournamentId]
-                ?.takeIf { it.phase == TournamentPhase.LOBBY }
-                ?: return@withLock listOf(error(playerId, "TOURNAMENT_NOT_FOUND", legacyFallback("Giải đấu không còn tồn tại.")))
-            admitTournamentPlayerLocked(playerId, tournament, TournamentAdmissionSource.INVITATION)
         }
-        return persistTournamentAdmission(playerId, deliveries)
+        return admissionProfileDeliveries(playerId, deliveries)
     }
 
     private suspend fun joinPublicTournament(playerId: String, tournamentId: String): List<Delivery> {
         if (!isAccountSession(playerId)) return listOf(accountRequired(playerId))
-        val deliveries = mutex.withLock {
-            val tournament = tournaments[tournamentId]
-                ?: return@withLock listOf(error(playerId, "TOURNAMENT_NOT_FOUND", legacyFallback("Giải đấu không còn tồn tại.")))
-            admitTournamentPlayerLocked(playerId, tournament, TournamentAdmissionSource.PUBLIC_DISCOVERY)
+        val deliveries = persistenceMutex.withLock {
+            mutex.withLock {
+                val tournament = tournaments[tournamentId]
+                    ?: return@withLock listOf(error(playerId, "TOURNAMENT_NOT_FOUND", legacyFallback("Giải đấu không còn tồn tại.")))
+                admitTournamentPlayerAndPersistLocked(playerId, tournament, TournamentAdmissionSource.PUBLIC_DISCOVERY)
+            }
         }
-        return persistTournamentAdmission(playerId, deliveries)
+        return admissionProfileDeliveries(playerId, deliveries)
     }
 
-    private suspend fun persistTournamentAdmission(playerId: String, deliveries: List<Delivery>): List<Delivery> {
+    private suspend fun admissionProfileDeliveries(playerId: String, deliveries: List<Delivery>): List<Delivery> {
         val snapshot = deliveries.map(Delivery::message)
             .filterIsInstance<ServerMessage.TournamentUpdated>().singleOrNull()?.tournament
-        snapshot?.let { persistTournament(it.tournamentId) }
         return deliveries + if (snapshot != null) loadProfile(playerId) else emptyList()
     }
 
     private enum class TournamentAdmissionSource { INVITATION, PUBLIC_DISCOVERY }
+
+    /** Caller holds [persistenceMutex] and [mutex] until the admission is durably saved or compensated. */
+    private suspend fun admitTournamentPlayerAndPersistLocked(
+        playerId: String,
+        tournament: Tournament,
+        source: TournamentAdmissionSource
+    ): List<Delivery> {
+        val prizePoolBefore = tournament.prizePool
+        val deliveries = admitTournamentPlayerLocked(playerId, tournament, source)
+        val snapshot = deliveries.map(Delivery::message)
+            .filterIsInstance<ServerMessage.TournamentUpdated>().singleOrNull()?.tournament
+            ?: return deliveries
+        try {
+            tournamentRepository.save(snapshot)
+        } catch (saveError: Exception) {
+            if (tournament.entryFee > 0) {
+                val refund = try {
+                    playerProfileRepository.applyWalletTransaction(
+                        playerId = playerId,
+                        sourceType = "TOURNAMENT_ENTRY_REFUND",
+                        sourceId = tournament.id,
+                        goldDelta = tournament.entryFee
+                    )
+                } catch (refundError: Exception) {
+                    System.err.println("Could not refund failed tournament admission for $playerId: ${refundError.message}")
+                    null
+                }
+                if (refund != WalletMutationStatus.APPLIED && refund != WalletMutationStatus.DUPLICATE) {
+                    throw IllegalStateException("Tournament save and entry refund both failed", saveError)
+                }
+            }
+            tournament.participants.removeAll { it.playerId == playerId }
+            tournament.prizePool = prizePoolBefore
+            return listOf(error(playerId, "TOURNAMENT_SAVE_FAILED", legacyFallback("Chưa thể lưu lượt tham gia giải.")))
+        }
+        return deliveries
+    }
 
     /** Caller holds [mutex], including across the idempotent wallet mutation. */
     private suspend fun admitTournamentPlayerLocked(
@@ -773,10 +813,19 @@ class GameEngine(
         source: TournamentAdmissionSource
     ): List<Delivery> {
         if (source == TournamentAdmissionSource.PUBLIC_DISCOVERY && tournament.visibility != TournamentVisibility.PUBLIC) {
-            return listOf(error(playerId, "TOURNAMENT_NOT_FOUND", legacyFallback("Giải đấu không còn tồn tại.")))
+            return listOf(error(playerId, "TOURNAMENT_NOT_PUBLIC", legacyFallback("Giải này không còn được công khai.")))
         }
-        if (tournament.phase != TournamentPhase.LOBBY) {
-            return listOf(error(playerId, "TOURNAMENT_NOT_FOUND", legacyFallback("Giải đấu không còn tồn tại.")))
+        when (tournament.phase) {
+            TournamentPhase.CANCELLED -> return listOf(
+                error(playerId, "TOURNAMENT_CANCELLED", legacyFallback("Giải đấu đã bị hủy."))
+            )
+            TournamentPhase.RUNNING, TournamentPhase.FINISHED -> return listOf(
+                error(playerId, "TOURNAMENT_ALREADY_STARTED", legacyFallback("Giải đấu đã bắt đầu hoặc kết thúc."))
+            )
+            TournamentPhase.LOBBY -> Unit
+        }
+        if (playerId in tournament.playerIds()) {
+            return listOf(error(playerId, "PLAYER_ALREADY_JOINED", legacyFallback("Bạn đã tham gia giải này.")))
         }
         if (tournament.participants.size >= tournament.maxPlayers) {
             return listOf(error(playerId, "TOURNAMENT_FULL", legacyFallback("Giải đã đủ ${tournament.maxPlayers} người.")))

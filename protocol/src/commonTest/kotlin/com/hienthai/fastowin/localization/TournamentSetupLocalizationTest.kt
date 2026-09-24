@@ -1,9 +1,18 @@
 package com.hienthai.fastowin.localization
 
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertNotEquals
 
 class TournamentSetupLocalizationTest {
+    @Test
+    fun tournamentCreatedNoticeIsNeutralForPublicAndPrivateTournaments() {
+        assertEquals("Created a 4-player tournament.", LocalizationService(AppLanguage.ENGLISH)
+            .text(TextKey.TournamentCreatedNotice, mapOf("players" to 4)))
+        assertEquals("Đã tạo giải 4 người.", LocalizationService(AppLanguage.VIETNAMESE)
+            .text(TextKey.TournamentCreatedNotice, mapOf("players" to 4)))
+    }
+
     @Test
     fun tournamentSetupAndLobbyCopyDoesNotFallBackToEnglish() {
         assertLocalized(
