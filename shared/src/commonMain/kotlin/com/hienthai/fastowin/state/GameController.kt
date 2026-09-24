@@ -658,7 +658,13 @@ class GameController(
             return
         }
         _uiState.update {
-            it.copy(gameMode = mode, matchType = matchType, isSearching = true, error = null)
+            it.copy(
+                gameMode = mode,
+                matchType = matchType,
+                isSearching = true,
+                playFlowRejection = null,
+                error = null
+            )
         }
         scope.launch {
             socket.sendMessage(
@@ -686,6 +692,7 @@ class GameController(
                 currentRoomName = room.name,
                 isRoomHost = false,
                 isSearching = true,
+                playFlowRejection = null,
                 error = null
             )
         }
@@ -877,6 +884,7 @@ class GameController(
                 isMatchmaking = true,
                 matchmakingStartedAtMillis = epochMillis(),
                 matchmakingRatingRange = if (matchType == MatchType.RANKED) 100 else 0,
+                playFlowRejection = null,
                 error = null
             )
         }
@@ -889,6 +897,7 @@ class GameController(
                 lobbyStage = LobbyStage.SELECT_MODE,
                 isMatchmaking = false,
                 matchmakingStartedAtMillis = null,
+                playFlowRejection = null,
                 error = null
             )
         }
@@ -1509,58 +1518,77 @@ class GameController(
             return
         }
 
+        val currentLobbyStage = _uiState.value.lobbyStage
         val opponentIsUnavailable = error.code in setOf("OPPONENT_LEFT", "NOT_IN_ROOM", "ROOM_NOT_FOUND")
-        if (error.code in setOf("WRONG_PASSWORD", "ROOM_NOT_FOUND", "ROOM_FULL", "ALREADY_IN_ROOM")) {
-            returnToRoomBrowser(localizedError)
+        val rejectedRoomAction = error.code in ROOM_BROWSER_REJECTION_CODES ||
+            (error.code == "TOURNAMENT_ACTIVE" && currentLobbyStage in ROOM_ACTION_STAGES)
+        if (rejectedRoomAction) {
+            returnToRoomBrowser(
+                rejection = PlayFlowRejection(error.code, localizedError)
+            )
         } else {
             _uiState.update {
-                it.withRematchError(error, localizedError).copy(
-                    isSearching = false,
-                    isMatchmaking = false,
-                    matchmakingStartedAtMillis = null,
-                    lobbyStage = if (it.lobbyStage == LobbyStage.MATCHMAKING) {
-                        LobbyStage.SELECT_MODE
+                val wasMatchmaking = it.lobbyStage == LobbyStage.MATCHMAKING
+                val shouldPresentRejection = wasMatchmaking || error.code in PLAY_FLOW_CONFLICT_ERROR_CODES
+                val updated = it.withRematchError(error, localizedError).let { state ->
+                    if (shouldPresentRejection) {
+                        state.withPlayFlowRejection(error.code, localizedError)
                     } else {
-                        it.lobbyStage
-                    },
-                    isProfileSaving = false,
-                    isPushPreferencesSaving = false,
-                    equippingCosmeticId = null,
-                    isFriendProfileLoading = false,
-                    isMatchDetailLoading = false,
-                    isFriendsLoading = false,
-                    sendingRoomInviteFriendIds = if (error.code in ROOM_INVITATION_ERROR_CODES) {
-                        emptySet()
-                    } else {
-                        it.sendingRoomInviteFriendIds
-                    },
-                    isTournamentLoading = false,
-                    isWalletHistoryLoading = false,
-                    isGemStoreCatalogLoading = false,
-                    verifyingStorePurchaseRequestId = null,
-                    exchangingGoldRequestId = null,
-                    claimingRewardedAdRequestId = if (
-                        error.requestId != null && error.requestId == it.claimingRewardedAdRequestId
-                    ) null else it.claimingRewardedAdRequestId,
-                    storePurchaseResult = if (
-                        error.requestId != null && error.requestId == it.verifyingStorePurchaseRequestId
-                    ) {
-                        ServerMessage.StorePurchaseResult(
-                            requestId = error.requestId.orEmpty(),
-                            productId = "",
-                            status = com.hienthai.fastowin.protocol.StorePurchaseStatus.FAILED,
-                            message = localizedError
-                        )
-                    } else {
-                        it.storePurchaseResult
-                    },
-                    isDailyCheckInClaiming = false,
-                    claimingMissionCode = null,
-                    hasOpponent = if (opponentIsUnavailable) false else it.hasOpponent,
-                    error = globalErrorMessage(error, localizedError)
-                )
+                        state
+                    }
+                }
+                updated
+                    .copy(
+                        isSearching = false,
+                        isMatchmaking = false,
+                        matchmakingStartedAtMillis = null,
+                        lobbyStage = if (it.lobbyStage == LobbyStage.MATCHMAKING) {
+                            LobbyStage.SELECT_MODE
+                        } else {
+                            it.lobbyStage
+                        },
+                        isProfileSaving = false,
+                        isPushPreferencesSaving = false,
+                        equippingCosmeticId = null,
+                        isFriendProfileLoading = false,
+                        isMatchDetailLoading = false,
+                        isFriendsLoading = false,
+                        sendingRoomInviteFriendIds = if (error.code in ROOM_INVITATION_ERROR_CODES) {
+                            emptySet()
+                        } else {
+                            it.sendingRoomInviteFriendIds
+                        },
+                        isTournamentLoading = false,
+                        isWalletHistoryLoading = false,
+                        isGemStoreCatalogLoading = false,
+                        verifyingStorePurchaseRequestId = null,
+                        exchangingGoldRequestId = null,
+                        claimingRewardedAdRequestId = if (
+                            error.requestId != null && error.requestId == it.claimingRewardedAdRequestId
+                        ) null else it.claimingRewardedAdRequestId,
+                        storePurchaseResult = if (
+                            error.requestId != null && error.requestId == it.verifyingStorePurchaseRequestId
+                        ) {
+                            ServerMessage.StorePurchaseResult(
+                                requestId = error.requestId.orEmpty(),
+                                productId = "",
+                                status = com.hienthai.fastowin.protocol.StorePurchaseStatus.FAILED,
+                                message = localizedError
+                            )
+                        } else {
+                            it.storePurchaseResult
+                        },
+                        isDailyCheckInClaiming = false,
+                        claimingMissionCode = null,
+                        hasOpponent = if (opponentIsUnavailable) false else it.hasOpponent,
+                        error = if (shouldPresentRejection) null else globalErrorMessage(error, localizedError)
+                    )
             }
         }
+    }
+
+    fun dismissPlayFlowRejection() {
+        _uiState.update { it.copy(playFlowRejection = null, error = null) }
     }
 
     private fun startTimer(initialRemainingMillis: Long) {
@@ -1664,7 +1692,10 @@ class GameController(
         }
     }
 
-    private fun returnToRoomBrowser(error: String? = null) {
+    private fun returnToRoomBrowser(
+        error: String? = null,
+        rejection: PlayFlowRejection? = null
+    ) {
         gameStarted = false
         timerJob?.cancel()
         countdownJob?.cancel()
@@ -1686,7 +1717,8 @@ class GameController(
                 winnerPlayerId = null,
                 didForfeitLastMatch = false,
                 countdown = null,
-                error = error
+                playFlowRejection = rejection,
+                error = if (rejection == null) error else null
             )
         }
         requestRoomList()
@@ -1933,6 +1965,18 @@ class GameController(
     }
 
     private companion object {
+        val ROOM_BROWSER_REJECTION_CODES = setOf(
+            "WRONG_PASSWORD",
+            "ROOM_NOT_FOUND",
+            "ROOM_FULL",
+            "ALREADY_IN_ROOM"
+        )
+        val ROOM_ACTION_STAGES = setOf(LobbyStage.ROOM_BROWSER, LobbyStage.ROOM_WAITING)
+        val PLAY_FLOW_CONFLICT_ERROR_CODES = setOf(
+            "TOURNAMENT_ACTIVE",
+            "TOURNAMENT_ALREADY_ACTIVE",
+            "PLAYER_BUSY"
+        )
         val ROOM_INVITATION_ERROR_CODES = setOf(
             "INTERACTION_BLOCKED",
             "NOT_FRIENDS",

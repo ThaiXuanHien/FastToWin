@@ -24,6 +24,50 @@ import kotlin.test.assertTrue
 
 class GameStateTest {
     @Test
+    fun `matchmaking rejection stops search and preserves actionable reason`() {
+        val rejected = GameState(
+            lobbyStage = LobbyStage.MATCHMAKING,
+            isSearching = true,
+            isMatchmaking = true,
+            matchmakingStartedAtMillis = 123L,
+            error = "stale"
+        ).withPlayFlowRejection(
+            code = "TOURNAMENT_ACTIVE",
+            message = "Hãy rời hoặc hoàn tất giải đấu hiện tại trước."
+        )
+
+        assertEquals(LobbyStage.SELECT_MODE, rejected.lobbyStage)
+        assertFalse(rejected.isSearching)
+        assertFalse(rejected.isMatchmaking)
+        assertNull(rejected.matchmakingStartedAtMillis)
+        assertEquals(
+            PlayFlowRejection(
+                code = "TOURNAMENT_ACTIVE",
+                message = "Hãy rời hoặc hoàn tất giải đấu hiện tại trước."
+            ),
+            rejected.playFlowRejection
+        )
+        assertNull(rejected.error)
+    }
+
+    @Test
+    fun `room creation rejection stops loading without changing room browser`() {
+        val rejected = GameState(
+            lobbyStage = LobbyStage.ROOM_BROWSER,
+            isSearching = true,
+            error = "stale"
+        ).withPlayFlowRejection(
+            code = "TOURNAMENT_ACTIVE",
+            message = "Hãy rời hoặc hoàn tất giải đấu hiện tại trước khi tiếp tục."
+        )
+
+        assertEquals(LobbyStage.ROOM_BROWSER, rejected.lobbyStage)
+        assertFalse(rejected.isSearching)
+        assertEquals("TOURNAMENT_ACTIVE", rejected.playFlowRejection?.code)
+        assertNull(rejected.error)
+    }
+
+    @Test
     fun `authoritative room snapshot keeps avatar and frame synchronized for every player`() {
         val snapshot = GameSnapshot(
             roomId = "room-1",

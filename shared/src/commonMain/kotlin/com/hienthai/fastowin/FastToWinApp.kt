@@ -115,6 +115,7 @@ import com.hienthai.fastowin.ui.components.UpdateAvailableDialog
 import com.hienthai.fastowin.ui.components.PlayQuotaExhaustedDialog
 import com.hienthai.fastowin.ui.components.ArcadeActionButton
 import com.hienthai.fastowin.ui.components.ArcadeActionStyle
+import com.hienthai.fastowin.ui.components.ArcadeDialog
 import kotlinx.coroutines.delay
 
 @Composable
@@ -589,6 +590,7 @@ private fun GameContent(
         practiceMode == null
     val globalPrompt = selectGlobalPrompt(
         hasPlayQuotaDialog = state.showPlayQuotaExhaustedDialog,
+        hasPlayFlowRejection = state.playFlowRejection != null,
         hasPracticeModePicker = showPracticeModePicker,
         hasPracticeLauncher = showPracticeLauncher,
         hasRoomInvitation = state.roomInvitationPrompt != null,
@@ -609,6 +611,19 @@ private fun GameContent(
             },
             onDismiss = controller::dismissPlayQuotaDialog
         )
+    }
+    GlobalPromptSlot(globalPrompt, GlobalPrompt.PLAY_FLOW_REJECTION) {
+        state.playFlowRejection?.let { rejection ->
+            PlayFlowRejectionDialog(
+                code = rejection.code,
+                message = rejection.message,
+                onDismiss = controller::dismissPlayFlowRejection,
+                onOpenTournament = {
+                    controller.dismissPlayFlowRejection()
+                    navigateToRoute(navigationBridge, "/tournament", controller::openTournament)
+                }
+            )
+        }
     }
     GlobalPromptSlot(globalPrompt, GlobalPrompt.PRACTICE_MODE_PICKER) {
         GameModePickerDialog(
@@ -1499,8 +1514,45 @@ internal fun ReconnectOverlay(
     }
 }
 
+@Composable
+internal fun PlayFlowRejectionDialog(
+    code: String,
+    message: String,
+    onDismiss: () -> Unit,
+    onOpenTournament: () -> Unit
+) {
+    val canOpenTournament = code == "TOURNAMENT_ACTIVE" || code == "TOURNAMENT_ALREADY_ACTIVE"
+    ArcadeDialog(
+        title = localized(TextKey.PlayActionBlockedTitle).uppercase(),
+        subtitle = message,
+        onDismissRequest = onDismiss,
+        modifier = Modifier.testTag("play_flow_rejection_dialog")
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            if (canOpenTournament) {
+                ArcadeActionButton(
+                    label = localized(TextKey.Tournament).uppercase(),
+                    onClick = onOpenTournament,
+                    style = ArcadeActionStyle.GOLD,
+                    modifier = Modifier.fillMaxWidth().testTag("play_flow_rejection_open_tournament")
+                )
+            }
+            ArcadeActionButton(
+                label = localized(TextKey.Understood).uppercase(),
+                onClick = onDismiss,
+                style = if (canOpenTournament) ArcadeActionStyle.OUTLINE else ArcadeActionStyle.PRIMARY,
+                modifier = Modifier.fillMaxWidth().testTag("play_flow_rejection_dismiss")
+            )
+        }
+    }
+}
+
 internal enum class GlobalPrompt {
     PLAY_QUOTA,
+    PLAY_FLOW_REJECTION,
     PRACTICE_MODE_PICKER,
     PRACTICE_LAUNCHER,
     ROOM_INVITATION,
@@ -1513,6 +1565,7 @@ internal enum class GlobalPrompt {
 
 internal fun selectGlobalPrompt(
     hasPlayQuotaDialog: Boolean = false,
+    hasPlayFlowRejection: Boolean = false,
     hasPracticeModePicker: Boolean = false,
     hasPracticeLauncher: Boolean = false,
     hasRoomInvitation: Boolean,
@@ -1523,6 +1576,7 @@ internal fun selectGlobalPrompt(
     canShowSeasonSummary: Boolean
 ): GlobalPrompt? = when {
     hasPlayQuotaDialog -> GlobalPrompt.PLAY_QUOTA
+    hasPlayFlowRejection -> GlobalPrompt.PLAY_FLOW_REJECTION
     hasPracticeModePicker -> GlobalPrompt.PRACTICE_MODE_PICKER
     hasPracticeLauncher -> GlobalPrompt.PRACTICE_LAUNCHER
     hasRoomInvitation -> GlobalPrompt.ROOM_INVITATION

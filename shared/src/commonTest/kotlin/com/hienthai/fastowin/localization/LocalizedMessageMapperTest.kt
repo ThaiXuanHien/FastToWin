@@ -45,6 +45,53 @@ class LocalizedMessageMapperTest {
     }
 
     @Test
+    fun activeTournamentExplainsHowToContinue() {
+        val error = ServerMessage.Error(
+            "TOURNAMENT_ACTIVE",
+            "Hãy rời hoặc hoàn tất giải đấu hiện tại trước."
+        )
+
+        assertEquals(
+            "Leave or finish your active tournament before continuing.",
+            englishMapper.message(error)
+        )
+        assertEquals(
+            "Hãy rời hoặc hoàn tất giải đấu hiện tại trước khi tiếp tục.",
+            LocalizedMessageMapper(LocalizationService(AppLanguage.VIETNAMESE)).message(error)
+        )
+    }
+
+    @Test
+    fun playFlowConflictsUseSpecificRecoveryCopy() {
+        val vietnameseMapper = LocalizedMessageMapper(LocalizationService(AppLanguage.VIETNAMESE))
+
+        assertEquals(
+            "Hãy rời phòng hoặc hủy ghép trận hiện tại trước khi tiếp tục.",
+            vietnameseMapper.message(ServerMessage.Error("PLAYER_BUSY", "Người chơi đang bận."))
+        )
+        assertEquals(
+            "Bạn đang ở trong một phòng khác. Hãy rời phòng đó trước khi tiếp tục.",
+            vietnameseMapper.message(ServerMessage.Error("ALREADY_IN_ROOM", "Bạn đã ở trong phòng."))
+        )
+        assertEquals(
+            "Bạn đang tham gia một giải đấu khác. Hãy rời hoặc hoàn tất giải đó trước.",
+            vietnameseMapper.message(
+                ServerMessage.Error("TOURNAMENT_ALREADY_ACTIVE", "Bạn đã tham gia giải đấu khác.")
+            )
+        )
+    }
+
+    @Test
+    fun friendBusyKeepsOpponentSpecificCopy() {
+        assertEquals(
+            "Người chơi đang bận ở phòng hoặc giải khác.",
+            LocalizedMessageMapper(LocalizationService(AppLanguage.VIETNAMESE)).message(
+                ServerMessage.Error("FRIEND_BUSY", "Người chơi đang bận.")
+            )
+        )
+    }
+
+    @Test
     fun clanCreationInsufficientFundsNeverLeaksVietnameseFallbackToEnglish() {
         val error = ServerMessage.Error(
             "CLAN_CREATION_INSUFFICIENT_FUNDS",

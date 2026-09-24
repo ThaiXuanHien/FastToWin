@@ -10,6 +10,21 @@ class GlobalPromptPriorityTest {
             GlobalPrompt.PLAY_QUOTA,
             selectGlobalPrompt(
                 hasPlayQuotaDialog = true,
+                hasPlayFlowRejection = true,
+                hasPracticeModePicker = true,
+                hasPracticeLauncher = true,
+                hasRoomInvitation = true,
+                hasTournamentInvitation = true,
+                hasChallengeError = true,
+                hasFriendRequest = true,
+                canShowWebUpdate = true,
+                canShowSeasonSummary = true
+            )
+        )
+        assertEquals(
+            GlobalPrompt.PLAY_FLOW_REJECTION,
+            selectGlobalPrompt(
+                hasPlayFlowRejection = true,
                 hasPracticeModePicker = true,
                 hasPracticeLauncher = true,
                 hasRoomInvitation = true,

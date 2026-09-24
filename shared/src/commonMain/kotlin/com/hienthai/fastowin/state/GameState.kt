@@ -79,6 +79,11 @@ data class EmojiEvent(
     val playerId: String
 )
 
+data class PlayFlowRejection(
+    val code: String,
+    val message: String
+)
+
 enum class PostMatchFriendStatus {
     UNAVAILABLE,
     AVAILABLE,
@@ -112,6 +117,7 @@ data class GameState(
     val isMatchmaking: Boolean = false,
     val matchmakingStartedAtMillis: Long? = null,
     val matchmakingRatingRange: Int = 100,
+    val playFlowRejection: PlayFlowRejection? = null,
     val connectionStatus: ConnectionStatus = ConnectionStatus.DISCONNECTED,
     val availableRooms: List<AvailableRoom> = emptyList(),
     val roomListVersion: Long = 0,
@@ -419,6 +425,21 @@ internal fun GameState.withPlayQuotaError(
     )
 } else {
     this
+}
+
+internal fun GameState.withPlayFlowRejection(
+    code: String,
+    message: String
+): GameState {
+    val wasMatchmaking = lobbyStage == LobbyStage.MATCHMAKING
+    return copy(
+        lobbyStage = if (wasMatchmaking) LobbyStage.SELECT_MODE else lobbyStage,
+        isSearching = false,
+        isMatchmaking = if (wasMatchmaking) false else isMatchmaking,
+        matchmakingStartedAtMillis = if (wasMatchmaking) null else matchmakingStartedAtMillis,
+        playFlowRejection = PlayFlowRejection(code, message),
+        error = null
+    )
 }
 
 internal fun GameState.withRematchError(
