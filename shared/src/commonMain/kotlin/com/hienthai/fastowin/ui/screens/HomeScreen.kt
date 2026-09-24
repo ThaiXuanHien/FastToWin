@@ -711,7 +711,7 @@ internal fun FastToWinBottomBar(
                         WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom
                     )
                 )
-                .height(68.dp),
+                .height(56.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             BottomBarItem(
