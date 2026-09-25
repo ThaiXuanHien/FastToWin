@@ -515,7 +515,7 @@ class GameController private constructor(
         mode: GameMode,
         entryFee: Int = 0,
         maxPlayers: Int = 4,
-        visibility: TournamentVisibility = TournamentVisibility.PRIVATE
+        visibility: TournamentVisibility = TournamentVisibility.PUBLIC
     ) {
         _uiState.update { it.copy(isTournamentLoading = true, tournamentNotice = null, error = null) }
         scope.launch {
@@ -1640,6 +1640,8 @@ class GameController private constructor(
                         isFriendProfileLoading = false,
                         isMatchDetailLoading = false,
                         isFriendsLoading = false,
+                        isPublicTournamentsLoading = it.isPublicTournamentsLoading &&
+                            error.code !in PUBLIC_TOURNAMENT_TRANSPORT_ERROR_CODES,
                         sendingRoomInviteFriendIds = if (error.code in ROOM_INVITATION_ERROR_CODES) {
                             emptySet()
                         } else {
@@ -2072,6 +2074,11 @@ class GameController private constructor(
             "SESSION_NOT_FOUND",
             "ROOM_NOT_INVITABLE",
             "FRIEND_BUSY"
+        )
+        val PUBLIC_TOURNAMENT_TRANSPORT_ERROR_CODES = setOf(
+            "CONNECTION_NOT_READY",
+            "CONNECTION_FAILED",
+            "SEND_FAILED"
         )
     }
 }

@@ -155,6 +155,47 @@ class GameStateTest {
         fixture.controller.close()
     }
 
+    @Test
+    fun `public tournament creation defaults to public while explicit private remains private`() = runTest {
+        val fixture = publicTournamentFixture()
+        fixture.controller.createTournament("Open", GameMode.ORDER)
+        fixture.controller.createTournament("Invite only", GameMode.ORDER, visibility = TournamentVisibility.PRIVATE)
+        runCurrent()
+
+        assertEquals(
+            listOf(TournamentVisibility.PUBLIC, TournamentVisibility.PRIVATE),
+            fixture.session.sent.filterIsInstance<ClientMessage.CreateTournament>().map { it.visibility }
+        )
+        fixture.controller.close()
+    }
+
+    @Test
+    fun `public tournament send failure clears public list loading`() = runTest {
+        val fixture = publicTournamentFixture()
+        fixture.session.close()
+        runCurrent()
+
+        fixture.controller.openTournament()
+        assertTrue(fixture.controller.uiState.value.isPublicTournamentsLoading)
+        runCurrent()
+
+        assertFalse(fixture.controller.uiState.value.isPublicTournamentsLoading)
+        assertEquals(emptyList(), fixture.session.sent.filterIsInstance<ClientMessage.GetPublicTournaments>())
+        fixture.controller.close()
+    }
+
+    @Test
+    fun `public tournament unrelated server error keeps list loading`() = runTest {
+        val fixture = publicTournamentFixture()
+        fixture.controller.openTournament()
+        runCurrent()
+        fixture.session.server(ServerMessage.Error("UNRELATED_ERROR", "Unrelated action failed"))
+        runCurrent()
+
+        assertTrue(fixture.controller.uiState.value.isPublicTournamentsLoading)
+        fixture.controller.close()
+    }
+
     private fun TestScope.publicTournamentFixture(): PublicTournamentFixture {
         val transport = PublicTournamentTransport()
         val controller = GameController(
