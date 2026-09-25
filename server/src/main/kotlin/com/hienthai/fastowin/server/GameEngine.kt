@@ -43,8 +43,12 @@ import com.hienthai.fastowin.protocol.TournamentPhase
 import com.hienthai.fastowin.protocol.TournamentPlayerSnapshot
 import com.hienthai.fastowin.protocol.TournamentSnapshot
 import com.hienthai.fastowin.protocol.TITLE_CATALOG
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import java.security.MessageDigest
 import java.security.SecureRandom
 import java.util.UUID
@@ -576,9 +580,9 @@ class GameEngine(
         if (command.maxPlayers !in SUPPORTED_TOURNAMENT_PLAYER_COUNTS) {
             return listOf(error(playerId, "INVALID_TOURNAMENT_SIZE", legacyFallback("Giải đấu chỉ hỗ trợ 4, 8 hoặc 16 người.")))
         }
-        var snapshotToSave: TournamentSnapshot? = null
+        var created = false
         val tournamentId = UUID.randomUUID().toString()
-        val deliveries = mutex.withLock {
+        val deliveries = persistenceMutex.withLock { mutex.withLock {
             val host = sessionsByPlayerId[playerId]
                 ?.takeIf { it.isConnected && it.resumeToken == null }
                 ?: return@withLock listOf(error(playerId, "SESSION_NOT_FOUND", legacyFallback("Phiên chơi không còn hợp lệ.")))
@@ -588,25 +592,6 @@ class GameEngine(
             if (roomFor(playerId) != null || playerId in matchmakingEntries) {
                 return@withLock listOf(error(playerId, "PLAYER_BUSY", legacyFallback("Hãy rời phòng hoặc hủy ghép trận trước khi tạo giải.")))
             }
-            if (command.entryFee > 0) {
-                when (playerProfileRepository.applyWalletTransaction(
-                    playerId = playerId,
-                    sourceType = "TOURNAMENT_ENTRY",
-                    sourceId = tournamentId,
-                    goldDelta = -command.entryFee
-                )) {
-                    WalletMutationStatus.APPLIED -> Unit
-                    WalletMutationStatus.INSUFFICIENT_FUNDS -> return@withLock listOf(
-                        error(playerId, "NOT_ENOUGH_GOLD", legacyFallback("Bạn không đủ Vàng để tạo giải đấu."))
-                    )
-                    WalletMutationStatus.DUPLICATE -> return@withLock listOf(
-                        error(playerId, "TOURNAMENT_ALREADY_CREATED", legacyFallback("Phí tạo giải đã được xử lý."))
-                    )
-                    WalletMutationStatus.PLAYER_NOT_FOUND -> return@withLock listOf(
-                        error(playerId, "PROFILE_NOT_FOUND", legacyFallback("Không tìm thấy hồ sơ tài sản."))
-                    )
-                }
-            }
             val tournament = Tournament(
                 id = tournamentId,
                 name = safeName,
@@ -615,29 +600,46 @@ class GameEngine(
                 visibility = command.visibility,
                 maxPlayers = command.maxPlayers,
                 entryFee = command.entryFee,
-                prizePool = command.entryFee,
+                prizePool = 0,
                 participants = mutableListOf(TournamentParticipant(playerId, host.displayName)),
                 matches = createTournamentMatches(command.maxPlayers),
                 createdAtMillis = nowMillis()
             )
-            tournaments[tournament.id] = tournament
-            val snapshot = tournament.snapshot()
-            snapshotToSave = snapshot
-            listOf(
-                Delivery(ServerMessage.TournamentUpdated(snapshot), setOf(playerId)),
-                Delivery(
-                    ServerMessage.TournamentNotice(
-                        message = legacyFallback("Đã tạo giải ${command.maxPlayers} người."),
-                        messageKey = TextKey.TournamentCreatedNotice.name,
-                        messageArgs = mapOf("players" to command.maxPlayers.toString()),
-                        code = "TOURNAMENT_CREATED"
-                    ),
-                    setOf(playerId)
-                )
-            ) + if (tournament.visibility == TournamentVisibility.PUBLIC) listOf(publicTournamentsInvalidated()) else emptyList()
-        }
-        snapshotToSave?.let { persistTournament(it.tournamentId) }
-        return deliveries + if (snapshotToSave != null) loadProfile(playerId) else emptyList()
+            currentCoroutineContext().ensureActive()
+            withContext(NonCancellable) {
+                val result = try {
+                    tournamentRepository.admitPlayer(tournament.snapshot(), playerId, playerProfileRepository)
+                } catch (saveError: TournamentAdmissionSaveException) {
+                    return@withContext listOf(error(playerId, "TOURNAMENT_SAVE_FAILED", legacyFallback("Chưa thể lưu lượt tham gia giải.")))
+                }
+                when (result.walletStatus) {
+                    WalletMutationStatus.APPLIED, WalletMutationStatus.DUPLICATE -> Unit
+                    WalletMutationStatus.INSUFFICIENT_FUNDS -> return@withContext listOf(
+                        error(playerId, "NOT_ENOUGH_GOLD", legacyFallback("Bạn không đủ Vàng để tạo giải đấu."))
+                    )
+                    WalletMutationStatus.PLAYER_NOT_FOUND -> return@withContext listOf(
+                        error(playerId, "PROFILE_NOT_FOUND", legacyFallback("Không tìm thấy hồ sơ tài sản."))
+                    )
+                }
+                val snapshot = checkNotNull(result.tournament)
+                tournament.prizePool = snapshot.prizePool
+                tournaments[tournament.id] = tournament
+                created = true
+                listOf(
+                    Delivery(ServerMessage.TournamentUpdated(snapshot), setOf(playerId)),
+                    Delivery(
+                        ServerMessage.TournamentNotice(
+                            message = legacyFallback("Đã tạo giải ${command.maxPlayers} người."),
+                            messageKey = TextKey.TournamentCreatedNotice.name,
+                            messageArgs = mapOf("players" to command.maxPlayers.toString()),
+                            code = "TOURNAMENT_CREATED"
+                        ),
+                        setOf(playerId)
+                    )
+                ) + if (tournament.visibility == TournamentVisibility.PUBLIC) listOf(publicTournamentsInvalidated()) else emptyList()
+            }
+        } }
+        return deliveries + if (created) loadProfile(playerId) else emptyList()
     }
 
     private suspend fun inviteTournamentPlayer(
@@ -775,40 +777,8 @@ class GameEngine(
 
     private enum class TournamentAdmissionSource { INVITATION, PUBLIC_DISCOVERY }
 
-    /** Caller holds [persistenceMutex] and [mutex] until the admission is durably saved or compensated. */
+    /** Caller holds [persistenceMutex] and [mutex] through repository commit and memory publication. */
     private suspend fun admitTournamentPlayerAndPersistLocked(
-        playerId: String,
-        tournament: Tournament,
-        source: TournamentAdmissionSource
-    ): List<Delivery> {
-        val prizePoolBefore = tournament.prizePool
-        val deliveries = admitTournamentPlayerLocked(playerId, tournament, source)
-        val snapshot = deliveries.map(Delivery::message)
-            .filterIsInstance<ServerMessage.TournamentUpdated>().singleOrNull()?.tournament
-            ?: return deliveries
-        try {
-            tournamentRepository.save(snapshot)
-        } catch (saveError: Exception) {
-            tournament.participants.removeAll { it.playerId == playerId }
-            tournament.prizePool = prizePoolBefore
-            if (tournament.entryFee > 0) {
-                val reversal = try {
-                    playerProfileRepository.reverseTournamentEntry(playerId, tournament.id, tournament.entryFee)
-                } catch (reversalError: Exception) {
-                    System.err.println("Could not reverse failed tournament admission for $playerId: ${reversalError.message}")
-                    null
-                }
-                if (reversal != WalletReversalStatus.REVERSED && reversal != WalletReversalStatus.ALREADY_REVERSED) {
-                    throw IllegalStateException("Tournament save and entry reversal both failed", saveError)
-                }
-            }
-            return listOf(error(playerId, "TOURNAMENT_SAVE_FAILED", legacyFallback("Chưa thể lưu lượt tham gia giải.")))
-        }
-        return deliveries
-    }
-
-    /** Caller holds [mutex], including across the idempotent wallet mutation. */
-    private suspend fun admitTournamentPlayerLocked(
         playerId: String,
         tournament: Tournament,
         source: TournamentAdmissionSource
@@ -837,36 +807,40 @@ class GameEngine(
         if (activeTournamentFor(playerId) != null || roomFor(playerId) != null || playerId in matchmakingEntries) {
             return listOf(error(playerId, "PLAYER_BUSY", legacyFallback("Hãy rời phòng hoặc giải hiện tại trước.")))
         }
-        if (tournament.entryFee > 0) {
-            when (playerProfileRepository.applyWalletTransaction(
-                playerId = playerId,
-                sourceType = "TOURNAMENT_ENTRY",
-                sourceId = tournament.id,
-                goldDelta = -tournament.entryFee
-            )) {
-                WalletMutationStatus.APPLIED -> tournament.prizePool += tournament.entryFee
-                WalletMutationStatus.INSUFFICIENT_FUNDS -> return listOf(
+        currentCoroutineContext().ensureActive()
+        return withContext(NonCancellable) {
+            val candidate = tournament.snapshot().let { snapshot ->
+                snapshot.copy(players = snapshot.players + TournamentPlayerSnapshot(
+                    playerId, session.displayName, isOnline = true
+                ))
+            }
+            val result = try {
+                tournamentRepository.admitPlayer(candidate, playerId, playerProfileRepository)
+            } catch (saveError: TournamentAdmissionSaveException) {
+                return@withContext listOf(error(playerId, "TOURNAMENT_SAVE_FAILED", legacyFallback("Chưa thể lưu lượt tham gia giải.")))
+            }
+            when (result.walletStatus) {
+                WalletMutationStatus.APPLIED, WalletMutationStatus.DUPLICATE -> Unit
+                WalletMutationStatus.INSUFFICIENT_FUNDS -> return@withContext listOf(
                     error(playerId, "NOT_ENOUGH_GOLD", legacyFallback("Bạn không đủ Vàng để tham gia giải này."))
                 )
-                WalletMutationStatus.DUPLICATE -> return listOf(
-                    error(playerId, "TOURNAMENT_ENTRY_ALREADY_PAID", legacyFallback("Phí tham gia giải đã được xử lý."))
-                )
-                WalletMutationStatus.PLAYER_NOT_FOUND -> return listOf(
+                WalletMutationStatus.PLAYER_NOT_FOUND -> return@withContext listOf(
                     error(playerId, "PROFILE_NOT_FOUND", legacyFallback("Không tìm thấy hồ sơ tài sản."))
                 )
             }
+            val snapshot = checkNotNull(result.tournament)
+            tournament.participants += TournamentParticipant(playerId, session.displayName)
+            tournament.prizePool = snapshot.prizePool
+            listOf(
+                Delivery(ServerMessage.TournamentUpdated(snapshot), tournament.playerIds()),
+                Delivery(ServerMessage.TournamentNotice(
+                    message = legacyFallback("Đã tham gia giải ${tournament.name}."),
+                    messageKey = TextKey.TournamentJoinedNotice.name,
+                    messageArgs = mapOf("tournament" to tournament.name),
+                    code = "TOURNAMENT_JOINED"
+                ), setOf(playerId))
+            ) + if (tournament.visibility == TournamentVisibility.PUBLIC) listOf(publicTournamentsInvalidated()) else emptyList()
         }
-        tournament.participants += TournamentParticipant(playerId, session.displayName)
-        val snapshot = tournament.snapshot()
-        return listOf(
-            Delivery(ServerMessage.TournamentUpdated(snapshot), tournament.playerIds()),
-            Delivery(ServerMessage.TournamentNotice(
-                message = legacyFallback("Đã tham gia giải ${tournament.name}."),
-                messageKey = TextKey.TournamentJoinedNotice.name,
-                messageArgs = mapOf("tournament" to tournament.name),
-                code = "TOURNAMENT_JOINED"
-            ), setOf(playerId))
-        ) + if (tournament.visibility == TournamentVisibility.PUBLIC) listOf(publicTournamentsInvalidated()) else emptyList()
     }
 
     private suspend fun startTournament(playerId: String, tournamentId: String): List<Delivery> {

@@ -45,6 +45,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.runCurrent
 import kotlin.test.Test
@@ -2586,13 +2587,148 @@ class GameEngineTest {
         assertEquals(listOf(host, paid), current.players.map { it.playerId })
         assertEquals(200, current.prizePool)
         engine.handle(paid, ClientMessage.LeaveTournament(created.tournamentId))
-        val duplicate = engine.handle(paid, ClientMessage.JoinPublicTournament(created.tournamentId))
-        assertEquals("TOURNAMENT_ENTRY_ALREADY_PAID",
-            duplicate.map(Delivery::message).filterIsInstance<ServerMessage.Error>().single().code)
+        val rejoinRace = List(2) { async(start = CoroutineStart.LAZY) {
+            engine.handle(paid, ClientMessage.JoinPublicTournament(created.tournamentId))
+        } }.awaitAll()
+        val rejoined = rejoinRace.single { deliveries -> deliveries.any { it.message is ServerMessage.TournamentUpdated } }
+            .tournamentUpdate()
+        assertEquals(listOf("PLAYER_ALREADY_JOINED"), rejoinRace.flatten().map(Delivery::message)
+            .filterIsInstance<ServerMessage.Error>().map { it.code })
+        assertEquals(listOf(host, paid), rejoined.players.map { it.playerId })
         val afterDuplicate = engine.handle(host, ClientMessage.GetTournamentHub)
             .map(Delivery::message).filterIsInstance<ServerMessage.TournamentHubData>().single().hub.activeTournament!!
-        assertEquals(listOf(host), afterDuplicate.players.map { it.playerId })
+        assertEquals(listOf(host, paid), afterDuplicate.players.map { it.playerId })
         assertEquals(200, afterDuplicate.prizePool)
+    }
+
+    @Test
+    fun `public tournament cancelled request after debit still persists admission`() = runTest {
+        val host = UUID.randomUUID().toString()
+        val guest = UUID.randomUUID().toString()
+        val debited = CompletableDeferred<Unit>()
+        val finishDebit = CompletableDeferred<Unit>()
+        var guestGold = 100
+        val wallet = object : PlayerProfileRepository by NoOpPlayerProfileRepository {
+            override suspend fun applyWalletTransaction(
+                playerId: String, sourceType: String, sourceId: String,
+                goldDelta: Int, gemsDelta: Int, xpDelta: Int
+            ): WalletMutationStatus {
+                if (playerId == guest) {
+                    guestGold += goldDelta
+                    debited.complete(Unit)
+                    finishDebit.await()
+                }
+                return WalletMutationStatus.APPLIED
+            }
+        }
+        val repository = InMemoryTournamentRepository()
+        val engine = GameEngine(playerProfileRepository = wallet, tournamentRepository = repository)
+        engine.connectAccount(AuthenticatedAccount(UUID.fromString(host), "Host"))
+        engine.connectAccount(AuthenticatedAccount(UUID.fromString(guest), "Guest"))
+        val tournamentId = engine.handle(host, ClientMessage.CreateTournament(
+            "Paid Cup", ProtocolGameMode.ORDER, 100, 4, TournamentVisibility.PUBLIC
+        )).tournamentUpdate().tournamentId
+
+        val join = launch { engine.handle(guest, ClientMessage.JoinPublicTournament(tournamentId)) }
+        debited.await()
+        join.cancel()
+        finishDebit.complete(Unit)
+        join.join()
+
+        assertEquals(0, guestGold)
+        assertEquals(listOf(host, guest), repository.loadActive().single().players.map { it.playerId })
+        assertEquals(200, repository.loadActive().single().prizePool)
+        val hub = engine.handle(guest, ClientMessage.GetTournamentHub).map(Delivery::message)
+            .filterIsInstance<ServerMessage.TournamentHubData>().single().hub
+        assertEquals(listOf(host, guest), hub.activeTournament!!.players.map { it.playerId })
+    }
+
+    @Test
+    fun `public tournament cancelled request during save finishes the paid admission`() = runTest {
+        val host = UUID.randomUUID().toString()
+        val guest = UUID.randomUUID().toString()
+        val saving = CompletableDeferred<Unit>()
+        val finishSave = CompletableDeferred<Unit>()
+        var guestGold = 100
+        val wallet = object : PlayerProfileRepository by NoOpPlayerProfileRepository {
+            override suspend fun applyWalletTransaction(
+                playerId: String, sourceType: String, sourceId: String,
+                goldDelta: Int, gemsDelta: Int, xpDelta: Int
+            ): WalletMutationStatus {
+                if (playerId == guest) guestGold += goldDelta
+                return WalletMutationStatus.APPLIED
+            }
+            override suspend fun reverseTournamentEntry(
+                playerId: String, tournamentId: String, entryFee: Int
+            ): WalletReversalStatus {
+                finishSave.await() // A cancelled caller must not cancel rollback either.
+                guestGold += entryFee
+                return WalletReversalStatus.REVERSED
+            }
+        }
+        val saved = InMemoryTournamentRepository()
+        val repository = object : InMemoryTournamentRepository() {
+            override suspend fun loadActive() = saved.loadActive()
+            override suspend fun loadRecent(playerId: String, limit: Int) = saved.loadRecent(playerId, limit)
+            override suspend fun save(tournament: com.hienthai.fastowin.protocol.TournamentSnapshot) {
+                if (tournament.players.size == 2) {
+                    saving.complete(Unit)
+                    finishSave.await()
+                }
+                saved.save(tournament)
+            }
+        }
+        val engine = GameEngine(playerProfileRepository = wallet, tournamentRepository = repository)
+        engine.connectAccount(AuthenticatedAccount(UUID.fromString(host), "Host"))
+        engine.connectAccount(AuthenticatedAccount(UUID.fromString(guest), "Guest"))
+        val tournamentId = engine.handle(host, ClientMessage.CreateTournament(
+            "Paid Cup", ProtocolGameMode.ORDER, 100, 4, TournamentVisibility.PUBLIC
+        )).tournamentUpdate().tournamentId
+        val join = launch { engine.handle(guest, ClientMessage.JoinPublicTournament(tournamentId)) }
+        saving.await()
+        join.cancel()
+        finishSave.complete(Unit)
+        join.join()
+
+        assertEquals(0, guestGold)
+        assertEquals(listOf(host, guest), saved.loadActive().single().players.map { it.playerId })
+        assertEquals(200, saved.loadActive().single().prizePool)
+    }
+
+    @Test
+    fun `public tournament paid creation failure leaves wallet and registry unchanged`() = runTest {
+        val host = UUID.randomUUID().toString()
+        var gold = 100
+        val wallet = object : PlayerProfileRepository by NoOpPlayerProfileRepository {
+            override suspend fun applyWalletTransaction(
+                playerId: String, sourceType: String, sourceId: String,
+                goldDelta: Int, gemsDelta: Int, xpDelta: Int
+            ): WalletMutationStatus {
+                gold += goldDelta
+                return WalletMutationStatus.APPLIED
+            }
+            override suspend fun reverseTournamentEntry(
+                playerId: String, tournamentId: String, entryFee: Int
+            ): WalletReversalStatus {
+                gold += entryFee
+                return WalletReversalStatus.REVERSED
+            }
+        }
+        val repository = object : InMemoryTournamentRepository() {
+            override suspend fun save(tournament: com.hienthai.fastowin.protocol.TournamentSnapshot) {
+                throw IllegalStateException("save unavailable")
+            }
+        }
+        val engine = GameEngine(playerProfileRepository = wallet, tournamentRepository = repository)
+        engine.connectAccount(AuthenticatedAccount(UUID.fromString(host), "Host"))
+        val failed = engine.handle(host, ClientMessage.CreateTournament(
+            "Paid Cup", ProtocolGameMode.ORDER, 100, 4, TournamentVisibility.PUBLIC
+        ))
+        assertEquals("TOURNAMENT_SAVE_FAILED", failed.map(Delivery::message)
+            .filterIsInstance<ServerMessage.Error>().single().code)
+        assertEquals(100, gold)
+        assertTrue(repository.loadActive().isEmpty())
+        assertTrue(engine.handle(host, ClientMessage.GetPublicTournaments()).publicTournamentList().isEmpty())
     }
 
     @Test
@@ -2624,7 +2760,7 @@ class GameEngineTest {
         }
         val saved = InMemoryTournamentRepository()
         var failNextSave = false
-        val repository = object : TournamentRepository {
+        val repository = object : InMemoryTournamentRepository() {
             override suspend fun loadActive() = saved.loadActive()
             override suspend fun loadRecent(playerId: String, limit: Int) = saved.loadRecent(playerId, limit)
             override suspend fun save(tournament: com.hienthai.fastowin.protocol.TournamentSnapshot) {
@@ -2659,6 +2795,19 @@ class GameEngineTest {
         assertEquals(listOf(host, guest), retried.players.map { it.playerId })
         assertEquals(200, retried.prizePool)
         assertEquals(-100, ledger.sumOf { it.second })
+
+        engine.handle(guest, ClientMessage.LeaveTournament(tournamentId))
+        failNextSave = true
+        val failedRejoin = engine.handle(guest, ClientMessage.JoinPublicTournament(tournamentId))
+        assertEquals("TOURNAMENT_SAVE_FAILED", failedRejoin.map(Delivery::message)
+            .filterIsInstance<ServerMessage.Error>().single().code)
+        // A failure to rejoin must not reverse the previously committed entry fee.
+        assertEquals(-100, ledger.sumOf { it.second })
+        assertEquals(200, saved.loadActive().single().prizePool)
+        val rejoined = engine.handle(guest, ClientMessage.JoinPublicTournament(tournamentId)).tournamentUpdate()
+        assertEquals(200, rejoined.prizePool)
+        assertEquals(listOf(host, guest), rejoined.players.map { it.playerId })
+        assertEquals(-100, ledger.sumOf { it.second })
     }
 
     @Test
@@ -2690,7 +2839,7 @@ class GameEngineTest {
         }
         val saved = InMemoryTournamentRepository()
         var failNextSave = false
-        val repository = object : TournamentRepository {
+        val repository = object : InMemoryTournamentRepository() {
             override suspend fun loadActive() = saved.loadActive()
             override suspend fun loadRecent(playerId: String, limit: Int) = saved.loadRecent(playerId, limit)
             override suspend fun save(tournament: com.hienthai.fastowin.protocol.TournamentSnapshot) {
@@ -2735,6 +2884,15 @@ class GameEngineTest {
         assertEquals("TOURNAMENT_INVITATION_EXPIRED", engine.handle(
             guest, ClientMessage.RespondTournamentInvitation(invitationId, accept = true)
         ).map(Delivery::message).filterIsInstance<ServerMessage.Error>().single().code)
+
+        engine.handle(guest, ClientMessage.LeaveTournament(tournamentId))
+        val rejoinInvitation = engine.handle(host, ClientMessage.InviteTournamentPlayer(tournamentId, guest))
+            .map(Delivery::message).filterIsInstance<ServerMessage.TournamentInvitation>().single().invitation.invitationId
+        val rejoined = engine.handle(guest, ClientMessage.RespondTournamentInvitation(rejoinInvitation, accept = true))
+            .tournamentUpdate()
+        assertEquals(listOf(host, guest), rejoined.players.map { it.playerId })
+        assertEquals(200, rejoined.prizePool)
+        assertEquals(-100, ledger.sum())
     }
 
     @Test
@@ -2789,7 +2947,7 @@ class GameEngineTest {
         }
         val saved = InMemoryTournamentRepository()
         var failNextSave = false
-        val repository = object : TournamentRepository {
+        val repository = object : InMemoryTournamentRepository() {
             override suspend fun loadActive() = saved.loadActive()
             override suspend fun loadRecent(playerId: String, limit: Int) = saved.loadRecent(playerId, limit)
             override suspend fun save(tournament: com.hienthai.fastowin.protocol.TournamentSnapshot) {
@@ -2954,7 +3112,7 @@ class GameEngineTest {
         val firstSaveStarted = CompletableDeferred<Unit>()
         val releaseFirstSave = CompletableDeferred<Unit>()
         var blockNextSave = false
-        val repository = object : TournamentRepository {
+        val repository = object : InMemoryTournamentRepository() {
             override suspend fun loadActive() = saved.loadActive()
             override suspend fun loadRecent(playerId: String, limit: Int) = saved.loadRecent(playerId, limit)
             override suspend fun save(tournament: com.hienthai.fastowin.protocol.TournamentSnapshot) {
