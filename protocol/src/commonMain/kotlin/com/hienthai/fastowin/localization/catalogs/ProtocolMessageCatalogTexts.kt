@@ -2,7 +2,15 @@ package com.hienthai.fastowin.localization.catalogs
 
 import com.hienthai.fastowin.localization.TextKey
 
-internal val englishProtocolMessageTexts = mapOf(
+private val englishPublicTournamentMessageTexts = mapOf(
+    TextKey.ServerTournamentNotPublic to "This tournament is no longer public. Refresh the list to find another.",
+    TextKey.ServerTournamentFull to "This tournament is full. Refresh the list to find another.",
+    TextKey.ServerTournamentClosed to "This tournament has already started or ended. Refresh the list to find another.",
+    TextKey.ServerTournamentAlreadyJoined to "You have already joined this tournament.",
+    TextKey.ServerTournamentSaveFailed to "Your tournament entry could not be saved. Please try again.",
+)
+
+internal val englishProtocolMessageTexts = englishPublicTournamentMessageTexts + mapOf(
     TextKey.ServerAuthRequired to "Sign in to continue.",
     TextKey.ServerRateLimited to "Too many requests. Try again in {seconds} seconds.",
     TextKey.ServerInvalidRequest to "The request is invalid. Please try again.",
@@ -76,6 +84,11 @@ internal val englishProtocolMessageTexts = mapOf(
 )
 
 internal val vietnameseProtocolMessageTexts = englishProtocolMessageTexts + mapOf(
+    TextKey.ServerTournamentNotPublic to "Giải này không còn công khai. Hãy làm mới danh sách để tìm giải khác.",
+    TextKey.ServerTournamentFull to "Giải này đã đủ người. Hãy làm mới danh sách để tìm giải khác.",
+    TextKey.ServerTournamentClosed to "Giải này đã bắt đầu hoặc kết thúc. Hãy làm mới danh sách để tìm giải khác.",
+    TextKey.ServerTournamentAlreadyJoined to "Bạn đã tham gia giải đấu này.",
+    TextKey.ServerTournamentSaveFailed to "Chưa thể lưu lượt tham gia giải của bạn. Vui lòng thử lại.",
     TextKey.ServerAuthRequired to "Hãy đăng nhập để tiếp tục.",
     TextKey.ServerRateLimited to "Bạn thao tác quá nhanh. Vui lòng thử lại sau {seconds} giây.",
     TextKey.ServerInvalidRequest to "Yêu cầu không hợp lệ. Vui lòng thử lại.",
@@ -149,10 +162,13 @@ internal val vietnameseProtocolMessageTexts = englishProtocolMessageTexts + mapO
 )
 
 private fun protocolMessageTranslations(vararg values: String): Map<TextKey, String> {
-    require(values.size == englishProtocolMessageTexts.size) {
-        "Expected ${englishProtocolMessageTexts.size} protocol translations, received ${values.size}."
+    // Public discovery currently ships EN/VI copy; preserve the existing positional
+    // translations and use English only for the newly added discovery messages.
+    val legacyKeys = englishProtocolMessageTexts.keys - englishPublicTournamentMessageTexts.keys
+    require(values.size == legacyKeys.size) {
+        "Expected ${legacyKeys.size} protocol translations, received ${values.size}."
     }
-    return englishProtocolMessageTexts.keys.zip(values).toMap()
+    return englishPublicTournamentMessageTexts + legacyKeys.zip(values).toMap()
 }
 
 internal val germanProtocolMessageTexts = protocolMessageTranslations(

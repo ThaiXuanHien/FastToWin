@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.foundation.layout.Spacer
@@ -26,6 +27,7 @@ import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.filled.MonetizationOn
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -39,6 +41,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.draw.alpha
@@ -51,7 +54,9 @@ import androidx.compose.ui.unit.dp
 import com.hienthai.fastowin.navigation.GameMode
 import com.hienthai.fastowin.localization.TextKey
 import com.hienthai.fastowin.localization.localized
-import com.hienthai.fastowin.protocol.FriendPresence
+import com.hienthai.fastowin.protocol.PublicTournamentSummary
+import com.hienthai.fastowin.protocol.TournamentVisibility
+import com.hienthai.fastowin.protocol.TournamentFeeFilter
 import com.hienthai.fastowin.protocol.ProtocolGameMode
 import com.hienthai.fastowin.protocol.TournamentInvitationSnapshot
 import com.hienthai.fastowin.protocol.TournamentMatchPhase
@@ -59,6 +64,8 @@ import com.hienthai.fastowin.protocol.TournamentMatchSnapshot
 import com.hienthai.fastowin.protocol.TournamentPhase
 import com.hienthai.fastowin.protocol.TournamentSnapshot
 import com.hienthai.fastowin.state.GameState
+import com.hienthai.fastowin.state.PublicTournamentFilters
+import com.hienthai.fastowin.state.ConnectionStatus
 import com.hienthai.fastowin.ui.components.FriendPresenceIndicator
 import com.hienthai.fastowin.ui.components.ArcadeFeatureHero
 import com.hienthai.fastowin.ui.components.ArcadeActionButton
@@ -78,12 +85,15 @@ import com.hienthai.fastowin.ui.theme.ArcadePalette
 fun TournamentScreen(
     state: GameState,
     onBack: () -> Unit,
-    onCreate: (String, GameMode, Int, Int) -> Unit,
+    onCreate: (String, GameMode, Int, Int, TournamentVisibility) -> Unit,
     onInvite: (String) -> Unit,
     onRespondInvitation: (String, Boolean) -> Unit,
     onStart: () -> Unit,
     onLeave: () -> Unit,
     onOpenFriendProfile: (String) -> Unit,
+    onPublicFiltersChange: (PublicTournamentFilters) -> Unit = {},
+    onRefreshPublic: () -> Unit = {},
+    onJoinPublic: (String) -> Unit = {},
     onOpenNotifications: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
@@ -153,6 +163,16 @@ fun TournamentScreen(
                     ) { CircularProgressIndicator() }
                 }
                 if (tournament == null) {
+                    PublicTournamentSection(
+                        tournaments = state.publicTournaments,
+                        filters = state.publicTournamentFilters,
+                        isLoading = state.isPublicTournamentsLoading,
+                        isJoining = state.isTournamentLoading,
+                        isConnected = state.connectionStatus == ConnectionStatus.CONNECTED,
+                        onFiltersChange = onPublicFiltersChange,
+                        onRefresh = onRefreshPublic,
+                        onJoin = onJoinPublic
+                    )
                     if (state.tournamentHub.invitations.isNotEmpty()) {
                         SectionLabel(localized(TextKey.JoinInvitations))
                         state.tournamentHub.invitations.forEach { invitation ->
@@ -228,14 +248,206 @@ fun TournamentInvitationDialog(
 }
 
 @Composable
+private fun PublicTournamentSection(
+    tournaments: List<PublicTournamentSummary>,
+    filters: PublicTournamentFilters,
+    isLoading: Boolean,
+    isJoining: Boolean,
+    isConnected: Boolean,
+    onFiltersChange: (PublicTournamentFilters) -> Unit,
+    onRefresh: () -> Unit,
+    onJoin: (String) -> Unit
+) {
+    var pendingJoin by remember { mutableStateOf<PublicTournamentSummary?>(null) }
+    // A changed fee or removed listing invalidates the previous confirmation.
+    val currentPending = pendingJoin?.takeIf { pending ->
+        tournaments.any { it.tournamentId == pending.tournamentId && it.entryFee == pending.entryFee }
+    }
+    LaunchedEffect(currentPending, isConnected) {
+        if (currentPending == null || !isConnected) pendingJoin = null
+    }
+    if (currentPending != null && isConnected) {
+        PaidTournamentJoinDialog(
+            tournament = currentPending,
+            enabled = !isJoining,
+            onConfirm = {
+                pendingJoin = null
+                onJoin(currentPending.tournamentId)
+            },
+            onDismiss = { pendingJoin = null }
+        )
+    }
+    SectionLabel(localized(TextKey.PublicTournaments))
+    TournamentFilters(filters, onFiltersChange)
+    ArcadeActionButton(
+        label = localized(TextKey.PublicTournamentRefresh),
+        onClick = onRefresh,
+        enabled = isConnected && !isLoading,
+        style = ArcadeActionStyle.OUTLINE,
+        modifier = Modifier.fillMaxWidth().testTag("public_tournament_refresh")
+    )
+    when {
+        !isConnected -> Text(
+            localized(TextKey.PublicTournamentsReconnect),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.testTag("public_tournament_reconnect")
+        )
+        isLoading -> Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            modifier = Modifier.testTag("public_tournament_loading")
+        ) {
+            CircularProgressIndicator(Modifier.size(24.dp))
+            Text(localized(TextKey.PublicTournamentsLoading))
+        }
+        tournaments.isEmpty() -> Text(
+            localized(TextKey.PublicTournamentsEmpty),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.testTag("public_tournament_empty")
+        )
+    }
+    tournaments.forEach { tournament ->
+        PublicTournamentCard(
+            tournament = tournament,
+            enabled = isConnected && !isJoining && !isLoading && tournament.playerCount < tournament.maxPlayers,
+            onJoin = {
+                if (tournament.entryFee == 0) onJoin(tournament.tournamentId)
+                else pendingJoin = tournament
+            }
+        )
+    }
+}
+
+@Composable
+private fun TournamentFilters(
+    filters: PublicTournamentFilters,
+    onChange: (PublicTournamentFilters) -> Unit
+) {
+    OutlinedTextField(
+        value = filters.nameQuery,
+        onValueChange = { onChange(filters.copy(nameQuery = it)) },
+        label = localized(TextKey.PublicTournamentSearch),
+        singleLine = true,
+        modifier = Modifier.fillMaxWidth().testTag("public_tournament_search")
+    )
+    TournamentFilterGroup(localized(TextKey.GameModeLabel), "public_tournament_filter_mode") {
+        TournamentFilterChip(localized(TextKey.All), filters.gameMode == null, "public_tournament_filter_mode_ALL") {
+            onChange(filters.copy(gameMode = null))
+        }
+        ProtocolGameMode.entries.forEach { mode ->
+            TournamentFilterChip(mode.title(), filters.gameMode == mode, "public_tournament_filter_mode_${mode.name}") {
+                onChange(filters.copy(gameMode = mode))
+            }
+        }
+    }
+    TournamentFilterGroup(localized(TextKey.TournamentSize), "public_tournament_filter_size") {
+        TournamentFilterChip(localized(TextKey.All), filters.maxPlayers == null, "public_tournament_filter_size_ALL") {
+            onChange(filters.copy(maxPlayers = null))
+        }
+        listOf(4, 8, 16).forEach { size ->
+            TournamentFilterChip(localized(TextKey.PlayerCountUpper, "count" to size), filters.maxPlayers == size, "public_tournament_filter_size_$size") {
+                onChange(filters.copy(maxPlayers = size))
+            }
+        }
+    }
+    TournamentFilterGroup(localized(TextKey.TournamentFeeFilterLabel), "public_tournament_filter_fee") {
+        TournamentFeeFilter.entries.forEach { fee ->
+            TournamentFilterChip(
+                localized(when (fee) {
+                    TournamentFeeFilter.ALL -> TextKey.All
+                    TournamentFeeFilter.FREE -> TextKey.Free
+                    TournamentFeeFilter.PAID -> TextKey.TournamentPaid
+                }),
+                filters.fee == fee,
+                "public_tournament_filter_fee_${fee.name}"
+            ) { onChange(filters.copy(fee = fee)) }
+        }
+    }
+}
+
+@Composable
+private fun TournamentFilterGroup(title: String, tag: String, content: @Composable () -> Unit) {
+    Column(Modifier.fillMaxWidth().testTag(tag), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(title, style = MaterialTheme.typography.titleSmall)
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            content()
+        }
+    }
+}
+
+@Composable
+private fun TournamentFilterChip(label: String, selected: Boolean, tag: String, onClick: () -> Unit) {
+    FilterChip(
+        selected = selected,
+        onClick = onClick,
+        label = { Text(label) },
+        modifier = Modifier.heightIn(min = 48.dp).testTag(tag)
+    )
+}
+
+@Composable
+private fun PublicTournamentCard(tournament: PublicTournamentSummary, enabled: Boolean, onJoin: () -> Unit) {
+    ArcadePanel(Modifier.fillMaxWidth().testTag("public_tournament_${tournament.tournamentId}"), accent = ArcadePalette.Gold500) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(tournament.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Text(localized(TextKey.PublicTournamentHost, "host" to tournament.hostDisplayName), color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(localized(TextKey.PublicTournamentSummary, "mode" to tournament.gameMode.title(),
+                "current" to tournament.playerCount, "max" to tournament.maxPlayers, "prize" to tournament.prizePool))
+            Text(
+                if (tournament.entryFee == 0) localized(TextKey.Free)
+                else localized(TextKey.PublicTournamentEntryFee, "fee" to tournament.entryFee),
+                color = MaterialTheme.colorScheme.onSurface,
+                fontWeight = FontWeight.Bold
+            )
+            ArcadeActionButton(
+                label = localized(TextKey.JoinTournament),
+                onClick = onJoin,
+                enabled = enabled,
+                style = ArcadeActionStyle.GOLD,
+                modifier = Modifier.fillMaxWidth().testTag("public_tournament_join_${tournament.tournamentId}")
+            )
+        }
+    }
+}
+
+@Composable
+private fun PaidTournamentJoinDialog(
+    tournament: PublicTournamentSummary,
+    enabled: Boolean,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    ArcadeDialog(
+        title = localized(TextKey.PublicTournamentJoinTitle),
+        subtitle = localized(TextKey.PublicTournamentJoinDescription, "tournament" to tournament.name, "fee" to tournament.entryFee),
+        onDismissRequest = onDismiss
+    ) {
+        ArcadeActionButton(
+            label = localized(TextKey.Confirm),
+            onClick = onConfirm,
+            enabled = enabled,
+            style = ArcadeActionStyle.GOLD,
+            modifier = Modifier.fillMaxWidth().testTag("confirm_public_tournament_join")
+        )
+        ArcadeActionButton(
+            label = localized(TextKey.Cancel),
+            onClick = onDismiss,
+            style = ArcadeActionStyle.OUTLINE,
+            modifier = Modifier.fillMaxWidth().testTag("cancel_public_tournament_join")
+        )
+    }
+}
+
+@Composable
 private fun CreateTournamentCard(
     playerLevel: Int,
     enabled: Boolean,
-    onCreate: (String, GameMode, Int, Int) -> Unit
+    onCreate: (String, GameMode, Int, Int, TournamentVisibility) -> Unit
 ) {
     var name by remember { mutableStateOf("") }
     var mode by remember { mutableStateOf(GameMode.ORDER) }
     var maxPlayers by remember { mutableStateOf(4) }
+    var visibility by rememberSaveable { mutableStateOf(TournamentVisibility.PUBLIC) }
     var showModePicker by remember { mutableStateOf(false) }
     val customFeeBringIntoViewRequester = remember { BringIntoViewRequester() }
     if (showModePicker) {
@@ -268,7 +480,7 @@ private fun CreateTournamentCard(
                 }
                 Column {
                     Text(
-                        localized(TextKey.CreatePrivateTournament),
+                        localized(TextKey.CreateTournamentTitle),
                         style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.Bold
                     )
@@ -285,6 +497,20 @@ private fun CreateTournamentCard(
                 }
             }
 
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(localized(TextKey.TournamentVisibilityLabel), style = MaterialTheme.typography.titleSmall)
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TournamentVisibility.entries.forEach { option ->
+                        FilterChip(
+                            selected = visibility == option,
+                            onClick = { visibility = option },
+                            label = { Text(localized(if (option == TournamentVisibility.PUBLIC) TextKey.TournamentPublic else TextKey.TournamentPrivate)) },
+                            modifier = Modifier.weight(1f).heightIn(min = 48.dp)
+                                .testTag("tournament_visibility_${option.name.lowercase()}")
+                        )
+                    }
+                }
+            }
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text(
                     localized(TextKey.TournamentSize),
@@ -472,7 +698,7 @@ private fun CreateTournamentCard(
 
             ArcadeActionButton(
                 label = localized(TextKey.CreateTournamentAction),
-                onClick = { onCreate(name.trim(), mode, entryFee, maxPlayers) },
+                onClick = { onCreate(name.trim(), mode, entryFee, maxPlayers, visibility) },
                 enabled = enabled && name.trim().length >= 3 && (!isCustomFee || customFeeText.isNotEmpty()),
                 style = ArcadeActionStyle.GOLD,
                 modifier = Modifier.fillMaxWidth().testTag("create_tournament")
@@ -734,10 +960,17 @@ private fun ActiveTournamentContent(
 
     if (tournament.phase == TournamentPhase.LOBBY && isHost) {
         val availableFriends = state.social.friends.filter { friend ->
-            friend.presence != FriendPresence.OFFLINE && tournament.players.none { it.playerId == friend.userId }
+            tournament.players.none { it.playerId == friend.userId }
         }
-        if (availableFriends.isNotEmpty() && tournament.players.size < tournament.maxPlayers) {
+        if (tournament.players.size < tournament.maxPlayers) {
             SectionLabel(localized(TextKey.InviteFriends))
+            if (availableFriends.isEmpty()) {
+                Text(
+                    localized(TextKey.TournamentInviteEmpty),
+                    modifier = Modifier.testTag("tournament_invite_empty"),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 availableFriends.forEach { friend ->
                     Surface(
@@ -759,6 +992,7 @@ private fun ActiveTournamentContent(
                             }
                             TextButton(
                                 onClick = { onInvite(friend.userId) },
+                                modifier = Modifier.heightIn(min = 48.dp).testTag("tournament_invite_${friend.userId}"),
                                 shape = RoundedCornerShape(12.dp)
                             ) {
                                 Icon(Icons.Rounded.GroupAdd, contentDescription = null, modifier = Modifier.size(18.dp))

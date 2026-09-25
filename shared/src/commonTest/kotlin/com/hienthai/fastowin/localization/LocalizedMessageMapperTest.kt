@@ -172,7 +172,7 @@ class LocalizedMessageMapperTest {
     @Test
     fun actionMessagesUseStableCodesAndArguments() {
         assertEquals(
-            "Created a private 8-player tournament.",
+            "Created a 8-player tournament.",
             englishMapper.message(
                 ServerMessage.TournamentNotice(
                     message = "Đã tạo giải riêng 8 người.",

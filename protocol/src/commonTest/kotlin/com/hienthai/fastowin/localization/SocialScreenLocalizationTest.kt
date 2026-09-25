@@ -5,6 +5,56 @@ import kotlin.test.assertEquals
 
 class SocialScreenLocalizationTest {
     @Test
+    fun `public tournament copy is explicit in English and Vietnamese`() {
+        val copy = listOf(
+            Triple("TournamentVisibilityLabel", "Visibility", "Quyền riêng tư"),
+            Triple("TournamentPublic", "Public", "Công khai"),
+            Triple("TournamentPrivate", "Private", "Riêng tư"),
+            Triple("CreateTournamentTitle", "Create tournament", "Tạo giải đấu"),
+            Triple("PublicTournaments", "Public tournaments", "Giải đấu công khai"),
+            Triple("PublicTournamentsEmpty", "No open tournaments match your filters. Try other filters or create a tournament.", "Không có giải đang mở phù hợp. Hãy đổi bộ lọc hoặc tạo giải mới."),
+            Triple("PublicTournamentsLoading", "Loading public tournaments…", "Đang tải giải đấu công khai…"),
+            Triple("PublicTournamentsReconnect", "Waiting for a connection. Reconnect to refresh and join tournaments.", "Đang chờ kết nối. Kết nối lại để tải và tham gia giải đấu."),
+            Triple("PublicTournamentSearch", "Search tournament names", "Tìm theo tên giải đấu"),
+            Triple("PublicTournamentRefresh", "Refresh tournaments", "Làm mới danh sách giải"),
+            Triple("TournamentFeeFilterLabel", "Entry fee", "Phí tham gia"),
+            Triple("TournamentPaid", "Paid", "Có phí"),
+            Triple("PublicTournamentHost", "Hosted by {host}", "Chủ giải: {host}"),
+            Triple("PublicTournamentSummary", "{mode} • {current}/{max} players • Prize: {prize} Gold", "{mode} • {current}/{max} người • Giải thưởng: {prize} Vàng"),
+            Triple("PublicTournamentEntryFee", "Entry: {fee} Gold", "Phí tham gia: {fee} Vàng"),
+            Triple("PublicTournamentJoinTitle", "Join tournament?", "Tham gia giải đấu?"),
+            Triple("PublicTournamentJoinDescription", "Join {tournament} for {fee} Gold? The fee is deducted when you join.", "Tham gia {tournament} với phí {fee} Vàng? Phí sẽ được trừ khi bạn tham gia."),
+            Triple("TournamentInviteEmpty", "No eligible friends to invite. Add friends first; offline friends can receive invitations too.", "Chưa có bạn phù hợp để mời. Hãy kết bạn trước; bạn bè ngoại tuyến cũng nhận được lời mời.")
+        )
+        copy.forEach { (name, english, vietnamese) ->
+            val key = TextKey.entries.single { it.name == name }
+            assertEquals(english, allLocalizationCatalogs.getValue(AppLanguage.ENGLISH).texts.getValue(key), name)
+            assertEquals(vietnamese, allLocalizationCatalogs.getValue(AppLanguage.VIETNAMESE).texts.getValue(key), name)
+        }
+    }
+
+    @Test
+    fun `public tournament errors use actionable localized keys`() {
+        val expected = mapOf(
+            "TOURNAMENT_NOT_PUBLIC" to "ServerTournamentNotPublic",
+            "TOURNAMENT_FULL" to "ServerTournamentFull",
+            "TOURNAMENT_ALREADY_STARTED" to "ServerTournamentClosed",
+            "TOURNAMENT_CANCELLED" to "TournamentCancelledNotice",
+            "PLAYER_ALREADY_JOINED" to "ServerTournamentAlreadyJoined",
+            "PLAYER_BUSY" to "ServerPlayerActivityConflict",
+            "NOT_ENOUGH_GOLD" to "ServerNotEnoughGold",
+            "TOURNAMENT_SAVE_FAILED" to "ServerTournamentSaveFailed"
+        )
+        expected.forEach { (code, keyName) ->
+            val key = protocolTextKeyForCode(code)
+            assertEquals(keyName, key?.name, code)
+            listOf(AppLanguage.ENGLISH, AppLanguage.VIETNAMESE).forEach { language ->
+                kotlin.test.assertTrue(allLocalizationCatalogs.getValue(language).texts.getValue(checkNotNull(key)).isNotBlank())
+            }
+        }
+    }
+
+    @Test
     fun `social and shop navigation copy resolves explicitly in all twelve languages`() {
         val expected = mapOf(
             AppLanguage.ENGLISH to listOf("Room invitations", "Friend requests", "Find a clan", "Members", "Invitations", "Mark all as read", "Gems", "Gold"),

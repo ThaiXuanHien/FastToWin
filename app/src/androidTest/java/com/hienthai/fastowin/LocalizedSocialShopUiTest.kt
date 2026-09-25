@@ -75,7 +75,7 @@ class LocalizedSocialShopUiTest {
     fun indonesianTournamentUsesLocalizedTitle() {
         render(AppLanguage.INDONESIAN) {
             TournamentScreen(
-                state = GameState(), onBack = {}, onCreate = { _, _, _, _ -> }, onInvite = {},
+                state = GameState(), onBack = {}, onCreate = { _, _, _, _, _ -> }, onInvite = {},
                 onRespondInvitation = { _, _ -> }, onStart = {}, onLeave = {},
                 onOpenFriendProfile = {}
             )

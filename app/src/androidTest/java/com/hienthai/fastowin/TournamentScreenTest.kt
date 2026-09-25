@@ -10,12 +10,24 @@ import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.assertIsSelected
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.then
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import com.hienthai.fastowin.navigation.GameMode
 import com.hienthai.fastowin.protocol.ProtocolGameMode
+import com.hienthai.fastowin.protocol.PublicTournamentSummary
+import com.hienthai.fastowin.protocol.TournamentVisibility
+import com.hienthai.fastowin.protocol.TournamentFeeFilter
+import com.hienthai.fastowin.protocol.FriendSnapshot
+import com.hienthai.fastowin.protocol.FriendsSnapshot
+import com.hienthai.fastowin.state.ConnectionStatus
+import com.hienthai.fastowin.state.PublicTournamentFilters
 import com.hienthai.fastowin.protocol.TournamentHubSnapshot
 import com.hienthai.fastowin.protocol.TournamentInvitationSnapshot
 import com.hienthai.fastowin.protocol.TournamentMatchSnapshot
@@ -28,6 +40,7 @@ import com.hienthai.fastowin.ui.screens.TournamentScreen
 import com.hienthai.fastowin.ui.theme.FastToWinTheme
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
+import org.junit.Assert.assertNull
 import org.junit.Rule
 import org.junit.Test
 
@@ -35,6 +48,129 @@ import org.junit.Test
 class TournamentScreenTest {
     @get:Rule
     val composeRule = createComposeRule()
+
+    @Test
+    fun paidJoinRequiresExplicitConfirmation() {
+        var joined: String? = null
+        setDiscoveryContent(publicTournamentState(100), onJoin = { joined = it })
+        composeRule.onNodeWithTag("public_tournament_join_tournament-1").performScrollTo().performClick()
+        composeRule.runOnIdle { assertNull(joined) }
+        composeRule.onNodeWithTag("confirm_public_tournament_join").performClick()
+        composeRule.runOnIdle { assertEquals("tournament-1", joined) }
+    }
+
+    @Test
+    fun cancellingPaidJoinDoesNotJoin() {
+        var joined: String? = null
+        setDiscoveryContent(publicTournamentState(100), onJoin = { joined = it })
+        composeRule.onNodeWithTag("public_tournament_join_tournament-1").performScrollTo().performClick()
+        composeRule.onNodeWithTag("cancel_public_tournament_join").performClick()
+        composeRule.onNodeWithTag("confirm_public_tournament_join").assertDoesNotExist()
+        composeRule.runOnIdle { assertNull(joined) }
+    }
+
+    @Test
+    fun freeJoinDoesNotRequireConfirmation() {
+        var joined: String? = null
+        setDiscoveryContent(publicTournamentState(0), onJoin = { joined = it })
+        composeRule.onNodeWithTag("public_tournament_join_tournament-1").performScrollTo().performClick()
+        composeRule.runOnIdle { assertEquals("tournament-1", joined) }
+        composeRule.onNodeWithTag("confirm_public_tournament_join").assertDoesNotExist()
+    }
+
+    @Test
+    fun offlineFriendCanBeInvitedFromLobby() {
+        var invited: String? = null
+        setDiscoveryContent(tournamentLobbyState(1).copy(social = FriendsSnapshot(friends = listOf(
+            FriendSnapshot("friend-1", "Offline friend", "ABC123")
+        ))), onInvite = { invited = it })
+        composeRule.onNodeWithTag("tournament_invite_friend-1").performScrollTo().performClick()
+        composeRule.runOnIdle { assertEquals("friend-1", invited) }
+        composeRule.onNodeWithTag("public_tournament_search").assertDoesNotExist()
+    }
+
+    @Test
+    fun hostWithNoEligibleFriendsGetsGuidance() {
+        setDiscoveryContent(tournamentLobbyState(1))
+        composeRule.onNodeWithTag("tournament_invite_empty").performScrollTo().assertIsDisplayed()
+    }
+
+    @Test
+    fun createDefaultsToPublicAndCanSelectPrivate() {
+        val created = mutableListOf<TournamentVisibility>()
+        setDiscoveryContent(GameState(), onCreate = { created += it })
+        composeRule.onNodeWithTag("tournament_visibility_public").performScrollTo().assertIsSelected()
+        composeRule.onNodeWithTag("tournament_name").performScrollTo().performTextInput("Weekend Cup")
+        composeRule.onNodeWithTag("create_tournament").performScrollTo().performClick()
+        composeRule.onNodeWithTag("tournament_visibility_private").performScrollTo().performClick().assertIsSelected()
+        composeRule.onNodeWithTag("create_tournament").performScrollTo().performClick()
+        composeRule.runOnIdle { assertEquals(listOf(TournamentVisibility.PUBLIC, TournamentVisibility.PRIVATE), created) }
+    }
+
+    @Test
+    fun compactLargeTextFiltersPreserveSelectionsAndRefresh() {
+        var filters = PublicTournamentFilters()
+        var refreshes = 0
+        setDiscoveryContent(publicTournamentState(0), onFilters = { filters = it }, onRefresh = { refreshes++ })
+        composeRule.onNodeWithTag("public_tournament_search").performScrollTo().performTextInput("Cup")
+        composeRule.onNodeWithTag("public_tournament_filter_mode_ORDER").performScrollTo().performClick()
+        composeRule.onNodeWithTag("public_tournament_filter_size_8").performScrollTo().performClick()
+        val feeChip = composeRule.onNodeWithTag("public_tournament_filter_fee_FREE").performScrollTo()
+        val before = feeChip.fetchSemanticsNode().boundsInRoot
+        feeChip.performClick().assertIsSelected()
+        val after = feeChip.fetchSemanticsNode().boundsInRoot
+        composeRule.onNodeWithTag("public_tournament_refresh").performScrollTo().performClick()
+        composeRule.runOnIdle {
+            assertEquals(PublicTournamentFilters("Cup", ProtocolGameMode.ORDER, 8, TournamentFeeFilter.FREE), filters)
+            assertEquals(1, refreshes)
+            assertEquals(before.width, after.width, 0.1f)
+            assertEquals(before.height, after.height, 0.1f)
+        }
+    }
+
+    @Test
+    fun loadingAndReconnectStatesDoNotClaimAnEmptyList() {
+        var state by mutableStateOf(GameState(connectionStatus = ConnectionStatus.CONNECTED, isPublicTournamentsLoading = true))
+        composeRule.setContent { FastToWinTheme { TournamentScreen(
+            state = state, onBack = {}, onCreate = { _, _, _, _, _ -> }, onInvite = {},
+            onRespondInvitation = { _, _ -> }, onStart = {}, onLeave = {}, onOpenFriendProfile = {}
+        ) } }
+        composeRule.onNodeWithTag("public_tournament_loading").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithTag("public_tournament_empty").assertDoesNotExist()
+        composeRule.runOnIdle { state = state.copy(isPublicTournamentsLoading = false, connectionStatus = ConnectionStatus.RECONNECTING) }
+        composeRule.onNodeWithTag("public_tournament_reconnect").performScrollTo().assertIsDisplayed()
+        composeRule.runOnIdle { state = state.copy(connectionStatus = ConnectionStatus.CONNECTED) }
+        composeRule.onNodeWithTag("public_tournament_empty").performScrollTo().assertIsDisplayed()
+    }
+
+    private fun publicTournamentState(fee: Int) = GameState(
+        connectionStatus = ConnectionStatus.CONNECTED,
+        publicTournaments = listOf(PublicTournamentSummary(
+            "tournament-1", "Weekend Cup", "host-1", "Minh", ProtocolGameMode.ORDER, 1, 4, fee, fee * 4, 1L
+        ))
+    )
+
+    private fun setDiscoveryContent(
+        initialState: GameState,
+        onJoin: (String) -> Unit = {},
+        onInvite: (String) -> Unit = {},
+        onCreate: (TournamentVisibility) -> Unit = {},
+        onFilters: (PublicTournamentFilters) -> Unit = {},
+        onRefresh: () -> Unit = {}
+    ) {
+        composeRule.setContent {
+            var state by androidx.compose.runtime.remember { mutableStateOf(initialState) }
+            DeviceConfigurationOverride(DeviceConfigurationOverride.ForcedSize(DpSize(375.dp, 832.dp)) then
+                DeviceConfigurationOverride.FontScale(1.4f)) {
+                FastToWinTheme { TournamentScreen(
+                    state = state, onBack = {}, onCreate = { _, _, _, _, visibility -> onCreate(visibility) },
+                    onInvite = onInvite, onRespondInvitation = { _, _ -> }, onStart = {}, onLeave = {},
+                    onOpenFriendProfile = {}, onJoinPublic = onJoin, onRefreshPublic = onRefresh,
+                    onPublicFiltersChange = { state = state.copy(publicTournamentFilters = it); onFilters(it) }
+                ) }
+            }
+        }
+    }
 
     @Test
     fun compactTournamentContentUsesTheSameWideGutterAsOtherScreens() {
@@ -46,7 +182,7 @@ class TournamentScreenTest {
                     TournamentScreen(
                         state = GameState(player = PlayerState("Hiền", id = "player-hien")),
                         onBack = {},
-                        onCreate = { _, _, _, _ -> },
+                        onCreate = { _, _, _, _, _ -> },
                         onInvite = {},
                         onRespondInvitation = { _, _ -> },
                         onStart = {},
@@ -75,7 +211,7 @@ class TournamentScreenTest {
                     TournamentScreen(
                         state = GameState(player = PlayerState("Hiền", id = "player-hien")),
                         onBack = {},
-                        onCreate = { _, _, _, _ -> },
+                        onCreate = { _, _, _, _, _ -> },
                         onInvite = {},
                         onRespondInvitation = { _, _ -> },
                         onStart = {},
@@ -117,7 +253,7 @@ class TournamentScreenTest {
                     TournamentScreen(
                         state = GameState(player = PlayerState("Hiền", id = "player-hien")),
                         onBack = {},
-                        onCreate = { _, _, _, _ -> },
+                        onCreate = { _, _, _, _, _ -> },
                         onInvite = {},
                         onRespondInvitation = { _, _ -> },
                         onStart = {},
@@ -160,7 +296,7 @@ class TournamentScreenTest {
                         tournamentHub = TournamentHubSnapshot(invitations = listOf(invitation))
                     ),
                     onBack = {},
-                    onCreate = { _: String, _: GameMode, _: Int, _: Int -> },
+                    onCreate = { _: String, _: GameMode, _: Int, _: Int, _: TournamentVisibility -> },
                     onInvite = {},
                     onRespondInvitation = { id, accepted -> response = id to accepted },
                     onStart = {},
@@ -170,8 +306,8 @@ class TournamentScreenTest {
             }
         }
 
-        composeRule.onNodeWithText("Cúp Tốc Chiến").assertIsDisplayed()
-        composeRule.onNodeWithText("THAM GIA").performClick()
+        composeRule.onNodeWithText("Cúp Tốc Chiến").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("THAM GIA").performScrollTo().performClick()
         composeRule.runOnIdle { assertEquals("invite-1" to true, response) }
     }
 
@@ -182,7 +318,7 @@ class TournamentScreenTest {
                 TournamentScreen(
                     state = tournamentLobbyState(playerCount = 3),
                     onBack = {},
-                    onCreate = { _: String, _: GameMode, _: Int, _: Int -> },
+                    onCreate = { _: String, _: GameMode, _: Int, _: Int, _: TournamentVisibility -> },
                     onInvite = {},
                     onRespondInvitation = { _, _ -> },
                     onStart = {},
@@ -206,7 +342,7 @@ class TournamentScreenTest {
                 TournamentScreen(
                     state = tournamentLobbyState(playerCount = 4),
                     onBack = {},
-                    onCreate = { _: String, _: GameMode, _: Int, _: Int -> },
+                    onCreate = { _: String, _: GameMode, _: Int, _: Int, _: TournamentVisibility -> },
                     onInvite = {},
                     onRespondInvitation = { _, _ -> },
                     onStart = { starts++ },
@@ -228,7 +364,7 @@ class TournamentScreenTest {
                 TournamentScreen(
                     state = tournamentLobbyState(playerCount = 8, maxPlayers = 8),
                     onBack = {},
-                    onCreate = { _: String, _: GameMode, _: Int, _: Int -> },
+                    onCreate = { _: String, _: GameMode, _: Int, _: Int, _: TournamentVisibility -> },
                     onInvite = {},
                     onRespondInvitation = { _, _ -> },
                     onStart = { starts++ },
@@ -250,7 +386,7 @@ class TournamentScreenTest {
                 TournamentScreen(
                     state = tournamentLobbyState(playerCount = 16, maxPlayers = 16),
                     onBack = {},
-                    onCreate = { _: String, _: GameMode, _: Int, _: Int -> },
+                    onCreate = { _: String, _: GameMode, _: Int, _: Int, _: TournamentVisibility -> },
                     onInvite = {},
                     onRespondInvitation = { _, _ -> },
                     onStart = { starts++ },
@@ -285,7 +421,7 @@ class TournamentScreenTest {
                         )
                     ),
                     onBack = {},
-                    onCreate = { _: String, _: GameMode, _: Int, _: Int -> },
+                    onCreate = { _: String, _: GameMode, _: Int, _: Int, _: TournamentVisibility -> },
                     onInvite = {},
                     onRespondInvitation = { _, _ -> },
                     onStart = {},
@@ -322,7 +458,7 @@ class TournamentScreenTest {
                         )
                     ),
                     onBack = {},
-                    onCreate = { _: String, _: GameMode, _: Int, _: Int -> },
+                    onCreate = { _: String, _: GameMode, _: Int, _: Int, _: TournamentVisibility -> },
                     onInvite = {},
                     onRespondInvitation = { _, _ -> },
                     onStart = {},

@@ -225,7 +225,7 @@ class CriticalFlowsUiTest {
                         )
                     ),
                     onBack = {},
-                    onCreate = { name, mode, _, maxPlayers ->
+                    onCreate = { name, mode, _, maxPlayers, _ ->
                         submittedName = name
                         submittedMode = mode
                         submittedMaxPlayers = maxPlayers
@@ -240,8 +240,8 @@ class CriticalFlowsUiTest {
         }
 
         composeRule.onNodeWithTag("tournament_screen").assertIsDisplayed()
-        composeRule.onNodeWithTag("tournament_name").performTextInput("Cúp cuối tuần")
-        composeRule.onNodeWithTag("tournament_size_16").performClick()
+        composeRule.onNodeWithTag("tournament_name").performScrollTo().performTextInput("Cúp cuối tuần")
+        composeRule.onNodeWithTag("tournament_size_16").performScrollTo().performClick()
         composeRule.onNodeWithTag("create_tournament")
             .performScrollTo()
             .assertIsDisplayed()
