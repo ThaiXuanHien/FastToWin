@@ -783,24 +783,19 @@ class GameEngine(
         try {
             tournamentRepository.save(snapshot)
         } catch (saveError: Exception) {
-            if (tournament.entryFee > 0) {
-                val refund = try {
-                    playerProfileRepository.applyWalletTransaction(
-                        playerId = playerId,
-                        sourceType = "TOURNAMENT_ENTRY_REFUND",
-                        sourceId = tournament.id,
-                        goldDelta = tournament.entryFee
-                    )
-                } catch (refundError: Exception) {
-                    System.err.println("Could not refund failed tournament admission for $playerId: ${refundError.message}")
-                    null
-                }
-                if (refund != WalletMutationStatus.APPLIED && refund != WalletMutationStatus.DUPLICATE) {
-                    throw IllegalStateException("Tournament save and entry refund both failed", saveError)
-                }
-            }
             tournament.participants.removeAll { it.playerId == playerId }
             tournament.prizePool = prizePoolBefore
+            if (tournament.entryFee > 0) {
+                val reversal = try {
+                    playerProfileRepository.reverseTournamentEntry(playerId, tournament.id, tournament.entryFee)
+                } catch (reversalError: Exception) {
+                    System.err.println("Could not reverse failed tournament admission for $playerId: ${reversalError.message}")
+                    null
+                }
+                if (reversal != WalletReversalStatus.REVERSED && reversal != WalletReversalStatus.ALREADY_REVERSED) {
+                    throw IllegalStateException("Tournament save and entry reversal both failed", saveError)
+                }
+            }
             return listOf(error(playerId, "TOURNAMENT_SAVE_FAILED", legacyFallback("Chưa thể lưu lượt tham gia giải.")))
         }
         return deliveries

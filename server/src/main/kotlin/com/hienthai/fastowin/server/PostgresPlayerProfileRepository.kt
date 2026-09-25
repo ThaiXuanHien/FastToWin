@@ -1586,6 +1586,102 @@ class PostgresPlayerProfileRepository(
         }
     }
 
+    override suspend fun reverseTournamentEntry(
+        playerId: String,
+        tournamentId: String,
+        entryFee: Int
+    ): WalletReversalStatus = withContext(Dispatchers.IO) {
+        require(entryFee > 0)
+        val userId = UUID.fromString(playerId)
+        val tournamentUuid = UUID.fromString(tournamentId)
+        dataSource.connection.use { connection ->
+            connection.autoCommit = false
+            try {
+                // Match the wallet debit lock order: player_stats first, then the ledger row.
+                val playerExists = connection.prepareStatement(
+                    "SELECT 1 FROM player_stats WHERE user_id = ? FOR UPDATE"
+                ).use { statement ->
+                    statement.setObject(1, userId)
+                    statement.executeQuery().use { it.next() }
+                }
+                if (!playerExists) {
+                    connection.rollback()
+                    return@withContext WalletReversalStatus.PLAYER_NOT_FOUND
+                }
+                val original = connection.prepareStatement(
+                    """
+                    SELECT id, gold_delta, gems_delta, xp_delta FROM wallet_transactions
+                    WHERE user_id = ? AND source_type = 'TOURNAMENT_ENTRY' AND source_id = ? FOR UPDATE
+                    """.trimIndent()
+                ).use { statement ->
+                    statement.setObject(1, userId)
+                    statement.setString(2, tournamentUuid.toString())
+                    statement.executeQuery().use { result ->
+                        if (result.next()) {
+                            Pair(result.getObject("id", UUID::class.java),
+                                Triple(result.getInt("gold_delta"), result.getInt("gems_delta"), result.getInt("xp_delta")))
+                        } else null
+                    }
+                }
+                if (original == null) {
+                    val alreadyReversed = connection.prepareStatement(
+                        """
+                        SELECT 1 FROM wallet_transactions
+                        WHERE user_id = ? AND source_type = 'TOURNAMENT_ENTRY_REFUND' AND source_id LIKE ?
+                        LIMIT 1
+                        """.trimIndent()
+                    ).use { statement ->
+                        statement.setObject(1, userId)
+                        statement.setString(2, "$tournamentUuid:%")
+                        statement.executeQuery().use { it.next() }
+                    }
+                    connection.rollback()
+                    return@withContext if (alreadyReversed) WalletReversalStatus.ALREADY_REVERSED
+                    else WalletReversalStatus.NOT_FOUND
+                }
+                if (original.second != Triple(-entryFee, 0, 0)) {
+                    connection.rollback()
+                    return@withContext WalletReversalStatus.AMOUNT_MISMATCH
+                }
+                // Retain both accounting legs while freeing only the canonical entry key.
+                val auditSourceId = "$tournamentUuid:${original.first}"
+                connection.prepareStatement(
+                    "UPDATE wallet_transactions SET source_type = 'TOURNAMENT_ENTRY_REVERSED', source_id = ? WHERE id = ?"
+                ).use { statement ->
+                    statement.setString(1, auditSourceId)
+                    statement.setObject(2, original.first)
+                    check(statement.executeUpdate() == 1)
+                }
+                connection.prepareStatement(
+                    """
+                    INSERT INTO wallet_transactions (id, user_id, source_type, source_id, gold_delta)
+                    VALUES (?, ?, 'TOURNAMENT_ENTRY_REFUND', ?, ?)
+                    """.trimIndent()
+                ).use { statement ->
+                    statement.setObject(1, UUID.randomUUID())
+                    statement.setObject(2, userId)
+                    statement.setString(3, auditSourceId)
+                    statement.setInt(4, entryFee)
+                    check(statement.executeUpdate() == 1)
+                }
+                connection.prepareStatement(
+                    "UPDATE player_stats SET gold = gold + ?, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?"
+                ).use { statement ->
+                    statement.setInt(1, entryFee)
+                    statement.setObject(2, userId)
+                    check(statement.executeUpdate() == 1)
+                }
+                connection.commit()
+                WalletReversalStatus.REVERSED
+            } catch (error: Throwable) {
+                connection.rollback()
+                throw error
+            } finally {
+                connection.autoCommit = true
+            }
+        }
+    }
+
     override suspend fun grantStorePurchase(
         playerId: String,
         store: String,

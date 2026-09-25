@@ -50,6 +50,7 @@ import kotlinx.coroutines.test.runCurrent
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertFailsWith
 import kotlin.test.assertIs
 import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
@@ -2599,6 +2600,7 @@ class GameEngineTest {
         val host = UUID.randomUUID().toString()
         val guest = UUID.randomUUID().toString()
         val ledger = mutableListOf<Pair<String, Int>>()
+        val usedKeys = mutableSetOf<Triple<String, String, String>>()
         val wallet = object : PlayerProfileRepository {
             override suspend fun findByPlayerId(playerId: String): PlayerProfileSnapshot? = null
             override suspend fun updateProfile(playerId: String, displayName: String, avatarId: String?) = false
@@ -2606,8 +2608,18 @@ class GameEngineTest {
                 playerId: String, sourceType: String, sourceId: String,
                 goldDelta: Int, gemsDelta: Int, xpDelta: Int
             ): WalletMutationStatus {
+                if (!usedKeys.add(Triple(playerId, sourceType, sourceId))) return WalletMutationStatus.DUPLICATE
                 if (playerId == guest) ledger += sourceType to goldDelta
                 return WalletMutationStatus.APPLIED
+            }
+            override suspend fun reverseTournamentEntry(
+                playerId: String, tournamentId: String, entryFee: Int
+            ): WalletReversalStatus {
+                if (!usedKeys.remove(Triple(playerId, "TOURNAMENT_ENTRY", tournamentId))) {
+                    return WalletReversalStatus.NOT_FOUND
+                }
+                ledger += "TOURNAMENT_ENTRY_REFUND" to entryFee
+                return WalletReversalStatus.REVERSED
             }
         }
         val saved = InMemoryTournamentRepository()
@@ -2637,6 +2649,57 @@ class GameEngineTest {
             .filterIsInstance<ServerMessage.Error>().single().code)
         assertTrue(failed.none { it.message is ServerMessage.TournamentUpdated })
         assertEquals(listOf("TOURNAMENT_ENTRY" to -100, "TOURNAMENT_ENTRY_REFUND" to 100), ledger)
+        val current = engine.handle(host, ClientMessage.GetTournamentHub)
+            .map(Delivery::message).filterIsInstance<ServerMessage.TournamentHubData>().single().hub.activeTournament!!
+        assertEquals(listOf(host), current.players.map { it.playerId })
+        assertEquals(100, current.prizePool)
+        assertEquals(listOf(host), saved.loadActive().single().players.map { it.playerId })
+
+        val retried = engine.handle(guest, ClientMessage.JoinPublicTournament(tournamentId)).tournamentUpdate()
+        assertEquals(listOf(host, guest), retried.players.map { it.playerId })
+        assertEquals(200, retried.prizePool)
+        assertEquals(-100, ledger.sumOf { it.second })
+    }
+
+    @Test
+    fun `failed reversal after admission save failure never exposes an in memory join`() = runTest {
+        val host = UUID.randomUUID().toString()
+        val guest = UUID.randomUUID().toString()
+        val wallet = object : PlayerProfileRepository {
+            override suspend fun findByPlayerId(playerId: String): PlayerProfileSnapshot? = null
+            override suspend fun updateProfile(playerId: String, displayName: String, avatarId: String?) = false
+            override suspend fun applyWalletTransaction(
+                playerId: String, sourceType: String, sourceId: String,
+                goldDelta: Int, gemsDelta: Int, xpDelta: Int
+            ) = WalletMutationStatus.APPLIED
+            override suspend fun reverseTournamentEntry(
+                playerId: String, tournamentId: String, entryFee: Int
+            ) = WalletReversalStatus.NOT_FOUND
+        }
+        val saved = InMemoryTournamentRepository()
+        var failNextSave = false
+        val repository = object : TournamentRepository {
+            override suspend fun loadActive() = saved.loadActive()
+            override suspend fun loadRecent(playerId: String, limit: Int) = saved.loadRecent(playerId, limit)
+            override suspend fun save(tournament: com.hienthai.fastowin.protocol.TournamentSnapshot) {
+                if (failNextSave) {
+                    failNextSave = false
+                    throw IllegalStateException("tournament storage unavailable")
+                }
+                saved.save(tournament)
+            }
+        }
+        val engine = GameEngine(playerProfileRepository = wallet, tournamentRepository = repository)
+        engine.connectAccount(AuthenticatedAccount(UUID.fromString(host), "Host"))
+        engine.connectAccount(AuthenticatedAccount(UUID.fromString(guest), "Guest"))
+        val tournamentId = engine.handle(host, ClientMessage.CreateTournament(
+            "Paid Cup", ProtocolGameMode.ORDER, 100, 4, TournamentVisibility.PUBLIC
+        )).tournamentUpdate().tournamentId
+        failNextSave = true
+
+        assertFailsWith<IllegalStateException> {
+            engine.handle(guest, ClientMessage.JoinPublicTournament(tournamentId))
+        }
         val current = engine.handle(host, ClientMessage.GetTournamentHub)
             .map(Delivery::message).filterIsInstance<ServerMessage.TournamentHubData>().single().hub.activeTournament!!
         assertEquals(listOf(host), current.players.map { it.playerId })

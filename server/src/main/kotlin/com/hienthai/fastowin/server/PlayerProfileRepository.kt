@@ -58,6 +58,12 @@ interface PlayerProfileRepository {
         gemsDelta: Int = 0,
         xpDelta: Int = 0
     ): WalletMutationStatus = WalletMutationStatus.PLAYER_NOT_FOUND
+    /** Reverses a failed paid admission and releases its canonical debit key for a retry. */
+    suspend fun reverseTournamentEntry(
+        playerId: String,
+        tournamentId: String,
+        entryFee: Int
+    ): WalletReversalStatus = WalletReversalStatus.NOT_FOUND
     suspend fun grantStorePurchase(
         playerId: String,
         store: String,
@@ -95,6 +101,8 @@ data class DailyCheckInClaimResult(
 enum class MissionRewardClaimStatus { CLAIMED, ALREADY_CLAIMED, NOT_COMPLETED, INVALID_MISSION }
 
 enum class WalletMutationStatus { APPLIED, DUPLICATE, INSUFFICIENT_FUNDS, PLAYER_NOT_FOUND }
+
+enum class WalletReversalStatus { REVERSED, ALREADY_REVERSED, NOT_FOUND, AMOUNT_MISMATCH, PLAYER_NOT_FOUND }
 
 enum class StorePurchaseGrantStatus {
     GRANTED,
