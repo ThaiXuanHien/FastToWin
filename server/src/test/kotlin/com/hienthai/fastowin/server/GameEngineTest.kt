@@ -2662,6 +2662,117 @@ class GameEngineTest {
     }
 
     @Test
+    fun `private invitation remains retryable after paid admission save failure`() = runTest {
+        val host = UUID.randomUUID().toString()
+        val guest = UUID.randomUUID().toString()
+        val ledger = mutableListOf<Int>()
+        val usedKeys = mutableSetOf<Triple<String, String, String>>()
+        val wallet = object : PlayerProfileRepository {
+            override suspend fun findByPlayerId(playerId: String): PlayerProfileSnapshot? = null
+            override suspend fun updateProfile(playerId: String, displayName: String, avatarId: String?) = false
+            override suspend fun applyWalletTransaction(
+                playerId: String, sourceType: String, sourceId: String,
+                goldDelta: Int, gemsDelta: Int, xpDelta: Int
+            ): WalletMutationStatus {
+                if (!usedKeys.add(Triple(playerId, sourceType, sourceId))) return WalletMutationStatus.DUPLICATE
+                if (playerId == guest) ledger += goldDelta
+                return WalletMutationStatus.APPLIED
+            }
+            override suspend fun reverseTournamentEntry(
+                playerId: String, tournamentId: String, entryFee: Int
+            ): WalletReversalStatus {
+                if (!usedKeys.remove(Triple(playerId, "TOURNAMENT_ENTRY", tournamentId))) {
+                    return WalletReversalStatus.NOT_FOUND
+                }
+                ledger += entryFee
+                return WalletReversalStatus.REVERSED
+            }
+        }
+        val saved = InMemoryTournamentRepository()
+        var failNextSave = false
+        val repository = object : TournamentRepository {
+            override suspend fun loadActive() = saved.loadActive()
+            override suspend fun loadRecent(playerId: String, limit: Int) = saved.loadRecent(playerId, limit)
+            override suspend fun save(tournament: com.hienthai.fastowin.protocol.TournamentSnapshot) {
+                if (failNextSave) {
+                    failNextSave = false
+                    throw IllegalStateException("tournament storage unavailable")
+                }
+                saved.save(tournament)
+            }
+        }
+        val engine = GameEngine(
+            playerProfileRepository = wallet,
+            friendRepository = friendRepositoryForPair(host, guest),
+            tournamentRepository = repository
+        )
+        engine.connectAccount(AuthenticatedAccount(UUID.fromString(host), "Host"))
+        engine.connectAccount(AuthenticatedAccount(UUID.fromString(guest), "Guest"))
+        val tournamentId = engine.handle(host, ClientMessage.CreateTournament(
+            "Private Cup", ProtocolGameMode.ORDER, 100, 4, TournamentVisibility.PRIVATE
+        )).tournamentUpdate().tournamentId
+        val invitationId = engine.handle(host, ClientMessage.InviteTournamentPlayer(tournamentId, guest))
+            .map(Delivery::message).filterIsInstance<ServerMessage.TournamentInvitation>().single().invitation.invitationId
+        failNextSave = true
+
+        val failed = engine.handle(guest, ClientMessage.RespondTournamentInvitation(invitationId, accept = true))
+        assertEquals("TOURNAMENT_SAVE_FAILED", failed.map(Delivery::message)
+            .filterIsInstance<ServerMessage.Error>().single().code)
+        assertEquals(listOf(-100, 100), ledger)
+        val pending = engine.handle(guest, ClientMessage.GetTournamentHub)
+            .map(Delivery::message).filterIsInstance<ServerMessage.TournamentHubData>().single().hub
+        assertEquals(listOf(invitationId), pending.invitations.map { it.invitationId })
+        assertEquals(listOf(host), saved.loadActive().single().players.map { it.playerId })
+
+        val joined = engine.handle(guest, ClientMessage.RespondTournamentInvitation(invitationId, accept = true))
+            .tournamentUpdate()
+        assertEquals(listOf(host, guest), joined.players.map { it.playerId })
+        assertEquals(200, joined.prizePool)
+        assertEquals(-100, ledger.sum())
+        val hub = engine.handle(guest, ClientMessage.GetTournamentHub)
+            .map(Delivery::message).filterIsInstance<ServerMessage.TournamentHubData>().single().hub
+        assertTrue(hub.invitations.isEmpty())
+        assertEquals("TOURNAMENT_INVITATION_EXPIRED", engine.handle(
+            guest, ClientMessage.RespondTournamentInvitation(invitationId, accept = true)
+        ).map(Delivery::message).filterIsInstance<ServerMessage.Error>().single().code)
+    }
+
+    @Test
+    fun `private invitation remains after insufficient gold validation failure`() = runTest {
+        val host = UUID.randomUUID().toString()
+        val guest = UUID.randomUUID().toString()
+        var guestHasGold = false
+        val wallet = object : PlayerProfileRepository {
+            override suspend fun findByPlayerId(playerId: String): PlayerProfileSnapshot? = null
+            override suspend fun updateProfile(playerId: String, displayName: String, avatarId: String?) = false
+            override suspend fun applyWalletTransaction(
+                playerId: String, sourceType: String, sourceId: String,
+                goldDelta: Int, gemsDelta: Int, xpDelta: Int
+            ) = if (playerId == guest && !guestHasGold) WalletMutationStatus.INSUFFICIENT_FUNDS
+                else WalletMutationStatus.APPLIED
+        }
+        val engine = GameEngine(playerProfileRepository = wallet, friendRepository = friendRepositoryForPair(host, guest))
+        engine.connectAccount(AuthenticatedAccount(UUID.fromString(host), "Host"))
+        engine.connectAccount(AuthenticatedAccount(UUID.fromString(guest), "Guest"))
+        val tournamentId = engine.handle(host, ClientMessage.CreateTournament(
+            "Private Cup", ProtocolGameMode.ORDER, 100, 4, TournamentVisibility.PRIVATE
+        )).tournamentUpdate().tournamentId
+        val invitationId = engine.handle(host, ClientMessage.InviteTournamentPlayer(tournamentId, guest))
+            .map(Delivery::message).filterIsInstance<ServerMessage.TournamentInvitation>().single().invitation.invitationId
+
+        assertEquals("NOT_ENOUGH_GOLD", engine.handle(
+            guest, ClientMessage.RespondTournamentInvitation(invitationId, accept = true)
+        ).map(Delivery::message).filterIsInstance<ServerMessage.Error>().single().code)
+        assertEquals(listOf(invitationId), engine.handle(guest, ClientMessage.GetTournamentHub)
+            .map(Delivery::message).filterIsInstance<ServerMessage.TournamentHubData>()
+            .single().hub.invitations.map { it.invitationId })
+        guestHasGold = true
+        assertEquals(listOf(host, guest), engine.handle(
+            guest, ClientMessage.RespondTournamentInvitation(invitationId, accept = true)
+        ).tournamentUpdate().players.map { it.playerId })
+    }
+
+    @Test
     fun `failed reversal after admission save failure never exposes an in memory join`() = runTest {
         val host = UUID.randomUUID().toString()
         val guest = UUID.randomUUID().toString()

@@ -725,8 +725,8 @@ class GameEngine(
                 val invitation = tournamentInvitations[command.invitationId]
                     ?.takeIf { it.inviteeId == playerId && it.expiresAtMillis > nowMillis() }
                     ?: return@withLock listOf(error(playerId, "TOURNAMENT_INVITATION_EXPIRED", legacyFallback("Lời mời giải đấu đã hết hạn.")))
-                tournamentInvitations.remove(command.invitationId)
                 if (!command.accept) {
+                    tournamentInvitations.remove(command.invitationId)
                     return@withLock listOf(
                         Delivery(ServerMessage.TournamentNotice(
                             legacyFallback("Đã từ chối lời mời giải đấu."),
@@ -743,7 +743,13 @@ class GameEngine(
                 val tournament = tournaments[invitation.tournamentId]
                     ?.takeIf { it.phase == TournamentPhase.LOBBY }
                     ?: return@withLock listOf(error(playerId, "TOURNAMENT_NOT_FOUND", legacyFallback("Giải đấu không còn tồn tại.")))
-                admitTournamentPlayerAndPersistLocked(playerId, tournament, TournamentAdmissionSource.INVITATION)
+                val admission = admitTournamentPlayerAndPersistLocked(
+                    playerId, tournament, TournamentAdmissionSource.INVITATION
+                )
+                if (admission.any { it.message is ServerMessage.TournamentUpdated }) {
+                    tournamentInvitations.remove(command.invitationId)
+                }
+                admission
             }
         }
         return admissionProfileDeliveries(playerId, deliveries)
