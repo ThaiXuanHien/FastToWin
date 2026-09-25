@@ -3,6 +3,10 @@ package com.hienthai.fastowin.state
 import com.hienthai.fastowin.localization.AppLanguage
 import com.hienthai.fastowin.localization.LocalizationService
 import com.hienthai.fastowin.localization.LocalizedMessageMapper
+import com.hienthai.fastowin.data.network.InMemoryResumeTokenStore
+import com.hienthai.fastowin.data.network.SocketSession
+import com.hienthai.fastowin.data.network.SocketTransport
+import com.hienthai.fastowin.protocol.ClientMessage
 import com.hienthai.fastowin.protocol.FriendRequestSnapshot
 import com.hienthai.fastowin.protocol.FriendSnapshot
 import com.hienthai.fastowin.protocol.FriendsSnapshot
@@ -11,18 +15,169 @@ import com.hienthai.fastowin.protocol.PlayerProfileSnapshot
 import com.hienthai.fastowin.protocol.PlayerSnapshot
 import com.hienthai.fastowin.protocol.PlayQuotaSnapshot
 import com.hienthai.fastowin.protocol.ProtocolGameMode
+import com.hienthai.fastowin.protocol.ProtocolJson
+import com.hienthai.fastowin.protocol.PublicTournamentQuery
+import com.hienthai.fastowin.protocol.PublicTournamentSummary
 import com.hienthai.fastowin.protocol.RecentPlayerSnapshot
 import com.hienthai.fastowin.protocol.RewardedAdAvailability
 import com.hienthai.fastowin.protocol.RewardedAdBonusStatus
 import com.hienthai.fastowin.protocol.RoomPhase
 import com.hienthai.fastowin.protocol.ServerMessage
+import com.hienthai.fastowin.protocol.TournamentFeeFilter
+import com.hienthai.fastowin.protocol.TournamentVisibility
+import com.hienthai.fastowin.navigation.GameMode
+import io.ktor.websocket.Frame
+import io.ktor.websocket.readText
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.advanceTimeBy
+import kotlinx.coroutines.test.runCurrent
+import kotlinx.coroutines.test.runTest
+import kotlinx.serialization.decodeFromString
+import kotlinx.serialization.encodeToString
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
+@OptIn(ExperimentalCoroutinesApi::class)
 class GameStateTest {
+    @Test
+    fun `public tournament data replaces list without clearing active tournament loading`() = runTest {
+        val fixture = publicTournamentFixture()
+        fixture.controller.openTournament()
+        runCurrent()
+        assertTrue(fixture.controller.uiState.value.isPublicTournamentsLoading)
+        val first = publicTournament("first")
+        fixture.session.server(ServerMessage.PublicTournamentsData(listOf(first)))
+        runCurrent()
+        assertEquals(listOf(first), fixture.controller.uiState.value.publicTournaments)
+        assertFalse(fixture.controller.uiState.value.isPublicTournamentsLoading)
+        assertTrue(fixture.controller.uiState.value.isTournamentLoading)
+
+        val second = publicTournament("second")
+        fixture.session.server(ServerMessage.PublicTournamentsData(listOf(second)))
+        runCurrent()
+        assertEquals(listOf(second), fixture.controller.uiState.value.publicTournaments)
+        fixture.controller.close()
+    }
+
+    @Test
+    fun `public tournament screen requests friends hub and unfiltered list`() = runTest {
+        val fixture = publicTournamentFixture()
+        fixture.controller.openTournament()
+        runCurrent()
+        assertTrue(ClientMessage.GetFriends in fixture.session.sent)
+        assertTrue(ClientMessage.GetTournamentHub in fixture.session.sent)
+        assertEquals(
+            listOf(ClientMessage.GetPublicTournaments(PublicTournamentQuery())),
+            fixture.session.sent.filterIsInstance<ClientMessage.GetPublicTournaments>()
+        )
+        fixture.controller.close()
+    }
+
+    @Test
+    fun `public tournament invalidation requests latest filters only while screen open`() = runTest {
+        val fixture = publicTournamentFixture()
+        fixture.controller.openTournament()
+        runCurrent()
+        fixture.controller.updatePublicTournamentFilters(
+            PublicTournamentFilters(nameQuery = "  Sunday  ", gameMode = ProtocolGameMode.ORDER, fee = TournamentFeeFilter.FREE)
+        )
+        fixture.session.server(ServerMessage.PublicTournamentsInvalidated)
+        runCurrent()
+        val expected = ClientMessage.GetPublicTournaments(
+            PublicTournamentQuery("Sunday", ProtocolGameMode.ORDER, null, TournamentFeeFilter.FREE)
+        )
+        assertEquals(expected, fixture.session.sent.filterIsInstance<ClientMessage.GetPublicTournaments>().last())
+        assertEquals(2, fixture.session.sent.filterIsInstance<ClientMessage.GetPublicTournaments>().size)
+        fixture.controller.closeTournament()
+        fixture.session.server(ServerMessage.PublicTournamentsInvalidated)
+        advanceTimeBy(250)
+        runCurrent()
+        assertEquals(2, fixture.session.sent.filterIsInstance<ClientMessage.GetPublicTournaments>().size)
+        fixture.controller.close()
+    }
+
+    @Test
+    fun `public tournament rapid search emits only final query after 250 milliseconds`() = runTest {
+        val fixture = publicTournamentFixture()
+        fixture.controller.openTournament()
+        runCurrent()
+        fixture.controller.updatePublicTournamentFilters(PublicTournamentFilters(nameQuery = "S"))
+        runCurrent()
+        advanceTimeBy(100)
+        fixture.controller.updatePublicTournamentFilters(PublicTournamentFilters(nameQuery = "Su"))
+        runCurrent()
+        advanceTimeBy(100)
+        fixture.controller.updatePublicTournamentFilters(PublicTournamentFilters(nameQuery = "Sun"))
+        runCurrent()
+        advanceTimeBy(249)
+        runCurrent()
+        assertEquals(1, fixture.session.sent.filterIsInstance<ClientMessage.GetPublicTournaments>().size)
+        advanceTimeBy(1)
+        runCurrent()
+        assertEquals(
+            listOf(
+                ClientMessage.GetPublicTournaments(PublicTournamentQuery()),
+                ClientMessage.GetPublicTournaments(PublicTournamentQuery(nameQuery = "Sun"))
+            ),
+            fixture.session.sent.filterIsInstance<ClientMessage.GetPublicTournaments>()
+        )
+        fixture.controller.close()
+    }
+
+    @Test
+    fun `public tournament refresh bypasses pending debounce and join and create use visibility`() = runTest {
+        val fixture = publicTournamentFixture()
+        fixture.controller.openTournament()
+        runCurrent()
+        fixture.controller.updatePublicTournamentFilters(PublicTournamentFilters(nameQuery = " Finals "))
+        fixture.controller.refreshPublicTournaments()
+        fixture.controller.joinPublicTournament("tournament-1")
+        fixture.controller.createTournament("Private", GameMode.ORDER, visibility = TournamentVisibility.PRIVATE)
+        runCurrent()
+        assertEquals(
+            ClientMessage.GetPublicTournaments(PublicTournamentQuery(nameQuery = "Finals")),
+            fixture.session.sent.filterIsInstance<ClientMessage.GetPublicTournaments>().last()
+        )
+        assertEquals(2, fixture.session.sent.filterIsInstance<ClientMessage.GetPublicTournaments>().size)
+        assertTrue(ClientMessage.JoinPublicTournament("tournament-1") in fixture.session.sent)
+        assertTrue(
+            fixture.session.sent.filterIsInstance<ClientMessage.CreateTournament>()
+                .any { it.visibility == TournamentVisibility.PRIVATE }
+        )
+        advanceTimeBy(250)
+        runCurrent()
+        assertEquals(2, fixture.session.sent.filterIsInstance<ClientMessage.GetPublicTournaments>().size)
+        fixture.controller.close()
+    }
+
+    private fun TestScope.publicTournamentFixture(): PublicTournamentFixture {
+        val transport = PublicTournamentTransport()
+        val controller = GameController(
+            "ws://test", InMemoryResumeTokenStore(), transport = transport, controllerScope = backgroundScope
+        )
+        controller.openRoomBrowser("Tester")
+        runCurrent()
+        return PublicTournamentFixture(controller, transport.session)
+    }
+
+    private fun publicTournament(id: String) = PublicTournamentSummary(
+        tournamentId = id,
+        name = id,
+        hostPlayerId = "host",
+        hostDisplayName = "Host",
+        gameMode = ProtocolGameMode.ORDER,
+        playerCount = 1,
+        maxPlayers = 4,
+        entryFee = 0,
+        prizePool = 0,
+        createdAtEpochMillis = 1L
+    )
+
     @Test
     fun `matchmaking rejection stops search and preserves actionable reason`() {
         val rejected = GameState(
@@ -462,4 +617,34 @@ class GameStateTest {
         nextResetAtEpochMillis = 1_789_148_400_000L,
         rewardedAdAvailability = RewardedAdAvailability.DEV_SIMULATED
     )
+}
+
+private data class PublicTournamentFixture(
+    val controller: GameController,
+    val session: PublicTournamentSession
+)
+
+private class PublicTournamentTransport : SocketTransport {
+    val session = PublicTournamentSession()
+
+    override suspend fun webSocket(url: String, block: suspend (SocketSession) -> Unit) {
+        block(session)
+    }
+}
+
+private class PublicTournamentSession : SocketSession {
+    override val incoming = Channel<Frame>(Channel.UNLIMITED)
+    val sent = mutableListOf<ClientMessage>()
+
+    override suspend fun send(frame: Frame) {
+        sent += ProtocolJson.decodeFromString<ClientMessage>((frame as Frame.Text).readText())
+    }
+
+    override suspend fun close() { incoming.close() }
+
+    override suspend fun closeReason(): String? = null
+
+    suspend fun server(message: ServerMessage) {
+        incoming.send(Frame.Text(ProtocolJson.encodeToString(message)))
+    }
 }

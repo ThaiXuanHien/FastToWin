@@ -3,6 +3,7 @@ package com.hienthai.fastowin.state
 import com.hienthai.fastowin.data.network.GameSocketClient
 import com.hienthai.fastowin.data.network.ResumeTokenStore
 import com.hienthai.fastowin.data.network.SocketConnectionState
+import com.hienthai.fastowin.data.network.SocketTransport
 import com.hienthai.fastowin.navigation.GameMode
 import com.hienthai.fastowin.localization.AppLanguage
 import com.hienthai.fastowin.localization.LocalizationService
@@ -24,6 +25,7 @@ import com.hienthai.fastowin.protocol.MatchType
 import com.hienthai.fastowin.protocol.RematchEvent
 import com.hienthai.fastowin.protocol.RoomPhase
 import com.hienthai.fastowin.protocol.ServerMessage
+import com.hienthai.fastowin.protocol.TournamentVisibility
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -40,15 +42,40 @@ import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlin.random.Random
 
-class GameController(
+class GameController private constructor(
     serverUrl: String,
     resumeTokenStore: ResumeTokenStore,
-    accountDisplayName: String? = null,
-    accessTokenProvider: (suspend (forceRefresh: Boolean) -> String?)? = null,
-    onAccountSessionExpired: ((String) -> Unit)? = null,
-    initialLanguage: AppLanguage = AppLanguage.VIETNAMESE,
-    private val onProfileDisplayNameChanged: (String) -> Unit = {}
+    accountDisplayName: String?,
+    accessTokenProvider: (suspend (forceRefresh: Boolean) -> String?)?,
+    onAccountSessionExpired: ((String) -> Unit)?,
+    initialLanguage: AppLanguage,
+    private val onProfileDisplayNameChanged: (String) -> Unit,
+    transport: SocketTransport?,
+    controllerScope: CoroutineScope?
 ) {
+    constructor(
+        serverUrl: String,
+        resumeTokenStore: ResumeTokenStore,
+        accountDisplayName: String? = null,
+        accessTokenProvider: (suspend (forceRefresh: Boolean) -> String?)? = null,
+        onAccountSessionExpired: ((String) -> Unit)? = null,
+        initialLanguage: AppLanguage = AppLanguage.VIETNAMESE,
+        onProfileDisplayNameChanged: (String) -> Unit = {}
+    ) : this(
+        serverUrl, resumeTokenStore, accountDisplayName, accessTokenProvider,
+        onAccountSessionExpired, initialLanguage, onProfileDisplayNameChanged, null, null
+    )
+
+    internal constructor(
+        serverUrl: String,
+        resumeTokenStore: ResumeTokenStore,
+        transport: SocketTransport,
+        controllerScope: CoroutineScope
+    ) : this(
+        serverUrl, resumeTokenStore, null, null, null, AppLanguage.VIETNAMESE,
+        {}, transport, controllerScope
+    )
+
     private var localization = LocalizationService(initialLanguage)
     private val messageMapper = LocalizedMessageMapper(localization)
     private var accountDisplayName = accountDisplayName
@@ -63,9 +90,10 @@ class GameController(
             onAccountSessionExpired?.invoke(
                 messageMapper.message(code, null, emptyMap(), fallback)
             )
-        }
+        },
+        transport = transport
     )
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private val scope = controllerScope ?: CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
     private var playerId: String? = null
     private var sessionJob: Job? = null
@@ -75,6 +103,7 @@ class GameController(
     private var timerJob: Job? = null
     private var countdownJob: Job? = null
     private var latencyJob: Job? = null
+    private var publicTournamentFilterJob: Job? = null
     private var gameStarted = false
     private var lastFcmToken: String? = null
 
@@ -421,10 +450,13 @@ class GameController(
     }
 
     fun openTournament() {
+        publicTournamentFilterJob?.cancel()
         _uiState.update {
             it.copy(
                 isTournamentOpen = true,
                 isTournamentLoading = true,
+                isPublicTournamentsLoading = true,
+                publicTournamentFilters = PublicTournamentFilters(),
                 isProfileOpen = false,
                 isLeaderboardOpen = false,
                 isFriendsOpen = false,
@@ -433,17 +465,61 @@ class GameController(
                 error = null
             )
         }
+        scope.launch { socket.sendMessage(ClientMessage.GetFriends) }
         scope.launch { socket.sendMessage(ClientMessage.GetTournamentHub) }
+        scope.launch { socket.sendMessage(ClientMessage.GetPublicTournaments()) }
     }
 
     fun closeTournament() {
-        _uiState.update { it.copy(isTournamentOpen = false, isTournamentLoading = false, tournamentNotice = null) }
+        publicTournamentFilterJob?.cancel()
+        _uiState.update {
+            it.copy(
+                isTournamentOpen = false,
+                isTournamentLoading = false,
+                isPublicTournamentsLoading = false,
+                tournamentNotice = null
+            )
+        }
     }
 
-    fun createTournament(name: String, mode: GameMode, entryFee: Int = 0, maxPlayers: Int = 4) {
+    fun updatePublicTournamentFilters(filters: PublicTournamentFilters) {
+        publicTournamentFilterJob?.cancel()
+        _uiState.update { it.copy(publicTournamentFilters = filters, isPublicTournamentsLoading = it.isTournamentOpen) }
+        if (!_uiState.value.isTournamentOpen) return
+        publicTournamentFilterJob = scope.launch {
+            delay(250)
+            if (_uiState.value.isTournamentOpen) {
+                socket.sendMessage(ClientMessage.GetPublicTournaments(_uiState.value.publicTournamentFilters.toQuery()))
+            }
+        }
+    }
+
+    fun refreshPublicTournaments() {
+        publicTournamentFilterJob?.cancel()
+        if (!_uiState.value.isTournamentOpen) return
+        _uiState.update { it.copy(isPublicTournamentsLoading = true) }
+        scope.launch {
+            if (_uiState.value.isTournamentOpen) {
+                socket.sendMessage(ClientMessage.GetPublicTournaments(_uiState.value.publicTournamentFilters.toQuery()))
+            }
+        }
+    }
+
+    fun joinPublicTournament(tournamentId: String) {
+        _uiState.update { it.copy(isTournamentLoading = true, tournamentNotice = null, error = null) }
+        scope.launch { socket.sendMessage(ClientMessage.JoinPublicTournament(tournamentId)) }
+    }
+
+    fun createTournament(
+        name: String,
+        mode: GameMode,
+        entryFee: Int = 0,
+        maxPlayers: Int = 4,
+        visibility: TournamentVisibility = TournamentVisibility.PRIVATE
+    ) {
         _uiState.update { it.copy(isTournamentLoading = true, tournamentNotice = null, error = null) }
         scope.launch {
-            socket.sendMessage(ClientMessage.CreateTournament(name, mode.toProtocol(), entryFee, maxPlayers))
+            socket.sendMessage(ClientMessage.CreateTournament(name, mode.toProtocol(), entryFee, maxPlayers, visibility))
         }
     }
 
@@ -489,6 +565,7 @@ class GameController(
     }
 
     fun openTournamentAfterMatch() {
+        publicTournamentFilterJob?.cancel()
         gameStarted = false
         timerJob?.cancel()
         countdownJob?.cancel()
@@ -508,10 +585,12 @@ class GameController(
                 didForfeitLastMatch = false,
                 isTournamentOpen = true,
                 isTournamentLoading = true,
+                isPublicTournamentsLoading = true,
                 error = null
             )
         }
         scope.launch { socket.sendMessage(ClientMessage.GetTournamentHub) }
+        scope.launch { socket.sendMessage(ClientMessage.GetPublicTournaments(_uiState.value.publicTournamentFilters.toQuery())) }
     }
 
     fun markAllNotificationsRead() {
@@ -1228,6 +1307,14 @@ class GameController(
                 }
             }
 
+            is ServerMessage.PublicTournamentsData -> {
+                _uiState.update {
+                    it.copy(publicTournaments = message.tournaments, isPublicTournamentsLoading = false)
+                }
+            }
+
+            ServerMessage.PublicTournamentsInvalidated -> refreshPublicTournaments()
+
             is ServerMessage.TournamentUpdated -> {
                 _uiState.update { state ->
                     val completed = message.tournament.phase == com.hienthai.fastowin.protocol.TournamentPhase.FINISHED ||
@@ -1632,6 +1719,7 @@ class GameController(
     fun resetGame() {
         if (resettingSocket) return
         resettingSocket = true
+        publicTournamentFilterJob?.cancel()
         val roomId = _uiState.value.currentRoomId
         val displayName = accountDisplayName ?: _uiState.value.player.name
         val activeSession = sessionJob
@@ -1672,6 +1760,7 @@ class GameController(
     }
 
     fun close() {
+        publicTournamentFilterJob?.cancel()
         timerJob?.cancel()
         countdownJob?.cancel()
         latencyJob?.cancel()

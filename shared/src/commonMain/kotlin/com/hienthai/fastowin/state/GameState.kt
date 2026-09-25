@@ -13,6 +13,9 @@ import com.hienthai.fastowin.protocol.WalletTransactionSnapshot
 import com.hienthai.fastowin.protocol.GameSnapshot
 import com.hienthai.fastowin.protocol.PlayerSnapshot
 import com.hienthai.fastowin.protocol.ProtocolGameMode
+import com.hienthai.fastowin.protocol.PublicTournamentQuery
+import com.hienthai.fastowin.protocol.PublicTournamentSummary
+import com.hienthai.fastowin.protocol.TournamentFeeFilter
 import com.hienthai.fastowin.protocol.PlayQuotaSnapshot
 import com.hienthai.fastowin.protocol.RoomPhase
 
@@ -36,6 +39,15 @@ enum class ConnectionStatus {
     CONNECTED,
     RECONNECTING,
     TERMINAL
+}
+
+data class PublicTournamentFilters(
+    val nameQuery: String = "",
+    val gameMode: ProtocolGameMode? = null,
+    val maxPlayers: Int? = null,
+    val fee: TournamentFeeFilter = TournamentFeeFilter.ALL,
+) {
+    fun toQuery() = PublicTournamentQuery(nameQuery.trim(), gameMode, maxPlayers, fee)
 }
 
 data class AvailableRoom(
@@ -201,6 +213,9 @@ data class GameState(
     val isTournamentOpen: Boolean = false,
     val isTournamentLoading: Boolean = false,
     val tournamentHub: TournamentHubSnapshot = TournamentHubSnapshot(),
+    val publicTournaments: List<PublicTournamentSummary> = emptyList(),
+    val publicTournamentFilters: PublicTournamentFilters = PublicTournamentFilters(),
+    val isPublicTournamentsLoading: Boolean = false,
     val tournamentInvitationPrompt: TournamentInvitationSnapshot? = null,
     val tournamentNotice: String? = null,
     val notifications: List<AppNotification> = emptyList(),
