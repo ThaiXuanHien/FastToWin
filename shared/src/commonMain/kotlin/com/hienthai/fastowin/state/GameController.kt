@@ -243,6 +243,11 @@ class GameController private constructor(
             SocketConnectionState.RECONNECTING -> ConnectionStatus.RECONNECTING
             SocketConnectionState.TERMINAL -> ConnectionStatus.TERMINAL
         }
+        if (status == ConnectionStatus.RECONNECTING || status == ConnectionStatus.DISCONNECTED ||
+            status == ConnectionStatus.TERMINAL
+        ) {
+            publicTournamentFilterJob?.cancel()
+        }
         _uiState.update { state ->
             val waitingForConnection = status != ConnectionStatus.CONNECTED &&
                 state.lobbyStage in setOf(LobbyStage.ROOM_BROWSER, LobbyStage.ROOM_WAITING)
@@ -255,6 +260,10 @@ class GameController private constructor(
             }
             state.copy(
                 connectionStatus = status,
+                isPublicTournamentsLoading = state.isPublicTournamentsLoading &&
+                    status != ConnectionStatus.RECONNECTING &&
+                    status != ConnectionStatus.DISCONNECTED &&
+                    status != ConnectionStatus.TERMINAL,
                 isSearching = waitingForConnection,
                 message = reconnectMessage
             )
@@ -996,6 +1005,7 @@ class GameController private constructor(
                 val wasRecoveringRoom = _uiState.value.currentRoomId != null
                 playerId = message.playerId
                 _uiState.update { it.withReadySession(message.playerId) }
+                if (_uiState.value.isTournamentOpen) refreshPublicTournaments()
                 startLatencyMonitoring()
                 if (accountDisplayName != null) {
                     scope.launch {

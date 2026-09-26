@@ -244,7 +244,7 @@ enum class TextKey {
     PublicTournamentHost, PublicTournamentSummary, PublicTournamentEntryFee,
     PublicTournamentJoinTitle, PublicTournamentJoinDescription, TournamentInviteEmpty,
     ServerTournamentNotPublic, ServerTournamentFull, ServerTournamentClosed,
-    ServerTournamentAlreadyJoined, ServerTournamentSaveFailed,
+    ServerTournamentAlreadyJoined, ServerFriendAlreadyJoinedTournament, ServerTournamentSaveFailed,
     PlayerCountUpper, EntryFee, Prize, GoldAmount, Participants, WaitingForPlayerEllipsis,
     TournamentHost, StartTournament, Bracket, CancelTournament, LeaveTournament,
     AutomaticMatchesDescription, Champion, FinalRound, SemifinalRound,

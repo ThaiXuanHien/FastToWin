@@ -54,6 +54,7 @@ class SocialScreenLocalizationTest {
             "TOURNAMENT_ALREADY_STARTED" to "ServerTournamentClosed",
             "TOURNAMENT_CANCELLED" to "TournamentCancelledNotice",
             "PLAYER_ALREADY_JOINED" to "ServerTournamentAlreadyJoined",
+            "FRIEND_ALREADY_JOINED_TOURNAMENT" to "ServerFriendAlreadyJoinedTournament",
             "PLAYER_BUSY" to "ServerPlayerActivityConflict",
             "NOT_ENOUGH_GOLD" to "ServerNotEnoughGold",
             "TOURNAMENT_SAVE_FAILED" to "ServerTournamentSaveFailed"
@@ -64,6 +65,25 @@ class SocialScreenLocalizationTest {
             listOf(AppLanguage.ENGLISH, AppLanguage.VIETNAMESE).forEach { language ->
                 kotlin.test.assertTrue(allLocalizationCatalogs.getValue(language).texts.getValue(checkNotNull(key)).isNotBlank())
             }
+        }
+    }
+
+    @Test
+    fun `already joined errors distinguish self from invited friend in both languages`() {
+        val expected = mapOf(
+            AppLanguage.ENGLISH to Pair(
+                "You have already joined this tournament.",
+                "This friend has already joined the tournament."
+            ),
+            AppLanguage.VIETNAMESE to Pair(
+                "Bạn đã tham gia giải đấu này.",
+                "Người bạn này đã tham gia giải đấu."
+            )
+        )
+        expected.forEach { (language, messages) ->
+            val catalog = allLocalizationCatalogs.getValue(language).texts
+            assertEquals(messages.first, catalog.getValue(TextKey.ServerTournamentAlreadyJoined))
+            assertEquals(messages.second, catalog.getValue(TextKey.ServerFriendAlreadyJoinedTournament))
         }
     }
 

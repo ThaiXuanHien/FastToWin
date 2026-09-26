@@ -196,6 +196,44 @@ class GameStateTest {
         fixture.controller.close()
     }
 
+    @Test
+    fun `public tournament clean close recovers loading and refreshes latest query once on reconnect`() = runTest {
+        val fixture = publicTournamentFixture()
+        fixture.session.server(ServerMessage.SessionReady("player-1"))
+        runCurrent()
+        fixture.controller.openTournament()
+        runCurrent()
+        assertEquals(1, fixture.session.sent.filterIsInstance<ClientMessage.GetPublicTournaments>().size)
+        assertTrue(fixture.controller.uiState.value.isPublicTournamentsLoading)
+
+        fixture.session.close()
+        runCurrent()
+        assertFalse(fixture.controller.uiState.value.isPublicTournamentsLoading)
+        fixture.controller.updatePublicTournamentFilters(PublicTournamentFilters(nameQuery = "Old"))
+        fixture.controller.updatePublicTournamentFilters(PublicTournamentFilters(
+            nameQuery = "  Finals  ", gameMode = ProtocolGameMode.ORDER, fee = TournamentFeeFilter.PAID
+        ))
+        advanceTimeBy(1_000)
+        runCurrent()
+        val reconnectedSession = fixture.transport.sessions.last()
+        reconnectedSession.server(ServerMessage.SessionReady("player-1"))
+        runCurrent()
+        assertEquals(
+            listOf(ClientMessage.GetPublicTournaments(PublicTournamentQuery(
+                nameQuery = "Finals", gameMode = ProtocolGameMode.ORDER, fee = TournamentFeeFilter.PAID
+            ))),
+            reconnectedSession.sent.filterIsInstance<ClientMessage.GetPublicTournaments>()
+        )
+        assertTrue(fixture.controller.uiState.value.isPublicTournamentsLoading)
+        advanceTimeBy(250)
+        runCurrent()
+        assertEquals(1, reconnectedSession.sent.filterIsInstance<ClientMessage.GetPublicTournaments>().size)
+        reconnectedSession.server(ServerMessage.PublicTournamentsData(emptyList()))
+        runCurrent()
+        assertFalse(fixture.controller.uiState.value.isPublicTournamentsLoading)
+        fixture.controller.close()
+    }
+
     private fun TestScope.publicTournamentFixture(): PublicTournamentFixture {
         val transport = PublicTournamentTransport()
         val controller = GameController(
@@ -203,7 +241,7 @@ class GameStateTest {
         )
         controller.openRoomBrowser("Tester")
         runCurrent()
-        return PublicTournamentFixture(controller, transport.session)
+        return PublicTournamentFixture(controller, transport)
     }
 
     private fun publicTournament(id: String) = PublicTournamentSummary(
@@ -662,13 +700,22 @@ class GameStateTest {
 
 private data class PublicTournamentFixture(
     val controller: GameController,
-    val session: PublicTournamentSession
-)
+    val transport: PublicTournamentTransport
+) {
+    val session get() = transport.sessions.first()
+}
 
 private class PublicTournamentTransport : SocketTransport {
-    val session = PublicTournamentSession()
+    val sessions = mutableListOf(PublicTournamentSession())
+    private var firstAttempt = true
 
     override suspend fun webSocket(url: String, block: suspend (SocketSession) -> Unit) {
+        val session = if (firstAttempt) {
+            firstAttempt = false
+            sessions.first()
+        } else {
+            PublicTournamentSession().also(sessions::add)
+        }
         block(session)
     }
 }

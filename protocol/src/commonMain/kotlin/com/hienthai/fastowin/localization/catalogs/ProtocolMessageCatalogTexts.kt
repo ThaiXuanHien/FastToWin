@@ -7,6 +7,7 @@ private val englishPublicTournamentMessageTexts = mapOf(
     TextKey.ServerTournamentFull to "This tournament is full. Refresh the list to find another.",
     TextKey.ServerTournamentClosed to "This tournament has already started or ended. Refresh the list to find another.",
     TextKey.ServerTournamentAlreadyJoined to "You have already joined this tournament.",
+    TextKey.ServerFriendAlreadyJoinedTournament to "This friend has already joined the tournament.",
     TextKey.ServerTournamentSaveFailed to "Your tournament entry could not be saved. Please try again.",
 )
 
@@ -88,6 +89,7 @@ internal val vietnameseProtocolMessageTexts = englishProtocolMessageTexts + mapO
     TextKey.ServerTournamentFull to "Giải này đã đủ người. Hãy làm mới danh sách để tìm giải khác.",
     TextKey.ServerTournamentClosed to "Giải này đã bắt đầu hoặc kết thúc. Hãy làm mới danh sách để tìm giải khác.",
     TextKey.ServerTournamentAlreadyJoined to "Bạn đã tham gia giải đấu này.",
+    TextKey.ServerFriendAlreadyJoinedTournament to "Người bạn này đã tham gia giải đấu.",
     TextKey.ServerTournamentSaveFailed to "Chưa thể lưu lượt tham gia giải của bạn. Vui lòng thử lại.",
     TextKey.ServerAuthRequired to "Hãy đăng nhập để tiếp tục.",
     TextKey.ServerRateLimited to "Bạn thao tác quá nhanh. Vui lòng thử lại sau {seconds} giây.",

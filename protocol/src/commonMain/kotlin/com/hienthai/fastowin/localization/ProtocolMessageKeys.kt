@@ -22,6 +22,7 @@ fun protocolTextKeyForCode(code: String): TextKey? = when (code) {
     "TOURNAMENT_FULL" -> TextKey.ServerTournamentFull
     "TOURNAMENT_ALREADY_STARTED" -> TextKey.ServerTournamentClosed
     "PLAYER_ALREADY_JOINED" -> TextKey.ServerTournamentAlreadyJoined
+    "FRIEND_ALREADY_JOINED_TOURNAMENT" -> TextKey.ServerFriendAlreadyJoinedTournament
     "TOURNAMENT_SAVE_FAILED" -> TextKey.ServerTournamentSaveFailed
     "CLAN_CREATION_INSUFFICIENT_FUNDS" -> TextKey.ServerClanCreationInsufficientFunds
     "TOURNAMENT_ACTIVE" -> TextKey.ServerTournamentActive

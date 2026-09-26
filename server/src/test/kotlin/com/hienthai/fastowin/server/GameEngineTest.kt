@@ -3056,6 +3056,23 @@ class GameEngineTest {
     }
 
     @Test
+    fun `host inviting an existing participant receives friend-context error`() = runTest {
+        val host = UUID.randomUUID().toString()
+        val friend = UUID.randomUUID().toString()
+        val engine = GameEngine(friendRepository = friendRepositoryForPair(host, friend))
+        engine.connectAccount(AuthenticatedAccount(UUID.fromString(host), "Host"))
+        engine.connectAccount(AuthenticatedAccount(UUID.fromString(friend), "Friend"))
+        val tournamentId = engine.handle(host, ClientMessage.CreateTournament(
+            "Open Cup", ProtocolGameMode.ORDER, 0, 4, TournamentVisibility.PUBLIC
+        )).tournamentUpdate().tournamentId
+        engine.handle(friend, ClientMessage.JoinPublicTournament(tournamentId)).tournamentUpdate()
+
+        val error = engine.handle(host, ClientMessage.InviteTournamentPlayer(tournamentId, friend))
+            .map(Delivery::message).filterIsInstance<ServerMessage.Error>().single()
+        assertEquals("FRIEND_ALREADY_JOINED_TOURNAMENT", error.code)
+    }
+
+    @Test
     fun `public tournament creation notice does not call the tournament private`() = runTest {
         val engine = GameEngine()
         val host = UUID.randomUUID().toString()

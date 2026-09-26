@@ -663,7 +663,7 @@ class GameEngine(
                 )
             }
             if (command.friendPlayerId in tournament.playerIds()) {
-                return@withLock listOf(error(playerId, "PLAYER_ALREADY_JOINED", legacyFallback("Người chơi đã ở trong giải.")))
+                return@withLock listOf(error(playerId, "FRIEND_ALREADY_JOINED_TOURNAMENT", legacyFallback("Người chơi đã ở trong giải.")))
             }
             val friendId = command.friendPlayerId
             if (activeTournamentFor(friendId) != null || roomFor(friendId) != null) {
