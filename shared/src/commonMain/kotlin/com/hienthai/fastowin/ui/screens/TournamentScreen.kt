@@ -258,23 +258,25 @@ private fun PublicTournamentSection(
     onRefresh: () -> Unit,
     onJoin: (String) -> Unit
 ) {
-    var pendingJoin by remember { mutableStateOf<PublicTournamentSummary?>(null) }
-    // A changed fee or removed listing invalidates the previous confirmation.
-    val currentPending = pendingJoin?.takeIf { pending ->
-        tournaments.any { it.tournamentId == pending.tournamentId && it.entryFee == pending.entryFee }
+    var pendingJoinId by remember { mutableStateOf<String?>(null) }
+    val currentPending = tournaments.firstOrNull {
+        it.tournamentId == pendingJoinId && it.entryFee > 0
     }
-    LaunchedEffect(currentPending, isConnected) {
-        if (currentPending == null || !isConnected) pendingJoin = null
+    LaunchedEffect(currentPending) {
+        if (currentPending == null) pendingJoinId = null
     }
-    if (currentPending != null && isConnected) {
+    if (currentPending != null) {
+        val canConfirm = isConnected && !isLoading && !isJoining
         PaidTournamentJoinDialog(
             tournament = currentPending,
-            enabled = !isJoining,
+            enabled = canConfirm,
             onConfirm = {
-                pendingJoin = null
-                onJoin(currentPending.tournamentId)
+                if (canConfirm) {
+                    pendingJoinId = null
+                    onJoin(currentPending.tournamentId)
+                }
             },
-            onDismiss = { pendingJoin = null }
+            onDismiss = { pendingJoinId = null }
         )
     }
     SectionLabel(localized(TextKey.PublicTournaments))
@@ -312,7 +314,7 @@ private fun PublicTournamentSection(
             enabled = isConnected && !isJoining && !isLoading && tournament.playerCount < tournament.maxPlayers,
             onJoin = {
                 if (tournament.entryFee == 0) onJoin(tournament.tournamentId)
-                else pendingJoin = tournament
+                else pendingJoinId = tournament.tournamentId
             }
         )
     }
@@ -419,7 +421,12 @@ private fun PaidTournamentJoinDialog(
 ) {
     ArcadeDialog(
         title = localized(TextKey.PublicTournamentJoinTitle),
-        subtitle = localized(TextKey.PublicTournamentJoinDescription, "tournament" to tournament.name, "fee" to tournament.entryFee),
+        subtitle = localized(
+            TextKey.PublicTournamentJoinDescription,
+            "tournament" to tournament.name,
+            "fee" to tournament.entryFee,
+            "prize" to tournament.prizePool
+        ),
         onDismissRequest = onDismiss
     ) {
         ArcadeActionButton(

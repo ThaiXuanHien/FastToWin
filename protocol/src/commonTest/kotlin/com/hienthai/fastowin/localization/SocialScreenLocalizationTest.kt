@@ -23,7 +23,7 @@ class SocialScreenLocalizationTest {
             Triple("PublicTournamentSummary", "{mode} • {current}/{max} players • Prize: {prize} Gold", "{mode} • {current}/{max} người • Giải thưởng: {prize} Vàng"),
             Triple("PublicTournamentEntryFee", "Entry: {fee} Gold", "Phí tham gia: {fee} Vàng"),
             Triple("PublicTournamentJoinTitle", "Join tournament?", "Tham gia giải đấu?"),
-            Triple("PublicTournamentJoinDescription", "Join {tournament} for {fee} Gold? The fee is deducted when you join.", "Tham gia {tournament} với phí {fee} Vàng? Phí sẽ được trừ khi bạn tham gia."),
+            Triple("PublicTournamentJoinDescription", "Join {tournament} for {fee} Gold? Current prize pool: {prize} Gold. The fee is deducted when you join.", "Tham gia {tournament} với phí {fee} Vàng? Quỹ thưởng hiện tại: {prize} Vàng. Phí sẽ được trừ khi bạn tham gia."),
             Triple("TournamentInviteEmpty", "No eligible friends to invite. Add friends first; offline friends can receive invitations too.", "Chưa có bạn phù hợp để mời. Hãy kết bạn trước; bạn bè ngoại tuyến cũng nhận được lời mời.")
         )
         copy.forEach { (name, english, vietnamese) ->
@@ -31,6 +31,19 @@ class SocialScreenLocalizationTest {
             assertEquals(english, allLocalizationCatalogs.getValue(AppLanguage.ENGLISH).texts.getValue(key), name)
             assertEquals(vietnamese, allLocalizationCatalogs.getValue(AppLanguage.VIETNAMESE).texts.getValue(key), name)
         }
+    }
+
+    @Test
+    fun `paid confirmation renders name current fee and prize in both languages`() {
+        val arguments = mapOf("tournament" to "Updated Cup", "fee" to 150, "prize" to 900)
+        assertEquals(
+            "Join Updated Cup for 150 Gold? Current prize pool: 900 Gold. The fee is deducted when you join.",
+            LocalizationService(AppLanguage.ENGLISH).text(TextKey.PublicTournamentJoinDescription, arguments)
+        )
+        assertEquals(
+            "Tham gia Updated Cup với phí 150 Vàng? Quỹ thưởng hiện tại: 900 Vàng. Phí sẽ được trừ khi bạn tham gia.",
+            LocalizationService(AppLanguage.VIETNAMESE).text(TextKey.PublicTournamentJoinDescription, arguments)
+        )
     }
 
     @Test

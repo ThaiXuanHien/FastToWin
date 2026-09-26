@@ -54,6 +54,9 @@ class TournamentScreenTest {
         var joined: String? = null
         setDiscoveryContent(publicTournamentState(100), onJoin = { joined = it })
         composeRule.onNodeWithTag("public_tournament_join_tournament-1").performScrollTo().performClick()
+        composeRule.onNodeWithText(
+            "Tham gia Weekend Cup với phí 100 Vàng? Quỹ thưởng hiện tại: 400 Vàng. Phí sẽ được trừ khi bạn tham gia."
+        ).assertIsDisplayed()
         composeRule.runOnIdle { assertNull(joined) }
         composeRule.onNodeWithTag("confirm_public_tournament_join").performClick()
         composeRule.runOnIdle { assertEquals("tournament-1", joined) }
@@ -67,6 +70,86 @@ class TournamentScreenTest {
         composeRule.onNodeWithTag("cancel_public_tournament_join").performClick()
         composeRule.onNodeWithTag("confirm_public_tournament_join").assertDoesNotExist()
         composeRule.runOnIdle { assertNull(joined) }
+    }
+
+    @Test
+    fun paidConfirmationUsesUpdatedSameIdNameFeeAndPrize() {
+        val state = mutableStateOf(publicTournamentState(100))
+        var joined: String? = null
+        setMutableDiscoveryContent(state) { joined = it }
+        composeRule.onNodeWithTag("public_tournament_join_tournament-1").performScrollTo().performClick()
+        composeRule.runOnIdle {
+            state.value = state.value.copy(publicTournaments = listOf(
+                state.value.publicTournaments.single().copy(name = "Updated Cup", entryFee = 150, prizePool = 900)
+            ))
+        }
+        composeRule.onNodeWithText(
+            "Tham gia Updated Cup với phí 150 Vàng? Quỹ thưởng hiện tại: 900 Vàng. Phí sẽ được trừ khi bạn tham gia."
+        ).assertIsDisplayed()
+        composeRule.onNodeWithTag("confirm_public_tournament_join").performClick()
+        composeRule.runOnIdle { assertEquals("tournament-1", joined) }
+    }
+
+    @Test
+    fun paidConfirmationCannotJoinWhileRefreshingJoiningOrDisconnected() {
+        val initialState = publicTournamentState(100)
+        val state = mutableStateOf(initialState)
+        var joined: String? = null
+        setMutableDiscoveryContent(state) { joined = it }
+        composeRule.onNodeWithTag("public_tournament_join_tournament-1").performScrollTo().performClick()
+        listOf(
+            initialState.copy(isPublicTournamentsLoading = true),
+            initialState.copy(isTournamentLoading = true),
+            initialState.copy(connectionStatus = ConnectionStatus.RECONNECTING)
+        ).forEach { unavailableState ->
+            composeRule.runOnIdle { state.value = unavailableState }
+            composeRule.onNodeWithTag("confirm_public_tournament_join").assertIsNotEnabled().performClick()
+            composeRule.runOnIdle { assertNull(joined) }
+        }
+        composeRule.runOnIdle { state.value = initialState }
+        composeRule.onNodeWithTag("confirm_public_tournament_join").performClick()
+        composeRule.runOnIdle { assertEquals("tournament-1", joined) }
+    }
+
+    @Test
+    fun removingPendingListingDismissesConfirmationWithoutJoining() {
+        assertPendingListingInvalidated(emptyList())
+    }
+
+    @Test
+    fun pendingListingBecomingFreeDismissesConfirmationWithoutJoining() {
+        assertPendingListingInvalidated(publicTournamentState(0).publicTournaments)
+    }
+
+    private fun assertPendingListingInvalidated(replacement: List<PublicTournamentSummary>) {
+        val initialState = publicTournamentState(100)
+        val state = mutableStateOf(initialState)
+        var joined: String? = null
+        setMutableDiscoveryContent(state) { joined = it }
+        composeRule.onNodeWithTag("public_tournament_join_tournament-1").performScrollTo().performClick()
+        composeRule.runOnIdle { state.value = initialState.copy(publicTournaments = replacement) }
+        composeRule.onNodeWithTag("confirm_public_tournament_join").assertDoesNotExist()
+        composeRule.runOnIdle {
+            assertNull(joined)
+            state.value = initialState
+        }
+        composeRule.onNodeWithTag("confirm_public_tournament_join").assertDoesNotExist()
+    }
+
+    private fun setMutableDiscoveryContent(
+        state: androidx.compose.runtime.State<GameState>,
+        onJoin: (String) -> Unit
+    ) {
+        composeRule.setContent {
+            DeviceConfigurationOverride(DeviceConfigurationOverride.ForcedSize(DpSize(375.dp, 832.dp)) then
+                DeviceConfigurationOverride.FontScale(1.4f)) {
+                FastToWinTheme { TournamentScreen(
+                    state = state.value, onBack = {}, onCreate = { _, _, _, _, _ -> },
+                    onInvite = {}, onRespondInvitation = { _, _ -> }, onStart = {}, onLeave = {},
+                    onOpenFriendProfile = {}, onJoinPublic = onJoin
+                ) }
+            }
+        }
     }
 
     @Test

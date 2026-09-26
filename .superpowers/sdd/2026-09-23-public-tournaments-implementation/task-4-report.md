@@ -79,3 +79,30 @@ Not verified on hardware:
 - Server-side admission remains authoritative if a lobby fills or starts between discovery and confirmation; mapped errors explain recovery.
 - The existing request protocol has no response query identifier (Task 3 limitation), so response ordering can still affect displayed results.
 - Device execution and actual visual accessibility verification remain the main follow-up; there are no known failing host tests or compilation targets.
+
+## Review round 1 — Current paid-join confirmation
+
+Addressed both Important review findings:
+
+1. Paid confirmation now includes tournament name, current entry fee, and current prize pool. The English and Vietnamese templates accept all three arguments. Tests assert the exact resolved sentences in both languages; the Compose paid-join case also asserts the displayed name/fee/prize copy.
+2. Pending UI state stores only tournamentId. Each render resolves the matching latest PublicTournamentSummary, so same-ID name/fee/prize updates immediately change the dialog. Removal or transition to a free listing dismisses the dialog and clears pending selection without joining. Refreshing, joining, and disconnected states disable confirmation; the callback has the same explicit guard. The dialog can resume confirmation when the connection/loading state recovers.
+
+The previous snapshot-retention/fee-change-invalidation behavior documented above is superseded by this round.
+
+### RED/GREEN evidence
+
+- Added four Compose regression cases before production changes: same-ID updates, refreshing/joining/disconnected disabled confirmation with no callback, listing removal, and transition to free. Extended the original paid-join case with exact displayed-content coverage. Mutable-state fixtures retain the 375dp / 1.4 font-scale configuration.
+- Added a localization rendering test and updated the expected templates before production changes.
+- RED command: `./gradlew.bat :protocol:jvmTest --tests '*SocialScreenLocalizationTest' :app:compileDevDebugAndroidTestKotlin --continue --no-daemon`. Twelve localization cases ran; two failed with ComparisonFailure because the old template omitted the prize pool. AndroidTest sources compiled.
+- `adb devices` still listed no devices. Consequently the new state-transition Compose assertions have not been executed; only their compilation was verified.
+- GREEN command: `./gradlew.bat :protocol:jvmTest :shared:testAndroidHostTest :app:compileDevDebugAndroidTestKotlin :webApp:compileKotlinJs :webApp:compileKotlinWasmJs --continue --no-daemon`.
+- Result: BUILD SUCCESSFUL in 50s, exit 0. Protocol 87/87 tests passed; shared 150/150 passed. Android app and AndroidTest, web JS, and web Wasm compiled. TournamentScreenTest now has 22 compiled cases.
+- `git diff --check` passed. Existing SDK/Wasm warnings remain.
+
+### Round-1 self-review
+
+- The fee and prize come from the same latest summary, not independent cached fields.
+- Guards prevent confirmation during refresh/disconnection/join, while cancellation remains available.
+- Invalidated selections do not reopen if the old listing later reappears.
+- Existing arcade dialog/buttons, touch-target sizes, test tags, and compact layout are preserved; no new visual language or layout-shifting selection state was introduced.
+- Remaining concern is unchanged: device interaction and visual/accessibility checks require an attached device. The localization assertions were executed, but compilation alone does not establish runtime Compose behavior.
