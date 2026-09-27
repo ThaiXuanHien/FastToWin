@@ -135,6 +135,118 @@ test('iOS standalone restores the full viewport after keyboard dismissal settles
   await expect(page.locator('#fastToWinRoot')).toHaveCSS('height', '844px');
 });
 
+test('iOS standalone preserves the full viewport baseline across native input focus transfer', async ({ page }) => {
+  const pwaScript = await readFile(
+    new URL('../../webApp/src/wasmJsMain/resources/pwa.js', import.meta.url),
+    'utf8',
+  );
+  await page.setContent(`
+    <style>
+      #fastToWinRoot { height: var(--fast-to-win-viewport-height, 844px); }
+    </style>
+    <main id="fastToWinRoot">
+      <input data-fasttowin-native-input aria-label="First native input">
+      <input data-fasttowin-native-input aria-label="Second native input">
+    </main>
+  `);
+  await page.evaluate(() => {
+    let viewportHeight = 844;
+    const listeners = new Map();
+    Object.defineProperty(navigator, 'standalone', { configurable: true, value: true });
+    Object.defineProperty(navigator, 'userAgent', {
+      configurable: true,
+      value: 'Mozilla/5.0 (iPhone; CPU iPhone OS 27_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148',
+    });
+    Object.defineProperty(window, 'visualViewport', {
+      configurable: true,
+      value: {
+        get height() { return viewportHeight; },
+        offsetTop: 0,
+        addEventListener(type, listener) { listeners.set(type, listener); },
+        removeEventListener(type) { listeners.delete(type); },
+      },
+    });
+    window.__openKeyboard = () => {
+      viewportHeight = 500;
+      listeners.get('resize')?.(new Event('resize'));
+    };
+    window.__finishKeyboardDismissalWithoutResize = () => { viewportHeight = 844; };
+  });
+  await page.addScriptTag({ content: pwaScript });
+
+  await page.getByRole('textbox', { name: 'First native input' }).focus();
+  await page.evaluate(() => window.__openKeyboard());
+  await expect(page.locator('#fastToWinRoot')).toHaveCSS('height', '500px');
+  const secondInput = page.getByRole('textbox', { name: 'Second native input' });
+  await secondInput.focus();
+  await secondInput.blur();
+  await page.waitForTimeout(250);
+  await page.evaluate(() => window.__finishKeyboardDismissalWithoutResize());
+
+  await expect(page.locator('#fastToWinRoot')).toHaveCSS('height', '844px');
+});
+
+test('iOS standalone cancels an old recovery deadline and finishes the next one without an animation frame', async ({ page }) => {
+  const pwaScript = await readFile(
+    new URL('../../webApp/src/wasmJsMain/resources/pwa.js', import.meta.url),
+    'utf8',
+  );
+  await page.setContent(`
+    <style>
+      #fastToWinRoot { height: var(--fast-to-win-viewport-height, 844px); }
+    </style>
+    <main id="fastToWinRoot">
+      <input data-fasttowin-native-input aria-label="First native input">
+      <input data-fasttowin-native-input aria-label="Second native input">
+    </main>
+  `);
+  await page.evaluate(() => {
+    let viewportHeight = 844;
+    const listeners = new Map();
+    Object.defineProperty(navigator, 'standalone', { configurable: true, value: true });
+    Object.defineProperty(navigator, 'userAgent', {
+      configurable: true,
+      value: 'Mozilla/5.0 (iPhone; CPU iPhone OS 27_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148',
+    });
+    Object.defineProperty(window, 'visualViewport', {
+      configurable: true,
+      value: {
+        get height() { return viewportHeight; },
+        offsetTop: 0,
+        addEventListener(type, listener) { listeners.set(type, listener); },
+        removeEventListener(type) { listeners.delete(type); },
+      },
+    });
+    window.requestAnimationFrame = () => 1;
+    window.cancelAnimationFrame = () => {};
+    window.__setViewportWithoutResize = height => { viewportHeight = height; };
+    window.__openKeyboard = () => {
+      viewportHeight = 500;
+      listeners.get('resize')?.(new Event('resize'));
+    };
+  });
+  await page.addScriptTag({ content: pwaScript });
+
+  const root = page.locator('#fastToWinRoot');
+  const firstInput = page.getByRole('textbox', { name: 'First native input' });
+  const secondInput = page.getByRole('textbox', { name: 'Second native input' });
+  await firstInput.focus();
+  await page.evaluate(() => window.__openKeyboard());
+  await expect(root).toHaveCSS('height', '500px');
+  await page.waitForTimeout(200);
+  await firstInput.blur();
+  await page.waitForTimeout(100);
+  await secondInput.focus();
+  await page.evaluate(() => window.__setViewportWithoutResize(700));
+  await page.waitForTimeout(1150);
+  await expect(root).toHaveCSS('height', '500px');
+
+  await secondInput.blur();
+  await page.waitForTimeout(250);
+  await page.evaluate(() => window.__setViewportWithoutResize(844));
+  await expect(root).toHaveCSS('height', '844px', { timeout: 1500 });
+});
+
 test('Android browser uses the visible viewport instead of the hidden browser chrome area', async ({ page }) => {
   const pwaScript = await readFile(
     new URL('../../webApp/src/wasmJsMain/resources/pwa.js', import.meta.url),

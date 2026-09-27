@@ -15,11 +15,11 @@
     let pendingSettle = 0;
     let recoveryTimer = 0;
     let recoveryFrame = 0;
+    let recoveryDeadline = 0;
     let preKeyboardViewportHeight = 0;
     let recoveryStartedAt = 0;
     let recoveryLastHeight = 0;
     let recoveryLastSampleAt = 0;
-    let recoveryStableSamples = 0;
 
     function currentViewportHeight() {
         const viewport = window.visualViewport;
@@ -55,13 +55,14 @@
     function cancelViewportRecovery() {
         if (recoveryTimer) window.clearTimeout(recoveryTimer);
         if (recoveryFrame) window.cancelAnimationFrame(recoveryFrame);
+        if (recoveryDeadline) window.clearTimeout(recoveryDeadline);
         recoveryTimer = 0;
         recoveryFrame = 0;
+        recoveryDeadline = 0;
         preKeyboardViewportHeight = 0;
         recoveryStartedAt = 0;
         recoveryLastHeight = 0;
         recoveryLastSampleAt = 0;
-        recoveryStableSamples = 0;
     }
 
     function finishViewportRecovery() {
@@ -85,14 +86,10 @@
             if (Math.abs(height - recoveryLastHeight) > 0.5) {
                 recoveryLastHeight = height;
                 recoveryLastSampleAt = now;
-                recoveryStableSamples = 0;
-            } else if (stableForLongEnough) {
-                recoveryLastSampleAt = now;
-                recoveryStableSamples += 1;
             }
 
             const elapsed = now - recoveryStartedAt;
-            if (recoveryStableSamples >= 2 || elapsed >= 1200) {
+            if (stableForLongEnough || elapsed >= 1200) {
                 finishViewportRecovery();
                 return;
             }
@@ -104,7 +101,7 @@
                     return;
                 }
                 scheduleViewportRecoverySample();
-            }, Math.min(100, 1200 - elapsed));
+            }, 100);
         });
     }
 
@@ -116,8 +113,11 @@
     document.addEventListener('focusin', function (event) {
         if (!(event.target instanceof Element) ||
             !event.target.matches('[data-fasttowin-native-input]')) return;
+        const baseline = recoveryStartedAt
+            ? preKeyboardViewportHeight
+            : currentViewportHeight();
         cancelViewportRecovery();
-        preKeyboardViewportHeight = currentViewportHeight();
+        preKeyboardViewportHeight = baseline;
     });
     document.addEventListener('focusout', function (event) {
         if (!(event.target instanceof Element) ||
@@ -126,6 +126,10 @@
         cancelViewportRecovery();
         preKeyboardViewportHeight = baseline;
         recoveryStartedAt = performance.now();
+        recoveryDeadline = window.setTimeout(function () {
+            recoveryDeadline = 0;
+            finishViewportRecovery();
+        }, 1200);
         scheduleViewportRecoverySample();
     });
     document.addEventListener('visibilitychange', function () {
