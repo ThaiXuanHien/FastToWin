@@ -123,3 +123,21 @@ test('numeric tournament fee keeps typed digits in browser order', async ({ acto
   await expect.poll(() => numeric.evaluate(input => input.selectionStart)).toBe(5);
   await expect(numeric).toHaveAttribute('autocapitalize', 'none');
 });
+
+test('tournament example disappears as soon as native name input has text', async ({ actors }) => {
+  const player = await actors('Tournament placeholder');
+  await login(player);
+  await click(player.page, tag(player.page, 'home_tournament'));
+  await expect(tag(player.page, 'tournament_screen')).toBeAttached();
+  await click(player.page, tag(player.page, 'tournament_name'));
+
+  const tournamentName = player.page.locator(
+    'input[data-fasttowin-native-input][aria-label="Tên giải đấu"]',
+  );
+  await expect(tournamentName).toBeVisible();
+  await expect(tournamentName).toHaveAttribute('placeholder', 'VD: Cúp Chiến Thần');
+  await expect.poll(() => tournamentName.evaluate(input => input.matches(':placeholder-shown'))).toBe(true);
+  await tournamentName.fill('Cúp cuối tuần');
+  await expect(tournamentName).toHaveValue('Cúp cuối tuần');
+  await expect.poll(() => tournamentName.evaluate(input => input.matches(':placeholder-shown'))).toBe(false);
+});
