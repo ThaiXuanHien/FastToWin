@@ -89,6 +89,7 @@ fun AppOutlinedTextField(
                     value = value, onValueChange = onValueChange,
                     modifier = Modifier.fillMaxWidth().heightIn(min = 24.dp * minLines),
                     enabled = enabled, readOnly = readOnly, label = label.orEmpty(),
+                    placeholder = placeholder.orEmpty(),
                     textStyle = textStyle.copy(color = textColor),
                     keyboardOptions = keyboardOptions,
                     visualTransformation = visualTransformation,
@@ -110,7 +111,7 @@ fun AppOutlinedTextField(
             enabled = enabled, singleLine = singleLine,
             visualTransformation = visualTransformation,
             interactionSource = interactionSource, isError = isError,
-            label = labelContent, placeholder = placeholderContent,
+            label = labelContent, placeholder = null,
             leadingIcon = leadingIcon, trailingIcon = trailingIcon,
             prefix = prefix, suffix = suffix, supportingText = supportingText,
             colors = colors,
@@ -127,7 +128,8 @@ internal expect val usesNativeWebTextInput: Boolean
 @Composable
 internal expect fun NativeWebTextInput(
     value: String, onValueChange: (String) -> Unit, modifier: Modifier,
-    enabled: Boolean, readOnly: Boolean, label: String, textStyle: TextStyle,
+    enabled: Boolean, readOnly: Boolean, label: String, placeholder: String,
+    textStyle: TextStyle,
     keyboardOptions: KeyboardOptions, visualTransformation: VisualTransformation,
     singleLine: Boolean, minLines: Int, maxLines: Int,
     interactionSource: MutableInteractionSource, onImeAction: (ImeAction) -> Unit,

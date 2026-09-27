@@ -13,7 +13,8 @@ internal actual val usesNativeWebTextInput = false
 @Composable
 internal actual fun NativeWebTextInput(
     value: String, onValueChange: (String) -> Unit, modifier: Modifier,
-    enabled: Boolean, readOnly: Boolean, label: String, textStyle: TextStyle,
+    enabled: Boolean, readOnly: Boolean, label: String, placeholder: String,
+    textStyle: TextStyle,
     keyboardOptions: KeyboardOptions, visualTransformation: VisualTransformation,
     singleLine: Boolean, minLines: Int, maxLines: Int,
     interactionSource: MutableInteractionSource, onImeAction: (ImeAction) -> Unit,

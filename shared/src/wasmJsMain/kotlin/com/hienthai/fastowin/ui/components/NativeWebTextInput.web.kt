@@ -35,7 +35,8 @@ private const val CONTROLLED_RECONCILIATION_DELAY_MS = 50
 @Composable
 internal actual fun NativeWebTextInput(
     value: String, onValueChange: (String) -> Unit, modifier: Modifier,
-    enabled: Boolean, readOnly: Boolean, label: String, textStyle: TextStyle,
+    enabled: Boolean, readOnly: Boolean, label: String, placeholder: String,
+    textStyle: TextStyle,
     keyboardOptions: KeyboardOptions, visualTransformation: VisualTransformation,
     singleLine: Boolean, minLines: Int, maxLines: Int,
     interactionSource: MutableInteractionSource, onImeAction: (ImeAction) -> Unit,
@@ -138,6 +139,11 @@ internal actual fun NativeWebTextInput(
                 element.rows = minLines.coerceAtMost(maxLines)
             }
             element.setAttribute("aria-label", label)
+            if (placeholder.isEmpty()) {
+                element.removeAttribute("placeholder")
+            } else {
+                element.setAttribute("placeholder", placeholder)
+            }
             element.setAttribute("inputmode", when (keyboardOptions.keyboardType) {
                 KeyboardType.Email -> "email"
                 KeyboardType.Number, KeyboardType.NumberPassword -> "numeric"
