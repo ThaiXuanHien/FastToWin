@@ -88,6 +88,53 @@ test('iOS standalone refreshes a stale first-paint viewport on pageshow', async 
   await expect(page.locator('#fastToWinRoot')).toHaveCSS('height', '844px');
 });
 
+test('iOS standalone restores the full viewport after keyboard dismissal settles late', async ({ page }) => {
+  const pwaScript = await readFile(
+    new URL('../../webApp/src/wasmJsMain/resources/pwa.js', import.meta.url),
+    'utf8',
+  );
+  await page.setContent(`
+    <style>
+      #fastToWinRoot { height: var(--fast-to-win-viewport-height, 844px); }
+    </style>
+    <main id="fastToWinRoot"><input data-fasttowin-native-input></main>
+  `);
+  await page.evaluate(() => {
+    let viewportHeight = 844;
+    const listeners = new Map();
+    Object.defineProperty(navigator, 'standalone', { configurable: true, value: true });
+    Object.defineProperty(navigator, 'userAgent', {
+      configurable: true,
+      value: 'Mozilla/5.0 (iPhone; CPU iPhone OS 27_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148',
+    });
+    Object.defineProperty(window, 'visualViewport', {
+      configurable: true,
+      value: {
+        get height() { return viewportHeight; },
+        offsetTop: 0,
+        addEventListener(type, listener) { listeners.set(type, listener); },
+        removeEventListener(type) { listeners.delete(type); },
+      },
+    });
+    window.__openKeyboard = () => {
+      viewportHeight = 500;
+      listeners.get('resize')?.(new Event('resize'));
+    };
+    window.__finishKeyboardDismissalWithoutResize = () => { viewportHeight = 844; };
+  });
+  await page.addScriptTag({ content: pwaScript });
+
+  const input = page.locator('[data-fasttowin-native-input]');
+  await input.focus();
+  await page.evaluate(() => window.__openKeyboard());
+  await expect(page.locator('#fastToWinRoot')).toHaveCSS('height', '500px');
+  await input.blur();
+  await page.waitForTimeout(250);
+  await page.evaluate(() => window.__finishKeyboardDismissalWithoutResize());
+
+  await expect(page.locator('#fastToWinRoot')).toHaveCSS('height', '844px');
+});
+
 test('Android browser uses the visible viewport instead of the hidden browser chrome area', async ({ page }) => {
   const pwaScript = await readFile(
     new URL('../../webApp/src/wasmJsMain/resources/pwa.js', import.meta.url),
