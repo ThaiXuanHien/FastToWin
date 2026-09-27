@@ -13,6 +13,13 @@
 
     let pendingFrame = 0;
     let pendingSettle = 0;
+    let recoveryTimer = 0;
+    let recoveryFrame = 0;
+    let preKeyboardViewportHeight = 0;
+    let recoveryStartedAt = 0;
+    let recoveryLastHeight = 0;
+    let recoveryLastSampleAt = 0;
+    let recoveryStableSamples = 0;
 
     function currentViewportHeight() {
         const viewport = window.visualViewport;
@@ -45,11 +52,82 @@
         }, 160);
     }
 
+    function cancelViewportRecovery() {
+        if (recoveryTimer) window.clearTimeout(recoveryTimer);
+        if (recoveryFrame) window.cancelAnimationFrame(recoveryFrame);
+        recoveryTimer = 0;
+        recoveryFrame = 0;
+        preKeyboardViewportHeight = 0;
+        recoveryStartedAt = 0;
+        recoveryLastHeight = 0;
+        recoveryLastSampleAt = 0;
+        recoveryStableSamples = 0;
+    }
+
+    function finishViewportRecovery() {
+        publishViewportHeight();
+        cancelViewportRecovery();
+    }
+
+    function scheduleViewportRecoverySample() {
+        recoveryFrame = window.requestAnimationFrame(function () {
+            recoveryFrame = 0;
+            publishViewportHeight();
+
+            const height = currentViewportHeight();
+            const now = performance.now();
+            const returnedToBaseline = !preKeyboardViewportHeight ||
+                height >= preKeyboardViewportHeight - 1;
+            const stableForLongEnough = returnedToBaseline &&
+                Math.abs(height - recoveryLastHeight) <= 0.5 &&
+                now - recoveryLastSampleAt >= 100;
+
+            if (Math.abs(height - recoveryLastHeight) > 0.5) {
+                recoveryLastHeight = height;
+                recoveryLastSampleAt = now;
+                recoveryStableSamples = 0;
+            } else if (stableForLongEnough) {
+                recoveryLastSampleAt = now;
+                recoveryStableSamples += 1;
+            }
+
+            const elapsed = now - recoveryStartedAt;
+            if (recoveryStableSamples >= 2 || elapsed >= 1200) {
+                finishViewportRecovery();
+                return;
+            }
+
+            recoveryTimer = window.setTimeout(function () {
+                recoveryTimer = 0;
+                if (performance.now() - recoveryStartedAt >= 1200) {
+                    finishViewportRecovery();
+                    return;
+                }
+                scheduleViewportRecoverySample();
+            }, Math.min(100, 1200 - elapsed));
+        });
+    }
+
     pwa.viewport = { sync: syncViewportHeight };
 
     window.addEventListener('resize', syncViewportHeight);
     window.addEventListener('pageshow', syncViewportHeight);
     window.addEventListener('focus', syncViewportHeight);
+    document.addEventListener('focusin', function (event) {
+        if (!(event.target instanceof Element) ||
+            !event.target.matches('[data-fasttowin-native-input]')) return;
+        cancelViewportRecovery();
+        preKeyboardViewportHeight = currentViewportHeight();
+    });
+    document.addEventListener('focusout', function (event) {
+        if (!(event.target instanceof Element) ||
+            !event.target.matches('[data-fasttowin-native-input]')) return;
+        const baseline = preKeyboardViewportHeight;
+        cancelViewportRecovery();
+        preKeyboardViewportHeight = baseline;
+        recoveryStartedAt = performance.now();
+        scheduleViewportRecoverySample();
+    });
     document.addEventListener('visibilitychange', function () {
         if (document.visibilityState === 'visible') syncViewportHeight();
     });
