@@ -124,17 +124,30 @@ test('numeric tournament fee keeps typed digits in browser order', async ({ acto
   await expect(numeric).toHaveAttribute('autocapitalize', 'none');
 });
 
-test('tournament example disappears as soon as native name input has text', async ({ actors }) => {
+test('labeled tournament example appears only while focused and empty', async ({ actors }) => {
   const player = await actors('Tournament placeholder');
   await login(player);
   await click(player.page, tag(player.page, 'home_tournament'));
   await expect(tag(player.page, 'tournament_screen')).toBeAttached();
-  await click(player.page, tag(player.page, 'tournament_name'));
 
   const tournamentName = player.page.locator(
     'input[data-fasttowin-native-input][aria-label="Tên giải đấu"]',
   );
+  for (let attempt = 0; attempt < 12 && !(await tournamentName.isVisible()); attempt++) {
+    const viewport = player.page.viewportSize();
+    await player.page.mouse.move(viewport.width / 2, viewport.height / 2);
+    await player.page.mouse.wheel(0, 450);
+    await player.page.waitForTimeout(150);
+  }
   await expect(tournamentName).toBeVisible();
+  await expect(tournamentName).not.toBeFocused();
+  const beforeFocus = await tournamentName.evaluate(input => ({
+    placeholder: input.getAttribute('placeholder'),
+    placeholderShown: input.matches(':placeholder-shown'),
+  }));
+  expect(beforeFocus).toEqual({ placeholder: null, placeholderShown: false });
+
+  await tournamentName.focus();
   await expect(tournamentName).toHaveAttribute('placeholder', 'VD: Cúp Chiến Thần');
   await expect.poll(() => tournamentName.evaluate(input => input.matches(':placeholder-shown'))).toBe(true);
   await tournamentName.fill('Cúp cuối tuần');

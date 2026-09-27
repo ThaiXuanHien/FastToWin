@@ -139,7 +139,7 @@ internal actual fun NativeWebTextInput(
                 element.rows = minLines.coerceAtMost(maxLines)
             }
             element.setAttribute("aria-label", label)
-            if (placeholder.isEmpty()) {
+            if (placeholder.isEmpty() || (label.isNotEmpty() && focus == null)) {
                 element.removeAttribute("placeholder")
             } else {
                 element.setAttribute("placeholder", placeholder)
