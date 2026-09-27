@@ -138,6 +138,9 @@ test('tournament example disappears as soon as native name input has text', asyn
   await expect(tournamentName).toHaveAttribute('placeholder', 'VD: Cúp Chiến Thần');
   await expect.poll(() => tournamentName.evaluate(input => input.matches(':placeholder-shown'))).toBe(true);
   await tournamentName.fill('Cúp cuối tuần');
-  await expect(tournamentName).toHaveValue('Cúp cuối tuần');
-  await expect.poll(() => tournamentName.evaluate(input => input.matches(':placeholder-shown'))).toBe(false);
+  const afterFill = await tournamentName.evaluate(input => ({
+    value: input.value,
+    placeholderShown: input.matches(':placeholder-shown'),
+  }));
+  expect(afterFill).toEqual({ value: 'Cúp cuối tuần', placeholderShown: false });
 });
