@@ -81,7 +81,7 @@ fun runningTournament() = ArcadeScreenshotFrame {
     TournamentScreen(
         state = ArcadeScreenshotFixtures.tournamentState(),
         onBack = {},
-        onCreate = { _, _, _, _ -> },
+        onCreate = { _, _, _, _, _ -> },
         onInvite = {},
         onRespondInvitation = { _, _ -> },
         onStart = {},
