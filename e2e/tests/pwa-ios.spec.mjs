@@ -217,6 +217,27 @@ test('iOS keyboard recovery receives focus events from a dialog shadow root', as
   await expect(page.locator('#fastToWinRoot')).toHaveCSS('height', `${page.viewportSize().height}px`);
 });
 
+test('iOS 27 Home reserves the tint inset in the real Compose layout', async ({ actors }, testInfo) => {
+  const player = await actors('iOS 27 header', { iosStandalone: true });
+  const { page } = player;
+  await page.setViewportSize({ width: 402, height: 874 });
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, 'userAgent', { configurable: true, value: 'iPhone OS 27_0' });
+    Object.defineProperty(window, 'outerHeight', { configurable: true, get: () => innerHeight });
+  });
+  await login(player);
+  await expect(page.locator('html')).toHaveAttribute('data-ios-status-bar-tint', 'true');
+  await page.locator('html').evaluate(element => {
+    element.style.setProperty('--fast-to-win-raw-safe-bottom', '34px');
+    window.dispatchEvent(new Event('resize'));
+  });
+  await expect(page.locator('#fastToWinStatusBarTint')).toHaveCSS('height', '16px');
+  await expect.poll(async () => (await tag(page, 'app_header').boundingBox())?.y ?? -1).toBe(16);
+  await expectFullIosCanvas(page);
+  await page.screenshot({ path: testInfo.outputPath('ios27-home-header.png') });
+});
+
 for (const { width, height, dismissal, statusBarExcluded = false } of [
   { width: 375, height: 812, dismissal: 'done' },
   { width: 375, height: 812, dismissal: 'focused' },
