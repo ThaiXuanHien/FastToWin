@@ -43,6 +43,8 @@ production trước khi chạy.
 
 ## Công nghệ và cấu trúc project
 
+Trang quản trị riêng: xem [hướng dẫn bật, cấp Owner và vận hành](docs/admin-management.md).
+
 | Thư mục | Vai trò |
 | --- | --- |
 | `app/` | Ứng dụng Android và cấu hình flavor `dev`/`prod` |

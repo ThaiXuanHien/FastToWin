@@ -12,6 +12,7 @@
     "test:cross-browser": "playwright test --project=firefox-smoke --project=webkit-smoke --project=webkit-history --project=webkit-pwa-ios",
     "test:js-fallback": "node support/test-js-fallback.mjs",
     "test:all": "playwright test",
+    "test:admin": "playwright test --config=admin.playwright.config.mjs",
     "test:list": "playwright test --list",
     "report": "playwright show-report",
     "serve": "node support/serve.mjs"

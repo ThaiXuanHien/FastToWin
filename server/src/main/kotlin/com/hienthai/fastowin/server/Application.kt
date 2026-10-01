@@ -2,6 +2,7 @@ package com.hienthai.fastowin.server
 
 import com.hienthai.fastowin.server.admin.AdminService
 import com.hienthai.fastowin.server.admin.adminRoutes
+import com.hienthai.fastowin.server.admin.adminAssets
 import com.hienthai.fastowin.protocol.ClientMessage
 import com.hienthai.fastowin.protocol.AuthErrorResponse
 import com.hienthai.fastowin.localization.TextKey
@@ -128,7 +129,7 @@ fun Application.gameModule(
         maxFrameSize = 64 * 1024
     }
 
-    adminService?.let { service -> routing { adminRoutes(service) } }
+    adminService?.let { service -> routing { adminAssets(); adminRoutes(service) } }
 
     val connections = ConcurrentHashMap<String, SocketConnection>()
 
