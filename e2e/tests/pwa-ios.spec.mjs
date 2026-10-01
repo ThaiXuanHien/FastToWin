@@ -155,6 +155,40 @@ test('iOS opaque status bar keeps its reserved area outside the canvas', async (
   await expect(page.locator('#fastToWinRoot')).toHaveCSS('height', '812px');
 });
 
+test('iOS 27 PWA tint stays above the header without consuming bottom space', async ({ page }) => {
+  const [html, styles, pwaScript] = await Promise.all([
+    readFile(new URL('../../webApp/src/wasmJsMain/resources/index.html', import.meta.url), 'utf8'),
+    readFile(new URL('../../webApp/src/wasmJsMain/resources/styles.css', import.meta.url), 'utf8'),
+    readFile(new URL('../../webApp/src/wasmJsMain/resources/pwa.js', import.meta.url), 'utf8'),
+  ]);
+  expect(html).toContain('<div id="fastToWinStatusBarTint" aria-hidden="true"></div>');
+  await page.setContent(`<style>${styles}
+    #header { margin-top: var(--fast-to-win-safe-top); }
+  </style><div id="fastToWinSafeAreaProbe"></div>
+    <main id="fastToWinRoot"><button id="header">Header</button></main>
+    <div id="fastToWinStatusBarTint" aria-hidden="true"></div>`);
+  await page.evaluate(() => {
+    Object.defineProperty(navigator, 'standalone', { configurable: true, value: true });
+    Object.defineProperty(navigator, 'userAgent', { configurable: true, value: 'iPhone OS 27_0' });
+    Object.defineProperty(window, 'outerHeight', { configurable: true, value: innerHeight });
+  });
+  await page.addScriptTag({ content: pwaScript });
+  const tint = page.locator('#fastToWinStatusBarTint');
+  await expect(tint).toHaveCSS('height', '16px');
+  await expect(tint).toHaveCSS('background-color', 'rgb(7, 26, 68)');
+  await expect(tint).toHaveCSS('pointer-events', 'none');
+  await expect(tint).toHaveAttribute('aria-hidden', 'true');
+  expect((await page.locator('#header').boundingBox()).y).toBe(16);
+  expect((await page.locator('#fastToWinRoot').boundingBox()).height).toBe(page.viewportSize().height);
+  await page.setViewportSize({ width: 844, height: 390 });
+  await expect(page.locator('#fastToWinRoot')).toHaveCSS('height', '390px');
+  expect((await page.locator('#header').boundingBox()).y).toBe(16);
+  // Normal Safari must not inherit the PWA-only overlay or artificial inset.
+  await page.locator('html').evaluate(element => delete element.dataset.iosStatusBarTint);
+  await expect(tint).toHaveCSS('display', 'none');
+  expect((await page.locator('#header').boundingBox()).y).toBe(0);
+});
+
 test('iOS keyboard recovery receives focus events from a dialog shadow root', async ({ page }) => {
   const pwaScript = await readFile(
     new URL('../../webApp/src/wasmJsMain/resources/pwa.js', import.meta.url), 'utf8',

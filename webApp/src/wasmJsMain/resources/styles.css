@@ -48,6 +48,31 @@ body {
     pointer-events: none;
 }
 
+#fastToWinStatusBarTint {
+    display: none;
+}
+
+/* Experimental iOS 27 PWA workaround, not a CSS opt-out for system blur.
+   The solid DOM strip gives WebKit an unambiguous status-bar tint even
+   though the actual app header is rendered inside a canvas/shadow root. */
+html[data-ios-status-bar-tint="true"] {
+    --fast-to-win-status-tint-height: 16px;
+    --fast-to-win-header-background: #071a44; /* ArcadePalette.Navy900 */
+    --fast-to-win-safe-top: max(env(safe-area-inset-top, 0px), var(--fast-to-win-status-tint-height));
+}
+
+html[data-ios-status-bar-tint="true"] #fastToWinStatusBarTint {
+    display: block;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: var(--fast-to-win-status-tint-height);
+    background-color: var(--fast-to-win-header-background);
+    z-index: 1;
+    pointer-events: none;
+}
+
 body {
     background: #071a3b;
     background-color: #071a3b;

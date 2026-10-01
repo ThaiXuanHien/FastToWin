@@ -73,6 +73,7 @@ function loadPwa({ standalone, userAgent }) {
   const document = {
     visibilityState: 'visible',
     documentElement: {
+      dataset: {},
       style: {
         setProperty(name, value) { rootStyle.set(name, value); },
       },
@@ -110,6 +111,7 @@ function loadPwa({ standalone, userAgent }) {
   });
   vm.runInContext(pwaScript, context);
   return {
+    rootDataset: document.documentElement.dataset,
     navigation: window.FASTTOWIN_PWA.navigation,
     document,
     history,
@@ -117,6 +119,19 @@ function loadPwa({ standalone, userAgent }) {
     location,
   };
 }
+
+test('the status-bar tint workaround is limited to iOS 27 installed PWAs', () => {
+  for (const [standalone, userAgent, enabled] of [
+    [true, 'iPhone OS 27_0', true],
+    [true, 'iPad OS 27_0', true],
+    [true, 'iPhone OS 26_3', false],
+    [false, 'iPhone OS 27_0', false],
+    [true, 'Android 16', false],
+  ]) {
+    const { rootDataset } = loadPwa({ standalone, userAgent });
+    assert.equal(rootDataset.iosStatusBarTint === 'true', enabled);
+  }
+});
 
 function dispatchTouch(document, type, clientX) {
   let prevented = false;

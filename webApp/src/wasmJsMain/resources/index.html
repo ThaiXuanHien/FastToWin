@@ -8,7 +8,7 @@
     <meta name="description" content="Fast To Win — game tìm số đối kháng thời gian thực.">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
-    <!-- Keep iOS system translucency/blur out of the app header. -->
+    <!-- Opaque where supported; pwa.js/styles.css also handle iOS 27's forced blur. -->
     <meta name="apple-mobile-web-app-status-bar-style" content="black">
     <meta name="apple-mobile-web-app-title" content="Fast To Win">
     <title>Fast To Win</title>
@@ -22,6 +22,7 @@
     <noscript>Bạn cần bật JavaScript để chơi Fast To Win.</noscript>
     <div id="fastToWinSafeAreaProbe" aria-hidden="true"></div>
     <main id="fastToWinRoot" aria-label="Fast To Win"></main>
+    <div id="fastToWinStatusBarTint" aria-hidden="true"></div>
     <script src="/pwa.js"></script>
     <script src="/fast-to-win.js"></script>
 </body>

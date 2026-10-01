@@ -6,6 +6,12 @@
     );
     const iosStandalone = standalone &&
         /iPad|iPhone|iPod/i.test(window.navigator.userAgent || '');
+    const iosVersion = /OS (\d+)[_.]/i.exec(window.navigator.userAgent || '');
+    if (iosStandalone && iosVersion && Number(iosVersion[1]) >= 27) {
+        // iOS 27 can blur the top edge even with an opaque status-bar meta tag.
+        // Give WebKit a real, solid DOM surface above the Compose canvas.
+        document.documentElement.dataset.iosStatusBarTint = 'true';
+    }
     // Android standalone already receives the usable app window from Chrome.
     // Browser tabs still report a larger 100vh that includes hidden browser UI,
     // while iOS standalone can publish a stale first-paint height.
