@@ -85,16 +85,23 @@ class AdminService(
         repository.transaction { principal(token, csrfToken, true, ownerOnly = true) }
         val hash = withContext(Dispatchers.Default) { passwordHasher.hash(request.password) }
         val normalized = normalizeEmail(request.email)
-        val fingerprint = fingerprint("create", normalized, hashToken(request.password), request.role.name, request.reason)
-        return repository.transaction {
-            val actor = principal(token, csrfToken, true, true).second.identity
-            replay(actor.id, request.requestId, fingerprint)?.let { return@transaction it }
-            if (accountByEmail(normalized) != null) conflict()
-            val identity = AdminIdentity(UUID.randomUUID().toString(), normalized, request.role)
-            putAccount(AdminAccount(identity, hash))
-            auditEntry(actor.id, "ADMIN_CREATE", identity.id, request.requestId, request.reason, after = accessSummary(identity))
-            putDeduplication(actor.id, request.requestId, AdminDeduplication(fingerprint, identity))
-            identity
+        // Persist only nonsecret fields. A fast password digest here would weaken the PBKDF2 credential.
+        val fingerprint = fingerprint("create", normalized, request.role.name, request.reason)
+        return withContext(Dispatchers.Default) {
+            repository.transaction {
+                val actor = principal(token, csrfToken, true, true).second.identity
+                replay(actor.id, request.requestId, fingerprint)?.let { previous ->
+                    val createdAccount = account(previous.id) ?: conflict()
+                    if (!passwordHasher.verify(request.password, createdAccount.passwordHash)) conflict()
+                    return@transaction previous
+                }
+                if (accountByEmail(normalized) != null) conflict()
+                val identity = AdminIdentity(UUID.randomUUID().toString(), normalized, request.role)
+                putAccount(AdminAccount(identity, hash))
+                auditEntry(actor.id, "ADMIN_CREATE", identity.id, request.requestId, request.reason, after = accessSummary(identity))
+                putDeduplication(actor.id, request.requestId, AdminDeduplication(fingerprint, identity))
+                identity
+            }
         }
     }
 

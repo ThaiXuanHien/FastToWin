@@ -35,6 +35,29 @@ class AdminServiceTest {
         assertEquals(1, audit.count { it.action == "ADMIN_CREATE" })
         assertFalse(audit.toString().contains("GoodPassword")); assertFalse(audit.toString().contains(login.token))
     }
+    @Test fun `creation deduplication stores only nonsecret fingerprint and verifies password replay safely`() = runTest {
+        val request=CreateAdminRequest("support@example.com","GoodPassword123!",AdminRole.SUPPORT,"Hỗ trợ","safe-replay")
+        suspend fun create(f: AdminFixture, password: String): Pair<AdminLogin,AdminIdentity> {
+            f.owner(); val login=f.login()
+            return login to f.service.createAccount(login.token,login.response.csrfToken,f.configuration.origin,request.copy(password=password))
+        }
+        val first=AdminFixture(); val (login,identity)=create(first,request.password)
+        val stored=first.repository.transaction { deduplication(login.response.admin.id,request.requestId) }!!
+        // This digest is derived solely from create/email/role/reason. Password changes cannot change its bytes.
+        assertEquals("17973d02c8a96af49ac3d988e55090f5e7f3cab3adea4cc4c8394baca6b18cb3",stored.fingerprint)
+        val second=AdminFixture(); val (otherLogin,_)=create(second,"DifferentPassword!")
+        assertEquals(stored.fingerprint,second.repository.transaction { deduplication(otherLogin.response.admin.id,request.requestId) }!!.fingerprint)
+        assertEquals(identity,first.service.createAccount(login.token,login.response.csrfToken,first.configuration.origin,request))
+        for (changed in listOf(request.copy(password="DifferentPassword!"),request.copy(role=AdminRole.OWNER),request.copy(reason="Khác"),request.copy(email="other@example.com"))) {
+            assertEquals(409,assertFailsWith<AdminException> {
+                first.service.createAccount(login.token,login.response.csrfToken,first.configuration.origin,changed)
+            }.status)
+        }
+        // A later role change does not replace the original successful result snapshot on retry.
+        first.service.changeAccess(login.token,login.response.csrfToken,first.configuration.origin,identity.id,
+            ChangeAdminAccessRequest(AdminRole.OPERATOR,true,"Vận hành","change-after-create"))
+        assertEquals(identity,first.service.createAccount(login.token,login.response.csrfToken,first.configuration.origin,request))
+    }
     @Test fun `revocation is immediate and last owner cannot be disabled`() = runTest {
         val f = AdminFixture(); val owner = f.owner(); val login = f.login()
         assertEquals(409, assertFailsWith<AdminException> {

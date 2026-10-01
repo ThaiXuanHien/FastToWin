@@ -89,6 +89,32 @@ class PostgresAdminRepositoryTest {
         }
     }
 
+    @Test fun `persisted sql creation replay has no fast password verifier and rejects changed passwords`() = runTest {
+        database { source ->
+            val service=service(source); service.bootstrapOwner("owner@example.com","GoodPassword123!"); val owner=login(service)
+            val request=CreateAdminRequest("support@example.com","GoodPassword123!",AdminRole.SUPPORT,"Hỗ trợ","safe-replay")
+            val created=service.createAccount(owner.token,owner.response.csrfToken,"http://localhost:8080",request)
+            source.connection.use { connection ->
+                connection.prepareStatement("SELECT fingerprint,safe_result FROM admin_requests WHERE actor_id=? AND request_id=?").use { statement ->
+                    statement.setObject(1,UUID.fromString(owner.response.admin.id)); statement.setString(2,request.requestId)
+                    statement.executeQuery().use { result ->
+                        assertTrue(result.next())
+                        assertEquals("17973d02c8a96af49ac3d988e55090f5e7f3cab3adea4cc4c8394baca6b18cb3",result.getString("fingerprint"))
+                        assertFalse(result.getString("safe_result").contains(request.password))
+                        assertFalse(result.getString("safe_result").contains(hashToken(request.password)))
+                    }
+                }
+            }
+            val restarted=service(source)
+            assertEquals(created,restarted.createAccount(owner.token,owner.response.csrfToken,"http://localhost:8080",request))
+            for (changed in listOf(request.copy(password="DifferentPassword!"),request.copy(role=AdminRole.OWNER),request.copy(reason="Khác"),request.copy(email="other@example.com"))) {
+                assertEquals(409,assertFailsWith<AdminException> { restarted.createAccount(owner.token,owner.response.csrfToken,"http://localhost:8080",changed) }.status)
+            }
+            restarted.changeAccess(owner.token,owner.response.csrfToken,"http://localhost:8080",created.id,ChangeAdminAccessRequest(AdminRole.OPERATOR,true,"Vận hành","change-after-create"))
+            assertEquals(created,restarted.createAccount(owner.token,owner.response.csrfToken,"http://localhost:8080",request))
+            assertEquals(1,restarted.audit(owner.token,PageRequest()).items.count { it.action=="ADMIN_CREATE" })
+        }
+    }
     @Test fun `dedicated owner does not inherit or overwrite an existing player credential`() = runTest {
         database { source ->
             val auth=AuthenticationService(PostgresAuthRepository(source),passwordHasher=PasswordHasher(1_000))
