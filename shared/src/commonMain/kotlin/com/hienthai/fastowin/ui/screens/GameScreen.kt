@@ -85,6 +85,7 @@ import com.hienthai.fastowin.ui.components.FastToWinHeader
 import com.hienthai.fastowin.platform.playFeedbackSound
 import com.hienthai.fastowin.protocol.MatchType
 import com.hienthai.fastowin.ui.layout.ResponsiveScreen
+import com.hienthai.fastowin.ui.layout.numberGridLayout
 import com.hienthai.fastowin.ui.theme.FastToWinTheme
 import com.hienthai.fastowin.ui.theme.ArcadePalette
 import kotlinx.coroutines.delay
@@ -720,57 +721,28 @@ fun NumberGrid(
     onNumberClick: (Int) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    BoxWithConstraints(modifier = modifier) {
-        fun paddingFor(columns: Int) = if (columns >= 8) 6.dp else 8.dp
-        fun spacingFor(columns: Int) = if (columns >= 8) 4.dp else 6.dp
-        val columnCount = (5..10).minBy { columns ->
-            val padding = paddingFor(columns)
-            val spacing = spacingFor(columns)
-            val rows = ((numbers.size + columns - 1) / columns).coerceAtLeast(1)
-            val cellWidth = (
-                maxWidth - (padding * 2) - (spacing * (columns - 1))
-            ) / columns
-            val cellHeight = (
-                (maxHeight - (padding * 2) - (spacing * (rows - 1))) / rows
-            ).coerceAtMost(54.dp)
-            abs(cellWidth.value - cellHeight.value)
-        }
-        val gridPadding = paddingFor(columnCount)
-        val gridSpacing = spacingFor(columnCount)
-        val rowCount = ((numbers.size + columnCount - 1) / columnCount).coerceAtLeast(1)
-        val availableCellWidth = (
-            maxWidth - (gridPadding * 2) - (gridSpacing * (columnCount - 1))
-        ) / columnCount
-        val availableCellHeight = (
-            maxHeight - (gridPadding * 2) - (gridSpacing * (rowCount - 1))
-        ) / rowCount
-        val cellHeight = availableCellHeight.coerceAtMost(54.dp)
-        val cellSize = minOf(availableCellWidth, cellHeight)
-        val compactCells = cellHeight < 46.dp || availableCellWidth < 46.dp
+    BoxWithConstraints(modifier = modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+        val layout = numberGridLayout(numbers.size, maxWidth, maxHeight)
+        val compactCells = layout.cellSize < 46.dp
         LazyVerticalGrid(
-            columns = GridCells.Fixed(columnCount),
-            contentPadding = PaddingValues(gridPadding),
-            horizontalArrangement = Arrangement.spacedBy(gridSpacing),
-            verticalArrangement = Arrangement.spacedBy(gridSpacing),
+            columns = GridCells.Fixed(layout.columns),
+            contentPadding = PaddingValues(layout.padding),
+            horizontalArrangement = Arrangement.spacedBy(layout.spacing),
+            verticalArrangement = Arrangement.spacedBy(layout.spacing),
             userScrollEnabled = false,
-            modifier = Modifier.fillMaxSize().testTag("number_grid")
+            modifier = Modifier.size(layout.width, layout.height).testTag("number_grid")
         ) {
             items(numbers, key = { it }) { number ->
-                Box(
-                    modifier = Modifier.fillMaxWidth().height(cellHeight),
-                    contentAlignment = Alignment.Center
-                ) {
-                    NumberCell(
-                        number = number,
-                        isCompleted = number in selectedNumbers,
-                        isWrong = number == wrongNumber,
-                        enabled = enabled,
-                        boardStyle = boardStyle,
-                        compact = compactCells,
-                        modifier = Modifier.size(cellSize),
-                        onClick = { onNumberClick(number) }
-                    )
-                }
+                NumberCell(
+                    number = number,
+                    isCompleted = number in selectedNumbers,
+                    isWrong = number == wrongNumber,
+                    enabled = enabled,
+                    boardStyle = boardStyle,
+                    compact = compactCells,
+                    modifier = Modifier.size(layout.cellSize),
+                    onClick = { onNumberClick(number) }
+                )
             }
         }
     }

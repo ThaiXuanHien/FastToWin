@@ -46,6 +46,11 @@ export default defineConfig({
     },
   ] : [
     {
+      name: 'webkit-number-grid',
+      testMatch: /number-grid\.spec\.mjs/,
+      use: { browserName: 'webkit', viewport: { width: 375, height: 812 }, hasTouch: true },
+    },
+    {
       name: 'chromium-native-input',
       testMatch: /native-input\.spec\.mjs/,
       use: { browserName: 'chromium', viewport: { width: 390, height: 844 }, hasTouch: true },

@@ -20,6 +20,26 @@
     let recoveryStartedAt = 0;
     let recoveryLastHeight = 0;
     let recoveryLastSampleAt = 0;
+    let lastPublishedViewportHeight = 0;
+
+    function isNativeTextInput(element) {
+        return element instanceof Element && element.matches('[data-fasttowin-native-input]');
+    }
+
+    function nativeTextInputFromEvent(event) {
+        // Editors inside a shadow root are retargeted to its host at document
+        // listeners; the composed path retains the original input/textarea.
+        const path = typeof event.composedPath === 'function' ? event.composedPath() : [event.target];
+        return path.find(isNativeTextInput);
+    }
+
+    function hasNativeTextInputFocus() {
+        let element = document.activeElement;
+        while (element && element.shadowRoot && element.shadowRoot.activeElement) {
+            element = element.shadowRoot.activeElement;
+        }
+        return isNativeTextInput(element);
+    }
 
     function currentViewportHeight() {
         const viewport = window.visualViewport;
@@ -28,14 +48,31 @@
     }
 
     function publishViewportHeight() {
+        const height = currentViewportHeight();
+        lastPublishedViewportHeight = height;
         document.documentElement.style.setProperty(
             '--fast-to-win-viewport-height',
-            `${currentViewportHeight()}px`
+            `${height}px`
         );
         window.dispatchEvent(new CustomEvent('fasttowin-viewport-change'));
     }
 
     function syncViewportHeight() {
+        const height = currentViewportHeight();
+        if (iosStandalone && preKeyboardViewportHeight) {
+            // iOS can dismiss its keyboard without blurring the DOM input. A
+            // growing visual viewport is also a dismissal signal; keep sampling
+            // beyond the last resize event until the animation has settled.
+            if (height > lastPublishedViewportHeight + 0.5 && !recoveryStartedAt) {
+                startViewportRecovery();
+            } else if (height < lastPublishedViewportHeight - 0.5 && recoveryStartedAt && hasNativeTextInputFocus()) {
+                // The same focused input can reopen the keyboard. Do not leave
+                // the previous dismissal's timer competing with that opening.
+                const baseline = preKeyboardViewportHeight;
+                cancelViewportRecovery();
+                preKeyboardViewportHeight = baseline;
+            }
+        }
         publishViewportHeight();
         if (pendingFrame) window.cancelAnimationFrame(pendingFrame);
         if (pendingSettle) window.clearTimeout(pendingSettle);
@@ -66,8 +103,27 @@
     }
 
     function finishViewportRecovery() {
+        const baseline = preKeyboardViewportHeight;
         publishViewportHeight();
         cancelViewportRecovery();
+        // A keyboard can be reopened on this input without another focusin.
+        if (iosStandalone && hasNativeTextInputFocus()) {
+            preKeyboardViewportHeight = Math.max(baseline, currentViewportHeight());
+        }
+    }
+
+    function startViewportRecovery() {
+        const baseline = preKeyboardViewportHeight;
+        cancelViewportRecovery();
+        preKeyboardViewportHeight = baseline;
+        recoveryStartedAt = performance.now();
+        recoveryLastHeight = currentViewportHeight();
+        recoveryLastSampleAt = recoveryStartedAt;
+        recoveryDeadline = window.setTimeout(function () {
+            recoveryDeadline = 0;
+            finishViewportRecovery();
+        }, 1200);
+        scheduleViewportRecoverySample();
     }
 
     function scheduleViewportRecoverySample() {
@@ -111,33 +167,44 @@
     window.addEventListener('pageshow', syncViewportHeight);
     window.addEventListener('focus', syncViewportHeight);
     document.addEventListener('focusin', function (event) {
-        if (!(event.target instanceof Element) ||
-            !event.target.matches('[data-fasttowin-native-input]')) return;
+        if (!nativeTextInputFromEvent(event)) return;
         const baseline = recoveryStartedAt
             ? preKeyboardViewportHeight
             : currentViewportHeight();
         cancelViewportRecovery();
         preKeyboardViewportHeight = baseline;
-    });
+    }, true);
     document.addEventListener('focusout', function (event) {
-        if (!(event.target instanceof Element) ||
-            !event.target.matches('[data-fasttowin-native-input]')) return;
-        const baseline = preKeyboardViewportHeight;
-        cancelViewportRecovery();
-        preKeyboardViewportHeight = baseline;
-        recoveryStartedAt = performance.now();
-        recoveryDeadline = window.setTimeout(function () {
-            recoveryDeadline = 0;
-            finishViewportRecovery();
-        }, 1200);
-        scheduleViewportRecoverySample();
-    });
+        if (!nativeTextInputFromEvent(event)) return;
+        startViewportRecovery();
+    }, true);
     document.addEventListener('visibilitychange', function () {
         if (document.visibilityState === 'visible') syncViewportHeight();
     });
     if (window.visualViewport) {
         window.visualViewport.addEventListener('resize', syncViewportHeight);
         window.visualViewport.addEventListener('scroll', syncViewportHeight);
+    }
+
+    // Compose 1.11 measures its container only on window.resize. The visual
+    // viewport/settle samples above can resize the root without that event,
+    // leaving Home's canvas and bottom bar at the previous tutorial height.
+    // Observe the actual container so CSS-only changes also resize Compose.
+    if (typeof window.ResizeObserver === 'function') {
+        const root = document.getElementById('fastToWinRoot');
+        if (root) {
+            let width = root.clientWidth;
+            let height = root.clientHeight;
+            const observer = new window.ResizeObserver(function () {
+                const nextWidth = root.clientWidth;
+                const nextHeight = root.clientHeight;
+                if (nextWidth === width && nextHeight === height) return;
+                width = nextWidth;
+                height = nextHeight;
+                window.dispatchEvent(new Event('resize'));
+            });
+            observer.observe(root);
+        }
     }
     syncViewportHeight();
 })();
