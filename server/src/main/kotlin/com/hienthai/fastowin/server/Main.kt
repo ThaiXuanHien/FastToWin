@@ -1,5 +1,8 @@
 package com.hienthai.fastowin.server
 
+import com.hienthai.fastowin.server.admin.AdminConfiguration
+import com.hienthai.fastowin.server.admin.AdminService
+import com.hienthai.fastowin.server.admin.InMemoryAdminRepository
 import io.ktor.server.engine.embeddedServer
 import io.ktor.server.netty.Netty
 import kotlinx.coroutines.runBlocking
@@ -14,7 +17,11 @@ fun main() {
     val port = System.getenv("PORT")?.toIntOrNull() ?: 8080
     val trustProxyHeaders = System.getenv("FASTTOWIN_TRUST_PROXY_HEADERS")
         ?.equals("true", ignoreCase = true) == true
+    val adminConfiguration = AdminConfiguration.fromEnvironment(environment)
     val database = DatabaseSettings.fromEnvironment(environment)?.let(DatabaseRuntime::open)
+    val adminService = adminConfiguration?.let { configuration ->
+        AdminService(database?.adminRepository ?: InMemoryAdminRepository(), configuration)
+    }
     val authService = AuthenticationService(database?.authRepository ?: InMemoryAuthRepository())
     val authEmailSender = configuredAuthEmailSender()
     val identityRepository = database?.identityRepository ?: InMemoryGuestIdentityRepository()
@@ -74,7 +81,8 @@ fun main() {
                 environment = environment,
                 trustProxyHeaders = trustProxyHeaders,
                 seasonLifecycleRepository = seasonLifecycleRepository,
-                pushReminderService = pushReminderService
+                pushReminderService = pushReminderService,
+                adminService = adminService
             )
         }.start(wait = true)
     } finally {

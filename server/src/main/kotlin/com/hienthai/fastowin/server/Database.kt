@@ -1,5 +1,6 @@
 package com.hienthai.fastowin.server
 
+import com.hienthai.fastowin.server.admin.PostgresAdminRepository
 import com.zaxxer.hikari.HikariConfig
 import com.zaxxer.hikari.HikariDataSource
 import org.flywaydb.core.Flyway
@@ -36,6 +37,7 @@ data class DatabaseSettings(
 }
 
 class DatabaseRuntime private constructor(
+    val adminRepository: PostgresAdminRepository,
     val authRepository: AuthRepository,
     val identityRepository: GuestIdentityRepository,
     val matchResultRepository: MatchResultRepository,
@@ -72,6 +74,7 @@ class DatabaseRuntime private constructor(
                     .load()
                     .migrate()
                 return DatabaseRuntime(
+                    adminRepository = PostgresAdminRepository(dataSource),
                     authRepository = PostgresAuthRepository(dataSource),
                     identityRepository = PostgresGuestIdentityRepository(dataSource),
                     matchResultRepository = PostgresMatchResultRepository(dataSource),

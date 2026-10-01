@@ -46,6 +46,11 @@ class PostgresTournamentAdmissionTest {
             val candidate = lobby.copy(players = lobby.players + TournamentPlayerSnapshot(player.playerId, "Guest"))
             try {
                 dataSource.connection.use { connection ->
+                    // Guest identity creation does not initialize wallet/statistics storage.
+                    connection.prepareStatement("INSERT INTO player_stats (user_id, updated_at) VALUES (?, CURRENT_TIMESTAMP)").use {
+                        it.setObject(1, playerId)
+                        assertEquals(1, it.executeUpdate())
+                    }
                     connection.prepareStatement("UPDATE player_stats SET gold = 100 WHERE user_id = ?").use {
                         it.setObject(1, playerId)
                         assertEquals(1, it.executeUpdate())

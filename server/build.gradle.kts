@@ -49,3 +49,11 @@ tasks.register<JavaExec>("seedDevFullAccount") {
     classpath = sourceSets.main.get().runtimeClasspath
     mainClass.set("com.hienthai.fastowin.server.DevFullAccountSeedKt")
 }
+
+tasks.register<JavaExec>("bootstrapAdminOwner") {
+    group = "application"
+    description = "Bootstraps the first dedicated admin Owner using a masked console or password file."
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass.set("com.hienthai.fastowin.server.admin.AdminBootstrapKt")
+    standardInput = System.`in`
+}

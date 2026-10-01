@@ -1,5 +1,7 @@
 package com.hienthai.fastowin.server
 
+import com.hienthai.fastowin.server.admin.AdminService
+import com.hienthai.fastowin.server.admin.adminRoutes
 import com.hienthai.fastowin.protocol.ClientMessage
 import com.hienthai.fastowin.protocol.AuthErrorResponse
 import com.hienthai.fastowin.localization.TextKey
@@ -84,7 +86,8 @@ fun Application.gameModule(
     serviceStatusProvider: () -> ServiceStatusResponse = ::serviceStatusFromEnvironment,
     allowedWebOriginsValue: String? = System.getenv("FASTTOWIN_WEB_ORIGINS"),
     websocketPingPeriod: Duration = DEFAULT_WEBSOCKET_PING_PERIOD,
-    websocketPongTimeout: Duration = DEFAULT_WEBSOCKET_PONG_TIMEOUT
+    websocketPongTimeout: Duration = DEFAULT_WEBSOCKET_PONG_TIMEOUT,
+    adminService: AdminService? = null
 ) {
     val isProduction = environment != "dev"
     val allowedWebOrigins = buildAllowedWebOrigins(
@@ -100,7 +103,7 @@ fun Application.gameModule(
         json(ProtocolJson)
     }
     install(CallLogging) {
-        filter { call -> call.request.path() !in QUIET_LOG_PATHS }
+        filter { call -> call.request.path() !in QUIET_LOG_PATHS && !call.request.path().startsWith("/admin") }
     }
     install(CORS) {
         allowMethod(HttpMethod.Get)
@@ -109,6 +112,11 @@ fun Application.gameModule(
         allowHeader(HttpHeaders.ContentType)
         allowHeader(WEB_SESSION_HEADER)
         allowHeader(WEB_CSRF_HEADER)
+        if (adminService != null) allowHeader("X-Admin-CSRF")
+        adminService?.configuration?.origin?.let { value ->
+            val origin = java.net.URI(value)
+            allowHost(origin.rawAuthority, schemes = listOf(origin.scheme))
+        }
         allowCredentials = true
         allowedWebOrigins.forEach { origin ->
             allowHost(origin.authority, schemes = listOf(origin.scheme))
@@ -119,6 +127,8 @@ fun Application.gameModule(
         timeout = websocketPongTimeout
         maxFrameSize = 64 * 1024
     }
+
+    adminService?.let { service -> routing { adminRoutes(service) } }
 
     val connections = ConcurrentHashMap<String, SocketConnection>()
 
