@@ -319,10 +319,10 @@ test('iOS keyboard dismissal restores other shared text-input screens and dialog
   const cases = [
     { route: '/tournament', field: 'public_tournament_search', label: 'Tìm theo tên giải đấu' },
     { route: '/tournament', open: ['tournament_fee_custom'], field: 'tournament_custom_fee_input', label: 'Nhập số vàng lệ phí', text: '12' },
-    { route: '/rooms', open: ['create_room_open', 'match_type:CASUAL', 'game_mode:ORDER'], field: 'create_room_name', label: 'Tên phòng' },
+    { route: '/rooms', open: ['create_room_open', 'match_type:CASUAL', 'game_mode:ORDER'], field: 'create_room_name', label: 'Tên phòng', dialog: true },
     { route: '/clan', field: 'clan_search_field', label: 'Tìm bang hội' },
-    { route: '/clan', open: ['open_create_clan'], field: 'create_clan_name', label: 'Tên bang' },
-    { route: '/clan', open: ['open_create_clan'], field: 'create_clan_description', label: 'Mô tả bang hội', multiline: true },
+    { route: '/clan', open: ['open_create_clan'], field: 'create_clan_name', label: 'Tên bang', dialog: true },
+    { route: '/clan', open: ['open_create_clan'], field: 'create_clan_description', label: 'Mô tả bang hội', multiline: true, dialog: true },
     { route: '/account', open: ['profile_edit'], field: 'profile_display_name', label: 'Biệt danh' },
     { route: '/friends', field: 'friend-code', label: 'Mã người chơi', text: 'FTW8X2Q' },
   ];
@@ -341,7 +341,9 @@ test('iOS keyboard dismissal restores other shared text-input screens and dialog
       await expect(input).toBeFocused();
       const value = scenario.text || (scenario.multiline ? 'Kiểm tra\nbàn phím' : 'Kiểm tra');
       await input.fill(value);
-      const hasBottomBar = await tag(page, 'bottom_bar').count() > 0;
+      // Dialog semantics hide the background navigation. Its old nodes can
+      // briefly remain while opening; do not mistake them for a dialog bar.
+      const hasBottomBar = !scenario.dialog && await tag(page, 'bottom_bar').count() > 0;
       await page.evaluate(() => window.__setKeyboardViewport(500));
       await expect(page.locator('canvas').first()).toHaveCSS('height', '500px');
       await input.evaluate(element => element.blur());
@@ -351,6 +353,16 @@ test('iOS keyboard dismissal restores other shared text-input screens and dialog
       await expectFullIosCanvas(page, hasBottomBar);
       await expect(input).toHaveValue(value);
       await page.screenshot({ path: testInfo.outputPath(`${scenario.field || 'friend-code'}-keyboard-restored.png`) });
+      if (scenario.dialog) {
+        await click(page, page.getByRole('button', { name: /^hủy$/i }).last());
+        await expect(input).not.toBeAttached();
+        // Compose can delay restoring background accessibility nodes after
+        // dialog disposal. Check the canvas geometry independently and retain
+        // a screenshot of the restored navigation for visual inspection.
+        await expectFullIosCanvas(page, false);
+        await page.waitForTimeout(250);
+        await page.screenshot({ path: testInfo.outputPath(`${scenario.field}-dialog-closed.png`) });
+      }
     });
   }
 });
