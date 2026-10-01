@@ -8,6 +8,14 @@ const pwaScript = await readFile(
   'utf8',
 );
 
+test('iOS PWA requests an opaque status bar instead of system header translucency', async () => {
+  const html = await readFile(
+    new URL('../../webApp/src/wasmJsMain/resources/index.html', import.meta.url), 'utf8',
+  );
+  assert.match(html, /name="apple-mobile-web-app-status-bar-style" content="black"/);
+  assert.doesNotMatch(html, /content="black-translucent"/);
+});
+
 function loadPwa({ standalone, userAgent }) {
   const historyCalls = [];
   const listeners = new Map();
@@ -85,6 +93,7 @@ function loadPwa({ standalone, userAgent }) {
     },
     head: { appendChild() {} },
     querySelector() { return null; },
+    getElementById() { return null; },
     createElement() { return {}; },
   };
   const context = vm.createContext({

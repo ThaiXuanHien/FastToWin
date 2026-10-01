@@ -41,13 +41,42 @@
         return isNativeTextInput(element);
     }
 
+    function iosStandaloneWindowHeight() {
+        // A home-screen PWA has no browser chrome. On iOS 26 its innerHeight,
+        // visualViewport and even 100dvh can exclude the status-bar height,
+        // although our fixed canvas starts behind that status bar. outerHeight
+        // describes the actual app window (also in iPad windowed mode).
+        return Math.max(window.innerHeight, Number(window.outerHeight) || 0);
+    }
+
+    function iosStandaloneHasFullViewport() {
+        if (!iosStandalone) return false;
+        const viewport = window.visualViewport;
+        if (viewport && Math.abs(viewport.scale - 1) > 0.01) return false;
+        const probe = document.getElementById('fastToWinSafeAreaProbe');
+        const safeTop = probe ? parseFloat(window.getComputedStyle(probe).paddingTop) || 0 : 0;
+        const visibleBottom = viewport ? viewport.height + viewport.offsetTop : window.innerHeight;
+        // While the keyboard is open, keep measuring its visible boundary.
+        // Only expand to the full window once the status-bar-excluded viewport
+        // has returned. Do not use screen.height: iPad PWAs can be windowed.
+        return visibleBottom >= iosStandaloneWindowHeight() - safeTop - 1;
+    }
+
     function currentViewportHeight() {
         const viewport = window.visualViewport;
-        const height = viewport ? viewport.height + viewport.offsetTop : window.innerHeight;
+        const height = iosStandaloneHasFullViewport()
+            ? iosStandaloneWindowHeight()
+            : viewport ? viewport.height + viewport.offsetTop : window.innerHeight;
         return Math.max(1, Math.round(height * 100) / 100);
     }
 
     function publishViewportHeight() {
+        // Safari can leave the document itself scrolled after focusing an
+        // offscreen native editor. Compose owns scrolling inside its canvas;
+        // reset only the outer document after dismissal, never during typing.
+        if (iosStandaloneHasFullViewport() && (window.scrollX || window.scrollY)) {
+            window.scrollTo(0, 0);
+        }
         const height = currentViewportHeight();
         lastPublishedViewportHeight = height;
         document.documentElement.style.setProperty(
@@ -195,13 +224,20 @@
         if (root) {
             let width = root.clientWidth;
             let height = root.clientHeight;
+            let resizeFrame = 0;
             const observer = new window.ResizeObserver(function () {
-                const nextWidth = root.clientWidth;
-                const nextHeight = root.clientHeight;
-                if (nextWidth === width && nextHeight === height) return;
-                width = nextWidth;
-                height = nextHeight;
-                window.dispatchEvent(new Event('resize'));
+                if (resizeFrame) return;
+                // Resize listeners also publish CSS dimensions. Run outside
+                // ResizeObserver delivery to avoid WebKit notification loops.
+                resizeFrame = window.requestAnimationFrame(function () {
+                    resizeFrame = 0;
+                    const nextWidth = root.clientWidth;
+                    const nextHeight = root.clientHeight;
+                    if (nextWidth === width && nextHeight === height) return;
+                    width = nextWidth;
+                    height = nextHeight;
+                    window.dispatchEvent(new Event('resize'));
+                });
             });
             observer.observe(root);
         }

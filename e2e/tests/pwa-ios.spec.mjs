@@ -1,10 +1,17 @@
 import { test, expect, tag, click, login } from '../support/game.mjs';
 import { readFile } from 'node:fs/promises';
 
-async function installIosKeyboardViewport(page) {
-  await page.addInitScript(() => {
+async function installIosKeyboardViewport(page, statusBarExcluded = false) {
+  await page.addInitScript(statusBarExcluded => {
     const viewport = window.visualViewport;
-    let height = window.innerHeight;
+    const windowHeight = window.innerHeight;
+    const layoutHeight = windowHeight - (statusBarExcluded ? 62 : 0);
+    let height = layoutHeight;
+    let offsetTop = 0;
+    if (statusBarExcluded) {
+      Object.defineProperty(window, 'innerHeight', { configurable: true, value: layoutHeight });
+      Object.defineProperty(window, 'outerHeight', { configurable: true, value: windowHeight });
+    }
     Object.defineProperty(navigator, 'standalone', { configurable: true, value: true });
     Object.defineProperty(navigator, 'userAgent', {
       configurable: true,
@@ -15,16 +22,18 @@ async function installIosKeyboardViewport(page) {
       value: {
         get height() { return height; },
         get width() { return window.innerWidth; },
-        offsetTop: 0, offsetLeft: 0, pageTop: 0, pageLeft: 0, scale: 1,
+        get offsetTop() { return offsetTop; },
+        offsetLeft: 0, pageTop: 0, pageLeft: 0, scale: 1,
         addEventListener(...args) { viewport.addEventListener(...args); },
         removeEventListener(...args) { viewport.removeEventListener(...args); },
       },
     });
-    window.__setKeyboardViewport = (nextHeight, notify = true) => {
+    window.__setKeyboardViewport = (nextHeight, notify = true, nextOffsetTop = 0) => {
       height = nextHeight;
+      offsetTop = nextOffsetTop;
       if (notify) viewport.dispatchEvent(new Event('resize'));
     };
-  });
+  }, statusBarExcluded);
 }
 
 async function expectFullIosCanvas(page, hasBottomBar = true) {
@@ -63,6 +72,89 @@ async function tapNativeInput(page, label, visibleHeight = page.viewportSize().h
   throw new Error(`Native input ${label} could not be brought into the viewport`);
 }
 
+test('iOS standalone covers the status-bar-excluded window and clears a stale keyboard pan', async ({ page }) => {
+  const pwaScript = await readFile(
+    new URL('../../webApp/src/wasmJsMain/resources/pwa.js', import.meta.url), 'utf8',
+  );
+  await page.setContent(`
+    <style>
+      #fastToWinSafeAreaProbe { padding-top: 62px; }
+      #fastToWinRoot { height: var(--fast-to-win-viewport-height); }
+    </style>
+    <div id="fastToWinSafeAreaProbe"></div>
+    <main id="fastToWinRoot"><input data-fasttowin-native-input></main>
+  `);
+  await page.evaluate(() => {
+    let height = 812;
+    let innerHeight = 812;
+    let offsetTop = 0;
+    let scrollY = 0;
+    const viewport = new EventTarget();
+    Object.defineProperty(navigator, 'standalone', { configurable: true, value: true });
+    Object.defineProperty(navigator, 'userAgent', { configurable: true, value: 'iPhone OS 26_3' });
+    Object.defineProperty(window, 'outerHeight', { configurable: true, value: 874 });
+    Object.defineProperty(window, 'innerHeight', { configurable: true, get: () => innerHeight });
+    Object.defineProperty(window, 'scrollY', { configurable: true, get: () => scrollY });
+    Object.defineProperty(window, 'visualViewport', { configurable: true, value: viewport });
+    Object.defineProperties(viewport, {
+      height: { get: () => height }, offsetTop: { get: () => offsetTop }, scale: { value: 1 },
+    });
+    window.__resetPanCount = 0;
+    window.scrollTo = () => {
+      window.__resetPanCount++;
+      height += offsetTop;
+      innerHeight = height;
+      offsetTop = scrollY = 0;
+    };
+    window.__setPan = (nextHeight, nextOffset, nextInnerHeight, notify = true) => {
+      height = nextHeight;
+      offsetTop = scrollY = nextOffset;
+      innerHeight = nextInnerHeight;
+      if (notify) viewport.dispatchEvent(new Event('resize'));
+    };
+  });
+  await page.addScriptTag({ content: pwaScript });
+  const root = page.locator('#fastToWinRoot');
+  await expect(root).toHaveCSS('height', '874px');
+  const input = page.locator('input');
+  await input.focus();
+  // Values measured on the real simulator while entering a tournament name.
+  await page.evaluate(() => window.__setPan(498, 188, 624));
+  await expect(root).toHaveCSS('height', '686px');
+  expect(await page.evaluate(() => window.__resetPanCount)).toBe(0);
+  await page.evaluate(() => window.__setPan(680, 20, 792));
+  await page.waitForTimeout(300);
+  // Late dismissal leaves a 6px document pan without a final resize event.
+  await page.evaluate(() => window.__setPan(806, 6, 806, false));
+  await expect(root).toHaveCSS('height', '874px');
+  expect(await page.evaluate(() => window.scrollY)).toBe(0);
+  expect(await page.evaluate(() => window.__resetPanCount)).toBeGreaterThan(0);
+  await expect(input).toBeFocused();
+});
+
+test('iOS opaque status bar keeps its reserved area outside the canvas', async ({ page }) => {
+  const pwaScript = await readFile(
+    new URL('../../webApp/src/wasmJsMain/resources/pwa.js', import.meta.url), 'utf8',
+  );
+  await page.setContent(`
+    <style>#fastToWinRoot { height: var(--fast-to-win-viewport-height); }</style>
+    <div id="fastToWinSafeAreaProbe"></div><main id="fastToWinRoot"></main>
+  `);
+  await page.evaluate(() => {
+    Object.defineProperty(navigator, 'standalone', { configurable: true, value: true });
+    Object.defineProperty(navigator, 'userAgent', { configurable: true, value: 'iPhone OS 26_3' });
+    Object.defineProperty(window, 'outerHeight', { configurable: true, value: 874 });
+    Object.defineProperty(window, 'innerHeight', { configurable: true, value: 812 });
+    Object.defineProperty(window, 'visualViewport', { configurable: true, value: {
+      height: 812, offsetTop: 0, scale: 1, addEventListener() {},
+    } });
+  });
+  await page.addScriptTag({ content: pwaScript });
+  // With an opaque status bar iOS reserves its height, and safe-top is zero.
+  // Do not stretch the canvas below the available content window.
+  await expect(page.locator('#fastToWinRoot')).toHaveCSS('height', '812px');
+});
+
 test('iOS keyboard recovery receives focus events from a dialog shadow root', async ({ page }) => {
   const pwaScript = await readFile(
     new URL('../../webApp/src/wasmJsMain/resources/pwa.js', import.meta.url), 'utf8',
@@ -91,11 +183,13 @@ test('iOS keyboard recovery receives focus events from a dialog shadow root', as
   await expect(page.locator('#fastToWinRoot')).toHaveCSS('height', `${page.viewportSize().height}px`);
 });
 
-for (const { width, height, dismissal } of [
+for (const { width, height, dismissal, statusBarExcluded = false } of [
   { width: 375, height: 812, dismissal: 'done' },
   { width: 375, height: 812, dismissal: 'focused' },
   { width: 844, height: 390, dismissal: 'done' },
   { width: 844, height: 390, dismissal: 'focused' },
+  { width: 402, height: 874, dismissal: 'done', statusBarExcluded: true },
+  { width: 402, height: 874, dismissal: 'focused', statusBarExcluded: true },
 ]) {
   test(`iOS tournament keyboard ${dismissal} restores the real canvas and bottom bar (${width}x${height})`, async ({ actors }, testInfo) => {
     const player = await actors(`iOS tournament ${dismissal}`, { iosStandalone: true });
@@ -104,17 +198,18 @@ for (const { width, height, dismissal } of [
     const keyboardHeight = Math.max(160, height - 332);
     const settlingHeight = Math.round((height + keyboardHeight) / 2);
     await page.emulateMedia({ reducedMotion: 'reduce' });
-    await installIosKeyboardViewport(page);
+    await installIosKeyboardViewport(page, statusBarExcluded);
     await login(player);
     // Enter the real screen without relying on Home's offscreen discovery tile.
     await player.navigate(() => page.goto('/tournament'));
-    await page.locator('html').evaluate(element => {
-      element.style.setProperty('--fast-to-win-safe-top', '47px');
+    const safeTop = statusBarExcluded ? 62 : 47;
+    await page.locator('html').evaluate((element, safeTop) => {
+      element.style.setProperty('--fast-to-win-safe-top', `${safeTop}px`);
       element.style.setProperty('--fast-to-win-raw-safe-bottom', '34px');
       window.dispatchEvent(new Event('resize'));
-    });
+    }, safeTop);
     await expect.poll(async () => (await tag(page, 'app_header').boundingBox())?.y ?? -1)
-      .toBeCloseTo(47, 0);
+      .toBeCloseTo(safeTop, 0);
     // Keep the editor inside the upcoming keyboard viewport, so WebKit does
     // not hide/blur it merely because a desktop-mocked viewport clipped it.
     const name = await tapNativeInput(page, 'Tên giải đấu', keyboardHeight);
@@ -542,13 +637,19 @@ for (const size of [
   { width: 390, height: 844, fontScale: 'STANDARD' },
   { width: 375, height: 812, fontScale: 'LARGE' },
   { width: 844, height: 390, fontScale: 'STANDARD' },
+  { width: 402, height: 874, fontScale: 'STANDARD', statusBarExcluded: true },
 ]) {
   test(`iOS tutorial to Home resizes the real Compose canvas (${size.width}x${size.height}, ${size.fontScale})`, async ({ page }, testInfo) => {
     await page.setViewportSize(size);
     await page.emulateMedia({ reducedMotion: 'reduce' });
-    await page.addInitScript(({ fontScale }) => {
+    await page.addInitScript(({ fontScale, statusBarExcluded }) => {
       const viewport = window.visualViewport;
-      let height = window.innerHeight - 84;
+      const windowHeight = window.innerHeight;
+      let height = windowHeight - 84;
+      if (statusBarExcluded) {
+        Object.defineProperty(window, 'innerHeight', { configurable: true, value: windowHeight - 62 });
+        Object.defineProperty(window, 'outerHeight', { configurable: true, value: windowHeight });
+      }
       localStorage.setItem('fasttowin.preferences', JSON.stringify({ languageCode: 'vi', fontScale }));
       Object.defineProperty(navigator, 'standalone', { configurable: true, value: true });
       Object.defineProperty(navigator, 'userAgent', {
@@ -571,15 +672,16 @@ for (const size of [
     await click(page, page.getByRole('button', { name: 'Chơi với tư cách khách', exact: true }));
     await expect(tag(page, 'tutorial_continue')).toBeAttached();
 
-    await page.locator('html').evaluate(element => {
-      element.style.setProperty('--fast-to-win-safe-top', '47px');
+    const safeTop = size.statusBarExcluded ? 62 : 47;
+    await page.locator('html').evaluate((element, safeTop) => {
+      element.style.setProperty('--fast-to-win-safe-top', `${safeTop}px`);
       element.style.setProperty('--fast-to-win-raw-safe-bottom', '34px');
       window.dispatchEvent(new Event('resize'));
-    });
+    }, safeTop);
     await expect(page.locator('#fastToWinRoot')).toHaveCSS('height', `${size.height - 84}px`);
     await expect(page.locator('canvas').first()).toHaveCSS('height', `${size.height - 84}px`);
     await expect.poll(async () => (await page.getByRole('button', { name: 'Bỏ qua', exact: true })
-      .boundingBox())?.y ?? -1).toBeGreaterThanOrEqual(47);
+      .boundingBox())?.y ?? -1).toBeGreaterThanOrEqual(safeTop);
     await click(page, page.getByRole('button', { name: 'Bỏ qua', exact: true }));
     await expect(tag(page, 'home_screen')).toBeAttached();
 
@@ -596,7 +698,7 @@ for (const size of [
       return bounds ? bounds.y + bounds.height : 0;
     }).toBeCloseTo(size.height - 12, 0);
     await expect.poll(async () => (await tag(page, 'app_header').boundingBox())?.y ?? -1)
-      .toBeCloseTo(47, 0);
+      .toBeCloseTo(safeTop, 0);
     await page.screenshot({ path: testInfo.outputPath('home-after-viewport-settle.png') });
   });
 }
