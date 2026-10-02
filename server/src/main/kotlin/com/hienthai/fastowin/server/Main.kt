@@ -82,7 +82,9 @@ fun main() {
                 trustProxyHeaders = trustProxyHeaders,
                 seasonLifecycleRepository = seasonLifecycleRepository,
                 pushReminderService = pushReminderService,
-                adminService = adminService
+                adminService = adminService,
+                giftService = com.hienthai.fastowin.server.gifts.GiftService(database?.giftRepository ?: com.hienthai.fastowin.server.gifts.UnavailableGiftRepository, adminService),
+                giftDeliveryEnabled = database != null
             )
         }.start(wait = true)
     } finally {

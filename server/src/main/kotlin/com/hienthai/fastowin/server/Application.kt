@@ -1,5 +1,6 @@
 package com.hienthai.fastowin.server
 
+import com.hienthai.fastowin.server.gifts.*
 import com.hienthai.fastowin.server.admin.AdminService
 import com.hienthai.fastowin.server.admin.adminRoutes
 import com.hienthai.fastowin.server.admin.adminAssets
@@ -88,7 +89,9 @@ fun Application.gameModule(
     allowedWebOriginsValue: String? = System.getenv("FASTTOWIN_WEB_ORIGINS"),
     websocketPingPeriod: Duration = DEFAULT_WEBSOCKET_PING_PERIOD,
     websocketPongTimeout: Duration = DEFAULT_WEBSOCKET_PONG_TIMEOUT,
-    adminService: AdminService? = null
+    adminService: AdminService? = null,
+    giftService: GiftService = GiftService(UnavailableGiftRepository, adminService),
+    giftDeliveryEnabled: Boolean = false
 ) {
     val isProduction = environment != "dev"
     val allowedWebOrigins = buildAllowedWebOrigins(
@@ -109,6 +112,8 @@ fun Application.gameModule(
     install(CORS) {
         allowMethod(HttpMethod.Get)
         allowMethod(HttpMethod.Post)
+        allowMethod(HttpMethod.Put)
+        allowHeader(HttpHeaders.Authorization)
         allowMethod(HttpMethod.Options)
         allowHeader(HttpHeaders.ContentType)
         allowHeader(WEB_SESSION_HEADER)
@@ -130,6 +135,9 @@ fun Application.gameModule(
     }
 
     adminService?.let { service -> routing { adminAssets(); adminRoutes(service) } }
+
+    routing { giftRoutes(giftService, authService, adminService != null) }
+    if (giftDeliveryEnabled) startGiftDelivery(giftService)
 
     val connections = ConcurrentHashMap<String, SocketConnection>()
 

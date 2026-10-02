@@ -151,6 +151,11 @@ class AdminService(
         val actor = principal(token, ownerOnly = true).second.identity
         val result = audit(page); auditEntry(actor.id, "AUDIT_READ"); result
     }
+    /** Caller must hold the repository's admin authorization lock for this transaction. */
+    internal fun authorize(transaction: AdminTransaction, token: String?, csrfToken: String? = null,
+        mutation: Boolean = false, ownerOnly: Boolean = false): AdminIdentity =
+        transaction.principal(token, csrfToken, mutation, ownerOnly).second.identity
+
     private fun AdminTransaction.principal(token: String?, csrfToken: String? = null, mutation: Boolean = false, ownerOnly: Boolean = false): Pair<AdminSession, AdminAccount> {
         if (token == null || !token.matches(Regex("[A-Za-z0-9_-]{43}"))) unauthorized()
         val session = session(hashToken(token)) ?: unauthorized()

@@ -37,6 +37,7 @@ data class DatabaseSettings(
 }
 
 class DatabaseRuntime private constructor(
+    val giftRepository: com.hienthai.fastowin.server.gifts.PostgresGiftRepository,
     val adminRepository: PostgresAdminRepository,
     val authRepository: AuthRepository,
     val identityRepository: GuestIdentityRepository,
@@ -74,6 +75,7 @@ class DatabaseRuntime private constructor(
                     .load()
                     .migrate()
                 return DatabaseRuntime(
+                    giftRepository = com.hienthai.fastowin.server.gifts.PostgresGiftRepository(dataSource),
                     adminRepository = PostgresAdminRepository(dataSource),
                     authRepository = PostgresAuthRepository(dataSource),
                     identityRepository = PostgresGuestIdentityRepository(dataSource),

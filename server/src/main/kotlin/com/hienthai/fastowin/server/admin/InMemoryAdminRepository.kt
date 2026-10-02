@@ -1,5 +1,8 @@
 package com.hienthai.fastowin.server.admin
 
+import com.hienthai.fastowin.server.gifts.*
+import com.hienthai.fastowin.server.PlayerProgression
+import java.util.UUID
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
@@ -25,7 +28,23 @@ class InMemoryAdminRepository : AdminRepository {
     }
     override suspend fun <T> transaction(block: AdminTransaction.() -> T): T = mutex.withLock {
         val next = state.snapshot()
-        val tx = object : AdminTransaction {
+        val tx = object : AdminTransaction, GiftMemoryPlayers {
+            override fun giftPlayers(): List<GiftPlayer> {
+                available()
+                return next.users.values.filter { it.accountType == "REGISTERED" && it.status != "DELETED" }.map { GiftPlayer(it.id,it.createdAtEpochMillis) }
+            }
+            override fun giftBalance(id: String): GiftBalance {
+                available(); val user = next.users[id] ?: missing(); return GiftBalance(user.gold,user.xp)
+            }
+            override fun giftAward(id: String, campaign: GiftCampaign, now: Long): GiftBalance {
+                val user = next.users[id] ?: missing()
+                val balance = try { GiftBalance(Math.addExact(user.gold,campaign.draft.gold),Math.addExact(user.xp,campaign.draft.xp)) } catch (_: ArithmeticException) { conflict() }
+                val history = next.wallet[id].orEmpty()
+                if (history.any { it.sourceType == "ADMIN_GIFT" && it.sourceId == campaign.id }) conflict()
+                next.users[id] = user.copy(gold=balance.gold,xp=balance.xp,level=PlayerProgression.levelForExperience(balance.xp))
+                next.wallet[id] = history + WalletEntry(UUID.randomUUID().toString(),"ADMIN_GIFT",campaign.id,campaign.draft.gold,0,campaign.draft.xp,now)
+                return balance
+            }
             override fun accountByEmail(email: String) = next.accounts.values.firstOrNull { it.identity.email == email }
             override fun account(id: String) = next.accounts[id]
             override fun putAccount(account: AdminAccount) {

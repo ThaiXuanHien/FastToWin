@@ -31,7 +31,7 @@ class PostgresAdminRepository(private val dataSource: DataSource) : AdminReposit
     }
 }
 
-private class JdbcAdminTransaction(private val connection: Connection) : AdminTransaction {
+internal class JdbcAdminTransaction(private val connection: Connection) : AdminTransaction {
     private fun <T> rows(sql: String, values: List<Any?> = emptyList(), mapper: (ResultSet) -> T): List<T> =
         connection.prepareStatement(sql).use { statement ->
             statement.bind(values)
