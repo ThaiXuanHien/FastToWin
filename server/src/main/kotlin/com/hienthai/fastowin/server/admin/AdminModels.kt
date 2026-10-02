@@ -1,6 +1,7 @@
 package com.hienthai.fastowin.server.admin
 
 import kotlinx.serialization.Serializable
+import com.hienthai.fastowin.server.legacyFallback
 
 @Serializable enum class AdminRole { OWNER, OPERATOR, SUPPORT }
 @Serializable data class AdminIdentity(val id: String, val email: String, val role: AdminRole, val active: Boolean = true)
@@ -27,12 +28,12 @@ import kotlinx.serialization.Serializable
 )
 
 class AdminException(val status: Int, val code: String, override val message: String) : RuntimeException(message)
-internal fun invalid(): Nothing = throw AdminException(400, "INVALID_REQUEST", "Yêu cầu không hợp lệ.")
-internal fun unauthorized(): Nothing = throw AdminException(401, "UNAUTHORIZED", "Phiên quản trị không hợp lệ hoặc đã hết hạn.")
-internal fun forbidden(): Nothing = throw AdminException(403, "FORBIDDEN", "Bạn không có quyền thực hiện thao tác này.")
-internal fun missing(): Nothing = throw AdminException(404, "NOT_FOUND", "Không tìm thấy dữ liệu.")
-internal fun conflict(): Nothing = throw AdminException(409, "CONFLICT", "Yêu cầu xung đột với dữ liệu hiện tại.")
-internal fun unavailable(): Nothing = throw AdminException(503, "STORAGE_UNAVAILABLE", "Kho dữ liệu người chơi chưa sẵn sàng.")
+internal fun invalid(): Nothing = throw AdminException(400, "INVALID_REQUEST", legacyFallback("Yêu cầu không hợp lệ."))
+internal fun unauthorized(): Nothing = throw AdminException(401, "UNAUTHORIZED", legacyFallback("Phiên quản trị không hợp lệ hoặc đã hết hạn."))
+internal fun forbidden(): Nothing = throw AdminException(403, "FORBIDDEN", legacyFallback("Bạn không có quyền thực hiện thao tác này."))
+internal fun missing(): Nothing = throw AdminException(404, "NOT_FOUND", legacyFallback("Không tìm thấy dữ liệu."))
+internal fun conflict(): Nothing = throw AdminException(409, "CONFLICT", legacyFallback("Yêu cầu xung đột với dữ liệu hiện tại."))
+internal fun unavailable(): Nothing = throw AdminException(503, "STORAGE_UNAVAILABLE", legacyFallback("Kho dữ liệu người chơi chưa sẵn sàng."))
 
 data class PageRequest(val page: Int = 0, val pageSize: Int = 25) {
     init { if (page < 0 || pageSize !in 1..100 || page.toLong() * pageSize > Int.MAX_VALUE) invalid() }

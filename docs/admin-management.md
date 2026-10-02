@@ -1,4 +1,4 @@
-# Quản trị FastToWin — phase A
+# Quản trị FastToWin
 
 Console tiếng Việt tại `/admin/` dùng tài khoản quản trị riêng, tách khỏi đăng nhập người chơi. Mặc định cả console và `/admin/api` đều bị tắt. Không có mật khẩu mặc định hay endpoint công khai để tạo Owner.
 
@@ -34,7 +34,7 @@ Cookie riêng `fasttowin_admin` có `HttpOnly`, `SameSite=Strict`, `Path=/admin`
 
 ## Công việc hỗ trợ
 
-Danh sách và lịch sử phân trang theo 25 mục. Hồ sơ chỉ dùng dữ liệu thực: cấp độ, XP, Vàng, Gem, Elo, bang, hoạt động gần nhất. Hoạt động null hiển thị “Chưa có dữ liệu”. Lịch sử trận, ví và nguồn quà có phân trang riêng; nguồn quà chỉ gồm các nguồn `ADMIN_GIFT`/`COMPENSATION` đã tồn tại. Console phase A không chỉnh sửa người chơi hoặc tạo quà.
+Danh sách và lịch sử phân trang theo 25 mục. Hồ sơ chỉ dùng dữ liệu thực: cấp độ, XP, Vàng, Gem, Elo, bang, hoạt động gần nhất. Hoạt động null hiển thị “Chưa có dữ liệu”. Lịch sử trận, ví và nguồn quà có phân trang riêng; nguồn quà chỉ gồm các nguồn `ADMIN_GIFT`/`COMPENSATION` đã tồn tại. Console không chỉnh sửa dữ liệu người chơi; chiến dịch quà được quản lý riêng theo hướng dẫn bên dưới.
 
 Owner phải nhập lý do cho mỗi thao tác cấp tài khoản/đổi quyền. Console sinh UUID request ID, vô hiệu hóa nút đang xử lý, giữ ID khi thử lại cùng payload bị lỗi; sửa form hoặc hoàn tất thành công kết thúc lần thử đó. Nếu đã rời trang mà kết quả mutation chưa rõ, kiểm tra danh sách và nhật ký trước khi gửi thao tác mới. Không có reset mật khẩu quản trị trong phase A.
 
@@ -42,7 +42,21 @@ Giao diện dùng Material Design nền trắng. Trang tài khoản chỉ hiển
 
 Nhật ký bền vững ghi truy cập, tìm kiếm, đọc hồ sơ/lịch sử, bootstrap và thay đổi quyền. Các bản ghi gồm hành động, actor/target ID, request ID, lý do và tóm tắt quyền trước/sau khi phù hợp. Không ghi mật khẩu, token hay truy vấn email. Giữ quyền truy cập và backup PostgreSQL theo quy trình nội bộ; quyết định retention/cleanup còn thuộc vận hành.
 
-Phase B còn mở trong Issue #21: phát quà, cấu hình chiến dịch/sự kiện, preview/publish và các mutation dữ liệu người chơi. Console không hiển thị điều khiển giả cho các chức năng này.
+Chiến dịch quà Vàng/XP của Issue #19 đã có trong console. Cấu hình sự kiện và các mutation dữ liệu người chơi khác của Issue #21 vẫn còn mở; console không hiển thị điều khiển giả.
+
+## Chiến dịch Quà admin
+
+Owner và Operator có mục **Quà admin**. Nút dấu cộng mở bản nháp với tiêu đề/nội dung Việt–Anh, Vàng/XP nguyên không âm (ít nhất một khoản dương), lý do và lịch phát. Chỉ Owner được công bố/hủy. Support vẫn xem lịch sử nguồn quà trong hồ sơ; API cho Support đọc danh sách/chi tiết chiến dịch, không mutation.
+
+Chọn tất cả tài khoản đã đăng ký, danh sách UUID (tối đa 10.000) hoặc đăng ký trong khoảng `[từ, đến)`. Guest không nhận quà. Lọc theo hoạt động chưa hỗ trợ vì không có nguồn hoạt động chính thức. Mọi mốc nhập/hiển thị dùng Bangkok (UTC+7), API lưu epoch UTC; hạn mặc định 30 ngày tính từ giờ phát, tự cập nhật khi đổi giờ phát trước khi tùy chỉnh hạn.
+
+**Lưu bản nháp → Xem trước → Tiếp tục công bố → Công bố chiến dịch**. Xem trước hiển thị hai ngôn ngữ, số người nhận, ID trùng/không hợp lệ và tổng Vàng/XP. ID không hợp lệ hoặc không có người nhận chặn bước xác nhận. Nếu phiên bản/người nhận thay đổi, lỗi 409 bỏ xem trước cũ và yêu cầu xem trước lại. Sau công bố, nội dung/người nhận/lịch phát cố định; sửa sai bằng chiến dịch mới. Hủy cần lý do, chặn quà chưa nhận, giữ quà đã nhận.
+
+Danh sách phân trang thật từ máy chủ (25 mục), có trạng thái bản nháp/đã công bố/đã hủy; chưa có lọc trạng thái vì API chưa hỗ trợ. Báo cáo thể hiện đủ điều kiện, chờ phát, đã phát, đã nhận, hết hạn, hủy chưa nhận, bỏ qua và tổng Vàng/XP thực nhận. Các chỉ số có phần giao nhau; không cộng chúng thành tổng người nhận. Nháp có chỉ số 0, dùng xem trước để ước tính.
+
+Trong khi request đang xử lý, không đóng modal bằng Hủy/đóng/Escape/bấm ngoài và không chỉnh trường. Thử lại cùng nội dung trong modal giữ request ID. Lỗi chưa xác nhận không được coi là thành công; nếu đã đóng modal/rời trang, kiểm tra báo cáo/nhật ký trước khi tạo ý định mới. Hết phiên hoặc thu hồi quyền xóa modal và dữ liệu chiến dịch. Nội dung quà chỉ được hiển thị dạng text, giữ xuống dòng.
+
+Hợp đồng chi tiết: [admin-gifts.md](admin-gifts.md). Không phát push tự động. Việc chạy suite/local preview không cho phép công bố production.
 
 ## Kiểm tra tại máy local
 

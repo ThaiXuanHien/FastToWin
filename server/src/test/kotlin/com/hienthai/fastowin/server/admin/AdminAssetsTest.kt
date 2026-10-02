@@ -10,14 +10,14 @@ import kotlin.test.*
 class AdminAssetsTest {
     @Test fun `disabled admin exposes neither console nor assets`() = testApplication {
         application { gameModule() }
-        for (path in listOf("/admin/", "/admin/index.html", "/admin/admin.css", "/admin/admin.js", "/admin/admin-network.js")) {
+        for (path in listOf("/admin/", "/admin/index.html", "/admin/admin.css", "/admin/admin.js", "/admin/admin-network.js", "/admin/admin-gifts.js")) {
             assertEquals(HttpStatusCode.NotFound, client.get(path).status)
         }
     }
     @Test fun `enabled console serves only named resources with browser security headers`() = testApplication {
         val fixture = AdminFixture()
         application { gameModule(adminService = fixture.service) }
-        for ((path, type) in listOf("/admin/" to "text/html", "/admin/index.html" to "text/html", "/admin/admin.css" to "text/css", "/admin/admin.js" to "application/javascript", "/admin/admin-network.js" to "application/javascript")) {
+        for ((path, type) in listOf("/admin/" to "text/html", "/admin/index.html" to "text/html", "/admin/admin.css" to "text/css", "/admin/admin.js" to "application/javascript", "/admin/admin-network.js" to "application/javascript", "/admin/admin-gifts.js" to "application/javascript")) {
             val response = client.get(path)
             assertEquals(HttpStatusCode.OK, response.status, path)
             assertTrue(response.bodyAsText().isNotBlank())

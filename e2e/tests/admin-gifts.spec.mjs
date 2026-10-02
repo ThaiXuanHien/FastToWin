@@ -1,0 +1,154 @@
+import { test, expect, login } from '../support/admin-fixture.mjs';
+import { gifts, fillGift, giftId, player } from '../support/admin-gift-fixture.mjs';
+async function open(page, fixture) { await login(page, fixture); await page.getByRole('button', { name: 'Quà admin', exact: true }).click(); await expect(page.getByRole('status')).toHaveText('0 chiến dịch.'); }
+async function draft(page) { await page.getByRole('button', { name: 'Tạo chiến dịch quà', exact: true }).click(); await fillGift(page); await page.getByRole('button', { name: 'Lưu bản nháp', exact: true }).click(); await expect(page.getByRole('heading', { name: 'Quà kiểm thử', exact: true, level: 1 })).toBeVisible(); }
+async function preview(page) { await page.getByRole('button', { name: 'Xem trước', exact: true }).click(); await expect(page.getByRole('dialog', { name: 'Xem trước chiến dịch' }).getByText('Tổng Vàng', { exact: true })).toBeVisible(); }
+async function confirm(page) { await page.getByRole('button', { name: 'Tiếp tục công bố', exact: true }).click(); await expect(page.getByRole('dialog', { name: 'Xác nhận công bố' })).toBeVisible(); }
+
+test('long draft keeps its heading and close control visible when fields scroll', async ({ page, fixture }) => {
+  gifts(fixture); await page.setViewportSize({ width: 360, height: 640 }); await open(page, fixture);
+  await page.getByRole('button', { name: 'Tạo chiến dịch quà', exact: true }).click();
+  await page.getByLabel('Lý do chiến dịch', { exact: true }).fill('Local test');
+  await expect(page.getByRole('button', { name: 'Đóng hộp thoại' })).toBeInViewport();
+  await expect(page.getByRole('dialog').getByRole('heading')).toBeInViewport();
+});
+
+test('draft Bangkok dates → bilingual preview → exact confirmation → report → reasoned cancellation', async ({ page, fixture }) => {
+  const state = gifts(fixture); await open(page, fixture); await draft(page);
+  const create = fixture.calls.find(c => c.route === '/admin/api/gift-campaigns' && c.method === 'POST');
+  expect(create.body.availableAtEpochMillis).toBe(Date.parse('2026-10-02T12:00:00+07:00'));
+  expect(create.body.expiresAtEpochMillis - create.body.availableAtEpochMillis).toBe(30 * 86400000);
+  expect(create.headers['x-admin-csrf']).toBe('fixture-csrf');
+  await preview(page);
+  const dialog = page.getByRole('dialog');
+  await expect(dialog.getByText('Test gift', { exact: true })).toBeVisible();
+  await expect(dialog.getByText('Tổng Vàng', { exact: true })).toBeVisible();
+  await expect(dialog.getByText('1.000', { exact: true })).toBeVisible();
+  await expect(dialog.getByText(/2 ID trùng/)).toBeVisible();
+  await confirm(page);
+  await expect(page.getByRole('dialog').getByText('Người nhận', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Công bố chiến dịch', exact: true }).click();
+  await expect(page.locator('.confirmation')).toContainText('Đã công bố');
+  await expect(page.getByText('Vàng đã nhận', { exact: true })).toBeVisible();
+  await expect(page.getByText(/Các chỉ số có phần giao nhau/)).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Sửa bản nháp', exact: true })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Hủy chiến dịch', exact: true }).click();
+  await page.getByLabel('Lý do hủy', { exact: true }).fill('Kết thúc kiểm thử');
+  await page.getByRole('button', { name: 'Xác nhận hủy chiến dịch', exact: true }).click();
+  await expect(page.locator('.confirmation')).toContainText('Đã hủy chiến dịch');
+  expect(state.detail.campaign.cancellationReason).toBe('Kết thúc kiểm thử');
+});
+
+test('draft editing uses PUT current version and new request identity; audience validation and explicit unavailable activity', async ({ page, fixture }) => {
+  gifts(fixture); await open(page, fixture); await draft(page);
+  await page.getByRole('button', { name: 'Sửa bản nháp', exact: true }).click();
+  await expect(page.getByLabel('Thời gian phát (Bangkok)', { exact: true })).toHaveValue('2026-10-02T12:00');
+  await page.getByLabel('Người nhận', { exact: true }).selectOption('USER_IDS');
+  await page.getByLabel('ID người chơi', { exact: true }).fill(`${player.id}\n${player.id}`);
+  await expect(page.getByText(/Chưa có nguồn hoạt động gần nhất chính thức/)).toBeVisible();
+  await page.getByRole('button', { name: 'Lưu bản nháp', exact: true }).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  const edit = fixture.calls.find(c => c.method === 'PUT'); expect(edit.body.expectedVersion).toBe(1); expect(edit.body.userIds).toEqual([player.id, player.id]);
+  expect(edit.body.requestId).not.toBe(fixture.calls.find(c => c.method === 'POST' && c.route === '/admin/api/gift-campaigns').body.requestId);
+  await preview(page); await expect(page.getByRole('dialog').getByText(/2 ID trùng/)).toBeVisible();
+});
+
+test('stale preview conflict requires fresh preview before publishing again', async ({ page, fixture }) => {
+  const state = gifts(fixture); await open(page, fixture); await draft(page); await preview(page); await confirm(page);
+  const path = `/admin/api/gift-campaigns/${giftId}/publish`, normal = fixture.handlers.get(path);
+  fixture.handlers.set(path, async (_, send) => { send(409, { code: 'CONFLICT', message: 'Dữ liệu xem trước đã thay đổi.' }); return true; });
+  await page.getByRole('button', { name: 'Công bố chiến dịch', exact: true }).click();
+  await expect(page.getByRole('alert')).toContainText('Xem trước lại');
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(page.locator('.confirmation')).not.toContainText('Đã công bố');
+  fixture.handlers.set(path, normal); await preview(page); expect(state.previewCalls).toBe(2); await confirm(page);
+  await page.getByRole('button', { name: 'Công bố chiến dịch', exact: true }).click(); await expect(page.locator('.confirmation')).toContainText('Đã công bố');
+});
+
+test('ambiguous publish preserves identical request body and blocks every dismissal while pending', async ({ page, fixture }) => {
+  gifts(fixture); await open(page, fixture); await draft(page); await preview(page); await confirm(page);
+  let release, attempt = 0; const path = `/admin/api/gift-campaigns/${giftId}/publish`, normal = fixture.handlers.get(path);
+  fixture.handlers.set(path, async (call, send) => {
+    attempt++; if (attempt === 1) { await new Promise(r => release = r); send(503, { code: 'STORAGE_UNAVAILABLE', message: 'Kết quả chưa xác nhận.' }); return true; } return normal(call, send);
+  });
+  await page.getByRole('button', { name: 'Công bố chiến dịch', exact: true }).click();
+  await expect(page.getByRole('dialog')).toHaveAttribute('aria-busy', 'true');
+  await expect(page.getByRole('button', { name: 'Đóng hộp thoại' })).toBeDisabled(); await expect(page.getByRole('button', { name: 'Hủy', exact: true })).toBeDisabled();
+  await page.keyboard.press('Escape'); await page.mouse.click(1, 1); await expect(page.getByRole('dialog')).toBeVisible(); await expect.poll(() => typeof release).toBe('function'); release();
+  await expect(page.getByRole('alert')).toContainText('Kết quả chưa xác nhận');
+  await page.getByRole('button', { name: 'Công bố chiến dịch', exact: true }).click(); await expect(page.locator('.confirmation')).toContainText('Đã công bố');
+  const calls = fixture.calls.filter(c => c.route === path); expect(calls[0].body).toEqual(calls[1].body);
+});
+
+test('invalid recipients prevent confirmation and campaign content is text only', async ({ page, fixture }) => {
+  gifts(fixture); await open(page, fixture); await draft(page);
+  fixture.handlers.set(`/admin/api/gift-campaigns/${giftId}/preview`, async (_, send) => { send(200, { campaignId: giftId, version: 1, recipientCount: 0, duplicateCount: 0, invalidUserIds: [player.id], totalGold: 0, totalXp: 0, previewToken: 'invalid' }); return true; });
+  await preview(page); await expect(page.getByRole('dialog').getByText(player.id, { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Tiếp tục công bố', exact: true })).toBeDisabled();
+});
+
+test('zero rewards and invalid date bounds are rejected without mutation; registration bounds use Bangkok', async ({ page, fixture }) => {
+  gifts(fixture); await open(page, fixture); await page.getByRole('button', { name: 'Tạo chiến dịch quà', exact: true }).click(); await fillGift(page);
+  await page.getByLabel('Vàng mỗi người').fill('0'); await page.getByLabel('XP mỗi người').fill('0'); await page.getByRole('button', { name: 'Lưu bản nháp', exact: true }).click();
+  await expect(page.getByRole('alert')).toContainText('ít nhất một phần thưởng');
+  expect(fixture.calls.filter(c => c.route === '/admin/api/gift-campaigns' && c.method === 'POST')).toHaveLength(0);
+  await page.getByLabel('Vàng mỗi người').fill('1'); await page.getByLabel('Người nhận', { exact: true }).selectOption('REGISTERED_BETWEEN');
+  await page.getByLabel('Đăng ký từ (Bangkok, bao gồm)', { exact: true }).fill('2026-09-01T12:00');
+  await page.getByLabel('Đăng ký đến (Bangkok, không bao gồm)', { exact: true }).fill('2026-08-01T12:00');
+  await page.getByRole('button', { name: 'Lưu bản nháp', exact: true }).click(); await expect(page.getByRole('alert')).toContainText('Khoảng đăng ký');
+  await page.getByLabel('Đăng ký đến (Bangkok, không bao gồm)', { exact: true }).fill('2026-10-01T12:00');
+  await page.getByRole('button', { name: 'Lưu bản nháp', exact: true }).click(); await expect(page.getByRole('dialog')).toHaveCount(0);
+  const body = fixture.calls.find(c => c.route === '/admin/api/gift-campaigns' && c.method === 'POST').body;
+  expect(body.registeredFromEpochMillis).toBe(Date.parse('2026-09-01T12:00:00+07:00')); expect(body.registeredUntilEpochMillis).toBe(Date.parse('2026-10-01T12:00:00+07:00')); expect(body.userIds).toEqual([]);
+});
+
+test('draft network retry retains request identity and pending fields; cancellation retry retains reason and ID', async ({ page, fixture }) => {
+  gifts(fixture); await open(page, fixture);
+  const base = '/admin/api/gift-campaigns', create = fixture.handlers.get(base); let release, first = true;
+  fixture.handlers.set(base, async (call, send) => {
+    if (call.method === 'POST' && first) { first = false; await new Promise(r => release = r); send(503, { code: 'STORAGE_UNAVAILABLE', message: 'Thử lại yêu cầu.' }); return true; } return create(call, send);
+  });
+  await page.getByRole('button', { name: 'Tạo chiến dịch quà', exact: true }).click(); await fillGift(page);
+  await page.getByRole('button', { name: 'Lưu bản nháp', exact: true }).click(); await expect(page.getByLabel('Tiêu đề tiếng Việt')).toBeDisabled();
+  await page.keyboard.press('Escape'); await expect(page.getByRole('dialog')).toBeVisible(); await expect.poll(() => typeof release).toBe('function'); release();
+  await expect(page.getByRole('alert')).toContainText('Thử lại yêu cầu'); await page.getByRole('button', { name: 'Lưu bản nháp', exact: true }).click(); await expect(page.getByRole('dialog')).toHaveCount(0);
+  const calls = fixture.calls.filter(c => c.route === base && c.method === 'POST'); expect(calls[0].body).toEqual(calls[1].body);
+  const cancelPath = `${base}/${giftId}/cancel`, cancel = fixture.handlers.get(cancelPath); let cancelFirst = true;
+  fixture.handlers.set(cancelPath, async (call, send) => { if (cancelFirst) { cancelFirst = false; send(503, { code: 'STORAGE_UNAVAILABLE', message: 'Chưa xác nhận hủy.' }); return true; } return cancel(call, send); });
+  await page.getByRole('button', { name: 'Hủy chiến dịch', exact: true }).click(); await page.getByLabel('Lý do hủy').fill('Local cancellation');
+  await page.getByRole('button', { name: 'Xác nhận hủy chiến dịch', exact: true }).click(); await expect(page.getByRole('alert')).toContainText('Chưa xác nhận hủy');
+  await page.getByRole('button', { name: 'Xác nhận hủy chiến dịch', exact: true }).click(); await expect(page.locator('.confirmation')).toContainText('Đã hủy');
+  const cancellations = fixture.calls.filter(c => c.route === cancelPath); expect(cancellations[0].body).toEqual(cancellations[1].body);
+});
+
+for (const role of ['OPERATOR', 'SUPPORT']) test(`${role} role affordances preserve the permitted workflows`, async ({ page, fixture }) => {
+  fixture.role = role; gifts(fixture); await login(page, fixture);
+  if (role === 'SUPPORT') { await expect(page.getByRole('button', { name: 'Quà admin', exact: true })).toHaveCount(0); await page.getByRole('button', { name: 'Xem người chơi' }).first().click(); await expect(page.getByRole('button', { name: 'Nguồn quà', exact: true })).toBeVisible(); }
+  else { await page.getByRole('button', { name: 'Quà admin', exact: true }).click(); await draft(page); await preview(page); await expect(page.getByRole('button', { name: 'Tiếp tục công bố', exact: true })).toHaveCount(0); await expect(page.getByRole('button', { name: 'Hủy chiến dịch', exact: true })).toHaveCount(0); }
+});
+
+for (const status of [401, 403]) test(`${status} during draft save clears gift dialogs and sensitive inputs`, async ({ page, fixture }) => {
+  gifts(fixture); await open(page, fixture);
+  fixture.handlers.set('/admin/api/gift-campaigns', async (_, send) => { fixture.role = 'SUPPORT'; if (status === 401) fixture.signedIn = false; send(status, { code: status === 401 ? 'UNAUTHORIZED' : 'FORBIDDEN', message: 'Quyền đã thay đổi.' }); return true; });
+  await page.getByRole('button', { name: 'Tạo chiến dịch quà', exact: true }).click(); await fillGift(page); await page.getByRole('button', { name: 'Lưu bản nháp', exact: true }).click();
+  await expect(page.getByRole('heading', { name: status === 401 ? 'Đăng nhập quản trị' : 'Người chơi', exact: true })).toBeVisible();
+  await expect(page.getByRole('dialog')).toHaveCount(0); await expect(page.getByLabel('Nội dung tiếng Anh')).toHaveCount(0); await expect(page.getByText('Quà kiểm thử', { exact: true })).toHaveCount(0);
+});
+
+for (const width of [360, 768, 1024, 1440]) test(`gift surfaces at ${width}px contain controls and restore focus with reduced motion`, async ({ page, fixture }) => {
+  gifts(fixture); await page.setViewportSize({ width, height: 1000 }); await page.emulateMedia({ reducedMotion: 'reduce' }); await open(page, fixture);
+  await page.screenshot({ path: `../.artifacts/admin-gifts-${width}-list.png`, fullPage: true });
+  await page.getByRole('button', { name: 'Tạo chiến dịch quà', exact: true }).click(); await fillGift(page);
+  await page.getByLabel('Người nhận', { exact: true }).selectOption('USER_IDS'); await page.getByLabel('ID người chơi', { exact: true }).fill(player.id);
+  await page.getByLabel('Tiêu đề tiếng Việt').focus();
+  await page.screenshot({ path: `../.artifacts/admin-gifts-${width}-form.png`, fullPage: true });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.getByRole('button', { name: 'Lưu bản nháp', exact: true }).click();
+  await page.getByRole('button', { name: 'Quay lại chiến dịch', exact: true }).click(); await expect(page.getByRole('button', { name: 'Xem chiến dịch Quà kiểm thử', exact: true })).toBeVisible();
+  await page.screenshot({ path: `../.artifacts/admin-gifts-${width}-list.png`, fullPage: true });
+  await page.getByRole('button', { name: 'Trang sau', exact: true }).click(); await expect(page.getByText('Trang 2 · 26 mục', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Xem chiến dịch Quà kiểm thử', exact: true }).click(); await preview(page);
+  await page.screenshot({ path: `../.artifacts/admin-gifts-${width}-preview.png`, fullPage: true }); await confirm(page);
+  await page.screenshot({ path: `../.artifacts/admin-gifts-${width}-confirm.png`, fullPage: true });
+  await page.keyboard.press('Escape'); await expect(page.getByRole('dialog')).toHaveCount(0); await expect(page.getByRole('button', { name: 'Xem trước', exact: true })).toBeFocused();
+});

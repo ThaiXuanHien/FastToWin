@@ -178,3 +178,31 @@ dd { margin: 6px 0 0; font-weight: 500; overflow-wrap: anywhere; }
   .modal-header h2 { font-size: 1.25rem; }
 }
 @media (prefers-reduced-motion: reduce) { button { transition: none; } .modal[open] { animation: none; } }
+
+/* Campaign console reuses the approved white Material shell and dialogs. */
+[hidden] { display: none !important; }
+.gift-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(140px, .45fr) 48px; align-items: center; gap: 16px; padding: 20px 8px; border-bottom: 1px solid var(--line); }
+.gift-row .row-meta { font-size: .8125rem; }
+.gift-row > .icon-button .tooltip { right: 0; left: auto; }
+.gift-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.gift-languages { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; }
+.gift-message { gap: 12px; padding: 20px; background: var(--surface); border-radius: 16px; min-width: 0; }
+.gift-message h3 { margin: 0; font-size: 1.125rem; font-weight: 500; overflow-wrap: anywhere; }
+.gift-body { white-space: pre-wrap; overflow-wrap: anywhere; }
+.gift-totals, .gift-report { margin: 0; padding: 20px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px; background: var(--surface); border-radius: var(--radius); }
+.gift-totals dd { font-size: 1.5rem; }
+.gift-field-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.gift-help { font-size: .8125rem; }
+.modal .gift-languages { grid-template-columns: minmax(0, 1fr); gap: 16px; }
+.gift-modal .modal-header { position: sticky; top: 0; z-index: 2; background: var(--canvas); padding: 8px 0; }
+.gift-modal :is(input, select, textarea, button, [tabindex]) { scroll-margin-top: 100px; scroll-margin-bottom: 16px; }
+.page-gifts > .stack > .badge { justify-self: start; }
+@media (max-width: 560px) {
+  .gift-row { grid-template-columns: minmax(0, 1fr) 48px; padding: 16px 0; gap: 12px; }
+  .gift-row .row-meta { grid-column: 1; }
+  .gift-row > button { grid-column: 2; grid-row: 1 / span 2; }
+  .gift-languages { grid-template-columns: minmax(0, 1fr); }
+  .gift-totals, .gift-report { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; padding: 16px; }
+  .gift-field-pair { grid-template-columns: minmax(0, 1fr); gap: 24px; }
+  .field:has(input[type="datetime-local"]) label { max-width: calc(100% - 24px); position: static; padding: 0; margin: 0 0 8px; }
+}

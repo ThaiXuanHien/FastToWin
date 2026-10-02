@@ -11,6 +11,8 @@ const labels = {
   GOLD_EXCHANGE: 'Đổi Vàng', COSMETIC_PURCHASE: 'Mua vật phẩm', STORE_PURCHASE: 'Mua trong cửa hàng',
   TOURNAMENT_ENTRY: 'Phí tham gia giải', TOURNAMENT_ENTRY_REFUND: 'Hoàn phí giải', TOURNAMENT_ENTRY_REVERSED: 'Phí giải đã đảo',
   ADMIN_GIFT: 'Quà quản trị', COMPENSATION: 'Bồi hoàn',
+  GIFT_LIST: 'Xem chiến dịch quà', GIFT_DETAIL: 'Xem báo cáo quà', GIFT_CREATE: 'Tạo bản nháp quà', GIFT_UPDATE: 'Sửa bản nháp quà',
+  GIFT_PREVIEW: 'Xem trước quà', GIFT_PUBLISH: 'Công bố quà', GIFT_CANCEL: 'Hủy chiến dịch quà',
   ADMIN_LOGIN: 'Đăng nhập quản trị', ADMIN_LOGOUT: 'Đăng xuất quản trị', ADMIN_SESSION: 'Khôi phục phiên',
   ADMIN_BOOTSTRAP: 'Cấp Owner ban đầu', ADMIN_CREATE: 'Cấp tài khoản quản trị', ADMIN_ACCESS: 'Thay đổi quyền truy cập',
   ADMIN_LIST: 'Xem tài khoản quản trị', AUDIT_READ: 'Xem nhật ký kiểm toán', USER_SEARCH: 'Tra cứu người chơi',
@@ -56,6 +58,7 @@ function icon(name) {
     eye: 'M2 12s3-7 10-7 10 7 10 7-3 7-10 7S2 12 2 12ZM15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z',
     search: 'M21 21l-5-5M18 10a8 8 0 1 1-16 0 8 8 0 0 1 16 0Z',
     add: 'M12 5v14M5 12h14',
+    gifts: 'M3 8h18v4H3ZM5 12v9h14v-9M12 8v13M12 8H7a3 3 0 1 1 3-3l2 3ZM12 8h5a3 3 0 1 0-3-3l-2 3Z',
   };
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
   for (const [key, value] of Object.entries({ viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', 'stroke-width': '1.7', 'stroke-linecap': 'round', 'stroke-linejoin': 'round', 'aria-hidden': 'true', focusable: 'false', class: 'icon' })) svg.setAttribute(key, value);
@@ -84,10 +87,10 @@ document.addEventListener('keydown', event => {
   if (event.key === 'Escape') document.querySelectorAll('.icon-button[data-tooltip]').forEach(control => control.setAttribute('data-tooltip-dismissed', ''));
 });
 let modalSequence = 0;
-function modal(title) {
+function modal(title, restoreFocus = document.activeElement) {
   const headingId = 'modal-heading-' + ++modalSequence;
   const dialog = node('dialog', null, { class: 'modal', 'aria-labelledby': headingId });
-  const opener = document.activeElement;
+  const opener = restoreFocus;
   let busy = false;
   const dismiss = () => { if (!busy) dialog.close(); };
   const close = iconButton('Đóng hộp thoại', dismiss, 'close');
@@ -165,7 +168,7 @@ function channel() {
     return { controller, current, sessionVersion: s };
   };
 }
-async function api(path, task, payload, csrf = session?.csrfToken) {
+async function api(path, task, payload, csrf = session?.csrfToken, method = 'POST') {
   let authRequest = false;
   try {
     let controller;
@@ -181,7 +184,7 @@ async function api(path, task, payload, csrf = session?.csrfToken) {
     if (authRequest) authRequests++;
     const response = await fetch('/admin/api' + path, {
       credentials: 'same-origin', cache: 'no-store', signal: task.controller.signal,
-      ...(payload === undefined ? {} : { method: 'POST', headers: { 'Content-Type': 'application/json', ...(csrf ? { 'X-Admin-CSRF': csrf } : {}) }, body: JSON.stringify(payload) }),
+      ...(payload === undefined ? {} : { method, headers: { 'Content-Type': 'application/json', ...(csrf ? { 'X-Admin-CSRF': csrf } : {}) }, body: JSON.stringify(payload) }),
     });
     if (!task.current()) throw aborted();
     if ((navigator.serviceWorker?.controller ?? null) !== controller) throw new Error('Kết nối đã thay đổi. Kết quả chưa được xác nhận; vui lòng thử lại.');
@@ -190,7 +193,7 @@ async function api(path, task, payload, csrf = session?.csrfToken) {
     if ((navigator.serviceWorker?.controller ?? null) !== controller) throw new Error('Kết nối đã thay đổi. Kết quả chưa được xác nhận; vui lòng thử lại.');
     if (response.status === 401 && session) { showLogin('Phiên quản trị đã hết hạn. Vui lòng đăng nhập lại.'); throw aborted(); }
     if (response.status === 403 && session && path !== '/session') { restore(); throw aborted(); }
-    if (!response.ok) throw new Error(typeof body.message === 'string' ? body.message : 'Yêu cầu không thành công. Vui lòng thử lại.');
+    if (!response.ok) { const error = new Error(typeof body.message === 'string' ? body.message : 'Yêu cầu không thành công. Vui lòng thử lại.'); error.status = response.status; error.code = body.code; throw error; }
     return body;
   } catch (error) {
     if (!task.current()) throw aborted();
@@ -215,12 +218,25 @@ function shell(title, section) {
   const layout = node('div', null, { class: 'layout' });
   const nav = node('nav', null, { 'aria-label': 'Quản trị' });
   const links = [['users', 'Người chơi', directory]];
+  if (session.admin.role !== 'SUPPORT') links.push(['gifts', 'Quà admin', giftCampaigns]);
   if (session.admin.role === 'OWNER') links.push(['accounts', 'Tài khoản quản trị', accounts], ['audit', 'Nhật ký kiểm toán', audit]);
   for (const [key, label, action] of links) nav.append(decoratedButton(label, action, key, key === section ? { 'aria-current': 'page' } : {}));
   const main = node('main', null, { id: 'main', class: 'panel stack page-' + section, tabindex: '-1' });
   main.append(node('h1', title));
   append(layout, nav, main); append(app, header, layout);
   return main;
+}
+async function giftCampaigns() {
+  if (!session || session.admin.role === 'SUPPORT') return;
+  const task = channel()();
+  try {
+    const { openGiftCampaigns } = await import('./admin-gifts.js');
+    if (!task.current()) return;
+    openGiftCampaigns({ node, append, button, iconButton, field, modal, feedback, shell, channel, pagination, amount,
+      role: () => session?.admin.role,
+      api: (path, request, payload, method) => api(path, request, payload, session?.csrfToken, method),
+    });
+  } catch (error) { if (task.current() && error.name !== 'AbortError') feedback(document.getElementById('main')).fail(new Error('Không thể tải chiến dịch quà. Vui lòng thử lại.')); }
 }
 function showLogin(message = '', blocked = false) {
   sessionVersion++; session = null; changeView();

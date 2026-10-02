@@ -50,3 +50,13 @@ Use semantic tokens for hover/pressed states. Text contrast must exceed 4.5:1; f
 ## Verification
 
 `e2e/tests/admin.spec.mjs` covers focus containment/restoration, dismissal, abandoned secrets, pending mutations, retry IDs, expired sessions and role changes. Screenshots cover directory, profile, accounts, create/edit modals, login and audit at 360, 768, 1024 and 1440px. The light-console check verifies white canvas, text contrast including primary hover, and minimum control height in reduced-motion mode. Captures use fixture data and live under `.artifacts/admin-*.png`.
+
+## Gift campaigns
+
+The Owner/Operator navigation adds **Quà admin** using the same vector/selected pill pattern. The primary add icon opens a draft modal; familiar edit/view/refresh/back utilities remain 48px icon controls. Save, preview, publish and cancellation confirmations keep readable Vietnamese text. Field labels stay Vietnamese while player content is separately authored in Vietnamese and English.
+
+Reuse the 560px white dialog, with a sticky heading/close control on long gift forms and scroll margins so focused controls remain visible. Rewards, totals and actual paid counters use tonal metric surfaces; bilingual messages preserve line breaks and display text only. Registration audience fields appear only for their selected audience. Date labels explicitly say Bangkok. Unsupported activity targeting has a disabled option and a visible explanation.
+
+Preview shows recipient count, duplicate/invalid IDs and total Vàng/XP before the separate publication confirmation. Published content is read-only; cancellation requires a reason and explains that received gifts remain. Report text explains that delivered/claimed/expired counters overlap. No status-filter control is shown until the server supports filtering across the complete list.
+
+`admin-gifts.spec.mjs` verifies lifecycle, PUT/version checks, exact retries, pending dismissal guards, validation, revocation, Support history access, phone scrolling and focus restoration. Fixture screenshots: `.artifacts/admin-gifts-{360,768,1024,1440}-{list,form,preview,confirm}.png`, with reduced motion enabled.

@@ -5,6 +5,7 @@ import com.hienthai.fastowin.server.RateLimiter
 import com.hienthai.fastowin.server.InMemoryRateLimiter
 import com.hienthai.fastowin.server.RateLimitPolicy
 import com.hienthai.fastowin.server.hashToken
+import com.hienthai.fastowin.server.legacyFallback
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.security.MessageDigest
@@ -31,7 +32,7 @@ class AdminService(
         validatePassword(password, provision = false)
         if (!rateLimiter.consume("admin-login-ip", hashToken(address), RateLimitPolicy(20, 60_000)).allowed ||
             !rateLimiter.consume("admin-login-account", hashToken(normalized), RateLimitPolicy(8, 300_000)).allowed) {
-            throw AdminException(429, "RATE_LIMITED", "Vui lòng thử lại sau.")
+            throw AdminException(429, "RATE_LIMITED", legacyFallback("Vui lòng thử lại sau."))
         }
         val candidate = repository.transaction { accountByEmail(normalized) }
         val valid = withContext(Dispatchers.Default) { passwordHasher.verify(password, candidate?.passwordHash ?: dummyHash) }
