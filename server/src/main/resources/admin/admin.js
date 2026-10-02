@@ -49,6 +49,13 @@ function icon(name) {
     logout: 'M9 3H4v18h5M9 12h12M17 8l4 4-4 4',
     lock: 'M7 10V7a5 5 0 0 1 10 0v3M5 10h14v12H5ZM12 15v3',
     close: 'M6 6l12 12M18 6 6 18',
+    previous: 'M15 6l-6 6 6 6',
+    next: 'M9 6l6 6-6 6',
+    back: 'M19 12H5M11 6l-6 6 6 6',
+    edit: 'm16 3 5 5M4 20l4-1L21 6a2 2 0 0 0-3-3L5 16l-1 4Z',
+    eye: 'M2 12s3-7 10-7 10 7 10 7-3 7-10 7S2 12 2 12ZM15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z',
+    search: 'M21 21l-5-5M18 10a8 8 0 1 1-16 0 8 8 0 0 1 16 0Z',
+    add: 'M12 5v14M5 12h14',
   };
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
   for (const [key, value] of Object.entries({ viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', 'stroke-width': '1.7', 'stroke-linecap': 'round', 'stroke-linejoin': 'round', 'aria-hidden': 'true', focusable: 'false', class: 'icon' })) svg.setAttribute(key, value);
@@ -64,6 +71,18 @@ function avatar(text) {
 function decoratedButton(text, action, name, attributes = {}) {
   const control = button(text, action, attributes); control.prepend(icon(name)); return control;
 }
+function iconButton(label, action, name, attributes = {}) {
+  const { class: variant = '', ...rest } = attributes;
+  const control = decoratedButton('', action, name, { class: ('icon-button ' + variant).trim(), 'aria-label': label, 'data-tooltip': label, ...rest });
+  const tooltip = append(node('span', null, { class: 'tooltip', 'aria-hidden': 'true' }), node('span', control.getAttribute('data-tooltip'), { class: 'tooltip-label' }));
+  tooltip.addEventListener('click', event => { event.preventDefault(); event.stopPropagation(); });
+  control.append(tooltip);
+  for (const event of ['pointerenter', 'focus']) control.addEventListener(event, () => control.removeAttribute('data-tooltip-dismissed'));
+  return control;
+}
+document.addEventListener('keydown', event => {
+  if (event.key === 'Escape') document.querySelectorAll('.icon-button[data-tooltip]').forEach(control => control.setAttribute('data-tooltip-dismissed', ''));
+});
 let modalSequence = 0;
 function modal(title) {
   const headingId = 'modal-heading-' + ++modalSequence;
@@ -71,7 +90,7 @@ function modal(title) {
   const opener = document.activeElement;
   let busy = false;
   const dismiss = () => { if (!busy) dialog.close(); };
-  const close = decoratedButton('', dismiss, 'close', { class: 'icon-button', 'aria-label': 'Đóng hộp thoại' });
+  const close = iconButton('Đóng hộp thoại', dismiss, 'close');
   const cancel = button('Hủy', dismiss, { class: 'text-button' });
   const header = append(node('div', null, { class: 'modal-header' }), node('h2', title, { id: headingId }), close);
   dialog.append(header);
@@ -191,7 +210,7 @@ function shell(title, section) {
   const header = node('header', null, { class: 'header' });
   header.append(brand());
   const identity = node('div', null, { class: 'identity' });
-  append(identity, avatar(session.admin.email), append(node('div', null, { class: 'identity-info' }), node('span', session.admin.email), node('span', roles[session.admin.role], { class: 'role' })), decoratedButton('Đăng xuất', logout, 'logout'));
+  append(identity, avatar(session.admin.email), append(node('div', null, { class: 'identity-info' }), node('span', session.admin.email), node('span', roles[session.admin.role], { class: 'role' })), iconButton('Đăng xuất', logout, 'logout'));
   header.append(identity);
   const layout = node('div', null, { class: 'layout' });
   const nav = node('nav', null, { 'aria-label': 'Quản trị' });
@@ -244,10 +263,10 @@ async function logout() {
   catch (error) { if (task.current() && error.name !== 'AbortError') showLogin('Dữ liệu đã được ẩn. Đăng xuất chưa được xác nhận; vui lòng thử lại bằng cách đăng nhập.'); }
 }
 function pagination(parent, data, load) {
-  const pager = node('div', null, { class: 'pagination', 'aria-label': 'Phân trang' });
-  const before = button('Trang trước', () => load(data.page - 1)); before.disabled = data.page === 0;
-  const after = button('Trang sau', () => load(data.page + 1)); after.disabled = (data.page + 1) * data.pageSize >= data.total;
-  append(pager, before, node('span', `Trang ${data.page + 1} · ${amount(data.total)} mục`), after); parent.append(pager);
+  const pager = node('div', null, { class: 'pagination', role: 'group', 'aria-label': 'Phân trang' });
+  const before = iconButton('Trang trước', () => load(data.page - 1), 'previous'); before.disabled = data.page === 0;
+  const after = iconButton('Trang sau', () => load(data.page + 1), 'next'); after.disabled = (data.page + 1) * data.pageSize >= data.total;
+  append(pager, node('span', `Trang ${data.page + 1} · ${amount(data.total)} mục`), before, after); parent.append(pager);
 }
 function directory() {
   if (!session) return;
@@ -257,7 +276,7 @@ function directory() {
   const form = node('form', null, { class: 'search' });
   const query = field(form, 'Tìm người chơi', 'query', 'search', { maxlength: '128', 'aria-describedby': 'search-help', autocomplete: 'off' });
   query.setAttribute('placeholder', support ? 'Nhập ID hoặc tên người chơi…' : 'Nhập ID, tên hoặc email…');
-  const search = node('button', 'Tìm kiếm', { type: 'submit', class: 'primary' }); form.append(search); main.append(form);
+  const search = iconButton('Tìm kiếm', null, 'search', { type: 'submit', class: 'primary' }); form.append(search); main.append(form);
   const notices = feedback(main), results = node('div', null, { class: 'results' }); main.append(results);
   const request = channel(); let currentQuery = '';
   async function load(page = 0) {
@@ -273,19 +292,19 @@ function directory() {
         const metadata = node('div', null, { class: 'row-meta' });
         append(text, node('strong', user.displayName), node('p', user.email ?? 'Không có email', { class: 'muted' }));
         append(metadata, node('span', label(user.accountType), { class: 'badge' }), node('span', label(user.status), { class: 'badge badge-' + (user.status === 'ACTIVE' ? 'active' : 'inactive') }));
-        append(row, avatar(user.displayName), text, metadata, decoratedButton('Xem người chơi', () => detail(user.id), 'arrow')); results.append(row);
+        append(row, avatar(user.displayName), text, metadata, iconButton('Xem người chơi', () => detail(user.id), 'eye')); results.append(row);
       }
       pagination(results, data, load);
     } catch (error) { if (task.current() && error.name !== 'AbortError') notices.fail(error); }
   }
   form.addEventListener('submit', event => { event.preventDefault(); currentQuery = query.value.trim(); load(); });
-  main.append(decoratedButton('Làm mới', () => load(), 'refresh')); load();
+  main.append(iconButton('Làm mới', () => load(), 'refresh')); load();
 }
 function detail(id) {
   if (!session) return;
   const main = shell('Hồ sơ người chơi', 'users');
   const toolbar = node('div', null, { class: 'toolbar' });
-  append(toolbar, button('Quay lại danh sách', directory), decoratedButton('Làm mới', load, 'refresh')); main.append(toolbar);
+  append(toolbar, iconButton('Quay lại danh sách', directory, 'back'), iconButton('Làm mới', load, 'refresh')); main.append(toolbar);
   const notices = feedback(main), content = node('div', null, { class: 'stack' }); main.append(content);
   const request = channel();
   async function load() {
@@ -355,8 +374,8 @@ function accounts() {
   const main = shell('Tài khoản quản trị', 'accounts');
   main.append(node('p', 'Cấp tài khoản và quản lý quyền truy cập.', { class: 'muted' }));
   const toolbar = node('div', null, { class: 'toolbar' }); main.append(toolbar);
-  const createControl = button('Cấp tài khoản', create, { class: 'primary' });
-  const refresh = decoratedButton('Làm mới', () => { if (!mutationPending) load(currentPage); }, 'refresh');
+  const createControl = iconButton('Cấp tài khoản', create, 'add', { class: 'primary' });
+  const refresh = iconButton('Làm mới', () => { if (!mutationPending) load(currentPage); }, 'refresh');
   append(toolbar, createControl, refresh);
   const notices = feedback(main), confirmation = node('p', '', { role: 'status', 'aria-live': 'polite', class: 'confirmation' });
   main.append(confirmation);
@@ -392,7 +411,7 @@ function accounts() {
       if (!data.items.length) results.append(node('p', 'Chưa có tài khoản quản trị.'));
       for (const account of data.items) {
         const row = node('article', null, { class: 'row account-row' });
-        const editControl = button('Sửa quyền', () => edit(account), { 'aria-label': 'Sửa quyền ' + account.email, class: 'text-button' }); editControl.disabled = mutationPending; editControls.push(editControl);
+        const editControl = iconButton('Sửa quyền ' + account.email, () => edit(account), 'edit', { 'data-tooltip': 'Sửa quyền' }); editControl.disabled = mutationPending; editControls.push(editControl);
         append(row, avatar(account.email), append(node('div', null, { class: 'row-info' }), node('strong', account.email)), append(node('div', null, { class: 'row-meta' }), node('span', roles[account.role], { class: 'badge' }), node('span', account.active ? 'Đang hoạt động' : 'Đã thu hồi', { class: 'badge badge-' + (account.active ? 'active' : 'inactive') })), editControl);
         results.append(row);
       }
@@ -438,7 +457,7 @@ function audit() {
       pagination(results, data, load);
     } catch (error) { if (task.current() && error.name !== 'AbortError') notices.fail(error); }
   }
-  main.append(decoratedButton('Làm mới', () => load(currentPage), 'refresh')); load();
+  main.append(iconButton('Làm mới', () => load(currentPage), 'refresh')); load();
 }
 
 // BFCache snapshots contain only the cleared view. Revalidate when returning.

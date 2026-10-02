@@ -38,6 +38,7 @@ Use semantic tokens for hover/pressed states. Text contrast must exceed 4.5:1; f
 
 - Use locally available Roboto/Segoe UI/system fonts with Vietnamese support; 16px body, 30px page title (26px on phones), 13px metadata. Keep 8px spacing rhythm.
 - Pill buttons, selected navigation and light surface groups; avoid repeated boxes and heavy borders. Minimum control height: 48px. Outlined fields have persistent floating labels.
+- Familiar utility actions use 48×48px icon buttons: pagination chevrons, edit pencil, view eye, refresh, back, add, logout and dialog close. Search uses 56×56px to align with its input. Keep accessible Vietnamese names and tooltips on hover/keyboard focus; account edit names include the target email. Keep section names, form labels and save/cancel/sign-in actions readable as text.
 - Directory shows name, email, account type, status and profile action. Account list shows email, role, status and edit action. Long text wraps without truncating identifying data.
 - Profile metrics share a single tonal surface; profile facts and history use light dividers. Keep all existing read-only data accessible.
 - Login uses a restrained 440px outlined card with full-width inputs and submit.
