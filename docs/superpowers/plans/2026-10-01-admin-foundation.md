@@ -83,7 +83,7 @@ GET  /admin/api/audit?page=0&pageSize=25 -> owner-only {items:[AuditEntry],page,
 
 Every protected request re-reads session/account/role from storage. Sensitive reads and admin mutations append audit before returning; PostgreSQL audit and mutation share a transaction. Repository rechecks privileges within mutations, serializes last-owner changes and deduplicates request IDs; reusing an ID with another payload is a conflict. Never audit plaintext password, token, CSRF, email search input or arbitrary request bodies.
 
-- [ ] **Step 1: Write failing HTTP/service tests before production code.** Name the breaks: missing authorization, CSRF bypass, email disclosure, missing transactional audit, duplicated grant/revocation and expired-session acceptance. Use real in-memory repository and Ktor test host; no mocked authorization checks.
+- [x] **Step 1: Write failing HTTP/service tests before production code.** Name the breaks: missing authorization, CSRF bypass, email disclosure, missing transactional audit, duplicated grant/revocation and expired-session acceptance. Use real in-memory repository and Ktor test host; no mocked authorization checks.
 
 ```kotlin
 @Test fun `player bearer token cannot access admin directory`() = testApplication {
@@ -97,8 +97,8 @@ Every protected request re-reads session/account/role from storage. Sensitive re
 
 Before admin is enabled the contract is 404, so enabled-route tests must construct an AdminService with a seeded test-only repository. Bootstrap fixtures belong in tests, never hard-coded production defaults. Add tests for valid Owner login, generic wrong-password failure, bounded rate limiting, exact-origin mismatch, missing CSRF, 8-hour expiry, immediate revocation, Support masking/email-query rejection, paginated directory and histories, last Owner protection, idempotent role requests, forbidden Operator mutation, audit sanitization and unavailable user storage.
 
-- [ ] **Step 2: Run focused tests to record red.** Use `:server:test --tests '*admin.AdminRoutesTest' --tests '*admin.AdminServiceTest'`; unresolved new types count as the initial missing-feature failure, then use real assertions after interfaces compile.
-- [ ] **Step 3: Implement the smallest complete backend to satisfy those tests.** Keep SQL prepared and column selections explicit; reuse PasswordHasher and progression calculation. Introduce migration tables for dedicated admin accounts, sessions, request deduplication and audit without modifying old migrations. Add bound query validation and escaped substring matching; a UUID query matches by identity. Query existing user/profile/stats/clan/session/match/wallet tables; do not load all players into memory.
+- [x] **Step 2: Run focused tests to record red.** Use `:server:test --tests '*admin.AdminRoutesTest' --tests '*admin.AdminServiceTest'`; unresolved new types count as the initial missing-feature failure, then use real assertions after interfaces compile.
+- [x] **Step 3: Implement the smallest complete backend to satisfy those tests.** Keep SQL prepared and column selections explicit; reuse PasswordHasher and progression calculation. Introduce migration tables for dedicated admin accounts, sessions, request deduplication and audit without modifying old migrations. Add bound query validation and escaped substring matching; a UUID query matches by identity. Query existing user/profile/stats/clan/session/match/wallet tables; do not load all players into memory.
 
 ```kotlin
 val cookie = call.request.cookies["fasttowin_admin"]
@@ -109,8 +109,8 @@ val principal = service.authenticate(cookie) ?: return unauthorized(call)
 
 The cookie is HttpOnly, SameSite=Strict, path `/admin`, Secure outside dev. Login always requires exact origin; logout and account mutations also require the CSRF header. Configuration validates origin scheme/authority, path/query/fragment and uses no request Host trust. Unknown email verifies against a dummy password hash before generic failure. Bound login bodies/password lengths and hash off the event loop.
 
-- [ ] **Step 4: Add PostgreSQL behavior tests.** Register disposable player fixtures using existing auth repository; assert actual SQL pagination, Support masking, restart persistence, audit/mutation rollback (controlled DB failure), deduplication conflict and concurrent last Owner revocation. Missing `TEST_DATABASE_URL` must be reported as skipped coverage, not verified SQL.
-- [ ] **Step 5: Run focused tests and full backend suite, self-review and commit only task files.** Preserve user scratch files; no server deployment or live credential bootstrap. Report test commands/results and exact DTO signatures for Task 2 in the task report.
+- [x] **Step 4: Add PostgreSQL behavior tests.** Register disposable player fixtures using existing auth repository; assert actual SQL pagination, Support masking, restart persistence, audit/mutation rollback (controlled DB failure), deduplication conflict and concurrent last Owner revocation. Missing `TEST_DATABASE_URL` must be reported as skipped coverage, not verified SQL.
+- [x] **Step 5: Run focused tests and full backend suite, self-review and commit only task files.** Preserve user scratch files; no server deployment or live credential bootstrap. Report test commands/results and exact DTO signatures for Task 2 in the task report.
 
 ### Task 2: Admin web interface, browser verification and operations docs
 
@@ -126,7 +126,7 @@ The cookie is HttpOnly, SameSite=Strict, path `/admin`, Secure outside dev. Logi
 - Produce a Vietnamese responsive console at `/admin/`: login, player search/details/history, Owner-only admin access management and Owner-only audit.
 - Use same-origin `fetch` with credentials, memory-held CSRF header on mutation, structured safe errors and AbortController/request sequence guards to prevent stale searches from replacing current data.
 
-- [ ] **Step 1: Write failing asset/browser tests.** Missing admin assets should fail first. Browser tests must exercise the actual rendered static UI; use a local HTTP fixture with the documented API contract for loading/error/expiry responsiveness tests, and at least one real local backend/DB flow for auth/search/audit when available.
+- [x] **Step 1: Write failing asset/browser tests.** Missing admin assets should fail first. Browser tests must exercise the actual rendered static UI; use a local HTTP fixture with the documented API contract for loading/error/expiry responsiveness tests, and at least one real local backend/DB flow for auth/search/audit when available.
 
 ```javascript
 test('expired session clears visible player details', async ({ page }) => {
@@ -141,8 +141,8 @@ test('expired session clears visible player details', async ({ page }) => {
 
 The fixture is test-only and never delivered by production assets. Test search/pagination, empty/error states, user histories, malicious displayName as text, role-hidden owner controls, keyboard focus, mobile 360px and desktop 1440px overflow, duplicate-submit prevention, stale response protection and session expiry. Assert behavior rather than exact CSS/source strings.
 
-- [ ] **Step 2: Run focused tests to record red.** Use `:server:test --tests '*admin.AdminAssetsTest'` and `node e2e/node_modules/playwright/cli.js test --config=e2e/admin.playwright.config.mjs`; adapt executable path to the existing Node runtime.
-- [ ] **Step 3: Implement UI and asset delivery.** Serve only named resources (`index.html`, `admin.css`, modules), no arbitrary filesystem paths. Use restrictive same-origin CSP, no inline script/event handlers, no CDN fonts, visible labels/focus, 44px controls, 16px body typography, semantic tokens, sufficient contrast, live loading/error messages and no fake future-event controls.
+- [x] **Step 2: Run focused tests to record red.** Use `:server:test --tests '*admin.AdminAssetsTest'` and `node e2e/node_modules/playwright/cli.js test --config=e2e/admin.playwright.config.mjs`; adapt executable path to the existing Node runtime.
+- [x] **Step 3: Implement UI and asset delivery.** Serve only named resources (`index.html`, `admin.css`, modules), no arbitrary filesystem paths. Use restrictive same-origin CSP, no inline script/event handlers, no CDN fonts, visible labels/focus, 44px controls, 16px body typography, semantic tokens, sufficient contrast, live loading/error messages and no fake future-event controls.
 
 ```javascript
 const response = await fetch('/admin/api/users?q=' + encodeURIComponent(query) + '&page=' + page,
@@ -153,8 +153,8 @@ if (response.status === 401) { clearAdminAndPlayerState(); showLogin(); }
 
 Player detail includes summary metrics, nullable activity, clan and paginated match/wallet/gift source history. Owner access actions require reason and a request ID, disable while pending and retain request ID only for retry of the same payload. Support sees masked email and cannot enter email search. On any refresh failure clear stale displayed data or explicitly label it stale; on 401 clear all sensitive state immediately. Never store credentials, player snapshots or tokens in browser persistent storage.
 
-- [ ] **Step 4: Document enablement and bootstrap.** Explain dev/prod origin, explicit enable switch, no default credentials, console password-file input, same-origin reverse proxy, cookie/security behavior, Owner/Operator/Support, role changes/revocation, read-only players, audit, and features reserved for phase B. Never publish a seeded password in docs or start production.
-- [ ] **Step 5: Run browser checks, inspect screenshots at phone/desktop sizes, run full backend tests and commit only task files.** Record whether PostgreSQL/live auth browser flow was exercised. Update plan/ledger coverage and keep Issue #21 open because phase B remains.
+- [x] **Step 4: Document enablement and bootstrap.** Explain dev/prod origin, explicit enable switch, no default credentials, console password-file input, same-origin reverse proxy, cookie/security behavior, Owner/Operator/Support, role changes/revocation, read-only players, audit, and features reserved for phase B. Never publish a seeded password in docs or start production.
+- [x] **Step 5: Run browser checks, inspect screenshots at phone/desktop sizes, run full backend tests and commit only task files.** Record whether PostgreSQL/live auth browser flow was exercised. Update plan/ledger coverage and keep Issue #21 open because phase B remains.
 
 ## Completion gate
 
@@ -162,3 +162,22 @@ Player detail includes summary metrics, nullable activity, clan and paginated ma
 - Full-branch review addresses authentication, transaction/audit consistency, SQL privacy/pagination and browser stale-state handling.
 - Verify branch diff contains only planned files and user scratch files remain untouched.
 - Report phase A completion and any unverified local DB/browser coverage precisely; never close Issue #21 until phase B is done.
+
+## Execution evidence (02/10/2026)
+
+Task 1: `474076b` and security amendment `8ae63d6`; independent backend review and scoped amendment review passed. Creation replay stores no fast password verifier; it uses the account's existing salted PBKDF2 credential.
+
+Task 2: `c02420a` and UI amendment `6409804`; implementation and verification complete, independent UI and scoped amendment reviews passed; whole-branch review pending. The issue remains open for phase B.
+
+- Backend: 56 suites / 274 tests / zero failures, errors or skips. All six admin PostgreSQL tests ran on disposable loopback PostgreSQL, including persistence, transaction rollback and concurrent last-Owner protection.
+- Browser: 23 passing Chromium tests, including a real loopback Ktor/PostgreSQL Owner login, player search/details, audit, logout and reload. Phone/desktop screenshots inspected at 360px and 1440px. Firefox/WebKit and deployed production checks were not run.
+- Bootstrap CLI executed twice against the disposable UI database and returned the same Owner identity. Test credentials stayed in ignored secret files, with live traces disabled.
+- No production accounts, deployment, push or merge. Work remains on `codex/admin-foundation`.
+
+Decisions made during execution, in order:
+
+1. Use the existing clean checkout on a feature branch for sequential work and preserve user scratch. If concurrent edits require isolation, a separate worktree will be needed.
+2. Adapt SDD workspace/brief/review scripts to native PowerShell. A faulty adaptation could omit review context; reviewers read complete packaged diffs, recovering any truncated tool output.
+3. Serve native HTML/CSS/browser modules from Ktor on the API origin, with no production JS dependency or CDN. Phase B may require revisiting the UI structure or framework as complexity grows.
+4. Repair two pre-existing tournament test fixtures by inserting missing player_stats rows before their existing balance setup. Both failures were reproduced on baseline `960afce` in a separate database; production and original assertions are unchanged. The risk is masking a fixture lifecycle assumption, so the independent backend reviewer inspected both changes.
+The UI amendment blocks editor replacement/cancel/refresh while an access mutation awaits its result and establishes Support as the account form's native reset default. Four rendered regressions were RED before the amendment and GREEN afterward. The amended assets were rebuilt and both asset tests passed; the prior 274-test backend run remains the full backend evidence because Kotlin logic is unchanged.
