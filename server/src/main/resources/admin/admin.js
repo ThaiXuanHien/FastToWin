@@ -237,7 +237,7 @@ function histories(parent, id) {
   }
   load(0);
 }
-function mutationForm(form, submit, notices, path, payload, success) {
+function mutationForm(form, submit, notices, path, payload, success, pendingChange = () => {}) {
   const request = channel(); let busy = false, previousPayload = null, requestId = null;
   // Editing any field ends the old retry; a failed identical submission retains its ID.
   form.addEventListener('input', () => { previousPayload = null; requestId = null; });
@@ -245,14 +245,14 @@ function mutationForm(form, submit, notices, path, payload, success) {
     event.preventDefault(); if (busy) return;
     const body = payload(); const signature = JSON.stringify(body);
     if (signature !== previousPayload) { requestId = crypto.randomUUID(); previousPayload = signature; }
-    busy = true; submit.disabled = true; const label = submit.textContent; submit.textContent = 'Đang lưu…'; notices.clear();
+    busy = true; submit.disabled = true; pendingChange(true); const label = submit.textContent; submit.textContent = 'Đang lưu…'; notices.clear();
     const task = request();
     try {
       const result = await api(path, task, { ...body, requestId });
       previousPayload = null; requestId = null;
       success(result);
     } catch (error) { if (task.current() && error.name !== 'AbortError') notices.fail(error, true); }
-    finally { if (task.current()) { busy = false; submit.disabled = false; submit.textContent = label; } }
+    finally { if (task.current()) { busy = false; submit.disabled = false; submit.textContent = label; pendingChange(false); } }
   });
 }
 function accounts() {
@@ -266,40 +266,51 @@ function accounts() {
   const password = field(create, 'Mật khẩu tạm', 'new-password', 'password', { required: '', minlength: '12', maxlength: '128', autocomplete: 'new-password' });
   create.append(node('p', 'Mật khẩu từ 12 đến 128 ký tự.', { class: 'muted' }));
   const role = roleField(create, 'Vai trò mới', 'new-role'); role.value = 'SUPPORT';
+  role.querySelector('option[value="SUPPORT"]').defaultSelected = true;
   const reason = field(create, 'Lý do tạo', 'create-reason', 'textarea', { required: '', maxlength: '500' });
   const createNotices = feedback(create), submit = node('button', 'Tạo tài khoản', { type: 'submit', class: 'primary' }); create.append(submit); forms.append(create);
   const editor = node('section', null, { class: 'stack', 'aria-label': 'Chỉnh quyền' }); forms.append(editor);
   mutationForm(create, submit, createNotices, '/accounts', () => ({ email: email.value.trim(), password: password.value, role: role.value, reason: reason.value.trim() }), () => {
     password.value = ''; create.reset(); createNotices.status.textContent = 'Đã tạo tài khoản quản trị.'; load(currentPage);
   });
-  const request = channel(); let currentPage = 0;
+  const request = channel(); let currentPage = 0, accessPending = false, cancelEdit;
+  const editControls = [];
+  const refresh = button('Làm mới', () => { if (!accessPending) { editor.replaceChildren(); load(currentPage); } });
+  function setAccessPending(value) {
+    accessPending = value;
+    for (const control of editControls) control.disabled = value;
+    cancelEdit.disabled = value; refresh.disabled = value;
+  }
   async function load(page = 0) {
-    currentPage = page; const task = request(); results.replaceChildren(); notices.clear(); notices.status.textContent = 'Đang tải tài khoản quản trị…';
+    currentPage = page; const task = request(); results.replaceChildren(); editControls.length = 0; notices.clear(); notices.status.textContent = 'Đang tải tài khoản quản trị…';
     try {
       const data = await api(`/accounts?page=${page}&pageSize=25`, task); notices.status.textContent = `${amount(data.total)} tài khoản quản trị.`;
       if (!data.items.length) results.append(node('p', 'Chưa có tài khoản quản trị.'));
       for (const account of data.items) {
         const row = node('article', null, { class: 'row' });
-        append(row, append(node('div'), node('strong', account.email), node('p', `${roles[account.role]} · ${account.active ? 'Đang hoạt động' : 'Đã thu hồi'}`), node('p', account.id, { class: 'mono muted' })), button('Sửa quyền ' + account.email, () => edit(account)));
+        const editControl = button('Sửa quyền ' + account.email, () => edit(account)); editControl.disabled = accessPending; editControls.push(editControl);
+        append(row, append(node('div'), node('strong', account.email), node('p', `${roles[account.role]} · ${account.active ? 'Đang hoạt động' : 'Đã thu hồi'}`), node('p', account.id, { class: 'mono muted' })), editControl);
         results.append(row);
       }
       pagination(results, data, load);
     } catch (error) { if (task.current() && error.name !== 'AbortError') notices.fail(error); }
   }
   function edit(account) {
+    if (accessPending) return;
     editor.replaceChildren();
     const form = node('form', null, { class: 'stack' }); append(form, node('h2', 'Quyền truy cập'), node('p', account.email));
     const role = roleField(form, 'Vai trò truy cập', 'access-role'); role.value = account.role;
     const active = field(form, 'Cho phép truy cập', 'access-active', 'checkbox'); active.checked = account.active; active.parentElement.className = 'checkbox';
     const reason = field(form, 'Lý do thay đổi', 'access-reason', 'textarea', { required: '', maxlength: '500' });
     const notices = feedback(form), submit = node('button', 'Lưu quyền truy cập', { type: 'submit', class: 'primary' });
-    append(form, submit, button('Hủy', () => editor.replaceChildren())); editor.append(form); role.focus();
+    cancelEdit = button('Hủy', () => { if (!accessPending) editor.replaceChildren(); });
+    append(form, submit, cancelEdit); editor.append(form); role.focus();
     mutationForm(form, submit, notices, '/accounts/' + encodeURIComponent(account.id) + '/access', () => ({ role: role.value, active: active.checked, reason: reason.value.trim() }), () => {
       if (account.id === session.admin.id) { loggedOut = true; showLogin('Quyền của bạn đã thay đổi. Vui lòng đăng nhập lại.'); }
       else { editor.replaceChildren(); load(currentPage); }
-    });
+    }, setAccessPending);
   }
-  main.append(button('Làm mới', () => { editor.replaceChildren(); load(currentPage); })); load();
+  main.append(refresh); load();
 }
 function audit() {
   if (session?.admin.role !== 'OWNER') return;

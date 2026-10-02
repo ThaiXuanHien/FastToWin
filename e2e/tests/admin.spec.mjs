@@ -165,6 +165,46 @@ test('Owner creates accounts with CSRF, prevents duplicates and reuses request I
   await expect(page.getByLabel('Mật khẩu tạm')).toHaveValue('');
 });
 
+for (const action of ['replacement', 'cancel', 'refresh']) test(`pending access mutation blocks editor ${action}`, async ({ page, fixture }) => {
+  await login(page, fixture); await page.getByRole('button', { name: 'Tài khoản quản trị', exact: true }).click();
+  await page.getByRole('button', { name: 'Sửa quyền support@example.com', exact: true }).click();
+  await page.getByLabel('Lý do thay đổi').fill('Pending support operation');
+  let release;
+  fixture.handlers.set('/admin/api/accounts/support-2/access', async (call, send) => {
+    await new Promise(r => release = r);
+    send(200, { id: 'support-2', email: 'support@example.com', role: call.body.role, active: call.body.active }); return true;
+  });
+  await page.getByRole('button', { name: 'Lưu quyền truy cập', exact: true }).click();
+  await expect.poll(() => typeof release).toBe('function');
+  const control = page.getByRole('button', { name: action === 'replacement' ? 'Sửa quyền owner@example.com' : action === 'cancel' ? 'Hủy' : 'Làm mới', exact: true });
+  await expect(control).toBeDisabled();
+  const accountReads = fixture.calls.filter(c => c.route === '/admin/api/accounts' && c.method === 'GET').length;
+  await control.click({ force: true });
+  await expect(page.getByLabel('Lý do thay đổi')).toHaveValue('Pending support operation');
+  expect(fixture.calls.filter(c => c.route === '/admin/api/accounts' && c.method === 'GET')).toHaveLength(accountReads);
+  release();
+  await expect(page.getByLabel('Lý do thay đổi')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Sửa quyền owner@example.com', exact: true })).toBeEnabled();
+  await expect(page.getByRole('button', { name: 'Làm mới', exact: true })).toBeEnabled();
+});
+
+test('successful account creation resets to Support and the next untouched role submits Support', async ({ page, fixture }) => {
+  await login(page, fixture); await page.getByRole('button', { name: 'Tài khoản quản trị', exact: true }).click();
+  await expect(page.getByLabel('Vai trò mới')).toHaveValue('SUPPORT');
+  await page.getByLabel('Email quản trị mới').fill('first-support@example.com');
+  await page.getByLabel('Mật khẩu tạm').fill('NewPassword123!');
+  await page.getByLabel('Lý do tạo').fill('First support account');
+  await page.getByRole('button', { name: 'Tạo tài khoản', exact: true }).click();
+  await expect(page.getByRole('status').filter({ hasText: 'Đã tạo' })).toBeVisible();
+  await expect(page.getByLabel('Vai trò mới')).toHaveValue('SUPPORT');
+  await page.getByLabel('Email quản trị mới').fill('second-support@example.com');
+  await page.getByLabel('Mật khẩu tạm').fill('NewPassword123!');
+  await page.getByLabel('Lý do tạo').fill('Second support account');
+  await page.getByRole('button', { name: 'Tạo tài khoản', exact: true }).click();
+  await expect(page.getByLabel('Email quản trị mới')).toHaveValue('');
+  expect(fixture.calls.filter(c => c.route === '/admin/api/accounts' && c.method === 'POST').map(c => c.body.role)).toEqual(['SUPPORT', 'SUPPORT']);
+});
+
 test('Owner changes access with reason and self-change returns to login', async ({ page, fixture }) => {
   await login(page, fixture); await page.getByRole('button', { name: 'Tài khoản quản trị', exact: true }).click();
   await page.getByRole('button', { name: 'Sửa quyền owner@example.com', exact: true }).click();
