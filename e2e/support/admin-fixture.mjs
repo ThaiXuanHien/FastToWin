@@ -10,12 +10,23 @@ export const securityHeaders = { 'Content-Security-Policy': "default-src 'none';
 const assets = fileURLToPath(new URL('../../server/src/main/resources/admin/', import.meta.url));
 export const test = base.extend({
   fixture: async ({}, use) => {
-    const state = { role: 'OWNER', signedIn: false, calls: [], handlers: new Map() };
+    const state = { role: 'OWNER', signedIn: false, calls: [], handlers: new Map(), worker: 'current' };
     const server = createServer(async (req, res) => {
       const url = new URL(req.url, 'http://localhost');
       const route = url.pathname;
+      if (route === '/service-worker.js') {
+        if (state.worker === 'unavailable') { res.writeHead(503); res.end(); return; }
+        const file = state.worker === 'legacy' ? './legacy-service-worker-v5.js' : '../../webApp/src/wasmJsMain/resources/service-worker.js';
+        res.writeHead(200, { 'Content-Type': 'application/javascript', 'Cache-Control': 'no-store' });
+        res.end((await readFile(new URL(file, import.meta.url), 'utf8')) + (state.worker === 'legacy' ? '\n// Previous deployment snapshot\n' : '') + (state.workerRevision || '')); return;
+      }
+      if (!route.startsWith('/admin')) {
+        const html = route === '/' || route === '/index.html';
+        res.writeHead(200, { 'Content-Type': html ? 'text/html' : route.endsWith('.css') ? 'text/css' : 'application/javascript' });
+        res.end(html ? '<!doctype html><title>Game shell</title><p>Game offline shell</p>' : ''); return;
+      }
       if (!route.startsWith('/admin/api/')) {
-        const name = { '/admin/': 'index.html', '/admin/index.html': 'index.html', '/admin/admin.css': 'admin.css', '/admin/admin.js': 'admin.js' }[route];
+        const name = { '/admin/': 'index.html', '/admin/index.html': 'index.html', '/admin/admin.css': 'admin.css', '/admin/admin.js': 'admin.js', '/admin/admin-network.js': 'admin-network.js' }[route];
         try {
           const body = name && await readFile(assets + name);
           if (!body) throw new Error('missing');

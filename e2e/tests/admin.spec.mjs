@@ -9,7 +9,7 @@ test('login errors focus feedback, pending submission is unique and passwords ar
   await page.getByLabel('Mật khẩu', { exact: true }).fill('FixturePassword123!');
   await page.getByRole('button', { name: 'Đăng nhập', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Đang đăng nhập…' })).toBeDisabled();
-  expect(fixture.calls.filter(c => c.route.endsWith('/login'))).toHaveLength(1);
+  await expect.poll(() => fixture.calls.filter(c => c.route.endsWith('/login')).length).toBe(1);
   release();
   await expect(page.getByRole('alert')).toBeFocused();
   await expect(page.getByLabel('Mật khẩu', { exact: true })).toHaveValue('');
@@ -131,6 +131,7 @@ test('pending logout disables sign-in until cookie clearing completes', async ({
   fixture.handlers.set('/admin/api/logout', async (_, send, state) => { await new Promise(r => release = r); state.signedIn = false; send(200, { ok: true }); return true; });
   await page.getByRole('button', { name: 'Đăng xuất', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Đăng nhập', exact: true })).toBeDisabled();
+  await expect.poll(() => typeof release).toBe('function');
   release();
   await expect(page.getByRole('button', { name: 'Đăng nhập', exact: true })).toBeEnabled();
 });
@@ -147,7 +148,9 @@ test('Owner creates accounts with CSRF, prevents duplicates and reuses request I
     await new Promise(r => release = r); send(503, { code: 'STORAGE_UNAVAILABLE', message: 'Vui lòng thử lại.' }); return true;
   });
   await page.getByRole('button', { name: 'Tạo tài khoản', exact: true }).click();
-  await expect(page.getByRole('button', { name: 'Đang lưu…' })).toBeDisabled(); release();
+  await expect(page.getByRole('button', { name: 'Đang lưu…' })).toBeDisabled();
+  await expect.poll(() => typeof release).toBe('function');
+  release();
   await expect(page.getByRole('alert')).toContainText('Vui lòng thử lại');
   await page.getByRole('button', { name: 'Tạo tài khoản', exact: true }).click();
   await expect.poll(() => fixture.calls.filter(c => c.route === '/admin/api/accounts' && c.method === 'POST').length).toBe(2);
@@ -265,6 +268,7 @@ test('real loopback backend auth, directory, audit and logout', async ({ page })
   await page.getByRole('button', { name: 'Nhật ký kiểm toán', exact: true }).click();
   await expect(page.getByText('Tra cứu người chơi', { exact: true }).first()).toBeVisible();
   await page.getByRole('button', { name: 'Đăng xuất', exact: true }).click();
+  await expect(page.getByText('Đã đăng xuất.', { exact: true })).toBeVisible();
   await page.reload();
   await expect(page.getByRole('heading', { name: 'Đăng nhập quản trị' })).toBeVisible();
 });

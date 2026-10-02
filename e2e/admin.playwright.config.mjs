@@ -1,7 +1,7 @@
 import { defineConfig } from 'playwright/test';
 
 export default defineConfig({
-  testDir: './tests', testMatch: 'admin.spec.mjs',
+  testDir: './tests', testMatch: ['admin.spec.mjs', 'admin-worker.spec.mjs'],
   fullyParallel: false, workers: 1, timeout: 15000,
   expect: { timeout: 3000 },
   outputDir: '../.artifacts/admin-playwright',

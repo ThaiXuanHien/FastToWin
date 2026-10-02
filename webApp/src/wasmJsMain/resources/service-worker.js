@@ -1,5 +1,5 @@
 const CACHE_PREFIX = 'fast-to-win-';
-const SHELL_CACHE = `${CACHE_PREFIX}shell-v5`;
+const SHELL_CACHE = `${CACHE_PREFIX}shell-v6`;
 const APP_SHELL = [
     '/',
     '/index.html',
@@ -41,6 +41,7 @@ self.addEventListener('activate', event => {
                     .filter(name => name.startsWith(CACHE_PREFIX) && name !== SHELL_CACHE)
                     .map(name => caches.delete(name))
             ))
+            .then(purgeAdminCaches)
             .then(() => self.clients.claim())
     );
 });
@@ -49,7 +50,25 @@ self.addEventListener('message', event => {
     if (event.data && event.data.type === 'SKIP_WAITING') {
         event.waitUntil(self.skipWaiting());
     }
+    if (event.data && event.data.type === 'ADMIN_NETWORK_POLICY' && event.ports[0]) {
+        // Acknowledge only after legacy sensitive entries have been removed.
+        event.waitUntil(purgeAdminCaches().then(() => event.ports[0].postMessage({ adminNetworkOnly: 1 })));
+    }
 });
+
+function isAdminPath(path) {
+    return path === '/admin' || path.startsWith('/admin/');
+}
+
+async function purgeAdminCaches() {
+    for (const name of await caches.keys()) {
+        const cache = await caches.open(name);
+        for (const request of await cache.keys()) {
+            const url = new URL(request.url);
+            if (url.origin === self.location.origin && isAdminPath(url.pathname)) await cache.delete(request);
+        }
+    }
+}
 
 self.addEventListener('fetch', event => {
     const request = event.request;
@@ -57,6 +76,8 @@ self.addEventListener('fetch', event => {
 
     const url = new URL(request.url);
     if (url.origin !== self.location.origin) return;
+    // Admin navigation, scripts, styles and API must always reach the network.
+    if (isAdminPath(url.pathname)) return;
     if (url.pathname.startsWith('/api/') || url.pathname === '/health') return;
 
     if (request.mode === 'navigate') {

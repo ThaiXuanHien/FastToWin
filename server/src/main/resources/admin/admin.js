@@ -21,6 +21,7 @@ let session = null;
 let sessionVersion = 0;
 let viewVersion = 0;
 let loggedOut = false;
+let authRequests = 0;
 const pending = new Set();
 const aborted = () => new DOMException('Request superseded', 'AbortError');
 
@@ -75,14 +76,28 @@ function channel() {
   };
 }
 async function api(path, task, payload, csrf = session?.csrfToken) {
+  let authRequest = false;
   try {
+    let controller;
+    try {
+      const network = await import('./admin-network.js');
+      controller = await network.ensureAdminNetwork();
+    } catch {
+      if (task.current()) showNetworkBlocked();
+      throw aborted();
+    }
+    if (!task.current() || (navigator.serviceWorker?.controller ?? null) !== controller) throw aborted();
+    authRequest = path === '/login' || path === '/logout';
+    if (authRequest) authRequests++;
     const response = await fetch('/admin/api' + path, {
       credentials: 'same-origin', cache: 'no-store', signal: task.controller.signal,
       ...(payload === undefined ? {} : { method: 'POST', headers: { 'Content-Type': 'application/json', ...(csrf ? { 'X-Admin-CSRF': csrf } : {}) }, body: JSON.stringify(payload) }),
     });
     if (!task.current()) throw aborted();
+    if ((navigator.serviceWorker?.controller ?? null) !== controller) throw new Error('Kết nối đã thay đổi. Kết quả chưa được xác nhận; vui lòng thử lại.');
     const body = await response.json();
     if (!task.current()) throw aborted();
+    if ((navigator.serviceWorker?.controller ?? null) !== controller) throw new Error('Kết nối đã thay đổi. Kết quả chưa được xác nhận; vui lòng thử lại.');
     if (response.status === 401 && session) { showLogin('Phiên quản trị đã hết hạn. Vui lòng đăng nhập lại.'); throw aborted(); }
     if (response.status === 403 && session && path !== '/session') { restore(); throw aborted(); }
     if (!response.ok) throw new Error(typeof body.message === 'string' ? body.message : 'Yêu cầu không thành công. Vui lòng thử lại.');
@@ -92,7 +107,13 @@ async function api(path, task, payload, csrf = session?.csrfToken) {
     if (error.name === 'AbortError') throw error;
     if (error instanceof TypeError || error instanceof SyntaxError) throw new Error('Không thể kết nối. Vui lòng thử lại.');
     throw error;
-  } finally { pending.delete(task.controller); }
+  } finally { if (authRequest) authRequests--; pending.delete(task.controller); }
+}
+function showNetworkBlocked() {
+  sessionVersion++; session = null; changeView();
+  const main = node('main', null, { id: 'main', class: 'panel login stack' });
+  append(main, node('h1', 'Cần cập nhật trang quản trị'), node('p', 'Chưa thể kết nối an toàn. Kiểm tra mạng rồi thử lại; nếu vẫn lỗi, đóng các thẻ của trang này và mở lại.', { role: 'alert' }), button('Thử lại', restore));
+  app.append(main);
 }
 function shell(title, section) {
   changeView();
@@ -339,4 +360,11 @@ function audit() {
 window.addEventListener('pagehide', () => { sessionVersion++; session = null; changeView(); });
 window.addEventListener('pageshow', event => { if (event.persisted) restore(); });
 window.addEventListener('popstate', () => { if (loggedOut) showLogin(); else restore(); });
+navigator.serviceWorker?.addEventListener('controllerchange', () => {
+  // Invalidate rendered data and callbacks. Abort cannot undo a server mutation.
+  // Login/logout already show no private view. Wait for their cookie-changing
+  // response before enabling another sign-in; api rejects the changed controller.
+  if (authRequests) return;
+  restore();
+});
 restore();

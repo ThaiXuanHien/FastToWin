@@ -12,6 +12,14 @@ Console tiếng Việt tại `/admin/` dùng tài khoản quản trị riêng, t
 
 ## Quyền và bảo mật phiên
 
+### Cùng origin với game và cập nhật trình duyệt
+
+Khi game và console dùng chung origin, phải phát hành `service-worker.js` của game cùng bản console này. Worker bỏ qua toàn bộ `/admin` và `/admin/…` (trang, assets, API), đồng thời xóa các mục quản trị đã lưu trong CacheStorage của origin. Không đổi đường dẫn worker `/service-worker.js` hoặc chặn việc kiểm tra cập nhật worker ở proxy. Các cache/offline của game vẫn hoạt động; console cần kết nối mạng.
+
+Trước mỗi request quản trị, console xác nhận worker đang điều khiển trang đã áp dụng chính sách này và hoàn tất dọn cache. Nếu còn worker cũ, console yêu cầu cập nhật và kích hoạt bản đang chờ; chưa xác nhận được thì giữ màn hình lỗi với nút “Thử lại”, không gửi request quản trị. Trang không có worker vẫn dùng bình thường và dọn các mục quản trị còn sót trong CacheStorage. Nếu lỗi tiếp diễn, kiểm tra mạng, đóng các thẻ cùng origin rồi mở lại. Việc kích hoạt bản mới để truy cập quản trị có thể thay worker của thẻ game đang mở; cơ chế cập nhật thủ công và offline của game không bị thay đổi.
+
+Khi triển khai lần đầu bản sửa này, yêu cầu người vận hành đóng hoặc tải lại mọi tab quản trị đã mở bằng bản console cũ. JavaScript cũ đang chạy không tự nhận được ranh giới mới; bản HTML/JS cũ cũng có thể còn trong cache trước khi worker được nâng cấp. Nếu cần chặn truy cập trong khoảng chuyển tiếp, tạm tắt route quản trị ở backend, phát hành worker và console, yêu cầu đóng các tab cũ rồi mới bật lại. Sau nâng cấp, xác minh đăng xuất Owner → đăng nhập Support chỉ thấy email che và CacheStorage không còn mục `/admin`. Không coi việc đóng tab/hủy request là hoàn tác mutation đã được server nhận; nếu kết quả chưa xác nhận, kiểm tra dữ liệu và nhật ký trước khi gửi lại.
+
 | Vai trò | Khả năng phase A |
 | --- | --- |
 | Owner | Tra cứu đầy đủ, xem hồ sơ/lịch sử; cấp tài khoản quản trị; đổi vai trò, bật/thu hồi quyền; xem kiểm toán |
