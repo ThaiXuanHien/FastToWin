@@ -53,7 +53,8 @@ Với nhiều emulator Android 17, nên chạy lần lượt từng máy để t
 ## Screenshot regression 2D Arcade
 
 Bộ screenshot host-side bảo vệ 10 màn cốt lõi ở điện thoại nhỏ `320 x 568 dp`,
-điện thoại lớn `430 x 932 dp` và tablet `840 x 1180 dp`. Tổng cộng có đúng 30
+điện thoại lớn `430 x 932 dp` và tablet `840 x 1180 dp`, thêm hộp thư quà ở
+ba kích thước đó và bản Compose Preview desktop `1024 x 768 dp`. Tổng cộng có 34
 ảnh chuẩn, cố định giao diện tối, locale tiếng Việt, font scale `1.0` và fixture
 không dùng mạng, database hay thời gian thực. Bộ này kiểm tra thay đổi pixel;
 Compose UI test và Web E2E vẫn chịu trách nhiệm kiểm tra hành vi.
@@ -90,8 +91,10 @@ Chỉ khi thay đổi UI là có chủ ý và đã xem lại đủ ảnh mới c
 - Ảnh render thực tế và ảnh chênh lệch nằm dưới
   `app/build/outputs/screenshotTest-results/preview/debug/dev/rendered/` và
   `app/build/outputs/screenshotTest-results/preview/debug/dev/diffs/`.
-- Trước khi commit baseline, kiểm tra đúng 30 PNG, xem từng ảnh ở cả ba kích
-  thước, xem Git diff và chạy lại task `validate`.
+- Trước khi commit baseline, kiểm tra đúng 34 PNG, xem ảnh ở các kích thước
+  điện thoại/tablet/desktop, xem Git diff và chạy lại task `validate`.
+- Ảnh desktop của hộp thư là bản render Compose Preview để kiểm tra bố cục,
+  không phải kiểm thử ứng dụng trong trình duyệt.
 - CI chỉ chạy `validate` và luôn tải report/ảnh so sánh lên artifact; CI không
   được chạy task `update` hoặc tự commit baseline.
 

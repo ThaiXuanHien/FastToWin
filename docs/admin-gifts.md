@@ -161,6 +161,12 @@ Successful entries carry `result:GiftClaimResult` and `error:null`. The batch HT
 
 Shared serializable DTOs live in `protocol/GiftProtocol.kt`: `GiftState`, `MailboxGift`, `GiftMailboxPage`, `GiftClaimResult`, `GiftClaimAllRequest`, `GiftError`, `GiftClaimItem`, `GiftClaimAllResult`. They are independent of existing websocket message types.
 
+### Player mailbox UI
+
+The Home discovery section opens a separate `/gifts` route in the shared Compose app. Guests can see sign-in guidance; only registered accounts request mailbox pages. Opening the route fetches page0 and never claims gifts. The screen keeps server states (`AVAILABLE`, `CLAIMED`, `EXPIRED`, `CANCELLED`), displays the stored Vietnamese/English content using the current app language, and offers explicit **Nhận** / **Nhận tất cả** actions. Load more fetches the next server page; Claim all reads every server page and sends available campaign IDs in batches of at most100. Per-item failures remain visible and retryable, while successful receipts trigger the existing authoritative GameController profile refresh. The client never adds awarded amounts to its local wallet.
+
+Mailbox state belongs to the registered account's app lifecycle. Leaving the screen clears pending UI state; opening it again fetches server truth. Account changes dispose the client and fence late responses. Access-token refresh within the same account retries one unauthorized HTTP request with a fresh bearer token. Notification records, taps, and deletion do not affect gift visibility or claims.
+
 ## Errors, durability, and local runtime
 
 Errors use `{code,message}`:400 `INVALID_REQUEST`,401 `UNAUTHORIZED`,403 `FORBIDDEN`,404 `NOT_FOUND`,409 `CONFLICT`,503 `STORAGE_UNAVAILABLE`. Database failures return a safe503 without SQL or credentials. Reward/balance overflow returns409 and rolls back all effects. Admin mutation validation and access checks occur inside the transaction; Origin is also checked before body parsing.

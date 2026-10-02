@@ -39,6 +39,7 @@ import androidx.compose.material.icons.filled.MeetingRoom
 import androidx.compose.material.icons.filled.MonetizationOn
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Redeem
 import androidx.compose.material.icons.filled.ShoppingCart
 import androidx.compose.material.icons.rounded.Bolt
 import androidx.compose.material.icons.rounded.Favorite
@@ -118,6 +119,7 @@ internal fun HomeDashboard(
     onOpenLeaderboard: () -> Unit,
     onOpenProfile: () -> Unit,
     onOpenNotifications: () -> Unit,
+    onOpenGifts: () -> Unit,
     onOpenClan: () -> Unit,
     onOpenPractice: () -> Unit,
     onOpenTournament: () -> Unit,
@@ -241,6 +243,14 @@ internal fun HomeDashboard(
                     rank = rank,
                     openSocial = openSocial,
                     onOpenLeaderboard = onOpenLeaderboard
+                )
+                HomeQuickAction(
+                    localized(TextKey.GiftMailboxTitle),
+                    localized(if (isGuest) TextKey.GiftMailboxGuest else TextKey.GiftMailboxEntryDescription),
+                    Icons.Default.Redeem,
+                    ArcadePalette.Gold500,
+                    onOpenGifts,
+                    Modifier.fillMaxWidth().testTag("home_gift_mailbox")
                 )
                 HomeQuickAction(
                     localized(TextKey.Tournament),

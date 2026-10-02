@@ -1,0 +1,61 @@
+package com.hienthai.fastowin.localization.catalogs
+
+import com.hienthai.fastowin.localization.AppLanguage
+import com.hienthai.fastowin.localization.TextKey
+
+internal val giftMailboxTexts = mapOf(
+    AppLanguage.ENGLISH to mapOf(
+        TextKey.GiftMailboxTitle to "Gift mailbox",
+        TextKey.GiftMailboxSubtitle to "Gifts from the team, ready when you are.",
+        TextKey.GiftMailboxEntryDescription to "View and claim your gifts",
+        TextKey.GiftMailboxEmpty to "No gifts have arrived yet.",
+        TextKey.GiftMailboxGuest to "Sign in or create an account to receive gifts.",
+        TextKey.GiftClaim to "Claim",
+        TextKey.GiftClaimAll to "Claim all",
+        TextKey.GiftClaiming to "Claiming…",
+        TextKey.GiftClaimed to "Claimed",
+        TextKey.GiftExpired to "Expired",
+        TextKey.GiftCancelled to "Cancelled",
+        TextKey.GiftExpiresInHours to "Expires in {count} hours",
+        TextKey.GiftExpiresInDays to "Expires in {count} days",
+        TextKey.GiftGoldReward to "{count} gold",
+        TextKey.GiftXpReward to "{count} XP",
+        TextKey.GiftLoadMore to "Load more gifts",
+        TextKey.GiftRefresh to "Refresh gifts",
+        TextKey.GiftErrorInvalid to "The gift request was invalid. Please refresh.",
+        TextKey.GiftErrorUnauthorized to "Your session expired. Please sign in again.",
+        TextKey.GiftErrorForbidden to "This account cannot claim the gift.",
+        TextKey.GiftErrorNotFound to "This gift is no longer available. Refresh your mailbox.",
+        TextKey.GiftErrorConflict to "Gift status changed. Please update your mailbox and retry.",
+        TextKey.GiftErrorStorage to "Gift service is temporarily unavailable. Please retry.",
+        TextKey.GiftErrorNetwork to "Connection lost. Retry to check whether this gift was claimed.",
+        TextKey.GiftErrorGeneric to "Could not claim this gift. Please retry."
+    ),
+    AppLanguage.VIETNAMESE to mapOf(
+        TextKey.GiftMailboxTitle to "Hộp thư quà",
+        TextKey.GiftMailboxSubtitle to "Quà từ đội ngũ đang chờ bạn nhận.",
+        TextKey.GiftMailboxEntryDescription to "Xem và nhận quà của bạn",
+        TextKey.GiftMailboxEmpty to "Bạn chưa có quà nào.",
+        TextKey.GiftMailboxGuest to "Đăng nhập hoặc tạo tài khoản để nhận quà.",
+        TextKey.GiftClaim to "Nhận",
+        TextKey.GiftClaimAll to "Nhận tất cả",
+        TextKey.GiftClaiming to "Đang nhận…",
+        TextKey.GiftClaimed to "Đã nhận",
+        TextKey.GiftExpired to "Đã hết hạn",
+        TextKey.GiftCancelled to "Đã hủy",
+        TextKey.GiftExpiresInHours to "Còn {count} giờ",
+        TextKey.GiftExpiresInDays to "Còn {count} ngày",
+        TextKey.GiftGoldReward to "{count} Vàng",
+        TextKey.GiftXpReward to "{count} XP",
+        TextKey.GiftLoadMore to "Xem thêm quà",
+        TextKey.GiftRefresh to "Tải lại hộp thư",
+        TextKey.GiftErrorInvalid to "Yêu cầu quà không hợp lệ. Vui lòng tải lại.",
+        TextKey.GiftErrorUnauthorized to "Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.",
+        TextKey.GiftErrorForbidden to "Tài khoản này không thể nhận quà.",
+        TextKey.GiftErrorNotFound to "Quà không còn khả dụng. Vui lòng tải lại hộp thư.",
+        TextKey.GiftErrorConflict to "Trạng thái quà đã thay đổi. Vui lòng cập nhật hộp thư rồi thử lại.",
+        TextKey.GiftErrorStorage to "Dịch vụ quà tạm thời không khả dụng. Vui lòng thử lại.",
+        TextKey.GiftErrorNetwork to "Mất kết nối. Thử lại để kiểm tra quà đã được nhận hay chưa.",
+        TextKey.GiftErrorGeneric to "Không thể nhận quà. Vui lòng thử lại."
+    )
+)

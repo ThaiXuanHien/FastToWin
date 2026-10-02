@@ -349,6 +349,13 @@ enum class TextKey {
     FrameSupremeName, FrameSupremeUnlockDescription,
     FramePeerlessName, FramePeerlessUnlockDescription,
 
+    GiftMailboxTitle, GiftMailboxSubtitle, GiftMailboxEntryDescription, GiftMailboxEmpty,
+    GiftMailboxGuest, GiftClaim, GiftClaimAll, GiftClaiming, GiftClaimed,
+    GiftExpired, GiftCancelled, GiftExpiresInHours, GiftExpiresInDays,
+    GiftGoldReward, GiftXpReward, GiftLoadMore, GiftRefresh,
+    GiftErrorInvalid, GiftErrorUnauthorized, GiftErrorForbidden, GiftErrorNotFound,
+    GiftErrorConflict, GiftErrorStorage, GiftErrorNetwork, GiftErrorGeneric,
+
     TitleFirstBattleName, TitleFirstBattleUnlockDescription,
     TitleGodspeedName, TitleGodspeedUnlockDescription,
     TitleUndefeatedName, TitleUndefeatedUnlockDescription,

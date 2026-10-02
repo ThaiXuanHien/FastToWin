@@ -12,6 +12,7 @@ import com.hienthai.fastowin.localization.catalogs.englishCatalog
 import com.hienthai.fastowin.localization.catalogs.expandedProfileTexts
 import com.hienthai.fastowin.localization.catalogs.frenchCatalog
 import com.hienthai.fastowin.localization.catalogs.friendManagementTexts
+import com.hienthai.fastowin.localization.catalogs.giftMailboxTexts
 import com.hienthai.fastowin.localization.catalogs.framePresenceTexts
 import com.hienthai.fastowin.localization.catalogs.germanCatalog
 import com.hienthai.fastowin.localization.catalogs.indonesianCatalog
@@ -67,7 +68,8 @@ val allLocalizationCatalogs: Map<AppLanguage, LocalizationCatalog> = run {
             rankWalletSummaryTexts[language].orEmpty() + clanCreationLogoTexts[language].orEmpty() +
             clanCreationCostTexts[language].orEmpty() +
             challengeSharingTexts[language].orEmpty() + matchSocialSharingTexts[language].orEmpty() +
-            matchmakingGuardTexts[language].orEmpty() + playFlowConflictTexts[language].orEmpty()
+            matchmakingGuardTexts[language].orEmpty() + playFlowConflictTexts[language].orEmpty() +
+            (giftMailboxTexts[language] ?: giftMailboxTexts.getValue(AppLanguage.ENGLISH))
         val untranslated = additions.filter { (key, _) -> catalog.texts[key] == englishTexts[key] }
         catalog.copy(texts = catalog.texts + untranslated)
     }

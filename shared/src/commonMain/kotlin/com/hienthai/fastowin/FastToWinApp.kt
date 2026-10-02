@@ -22,6 +22,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
@@ -31,11 +32,14 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import com.hienthai.fastowin.state.GameController
+import com.hienthai.fastowin.state.GiftMailboxController
+import com.hienthai.fastowin.state.GiftMailboxState
 import com.hienthai.fastowin.state.AuthController
 import com.hienthai.fastowin.state.AuthStage
 import com.hienthai.fastowin.data.network.AuthSessionStore
 import com.hienthai.fastowin.data.network.ResumeTokenStore
 import com.hienthai.fastowin.data.network.ServiceStatusClient
+import com.hienthai.fastowin.data.network.GiftApiClient
 import com.hienthai.fastowin.data.preferences.AppPreferences
 import com.hienthai.fastowin.data.preferences.AppPreferencesStore
 import com.hienthai.fastowin.platform.GameFeedbackEffect
@@ -74,6 +78,7 @@ import com.hienthai.fastowin.ui.screens.TutorialScreen
 import com.hienthai.fastowin.ui.screens.PracticeScreen
 import com.hienthai.fastowin.ui.screens.PracticeLauncherDialog
 import com.hienthai.fastowin.ui.screens.NotificationsScreen
+import com.hienthai.fastowin.ui.screens.GiftMailboxScreen
 import com.hienthai.fastowin.ui.screens.TournamentInvitationDialog
 import com.hienthai.fastowin.ui.screens.TournamentScreen
 import com.hienthai.fastowin.ui.screens.MaintenanceScreen
@@ -117,6 +122,7 @@ import com.hienthai.fastowin.ui.components.ArcadeActionButton
 import com.hienthai.fastowin.ui.components.ArcadeActionStyle
 import com.hienthai.fastowin.ui.components.ArcadeDialog
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 @Composable
 fun FastToWinApp(
@@ -243,6 +249,7 @@ fun FastToWinApp(
                     accessTokenProvider = authState.session?.let {
                         { forceRefresh -> authController.validAccessToken(forceRefresh) }
                     },
+                    authRequestConfigurator = authRequestConfigurator,
                     onLogout = {
                         restoreGuestSession = false
                         authController.logout()
@@ -288,6 +295,7 @@ private fun GameContent(
     accountUserId: String?,
     accountDisplayName: String?,
     accessTokenProvider: (suspend (forceRefresh: Boolean) -> String?)?,
+    authRequestConfigurator: AuthRequestConfigurator,
     onLogout: () -> Unit,
     isGuest: Boolean,
     fcmToken: String?,
@@ -329,6 +337,17 @@ private fun GameContent(
         )
     }
     val state by controller.uiState.collectAsState()
+    val mailboxController = remember(serverUrl, accountUserId, isGuest, authRequestConfigurator) {
+        if (isGuest || accountUserId == null || accessTokenProvider == null) null else
+            GiftMailboxController(
+                GiftApiClient(serverUrl, accessTokenProvider, authRequestConfigurator),
+                controller::refreshProfile
+            )
+    }
+    val mailboxState by (mailboxController?.state?.collectAsState()
+        ?: remember { mutableStateOf(GiftMailboxState()) })
+    val mailboxScope = rememberCoroutineScope()
+    DisposableEffect(mailboxController) { onDispose { mailboxController?.close() } }
     LaunchedEffect(controller, language) {
         controller.updateLanguage(language)
     }
@@ -346,6 +365,10 @@ private fun GameContent(
     var showPracticeModePicker by rememberSaveable { mutableStateOf(false) }
     var showSettings by rememberSaveable { mutableStateOf(false) }
     var showSeasonHistory by rememberSaveable { mutableStateOf(false) }
+    var showGiftMailbox by rememberSaveable(accountUserId) { mutableStateOf(false) }
+    LaunchedEffect(showGiftMailbox, mailboxController) {
+        if (showGiftMailbox) mailboxController?.open()
+    }
 
     DisposableEffect(storeBillingGateway) {
         onDispose { storeBillingGateway.close() }
@@ -434,6 +457,7 @@ private fun GameContent(
         showPracticeModePicker = false
         showSettings = false
         showSeasonHistory = false
+        showGiftMailbox = false
         showTutorial = false
         profileSection = null
         clearPracticeSession()
@@ -781,6 +805,13 @@ private fun GameContent(
     val openNotifications = {
         navigateToRoute(navigationBridge, "/notifications", controller::openNotifications)
     }
+    val openGiftMailbox = {
+        navigateToRoute(navigationBridge, "/gifts") {
+            closeLocalScreens()
+            controller.openHome()
+            showGiftMailbox = true
+        }
+    }
     val openSettingsTab = {
         navigateToRoute(navigationBridge, "/settings") { showSettings = true }
     }
@@ -952,6 +983,11 @@ private fun GameContent(
                 profileSection = null
                 controller.openNotifications()
             }
+            route == "/gifts" -> {
+                closeLocalScreens()
+                controller.openHome()
+                showGiftMailbox = true
+            }
             route == "/settings" -> {
                 controller.closeNotifications()
                 profileSection = null
@@ -1018,6 +1054,7 @@ private fun GameContent(
     }
 
     val screenStateKey = when {
+        showGiftMailbox -> "gifts"
         state.isNotificationsOpen -> "notifications"
         showTutorial -> "tutorial"
         showSettings -> "settings"
@@ -1038,6 +1075,7 @@ private fun GameContent(
         else -> "lobby"
     }
     val appRoute = when {
+        showGiftMailbox -> "/gifts"
         state.isNotificationsOpen -> "/notifications"
         showTutorial -> "/tutorial"
         showSettings -> "/settings"
@@ -1096,6 +1134,17 @@ private fun GameContent(
                             showPracticeLauncher = true
                         }
                     }
+                )
+
+                showGiftMailbox -> GiftMailboxScreen(
+                    state = mailboxState,
+                    isGuest = isGuest,
+                    onBack = { navigateBack { showGiftMailbox = false; mailboxController?.reset() } },
+                    onRefresh = { mailboxController?.let { mailboxScope.launch { it.refresh() } } },
+                    onLoadMore = { mailboxController?.let { mailboxScope.launch { it.loadNextPage() } } },
+                    onClaim = { id -> mailboxController?.let { mailboxScope.launch { it.claim(id) } } },
+                    onClaimAll = { mailboxController?.let { mailboxScope.launch { it.claimAll() } } },
+                    onUpgradeGuest = onUpgradeGuest
                 )
 
                 state.isNotificationsOpen -> NotificationsScreen(
@@ -1430,6 +1479,7 @@ private fun GameContent(
                     isGuest = isGuest,
                     onUpgradeGuest = onUpgradeGuest,
                     onOpenNotifications = openNotifications,
+                    onOpenGifts = openGiftMailbox,
                     onOpenClan = openClanTab,
                     onOpenPractice = openPractice,
                     onOpenTournament = openTournament,
