@@ -228,7 +228,7 @@ test('logout and browser Back do not restore sensitive content', async ({ page, 
   await expect(page.getByText('seeded-player@example.com', { exact: true })).toHaveCount(0);
 });
 
-for (const width of [360, 1440]) test(`responsive ${width}px layout and keyboard focus`, async ({ page, fixture }) => {
+for (const width of [360, 768, 1024, 1440]) test(`responsive ${width}px layout and keyboard focus`, async ({ page, fixture }) => {
   await page.setViewportSize({ width, height: 1000 }); await login(page, fixture);
   await page.keyboard.press('Tab');
   expect(await page.evaluate(() => document.activeElement.tagName)).not.toBe('BODY');
@@ -243,9 +243,57 @@ for (const width of [360, 1440]) test(`responsive ${width}px layout and keyboard
   await expect(page.getByRole('button', { name: 'Sửa quyền support@example.com', exact: true })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await page.screenshot({ path: `.artifacts/admin-accounts-${width}.png`, fullPage: true });
+  await page.getByRole('button', { name: 'Sửa quyền support@example.com', exact: true }).click();
+  await expect(page.getByLabel('Vai trò truy cập')).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.screenshot({ path: `.artifacts/admin-editor-${width}.png`, fullPage: true });
   await page.getByRole('button', { name: 'Nhật ký kiểm toán', exact: true }).click();
   await expect(page.getByText('Đăng nhập quản trị', { exact: true })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.screenshot({ path: `.artifacts/admin-audit-${width}.png`, fullPage: true });
+});
+
+test('dark console keeps text legible and controls usable', async ({ page, fixture }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.goto(fixture.url + '/admin/');
+  await expect(page.getByRole('heading', { name: 'Đăng nhập quản trị' })).toBeVisible();
+  await page.screenshot({ path: '.artifacts/admin-login-1440.png', fullPage: true });
+  await page.setViewportSize({ width: 360, height: 1000 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.screenshot({ path: '.artifacts/admin-login-360.png', fullPage: true });
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await login(page, fixture);
+  // The brighter hover state must remain legible too.
+  await page.getByRole('button', { name: 'Tìm kiếm', exact: true }).hover();
+  const measurements = await page.evaluate(() => {
+    const rgb = color => color.match(/[\d.]+/g).slice(0, 3).map(Number);
+    const luminance = color => rgb(color).map(value => {
+      const channel = value / 255;
+      return channel <= .04045 ? channel / 12.92 : ((channel + .055) / 1.055) ** 2.4;
+    }).reduce((sum, value, index) => sum + value * [.2126, .7152, .0722][index], 0);
+    const contrast = (foreground, background) => {
+      const values = [luminance(foreground), luminance(background)].sort((a, b) => b - a);
+      return (values[0] + .05) / (values[1] + .05);
+    };
+    const background = getComputedStyle(document.documentElement).backgroundColor;
+    const heading = getComputedStyle(document.querySelector('h1'));
+    const help = getComputedStyle(document.getElementById('search-help'));
+    const primary = getComputedStyle(document.querySelector('button.primary'));
+    return {
+      dark: luminance(background) < .08,
+      heading: contrast(heading.color, background),
+      help: contrast(help.color, background),
+      primary: contrast(primary.color, primary.backgroundColor),
+      controls: [...document.querySelectorAll('button, input:not([type="checkbox"]), select')]
+        .filter(element => element.getClientRects().length)
+        .every(element => element.getBoundingClientRect().height >= 44),
+    };
+  });
+  expect(measurements.dark).toBe(true);
+  expect(measurements.heading).toBeGreaterThanOrEqual(4.5);
+  expect(measurements.help).toBeGreaterThanOrEqual(4.5);
+  expect(measurements.primary).toBeGreaterThanOrEqual(4.5);
+  expect(measurements.controls).toBe(true);
 });
 
 test.describe('live backend', () => {

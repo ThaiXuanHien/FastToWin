@@ -37,6 +37,32 @@ function button(text, action, attributes = {}) {
   if (action) result.addEventListener('click', action);
   return result;
 }
+// Decorative vectors use fixed paths; all server-provided content stays text-only.
+function icon(name) {
+  const paths = {
+    bolt: 'M13 2 4 14h7l-1 8 10-13h-7l1-7Z',
+    users: 'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M16 3a4 4 0 0 1 0 8M22 21v-2a4 4 0 0 0-3-3.87M13 7a4 4 0 1 1-8 0 4 4 0 0 1 8 0Z',
+    accounts: 'M12 22s8-4 8-11V5l-8-3-8 3v6c0 7 8 11 8 11ZM9 12l2 2 4-4',
+    audit: 'M9 3H5v18h14V3h-4M9 2h6v4H9ZM8 11h8M8 15h8',
+    arrow: 'M5 12h14M13 6l6 6-6 6',
+    refresh: 'M20 11a8 8 0 0 0-14-5L3 9M3 3v6h6M4 13a8 8 0 0 0 14 5l3-3M15 15h6v6',
+    logout: 'M9 3H4v18h5M9 12h12M17 8l4 4-4 4',
+    lock: 'M7 10V7a5 5 0 0 1 10 0v3M5 10h14v12H5ZM12 15v3',
+  };
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  for (const [key, value] of Object.entries({ viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', 'stroke-width': '1.7', 'stroke-linecap': 'round', 'stroke-linejoin': 'round', 'aria-hidden': 'true', focusable: 'false', class: 'icon' })) svg.setAttribute(key, value);
+  const path = document.createElementNS('http://www.w3.org/2000/svg', 'path'); path.setAttribute('d', paths[name]); svg.append(path);
+  return svg;
+}
+function brand() {
+  return append(node('div', null, { class: 'brand' }), append(node('span', null, { class: 'brand-mark' }), icon('bolt')), node('span', 'FastToWin'), node('span', 'Quản trị', { class: 'brand-label' }));
+}
+function avatar(text) {
+  return node('span', Array.from(String(text).trim())[0]?.toLocaleUpperCase('vi-VN') || '?', { class: 'avatar', 'aria-hidden': 'true' });
+}
+function decoratedButton(text, action, name, attributes = {}) {
+  const control = button(text, action, attributes); control.prepend(icon(name)); return control;
+}
 function cancelRequests() { for (const controller of pending) controller.abort(); pending.clear(); }
 function changeView() { viewVersion++; cancelRequests(); app.replaceChildren(); }
 function feedback(parent) {
@@ -118,25 +144,26 @@ function showNetworkBlocked() {
 function shell(title, section) {
   changeView();
   const header = node('header', null, { class: 'header' });
-  append(header, node('div', 'FastToWin · Quản trị', { class: 'brand' }));
+  header.append(brand());
   const identity = node('div', null, { class: 'identity' });
-  append(identity, node('span', session.admin.email), node('span', roles[session.admin.role], { class: 'role' }), button('Đăng xuất', logout));
+  append(identity, avatar(session.admin.email), append(node('div', null, { class: 'identity-info' }), node('span', session.admin.email), node('span', roles[session.admin.role], { class: 'role' })), decoratedButton('Đăng xuất', logout, 'logout'));
   header.append(identity);
   const layout = node('div', null, { class: 'layout' });
   const nav = node('nav', null, { 'aria-label': 'Quản trị' });
   const links = [['users', 'Người chơi', directory]];
   if (session.admin.role === 'OWNER') links.push(['accounts', 'Tài khoản quản trị', accounts], ['audit', 'Nhật ký kiểm toán', audit]);
-  for (const [key, label, action] of links) nav.append(button(label, action, key === section ? { 'aria-current': 'page' } : {}));
-  const main = node('main', null, { id: 'main', class: 'panel stack', tabindex: '-1' });
+  nav.append(node('p', 'Không gian quản trị', { class: 'nav-caption' }));
+  for (const [key, label, action] of links) nav.append(decoratedButton(label, action, key, key === section ? { 'aria-current': 'page' } : {}));
+  const main = node('main', null, { id: 'main', class: 'panel stack page-' + section, tabindex: '-1' });
   append(main, node('p', 'Bảng điều khiển / ' + title, { class: 'eyebrow' }), node('h1', title));
   append(layout, nav, main); append(app, header, layout);
   return main;
 }
 function showLogin(message = '', blocked = false) {
   sessionVersion++; session = null; changeView();
-  const header = node('header', null, { class: 'header' }); header.append(node('div', 'FastToWin · Quản trị', { class: 'brand' }));
+  const header = node('header', null, { class: 'header' }); header.append(brand());
   const main = node('main', null, { id: 'main', class: 'panel login stack' });
-  append(main, node('p', 'Quyền truy cập riêng', { class: 'eyebrow' }), node('h1', 'Đăng nhập quản trị'), node('p', 'Sử dụng tài khoản quản trị được Owner cấp.', { class: 'muted' }));
+  append(main, append(node('span', null, { class: 'login-mark' }), icon('lock')), node('p', 'Không gian quản trị', { class: 'eyebrow' }), node('h1', 'Đăng nhập quản trị'), node('p', 'Sử dụng tài khoản quản trị được Owner cấp.', { class: 'muted' }));
   const form = node('form', null, { class: 'stack' });
   const email = field(form, 'Email quản trị', 'email', 'email', { autocomplete: 'username', required: '', maxlength: '254' });
   const password = field(form, 'Mật khẩu', 'password', 'password', { autocomplete: 'current-password', required: '', maxlength: '128' });
@@ -185,6 +212,7 @@ function directory() {
   const help = node('p', support ? 'Support chỉ tìm bằng ID hoặc tên. Email được che bởi máy chủ.' : 'Tra cứu ID, tên hoặc email. Dữ liệu người chơi chỉ để đọc.', { class: 'muted', id: 'search-help' }); main.append(help);
   const form = node('form', null, { class: 'search' });
   const query = field(form, 'Tìm người chơi', 'query', 'search', { maxlength: '128', 'aria-describedby': 'search-help', autocomplete: 'off' });
+  query.setAttribute('placeholder', support ? 'Nhập ID hoặc tên người chơi…' : 'Nhập ID, tên hoặc email…');
   const search = node('button', 'Tìm kiếm', { type: 'submit', class: 'primary' }); form.append(search); main.append(form);
   const notices = feedback(main), results = node('div', null, { class: 'results' }); main.append(results);
   const request = channel(); let currentQuery = '';
@@ -197,21 +225,23 @@ function directory() {
       notices.status.textContent = `${amount(data.total)} người chơi phù hợp.`;
       if (!data.items.length) results.append(node('p', 'Không có người chơi phù hợp.', { class: 'muted' }));
       for (const user of data.items) {
-        const row = node('article', null, { class: 'row' }), text = node('div');
-        append(text, node('strong', user.displayName), node('p', user.email ?? 'Không có email'), node('p', user.id, { class: 'mono muted' }), node('span', label(user.accountType), { class: 'badge' }), node('span', label(user.status), { class: 'badge' }), node('p', 'Ngày tạo: ' + date(user.createdAtEpochMillis), { class: 'muted' }));
-        append(row, text, button('Xem người chơi', () => detail(user.id))); results.append(row);
+        const row = node('article', null, { class: 'row' }), text = node('div', null, { class: 'row-info' });
+        const metadata = node('div', null, { class: 'row-meta' });
+        append(text, node('strong', user.displayName), node('p', user.email ?? 'Không có email', { class: 'muted' }), node('p', user.id, { class: 'mono muted' }));
+        append(metadata, node('span', label(user.accountType), { class: 'badge' }), node('span', label(user.status), { class: 'badge badge-' + (user.status === 'ACTIVE' ? 'active' : 'inactive') }), node('p', 'Ngày tạo: ' + date(user.createdAtEpochMillis), { class: 'muted row-date' }));
+        append(row, avatar(user.displayName), text, metadata, decoratedButton('Xem người chơi', () => detail(user.id), 'arrow')); results.append(row);
       }
       pagination(results, data, load);
     } catch (error) { if (task.current() && error.name !== 'AbortError') notices.fail(error); }
   }
   form.addEventListener('submit', event => { event.preventDefault(); currentQuery = query.value.trim(); load(); });
-  main.append(button('Làm mới', () => load())); load();
+  main.append(decoratedButton('Làm mới', () => load(), 'refresh')); load();
 }
 function detail(id) {
   if (!session) return;
   const main = shell('Hồ sơ người chơi', 'users');
   const toolbar = node('div', null, { class: 'toolbar' });
-  append(toolbar, button('Quay lại danh sách', directory), button('Làm mới', load)); main.append(toolbar);
+  append(toolbar, button('Quay lại danh sách', directory), decoratedButton('Làm mới', load, 'refresh')); main.append(toolbar);
   const notices = feedback(main), content = node('div', null, { class: 'stack' }); main.append(content);
   const request = channel();
   async function load() {
@@ -296,7 +326,7 @@ function accounts() {
   });
   const request = channel(); let currentPage = 0, accessPending = false, cancelEdit;
   const editControls = [];
-  const refresh = button('Làm mới', () => { if (!accessPending) { editor.replaceChildren(); load(currentPage); } });
+  const refresh = decoratedButton('Làm mới', () => { if (!accessPending) { editor.replaceChildren(); load(currentPage); } }, 'refresh');
   function setAccessPending(value) {
     accessPending = value;
     for (const control of editControls) control.disabled = value;
@@ -308,9 +338,9 @@ function accounts() {
       const data = await api(`/accounts?page=${page}&pageSize=25`, task); notices.status.textContent = `${amount(data.total)} tài khoản quản trị.`;
       if (!data.items.length) results.append(node('p', 'Chưa có tài khoản quản trị.'));
       for (const account of data.items) {
-        const row = node('article', null, { class: 'row' });
-        const editControl = button('Sửa quyền ' + account.email, () => edit(account)); editControl.disabled = accessPending; editControls.push(editControl);
-        append(row, append(node('div'), node('strong', account.email), node('p', `${roles[account.role]} · ${account.active ? 'Đang hoạt động' : 'Đã thu hồi'}`), node('p', account.id, { class: 'mono muted' })), editControl);
+        const row = node('article', null, { class: 'row account-row' });
+        const editControl = button('Sửa quyền', () => edit(account), { 'aria-label': 'Sửa quyền ' + account.email }); editControl.disabled = accessPending; editControls.push(editControl);
+        append(row, avatar(account.email), append(node('div', null, { class: 'row-info' }), node('strong', account.email), node('p', account.id, { class: 'mono muted' })), append(node('div', null, { class: 'row-meta' }), node('span', roles[account.role], { class: 'badge' }), node('span', account.active ? 'Đang hoạt động' : 'Đã thu hồi', { class: 'badge badge-' + (account.active ? 'active' : 'inactive') })), editControl);
         results.append(row);
       }
       pagination(results, data, load);
@@ -353,7 +383,7 @@ function audit() {
       pagination(results, data, load);
     } catch (error) { if (task.current() && error.name !== 'AbortError') notices.fail(error); }
   }
-  main.append(button('Làm mới', () => load(currentPage))); load();
+  main.append(decoratedButton('Làm mới', () => load(currentPage), 'refresh')); load();
 }
 
 // BFCache snapshots contain only the cleared view. Revalidate when returning.
