@@ -9,6 +9,7 @@ import io.ktor.server.request.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
 import io.ktor.utils.io.readAvailable
+import java.sql.SQLException
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
 
@@ -43,7 +44,13 @@ private fun ApplicationCall.page(): PageRequest {
 }
 private suspend fun ApplicationCall.player(auth: AuthenticationService): String {
     val token = request.header(HttpHeaders.Authorization)?.takeIf { it.startsWith("Bearer ") }?.removePrefix("Bearer ") ?: unauthorized()
-    return auth.authenticateAccessToken(token)?.userId?.toString() ?: unauthorized()
+    return try {
+        auth.authenticateAccessToken(token)?.userId?.toString() ?: unauthorized()
+    } catch (_: SQLException) {
+        // Authentication uses its own storage connection, outside GiftRepository's error boundary.
+        // Catch only SQL failures so request/coroutine cancellation continues to propagate.
+        unavailable()
+    }
 }
 private suspend inline fun <reified T> ApplicationCall.body(): T {
     if (!request.contentType().match(ContentType.Application.Json)) invalid()

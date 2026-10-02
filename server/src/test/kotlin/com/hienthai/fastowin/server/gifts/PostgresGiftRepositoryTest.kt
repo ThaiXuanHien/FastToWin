@@ -3,6 +3,11 @@ package com.hienthai.fastowin.server.gifts
 import com.hienthai.fastowin.protocol.*
 import com.hienthai.fastowin.server.*
 import com.hienthai.fastowin.server.admin.*
+import io.ktor.client.request.*
+import io.ktor.client.statement.bodyAsText
+import io.ktor.http.*
+import io.ktor.server.testing.testApplication
+import kotlinx.serialization.json.Json
 import com.zaxxer.hikari.HikariConfig
 import com.zaxxer.hikari.HikariDataSource
 import kotlinx.coroutines.*
@@ -253,4 +258,22 @@ class PostgresGiftRepositoryTest {
         }
         assertEquals(0,number("SELECT count(*) FROM wallet_transactions WHERE user_id='$player'"))
         assertEquals(1,number("SELECT count(*) FROM admin_gift_recipients WHERE user_id='$player'"))
+    } }
+    @Test fun `http authentication storage failure returns safe unavailable gift error`() = runTest { database {
+        val account=assertIs<AuthResult.Success>(auth.register("outage@example.com","GoodPassword123!","Player","test")).session
+        val actualAuth=auth
+        val actualGifts=gifts
+        // Keep the actual PostgreSQL authentication repository; make its session SELECT fail.
+        sql("ALTER TABLE sessions RENAME TO sessions_temporarily_unavailable")
+        testApplication {
+            application { gameModule(authService=actualAuth,giftService=actualGifts) }
+            val response=client.get("/gifts/mailbox") { bearerAuth(account.accessToken) }
+            assertEquals(HttpStatusCode.ServiceUnavailable,response.status)
+            assertEquals("no-store",response.headers[HttpHeaders.CacheControl])
+            val body=response.bodyAsText()
+            val error=Json.decodeFromString<GiftError>(body)
+            assertEquals("STORAGE_UNAVAILABLE",error.code)
+            assertEquals("Kho dữ liệu người chơi chưa sẵn sàng.",error.message)
+            assertFalse(body.contains("sessions")); assertFalse(body.contains("SELECT")); assertFalse(body.contains("SQLException"))
+        }
     } }}
