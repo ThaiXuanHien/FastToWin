@@ -167,10 +167,10 @@ Player detail includes summary metrics, nullable activity, clan and paginated ma
 
 Task 1: `474076b` and security amendment `8ae63d6`; independent backend review and scoped amendment review passed. Creation replay stores no fast password verifier; it uses the account's existing salted PBKDF2 credential.
 
-Task 2: `c02420a` and UI amendment `6409804`; implementation and verification complete, independent UI and scoped amendment reviews passed; whole-branch review pending. The issue remains open for phase B.
+Task 2: `c02420a` and UI amendment `6409804`; implementation and verification complete, independent UI and scoped amendment reviews passed; whole-branch review found one PWA cache integration defect; amendment `5adba77` passed scoped re-review. Final spec verdict PASS; ready for integration, with no open Critical/Important or deferred findings. The issue remains open for phase B.
 
 - Backend: 56 suites / 274 tests / zero failures, errors or skips. All six admin PostgreSQL tests ran on disposable loopback PostgreSQL, including persistence, transaction rollback and concurrent last-Owner protection.
-- Browser: 23 passing Chromium tests, including a real loopback Ktor/PostgreSQL Owner login, player search/details, audit, logout and reload. Phone/desktop screenshots inspected at 360px and 1440px. Firefox/WebKit and deployed production checks were not run.
+- Browser: 32 passing Chromium tests, including a real loopback Ktor/PostgreSQL Owner login, player search/details, audit, logout and reload. Phone/desktop screenshots inspected at 360px and 1440px. Firefox/WebKit and deployed production checks were not run.
 - Bootstrap CLI executed twice against the disposable UI database and returned the same Owner identity. Test credentials stayed in ignored secret files, with live traces disabled.
 - No production accounts, deployment, push or merge. Work remains on `codex/admin-foundation`.
 
@@ -181,3 +181,8 @@ Decisions made during execution, in order:
 3. Serve native HTML/CSS/browser modules from Ktor on the API origin, with no production JS dependency or CDN. Phase B may require revisiting the UI structure or framework as complexity grows.
 4. Repair two pre-existing tournament test fixtures by inserting missing player_stats rows before their existing balance setup. Both failures were reproduced on baseline `960afce` in a separate database; production and original assertions are unchanged. The risk is masking a fixture lifecycle assumption, so the independent backend reviewer inspected both changes.
 The UI amendment blocks editor replacement/cancel/refresh while an access mutation awaits its result and establishes Support as the account form's native reset default. Four rendered regressions were RED before the amendment and GREEN afterward. The amended assets were rebuilt and both asset tests passed; the prior 274-test backend run remains the full backend evidence because Kotlin logic is unchanged.
+
+Final review amendment `5adba77` extends the existing game service worker and the admin request boundary. The worker excludes all `/admin` traffic, purges existing admin CacheStorage entries and acknowledges its policy after cleanup. The console verifies the current controller before every API request, upgrades a legacy waiting worker or fails closed, and fences controller changes including pending login/logout. Nine worker-controlled browser regressions cover role masking, expiry, legacy/orphan cleanup, transitions and preserved game offline behavior. The amended distribution and all 274 backend tests were rerun successfully; 10 existing PWA/navigation tests also passed.
+
+5. Preserve shared-origin hosting and extend the PWA/admin boundary to meet the approved privacy/freshness requirements. The cost is coordinating worker and console rollout and reloading pre-fix admin tabs: already-running old JavaScript cannot acquire the new gate retroactively. The operations guide documents the paired release, tab replacement and optional temporary admin disablement during cutover. No production rollout was performed.
+Final status: both tasks and the final fix review are complete. Keep the feature branch locally; GitHub #21 remains open for phase B. No push, merge or production deployment. Local test services are stopped after verification; test screenshots and review evidence remain in ignored artifacts.
