@@ -38,6 +38,8 @@ Danh sách và lịch sử phân trang theo 25 mục. Hồ sơ chỉ dùng dữ 
 
 Owner phải nhập lý do cho mỗi thao tác cấp tài khoản/đổi quyền. Console sinh UUID request ID, vô hiệu hóa nút đang xử lý, giữ ID khi thử lại cùng payload bị lỗi; sửa form hoặc hoàn tất thành công kết thúc lần thử đó. Nếu đã rời trang mà kết quả mutation chưa rõ, kiểm tra danh sách và nhật ký trước khi gửi thao tác mới. Không có reset mật khẩu quản trị trong phase A.
 
+Giao diện dùng Material Design nền trắng. Trang tài khoản chỉ hiển thị danh sách; nút “Cấp tài khoản” và “Sửa quyền” mở modal. Có thể đóng bằng Hủy, nút đóng, Escape hoặc bấm ngoài khi chưa lưu; mật khẩu nháp được xóa khi đóng. Trong lúc lưu, các trường và thao tác đóng bị khóa đến khi máy chủ trả lời. Lỗi giữ modal và dữ liệu để thử lại; thành công đóng modal, cập nhật danh sách và báo kết quả. Nếu phiên hết hạn hoặc quyền thay đổi, modal bị gỡ cùng dữ liệu riêng tư.
+
 Nhật ký bền vững ghi truy cập, tìm kiếm, đọc hồ sơ/lịch sử, bootstrap và thay đổi quyền. Các bản ghi gồm hành động, actor/target ID, request ID, lý do và tóm tắt quyền trước/sau khi phù hợp. Không ghi mật khẩu, token hay truy vấn email. Giữ quyền truy cập và backup PostgreSQL theo quy trình nội bộ; quyết định retention/cleanup còn thuộc vận hành.
 
 Phase B còn mở trong Issue #21: phát quà, cấu hình chiến dịch/sự kiện, preview/publish và các mutation dữ liệu người chơi. Console không hiển thị điều khiển giả cho các chức năng này.

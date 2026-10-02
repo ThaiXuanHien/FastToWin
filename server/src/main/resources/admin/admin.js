@@ -48,6 +48,7 @@ function icon(name) {
     refresh: 'M20 11a8 8 0 0 0-14-5L3 9M3 3v6h6M4 13a8 8 0 0 0 14 5l3-3M15 15h6v6',
     logout: 'M9 3H4v18h5M9 12h12M17 8l4 4-4 4',
     lock: 'M7 10V7a5 5 0 0 1 10 0v3M5 10h14v12H5ZM12 15v3',
+    close: 'M6 6l12 12M18 6 6 18',
   };
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
   for (const [key, value] of Object.entries({ viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', 'stroke-width': '1.7', 'stroke-linecap': 'round', 'stroke-linejoin': 'round', 'aria-hidden': 'true', focusable: 'false', class: 'icon' })) svg.setAttribute(key, value);
@@ -63,8 +64,52 @@ function avatar(text) {
 function decoratedButton(text, action, name, attributes = {}) {
   const control = button(text, action, attributes); control.prepend(icon(name)); return control;
 }
+let modalSequence = 0;
+function modal(title) {
+  const headingId = 'modal-heading-' + ++modalSequence;
+  const dialog = node('dialog', null, { class: 'modal', 'aria-labelledby': headingId });
+  const opener = document.activeElement;
+  let busy = false;
+  const dismiss = () => { if (!busy) dialog.close(); };
+  const close = decoratedButton('', dismiss, 'close', { class: 'icon-button', 'aria-label': 'Đóng hộp thoại' });
+  const cancel = button('Hủy', dismiss, { class: 'text-button' });
+  const header = append(node('div', null, { class: 'modal-header' }), node('h2', title, { id: headingId }), close);
+  dialog.append(header);
+  dialog.addEventListener('cancel', event => { event.preventDefault(); dismiss(); });
+  dialog.addEventListener('keydown', event => {
+    if (event.key !== 'Tab') return;
+    const controls = [...dialog.querySelectorAll('button, input, select, textarea, [tabindex="0"]')].filter(control => !control.disabled && control.getClientRects().length);
+    const first = controls[0], last = controls.at(-1);
+    if (!first) { event.preventDefault(); return; }
+    if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+    else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+  });
+  dialog.addEventListener('click', event => {
+    if (event.target !== dialog) return;
+    const bounds = dialog.getBoundingClientRect();
+    if (event.clientX < bounds.left || event.clientX > bounds.right || event.clientY < bounds.top || event.clientY > bounds.bottom) dismiss();
+  });
+  dialog.addEventListener('close', () => {
+    for (const field of dialog.querySelectorAll('input[type="password"]')) field.value = '';
+    dialog.replaceChildren(); dialog.remove();
+    if (opener?.isConnected && !document.querySelector('dialog[open]')) opener.focus();
+  });
+  return { dialog, cancel,
+    show(firstField) { app.append(dialog); dialog.showModal(); firstField.focus(); },
+    finish() { dialog.close(); },
+    pending(value) {
+      busy = value; close.disabled = value; cancel.disabled = value;
+      dialog.setAttribute('aria-busy', String(value));
+      for (const field of dialog.querySelectorAll('input, select, textarea')) field.disabled = value;
+    },
+  };
+}
 function cancelRequests() { for (const controller of pending) controller.abort(); pending.clear(); }
-function changeView() { viewVersion++; cancelRequests(); app.replaceChildren(); }
+function changeView() {
+  viewVersion++; cancelRequests();
+  for (const dialog of app.querySelectorAll('dialog[open]')) dialog.close();
+  app.replaceChildren();
+}
 function feedback(parent) {
   const status = node('p', '', { role: 'status', class: 'status', 'aria-live': 'polite' });
   const error = node('div', '', { role: 'alert', class: 'alert', tabindex: '-1' });
@@ -75,10 +120,10 @@ function feedback(parent) {
   } };
 }
 function field(form, label, name, type = 'text', attributes = {}) {
-  const wrapper = node('div', null, { class: 'field' });
+  const wrapper = node(type === 'checkbox' ? 'label' : 'div', null, { class: type === 'checkbox' ? 'checkbox' : 'field' });
   const id = `field-${name}`;
   const input = node(type === 'textarea' ? 'textarea' : 'input', null, { id, name, ...(type === 'textarea' ? {} : { type }), ...attributes });
-  append(wrapper, node('label', label, { for: id }), input); form.append(wrapper); return input;
+  append(wrapper, node(type === 'checkbox' ? 'span' : 'label', label, type === 'checkbox' ? {} : { for: id }), input); form.append(wrapper); return input;
 }
 function roleField(form, label, name) {
   const wrapper = node('div', null, { class: 'field' });
@@ -152,10 +197,9 @@ function shell(title, section) {
   const nav = node('nav', null, { 'aria-label': 'Quản trị' });
   const links = [['users', 'Người chơi', directory]];
   if (session.admin.role === 'OWNER') links.push(['accounts', 'Tài khoản quản trị', accounts], ['audit', 'Nhật ký kiểm toán', audit]);
-  nav.append(node('p', 'Không gian quản trị', { class: 'nav-caption' }));
   for (const [key, label, action] of links) nav.append(decoratedButton(label, action, key, key === section ? { 'aria-current': 'page' } : {}));
   const main = node('main', null, { id: 'main', class: 'panel stack page-' + section, tabindex: '-1' });
-  append(main, node('p', 'Bảng điều khiển / ' + title, { class: 'eyebrow' }), node('h1', title));
+  main.append(node('h1', title));
   append(layout, nav, main); append(app, header, layout);
   return main;
 }
@@ -227,8 +271,8 @@ function directory() {
       for (const user of data.items) {
         const row = node('article', null, { class: 'row' }), text = node('div', null, { class: 'row-info' });
         const metadata = node('div', null, { class: 'row-meta' });
-        append(text, node('strong', user.displayName), node('p', user.email ?? 'Không có email', { class: 'muted' }), node('p', user.id, { class: 'mono muted' }));
-        append(metadata, node('span', label(user.accountType), { class: 'badge' }), node('span', label(user.status), { class: 'badge badge-' + (user.status === 'ACTIVE' ? 'active' : 'inactive') }), node('p', 'Ngày tạo: ' + date(user.createdAtEpochMillis), { class: 'muted row-date' }));
+        append(text, node('strong', user.displayName), node('p', user.email ?? 'Không có email', { class: 'muted' }));
+        append(metadata, node('span', label(user.accountType), { class: 'badge' }), node('span', label(user.status), { class: 'badge badge-' + (user.status === 'ACTIVE' ? 'active' : 'inactive') }));
         append(row, avatar(user.displayName), text, metadata, decoratedButton('Xem người chơi', () => detail(user.id), 'arrow')); results.append(row);
       }
       pagination(results, data, load);
@@ -309,28 +353,37 @@ function mutationForm(form, submit, notices, path, payload, success, pendingChan
 function accounts() {
   if (session?.admin.role !== 'OWNER') return;
   const main = shell('Tài khoản quản trị', 'accounts');
-  main.append(node('p', 'Owner quản lý quyền truy cập. Mỗi thay đổi phải có lý do và sẽ thu hồi phiên của tài khoản đích.', { class: 'muted' }));
-  const notices = feedback(main), results = node('div', null, { class: 'results' }); main.append(results);
-  const forms = node('div', null, { class: 'forms' }); main.append(forms);
-  const create = node('form', null, { class: 'stack' }); create.append(node('h2', 'Cấp tài khoản mới'));
-  const email = field(create, 'Email quản trị mới', 'new-email', 'email', { required: '', maxlength: '254', autocomplete: 'off' });
-  const password = field(create, 'Mật khẩu tạm', 'new-password', 'password', { required: '', minlength: '12', maxlength: '128', autocomplete: 'new-password' });
-  create.append(node('p', 'Mật khẩu từ 12 đến 128 ký tự.', { class: 'muted' }));
-  const role = roleField(create, 'Vai trò mới', 'new-role'); role.value = 'SUPPORT';
-  role.querySelector('option[value="SUPPORT"]').defaultSelected = true;
-  const reason = field(create, 'Lý do tạo', 'create-reason', 'textarea', { required: '', maxlength: '500' });
-  const createNotices = feedback(create), submit = node('button', 'Tạo tài khoản', { type: 'submit', class: 'primary' }); create.append(submit); forms.append(create);
-  const editor = node('section', null, { class: 'stack', 'aria-label': 'Chỉnh quyền' }); forms.append(editor);
-  mutationForm(create, submit, createNotices, '/accounts', () => ({ email: email.value.trim(), password: password.value, role: role.value, reason: reason.value.trim() }), () => {
-    password.value = ''; create.reset(); createNotices.status.textContent = 'Đã tạo tài khoản quản trị.'; load(currentPage);
-  });
-  const request = channel(); let currentPage = 0, accessPending = false, cancelEdit;
+  main.append(node('p', 'Cấp tài khoản và quản lý quyền truy cập.', { class: 'muted' }));
+  const toolbar = node('div', null, { class: 'toolbar' }); main.append(toolbar);
+  const createControl = button('Cấp tài khoản', create, { class: 'primary' });
+  const refresh = decoratedButton('Làm mới', () => { if (!mutationPending) load(currentPage); }, 'refresh');
+  append(toolbar, createControl, refresh);
+  const notices = feedback(main), confirmation = node('p', '', { role: 'status', 'aria-live': 'polite', class: 'confirmation' });
+  main.append(confirmation);
+  const results = node('div', null, { class: 'results' }); main.append(results);
+  const request = channel(); let currentPage = 0, mutationPending = false;
   const editControls = [];
-  const refresh = decoratedButton('Làm mới', () => { if (!accessPending) { editor.replaceChildren(); load(currentPage); } }, 'refresh');
-  function setAccessPending(value) {
-    accessPending = value;
+  function setMutationPending(value, surface) {
+    mutationPending = value; surface.pending(value);
     for (const control of editControls) control.disabled = value;
-    cancelEdit.disabled = value; refresh.disabled = value;
+    createControl.disabled = value; refresh.disabled = value;
+  }
+  function create() {
+    if (mutationPending) return;
+    confirmation.textContent = '';
+    const surface = modal('Cấp tài khoản mới');
+    const form = node('form', null, { class: 'stack modal-form' }); surface.dialog.append(form);
+    const email = field(form, 'Email quản trị mới', 'new-email', 'email', { required: '', maxlength: '254', autocomplete: 'off' });
+    const password = field(form, 'Mật khẩu tạm', 'new-password', 'password', { required: '', minlength: '12', maxlength: '128', autocomplete: 'new-password', 'aria-describedby': 'new-password-help' });
+    form.append(node('p', 'Mật khẩu từ 12 đến 128 ký tự.', { class: 'muted field-help', id: 'new-password-help' }));
+    const role = roleField(form, 'Vai trò mới', 'new-role'); role.value = 'SUPPORT';
+    const reason = field(form, 'Lý do tạo', 'create-reason', 'textarea', { required: '', maxlength: '500' });
+    const notices = feedback(form), submit = node('button', 'Tạo tài khoản', { type: 'submit', class: 'primary' });
+    form.append(append(node('div', null, { class: 'modal-actions' }), surface.cancel, submit));
+    mutationForm(form, submit, notices, '/accounts', () => ({ email: email.value.trim(), password: password.value, role: role.value, reason: reason.value.trim() }), () => {
+      password.value = ''; surface.finish(); confirmation.textContent = 'Đã tạo tài khoản quản trị.'; load(currentPage);
+    }, value => setMutationPending(value, surface));
+    surface.show(email);
   }
   async function load(page = 0) {
     currentPage = page; const task = request(); results.replaceChildren(); editControls.length = 0; notices.clear(); notices.status.textContent = 'Đang tải tài khoản quản trị…';
@@ -339,29 +392,31 @@ function accounts() {
       if (!data.items.length) results.append(node('p', 'Chưa có tài khoản quản trị.'));
       for (const account of data.items) {
         const row = node('article', null, { class: 'row account-row' });
-        const editControl = button('Sửa quyền', () => edit(account), { 'aria-label': 'Sửa quyền ' + account.email }); editControl.disabled = accessPending; editControls.push(editControl);
-        append(row, avatar(account.email), append(node('div', null, { class: 'row-info' }), node('strong', account.email), node('p', account.id, { class: 'mono muted' })), append(node('div', null, { class: 'row-meta' }), node('span', roles[account.role], { class: 'badge' }), node('span', account.active ? 'Đang hoạt động' : 'Đã thu hồi', { class: 'badge badge-' + (account.active ? 'active' : 'inactive') })), editControl);
+        const editControl = button('Sửa quyền', () => edit(account), { 'aria-label': 'Sửa quyền ' + account.email, class: 'text-button' }); editControl.disabled = mutationPending; editControls.push(editControl);
+        append(row, avatar(account.email), append(node('div', null, { class: 'row-info' }), node('strong', account.email)), append(node('div', null, { class: 'row-meta' }), node('span', roles[account.role], { class: 'badge' }), node('span', account.active ? 'Đang hoạt động' : 'Đã thu hồi', { class: 'badge badge-' + (account.active ? 'active' : 'inactive') })), editControl);
         results.append(row);
       }
       pagination(results, data, load);
     } catch (error) { if (task.current() && error.name !== 'AbortError') notices.fail(error); }
   }
   function edit(account) {
-    if (accessPending) return;
-    editor.replaceChildren();
-    const form = node('form', null, { class: 'stack' }); append(form, node('h2', 'Quyền truy cập'), node('p', account.email));
+    if (mutationPending) return;
+    confirmation.textContent = '';
+    const surface = modal('Quyền truy cập');
+    const form = node('form', null, { class: 'stack modal-form' }); surface.dialog.append(form);
+    append(form, node('p', account.email), node('p', 'Thay đổi quyền sẽ đăng xuất mọi phiên của tài khoản này.', { class: 'muted' }));
     const role = roleField(form, 'Vai trò truy cập', 'access-role'); role.value = account.role;
     const active = field(form, 'Cho phép truy cập', 'access-active', 'checkbox'); active.checked = account.active; active.parentElement.className = 'checkbox';
     const reason = field(form, 'Lý do thay đổi', 'access-reason', 'textarea', { required: '', maxlength: '500' });
     const notices = feedback(form), submit = node('button', 'Lưu quyền truy cập', { type: 'submit', class: 'primary' });
-    cancelEdit = button('Hủy', () => { if (!accessPending) editor.replaceChildren(); });
-    append(form, submit, cancelEdit); editor.append(form); role.focus();
+    form.append(append(node('div', null, { class: 'modal-actions' }), surface.cancel, submit));
     mutationForm(form, submit, notices, '/accounts/' + encodeURIComponent(account.id) + '/access', () => ({ role: role.value, active: active.checked, reason: reason.value.trim() }), () => {
       if (account.id === session.admin.id) { loggedOut = true; showLogin('Quyền của bạn đã thay đổi. Vui lòng đăng nhập lại.'); }
-      else { editor.replaceChildren(); load(currentPage); }
-    }, setAccessPending);
+      else { surface.finish(); confirmation.textContent = 'Đã cập nhật quyền truy cập.'; load(currentPage); }
+    }, value => setMutationPending(value, surface));
+    surface.show(role);
   }
-  main.append(refresh); load();
+  load();
 }
 function audit() {
   if (session?.admin.role !== 'OWNER') return;

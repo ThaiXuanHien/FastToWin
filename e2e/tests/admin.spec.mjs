@@ -138,6 +138,7 @@ test('pending logout disables sign-in until cookie clearing completes', async ({
 
 test('Owner creates accounts with CSRF, prevents duplicates and reuses request IDs only for identical retries', async ({ page, fixture }) => {
   await login(page, fixture); await page.getByRole('button', { name: 'Tài khoản quản trị', exact: true }).click();
+  await page.getByRole('button', { name: 'Cấp tài khoản', exact: true }).click();
   await page.getByLabel('Email quản trị mới').fill('new@example.com');
   await page.getByLabel('Mật khẩu tạm').fill('NewPassword123!');
   await page.getByLabel('Vai trò mới').selectOption('SUPPORT');
@@ -165,6 +166,8 @@ test('Owner creates accounts with CSRF, prevents duplicates and reuses request I
   await page.getByRole('button', { name: 'Tạo tài khoản', exact: true }).click();
   await expect(page.getByRole('status').filter({ hasText: 'Đã tạo' })).toBeVisible();
   expect(posts()[2].body.requestId).not.toBe(posts()[0].body.requestId);
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Cấp tài khoản', exact: true }).click();
   await expect(page.getByLabel('Mật khẩu tạm')).toHaveValue('');
 });
 
@@ -179,7 +182,7 @@ for (const action of ['replacement', 'cancel', 'refresh']) test(`pending access 
   });
   await page.getByRole('button', { name: 'Lưu quyền truy cập', exact: true }).click();
   await expect.poll(() => typeof release).toBe('function');
-  const control = page.getByRole('button', { name: action === 'replacement' ? 'Sửa quyền owner@example.com' : action === 'cancel' ? 'Hủy' : 'Làm mới', exact: true });
+  const control = page.getByRole('button', { name: action === 'replacement' ? 'Sửa quyền owner@example.com' : action === 'cancel' ? 'Hủy' : 'Làm mới', exact: true, includeHidden: true });
   await expect(control).toBeDisabled();
   const accountReads = fixture.calls.filter(c => c.route === '/admin/api/accounts' && c.method === 'GET').length;
   await control.click({ force: true });
@@ -193,18 +196,20 @@ for (const action of ['replacement', 'cancel', 'refresh']) test(`pending access 
 
 test('successful account creation resets to Support and the next untouched role submits Support', async ({ page, fixture }) => {
   await login(page, fixture); await page.getByRole('button', { name: 'Tài khoản quản trị', exact: true }).click();
+  await page.getByRole('button', { name: 'Cấp tài khoản', exact: true }).click();
   await expect(page.getByLabel('Vai trò mới')).toHaveValue('SUPPORT');
   await page.getByLabel('Email quản trị mới').fill('first-support@example.com');
   await page.getByLabel('Mật khẩu tạm').fill('NewPassword123!');
   await page.getByLabel('Lý do tạo').fill('First support account');
   await page.getByRole('button', { name: 'Tạo tài khoản', exact: true }).click();
   await expect(page.getByRole('status').filter({ hasText: 'Đã tạo' })).toBeVisible();
+  await page.getByRole('button', { name: 'Cấp tài khoản', exact: true }).click();
   await expect(page.getByLabel('Vai trò mới')).toHaveValue('SUPPORT');
   await page.getByLabel('Email quản trị mới').fill('second-support@example.com');
   await page.getByLabel('Mật khẩu tạm').fill('NewPassword123!');
   await page.getByLabel('Lý do tạo').fill('Second support account');
   await page.getByRole('button', { name: 'Tạo tài khoản', exact: true }).click();
-  await expect(page.getByLabel('Email quản trị mới')).toHaveValue('');
+  await expect(page.getByRole('dialog')).toHaveCount(0);
   expect(fixture.calls.filter(c => c.route === '/admin/api/accounts' && c.method === 'POST').map(c => c.body.role)).toEqual(['SUPPORT', 'SUPPORT']);
 });
 
@@ -233,34 +238,106 @@ for (const width of [360, 768, 1024, 1440]) test(`responsive ${width}px layout a
   await page.keyboard.press('Tab');
   expect(await page.evaluate(() => document.activeElement.tagName)).not.toBe('BODY');
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-  await page.screenshot({ path: `.artifacts/admin-${width}.png`, fullPage: true });
+  await page.screenshot({ path: `.artifacts/admin-${width}.png`, fullPage: true, animations: 'disabled' });
   await page.getByRole('button', { name: 'Xem người chơi' }).first().click();
   await expect(page.getByText('Bang mẫu', { exact: true })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-  await page.screenshot({ path: `.artifacts/admin-detail-${width}.png`, fullPage: true });
+  await page.screenshot({ path: `.artifacts/admin-detail-${width}.png`, fullPage: true, animations: 'disabled' });
   await page.getByRole('button', { name: 'Tài khoản quản trị', exact: true }).click();
-  await expect(page.getByLabel('Email quản trị mới')).toBeVisible();
+  await expect(page.getByLabel('Email quản trị mới')).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Sửa quyền support@example.com', exact: true })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-  await page.screenshot({ path: `.artifacts/admin-accounts-${width}.png`, fullPage: true });
+  await page.screenshot({ path: `.artifacts/admin-accounts-${width}.png`, fullPage: true, animations: 'disabled' });
+  await page.getByRole('button', { name: 'Cấp tài khoản', exact: true }).click();
+  await expect(page.getByLabel('Email quản trị mới')).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.screenshot({ path: `.artifacts/admin-create-${width}.png`, fullPage: true, animations: 'disabled' });
+  await page.getByRole('button', { name: 'Hủy', exact: true }).click();
   await page.getByRole('button', { name: 'Sửa quyền support@example.com', exact: true }).click();
   await expect(page.getByLabel('Vai trò truy cập')).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-  await page.screenshot({ path: `.artifacts/admin-editor-${width}.png`, fullPage: true });
+  await page.screenshot({ path: `.artifacts/admin-editor-${width}.png`, fullPage: true, animations: 'disabled' });
+  await page.getByRole('button', { name: 'Hủy', exact: true }).click();
   await page.getByRole('button', { name: 'Nhật ký kiểm toán', exact: true }).click();
   await expect(page.getByText('Đăng nhập quản trị', { exact: true })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-  await page.screenshot({ path: `.artifacts/admin-audit-${width}.png`, fullPage: true });
+  await page.screenshot({ path: `.artifacts/admin-audit-${width}.png`, fullPage: true, animations: 'disabled' });
 });
 
-test('dark console keeps text legible and controls usable', async ({ page, fixture }) => {
+test('account modal keeps keyboard focus inside, dismisses safely and clears abandoned secrets', async ({ page, fixture }) => {
+  await login(page, fixture); await page.getByRole('button', { name: 'Tài khoản quản trị', exact: true }).click();
+  await expect(page.getByLabel('Email quản trị mới')).toHaveCount(0);
+  const trigger = page.getByRole('button', { name: 'Cấp tài khoản', exact: true });
+  await trigger.click();
+  const dialog = page.getByRole('dialog', { name: 'Cấp tài khoản mới', exact: true });
+  await expect(dialog).toBeVisible();
+  await expect(page.getByLabel('Email quản trị mới')).toBeFocused();
+  await page.getByLabel('Mật khẩu tạm').fill('AbandonedPassword123!');
+  for (let i = 0; i < 12; i++) {
+    await page.keyboard.press('Tab');
+    expect(await page.evaluate(() => !!document.activeElement.closest('dialog'))).toBe(true);
+  }
+  await page.keyboard.press('Escape');
+  await expect(dialog).toHaveCount(0); await expect(trigger).toBeFocused();
+  await trigger.click();
+  await expect(page.getByLabel('Mật khẩu tạm')).toHaveValue('');
+  await page.getByRole('button', { name: 'Đóng hộp thoại', exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  const edit = page.getByRole('button', { name: 'Sửa quyền support@example.com', exact: true });
+  await edit.click(); await expect(page.getByRole('dialog', { name: 'Quyền truy cập', exact: true })).toBeVisible();
+  await page.getByRole('dialog').locator('.checkbox').click();
+  await expect(page.getByLabel('Cho phép truy cập')).not.toBeChecked();
+  await page.getByRole('button', { name: 'Hủy', exact: true }).click(); await expect(edit).toBeFocused();
+});
+
+test('pending modal blocks Escape, close and backdrop until the server responds', async ({ page, fixture }) => {
+  await login(page, fixture); await page.getByRole('button', { name: 'Tài khoản quản trị', exact: true }).click();
+  await page.getByRole('button', { name: 'Cấp tài khoản', exact: true }).click();
+  await page.getByLabel('Email quản trị mới').fill('pending@example.com');
+  await page.getByLabel('Mật khẩu tạm').fill('PendingPassword123!');
+  await page.getByLabel('Lý do tạo').fill('Kiểm thử modal');
+  let release;
+  fixture.handlers.set('/admin/api/accounts', async (call, send) => {
+    if (call.method === 'GET') return false;
+    await new Promise(resolve => release = resolve); send(503, { message: 'Lưu chưa thành công.' }); return true;
+  });
+  await page.getByRole('button', { name: 'Tạo tài khoản', exact: true }).click();
+  await expect.poll(() => typeof release).toBe('function');
+  await expect(page.getByRole('button', { name: 'Hủy', exact: true })).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'Đóng hộp thoại', exact: true })).toBeDisabled();
+  await page.keyboard.press('Escape'); await page.mouse.click(2, 2);
+  await expect(page.getByRole('dialog')).toBeVisible();
+  release(); await expect(page.getByRole('alert')).toBeFocused();
+  await expect(page.getByLabel('Email quản trị mới')).toHaveValue('pending@example.com');
+  await page.keyboard.press('Escape'); await expect(page.getByRole('dialog')).toHaveCount(0);
+  expect(fixture.calls.filter(call => call.route === '/admin/api/accounts' && call.method === 'POST')).toHaveLength(1);
+});
+
+test('expired mutation removes the modal and every secret before returning to login', async ({ page, fixture }) => {
+  await login(page, fixture); await page.getByRole('button', { name: 'Tài khoản quản trị', exact: true }).click();
+  await page.getByRole('button', { name: 'Cấp tài khoản', exact: true }).click();
+  await page.getByLabel('Email quản trị mới').fill('expired@example.com');
+  await page.getByLabel('Mật khẩu tạm').fill('ExpiredPassword123!');
+  await page.getByLabel('Lý do tạo').fill('Expired session');
+  fixture.handlers.set('/admin/api/accounts', async (call, send) => {
+    if (call.method === 'GET') return false;
+    send(401, { message: 'Phiên hết hạn.' }); return true;
+  });
+  await page.getByRole('button', { name: 'Tạo tài khoản', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Đăng nhập quản trị' })).toBeVisible();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(page.getByLabel('Mật khẩu tạm')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Đăng nhập', exact: true })).toBeEnabled();
+});
+
+test('light Material console keeps text legible and controls usable', async ({ page, fixture }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.goto(fixture.url + '/admin/');
   await expect(page.getByRole('heading', { name: 'Đăng nhập quản trị' })).toBeVisible();
-  await page.screenshot({ path: '.artifacts/admin-login-1440.png', fullPage: true });
+  await page.screenshot({ path: '.artifacts/admin-login-1440.png', fullPage: true, animations: 'disabled' });
   await page.setViewportSize({ width: 360, height: 1000 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-  await page.screenshot({ path: '.artifacts/admin-login-360.png', fullPage: true });
+  await page.screenshot({ path: '.artifacts/admin-login-360.png', fullPage: true, animations: 'disabled' });
   await page.setViewportSize({ width: 1440, height: 1000 });
   await login(page, fixture);
   // The brighter hover state must remain legible too.
@@ -280,7 +357,7 @@ test('dark console keeps text legible and controls usable', async ({ page, fixtu
     const help = getComputedStyle(document.getElementById('search-help'));
     const primary = getComputedStyle(document.querySelector('button.primary'));
     return {
-      dark: luminance(background) < .08,
+      light: luminance(background) > .9,
       heading: contrast(heading.color, background),
       help: contrast(help.color, background),
       primary: contrast(primary.color, primary.backgroundColor),
@@ -289,7 +366,7 @@ test('dark console keeps text legible and controls usable', async ({ page, fixtu
         .every(element => element.getBoundingClientRect().height >= 44),
     };
   });
-  expect(measurements.dark).toBe(true);
+  expect(measurements.light).toBe(true);
   expect(measurements.heading).toBeGreaterThanOrEqual(4.5);
   expect(measurements.help).toBeGreaterThanOrEqual(4.5);
   expect(measurements.primary).toBeGreaterThanOrEqual(4.5);
@@ -315,6 +392,12 @@ test('real loopback backend auth, directory, audit and logout', async ({ page })
   await expect(page.getByText('player@admin-test.invalid', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Nhật ký kiểm toán', exact: true }).click();
   await expect(page.getByText('Tra cứu người chơi', { exact: true }).first()).toBeVisible();
+  await page.getByRole('button', { name: 'Tài khoản quản trị', exact: true }).click();
+  await page.getByRole('button', { name: 'Cấp tài khoản', exact: true }).click();
+  await expect(page.getByRole('dialog', { name: 'Cấp tài khoản mới', exact: true })).toBeVisible();
+  await expect(page.getByLabel('Email quản trị mới')).toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('dialog')).toHaveCount(0);
   await page.getByRole('button', { name: 'Đăng xuất', exact: true }).click();
   await expect(page.getByText('Đã đăng xuất.', { exact: true })).toBeVisible();
   await page.reload();
