@@ -1,6 +1,8 @@
 package com.hienthai.fastowin.server
 
 import com.hienthai.fastowin.server.gifts.*
+import com.hienthai.fastowin.server.maintenance.MaintenanceService
+import com.hienthai.fastowin.server.maintenance.maintenanceRoutes
 import com.hienthai.fastowin.server.admin.AdminService
 import com.hienthai.fastowin.server.admin.adminRoutes
 import com.hienthai.fastowin.server.admin.adminAssets
@@ -91,7 +93,8 @@ fun Application.gameModule(
     websocketPongTimeout: Duration = DEFAULT_WEBSOCKET_PONG_TIMEOUT,
     adminService: AdminService? = null,
     giftService: GiftService = GiftService(UnavailableGiftRepository, adminService),
-    giftDeliveryEnabled: Boolean = false
+    giftDeliveryEnabled: Boolean = false,
+    maintenanceService: MaintenanceService? = null
 ) {
     val isProduction = environment != "dev"
     val allowedWebOrigins = buildAllowedWebOrigins(
@@ -137,6 +140,7 @@ fun Application.gameModule(
     adminService?.let { service -> routing { adminAssets(); adminRoutes(service) } }
 
     routing { giftRoutes(giftService, authService, adminService != null) }
+    maintenanceService?.let { service -> routing { maintenanceRoutes(service) } }
     if (giftDeliveryEnabled) startGiftDelivery(giftService)
 
     val connections = ConcurrentHashMap<String, SocketConnection>()

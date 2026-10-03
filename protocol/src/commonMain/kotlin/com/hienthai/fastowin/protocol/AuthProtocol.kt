@@ -8,7 +8,14 @@ const val SESSION_REPLACED_CLOSE_REASON = "Account signed in elsewhere"
 data class ServiceStatusResponse(
     val maintenance: Boolean = false,
     val message: String? = null,
-    val pollAfterSeconds: Int = 30
+    val pollAfterSeconds: Int = 30,
+    val state: MaintenanceState? = if (maintenance) MaintenanceState.MAINTENANCE else MaintenanceState.ACTIVE,
+    val mode: MaintenanceMode? = null,
+    val version: Long? = null,
+    val messageVi: String? = null,
+    val messageEn: String? = null,
+    val transitionAtEpochMillis: Long? = null,
+    val expectedEndEpochMillis: Long? = null
 )
 
 @Serializable
