@@ -42,10 +42,75 @@ class GiftMailboxControllerTest {
         assertEquals(listOf("a", "b", "c"), controller.state.value.items.map { it.campaignId })
         assertEquals(listOf(GiftState.CLAIMED, GiftState.AVAILABLE, GiftState.CLAIMED), controller.state.value.items.map { it.state })
         assertEquals("CONFLICT", controller.state.value.itemErrors["b"])
-        assertEquals(2, refreshes)
+        assertEquals(1, refreshes)
         controller.claim("b")
         assertEquals(GiftState.CLAIMED, controller.state.value.items[1].state)
         assertFalse(controller.state.value.itemErrors.containsKey("b"))
+    }
+
+    @Test fun `claim all remains offered when only an unseen page has available gifts`() = runTest {
+        val gateway = object : GiftGateway {
+            val batches = mutableListOf<List<String>>()
+            override suspend fun page(page: Int, pageSize: Int) = GiftMailboxPage(
+                if (page == 0) listOf(gift("claimed", GiftState.CLAIMED)) else listOf(gift("ready")),
+                page, 1, 2
+            )
+            override suspend fun claim(id: String) = error("unused")
+            override suspend fun claimAll(ids: List<String>): GiftClaimAllResult {
+                batches += ids
+                return GiftClaimAllResult(ids.map { GiftClaimItem(it, result = GiftClaimResult(gift(it, GiftState.CLAIMED), 25, 5, 25, 5)) })
+            }
+        }
+        val controller = GiftMailboxController(gateway, {})
+        controller.open()
+        assertFalse(controller.state.value.hasAvailable)
+        assertTrue(controller.state.value.canClaimAll)
+        controller.claimAll()
+        assertEquals(listOf(listOf("ready")), gateway.batches)
+        assertFalse(controller.state.value.canClaimAll)
+    }
+
+    @Test fun `route away fences a late claim receipt and profile refresh`() = runTest {
+        val entered = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        val gateway = object : GiftGateway {
+            override suspend fun page(page: Int, pageSize: Int) = GiftMailboxPage(listOf(gift("a")), 0, 25, 1)
+            override suspend fun claim(id: String): GiftClaimResult {
+                entered.complete(Unit)
+                withContext(NonCancellable) { release.await() }
+                return GiftClaimResult(gift(id, GiftState.CLAIMED), 25, 5, 25, 5)
+            }
+            override suspend fun claimAll(ids: List<String>) = error("unused")
+        }
+        var refreshes = 0
+        val controller = GiftMailboxController(gateway, { refreshes++ })
+        controller.open()
+        val request = async { controller.claim("a") }
+        entered.await()
+        controller.reset() // The /gifts route-away transition invokes this lifecycle fence.
+        release.complete(Unit)
+        request.await()
+        assertFalse(controller.state.value.isOpen)
+        assertTrue(controller.state.value.items.isEmpty())
+        assertEquals(0, refreshes)
+    }
+
+    @Test fun `claim all with no available gifts is harmless`() = runTest {
+        val gateway = object : GiftGateway {
+            override suspend fun page(page: Int, pageSize: Int) = GiftMailboxPage(
+                listOf(gift("claimed", GiftState.CLAIMED), gift("expired", GiftState.EXPIRED)), page, pageSize, 2
+            )
+            override suspend fun claim(id: String) = error("unexpected claim")
+            override suspend fun claimAll(ids: List<String>) = error("unexpected batch")
+        }
+        var refreshes = 0
+        val controller = GiftMailboxController(gateway, { refreshes++ })
+        controller.open()
+        controller.claimAll()
+        assertFalse(controller.state.value.canClaimAll)
+        assertFalse(controller.state.value.isClaimingAll)
+        assertTrue(controller.state.value.itemErrors.isEmpty())
+        assertEquals(0, refreshes)
     }
 
     @Test fun `dropped claim response keeps gift retryable and server receipt wins`() = runTest {

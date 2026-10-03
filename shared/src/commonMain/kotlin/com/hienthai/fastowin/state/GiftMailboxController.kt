@@ -1,6 +1,5 @@
 package com.hienthai.fastowin.state
 
-import com.hienthai.fastowin.data.network.GiftApiClient
 import com.hienthai.fastowin.data.network.GiftApiException
 import com.hienthai.fastowin.data.network.GiftGateway
 import com.hienthai.fastowin.protocol.*
@@ -21,6 +20,7 @@ data class GiftMailboxState(
 ) {
     val hasMore: Boolean get() = items.size < total
     val hasAvailable: Boolean get() = items.any { it.state == GiftState.AVAILABLE }
+    val canClaimAll: Boolean get() = hasAvailable || hasMore
 }
 
 class GiftMailboxController(
@@ -74,6 +74,7 @@ class GiftMailboxController(
             val receipt = gateway.claim(id)
             if (fence != generation) return
             applyReceipt(receipt)
+            refreshProfile()
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (error: Exception) {
@@ -90,6 +91,7 @@ class GiftMailboxController(
         val initial = _state.value
         if (!initial.isOpen || initial.isClaimingAll || initial.pendingIds.isNotEmpty()) return
         val fence = generation
+        var claimedAny = false
         _state.value = initial.copy(isClaimingAll = true, loadError = null)
         try {
             // Collect all server pages before claiming: the visible page is not the audience.
@@ -112,7 +114,10 @@ class GiftMailboxController(
                     for (id in batch) {
                         val item = results[id]
                         val receipt = item?.result
-                        if (receipt != null) applyReceipt(receipt)
+                        if (receipt != null) {
+                            applyReceipt(receipt)
+                            claimedAny = true
+                        }
                         else markError(id, item?.error?.code ?: "NETWORK_ERROR")
                     }
                 } catch (cancelled: CancellationException) {
@@ -127,7 +132,10 @@ class GiftMailboxController(
         } catch (error: Exception) {
             if (fence == generation) _state.value = _state.value.copy(loadError = error.code())
         } finally {
-            if (fence == generation) _state.value = _state.value.copy(isClaimingAll = false, pendingIds = emptySet())
+            if (fence == generation) {
+                _state.value = _state.value.copy(isClaimingAll = false, pendingIds = emptySet())
+                if (claimedAny) refreshProfile()
+            }
         }
     }
 
@@ -139,7 +147,7 @@ class GiftMailboxController(
 
     fun close() {
         reset()
-        (gateway as? GiftApiClient)?.close()
+        gateway.close()
     }
 
     private fun applyReceipt(receipt: GiftClaimResult) {
@@ -148,8 +156,6 @@ class GiftMailboxController(
             items = _state.value.items.map { if (it.campaignId == id) receipt.gift else it },
             itemErrors = _state.value.itemErrors - id
         )
-        // The receipt includes current balances; GameController is the sole profile authority.
-        refreshProfile()
     }
 
     private fun markError(id: String, code: String) {

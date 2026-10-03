@@ -20,6 +20,7 @@ interface GiftGateway {
     suspend fun page(page: Int, pageSize: Int): GiftMailboxPage
     suspend fun claim(id: String): GiftClaimResult
     suspend fun claimAll(ids: List<String>): GiftClaimAllResult
+    fun close() = Unit
 }
 
 class GiftApiException(val code: String, override val message: String) : Exception(message)
@@ -52,7 +53,7 @@ class GiftApiClient(
             setBody(GiftClaimAllRequest(ids))
         }
 
-    fun close() = client.close()
+    override fun close() = client.close()
 
     private suspend inline fun <reified T> send(
         path: String,

@@ -123,7 +123,7 @@ fun GiftMailboxScreen(
                         }
                     }
                 } else {
-                    if (state.hasAvailable) {
+                    if (state.canClaimAll) {
                         item(key = "gift_claim_all") {
                             ArcadeActionButton(
                                 label = localized(if (state.isClaimingAll) TextKey.GiftClaiming else TextKey.GiftClaimAll),

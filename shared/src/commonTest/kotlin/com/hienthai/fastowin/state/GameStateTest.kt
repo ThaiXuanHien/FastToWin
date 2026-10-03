@@ -6,12 +6,20 @@ import com.hienthai.fastowin.localization.LocalizedMessageMapper
 import com.hienthai.fastowin.data.network.InMemoryResumeTokenStore
 import com.hienthai.fastowin.data.network.SocketSession
 import com.hienthai.fastowin.data.network.SocketTransport
+import com.hienthai.fastowin.data.network.GiftGateway
 import com.hienthai.fastowin.protocol.ClientMessage
 import com.hienthai.fastowin.protocol.FriendRequestSnapshot
 import com.hienthai.fastowin.protocol.FriendSnapshot
 import com.hienthai.fastowin.protocol.FriendsSnapshot
 import com.hienthai.fastowin.protocol.GameSnapshot
+import com.hienthai.fastowin.protocol.GiftClaimAllResult
+import com.hienthai.fastowin.protocol.GiftClaimItem
+import com.hienthai.fastowin.protocol.GiftClaimResult
+import com.hienthai.fastowin.protocol.GiftMailboxPage
+import com.hienthai.fastowin.protocol.GiftState
+import com.hienthai.fastowin.protocol.MailboxGift
 import com.hienthai.fastowin.protocol.PlayerProfileSnapshot
+import com.hienthai.fastowin.protocol.PlayerProgressionSnapshot
 import com.hienthai.fastowin.protocol.PlayerSnapshot
 import com.hienthai.fastowin.protocol.PlayQuotaSnapshot
 import com.hienthai.fastowin.protocol.ProtocolGameMode
@@ -44,6 +52,61 @@ import kotlin.test.assertTrue
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class GameStateTest {
+    @Test
+    fun `multi-batch mailbox claim refreshes authoritative profile after an in-flight load`() = runTest {
+        val fixture = publicTournamentFixture()
+        fixture.session.server(ServerMessage.SessionReady("player-1"))
+        runCurrent()
+        val gifts = (1..101).map { id ->
+            MailboxGift("gift-$id", "Quà", "Gift", "Nội dung", "Message", 1, 0, 1000, 9000, GiftState.AVAILABLE)
+        }
+        val gateway = object : GiftGateway {
+            var batches = 0
+            override suspend fun page(page: Int, pageSize: Int) = GiftMailboxPage(
+                gifts.drop(page * pageSize).take(pageSize), page, pageSize, gifts.size.toLong()
+            )
+            override suspend fun claim(id: String) = error("unused")
+            override suspend fun claimAll(ids: List<String>): GiftClaimAllResult {
+                batches++
+                return GiftClaimAllResult(ids.map { id ->
+                    GiftClaimItem(id, result = GiftClaimResult(
+                        gifts.first { it.campaignId == id }.copy(state = GiftState.CLAIMED), 1, 0, batches, 0
+                    ))
+                })
+            }
+        }
+        fixture.controller.refreshProfile()
+        runCurrent()
+        assertTrue(fixture.controller.uiState.value.isProfileLoading)
+        assertEquals(1, fixture.session.sent.filterIsInstance<ClientMessage.GetProfile>().size)
+
+        val mailbox = GiftMailboxController(gateway, fixture.controller::refreshProfileAfterGiftClaim)
+        mailbox.open()
+        mailbox.claimAll()
+        runCurrent()
+        assertEquals(2, gateway.batches)
+        // The earlier request is still in flight, so the final refresh must be queued.
+        assertEquals(1, fixture.session.sent.filterIsInstance<ClientMessage.GetProfile>().size)
+        fixture.session.server(ServerMessage.ProfileData(
+            PlayerProfileSnapshot(userId = "player-1", displayName = "Me", playerCode = "ME000001")
+        ))
+        runCurrent()
+        assertEquals(2, fixture.session.sent.filterIsInstance<ClientMessage.GetProfile>().size)
+        assertTrue(fixture.controller.uiState.value.isProfileLoading)
+        fixture.session.server(ServerMessage.ProfileData(
+            PlayerProfileSnapshot(
+                userId = "player-1", displayName = "Me", playerCode = "ME000001",
+                progression = PlayerProgressionSnapshot(gold = 101, experiencePoints = 101)
+            )
+        ))
+        runCurrent()
+        assertEquals(101, fixture.controller.uiState.value.profile?.progression?.gold)
+        assertEquals(101, fixture.controller.uiState.value.profile?.progression?.experiencePoints)
+        assertFalse(fixture.controller.uiState.value.isProfileLoading)
+        mailbox.close()
+        fixture.controller.close()
+    }
+
     @Test
     fun `public tournament data replaces list without clearing active tournament loading`() = runTest {
         val fixture = publicTournamentFixture()

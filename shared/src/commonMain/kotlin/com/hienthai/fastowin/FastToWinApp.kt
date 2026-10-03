@@ -337,11 +337,11 @@ private fun GameContent(
         )
     }
     val state by controller.uiState.collectAsState()
-    val mailboxController = remember(serverUrl, accountUserId, isGuest, authRequestConfigurator) {
+    val mailboxController = remember(serverUrl, accountUserId, isGuest, authRequestConfigurator, controller) {
         if (isGuest || accountUserId == null || accessTokenProvider == null) null else
             GiftMailboxController(
                 GiftApiClient(serverUrl, accessTokenProvider, authRequestConfigurator),
-                controller::refreshProfile
+                controller::refreshProfileAfterGiftClaim
             )
     }
     val mailboxState by (mailboxController?.state?.collectAsState()
@@ -368,6 +368,9 @@ private fun GameContent(
     var showGiftMailbox by rememberSaveable(accountUserId) { mutableStateOf(false) }
     LaunchedEffect(showGiftMailbox, mailboxController) {
         if (showGiftMailbox) mailboxController?.open()
+    }
+    DisposableEffect(showGiftMailbox, mailboxController) {
+        onDispose { if (showGiftMailbox) mailboxController?.reset() }
     }
 
     DisposableEffect(storeBillingGateway) {
@@ -458,6 +461,7 @@ private fun GameContent(
         showSettings = false
         showSeasonHistory = false
         showGiftMailbox = false
+        mailboxController?.reset()
         showTutorial = false
         profileSection = null
         clearPracticeSession()
@@ -879,6 +883,10 @@ private fun GameContent(
     ) {
         val requested = requestedAppRoute ?: return@LaunchedEffect
         val route = normalizeAppRoute(requested)
+        if (route != "/gifts" && showGiftMailbox) {
+            showGiftMailbox = false
+            mailboxController?.reset()
+        }
         val activeRoomRoute = state.currentRoomId?.let { "/room/$it" }
 
         if (state.isMatchStarted && !state.isGameOver && route != activeRoomRoute) {
@@ -984,9 +992,11 @@ private fun GameContent(
                 controller.openNotifications()
             }
             route == "/gifts" -> {
-                closeLocalScreens()
-                controller.openHome()
-                showGiftMailbox = true
+                if (!showGiftMailbox) {
+                    closeLocalScreens()
+                    controller.openHome()
+                    showGiftMailbox = true
+                }
             }
             route == "/settings" -> {
                 controller.closeNotifications()

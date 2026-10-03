@@ -96,6 +96,7 @@ class GameController private constructor(
     private val scope = controllerScope ?: CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
     private var playerId: String? = null
+    private var profileRefreshAfterGiftPending = false
     private var sessionJob: Job? = null
     private var resettingSocket = false
     private var messageJob: Job? = null
@@ -308,6 +309,17 @@ class GameController private constructor(
         if (_uiState.value.isProfileLoading || playerId == null) return
         _uiState.update { it.copy(isProfileLoading = true, error = null) }
         scope.launch { socket.sendMessage(ClientMessage.GetProfile) }
+    }
+
+    fun refreshProfileAfterGiftClaim() {
+        profileRefreshAfterGiftPending = true
+        dispatchPendingGiftProfileRefresh()
+    }
+
+    private fun dispatchPendingGiftProfileRefresh() {
+        if (!profileRefreshAfterGiftPending || _uiState.value.isProfileLoading || playerId == null) return
+        profileRefreshAfterGiftPending = false
+        refreshProfile()
     }
 
     fun closeProfile() {
@@ -1005,6 +1017,7 @@ class GameController private constructor(
                 val wasRecoveringRoom = _uiState.value.currentRoomId != null
                 playerId = message.playerId
                 _uiState.update { it.withReadySession(message.playerId) }
+                if (accountDisplayName == null) dispatchPendingGiftProfileRefresh()
                 if (_uiState.value.isTournamentOpen) refreshPublicTournaments()
                 startLatencyMonitoring()
                 if (accountDisplayName != null) {
@@ -1132,6 +1145,7 @@ class GameController private constructor(
                 if (newClanId != null && newClanId != previousClanId && _uiState.value.isClanOpen) {
                     socket.sendMessage(ClientMessage.GetClanInfo(newClanId))
                 }
+                dispatchPendingGiftProfileRefresh()
             }
             is ServerMessage.WalletHistory -> {
                 _uiState.update {
@@ -1731,6 +1745,7 @@ class GameController private constructor(
     fun resetGame() {
         if (resettingSocket) return
         resettingSocket = true
+        profileRefreshAfterGiftPending = false
         publicTournamentFilterJob?.cancel()
         val roomId = _uiState.value.currentRoomId
         val displayName = accountDisplayName ?: _uiState.value.player.name
@@ -1772,6 +1787,7 @@ class GameController private constructor(
     }
 
     fun close() {
+        profileRefreshAfterGiftPending = false
         publicTournamentFilterJob?.cancel()
         timerJob?.cancel()
         countdownJob?.cancel()
