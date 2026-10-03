@@ -82,7 +82,7 @@
   // append safe audit, persist replay, then commit or roll all writes back.
   ```
 - [ ] Register optional admin routes for tests only; validate JSON/body size and catch storage errors without swallowing CancellationException. Add no-store and safe503 to status/reads. No-DB Main retains existing environment operation until complete runtime Task2; expose persistence unavailable when durable control is requested without DB.
-- [ ] Run `:protocol:test :server:test --tests '*maintenance*'` with real local TEST_DATABASE settings, inspect XML failures/errors/skips, run localized text scanner and diff check. Document DTO/paths/failure source/override semantics and the exact test evidence.
+- [ ] Run `:protocol:jvmTest` and `:server:test --tests '*maintenance*'` as separate covering commands with real local TEST_DATABASE settings, inspect XML failures/errors/skips, run localized text scanner and diff check. Document DTO/paths/failure source/override semantics and the exact test evidence.
 - [ ] Stage only task files, commit `feat: add durable admin maintenance policy`, write task-1-report.md. Do not expose control as production-ready before Task2/3/4 integration.
 
 ### Task 2: Runtime enforcement, safe match draining and abort
