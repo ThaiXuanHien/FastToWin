@@ -22,6 +22,7 @@
 - Deadline/emergency aborts incomplete matches without loss/Elo/unfinished rewards; already committed results remain. Persist abort before normal reconnect/cleanup can score it.
 - Failed policy read blocks new intent; unavailable startup does not serve game. No-DB application cannot pretend to persist maintenance controls.
 - Mandatory ui-ux-pro-max, white Material admin override; player Arcade master. No CDN/CSP relaxation, private caching or unlocalized UI copy.
+- Serve `/api/status` as an equivalent public status alias; new client uses it to bypass legacy worker caches. Keep `/status` compatibility; exclude/purge both exact paths in upgraded worker.
 - Work stays on existing non-main local preview checkout; no push/merge/deploy/production campaigns/issue closure. Preserve untracked/cache/secret artifacts.
 - Tests use loopback disposable PostgreSQL settings and isolated schemas. Do not reset/drop existing databases or print credentials.
 
@@ -106,8 +107,10 @@
   // Only then mutate WAITING -> PLAYING; drain may not race this transition.
   ```
 - [ ] Start owned runtime polling at <=5 seconds, synchronize due transitions with observed active count, apply effective override, send state/close sockets as appropriate. Stop coroutine cleanly; read failure blocks new intent and retains known closure. Main uses real repository when DB present; unavailable durable controls do not disable existing no-DB environment mode.
+- [ ] Apply the blocking/drain policy before sampling the count used for empty-drain completion; count from an ACTIVE engine is not proof no match can start. Public GET `/status` and `/api/status` use one provider/error path, no-store; alias forwards through existing `/api/*` Caddy matchers. Test both status prefixes with live state/error behavior.
 - [ ] HTTP policy explicitly blocks login/register/upgrade and new game mutation in DRAINING/MAINTENANCE; allow logout/refresh needed to finish paid receipts, health/status/admin. Gift claim replay of an already committed receipt remains readable without admitting a new payout; claim-all returns per-item safe outcomes. Authorization still precedes disclosure/replay.
 - [ ] Ensure policy close doesn't silently roll back committed economy or turn normal disconnect cleanup into penalties. Engine abort handles all restored rooms and tournament persistence before socket closure.
+- [ ] Review durable abort against `StoredRoom.resultQueued`, `Room.takeCompletedMatch`, and `Room.snapshot`: a FINISHED tournament room without a winner currently synthesizes one. Persist a compatible abort distinction and guard snapshot/progression/cleanup so maintenance cannot manufacture a tournament winner or a later settlement.
 - [ ] Run focused engine/runtime/gift tests plus relevant existing engine/match/tournament suites and full server tests once at this integration gate, inspect XML. Compile/installDist, scanner, diff check. Update docs/report, explicit commit `feat: enforce maintenance and drain active matches`.
 
 ### Task 3: Finish paid store receipts independently of the game socket
@@ -138,12 +141,14 @@
 **Files:**
 - Create `server/src/main/resources/admin/admin-maintenance.js`; modify admin.js/CSS/AdminAssets.kt and design-system admin override.
 - Create `shared/.../ui/components/MaintenanceBanner.kt`; modify FastToWinApp.kt, MaintenanceScreen.kt and status/billing integration; additive localized TextKeys/catalog mappings VI/EN with existing fallback rules.
+- Modify ServiceStatusClient.kt and `webApp/src/wasmJsMain/resources/service-worker.js`; add focused HTTP and real worker upgrade regression cases/fixtures.
 - Add `e2e/tests/admin-maintenance.spec.mjs` and fixtures, shared status/banner state tests and phone/desktop screenshot previews.
 
 **Interfaces:** Consume exact Task1–3 DTO/error contracts, existing admin module adapter, and runtime observations; do not implement a parallel network/auth/modal layer. Expose status/banners through existing serviceStatusClient; preserve live game composition in DRAINING.
 
 - [ ] Write browser cases for Owner vs read-only roles, planned/emergency/disable, field ranges, environment override, unknown mutation retry identity,409 stale version, modal pending/keyboard/error/session fences. Tests assert real controls and sent exact DTOs; screenshot captures360/768/1024/1440 list/form/confirm as needed.
 - [ ] Build admin module using textContent and reusable native modal/API/channel, add assets explicitly and role navigation. Show source/effective/persisted state, expected end advisory, server-observed count and timestamp; avoid showing mutation commit as proof all sockets closed. Root engine observed count must be current runtime state, not a fabricated DB value.
+- [ ] When editing enabled policy, keep warning/drain schedule fields read-only and retain their saved values; text/cause/advisory-end edits preserve deadlines. Allow planned-to-emergency escalation; explain that emergency-to-planned and a new planned schedule require disable then enable. Map `MODE_LOCKED`/409 safely and test exact payloads.
   ```javascript
   const payload = { ...validatedFields, expectedVersion: snapshot.version,
     requestId: crypto.randomUUID(), reason: reason.value.trim() };
@@ -152,6 +157,7 @@
   await api('/maintenance', { method: 'POST', body: payload });
   ```
 - [ ] Shared banner selects VI/EN runtime message, presents preparation/countdown without replacing a live match, announces maintenance appropriately and auto-rechecks service status. Disable initiating purchase/new match controls for drain; backend remains authoritative. Existing offline/retry and guest guidance remain separate. Keep pending paid-receipt completion reachable while MaintenanceScreen is displayed.
+- [ ] Ship ServiceStatusClient requests to `/api/status`, tested against MockEngine. Worker skips `/status` and `/api/status` before cache/navigation branches, bumps version and purges same-origin exact status entries from all cache names. Real Chromium old-v7/current upgrade must reproduce stale legacy ACTIVE and prove new alias sees MAINTENANCE while worker waits, network failure offline (not cached ACTIVE), activation purge and preserved offline shell/admin/mailbox policies. Existing old client needs reload/new client or activation; do not claim retroactive repair of already-running JavaScript.
 - [ ] Run complete admin browser suite from e2e cwd, focused shared/protocol/status tests and screenshot validation, scanner/APK/JS/Wasm. Inspect actual phone/desktop screenshots; report landscape/largest-text/assistive/iOS limitations honestly.
 - [ ] Rebuild/installDist and safely restart only the verified loopback preview. Live acceptance on test DB: Ownerplanned→drain→closed→off, existingmatch vs new room, emergency oldsocket,paid receipt exactly once, unauth/role/override; restore ACTIVE when done and retain preview. Never toggle production.
 - [ ] Explicit commit `feat: add maintenance controls and player feedback`, docs and report. Task/final reviewers check all acceptance rows and compatibility/caches/proxies; preserve final evidence and local branch.
