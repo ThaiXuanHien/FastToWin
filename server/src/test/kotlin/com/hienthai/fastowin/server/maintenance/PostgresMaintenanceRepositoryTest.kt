@@ -118,7 +118,10 @@ class PostgresMaintenanceRepositoryTest {
     } }
     @Test fun databaseRuntimeExposesDurableRepositoryWithoutEnablingRoutes() = runTest { database {
         val schema=source.schema
-        val url=System.getenv("TEST_DATABASE_URL")+"?currentSchema=$schema"
+        val base=System.getenv("TEST_DATABASE_URL")
+        val url=if (Regex("[?&]currentSchema=[^&]*").containsMatchIn(base)) {
+            base.replace(Regex("([?&])currentSchema=[^&]*")) { "${it.groupValues[1]}currentSchema=$schema" }
+        } else base + (if ('?' in base) "&" else "?") + "currentSchema=$schema"
         DatabaseRuntime.open(DatabaseSettings(url,System.getenv("TEST_DATABASE_USER"),System.getenv("TEST_DATABASE_PASSWORD"),2)).use { runtime ->
             val value=runtime.maintenanceRepository.transaction { snapshot() }
             assertEquals(MaintenanceState.ACTIVE,value.state)

@@ -17,7 +17,8 @@ data class StoredActivePlayer(
     val displayName: String,
     val isAccount: Boolean,
     val avatarId: String? = null,
-    val frameId: String = "frame_default"
+    val frameId: String = "frame_default",
+    val accountResumeToken: String? = null
 )
 
 @Serializable
@@ -43,6 +44,8 @@ data class StoredActiveRoom(
     val startedAtEpochMillis: Long? = null,
     val finishedAtEpochMillis: Long? = null,
     val resultQueued: Boolean = false,
+    val maintenanceAborted: Boolean = false,
+    val pendingCompletedMatch: CompletedMatch? = null,
     val readyPlayerIds: Set<String> = emptySet(),
     val rematchRequestedPlayerIds: Set<String> = emptySet(),
     val rematchExpiresAtEpochMillis: Long? = null,

@@ -8,7 +8,8 @@ import kotlinx.serialization.json.Json
 import java.util.UUID
 
 class GiftService(val repository: GiftRepository, private val admins: AdminService? = null,
-    private val nowMillis: () -> Long = System::currentTimeMillis) {
+    private val nowMillis: () -> Long = System::currentTimeMillis,
+    private val newIntentAllowed: () -> Boolean = { true }) {
     fun receivedAt() = nowMillis()
     fun requireOrigin(origin: String?) { (admins ?: unavailable()).requireOrigin(origin) }
     private fun GiftTransaction.authorize(context: GiftAdminContext, mutation: Boolean = false, owner: Boolean = false): AdminIdentity {
@@ -135,6 +136,9 @@ class GiftService(val repository: GiftRepository, private val admins: AdminServi
             val current = balance(userId)
             return@transaction GiftClaimResult(gift(c, r, receivedAt), c.draft.gold, c.draft.xp, current.gold, current.xp)
         }
+        if (!newIntentAllowed()) throw AdminException(503, "MAINTENANCE",
+            com.hienthai.fastowin.localization.LocalizationService(com.hienthai.fastowin.localization.AppLanguage.VIETNAMESE)
+                .text(com.hienthai.fastowin.localization.TextKey.MaintenanceDefaultMessage))
         if (c.state != CampaignState.PUBLISHED || receivedAt < c.draft.availableAtEpochMillis || receivedAt >= c.draft.expiresAtEpochMillis!!) conflict()
         val current = award(userId, c, receivedAt)
         val claimed = r.copy(claimedAt = receivedAt); putRecipient(claimed)

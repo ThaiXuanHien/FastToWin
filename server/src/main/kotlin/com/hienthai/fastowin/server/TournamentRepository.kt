@@ -17,6 +17,9 @@ interface TournamentRepository {
     suspend fun loadRecent(playerId: String, limit: Int): List<TournamentSnapshot>
     suspend fun save(tournament: TournamentSnapshot)
 
+    /** Durably cancel with a full, idempotent refund of each recorded entry payment. */
+    suspend fun cancelForMaintenance(cancelled: TournamentSnapshot, profiles: PlayerProfileRepository)
+
     /**
      * Candidate already includes the player, but its pool excludes any NEW payment.
      * Persist the entry debit and adjusted snapshot together. A prior payment admits a
@@ -43,6 +46,19 @@ class TournamentPersistenceUncertainException(cause: Throwable?) : IllegalStateE
 
 open class InMemoryTournamentRepository : TournamentRepository {
     private val tournaments = linkedMapOf<String, TournamentSnapshot>()
+    private val entrants = mutableMapOf<String, MutableSet<String>>()
+
+    override suspend fun cancelForMaintenance(cancelled: TournamentSnapshot, profiles: PlayerProfileRepository) = withContext(NonCancellable) {
+        require(cancelled.phase == TournamentPhase.CANCELLED && cancelled.championPlayerId == null)
+        if (cancelled.entryFee > 0) {
+            for (playerId in entrants[cancelled.tournamentId] ?: cancelled.players.map { it.playerId }.toSet()) {
+                val result = profiles.applyWalletTransaction(playerId, "TOURNAMENT_MAINTENANCE_REFUND", cancelled.tournamentId,
+                    goldDelta = cancelled.entryFee)
+                check(result == WalletMutationStatus.APPLIED || result == WalletMutationStatus.DUPLICATE)
+            }
+        }
+        save(cancelled)
+    }
 
     override suspend fun loadActive(): List<TournamentSnapshot> = tournaments.values.filter {
         it.phase == TournamentPhase.LOBBY || it.phase == TournamentPhase.RUNNING
@@ -81,6 +97,7 @@ open class InMemoryTournamentRepository : TournamentRepository {
             }
             throw TournamentAdmissionSaveException(error)
         }
+        entrants.getOrPut(candidate.tournamentId) { linkedSetOf() }.add(playerId)
         TournamentAdmissionResult(status, snapshot)
     }
 }
@@ -98,6 +115,44 @@ class PostgresTournamentRepository(
 
     private fun requireKnownCommitOutcome() {
         uncertainCommit?.let { throw TournamentPersistenceUncertainException(it) }
+    }
+
+    override suspend fun cancelForMaintenance(cancelled: TournamentSnapshot, profiles: PlayerProfileRepository) = withContext(NonCancellable + Dispatchers.IO) {
+        requireKnownCommitOutcome()
+        require(cancelled.phase == TournamentPhase.CANCELLED && cancelled.championPlayerId == null)
+        var committing = false
+        try {
+            dataSource.connection.use { connection ->
+                connection.autoCommit = false
+                try {
+                    // Read the payment ledger, including entrants who left the lobby before closure.
+                    val payments = connection.prepareStatement("SELECT user_id, -gold_delta FROM wallet_transactions WHERE source_type = 'TOURNAMENT_ENTRY' AND source_id = ? ORDER BY user_id").use {
+                        it.setString(1, cancelled.tournamentId)
+                        it.executeQuery().use { rows -> buildList { while (rows.next()) add(rows.getObject(1, UUID::class.java) to rows.getInt(2)) } }
+                    }
+                    for ((userId, gold) in payments) {
+                        connection.prepareStatement("SELECT gold FROM player_stats WHERE user_id = ? FOR UPDATE").use {
+                            it.setObject(1, userId); it.executeQuery().use { rows -> check(rows.next()) }
+                        }
+                        val inserted = connection.prepareStatement("INSERT INTO wallet_transactions(id, user_id, source_type, source_id, gold_delta) VALUES (?, ?, 'TOURNAMENT_MAINTENANCE_REFUND', ?, ?) ON CONFLICT (user_id, source_type, source_id) DO NOTHING").use {
+                            it.setObject(1, UUID.randomUUID()); it.setObject(2, userId); it.setString(3, cancelled.tournamentId); it.setInt(4, gold); it.executeUpdate()
+                        }
+                        if (inserted == 1) connection.prepareStatement("UPDATE player_stats SET gold = gold + ?, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?").use {
+                            it.setInt(1, gold); it.setObject(2, userId); check(it.executeUpdate() == 1)
+                        }
+                    }
+                    save(connection, cancelled)
+                    committing = true
+                    connection.commit()
+                } catch (error: Exception) {
+                    runCatching { connection.rollback() }.exceptionOrNull()?.let(error::addSuppressed)
+                    throw error
+                }
+            }
+        } catch (error: Exception) {
+            if (committing) { uncertainCommit = error; throw TournamentPersistenceUncertainException(error) }
+            throw error
+        }
     }
 
     override suspend fun loadActive(): List<TournamentSnapshot> = dataSource.connection.use { connection ->

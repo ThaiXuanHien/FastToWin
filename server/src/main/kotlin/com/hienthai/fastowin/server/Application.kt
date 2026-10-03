@@ -1,8 +1,7 @@
 package com.hienthai.fastowin.server
 
 import com.hienthai.fastowin.server.gifts.*
-import com.hienthai.fastowin.server.maintenance.MaintenanceService
-import com.hienthai.fastowin.server.maintenance.maintenanceRoutes
+import com.hienthai.fastowin.server.maintenance.*
 import com.hienthai.fastowin.server.admin.AdminService
 import com.hienthai.fastowin.server.admin.adminRoutes
 import com.hienthai.fastowin.server.admin.adminAssets
@@ -69,6 +68,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.decodeFromString
@@ -92,10 +92,13 @@ fun Application.gameModule(
     websocketPingPeriod: Duration = DEFAULT_WEBSOCKET_PING_PERIOD,
     websocketPongTimeout: Duration = DEFAULT_WEBSOCKET_PONG_TIMEOUT,
     adminService: AdminService? = null,
-    giftService: GiftService = GiftService(UnavailableGiftRepository, adminService),
+    giftService: GiftService = GiftService(UnavailableGiftRepository, adminService, newIntentAllowed = engine::newIntentAllowed),
     giftDeliveryEnabled: Boolean = false,
-    maintenanceService: MaintenanceService? = null
+    maintenanceService: MaintenanceService? = null,
+    maintenanceRuntime: MaintenanceRuntime = MaintenanceRuntime(engine, maintenanceService, serviceStatusProvider)
 ) {
+    // The first policy and restored aborts must be applied before any handler/timer can serve game.
+    runBlocking { maintenanceRuntime.refresh() }
     val isProduction = environment != "dev"
     val allowedWebOrigins = buildAllowedWebOrigins(
         environment = environment,
@@ -166,6 +169,13 @@ fun Application.gameModule(
         }
     }
 
+    startMaintenanceRuntime(maintenanceRuntime) { applied ->
+        deliver(applied.deliveries)
+        if (applied.closeSockets) connections.values.toList().forEach { connection ->
+            connection.session.close(CloseReason(CloseReason.Codes.GOING_AWAY, "Server maintenance"))
+        }
+    }
+
     launch {
         while (isActive) {
             delay(SESSION_CLEANUP_INTERVAL_MILLIS)
@@ -194,10 +204,7 @@ fun Application.gameModule(
     }
 
     routing {
-        get("/status") {
-            call.response.header(HttpHeaders.CacheControl, "no-store")
-            call.respond(serviceStatusProvider())
-        }
+        publicMaintenanceStatus(maintenanceRuntime::publicStatus)
 
         get("/health") { call.respondText("OK") }
 
@@ -210,6 +217,7 @@ fun Application.gameModule(
         }
 
         post("/auth/register") {
+            if (call.rejectMaintenanceNewIntent(engine.newIntentAllowed())) return@post
             val request = call.receiveOrReject<RegisterRequest>() ?: return@post
             val webSession = call.resolveWebSessionRequest(request.devicePlatform, allowedWebOrigins)
                 ?: return@post
@@ -228,6 +236,7 @@ fun Application.gameModule(
         }
 
         post("/auth/login") {
+            if (call.rejectMaintenanceNewIntent(engine.newIntentAllowed())) return@post
             val ipAllowed = call.consumeHttpRateLimit(
                 rateLimiter,
                 RateLimitBuckets.LOGIN_IP,
@@ -264,6 +273,7 @@ fun Application.gameModule(
         }
 
         post("/auth/upgrade-guest") {
+            if (call.rejectMaintenanceNewIntent(engine.newIntentAllowed())) return@post
             val request = call.receiveOrReject<UpgradeGuestRequest>() ?: return@post
             val webSession = call.resolveWebSessionRequest(request.devicePlatform, allowedWebOrigins)
                 ?: return@post
@@ -496,8 +506,7 @@ fun Application.gameModule(
 
         webSocket("/game") {
             metrics.webSocketOpened()
-            val serviceStatus = serviceStatusProvider()
-            if (serviceStatus.maintenance) {
+            if (engine.gameConnectionsClosed()) {
                 close(CloseReason(CloseReason.Codes.GOING_AWAY, "Server maintenance"))
                 metrics.webSocketClosed()
                 return@webSocket
@@ -575,6 +584,10 @@ fun Application.gameModule(
                         }.getOrElse { error ->
                             send(ProtocolJson.encodeToString<ServerMessage>(
                                 when (error) {
+                                    is CancellationException -> throw error
+                                    is MaintenanceAdmissionException -> ServerMessage.Error("MAINTENANCE",
+                                        com.hienthai.fastowin.localization.LocalizationService(com.hienthai.fastowin.localization.AppLanguage.VIETNAMESE).text(TextKey.MaintenanceDefaultMessage),
+                                        messageKey = TextKey.MaintenanceDefaultMessage.name)
                                     is InvalidAccessTokenException -> structuredServerError(
                                         "INVALID_ACCESS_TOKEN",
                                         legacyFallback("Phiên đăng nhập không hợp lệ hoặc đã hết hạn.")

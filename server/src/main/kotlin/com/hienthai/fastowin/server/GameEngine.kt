@@ -1,5 +1,8 @@
 package com.hienthai.fastowin.server
 
+import com.hienthai.fastowin.server.maintenance.*
+import com.hienthai.fastowin.protocol.MaintenanceState
+
 import com.hienthai.fastowin.protocol.ClientMessage
 import com.hienthai.fastowin.protocol.ClanDonationStatus
 import com.hienthai.fastowin.localization.protocolTextKeyForCode
@@ -100,6 +103,106 @@ class GameEngine(
     private val tournaments = mutableMapOf<String, Tournament>()
     private val tournamentInvitations = mutableMapOf<String, TournamentInvitationRecord>()
     private var activeRoomsRestored = false
+    @Volatile private var maintenancePolicy = MaintenancePolicy(MaintenanceState.ACTIVE)
+    private val pendingMaintenanceRooms = mutableMapOf<String, StoredActiveRoom>()
+    private val pendingMaintenanceTournaments = mutableMapOf<String, TournamentSnapshot>()
+    private val legacyRestoredAccounts = mutableSetOf<String>()
+    private val pendingCompletedMatches = mutableMapOf<String, CompletedMatch>()
+    private val settlementsInFlight = mutableSetOf<String>()
+
+    suspend fun activeMaintenanceMatchCount(): Int = mutex.withLock {
+        (rooms.values.filter { it.phase == RoomPhase.PLAYING && !it.maintenanceAborted }.map { it.matchId } + pendingCompletedMatches.keys).toSet().size
+    }
+
+    suspend fun admitsNewIntent(): Boolean = mutex.withLock { !maintenancePolicy.blocksNewIntent }
+    /** Atomic admission observation for non-suspending HTTP/gift transaction boundaries. */
+    fun newIntentAllowed(): Boolean = !maintenancePolicy.blocksNewIntent
+    fun gameConnectionsClosed(): Boolean = maintenancePolicy.isFullyClosed
+
+    /** Lock order matches room persistence. Abort writes finish before callers may close sockets. */
+    suspend fun applyMaintenancePolicy(policy: MaintenancePolicy): MaintenanceApplication {
+        restoreActiveRooms()
+        return persistenceMutex.withLock {
+            val result = mutex.withLock {
+                // An outstanding abort remains closed until every durable write has succeeded.
+                if (pendingMaintenanceRooms.isEmpty() && pendingMaintenanceTournaments.isEmpty()) maintenancePolicy = policy
+                if (maintenancePolicy.blocksNewIntent) matchmakingEntries.clear()
+                val aborted = if (maintenancePolicy.isFullyClosed) rooms.values.filter { it.phase != RoomPhase.FINISHED && !it.maintenanceAborted } else emptyList()
+                aborted.forEach { room ->
+                    room.maintenanceAborted = true
+                    room.resultQueued = true
+                    room.phase = RoomPhase.FINISHED
+                    room.forcedWinnerId = null
+                    room.finishedAtEpochMillis = room.finishedAtEpochMillis ?: nowMillis()
+                    room.rematchRequestedPlayerIds.clear()
+                    room.rematchExpiresAtEpochMillis = null
+                    room.sequence++
+                    pendingMaintenanceRooms[room.id] = room.toStoredRoom()
+                }
+                tournaments.values.filter { maintenancePolicy.isFullyClosed && (it.phase == TournamentPhase.LOBBY || it.phase == TournamentPhase.RUNNING) &&
+                    it.matches.none { match -> match.roomId in pendingCompletedMatches } }
+                    .forEach { tournament ->
+                        val cancelled = tournament.snapshot().copy(phase = TournamentPhase.CANCELLED,
+                            championPlayerId = null, prizePool = 0, finishedAtEpochMillis = nowMillis())
+                        pendingMaintenanceTournaments[tournament.id] = cancelled
+                        tournament.phase = TournamentPhase.CANCELLED
+                        tournament.championPlayerId = null
+                        tournament.prizePool = 0
+                        tournament.finishedAtMillis = cancelled.finishedAtEpochMillis
+                    }
+                MaintenanceApplication(
+                    deliveries = aborted.map { room -> Delivery(ServerMessage.RoomClosed(room.id,
+                        LocalizationService(com.hienthai.fastowin.localization.AppLanguage.VIETNAMESE).text(TextKey.MaintenanceDefaultMessage),
+                        messageKey = TextKey.MaintenanceDefaultMessage.name, code = "MAINTENANCE"), room.participantIds()) },
+                    abortedRoomIds = pendingMaintenanceRooms.keys.toSet(), closeSockets = maintenancePolicy.isFullyClosed)
+            }
+            // Persistence serialization is retained, but provider/wallet IO never holds the engine mutex.
+            withContext(NonCancellable) {
+                for ((id, room) in pendingMaintenanceRooms.toMap()) {
+                    activeRoomRepository.save(room)
+                    pendingMaintenanceRooms.remove(id)
+                }
+                for ((id, tournament) in pendingMaintenanceTournaments.toMap()) {
+                    tournamentRepository.cancelForMaintenance(tournament, playerProfileRepository)
+                    pendingMaintenanceTournaments.remove(id)
+                }
+            }
+            val resumedRooms = mutableListOf<StoredActiveRoom>()
+            val resumedTournaments = mutableListOf<TournamentSnapshot>()
+            val resumedDeliveries = mutex.withLock {
+                maintenancePolicy = policy
+                val deliveries = mutableListOf<Delivery>()
+                if (!policy.blocksNewIntent) tournaments.values.filter { it.phase == TournamentPhase.RUNNING }.forEach { tournament ->
+                    val next = tournament.matches.filter { it.phase == TournamentMatchPhase.PENDING }.minByOrNull { it.round }
+                    if (next != null && next.round > 1) {
+                        val previous = tournament.matches.filter { it.round == next.round - 1 }.sortedBy { it.position }
+                        if (previous.isNotEmpty() && previous.all { it.phase == TournamentMatchPhase.FINISHED && it.winnerPlayerId != null }) {
+                            val winners = previous.map { checkNotNull(it.winnerPlayerId) }
+                            tournament.matches.filter { it.round == next.round }.sortedBy { it.position }.forEachIndexed { index, match ->
+                                match.playerOneId = winners[index * 2]; match.playerTwoId = winners[index * 2 + 1]
+                                val room = createTournamentRoom(tournament, match)
+                                resumedRooms += room.toStoredRoom()
+                                deliveries += Delivery(ServerMessage.GameStarted(room.snapshot()), room.playerIds())
+                            }
+                            val snapshot = tournament.snapshot()
+                            resumedTournaments += snapshot
+                            deliveries += Delivery(ServerMessage.TournamentUpdated(snapshot), tournament.playerIds())
+                        }
+                    }
+                }
+                deliveries
+            }
+            withContext(NonCancellable) {
+                resumedRooms.forEach { activeRoomRepository.save(it) }
+                resumedTournaments.forEach { tournamentRepository.save(it) }
+            }
+            result.copy(deliveries = result.deliveries + resumedDeliveries, closeSockets = policy.isFullyClosed)
+        }
+    }
+
+    private fun maintenanceError(playerId: String) = Delivery(ServerMessage.Error(code = "MAINTENANCE",
+        message = LocalizationService(com.hienthai.fastowin.localization.AppLanguage.VIETNAMESE).text(TextKey.MaintenanceDefaultMessage),
+        messageKey = TextKey.MaintenanceDefaultMessage.name), setOf(playerId))
 
     suspend fun connectGuest(displayName: String, resumeToken: String?): ConnectedPlayer {
         restoreActiveRooms()
@@ -112,13 +215,15 @@ class GameEngine(
 
     suspend fun connectAccount(account: AuthenticatedAccount, resumeToken: String? = null): ConnectedPlayer {
         restoreActiveRooms()
-        mutex.withLock {
+        val legacyRestored = mutex.withLock {
             val existing = sessionsByPlayerId[account.userId.toString()]
             val expectedToken = existing?.accountResumeToken
                 ?: pendingAccountTokensByPlayerId[account.userId.toString()]?.token
-            if (resumeToken != null && expectedToken != resumeToken) {
+            val legacy = expectedToken == null && account.userId.toString() in legacyRestoredAccounts
+            if (resumeToken != null && expectedToken != resumeToken && !legacy) {
                 throw InvalidResumeTokenException()
             }
+            legacy
         }
         val appearance = runCatching {
             playerProfileRepository.findAppearance(account.userId.toString())
@@ -127,7 +232,7 @@ class GameEngine(
             identityPlayerId = account.userId.toString(),
             identityDisplayName = account.displayName,
             resumeToken = null,
-            accountResumeToken = resumeToken ?: newAccountResumeToken(),
+            accountResumeToken = if (legacyRestored) newAccountResumeToken() else resumeToken ?: newAccountResumeToken(),
             avatarId = appearance?.avatarId,
             frameId = appearance?.frameId ?: "frame_default"
         )
@@ -142,6 +247,15 @@ class GameEngine(
         frameId: String = "frame_default"
     ): ConnectedPlayer {
         val connected = mutex.withLock {
+            if (maintenancePolicy.blocksNewIntent) {
+                val existing = sessionsByPlayerId[identityPlayerId]
+                val matchingResume = if (accountResumeToken != null) existing?.accountResumeToken == accountResumeToken ||
+                    (identityPlayerId in legacyRestoredAccounts && existing?.accountResumeToken == null)
+                    else resumeToken != null && existing?.resumeToken == resumeToken
+                if (!maintenancePolicy.allowsExistingMatch || !matchingResume || roomFor(identityPlayerId)?.phase != RoomPhase.PLAYING) {
+                    throw MaintenanceAdmissionException()
+                }
+            }
             val session = sessionsByPlayerId[identityPlayerId]?.also { existing ->
                 existing.displayName = identityDisplayName
                 existing.resumeToken = resumeToken
@@ -159,6 +273,7 @@ class GameEngine(
                 sessionsByPlayerId[created.playerId] = created
             }
             session.isConnected = true
+            legacyRestoredAccounts.remove(identityPlayerId)
             session.disconnectedAtMillis = null
 
             ConnectedPlayer(
@@ -192,7 +307,9 @@ class GameEngine(
                 if (activeRoomsRestored) return@withLock
                 storedRooms.forEach { stored ->
                     rooms[stored.roomId] = stored.toRoom()
-                    listOfNotNull(stored.host, stored.guest).forEach { player ->
+                    if (!stored.maintenanceAborted) stored.pendingCompletedMatch?.let { pendingCompletedMatches[it.matchId] = it }
+                    (listOfNotNull(stored.host, stored.guest) + stored.guests + stored.spectators).forEach { player ->
+                        if (player.isAccount && player.accountResumeToken == null) legacyRestoredAccounts += player.playerId
                         sessionsByPlayerId.putIfAbsent(
                             player.playerId,
                             GuestSession(
@@ -201,6 +318,7 @@ class GameEngine(
                                 displayName = player.displayName,
                                 avatarId = player.avatarId,
                                 frameId = player.frameId,
+                                accountResumeToken = player.accountResumeToken,
                                 isConnected = false,
                                 disconnectedAtMillis = restoredAtMillis
                             )
@@ -266,6 +384,8 @@ class GameEngine(
 
     suspend fun handle(playerId: String, message: ClientMessage): List<Delivery> {
         restoreActiveRooms()
+        // Admission for economic/profile/social work is short; accepted atomic work may finish.
+        if (mutex.withLock { !message.allowedDuringMaintenance(maintenancePolicy) }) return listOf(maintenanceError(playerId))
         if (message is ClientMessage.GetProfile) return loadProfile(playerId)
         if (message is ClientMessage.GetPlayQuota) return loadPlayQuota(playerId)
         if (message is ClientMessage.ClaimRewardedAdBonus) return claimRewardedAdBonus(playerId, message)
@@ -358,6 +478,8 @@ class GameEngine(
             rejectIfQuotaExhausted(playerId)?.let { return it }
         }
         val result = mutex.withLock {
+            // Recheck after asynchronous profile/quota work, at the actual transition boundary.
+            if (!message.allowedDuringMaintenance(maintenancePolicy)) return@withLock HandleResult(listOf(maintenanceError(playerId)))
             val player = sessionsByPlayerId[playerId]
                 ?: return@withLock HandleResult(
                     listOf(error(playerId, "SESSION_NOT_FOUND", legacyFallback("Phiên chơi không còn hợp lệ.")))
@@ -464,13 +586,8 @@ class GameEngine(
                 is ClientMessage.SendEmoji -> sendEmoji(player, message)
             }
         }
-        result.completedMatch?.let { completed ->
-            persistCompletedMatch(completed)
-        }
+        val tournamentDeliveries = result.completedMatch?.let { settleCompletedMatch(it) }.orEmpty()
         result.changedRoomId?.let { persistRoom(it) }
-        val tournamentDeliveries = result.completedMatch
-            ?.let { advanceTournamentAfterMatch(it.matchId) }
-            .orEmpty()
         val presenceChanged = message is ClientMessage.CreateRoom ||
             message is ClientMessage.JoinRoom || message is ClientMessage.LeaveRoom
         val affectedPlayers = if (presenceChanged) {
@@ -583,6 +700,7 @@ class GameEngine(
         var created = false
         val tournamentId = UUID.randomUUID().toString()
         val deliveries = persistenceMutex.withLock { mutex.withLock {
+            if (maintenancePolicy.blocksNewIntent) return@withLock listOf(maintenanceError(playerId))
             val host = sessionsByPlayerId[playerId]
                 ?.takeIf { it.isConnected && it.resumeToken == null }
                 ?: return@withLock listOf(error(playerId, "SESSION_NOT_FOUND", legacyFallback("Phiên chơi không còn hợp lệ.")))
@@ -783,6 +901,7 @@ class GameEngine(
         tournament: Tournament,
         source: TournamentAdmissionSource
     ): List<Delivery> {
+        if (maintenancePolicy.blocksNewIntent) return listOf(maintenanceError(playerId))
         if (source == TournamentAdmissionSource.PUBLIC_DISCOVERY && tournament.visibility != TournamentVisibility.PUBLIC) {
             return listOf(error(playerId, "TOURNAMENT_NOT_PUBLIC", legacyFallback("Giải này không còn được công khai.")))
         }
@@ -848,6 +967,7 @@ class GameEngine(
         var snapshotToSave: TournamentSnapshot? = null
         var roomIdsToSave = emptyList<String>()
         val deliveries = mutex.withLock {
+            if (maintenancePolicy.blocksNewIntent) return@withLock listOf(maintenanceError(playerId))
             val tournament = tournaments[tournamentId]
                 ?.takeIf { it.hostId == playerId && it.phase == TournamentPhase.LOBBY }
                 ?: return@withLock listOf(error(playerId, "TOURNAMENT_NOT_STARTABLE", legacyFallback("Bạn không thể bắt đầu giải này.")))
@@ -1349,6 +1469,7 @@ class GameEngine(
         var invitationConsumed = false
         val otherRemovedInvitations = mutableListOf<RoomInvitationRecord>()
         val result = mutex.withLock {
+            if (maintenancePolicy.blocksNewIntent) return@withLock listOf(maintenanceError(playerId))
             val invitation = roomInvitations.remove(command.invitationId)
                 ?.takeIf { it.inviteeId == playerId && it.expiresAtMillis > nowMillis() }
                 ?: return@withLock listOf(error(playerId, "INVITATION_EXPIRED", legacyFallback("Lời mời vào phòng đã hết hạn.")))
@@ -1519,6 +1640,7 @@ class GameEngine(
 
         var matchedRoomId: String? = null
         val deliveries = mutex.withLock {
+            if (maintenancePolicy.blocksNewIntent) return@withLock listOf(maintenanceError(playerId))
             val player = sessionsByPlayerId[playerId]
                 ?.takeIf { it.isConnected && it.resumeToken == null }
                 ?: return@withLock listOf(error(playerId, "SESSION_NOT_FOUND", legacyFallback("Phiên chơi không còn hợp lệ.")))
@@ -1787,7 +1909,30 @@ class GameEngine(
         return listOf(Delivery(ServerMessage.ProfileData(profile), setOf(playerId)))
     }
 
-    private suspend fun persistCompletedMatch(completed: CompletedMatch) {
+    /** Retryable admitted work; no provider or match-result IO holds the engine mutex. */
+    suspend fun retryMaintenanceSettlements(): List<Delivery> {
+        val pending = mutex.withLock { pendingCompletedMatches.values.toList() }
+        return pending.flatMap { settleCompletedMatch(it) }
+    }
+
+    private suspend fun settleCompletedMatch(completed: CompletedMatch): List<Delivery> = withContext(NonCancellable) {
+        val admitted = mutex.withLock { completed.matchId in pendingCompletedMatches && settlementsInFlight.add(completed.matchId) }
+        if (!admitted) return@withContext emptyList()
+        try {
+            val roomId = mutex.withLock { rooms.values.firstOrNull { it.matchId == completed.matchId }?.id }
+            // Save the exact accepted result before wallet/result work so restored rooms can retry.
+            roomId?.let { persistRoom(it) }
+            if (!persistCompletedMatch(completed)) return@withContext emptyList()
+            val deliveries = advanceTournamentAfterMatch(completed.matchId)
+            mutex.withLock { pendingCompletedMatches.remove(completed.matchId) }
+            roomId?.let { persistRoom(it) }
+            deliveries
+        } finally {
+            mutex.withLock { settlementsInFlight.remove(completed.matchId) }
+        }
+    }
+
+    private suspend fun persistCompletedMatch(completed: CompletedMatch): Boolean {
         val profilesBefore = completed.players.associate { player ->
             player.playerId to runCatching {
                 playerProfileRepository.findByPlayerId(player.playerId)
@@ -1798,7 +1943,7 @@ class GameEngine(
                 System.err.println("Could not persist match ${completed.matchId}: ${error.message}")
             }
             .isSuccess
-        if (!saved) return
+        if (!saved) return false
 
         completed.players.forEach { player ->
             val previous = profilesBefore[player.playerId] ?: return@forEach
@@ -1836,6 +1981,7 @@ class GameEngine(
                 )
             }
         }
+        return true
     }
 
     private suspend fun sendPushNotification(
@@ -2310,9 +2456,7 @@ class GameEngine(
                 }
             }
         }
-        advances.mapNotNull(TimedAdvance::completedMatch).forEach { completed ->
-            persistCompletedMatch(completed)
-        }
+        val tournamentDeliveries = advances.mapNotNull(TimedAdvance::completedMatch).flatMap { settleCompletedMatch(it) }
         advances.forEach { advance ->
             when (val message = advance.delivery.message) {
                 is ServerMessage.GameFinished -> message.game.roomId
@@ -2321,8 +2465,6 @@ class GameEngine(
                 else -> null
             }?.let { persistRoom(it) }
         }
-        val tournamentDeliveries = advances.mapNotNull(TimedAdvance::completedMatch)
-            .flatMap { advanceTournamentAfterMatch(it.matchId) }
         return advances.map(TimedAdvance::delivery) + tournamentDeliveries
     }
 
@@ -2443,7 +2585,10 @@ class GameEngine(
                         )
                     }
                 }
-                if (playerId !in advancingDisconnectedPlayers) {
+                // Pending durable results still need participant identity when snapshotting the room.
+                if (playerId !in advancingDisconnectedPlayers && pendingCompletedMatches.values.none { match ->
+                    match.players.any { it.playerId == playerId }
+                }) {
                     sessionsByPlayerId.remove(playerId)
                 }
             }
@@ -2476,11 +2621,8 @@ class GameEngine(
                 nowMillis()
             )
         }
-        cleanup.completedMatches.forEach { persistCompletedMatch(it) }
+        val tournamentDeliveries = cleanup.completedMatches.flatMap { settleCompletedMatch(it) }
         cleanup.removedRoomIds.forEach { persistRoom(it) }
-        val tournamentDeliveries = cleanup.completedMatches.flatMap { completed ->
-            advanceTournamentAfterMatch(completed.matchId)
-        }
         return cleanup.deliveries + tournamentDeliveries +
             refreshNotificationsFor(removedInvitations.mapTo(mutableSetOf()) { it.inviteeId })
     }
@@ -3111,6 +3253,7 @@ class GameEngine(
             } ?: return@withLock emptyList()
             val tournamentMatch = tournament.matches.first { it.roomId == matchId }
             val room = rooms[matchId] ?: return@withLock emptyList()
+            if (room.maintenanceAborted) return@withLock emptyList()
             room.snapshot()
             val winnerId = room.winnerId() ?: return@withLock emptyList()
 
@@ -3127,7 +3270,7 @@ class GameEngine(
                 .filter { it.round == tournamentMatch.round + 1 }
                 .sortedBy { it.position }
             if (nextRoundMatches.isNotEmpty()) {
-                if (currentRoundMatches.all { it.phase == TournamentMatchPhase.FINISHED }) {
+                if (!maintenancePolicy.blocksNewIntent && currentRoundMatches.all { it.phase == TournamentMatchPhase.FINISHED }) {
                     val winners = currentRoundMatches.map { checkNotNull(it.winnerPlayerId) }
                     nextRoundMatches.forEachIndexed { index, nextMatch ->
                         nextMatch.playerOneId = winners[index * 2]
@@ -3263,7 +3406,8 @@ class GameEngine(
                 displayName = session.displayName,
                 isAccount = session.resumeToken == null,
                 avatarId = session.avatarId,
-                frameId = session.frameId
+                frameId = session.frameId,
+                accountResumeToken = session.accountResumeToken
             )
         }
 
@@ -3289,6 +3433,8 @@ class GameEngine(
             startedAtEpochMillis = startedAtEpochMillis,
             finishedAtEpochMillis = finishedAtEpochMillis,
             resultQueued = resultQueued,
+            maintenanceAborted = maintenanceAborted,
+            pendingCompletedMatch = pendingCompletedMatches[matchId],
             readyPlayerIds = readyPlayerIds.toSet(),
             rematchRequestedPlayerIds = rematchRequestedPlayerIds.toSet(),
             rematchExpiresAtEpochMillis = rematchExpiresAtEpochMillis,
@@ -3369,6 +3515,7 @@ class GameEngine(
         startedAtEpochMillis = startedAtEpochMillis,
         finishedAtEpochMillis = finishedAtEpochMillis,
         resultQueued = resultQueued,
+        maintenanceAborted = maintenanceAborted,
         readyPlayerIds = readyPlayerIds.toMutableSet(),
         rematchRequestedPlayerIds = rematchRequestedPlayerIds.toMutableSet(),
         rematchExpiresAtEpochMillis = rematchExpiresAtEpochMillis,
@@ -3398,7 +3545,7 @@ class GameEngine(
 
     private fun Room.snapshot(): GameSnapshot {
         val metricsByPlayer = selectionMetrics()
-        if (phase == RoomPhase.FINISHED && tournamentId != null && winnerId() == null) {
+        if (!maintenanceAborted && phase == RoomPhase.FINISHED && tournamentId != null && winnerId() == null) {
             forcedWinnerId = playerIds().sortedWith(
                 compareByDescending<String> { scores[it] ?: 0 }
                     .thenByDescending { metricsByPlayer[it]?.correct ?: 0 }
@@ -3540,7 +3687,7 @@ class GameEngine(
     }
 
     private fun Room.takeCompletedMatch(): CompletedMatch? {
-        if (phase != RoomPhase.FINISHED || resultQueued) return null
+        if (maintenanceAborted || phase != RoomPhase.FINISHED || resultQueued) return null
         val startedAt = startedAtEpochMillis ?: return null
         val winnerId = winnerId()
         resultQueued = true
@@ -3580,10 +3727,11 @@ class GameEngine(
                 }
             },
             events = selectionEvents.toList()
-        )
+        ).also { pendingCompletedMatches[it.matchId] = it }
     }
 
     private fun Room.winnerTeamId(): String? {
+        if (maintenanceAborted) return null
         if (gameMode != com.hienthai.fastowin.protocol.ProtocolGameMode.TEAM_2V2) return null
         forcedWinnerId?.let { return teamIds[it] }
         val teamScores = playerIds().groupBy { teamIds[it] ?: "" }
@@ -3593,6 +3741,7 @@ class GameEngine(
     }
 
     private fun Room.winnerId(): String? {
+        if (maintenanceAborted) return null
         forcedWinnerId?.let { return it }
         if (gameMode == com.hienthai.fastowin.protocol.ProtocolGameMode.TEAM_2V2) return null
         val highestScore = scores.values.maxOrNull() ?: 0
@@ -3703,6 +3852,7 @@ class GameEngine(
         var startedAtEpochMillis: Long? = null,
         var finishedAtEpochMillis: Long? = null,
         var resultQueued: Boolean = false,
+        var maintenanceAborted: Boolean = false,
         val readyPlayerIds: MutableSet<String> = mutableSetOf(),
         val rematchRequestedPlayerIds: MutableSet<String> = mutableSetOf(),
         var rematchExpiresAtEpochMillis: Long? = null,

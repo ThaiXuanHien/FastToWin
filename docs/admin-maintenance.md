@@ -1,9 +1,9 @@
 # Durable maintenance contract
 
-Task 1 provides persistence and protected admin HTTP. `Main` does **not** select
-this module yet. Runtime admission, drain/abort/receipt handling, client status
-and admin controls require the subsequent integration tasks. The existing
-environment-only `/status` remains in use until that runtime integration.
+Tasks 1–2 provide durable policy, protected admin HTTP, runtime admission, drain
+and abort. Main selects the runtime and real repository when a database is
+configured. Independent paid-receipt HTTP/client transport and admin/player UI
+remain Tasks 3–4. Both /status and /api/status use the runtime provider.
 
 ## Types and service seam
 
@@ -17,7 +17,7 @@ origin: String? = null)` carries the existing admin cookie/CSRF/Origin.
 ```kotlin
 suspend fun read(context: MaintenanceAdminContext): MaintenanceAdminResponse
 suspend fun update(context: MaintenanceAdminContext, request: MaintenanceUpdateRequest): MaintenanceAdminResponse
-suspend fun refresh(activeMatches: Int): MaintenancePolicy
+suspend fun refresh(activeMatches: Int, allowEmptyDrain: Boolean = true): MaintenancePolicy
 fun effectivePolicy(): MaintenancePolicy
 fun publicStatus(): ServiceStatusResponse
 ```
@@ -165,8 +165,8 @@ is false. Observation does not promise runtime side effects have finished.
 | Unavailable before any observation | true | false | true |
 | Unavailable after known ACTIVE/ANNOUNCING/DRAINING | true | true | false |
 
-Economic and paid receipt admission, resume scope, aborted-match durability and
-socket closure remain the subsequent runtime tasks' responsibility.
+See the runtime integration contract below for admission, resume, abort and
+socket closure. Independent receipt HTTP/client transport remains Task 3.
 
 ## Public protocol
 
@@ -195,3 +195,102 @@ changes and session revocation use that same advisory lock; no separate auth
 repository call may substitute for this bound authorization. V51 persists the
 version/state/snapshot payload and separate `runtime_maintenance_requests` table.
 Snapshot, authorized audit and replay commit or roll back together.
+
+## Task 2 runtime integration
+
+Main passes MaintenanceService and MaintenanceRuntime to gameModule. With a
+configured database, the runtime uses durable policy and applies an initial
+refresh before registering handlers/timers. Without a configured database, it
+explicitly preserves environment-only operation; maintenance admin operations
+use UnavailableMaintenanceRepository and return503. A failed configured policy
+read never becomes ACTIVE.
+
+```kotlin
+class MaintenanceRuntime(
+    engine: GameEngine,
+    service: MaintenanceService? = null,
+    environmentStatus: () -> ServiceStatusResponse = { ServiceStatusResponse(false) }
+) {
+    suspend fun refresh(): MaintenanceApplication
+    fun publicStatus(): ServiceStatusResponse
+}
+data class MaintenanceApplication(
+    val deliveries: List<Delivery> = emptyList(),
+    val abortedRoomIds: Set<String> = emptySet(),
+    val closeSockets: Boolean = false
+)
+// GameEngine:
+suspend fun applyMaintenancePolicy(policy: MaintenancePolicy): MaintenanceApplication
+suspend fun activeMaintenanceMatchCount(): Int
+suspend fun admitsNewIntent(): Boolean
+fun newIntentAllowed(): Boolean
+fun gameConnectionsClosed(): Boolean
+suspend fun retryMaintenanceSettlements(): List<Delivery>
+```
+
+The owned Application job polls every1,000ms and is cancelled with Application.
+First refresh uses allowEmptyDrain=false, applies policy at the engine admission
+boundary, then samples the count. The second refresh permits empty-drain
+advancement only when the first applied policy blocked admission. This covers
+policy changes between reads without trusting an ACTIVE zero count. Counts
+include accepted completed results awaiting settlement, never fabricated values.
+Read failures block new intent, retain known closure, and return safe public503;
+cancellation propagates. Observations do not promise sockets already closed.
+
+Room/ready/rematch/matchmaking/tournament transitions check policy under the
+engine mutex after asynchronous profile/quota work. Short admission covers early
+economic/profile/social handlers; accepted economic work may finish without
+holding that mutex across provider calls. VerifyStorePurchase remains explicitly
+allowed using the existing grant workflow. Task3 extracts that workflow into one
+shared service and adds independent authenticated HTTP/client transport.
+
+Login/register/guest upgrade reject blocked new intent with503/MAINTENANCE.
+Refresh/logout, health, admin and status remain reachable. Both status paths use
+one provider/error handler and no-store. Existing Caddy /api forwarding supports
+the alias; Task4 owns worker cache migration.
+
+Private persistence adds StoredActiveRoom.maintenanceAborted (Boolean,false),
+pendingCompletedMatch (CompletedMatch?,null), and
+StoredActivePlayer.accountResumeToken (String?,null). They never appear in public
+protocol/status. Full closure marks incomplete rooms FINISHED/resultQueued,
+clears forced winner/rematch state and durably saves before returning close
+permission. Aborted snapshots never synthesize tournament winners; timers and
+reconnect cleanup cannot settle them. Failed abort writes fence reopening until
+retry succeeds. Room/refund I/O runs outside the engine mutex, serialized with
+other room persistence.
+
+Accepted completed room-backed results persist as exact pending payloads before
+result-repository work. Settlement survives socket cancellation; one in-flight
+attempt per match and existing repository idempotency prevent duplicate grants.
+Pending results count as active drain work and prevent premature tournament
+cancellation. Failed result saves remain pending for runtime/restart retry.
+
+Drain resume is scoped to an existing PLAYING participant. New snapshots persist
+an authoritative account resume token. Older snapshots without one allow a fresh
+verified account identity to resume only its live participant room, issuing a
+new bound token; stale pre-restart supplied tokens are ignored only in that
+compatibility case. Once authoritative, mismatching non-null tokens reject.
+Unrelated/new/waiting identities and spectator-to-player bypasses are blocked;
+final checks occur under mutex after appearance lookup.
+
+Drain pauses subsequent tournament rounds; reopening starts eligible pending
+rounds. Closure cancels incomplete tournaments with existing CANCELLED, keeps
+completed rounds/results and never manufactures a champion.
+TournamentRepository.cancelForMaintenance(cancelled, profiles) atomically saves
+cancellation and full entry refunds in PostgreSQL, including paid entrants who
+left the lobby. Wallet source TOURNAMENT_MAINTENANCE_REFUND uses tournamentId as
+sourceId, per player, and is retry-safe. Uncertain commit outcomes fence writes
+until restoration, matching existing paid admission.
+
+GiftService accepts newIntentAllowed: () -> Boolean; Main binds engine admission.
+Claim authorizes before disclosure, returns committed receipt replay before
+new-payout admission, and checks the gate inside its transaction before award.
+Claim-all retains per-item outcomes; new payouts return503/MAINTENANCE while
+committed replay remains readable.
+
+Returned deliveries use existing RoomClosed with code MAINTENANCE and
+messageKey MaintenanceDefaultMessage. No new socket state message: Task4 polls
+status for bilingual warning/draining text. Application delivers closures and
+closes authenticated sockets with GOING_AWAY after durable abort success.
+Task4 still owns live preview/browser acceptance; Task2 did not restart preview
+or production.

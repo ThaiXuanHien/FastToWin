@@ -3,6 +3,7 @@ package com.hienthai.fastowin.server
 import com.hienthai.fastowin.server.admin.AdminConfiguration
 import com.hienthai.fastowin.server.admin.AdminService
 import com.hienthai.fastowin.server.admin.InMemoryAdminRepository
+import com.hienthai.fastowin.server.maintenance.*
 import io.ktor.server.engine.embeddedServer
 import io.ktor.server.netty.Netty
 import kotlinx.coroutines.runBlocking
@@ -66,6 +67,12 @@ fun main() {
         seasonLifecycleRepository.maintain()
         engine.restoreActiveRooms()
     }
+    val environmentStatus = serviceStatusFromEnvironment()
+    val maintenanceService = MaintenanceService(database?.maintenanceRepository ?: UnavailableMaintenanceRepository,
+        adminService, environmentOverride = environmentStatus.maintenance,
+        environmentMessageVi = environmentStatus.message, environmentMessageEn = environmentStatus.message)
+    // Memory/dev operation still uses environment policy; durable admin controls explicitly return 503.
+    val maintenanceRuntime = MaintenanceRuntime(engine, maintenanceService.takeIf { database != null }, ::serviceStatusFromEnvironment)
 
     val emailDelivery = if (authEmailSender.isConfigured) configuredAuthEmailProvider().name.lowercase() else "disabled"
     println(
@@ -83,8 +90,10 @@ fun main() {
                 seasonLifecycleRepository = seasonLifecycleRepository,
                 pushReminderService = pushReminderService,
                 adminService = adminService,
-                giftService = com.hienthai.fastowin.server.gifts.GiftService(database?.giftRepository ?: com.hienthai.fastowin.server.gifts.UnavailableGiftRepository, adminService),
-                giftDeliveryEnabled = database != null
+                giftService = com.hienthai.fastowin.server.gifts.GiftService(database?.giftRepository ?: com.hienthai.fastowin.server.gifts.UnavailableGiftRepository, adminService, newIntentAllowed = engine::newIntentAllowed),
+                giftDeliveryEnabled = database != null,
+                maintenanceService = maintenanceService,
+                maintenanceRuntime = maintenanceRuntime
             )
         }.start(wait = true)
     } finally {

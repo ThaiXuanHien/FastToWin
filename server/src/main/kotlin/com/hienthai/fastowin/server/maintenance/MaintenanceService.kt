@@ -5,6 +5,7 @@ import com.hienthai.fastowin.server.admin.*
 import com.hienthai.fastowin.server.hashToken
 import com.hienthai.fastowin.server.legacyFallback
 import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -90,7 +91,7 @@ class MaintenanceService(
     /** Caller must apply drain/admission blocking before sampling a trusted active-match count.
      * Publishing happens only after commit. Observation is not confirmation of socket closure.
      */
-    suspend fun refresh(activeMatches:Int):MaintenancePolicy=refreshMutex.withLock {
+    suspend fun refresh(activeMatches:Int, allowEmptyDrain:Boolean=true):MaintenancePolicy=refreshMutex.withLock {
         if (activeMatches<0) invalid()
         storage {
             val snapshot=repository.transaction {
@@ -102,7 +103,7 @@ class MaintenanceService(
                     putSnapshot(value.version,next); audit(null,"MAINTENANCE_TRANSITION",value,next); value=next
                 }
                 if (value.state==MaintenanceState.ANNOUNCING && now>=value.transitionAtEpochMillis!!) advance(MaintenanceState.DRAINING)
-                if (value.state==MaintenanceState.DRAINING && (activeMatches==0 || now>=value.drainDeadlineEpochMillis!!)) advance(MaintenanceState.MAINTENANCE)
+                if (value.state==MaintenanceState.DRAINING && ((allowEmptyDrain && activeMatches==0) || now>=value.drainDeadlineEpochMillis!!)) advance(MaintenanceState.MAINTENANCE)
                 value
             }
             observations.publish(MaintenanceObservation(snapshot.policy(),MaintenanceRuntimeObservation(snapshot.version,validNow(),activeMatches,true)))
@@ -124,8 +125,10 @@ class MaintenanceService(
     }
     private fun MaintenanceSnapshot.policy()=MaintenancePolicy(state,mode,version,messageVi,messageEn,transitionAtEpochMillis,expectedEndEpochMillis)
     private suspend fun <T> storage(block:suspend ()->T):T=try { block() }
+        catch (error:CancellationException) { throw error }
         catch (error:AdminException) { if(error.status==503) markUnavailable(); throw error }
         catch (_:SQLException) { markUnavailable(); unavailable() }
+        catch (_:Exception) { markUnavailable(); unavailable() }
     private fun markUnavailable() {
         observations.transform(MaintenanceObservation::unavailable)
     }

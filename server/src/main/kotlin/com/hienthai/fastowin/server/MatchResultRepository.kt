@@ -37,6 +37,7 @@ data class MatchSelectionEvent(
     val sequence: Int
 )
 
+@Serializable
 data class CompletedMatch(
     val matchId: String,
     val roomName: String,
