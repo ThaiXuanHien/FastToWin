@@ -37,11 +37,15 @@ import com.hienthai.fastowin.navigation.GameMode
 import io.ktor.websocket.Frame
 import io.ktor.websocket.readText
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.async
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlin.test.Test
@@ -53,13 +57,15 @@ import kotlin.test.assertTrue
 @OptIn(ExperimentalCoroutinesApi::class)
 class GameStateTest {
     @Test
-    fun `multi-batch mailbox claim refreshes authoritative profile after an in-flight load`() = runTest {
+    fun `route away during second claim batch still refreshes final authoritative profile`() = runTest {
         val fixture = publicTournamentFixture()
         fixture.session.server(ServerMessage.SessionReady("player-1"))
         runCurrent()
         val gifts = (1..101).map { id ->
             MailboxGift("gift-$id", "Quà", "Gift", "Nội dung", "Message", 1, 0, 1000, 9000, GiftState.AVAILABLE)
         }
+        val secondEntered = CompletableDeferred<Unit>()
+        val releaseSecond = CompletableDeferred<Unit>()
         val gateway = object : GiftGateway {
             var batches = 0
             override suspend fun page(page: Int, pageSize: Int) = GiftMailboxPage(
@@ -68,6 +74,10 @@ class GameStateTest {
             override suspend fun claim(id: String) = error("unused")
             override suspend fun claimAll(ids: List<String>): GiftClaimAllResult {
                 batches++
+                if (batches == 2) {
+                    secondEntered.complete(Unit)
+                    withContext(NonCancellable) { releaseSecond.await() }
+                }
                 return GiftClaimAllResult(ids.map { id ->
                     GiftClaimItem(id, result = GiftClaimResult(
                         gifts.first { it.campaignId == id }.copy(state = GiftState.CLAIMED), 1, 0, batches, 0
@@ -82,16 +92,35 @@ class GameStateTest {
 
         val mailbox = GiftMailboxController(gateway, fixture.controller::refreshProfileAfterGiftClaim)
         mailbox.open()
-        mailbox.claimAll()
+        val claim = async { mailbox.claimAll() }
+        secondEntered.await()
+        try {
+            runCurrent()
+            assertEquals(2, gateway.batches)
+            assertEquals(1, fixture.session.sent.filterIsInstance<ClientMessage.GetProfile>().size)
+            // The first 100 receipts already belong to this account while batch 2 is pending.
+            fixture.session.server(ServerMessage.ProfileData(
+                PlayerProfileSnapshot(userId = "player-1", displayName = "Me", playerCode = "ME000001")
+            ))
+            runCurrent()
+            assertEquals(2, fixture.session.sent.filterIsInstance<ClientMessage.GetProfile>().size)
+            mailbox.reset() // Same-account route away: clear the view but retain wallet refreshes.
+        } finally {
+            releaseSecond.complete(Unit)
+        }
+        claim.await()
         runCurrent()
-        assertEquals(2, gateway.batches)
-        // The earlier request is still in flight, so the final refresh must be queued.
-        assertEquals(1, fixture.session.sent.filterIsInstance<ClientMessage.GetProfile>().size)
+        assertFalse(mailbox.state.value.isOpen)
+        assertTrue(mailbox.state.value.items.isEmpty())
+        assertTrue(fixture.controller.uiState.value.isProfileLoading)
         fixture.session.server(ServerMessage.ProfileData(
-            PlayerProfileSnapshot(userId = "player-1", displayName = "Me", playerCode = "ME000001")
+            PlayerProfileSnapshot(
+                userId = "player-1", displayName = "Me", playerCode = "ME000001",
+                progression = PlayerProgressionSnapshot(gold = 100, experiencePoints = 100)
+            )
         ))
         runCurrent()
-        assertEquals(2, fixture.session.sent.filterIsInstance<ClientMessage.GetProfile>().size)
+        assertEquals(3, fixture.session.sent.filterIsInstance<ClientMessage.GetProfile>().size)
         assertTrue(fixture.controller.uiState.value.isProfileLoading)
         fixture.session.server(ServerMessage.ProfileData(
             PlayerProfileSnapshot(

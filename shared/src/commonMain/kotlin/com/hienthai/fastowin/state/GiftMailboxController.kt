@@ -32,8 +32,10 @@ class GiftMailboxController(
     val state: StateFlow<GiftMailboxState> = _state.asStateFlow()
     private var generation = 0L
     private var nextPage = 0
+    private var closed = false
 
     suspend fun open() {
+        if (closed) return
         generation++
         nextPage = 0
         _state.value = GiftMailboxState(isOpen = true)
@@ -44,7 +46,7 @@ class GiftMailboxController(
 
     suspend fun loadNextPage() {
         val before = _state.value
-        if (!before.isOpen || before.isLoading || (nextPage > 0 && !before.hasMore)) return
+        if (closed || !before.isOpen || before.isLoading || (nextPage > 0 && !before.hasMore)) return
         val fence = generation
         _state.value = before.copy(isLoading = true, loadError = null)
         try {
@@ -66,15 +68,17 @@ class GiftMailboxController(
 
     suspend fun claim(id: String) {
         val current = _state.value
-        if (!current.isOpen || current.isClaimingAll || id in current.pendingIds ||
+        if (closed || !current.isOpen || current.isClaimingAll || id in current.pendingIds ||
             current.items.none { it.campaignId == id && it.state == GiftState.AVAILABLE }) return
         val fence = generation
         _state.value = current.copy(pendingIds = current.pendingIds + id, itemErrors = current.itemErrors - id)
         try {
             val receipt = gateway.claim(id)
+            // A route reset fences the view, but a completed claim still changed this account's wallet.
+            if (closed) return
+            refreshProfile()
             if (fence != generation) return
             applyReceipt(receipt)
-            refreshProfile()
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (error: Exception) {
@@ -89,9 +93,8 @@ class GiftMailboxController(
 
     suspend fun claimAll() {
         val initial = _state.value
-        if (!initial.isOpen || initial.isClaimingAll || initial.pendingIds.isNotEmpty()) return
+        if (closed || !initial.isOpen || initial.isClaimingAll || initial.pendingIds.isNotEmpty()) return
         val fence = generation
-        var claimedAny = false
         _state.value = initial.copy(isClaimingAll = true, loadError = null)
         try {
             // Collect all server pages before claiming: the visible page is not the audience.
@@ -110,13 +113,15 @@ class GiftMailboxController(
                 _state.value = _state.value.copy(pendingIds = batch.toSet())
                 try {
                     val results = gateway.claimAll(batch).items.associateBy { it.campaignId }
+                    // Refresh each accepted batch. A later batch may finish after a same-account route reset.
+                    if (closed) return
+                    if (results.values.any { it.result != null }) refreshProfile()
                     if (fence != generation) return
                     for (id in batch) {
                         val item = results[id]
                         val receipt = item?.result
                         if (receipt != null) {
                             applyReceipt(receipt)
-                            claimedAny = true
                         }
                         else markError(id, item?.error?.code ?: "NETWORK_ERROR")
                     }
@@ -134,7 +139,6 @@ class GiftMailboxController(
         } finally {
             if (fence == generation) {
                 _state.value = _state.value.copy(isClaimingAll = false, pendingIds = emptySet())
-                if (claimedAny) refreshProfile()
             }
         }
     }
@@ -146,6 +150,8 @@ class GiftMailboxController(
     }
 
     fun close() {
+        if (closed) return
+        closed = true
         reset()
         gateway.close()
     }

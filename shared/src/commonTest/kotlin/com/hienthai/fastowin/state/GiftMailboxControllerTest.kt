@@ -70,7 +70,7 @@ class GiftMailboxControllerTest {
         assertFalse(controller.state.value.canClaimAll)
     }
 
-    @Test fun `route away fences a late claim receipt and profile refresh`() = runTest {
+    @Test fun `route away fences a late claim receipt but refreshes same-account profile`() = runTest {
         val entered = CompletableDeferred<Unit>()
         val release = CompletableDeferred<Unit>()
         val gateway = object : GiftGateway {
@@ -92,7 +92,35 @@ class GiftMailboxControllerTest {
         request.await()
         assertFalse(controller.state.value.isOpen)
         assertTrue(controller.state.value.items.isEmpty())
-        assertEquals(0, refreshes)
+        assertEquals(1, refreshes)
+    }
+
+    @Test fun `closed account ignores a late claim receipt and profile refresh`() = runTest {
+        val entered = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        val gateway = object : GiftGateway {
+            override suspend fun page(page: Int, pageSize: Int) = GiftMailboxPage(listOf(gift("a")), 0, 25, 1)
+            override suspend fun claim(id: String): GiftClaimResult {
+                entered.complete(Unit)
+                withContext(NonCancellable) { release.await() }
+                return GiftClaimResult(gift(id, GiftState.CLAIMED), 25, 5, 25, 5)
+            }
+            override suspend fun claimAll(ids: List<String>) = error("unused")
+        }
+        var oldRefreshes = 0
+        var newRefreshes = 0
+        val oldController = GiftMailboxController(gateway, { oldRefreshes++ })
+        oldController.open()
+        val request = async { oldController.claim("a") }
+        entered.await()
+        oldController.close() // Account/controller replacement disposes the old mailbox.
+        val replacement = GiftMailboxController(gateway, { newRefreshes++ })
+        release.complete(Unit)
+        request.await()
+        assertFalse(oldController.state.value.isOpen)
+        assertEquals(0, oldRefreshes)
+        assertEquals(0, newRefreshes)
+        replacement.close()
     }
 
     @Test fun `claim all with no available gifts is harmless`() = runTest {
