@@ -24,16 +24,19 @@ fun Route.giftRoutes(service: GiftService, auth: AuthenticationService, adminEna
         post("/{id}/publish") { call.giftResponse { service.requireOrigin(call.request.header(HttpHeaders.Origin)); call.respond(service.publish(call.context(),call.id(),call.body<GiftPublishRequest>())) } }
         post("/{id}/cancel") { call.giftResponse { service.requireOrigin(call.request.header(HttpHeaders.Origin)); call.respond(service.cancel(call.context(),call.id(),call.body<GiftCancelRequest>())) } }
     }
-    route("/gifts/mailbox") {
-        get { call.giftResponse { call.respond(service.mailbox(call.player(auth),call.page())) } }
-        post("/{id}/claim") {
-            val receivedAt = service.receivedAt()
-            call.giftResponse { call.respond(service.claim(call.player(auth),call.id(),receivedAt)) }
-        }
-        post("/claim-all") {
-            val receivedAt = service.receivedAt()
-            call.giftResponse { call.respond(service.claimAll(call.player(auth),call.body<GiftClaimAllRequest>(),receivedAt)) }
-        }
+    // Keep the legacy HTTP prefix and the network-only PWA namespace on one handler.
+    route("/gifts/mailbox") { playerMailboxRoutes(service, auth) }
+    route("/api/gifts/mailbox") { playerMailboxRoutes(service, auth) }
+}
+private fun Route.playerMailboxRoutes(service: GiftService, auth: AuthenticationService) {
+    get { call.giftResponse { call.respond(service.mailbox(call.player(auth),call.page())) } }
+    post("/{id}/claim") {
+        val receivedAt = service.receivedAt()
+        call.giftResponse { call.respond(service.claim(call.player(auth),call.id(),receivedAt)) }
+    }
+    post("/claim-all") {
+        val receivedAt = service.receivedAt()
+        call.giftResponse { call.respond(service.claimAll(call.player(auth),call.body<GiftClaimAllRequest>(),receivedAt)) }
     }
 }
 private fun ApplicationCall.context() = GiftAdminContext(request.cookies[ADMIN_COOKIE],request.header(ADMIN_CSRF_HEADER),request.header(HttpHeaders.Origin))

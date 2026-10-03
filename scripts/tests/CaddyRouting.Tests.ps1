@@ -1,6 +1,7 @@
 param(
     [Parameter(Mandatory = $true)][string]$CaddyExecutable,
-    [int]$Port = 18089
+    [int]$Port = 18089,
+    [string]$NodeExecutable = 'node'
 )
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
@@ -13,18 +14,36 @@ $savedVariables = @{}
 foreach ($name in @('PORT', 'BACKEND_UPSTREAM', 'FASTTOWIN_DOMAIN', 'ACME_EMAIL')) {
     $savedVariables[$name] = [Environment]::GetEnvironmentVariable($name, 'Process')
 }
+$backendPort = $Port + 1
+$backend = Start-Process -FilePath $NodeExecutable -ArgumentList @(('"' + (Join-Path $PSScriptRoot 'caddy-backend-fixture.mjs') + '"'), "$backendPort") -WindowStyle Hidden -PassThru -RedirectStandardOutput (Join-Path $fixtureDir 'backend.stdout.log') -RedirectStandardError (Join-Path $fixtureDir 'backend.stderr.log')
+Add-Type -AssemblyName System.Net.Http
+$http = New-Object System.Net.Http.HttpClient
+$http.Timeout = [TimeSpan]::FromSeconds(3)
+function Send-Request([string]$Path, [string]$Method = 'GET', [string]$Body = '', [bool]$AdminDisabled = $false) {
+    $request = New-Object System.Net.Http.HttpRequestMessage([System.Net.Http.HttpMethod]::new($Method), "http://127.0.0.1:$Port$Path")
+    $request.Headers.Add('Authorization', 'Bearer registered-fixture')
+    if ($AdminDisabled) { $request.Headers.Add('X-Routing-Test-Admin', 'disabled') }
+    if ($Body) { $request.Content = [System.Net.Http.StringContent]::new($Body, [Text.Encoding]::UTF8, 'application/json') }
+    try {
+        $response = $http.SendAsync($request).GetAwaiter().GetResult()
+        $content = $response.Content.ReadAsStringAsync().GetAwaiter().GetResult()
+        return @{ Status = [int]$response.StatusCode; Content = $content; Headers = $response.Headers }
+    } finally { $request.Dispose() }
+}
 try {
     $env:PORT = "$Port"
-    $env:BACKEND_UPSTREAM = '127.0.0.1:1'
+    $env:BACKEND_UPSTREAM = "127.0.0.1:$backendPort"
     $env:FASTTOWIN_DOMAIN = "http://127.0.0.1:$Port"
     $env:ACME_EMAIL = 'routing-test@example.invalid'
     foreach ($relativeConfig in @('deploy/railway/web/Caddyfile', 'deploy/Caddyfile')) {
         $adaptedText = (& $caddy adapt --config (Join-Path $projectDir $relativeConfig) --adapter caddyfile) -join "`n"
         if ($LASTEXITCODE -ne 0) { throw "Caddy adaptation failed for $relativeConfig" }
-        # Test the actual adapted handlers, only substituting the fixture root
-        # and restricting the listener to loopback instead of exposing a server.
+        # Keep the actual adapted handlers; substitute only the static root,
+        # loopback backend fixture/listener and the disabled local Caddy admin API.
         $rootJson = ConvertTo-Json -InputObject $fixtureDir -Compress
-        $adapted = ($adaptedText.Replace('"root":"/srv"', '"root":' + $rootJson)) | ConvertFrom-Json
+        $adapted = ($adaptedText.Replace('"root":"/srv"', '"root":' + $rootJson).Replace('server:8080', "127.0.0.1:$backendPort")) | ConvertFrom-Json
+        # The production host's Caddy admin API also stays disabled in this local fixture.
+        $adapted | Add-Member -NotePropertyName admin -NotePropertyValue @{ disabled = $true } -Force
         foreach ($server in $adapted.apps.http.servers.PSObject.Properties.Value) {
             $server.listen = @("127.0.0.1:$Port")
         }
@@ -42,9 +61,37 @@ try {
                 } catch { Start-Sleep -Milliseconds 100 }
             }
             if (-not $ready) { throw "Caddy did not become ready for $relativeConfig" }
-            foreach ($path in @('/', '/rooms')) {
+            foreach ($path in @('/', '/rooms', '/gifts', '/gifts/history', '/gifts/mailboxish')) {
                 $response = Invoke-WebRequest "http://127.0.0.1:$Port$path" -UseBasicParsing -TimeoutSec 3
                 if ($response.StatusCode -ne 200 -or $response.Content -ne 'alpha-static-fixture') { throw "Static fallback failed for $relativeConfig $path" }
+            }
+            $adminCsp = "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'"
+            foreach ($path in @('/admin', '/admin/', '/admin/admin.js', '/admin/api/session')) {
+                foreach ($disabled in @($false, $true)) {
+                    $response = Send-Request -Path $path -AdminDisabled $disabled
+                    $expectedStatus = if ($disabled) { 404 } else { 200 }
+                    if ($response.Status -ne $expectedStatus) { throw "$relativeConfig $path admin disabled=$disabled status=$($response.Status)" }
+                    try { $json = $response.Content | ConvertFrom-Json } catch { throw "$relativeConfig $path returned SPA content instead of backend JSON" }
+                    if ($json.source -ne 'backend' -or $json.path -ne $path) { throw "$relativeConfig $path did not reach backend" }
+                    if ($response.Headers.CacheControl.ToString() -ne 'no-store') { throw "$relativeConfig $path lost backend no-store" }
+                    $csp = @($response.Headers.GetValues('Content-Security-Policy'))
+                    if ($csp.Count -ne 1 -or $csp[0] -ne $adminCsp) { throw "$relativeConfig $path changed backend admin CSP: $csp" }
+                }
+            }
+            foreach ($prefix in @('/gifts', '/api/gifts')) {
+                foreach ($case in @(
+                    @{ Path = "$prefix/mailbox?page=2&pageSize=25"; Method = 'GET'; Body = '' },
+                    @{ Path = "$prefix/mailbox/campaign/claim"; Method = 'POST'; Body = '' },
+                    @{ Path = "$prefix/mailbox/claim-all"; Method = 'POST'; Body = '{"campaignIds":["campaign"]}' }
+                )) {
+                    $response = Send-Request -Path $case.Path -Method $case.Method -Body $case.Body
+                    if ($response.Status -ne 200) { throw "$relativeConfig $($case.Path) status=$($response.Status)" }
+                    try { $json = $response.Content | ConvertFrom-Json } catch { throw "$relativeConfig $($case.Path) returned SPA HTML instead of backend JSON" }
+                    if ($json.source -ne 'backend' -or $json.path -ne $case.Path.Split('?')[0] -or $json.method -ne $case.Method -or $json.authorization -ne 'Bearer registered-fixture') { throw "$relativeConfig $($case.Path) failed backend forwarding" }
+                    if ($case.Method -eq 'GET' -and $json.query -ne '?page=2&pageSize=25') { throw 'Mailbox query was lost' }
+                    if ($case.Body -and $json.body.campaignIds[0] -ne 'campaign') { throw 'Claim-all body was lost' }
+                    if ($response.Headers.CacheControl.ToString() -ne 'no-store') { throw 'Mailbox no-store was lost' }
+                }
             }
             foreach ($path in @('/internal', '/internal/health', '/internal/metrics')) {
                 $status = 0
@@ -55,11 +102,13 @@ try {
                 }
                 if ($status -ne 404) { throw "$relativeConfig $path must return 404 before SPA fallback, got $status" }
             }
-            Write-Host "PASS: $relativeConfig blocks internal paths and preserves SPA fallback."
+            Write-Host "PASS: $relativeConfig forwards both mailbox APIs/admin enabled+disabled, retains JSON/auth/body/CSP/no-store, blocks internal paths and preserves /gifts SPA."
         } finally {
             if (-not $process.HasExited) { Stop-Process -Id $process.Id; $process.WaitForExit() }
         }
     }
 } finally {
+    $http.Dispose()
+    if (-not $backend.HasExited) { Stop-Process -Id $backend.Id; $backend.WaitForExit() }
     foreach ($name in $savedVariables.Keys) { [Environment]::SetEnvironmentVariable($name, $savedVariables[$name], 'Process') }
 }

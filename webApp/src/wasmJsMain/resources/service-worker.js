@@ -1,5 +1,5 @@
 const CACHE_PREFIX = 'fast-to-win-';
-const SHELL_CACHE = `${CACHE_PREFIX}shell-v6`;
+const SHELL_CACHE = `${CACHE_PREFIX}shell-v7`;
 const APP_SHELL = [
     '/',
     '/index.html',
@@ -41,7 +41,7 @@ self.addEventListener('activate', event => {
                     .filter(name => name.startsWith(CACHE_PREFIX) && name !== SHELL_CACHE)
                     .map(name => caches.delete(name))
             ))
-            .then(purgeAdminCaches)
+            .then(purgeSensitiveCaches)
             .then(() => self.clients.claim())
     );
 });
@@ -52,7 +52,7 @@ self.addEventListener('message', event => {
     }
     if (event.data && event.data.type === 'ADMIN_NETWORK_POLICY' && event.ports[0]) {
         // Acknowledge only after legacy sensitive entries have been removed.
-        event.waitUntil(purgeAdminCaches().then(() => event.ports[0].postMessage({ adminNetworkOnly: 1 })));
+        event.waitUntil(purgeSensitiveCaches().then(() => event.ports[0].postMessage({ adminNetworkOnly: 1 })));
     }
 });
 
@@ -60,12 +60,16 @@ function isAdminPath(path) {
     return path === '/admin' || path.startsWith('/admin/');
 }
 
-async function purgeAdminCaches() {
+function isGiftMailboxPath(path) {
+    return ['/gifts/mailbox', '/api/gifts/mailbox'].some(prefix => path === prefix || path.startsWith(prefix + '/'));
+}
+
+async function purgeSensitiveCaches() {
     for (const name of await caches.keys()) {
         const cache = await caches.open(name);
         for (const request of await cache.keys()) {
             const url = new URL(request.url);
-            if (url.origin === self.location.origin && isAdminPath(url.pathname)) await cache.delete(request);
+            if (url.origin === self.location.origin && (isAdminPath(url.pathname) || isGiftMailboxPath(url.pathname))) await cache.delete(request);
         }
     }
 }
@@ -76,8 +80,9 @@ self.addEventListener('fetch', event => {
 
     const url = new URL(request.url);
     if (url.origin !== self.location.origin) return;
-    // Admin navigation, scripts, styles and API must always reach the network.
-    if (isAdminPath(url.pathname)) return;
+    // Private admin and player mailbox responses must always reach the network.
+    // /gifts itself remains an offline-capable game SPA navigation.
+    if (isAdminPath(url.pathname) || isGiftMailboxPath(url.pathname)) return;
     if (url.pathname.startsWith('/api/') || url.pathname === '/health') return;
 
     if (request.mode === 'navigate') {

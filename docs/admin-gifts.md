@@ -104,7 +104,9 @@ Publish recalculates eligibility and totals and rejects409 if version/token chan
 
 All player routes require `Authorization: Bearer <registered-account-access-token>`; admin cookies and guest resume tokens do not authenticate. No request body is needed for a single claim. Player errors never disclose another account's entitlement. The service is injected into `gameModule`; there are no client websocket changes.
 
-GET `/gifts/mailbox?page=0&pageSize=25` returns:
+The shipped shared client uses `/api/gifts/mailbox`. The equivalent `/gifts/mailbox` prefix remains supported for HTTP compatibility; both prefixes share the same authenticated handler, service, storage and claim receipt. `/gifts` itself remains the player Compose SPA navigation, separate from the mailbox HTTP subtree.
+
+GET `/api/gifts/mailbox?page=0&pageSize=25` (or `/gifts/mailbox?page=0&pageSize=25`) returns:
 
 ```json
 {
@@ -124,7 +126,7 @@ GET `/gifts/mailbox?page=0&pageSize=25` returns:
 
 Mailbox uses availableAt descending, campaignId descending tie-break; includes only delivered gifts after their availability time. States are `AVAILABLE|CLAIMED|EXPIRED|CANCELLED`. Claim takes precedence over cancellation/expiry; cancellation takes precedence over expiry. Drafts, pending recipients and skipped recipients are never exposed. Page/pageSize have the same limits as admin.
 
-POST `/gifts/mailbox/{campaignId}/claim` returns:
+POST `/api/gifts/mailbox/{campaignId}/claim` (or `/gifts/mailbox/{campaignId}/claim`) returns:
 
 ```json
 {
@@ -146,7 +148,7 @@ POST `/gifts/mailbox/{campaignId}/claim` returns:
 
 Claim validity uses server request-received time in `[availableAt,expiresAt)`, captured before bearer authentication/database waits. A valid request waiting for locks does not expire while queued. Single-claim expired/cancelled responses are409; refresh mailbox for final state. Undelivered or somebody else's gift returns404.
 
-POST `/gifts/mailbox/claim-all` accepts `{"campaignIds":["id-one","id-two"]}` (1..100 entries), and always processes each item in its own transaction:
+POST `/api/gifts/mailbox/claim-all` (or `/gifts/mailbox/claim-all`) accepts `{"campaignIds":["id-one","id-two"]}` (1..100 entries), and always processes each item in its own transaction:
 
 ```json
 {
@@ -166,6 +168,12 @@ Shared serializable DTOs live in `protocol/GiftProtocol.kt`: `GiftState`, `Mailb
 The Home discovery section opens a separate `/gifts` route in the shared Compose app. Guests can see sign-in guidance; only registered accounts request mailbox pages. Opening the route fetches page0 and never claims gifts. The screen keeps server states (`AVAILABLE`, `CLAIMED`, `EXPIRED`, `CANCELLED`), displays the stored Vietnamese/English content using the current app language, and offers explicit **Nhận** / **Nhận tất cả** actions. Load more fetches the next server page; Claim all reads every server page and sends available campaign IDs in batches of at most100. Per-item failures remain visible and retryable, while successful receipts trigger the existing authoritative GameController profile refresh. The client never adds awarded amounts to its local wallet.
 
 Mailbox state belongs to the registered account's app lifecycle. Leaving the screen clears pending UI state; opening it again fetches server truth. Account changes dispose the client and fence late responses. Access-token refresh within the same account retries one unauthorized HTTP request with a fresh bearer token. Notification records, taps, and deletion do not affect gift visibility or claims.
+
+### PWA and reverse proxy routing
+
+Both checked-in Caddy templates forward `/admin`, `/admin/*`, `/gifts/mailbox`, `/gifts/mailbox/*` and the existing `/api/*` subtree to Ktor. Exact `/gifts` stays on the game SPA. Backend admin CSP and `no-store` headers are retained; the game CSP is not added to admin responses. Admin availability still depends on the existing backend enable switch.
+
+The game worker never caches either mailbox HTTP subtree, and v7 activation removes same-origin mailbox and admin entries from every CacheStorage cache, including older and unrelated cache names. The game offline shell and `/gifts` SPA navigation remain available offline; mailbox reads fail on network loss instead of returning stored private data. The `/api/gifts` client path also bypasses still-active legacy workers, which already exclude `/api/*`, before v7 activation. A previously opened application running the old client still needs reload to receive the new client or worker activation; an already running legacy client cannot be retroactively changed by this release. The admin worker policy handshake remains unchanged.
 
 ## Errors, durability, and local runtime
 

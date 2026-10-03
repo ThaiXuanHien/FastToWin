@@ -31,7 +31,8 @@ class GiftApiClient(
     private val requestConfigurator: AuthRequestConfigurator = NoOpAuthRequestConfigurator,
     client: HttpClient? = null
 ) : GiftGateway {
-    private val baseUrl = "${serverUrl.toHttpBaseUrl()}/gifts/mailbox"
+    // /api is network-only even under a still-active worker from an earlier deployment.
+    private val baseUrl = "${serverUrl.toHttpBaseUrl()}/api/gifts/mailbox"
     private val client = client ?: HttpClient {
         install(ContentNegotiation) { json(ProtocolJson) }
         install(HttpTimeout) {

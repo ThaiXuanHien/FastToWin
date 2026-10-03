@@ -21,7 +21,8 @@ class GiftApiClientTest {
     @Test fun `mailbox retries unauthorized once with refreshed bearer on exact route`() = runTest {
         val seen = mutableListOf<String?>()
         val client = HttpClient(MockEngine { request ->
-            assertEquals("/gifts/mailbox", request.url.encodedPath)
+            assertEquals("/api/gifts/mailbox", request.url.encodedPath)
+            assertEquals("GET", request.method.value)
             assertEquals("2", request.url.parameters["page"])
             assertEquals("25", request.url.parameters["pageSize"])
             seen += request.headers[HttpHeaders.Authorization]
@@ -37,7 +38,8 @@ class GiftApiClientTest {
     @Test fun `claim all sends exact batch and exposes server error code`() = runTest {
         var body = ""
         val client = HttpClient(MockEngine { request ->
-            assertEquals("/gifts/mailbox/claim-all", request.url.encodedPath)
+            assertEquals("/api/gifts/mailbox/claim-all", request.url.encodedPath)
+            assertEquals("POST", request.method.value)
             assertEquals("Bearer player", request.headers[HttpHeaders.Authorization])
             body = (request.body as OutgoingContent.ByteArrayContent).bytes().decodeToString()
             respond("{\"code\":\"CONFLICT\",\"message\":\"changed\"}", HttpStatusCode.Conflict,
@@ -56,6 +58,27 @@ class GiftApiClientTest {
         val api = GiftApiClient("http://localhost:8080", { null }, client = client)
         assertEquals("UNAUTHORIZED", assertFailsWith<GiftApiException> { api.claim("a") }.code)
         assertEquals(0, requests)
+        api.close()
+    }
+
+    @Test fun `single claim uses network only namespace while retaining platform auth configuration`() = runTest {
+        val client = HttpClient(MockEngine { request ->
+            assertEquals("/api/gifts/mailbox/campaign/claim", request.url.encodedPath)
+            assertEquals("POST", request.method.value)
+            assertEquals("Bearer registered", request.headers[HttpHeaders.Authorization])
+            assertEquals("1", request.headers["X-FastToWin-Web-Session"])
+            assertEquals("1", request.headers["X-FastToWin-CSRF"])
+            respond("{\"code\":\"NOT_FOUND\",\"message\":\"missing\"}", HttpStatusCode.NotFound,
+                headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString()))
+        }) { install(ContentNegotiation) { json(ProtocolJson) } }
+        val configurator = object : AuthRequestConfigurator {
+            override fun configure(request: io.ktor.client.request.HttpRequestBuilder) {
+                request.headers.append("X-FastToWin-Web-Session", "1")
+                request.headers.append("X-FastToWin-CSRF", "1")
+            }
+        }
+        val api = GiftApiClient("wss://example.invalid/game", { "registered" }, configurator, client)
+        assertEquals("NOT_FOUND", assertFailsWith<GiftApiException> { api.claim("campaign") }.code)
         api.close()
     }
 }

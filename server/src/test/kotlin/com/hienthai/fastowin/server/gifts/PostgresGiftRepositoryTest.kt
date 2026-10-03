@@ -267,13 +267,15 @@ class PostgresGiftRepositoryTest {
         sql("ALTER TABLE sessions RENAME TO sessions_temporarily_unavailable")
         testApplication {
             application { gameModule(authService=actualAuth,giftService=actualGifts) }
-            val response=client.get("/gifts/mailbox") { bearerAuth(account.accessToken) }
-            assertEquals(HttpStatusCode.ServiceUnavailable,response.status)
-            assertEquals("no-store",response.headers[HttpHeaders.CacheControl])
-            val body=response.bodyAsText()
-            val error=Json.decodeFromString<GiftError>(body)
-            assertEquals("STORAGE_UNAVAILABLE",error.code)
-            assertEquals("Kho dữ liệu người chơi chưa sẵn sàng.",error.message)
-            assertFalse(body.contains("sessions")); assertFalse(body.contains("SELECT")); assertFalse(body.contains("SQLException"))
+            for (prefix in listOf("/gifts", "/api/gifts")) {
+                val response=client.get("$prefix/mailbox") { bearerAuth(account.accessToken) }
+                assertEquals(HttpStatusCode.ServiceUnavailable,response.status)
+                assertEquals("no-store",response.headers[HttpHeaders.CacheControl])
+                val body=response.bodyAsText()
+                val error=Json.decodeFromString<GiftError>(body)
+                assertEquals("STORAGE_UNAVAILABLE",error.code)
+                assertEquals("Kho dữ liệu người chơi chưa sẵn sàng.",error.message)
+                assertFalse(body.contains("sessions")); assertFalse(body.contains("SELECT")); assertFalse(body.contains("SQLException"))
+            }
         }
     } }}

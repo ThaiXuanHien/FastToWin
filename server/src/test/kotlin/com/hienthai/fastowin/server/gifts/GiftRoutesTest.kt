@@ -12,6 +12,39 @@ import kotlinx.serialization.json.Json
 import kotlin.test.*
 
 class GiftRoutesTest {
+    @Test fun `api alias and legacy mailbox share authenticated entitlement and one claim receipt`() = testApplication {
+        val f=MemoryGiftFixture(); val campaign=runBlocking { f.initialize(); f.publish().also { f.gifts.deliverDueBatch() } }
+        application { gameModule(adminService=f.admin,giftService=f.gifts,authService=f.auth) }
+        for (prefix in listOf("/api/gifts", "/gifts")) {
+            val denied=client.get("$prefix/mailbox") { header(HttpHeaders.Cookie,"fasttowin_admin=${f.owner.token}") }
+            assertEquals(HttpStatusCode.Unauthorized,denied.status)
+            assertEquals("no-store",denied.headers[HttpHeaders.CacheControl])
+            val mailbox=client.get("$prefix/mailbox?page=0&pageSize=1") { bearerAuth(f.accessToken) }
+            assertEquals(HttpStatusCode.OK,mailbox.status)
+            assertEquals("no-store",mailbox.headers[HttpHeaders.CacheControl])
+            assertEquals(campaign.id,ProtocolJson.decodeFromString<GiftMailboxPage>(mailbox.bodyAsText()).items.single().campaignId)
+            assertEquals(HttpStatusCode.BadRequest,client.get("$prefix/mailbox?page=-1") { bearerAuth(f.accessToken) }.status)
+            assertEquals(HttpStatusCode.Unauthorized,client.post("$prefix/mailbox/${campaign.id}/claim").status)
+        }
+        val claim=client.post("/api/gifts/mailbox/${campaign.id}/claim") { bearerAuth(f.accessToken) }
+        assertEquals(HttpStatusCode.OK,claim.status)
+        val receipt=ProtocolJson.decodeFromString<GiftClaimResult>(claim.bodyAsText())
+        val retry=client.post("/gifts/mailbox/${campaign.id}/claim") { bearerAuth(f.accessToken) }
+        assertEquals(HttpStatusCode.OK,retry.status)
+        assertEquals(receipt,ProtocolJson.decodeFromString<GiftClaimResult>(retry.bodyAsText()))
+        for (prefix in listOf("/api/gifts", "/gifts")) {
+            val all=client.post("$prefix/mailbox/claim-all") {
+                bearerAuth(f.accessToken); contentType(ContentType.Application.Json)
+                setBody(Json.encodeToString(GiftClaimAllRequest(listOf(campaign.id,"00000000-0000-0000-0000-000000000000"))))
+            }
+            assertEquals(HttpStatusCode.OK,all.status)
+            val items=ProtocolJson.decodeFromString<GiftClaimAllResult>(all.bodyAsText()).items
+            assertEquals(receipt,items[0].result)
+            assertEquals("NOT_FOUND",items[1].error!!.code)
+            val page=client.get("$prefix/mailbox") { bearerAuth(f.accessToken) }
+            assertEquals(GiftState.CLAIMED,ProtocolJson.decodeFromString<GiftMailboxPage>(page.bodyAsText()).items.single().state)
+        }
+    }
     @Test fun `mailbox requires a registered player bearer token`() = testApplication {
         application { gameModule() }
         assertEquals(HttpStatusCode.Unauthorized,client.get("/gifts/mailbox").status)
