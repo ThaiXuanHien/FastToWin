@@ -3,8 +3,8 @@
 Ngày: 03/10/2026, Asia/Bangkok. Thuộc mở rộng vận hành của Issue #21 và #17.
 Issue: https://github.com/ThaiXuanHien/FastToWin/issues/23.
 GitHub Issue là đặc tả chính; tài liệu này là bản đối chiếu trong repository.
-Chủ dự án đã đồng ý hướng thiết kế hai chế độ trong chat. Chi tiết dưới đây
-cần được duyệt trước khi lập kế hoạch và triển khai; chưa có thay đổi runtime.
+Chủ dự án đã duyệt đặc tả qua xác nhận “duyệt” trong chat ngày 03/10/2026.
+Đặc tả sẵn sàng lập kế hoạch/triển khai; phê duyệt không phải nghiệm thu runtime.
 
 ## Kết quả mong muốn và hiện trạng
 

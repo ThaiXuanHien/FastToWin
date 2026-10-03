@@ -3,8 +3,9 @@
 Ngày: 03/10/2026, Asia/Bangkok. Mở rộng riêng của Issue #21 và #17.
 Issue: https://github.com/ThaiXuanHien/FastToWin/issues/24.
 GitHub Issue là đặc tả chính; tài liệu này là bản đối chiếu trong repository.
-Chủ dự án chọn thống kê cả tiền thật và Vàng/Gem, đồng ý hướng thiết kế trong
-chat. Chi tiết dưới đây cần duyệt trước khi lập kế hoạch/triển khai.
+Chủ dự án chọn thống kê cả tiền thật và Vàng/Gem, đã duyệt đặc tả qua xác nhận
+“duyệt” trong chat ngày 03/10/2026. Đặc tả sẵn sàng lập kế hoạch/triển khai;
+phê duyệt không phải nghiệm thu runtime.
 
 ## Kết quả và phạm vi bản đầu
 
