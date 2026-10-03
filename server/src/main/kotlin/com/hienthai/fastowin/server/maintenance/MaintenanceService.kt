@@ -10,6 +10,7 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import java.sql.SQLException
 import java.util.UUID
+import java.util.concurrent.atomic.AtomicReference
 
 /** Persistence only. Runtime must refresh at most every 5 seconds and gate admission itself. */
 class MaintenanceService(
@@ -20,8 +21,7 @@ class MaintenanceService(
     private val environmentMessageVi:String?=null,
     private val environmentMessageEn:String?=null
 ) {
-    private data class Observed(val policy:MaintenancePolicy=MaintenancePolicy(),val runtime:MaintenanceRuntimeObservation=MaintenanceRuntimeObservation())
-    @Volatile private var observed=Observed()
+    private val observations=MaintenanceObservations()
     private val refreshMutex=Mutex()
     fun requireOrigin(origin:String?) { (admins?:unavailable()).requireOrigin(origin) }
     private fun MaintenanceTransaction.authorize(context:MaintenanceAdminContext,mutation:Boolean=false):AdminIdentity {
@@ -37,7 +37,7 @@ class MaintenanceService(
             summary(before),summary(after),nowMillis()))
     }
     private fun response(snapshot:MaintenanceSnapshot):MaintenanceAdminResponse {
-        val observation=observed
+        val observation=observations.current()
         return MaintenanceAdminResponse(snapshot,effective(observation.policy),observation.runtime)
     }
     suspend fun read(context:MaintenanceAdminContext):MaintenanceAdminResponse=storage {
@@ -105,11 +105,11 @@ class MaintenanceService(
                 if (value.state==MaintenanceState.DRAINING && (activeMatches==0 || now>=value.drainDeadlineEpochMillis!!)) advance(MaintenanceState.MAINTENANCE)
                 value
             }
-            observed=Observed(snapshot.policy(),MaintenanceRuntimeObservation(snapshot.version,validNow(),activeMatches,true))
+            observations.publish(MaintenanceObservation(snapshot.policy(),MaintenanceRuntimeObservation(snapshot.version,validNow(),activeMatches,true)))
             effectivePolicy()
         }
     }
-    fun effectivePolicy():MaintenancePolicy=effective(observed.policy)
+    fun effectivePolicy():MaintenancePolicy=effective(observations.current().policy)
     private fun effective(policy:MaintenancePolicy):MaintenancePolicy=if(environmentOverride) {
         MaintenancePolicy(MaintenanceState.MAINTENANCE,MaintenanceMode.EMERGENCY,policy.version,
             environmentMessageVi,environmentMessageEn,source=MaintenanceSource.ENVIRONMENT)
@@ -127,8 +127,7 @@ class MaintenanceService(
         catch (error:AdminException) { if(error.status==503) markUnavailable(); throw error }
         catch (_:SQLException) { markUnavailable(); unavailable() }
     private fun markUnavailable() {
-        val old=observed
-        observed=old.copy(policy=old.policy.copy(available=false,source=MaintenanceSource.UNAVAILABLE),runtime=old.runtime.copy(available=false))
+        observations.transform(MaintenanceObservation::unavailable)
     }
     private fun validNow():Long=nowMillis().also { if(it !in 0..MAX_TIMESTAMP) invalid() }
     private fun addMinutes(timestamp:Long,minutes:Int):Long=try {
@@ -147,5 +146,23 @@ class MaintenanceService(
     companion object {
         const val MAX_TIMESTAMP=253402300799999L
         private val CAUSES=setOf("UPDATE","INCIDENT","SECURITY","OVERLOAD","OTHER")
+    }
+}
+
+internal data class MaintenanceObservation(
+    val policy:MaintenancePolicy=MaintenancePolicy(),
+    val runtime:MaintenanceRuntimeObservation=MaintenanceRuntimeObservation()
+) {
+    fun unavailable()=copy(policy=policy.copy(available=false,source=MaintenanceSource.UNAVAILABLE),runtime=runtime.copy(available=false))
+}
+
+internal class MaintenanceObservations {
+    private val value=AtomicReference(MaintenanceObservation())
+    fun current():MaintenanceObservation=value.get()
+    fun publish(observation:MaintenanceObservation) { value.set(observation) }
+    fun transform(update:(MaintenanceObservation)->MaintenanceObservation) {
+        // Retry against the latest publication if a concurrent refresh replaced the value.
+        // Transforms must be side-effect free because AtomicReference may invoke them again.
+        value.updateAndGet(update)
     }
 }
