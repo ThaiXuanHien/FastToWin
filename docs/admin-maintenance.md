@@ -209,9 +209,13 @@ read never becomes ACTIVE.
 class MaintenanceRuntime(
     engine: GameEngine,
     service: MaintenanceService? = null,
-    environmentStatus: () -> ServiceStatusResponse = { ServiceStatusResponse(false) }
+    environmentStatus: () -> ServiceStatusResponse = { ServiceStatusResponse(false) },
+    monotonicMillis: () -> Long = { System.nanoTime() / 1_000_000 }
 ) {
+    suspend fun observe()
+    suspend fun reconcile(): MaintenanceApplication
     suspend fun refresh(): MaintenanceApplication
+    fun fenceStaleObservation()
     fun publicStatus(): ServiceStatusResponse
 }
 data class MaintenanceApplication(
@@ -220,6 +224,8 @@ data class MaintenanceApplication(
     val closeSockets: Boolean = false
 )
 // GameEngine:
+fun publishMaintenancePolicy(policy: MaintenancePolicy)
+suspend fun reconcileMaintenancePolicy(): MaintenanceApplication
 suspend fun applyMaintenancePolicy(policy: MaintenancePolicy): MaintenanceApplication
 suspend fun activeMaintenanceMatchCount(): Int
 suspend fun admitsNewIntent(): Boolean
@@ -228,14 +234,29 @@ fun gameConnectionsClosed(): Boolean
 suspend fun retryMaintenanceSettlements(): List<Delivery>
 ```
 
-The owned Application job polls every1,000ms and is cancelled with Application.
-First refresh uses allowEmptyDrain=false, applies policy at the engine admission
+The Application owns one parent job with exactly three children: observation
+every 1,000ms, reconciliation every 1,000ms, and a watchdog every 100ms. Observation
+and reconciliation have independent IO workers; neither launches replacement
+jobs while its previous operation is suspended. Application cancellation cancels
+all three. `refresh()` remains the startup/test composition of observe then
+reconcile; production polling uses the independent workers.
+
+Observation publishes the volatile admission fence before waiting for room
+persistence. First observation uses allowEmptyDrain=false, applies policy at the engine admission
 boundary, then samples the count. The second refresh permits empty-drain
 advancement only when the first applied policy blocked admission. This covers
 policy changes between reads without trusting an ACTIVE zero count. Counts
-include accepted completed results awaiting settlement, never fabricated values.
+include accepted completed results and staged next-round rooms awaiting durable
+acknowledgment, never fabricated values.
 Read failures block new intent, retain known closure, and return safe public503;
 cancellation propagates. Observations do not promise sockets already closed.
+If an observation has not completed for 4,000ms, the next watchdog tick marks
+status unavailable (safe503) and blocks new intent, preserving known closure in
+both database and environment-only modes. A successful observation recovers
+availability. Under healthy scheduling/storage, committed policies are observed
+on the next one-second cycle; stalled storage instead receives the four-second
+staleness fence plus watchdog scheduling delay. No deadline promises durable abort
+or socket closure while persistence is unavailable.
 
 Room/ready/rematch/matchmaking/tournament transitions check policy under the
 engine mutex after asynchronous profile/quota work. Short admission covers early
@@ -264,6 +285,14 @@ result-repository work. Settlement survives socket cancellation; one in-flight
 attempt per match and existing repository idempotency prevent duplicate grants.
 Pending results count as active drain work and prevent premature tournament
 cancellation. Failed result saves remain pending for runtime/restart retry.
+Cleanup, disconnect-forfeit and both result-screen exits retain the source room
+until acknowledgment; a pending result cannot be overwritten by a rematch. Lookup
+uses matchId rather than assuming rematches share their roomId. Attempts have a
+4,000ms coroutine timeout inside cancellation shielding; a timed-out attempt
+retains its payload and releases the in-flight claim so the owned worker retries.
+Blocking JDBC calls must return before coroutine cancellation can complete; they
+do not hold up the independent policy fence/watchdog. Abort/refund reconciliation
+does not add a NonCancellable wrapper around storage.
 
 Drain resume is scoped to an existing PLAYING participant. New snapshots persist
 an authoritative account resume token. Older snapshots without one allow a fresh
@@ -276,6 +305,40 @@ final checks occur under mutex after appearance lookup.
 Drain pauses subsequent tournament rounds; reopening starts eligible pending
 rounds. Closure cancels incomplete tournaments with existing CANCELLED, keeps
 completed rounds/results and never manufactures a champion.
+Ordinary completion and reopening share staged pairing logic. An immutable batch
+remains pending until `TournamentRepository.commitProgression` acknowledges it:
+
+```kotlin
+data class TournamentProgression(
+    val tournament: TournamentSnapshot,
+    val newRooms: List<StoredActiveRoom>,
+    val completedRoomId: String? = null,
+    val removedRoomIds: List<String> = emptyList()
+)
+suspend fun commitProgression(
+    batch: TournamentProgression,
+    rooms: ActiveRoomRepository,
+    profiles: PlayerProfileRepository
+)
+```
+
+PostgreSQL uses the tournament repository's single DataSource/connection for
+bracket, all generated room snapshots, champion wallet grant and source-room
+deletion. No nested profile commit occurs. Tournament and wallet row locks plus
+the canonical `(user_id, TOURNAMENT_PRIZE, tournamentId)` source prevent duplicate
+grants; replay validates the original recipient and amount. In-memory storage is
+explicitly process-local, restores snapshot preimages on failure, and relies on
+wallet source idempotency for retries. No schema migration is added.
+
+Rooms and brackets become visible only after acknowledgment. If policy closes
+during the write, a second acknowledged batch returns the unexposed round to
+PENDING and removes its generated rooms before publication. Failed batches retain
+their source result/count and retry in process; PostgreSQL rollback leaves a
+restart-recoverable source result or paused bracket. Restoring a paused bracket
+reconstructs disconnected roster accounts so pairing can serialize participants;
+this does not authenticate or connect them and the existing verified-account
+admission rules still apply. Pending progression must commit before count can
+drop to zero and socket-close permission can be issued.
 TournamentRepository.cancelForMaintenance(cancelled, profiles) atomically saves
 cancellation and full entry refunds in PostgreSQL, including paid entrants who
 left the lobby. Wallet source TOURNAMENT_MAINTENANCE_REFUND uses tournamentId as

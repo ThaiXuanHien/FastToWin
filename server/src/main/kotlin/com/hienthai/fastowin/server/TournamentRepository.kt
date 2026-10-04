@@ -20,6 +20,9 @@ interface TournamentRepository {
     /** Durably cancel with a full, idempotent refund of each recorded entry payment. */
     suspend fun cancelForMaintenance(cancelled: TournamentSnapshot, profiles: PlayerProfileRepository)
 
+    /** Acknowledges bracket, generated rooms, prize and completed-room removal as one durable unit. */
+    suspend fun commitProgression(batch: TournamentProgression, rooms: ActiveRoomRepository, profiles: PlayerProfileRepository)
+
     /**
      * Candidate already includes the player, but its pool excludes any NEW payment.
      * Persist the entry debit and adjusted snapshot together. A prior payment admits a
@@ -32,6 +35,9 @@ interface TournamentRepository {
         profiles: PlayerProfileRepository
     ): TournamentAdmissionResult
 }
+
+data class TournamentProgression(val tournament: TournamentSnapshot, val newRooms: List<StoredActiveRoom>, val completedRoomId: String? = null,
+    val removedRoomIds: List<String> = emptyList())
 
 data class TournamentAdmissionResult(
     val walletStatus: WalletMutationStatus,
@@ -48,7 +54,30 @@ open class InMemoryTournamentRepository : TournamentRepository {
     private val tournaments = linkedMapOf<String, TournamentSnapshot>()
     private val entrants = mutableMapOf<String, MutableSet<String>>()
 
-    override suspend fun cancelForMaintenance(cancelled: TournamentSnapshot, profiles: PlayerProfileRepository) = withContext(NonCancellable) {
+    override suspend fun commitProgression(batch: TournamentProgression, rooms: ActiveRoomRepository, profiles: PlayerProfileRepository) {
+        // Process-local implementation: rollback snapshots on failure; wallet retries use their canonical key.
+        val before = rooms.loadAll().associateBy { it.roomId }
+        val previous = tournaments[batch.tournament.tournamentId]
+        try {
+            val tournament = batch.tournament
+            if (tournament.phase == TournamentPhase.FINISHED && tournament.prizePool > 0) {
+                val status = profiles.applyWalletTransaction(checkNotNull(tournament.championPlayerId), "TOURNAMENT_PRIZE", tournament.tournamentId, goldDelta = tournament.prizePool)
+                check(status == WalletMutationStatus.APPLIED || status == WalletMutationStatus.DUPLICATE) { "Tournament prize not acknowledged" }
+            }
+            batch.newRooms.forEach { rooms.save(it) }
+            save(tournament)
+            batch.completedRoomId?.let { rooms.delete(it) }
+            batch.removedRoomIds.forEach { rooms.delete(it) }
+        } catch (failure: Exception) {
+            for (room in batch.newRooms) before[room.roomId]?.let { rooms.save(it) } ?: rooms.delete(room.roomId)
+            batch.completedRoomId?.let { id -> before[id]?.let { rooms.save(it) } }
+            batch.removedRoomIds.forEach { id -> before[id]?.let { rooms.save(it) } }
+            if (previous == null) tournaments.remove(batch.tournament.tournamentId) else tournaments[previous.tournamentId] = previous
+            throw failure
+        }
+    }
+
+    override suspend fun cancelForMaintenance(cancelled: TournamentSnapshot, profiles: PlayerProfileRepository) {
         require(cancelled.phase == TournamentPhase.CANCELLED && cancelled.championPlayerId == null)
         if (cancelled.entryFee > 0) {
             for (playerId in entrants[cancelled.tournamentId] ?: cancelled.players.map { it.playerId }.toSet()) {
@@ -117,7 +146,61 @@ class PostgresTournamentRepository(
         uncertainCommit?.let { throw TournamentPersistenceUncertainException(it) }
     }
 
-    override suspend fun cancelForMaintenance(cancelled: TournamentSnapshot, profiles: PlayerProfileRepository) = withContext(NonCancellable + Dispatchers.IO) {
+    override suspend fun commitProgression(batch: TournamentProgression, rooms: ActiveRoomRepository, profiles: PlayerProfileRepository) = withContext(Dispatchers.IO) {
+        requireKnownCommitOutcome()
+        var committing = false
+        try {
+            dataSource.connection.use { connection ->
+                connection.autoCommit = false
+                try {
+                    val tournament = batch.tournament
+                    connection.prepareStatement("SELECT tournament_id FROM tournaments WHERE tournament_id=? FOR UPDATE").use {
+                        it.setObject(1, UUID.fromString(tournament.tournamentId)); it.executeQuery().use { rows -> check(rows.next()) { "Progression tournament missing" } }
+                    }
+                    if (tournament.phase == TournamentPhase.FINISHED && tournament.prizePool > 0) {
+                        val winner = UUID.fromString(checkNotNull(tournament.championPlayerId))
+                        check(tournament.players.any { it.playerId == winner.toString() }) { "Prize winner is not an entrant" }
+                        connection.prepareStatement("SELECT user_id,gold_delta,gems_delta,xp_delta FROM wallet_transactions WHERE source_type='TOURNAMENT_PRIZE' AND source_id=?").use {
+                            it.setString(1, tournament.tournamentId)
+                            it.executeQuery().use { rows -> while (rows.next()) {
+                                check(rows.getObject(1, UUID::class.java) == winner && rows.getInt(2) == tournament.prizePool && rows.getInt(3) == 0 && rows.getInt(4) == 0) {
+                                    "Tournament prize source conflicts with its acknowledged grant"
+                                }
+                            } }
+                        }
+                        connection.prepareStatement("SELECT gold FROM player_stats WHERE user_id=? FOR UPDATE").use {
+                            it.setObject(1, winner); it.executeQuery().use { rows -> check(rows.next()) { "Prize player missing" } }
+                        }
+                        val inserted = connection.prepareStatement("INSERT INTO wallet_transactions(id,user_id,source_type,source_id,gold_delta) VALUES (?,?,'TOURNAMENT_PRIZE',?,?) ON CONFLICT (user_id,source_type,source_id) DO NOTHING").use {
+                            it.setObject(1, UUID.randomUUID()); it.setObject(2, winner); it.setString(3, tournament.tournamentId); it.setInt(4, tournament.prizePool); it.executeUpdate()
+                        }
+                        if (inserted == 1) connection.prepareStatement("UPDATE player_stats SET gold=gold+?,updated_at=CURRENT_TIMESTAMP WHERE user_id=?").use {
+                            it.setInt(1, tournament.prizePool); it.setObject(2, winner); check(it.executeUpdate() == 1)
+                        }
+                    }
+                    batch.newRooms.forEach { room ->
+                        connection.prepareStatement("INSERT INTO active_room_snapshots(room_id,state_json,updated_at) VALUES (?,CAST(? AS jsonb),CURRENT_TIMESTAMP) ON CONFLICT(room_id) DO UPDATE SET state_json=EXCLUDED.state_json,updated_at=EXCLUDED.updated_at").use {
+                            it.setObject(1, UUID.fromString(room.roomId)); it.setString(2, ProtocolJson.encodeToString(room)); it.executeUpdate()
+                        }
+                    }
+                    save(connection, tournament)
+                    (batch.removedRoomIds + listOfNotNull(batch.completedRoomId)).forEach { id -> connection.prepareStatement("DELETE FROM active_room_snapshots WHERE room_id=?").use {
+                        it.setObject(1, UUID.fromString(id)); it.executeUpdate()
+                    } }
+                    committing = true
+                    connection.commit()
+                } catch (failure: Exception) {
+                    runCatching { connection.rollback() }.exceptionOrNull()?.let(failure::addSuppressed)
+                    throw failure
+                }
+            }
+        } catch (failure: Exception) {
+            if (committing) { uncertainCommit = failure; throw TournamentPersistenceUncertainException(failure) }
+            throw failure
+        }
+    }
+
+    override suspend fun cancelForMaintenance(cancelled: TournamentSnapshot, profiles: PlayerProfileRepository) = withContext(Dispatchers.IO) {
         requireKnownCommitOutcome()
         require(cancelled.phase == TournamentPhase.CANCELLED && cancelled.championPlayerId == null)
         var committing = false
