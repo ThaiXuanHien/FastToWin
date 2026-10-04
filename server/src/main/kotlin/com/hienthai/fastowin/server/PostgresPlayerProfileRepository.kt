@@ -1780,9 +1780,15 @@ class PostgresPlayerProfileRepository(
                 }
                 connection.commit()
                 StorePurchaseGrantStatus.GRANTED
-            } catch (error: Throwable) {
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
                 connection.rollback()
-                System.err.println("Could not grant store purchase: ${error.message}")
+                throw cancelled
+            } catch (unavailable: java.sql.SQLException) {
+                connection.rollback()
+                throw unavailable
+            } catch (_: Exception) {
+                connection.rollback()
+                System.err.println("Could not grant store purchase")
                 StorePurchaseGrantStatus.FAILED
             } finally {
                 connection.autoCommit = true

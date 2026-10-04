@@ -316,6 +316,15 @@ class GameController private constructor(
         dispatchPendingGiftProfileRefresh()
     }
 
+    fun onStorePurchaseFinalized(result: ServerMessage.StorePurchaseResult) {
+        _uiState.update { it.copy(storePurchaseResult = result, profileNotice = messageMapper.message(result)) }
+        if (result.status == com.hienthai.fastowin.protocol.StorePurchaseStatus.GRANTED ||
+            result.status == com.hienthai.fastowin.protocol.StorePurchaseStatus.ALREADY_GRANTED) {
+            // Use the same queue as gifts: an earlier profile response cannot overwrite the final refresh.
+            refreshProfileAfterGiftClaim()
+        }
+    }
+
     private fun dispatchPendingGiftProfileRefresh() {
         if (!profileRefreshAfterGiftPending || _uiState.value.isProfileLoading || playerId == null) return
         profileRefreshAfterGiftPending = false

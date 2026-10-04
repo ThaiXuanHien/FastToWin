@@ -2,8 +2,8 @@
 
 Tasks 1–2 provide durable policy, protected admin HTTP, runtime admission, drain
 and abort. Main selects the runtime and real repository when a database is
-configured. Independent paid-receipt HTTP/client transport and admin/player UI
-remain Tasks 3–4. Both /status and /api/status use the runtime provider.
+configured. Task 3 provides independent paid-receipt HTTP/client transport;
+admin/player maintenance UI remains Task 4. Both /status and /api/status use the runtime provider.
 
 ## Types and service seam
 
@@ -166,7 +166,7 @@ is false. Observation does not promise runtime side effects have finished.
 | Unavailable after known ACTIVE/ANNOUNCING/DRAINING | true | true | false |
 
 See the runtime integration contract below for admission, resume, abort and
-socket closure. Independent receipt HTTP/client transport remains Task 3.
+socket closure. Independent receipt HTTP/client transport is documented under Task 3.
 
 ## Public protocol
 
@@ -263,7 +263,7 @@ engine mutex after asynchronous profile/quota work. Short admission covers early
 economic/profile/social handlers; accepted economic work may finish without
 holding that mutex across provider calls. VerifyStorePurchase remains explicitly
 allowed using the existing grant workflow. Task3 extracts that workflow into one
-shared service and adds independent authenticated HTTP/client transport.
+shared service and provides independent authenticated HTTP/client transport.
 
 Login/register/guest upgrade reject blocked new intent with503/MAINTENANCE.
 Refresh/logout, health, admin and status remain reachable. Both status paths use
@@ -377,3 +377,54 @@ status for bilingual warning/draining text. Application delivers closures and
 closes authenticated sockets with GOING_AWAY after durable abort success.
 Task4 still owns live preview/browser acceptance; Task2 did not restart preview
 or production.
+
+
+## Task 3 independent paid receipts
+
+`POST /api/store-purchases/verify` authenticates a current registered player bearer
+through AuthenticationService, independently of any game session/socket or
+maintenance admission. It never starts a checkout or admits new economy intent.
+`StorePurchaseRequest` has exactly `store`, `productId`, `purchaseToken`,
+`requestId`; there is no client-supplied player/grant amount. The response is the
+existing typed `ServerMessage.StorePurchaseResult`, with unchanged status/key
+mapping and no raw receipt/token. Both legacy VerifyStorePurchase and HTTP call
+one injected `StorePurchaseService.verify(playerId, request)`, using the existing
+provider verifier, SHA-256 store/token identity and `grantStorePurchase` atomic
+receipt/wallet/balance transaction. Main creates one service; gameModule reuses
+engine.storePurchaseService.
+
+The route requires strict JSON/UTF-8, rejects unknown fields, limits the decoded
+body to 32,768 bytes, requestId to 1–64 characters, productId to 1–128 characters
+and purchaseToken to 1–4,096 characters. Every route response has `no-store` and
+`nosniff`. Existing VERIFY_PURCHASE_PLAYER/IP buckets and policies are shared
+with WebSocket verification; rejection is 429 with Retry-After. Missing/expired
+bearer is 401, malformed JSON is 400, auth/grant SQL unavailability is safe 503.
+Valid provider INVALID/UNAVAILABLE and domain grant statuses remain typed HTTP
+200 results. Coroutine cancellation propagates. Production rejects dev tokens
+and Google testPurchaseContext; provider failures never log raw endpoint/error
+text. No-DB storage returns the existing FAILED domain result and never grants.
+
+FastToWinApp owns the billing gateway, known consumable catalog and receipt
+finalizer above GameContent/MaintenanceScreen. A maintenance-only cold launch
+queries unfinished real purchases with sandbox disabled. It creates no checkout.
+Paid work retries on account attachment/new receipt and every 30 seconds, with
+one serialized retry pass. The HTTP adapter uses current tokens, platform
+request configuration (web markers/credentials) and one forced-refresh retry
+for 401; bounded network/auth errors become safe localized UNAVAILABLE results.
+Pending receipts remain for INVALID/FAILED/UNAVAILABLE, cancellation, lost
+responses and failed/throwing platform consumption. Android confirms successful
+consume or already-not-owned before removal; platform finish is never invoked
+until durable GRANTED/ALREADY_GRANTED. Real unfinished receipts are rediscovered
+from the platform after process restart; the root queue is in memory.
+
+Root receipt entries retain account ownership/obfuscated platform identity.
+Account generations fence late result/profile effects and late HTTP token
+providers. Auth refresh is serialized and cannot resurrect a replaced/logout
+session. A successful same-account receipt requests an authoritative profile
+through GameController's existing profile refresh queue behind older requests;
+no client balance arithmetic is used. A recreated GameContent loads its
+normal authoritative profile and observes retained same-account receipts.
+New checkout is disabled in DRAINING/MAINTENANCE and unknown/unreachable status;
+this paid-finalization exception does not apply to gifts, exchange or gameplay.
+Player Arcade layout/tokens are preserved. Task 4 owns fresh phone/desktop
+ComposePreview/browser acceptance and the /api/status client/worker migration.

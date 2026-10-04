@@ -46,6 +46,7 @@ fun main() {
     } else {
         DailyPushReminderService(playerProfileRepository, pushNotificationService)
     }
+    val storePurchaseService = StorePurchaseService(playerProfileRepository, storePurchaseVerifier)
     val engine = GameEngine(
         identityRepository,
         matchResultRepository,
@@ -57,7 +58,7 @@ fun main() {
         tournamentRepository,
         clanRepository,
         pushNotificationService,
-        storePurchaseVerifier = storePurchaseVerifier,
+        storePurchaseService = storePurchaseService,
         playQuotaRepository = playQuotaRepository,
         rewardedAdVerifier = rewardedAdVerifier,
         rewardedAdAvailability = rewardedAdAvailability,

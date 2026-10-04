@@ -57,7 +57,8 @@ private class IosSandboxStoreBillingGateway : StoreBillingGateway {
             requestId = requestId,
             store = StorePlatform.APP_STORE,
             productId = productId,
-            purchaseToken = token
+            purchaseToken = token,
+            accountId = accountId
         ))
     }
 

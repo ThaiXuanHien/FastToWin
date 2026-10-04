@@ -101,8 +101,13 @@ import com.hienthai.fastowin.platform.parseRoomDeepLink
 import com.hienthai.fastowin.platform.rememberTextSharer
 import com.hienthai.fastowin.platform.rememberStoreBillingGateway
 import com.hienthai.fastowin.platform.rememberRewardedAdGateway
-import com.hienthai.fastowin.platform.PlatformStorePurchase
-import com.hienthai.fastowin.protocol.StorePurchaseStatus
+import com.hienthai.fastowin.data.network.StorePurchaseApiClient
+import com.hienthai.fastowin.state.StorePurchaseFinalizer
+import com.hienthai.fastowin.state.StoreFinalizationState
+import com.hienthai.fastowin.platform.StoreBillingGateway
+import com.hienthai.fastowin.protocol.STORE_PRODUCT_CATALOG
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.distinctUntilChanged
 import com.hienthai.fastowin.navigation.GameMode
 import com.hienthai.fastowin.navigation.ResultNavigationActions
 import com.hienthai.fastowin.state.PracticeChallenge
@@ -157,6 +162,48 @@ fun FastToWinApp(
         )
     }
     val authState by authController.state.collectAsState()
+    // Billing and receipt ownership outlive GameContent/MaintenanceScreen transitions.
+    val storeBillingGateway = rememberStoreBillingGateway()
+    val storeFinalizer = remember(storeBillingGateway) { StorePurchaseFinalizer(storeBillingGateway) }
+    val storeFinalization by storeFinalizer.state.collectAsState()
+    DisposableEffect(storeBillingGateway) { onDispose { storeBillingGateway.close() } }
+    LaunchedEffect(storeBillingGateway, storeFinalizer) {
+        storeBillingGateway.purchases.collect { purchase ->
+            storeFinalizer.enqueue(purchase)
+            launch { storeFinalizer.retryPending() }
+        }
+    }
+    LaunchedEffect(storeBillingGateway) {
+        // Query unfinished real purchases on a maintenance-only cold launch. Never enables sandbox checkout.
+        storeBillingGateway.connect(STORE_PRODUCT_CATALOG, sandboxEnabled = false)
+    }
+    LaunchedEffect(authController, storeFinalizer, serverUrl, authRequestConfigurator) {
+        var api: StorePurchaseApiClient? = null
+        try {
+            authController.state.map { it.session?.userId }.distinctUntilChanged().collect { accountId ->
+                api?.close()
+                api = accountId?.let { owner ->
+                    StorePurchaseApiClient(serverUrl, { force ->
+                        if (authController.state.value.session?.userId != owner) null else {
+                            val token = authController.validAccessToken(force)
+                            token.takeIf { authController.state.value.session?.userId == owner }
+                        }
+                    }, authRequestConfigurator)
+                }
+                storeFinalizer.setAccount(accountId, api)
+                launch { storeFinalizer.retryPending() }
+            }
+        } finally {
+            storeFinalizer.setAccount(null, null)
+            api?.close()
+        }
+    }
+    LaunchedEffect(storeFinalizer) {
+        while (true) {
+            delay(30_000)
+            storeFinalizer.retryPending()
+        }
+    }
     val pendingRoomLink by RoomDeepLinkRouter.pendingLink.collectAsState()
     val pendingChallenge by ChallengeDeepLinkRouter.pendingChallenge.collectAsState()
     var appPreferences by remember(preferencesStore) {
@@ -250,6 +297,11 @@ fun FastToWinApp(
                         { forceRefresh -> authController.validAccessToken(forceRefresh) }
                     },
                     authRequestConfigurator = authRequestConfigurator,
+                    storeBillingGateway = storeBillingGateway,
+                    storeFinalization = storeFinalization,
+                    newCheckoutAllowed = serviceReachable == true && serviceStatus?.state in setOf(
+                        com.hienthai.fastowin.protocol.MaintenanceState.ACTIVE,
+                        com.hienthai.fastowin.protocol.MaintenanceState.ANNOUNCING),
                     onLogout = {
                         restoreGuestSession = false
                         authController.logout()
@@ -296,6 +348,9 @@ private fun GameContent(
     accountDisplayName: String?,
     accessTokenProvider: (suspend (forceRefresh: Boolean) -> String?)?,
     authRequestConfigurator: AuthRequestConfigurator,
+    storeBillingGateway: StoreBillingGateway,
+    storeFinalization: StoreFinalizationState,
+    newCheckoutAllowed: Boolean,
     onLogout: () -> Unit,
     isGuest: Boolean,
     fcmToken: String?,
@@ -351,9 +406,7 @@ private fun GameContent(
     LaunchedEffect(controller, language) {
         controller.updateLanguage(language)
     }
-    val storeBillingGateway = rememberStoreBillingGateway()
     val storeBillingState by storeBillingGateway.state.collectAsState()
-    val pendingStorePurchases = remember { mutableStateMapOf<String, PlatformStorePurchase>() }
     var deferredFriendRequestIds by rememberSaveable(accountUserId) {
         mutableStateOf(emptyList<String>())
     }
@@ -371,22 +424,6 @@ private fun GameContent(
     }
     DisposableEffect(showGiftMailbox, mailboxController) {
         onDispose { if (showGiftMailbox) mailboxController?.reset() }
-    }
-
-    DisposableEffect(storeBillingGateway) {
-        onDispose { storeBillingGateway.close() }
-    }
-
-    LaunchedEffect(storeBillingGateway) {
-        storeBillingGateway.purchases.collect { purchase ->
-            pendingStorePurchases[purchase.requestId] = purchase
-            controller.verifyStorePurchase(
-                requestId = purchase.requestId,
-                store = purchase.store,
-                productId = purchase.productId,
-                purchaseToken = purchase.purchaseToken
-            )
-        }
     }
 
     LaunchedEffect(state.gemStorePackages, state.storeSandboxEnabled) {
@@ -408,24 +445,9 @@ private fun GameContent(
         }
     }
 
-    LaunchedEffect(state.storePurchaseResult) {
-        val result = state.storePurchaseResult ?: return@LaunchedEffect
-        val purchase = pendingStorePurchases.remove(result.requestId)
-        if (purchase != null && result.status in setOf(
-                StorePurchaseStatus.GRANTED,
-                StorePurchaseStatus.ALREADY_GRANTED
-            )
-        ) {
-            storeBillingGateway.finishPurchase(purchase.purchaseToken)
-        }
-        controller.clearStorePurchaseResult()
-        pendingStorePurchases.values.firstOrNull()?.let { next ->
-            controller.verifyStorePurchase(
-                requestId = next.requestId,
-                store = next.store,
-                productId = next.productId,
-                purchaseToken = next.purchaseToken
-            )
+    LaunchedEffect(controller, accountUserId, storeFinalization.profileRevision, storeFinalization.result) {
+        if (accountUserId != null && storeFinalization.accountId == accountUserId) {
+            storeFinalization.result?.let(controller::onStorePurchaseFinalized)
         }
     }
     var profileSection by remember { mutableStateOf<ProfileSection?>(null) }
@@ -1374,11 +1396,11 @@ private fun GameContent(
                 state.isShopOpen -> ShopScreen(
                     progression = state.profile?.progression,
                     gemPackages = state.gemStorePackages,
-                    billingState = storeBillingState,
+                    billingState = storeBillingState.copy(isReady = storeBillingState.isReady && newCheckoutAllowed),
                     isCatalogLoading = state.isGemStoreCatalogLoading,
                     isAccount = !isGuest,
                     onBuyGems = { productId ->
-                        storeBillingGateway.purchase(productId, state.profile?.userId)
+                        if (newCheckoutAllowed) storeBillingGateway.purchase(productId, accountUserId)
                     },
                     onExchangeGold = { offerId -> controller.exchangeGemsForGold(offerId) },
                     isGoldExchangePending = state.exchangingGoldRequestId != null,

@@ -142,6 +142,7 @@ fun Application.gameModule(
 
     adminService?.let { service -> routing { adminAssets(); adminRoutes(service) } }
 
+    routing { storePurchaseRoutes(engine.storePurchaseService, authService, rateLimiter, rateLimitPolicies) }
     routing { giftRoutes(giftService, authService, adminService != null) }
     maintenanceService?.let { service -> routing { maintenanceRoutes(service) } }
     if (giftDeliveryEnabled) startGiftDelivery(giftService)

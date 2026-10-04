@@ -30,6 +30,9 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import java.security.MessageDigest
 import java.util.UUID
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlin.coroutines.resume
 
 @Composable
 actual fun rememberStoreBillingGateway(): StoreBillingGateway {
@@ -42,7 +45,7 @@ private class AndroidStoreBillingGateway(
 ) : StoreBillingGateway, PurchasesUpdatedListener {
     private val _state = MutableStateFlow(StoreBillingState(StorePlatform.GOOGLE_PLAY))
     override val state: StateFlow<StoreBillingState> = _state.asStateFlow()
-    private val _purchases = MutableSharedFlow<PlatformStorePurchase>(extraBufferCapacity = 8)
+    private val _purchases = MutableSharedFlow<PlatformStorePurchase>(replay = 8)
     override val purchases: Flow<PlatformStorePurchase> = _purchases.asSharedFlow()
     private val productDetails = mutableMapOf<String, ProductDetails>()
     private val emittedTokens = mutableSetOf<String>()
@@ -139,7 +142,7 @@ private class AndroidStoreBillingGateway(
         if (_state.value.purchasingProductId != null) return
         val details = productDetails[productId]
         if (details == null) {
-            if (sandboxEnabled) emitSandboxPurchase(productId) else {
+            if (sandboxEnabled) emitSandboxPurchase(productId, accountId) else {
                 _state.update { it.copy(error = LocalizedText(TextKey.BillingProductUnavailable)) }
             }
             return
@@ -190,7 +193,8 @@ private class AndroidStoreBillingGateway(
                             requestId = UUID.randomUUID().toString(),
                             store = StorePlatform.GOOGLE_PLAY,
                             productId = productId,
-                            purchaseToken = purchase.purchaseToken
+                            purchaseToken = purchase.purchaseToken,
+                            obfuscatedAccountId = purchase.accountIdentifiers?.obfuscatedAccountId
                         ))
                     }
                     _state.update { it.copy(purchasingProductId = productId, notice = LocalizedText(TextKey.BillingVerifying)) }
@@ -203,20 +207,35 @@ private class AndroidStoreBillingGateway(
         }
     }
 
-    private fun emitSandboxPurchase(productId: String) {
+    private fun emitSandboxPurchase(productId: String, accountId: String?) {
         val token = "dev:${StorePlatform.GOOGLE_PLAY.name}:$productId:${UUID.randomUUID()}"
         _state.update { it.copy(purchasingProductId = productId, notice = LocalizedText(TextKey.BillingSandboxVerifying)) }
         _purchases.tryEmit(PlatformStorePurchase(
             requestId = UUID.randomUUID().toString(),
             store = StorePlatform.GOOGLE_PLAY,
             productId = productId,
-            purchaseToken = token
+            purchaseToken = token,
+            accountId = accountId
         ))
     }
 
     override fun finishPurchase(purchaseToken: String) {
+        consume(purchaseToken) {}
+    }
+
+    override suspend fun finishPurchaseAndConfirm(purchaseToken: String): Boolean =
+        withTimeoutOrNull(10_000) {
+            suspendCancellableCoroutine { continuation ->
+                consume(purchaseToken) { success ->
+                    if (continuation.isActive) continuation.resume(success)
+                }
+            }
+        } ?: false
+
+    private fun consume(purchaseToken: String, completed: (Boolean) -> Unit) {
         if (purchaseToken.startsWith("dev:")) {
             emittedTokens.remove(purchaseToken)
+            completed(true)
             _state.update { it.copy(purchasingProductId = null, notice = LocalizedText(TextKey.BillingGemsAdded)) }
             return
         }
@@ -228,6 +247,8 @@ private class AndroidStoreBillingGateway(
             } else {
                 _state.update { it.copy(purchasingProductId = null, notice = LocalizedText(TextKey.BillingFinishLater)) }
             }
+            completed(result.responseCode == BillingClient.BillingResponseCode.OK ||
+                result.responseCode == BillingClient.BillingResponseCode.ITEM_NOT_OWNED)
         }
     }
 

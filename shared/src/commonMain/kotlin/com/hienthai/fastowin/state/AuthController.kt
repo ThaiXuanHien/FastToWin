@@ -16,6 +16,9 @@ import com.hienthai.fastowin.protocol.PlayerGender
 import com.hienthai.fastowin.platform.epochMillis
 import com.hienthai.fastowin.protocol.AuthSessionResponse
 import com.hienthai.fastowin.protocol.AccountSessionSnapshot
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -73,6 +76,7 @@ class AuthController(
         }
     )
     val state: StateFlow<AuthState> = _state.asStateFlow()
+    private val refreshMutex = Mutex()
 
     fun updateLanguage(language: AppLanguage) {
         if (messageMapper.language == language) return
@@ -149,19 +153,25 @@ class AuthController(
         }
     }
 
-    suspend fun validAccessToken(forceRefresh: Boolean = false): String? {
-        val session = _state.value.session ?: return null
+    suspend fun validAccessToken(forceRefresh: Boolean = false): String? = refreshMutex.withLock {
+        val session = _state.value.session ?: return@withLock null
         if (!forceRefresh && session.accessExpiresAtEpochMillis > epochMillis() + REFRESH_EARLY_MILLIS) {
-            return session.accessToken
+            return@withLock session.accessToken
         }
-        return runCatching { api.refresh(session.refreshToken) }
+        runCatching { api.refresh(session.refreshToken) }
             .mapCatching { response ->
+                if (_state.value.session?.refreshToken != session.refreshToken ||
+                    _state.value.session?.userId != session.userId ||
+                    store.load(serverUrl)?.refreshToken != session.refreshToken) return@mapCatching null
                 val refreshed = session.withTokens(response)
                 store.save(serverUrl, refreshed)
                 _state.update { it.copy(session = refreshed, isLoading = false, error = null) }
                 refreshed.accessToken
             }
             .getOrElse { error ->
+                if (error is CancellationException) throw error
+                if (_state.value.session?.refreshToken != session.refreshToken ||
+                    _state.value.session?.userId != session.userId) return@getOrElse null
                 val message = if (error is AuthSessionStoreException) {
                     messageMapper.message(error.code, null, emptyMap(), error.message.orEmpty())
                 } else {

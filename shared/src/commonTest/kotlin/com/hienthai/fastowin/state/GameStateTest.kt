@@ -57,6 +57,28 @@ import kotlin.test.assertTrue
 @OptIn(ExperimentalCoroutinesApi::class)
 class GameStateTest {
     @Test
+    fun `HTTP receipt refresh waits for earlier profile response and then requests authoritative balances`() = runTest {
+        val fixture = publicTournamentFixture()
+        fixture.session.server(ServerMessage.SessionReady("player-1"))
+        runCurrent()
+        fixture.controller.refreshProfile()
+        runCurrent()
+        assertEquals(1, fixture.session.sent.filterIsInstance<ClientMessage.GetProfile>().size)
+        fixture.controller.onStorePurchaseFinalized(ServerMessage.StorePurchaseResult("paid", "fasttowin_gems_80",
+            com.hienthai.fastowin.protocol.StorePurchaseStatus.GRANTED, 80, "", "BillingGemsAdded"))
+        runCurrent()
+        assertEquals(1, fixture.session.sent.filterIsInstance<ClientMessage.GetProfile>().size)
+        fixture.session.server(ServerMessage.ProfileData(PlayerProfileSnapshot(userId = "player-1", displayName = "Player", playerCode = "PLAYER01",
+            progression = PlayerProgressionSnapshot(gems = 0))))
+        runCurrent()
+        assertEquals(2, fixture.session.sent.filterIsInstance<ClientMessage.GetProfile>().size)
+        fixture.session.server(ServerMessage.ProfileData(PlayerProfileSnapshot(userId = "player-1", displayName = "Player", playerCode = "PLAYER01",
+            progression = PlayerProgressionSnapshot(gems = 80))))
+        runCurrent()
+        assertEquals(80, fixture.controller.uiState.value.profile?.progression?.gems)
+        fixture.controller.close()
+    }
+    @Test
     fun `route away during second claim batch still refreshes final authoritative profile`() = runTest {
         val fixture = publicTournamentFixture()
         fixture.session.server(ServerMessage.SessionReady("player-1"))

@@ -5,6 +5,7 @@ import com.hienthai.fastowin.protocol.GemPackageSnapshot
 import com.hienthai.fastowin.protocol.StorePlatform
 import com.hienthai.fastowin.localization.TextKey
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.contentOrNull
@@ -63,6 +64,9 @@ class EnvironmentStorePurchaseVerifier(
     private val appStoreVerifier: StorePurchaseVerifier? = null
 ) : StorePurchaseVerifier {
     override suspend fun verify(purchase: StorePurchaseVerification): StoreVerificationResult {
+        if (environment != "dev" && purchase.purchaseToken.startsWith("dev:")) {
+            return StoreVerificationResult(StoreVerificationStatus.INVALID, legacyFallback("Giao dịch sandbox không hợp lệ."))
+        }
         if (environment == "dev" && purchase.purchaseToken.startsWith("dev:${purchase.store.name}:")) {
             return StoreVerificationResult(StoreVerificationStatus.PURCHASED, legacyFallback("Giao dịch sandbox hợp lệ."))
         }
@@ -79,7 +83,8 @@ class EnvironmentStorePurchaseVerifier(
 class GooglePlayPurchaseVerifier(
     private val packageName: String,
     private val credentials: GoogleCredentials,
-    private val httpClient: HttpClient = HttpClient.newBuilder().build()
+    private val httpClient: HttpClient = HttpClient.newBuilder().build(),
+    private val sandboxAllowed: Boolean = false
 ) : StorePurchaseVerifier {
     override suspend fun verify(purchase: StorePurchaseVerification): StoreVerificationResult =
         withContext(Dispatchers.IO) {
@@ -110,6 +115,9 @@ class GooglePlayPurchaseVerifier(
                     return@withContext StoreVerificationResult(status, legacyFallback("Google Play từ chối giao dịch."))
                 }
                 val payload = Json.parseToJsonElement(response.body()).jsonObject
+                if (!sandboxAllowed && "testPurchaseContext" in payload) {
+                    return@withContext StoreVerificationResult(StoreVerificationStatus.INVALID, legacyFallback("Giao dịch sandbox không hợp lệ."))
+                }
                 val state = payload["purchaseStateContext"]
                     ?.jsonObject?.get("purchaseState")?.jsonPrimitive?.contentOrNull
                 val productMatches = payload["productLineItem"]?.jsonArray?.any { line ->
@@ -124,8 +132,10 @@ class GooglePlayPurchaseVerifier(
                 } else {
                     StoreVerificationResult(StoreVerificationStatus.INVALID, legacyFallback("Giao dịch chưa hoàn tất hoặc không khớp tài khoản."))
                 }
-            } catch (error: Throwable) {
-                System.err.println("Google Play purchase verification failed: ${error.message}")
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                System.err.println("Google Play purchase verification unavailable")
                 StoreVerificationResult(StoreVerificationStatus.UNAVAILABLE, legacyFallback("Chưa thể kết nối Google Play để xác thực."))
             }
         }
@@ -138,7 +148,7 @@ fun configuredStorePurchaseVerifier(environment: String): StorePurchaseVerifier 
         val credentials = FileInputStream(credentialsPath).use {
             GoogleCredentials.fromStream(it).createScoped(ANDROID_PUBLISHER_SCOPE)
         }
-        GooglePlayPurchaseVerifier(packageName, credentials)
+        GooglePlayPurchaseVerifier(packageName, credentials, sandboxAllowed = environment == "dev")
     } else {
         null
     }

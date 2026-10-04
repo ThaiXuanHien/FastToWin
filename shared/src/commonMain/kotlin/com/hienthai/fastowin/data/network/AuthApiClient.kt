@@ -40,10 +40,11 @@ val NoOpAuthRequestConfigurator = AuthRequestConfigurator { }
 
 class AuthApiClient(
     serverUrl: String,
-    private val requestConfigurator: AuthRequestConfigurator = NoOpAuthRequestConfigurator
+    private val requestConfigurator: AuthRequestConfigurator = NoOpAuthRequestConfigurator,
+    client: HttpClient? = null
 ) {
     private val baseUrl = serverUrl.toHttpBaseUrl()
-    private val client = HttpClient {
+    private val client = client ?: HttpClient {
         install(ContentNegotiation) { json(ProtocolJson) }
         install(HttpTimeout) {
             connectTimeoutMillis = REQUEST_TIMEOUT_MILLIS

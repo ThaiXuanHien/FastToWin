@@ -30,7 +30,9 @@ data class PlatformStorePurchase(
     val requestId: String,
     val store: StorePlatform,
     val productId: String,
-    val purchaseToken: String
+    val purchaseToken: String,
+    val accountId: String? = null,
+    val obfuscatedAccountId: String? = null
 )
 
 interface StoreBillingGateway {
@@ -40,6 +42,10 @@ interface StoreBillingGateway {
     fun connect(packages: List<GemPackageSnapshot>, sandboxEnabled: Boolean)
     fun purchase(productId: String, accountId: String?)
     fun finishPurchase(purchaseToken: String)
+    suspend fun finishPurchaseAndConfirm(purchaseToken: String): Boolean {
+        finishPurchase(purchaseToken)
+        return true
+    }
     fun close()
 }
 
