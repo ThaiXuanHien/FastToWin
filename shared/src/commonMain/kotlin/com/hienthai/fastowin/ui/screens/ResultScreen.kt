@@ -1,4 +1,5 @@
 package com.hienthai.fastowin.ui.screens
+import com.hienthai.fastowin.ui.components.LocalNewOnlineIntentAllowed
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
@@ -180,7 +181,7 @@ fun ResultScreen(
                     icon = Icons.Rounded.Check,
                     modifier = Modifier.fillMaxWidth().testTag("accept_rematch"),
                     style = ArcadeActionStyle.GOLD,
-                    enabled = !state.isRematchActionPending
+                    enabled = LocalNewOnlineIntentAllowed.current && !state.isRematchActionPending
                 )
                 ArcadeActionButton(
                     label = localized(TextKey.Decline),
@@ -781,7 +782,7 @@ private fun RematchCard(
                     icon = Icons.Rounded.RestartAlt,
                     modifier = Modifier.fillMaxWidth().testTag("result_rematch_action"),
                     style = ArcadeActionStyle.GOLD,
-                    enabled = !state.isRematchActionPending
+                    enabled = LocalNewOnlineIntentAllowed.current && !state.isRematchActionPending
                 )
             }
         }

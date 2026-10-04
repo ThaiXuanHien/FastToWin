@@ -206,3 +206,17 @@ dd { margin: 6px 0 0; font-weight: 500; overflow-wrap: anywhere; }
   .gift-field-pair { grid-template-columns: minmax(0, 1fr); gap: 24px; }
   .field:has(input[type="datetime-local"]) label { max-width: calc(100% - 24px); position: static; padding: 0; margin: 0 0 8px; }
 }
+/* Maintenance uses the same white Material controls and readable observations. */
+.maintenance-heading { display: flex; align-items: center; flex-wrap: wrap; gap: 16px; }
+.maintenance-heading h2 { margin: 0; }
+.maintenance-message { padding-block: 16px; border-top: 1px solid var(--line); }
+.maintenance-message h3 { margin: 0 0 8px; }
+.maintenance-status dd { overflow-wrap: anywhere; }
+.maintenance-status > h3 { margin: 0; font-size: 1rem; }
+.maintenance-status .facts { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+@media (max-width: 700px) { .maintenance-status .facts { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+input[readonly] { background: var(--surface); }
+.maintenance-modal[open] { display: flex; flex-direction: column; overflow: hidden; }
+.maintenance-modal .modal-header { flex: none; margin-bottom: 16px; }
+.maintenance-modal .modal-form { overflow-y: auto; min-height: 0; padding: 8px 4px; }
+.maintenance-modal :is(input, select, textarea, button, [tabindex]) { scroll-margin-block: 16px; }

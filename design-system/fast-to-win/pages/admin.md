@@ -60,3 +60,13 @@ Reuse the 560px white dialog, with a sticky heading/close control on long gift f
 Preview shows recipient count, duplicate/invalid IDs and total Vàng/XP before the separate publication confirmation. Published content is read-only; cancellation requires a reason and explains that received gifts remain. Report text explains that delivered/claimed/expired counters overlap. No status-filter control is shown until the server supports filtering across the complete list.
 
 `admin-gifts.spec.mjs` verifies lifecycle, PUT/version checks, exact retries, pending dismissal guards, validation, revocation, Support history access, phone scrolling and focus restoration. Fixture screenshots: `.artifacts/admin-gifts-{360,768,1024,1440}-{list,form,preview,confirm}.png`, with reduced motion enabled.
+
+## Maintenance
+
+All current roles see **Bảo trì**; only Owner sees configuration/disable actions. Environment override is visibly named and disables mutation. Separate the server's latest observed version/time/match count from the saved policy; unavailable observations remain unknown, never zero. A save acknowledgment is not evidence that every socket has closed.
+
+Reuse the native white modal, existing API/channel/session fences and explicit asset allowlist. The heading stays visible while form content scrolls; focus starts at the mode field, with the footer reachable independently of the page behind the dialog. Use plain Vietnamese labels, bilingual message fields, Bangkok dates and an explicit advisory-end explanation. Confirmation carries readable actions and text-only messages.
+
+Enabled policies retain saved schedule values in read-only duration fields. Text/cause/advisory edits preserve deadlines; planned policy can escalate to emergency. Explain that a fresh schedule or emergency-to-planned change needs disable then enable. Pending requests guard dismissal; uncertain identical retries preserve the whole payload/request ID. Version or mode conflicts require reload.
+
+`admin-maintenance.spec.mjs` exercises actual controls, exact payloads, roles/override, input bounds, retries, modal/session fences, observed data, reduced motion and touch landscape. Captures: `.artifacts/admin-maintenance-{360,768,1024,1440}-{list,form,form-end,confirm}.png`.

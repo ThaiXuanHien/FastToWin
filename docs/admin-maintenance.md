@@ -431,3 +431,48 @@ New checkout is disabled in DRAINING/MAINTENANCE and unknown/unreachable status;
 this paid-finalization exception does not apply to gifts, exchange or gameplay.
 Player Arcade layout/tokens are preserved. Task 4 owns fresh phone/desktop
 ComposePreview/browser acceptance and the /api/status client/worker migration.
+
+## Task 4 admin and player consumption
+
+The explicit `admin-maintenance.js` asset uses the existing native modal, API,
+request channel and session fences. Owner can configure/disable; Operator and
+Support read current policy and runtime observations. Environment override is
+named and immutable in the UI. Saved version/state/schedule and runtime observed
+version/time/active match count are separate; unknown count is never rendered as
+zero, and saving never claims all sockets have closed. Enabled-policy edits send
+the saved duration values and expectedVersion; uncertain retries keep the exact
+request ID/body, while 409/MODE_LOCKED requires fresh observation.
+
+ServiceStatusClient now reads `/api/status` without custom non-simple request
+headers, preserving cross-origin compatibility. It propagates cancellation and
+returns null on failure; ServiceStatusState retains the last explicit policy
+separately from reachability. Known closure remains closed offline. Unknown or
+unreachable status disables new intent/checkout. ANNOUNCING and DRAINING retain
+game composition with a compact localized notice and estimated countdown. A
+native Arcade dialog exposes full VI/EN messages, guidance, advisory Bangkok end
+time and recheck errors without pushing the live game off screen. MAINTENANCE
+replaces only game content; the accepted root paid finalizer stays alive.
+
+Polling now respects advertised intervals bounded to 5–300 seconds, rather than
+the prior 15-second minimum. Failure retries use five seconds. Current ACTIVE
+advertises 30 seconds, so discovery can take that interval plus request duration;
+known maintenance advertises five seconds. Requests time out after five seconds.
+The server's runtime-application bound is not a client polling guarantee, and
+neither the countdown nor advisory end causes reopening.
+
+Worker shell-v8 skips both exact status paths before navigation/cache handling
+and purges their same-origin entries from every cache during activation/private
+policy handshake. Admin/mailbox network-only rules and offline shell remain.
+The new alias bypasses the old v7 controller even while the update waits. This
+does not repair an already-running old JavaScript client retroactively: it needs
+new client code/reload or worker activation. Server responses remain no-store;
+intermediary proxies must preserve that policy.
+
+Local acceptance uses the owned loopback preview and disposable players/admins:
+planned announcement, drain with an admitted match continuing/new room rejected,
+deadline closure, reopening, emergency old socket closure, role reads/mutation
+denial, revocation and audit entries. Preview is restored ACTIVE. Separate real
+Netty/PostgreSQL isolated-schema acceptance covers environment override and one
+durable paid receipt grant/replay with an injected trusted verifier; it is not
+real payment-provider/store acceptance. Exact evidence and visual/device limits
+are recorded in `.superpowers/sdd/2026-10-03-admin-maintenance/task-4-report.md`.

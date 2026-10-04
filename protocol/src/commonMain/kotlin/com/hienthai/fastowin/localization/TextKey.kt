@@ -29,6 +29,8 @@ enum class TextKey {
     Gold, Gems, Notifications, ViewMoreCount,
     UpdateGameTitle, UpdateAvailableSubtitle, UpdateHeroTitle, UpdateDescription,
     UpdateAutoReload, UpdateProgressPreserved, UpdateNow, Later,
+    MaintenanceAnnouncing, MaintenanceDraining, MaintenancePrepare, MaintenanceDrainGuidance,
+    MaintenanceCountdown, MaintenanceCountdownCompact, MaintenanceExpectedEnd, MaintenanceRecheckUnavailable, MaintenanceDetails,
     MaintenanceBadge, MaintenanceTitle, MaintenanceDefaultMessage, MaintenanceAutoResume,
     MaintenanceNoAction,
     OfflineBadge, OfflineTitle, OfflineDescription, OfflineCheckNetwork, OfflineNotMaintenance,

@@ -1,4 +1,5 @@
 package com.hienthai.fastowin.ui.screens
+import com.hienthai.fastowin.ui.components.LocalNewOnlineIntentAllowed
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -168,7 +169,7 @@ fun TournamentScreen(
                         filters = state.publicTournamentFilters,
                         isLoading = state.isPublicTournamentsLoading,
                         isJoining = state.isTournamentLoading,
-                        isConnected = state.connectionStatus == ConnectionStatus.CONNECTED,
+                        isConnected = LocalNewOnlineIntentAllowed.current && state.connectionStatus == ConnectionStatus.CONNECTED,
                         onFiltersChange = onPublicFiltersChange,
                         onRefresh = onRefreshPublic,
                         onJoin = onJoinPublic
@@ -181,7 +182,7 @@ fun TournamentScreen(
                     }
                     CreateTournamentCard(
                         playerLevel = state.profile?.progression?.level ?: 1,
-                        enabled = !state.isTournamentLoading,
+                        enabled = LocalNewOnlineIntentAllowed.current && !state.isTournamentLoading,
                         onCreate = onCreate
                     )
                     if (state.tournamentHub.recentTournaments.isNotEmpty()) {
@@ -228,6 +229,7 @@ fun TournamentInvitationDialog(
             ArcadeActionButton(
                 label = localized(TextKey.JoinTournament),
                 onClick = { onRespond(true) },
+                enabled = LocalNewOnlineIntentAllowed.current,
                 style = ArcadeActionStyle.GOLD,
                 modifier = Modifier.fillMaxWidth()
             )
@@ -1016,7 +1018,7 @@ private fun ActiveTournamentContent(
         ArcadeActionButton(
             label = localized(TextKey.StartTournament),
             onClick = onStart,
-            enabled = tournament.players.size == tournament.maxPlayers &&
+            enabled = LocalNewOnlineIntentAllowed.current && tournament.players.size == tournament.maxPlayers &&
                 tournament.players.all { it.isOnline } && !state.isTournamentLoading,
             icon = Icons.Rounded.PlayArrow,
             style = ArcadeActionStyle.GOLD,
@@ -1278,6 +1280,7 @@ private fun InvitationCard(
                 ArcadeActionButton(
                     label = localized(TextKey.JoinTournament),
                     onClick = { onRespond(invitation.invitationId, true) },
+                    enabled = LocalNewOnlineIntentAllowed.current,
                     style = ArcadeActionStyle.GOLD,
                     modifier = Modifier.fillMaxWidth()
                 )

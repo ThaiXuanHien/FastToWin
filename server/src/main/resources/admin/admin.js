@@ -59,6 +59,7 @@ function icon(name) {
     search: 'M21 21l-5-5M18 10a8 8 0 1 1-16 0 8 8 0 0 1 16 0Z',
     add: 'M12 5v14M5 12h14',
     gifts: 'M3 8h18v4H3ZM5 12v9h14v-9M12 8v13M12 8H7a3 3 0 1 1 3-3l2 3ZM12 8h5a3 3 0 1 0-3-3l-2 3Z',
+    maintenance: 'M4 4h16v6H4ZM4 14h16v6H4ZM7 7h1M7 17h1M12 7h5M12 17h5',
   };
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
   for (const [key, value] of Object.entries({ viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', 'stroke-width': '1.7', 'stroke-linecap': 'round', 'stroke-linejoin': 'round', 'aria-hidden': 'true', focusable: 'false', class: 'icon' })) svg.setAttribute(key, value);
@@ -218,6 +219,7 @@ function shell(title, section) {
   const layout = node('div', null, { class: 'layout' });
   const nav = node('nav', null, { 'aria-label': 'Quản trị' });
   const links = [['users', 'Người chơi', directory]];
+  links.push(['maintenance', 'Bảo trì', maintenance]);
   if (session.admin.role !== 'SUPPORT') links.push(['gifts', 'Quà admin', giftCampaigns]);
   if (session.admin.role === 'OWNER') links.push(['accounts', 'Tài khoản quản trị', accounts], ['audit', 'Nhật ký kiểm toán', audit]);
   for (const [key, label, action] of links) nav.append(decoratedButton(label, action, key, key === section ? { 'aria-current': 'page' } : {}));
@@ -225,6 +227,18 @@ function shell(title, section) {
   main.append(node('h1', title));
   append(layout, nav, main); append(app, header, layout);
   return main;
+}
+async function maintenance() {
+  if (!session) return;
+  const task = channel()();
+  try {
+    const { openMaintenance } = await import('./admin-maintenance.js');
+    if (!task.current()) return;
+    openMaintenance({ node, append, button, iconButton, field, modal, feedback, shell, channel,
+      role: () => session?.admin.role,
+      api: (path, request, payload, method) => api(path, request, payload, session?.csrfToken, method),
+    });
+  } catch (error) { if (task.current() && error.name !== 'AbortError') feedback(document.getElementById('main')).fail(new Error('Không thể tải quản lý bảo trì. Vui lòng thử lại.')); }
 }
 async function giftCampaigns() {
   if (!session || session.admin.role === 'SUPPORT') return;

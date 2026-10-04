@@ -39,6 +39,7 @@ import com.hienthai.fastowin.state.AuthStage
 import com.hienthai.fastowin.data.network.AuthSessionStore
 import com.hienthai.fastowin.data.network.ResumeTokenStore
 import com.hienthai.fastowin.data.network.ServiceStatusClient
+import com.hienthai.fastowin.data.network.localizedMaintenanceMessage
 import com.hienthai.fastowin.data.network.GiftApiClient
 import com.hienthai.fastowin.data.preferences.AppPreferences
 import com.hienthai.fastowin.data.preferences.AppPreferencesStore
@@ -145,10 +146,9 @@ fun FastToWinApp(
 ) {
     var restoreGuestSession by rememberSaveable { mutableStateOf(false) }
     val serviceStatusClient = remember(serverUrl) { ServiceStatusClient(serverUrl) }
-    var serviceStatus by remember(serverUrl) {
-        mutableStateOf<com.hienthai.fastowin.protocol.ServiceStatusResponse?>(null)
-    }
-    var serviceReachable by remember(serverUrl) { mutableStateOf<Boolean?>(null) }
+    var serviceObservation by remember(serverUrl) { mutableStateOf(com.hienthai.fastowin.data.network.ServiceStatusState()) }
+    val serviceStatus = serviceObservation.status
+    val serviceReachable = serviceObservation.reachable
     var serviceStatusRefreshKey by rememberSaveable(serverUrl) { mutableStateOf(0) }
     var launchOfflinePractice by rememberSaveable { mutableStateOf(false) }
     val authController = remember(serverUrl, authSessionStore, devicePlatform, authRequestConfigurator) {
@@ -225,10 +225,8 @@ fun FastToWinApp(
     LaunchedEffect(serviceStatusClient, serviceStatusRefreshKey) {
         while (true) {
             val fetchedStatus = serviceStatusClient.fetchOrNull()
-            serviceStatus = fetchedStatus
-            serviceReachable = fetchedStatus != null
-            val pollSeconds = fetchedStatus?.pollAfterSeconds?.coerceIn(15, 300) ?: 10
-            delay(pollSeconds * 1_000L)
+            serviceObservation = serviceObservation.received(fetchedStatus)
+            delay(serviceObservation.pollSeconds * 1_000L)
         }
     }
 
@@ -251,9 +249,21 @@ fun FastToWinApp(
                 color = MaterialTheme.colorScheme.background,
                 contentColor = MaterialTheme.colorScheme.onBackground
             ) {
-            if (serviceReachable == true && serviceStatus?.maintenance == true) {
+            androidx.compose.runtime.CompositionLocalProvider(
+                com.hienthai.fastowin.ui.components.LocalNewOnlineIntentAllowed provides serviceObservation.newIntentAllowed
+            ) {
+            Column(Modifier.fillMaxSize()) {
+                if (serviceObservation.showBanner) com.hienthai.fastowin.ui.components.MaintenanceBanner(
+                    status = checkNotNull(serviceStatus), reachable = serviceReachable == true
+                )
+            Box(Modifier.weight(1f).fillMaxWidth()) {
+            if (serviceObservation.fullyClosed) {
                 ArcadeBackdrop(modifier = Modifier.fillMaxSize()) {
-                    MaintenanceScreen(message = serviceStatus?.message)
+                    MaintenanceScreen(
+                        message = serviceStatus?.localizedMaintenanceMessage(resolvedLanguage),
+                        expectedEndEpochMillis = serviceStatus?.expectedEndEpochMillis,
+                        statusReachable = serviceReachable == true
+                    )
                 }
             } else if (serviceReachable == false && authState.stage != AuthStage.PLAYING) {
                 ArcadeBackdrop(modifier = Modifier.fillMaxSize()) {
@@ -299,9 +309,7 @@ fun FastToWinApp(
                     authRequestConfigurator = authRequestConfigurator,
                     storeBillingGateway = storeBillingGateway,
                     storeFinalization = storeFinalization,
-                    newCheckoutAllowed = serviceReachable == true && serviceStatus?.state in setOf(
-                        com.hienthai.fastowin.protocol.MaintenanceState.ACTIVE,
-                        com.hienthai.fastowin.protocol.MaintenanceState.ANNOUNCING),
+                    newCheckoutAllowed = serviceObservation.newIntentAllowed,
                     onLogout = {
                         restoreGuestSession = false
                         authController.logout()
@@ -334,6 +342,9 @@ fun FastToWinApp(
                     pushBridge = pushBridge,
                     language = resolvedLanguage
                 )
+            }
+            }
+            }
             }
             }
         }

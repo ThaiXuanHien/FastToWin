@@ -1,4 +1,5 @@
 package com.hienthai.fastowin.ui.screens
+import com.hienthai.fastowin.ui.components.LocalNewOnlineIntentAllowed
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.background
@@ -439,6 +440,7 @@ private fun RoomBrowser(
 ) {
     val localization = LocalLocalization.current
     var selectedRoom by remember { mutableStateOf<AvailableRoom?>(null) }
+    val newIntentAllowed = LocalNewOnlineIntentAllowed.current
     var showCreateMatchType by remember { mutableStateOf(false) }
     var createMatchType by remember { mutableStateOf<MatchType?>(null) }
     var createGameMode by remember { mutableStateOf<GameMode?>(null) }
@@ -462,7 +464,8 @@ private fun RoomBrowser(
         }
     }
 
-    LaunchedEffect(state.pendingRoomLinkId, state.roomListVersion) {
+    LaunchedEffect(state.pendingRoomLinkId, state.roomListVersion, newIntentAllowed) {
+        if (!newIntentAllowed) return@LaunchedEffect
         val roomId = state.pendingRoomLinkId ?: return@LaunchedEffect
         if (state.roomListVersion <= state.pendingRoomLinkListVersion) return@LaunchedEffect
         val linkedRoom = state.availableRooms.firstOrNull { it.id == roomId }
@@ -580,7 +583,7 @@ private fun RoomBrowser(
 
             item(key = "room_actions") {
                 RoomBrowserActions(
-                    canCreate = state.connectionStatus == ConnectionStatus.CONNECTED && !state.isSearching,
+                    canCreate = newIntentAllowed && state.connectionStatus == ConnectionStatus.CONNECTED && !state.isSearching,
                     onCreate = {
                         createMatchType = null
                         createGameMode = null
@@ -714,6 +717,7 @@ private fun RoomBrowserActions(
             icon = Icons.Default.Lock,
             style = ArcadeActionStyle.OUTLINE,
             onClick = onJoinCode,
+            enabled = LocalNewOnlineIntentAllowed.current,
             modifier = Modifier.fillMaxWidth()
         )
     }
@@ -753,7 +757,7 @@ private fun JoinByCodeDialog(
             ArcadeActionButton(
                 label = localized(TextKey.FindRoom),
                 style = ArcadeActionStyle.GOLD,
-                enabled = code.isNotBlank(),
+                enabled = code.isNotBlank() && LocalNewOnlineIntentAllowed.current,
                 onClick = {
                     val room = rooms.firstOrNull { it.id.equals(code.trim(), ignoreCase = true) }
                     if (room == null) error = localization.text(TextKey.RoomCodeNotFound) else onSelect(room)
@@ -877,7 +881,7 @@ private fun CreateRoomDialog(
                 ArcadeActionButton(
                     label = localized(TextKey.CreateRoom).uppercase(),
                     style = ArcadeActionStyle.GOLD,
-                    enabled = !isLoading && (!isPrivate || roomPassword.isNotEmpty()),
+                    enabled = LocalNewOnlineIntentAllowed.current && !isLoading && (!isPrivate || roomPassword.isNotEmpty()),
                     onClick = {
                         onCreate(
                             roomName.trim().ifBlank { defaultRoomName },
@@ -907,6 +911,7 @@ private fun CreateRoomDialog(
 private fun RoomCard(room: AvailableRoom, onClick: () -> Unit) {
     Surface(
         onClick = onClick,
+        enabled = LocalNewOnlineIntentAllowed.current,
         modifier = Modifier.fillMaxWidth().testTag("room_item:${room.id}"),
         shape = RoundedCornerShape(16.dp),
         color = ArcadePalette.Navy800,
@@ -1013,7 +1018,7 @@ private fun JoinRoomDialog(
             ArcadeActionButton(
                 label = localized(TextKey.JoinRoom).uppercase(),
                 style = ArcadeActionStyle.GOLD,
-                enabled = !room.requiresPassword || password.isNotBlank(),
+                enabled = LocalNewOnlineIntentAllowed.current && (!room.requiresPassword || password.isNotBlank()),
                 onClick = { onJoin(password) },
                 modifier = Modifier.fillMaxWidth().testTag("join_room_submit")
             )
@@ -1174,7 +1179,7 @@ private fun RoomWaiting(
             label = localized(if (state.player.isReady) TextKey.CancelReady else TextKey.ReadyAction),
             style = ArcadeActionStyle.GOLD,
             onClick = { onSetReady(!state.player.isReady) },
-            enabled = state.connectionStatus == ConnectionStatus.CONNECTED && state.hasOpponent,
+            enabled = LocalNewOnlineIntentAllowed.current && state.connectionStatus == ConnectionStatus.CONNECTED && state.hasOpponent,
             modifier = Modifier.fillMaxWidth()
         )
         if (state.player.isReady) {

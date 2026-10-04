@@ -1,30 +1,24 @@
-# Maintenance screen
+# Maintenance feedback
 
-This page extends `../MASTER.md` without changing the global design direction.
+This page extends `../MASTER.md`; player surfaces retain the Arcade palette and components.
 
-## Purpose
+## States and layout
 
-- Explain planned server maintenance without confusing it with a connection failure.
-- Preserve trust by confirming that account progress remains safe.
-- Lock online interaction until the server explicitly reports that maintenance has ended.
+- `GET /api/status` supplies ACTIVE, ANNOUNCING, DRAINING and MAINTENANCE. `/status` remains a server compatibility alias.
+- ANNOUNCING/DRAINING show a compact navy notice with a gold status, estimated countdown and a native 48dp **Details** action. The game remains composed below it. Long messages do not increase the notice height.
+- Details uses the existing Arcade dialog, with the full VI/EN runtime message, preparation/drain guidance, expected-end advisory and failed-recheck explanation. Its body scrolls independently of the close action. Text is plain content, never markup.
+- Only MAINTENANCE (or the legacy explicit maintenance Boolean) replaces game content with the established full-screen Arcade illustration and centered column capped at 520dp. That screen scrolls at large text sizes and consumes Back; it offers no new gameplay action.
+- Expected end is shown in Bangkok time and explicitly advisory. Copy says the game resumes when the server reopens; the clock never unlocks it.
 
-## Layout
+## Reachability and lifetime
 
-- Full-screen Arcade backdrop with a centered content column capped at 520 dp.
-- Gold maintenance status pill, server-and-lightning illustration, short headline and body copy.
-- Status panel explains that the app will reopen automatically.
-- No buttons, links, pull-to-refresh, or other actions are exposed.
-- Content scrolls for small-height devices and large system text.
+- Failed requests do not fabricate ACTIVE or maintenance. Keep the last explicit status and indicate unavailable rechecks in the notice details/full closure. Unknown/unreachable state disables new online intent and checkout.
+- New rooms/matches/rematches/tournament starts and checkouts are disabled in DRAINING. Existing match controls remain available; the server owns admission and deadline enforcement.
+- Poll server intervals with a 5–300 second bound, retry failures after five seconds. ACTIVE currently advertises 30 seconds; discovering a change can therefore take that interval plus request time. A displayed countdown is only an estimate, not proof of a server transition.
+- Root authentication and paid-receipt finalization remain alive when full maintenance replaces game composition. No new checkout is started from the closure screen.
 
-## Behavior
+## Accessibility and verification
 
-- Show only when `GET /status` returns `maintenance: true`.
-- A timeout, failed status request, disconnected socket, or unavailable network must never activate it.
-- Consume system Back and iOS edge-back gestures while active.
-- Poll the status endpoint at the server-provided interval and hide only after an explicit `maintenance: false` response.
-- Keep the last explicit maintenance state when a later poll fails, so a long maintenance window remains locked.
+Use native buttons/dialog semantics, stable status live-region announcements and a descriptive countdown label. Avoid per-second assertive announcements. At large text sizes the compact title may visually ellipsize; its full label and full dialog remain available.
 
-## Accessibility
-
-- The illustration and status icons are decorative; the explanatory copy carries the full meaning.
-- Content scrolls at large text sizes without introducing an interactive affordance.
+Maintenance-only Compose screenshot fixtures cover phone, desktop, short landscape, 2× text, 1,000-character notices, open notice dialogs and matched game-only constrained layouts. Existing short-landscape game cells are smaller than recommended touch sizes; these renders do not establish universal playability or screen-reader/device acceptance. Admin interactions are separately exercised in Chromium. No unrelated screenshot references are updated.

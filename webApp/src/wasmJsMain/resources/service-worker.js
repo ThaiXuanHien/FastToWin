@@ -1,5 +1,5 @@
 const CACHE_PREFIX = 'fast-to-win-';
-const SHELL_CACHE = `${CACHE_PREFIX}shell-v7`;
+const SHELL_CACHE = `${CACHE_PREFIX}shell-v8`;
 const APP_SHELL = [
     '/',
     '/index.html',
@@ -64,12 +64,16 @@ function isGiftMailboxPath(path) {
     return ['/gifts/mailbox', '/api/gifts/mailbox'].some(prefix => path === prefix || path.startsWith(prefix + '/'));
 }
 
+function isStatusPath(path) {
+    return path === '/status' || path === '/api/status';
+}
+
 async function purgeSensitiveCaches() {
     for (const name of await caches.keys()) {
         const cache = await caches.open(name);
         for (const request of await cache.keys()) {
             const url = new URL(request.url);
-            if (url.origin === self.location.origin && (isAdminPath(url.pathname) || isGiftMailboxPath(url.pathname))) await cache.delete(request);
+            if (url.origin === self.location.origin && (isAdminPath(url.pathname) || isGiftMailboxPath(url.pathname) || isStatusPath(url.pathname))) await cache.delete(request);
         }
     }
 }
@@ -82,7 +86,7 @@ self.addEventListener('fetch', event => {
     if (url.origin !== self.location.origin) return;
     // Private admin and player mailbox responses must always reach the network.
     // /gifts itself remains an offline-capable game SPA navigation.
-    if (isAdminPath(url.pathname) || isGiftMailboxPath(url.pathname)) return;
+    if (isAdminPath(url.pathname) || isGiftMailboxPath(url.pathname) || isStatusPath(url.pathname)) return;
     if (url.pathname.startsWith('/api/') || url.pathname === '/health') return;
 
     if (request.mode === 'navigate') {

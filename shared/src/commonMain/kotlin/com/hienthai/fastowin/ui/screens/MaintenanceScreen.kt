@@ -37,6 +37,10 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
+import com.hienthai.fastowin.data.network.maintenanceBangkokTime
 import com.hienthai.fastowin.localization.TextKey
 import com.hienthai.fastowin.localization.localized
 import com.hienthai.fastowin.ui.components.SystemBackHandler
@@ -50,7 +54,9 @@ import com.hienthai.fastowin.ui.theme.ArcadePalette
 @Composable
 fun MaintenanceScreen(
     message: String? = null,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    expectedEndEpochMillis: Long? = null,
+    statusReachable: Boolean = true
 ) {
     SystemBackHandler(enabled = true, onBack = {})
 
@@ -102,7 +108,18 @@ fun MaintenanceScreen(
                 style = MaterialTheme.typography.headlineLarge,
                 color = Color.White,
                 fontWeight = FontWeight.Black,
-                textAlign = TextAlign.Center
+                textAlign = TextAlign.Center,
+                modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite }
+            )
+
+            if (expectedEndEpochMillis != null) Text(
+                localized(TextKey.MaintenanceExpectedEnd, "time" to maintenanceBangkokTime(expectedEndEpochMillis)),
+                modifier = Modifier.padding(top = 12.dp), style = MaterialTheme.typography.bodySmall,
+                color = ArcadePalette.Blue100, textAlign = TextAlign.Center
+            )
+            if (!statusReachable) Text(
+                localized(TextKey.MaintenanceRecheckUnavailable), modifier = Modifier.padding(top = 12.dp),
+                style = MaterialTheme.typography.bodySmall, color = ArcadePalette.Gold500, textAlign = TextAlign.Center
             )
             Text(
                 text = message?.takeIf { it.isNotBlank() }

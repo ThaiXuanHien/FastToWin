@@ -1,4 +1,5 @@
 package com.hienthai.fastowin.ui.screens
+import com.hienthai.fastowin.ui.components.LocalNewOnlineIntentAllowed
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -219,6 +220,7 @@ internal fun HomeDashboard(
                 icon = Icons.Default.PlayArrow,
                 style = ArcadeActionStyle.GOLD,
                 onClick = if (isGuest) onUpgradeGuest else ({ showMatchTypePicker = true }),
+                enabled = LocalNewOnlineIntentAllowed.current,
                 modifier = Modifier.fillMaxWidth().testTag("home_quick_match")
             )
 
@@ -409,6 +411,7 @@ private fun HomeRoomActions(
             label = localized(TextKey.CreateRoom).uppercase(),
             icon = Icons.Default.Add,
             onClick = onCreateRoom,
+            enabled = LocalNewOnlineIntentAllowed.current,
             modifier = Modifier.fillMaxWidth().testTag("home_action:create_room")
         )
         ArcadeActionButton(
@@ -416,6 +419,7 @@ private fun HomeRoomActions(
             icon = Icons.Default.MeetingRoom,
             style = ArcadeActionStyle.OUTLINE,
             onClick = onOpenRooms,
+            enabled = LocalNewOnlineIntentAllowed.current,
             modifier = Modifier.fillMaxWidth().testTag("home_action:join_room")
         )
     }
@@ -918,7 +922,7 @@ internal fun GameModePickerDialog(
                     title = localized(mode.titleKey),
                     subtitle = if (unlocked) localized(mode.descriptionKey) else localized(TextKey.UnlockAtLevel, "level" to mode.unlockLevel),
                     icon = mode.modeIcon(),
-                    enabled = unlocked,
+                    enabled = unlocked && LocalNewOnlineIntentAllowed.current,
                     modifier = Modifier.testTag("game_mode:${mode.name}")
                 ) { onSelect(mode) }
             }
@@ -966,7 +970,7 @@ fun MatchTypePickerDialog(
                 title = localized(TextKey.CasualMatch),
                 subtitle = localized(TextKey.CasualMatchDescription),
                 icon = CrossedSwordsIcon,
-                enabled = true,
+                enabled = LocalNewOnlineIntentAllowed.current,
                 modifier = Modifier.testTag("match_type:CASUAL"),
                 onClick = {
                     if (quota?.remainingMatches == 0) onQuotaExhausted()
@@ -977,7 +981,7 @@ fun MatchTypePickerDialog(
                 title = localized(TextKey.RankedMatch),
                 subtitle = localized(TextKey.RankedMatchDescription),
                 icon = Icons.Default.EmojiEvents,
-                enabled = true,
+                enabled = LocalNewOnlineIntentAllowed.current,
                 modifier = Modifier.testTag("match_type:RANKED"),
                 onClick = {
                     if (quota?.remainingMatches == 0) onQuotaExhausted()
