@@ -32,7 +32,13 @@ import kotlinx.coroutines.delay
 val LocalNewOnlineIntentAllowed = staticCompositionLocalOf { true }
 
 @Composable
-fun MaintenanceBanner(status: ServiceStatusResponse, reachable: Boolean, modifier: Modifier = Modifier, nowMillis: Long? = null) {
+fun MaintenanceBanner(
+    status: ServiceStatusResponse,
+    reachable: Boolean,
+    modifier: Modifier = Modifier,
+    nowMillis: Long? = null,
+    contentWindowInsets: WindowInsets = WindowInsets(0, 0, 0, 0)
+) {
     var clock by remember { mutableLongStateOf(nowMillis ?: epochMillis()) }
     LaunchedEffect(nowMillis) { if (nowMillis == null) while (true) { clock = epochMillis(); delay(1000) } }
     val draining = status.state == MaintenanceState.DRAINING
@@ -41,7 +47,10 @@ fun MaintenanceBanner(status: ServiceStatusResponse, reachable: Boolean, modifie
     var showDetails by remember { mutableStateOf(false) }
     if (showDetails) MaintenanceNoticeDialog(status, reachable, seconds, onDismiss = { showDetails = false })
     Surface(modifier = modifier.fillMaxWidth().testTag("maintenance_banner"), color = ArcadePalette.Navy800, contentColor = ArcadePalette.Blue100) {
-        Row(Modifier.padding(horizontal = 16.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(
+            Modifier.windowInsetsPadding(contentWindowInsets).padding(horizontal = 16.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
             Column(Modifier.weight(1f)) {
             Text(title,
                 color = ArcadePalette.Gold500, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleSmall,

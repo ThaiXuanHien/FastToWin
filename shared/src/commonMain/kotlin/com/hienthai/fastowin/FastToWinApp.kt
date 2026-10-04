@@ -252,11 +252,10 @@ fun FastToWinApp(
             androidx.compose.runtime.CompositionLocalProvider(
                 com.hienthai.fastowin.ui.components.LocalNewOnlineIntentAllowed provides serviceObservation.newIntentAllowed
             ) {
-            Column(Modifier.fillMaxSize()) {
-                if (serviceObservation.showBanner) com.hienthai.fastowin.ui.components.MaintenanceBanner(
-                    status = checkNotNull(serviceStatus), reachable = serviceReachable == true
-                )
-            Box(Modifier.weight(1f).fillMaxWidth()) {
+            com.hienthai.fastowin.ui.components.MaintenanceRoot(
+                bannerStatus = serviceStatus.takeIf { serviceObservation.showBanner },
+                reachable = serviceReachable == true
+            ) {
             if (serviceObservation.fullyClosed) {
                 ArcadeBackdrop(modifier = Modifier.fillMaxSize()) {
                     MaintenanceScreen(
@@ -342,7 +341,6 @@ fun FastToWinApp(
                     pushBridge = pushBridge,
                     language = resolvedLanguage
                 )
-            }
             }
             }
             }
@@ -688,6 +686,7 @@ private fun GameContent(
         GameModePickerDialog(
             title = localized(TextKey.ChoosePracticeMode),
             playerLevel = state.profile?.progression?.level ?: 1,
+            requiresOnlineAdmission = false,
             onDismiss = { showPracticeModePicker = false },
             onSelect = { mode ->
                 showPracticeModePicker = false

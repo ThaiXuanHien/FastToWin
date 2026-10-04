@@ -905,6 +905,7 @@ internal fun GameModePickerDialog(
     title: String,
     onDismiss: () -> Unit,
     playerLevel: Int = 1,
+    requiresOnlineAdmission: Boolean = true,
     onSelect: (GameMode) -> Unit
 ) {
     ArcadeDialog(
@@ -922,7 +923,7 @@ internal fun GameModePickerDialog(
                     title = localized(mode.titleKey),
                     subtitle = if (unlocked) localized(mode.descriptionKey) else localized(TextKey.UnlockAtLevel, "level" to mode.unlockLevel),
                     icon = mode.modeIcon(),
-                    enabled = unlocked && LocalNewOnlineIntentAllowed.current,
+                    enabled = gameModeChoiceEnabled(mode, playerLevel, requiresOnlineAdmission, LocalNewOnlineIntentAllowed.current),
                     modifier = Modifier.testTag("game_mode:${mode.name}")
                 ) { onSelect(mode) }
             }
@@ -935,6 +936,13 @@ internal fun GameModePickerDialog(
         )
     }
 }
+
+internal fun gameModeChoiceEnabled(
+    mode: GameMode,
+    playerLevel: Int,
+    requiresOnlineAdmission: Boolean,
+    newOnlineIntentAllowed: Boolean
+): Boolean = playerLevel >= mode.unlockLevel && (!requiresOnlineAdmission || newOnlineIntentAllowed)
 
 @Composable
 fun MatchTypePickerDialog(

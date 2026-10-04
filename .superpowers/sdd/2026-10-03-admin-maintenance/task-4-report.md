@@ -112,3 +112,71 @@ Native dialog TextButton/ArcadeActionButton provide keyboard/touch semantics, di
 Self-review caught and fixed cross-origin preflight regression from a custom Cache-Control request header; response no-store and old-worker alias safety remain intact. Compact notice replaced a tall long-text banner that compressed the board, with matched baseline renders and full dialog retained. Admin focus/scroll correction preserves native helper fences. No new CORS/header policy, grants, auth, runtime/tournament design or unrelated screen styling was introduced. Remaining concerns are the device/assistive/small-game-cell limits above and external proxy/provider acceptance.
 
 `git diff --check` passed before staging. Owned source/tests/new references/design/docs/report only are committed; existing `.tmp`, `.artifacts`, `debug.log`, e2e artifacts and Python cache are intentionally preserved untracked/ignored. Controller performs independent per-task review after this commit.
+
+## FIX1 — T4-R1 practice admission and T4-R2 root safe insets
+
+Fix base: `730477f`; scope is `.superpowers/sdd/2026-10-03-admin-maintenance/task-4-fix-1-brief.md`. The paused worker had implemented and verified the fix on 2026-10-04. Recovery on 2026-10-05 inspected the current diff, complete saved gate logs, test XML and all four new reference images. Source/test/script modification times precede the saved GREEN runs; recovery made no implementation changes and did not rerun those suites merely to confirm their results. The verification below reports those recorded runs, not a new device or browser run.
+
+### Corrections and self-review
+
+- `GameModePickerDialog` has explicit `requiresOnlineAdmission`, defaulting to true. The existing offline practice caller passes false; online callers retain admission gating. The shared predicate still requires each mode's unlock level. Unknown/unreachable and DRAINING can select unlocked practice modes while online choices remain disabled.
+- `MaintenanceRoot` owns the notice/screen arrangement. Its banner content receives safe-drawing top and horizontal insets inside the edge-to-edge navy Surface. The screen sibling consumes only the already occupied top inset, leaving its horizontal and bottom insets for `ResponsiveScreen` and screen controls. Without a notice it adds no inset consumption. This keeps the admitted game composed below the notice and retains full-closure behavior.
+- MainActivity already calls ComponentActivity `enableEdgeToEdge` with transparent bars; targetSdk is 37 and `adjustResize` is present. This scoped fix changes no Activity/IME/input behavior. The notice's native Details button retains its 48dp minimum, text label, ripple and dialog behavior. Row inset padding protects both text and the action; no new per-second accessibility announcements, animation or palette changes were introduced.
+- Reviewed both actual picker call sites, the root integration, the consumption order and probe assertions. No additional concrete defect was found within T4-R1/T4-R2. The known constrained landscape game layout remains outside this fix.
+
+Mandatory `.agents/skills/ui-ux-pro-max/SKILL.md`, its pro-rules/quick-reference priorities 1–3, `.agents/skills/edge-to-edge/SKILL.md`, `ui-context.md`, master, maintenance and admin design overrides were read. Applied existing Arcade tokens, native disabled controls, safe-area ownership and 4/8dp spacing. Recovery targeted searches used the bundled Python executable and the skill's absolute script path: `"safe area touch targets" --domain ux` returned applicable mobile 48dp target guidance; `"safe area notch" --domain ux` returned unrelated web focus guidance and was rejected. `"window insets consumption" --stack jetpack-compose`, retried as `"insets"`, returned no match. Inset guidance therefore comes from the explicit edge-to-edge skill and repository source, not a claimed database match. Existing dark/light, large-text and reduced-motion evidence above remains scoped to the initial task; this fix adds no new claim of physical interaction or assistive acceptance.
+
+### Recorded RED/GREEN commands and output
+
+Gradle environment used the existing Android Studio JBR and `JAVA_TOOL_OPTIONS=-Djdk.net.unixdomain.tmpdir=D:/HienTX/Work/Android/FastToWin/.tmp/jvm-sockets` as above. Commands ran from repository root.
+
+| Evidence | Command/outcome |
+|---|---|
+| `.tmp/task4-fix1-picker-red.log` | `./gradlew.bat :shared:testAndroidHostTest --tests '*GameModeAdmissionTest*'`: behavioral **RED**, BUILD FAILED in 14s, 6 tests/2 failures. Specifically, unreachable and draining practice could not select an unlocked mode. |
+| `.tmp/task4-fix1-root-red-render.log` | `./gradlew.bat :app:updateDevDebugScreenshotTest --tests '*MaintenanceRootScreenshotTestKt*'`: render succeeded in 19s; rendering alone was not a pass for safe geometry. |
+| `.tmp/task4-fix1-root-red.log` | Bundled Python `scripts/tests/maintenance-root-insets.py`: behavioral **RED**, both rendered root probes failed side-cutout clearance, title x=43px in portrait and landscape. The checker stops each fixture at its first failed assertion, so no additional RED assertion outcome is inferred. |
+| `.tmp/task4-fix1-green.log` | Affected gate below: **BUILD SUCCESSFUL in 25s**, 26 host tests/0 failures/errors/skips, localization scanner, dev APK, JS/Wasm compilation and four new root renders. |
+| `.tmp/task4-fix1-root-green.log` | Same Python geometry command: **2 PASS**, real rendered title/top/background and screen top/side/bottom assertions. |
+| `.tmp/task4-fix1-reference-validation.log` | Reference validation below: **BUILD SUCCESSFUL in 12s**, 16 maintenance fixtures/0 failures/errors/skips (12 existing + 4 new). |
+
+Affected GREEN gate:
+
+```text
+./gradlew.bat :shared:testAndroidHostTest --tests '*GameModeAdmissionTest*' --tests '*ServiceStatus*' --tests '*PracticeGameTest*' :shared:checkLocalizedUiText :app:assembleDevDebug :webApp:compileKotlinJs :webApp:compileKotlinWasmJs :app:updateDevDebugScreenshotTest --tests '*MaintenanceRootScreenshotTestKt*'
+```
+
+Geometry command (the bundled executable contains spaces and was invoked with PowerShell `&`):
+
+```text
+& 'C:/Users/Hien Hue/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/python.exe' scripts/tests/maintenance-root-insets.py
+```
+
+Reference validation:
+
+```text
+./gradlew.bat :app:validateDevDebugScreenshotTest --tests '*MaintenanceScreenshotTestKt*' --tests '*MaintenanceRootScreenshotTestKt*'
+```
+
+Recovered host XML under `shared/build/test-results/testAndroidHostTest`: GameModeAdmissionTest 6, PracticeGameTest 13, ServiceStatusClientTest 3, ServiceStatusStateTest 4; all zero failures/errors/skips. Reference XML: `app/build/test-results/validateDevDebugScreenshotTest/TEST-preview-screenshot-test-engine.xml`, 16 tests, all zero failures/errors/skips. Existing experimental screenshot, SLF4J and Wasm interop warnings are non-fatal; they do not represent new failures. No backend/browser suites were repeated because this fix changes only shared picker/root UI and targeted fixtures.
+
+### Actual rendered geometry and visual scope
+
+New references are only the four files under `app/src/screenshotTestDevDebug/reference/com/hienthai/fastowin/screenshot/MaintenanceRootScreenshotTestKt/`:
+
+| Fixture | Explicit inset values (dp) | Actual output |
+|---|---|---|
+| `maintenanceRootGame_portrait_insets_0dee4b90_0.png` | 390×844; left12/top32/right12/bottom24 | Actual GameScreen under the notice; full phone board remains visible. |
+| `maintenanceRootGame_landscape_cutout_3157cec7_0.png` | 844×390; left40/top24/right20/bottom16 | Actual GameScreen with asymmetric cutout safe area; notice/title/Details clear the injected edges. Existing small landscape game cells remain constrained. |
+| `maintenanceRootInsetProbe_portrait_insets_0dee4b90_0.png` | Same portrait insets | Colored top/side/bottom probe beneath actual notice. |
+| `maintenanceRootInsetProbe_landscape_cutout_3157cec7_0.png` | Same landscape insets | Colored asymmetric-cutout probe beneath actual notice. |
+
+The renderer outputs portrait1024×2216 and landscape2216×1024. Geometry GREEN output, bounding boxes in output pixels (right/bottom exclusive):
+
+```text
+PASS maintenanceRootInsetProbe_landscape_cutout_3157cec7_0.png: title=(148, 102, 509, 138), screen=(0, 211, 2216, 1024), content=(105, 211, 2163, 232), bottom=(105, 961, 2163, 982)
+PASS maintenanceRootInsetProbe_portrait_insets_0dee4b90_0.png: title=(75, 123, 436, 159), screen=(0, 232, 1024, 2216), content=(32, 232, 992, 253), bottom=(32, 2132, 992, 2153)
+```
+
+The probe checker asserts gold title clearance, navy background covering the full top/side edges, no duplicate top inset below the notice, preserved left/right screen insets and bottom clearance. The game fixture uses the production `MaintenanceRoot` and actual GameScreen; because Compose Preview has no OS bars, its screen wrapper injects the same explicit insets that Android supplies to ResponsiveScreen. This is deterministic composed-root render evidence with nonzero insets, despite `showSystemUi=false`; it is not a physical status-bar/cutout screenshot. All four new images were personally inspected during recovery. No new desktop/physical Android/iOS/TalkBack/VoiceOver/keyboard/touch acceptance or universal game-cell size claim is made.
+
+Recovery changed only this report after the recorded gates. Fresh `git diff --check` was performed before staging; the commit includes only the three modified production files, new MaintenanceRoot, picker tests, root fixtures, geometry script, four new references and this report. Existing Python cache, `.tmp`, `debug.log`, e2e artifacts and secrets are preserved. No push, merge, server restart or production action was performed; preview resources were left untouched. Independent scoped T4-R1/T4-R2 review remains the controller's next step.
