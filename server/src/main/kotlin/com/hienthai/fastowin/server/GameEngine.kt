@@ -336,9 +336,11 @@ class GameEngine(
                         }
                     }
                 }
+                // Repository reads and lock acquisition may outlive a scheduled activation.
+                val activationClassificationMillis = nowMillis()
                 tournaments.values.forEach { tournament ->
                     val unactivated = rooms.values.filter { it.tournamentId == tournament.id && it.activationPending &&
-                        it.phase == RoomPhase.PLAYING && it.selectionEvents.isEmpty() && (it.startedAtEpochMillis ?: Long.MAX_VALUE) <= restoredAtMillis }
+                        it.phase == RoomPhase.PLAYING && it.selectionEvents.isEmpty() && (it.startedAtEpochMillis ?: Long.MAX_VALUE) <= activationClassificationMillis }
                     if (unactivated.isNotEmpty()) {
                         val ids = unactivated.map { it.id }.toSet()
                         val snapshot = tournament.snapshot()
