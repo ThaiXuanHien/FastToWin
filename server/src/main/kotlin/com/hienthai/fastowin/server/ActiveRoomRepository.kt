@@ -45,6 +45,7 @@ data class StoredActiveRoom(
     val finishedAtEpochMillis: Long? = null,
     val resultQueued: Boolean = false,
     val maintenanceAborted: Boolean = false,
+    val activationPending: Boolean = false,
     val pendingCompletedMatch: CompletedMatch? = null,
     val readyPlayerIds: Set<String> = emptySet(),
     val rematchRequestedPlayerIds: Set<String> = emptySet(),

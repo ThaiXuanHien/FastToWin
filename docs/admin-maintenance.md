@@ -339,6 +339,26 @@ reconstructs disconnected roster accounts so pairing can serialize participants;
 this does not authenticate or connect them and the existing verified-account
 admission rules still apply. Pending progression must commit before count can
 drop to zero and socket-close permission can be issued.
+
+Generated timed rounds use private `StoredActiveRoom.activationPending: Boolean
+= false` (backward-compatible default). Each staged write schedules activation
+1,000ms in the future and persists that start plus the complete mode duration.
+Publication requires acknowledgment before activation, checked again under the
+engine mutex. A late successful commit is rebased and retried once in that call;
+continued slow storage leaves the batch hidden for the owned retry worker. Inputs
+before activation return the existing GAME_NOT_PLAYING error; timers cannot
+expire the future deadline. Both ordinary progression and reopening use this
+same scheduling path; initial tournament startup is unchanged.
+
+The pending flag is cleared with the first gameplay event or completed-result
+snapshot, never by an independent marker write. An unplayed pending room restored
+before its scheduled start preserves its exact stored timestamps. If restored
+after that start, it stays hidden and is rebased through the atomic batch before
+publication. This includes a crash after a late successful storage commit, and
+may reschedule an announced but still unplayed round. Persisted gameplay/results
+are never rebased: elapsed downtime remains part of their original clock. The
+existing GameStarted client path has a three-second countdown, which covers the
+one-second activation lead; no protocol or client UI changes are introduced.
 TournamentRepository.cancelForMaintenance(cancelled, profiles) atomically saves
 cancellation and full entry refunds in PostgreSQL, including paid entrants who
 left the lobby. Wallet source TOURNAMENT_MAINTENANCE_REFUND uses tournamentId as

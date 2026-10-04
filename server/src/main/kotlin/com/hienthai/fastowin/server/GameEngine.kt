@@ -336,6 +336,20 @@ class GameEngine(
                         }
                     }
                 }
+                tournaments.values.forEach { tournament ->
+                    val unactivated = rooms.values.filter { it.tournamentId == tournament.id && it.activationPending &&
+                        it.phase == RoomPhase.PLAYING && it.selectionEvents.isEmpty() && (it.startedAtEpochMillis ?: Long.MAX_VALUE) <= restoredAtMillis }
+                    if (unactivated.isNotEmpty()) {
+                        val ids = unactivated.map { it.id }.toSet()
+                        val snapshot = tournament.snapshot()
+                        val paused = snapshot.copy(matches = snapshot.matches.map {
+                            if (it.roomId in ids) it.copy(roomId = null, phase = TournamentMatchPhase.PENDING) else it
+                        })
+                        pendingTournamentProgressions[tournament.id] = StagedProgression(
+                            TournamentProgression(snapshot, unactivated.map { it.toStoredRoom() }), paused, unactivated)
+                        ids.forEach { rooms.remove(it) }
+                    }
+                }
                 activeRoomsRestored = true
             }
         }
@@ -3070,6 +3084,9 @@ class GameEngine(
         if (command.requestId.isBlank() || command.requestId.length > MAX_REQUEST_ID_LENGTH) {
             return HandleResult(listOf(error(player.playerId, "INVALID_REQUEST_ID", legacyFallback("Mã yêu cầu không hợp lệ."))))
         }
+        if (room.activationPending && nowMillis() < (room.startedAtEpochMillis ?: Long.MAX_VALUE)) {
+            return HandleResult(listOf(error(player.playerId, "GAME_NOT_PLAYING", legacyFallback("Trận đấu chưa bắt đầu hoặc đã kết thúc."), command.requestId)))
+        }
         val requestKey = "${player.playerId}:${command.requestId}"
         room.processedRequests[requestKey]?.let { previous ->
             return HandleResult(listOf(Delivery(previous, setOf(player.playerId))))
@@ -3102,6 +3119,8 @@ class GameEngine(
             )))
         }
         val expectedNumber = room.targetFor(player.playerId)
+        // Persisted with this first event, never through a separate activation-marker write.
+        room.activationPending = false
         if (command.number != expectedNumber) {
             val rejected = error(player.playerId, "WRONG_NUMBER", legacyFallback("Chưa đúng số, thử lại nhé!"), command.requestId)
             room.processedRequests[requestKey] = rejected.message
@@ -3248,13 +3267,14 @@ class GameEngine(
         )
         room.scores[playerTwoId] = 0
         room.startMatch(nowMillis(), timeAttackMillis)
+        room.activationPending = !publish && room.gameMode in TIMED_GAME_MODES
         if (publish) rooms[room.id] = room
         match.roomId = room.id
         match.phase = TournamentMatchPhase.PLAYING
         return room
     }
 
-    private data class StagedProgression(val batch: TournamentProgression, val paused: TournamentSnapshot, val rooms: List<Room>)
+    private data class StagedProgression(var batch: TournamentProgression, val paused: TournamentSnapshot, val rooms: List<Room>)
     private val pendingTournamentProgressions = mutableMapOf<String, StagedProgression>()
 
     /** One pairing implementation for ordinary completion and reopening. Called under engine mutex. */
@@ -3291,8 +3311,27 @@ class GameEngine(
 
     /** Requires persistenceMutex. No staged room/bracket is observable before repository acknowledgment. */
     private suspend fun commitStagedProgression(id: String, staged: StagedProgression): List<Delivery> {
-        tournamentRepository.commitProgression(staged.batch, activeRoomRepository, playerProfileRepository)
+        var acknowledged = false
+        repeat(2) {
+            if (!acknowledged) {
+                mutex.withLock {
+                    val activationAt = nowMillis() + 1_000
+                    staged.rooms.filter { it.activationPending }.forEach { room ->
+                        val shift = activationAt - checkNotNull(room.startedAtEpochMillis)
+                        room.startedAtEpochMillis = activationAt
+                        room.deadlinesAtEpochMillis.replaceAll { _, deadline -> deadline + shift }
+                    }
+                    staged.batch = staged.batch.copy(newRooms = staged.rooms.map { it.toStoredRoom() })
+                }
+                tournamentRepository.commitProgression(staged.batch, activeRoomRepository, playerProfileRepository)
+                acknowledged = staged.rooms.none { it.activationPending && nowMillis() >= checkNotNull(it.startedAtEpochMillis) }
+            }
+        }
+        check(acknowledged) { "Timed round activation awaits timely storage acknowledgment" }
         var published: List<Delivery>? = mutex.withLock {
+            check(staged.rooms.none { it.activationPending && nowMillis() >= checkNotNull(it.startedAtEpochMillis) }) {
+                "Timed round activation elapsed before publication"
+            }
             if (maintenancePolicy.blocksNewIntent && staged.rooms.isNotEmpty()) null else publishProgression(id, staged.batch.tournament, staged.rooms, staged.batch.completedRoomId)
         }
         if (published == null) {
@@ -3322,7 +3361,7 @@ class GameEngine(
                 ?: error("Accepted result room missing before progression acknowledgment")
             val id = room.tournamentId ?: return@withLock null
             check(!room.maintenanceAborted)
-            check(pendingTournamentProgressions[id]?.batch?.completedRoomId.let { it == null || it == room.id }) {
+            check(pendingTournamentProgressions[id].let { it == null || it.batch.completedRoomId == room.id }) {
                 "Previous tournament progression awaits acknowledgment"
             }
             id to pendingTournamentProgressions.getOrPut(id) {
@@ -3468,6 +3507,7 @@ class GameEngine(
             finishedAtEpochMillis = finishedAtEpochMillis,
             resultQueued = resultQueued,
             maintenanceAborted = maintenanceAborted,
+            activationPending = activationPending,
             pendingCompletedMatch = pendingCompletedMatches[matchId],
             readyPlayerIds = readyPlayerIds.toSet(),
             rematchRequestedPlayerIds = rematchRequestedPlayerIds.toSet(),
@@ -3550,6 +3590,7 @@ class GameEngine(
         finishedAtEpochMillis = finishedAtEpochMillis,
         resultQueued = resultQueued,
         maintenanceAborted = maintenanceAborted,
+        activationPending = activationPending,
         readyPlayerIds = readyPlayerIds.toMutableSet(),
         rematchRequestedPlayerIds = rematchRequestedPlayerIds.toMutableSet(),
         rematchExpiresAtEpochMillis = rematchExpiresAtEpochMillis,
@@ -3697,6 +3738,7 @@ class GameEngine(
             id !in finishedPlayerIds && now >= (deadlinesAtEpochMillis[id] ?: Long.MAX_VALUE)
         }
         if (expired.isEmpty()) return false
+        activationPending = false
         finishedPlayerIds += expired
         if (gameMode == ProtocolGameMode.SPEED_UP && expired.size == 1) {
             forcedWinnerId = playerIds().firstOrNull { it !in expired }
@@ -3725,6 +3767,7 @@ class GameEngine(
         val startedAt = startedAtEpochMillis ?: return null
         val winnerId = winnerId()
         resultQueued = true
+        activationPending = false
         val winnerTeam = winnerTeamId()
         return CompletedMatch(
             matchId = matchId,
@@ -3887,6 +3930,7 @@ class GameEngine(
         var finishedAtEpochMillis: Long? = null,
         var resultQueued: Boolean = false,
         var maintenanceAborted: Boolean = false,
+        var activationPending: Boolean = false,
         val readyPlayerIds: MutableSet<String> = mutableSetOf(),
         val rematchRequestedPlayerIds: MutableSet<String> = mutableSetOf(),
         var rematchExpiresAtEpochMillis: Long? = null,

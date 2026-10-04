@@ -121,8 +121,37 @@ class MaintenanceRecoveryTest {
     @Test fun reopeningSecondRoomSaveFailureRetainsWholeRoundForRetryAndRestore() = runTest { reopenFailure(false) }
     @Test fun reopeningTournamentSaveFailureRetainsWholeRoundForRetryAndRestore() = runTest { reopenFailure(true) }
     @Test fun restartBeforeReopenRetryRestoresPausedTournamentParticipants() = runTest { reopenFailure(true, true) }
+    @Test fun elapsedRetryPreservesFullTimeAttackInterval() = runTest { reopenFailure(false, mode = ProtocolGameMode.TIME_ATTACK) }
+    @Test fun elapsedRetryPreservesFullTimeBonusInterval() = runTest { reopenFailure(true, mode = ProtocolGameMode.TIME_BONUS) }
+    @Test fun elapsedRetryPreservesFullSpeedUpInterval() = runTest { reopenFailure(true, mode = ProtocolGameMode.SPEED_UP) }
+    @Test fun slowSuccessfulCommitCannotPublishExpiredTimedRound() = runTest { reopenFailure(true, mode = ProtocolGameMode.TIME_ATTACK, slowSuccess = true) }
+    @Test fun restartAfterLateHiddenCommitRebasesUnplayedRound() = runTest { reopenFailure(true, mode = ProtocolGameMode.TIME_ATTACK, slowSuccess = true, crashAfterSlowCommit = true) }
 
-    private suspend fun reopenFailure(failTournament: Boolean, restartBeforeRetry: Boolean = false) {
+    @Test fun ordinaryTimedProgressionRebasesSlowCommitBeforePublishingFinal() = runTest {
+        var now = 1000L; var delayed = false
+        val rooms = InMemoryActiveRoomRepository()
+        val tournaments = object : InMemoryTournamentRepository() {
+            override suspend fun commitProgression(batch: TournamentProgression, rooms: ActiveRoomRepository, profiles: PlayerProfileRepository) {
+                super.commitProgression(batch, rooms, profiles)
+                if (batch.newRooms.isNotEmpty() && !delayed) { delayed = true; now += 600_000 }
+            }
+        }
+        val engine = GameEngine(activeRoomRepository = rooms, tournamentRepository = tournaments, nowMillis = { now })
+        val players = List(4) { engine.connectAccount(AuthenticatedAccount(UUID.randomUUID(), "p$it")).playerId }
+        val cup = engine.handle(players[0], ClientMessage.CreateTournament("timed", ProtocolGameMode.TIME_ATTACK, 0, 4, TournamentVisibility.PUBLIC))
+            .map { it.message }.filterIsInstance<ServerMessage.TournamentUpdated>().single().tournament
+        players.drop(1).forEach { engine.handle(it, ClientMessage.JoinPublicTournament(cup.tournamentId)) }
+        val games = engine.handle(players[0], ClientMessage.StartTournament(cup.tournamentId)).map { it.message }.filterIsInstance<ServerMessage.GameStarted>()
+        games.forEach { finish(engine, it.game.hostId, it.game.roomId) }
+        val final = rooms.loadAll().single()
+        assertTrue(final.activationPending); assertEquals(now + 1000, final.startedAtEpochMillis)
+        assertTrue(final.deadlinesAtEpochMillis.values.all { it == now + 61_000 })
+        assertTrue(engine.advanceTimedGames().none { it.message is ServerMessage.GameFinished })
+    }
+
+    private suspend fun reopenFailure(failTournament: Boolean, restartBeforeRetry: Boolean = false,
+        mode: ProtocolGameMode = ProtocolGameMode.ORDER, slowSuccess: Boolean = false, crashAfterSlowCommit: Boolean = false) {
+        var now = 1000L
         val saved = InMemoryActiveRoomRepository(); var roomWrites = 0; var failRooms = false
         val rooms = object : ActiveRoomRepository by saved {
             override suspend fun save(room: StoredActiveRoom) {
@@ -130,37 +159,85 @@ class MaintenanceRecoveryTest {
                 saved.save(room)
             }
         }
-        var failBracket = false
+        var failBracket = false; var slowCommit = false
         val tournaments = object : InMemoryTournamentRepository() {
             override suspend fun save(tournament: TournamentSnapshot) {
                 if (failBracket) { failBracket = false; error("bracket unavailable") }
                 super.save(tournament)
             }
+            override suspend fun commitProgression(batch: TournamentProgression, rooms: ActiveRoomRepository, profiles: PlayerProfileRepository) {
+                super.commitProgression(batch, rooms, profiles)
+                if (slowCommit) {
+                    slowCommit = false; now += 600_000
+                    if (crashAfterSlowCommit) error("process stopped after late durable commit")
+                }
+            }
         }
-        val engine = GameEngine(activeRoomRepository = rooms, tournamentRepository = tournaments)
+        val profiles = object : PlayerProfileRepository by NoOpPlayerProfileRepository {
+            override suspend fun findByPlayerId(playerId: String) = PlayerProfileSnapshot(userId = playerId, displayName = "player", playerCode = "TEST", progression = PlayerProgressionSnapshot(level = 20))
+        }
+        val engine = GameEngine(activeRoomRepository = rooms, tournamentRepository = tournaments, nowMillis = { now }, playerProfileRepository = profiles)
         val players = List(8) { engine.connectAccount(AuthenticatedAccount(UUID.randomUUID(), "p$it")).playerId }
-        val tournament = engine.handle(players[0], ClientMessage.CreateTournament("recovery cup", ProtocolGameMode.ORDER, 0, 8, TournamentVisibility.PUBLIC))
+        val tournament = engine.handle(players[0], ClientMessage.CreateTournament("recovery cup", mode, 0, 8, TournamentVisibility.PUBLIC))
             .map { it.message }.filterIsInstance<ServerMessage.TournamentUpdated>().single().tournament
         players.drop(1).forEach { engine.handle(it, ClientMessage.JoinPublicTournament(tournament.tournamentId)) }
         val games = engine.handle(players[0], ClientMessage.StartTournament(tournament.tournamentId))
             .map { it.message }.filterIsInstance<ServerMessage.GameStarted>().map { it.game }
         engine.applyMaintenancePolicy(drain)
         games.forEach { finish(engine, it.hostId, it.roomId) }
+        if (mode == ProtocolGameMode.TIME_BONUS || mode == ProtocolGameMode.SPEED_UP) {
+            now += 600_000; engine.advanceTimedGames()
+        }
         assertEquals(0, saved.loadAll().size)
         if (failTournament) failBracket = true else failRooms = true
         assertFailsWith<IllegalStateException> { engine.applyMaintenancePolicy(MaintenancePolicy(MaintenanceState.ACTIVE)) }
         assertEquals(0, saved.loadAll().size)
         assertEquals(0, tournaments.loadActive().single().matches.count { it.phase == TournamentMatchPhase.PLAYING })
         assertEquals(2, engine.activeMaintenanceMatchCount())
-        val retryEngine = if (restartBeforeRetry) GameEngine(activeRoomRepository = rooms, tournamentRepository = tournaments) else engine
+        if (mode != ProtocolGameMode.ORDER) now += 600_000
+        slowCommit = slowSuccess
+        var retryEngine = if (restartBeforeRetry) GameEngine(activeRoomRepository = rooms, tournamentRepository = tournaments, nowMillis = { now }) else engine
+        if (crashAfterSlowCommit) {
+            assertFailsWith<IllegalStateException> { retryEngine.applyMaintenancePolicy(MaintenancePolicy(MaintenanceState.ACTIVE)) }
+            assertTrue(saved.loadAll().all { it.activationPending && it.startedAtEpochMillis!! < now })
+            retryEngine = GameEngine(activeRoomRepository = rooms, tournamentRepository = tournaments, nowMillis = { now })
+        }
         val retry = retryEngine.applyMaintenancePolicy(MaintenancePolicy(MaintenanceState.ACTIVE))
         assertEquals(2, retry.deliveries.count { it.message is ServerMessage.GameStarted })
         val bracket = tournaments.loadActive().single()
         val roomIds = saved.loadAll().map { it.roomId }.toSet()
         assertEquals(2, roomIds.size)
         assertEquals(roomIds, bracket.matches.filter { it.phase == TournamentMatchPhase.PLAYING }.mapNotNull { it.roomId }.toSet())
-        val restored = GameEngine(activeRoomRepository = saved, tournamentRepository = tournaments)
+        if (mode != ProtocolGameMode.ORDER) {
+            val expectedDuration = when (mode) { ProtocolGameMode.TIME_ATTACK -> 60_000L; ProtocolGameMode.TIME_BONUS -> 30_000L; else -> 5_000L }
+            val persisted = saved.loadAll()
+            persisted.forEach { room ->
+                assertTrue(room.startedAtEpochMillis!! >= now, "activation must not precede successful acknowledgment")
+                assertTrue(room.deadlinesAtEpochMillis.values.all { it - now >= expectedDuration })
+            }
+            val game = retry.deliveries.map { it.message }.filterIsInstance<ServerMessage.GameStarted>().first().game
+            assertEquals("GAME_NOT_PLAYING", retryEngine.handle(game.hostId, ClientMessage.SelectNumber(game.roomId, 1, "early")).errorCode())
+            assertTrue(saved.loadAll().all { it.selectionEvents.isEmpty() && it.activationPending })
+            assertTrue(retryEngine.advanceTimedGames().none { it.message is ServerMessage.GameFinished })
+        }
+        val persistedBeforeRestore = saved.loadAll().associate { it.roomId to (it.startedAtEpochMillis to it.deadlinesAtEpochMillis) }
+        val restored = GameEngine(activeRoomRepository = saved, tournamentRepository = tournaments, nowMillis = { now })
         restored.restoreActiveRooms(); assertEquals(2, restored.activeMaintenanceMatchCount())
+        if (mode != ProtocolGameMode.ORDER) assertTrue(restored.advanceTimedGames().none { it.message is ServerMessage.GameFinished })
+        assertEquals(persistedBeforeRestore, saved.loadAll().associate { it.roomId to (it.startedAtEpochMillis to it.deadlinesAtEpochMillis) })
+        if (mode != ProtocolGameMode.ORDER) {
+            val playing = saved.loadAll().first(); now = playing.startedAtEpochMillis!!
+            restored.connectAccount(AuthenticatedAccount(UUID.fromString(playing.host.playerId), "host"))
+            restored.handle(playing.host.playerId, ClientMessage.SelectNumber(playing.roomId, 1, "first durable event"))
+            val activated = saved.loadAll().single { it.roomId == playing.roomId }
+            assertFalse(activated.activationPending); assertEquals(1, activated.selectionEvents.size)
+            now += 600_000
+            val afterPlayRestart = GameEngine(activeRoomRepository = saved, tournamentRepository = tournaments, nowMillis = { now })
+            afterPlayRestart.restoreActiveRooms()
+            afterPlayRestart.applyMaintenancePolicy(MaintenancePolicy(MaintenanceState.ACTIVE))
+            assertEquals(activated.startedAtEpochMillis, saved.loadAll().single { it.roomId == playing.roomId }.startedAtEpochMillis)
+            assertTrue(afterPlayRestart.advanceTimedGames().any { it.message is ServerMessage.GameFinished })
+        }
     }
 
     @Test fun observationContinuesWhileRuntimeSettlementIsSuspended() = runTest {
