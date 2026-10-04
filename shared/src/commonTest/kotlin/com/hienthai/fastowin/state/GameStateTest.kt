@@ -7,6 +7,11 @@ import com.hienthai.fastowin.data.network.InMemoryResumeTokenStore
 import com.hienthai.fastowin.data.network.SocketSession
 import com.hienthai.fastowin.data.network.SocketTransport
 import com.hienthai.fastowin.data.network.GiftGateway
+import com.hienthai.fastowin.data.network.StorePurchaseGateway
+import com.hienthai.fastowin.platform.*
+import com.hienthai.fastowin.protocol.*
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.emptyFlow
 import com.hienthai.fastowin.protocol.ClientMessage
 import com.hienthai.fastowin.protocol.FriendRequestSnapshot
 import com.hienthai.fastowin.protocol.FriendSnapshot
@@ -57,6 +62,67 @@ import kotlin.test.assertTrue
 @OptIn(ExperimentalCoroutinesApi::class)
 class GameStateTest {
     @Test
+    fun `conflated durable then failed receipt queues final profile behind older response`() = runTest {
+        val controllers = mutableListOf<GameController>()
+        try {
+            for (durable in listOf(StorePurchaseStatus.GRANTED, StorePurchaseStatus.ALREADY_GRANTED)) {
+                for (nondurable in listOf(StorePurchaseStatus.FAILED, StorePurchaseStatus.UNAVAILABLE)) {
+                    val fixture = publicTournamentFixture()
+                    controllers += fixture.controller
+                    fixture.session.server(ServerMessage.SessionReady("player-1"))
+                    runCurrent()
+                    fixture.controller.refreshProfile()
+                    runCurrent()
+                    assertEquals(1, fixture.session.sent.filterIsInstance<ClientMessage.GetProfile>().size)
+                    val finished = mutableListOf<String>()
+                    val billing = object : StoreBillingGateway {
+                        override val state = MutableStateFlow(StoreBillingState(StorePlatform.GOOGLE_PLAY))
+                        override val purchases = emptyFlow<PlatformStorePurchase>()
+                        override fun connect(packages: List<GemPackageSnapshot>, sandboxEnabled: Boolean) = Unit
+                        override fun purchase(productId: String, accountId: String?) = Unit
+                        override fun finishPurchase(purchaseToken: String) { finished += purchaseToken }
+                        override fun close() = Unit
+                    }
+                    val finalizer = StorePurchaseFinalizer(billing)
+                    finalizer.setAccount("player-1", StorePurchaseGateway { request ->
+                        ServerMessage.StorePurchaseResult(request.requestId, request.productId,
+                            if (request.requestId == "paid-a") durable else nondurable, message = "", messageKey = "ServerUnavailable")
+                    })
+                    finalizer.enqueue(PlatformStorePurchase("paid-a", StorePlatform.GOOGLE_PLAY, "fasttowin_gems_80", "receipt-a"))
+                    finalizer.enqueue(PlatformStorePurchase("paid-b", StorePlatform.GOOGLE_PLAY, "fasttowin_gems_80", "receipt-b"))
+                    finalizer.retryPending() // No UI observation between A and B.
+                    val observed = finalizer.state.value
+                    assertEquals(1, observed.profileRevision)
+                    assertEquals(nondurable, observed.result?.status)
+                    assertEquals(listOf("receipt-a"), finished)
+                    assertEquals(1, finalizer.pendingCount)
+                    fixture.controller.onStorePurchaseFinalizationObserved("other-account", observed)
+                    runCurrent()
+                    assertNull(fixture.controller.uiState.value.storePurchaseResult)
+                    assertEquals(1, fixture.session.sent.filterIsInstance<ClientMessage.GetProfile>().size)
+                    fixture.controller.onStorePurchaseFinalizationObserved("player-1", observed)
+                    runCurrent()
+                    assertEquals(nondurable, fixture.controller.uiState.value.storePurchaseResult?.status)
+                    assertEquals(1, fixture.session.sent.filterIsInstance<ClientMessage.GetProfile>().size)
+                    fixture.session.server(ServerMessage.ProfileData(PlayerProfileSnapshot(
+                        userId = "player-1", displayName = "Player", playerCode = "PLAYER01",
+                        progression = PlayerProgressionSnapshot(gems = 0))))
+                    runCurrent()
+                    assertEquals(2, fixture.session.sent.filterIsInstance<ClientMessage.GetProfile>().size)
+                    fixture.session.server(ServerMessage.ProfileData(PlayerProfileSnapshot(
+                        userId = "player-1", displayName = "Player", playerCode = "PLAYER01",
+                        progression = PlayerProgressionSnapshot(gems = 80))))
+                    runCurrent()
+                    assertEquals(80, fixture.controller.uiState.value.profile?.progression?.gems)
+                    finalizer.retryPending() // B failure changes feedback, never the durable revision.
+                    fixture.controller.onStorePurchaseFinalizationObserved("player-1", finalizer.state.value)
+                    runCurrent()
+                    assertEquals(2, fixture.session.sent.filterIsInstance<ClientMessage.GetProfile>().size)
+                }
+            }
+        } finally { controllers.forEach(GameController::close) }
+    }
+    @Test
     fun `HTTP receipt refresh waits for earlier profile response and then requests authoritative balances`() = runTest {
         val fixture = publicTournamentFixture()
         fixture.session.server(ServerMessage.SessionReady("player-1"))
@@ -64,8 +130,9 @@ class GameStateTest {
         fixture.controller.refreshProfile()
         runCurrent()
         assertEquals(1, fixture.session.sent.filterIsInstance<ClientMessage.GetProfile>().size)
-        fixture.controller.onStorePurchaseFinalized(ServerMessage.StorePurchaseResult("paid", "fasttowin_gems_80",
+        val observed = StoreFinalizationState("player-1", 1, ServerMessage.StorePurchaseResult("paid", "fasttowin_gems_80",
             com.hienthai.fastowin.protocol.StorePurchaseStatus.GRANTED, 80, "", "BillingGemsAdded"))
+        fixture.controller.onStorePurchaseFinalizationObserved("player-1", observed)
         runCurrent()
         assertEquals(1, fixture.session.sent.filterIsInstance<ClientMessage.GetProfile>().size)
         fixture.session.server(ServerMessage.ProfileData(PlayerProfileSnapshot(userId = "player-1", displayName = "Player", playerCode = "PLAYER01",
@@ -76,6 +143,9 @@ class GameStateTest {
             progression = PlayerProgressionSnapshot(gems = 80))))
         runCurrent()
         assertEquals(80, fixture.controller.uiState.value.profile?.progression?.gems)
+        fixture.controller.onStorePurchaseFinalizationObserved("player-1", observed)
+        runCurrent()
+        assertEquals(2, fixture.session.sent.filterIsInstance<ClientMessage.GetProfile>().size)
         fixture.controller.close()
     }
     @Test

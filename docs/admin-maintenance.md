@@ -420,8 +420,11 @@ from the platform after process restart; the root queue is in memory.
 Root receipt entries retain account ownership/obfuscated platform identity.
 Account generations fence late result/profile effects and late HTTP token
 providers. Auth refresh is serialized and cannot resurrect a replaced/logout
-session. A successful same-account receipt requests an authoritative profile
-through GameController's existing profile refresh queue behind older requests;
+session. Each same-account durable profileRevision increase requests an authoritative
+profile through GameController's existing refresh queue behind older requests,
+independently of the latest receipt feedback. A newer FAILED/UNAVAILABLE result
+cannot hide an earlier grant when StateFlow/Compose conflates states. The
+controller acknowledges each revision once; recreated controllers begin at zero;
 no client balance arithmetic is used. A recreated GameContent loads its
 normal authoritative profile and observes retained same-account receipts.
 New checkout is disabled in DRAINING/MAINTENANCE and unknown/unreachable status;

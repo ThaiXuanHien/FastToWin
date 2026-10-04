@@ -446,9 +446,7 @@ private fun GameContent(
     }
 
     LaunchedEffect(controller, accountUserId, storeFinalization.profileRevision, storeFinalization.result) {
-        if (accountUserId != null && storeFinalization.accountId == accountUserId) {
-            storeFinalization.result?.let(controller::onStorePurchaseFinalized)
-        }
+        controller.onStorePurchaseFinalizationObserved(accountUserId, storeFinalization)
     }
     var profileSection by remember { mutableStateOf<ProfileSection?>(null) }
     var profileSectionExternal by remember { mutableStateOf(false) }

@@ -97,6 +97,7 @@ class GameController private constructor(
 
     private var playerId: String? = null
     private var profileRefreshAfterGiftPending = false
+    private var observedStoreProfileRevision = 0
     private var sessionJob: Job? = null
     private var resettingSocket = false
     private var messageJob: Job? = null
@@ -318,10 +319,17 @@ class GameController private constructor(
 
     fun onStorePurchaseFinalized(result: ServerMessage.StorePurchaseResult) {
         _uiState.update { it.copy(storePurchaseResult = result, profileNotice = messageMapper.message(result)) }
-        if (result.status == com.hienthai.fastowin.protocol.StorePurchaseStatus.GRANTED ||
-            result.status == com.hienthai.fastowin.protocol.StorePurchaseStatus.ALREADY_GRANTED) {
-            // Use the same queue as gifts: an earlier profile response cannot overwrite the final refresh.
-            refreshProfileAfterGiftClaim()
+    }
+
+    fun onStorePurchaseFinalizationObserved(accountUserId: String?, finalization: StoreFinalizationState) {
+        if (accountUserId != null && finalization.accountId == accountUserId) {
+            // Feedback can be a newer failed receipt after StateFlow conflates an earlier grant.
+            finalization.result?.let(::onStorePurchaseFinalized)
+            if (finalization.profileRevision > observedStoreProfileRevision) {
+                observedStoreProfileRevision = finalization.profileRevision
+                // Keep the durable refresh signal independent of latest-result status and ordered after old requests.
+                refreshProfileAfterGiftClaim()
+            }
         }
     }
 
