@@ -2,13 +2,14 @@
 
 const states = { ACTIVE: 'Đang mở', ANNOUNCING: 'Đang báo trước', DRAINING: 'Đang chờ trận kết thúc', MAINTENANCE: 'Đang bảo trì' };
 const modes = { PLANNED: 'Theo kế hoạch', EMERGENCY: 'Khẩn cấp' };
+const causes = { UPDATE: 'Cập nhật', INCIDENT: 'Sự cố', SECURITY: 'Bảo mật', OVERLOAD: 'Quá tải', OTHER: 'Khác' };
 const sources = { DATABASE: 'Cơ sở dữ liệu', ENVIRONMENT: 'Biến môi trường', UNAVAILABLE: 'Chưa có quan sát' };
 const date = value => value == null ? 'Chưa có' : new Intl.DateTimeFormat('vi-VN', { timeZone: 'Asia/Bangkok', dateStyle: 'short', timeStyle: 'medium' }).format(value) + ' (Bangkok)';
 const localDate = value => value == null ? '' : new Date(value + 7 * 3600000).toISOString().slice(0, 23);
 
 // Reuse the admin shell's session, channel, network policy and native modal.
 export function openMaintenance(ui) {
-  const { node, append, button, iconButton, field, modal, feedback, shell, channel, api, role } = ui;
+  const { node, append, button, iconButton, field, modal, feedback, shell, channel, api, health, role } = ui;
   const main = shell('Bảo trì', 'maintenance');
   main.append(node('p', 'Thông báo người chơi, chờ trận đang diễn ra và quản lý thời gian bảo trì.', { class: 'muted' }));
   const toolbar = node('div', null, { class: 'toolbar' });
@@ -45,7 +46,9 @@ export function openMaintenance(ui) {
       result.append(node('p', 'Chưa xác nhận tất cả kết nối đã đóng. Thời điểm và phiên bản trên là quan sát gần nhất của máy chủ.', { class: 'muted' }));
       result.append(node('h3', 'Chính sách đã lưu'));
       facts(result, [['Trạng thái đã lưu', states[saved.state]], ['Nguồn đã lưu', sources[data.persistedSource]], ['Phiên bản đã lưu', saved.version],
-        ['Chế độ đã lưu', modes[saved.mode] || 'Chưa bật'], ['Mốc chuyển giai đoạn', date(saved.transitionAtEpochMillis)],
+        ['Chế độ đã lưu', modes[saved.mode] || 'Chưa bật'], ['Nguyên nhân', causes[saved.cause] || 'Chưa có'],
+        ['Bắt đầu lúc', date(saved.startedAtEpochMillis)], ['Người thay đổi', saved.actorId || 'Chưa có'],
+        ['Thay đổi lúc', date(saved.changedAtEpochMillis)], ['Mốc chuyển giai đoạn', date(saved.transitionAtEpochMillis)],
         ['Hạn chờ trận kết thúc', date(saved.drainDeadlineEpochMillis)], ['Kết thúc dự kiến', date(saved.expectedEndEpochMillis)]]);
       result.append(node('p', 'Thời gian kết thúc chỉ là dự kiến. Dịch vụ không tự mở lại theo giờ này.', { class: 'muted' }));
       for (const [label, text, lang] of [['Thông báo tiếng Việt', saved.messageVi, 'vi'], ['Thông báo tiếng Anh', saved.messageEn, 'en']]) {
@@ -62,7 +65,7 @@ export function openMaintenance(ui) {
     const editor = node('form', null, { class: 'stack modal-form' }); view.dialog.append(editor);
     const mode = select(editor, 'Chế độ', 'mode', modes); mode.value = saved.mode || 'PLANNED';
     if (enabled && saved.mode === 'EMERGENCY') mode.querySelector('[value="PLANNED"]').disabled = true;
-    const cause = select(editor, 'Nguyên nhân', 'cause', { UPDATE: 'Cập nhật', INCIDENT: 'Sự cố', SECURITY: 'Bảo mật', OVERLOAD: 'Quá tải', OTHER: 'Khác' }); cause.value = saved.cause || 'UPDATE';
+    const cause = select(editor, 'Nguyên nhân', 'cause', causes); cause.value = saved.cause || 'UPDATE';
     const vi = field(editor, 'Thông báo tiếng Việt', 'maintenance-vi', 'textarea', { required: '', maxlength: '1000', lang: 'vi' }); vi.value = saved.messageVi || '';
     const en = field(editor, 'Thông báo tiếng Anh', 'maintenance-en', 'textarea', { required: '', maxlength: '1000', lang: 'en' }); en.value = saved.messageEn || '';
     const pair = node('div', null, { class: 'gift-field-pair' }); editor.append(pair);
@@ -86,8 +89,35 @@ export function openMaintenance(ui) {
     }); view.show(mode);
   }
   function disable(data, opener) {
+    if (role() !== 'OWNER') return;
     const view = surface('Tắt bảo trì', opener), editor = node('form', null, { class: 'stack modal-form' }); view.dialog.append(editor);
     editor.append(node('p', 'Cho phép người chơi bắt đầu hoạt động mới sau khi máy chủ quan sát chính sách mở.'));
+    const observation = node('section', null, { class: 'maintenance-message', 'aria-label': 'Kiểm tra máy chủ' });
+    const status = node('p', '', { role: 'status', 'aria-live': 'polite' }), timestamp = node('p', '', { class: 'muted' });
+    const refresh = iconButton('Kiểm tra lại máy chủ', observe, 'refresh');
+    append(observation, append(node('div', null, { class: 'maintenance-heading' }), node('h3', 'Kiểm tra máy chủ'), refresh), status, timestamp,
+      node('p', 'Chỉ kiểm tra phản hồi /health trong tối đa 5 giây; không xác nhận cơ sở dữ liệu, trận đấu hay an toàn bảo mật. Quan sát quá 30 giây được đánh dấu cũ. Owner tự quyết định và xác nhận mở lại.', { class: 'muted' }));
+    editor.append(observation);
+    const observeRequest = channel(); let observationTask, timeout, expiry;
+    const visible = task => task.current() && view.dialog.isConnected && view.dialog.open;
+    function clearObservation() { clearTimeout(timeout); clearTimeout(expiry); }
+    view.dialog.addEventListener('close', () => { clearObservation(); observationTask?.controller.abort(); });
+    async function observe() {
+      clearObservation(); const task = observeRequest(); observationTask = task;
+      status.textContent = 'Đang kiểm tra máy chủ…'; timestamp.textContent = ''; observation.setAttribute('aria-busy', 'true');
+      const attemptedAt = Date.now();
+      const unavailable = () => { status.textContent = 'Không có quan sát khả dụng'; timestamp.textContent = 'Thử kiểm tra lúc: ' + date(attemptedAt); observation.removeAttribute('aria-busy'); };
+      timeout = setTimeout(() => { if (visible(task)) unavailable(); task.controller.abort(); }, 5000);
+      try {
+        const response = await health(task);
+        if (!visible(task)) return;
+        if (response !== 'OK') { unavailable(); return; }
+        const observedAt = Date.now();
+        status.textContent = 'Máy chủ phản hồi OK'; timestamp.textContent = 'Quan sát lúc: ' + date(observedAt);
+        expiry = setTimeout(() => { if (visible(task)) status.textContent = 'Quan sát đã cũ — hãy kiểm tra lại'; }, 30000);
+      } catch { if (visible(task)) unavailable(); }
+      finally { if (visible(task)) { clearTimeout(timeout); observation.removeAttribute('aria-busy'); } }
+    }
     const reason = field(editor, 'Lý do nội bộ', 'maintenance-off-reason', 'textarea', { required: '', maxlength: '500' });
     const errors = feedback(editor), submit = node('button', 'Xác nhận lưu', { type: 'submit', class: 'primary' });
     append(editor, append(node('div', null, { class: 'modal-actions' }), view.cancel, submit));
@@ -96,7 +126,7 @@ export function openMaintenance(ui) {
       if (!reason.value.trim()) { errors.fail(new Error('Nhập lý do nội bộ.'), true); return; }
       if (!payload || payload.reason !== reason.value.trim()) payload = { enabled: false, expectedVersion: data.persisted.version, requestId: crypto.randomUUID(), reason: reason.value.trim() };
       send(view, submit, errors, payload);
-    }); view.show(reason);
+    }); view.show(reason); observe();
   }
   function confirmation(view, payload) {
     const content = node('div', null, { class: 'stack modal-form' }); view.dialog.append(content);

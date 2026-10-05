@@ -2,6 +2,7 @@ package com.hienthai.fastowin.localization
 
 /** Maps stable server codes to client-owned copy without trusting arbitrary network keys. */
 fun protocolTextKeyForCode(code: String): TextKey? = when (code) {
+    "MAINTENANCE_REMATCH_UNAVAILABLE" -> TextKey.MaintenanceRematchUnavailable
     "AUTH_REQUIRED", "ACCOUNT_REQUIRED" -> TextKey.ServerAuthRequired
     "PLAY_QUOTA_EXHAUSTED" -> TextKey.OnlineQuotaExhaustedMessage
     "RATE_LIMITED", "TOO_MANY_REQUESTS" -> TextKey.ServerRateLimited

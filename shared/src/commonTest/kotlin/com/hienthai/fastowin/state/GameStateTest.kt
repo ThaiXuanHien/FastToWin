@@ -62,6 +62,20 @@ import kotlin.test.assertTrue
 @OptIn(ExperimentalCoroutinesApi::class)
 class GameStateTest {
     @Test
+    fun `maintenance rematch rejection clears pending action and gives localized new room recovery`() {
+        val error = ServerMessage.Error("MAINTENANCE_REMATCH_UNAVAILABLE", "legacy")
+        for ((language, expected) in listOf(
+            AppLanguage.ENGLISH to "This match was stopped for maintenance. Leave this room and create or join a new room.",
+            AppLanguage.VIETNAMESE to "Trận này đã dừng do bảo trì. Hãy rời phòng rồi tạo hoặc tham gia phòng mới."
+        )) {
+            val localized = LocalizedMessageMapper(LocalizationService(language)).message(error)
+            val failed = GameState(isGameOver = true, isRematchActionPending = true).withRematchError(error, localized)
+            assertFalse(failed.isRematchActionPending)
+            assertEquals(expected, failed.rematchNotice)
+        }
+    }
+
+    @Test
     fun `conflated durable then failed receipt queues final profile behind older response`() = runTest {
         val controllers = mutableListOf<GameController>()
         try {

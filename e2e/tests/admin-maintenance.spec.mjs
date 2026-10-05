@@ -1,9 +1,93 @@
-import { test, expect, login } from '../support/admin-fixture.mjs';
+import { test, expect, login, player, pageOf } from '../support/admin-fixture.mjs';
 import { maintenance, maintenancePath, openMaintenance, fillMaintenance } from '../support/maintenance-fixture.mjs';
 const open = (p, f) => openMaintenance(p, f, login);
 const edit = p => p.getByRole('button', { name: 'Cấu hình bảo trì', exact: true }).click();
 const review = p => p.getByRole('button', { name: 'Xem lại thay đổi', exact: true }).click();
 const save = p => p.getByRole('button', { name: 'Xác nhận lưu', exact: true }).click();
+
+for (const role of ['OWNER', 'OPERATOR', 'SUPPORT']) test(`decision context visible for ${role}`, async ({ page, fixture }) => {
+  fixture.role = role; maintenance(fixture, 'MAINTENANCE'); await open(page, fixture);
+  const fact = name => page.locator('.facts > div').filter({ has: page.locator('dt', { hasText: name }) }).locator('dd');
+  await expect(fact('Nguyên nhân')).toHaveText('Cập nhật');
+  await expect(fact('Bắt đầu lúc')).toHaveText('11:00:00 3/10/26 (Bangkok)');
+  await expect(fact('Người thay đổi')).toHaveText('owner-maintenance-7');
+  await expect(fact('Thay đổi lúc')).toHaveText('11:01:00 3/10/26 (Bangkok)');
+});
+
+test('reopen health is bounded, fresh then stale and refreshable without automatic mutation', async ({ page, fixture }) => {
+  maintenance(fixture, 'MAINTENANCE'); await open(page, fixture);
+  await page.clock.install();
+  await page.getByRole('button', { name: 'Tắt bảo trì', exact: true }).click();
+  await expect(page.getByText('Máy chủ phản hồi OK', { exact: true })).toBeVisible();
+  await expect(page.getByRole('dialog')).toContainText('không xác nhận cơ sở dữ liệu, trận đấu hay an toàn bảo mật');
+  await expect(page.getByRole('dialog')).toContainText('Quan sát lúc:');
+  await expect(page.getByRole('dialog')).toContainText('(Bangkok)');
+  const health = fixture.calls.find(c => c.route === '/health');
+  expect(health.method).toBe('GET'); expect(health.headers['cache-control']).toBe('no-cache');
+  await page.clock.fastForward(30_001);
+  await expect(page.getByText('Quan sát đã cũ — hãy kiểm tra lại', { exact: true })).toBeVisible();
+  expect(fixture.calls.filter(c => c.method === 'POST' && c.route === maintenancePath)).toHaveLength(0);
+  await page.getByRole('button', { name: 'Kiểm tra lại máy chủ', exact: true }).click();
+  await expect(page.getByText('Máy chủ phản hồi OK', { exact: true })).toBeVisible();
+});
+
+for (const failure of ['http', 'wrong-body', 'timeout']) test(`reopen health unavailable for ${failure}`, async ({ page, fixture }) => {
+  maintenance(fixture, 'MAINTENANCE'); let release;
+  fixture.handlers.set('/health', async (_, send) => {
+    if (failure === 'timeout') await new Promise(r => release = r);
+    send(failure === 'http' ? 503 : 200, failure === 'wrong-body' ? 'not healthy' : 'OK'); return true;
+  });
+  await open(page, fixture); await page.clock.install();
+  await page.getByRole('button', { name: 'Tắt bảo trì', exact: true }).click();
+  if (failure === 'timeout') { await expect.poll(() => typeof release).toBe('function'); await page.clock.fastForward(5_001); }
+  await expect(page.getByText('Không có quan sát khả dụng', { exact: true })).toBeVisible();
+  await expect(page.getByRole('dialog')).toContainText('Thử kiểm tra lúc:');
+  expect(fixture.calls.filter(c => c.method === 'POST' && c.route === maintenancePath)).toHaveLength(0);
+  release?.();
+});
+
+for (const exit of ['dismiss', 'session']) test(`late health response cannot revive ${exit} dialog`, async ({ page, fixture }) => {
+  maintenance(fixture, 'MAINTENANCE'); let release;
+  fixture.handlers.set('/health', async (_, send) => { await new Promise(r => release = r); send(200, 'OK'); return true; });
+  await open(page, fixture); await page.getByRole('button', { name: 'Tắt bảo trì', exact: true }).click();
+  await expect.poll(() => typeof release).toBe('function');
+  if (exit === 'dismiss') await page.keyboard.press('Escape');
+  else {
+    fixture.handlers.set(maintenancePath, async (_, send) => { fixture.signedIn = false; send(401, { message: 'Phiên đã hết hạn.' }); return true; });
+    await page.getByLabel('Lý do nội bộ').fill('Kiểm tra phiên'); await save(page);
+    await expect(page.getByRole('heading', { name: 'Đăng nhập quản trị' })).toBeVisible();
+  }
+  release(); await expect(page.getByRole('dialog')).toHaveCount(0);
+  if (exit === 'dismiss') {
+    fixture.handlers.set('/health', async (_, send) => { send(503, 'Unavailable'); return true; });
+    await page.getByRole('button', { name: 'Tắt bảo trì', exact: true }).click();
+    await expect(page.getByText('Không có quan sát khả dụng', { exact: true })).toBeVisible();
+  }
+  await expect(page.getByText('Máy chủ phản hồi OK', { exact: true })).toHaveCount(0);
+});
+
+test('maintenance audit actions and refund source have Vietnamese labels', async ({ page, fixture }) => {
+  fixture.handlers.set('/admin/api/audit', async (_, send) => { send(200, pageOf(['MAINTENANCE_READ', 'MAINTENANCE_UPDATE', 'MAINTENANCE_TRANSITION'].map((action, id) => ({ id, action, actorId: 'owner-1', createdAtEpochMillis: 1791000000000 })))); return true; });
+  fixture.handlers.set('/admin/api/users/' + player.id + '/wallet', async (_, send) => { send(200, pageOf([{ id: 'refund', sourceType: 'TOURNAMENT_MAINTENANCE_REFUND', sourceId: 'cup', goldDelta: 100, gemsDelta: 0, xpDelta: 0, createdAtEpochMillis: 1791000000000 }])); return true; });
+  await login(page, fixture); await page.getByRole('button', { name: 'Nhật ký kiểm toán', exact: true }).click();
+  for (const label of ['Xem trạng thái bảo trì', 'Cập nhật bảo trì', 'Chuyển giai đoạn bảo trì']) await expect(page.getByText(label, { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Người chơi', exact: true }).click(); await page.getByRole('button', { name: 'Xem người chơi' }).first().click();
+  await page.getByRole('button', { name: 'Ví', exact: true }).click(); await expect(page.getByText('Hoàn phí giải do bảo trì', { exact: true })).toBeVisible();
+});
+
+for (const width of [360, 1440]) test(`decision context and health dialog capture at ${width}`, async ({ page, fixture }) => {
+  maintenance(fixture, 'MAINTENANCE'); await page.setViewportSize({ width, height: 1000 }); await page.emulateMedia({ reducedMotion: 'reduce' });
+  await open(page, fixture); await expect(page.getByText('owner-maintenance-7', { exact: true })).toBeVisible();
+  await page.screenshot({ path: `../.artifacts/admin-maintenance-final-${width}-context.png`, fullPage: true });
+  await page.getByRole('button', { name: 'Tắt bảo trì', exact: true }).click();
+  await expect(page.getByText('Máy chủ phản hồi OK', { exact: true })).toBeVisible();
+  await page.screenshot({ path: `../.artifacts/admin-maintenance-final-${width}-health.png` });
+  for (let i = 0; i < 7; i++) { await page.keyboard.press('Tab'); expect(await page.evaluate(() => !!document.activeElement.closest('dialog'))).toBe(true); }
+  await page.getByRole('button', { name: 'Xác nhận lưu', exact: true }).focus(); await expect(page.getByRole('button', { name: 'Xác nhận lưu', exact: true })).toBeInViewport();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  const box = await page.getByRole('button', { name: 'Kiểm tra lại máy chủ', exact: true }).boundingBox(); expect(box.width).toBeGreaterThanOrEqual(48); expect(box.height).toBeGreaterThanOrEqual(48);
+  await page.keyboard.press('Escape'); await expect(page.getByRole('button', { name: 'Tắt bảo trì', exact: true })).toBeFocused();
+});
 
 test('Owner planned, emergency and disable submit exact versioned DTOs and show observed runtime separately', async ({ page, fixture }) => {
   maintenance(fixture); await open(page, fixture);

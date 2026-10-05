@@ -11,6 +11,93 @@ class MaintenanceGameEngineTest {
     private val draining = MaintenancePolicy(MaintenanceState.DRAINING)
     private val closed = MaintenancePolicy(MaintenanceState.MAINTENANCE)
 
+    @Test fun queuedCleanupCannotForfeitAfterEmergencyPublication() = queuedCleanupCannotForfeit(false)
+    @Test fun queuedCleanupCannotForfeitAfterDrainDeadlinePublication() = queuedCleanupCannotForfeit(true)
+
+    private fun queuedCleanupCannotForfeit(deadline: Boolean) = runTest {
+        val entered = CompletableDeferred<Unit>(); val release = CompletableDeferred<Unit>()
+        var pauseQuota = false
+        val quotas = InMemoryPlayQuotaRepository()
+        val quota = object : PlayQuotaRepository by quotas {
+            override suspend fun consumeMatch(userIds: Set<String>, matchId: String, nowMillis: Long): PlayQuotaConsumption {
+                if (pauseQuota) { entered.complete(Unit); release.await() }
+                return quotas.consumeMatch(userIds, matchId, nowMillis)
+            }
+        }
+        val rooms = InMemoryActiveRoomRepository(); val results = mutableListOf<CompletedMatch>()
+        var now = 1_000L
+        val engine = GameEngine(activeRoomRepository = rooms, playQuotaRepository = quota,
+            matchResultRepository = MatchResultRepository { results += it }, nowMillis = { now })
+        val (host, guest, room) = playing(engine)
+        val other = engine.connectAccount(AuthenticatedAccount(UUID.randomUUID(), "other"))
+        val opponent = engine.connectAccount(AuthenticatedAccount(UUID.randomUUID(), "opponent"))
+        val waiting = engine.handle(other.playerId, ClientMessage.CreateRoom("barrier", "", ProtocolGameMode.ORDER))
+            .map { it.message }.filterIsInstance<ServerMessage.RoomCreated>().single().game.roomId
+        engine.handle(opponent.playerId, ClientMessage.JoinRoom(waiting, ""))
+        engine.handle(other.playerId, ClientMessage.SetReady(waiting, true))
+        engine.markDisconnected(guest.playerId); now += 1_000_000
+        pauseQuota = true
+        val holding = async { engine.handle(opponent.playerId, ClientMessage.SetReady(waiting, true)) }
+        entered.await() // setReady holds the engine mutex while quota is suspended.
+        if (deadline) engine.publishMaintenancePolicy(draining)
+        // UNDISPATCHED executes through the outer policy guard to the contended mutex.
+        val cleanup = async(start = CoroutineStart.UNDISPATCHED) { engine.cleanupExpiredSessions() }
+        assertFalse(cleanup.isCompleted)
+        engine.publishMaintenancePolicy(closed.copy(mode = if (deadline) MaintenanceMode.PLANNED else MaintenanceMode.EMERGENCY))
+        release.complete(Unit); holding.await()
+        assertTrue(cleanup.await().none { it.message is ServerMessage.GameFinished })
+        engine.reconcileMaintenancePolicy(); engine.retryMaintenanceSettlements()
+        val aborted = rooms.loadAll().single { it.roomId == room }
+        assertTrue(aborted.maintenanceAborted); assertTrue(aborted.resultQueued)
+        assertNull(aborted.forcedWinnerId); assertNull(aborted.pendingCompletedMatch)
+        assertTrue(results.isEmpty(), "No result may enter the reward/Elo settlement authority")
+        engine.applyMaintenancePolicy(MaintenancePolicy(MaintenanceState.ACTIVE))
+        assertNull(engine.connectAccount(AuthenticatedAccount(UUID.fromString(host.playerId), "host"), host.resumeToken).currentGame!!.winnerPlayerId)
+    }
+
+    @Test fun abortedRoomRejectsRematchWithoutQuotaAndFreshMatchSettles() = abortedRematch(false)
+    @Test fun restoredAbortedRoomRejectsRematchWithoutQuotaAndFreshMatchSettles() = abortedRematch(true)
+
+    private fun abortedRematch(restore: Boolean) = runTest {
+        val rooms = InMemoryActiveRoomRepository(); val quotas = InMemoryPlayQuotaRepository()
+        val results = mutableListOf<CompletedMatch>(); val now = 1_000L
+        fun engine() = GameEngine(activeRoomRepository = rooms, playQuotaRepository = quotas,
+            matchResultRepository = MatchResultRepository { results += it }, nowMillis = { now })
+        val original = engine(); val (host, guest, room) = playing(original)
+        original.applyMaintenancePolicy(closed)
+        original.markDisconnected(host.playerId); original.markDisconnected(guest.playerId)
+        val aborted = rooms.loadAll().single()
+        val reopened = if (restore) engine() else original
+        reopened.applyMaintenancePolicy(MaintenancePolicy(MaintenanceState.ACTIVE))
+        for (player in listOf(host, guest)) {
+            val snapshot = reopened.connectAccount(AuthenticatedAccount(UUID.fromString(player.playerId), "player"), player.resumeToken).currentGame!!
+            assertEquals(RoomPhase.FINISHED, snapshot.phase); assertNull(snapshot.winnerPlayerId)
+        }
+        val quotaBefore = listOf(host, guest).map { quotas.getSnapshot(it.playerId, now) }
+        val attempts = listOf(host, guest).flatMap { reopened.handle(it.playerId, ClientMessage.RequestRematch(room)) }
+        assertTrue(attempts.none { it.message is ServerMessage.GameStarted })
+        assertEquals(2, attempts.map { it.message }.filterIsInstance<ServerMessage.Error>().count { it.code == "MAINTENANCE_REMATCH_UNAVAILABLE" })
+        assertEquals(quotaBefore, listOf(host, guest).map { quotas.getSnapshot(it.playerId, now) })
+        assertEquals(aborted.matchId, rooms.loadAll().single().matchId)
+        assertTrue(rooms.loadAll().single().maintenanceAborted)
+        assertTrue(results.isEmpty()); assertEquals(0, reopened.activeMaintenanceMatchCount())
+        // Retain the old aborted snapshot while its opponent stays; the host can leave and start a clean room.
+        reopened.handle(host.playerId, ClientMessage.LeaveRoom(room))
+        val next = reopened.connectAccount(AuthenticatedAccount(UUID.randomUUID(), "fresh opponent"))
+        val fresh = reopened.handle(host.playerId, ClientMessage.CreateRoom("fresh", "", ProtocolGameMode.ORDER))
+            .map { it.message }.filterIsInstance<ServerMessage.RoomCreated>().single().game.roomId
+        reopened.handle(next.playerId, ClientMessage.JoinRoom(fresh, ""))
+        reopened.handle(host.playerId, ClientMessage.SetReady(fresh, true))
+        val started = reopened.handle(next.playerId, ClientMessage.SetReady(fresh, true))
+        assertEquals(1, started.count { it.message is ServerMessage.GameStarted })
+        assertEquals(1, reopened.activeMaintenanceMatchCount())
+        for (number in 1..GAME_NUMBER_COUNT) reopened.handle(host.playerId, ClientMessage.SelectNumber(fresh, number, "fresh-$number"))
+        assertEquals(1, results.size); assertEquals(host.playerId, results.single().winnerPlayerId)
+        assertNotEquals(aborted.matchId, results.single().matchId)
+        assertEquals(0, reopened.activeMaintenanceMatchCount())
+        assertTrue(rooms.loadAll().single { it.roomId == room }.maintenanceAborted)
+    }
+
     @Test fun failedCompletedResultRemainsDurableAndRestoredRetryFinishesOnce() = runTest {
         val rooms = InMemoryActiveRoomRepository()
         val engine = GameEngine(activeRoomRepository = rooms, matchResultRepository = MatchResultRepository { throw java.sql.SQLException("test failure") })

@@ -2431,6 +2431,9 @@ class GameEngine(
         if (maintenancePolicy.isFullyClosed) return emptyList()
         val removedInvitations = mutableListOf<RoomInvitationRecord>()
         val cleanup = mutex.withLock {
+            // Publication can close admission while cleanup waits for a suspended engine operation.
+            // Accepted results remain in the independent durable settlement retry queue.
+            if (maintenancePolicy.isFullyClosed) return emptyList()
             val now = nowMillis()
             pendingReconnectResultsByPlayerId.entries.removeIf {
                 now - it.value.createdAtMillis >= ROOM_RECONNECT_GRACE_MILLIS
@@ -2896,6 +2899,10 @@ class GameEngine(
         }
         if (room.phase != RoomPhase.FINISHED) {
             return HandleResult(listOf(error(player.playerId, "REMATCH_NOT_AVAILABLE", legacyFallback("Chỉ có thể đấu lại sau khi trận kết thúc."))))
+        }
+        if (room.maintenanceAborted) {
+            return HandleResult(listOf(error(player.playerId, "MAINTENANCE_REMATCH_UNAVAILABLE",
+                legacyFallback("Trận này đã dừng do bảo trì. Hãy rời phòng rồi tạo hoặc tham gia phòng mới."))))
         }
         if (room.matchId in pendingCompletedMatches || room.matchId in settlementsInFlight) {
             return HandleResult(listOf(error(player.playerId, "REMATCH_NOT_AVAILABLE", legacyFallback("Kết quả trận đấu đang được lưu."))))

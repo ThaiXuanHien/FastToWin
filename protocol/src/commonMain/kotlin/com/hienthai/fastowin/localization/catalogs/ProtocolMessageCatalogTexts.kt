@@ -11,7 +11,11 @@ private val englishPublicTournamentMessageTexts = mapOf(
     TextKey.ServerTournamentSaveFailed to "Your tournament entry could not be saved. Please try again.",
 )
 
-internal val englishProtocolMessageTexts = englishPublicTournamentMessageTexts + mapOf(
+private val englishMaintenanceMessageTexts = mapOf(
+    TextKey.MaintenanceRematchUnavailable to "This match was stopped for maintenance. Leave this room and create or join a new room.",
+)
+
+internal val englishProtocolMessageTexts = englishPublicTournamentMessageTexts + englishMaintenanceMessageTexts + mapOf(
     TextKey.ServerAuthRequired to "Sign in to continue.",
     TextKey.ServerRateLimited to "Too many requests. Try again in {seconds} seconds.",
     TextKey.ServerInvalidRequest to "The request is invalid. Please try again.",
@@ -109,6 +113,7 @@ internal val vietnameseProtocolMessageTexts = englishProtocolMessageTexts + mapO
     TextKey.ServerAlreadyExists to "Yêu cầu này đã được xử lý.",
     TextKey.ServerUnavailable to "Dịch vụ tạm thời không khả dụng. Vui lòng thử lại.",
     TextKey.ServerActionFailed to "Không thể hoàn tất thao tác. Vui lòng thử lại.",
+    TextKey.MaintenanceRematchUnavailable to "Trận này đã dừng do bảo trì. Hãy rời phòng rồi tạo hoặc tham gia phòng mới.",
     TextKey.ServerInvalidInput to "Thông tin đã nhập không hợp lệ.",
     TextKey.ServerInvitationExpired to "Lời mời đã hết hạn.",
     TextKey.PasswordChanged to "Đã cập nhật mật khẩu.",
@@ -164,13 +169,14 @@ internal val vietnameseProtocolMessageTexts = englishProtocolMessageTexts + mapO
 )
 
 private fun protocolMessageTranslations(vararg values: String): Map<TextKey, String> {
-    // Public discovery currently ships EN/VI copy; preserve the existing positional
-    // translations and use English only for the newly added discovery messages.
-    val legacyKeys = englishProtocolMessageTexts.keys - englishPublicTournamentMessageTexts.keys
+    // Discovery and maintenance recovery ship EN/VI copy. Keep the positional
+    // legacy translations stable and use English for these additive messages.
+    val additive = englishPublicTournamentMessageTexts + englishMaintenanceMessageTexts
+    val legacyKeys = englishProtocolMessageTexts.keys - additive.keys
     require(values.size == legacyKeys.size) {
         "Expected ${legacyKeys.size} protocol translations, received ${values.size}."
     }
-    return englishPublicTournamentMessageTexts + legacyKeys.zip(values).toMap()
+    return additive + legacyKeys.zip(values).toMap()
 }
 
 internal val germanProtocolMessageTexts = protocolMessageTranslations(

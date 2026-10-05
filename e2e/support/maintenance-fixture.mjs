@@ -3,7 +3,8 @@ export function maintenance(fixture, state = 'ACTIVE', source = 'DATABASE') {
   const saved = { version: 7, state, mode: state === 'ACTIVE' ? null : 'PLANNED', cause: 'UPDATE',
     messageVi: 'Cập nhật máy chủ', messageEn: 'Server update', warningMinutes: 5, drainMinutes: 15,
     startedAtEpochMillis: 1791000000000, transitionAtEpochMillis: 1791000300000,
-    drainDeadlineEpochMillis: 1791001200000, expectedEndEpochMillis: null, reason: 'Kiểm thử' };
+    drainDeadlineEpochMillis: 1791001200000, expectedEndEpochMillis: null, reason: 'Kiểm thử',
+    actorId: 'owner-maintenance-7', changedAtEpochMillis: 1791000060000 };
   const data = { persisted: saved, persistedSource: 'DATABASE', effective: { state, source, mode: saved.mode, version: 6 },
     runtime: { version: 6, observedAtEpochMillis: 1791000000000, activeMatches: 3, available: true } };
   fixture.handlers.set(maintenancePath, async (call, send) => {

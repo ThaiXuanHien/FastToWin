@@ -283,7 +283,7 @@ enum class TextKey {
     ServerPlayerActivityConflict, ServerAlreadyInRoom, ServerTournamentAlreadyActive,
     PlayActionBlockedTitle,
     ServerResourceNotFound, ServerAlreadyExists, ServerUnavailable,
-    ServerActionFailed, ServerInvalidInput, ServerInvitationExpired,
+    ServerActionFailed, ServerInvalidInput, ServerInvitationExpired, MaintenanceRematchUnavailable,
     PasswordChanged, PasswordResetSent, PasswordResetCompleted,
     EmailVerificationSent, EmailVerified, SessionRevoked, AllSessionsRevoked,
     AccountDeleted,

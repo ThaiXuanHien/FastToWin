@@ -13,6 +13,8 @@ const labels = {
   ADMIN_GIFT: 'Quà quản trị', COMPENSATION: 'Bồi hoàn',
   GIFT_LIST: 'Xem chiến dịch quà', GIFT_DETAIL: 'Xem báo cáo quà', GIFT_CREATE: 'Tạo bản nháp quà', GIFT_UPDATE: 'Sửa bản nháp quà',
   GIFT_PREVIEW: 'Xem trước quà', GIFT_PUBLISH: 'Công bố quà', GIFT_CANCEL: 'Hủy chiến dịch quà',
+  MAINTENANCE_READ: 'Xem trạng thái bảo trì', MAINTENANCE_UPDATE: 'Cập nhật bảo trì', MAINTENANCE_TRANSITION: 'Chuyển giai đoạn bảo trì',
+  TOURNAMENT_MAINTENANCE_REFUND: 'Hoàn phí giải do bảo trì',
   ADMIN_LOGIN: 'Đăng nhập quản trị', ADMIN_LOGOUT: 'Đăng xuất quản trị', ADMIN_SESSION: 'Khôi phục phiên',
   ADMIN_BOOTSTRAP: 'Cấp Owner ban đầu', ADMIN_CREATE: 'Cấp tài khoản quản trị', ADMIN_ACCESS: 'Thay đổi quyền truy cập',
   ADMIN_LIST: 'Xem tài khoản quản trị', AUDIT_READ: 'Xem nhật ký kiểm toán', USER_SEARCH: 'Tra cứu người chơi',
@@ -169,7 +171,7 @@ function channel() {
     return { controller, current, sessionVersion: s };
   };
 }
-async function api(path, task, payload, csrf = session?.csrfToken, method = 'POST') {
+async function api(path, task, payload, csrf = session?.csrfToken, method = 'POST', liveness = false) {
   let authRequest = false;
   try {
     let controller;
@@ -183,13 +185,13 @@ async function api(path, task, payload, csrf = session?.csrfToken, method = 'POS
     if (!task.current() || (navigator.serviceWorker?.controller ?? null) !== controller) throw aborted();
     authRequest = path === '/login' || path === '/logout';
     if (authRequest) authRequests++;
-    const response = await fetch('/admin/api' + path, {
+    const response = await fetch(liveness ? '/health' : '/admin/api' + path, {
       credentials: 'same-origin', cache: 'no-store', signal: task.controller.signal,
       ...(payload === undefined ? {} : { method, headers: { 'Content-Type': 'application/json', ...(csrf ? { 'X-Admin-CSRF': csrf } : {}) }, body: JSON.stringify(payload) }),
     });
     if (!task.current()) throw aborted();
     if ((navigator.serviceWorker?.controller ?? null) !== controller) throw new Error('Kết nối đã thay đổi. Kết quả chưa được xác nhận; vui lòng thử lại.');
-    const body = await response.json();
+    const body = liveness ? await response.text() : await response.json();
     if (!task.current()) throw aborted();
     if ((navigator.serviceWorker?.controller ?? null) !== controller) throw new Error('Kết nối đã thay đổi. Kết quả chưa được xác nhận; vui lòng thử lại.');
     if (response.status === 401 && session) { showLogin('Phiên quản trị đã hết hạn. Vui lòng đăng nhập lại.'); throw aborted(); }
@@ -237,6 +239,7 @@ async function maintenance() {
     openMaintenance({ node, append, button, iconButton, field, modal, feedback, shell, channel,
       role: () => session?.admin.role,
       api: (path, request, payload, method) => api(path, request, payload, session?.csrfToken, method),
+      health: request => api('/health', request, undefined, undefined, 'GET', true),
     });
   } catch (error) { if (task.current() && error.name !== 'AbortError') feedback(document.getElementById('main')).fail(new Error('Không thể tải quản lý bảo trì. Vui lòng thử lại.')); }
 }

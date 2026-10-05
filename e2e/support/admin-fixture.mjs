@@ -14,6 +14,13 @@ export const test = base.extend({
     const server = createServer(async (req, res) => {
       const url = new URL(req.url, 'http://localhost');
       const route = url.pathname;
+      if (route === '/health') {
+        const call = { route, method: req.method, headers: req.headers };
+        state.calls.push(call);
+        const send = (status, body) => { if (!res.destroyed) { res.writeHead(status, { 'Content-Type': 'text/plain', 'Cache-Control': 'no-store' }); res.end(body); } };
+        if (state.handlers.get(route) && await state.handlers.get(route)(call, send)) return;
+        send(200, 'OK'); return;
+      }
       if (route === '/service-worker.js') {
         if (state.worker === 'unavailable') { res.writeHead(503); res.end(); return; }
         const file = state.worker === 'legacy' ? './legacy-service-worker-v5.js' : '../../webApp/src/wasmJsMain/resources/service-worker.js';
