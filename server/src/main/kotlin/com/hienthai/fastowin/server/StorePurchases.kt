@@ -44,8 +44,12 @@ data class StoreVerificationResult(
         StoreVerificationStatus.INVALID -> TextKey.BillingIncomplete.name
         StoreVerificationStatus.UNAVAILABLE -> TextKey.ServerUnavailable.name
     },
-    val messageArgs: Map<String, String> = emptyMap()
+    val messageArgs: Map<String, String> = emptyMap(),
+    val verifiedOrder: VerifiedStoreOrder? = null
 )
+
+/** Provider identity only; the economy transaction remains the receipt fingerprint. */
+data class VerifiedStoreOrder(val orderId: String, val packageName: String, val environment: String)
 
 fun interface StorePurchaseVerifier {
     suspend fun verify(purchase: StorePurchaseVerification): StoreVerificationResult
@@ -84,8 +88,14 @@ class GooglePlayPurchaseVerifier(
     private val packageName: String,
     private val credentials: GoogleCredentials,
     private val httpClient: HttpClient = HttpClient.newBuilder().build(),
-    private val sandboxAllowed: Boolean = false
+    private val sandboxAllowed: Boolean = false,
+    private val endpoint: URI = URI.create("https://androidpublisher.googleapis.com/")
 ) : StorePurchaseVerifier {
+    init {
+        require(endpoint == URI.create("https://androidpublisher.googleapis.com/") ||
+            (endpoint.scheme == "http" && endpoint.host == "127.0.0.1"))
+        require(httpClient.followRedirects() == HttpClient.Redirect.NEVER)
+    }
     override suspend fun verify(purchase: StorePurchaseVerification): StoreVerificationResult =
         withContext(Dispatchers.IO) {
             try {
@@ -98,10 +108,8 @@ class GooglePlayPurchaseVerifier(
                     StandardCharsets.UTF_8
                 ).replace("+", "%20")
                 val request = HttpRequest.newBuilder()
-                    .uri(URI.create(
-                        "https://androidpublisher.googleapis.com/androidpublisher/v3/applications/" +
-                            "$packageName/purchases/productsv2/tokens/$encodedToken"
-                    ))
+                    .uri(endpoint.resolve("androidpublisher/v3/applications/$packageName/purchases/productsv2/tokens/$encodedToken"))
+                    .timeout(java.time.Duration.ofSeconds(20))
                     .header("Authorization", "Bearer $accessToken")
                     .GET()
                     .build()
@@ -128,7 +136,11 @@ class GooglePlayPurchaseVerifier(
                     ?.jsonPrimitive?.contentOrNull
                 val accountMatches = purchasedAccount == null || purchasedAccount == expectedAccount
                 if (state == "PURCHASED" && productMatches && accountMatches) {
-                    StoreVerificationResult(StoreVerificationStatus.PURCHASED, legacyFallback("Google Play đã xác thực."))
+                    val orderId = payload["orderId"]?.jsonPrimitive?.contentOrNull
+                        ?.takeIf { it.length in 1..256 && it.all { c -> c.isLetterOrDigit() || c in ".-_" } }
+                    StoreVerificationResult(StoreVerificationStatus.PURCHASED, legacyFallback("Google Play đã xác thực."),
+                        verifiedOrder = orderId?.let { VerifiedStoreOrder(it, packageName,
+                            if ("testPurchaseContext" in payload) "SANDBOX" else "LIVE") })
                 } else {
                     StoreVerificationResult(StoreVerificationStatus.INVALID, legacyFallback("Giao dịch chưa hoàn tất hoặc không khớp tài khoản."))
                 }

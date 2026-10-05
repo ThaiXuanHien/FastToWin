@@ -47,6 +47,11 @@ fun main() {
         DailyPushReminderService(playerProfileRepository, pushNotificationService)
     }
     val storePurchaseService = StorePurchaseService(playerProfileRepository, storePurchaseVerifier)
+    val financialSync = database?.let {
+        val configured = com.hienthai.fastowin.server.analytics.configuredFinancialSource()
+        com.hienthai.fastowin.server.analytics.FinancialSyncService(it.financialSyncRepository,
+            configured?.first, configured?.second)
+    }
     val engine = GameEngine(
         identityRepository,
         matchResultRepository,
@@ -93,6 +98,7 @@ fun main() {
                 adminService = adminService,
                 analyticsService = adminService?.let { com.hienthai.fastowin.server.analytics.AnalyticsService(
                     database?.analyticsRepository ?: com.hienthai.fastowin.server.analytics.UnavailableAnalyticsRepository, it) },
+                financialSyncService = financialSync,
                 giftService = com.hienthai.fastowin.server.gifts.GiftService(database?.giftRepository ?: com.hienthai.fastowin.server.gifts.UnavailableGiftRepository, adminService, newIntentAllowed = engine::newIntentAllowed),
                 giftDeliveryEnabled = database != null,
                 maintenanceService = maintenanceService,

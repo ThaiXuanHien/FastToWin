@@ -20,6 +20,12 @@ class StorePurchaseVerifierTest {
     private val purchased = """{"purchaseStateContext":{"purchaseState":"PURCHASED"},"productLineItem":[{"productId":"fasttowin_gems_80"}]}"""
     private fun verifier(send: () -> String) = GooglePlayPurchaseVerifier("example.invalid", GoogleCredentials.create(AccessToken("fake-access", Date(Long.MAX_VALUE))), FakeHttpClient(send))
 
+    @Test fun `verified provider order is retained separately from receipt fingerprint`() = runTest {
+        val result = verifier { purchased.dropLast(1) + ",\"orderId\":\"GPA.1234\"}" }.verify(receipt)
+        assertEquals(VerifiedStoreOrder("GPA.1234", "example.invalid", "LIVE"), result.verifiedOrder)
+        assertNull(verifier { purchased }.verify(receipt).verifiedOrder)
+    }
+
     @Test fun `production cannot accept a dev receipt even when delegate says purchased`() = runTest {
         val verifier = EnvironmentStorePurchaseVerifier("prod", StorePurchaseVerifier { StoreVerificationResult(StoreVerificationStatus.PURCHASED, "") })
         assertEquals(StoreVerificationStatus.INVALID, verifier.verify(receipt.copy(purchaseToken = "dev:GOOGLE_PLAY:fake")).status)

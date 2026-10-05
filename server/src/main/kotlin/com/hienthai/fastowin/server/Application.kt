@@ -97,12 +97,22 @@ fun Application.gameModule(
     giftDeliveryEnabled: Boolean = false,
     maintenanceService: MaintenanceService? = null,
     maintenanceRuntime: MaintenanceRuntime = MaintenanceRuntime(engine, maintenanceService, serviceStatusProvider),
+    financialSyncService: com.hienthai.fastowin.server.analytics.FinancialSyncService? = null,
     analyticsService: com.hienthai.fastowin.server.analytics.AnalyticsService? = adminService?.let {
         com.hienthai.fastowin.server.analytics.AnalyticsService(com.hienthai.fastowin.server.analytics.UnavailableAnalyticsRepository, it)
     }
 ) {
     // The first policy and restored aborts must be applied before any handler/timer can serve game.
     runBlocking { maintenanceRuntime.refresh() }
+    runBlocking { financialSyncService?.initialize() }
+    financialSyncService?.let { service -> launch {
+        while (isActive) {
+            try { service.runBatch() }
+            catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+            catch (_: Exception) { System.err.println("Financial synchronization unavailable") }
+            delay(60_000)
+        }
+    } }
     val isProduction = environment != "dev"
     val allowedWebOrigins = buildAllowedWebOrigins(
         environment = environment,

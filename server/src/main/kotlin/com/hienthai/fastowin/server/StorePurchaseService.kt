@@ -45,12 +45,15 @@ class StorePurchaseService(
             )
         }
         val fingerprint = storePurchaseFingerprint(request.store, request.purchaseToken)
-        val grantStatus = playerProfileRepository.grantStorePurchase(
+        val grantStatus = if (verification.verifiedOrder == null) playerProfileRepository.grantStorePurchase(
+            playerId, request.store.name, request.productId, fingerprint, gemPackage.gems
+        ) else playerProfileRepository.grantVerifiedStorePurchase(
             playerId = playerId,
             store = request.store.name,
             productId = request.productId,
             transactionId = fingerprint,
-            gems = gemPackage.gems
+            gems = gemPackage.gems,
+            order = verification.verifiedOrder
         )
         val result = when (grantStatus) {
             StorePurchaseGrantStatus.GRANTED -> StorePurchaseStatus.GRANTED to

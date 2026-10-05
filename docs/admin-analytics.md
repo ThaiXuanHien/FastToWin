@@ -127,3 +127,9 @@ fragments are fixed server constants; the server never loads raw transactions or
 users into JVM/browser memory to group them. V52 schema and Task 1 writers are
 unchanged. `DatabaseRuntime.analyticsRepository`, optional `AnalyticsService`,
 and `/admin/api/analytics` are the Task 3/4 integration interfaces.
+
+## Financial source setup
+
+See [financial analytics sources](financial-analytics-sources.md) for the default
+disabled configuration, Google known-order PARTIAL coverage, durable rechecks and
+explicit App Store dependency. Financial facts never alter wallet grants.
