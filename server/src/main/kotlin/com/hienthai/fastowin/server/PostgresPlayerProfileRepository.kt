@@ -1,5 +1,7 @@
 package com.hienthai.fastowin.server
 
+import com.hienthai.fastowin.server.analytics.AnalyticsFacts
+
 import com.hienthai.fastowin.protocol.MatchHistoryOutcome
 import com.hienthai.fastowin.protocol.MatchHistorySnapshot
 import com.hienthai.fastowin.protocol.AchievementSnapshot
@@ -1893,9 +1895,19 @@ class PostgresPlayerProfileRepository(
     }
 
     override suspend fun buyCosmetic(playerId: String, cosmeticId: String, cosmeticType: String, price: Int): Boolean = withContext(Dispatchers.IO) {
+        if (price <= 0) return@withContext false
         dataSource.connection.use { connection ->
             connection.autoCommit = false
             try {
+                // Keep user -> stats lock order aligned with account deletion and subject creation.
+                connection.prepareStatement("SELECT id FROM users WHERE id = ? FOR UPDATE").use { statement ->
+                    statement.setObject(1, UUID.fromString(playerId))
+                    statement.executeQuery().use { result ->
+                        if (!result.next()) { connection.rollback(); return@withContext false }
+                    }
+                }
+                val eventId = UUID.randomUUID()
+                val purchasedAt = System.currentTimeMillis()
                 val updateGold = connection.prepareStatement("UPDATE player_stats SET gold = gold - ? WHERE user_id = ? AND gold >= ?")
                 updateGold.setInt(1, price)
                 updateGold.setObject(2, java.util.UUID.fromString(playerId))
@@ -1915,7 +1927,7 @@ class PostgresPlayerProfileRepository(
                 insertCosmetic.setObject(1, java.util.UUID.fromString(playerId))
                 insertCosmetic.setString(2, cosmeticType)
                 insertCosmetic.setString(3, cosmeticId)
-                insertCosmetic.setTimestamp(4, java.sql.Timestamp.from(java.time.Instant.now()))
+                insertCosmetic.setTimestamp(4, java.sql.Timestamp(purchasedAt))
                 if (insertCosmetic.executeUpdate() == 0) {
                     connection.rollback()
                     return@withContext false
@@ -1928,8 +1940,12 @@ class PostgresPlayerProfileRepository(
                     sourceId = cosmeticId,
                     gold = -price,
                     gems = 0,
-                    xp = 0
+                    xp = 0,
+                    eventId = eventId,
+                    createdAt = purchasedAt
                 )
+
+                AnalyticsFacts.recordItemPurchase(connection, eventId, playerId, cosmeticId, "GOLD", price.toLong(), purchasedAt)
 
                 connection.commit()
                 true
@@ -1967,23 +1983,27 @@ class PostgresPlayerProfileRepository(
         sourceId: String,
         gold: Int,
         gems: Int,
-        xp: Int
+        xp: Int,
+        eventId: UUID = UUID.randomUUID(),
+        createdAt: Long? = null
     ) {
         if (gold == 0 && gems == 0 && xp == 0) return
         connection.prepareStatement(
             """
             INSERT INTO wallet_transactions (
-                id, user_id, source_type, source_id, gold_delta, gems_delta, xp_delta
-            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                id, user_id, source_type, source_id, gold_delta, gems_delta, xp_delta, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP))
             """.trimIndent()
         ).use { statement ->
-            statement.setObject(1, UUID.randomUUID())
+            statement.setObject(1, eventId)
             statement.setObject(2, userId)
             statement.setString(3, sourceType)
             statement.setString(4, sourceId)
             statement.setInt(5, gold)
             statement.setInt(6, gems)
             statement.setInt(7, xp)
+            if (createdAt == null) statement.setNull(8, java.sql.Types.TIMESTAMP)
+            else statement.setTimestamp(8, java.sql.Timestamp(createdAt))
             statement.executeUpdate()
         }
     }

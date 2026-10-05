@@ -1,5 +1,7 @@
 package com.hienthai.fastowin.server
 
+import com.hienthai.fastowin.server.analytics.AnalyticsFacts
+
 import com.hienthai.fastowin.protocol.DEFAULT_FEMALE_AVATAR_ID
 import com.hienthai.fastowin.protocol.DEFAULT_MALE_AVATAR_ID
 import com.hienthai.fastowin.protocol.PlayerGender
@@ -20,6 +22,7 @@ class PostgresAuthRepository(private val dataSource: DataSource) : AuthRepositor
                 insertUser(connection, account)
                 insertProfile(connection, account)
                 insertSession(connection, account.userId, account.devicePlatform, account.session)
+                AnalyticsFacts.recordRegistration(connection, account.userId.toString(), account.session.nowMillis)
                 connection.commit()
                 true
             } catch (error: SQLException) {
@@ -359,6 +362,7 @@ class PostgresAuthRepository(private val dataSource: DataSource) : AuthRepositor
                         statement.executeUpdate()
                     }
                     insertSession(connection, guest.userId, upgrade.devicePlatform, upgrade.session)
+                    AnalyticsFacts.recordRegistration(connection, guest.userId.toString(), upgrade.session.nowMillis)
                     connection.commit()
                     GuestUpgradeResult.Success(guest.userId, guest.displayName)
                 } catch (error: SQLException) {
@@ -630,11 +634,28 @@ class PostgresAuthRepository(private val dataSource: DataSource) : AuthRepositor
 
     override suspend fun deleteAccount(userId: UUID): Boolean = withContext(Dispatchers.IO) {
         dataSource.connection.use { connection ->
-            connection.prepareStatement(
-                "DELETE FROM users WHERE id = ? AND account_type = 'REGISTERED' AND status = 'ACTIVE'"
-            ).use { statement ->
-                statement.setObject(1, userId)
-                statement.executeUpdate() == 1
+            connection.autoCommit = false
+            try {
+                val eligible = connection.prepareStatement(
+                    "SELECT id FROM users WHERE id = ? AND account_type = 'REGISTERED' AND status = 'ACTIVE' FOR UPDATE"
+                ).use { statement ->
+                    statement.setObject(1, userId)
+                    statement.executeQuery().use { it.next() }
+                }
+                if (!eligible) {
+                    connection.rollback()
+                    return@withContext false
+                }
+                AnalyticsFacts.eraseIdentityLink(connection, userId.toString())
+                val deleted = connection.prepareStatement("DELETE FROM users WHERE id = ?").use { statement ->
+                    statement.setObject(1, userId)
+                    statement.executeUpdate() == 1
+                }
+                connection.commit()
+                deleted
+            } catch (error: Throwable) {
+                connection.rollback()
+                throw error
             }
         }
     }
