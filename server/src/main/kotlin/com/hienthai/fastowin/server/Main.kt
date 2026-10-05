@@ -91,6 +91,8 @@ fun main() {
                 seasonLifecycleRepository = seasonLifecycleRepository,
                 pushReminderService = pushReminderService,
                 adminService = adminService,
+                analyticsService = adminService?.let { com.hienthai.fastowin.server.analytics.AnalyticsService(
+                    database?.analyticsRepository ?: com.hienthai.fastowin.server.analytics.UnavailableAnalyticsRepository, it) },
                 giftService = com.hienthai.fastowin.server.gifts.GiftService(database?.giftRepository ?: com.hienthai.fastowin.server.gifts.UnavailableGiftRepository, adminService, newIntentAllowed = engine::newIntentAllowed),
                 giftDeliveryEnabled = database != null,
                 maintenanceService = maintenanceService,

@@ -5,6 +5,7 @@ import com.hienthai.fastowin.server.maintenance.*
 import com.hienthai.fastowin.server.admin.AdminService
 import com.hienthai.fastowin.server.admin.adminRoutes
 import com.hienthai.fastowin.server.admin.adminAssets
+import com.hienthai.fastowin.server.analytics.analyticsRoutes
 import com.hienthai.fastowin.protocol.ClientMessage
 import com.hienthai.fastowin.protocol.AuthErrorResponse
 import com.hienthai.fastowin.localization.TextKey
@@ -95,7 +96,10 @@ fun Application.gameModule(
     giftService: GiftService = GiftService(UnavailableGiftRepository, adminService, newIntentAllowed = engine::newIntentAllowed),
     giftDeliveryEnabled: Boolean = false,
     maintenanceService: MaintenanceService? = null,
-    maintenanceRuntime: MaintenanceRuntime = MaintenanceRuntime(engine, maintenanceService, serviceStatusProvider)
+    maintenanceRuntime: MaintenanceRuntime = MaintenanceRuntime(engine, maintenanceService, serviceStatusProvider),
+    analyticsService: com.hienthai.fastowin.server.analytics.AnalyticsService? = adminService?.let {
+        com.hienthai.fastowin.server.analytics.AnalyticsService(com.hienthai.fastowin.server.analytics.UnavailableAnalyticsRepository, it)
+    }
 ) {
     // The first policy and restored aborts must be applied before any handler/timer can serve game.
     runBlocking { maintenanceRuntime.refresh() }
@@ -141,6 +145,7 @@ fun Application.gameModule(
     }
 
     adminService?.let { service -> routing { adminAssets(); adminRoutes(service) } }
+    if (adminService != null) analyticsService?.let { service -> routing { analyticsRoutes(service) } }
 
     routing { storePurchaseRoutes(engine.storePurchaseService, authService, rateLimiter, rateLimitPolicies) }
     routing { giftRoutes(giftService, authService, adminService != null) }
