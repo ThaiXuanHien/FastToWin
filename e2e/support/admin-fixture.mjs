@@ -33,7 +33,7 @@ export const test = base.extend({
         res.end(html ? '<!doctype html><title>Game shell</title><p>Game offline shell</p>' : ''); return;
       }
       if (!route.startsWith('/admin/api/')) {
-        const name = { '/admin/': 'index.html', '/admin/index.html': 'index.html', '/admin/admin.css': 'admin.css', '/admin/admin.js': 'admin.js', '/admin/admin-network.js': 'admin-network.js', '/admin/admin-gifts.js': 'admin-gifts.js', '/admin/admin-maintenance.js': 'admin-maintenance.js' }[route];
+        const name = { '/admin/': 'index.html', '/admin/index.html': 'index.html', '/admin/admin.css': 'admin.css', '/admin/admin.js': 'admin.js', '/admin/admin-network.js': 'admin-network.js', '/admin/admin-gifts.js': 'admin-gifts.js', '/admin/admin-maintenance.js': 'admin-maintenance.js', '/admin/admin-analytics.js': 'admin-analytics.js' }[route];
         try {
           const body = name && await readFile(assets + name);
           if (!body) throw new Error('missing');

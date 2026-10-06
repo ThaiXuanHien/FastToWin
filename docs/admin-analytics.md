@@ -73,6 +73,8 @@ The response is `AnalyticsResponse`:
   comparison, top}`. Currency/exponent are null for registrations and store counts.
 - `series`: ordered `{from, until, value}` points with exact string or null values.
 - `comparison`: `{range, value, absoluteChange, percentageChange, coverage}`.
+  Its `coverage` is a **single** coverage record for that group's source (not
+  an array). Nonfinancial groups and coverage use source `SERVER`.
 - `top`: only TOP_ITEMS has rows, at most ten `{item, purchases, spend, buyers}`
   ordered by purchase count descending, spend descending, stable item ascending.
 
@@ -133,3 +135,50 @@ and `/admin/api/analytics` are the Task 3/4 integration interfaces.
 See [financial analytics sources](financial-analytics-sources.md) for the default
 disabled configuration, Google known-order PARTIAL coverage, durable rechecks and
 explicit App Store dependency. Financial facts never alter wallet grants.
+
+## Dashboard
+
+Owner and Operator open **Thống kê** in the existing admin navigation. Support
+has no dashboard; Operator's metric selector contains only the five registration
+and game metrics. Owner additionally sees the five financial metrics. Each
+request selects one metric, with contextual filters in a native modal. Changing
+metric resets incompatible filters. Financial requests default to LIVE; SANDBOX
+requires an explicit selection and stays visibly labelled as test environment.
+
+The default is 30 elapsed days, with 7/90-day presets and day/week/month buckets.
+Custom date inputs are Bangkok midnight; **Đến ngày, không gồm** is an exclusive
+upper bound. For example, 1 September to 1 October includes September only.
+The client validates order and the 24-calendar-month limit; the server clips
+future endpoints and supplies the actual current/prior comparison ranges.
+
+Every source's status, collection start and recorded freshness appear before
+values. Source/currency/scale groups remain separate; no total combines them.
+Partial observed amounts are labelled, missing amounts display “Chưa có dữ liệu”,
+and comparisons require complete current and prior source coverage. Prior zero
+has an absolute difference but no invented percentage. Buyer summary comes from
+the whole-range server result, independently of the per-bucket table.
+
+Amounts and labels use decimal strings/BigInt, including currency exponent and
+negative values. Native SVG uses only bounded normalized coordinates. The exact
+table is authoritative. Charts include unit, exact scale limits, calendar bounds,
+a keyboard/touch point selector and 48px previous/next controls. Missing points
+break lines; entirely unknown series have no fabricated zero scale. Tables use
+date-only bounds at Bangkok midnight and retain precise time for partial buckets.
+Top items have at most ten labelled bars and exact purchases/spend/buyers columns.
+
+The module reuses the existing shell, API, session/request channels and modal
+adapter. Refresh immediately clears prior values; error never retains a stale
+snapshot. View, session, role and account changes remove charts/tables/inspection
+values and discard late replies. The explicit same-origin asset is no-store;
+CSP, worker policy and private cache behavior are unchanged. No analytics value
+is written to localStorage or CacheStorage.
+
+Browser evidence: `e2e/tests/admin-analytics.spec.mjs`, explicitly included in
+`e2e/admin.playwright.config.mjs`. Run from `e2e`; fixture screenshots use synthetic
+aggregates at 360/768/1024/1440px plus touch landscape and enlarged text. The
+06 October 2026 loopback check used a real local registration/item-debit transaction
+and a clearly labelled SANDBOX known money fixture; that fixture is not store
+turnover evidence. Both LIVE stores remained UNAVAILABLE, and the SANDBOX source
+was returned to UNAVAILABLE after capture. No production credentials or provider
+requests were involved. Store permissions and App Store amount/refund support
+remain the prerequisites documented above.

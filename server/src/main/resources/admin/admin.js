@@ -4,6 +4,7 @@
 const app = document.getElementById('app');
 const roles = { OWNER: 'Owner', OPERATOR: 'Operator', SUPPORT: 'Support' };
 const labels = {
+  ANALYTICS_READ: 'Xem thống kê',
   REGISTERED: 'Đã đăng ký', GUEST: 'Khách', ACTIVE: 'Đang hoạt động', DELETED: 'Đã xóa', BANNED: 'Đã khóa',
   CASUAL: 'Đấu thường', RANKED: 'Đấu hạng', WIN: 'Thắng', LOSS: 'Thua', DRAW: 'Hòa',
   MATCH: 'Thưởng trận đấu', MATCH_REWARD: 'Thưởng trận đấu', DAILY_CHECK_IN: 'Điểm danh', MISSION: 'Nhiệm vụ',
@@ -44,6 +45,7 @@ function button(text, action, attributes = {}) {
 // Decorative vectors use fixed paths; all server-provided content stays text-only.
 function icon(name) {
   const paths = {
+    analytics: 'M4 3v18h17M8 16l4-6 4 3 5-8',
     bolt: 'M13 2 4 14h7l-1 8 10-13h-7l1-7Z',
     users: 'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M16 3a4 4 0 0 1 0 8M22 21v-2a4 4 0 0 0-3-3.87M13 7a4 4 0 1 1-8 0 4 4 0 0 1 8 0Z',
     accounts: 'M12 22s8-4 8-11V5l-8-3-8 3v6c0 7 8 11 8 11ZM9 12l2 2 4-4',
@@ -221,6 +223,7 @@ function shell(title, section) {
   const layout = node('div', null, { class: 'layout' });
   const nav = node('nav', null, { 'aria-label': 'Quản trị' });
   const links = [['users', 'Người chơi', directory]];
+  if (session.admin.role !== 'SUPPORT') links.push(['analytics', 'Thống kê', analytics]);
   links.push(['maintenance', 'Bảo trì', maintenance]);
   if (session.admin.role !== 'SUPPORT') links.push(['gifts', 'Quà admin', giftCampaigns]);
   if (session.admin.role === 'OWNER') links.push(['accounts', 'Tài khoản quản trị', accounts], ['audit', 'Nhật ký kiểm toán', audit]);
@@ -229,6 +232,18 @@ function shell(title, section) {
   main.append(node('h1', title));
   append(layout, nav, main); append(app, header, layout);
   return main;
+}
+async function analytics() {
+  if (!session || session.admin.role === 'SUPPORT') return;
+  const task = channel()();
+  try {
+    const { openAnalytics } = await import('./admin-analytics.js');
+    if (!task.current()) return;
+    openAnalytics({ node, append, button, iconButton, field, modal, feedback, shell, channel,
+      role: () => session?.admin.role,
+      api: (path, request) => api(path, request),
+    });
+  } catch (error) { if (task.current() && error.name !== 'AbortError') feedback(document.getElementById('main')).fail(new Error('Không thể tải thống kê. Vui lòng thử lại.')); }
 }
 async function maintenance() {
   if (!session) return;

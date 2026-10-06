@@ -72,3 +72,30 @@ Reuse the native white modal, existing API/channel/session fences and explicit a
 Enabled policies retain saved schedule values in read-only duration fields. Text/cause/advisory edits preserve deadlines; planned policy can escalate to emergency. Explain that a fresh schedule or emergency-to-planned change needs disable then enable. Pending requests guard dismissal; uncertain identical retries preserve the whole payload/request ID. Version or mode conflicts require reload.
 
 `admin-maintenance.spec.mjs` exercises actual controls, exact payloads, roles/override, input bounds, retries, modal/session fences, observed data, reduced motion and touch landscape. Captures: `.artifacts/admin-maintenance-{360,768,1024,1440}-{list,form,form-end,confirm}.png`.
+
+## Analytics
+
+Owner/Operator see **Thống kê** with an outline trend icon. Keep one metric selector,
+period selector and bucket selector; contextual filters open the existing native
+modal. Six admin destinations use two readable columns on small phones instead
+of squeezing every label into one row. Controls keep their 48px minimum.
+
+Show actual Bangkok current/prior ranges, source coverage and freshness before
+the summary. One shared tonal surface holds current total and previous-period
+comparison for each distinct source/unit. Partial and unavailable states carry
+plain text; never replace unknown data with zero or a percentage. White canvas,
+blue SVG line/bars, light dividers and system fonts reuse existing tokens.
+
+Native charts have exact scale labels, time bounds and units. A labelled native
+point selector with previous/next icon controls supports keyboard and touch;
+the exact table follows it. Show compact calendar bounds for whole buckets,
+precise time for partial buckets, and one visible exclusive-boundary explanation.
+Missing points break the line. Top bars include item/count text; money and game
+units never share an aggregate or chart. Exact tables use scoped overflow if needed.
+
+`admin-analytics.spec.mjs` covers role/filter/range controls, exact amounts, source
+states, comparison, late responses and session fences. Captures are
+`.artifacts/admin-analytics-{360,768,1024,1440}.png` and matching `-filters.png`,
+plus `-landscape.png` and `-enlarged.png`. Reduced motion is enabled; enlarged
+text is checked at 200%. Fixture data is synthetic, and live test screenshots
+exclude identity headers and explicitly mark SANDBOX money as test evidence.
