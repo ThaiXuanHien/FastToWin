@@ -1,7 +1,76 @@
 import { test, expect, login } from '../support/admin-fixture.mjs';
 import { analytics, analyticsPath, snapshot, group, coverage } from '../support/admin-analytics-fixture.mjs';
+import { maintenance } from '../support/maintenance-fixture.mjs';
 async function open(page, fixture) { await login(page, fixture); await page.getByRole('button', { name: 'Thống kê', exact: true }).click(); }
 const lastQuery = fixture => fixture.calls.filter(c => c.route === analyticsPath).at(-1)?.query;
+
+// Delay only the real module response; production navigation and module bodies run unchanged.
+async function delayedImport(page, name, fail = false) {
+  let unblock, requested = false;
+  const gate = new Promise(resolve => unblock = resolve);
+  await page.route('**/admin/' + name, async route => { requested = true; await gate; if (fail) await route.abort('failed'); else await route.continue(); });
+  return { unblock, wait: () => expect.poll(() => requested).toBe(true), async release() {
+    unblock(); await page.evaluate(({ name, fail }) => import('/admin/' + name).then(() => {}, error => { if (!fail) throw error; }), { name, fail });
+  } };
+}
+for (const first of ['analytics', 'maintenance']) test(`latest lazy navigation intent survives ${first} import completing first`, async ({ page, fixture }) => {
+  analytics(fixture); maintenance(fixture); await login(page, fixture);
+  const imports = { analytics: await delayedImport(page, 'admin-analytics.js'), maintenance: await delayedImport(page, 'admin-maintenance.js') };
+  try {
+    await page.getByRole('button', { name: 'Thống kê', exact: true }).click(); await imports.analytics.wait();
+    await page.getByRole('button', { name: 'Bảo trì', exact: true }).click(); await imports.maintenance.wait();
+    await imports[first].release();
+    await expect(page.getByRole('navigation').locator('[aria-current="page"]')).toHaveText('Bảo trì');
+    await imports[first === 'analytics' ? 'maintenance' : 'analytics'].release();
+    await expect(page.getByRole('button', { name: 'Cấu hình bảo trì', exact: true })).toBeVisible();
+    await expect(page.locator('.analytics-results')).toHaveCount(0);
+    expect(lastQuery(fixture)).toBeUndefined();
+  } finally { imports.analytics.unblock(); imports.maintenance.unblock(); }
+});
+test('outgoing analytics snapshot clears immediately while another lazy destination imports', async ({ page, fixture }) => {
+  analytics(fixture); maintenance(fixture); await open(page, fixture);
+  await expect(page.locator('.analytics-summary')).toBeVisible(); await page.getByRole('button', { name: 'Điểm tiếp theo' }).hover();
+  await expect(page.getByRole('button', { name: 'Điểm tiếp theo' }).locator('.tooltip')).toBeVisible();
+  const pending = await delayedImport(page, 'admin-maintenance.js');
+  try {
+    await page.getByRole('button', { name: 'Bảo trì', exact: true }).click(); await pending.wait();
+    await expect(page.locator('.analytics-summary, .analytics-chart, .analytics-point-value, .analytics-inspection, .analytics-results table, .page-analytics .tooltip')).toHaveCount(0);
+    await expect(page.getByRole('navigation').locator('[aria-current="page"]')).toHaveText('Bảo trì');
+    await pending.release(); await expect(page.getByRole('button', { name: 'Cấu hình bảo trì', exact: true })).toBeVisible();
+  } finally { pending.unblock(); }
+});
+test('pending lazy navigation cannot revive a dashboard after logout and Operator login', async ({ page, fixture }) => {
+  analytics(fixture); await login(page, fixture); const pending = await delayedImport(page, 'admin-analytics.js');
+  try {
+    await page.getByRole('button', { name: 'Thống kê', exact: true }).click(); await pending.wait();
+    await page.getByRole('button', { name: 'Đăng xuất', exact: true }).click(); await expect(page.getByText('Đã đăng xuất.', { exact: true })).toBeVisible();
+    fixture.role = 'OPERATOR'; await page.getByLabel('Email quản trị', { exact: true }).fill('operator@example.com'); await page.getByLabel('Mật khẩu', { exact: true }).fill('FixturePassword123!');
+    await page.getByRole('button', { name: 'Đăng nhập', exact: true }).click(); await expect(page.getByRole('heading', { name: 'Người chơi', exact: true })).toBeVisible();
+    await pending.release(); await expect(page.getByRole('heading', { name: 'Người chơi', exact: true })).toBeVisible();
+    await expect(page.locator('.analytics-results')).toHaveCount(0); expect(lastQuery(fixture)).toBeUndefined();
+  } finally { pending.unblock(); }
+});
+for (const destination of ['Người chơi', 'Tài khoản quản trị', 'Nhật ký kiểm toán']) test(`pending lazy navigation cannot override immediate ${destination}`, async ({ page, fixture }) => {
+  analytics(fixture); await login(page, fixture); const pending = await delayedImport(page, 'admin-analytics.js');
+  try {
+    await page.getByRole('button', { name: 'Thống kê', exact: true }).click(); await pending.wait();
+    await page.getByRole('navigation').getByRole('button', { name: destination, exact: true }).click();
+    await pending.release(); await expect(page.getByRole('heading', { name: destination, exact: true })).toBeVisible();
+    await expect(page.getByRole('navigation').locator('[aria-current="page"]')).toHaveText(destination);
+    await expect(page.locator('.analytics-results')).toHaveCount(0); expect(lastQuery(fixture)).toBeUndefined();
+  } finally { pending.unblock(); }
+});
+for (const obsolete of [false, true]) test(`${obsolete ? 'obsolete' : 'current'} lazy navigation import error stays within its intent`, async ({ page, fixture }) => {
+  analytics(fixture); maintenance(fixture); await login(page, fixture); const pending = await delayedImport(page, 'admin-analytics.js', true);
+  try {
+    await page.getByRole('button', { name: 'Thống kê', exact: true }).click(); await pending.wait();
+    if (obsolete) { await page.getByRole('button', { name: 'Bảo trì', exact: true }).click(); await expect(page.getByRole('button', { name: 'Cấu hình bảo trì', exact: true })).toBeVisible(); }
+    await pending.release();
+    if (obsolete) { await expect(page.getByRole('heading', { name: 'Bảo trì', exact: true })).toBeVisible(); await expect(page.locator('main')).not.toContainText('Không thể tải thống kê'); }
+    else { await expect(page.getByRole('alert')).toContainText('Không thể tải thống kê'); await expect(page.locator('main [role="status"]')).toBeEmpty(); }
+    await expect(page.locator('.analytics-results')).toHaveCount(0); expect(lastQuery(fixture)).toBeUndefined();
+  } finally { pending.unblock(); }
+});
 
 test('Owner dashboard loads exact summary and comparison with default request', async ({ page, fixture }) => {
   analytics(fixture); await open(page, fixture);

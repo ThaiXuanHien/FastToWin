@@ -173,6 +173,14 @@ function channel() {
     return { controller, current, sessionVersion: s };
   };
 }
+const navigationRequest = channel();
+function beginNavigation(title, section) {
+  // Every destination's shell advances the shared view fence synchronously.
+  // Keep navigation available, but remove the outgoing private view before import.
+  const notices = feedback(shell(title, section));
+  notices.status.textContent = 'Đang tải…';
+  return { task: navigationRequest(), notices };
+}
 async function api(path, task, payload, csrf = session?.csrfToken, method = 'POST', liveness = false) {
   let authRequest = false;
   try {
@@ -235,7 +243,7 @@ function shell(title, section) {
 }
 async function analytics() {
   if (!session || session.admin.role === 'SUPPORT') return;
-  const task = channel()();
+  const { task, notices } = beginNavigation('Thống kê', 'analytics');
   try {
     const { openAnalytics } = await import('./admin-analytics.js');
     if (!task.current()) return;
@@ -243,11 +251,12 @@ async function analytics() {
       role: () => session?.admin.role,
       api: (path, request) => api(path, request),
     });
-  } catch (error) { if (task.current() && error.name !== 'AbortError') feedback(document.getElementById('main')).fail(new Error('Không thể tải thống kê. Vui lòng thử lại.')); }
+  } catch (error) { if (task.current() && error.name !== 'AbortError') notices.fail(new Error('Không thể tải thống kê. Vui lòng thử lại.')); }
+  finally { pending.delete(task.controller); }
 }
 async function maintenance() {
   if (!session) return;
-  const task = channel()();
+  const { task, notices } = beginNavigation('Bảo trì', 'maintenance');
   try {
     const { openMaintenance } = await import('./admin-maintenance.js');
     if (!task.current()) return;
@@ -256,11 +265,12 @@ async function maintenance() {
       api: (path, request, payload, method) => api(path, request, payload, session?.csrfToken, method),
       health: request => api('/health', request, undefined, undefined, 'GET', true),
     });
-  } catch (error) { if (task.current() && error.name !== 'AbortError') feedback(document.getElementById('main')).fail(new Error('Không thể tải quản lý bảo trì. Vui lòng thử lại.')); }
+  } catch (error) { if (task.current() && error.name !== 'AbortError') notices.fail(new Error('Không thể tải quản lý bảo trì. Vui lòng thử lại.')); }
+  finally { pending.delete(task.controller); }
 }
 async function giftCampaigns() {
   if (!session || session.admin.role === 'SUPPORT') return;
-  const task = channel()();
+  const { task, notices } = beginNavigation('Quà admin', 'gifts');
   try {
     const { openGiftCampaigns } = await import('./admin-gifts.js');
     if (!task.current()) return;
@@ -268,7 +278,8 @@ async function giftCampaigns() {
       role: () => session?.admin.role,
       api: (path, request, payload, method) => api(path, request, payload, session?.csrfToken, method),
     });
-  } catch (error) { if (task.current() && error.name !== 'AbortError') feedback(document.getElementById('main')).fail(new Error('Không thể tải chiến dịch quà. Vui lòng thử lại.')); }
+  } catch (error) { if (task.current() && error.name !== 'AbortError') notices.fail(new Error('Không thể tải chiến dịch quà. Vui lòng thử lại.')); }
+  finally { pending.delete(task.controller); }
 }
 function showLogin(message = '', blocked = false) {
   sessionVersion++; session = null; changeView();
