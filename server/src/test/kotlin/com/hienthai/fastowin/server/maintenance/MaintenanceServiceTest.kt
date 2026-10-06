@@ -99,6 +99,7 @@ class MaintenanceServiceTest {
     @Test fun policyReadFailureBlocksNewIntentWhileRetainingKnownExistingMatchPolicy() = runTest {
         val f=MaintenanceFixture(); f.initialize(); f.service.refresh(1)
         val failing=object : MaintenanceRepository {
+            override suspend fun <T> observationTransaction(block: MaintenanceObservationTransaction.() -> T): T = transaction { block() }
             override suspend fun <T> transaction(block: MaintenanceTransaction.() -> T): T { unavailable() }
         }
         val service=MaintenanceService(failing,f.admin)
@@ -108,6 +109,7 @@ class MaintenanceServiceTest {
     }
     @Test fun cancellationPropagates() = runTest {
         val repo=object : MaintenanceRepository {
+            override suspend fun <T> observationTransaction(block: MaintenanceObservationTransaction.() -> T): T = transaction { block() }
             override suspend fun <T> transaction(block: MaintenanceTransaction.() -> T): T { throw CancellationException("cancel") }
         }
         assertFailsWith<CancellationException> { MaintenanceService(repo).refresh(0) }
@@ -141,6 +143,7 @@ class MaintenanceServiceTest {
         val f=MaintenanceFixture(); f.initialize()
         var failing=false
         val repository=object:MaintenanceRepository {
+            override suspend fun <T> observationTransaction(block: MaintenanceObservationTransaction.() -> T): T = transaction { block() }
             override suspend fun <T> transaction(block:MaintenanceTransaction.()->T):T {
                 if(failing) throw java.sql.SQLException("secret SQL")
                 return f.repository.transaction(block)

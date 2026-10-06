@@ -64,6 +64,7 @@ class MaintenanceRecoveryTest {
         val f = MaintenanceFixture(); f.initialize()
         val blocked = CompletableDeferred<Unit>(); val release = CompletableDeferred<Unit>(); var hang = false; var reads = 0
         val service = MaintenanceService(object : MaintenanceRepository {
+            override suspend fun <T> observationTransaction(block: MaintenanceObservationTransaction.() -> T): T = transaction { block() }
             override suspend fun <T> transaction(block: MaintenanceTransaction.() -> T): T {
                 reads++
                 if (hang) { blocked.complete(Unit); release.await() }

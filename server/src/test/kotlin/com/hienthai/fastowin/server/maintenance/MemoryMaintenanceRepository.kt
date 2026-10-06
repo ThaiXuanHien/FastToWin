@@ -9,6 +9,9 @@ internal class MemoryMaintenanceRepository(private val admins: InMemoryAdminRepo
     private val mutex=Mutex()
     private var snapshot=MaintenanceSnapshot()
     private var requests=mutableMapOf<Pair<String,String>,MaintenanceRequestRecord>()
+    // This test fixture uses one in-memory admin commit for atomic audit rollback; PostgreSQL
+    // concurrency guarantees are exercised with the real repository, not this stronger mutex.
+    override suspend fun <T> observationTransaction(block: MaintenanceObservationTransaction.() -> T): T = transaction { block() }
     var failAudit=false
     override suspend fun <T> transaction(block: MaintenanceTransaction.() -> T): T = mutex.withLock {
         var next=snapshot; val replay=requests.toMutableMap()

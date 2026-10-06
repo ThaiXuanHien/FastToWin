@@ -19,6 +19,7 @@ class MaintenanceHttpTest {
         val f = MaintenanceFixture(); runBlocking { f.initialize() }
         val engine = GameEngine(); var failing = false
         val service = MaintenanceService(object : MaintenanceRepository {
+            override suspend fun <T> observationTransaction(block: MaintenanceObservationTransaction.() -> T): T = transaction { block() }
             override suspend fun <T> transaction(block: MaintenanceTransaction.() -> T): T {
                 if (failing) throw java.sql.SQLException("private SQL")
                 return f.repository.transaction(block)

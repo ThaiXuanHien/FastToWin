@@ -1,6 +1,9 @@
 package com.hienthai.fastowin.server.analytics
 
 import com.hienthai.fastowin.server.admin.*
+import com.hienthai.fastowin.server.GameEngine
+import com.hienthai.fastowin.server.maintenance.*
+import com.hienthai.fastowin.protocol.MaintenanceState
 import com.hienthai.fastowin.server.hashToken
 import com.hienthai.fastowin.server.gameModule
 import io.ktor.client.request.*
@@ -20,6 +23,66 @@ import java.util.UUID
 import kotlin.test.*
 
 class PostgresAnalyticsRepositoryTest {
+    @Test fun lockedAuthorizedAnalyticsDoesNotStarveMaintenanceObservation() = runBlocking { database {
+        val maintenance = MaintenanceService(PostgresMaintenanceRepository(source), admin, nowMillis = { NOW })
+        val engine = GameEngine(); val runtime = MaintenanceRuntime(engine, maintenance)
+        runtime.observe()
+        sql("CREATE FUNCTION hold_report() RETURNS trigger LANGUAGE plpgsql AS ${'$'}${'$'} BEGIN IF NEW.action='ANALYTICS_READ' THEN PERFORM pg_advisory_xact_lock(918273646); END IF; RETURN NEW; END ${'$'}${'$'}")
+        sql("CREATE TRIGGER hold_report BEFORE INSERT ON admin_audit FOR EACH ROW EXECUTE FUNCTION hold_report()")
+        source.connection.use { barrier ->
+            barrier.autoCommit = false
+            barrier.createStatement().use { it.execute("SELECT pg_advisory_xact_lock(918273646)") }
+            coroutineScope {
+                val report = async(Dispatchers.IO) { read("REGISTRATIONS") }
+                var observer: Job? = null
+                try {
+                    awaitWait("INSERT INTO admin_audit")
+                    val observations = java.util.concurrent.atomic.AtomicInteger()
+                    observer = launch(Dispatchers.IO) {
+                        while (isActive) { runtime.observe(); observations.incrementAndGet(); delay(250) }
+                    }
+                    val started = System.nanoTime()
+                    while ((System.nanoTime() - started) / 1_000_000 < 4_500) {
+                        delay(100); runtime.fenceStaleObservation()
+                        assertTrue(engine.newIntentAllowed(), "Healthy maintenance storage must remain available while analytics owns the admin lock")
+                        assertEquals(MaintenanceState.ACTIVE, runtime.publicStatus().state)
+                    }
+                    assertTrue(observations.get() >= 2, "The observer must complete fresh reads during the held report")
+                    assertFalse(report.isCompleted, "Availability must be verified before releasing the report barrier")
+                } finally {
+                    barrier.rollback()
+                    observer?.cancelAndJoin()
+                }
+                assertEquals("0", report.await().metrics.single().groups.single().summary)
+            }
+        }
+    } }
+
+    @Test fun blockedMaintenanceRowStillFencesStatusAndNewIntentAtWatchdogDeadline() = runBlocking { database {
+        val maintenance = MaintenanceService(PostgresMaintenanceRepository(source), admin, nowMillis = { NOW })
+        val engine = GameEngine(); val runtime = MaintenanceRuntime(engine, maintenance)
+        runtime.observe(); assertTrue(engine.newIntentAllowed())
+        source.connection.use { barrier ->
+            barrier.autoCommit = false
+            barrier.createStatement().use { it.execute("SELECT * FROM runtime_maintenance WHERE singleton=TRUE FOR UPDATE") }
+            coroutineScope {
+                val observer = async(Dispatchers.IO) { runtime.observe() }
+                try {
+                    withTimeout(10_000) {
+                        while (number("SELECT count(*) FROM pg_stat_activity WHERE wait_event_type='Lock' AND query LIKE 'SELECT version,state,payload FROM runtime_maintenance%'") == 0L) delay(10)
+                    }
+                    delay(4_100); runtime.fenceStaleObservation()
+                    assertFalse(observer.isCompleted)
+                    assertFalse(engine.newIntentAllowed())
+                    assertEquals(503, assertFailsWith<AdminException> { runtime.publicStatus() }.status)
+                } finally { barrier.rollback() }
+                observer.await()
+                assertTrue(engine.newIntentAllowed())
+                assertEquals(MaintenanceState.ACTIVE, runtime.publicStatus().state)
+            }
+        }
+    } }
+
     @Test fun exactSeparateCurrenciesWholeRangeDistinctAndStableTopTen() = runTest { database {
         coverage("ITEM_PURCHASES")
         val buyer = UUID.randomUUID()

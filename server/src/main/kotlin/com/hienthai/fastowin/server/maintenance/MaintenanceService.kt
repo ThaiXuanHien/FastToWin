@@ -31,10 +31,10 @@ class MaintenanceService(
         if (mutation) service.requireOrigin(context.origin)
         return service.authorize(admin,context.token,context.csrfToken,mutation,ownerOnly=mutation)
     }
-    private fun MaintenanceTransaction.audit(actor:String?,action:String,before:MaintenanceSnapshot?=null,after:MaintenanceSnapshot?=null,
+    private fun MaintenanceObservationTransaction.audit(actor:String?,action:String,before:MaintenanceSnapshot?=null,after:MaintenanceSnapshot?=null,
         request:MaintenanceUpdateRequest?=null) {
         fun summary(value:MaintenanceSnapshot?)=value?.let { "state=${it.state};mode=${it.mode};version=${it.version}" }
-        admin.appendAudit(AuditEntry(UUID.randomUUID().toString(),actor,action,null,request?.requestId,request?.reason,
+        appendAudit(AuditEntry(UUID.randomUUID().toString(),actor,action,null,request?.requestId,request?.reason,
             summary(before),summary(after),nowMillis()))
     }
     private fun response(snapshot:MaintenanceSnapshot):MaintenanceAdminResponse {
@@ -94,7 +94,7 @@ class MaintenanceService(
     suspend fun refresh(activeMatches:Int, allowEmptyDrain:Boolean=true):MaintenancePolicy=refreshMutex.withLock {
         if (activeMatches<0) invalid()
         storage {
-            val snapshot=repository.transaction {
+            val snapshot=repository.observationTransaction {
                 var value=snapshot(); val now=validNow()
                 fun advance(state:MaintenanceState) {
                     val next=value.copy(version=try { Math.addExact(value.version,1) } catch (_:ArithmeticException) { conflict() },

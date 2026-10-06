@@ -10,6 +10,7 @@ class MaintenanceRuntimeTest {
     @Test fun nonSqlPolicyReadFailureAlsoBlocksNewIntent() = runTest {
         val f = MaintenanceFixture(); f.initialize(); var fail = false
         val service = MaintenanceService(object : MaintenanceRepository {
+            override suspend fun <T> observationTransaction(block: MaintenanceObservationTransaction.() -> T): T = transaction { block() }
             override suspend fun <T> transaction(block: MaintenanceTransaction.() -> T): T {
                 if (fail) throw IllegalStateException("corrupt private snapshot")
                 return f.repository.transaction(block)
@@ -27,6 +28,7 @@ class MaintenanceRuntimeTest {
         val guest = engine.connectAccount(AuthenticatedAccount(UUID.randomUUID(), "guest"))
         var reads = 0
         val repository = object : MaintenanceRepository {
+            override suspend fun <T> observationTransaction(block: MaintenanceObservationTransaction.() -> T): T = transaction { block() }
             override suspend fun <T> transaction(block: MaintenanceTransaction.() -> T): T {
                 if (++reads == 2) {
                     val room = engine.handle(host.playerId, ClientMessage.CreateRoom("race", "", ProtocolGameMode.ORDER))
@@ -48,6 +50,7 @@ class MaintenanceRuntimeTest {
         val f = MaintenanceFixture(); f.initialize()
         var failing = false
         val repository = object : MaintenanceRepository {
+            override suspend fun <T> observationTransaction(block: MaintenanceObservationTransaction.() -> T): T = transaction { block() }
             override suspend fun <T> transaction(block: MaintenanceTransaction.() -> T): T {
                 if (failing) throw java.sql.SQLException("private failure")
                 return f.repository.transaction(block)

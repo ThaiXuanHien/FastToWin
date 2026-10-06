@@ -12,12 +12,16 @@ import java.util.UUID
 import javax.sql.DataSource
 
 class PostgresMaintenanceRepository(private val source:DataSource):MaintenanceRepository {
-    override suspend fun <T> transaction(block:MaintenanceTransaction.()->T):T=withContext(Dispatchers.IO) {
+    override suspend fun <T> transaction(block:MaintenanceTransaction.()->T):T = transact(authorize = true, block)
+    override suspend fun <T> observationTransaction(block:MaintenanceObservationTransaction.()->T):T =
+        transact(authorize = false) { block() }
+
+    private suspend fun <T> transact(authorize:Boolean, block:MaintenanceTransaction.()->T):T=withContext(Dispatchers.IO) {
         try {
             source.connection.use { connection ->
                 connection.autoCommit=false
                 try {
-                    connection.createStatement().use { it.execute("SELECT pg_advisory_xact_lock(7421092187349)") }
+                    if (authorize) connection.createStatement().use { it.execute("SELECT pg_advisory_xact_lock(7421092187349)") }
                     val result=JdbcMaintenanceTransaction(connection).block()
                     connection.commit(); result
                 } catch(error:Throwable) {

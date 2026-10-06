@@ -186,7 +186,7 @@ integration; adding the worker-safe `/api/status` alias is Task 2/4 work.
 
 ## Transaction rules
 
-`MaintenanceRepository.transaction` supplies a single connection-bound
+For authenticated admin reads and mutations, `MaintenanceRepository.transaction` supplies a single connection-bound
 `MaintenanceTransaction` with `admin: AdminTransaction`, locking `snapshot()`,
 conditional `putSnapshot(expectedVersion, value)`, `request(actor, requestId)` and
 `putRequest(actor, requestId, record)`. PostgreSQL acquires shared admin advisory
@@ -195,6 +195,22 @@ changes and session revocation use that same advisory lock; no separate auth
 repository call may substitute for this bound authorization. V51 persists the
 version/state/snapshot payload and separate `runtime_maintenance_requests` table.
 Snapshot, authorized audit and replay commit or roll back together.
+
+Trusted runtime refresh and automatic transitions use
+`MaintenanceRepository.observationTransaction`. Its restricted
+`MaintenanceObservationTransaction` exposes only locking `snapshot()`, conditional
+`putSnapshot` and `appendAudit`; it has no account/session authorization or replay
+access. PostgreSQL locks the same maintenance singleton with `FOR UPDATE` but
+does not acquire the global admin advisory lock. This lets healthy observation
+continue while an authorized analytics report holds that lock. Runtime code must
+never acquire global authorization after locking the singleton. Snapshot/version
+and automatic-transition audit still commit on the same connection, and the
+service publishes observation only after commit. A blocked or unavailable
+maintenance row/storage still triggers the existing four-second stale fence.
+
+The test-only memory repository keeps its stronger combined mutex to model
+snapshot/audit rollback atomically. PostgreSQL barrier tests verify independent
+runtime progress, transition publication, and current-role checks after waiting.
 
 ## Task 2 runtime integration
 

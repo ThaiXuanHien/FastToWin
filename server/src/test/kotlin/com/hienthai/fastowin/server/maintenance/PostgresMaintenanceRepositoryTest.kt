@@ -56,6 +56,50 @@ class PostgresMaintenanceRepositoryTest {
         assertEquals(1,count("runtime_maintenance"))
         assertEquals(result,service.update(owner,request))
     } }
+    @Test fun trustedTransitionCommitsAuditBeforePublicationWhileAdminReplayWaitsForCurrentRole() = runBlocking { database {
+        val request = request(); service.update(owner, request); service.refresh(1)
+        val actor = admin.authenticate(owner.token)!!.id
+        now += 60_000
+        sql("CREATE FUNCTION hold_transition() RETURNS trigger LANGUAGE plpgsql AS ${'$'}${'$'} BEGIN IF NEW.action='MAINTENANCE_TRANSITION' THEN PERFORM pg_advisory_xact_lock(918273647); END IF; RETURN NEW; END ${'$'}${'$'}")
+        sql("CREATE TRIGGER hold_transition BEFORE INSERT ON admin_audit FOR EACH ROW EXECUTE FUNCTION hold_transition()")
+        suspend fun awaitLock(query: String) = withTimeout(10_000) {
+            while (source.connection.use { c -> c.createStatement().use { s ->
+                s.executeQuery("SELECT count(*) FROM pg_stat_activity WHERE wait_event='advisory' AND query LIKE '$query%'").use { r -> r.next(); r.getInt(1) }
+            } } == 0) delay(10)
+        }
+        source.connection.use { authorization ->
+            authorization.autoCommit = false
+            authorization.createStatement().use { it.execute("SELECT pg_advisory_xact_lock(7421092187349)") }
+            coroutineScope {
+                try {
+                    source.connection.use { auditBarrier ->
+                        auditBarrier.autoCommit = false
+                        auditBarrier.createStatement().use { it.execute("SELECT pg_advisory_xact_lock(918273647)") }
+                        val transition = async(Dispatchers.IO) { service.refresh(1) }
+                        try {
+                            awaitLock("INSERT INTO admin_audit")
+                            assertFalse(transition.isCompleted)
+                            assertEquals(MaintenanceState.DRAINING, service.publicStatus().state)
+                            assertEquals(1, service.effectivePolicy().version)
+                            source.connection.use { c -> c.createStatement().use { s ->
+                                s.executeQuery("SELECT version FROM runtime_maintenance").use { r -> r.next(); assertEquals(1, r.getLong(1)) }
+                            } }
+                        } finally { auditBarrier.rollback() }
+                        assertEquals(MaintenanceState.MAINTENANCE, withTimeout(10_000) { transition.await() }.state)
+                        assertEquals(2, service.publicStatus().version)
+                        assertEquals(1, count("admin_audit WHERE action='MAINTENANCE_TRANSITION' AND actor_id IS NULL"))
+                        assertEquals(1, count("runtime_maintenance_requests"))
+                    }
+                    val replay = async(Dispatchers.IO) { runCatching { service.update(owner, request) } }
+                    awaitLock("SELECT pg_advisory_xact_lock(7421092187349)")
+                    assertFalse(replay.isCompleted)
+                    authorization.createStatement().use { it.execute("UPDATE admin_accounts SET role='OPERATOR' WHERE id='$actor'") }
+                    authorization.commit()
+                    assertEquals(403, assertIs<AdminException>(replay.await().exceptionOrNull()).status)
+                } finally { authorization.rollback() }
+            }
+        }
+    } }
     @Test fun auditFailureRollsBackSnapshotReplayAndTransition() = runTest { database {
         val before=count("admin_audit"); sql("ALTER TABLE admin_audit RENAME TO missing_admin_audit")
         val request=request(); error(503) { service.update(owner,request) }
