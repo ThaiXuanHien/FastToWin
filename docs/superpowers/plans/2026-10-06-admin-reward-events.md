@@ -102,7 +102,8 @@ assertEquals(200, result.totalGold); assertEquals(60, result.totalXp)
 - Create shared `data/network/RewardEventApiClient.kt`, `state/RewardEventController.kt`, `ui/components/RewardEventBanner.kt`, `ui/screens/RewardEventDetailsScreen.kt`.
 - Modify existing common state/app/home/result/profile-history/detail integration at `GameState.kt`, `GameController.kt`, `FastToWinApp.kt`, `HomeScreen.kt`, `ResultScreen.kt`, `ProfileScreen.kt`; scoped extraction into focused reward UI file allowed when needed, no unrelated UI refactor.
 - Modify protocol localization `TextKey.kt`, `LocalizationCatalog.kt`, create event catalog VI/EN plus existing fallback policy.
-- Tests shared API/controller/state and desktop Compose previews/screenshots; protocol old/new snapshot and localization tests.
+- Tests shared API/controller/state; protocol old/new snapshot and localization tests.
+- Create `app/src/screenshotTest/kotlin/com/hienthai/fastowin/screenshot/RewardEventScreenshotTest.kt` using the existing Compose screenshot pipeline and phone/desktop-sized preview devices. Extend `ArcadeScreenshotFixtures.kt` only for reward fixtures if needed; own corresponding generated reference images. Captures are rendered UI evidence, not physical-device acceptance.
 
 **Interfaces:** consume Task1 actual public HTTP DTO/contracts from docs, Task2 server GameSnapshot/history rewardBreakdown. HTTP `/api/events` network-only, same configured base/client transport; eventscontroller has explicit loading/error/unavailable/empty/current items, selection and request/account/view/language generation. Clear on auth change/route away, fence success/error/finally, cancel refreshes, no persistence of private state. Load on home entry and refresh using server times; invalidate banner at known start/end/cancel refresh and never infer award eligibility from banner. Existing GameState stores provided context/breakdowns additively; client uses no multiplier arithmetic to create award.
 
