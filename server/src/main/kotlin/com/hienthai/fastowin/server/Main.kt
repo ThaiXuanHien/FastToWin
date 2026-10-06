@@ -101,6 +101,8 @@ fun main() {
                 financialSyncService = financialSync,
                 giftService = com.hienthai.fastowin.server.gifts.GiftService(database?.giftRepository ?: com.hienthai.fastowin.server.gifts.UnavailableGiftRepository, adminService, newIntentAllowed = engine::newIntentAllowed),
                 giftDeliveryEnabled = database != null,
+                rewardEventService = com.hienthai.fastowin.server.events.RewardEventService(
+                    database?.rewardEventRepository ?: com.hienthai.fastowin.server.events.UnavailableRewardEventRepository, adminService),
                 maintenanceService = maintenanceService,
                 maintenanceRuntime = maintenanceRuntime
             )
