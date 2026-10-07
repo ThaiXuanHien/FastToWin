@@ -16,7 +16,7 @@ interface RewardEventTransaction:RewardEventRead {
     fun replay(actor:String,requestId:String):Pair<String,RewardEventAdminView>?
     fun remember(actor:String,requestId:String,fingerprint:String,result:RewardEventAdminView)
 }
-internal fun RewardEventAdminView.record()=RewardEventRecord(id,version,draft.copy(matchTypes=draft.matchTypes.toSet()),actorId,reason,changedAtEpochMillis,publishedAtEpochMillis,state==com.hienthai.fastowin.protocol.RewardEventState.CANCELLED)
+internal fun RewardEventAdminView.record()=RewardEventRecord(id,version,draft.copy(matchTypes=draft.matchTypes.toSet()),actorId,reason,changedAtEpochMillis,publishedAtEpochMillis,state==com.hienthai.fastowin.protocol.RewardEventState.CANCELLED,creatorId,publisherId)
 object UnavailableRewardEventRepository:RewardEventRepository {
     override suspend fun <T> transaction(block:RewardEventTransaction.()->T):T=unavailable()
     override suspend fun <T> publicRead(block:RewardEventRead.()->T):T=unavailable()

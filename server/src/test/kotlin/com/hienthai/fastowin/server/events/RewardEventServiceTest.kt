@@ -6,11 +6,38 @@ import com.hienthai.fastowin.server.admin.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.encodeToString
-import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.*
 import java.util.UUID
 import kotlin.test.*
 
 class RewardEventServiceTest {
+    @Test fun creatorAndPublisherSurviveDifferentActorsAndReplay() = runTest {
+        val f=RewardEventFixture(); f.initialize()
+        val other=f.addOwner()
+        val creator=f.admin.authenticate(f.operator.token)!!.id
+        val publisher=f.admin.authenticate(f.owner.token)!!.id
+        val canceller=f.admin.authenticate(other.token)!!.id
+        val create=f.createRequest()
+        val draft=f.service.create(f.operator,create)
+        assertEventIdentities(draft,creator,null)
+        val updated=f.service.update(other,draft.id,f.createRequest().copy(expectedVersion=1))
+        assertEventIdentities(updated,creator,null)
+        eventError(409) { f.service.schedule(f.owner,draft.id,f.mutation(2).copy(previewToken="invalid")) }
+        assertEventIdentities(f.service.detail(f.owner,draft.id),creator,null)
+        val publish=f.mutation(2).copy(previewToken=f.service.preview(f.owner,draft.id).previewToken)
+        val live=f.service.schedule(f.owner,draft.id,publish)
+        assertEventIdentities(live,creator,publisher)
+        val cancelled=f.service.cancel(other,draft.id,f.mutation(3))
+        assertEquals(canceller,cancelled.actorId)
+        assertEventIdentities(f.service.detail(f.owner,draft.id),creator,publisher)
+        assertEquals(live,f.service.schedule(f.owner,draft.id,publish))
+        assertEquals(draft,f.service.create(f.operator,create))
+        assertEventIdentities(f.service.create(f.operator,create),creator,null)
+        val unpublished=f.service.create(f.operator,f.createRequest())
+        assertEventIdentities(f.service.cancel(other,unpublished.id,f.mutation(1)),creator,null)
+        val public=Json.encodeToString(f.service.publicDetail(draft.id))
+        for(secret in listOf("creatorId","publisherId",creator,publisher,canceller)) assertFalse(secret in public)
+    }
     @Test fun halfOpenBoundariesIndependentMaximaAndFrozenCatalog() = runTest {
         val f=RewardEventFixture(); f.initialize()
         val a=f.publish(f.draft().copy(startsAtEpochMillis=1000,endsAtEpochMillis=2000,goldMultiplier=2))
@@ -107,6 +134,7 @@ class RewardEventServiceTest {
         val request=f.mutation(draft.version).copy(previewToken=service.preview(f.owner,draft.id).previewToken)
         fail=true
         eventError(503) { service.schedule(f.owner,draft.id,request) }
+        assertEventIdentities(service.detail(f.owner,draft.id),f.admin.authenticate(f.owner.token)!!.id,null)
         eventError(404) { service.publicDetail(draft.id) }
         assertEquals(1,repository.withStartCatalog { it.snapshot(1000,MatchType.RANKED) }.goldMultiplier)
         fail=false
@@ -145,6 +173,12 @@ internal class RewardEventFixture {
             CreateAdminRequest("${role.name.lowercase()}@example.com","GoodPassword123!",role,"test",UUID.randomUUID().toString()))
         operator=login("operator@example.com"); support=login("support@example.com")
     }
+    suspend fun addOwner():RewardEventAdminContext {
+        admin.createAccount(owner.token,owner.csrfToken,ORIGIN,
+            CreateAdminRequest("second-owner@example.com","GoodPassword123!",AdminRole.OWNER,"test",UUID.randomUUID().toString()))
+        val result=admin.login("second-owner@example.com","GoodPassword123!",ORIGIN,"127.0.0.1")
+        return RewardEventAdminContext(result.token,result.response.csrfToken,ORIGIN)
+    }
     fun draft()=RewardEventDraft("Sự kiện","Event","Nội dung","Content","Asia/Ho_Chi_Minh",1000,3000,1,1,setOf(MatchType.CASUAL,MatchType.RANKED))
     fun createRequest()=RewardEventDraftRequest(0,UUID.randomUUID().toString(),"Internal reason",draft())
     fun mutation(version:Long)=RewardEventMutationRequest(version,UUID.randomUUID().toString(),"Internal reason")
@@ -155,3 +189,11 @@ internal class RewardEventFixture {
     companion object { const val ORIGIN="http://localhost:8080" }
 }
 internal suspend fun eventError(status:Int,block:suspend ()->Unit) { assertEquals(status,assertFailsWith<AdminException> { block() }.status) }
+private val identityTestJson=Json { encodeDefaults=true }
+internal fun assertEventIdentities(value:RewardEventAdminView,creator:String?,publisher:String?) {
+    val json=identityTestJson.encodeToJsonElement(value).jsonObject
+    assertTrue("creatorId" in json,"Admin response must expose stable creator identity")
+    assertTrue("publisherId" in json,"Admin response must expose publication identity")
+    assertEquals(creator,json.getValue("creatorId").jsonPrimitive.contentOrNull)
+    assertEquals(publisher,json.getValue("publisherId").jsonPrimitive.contentOrNull)
+}

@@ -10,13 +10,15 @@ import io.ktor.client.statement.*
 import io.ktor.http.*
 import io.ktor.server.testing.testApplication
 import kotlinx.coroutines.*
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 import org.flywaydb.core.Flyway
 import org.junit.jupiter.api.Assumptions.assumeTrue
 import java.util.UUID
 import kotlin.test.*
 
 class PostgresRewardEventRepositoryTest {
-    private suspend fun database(poolSize:Int=5,block:suspend Fixture.()->Unit) {
+    private suspend fun database(poolSize:Int=5,target:String?=null,block:suspend Fixture.()->Unit) {
         val url=System.getenv("TEST_DATABASE_URL")
         assumeTrue(!url.isNullOrBlank(),"TEST_DATABASE_URL absent: PostgreSQL coverage skipped")
         val schema="reward_event_test_${UUID.randomUUID().toString().replace("-","")}"
@@ -28,7 +30,8 @@ class PostgresRewardEventRepositoryTest {
             setup.connection.use { it.createStatement().use { s -> s.execute("CREATE SCHEMA $schema") } }
             try {
                 HikariDataSource(config().apply { this.schema=schema }).use { source ->
-                    Flyway.configure().dataSource(source).schemas(schema).defaultSchema(schema).locations("classpath:db/migration").load().migrate()
+                    Flyway.configure().dataSource(source).schemas(schema).defaultSchema(schema).locations("classpath:db/migration")
+                        .apply { if(target!=null) target(target) }.load().migrate()
                     Fixture(source,setup).apply { initialize() }.block()
                 }
             } finally { setup.connection.use { it.createStatement().use { s -> s.execute("DROP SCHEMA $schema CASCADE") } } }
@@ -44,6 +47,12 @@ class PostgresRewardEventRepositoryTest {
             admin.bootstrapOwner("owner@example.com","GoodPassword123!")
             val result=admin.login("owner@example.com","GoodPassword123!",RewardEventFixture.ORIGIN,"127.0.0.1")
             owner=RewardEventAdminContext(result.token,result.response.csrfToken,RewardEventFixture.ORIGIN)
+        }
+        suspend fun account(name:String,role:AdminRole):RewardEventAdminContext {
+            admin.createAccount(owner.token,owner.csrfToken,owner.origin,
+                CreateAdminRequest("$name@example.com","GoodPassword123!",role,"test",UUID.randomUUID().toString()))
+            val result=admin.login("$name@example.com","GoodPassword123!",owner.origin,"127.0.0.1")
+            return RewardEventAdminContext(result.token,result.response.csrfToken,owner.origin)
         }
         fun request()=RewardEventDraftRequest(0,UUID.randomUUID().toString(),"Internal reason",RewardEventFixture().draft().copy(goldMultiplier=2))
         fun mutation(version:Long)=RewardEventMutationRequest(version,UUID.randomUUID().toString(),"Internal reason")
@@ -61,6 +70,81 @@ class PostgresRewardEventRepositoryTest {
             } }==0) delay(10)
         }
     }
+    @Test fun identitiesSurviveV54MigrationReloadAndHistoricalReplayWithoutGuessing()=runBlocking { database(target="54") {
+        val operator=account("operator",AdminRole.OPERATOR)
+        val other=account("other-owner",AdminRole.OWNER)
+        val creator=admin.authenticate(operator.token)!!.id
+        val publisher=admin.authenticate(owner.token)!!.id
+        val create=request()
+        val created=service.create(operator,create)
+        val update=request().copy(expectedVersion=1)
+        service.update(other,created.id,update)
+        val publish=mutation(2).copy(previewToken=service.preview(owner,created.id).previewToken)
+        service.schedule(owner,created.id,publish)
+        service.cancel(other,created.id,mutation(3))
+        val unknown=service.create(operator,request())
+        val unknownPublish=mutation(1).copy(previewToken=service.preview(owner,unknown.id).previewToken)
+        service.schedule(owner,unknown.id,unknownPublish)
+        service.cancel(other,unknown.id,mutation(2))
+        val ambiguous=service.create(operator,request())
+        schedule(ambiguous)
+        sql("INSERT INTO admin_audit(id,actor_id,action,target_id,request_id,reason,before_summary,after_summary,created_at) " +
+            "SELECT gen_random_uuid(),'${admin.authenticate(other.token)!!.id}',action,target_id,request_id,reason,before_summary,after_summary,created_at " +
+            "FROM admin_audit WHERE target_id='${ambiguous.id}' AND action IN ('EVENT_CREATE','EVENT_SCHEDULE')")
+        // Reproduce actual V54 storage, including cached responses, before applying the additive migration.
+        sql("UPDATE reward_events SET payload=(payload::jsonb - 'creatorId' - 'publisherId')::text")
+        sql("UPDATE reward_event_requests SET safe_result=(safe_result::jsonb - 'creatorId' - 'publisherId')::text")
+        sql("DELETE FROM admin_audit WHERE target_id='${unknown.id}' AND action IN ('EVENT_CREATE','EVENT_SCHEDULE')")
+        val receipts=count("reward_event_requests")
+        // Legacy JSON must still decode honestly when the new keys are absent.
+        val beforeMigration=RewardEventService(PostgresRewardEventRepository(source),admin,{ now })
+        assertEventIdentities(beforeMigration.detail(owner,unknown.id),null,null)
+        assertEventIdentities(beforeMigration.create(operator,create),null,null)
+        Flyway.configure().dataSource(source).schemas(source.schema).defaultSchema(source.schema).locations("classpath:db/migration").load().migrate()
+        val reloaded=RewardEventService(PostgresRewardEventRepository(source),admin,{ now })
+        val detail=reloaded.detail(owner,created.id)
+        assertEquals(RewardEventState.CANCELLED,detail.state)
+        assertEquals(admin.authenticate(other.token)!!.id,detail.actorId)
+        assertEventIdentities(detail,creator,publisher)
+        val createReplay=reloaded.create(operator,create)
+        assertEquals(RewardEventState.DRAFT,createReplay.state)
+        assertNull(createReplay.publishedAtEpochMillis)
+        assertEventIdentities(createReplay,creator,null)
+        val updateReplay=reloaded.update(other,created.id,update)
+        assertEquals(2,updateReplay.version)
+        assertEventIdentities(updateReplay,creator,null)
+        val publishReplay=reloaded.schedule(owner,created.id,publish)
+        assertEquals(RewardEventState.SCHEDULED,publishReplay.state)
+        assertEquals(3,publishReplay.version)
+        assertEventIdentities(publishReplay,creator,publisher)
+        assertEventIdentities(reloaded.detail(owner,unknown.id),null,null)
+        assertEventIdentities(reloaded.schedule(owner,unknown.id,unknownPublish),null,null)
+        assertEventIdentities(reloaded.detail(owner,ambiguous.id),null,null)
+        assertEquals(receipts,count("reward_event_requests"))
+        eventError(409) { reloaded.create(operator,create.copy(reason="different")) }
+        val public=Json.encodeToString(reloaded.publicDetail(created.id))
+        val snapshot=repository.withStartCatalog { it.snapshot(1000,MatchType.RANKED) }
+        for(secret in listOf("creatorId","publisherId",creator,publisher)) {
+            assertFalse(secret in public); assertFalse(secret in Json.encodeToString(snapshot))
+        }
+    } }
+    @Test fun newIdentitiesPersistAcrossRepositoryReloadAndReplay()=runBlocking { database {
+        val operator=account("operator",AdminRole.OPERATOR)
+        val other=account("other-owner",AdminRole.OWNER)
+        val created=service.create(operator,request())
+        service.update(other,created.id,request().copy(expectedVersion=1))
+        val publish=mutation(2).copy(previewToken=service.preview(owner,created.id).previewToken)
+        val live=service.schedule(owner,created.id,publish)
+        val creator=admin.authenticate(operator.token)!!.id
+        val publisher=admin.authenticate(owner.token)!!.id
+        val reloaded=RewardEventService(PostgresRewardEventRepository(source),admin,{ now })
+        assertEventIdentities(reloaded.detail(owner,created.id),creator,publisher)
+        val snapshot=repository.withStartCatalog { it.snapshot(1000,MatchType.RANKED) }
+        for(secret in listOf("creatorId","publisherId",creator,publisher)) assertFalse(secret in Json.encodeToString(snapshot))
+        reloaded.cancel(other,created.id,mutation(3))
+        assertEventIdentities(service.detail(owner,created.id),creator,publisher)
+        assertEquals(live,reloaded.schedule(owner,created.id,publish))
+    } }
     @Test fun publicationWaitsForActualStartAndQueuedStartSeesCommittedCatalogWithPoolTwo()=runBlocking { database(poolSize=2) {
         val draft=draft(); val request=mutation(draft.version).copy(previewToken=service.preview(owner,draft.id).previewToken)
         val entered=CompletableDeferred<Unit>(); val release=CompletableDeferred<Unit>()
@@ -165,6 +249,7 @@ class PostgresRewardEventRepositoryTest {
         eventError(404) { service.publicDetail(value.id) }
         assertEquals(1,count("reward_event_requests")); assertEquals(1,repository.withStartCatalog { it.snapshot(1000,MatchType.RANKED) }.goldMultiplier)
         sql("ALTER TABLE missing_admin_audit RENAME TO admin_audit")
+        assertEventIdentities(service.detail(owner,value.id),admin.authenticate(owner.token)!!.id,null)
         assertEquals(2,service.schedule(owner,value.id,request).version)
         sql("ALTER TABLE reward_events RENAME TO missing_reward_events")
         eventError(503) { service.publicList() }

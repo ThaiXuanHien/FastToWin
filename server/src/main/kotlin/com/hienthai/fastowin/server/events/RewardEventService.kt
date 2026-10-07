@@ -36,7 +36,7 @@ class RewardEventService(
     suspend fun create(context:RewardEventAdminContext,request:RewardEventDraftRequest):RewardEventAdminView = mutate(
         context,"CREATE",null,request.expectedVersion,request.requestId,request.reason,Json.encodeToString(request)) { _,actor,now ->
         if(request.expectedVersion!=0L) conflict(); validate(request.draft)
-        RewardEventRecord(UUID.randomUUID().toString(),1,canonical(request.draft),actor.id,request.reason,now)
+        RewardEventRecord(UUID.randomUUID().toString(),1,canonical(request.draft),actor.id,request.reason,now,creatorId=actor.id)
     }
     suspend fun update(context:RewardEventAdminContext,id:String,request:RewardEventDraftRequest):RewardEventAdminView = mutate(
         context,"UPDATE",id,request.expectedVersion,request.requestId,request.reason,Json.encodeToString(request)) { current,actor,now ->
@@ -57,7 +57,7 @@ class RewardEventService(
         context,"SCHEDULE",id,request.expectedVersion,request.requestId,request.reason,Json.encodeToString(request),ownerOnly=true) { current,actor,now ->
         val before=current?:missing()
         if(before.state(now)!=RewardEventState.DRAFT || before.draft.endsAtEpochMillis<=now || request.previewToken!=previewToken(before)) conflict()
-        before.copy(version=nextVersion(before.version),actorId=actor.id,reason=request.reason,changedAtEpochMillis=now,publishedAtEpochMillis=now)
+        before.copy(version=nextVersion(before.version),actorId=actor.id,reason=request.reason,changedAtEpochMillis=now,publishedAtEpochMillis=now,publisherId=actor.id)
     }
     suspend fun cancel(context:RewardEventAdminContext,id:String,request:RewardEventMutationRequest):RewardEventAdminView = mutate(
         context,"CANCEL",id,request.expectedVersion,request.requestId,request.reason,Json.encodeToString(request),ownerOnly=true) { current,actor,now ->

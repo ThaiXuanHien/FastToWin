@@ -13,7 +13,8 @@ data class RewardEventAdminContext(val token:String?,val csrfToken:String?=null,
 @Serializable data class RewardEventMutationRequest(val expectedVersion:Long,val requestId:String,val reason:String,val previewToken:String?=null)
 @Serializable data class RewardEventAdminView(
     val id:String,val version:Long,val state:RewardEventState,val draft:RewardEventDraft,
-    val actorId:String,val reason:String,val changedAtEpochMillis:Long,val publishedAtEpochMillis:Long?=null
+    val actorId:String,val reason:String,val changedAtEpochMillis:Long,val publishedAtEpochMillis:Long?=null,
+    val creatorId:String?=null,val publisherId:String?=null
 )
 @Serializable data class RewardEventPreview(
     val event:RewardEventAdminView,val previewToken:String,val overlaps:List<RewardEventPublicView>,
@@ -22,7 +23,8 @@ data class RewardEventAdminContext(val token:String?,val csrfToken:String?=null,
 /** Stored lifecycle only; ACTIVE and ENDED are derived, never stale cron-maintained flags. */
 @Serializable internal data class RewardEventRecord(
     val id:String,val version:Long,val draft:RewardEventDraft,val actorId:String,val reason:String,
-    val changedAtEpochMillis:Long,val publishedAtEpochMillis:Long?=null,val cancelled:Boolean=false
+    val changedAtEpochMillis:Long,val publishedAtEpochMillis:Long?=null,val cancelled:Boolean=false,
+    val creatorId:String?=null,val publisherId:String?=null
 ) {
     fun state(now:Long):RewardEventState=when {
         cancelled -> RewardEventState.CANCELLED
@@ -31,7 +33,7 @@ data class RewardEventAdminContext(val token:String?,val csrfToken:String?=null,
         now<draft.endsAtEpochMillis -> RewardEventState.ACTIVE
         else -> RewardEventState.ENDED
     }
-    fun adminView(now:Long)=RewardEventAdminView(id,version,state(now),draft,actorId,reason,changedAtEpochMillis,publishedAtEpochMillis)
+    fun adminView(now:Long)=RewardEventAdminView(id,version,state(now),draft,actorId,reason,changedAtEpochMillis,publishedAtEpochMillis,creatorId,publisherId)
     fun publicView(now:Long)=with(draft) { RewardEventPublicView(id,version,state(now),nameVi,nameEn,contentVi,contentEn,timezone,
         startsAtEpochMillis,endsAtEpochMillis,goldMultiplier,xpMultiplier,matchTypes.toSet()) }
 }

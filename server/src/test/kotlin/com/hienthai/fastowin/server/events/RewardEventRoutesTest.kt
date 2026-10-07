@@ -14,6 +14,9 @@ import kotlin.test.*
 class RewardEventRoutesTest {
     @Test fun actualAdminAndPublicRoutesEnforceCsrfRolesPrivacyAndStrictBodies() = testApplication {
         val f=RewardEventFixture(); f.initialize()
+        val other=f.addOwner()
+        val creator=f.admin.authenticate(f.operator.token)!!.id
+        val publisher=f.admin.authenticate(f.owner.token)!!.id
         application { gameModule(adminService=f.admin,rewardEventService=f.service) }
         fun HttpRequestBuilder.admin(ctx:RewardEventAdminContext=f.owner) {
             header(HttpHeaders.Cookie,"fasttowin_admin=${ctx.token}")
@@ -30,6 +33,7 @@ class RewardEventRoutesTest {
         val created=create(f.operator)
         assertEquals(HttpStatusCode.OK,created.status)
         val value=Json.decodeFromString<RewardEventAdminView>(created.bodyAsText())
+        assertEventIdentities(value,creator,null)
         val hidden=client.get("/api/events/${value.id}")
         assertEquals(HttpStatusCode.NotFound,hidden.status); assertEquals("no-store",hidden.headers[HttpHeaders.CacheControl])
         val preview=client.post("/admin/api/events/${value.id}/preview") { admin() }
@@ -38,11 +42,20 @@ class RewardEventRoutesTest {
             admin(); contentType(ContentType.Application.Json); setBody(Json.encodeToString(f.mutation(value.version).copy(previewToken=token)))
         }
         assertEquals(HttpStatusCode.OK,scheduled.status)
+        assertEventIdentities(Json.decodeFromString(scheduled.bodyAsText()),creator,publisher)
         val public=client.get("/api/events")
         assertEquals("no-store",public.headers[HttpHeaders.CacheControl])
         val page=Json.decodeFromString<RewardEventPublicPage>(public.bodyAsText())
         assertEquals(25,page.pageSize); assertEquals(f.now,page.serverNowEpochMillis); assertEquals(value.id,page.items.single().id)
-        for(secret in listOf("actorId","Internal reason","requestId","previewToken")) assertFalse(secret in public.bodyAsText())
+        for(secret in listOf("actorId","creatorId","publisherId",creator,publisher,"Internal reason","requestId","previewToken")) assertFalse(secret in public.bodyAsText())
+        val cancelled=client.post("/admin/api/events/${value.id}/cancel") {
+            admin(other); contentType(ContentType.Application.Json); setBody(Json.encodeToString(f.mutation(2)))
+        }
+        assertEquals(HttpStatusCode.OK,cancelled.status)
+        val detail=client.get("/admin/api/events/${value.id}") { admin() }
+        assertEventIdentities(Json.decodeFromString(detail.bodyAsText()),creator,publisher)
+        val publicDetail=client.get("/api/events/${value.id}").bodyAsText()
+        for(secret in listOf("actorId","creatorId","publisherId",creator,publisher)) assertFalse(secret in publicDetail)
         assertEquals(HttpStatusCode.BadRequest,client.get("/api/events?pageSize=101").status)
         assertEquals(HttpStatusCode.BadRequest,create(f.owner,"{\"unexpected\":true}").status)
         assertEquals(HttpStatusCode.BadRequest,create(f.owner,"x".repeat(32_769)).status)
