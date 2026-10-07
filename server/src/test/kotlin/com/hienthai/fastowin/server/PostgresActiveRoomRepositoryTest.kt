@@ -29,6 +29,7 @@ class PostgresActiveRoomRepositoryTest {
             val repository = PostgresActiveRoomRepository(dataSource)
             val roomId = UUID.randomUUID().toString()
             val otherRoomId = UUID.randomUUID().toString()
+            suspend fun ownedRooms() = repository.loadAll().filter { it.roomId == roomId || it.roomId == otherRoomId }
             val hostId = UUID.randomUUID().toString()
             val guestId = UUID.randomUUID().toString()
             val stored = StoredActiveRoom(
@@ -101,7 +102,7 @@ class PostgresActiveRoomRepositoryTest {
             try {
                 repository.save(stored)
 
-                val restored = repository.loadAll().single()
+                val restored = ownedRooms().single()
                 assertEquals(roomId, restored.roomId)
                 assertEquals(stored.roomName, restored.roomName)
                 assertEquals(stored.host, restored.host)
@@ -126,13 +127,13 @@ class PostgresActiveRoomRepositoryTest {
                 )
 
                 repository.save(stored.copy(currentTarget = 4))
-                assertEquals(4, repository.loadAll().single().currentTarget)
+                assertEquals(4, ownedRooms().single().currentTarget)
 
                 repository.save(stored.copy(roomId = otherRoomId, roomName = "Other room"))
-                assertEquals(setOf(roomId, otherRoomId), repository.loadAll().map { it.roomId }.toSet())
+                assertEquals(setOf(roomId, otherRoomId), ownedRooms().map { it.roomId }.toSet())
 
                 repository.delete(roomId)
-                assertEquals(otherRoomId, repository.loadAll().single().roomId)
+                assertEquals(otherRoomId, ownedRooms().single().roomId)
             } finally {
                 repository.delete(roomId)
                 repository.delete(otherRoomId)

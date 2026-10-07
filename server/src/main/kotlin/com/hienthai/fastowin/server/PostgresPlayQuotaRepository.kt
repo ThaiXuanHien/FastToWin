@@ -40,13 +40,24 @@ class PostgresPlayQuotaRepository(
         userIds: Set<String>,
         matchId: String,
         nowMillis: Long
-    ): PlayQuotaConsumption = withContext(Dispatchers.IO) {
+    ): PlayQuotaConsumption = consume(userIds, matchId, nowMillis, false)
+
+    override suspend fun prepareMatch(userIds: Set<String>, matchId: String, nowMillis: Long): PlayQuotaConsumption =
+        consume(userIds, matchId, nowMillis, true)
+
+    private suspend fun consume(userIds: Set<String>, matchId: String, nowMillis: Long, reserved: Boolean): PlayQuotaConsumption = withContext(Dispatchers.IO) {
         val parsedUserIds = parseUserIds(userIds)
         val parsedMatchId = UUID.fromString(matchId)
         val quotaDate = PlayQuotaRules.quotaDate(nowMillis)
         dataSource.connection.use { connection ->
             connection.autoCommit = false
             try {
+                lockMatch(connection, matchId)
+                val existingParticipants = connection.prepareStatement("SELECT user_id::text FROM play_quota_match_consumptions WHERE match_id=?").use { s ->
+                    s.setObject(1, parsedMatchId)
+                    s.executeQuery().use { r -> buildSet { while (r.next()) add(r.getString(1)) } }
+                }
+                check(existingParticipants.isEmpty() || existingParticipants == userIds) { "Quota match participants changed" }
                 ensureDailyRows(connection, parsedUserIds, quotaDate)
                 val quotas = loadSnapshots(connection, parsedUserIds, nowMillis, lockRows = true)
                 val existingReceipts = existingMatchReceiptCount(
@@ -76,6 +87,9 @@ class PostgresPlayQuotaRepository(
                 }
 
                 insertMatchReceipts(connection, parsedUserIds, parsedMatchId, quotaDate)
+                if (reserved) connection.prepareStatement("UPDATE play_quota_match_consumptions SET reservation_state='RESERVED' WHERE match_id=?").use {
+                    it.setObject(1, parsedMatchId); it.executeUpdate()
+                }
                 incrementConsumedMatches(connection, parsedUserIds, quotaDate)
                 connection.commit()
                 PlayQuotaConsumption(
@@ -96,6 +110,65 @@ class PostgresPlayQuotaRepository(
             } finally {
                 connection.autoCommit = true
             }
+        }
+    }
+
+    private fun lockMatch(connection: Connection, matchId: String) {
+        connection.prepareStatement("SELECT pg_advisory_xact_lock(hashtextextended(?, 0))").use {
+            it.setString(1, "quota:$matchId"); it.execute()
+        }
+    }
+
+    override suspend fun finalizeMatch(userIds: Set<String>, matchId: String) = reconcileReservation(userIds, matchId, setOf(matchId))
+    override suspend fun releaseMatch(userIds: Set<String>, matchId: String, durableMatchIds: Set<String>) =
+        reconcileReservation(userIds, matchId, durableMatchIds)
+
+    override suspend fun recoverPreparedMatches(durableMatchIds: Set<String>) {
+        val reservations = withContext(Dispatchers.IO) {
+            dataSource.connection.use { c ->
+                c.prepareStatement("SELECT match_id, user_id FROM play_quota_match_consumptions WHERE reservation_state='RESERVED'").use { s ->
+                    s.executeQuery().use { r -> buildList { while(r.next()) add(r.getString(1) to r.getString(2)) } }
+                }
+            }
+        }.groupBy({ it.first }, { it.second })
+        reservations.forEach { (match, users) -> reconcileReservation(users.toSet(), match, durableMatchIds) }
+    }
+
+    private suspend fun reconcileReservation(userIds: Set<String>, matchId: String, durableMatchIds: Set<String>) = withContext(Dispatchers.IO) {
+        dataSource.connection.use { c ->
+            c.autoCommit = false
+            try {
+                lockMatch(c, matchId)
+                val receipts = c.prepareStatement("SELECT user_id, quota_date, reservation_state FROM play_quota_match_consumptions WHERE match_id=? ORDER BY user_id FOR UPDATE").use { s ->
+                    s.setObject(1, UUID.fromString(matchId))
+                    s.executeQuery().use { r -> buildList { while(r.next()) add(Triple(r.getString(1), r.getDate(2), r.getString(3))) } }
+                }
+                if (receipts.isNotEmpty() && receipts.any { it.third == "RESERVED" }) {
+                    check(receipts.map { it.first }.toSet() == userIds && receipts.all { it.third == "RESERVED" }) { "Reservation identity mismatch" }
+                    // Durable results and snapshots win over a stale caller, including uncertain save outcomes.
+                    val durable = matchId in durableMatchIds || c.prepareStatement("""
+                        SELECT EXISTS(SELECT 1 FROM matches WHERE id=?) OR EXISTS(
+                            SELECT 1 FROM active_room_snapshots WHERE (state_json->>'matchId'=? AND state_json->>'startedAtEpochMillis' IS NOT NULL)
+                              OR state_json->'pendingCompletedMatch'->>'matchId'=?)
+                    """.trimIndent()).use { s ->
+                        s.setObject(1, UUID.fromString(matchId)); s.setString(2, matchId); s.setString(3, matchId)
+                        s.executeQuery().use { r -> r.next(); r.getBoolean(1) }
+                    }
+                    if (durable) c.prepareStatement("UPDATE play_quota_match_consumptions SET reservation_state='FINALIZED' WHERE match_id=?").use {
+                        it.setObject(1, UUID.fromString(matchId)); it.executeUpdate()
+                    } else {
+                        receipts.forEach { (user, date, _) ->
+                            c.prepareStatement("UPDATE daily_play_quotas SET matches_consumed=matches_consumed-1, updated_at=CURRENT_TIMESTAMP WHERE user_id=? AND quota_date=?").use {
+                                it.setObject(1, UUID.fromString(user)); it.setDate(2, date); check(it.executeUpdate() == 1)
+                            }
+                        }
+                        c.prepareStatement("DELETE FROM play_quota_match_consumptions WHERE match_id=? AND reservation_state='RESERVED'").use {
+                            it.setObject(1, UUID.fromString(matchId)); it.executeUpdate()
+                        }
+                    }
+                }
+                c.commit()
+            } catch (failure: Throwable) { c.rollback(); throw failure }
         }
     }
 

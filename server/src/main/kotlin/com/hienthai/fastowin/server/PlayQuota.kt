@@ -53,6 +53,13 @@ data class PlayQuotaGrant(
 )
 
 interface PlayQuotaRepository {
+    /** Reserve atomically before the event gate; release must refund only this exact reservation's original day. */
+    suspend fun prepareMatch(userIds: Set<String>, matchId: String, nowMillis: Long): PlayQuotaConsumption
+    suspend fun finalizeMatch(userIds: Set<String>, matchId: String)
+    suspend fun releaseMatch(userIds: Set<String>, matchId: String, durableMatchIds: Set<String>)
+    /** Called before admission on startup. Durable active/pending/completed work wins over abandonment. */
+    suspend fun recoverPreparedMatches(durableMatchIds: Set<String>)
+
     suspend fun getSnapshot(userId: String, nowMillis: Long): PlayQuotaSnapshot
 
     suspend fun canPlay(userIds: Set<String>, nowMillis: Long): PlayQuotaCheck
@@ -74,7 +81,8 @@ interface PlayQuotaRepository {
 class InMemoryPlayQuotaRepository : PlayQuotaRepository {
     private val mutex = Mutex()
     private val dailyQuotas = mutableMapOf<DailyQuotaKey, MutableDailyQuota>()
-    private val consumedMatches = mutableSetOf<MatchConsumptionKey>()
+    private val consumedMatches = mutableMapOf<MatchConsumptionKey, LocalDate>()
+    private val reservations = mutableMapOf<String, Set<String>>()
     private val rewardedAdTransactions = mutableSetOf<RewardedAdTransactionKey>()
 
     override suspend fun getSnapshot(userId: String, nowMillis: Long): PlayQuotaSnapshot = mutex.withLock {
@@ -96,9 +104,16 @@ class InMemoryPlayQuotaRepository : PlayQuotaRepository {
         userIds: Set<String>,
         matchId: String,
         nowMillis: Long
-    ): PlayQuotaConsumption = mutex.withLock {
+    ): PlayQuotaConsumption = consume(userIds, matchId, nowMillis, false)
+
+    override suspend fun prepareMatch(userIds: Set<String>, matchId: String, nowMillis: Long): PlayQuotaConsumption =
+        consume(userIds, matchId, nowMillis, true)
+
+    private suspend fun consume(userIds: Set<String>, matchId: String, nowMillis: Long, reserved: Boolean): PlayQuotaConsumption = mutex.withLock {
         require(userIds.isNotEmpty()) { "At least one user is required." }
         require(matchId.isNotBlank()) { "Match ID must not be blank." }
+        val existingParticipants = consumedMatches.keys.filter { it.matchId == matchId }.map { it.userId }.toSet()
+        check(existingParticipants.isEmpty() || existingParticipants == userIds) { "Quota match participants changed" }
 
         val receiptKeys = userIds.mapTo(mutableSetOf()) { MatchConsumptionKey(it, matchId) }
         val existingReceiptCount = receiptKeys.count(consumedMatches::contains)
@@ -124,11 +139,35 @@ class InMemoryPlayQuotaRepository : PlayQuotaRepository {
         userIds.forEach { userId ->
             dailyQuota(userId, quotaDate).matchesConsumed++
         }
-        consumedMatches += receiptKeys
+        receiptKeys.forEach { consumedMatches[it] = quotaDate }
+        if (reserved) reservations[matchId] = userIds.toSet()
         PlayQuotaConsumption(
             status = PlayQuotaConsumptionStatus.CONSUMED,
             quotas = userIds.associateWith { userId -> snapshot(userId, nowMillis) }
         )
+    }
+
+    override suspend fun finalizeMatch(userIds: Set<String>, matchId: String) = mutex.withLock {
+        reservations[matchId]?.let { check(it == userIds); reservations.remove(matchId) }
+        Unit
+    }
+
+    override suspend fun releaseMatch(userIds: Set<String>, matchId: String, durableMatchIds: Set<String>) = mutex.withLock {
+        release(userIds, matchId, durableMatchIds)
+    }
+
+    override suspend fun recoverPreparedMatches(durableMatchIds: Set<String>) = mutex.withLock {
+        reservations.toMap().forEach { (match, users) -> release(users, match, durableMatchIds) }
+    }
+
+    private fun release(userIds: Set<String>, matchId: String, durableMatchIds: Set<String>) {
+        val reserved = reservations[matchId] ?: return
+        check(reserved == userIds) { "Reservation participants changed" }
+        if (matchId !in durableMatchIds) reserved.forEach { user ->
+            val date = consumedMatches.remove(MatchConsumptionKey(user, matchId)) ?: error("Missing reservation receipt")
+            dailyQuota(user, date).matchesConsumed--
+        }
+        reservations.remove(matchId)
     }
 
     override suspend fun grantRewardedAd(

@@ -47,7 +47,8 @@ data class CompletedMatch(
     val winnerPlayerId: String?,
     val players: List<CompletedMatchPlayer>,
     val events: List<MatchSelectionEvent> = emptyList(),
-    val matchType: MatchType = MatchType.RANKED
+    val matchType: MatchType = MatchType.RANKED,
+    val eventRewards: com.hienthai.fastowin.protocol.MatchRewardEventSnapshot = com.hienthai.fastowin.protocol.MatchRewardEventSnapshot()
 )
 
 fun interface MatchResultRepository {

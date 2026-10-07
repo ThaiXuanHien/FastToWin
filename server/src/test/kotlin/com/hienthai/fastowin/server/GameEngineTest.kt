@@ -3719,6 +3719,7 @@ class GameEngineTest {
     private class RecordingPlayQuotaRepository(
         private val remainingByUser: MutableMap<String, Int> = mutableMapOf()
     ) : PlayQuotaRepository {
+        private val repository = InMemoryPlayQuotaRepository()
         val consumedMatchIds = mutableListOf<String>()
         val consumedUserIds = mutableListOf<Set<String>>()
         val attemptedMatchIds = mutableListOf<String>()
@@ -3729,10 +3730,12 @@ class GameEngineTest {
         }
 
         override suspend fun getSnapshot(userId: String, nowMillis: Long): PlayQuotaSnapshot =
-            snapshot(userId)
+            repository.getSnapshot(userId, nowMillis).let { quota ->
+                remainingByUser[userId]?.let { quota.copy(remainingMatches = it) } ?: quota
+            }
 
         override suspend fun canPlay(userIds: Set<String>, nowMillis: Long): PlayQuotaCheck {
-            val quotas = userIds.associateWith(::snapshot)
+            val quotas = userIds.associateWith { getSnapshot(it, nowMillis) }
             val exhausted = quotas.filterValues { it.remainingMatches <= 0 }.keys
             return PlayQuotaCheck(exhausted.isEmpty(), quotas, exhausted)
         }
@@ -3741,23 +3744,27 @@ class GameEngineTest {
             userIds: Set<String>,
             matchId: String,
             nowMillis: Long
-        ): PlayQuotaConsumption {
+        ): PlayQuotaConsumption = consumeRecorded(userIds, matchId, nowMillis, prepared = false)
+
+        override suspend fun prepareMatch(userIds: Set<String>, matchId: String, nowMillis: Long): PlayQuotaConsumption =
+            consumeRecorded(userIds, matchId, nowMillis, prepared = true)
+
+        override suspend fun finalizeMatch(userIds: Set<String>, matchId: String) = repository.finalizeMatch(userIds, matchId)
+        override suspend fun releaseMatch(userIds: Set<String>, matchId: String, durableMatchIds: Set<String>) =
+            repository.releaseMatch(userIds, matchId, durableMatchIds)
+        override suspend fun recoverPreparedMatches(durableMatchIds: Set<String>) = repository.recoverPreparedMatches(durableMatchIds)
+
+        private suspend fun consumeRecorded(userIds: Set<String>, matchId: String, nowMillis: Long, prepared: Boolean): PlayQuotaConsumption {
             attemptedMatchIds += matchId
             if (exhaustNextConsumption) {
                 exhaustNextConsumption = false
                 return PlayQuotaConsumption(
                     PlayQuotaConsumptionStatus.EXHAUSTED,
-                    userIds.associateWith(::snapshot),
+                    userIds.associateWith { getSnapshot(it, nowMillis) },
                     userIds
                 )
             }
-            if (matchId in consumedMatchIds) {
-                return PlayQuotaConsumption(
-                    PlayQuotaConsumptionStatus.ALREADY_CONSUMED,
-                    userIds.associateWith(::snapshot)
-                )
-            }
-            val quotas = userIds.associateWith(::snapshot)
+            val quotas = userIds.associateWith { getSnapshot(it, nowMillis) }
             val exhausted = quotas.filterValues { it.remainingMatches <= 0 }.keys
             if (exhausted.isNotEmpty()) {
                 return PlayQuotaConsumption(
@@ -3766,15 +3773,12 @@ class GameEngineTest {
                     exhausted
                 )
             }
-            consumedMatchIds += matchId
-            consumedUserIds += userIds
-            userIds.forEach { userId ->
-                remainingByUser[userId] = (remainingByUser[userId] ?: 10) - 1
+            val result = if (prepared) repository.prepareMatch(userIds, matchId, nowMillis) else repository.consumeMatch(userIds, matchId, nowMillis)
+            if (result.status == PlayQuotaConsumptionStatus.CONSUMED) {
+                consumedMatchIds += matchId
+                consumedUserIds += userIds
             }
-            return PlayQuotaConsumption(
-                PlayQuotaConsumptionStatus.CONSUMED,
-                userIds.associateWith(::snapshot)
-            )
+            return result
         }
 
         override suspend fun grantRewardedAd(
@@ -3782,13 +3786,7 @@ class GameEngineTest {
             provider: RewardedAdProvider,
             providerTransactionId: String,
             nowMillis: Long
-        ) = PlayQuotaGrant(RewardedAdBonusStatus.GRANTED, snapshot(userId))
-
-        private fun snapshot(userId: String) = PlayQuotaSnapshot(
-            quotaDate = "2030-03-18",
-            remainingMatches = remainingByUser[userId] ?: 10,
-            nextResetAtEpochMillis = 1_900_000_000_000L
-        )
+        ) = repository.grantRewardedAd(userId, provider, providerTransactionId, nowMillis)
     }
 
     @Test

@@ -67,7 +67,8 @@ fun main() {
         playQuotaRepository = playQuotaRepository,
         rewardedAdVerifier = rewardedAdVerifier,
         rewardedAdAvailability = rewardedAdAvailability,
-        storeSandboxEnabled = environment == "dev"
+        storeSandboxEnabled = environment == "dev",
+        eventRewardSource = database?.rewardEventRepository ?: com.hienthai.fastowin.server.events.NoRewardEventSource
     )
     runBlocking {
         seasonLifecycleRepository.maintain()

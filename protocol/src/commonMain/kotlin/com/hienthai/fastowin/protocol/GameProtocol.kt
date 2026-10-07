@@ -301,7 +301,8 @@ data class MatchHistorySnapshot(
     val outcome: MatchHistoryOutcome,
     val endedAtEpochMillis: Long,
     val eloChange: Int = 0,
-    val matchType: MatchType = MatchType.CASUAL
+    val matchType: MatchType = MatchType.CASUAL,
+    val rewardBreakdown: MatchRewardBreakdown? = null
 )
 
 @Serializable
@@ -678,7 +679,9 @@ data class GameSnapshot(
     val rematchExpiresAtEpochMillis: Long? = null,
     val tournamentId: String? = null,
     val tournamentMatchId: String? = null,
-    val tournamentRound: Int? = null
+    val tournamentRound: Int? = null,
+    val eventRewards: MatchRewardEventSnapshot? = null,
+    val rewardBreakdowns: Map<String, MatchRewardBreakdown> = emptyMap()
 )
 
 @Serializable

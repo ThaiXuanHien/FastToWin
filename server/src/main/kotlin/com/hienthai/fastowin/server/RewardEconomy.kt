@@ -3,6 +3,8 @@ package com.hienthai.fastowin.server
 import com.hienthai.fastowin.protocol.GOLD_EXCHANGE_OFFERS
 import com.hienthai.fastowin.protocol.GoldExchangeOffer
 import com.hienthai.fastowin.protocol.MatchType
+import com.hienthai.fastowin.protocol.MatchRewardEventSnapshot
+import com.hienthai.fastowin.protocol.MatchRewardBreakdown
 
 internal data class RewardGrant(
     val gold: Int = 0,
@@ -11,6 +13,19 @@ internal data class RewardGrant(
 )
 
 internal object RewardEconomy {
+    fun matchRewardBreakdown(matchType: MatchType, outcome: MatchOutcome, intentionalLeave: Boolean,
+        eventRewards: MatchRewardEventSnapshot): MatchRewardBreakdown {
+        val base = matchReward(matchType, outcome, intentionalLeave)
+        require(eventRewards.goldMultiplier in 1..2 && eventRewards.xpMultiplier in 1..2)
+        return MatchRewardBreakdown(base.gold, base.gold * (eventRewards.goldMultiplier - 1),
+            base.gold * eventRewards.goldMultiplier, base.xp, base.xp * (eventRewards.xpMultiplier - 1),
+            base.xp * eventRewards.xpMultiplier, if (intentionalLeave) emptyList() else eventRewards.sources)
+    }
+
+    fun matchReward(matchType: MatchType, outcome: MatchOutcome, intentionalLeave: Boolean,
+        eventRewards: MatchRewardEventSnapshot): RewardGrant =
+        matchRewardBreakdown(matchType, outcome, intentionalLeave, eventRewards).let { RewardGrant(gold = it.totalGold, xp = it.totalXp) }
+
     fun matchReward(
         matchType: MatchType,
         outcome: MatchOutcome,

@@ -3,6 +3,8 @@
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import com.hienthai.fastowin.protocol.MatchType
+import com.hienthai.fastowin.protocol.ProtocolJson
+import kotlinx.serialization.encodeToString
 import java.sql.Connection
 import java.sql.Timestamp
 import java.time.Instant
@@ -37,8 +39,8 @@ class PostgresMatchResultRepository(
     private fun insertMatch(connection: Connection, match: CompletedMatch): Boolean =
         connection.prepareStatement(
             """
-            INSERT INTO matches (id, room_name, game_mode, started_at, ended_at, winner_user_id, match_type)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO matches (id, room_name, game_mode, started_at, ended_at, winner_user_id, match_type, event_rewards)
+            VALUES (?, ?, ?, ?, ?, ?, ?, CAST(? AS jsonb))
             ON CONFLICT (id) DO NOTHING
             """.trimIndent()
         ).use { statement ->
@@ -49,14 +51,15 @@ class PostgresMatchResultRepository(
             statement.setTimestamp(5, match.endedAtMillis.toTimestamp())
             statement.setObject(6, match.winnerPlayerId?.let(UUID::fromString))
             statement.setString(7, match.matchType.name)
+            statement.setString(8, ProtocolJson.encodeToString(match.eventRewards))
             statement.executeUpdate() == 1
         }
 
     private fun insertPlayers(connection: Connection, match: CompletedMatch) {
         connection.prepareStatement(
             """
-            INSERT INTO match_players (match_id, user_id, display_name, score, outcome)
-            VALUES (?, ?, ?, ?, ?)
+            INSERT INTO match_players (match_id, user_id, display_name, score, outcome, reward_breakdown)
+            VALUES (?, ?, ?, ?, ?, CAST(? AS jsonb))
             """.trimIndent()
         ).use { statement ->
             match.players.forEach { player ->
@@ -65,6 +68,8 @@ class PostgresMatchResultRepository(
                 statement.setString(3, player.displayName)
                 statement.setInt(4, player.score)
                 statement.setString(5, player.outcome.name)
+                statement.setString(6, ProtocolJson.encodeToString(RewardEconomy.matchRewardBreakdown(
+                    match.matchType, player.outcome, player.intentionalLeave, match.eventRewards)))
                 statement.addBatch()
             }
             statement.executeBatch()
@@ -101,7 +106,8 @@ class PostgresMatchResultRepository(
             player.playerId to RewardEconomy.matchReward(
                 matchType = match.matchType,
                 outcome = player.outcome,
-                intentionalLeave = player.intentionalLeave
+                intentionalLeave = player.intentionalLeave,
+                eventRewards = match.eventRewards
             )
         }
         connection.prepareStatement(

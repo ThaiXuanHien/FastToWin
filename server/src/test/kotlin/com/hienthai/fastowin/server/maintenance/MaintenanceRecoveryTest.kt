@@ -47,8 +47,8 @@ class MaintenanceRecoveryTest {
         val entered = CompletableDeferred<Unit>(); val release = CompletableDeferred<Unit>()
         val quotas = InMemoryPlayQuotaRepository()
         val engine = GameEngine(playQuotaRepository = object : PlayQuotaRepository by quotas {
-            override suspend fun consumeMatch(userIds: Set<String>, matchId: String, nowMillis: Long): PlayQuotaConsumption {
-                entered.complete(Unit); release.await(); return quotas.consumeMatch(userIds, matchId, nowMillis)
+            override suspend fun prepareMatch(userIds: Set<String>, matchId: String, nowMillis: Long): PlayQuotaConsumption {
+                entered.complete(Unit); release.await(); return quotas.prepareMatch(userIds, matchId, nowMillis)
             }
         })
         val host = engine.connectAccount(AuthenticatedAccount(UUID.randomUUID(), "host")).playerId

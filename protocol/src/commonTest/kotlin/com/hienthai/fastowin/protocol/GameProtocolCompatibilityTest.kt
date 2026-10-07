@@ -2,10 +2,26 @@ package com.hienthai.fastowin.protocol
 
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.Json
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
 class GameProtocolCompatibilityTest {
+    @Serializable private data class LegacyGame(val roomId: String, val roomName: String, val hostId: String,
+        val gameMode: ProtocolGameMode, val phase: RoomPhase, val players: List<PlayerSnapshot>)
+
+    @Test fun `old game reader tolerates frozen rewards and old payload remains neutral`() {
+        val game = GameSnapshot("room", roomName = "room", hostId = "host", gameMode = ProtocolGameMode.ORDER,
+            phase = RoomPhase.FINISHED, players = emptyList(), eventRewards = MatchRewardEventSnapshot(100, 2, 2),
+            rewardBreakdowns = mapOf("host" to MatchRewardBreakdown(100, 100, 200, 30, 30, 60)))
+        val old = Json { ignoreUnknownKeys = true }.decodeFromString<LegacyGame>(ProtocolJson.encodeToString(game))
+        assertEquals("room", old.roomId); assertEquals(RoomPhase.FINISHED, old.phase)
+        val decoded = ProtocolJson.decodeFromString<GameSnapshot>(ProtocolJson.encodeToString(old))
+        assertEquals(null, decoded.eventRewards); assertEquals(emptyMap(), decoded.rewardBreakdowns)
+        val message: ServerMessage = ServerMessage.GameFinished(game)
+        assertEquals(message, ProtocolJson.decodeFromString<ServerMessage>(ProtocolJson.encodeToString(message)))
+    }
     @Test
     fun `version 40 connect account decodes without resume token`() {
         val raw = """{"type":"connect_account","accessToken":"access","protocolVersion":40}"""

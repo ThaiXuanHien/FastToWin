@@ -16,17 +16,14 @@ class MaintenanceGameEngineTest {
 
     private fun queuedCleanupCannotForfeit(deadline: Boolean) = runTest {
         val entered = CompletableDeferred<Unit>(); val release = CompletableDeferred<Unit>()
-        var pauseQuota = false
-        val quotas = InMemoryPlayQuotaRepository()
-        val quota = object : PlayQuotaRepository by quotas {
-            override suspend fun consumeMatch(userIds: Set<String>, matchId: String, nowMillis: Long): PlayQuotaConsumption {
-                if (pauseQuota) { entered.complete(Unit); release.await() }
-                return quotas.consumeMatch(userIds, matchId, nowMillis)
+        val profiles = object : PlayerProfileRepository by NoOpPlayerProfileRepository {
+            override suspend fun updateFcmToken(playerId: String, token: String, languageTag: String): Boolean {
+                entered.complete(Unit); release.await(); return true
             }
         }
         val rooms = InMemoryActiveRoomRepository(); val results = mutableListOf<CompletedMatch>()
         var now = 1_000L
-        val engine = GameEngine(activeRoomRepository = rooms, playQuotaRepository = quota,
+        val engine = GameEngine(activeRoomRepository = rooms, playerProfileRepository = profiles,
             matchResultRepository = MatchResultRepository { results += it }, nowMillis = { now })
         val (host, guest, room) = playing(engine)
         val other = engine.connectAccount(AuthenticatedAccount(UUID.randomUUID(), "other"))
@@ -36,9 +33,8 @@ class MaintenanceGameEngineTest {
         engine.handle(opponent.playerId, ClientMessage.JoinRoom(waiting, ""))
         engine.handle(other.playerId, ClientMessage.SetReady(waiting, true))
         engine.markDisconnected(guest.playerId); now += 1_000_000
-        pauseQuota = true
-        val holding = async { engine.handle(opponent.playerId, ClientMessage.SetReady(waiting, true)) }
-        entered.await() // setReady holds the engine mutex while quota is suspended.
+        val holding = async { engine.handle(opponent.playerId, ClientMessage.UpdateFcmToken("test", "en")) }
+        entered.await() // The unchanged profile command holds the engine mutex during repository work.
         if (deadline) engine.publishMaintenancePolicy(draining)
         // UNDISPATCHED executes through the outer policy guard to the contended mutex.
         val cleanup = async(start = CoroutineStart.UNDISPATCHED) { engine.cleanupExpiredSessions() }

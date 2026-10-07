@@ -28,6 +28,9 @@ import com.hienthai.fastowin.protocol.PublicTournamentSummary
 import com.hienthai.fastowin.protocol.TournamentFeeFilter
 import com.hienthai.fastowin.protocol.TournamentVisibility
 import com.hienthai.fastowin.protocol.MatchType
+import com.hienthai.fastowin.protocol.MatchRewardEventSnapshot
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.delay
 import com.hienthai.fastowin.protocol.RematchEvent
 import com.hienthai.fastowin.protocol.RewardedAdAvailability
 import com.hienthai.fastowin.protocol.RewardedAdBonusStatus
@@ -92,8 +95,11 @@ class GameEngine(
     private val timeAttackMillis: Long = DEFAULT_TIME_ATTACK_MILLIS,
     private val rematchTimeoutMillis: Long = DEFAULT_REMATCH_TIMEOUT_MILLIS,
     val storePurchaseService: StorePurchaseService = StorePurchaseService(playerProfileRepository, storePurchaseVerifier),
-    private val nowMillis: () -> Long = System::currentTimeMillis
+    private val nowMillis: () -> Long = System::currentTimeMillis,
+    private val eventRewardSource: com.hienthai.fastowin.server.events.EventRewardSource = com.hienthai.fastowin.server.events.NoRewardEventSource
 ) {
+    constructor(nowMillis: () -> Long) : this(nowMillis = nowMillis, eventRewardSource = com.hienthai.fastowin.server.events.NoRewardEventSource)
+
     private val mutex = Mutex()
     private val restorationMutex = Mutex()
     private val persistenceMutex = Mutex()
@@ -113,10 +119,13 @@ class GameEngine(
     private val pendingCompletedMatches = mutableMapOf<String, CompletedMatch>()
     private val pendingRoomRemovals = mutableSetOf<String>()
     private val settlementsInFlight = mutableSetOf<String>()
+    private val preparedStarts = mutableMapOf<String, PreparedMatchStart>()
+    private val startsInFlight = mutableSetOf<String>()
 
     suspend fun activeMaintenanceMatchCount(): Int = mutex.withLock {
         (rooms.values.filter { it.phase == RoomPhase.PLAYING && !it.maintenanceAborted }.map { it.matchId } + pendingCompletedMatches.keys +
-            pendingTournamentProgressions.values.flatMap { it.rooms.map { room -> room.matchId } }).toSet().size
+            pendingTournamentProgressions.values.flatMap { it.rooms.map { room -> room.matchId } } +
+            preparedStarts.values.mapNotNull { it.candidate?.matchId }).toSet().size
     }
 
     suspend fun admitsNewIntent(): Boolean = mutex.withLock { !maintenancePolicy.blocksNewIntent }
@@ -149,6 +158,11 @@ class GameEngine(
                     if (maintenancePolicy.isFullyClosed) maintenanceWritesPending = true
                 }
                 if (maintenancePolicy.blocksNewIntent) matchmakingEntries.clear()
+                if (maintenancePolicy.isFullyClosed) preparedStarts.values.forEach { pending ->
+                    pending.candidate?.let { frozen ->
+                        if (rooms[pending.roomId]?.maintenanceAborted != true) rooms[pending.roomId] = frozen.toRoom()
+                    }
+                }
                 val aborted = if (maintenancePolicy.isFullyClosed) rooms.values.filter { it.phase != RoomPhase.FINISHED && !it.maintenanceAborted } else emptyList()
                 aborted.forEach { room ->
                     room.maintenanceAborted = true; room.resultQueued = true; room.phase = RoomPhase.FINISHED
@@ -167,6 +181,11 @@ class GameEngine(
             }
             for ((id, room) in pendingMaintenanceRooms.toMap()) {
                 activeRoomRepository.save(room); pendingMaintenanceRooms.remove(id)
+                val abandoned = mutex.withLock { preparedStarts.remove(id) }
+                if (abandoned != null) {
+                    if (abandoned.candidate != null) playQuotaRepository.finalizeMatch(abandoned.playerIds, abandoned.matchId)
+                    else playQuotaRepository.releaseMatch(abandoned.playerIds, abandoned.matchId, emptySet())
+                }
             }
             for ((id, tournament) in pendingMaintenanceTournaments.toMap()) {
                 tournamentRepository.cancelForMaintenance(tournament, playerProfileRepository)
@@ -283,6 +302,9 @@ class GameEngine(
         restorationMutex.withLock {
             if (activeRoomsRestored) return@withLock
             val storedRooms = activeRoomRepository.loadAll()
+            playQuotaRepository.recoverPreparedMatches(storedRooms.flatMap { stored ->
+                listOfNotNull(stored.matchId.takeIf { stored.startedAtEpochMillis != null }, stored.pendingCompletedMatch?.matchId)
+            }.toSet())
             val restoredAtMillis = nowMillis()
             val storedInvitations = notificationRepository.loadActiveRoomInvitations(restoredAtMillis)
             val storedTournaments = tournamentRepository.loadActive()
@@ -361,6 +383,8 @@ class GameEngine(
 
     private suspend fun persistRoom(roomId: String) {
         persistenceMutex.withLock {
+            // The lobby is deliberately still visible in memory while this exact candidate awaits durable retry.
+            if (mutex.withLock { preparedStarts[roomId]?.candidate != null }) return@withLock
             val removedInvitations = mutableListOf<RoomInvitationRecord>()
             val snapshot = mutex.withLock {
                 rooms[roomId]?.toStoredRoom().also { stored ->
@@ -386,6 +410,87 @@ class GameEngine(
             } else {
                 activeRoomRepository.save(snapshot)
             }
+        }
+    }
+
+    private fun prepareStart(room: Room, matchId: String, requesterId: String): PreparedMatchStart =
+        PreparedMatchStart(room.id, matchId, room.matchId, room.sequence, room.activePlayerIds().toSet(), requesterId)
+            .also { preparedStarts[room.id] = it }
+
+    private fun startError(playerId: String) = Delivery(ServerMessage.Error(
+        code = "MATCH_START_UNAVAILABLE", message = legacyFallback("Máy chủ đang bận. Vui lòng thử lại."),
+        messageKey = TextKey.ServerUnavailable.name), setOf(playerId))
+
+    /** The event callback is pool-free and never suspends for the engine mutex. */
+    private suspend fun performPreparedStart(start: PreparedMatchStart): List<Delivery> {
+        if (!mutex.withLock { preparedStarts[start.roomId] === start && startsInFlight.add(start.roomId) })
+            return listOf(startError(start.requesterId))
+        try {
+            val consumption = start.consumption ?: playQuotaRepository.prepareMatch(start.playerIds, start.matchId, nowMillis())
+                .also { start.consumption = it }
+            if (consumption.status == PlayQuotaConsumptionStatus.EXHAUSTED) {
+                val rejected = mutex.withLock {
+                    val room = rooms[start.roomId]?.apply { readyPlayerIds.clear(); rematchRequestedPlayerIds.clear(); rematchExpiresAtEpochMillis = null; sequence++ }
+                    preparedStarts.remove(start.roomId)
+                    room?.let { Delivery(if (it.phase == RoomPhase.FINISHED) ServerMessage.RematchStatus(it.snapshot(), RematchEvent.CANCELLED)
+                        else ServerMessage.RoomUpdated(it.snapshot()), start.playerIds) }
+                }
+                persistRoom(start.roomId)
+                return quotaRejectedDeliveries(start.playerIds, consumption) + listOfNotNull(rejected)
+            }
+            return persistenceMutex.withLock {
+                if (start.candidate == null) {
+                    var candidate: StoredActiveRoom? = null
+                    repeat(20) {
+                        if (candidate == null) {
+                            candidate = eventRewardSource.withStartCatalog { catalog ->
+                                if (!mutex.tryLock()) return@withStartCatalog null
+                                try {
+                                    val room = rooms[start.roomId] ?: error("Start room disappeared")
+                                    check(preparedStarts[room.id] === start && room.matchId == start.previousMatchId &&
+                                        room.sequence == start.sequence && room.activePlayerIds() == start.playerIds &&
+                                        start.playerIds.all { sessionsByPlayerId[it]?.isConnected == true }) { "Start admission changed" }
+                                    check(!maintenancePolicy.blocksNewIntent) { "Maintenance admission closed" }
+                                    val detached = room.toStoredRoom().toRoom()
+                                    detached.matchId = start.matchId
+                                    val actualStart = nowMillis()
+                                    detached.startMatch(actualStart, timeAttackMillis, catalog.snapshot(actualStart, room.matchType))
+                                    detached.toStoredRoom()
+                                } finally { mutex.unlock() }
+                            }
+                            if (candidate == null) delay(10) // event transaction and pooled connection have already closed
+                        }
+                    }
+                    mutex.withLock { start.candidate = candidate ?: error("Engine remained busy") }
+                }
+                val frozen = checkNotNull(start.candidate)
+                check(mutex.withLock { preparedStarts[start.roomId] === start }) { "Start was invalidated" }
+                // A write failure is ambiguous. Keep payload, reservation and fence for retry/recovery.
+                activeRoomRepository.save(frozen)
+                // Receipt cleanup failure cannot undo a durable start; recovery also checks snapshots/results.
+                runCatching { playQuotaRepository.finalizeMatch(start.playerIds, start.matchId) }
+                mutex.withLock {
+                    check(preparedStarts[start.roomId] === start)
+                    val published = frozen.toRoom()
+                    rooms[start.roomId] = published
+                    preparedStarts.remove(start.roomId)
+                    if (maintenancePolicy.isFullyClosed) {
+                        // Reconciliation owns the durable abort; no gameplay is advertised while closed.
+                        listOf(maintenanceError(start.requesterId))
+                    } else listOf(Delivery(ServerMessage.GameStarted(published.snapshot()), start.playerIds)) +
+                        quotaDataDeliveries(consumption.quotas)
+                }
+            }
+        } catch (failure: Throwable) {
+            if (start.candidate == null) withContext(NonCancellable) {
+                // No durable start write was attempted. A failed refund remains reserved for startup recovery.
+                runCatching { playQuotaRepository.releaseMatch(start.playerIds, start.matchId, emptySet()) }
+                mutex.withLock { preparedStarts.remove(start.roomId) }
+            }
+            if (failure is CancellationException) throw failure
+            return listOf(if (maintenancePolicy.blocksNewIntent) maintenanceError(start.requesterId) else startError(start.requesterId))
+        } finally {
+            withContext(NonCancellable) { mutex.withLock { startsInFlight.remove(start.roomId) } }
         }
     }
 
@@ -475,12 +580,13 @@ class GameEngine(
         ) {
             requireOnlineAccount(playerId)?.let { return listOf(it) }
         }
-        if (message is ClientMessage.SetReady && message.ready) {
+        val preparedRetry = mutex.withLock { preparedStarts.values.any { playerId in it.playerIds } }
+        if (message is ClientMessage.SetReady && message.ready && !preparedRetry) {
             rejectIfQuotaExhausted(playerId)?.let { return it }
         }
         if (
-            message is ClientMessage.RequestRematch ||
-            (message is ClientMessage.RespondRematch && message.accept)
+            !preparedRetry && (message is ClientMessage.RequestRematch ||
+            (message is ClientMessage.RespondRematch && message.accept))
         ) {
             rejectIfQuotaExhausted(playerId)?.let { return it }
         }
@@ -491,6 +597,24 @@ class GameEngine(
                 ?: return@withLock HandleResult(
                     listOf(error(playerId, "SESSION_NOT_FOUND", legacyFallback("Phiên chơi không còn hợp lệ.")))
                 )
+
+            val fencedRoomId = when (message) {
+                is ClientMessage.SetReady -> message.roomId
+                is ClientMessage.RequestRematch -> message.roomId
+                is ClientMessage.RespondRematch -> message.roomId
+                is ClientMessage.LeaveRoom -> message.roomId
+                is ClientMessage.JoinRoom -> message.roomId
+                is ClientMessage.KickPlayer -> message.roomId
+                is ClientMessage.SelectNumber -> message.roomId
+                else -> null
+            }
+            preparedStarts[fencedRoomId]?.let { pending ->
+                return@withLock if (playerId in pending.playerIds && pending.roomId !in startsInFlight &&
+                    ((message is ClientMessage.SetReady && message.ready) || message is ClientMessage.RequestRematch ||
+                        (message is ClientMessage.RespondRematch && message.accept))) {
+                    HandleResult(emptyList(), preparedStart = pending)
+                } else HandleResult(listOf(startError(playerId)))
+            }
 
             when (message) {
                 is ClientMessage.ConnectGuest -> HandleResult(listOf(
@@ -593,6 +717,7 @@ class GameEngine(
                 is ClientMessage.SendEmoji -> sendEmoji(player, message)
             }
         }
+        result.preparedStart?.let { return performPreparedStart(it) }
         val tournamentDeliveries = result.completedMatch?.let { settleCompletedMatch(it) }.orEmpty()
         result.changedRoomId?.let { persistRoom(it) }
         val presenceChanged = message is ClientMessage.CreateRoom ||
@@ -1645,7 +1770,7 @@ class GameEngine(
                 .getOrDefault(true)
         }
 
-        var matchedRoomId: String? = null
+        var matchedStart: PreparedMatchStart? = null
         val deliveries = mutex.withLock {
             if (maintenancePolicy.blocksNewIntent) return@withLock listOf(maintenanceError(playerId))
             val player = sessionsByPlayerId[playerId]
@@ -1702,28 +1827,14 @@ class GameEngine(
                 guestId = playerId,
                 scores = mutableMapOf(hostId to 0, playerId to 0)
             )
-            val consumption = playQuotaRepository.consumeMatch(
-                userIds = room.activePlayerIds(),
-                matchId = room.matchId,
-                nowMillis = joinedAt
-            )
-            if (maintenancePolicy.blocksNewIntent) return@withLock listOf(maintenanceError(playerId))
-            if (consumption.status == PlayQuotaConsumptionStatus.EXHAUSTED) {
-                matchmakingEntries.remove(hostId)
-                matchmakingEntries.remove(playerId)
-                return@withLock quotaRejectedDeliveries(room.activePlayerIds(), consumption)
-            }
             matchmakingEntries.remove(hostId)
             matchmakingEntries.remove(playerId)
-            room.startMatch(joinedAt, timeAttackMillis)
+            room.readyPlayerIds.addAll(room.playerIds())
             rooms[room.id] = room
-            matchedRoomId = room.id
-            listOf(
-                Delivery(ServerMessage.GameStarted(room.snapshot()), room.playerIds()),
-                Delivery(ServerMessage.RoomList(publicRooms()))
-            ) + quotaDataDeliveries(consumption.quotas)
+            matchedStart = prepareStart(room, room.matchId, playerId)
+            emptyList()
         }
-        matchedRoomId?.let { persistRoom(it) }
+        matchedStart?.let { return performPreparedStart(it) }
         val affectedPlayers = deliveries.flatMap { it.recipients.orEmpty() }.toSet()
         return deliveries + affectedPlayers.flatMap { presenceUpdates(it) }
     }
@@ -1919,8 +2030,10 @@ class GameEngine(
 
     /** Retryable admitted work; no provider or match-result IO holds the engine mutex. */
     suspend fun retryMaintenanceSettlements(): List<Delivery> {
+        val starts = mutex.withLock { preparedStarts.values.filter { it.candidate != null }.toList() }
+        val startDeliveries = starts.flatMap { performPreparedStart(it) }
         val pending = mutex.withLock { pendingCompletedMatches.values.toList() }
-        return pending.flatMap { settleCompletedMatch(it) }
+        return startDeliveries + pending.flatMap { settleCompletedMatch(it) }
     }
 
     private suspend fun settleCompletedMatch(completed: CompletedMatch): List<Delivery> = withContext(NonCancellable) {
@@ -2353,6 +2466,7 @@ class GameEngine(
             if (maintenancePolicy.isFullyClosed) return@withLock emptyList<TimedAdvance>()
             val now = nowMillis()
             rooms.values.mapNotNull { room ->
+                if (room.id in preparedStarts) return@mapNotNull null
                 val previousSequence = room.sequence
                 val gameFinished = room.finishIfTimedOut()
                 if (room.sequence == previousSequence) {
@@ -2448,6 +2562,7 @@ class GameEngine(
             roomInvitations.entries.removeAll { it.value.expiresAtMillis <= now }
             val expiredPlayerIds = sessionsByPlayerId.values
                 .filter { session ->
+                    if (preparedStarts.values.any { session.playerId in it.playerIds }) return@filter false
                     if (session.isConnected) return@filter false
                     val disconnectedAt = session.disconnectedAtMillis ?: return@filter false
                     val timeout = if (roomFor(session.playerId) == null) {
@@ -2675,28 +2790,7 @@ class GameEngine(
         val participants = room.playerIds()
         if (participants.size == 2 && room.readyPlayerIds.containsAll(participants)) {
             if (room.tournamentId == null) {
-                val consumption = playQuotaRepository.consumeMatch(
-                    userIds = room.activePlayerIds(),
-                    matchId = room.matchId,
-                    nowMillis = nowMillis()
-                )
-                if (maintenancePolicy.blocksNewIntent) return HandleResult(listOf(maintenanceError(player.playerId)), changedRoomId = room.id)
-                if (consumption.status == PlayQuotaConsumptionStatus.EXHAUSTED) {
-                    room.readyPlayerIds.clear()
-                    room.sequence++
-                    return HandleResult(
-                        deliveries = quotaRejectedDeliveries(room.activePlayerIds(), consumption) +
-                            Delivery(ServerMessage.RoomUpdated(room.snapshot()), room.activePlayerIds()),
-                        changedRoomId = room.id
-                    )
-                }
-                room.startMatch(nowMillis(), timeAttackMillis)
-                return HandleResult(
-                    deliveries = listOf(
-                        Delivery(ServerMessage.GameStarted(room.snapshot()), participants)
-                    ) + quotaDataDeliveries(consumption.quotas),
-                    changedRoomId = room.id
-                )
+                return HandleResult(emptyList(), preparedStart = prepareStart(room, room.matchId, player.playerId))
             }
             room.startMatch(nowMillis(), timeAttackMillis)
             return HandleResult(
@@ -2966,35 +3060,8 @@ class GameEngine(
             )
         }
 
-        val rematchId = rematchIdFor(room.matchId)
-        val consumption = playQuotaRepository.consumeMatch(
-            userIds = room.activePlayerIds(),
-            matchId = rematchId,
-            nowMillis = nowMillis()
-        )
-        if (maintenancePolicy.blocksNewIntent) return HandleResult(listOf(maintenanceError(player.playerId)), changedRoomId = room.id)
-        if (consumption.status == PlayQuotaConsumptionStatus.EXHAUSTED) {
-            room.rematchRequestedPlayerIds.clear()
-            room.rematchExpiresAtEpochMillis = null
-            room.sequence++
-            return HandleResult(
-                deliveries = quotaRejectedDeliveries(room.activePlayerIds(), consumption) +
-                    Delivery(
-                        ServerMessage.RematchStatus(room.snapshot(), RematchEvent.CANCELLED),
-                        room.activePlayerIds()
-                    ),
-                changedRoomId = room.id
-            )
-        }
-        room.matchId = rematchId
-        room.startMatch(nowMillis(), timeAttackMillis)
-        return HandleResult(
-            deliveries = listOf(Delivery(ServerMessage.GameStarted(room.snapshot()), room.activePlayerIds())) +
-                quotaDataDeliveries(consumption.quotas),
-            changedRoomId = room.id
-        )
+        return HandleResult(emptyList(), preparedStart = prepareStart(room, rematchIdFor(room.matchId), player.playerId))
     }
-
     private fun rematchIdFor(previousMatchId: String): String = UUID.nameUUIDFromBytes(
         "fasttowin-rematch:$previousMatchId".toByteArray(Charsets.UTF_8)
     ).toString()
@@ -3432,6 +3499,7 @@ class GameEngine(
             resultQueued = resultQueued,
             maintenanceAborted = maintenanceAborted,
             activationPending = activationPending,
+            eventRewards = eventRewards,
             pendingCompletedMatch = pendingCompletedMatches[matchId],
             readyPlayerIds = readyPlayerIds.toSet(),
             rematchRequestedPlayerIds = rematchRequestedPlayerIds.toSet(),
@@ -3446,6 +3514,7 @@ class GameEngine(
             deadlinesAtEpochMillis = deadlinesAtEpochMillis.toMap(),
             finishedPlayerIds = finishedPlayerIds.toSet(),
             departedPlayerIds = departedPlayerIds.toSet(),
+            intentionalLeavePlayerIds = intentionalLeavePlayerIds.toSet(),
             forcedWinnerId = forcedWinnerId
         )
     }
@@ -3462,6 +3531,8 @@ class GameEngine(
         },
         gameMode = gameMode,
         matchType = matchType,
+        eventRewards = eventRewards,
+        intentionalLeavePlayerIds = intentionalLeavePlayerIds.toMutableSet(),
         guestId = guest?.playerId,
         extraGuestIds = guests.map { it.playerId }.toMutableSet(),
         spectatorIds = spectators.map { it.playerId }.toMutableSet(),
@@ -3560,6 +3631,20 @@ class GameEngine(
             hostId = hostId,
             gameMode = gameMode,
             matchType = matchType,
+            eventRewards = eventRewards.takeIf { startedAtEpochMillis != null },
+            rewardBreakdowns = if (phase == RoomPhase.FINISHED && !maintenanceAborted) playerIds().associateWith { id ->
+                val outcome = when {
+                    gameMode == ProtocolGameMode.TEAM_2V2 -> when {
+                        winnerTeamId() == null -> MatchOutcome.DRAW
+                        teamIds[id] == winnerTeamId() -> MatchOutcome.WIN
+                        else -> MatchOutcome.LOSS
+                    }
+                    winnerId() == null -> MatchOutcome.DRAW
+                    winnerId() == id -> MatchOutcome.WIN
+                    else -> MatchOutcome.LOSS
+                }
+                RewardEconomy.matchRewardBreakdown(matchType, outcome, id in intentionalLeavePlayerIds, eventRewards)
+            } else emptyMap(),
             phase = phase,
             players = playerIds().mapNotNull { id ->
                 sessionsByPlayerId[id]?.let { session ->
@@ -3727,7 +3812,8 @@ class GameEngine(
                     )
                 }
             },
-            events = selectionEvents.toList()
+            events = selectionEvents.toList(),
+            eventRewards = eventRewards
         ).also { pendingCompletedMatches[it.matchId] = it }
     }
 
@@ -3805,7 +3891,8 @@ class GameEngine(
     private data class HandleResult(
         val deliveries: List<Delivery>,
         val completedMatch: CompletedMatch? = null,
-        val changedRoomId: String? = null
+        val changedRoomId: String? = null,
+        val preparedStart: PreparedMatchStart? = null
     )
 
     private data class TimedAdvance(
@@ -3855,6 +3942,7 @@ class GameEngine(
         var resultQueued: Boolean = false,
         var maintenanceAborted: Boolean = false,
         var activationPending: Boolean = false,
+        var eventRewards: MatchRewardEventSnapshot = MatchRewardEventSnapshot(),
         val readyPlayerIds: MutableSet<String> = mutableSetOf(),
         val rematchRequestedPlayerIds: MutableSet<String> = mutableSetOf(),
         var rematchExpiresAtEpochMillis: Long? = null,
@@ -3870,7 +3958,8 @@ class GameEngine(
             return targetOrder.getOrNull(index) ?: (GAME_NUMBER_COUNT + 1)
         }
 
-        fun startMatch(now: Long, legacyTimeAttackMillis: Long) {
+        fun startMatch(now: Long, legacyTimeAttackMillis: Long, rewards: MatchRewardEventSnapshot = MatchRewardEventSnapshot()) {
+            eventRewards = rewards
             phase = RoomPhase.PLAYING
             numbers = (1..GAME_NUMBER_COUNT).shuffled()
             targetOrder = if (gameMode == ProtocolGameMode.RANDOM_TARGET) {

@@ -4,6 +4,9 @@ import com.hienthai.fastowin.server.analytics.AnalyticsFacts
 
 import com.hienthai.fastowin.protocol.MatchHistoryOutcome
 import com.hienthai.fastowin.protocol.MatchHistorySnapshot
+import com.hienthai.fastowin.protocol.MatchRewardBreakdown
+import com.hienthai.fastowin.protocol.ProtocolJson
+import kotlinx.serialization.decodeFromString
 import com.hienthai.fastowin.protocol.AchievementSnapshot
 import com.hienthai.fastowin.protocol.PlayerProfileSnapshot
 import com.hienthai.fastowin.protocol.PlayerStatisticsSnapshot
@@ -156,7 +159,7 @@ class PostgresPlayerProfileRepository(
             val recentMatches = connection.prepareStatement(
                 legacyFallback("""
                 SELECT m.id, m.room_name, m.game_mode, m.match_type, m.ended_at,
-                       mine.score AS player_score, mine.outcome,
+                       mine.score AS player_score, mine.outcome, mine.reward_breakdown::text AS reward_breakdown,
                        COALESCE(rh.rating_change, 0) AS elo_change,
                        COALESCE(opponent.display_name, 'Đối thủ') AS opponent_name,
                        COALESCE(opponent.score, 0) AS opponent_score
@@ -183,7 +186,8 @@ class PostgresPlayerProfileRepository(
                                 outcome = MatchHistoryOutcome.valueOf(result.getString("outcome")),
                                 endedAtEpochMillis = result.getTimestamp("ended_at").time,
                                 eloChange = result.getInt("elo_change"),
-                                matchType = MatchType.valueOf(result.getString("match_type"))
+                                matchType = MatchType.valueOf(result.getString("match_type")),
+                                rewardBreakdown = result.getString("reward_breakdown")?.let { ProtocolJson.decodeFromString<MatchRewardBreakdown>(it) }
                             )
                         )
                     }
