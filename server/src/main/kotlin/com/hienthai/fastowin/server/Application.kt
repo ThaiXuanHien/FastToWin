@@ -170,7 +170,7 @@ fun Application.gameModule(
     routing { storePurchaseRoutes(engine.storePurchaseService, authService, rateLimiter, rateLimitPolicies) }
     routing { giftRoutes(giftService, authService, adminService != null) }
     routing { rewardEventRoutes(rewardEventService, adminService != null) }
-    maintenanceService?.let { service -> routing { maintenanceRoutes(service) } }
+    if (adminService != null) maintenanceService?.let { service -> routing { maintenanceRoutes(service) } }
     if (giftDeliveryEnabled) startGiftDelivery(giftService)
 
     val connections = ConcurrentHashMap<String, SocketConnection>()
