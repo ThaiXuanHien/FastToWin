@@ -358,6 +358,13 @@ enum class TextKey {
     GiftErrorInvalid, GiftErrorUnauthorized, GiftErrorForbidden, GiftErrorNotFound,
     GiftErrorConflict, GiftErrorStorage, GiftErrorNetwork, GiftErrorGeneric,
 
+    RewardEventsTitle, RewardEventsLoading, RewardEventsEmpty, RewardEventsUnavailable,
+    RewardEventsError, RewardEventsRefresh, RewardEventsMore, RewardEventsDetails,
+    RewardEventActive, RewardEventScheduled, RewardEventEnded, RewardEventCancelled,
+    RewardEventFactors, RewardEventModes, RewardEventBounds, RewardEventAuthority,
+    RewardResultTitle, RewardResultBase, RewardResultBonus, RewardResultTotal,
+    RewardResultSources, RewardResultNoSources, RewardResultWalletAuthority,
+    RewardResultPersisted, RewardResultLegacy, RewardResultAmounts, RewardEventFactorValue,
     TitleFirstBattleName, TitleFirstBattleUnlockDescription,
     TitleGodspeedName, TitleGodspeedUnlockDescription,
     TitleUndefeatedName, TitleUndefeatedUnlockDescription,

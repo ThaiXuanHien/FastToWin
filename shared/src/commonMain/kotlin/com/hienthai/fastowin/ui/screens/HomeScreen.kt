@@ -121,6 +121,9 @@ internal fun HomeDashboard(
     onOpenProfile: () -> Unit,
     onOpenNotifications: () -> Unit,
     onOpenGifts: () -> Unit,
+    rewardEventState: com.hienthai.fastowin.state.RewardEventUiState? = null,
+    onOpenRewardEvents: () -> Unit = {},
+    onRefreshRewardEvents: () -> Unit = {},
     onOpenClan: () -> Unit,
     onOpenPractice: () -> Unit,
     onOpenTournament: () -> Unit,
@@ -198,6 +201,9 @@ internal fun HomeDashboard(
             )
 
             val season = profile?.progression?.season
+            rewardEventState?.let { events ->
+                com.hienthai.fastowin.ui.components.RewardEventBanner(events, onOpenRewardEvents, onRefreshRewardEvents)
+            }
             HomeMatchHero(
                 kicker = when {
                     isGuest -> localized(TextKey.GuestMode)

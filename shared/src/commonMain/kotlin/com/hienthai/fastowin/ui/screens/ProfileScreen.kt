@@ -208,6 +208,7 @@ fun ProfileScreen(
     onOpenSettings: () -> Unit = {},
     onOpenSection: (ProfileSection) -> Unit = {},
     showBackButton: Boolean = true,
+    onOpenRewardEvent: ((String) -> Unit)? = null,
     imagePicker: @Composable (
         onImageSelected: (ByteArray?) -> Unit,
         content: @Composable (onClick: () -> Unit) -> Unit
@@ -289,7 +290,8 @@ fun ProfileScreen(
         MatchDetailDialog(
             detail = state.matchDetail,
             isLoading = state.isMatchDetailLoading,
-            onDismiss = onCloseMatchDetail
+            onDismiss = onCloseMatchDetail,
+            onOpenRewardEvent = onOpenRewardEvent
         )
     }
     LaunchedEffect(profile) {
@@ -873,7 +875,8 @@ fun ProfileSectionScreen(
     onEquipCosmetics: (String, String) -> Unit,
     onClaimMissionReward: (String) -> Unit,
     onSave: (String, String?) -> Unit,
-    onOpenNotifications: () -> Unit
+    onOpenNotifications: () -> Unit,
+    onOpenRewardEvent: ((String) -> Unit)? = null
 ) {
     SystemBackHandler(onBack = onBack)
     val isLoading = when {
@@ -887,7 +890,8 @@ fun ProfileSectionScreen(
         MatchDetailDialog(
             detail = state.matchDetail,
             isLoading = state.isMatchDetailLoading,
-            onDismiss = onCloseMatchDetail
+            onDismiss = onCloseMatchDetail,
+            onOpenRewardEvent = onOpenRewardEvent
         )
     }
 
@@ -2757,7 +2761,8 @@ private fun buildEloTrend(currentElo: Int, recentMatches: List<MatchHistorySnaps
 private fun MatchDetailDialog(
     detail: MatchDetailSnapshot?,
     isLoading: Boolean,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    onOpenRewardEvent: ((String) -> Unit)? = null
 ) {
     val events = detail?.events.orEmpty()
 
@@ -2793,6 +2798,7 @@ private fun MatchDetailDialog(
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     MatchDetailScoreboard(detail.summary, Modifier.testTag("match_detail_scoreboard"))
+                    com.hienthai.fastowin.ui.components.RewardBreakdownCard(detail.summary.rewardBreakdown, persisted = true, onOpenEvent = onOpenRewardEvent)
                     ArcadeStatGrid(
                         modifier = Modifier.testTag("match_detail_metrics"),
                         stats = listOf(
@@ -2950,6 +2956,9 @@ private fun MatchHistoryCard(match: MatchHistorySnapshot, onClick: (() -> Unit)?
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
+                    match.rewardBreakdown?.let { reward ->
+                        com.hienthai.fastowin.ui.components.RewardEventValues(reward.totalGold, reward.totalXp)
+                    }
                 }
             }
             val resultBadge: @Composable () -> Unit = {

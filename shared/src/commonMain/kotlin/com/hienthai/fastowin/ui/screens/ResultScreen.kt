@@ -96,6 +96,7 @@ fun ResultScreen(
     onBlockOpponent: () -> Unit,
     onOpenFriendProfile: (String) -> Unit = {},
     onOpenTournament: () -> Unit = {},
+    onOpenRewardEvent: ((String) -> Unit)? = null,
     onShareResult: ((ResultShareContent) -> Unit)? = null,
     preferences: AppPreferences = AppPreferences(),
     modifier: Modifier = Modifier
@@ -253,6 +254,9 @@ fun ResultScreen(
                         else -> MaterialTheme.colorScheme.error
                     }
                 )
+                if (state.currentMatchId != null) {
+                    com.hienthai.fastowin.ui.components.RewardBreakdownCard(state.rewardBreakdowns[state.player.id], onOpenEvent = onOpenRewardEvent)
+                }
                 ScoreBoard(
                     state = state,
                     isDraw = isDraw,
@@ -266,7 +270,7 @@ fun ResultScreen(
                 MatchSummaryCard(state)
                 PaceAnalysisCard(state.player)
                 EloCard(state)
-                if (state.profile != null) {
+                if (state.profile != null && state.currentMatchId == null) {
                     MatchRewardCard(isDraw = isDraw, isWinner = isWinner)
                 }
                 if (state.isTournamentMatch) {

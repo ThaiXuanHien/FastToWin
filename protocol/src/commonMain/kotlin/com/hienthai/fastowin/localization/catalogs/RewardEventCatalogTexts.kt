@@ -1,0 +1,65 @@
+package com.hienthai.fastowin.localization.catalogs
+
+import com.hienthai.fastowin.localization.AppLanguage
+import com.hienthai.fastowin.localization.TextKey
+
+internal val rewardEventTexts = mapOf(
+    AppLanguage.ENGLISH to mapOf(
+        TextKey.RewardEventsTitle to "Reward events",
+        TextKey.RewardEventsLoading to "Checking reward events…",
+        TextKey.RewardEventsEmpty to "No published reward events.",
+        TextKey.RewardEventsUnavailable to "Event service is temporarily unavailable.",
+        TextKey.RewardEventsError to "Could not check events. Retry when connected.",
+        TextKey.RewardEventsRefresh to "Refresh events",
+        TextKey.RewardEventsMore to "More events",
+        TextKey.RewardEventsDetails to "View events",
+        TextKey.RewardEventActive to "Active",
+        TextKey.RewardEventScheduled to "Scheduled",
+        TextKey.RewardEventEnded to "Ended",
+        TextKey.RewardEventCancelled to "Cancelled",
+        TextKey.RewardEventFactors to "GOLD ×{gold} · XP ×{xp}",
+        TextKey.RewardEventFactorValue to "×{count}",
+        TextKey.RewardEventModes to "Eligible matches: {modes}",
+        TextKey.RewardEventBounds to "Start: {start}\nEnd: {end}\nTimezone: {zone} · times shown in UTC\nApplies from start time until just before end time.",
+        TextKey.RewardEventAuthority to "Eligibility is fixed when a match starts. GOLD and XP factors are independent; overlapping events use the highest factor, never multiply together. No bonus for intentional leave or tournaments.",
+        TextKey.RewardResultAmounts to "{gold} GOLD · {xp} XP",
+        TextKey.RewardResultTitle to "Match rewards",
+        TextKey.RewardResultBase to "Base",
+        TextKey.RewardResultBonus to "Event bonus",
+        TextKey.RewardResultTotal to "Total",
+        TextKey.RewardResultSources to "Events at match start",
+        TextKey.RewardResultNoSources to "No contributing reward event.",
+        TextKey.RewardResultWalletAuthority to "Your wallet balance may update after the result is processed.",
+        TextKey.RewardResultPersisted to "Recorded match rewards. Current events do not change this result.",
+        TextKey.RewardResultLegacy to "No recorded reward breakdown for this match. Event bonus is unknown."
+    ),
+    AppLanguage.VIETNAMESE to mapOf(
+        TextKey.RewardEventsTitle to "Sự kiện thưởng",
+        TextKey.RewardEventsLoading to "Đang kiểm tra sự kiện thưởng…",
+        TextKey.RewardEventsEmpty to "Chưa có sự kiện thưởng được công bố.",
+        TextKey.RewardEventsUnavailable to "Dịch vụ sự kiện tạm thời không khả dụng.",
+        TextKey.RewardEventsError to "Không thể kiểm tra sự kiện. Hãy thử lại khi có kết nối.",
+        TextKey.RewardEventsRefresh to "Tải lại sự kiện",
+        TextKey.RewardEventsMore to "Xem thêm sự kiện",
+        TextKey.RewardEventsDetails to "Xem sự kiện",
+        TextKey.RewardEventActive to "Đang diễn ra",
+        TextKey.RewardEventScheduled to "Sắp diễn ra",
+        TextKey.RewardEventEnded to "Đã kết thúc",
+        TextKey.RewardEventCancelled to "Đã hủy",
+        TextKey.RewardEventFactors to "GOLD ×{gold} · XP ×{xp}",
+        TextKey.RewardEventFactorValue to "×{count}",
+        TextKey.RewardEventModes to "Trận áp dụng: {modes}",
+        TextKey.RewardEventBounds to "Bắt đầu: {start}\nKết thúc: {end}\nMúi giờ: {zone} · giờ hiển thị theo UTC\nÁp dụng từ giờ bắt đầu đến trước giờ kết thúc.",
+        TextKey.RewardEventAuthority to "Điều kiện được chốt khi trận bắt đầu. Hệ số GOLD và XP độc lập; sự kiện trùng nhau lấy hệ số cao nhất, không nhân dồn. Không có thưởng thêm khi chủ động rời trận hoặc trong giải đấu.",
+        TextKey.RewardResultAmounts to "{gold} GOLD · {xp} XP",
+        TextKey.RewardResultTitle to "Thưởng trận đấu",
+        TextKey.RewardResultBase to "Cơ bản",
+        TextKey.RewardResultBonus to "Thêm từ sự kiện",
+        TextKey.RewardResultTotal to "Tổng",
+        TextKey.RewardResultSources to "Sự kiện lúc bắt đầu trận",
+        TextKey.RewardResultNoSources to "Không có sự kiện đóng góp thưởng.",
+        TextKey.RewardResultWalletAuthority to "Số dư ví có thể cập nhật sau khi kết quả được xử lý.",
+        TextKey.RewardResultPersisted to "Thưởng trận đã lưu. Sự kiện hiện tại không thay đổi kết quả này.",
+        TextKey.RewardResultLegacy to "Trận này chưa có chi tiết thưởng đã lưu. Thưởng sự kiện chưa xác định."
+    )
+)

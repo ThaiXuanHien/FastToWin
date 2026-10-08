@@ -401,6 +401,14 @@ private fun GameContent(
         )
     }
     val state by controller.uiState.collectAsState()
+    val rewardEventController = remember(serverUrl, accountUserId, isGuest) {
+        com.hienthai.fastowin.state.RewardEventController(com.hienthai.fastowin.data.network.RewardEventApiClient(serverUrl))
+    }
+    val rewardEventState by rewardEventController.state.collectAsState()
+    val rewardEventScope = rememberCoroutineScope()
+    var showRewardEvents by remember(accountUserId, isGuest) { mutableStateOf(false) }
+    var selectedRewardEventId by remember(accountUserId, isGuest) { mutableStateOf<String?>(null) }
+    DisposableEffect(rewardEventController) { onDispose { rewardEventController.close() } }
     val mailboxController = remember(serverUrl, accountUserId, isGuest, authRequestConfigurator, controller) {
         if (isGuest || accountUserId == null || accessTokenProvider == null) null else
             GiftMailboxController(
@@ -485,6 +493,9 @@ private fun GameContent(
         savedPracticeRoute = null
     }
     val closeLocalScreens = {
+        showRewardEvents = false
+        selectedRewardEventId = null
+        rewardEventController.reset()
         showPracticeLauncher = false
         showPracticeModePicker = false
         showSettings = false
@@ -846,6 +857,23 @@ private fun GameContent(
             showGiftMailbox = true
         }
     }
+    val openRewardEvents = {
+        navigateToRoute(navigationBridge, "/events") {
+            closeLocalScreens()
+            controller.openHome()
+            showRewardEvents = true
+        }
+    }
+    val openRewardEvent: (String) -> Unit = { id ->
+        if (!state.isMatchStarted) navigateToRoute(navigationBridge, "/events/$id") {
+            if (state.currentRoomId != null) controller.leaveRoom()
+            controller.closeMatchDetail()
+            closeLocalScreens()
+            controller.openHome()
+            showRewardEvents = true
+            selectedRewardEventId = id
+        }
+    }
     val openSettingsTab = {
         navigateToRoute(navigationBridge, "/settings") { showSettings = true }
     }
@@ -913,6 +941,11 @@ private fun GameContent(
     ) {
         val requested = requestedAppRoute ?: return@LaunchedEffect
         val route = normalizeAppRoute(requested)
+        if (route != "/events" && !route.startsWith("/events/")) {
+            showRewardEvents = false
+            selectedRewardEventId = null
+            rewardEventController.reset()
+        }
         if (route != "/gifts" && showGiftMailbox) {
             showGiftMailbox = false
             mailboxController?.reset()
@@ -934,6 +967,12 @@ private fun GameContent(
         }
 
         when {
+            route == "/events" || route.startsWith("/events/") -> {
+                closeLocalScreens()
+                controller.openHome()
+                showRewardEvents = true
+                selectedRewardEventId = route.removePrefix("/events").removePrefix("/").takeIf { it.isNotBlank() }
+            }
             route == "/" -> {
                 closeLocalScreens()
                 controller.backToModeSelection()
@@ -1094,6 +1133,7 @@ private fun GameContent(
     }
 
     val screenStateKey = when {
+        showRewardEvents && !state.isMatchStarted && !state.isGameOver -> "reward_events"
         showGiftMailbox -> "gifts"
         state.isNotificationsOpen -> "notifications"
         showTutorial -> "tutorial"
@@ -1115,6 +1155,7 @@ private fun GameContent(
         else -> "lobby"
     }
     val appRoute = when {
+        showRewardEvents && !state.isMatchStarted && !state.isGameOver -> selectedRewardEventId?.let { "/events/$it" } ?: "/events"
         showGiftMailbox -> "/gifts"
         state.isNotificationsOpen -> "/notifications"
         showTutorial -> "/tutorial"
@@ -1137,6 +1178,27 @@ private fun GameContent(
         showPracticeLauncher || showPracticeModePicker -> "/practice"
         state.lobbyStage == com.hienthai.fastowin.state.LobbyStage.ROOM_BROWSER -> "/rooms"
         else -> "/"
+    }
+    val rewardEventView = com.hienthai.fastowin.state.rewardEventViewForRoute(appRoute, state)
+    LaunchedEffect(rewardEventController, accountUserId, isGuest, language, rewardEventView, selectedRewardEventId) {
+        val view = rewardEventView
+        if (view == null) { rewardEventController.reset(); return@LaunchedEffect }
+        rewardEventController.enter(accountUserId, language, view)
+        selectedRewardEventId?.let { rewardEventController.select(it) }
+        var ticks = 0
+        while (true) {
+            delay(1000)
+            val oldStates = rewardEventController.state.value.items.map { it.state }
+            rewardEventController.tick()
+            ticks++
+            if (ticks >= 30 || oldStates != rewardEventController.state.value.items.map { it.state }) {
+                ticks = 0
+                selectedRewardEventId?.let { rewardEventController.select(it) } ?: rewardEventController.refresh()
+            }
+        }
+    }
+    DisposableEffect(rewardEventController, rewardEventView, language, selectedRewardEventId) {
+        onDispose { rewardEventController.reset() }
     }
     LaunchedEffect(appRoute, requestedAppRoute) {
         if (requestedAppRoute == null) {
@@ -1176,6 +1238,13 @@ private fun GameContent(
                     }
                 )
 
+                showRewardEvents && !state.isMatchStarted && !state.isGameOver -> com.hienthai.fastowin.ui.screens.RewardEventDetailsScreen(
+                    state = rewardEventState,
+                    onBack = { navigateBack { showRewardEvents = false; selectedRewardEventId = null; rewardEventController.reset() } },
+                    onRefresh = { rewardEventScope.launch { selectedRewardEventId?.let { rewardEventController.select(it) } ?: rewardEventController.refresh() } },
+                    onSelect = { id -> navigateToRoute(navigationBridge, "/events/$id") { selectedRewardEventId = id } },
+                    onMore = { rewardEventScope.launch { rewardEventController.loadMore() } }
+                )
                 showGiftMailbox -> GiftMailboxScreen(
                     state = mailboxState,
                     isGuest = isGuest,
@@ -1274,6 +1343,7 @@ private fun GameContent(
                                 else -> controller::openProfile
                             },
                             onOpenMatchDetail = controller::openMatchDetail,
+                            onOpenRewardEvent = openRewardEvent,
                             onCloseMatchDetail = controller::closeMatchDetail,
                             onEquipCosmetics = controller::equipCosmetics,
                             onClaimMissionReward = controller::claimMissionReward,
@@ -1375,6 +1445,7 @@ private fun GameContent(
                     },
                     onRefresh = controller::openProfile,
                     onOpenMatchDetail = controller::openMatchDetail,
+                    onOpenRewardEvent = openRewardEvent,
                     onCloseMatchDetail = controller::closeMatchDetail,
                     onEquipCosmetics = controller::equipCosmetics,
                     onClaimMissionReward = controller::claimMissionReward,
@@ -1471,6 +1542,7 @@ private fun GameContent(
                     onBlockOpponent = controller::blockOpponentAfterMatch,
                     onOpenFriendProfile = openFriendProfile,
                     onOpenTournament = controller::openTournamentAfterMatch,
+                    onOpenRewardEvent = openRewardEvent,
                     preferences = appPreferences
                 )
 
@@ -1520,6 +1592,9 @@ private fun GameContent(
                     onUpgradeGuest = onUpgradeGuest,
                     onOpenNotifications = openNotifications,
                     onOpenGifts = openGiftMailbox,
+                    rewardEventState = rewardEventState,
+                    onOpenRewardEvents = openRewardEvents,
+                    onRefreshRewardEvents = { rewardEventScope.launch { rewardEventController.refresh() } },
                     onOpenClan = openClanTab,
                     onOpenPractice = openPractice,
                     onOpenTournament = openTournament,
