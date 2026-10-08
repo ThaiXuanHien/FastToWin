@@ -8,6 +8,7 @@ internal class PreparedMatchStart(
     val sequence: Long,
     val playerIds: Set<String>,
     val requesterId: String,
+    val fromMatchmaking: Boolean = false,
     var consumption: PlayQuotaConsumption? = null,
     var candidate: StoredActiveRoom? = null
 )

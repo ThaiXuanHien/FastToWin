@@ -11,6 +11,257 @@ import java.util.UUID
 import kotlin.test.*
 
 class RewardEventGameEngineTest {
+    @Test fun `matchmaking source failure releases hidden room and both accounts can retry without reconnect`() = runTest {
+        val quota = InMemoryPlayQuotaRepository(); val stored = InMemoryActiveRoomRepository()
+        val source = MutableSource().apply { fail = true }
+        val engine = GameEngine(playQuotaRepository = quota, activeRoomRepository = stored, eventRewardSource = source, nowMillis = { 100 })
+        val (host, guest) = accounts(engine)
+        assertTrue(engine.handle(host, ClientMessage.JoinMatchmaking(ProtocolGameMode.ORDER)).any {
+            (it.message as? ServerMessage.MatchmakingStatus)?.isSearching == true
+        })
+        val failed = engine.handle(guest, ClientMessage.JoinMatchmaking(ProtocolGameMode.ORDER))
+        assertStopped(failed, setOf(host, guest))
+        for (id in setOf(host, guest)) {
+            assertTrue(failed.any { it.message is ServerMessage.Error && id in it.recipients.orEmpty() })
+            assertEquals(0, quota.getSnapshot(id, 100).matchesConsumed)
+        }
+        assertTrue(stored.loadAll().isEmpty())
+        source.fail = false
+        engine.handle(host, ClientMessage.JoinMatchmaking(ProtocolGameMode.ORDER))
+        val started = engine.handle(guest, ClientMessage.JoinMatchmaking(ProtocolGameMode.ORDER)).started()
+        assertEquals(setOf(host, guest), started.players.map { it.id }.toSet())
+        assertEquals(2, started.eventRewards?.goldMultiplier)
+    }
+
+    private suspend fun accounts(engine: GameEngine): Pair<String, String> =
+        engine.connectAccount(AuthenticatedAccount(UUID.randomUUID(), "host")).playerId to
+            engine.connectAccount(AuthenticatedAccount(UUID.randomUUID(), "guest")).playerId
+
+    @Test fun `cancel matchmaking after callback before source completion cannot revive hidden room or remove new rooms`() = runTest {
+        val entered = CompletableDeferred<Unit>(); val release = CompletableDeferred<Unit>()
+        val quota = InMemoryPlayQuotaRepository(); val stored = InMemoryActiveRoomRepository()
+        val source = object : EventRewardSource {
+            override suspend fun <T> withStartCatalog(block: suspend (RewardEventCatalog) -> T): T {
+                val result = block(RewardEventCatalog(emptyList()))
+                entered.complete(Unit); release.await(); return result
+            }
+        }
+        val engine = GameEngine(playQuotaRepository = quota, activeRoomRepository = stored, eventRewardSource = source, nowMillis = { 100 })
+        val (host, guest) = accounts(engine)
+        engine.handle(host, ClientMessage.JoinMatchmaking(ProtocolGameMode.ORDER))
+        val start = async { engine.handle(guest, ClientMessage.JoinMatchmaking(ProtocolGameMode.ORDER)) }
+        entered.await()
+        assertStopped(engine.handle(host, ClientMessage.CancelMatchmaking), setOf(host, guest))
+        val newHostRoom = async { engine.handle(host, ClientMessage.CreateRoom("new host", "", ProtocolGameMode.ORDER)) }
+        val newGuestRoom = async { engine.handle(guest, ClientMessage.CreateRoom("new guest", "", ProtocolGameMode.ORDER)) }
+        // These commands may wait for persistence, but admission must already have released the old room.
+        release.complete(Unit)
+        assertTrue(start.await().none { it.message is ServerMessage.GameStarted })
+        val hostRoom = newHostRoom.await().map { it.message }.filterIsInstance<ServerMessage.RoomCreated>().single().game.roomId
+        val guestRoom = newGuestRoom.await().map { it.message }.filterIsInstance<ServerMessage.RoomCreated>().single().game.roomId
+        assertEquals(setOf(hostRoom, guestRoom), stored.loadAll().map { it.roomId }.toSet())
+        assertEquals(0, quota.getSnapshot(host, 100).matchesConsumed)
+        assertEquals(0, quota.getSnapshot(guest, 100).matchesConsumed)
+    }
+
+    @Test fun `cancelled matchmaking source propagates cancellation and retry worker notifies both participants`() = runTest {
+        val entered = CompletableDeferred<Unit>(); val release = CompletableDeferred<Unit>()
+        val quota = InMemoryPlayQuotaRepository()
+        val source = MutableSource().apply { before = { entered.complete(Unit); release.await() } }
+        val engine = GameEngine(playQuotaRepository = quota, eventRewardSource = source, nowMillis = { 100 })
+        val (host, guest) = accounts(engine)
+        engine.handle(host, ClientMessage.JoinMatchmaking(ProtocolGameMode.ORDER))
+        val start = async { engine.handle(guest, ClientMessage.JoinMatchmaking(ProtocolGameMode.ORDER)) }
+        entered.await(); start.cancel()
+        assertFailsWith<CancellationException> { start.await() }
+        assertStopped(engine.retryMaintenanceSettlements(), setOf(host, guest))
+        assertTrue(engine.retryMaintenanceSettlements().isEmpty())
+        for (id in setOf(host, guest)) assertEquals(0, quota.getSnapshot(id, 100).matchesConsumed)
+        source.before = {}
+        engine.handle(host, ClientMessage.JoinMatchmaking(ProtocolGameMode.ORDER))
+        assertEquals(2, engine.handle(guest, ClientMessage.JoinMatchmaking(ProtocolGameMode.ORDER)).started().eventRewards?.goldMultiplier)
+    }
+
+    @Test fun `delayed cancelled matchmaking notification cannot stop a subsequent search`() = runTest {
+        val entered = CompletableDeferred<Unit>()
+        val source = MutableSource().apply { before = { entered.complete(Unit); awaitCancellation() } }
+        val engine = GameEngine(eventRewardSource = source)
+        val (host, guest) = accounts(engine)
+        engine.handle(host, ClientMessage.JoinMatchmaking(ProtocolGameMode.ORDER))
+        val start = async { engine.handle(guest, ClientMessage.JoinMatchmaking(ProtocolGameMode.ORDER)) }
+        entered.await(); start.cancelAndJoin()
+        val searching = engine.handle(host, ClientMessage.JoinMatchmaking(ProtocolGameMode.ORDER))
+        assertTrue(searching.any { (it.message as? ServerMessage.MatchmakingStatus)?.isSearching == true })
+        val delayed = engine.retryMaintenanceSettlements()
+        assertStopped(delayed, setOf(guest))
+        assertTrue(delayed.none { host in it.recipients.orEmpty() })
+        engine.handle(host, ClientMessage.CancelMatchmaking)
+        source.before = {}
+        assertTrue(engine.handle(host, ClientMessage.CreateRoom("new", "", ProtocolGameMode.ORDER)).any { it.message is ServerMessage.RoomCreated })
+        assertTrue(engine.handle(guest, ClientMessage.CreateRoom("new", "", ProtocolGameMode.ORDER)).any { it.message is ServerMessage.RoomCreated })
+    }
+
+    @Test fun `disconnect rejects pre capture matchmaking admission and releases hidden room for connected survivor`() = runTest {
+        val entered = CompletableDeferred<Unit>(); val release = CompletableDeferred<Unit>()
+        val quota = InMemoryPlayQuotaRepository()
+        val source = MutableSource().apply { before = { entered.complete(Unit); release.await() } }
+        val engine = GameEngine(playQuotaRepository = quota, eventRewardSource = source, nowMillis = { 100 })
+        val (host, guest) = accounts(engine)
+        engine.handle(host, ClientMessage.JoinMatchmaking(ProtocolGameMode.ORDER))
+        val start = async { engine.handle(guest, ClientMessage.JoinMatchmaking(ProtocolGameMode.ORDER)) }
+        entered.await(); engine.markDisconnected(host); release.complete(Unit)
+        assertStopped(start.await(), setOf(host, guest))
+        assertEquals(0, quota.getSnapshot(host, 100).matchesConsumed)
+        assertEquals(0, quota.getSnapshot(guest, 100).matchesConsumed)
+        assertTrue(engine.handle(guest, ClientMessage.CreateRoom("new", "", ProtocolGameMode.ORDER)).any { it.message is ServerMessage.RoomCreated })
+    }
+
+    @Test fun `quota exhaustion racing matchmaking preparation removes hidden room and stops both searches`() = runTest {
+        val real = InMemoryPlayQuotaRepository(); var exhaust = true; var now = 100L
+        val quota = object : PlayQuotaRepository by real {
+            override suspend fun prepareMatch(userIds: Set<String>, matchId: String, nowMillis: Long): PlayQuotaConsumption {
+                if (exhaust) repeat(10) { real.consumeMatch(setOf(userIds.first()), "other-$it", nowMillis) }
+                return real.prepareMatch(userIds, matchId, nowMillis)
+            }
+        }
+        val stored = InMemoryActiveRoomRepository()
+        val engine = GameEngine(playQuotaRepository = quota, activeRoomRepository = stored, nowMillis = { now })
+        val (host, guest) = accounts(engine)
+        engine.handle(host, ClientMessage.JoinMatchmaking(ProtocolGameMode.ORDER))
+        val rejected = engine.handle(guest, ClientMessage.JoinMatchmaking(ProtocolGameMode.ORDER))
+        assertStopped(rejected, setOf(host, guest)); assertTrue(stored.loadAll().isEmpty())
+        exhaust = false; now = 86_400_100L
+        for (id in setOf(host, guest)) assertTrue(engine.handle(id, ClientMessage.CreateRoom("new", "", ProtocolGameMode.ORDER))
+            .any { it.message is ServerMessage.RoomCreated })
+        assertEquals(2, stored.loadAll().size)
+    }
+
+    @Test fun `cancel matchmaking during late quota commit refunds original attempt without removing new search`() = runTest {
+        val entered = CompletableDeferred<Unit>(); val release = CompletableDeferred<Unit>()
+        val real = InMemoryPlayQuotaRepository(); var delayPreparation = true
+        val quota = object : PlayQuotaRepository by real {
+            override suspend fun prepareMatch(userIds: Set<String>, matchId: String, nowMillis: Long): PlayQuotaConsumption {
+                if (delayPreparation) { entered.complete(Unit); release.await() }
+                return real.prepareMatch(userIds, matchId, nowMillis)
+            }
+        }
+        val engine = GameEngine(playQuotaRepository = quota, eventRewardSource = MutableSource(), nowMillis = { 100 })
+        val (host, guest) = accounts(engine)
+        engine.handle(host, ClientMessage.JoinMatchmaking(ProtocolGameMode.ORDER))
+        val start = async { engine.handle(guest, ClientMessage.JoinMatchmaking(ProtocolGameMode.ORDER)) }
+        entered.await()
+        assertStopped(engine.handle(guest, ClientMessage.CancelMatchmaking), setOf(host, guest))
+        assertTrue(engine.handle(host, ClientMessage.JoinMatchmaking(ProtocolGameMode.ORDER)).any {
+            (it.message as? ServerMessage.MatchmakingStatus)?.isSearching == true
+        })
+        release.complete(Unit)
+        assertTrue(start.await().none { it.message is ServerMessage.GameStarted })
+        for (id in setOf(host, guest)) assertEquals(0, real.getSnapshot(id, 100).matchesConsumed)
+        delayPreparation = false
+        assertEquals(2, engine.handle(guest, ClientMessage.JoinMatchmaking(ProtocolGameMode.ORDER)).started().eventRewards?.goldMultiplier)
+        for (id in setOf(host, guest)) assertEquals(1, real.getSnapshot(id, 100).matchesConsumed)
+    }
+
+    @Test fun `maintenance admission closes during source completion and releases unpublished matchmaking room`() = runTest {
+        val entered = CompletableDeferred<Unit>(); val release = CompletableDeferred<Unit>()
+        val quota = InMemoryPlayQuotaRepository(); val stored = InMemoryActiveRoomRepository()
+        val source = object : EventRewardSource {
+            override suspend fun <T> withStartCatalog(block: suspend (RewardEventCatalog) -> T): T {
+                val result = block(RewardEventCatalog(emptyList()))
+                entered.complete(Unit); release.await(); return result
+            }
+        }
+        val engine = GameEngine(playQuotaRepository = quota, activeRoomRepository = stored, eventRewardSource = source)
+        val (host, guest) = accounts(engine)
+        engine.handle(host, ClientMessage.JoinMatchmaking(ProtocolGameMode.ORDER))
+        val start = async { engine.handle(guest, ClientMessage.JoinMatchmaking(ProtocolGameMode.ORDER)) }
+        entered.await()
+        engine.publishMaintenancePolicy(com.hienthai.fastowin.server.maintenance.MaintenancePolicy(MaintenanceState.DRAINING))
+        release.complete(Unit)
+        val rejected = start.await(); assertStopped(rejected, setOf(host, guest))
+        for (id in setOf(host, guest)) assertTrue(rejected.any { (it.message as? ServerMessage.Error)?.code == "MAINTENANCE" && id in it.recipients.orEmpty() })
+        assertTrue(stored.loadAll().isEmpty())
+        engine.applyMaintenancePolicy(com.hienthai.fastowin.server.maintenance.MaintenancePolicy(MaintenanceState.ACTIVE))
+        for (id in setOf(host, guest)) assertTrue(engine.handle(id, ClientMessage.CreateRoom("new", "", ProtocolGameMode.ORDER)).any { it.message is ServerMessage.RoomCreated })
+    }
+
+    @Test fun `slow matchmaking save is fenced against cancellation and publishes captured match once`() = runTest {
+        val entered = CompletableDeferred<StoredActiveRoom>(); val release = CompletableDeferred<Unit>()
+        val quota = InMemoryPlayQuotaRepository(); val stored = InMemoryActiveRoomRepository(); val source = MutableSource()
+        val repo = object : ActiveRoomRepository by stored {
+            override suspend fun save(room: StoredActiveRoom) {
+                if (room.phase == RoomPhase.PLAYING) { entered.complete(room); release.await() }
+                stored.save(room)
+            }
+        }
+        val engine = GameEngine(activeRoomRepository = repo, playQuotaRepository = quota, eventRewardSource = source, nowMillis = { 100 })
+        val (host, guest) = accounts(engine)
+        engine.handle(host, ClientMessage.JoinMatchmaking(ProtocolGameMode.ORDER))
+        val start = async { engine.handle(guest, ClientMessage.JoinMatchmaking(ProtocolGameMode.ORDER)) }
+        val frozen = entered.await()
+        assertTrue(engine.handle(guest, ClientMessage.CancelMatchmaking).all { it.message is ServerMessage.Error })
+        for (id in setOf(host, guest)) assertEquals(1, quota.getSnapshot(id, 100).matchesConsumed)
+        source.fail = true; release.complete(Unit)
+        val started = start.await().started()
+        assertEquals(frozen.matchId, started.matchId); assertEquals(2, started.eventRewards?.goldMultiplier)
+        assertEquals(1, source.calls); assertTrue(engine.retryMaintenanceSettlements().isEmpty())
+    }
+
+    @Test fun `full maintenance during matchmaking quota preparation discards unpublished room and permits recovery`() = runTest {
+        val entered = CompletableDeferred<Unit>(); val release = CompletableDeferred<Unit>()
+        val real = InMemoryPlayQuotaRepository()
+        val quota = object : PlayQuotaRepository by real {
+            override suspend fun prepareMatch(userIds: Set<String>, matchId: String, nowMillis: Long): PlayQuotaConsumption {
+                entered.complete(Unit); release.await()
+                return real.prepareMatch(userIds, matchId, nowMillis)
+            }
+        }
+        val stored = InMemoryActiveRoomRepository()
+        val engine = GameEngine(playQuotaRepository = quota, activeRoomRepository = stored, nowMillis = { 100 })
+        val (host, guest) = accounts(engine)
+        engine.handle(host, ClientMessage.JoinMatchmaking(ProtocolGameMode.ORDER))
+        val start = async { engine.handle(guest, ClientMessage.JoinMatchmaking(ProtocolGameMode.ORDER)) }
+        entered.await()
+        val maintenance = engine.applyMaintenancePolicy(com.hienthai.fastowin.server.maintenance.MaintenancePolicy(MaintenanceState.MAINTENANCE))
+        assertStopped(maintenance.deliveries, setOf(host, guest))
+        assertTrue(stored.loadAll().isEmpty(), "An unpublished matchmaking room must not become a retained aborted lobby")
+        release.complete(Unit)
+        assertTrue(start.await().none { it.message is ServerMessage.GameStarted })
+        for (id in setOf(host, guest)) assertEquals(0, real.getSnapshot(id, 100).matchesConsumed)
+        engine.applyMaintenancePolicy(com.hienthai.fastowin.server.maintenance.MaintenancePolicy(MaintenanceState.ACTIVE))
+        for (id in setOf(host, guest)) assertTrue(engine.handle(id, ClientMessage.CreateRoom("new", "", ProtocolGameMode.ORDER)).any { it.message is ServerMessage.RoomCreated })
+    }
+
+    @Test fun `failed matchmaking save retains frozen identity and quota through cancellation and source outage`() = runTest {
+        val stored = InMemoryActiveRoomRepository(); var fail = true
+        val repo = object : ActiveRoomRepository by stored {
+            override suspend fun save(room: StoredActiveRoom) {
+                stored.save(room)
+                if (fail && room.phase == RoomPhase.PLAYING) error("lost acknowledgement")
+            }
+        }
+        val quota = InMemoryPlayQuotaRepository(); val source = MutableSource()
+        val engine = GameEngine(activeRoomRepository = repo, playQuotaRepository = quota, eventRewardSource = source, nowMillis = { 100 })
+        val (host, guest) = accounts(engine)
+        engine.handle(host, ClientMessage.JoinMatchmaking(ProtocolGameMode.ORDER))
+        assertTrue(engine.handle(guest, ClientMessage.JoinMatchmaking(ProtocolGameMode.ORDER)).none { it.message is ServerMessage.GameStarted })
+        val frozen = stored.loadAll().single()
+        assertTrue(engine.handle(host, ClientMessage.CancelMatchmaking).none { it.message is ServerMessage.MatchmakingStatus })
+        assertEquals(1, quota.getSnapshot(host, 100).matchesConsumed)
+        assertEquals(1, quota.getSnapshot(guest, 100).matchesConsumed)
+        source.fail = true; fail = false
+        val retry = engine.retryMaintenanceSettlements().started()
+        assertEquals(frozen.matchId, retry.matchId); assertEquals(frozen.roomId, retry.roomId)
+        assertEquals(2, retry.eventRewards?.goldMultiplier); assertEquals(1, source.calls)
+    }
+
+    private fun assertStopped(deliveries: List<Delivery>, ids: Set<String>) {
+        for (id in ids) assertTrue(deliveries.any {
+            (it.message as? ServerMessage.MatchmakingStatus)?.isSearching == false && id in it.recipients.orEmpty()
+        }, "Participant $id must receive terminal matchmaking status")
+        assertTrue(deliveries.none { it.message is ServerMessage.GameStarted })
+    }
+
     @Test fun `maintenance published while start save is suspended suppresses gameplay and aborts frozen match durably`() = runTest {
         val entered = CompletableDeferred<Unit>(); val release = CompletableDeferred<Unit>()
         val stored = InMemoryActiveRoomRepository()

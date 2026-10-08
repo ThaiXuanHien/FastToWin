@@ -121,6 +121,7 @@ class GameEngine(
     private val settlementsInFlight = mutableSetOf<String>()
     private val preparedStarts = mutableMapOf<String, PreparedMatchStart>()
     private val startsInFlight = mutableSetOf<String>()
+    private val pendingMatchmakingDeliveries = mutableListOf<Delivery>()
 
     suspend fun activeMaintenanceMatchCount(): Int = mutex.withLock {
         (rooms.values.filter { it.phase == RoomPhase.PLAYING && !it.maintenanceAborted }.map { it.matchId } + pendingCompletedMatches.keys +
@@ -152,12 +153,18 @@ class GameEngine(
     suspend fun reconcileMaintenancePolicy(): MaintenanceApplication {
         restoreActiveRooms()
         val result = persistenceMutex.withLock {
+            val abandonedMatchmaking = mutableListOf<PreparedMatchStart>()
             val change = mutex.withLock {
                 synchronized(maintenancePublicationLock) {
                     // Fence reopening before staging any abort; no I/O or engine-lock acquisition occurs under this monitor.
                     if (maintenancePolicy.isFullyClosed) maintenanceWritesPending = true
                 }
                 if (maintenancePolicy.blocksNewIntent) matchmakingEntries.clear()
+                val matchmakingStopped = if (maintenancePolicy.isFullyClosed) preparedStarts.values
+                    .filter { it.fromMatchmaking && it.candidate == null }.toList().flatMap { start ->
+                        abandonedMatchmaking += start
+                        discardUnpublishedMatchmaking(start)
+                    } else emptyList()
                 if (maintenancePolicy.isFullyClosed) preparedStarts.values.forEach { pending ->
                     pending.candidate?.let { frozen ->
                         if (rooms[pending.roomId]?.maintenanceAborted != true) rooms[pending.roomId] = frozen.toRoom()
@@ -175,9 +182,13 @@ class GameEngine(
                     pendingMaintenanceTournaments[tournament.id] = tournament.snapshot().copy(phase = TournamentPhase.CANCELLED,
                         championPlayerId = null, prizePool = 0, finishedAtEpochMillis = nowMillis())
                 }
-                MaintenanceApplication(aborted.map { room -> Delivery(ServerMessage.RoomClosed(room.id,
+                MaintenanceApplication(matchmakingStopped + aborted.map { room -> Delivery(ServerMessage.RoomClosed(room.id,
                     LocalizationService(com.hienthai.fastowin.localization.AppLanguage.VIETNAMESE).text(TextKey.MaintenanceDefaultMessage),
                     messageKey = TextKey.MaintenanceDefaultMessage.name, code = "MAINTENANCE"), room.participantIds()) }, pendingMaintenanceRooms.keys.toSet())
+            }
+            for (start in abandonedMatchmaking) withContext(NonCancellable) {
+                // Preparation may still finish later; its owner repeats this idempotent refund on invalid admission.
+                runCatching { playQuotaRepository.releaseMatch(start.playerIds, start.matchId, emptySet()) }
             }
             for ((id, room) in pendingMaintenanceRooms.toMap()) {
                 activeRoomRepository.save(room); pendingMaintenanceRooms.remove(id)
@@ -384,7 +395,7 @@ class GameEngine(
     private suspend fun persistRoom(roomId: String) {
         persistenceMutex.withLock {
             // The lobby is deliberately still visible in memory while this exact candidate awaits durable retry.
-            if (mutex.withLock { preparedStarts[roomId]?.candidate != null }) return@withLock
+            if (mutex.withLock { preparedStarts[roomId]?.let { it.candidate != null || it.fromMatchmaking } == true }) return@withLock
             val removedInvitations = mutableListOf<RoomInvitationRecord>()
             val snapshot = mutex.withLock {
                 rooms[roomId]?.toStoredRoom().also { stored ->
@@ -413,9 +424,19 @@ class GameEngine(
         }
     }
 
-    private fun prepareStart(room: Room, matchId: String, requesterId: String): PreparedMatchStart =
-        PreparedMatchStart(room.id, matchId, room.matchId, room.sequence, room.activePlayerIds().toSet(), requesterId)
+    private fun prepareStart(room: Room, matchId: String, requesterId: String, fromMatchmaking: Boolean = false): PreparedMatchStart =
+        PreparedMatchStart(room.id, matchId, room.matchId, room.sequence, room.activePlayerIds().toSet(), requesterId, fromMatchmaking)
             .also { preparedStarts[room.id] = it }
+
+    /** Engine mutex required. Never discard a frozen payload whose durable write may have succeeded. */
+    private fun discardUnpublishedMatchmaking(start: PreparedMatchStart): List<Delivery> {
+        if (!start.fromMatchmaking || start.candidate != null || preparedStarts[start.roomId] !== start) return emptyList()
+        preparedStarts.remove(start.roomId)
+        val room = rooms[start.roomId]?.takeIf { it.matchId == start.previousMatchId && it.startedAtEpochMillis == null }
+        if (room != null) rooms.remove(start.roomId)
+        return listOf(Delivery(ServerMessage.MatchmakingStatus(isSearching = false,
+            gameMode = room?.gameMode, matchType = room?.matchType ?: MatchType.RANKED), start.playerIds))
+    }
 
     private fun startError(playerId: String) = Delivery(ServerMessage.Error(
         code = "MATCH_START_UNAVAILABLE", message = legacyFallback("Máy chủ đang bận. Vui lòng thử lại."),
@@ -429,6 +450,10 @@ class GameEngine(
             val consumption = start.consumption ?: playQuotaRepository.prepareMatch(start.playerIds, start.matchId, nowMillis())
                 .also { start.consumption = it }
             if (consumption.status == PlayQuotaConsumptionStatus.EXHAUSTED) {
+                if (start.fromMatchmaking) {
+                    val stopped = mutex.withLock { discardUnpublishedMatchmaking(start) }
+                    return stopped + quotaRejectedDeliveries(start.playerIds, consumption)
+                }
                 val rejected = mutex.withLock {
                     val room = rooms[start.roomId]?.apply { readyPlayerIds.clear(); rematchRequestedPlayerIds.clear(); rematchExpiresAtEpochMillis = null; sequence++ }
                     preparedStarts.remove(start.roomId)
@@ -461,7 +486,17 @@ class GameEngine(
                             if (candidate == null) delay(10) // event transaction and pooled connection have already closed
                         }
                     }
-                    mutex.withLock { start.candidate = candidate ?: error("Engine remained busy") }
+                    currentCoroutineContext().ensureActive()
+                    mutex.withLock {
+                        // Source commit/close runs outside the engine mutex. Recheck the same admission
+                        // before retaining its payload so cancellation in that gap cannot revive a room.
+                        val room = rooms[start.roomId] ?: error("Start room disappeared")
+                        check(preparedStarts[start.roomId] === start && room.matchId == start.previousMatchId &&
+                            room.sequence == start.sequence && room.activePlayerIds() == start.playerIds &&
+                            start.playerIds.all { sessionsByPlayerId[it]?.isConnected == true } &&
+                            !maintenancePolicy.blocksNewIntent) { "Start admission changed" }
+                        start.candidate = candidate ?: error("Engine remained busy")
+                    }
                 }
                 val frozen = checkNotNull(start.candidate)
                 check(mutex.withLock { preparedStarts[start.roomId] === start }) { "Start was invalidated" }
@@ -482,12 +517,21 @@ class GameEngine(
                 }
             }
         } catch (failure: Throwable) {
+            var stopped = emptyList<Delivery>()
             if (start.candidate == null) withContext(NonCancellable) {
                 // No durable start write was attempted. A failed refund remains reserved for startup recovery.
                 runCatching { playQuotaRepository.releaseMatch(start.playerIds, start.matchId, emptySet()) }
-                mutex.withLock { preparedStarts.remove(start.roomId) }
+                mutex.withLock {
+                    stopped = discardUnpublishedMatchmaking(start)
+                    if (!start.fromMatchmaking && preparedStarts[start.roomId] === start) preparedStarts.remove(start.roomId)
+                    if (failure is CancellationException) {
+                        pendingMatchmakingDeliveries += stopped + if (stopped.isNotEmpty()) start.playerIds.map(::startError) else emptyList()
+                    }
+                }
             }
             if (failure is CancellationException) throw failure
+            if (start.fromMatchmaking && start.candidate == null) return stopped +
+                if (stopped.isNotEmpty()) start.playerIds.map { if (maintenancePolicy.blocksNewIntent) maintenanceError(it) else startError(it) } else emptyList()
             return listOf(if (maintenancePolicy.blocksNewIntent) maintenanceError(start.requesterId) else startError(start.requesterId))
         } finally {
             withContext(NonCancellable) { mutex.withLock { startsInFlight.remove(start.roomId) } }
@@ -496,6 +540,13 @@ class GameEngine(
 
     suspend fun handle(playerId: String, message: ClientMessage): List<Delivery> {
         restoreActiveRooms()
+        if (message is ClientMessage.JoinMatchmaking || message is ClientMessage.CreateRoom) mutex.withLock {
+            // A new intent supersedes deferred notifications from a cancelled request coroutine.
+            val remaining = pendingMatchmakingDeliveries.mapNotNull { delivery ->
+                delivery.recipients?.minus(playerId)?.takeIf { it.isNotEmpty() }?.let { delivery.copy(recipients = it) }
+            }
+            pendingMatchmakingDeliveries.clear(); pendingMatchmakingDeliveries.addAll(remaining)
+        }
         // Admission for economic/profile/social work is short; accepted atomic work may finish.
         if (mutex.withLock { !message.allowedDuringMaintenance(maintenancePolicy) }) return listOf(maintenanceError(playerId))
         if (message is ClientMessage.GetProfile) return loadProfile(playerId)
@@ -1831,7 +1882,7 @@ class GameEngine(
             matchmakingEntries.remove(playerId)
             room.readyPlayerIds.addAll(room.playerIds())
             rooms[room.id] = room
-            matchedStart = prepareStart(room, room.matchId, playerId)
+            matchedStart = prepareStart(room, room.matchId, playerId, fromMatchmaking = true)
             emptyList()
         }
         matchedStart?.let { return performPreparedStart(it) }
@@ -1840,6 +1891,18 @@ class GameEngine(
     }
 
     private suspend fun cancelMatchmaking(playerId: String): List<Delivery> {
+        var abandoned: PreparedMatchStart? = null
+        val stopped = mutex.withLock {
+            val pending = preparedStarts.values.firstOrNull { it.fromMatchmaking && playerId in it.playerIds }
+            if (pending?.candidate != null) return@withLock listOf(startError(playerId))
+            pending?.let { abandoned = it; discardUnpublishedMatchmaking(it) }.orEmpty()
+        }
+        if (stopped.isNotEmpty()) {
+            abandoned?.let { start -> withContext(NonCancellable) {
+                runCatching { playQuotaRepository.releaseMatch(start.playerIds, start.matchId, emptySet()) }
+            } }
+            return stopped
+        }
         val entry = mutex.withLock { matchmakingEntries.remove(playerId) }
         return listOf(
             Delivery(
@@ -2030,10 +2093,19 @@ class GameEngine(
 
     /** Retryable admitted work; no provider or match-result IO holds the engine mutex. */
     suspend fun retryMaintenanceSettlements(): List<Delivery> {
+        val matchmakingDeliveries = mutex.withLock {
+            val result = pendingMatchmakingDeliveries.mapNotNull { delivery ->
+                delivery.recipients?.filter { sessionsByPlayerId[it]?.isConnected == true &&
+                    roomFor(it) == null && it !in matchmakingEntries }?.toSet()?.takeIf { it.isNotEmpty() }
+                    ?.let { delivery.copy(recipients = it) }
+            }
+            pendingMatchmakingDeliveries.clear()
+            result
+        }
         val starts = mutex.withLock { preparedStarts.values.filter { it.candidate != null }.toList() }
         val startDeliveries = starts.flatMap { performPreparedStart(it) }
         val pending = mutex.withLock { pendingCompletedMatches.values.toList() }
-        return startDeliveries + pending.flatMap { settleCompletedMatch(it) }
+        return matchmakingDeliveries + startDeliveries + pending.flatMap { settleCompletedMatch(it) }
     }
 
     private suspend fun settleCompletedMatch(completed: CompletedMatch): List<Delivery> = withContext(NonCancellable) {
