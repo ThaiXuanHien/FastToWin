@@ -252,6 +252,36 @@ dd { margin: 6px 0 0; font-weight: 500; overflow-wrap: anywhere; }
   .field:has(input[type="datetime-local"]) label { max-width: calc(100% - 24px); position: static; padding: 0; margin: 0 0 8px; }
 }
 /* Maintenance uses the same white Material controls and readable observations. */
+.event-row { display: grid; grid-template-columns: minmax(0, 1fr) auto 48px; align-items: center; gap: 16px; padding: 20px 0; border-bottom: 1px solid var(--line); }
+.event-row .row-info { min-width: 0; overflow-wrap: anywhere; }
+.event-row > .icon-button .tooltip { right: 0; left: auto; max-width: min(280px, 75vw); white-space: normal; overflow-wrap: anywhere; }
+.event-actions, .event-factors { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.event-factor { display: inline-flex; align-items: center; gap: 8px; padding: 8px 12px; background: var(--surface); border-radius: 12px; font-variant-numeric: tabular-nums; }
+.event-factor .icon { width: 20px; height: 20px; }
+.event-search { display: grid; grid-template-columns: minmax(0, 1fr) minmax(180px, .65fr) 48px; gap: 16px; align-items: end; }
+.event-search .field { min-width: 0; }
+.event-search > .icon-button .tooltip { right: 0; left: auto; max-width: 75vw; white-space: normal; }
+.event-languages, .event-field-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.event-message, .event-suggestions, .event-overlap { min-width: 0; padding: 20px; background: var(--surface); border-radius: 16px; }
+.event-message h3, .page-events h1 { overflow-wrap: anywhere; }
+.event-body { white-space: pre-wrap; overflow-wrap: anywhere; }
+.event-modal .event-languages { grid-template-columns: minmax(0, 1fr); }
+.event-modal[open] { display: flex; flex-direction: column; overflow: hidden; }
+.event-modal .modal-header { flex: 0 0 auto; background: var(--canvas); padding: 8px 0; }
+.event-modal > :is(.modal-form, .stack) { min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 4px; }
+.event-modal :is(input, select, textarea, button, [tabindex]) { scroll-margin-top: 120px; scroll-margin-bottom: 16px; }
+.event-modal .field > label, .event-search .field > label { position: static; display: block; margin-bottom: 8px; padding: 0; max-width: none; }
+.event-modal .field > :is(input, select, textarea), .event-search .field > :is(input, select) { padding-top: 12px; }
+.event-modal fieldset { border: 1px solid var(--line); border-radius: 16px; padding: 16px; min-width: 0; }
+.event-modal .alert button { display: block; margin-top: 12px; }
+@media (max-width: 700px) {
+  .event-search { grid-template-columns: minmax(0, 1fr) 48px; }
+  .event-search .field:first-child { grid-column: 1 / -1; }
+  .event-languages, .event-field-pair { grid-template-columns: minmax(0, 1fr); }
+  .event-row { grid-template-columns: minmax(0, 1fr) 48px; gap: 12px; }
+  .event-row > .badge { grid-column: 1; justify-self: start; }
+  .event-row > button { grid-column: 2; grid-row: 1 / span 2; }
+}
 .maintenance-heading { display: flex; align-items: center; flex-wrap: wrap; gap: 16px; }
 .maintenance-heading h2 { margin: 0; }
 .maintenance-message { padding-block: 16px; border-top: 1px solid var(--line); }

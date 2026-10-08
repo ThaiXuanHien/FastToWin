@@ -99,3 +99,13 @@ states, comparison, late responses and session fences. Captures are
 plus `-landscape.png` and `-enlarged.png`. Reduced motion is enabled; enlarged
 text is checked at 200%. Fixture data is synthetic, and live test screenshots
 exclude identity headers and explicitly mark SANDBOX money as test evidence.
+
+## Reward events
+
+Owner/Operator see **Sự kiện thưởng** with the existing labelled outline navigation and 48px add/view/edit/refresh utilities. Reuse the white Material canvas, native dialogs, focus containment/restoration, pending guards and shared session/navigation fences. Keep Save/Cancel/Schedule and form labels readable. Compact factor summaries use the coin/star vectors plus ×value, with Vietnamese currency names in accessible labels and native titles. Use plain overlap-policy wording rather than exposing an internal policy enum.
+
+List/history has server-side name search and state filters. Detail distinguishes stable creator, publisher, latest actor, unpublished and unknown historical identities. Published definition and ended history are read-only. Preview and separate confirmation show both languages, exact independent factors, eligible modes, overlap maxima, exclusions and exact UTC/IANA bounds. Keep long text/IDs wrapping, without raw HTML.
+
+UTC entry fields are explicitly separate from the IANA display timezone and include a full year. Holiday suggestions require a manually supplied year and create drafts only; lunar New Year dates are entered in the Gregorian calendar. No automatic annual publication or identity targeting. Phone forms scroll inside native dialogs, retain reachable close/cancel controls, and block dismissal/fields while pending.
+
+`admin-events.spec.mjs` covers exact payload/version/token/CSRF, permissions, retries, pending dismissal, request/import/session fences, legacy identities, UTC consistency, holiday suggestions and 200% text. Actual viewport dialog captures avoid full-page native-dialog compositing artifacts. Task4 evidence and inspected 360/768/1024/1440 plus enlarged screenshots live under `.artifacts/admin-reward-events-delivery/task4/`; the isolated live runner verifies real match capture and committed wallet/history in the owned loopback preview.
