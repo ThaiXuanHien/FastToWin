@@ -28,6 +28,7 @@ class PostgresGiftRepository(private val source: DataSource) : GiftRepository {
 }
 private class JdbcGiftTransaction(private val c: Connection) : GiftTransaction {
     override val admin: AdminTransaction = JdbcAdminTransaction(c)
+    override val compensation = com.hienthai.fastowin.server.compensation.JdbcCompensationStore(c)
     private fun <T> rows(sql: String, values: List<Any?> = emptyList(), read: (ResultSet) -> T): List<T> = c.prepareStatement(sql).use { s ->
         values.forEachIndexed { i, value -> s.setObject(i + 1, value) }
         s.executeQuery().use { rs -> buildList { while (rs.next()) add(read(rs)) } }
@@ -39,13 +40,13 @@ private class JdbcGiftTransaction(private val c: Connection) : GiftTransaction {
     private fun recipient(rs: ResultSet) = GiftRecipient(rs.getString("campaign_id"), rs.getString("user_id"), rs.getString("delivery"), rs.getTimestamp("claimed_at")?.time)
     override fun campaign(id: String, lock: Boolean) = rows("SELECT payload FROM admin_gift_campaigns WHERE id=?" + if (lock) " FOR UPDATE" else "", listOf(id(id))) { Json.decodeFromString<GiftCampaign>(it.getString(1)) }.singleOrNull()
     override fun putCampaign(campaign: GiftCampaign) {
-        update("""INSERT INTO admin_gift_campaigns(id,version,state,available_at,expires_at,payload) VALUES (?,?,?,?,?,?)
-            ON CONFLICT(id) DO UPDATE SET version=excluded.version,state=excluded.state,available_at=excluded.available_at,expires_at=excluded.expires_at,payload=excluded.payload""",
-            id(campaign.id), campaign.version, campaign.state.name, Timestamp(campaign.draft.availableAtEpochMillis), Timestamp(campaign.draft.expiresAtEpochMillis!!), Json.encodeToString(campaign))
+        update("""INSERT INTO admin_gift_campaigns(id,version,state,available_at,expires_at,payload,source_type) VALUES (?,?,?,?,?,?,?)
+            ON CONFLICT(id) DO UPDATE SET version=excluded.version,state=excluded.state,available_at=excluded.available_at,expires_at=excluded.expires_at,payload=excluded.payload,source_type=excluded.source_type""",
+            id(campaign.id), campaign.version, campaign.state.name, Timestamp(campaign.draft.availableAtEpochMillis), Timestamp(campaign.draft.expiresAtEpochMillis!!), Json.encodeToString(campaign), campaign.walletSourceType())
     }
     override fun campaigns(page: PageRequest): AdminPage<GiftCampaign> {
-        val items = rows("SELECT payload FROM admin_gift_campaigns ORDER BY id DESC LIMIT ? OFFSET ?", listOf(page.pageSize, page.offset)) { Json.decodeFromString<GiftCampaign>(it.getString(1)) }
-        return page.result(items, rows("SELECT count(*) FROM admin_gift_campaigns") { it.getLong(1) }.single())
+        val items = rows("SELECT payload FROM admin_gift_campaigns WHERE source_type='ADMIN_GIFT' ORDER BY id DESC LIMIT ? OFFSET ?", listOf(page.pageSize, page.offset)) { Json.decodeFromString<GiftCampaign>(it.getString(1)) }
+        return page.result(items, rows("SELECT count(*) FROM admin_gift_campaigns WHERE source_type='ADMIN_GIFT'") { it.getLong(1) }.single())
     }
     override fun registeredPlayers() = rows("SELECT id,created_at FROM users WHERE account_type='REGISTERED' AND status <> 'DELETED' ORDER BY id") { GiftPlayer(it.getString(1), it.getTimestamp(2).time) }
     override fun activePlayer(id: String) = rows("SELECT id FROM users WHERE id=? AND account_type='REGISTERED' AND status <> 'DELETED' FOR KEY SHARE", listOf(id(id))) { it.getString(1) }.isNotEmpty()
@@ -96,7 +97,7 @@ private class JdbcGiftTransaction(private val c: Connection) : GiftTransaction {
         val before = balance(userId)
         val after = try { GiftBalance(Math.addExact(before.gold,campaign.draft.gold), Math.addExact(before.xp,campaign.draft.xp)) } catch (_: ArithmeticException) { conflict() }
         update("UPDATE player_stats SET gold=?,experience_points=?,updated_at=? WHERE user_id=?", after.gold,after.xp,Timestamp(now),id(userId))
-        update("INSERT INTO wallet_transactions(id,user_id,source_type,source_id,gold_delta,xp_delta,created_at) VALUES (?,?,'ADMIN_GIFT',?,?,?,?)", UUID.randomUUID(),id(userId),campaign.id,campaign.draft.gold,campaign.draft.xp,Timestamp(now))
+        update("INSERT INTO wallet_transactions(id,user_id,source_type,source_id,gold_delta,xp_delta,created_at) VALUES (?,?,?,?,?,?,?)", UUID.randomUUID(),id(userId),campaign.walletSourceType(),campaign.id,campaign.draft.gold,campaign.draft.xp,Timestamp(now))
         return after
     }
 }

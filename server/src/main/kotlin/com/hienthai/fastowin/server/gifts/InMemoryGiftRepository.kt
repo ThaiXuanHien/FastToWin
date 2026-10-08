@@ -1,6 +1,7 @@
 package com.hienthai.fastowin.server.gifts
 
 import com.hienthai.fastowin.server.admin.*
+import com.hienthai.fastowin.server.compensation.*
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
@@ -15,9 +16,10 @@ class InMemoryGiftRepository(private val admins: InMemoryAdminRepository) : Gift
     private data class State(
         val campaigns: MutableMap<String, GiftCampaign> = linkedMapOf(),
         val recipients: MutableMap<Pair<String,String>, GiftRecipient> = linkedMapOf(),
-        val requests: MutableMap<Pair<String,String>, GiftRequestRecord> = linkedMapOf()
+        val requests: MutableMap<Pair<String,String>, GiftRequestRecord> = linkedMapOf(),
+        val compensation: MemoryCompensationState = MemoryCompensationState()
     ) {
-        fun snapshot() = State(campaigns.toMutableMap(), recipients.toMutableMap(), requests.toMutableMap())
+        fun snapshot() = State(campaigns.toMutableMap(), recipients.toMutableMap(), requests.toMutableMap(), compensation.snapshot())
     }
     private var state = State()
     override suspend fun <T> transaction(admin: Boolean, block: GiftTransaction.() -> T): T = mutex.withLock {
@@ -26,10 +28,11 @@ class InMemoryGiftRepository(private val admins: InMemoryAdminRepository) : Gift
             val adminTx = this; val players = this as GiftMemoryPlayers
             val tx = object : GiftTransaction {
                 override val admin = adminTx
+                override val compensation = MemoryCompensationStore(next.compensation, { next.campaigns[it] }, { next.recipients.values })
                 override fun campaign(id: String, lock: Boolean) = next.campaigns[id]
                 override fun putCampaign(campaign: GiftCampaign) { next.campaigns[campaign.id] = campaign }
                 override fun campaigns(page: PageRequest): AdminPage<GiftCampaign> {
-                    val all = next.campaigns.values.sortedByDescending { it.id }; return page.result(all.drop(page.offset).take(page.pageSize), all.size.toLong())
+                    val all = next.campaigns.values.filter { it.compensation == null }.sortedByDescending { it.id }; return page.result(all.drop(page.offset).take(page.pageSize), all.size.toLong())
                 }
                 override fun registeredPlayers() = players.giftPlayers()
                 override fun activePlayer(id: String) = players.giftPlayers().any { it.id == id }

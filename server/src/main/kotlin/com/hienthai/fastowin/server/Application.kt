@@ -1,6 +1,7 @@
 package com.hienthai.fastowin.server
 
 import com.hienthai.fastowin.server.gifts.*
+import com.hienthai.fastowin.server.compensation.*
 import com.hienthai.fastowin.server.events.*
 import com.hienthai.fastowin.server.maintenance.*
 import com.hienthai.fastowin.server.admin.AdminService
@@ -102,7 +103,8 @@ fun Application.gameModule(
     analyticsService: com.hienthai.fastowin.server.analytics.AnalyticsService? = adminService?.let {
         com.hienthai.fastowin.server.analytics.AnalyticsService(com.hienthai.fastowin.server.analytics.UnavailableAnalyticsRepository, it)
     },
-    rewardEventService: RewardEventService = RewardEventService(UnavailableRewardEventRepository, adminService)
+    rewardEventService: RewardEventService = RewardEventService(UnavailableRewardEventRepository, adminService),
+    compensationIncidentService: CompensationIncidentService? = adminService?.let { CompensationIncidentService(giftService.repository, it) }
 ) {
     // The first policy and restored aborts must be applied before any handler/timer can serve game.
     runBlocking { maintenanceRuntime.refresh() }
@@ -169,6 +171,7 @@ fun Application.gameModule(
 
     routing { storePurchaseRoutes(engine.storePurchaseService, authService, rateLimiter, rateLimitPolicies) }
     routing { giftRoutes(giftService, authService, adminService != null) }
+    if (adminService != null) compensationIncidentService?.let { service -> routing { compensationIncidentRoutes(service) } }
     routing { rewardEventRoutes(rewardEventService, adminService != null) }
     if (adminService != null) maintenanceService?.let { service -> routing { maintenanceRoutes(service) } }
     if (giftDeliveryEnabled) startGiftDelivery(giftService)

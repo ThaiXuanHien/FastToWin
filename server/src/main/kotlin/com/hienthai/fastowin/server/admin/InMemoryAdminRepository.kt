@@ -40,9 +40,9 @@ class InMemoryAdminRepository : AdminRepository {
                 val user = next.users[id] ?: missing()
                 val balance = try { GiftBalance(Math.addExact(user.gold,campaign.draft.gold),Math.addExact(user.xp,campaign.draft.xp)) } catch (_: ArithmeticException) { conflict() }
                 val history = next.wallet[id].orEmpty()
-                if (history.any { it.sourceType == "ADMIN_GIFT" && it.sourceId == campaign.id }) conflict()
+                if (history.any { it.sourceType == campaign.walletSourceType() && it.sourceId == campaign.id }) conflict()
                 next.users[id] = user.copy(gold=balance.gold,xp=balance.xp,level=PlayerProgression.levelForExperience(balance.xp))
-                next.wallet[id] = history + WalletEntry(UUID.randomUUID().toString(),"ADMIN_GIFT",campaign.id,campaign.draft.gold,0,campaign.draft.xp,now)
+                next.wallet[id] = history + WalletEntry(UUID.randomUUID().toString(),campaign.walletSourceType(),campaign.id,campaign.draft.gold,0,campaign.draft.xp,now)
                 return balance
             }
             override fun accountByEmail(email: String) = next.accounts.values.firstOrNull { it.identity.email == email }

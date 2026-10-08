@@ -29,7 +29,7 @@ class GiftService(val repository: GiftRepository, private val admins: AdminServi
         AdminPage(result.items.map { detail(it) }, result.page, result.pageSize, result.total)
     }
     suspend fun detail(context: GiftAdminContext, id: String): GiftCampaignDetail = repository.transaction(true) {
-        val actor = authorize(context); uuid(id); val c = campaign(id) ?: missing(); audit(actor.id, "GIFT_DETAIL", id); detail(c)
+        val actor = authorize(context); uuid(id); val c = ordinaryCampaign(id); audit(actor.id, "GIFT_DETAIL", id); detail(c)
     }
     suspend fun create(context: GiftAdminContext, request: GiftDraftRequest): GiftCampaignDetail = repository.transaction(true) {
         val actor = authorize(context, true); mutation(request.reason, request.requestId)
@@ -44,8 +44,8 @@ class GiftService(val repository: GiftRepository, private val admins: AdminServi
     suspend fun update(context: GiftAdminContext, id: String, request: GiftDraftRequest): GiftCampaignDetail = repository.transaction(true) {
         val actor = authorize(context, true); uuid(id); mutation(request.reason, request.requestId)
         val fp = hashToken("update:$id:" + Json.encodeToString(request))
+        val c = ordinaryCampaign(id, true)
         replay(actor.id, request.requestId, fp)?.let { return@transaction it }
-        val c = campaign(id, true) ?: missing()
         if (c.state != CampaignState.DRAFT || c.version != request.expectedVersion) conflict()
         val updated = c.copy(version = Math.addExact(c.version, 1), draft = validated(request))
         putCampaign(updated); audit(actor.id, "GIFT_UPDATE", id, request.requestId, request.reason)
@@ -70,15 +70,15 @@ class GiftService(val repository: GiftRepository, private val admins: AdminServi
             Math.multiplyExact(c.draft.gold.toLong(), a.users.size.toLong()), Math.multiplyExact(c.draft.xp.toLong(), a.users.size.toLong()), token)
     }
     suspend fun preview(context: GiftAdminContext, id: String, request: GiftPreviewRequest): GiftPreview = repository.transaction(true) {
-        val actor = authorize(context, true); uuid(id); val c = campaign(id, true) ?: missing()
+        val actor = authorize(context, true); uuid(id); val c = ordinaryCampaign(id, true)
         if (c.state != CampaignState.DRAFT || c.version != request.expectedVersion) conflict()
         val result = preview(c, audience(c)); audit(actor.id, "GIFT_PREVIEW", id); result
     }
     suspend fun publish(context: GiftAdminContext, id: String, request: GiftPublishRequest): GiftCampaignDetail = repository.transaction(true) {
         val actor = authorize(context, true, true); uuid(id); mutation(request.reason, request.requestId)
         val fp = hashToken("publish:$id:" + Json.encodeToString(request))
+        val c = ordinaryCampaign(id, true)
         replay(actor.id, request.requestId, fp)?.let { return@transaction it }
-        val c = campaign(id, true) ?: missing()
         if (c.state != CampaignState.DRAFT || c.version != request.expectedVersion) conflict()
         val audience = audience(c); val fresh = preview(c, audience)
         if (fresh.invalidUserIds.isNotEmpty()) invalid()
@@ -90,13 +90,14 @@ class GiftService(val repository: GiftRepository, private val admins: AdminServi
     suspend fun cancel(context: GiftAdminContext, id: String, request: GiftCancelRequest): GiftCampaignDetail = repository.transaction(true) {
         val actor = authorize(context, true, true); uuid(id); mutation(request.reason, request.requestId)
         val fp = hashToken("cancel:$id:" + Json.encodeToString(request))
+        val c = ordinaryCampaign(id, true)
         replay(actor.id, request.requestId, fp)?.let { return@transaction it }
-        val c = campaign(id, true) ?: missing()
         if (c.state == CampaignState.CANCELLED || c.version != request.expectedVersion) conflict()
         val updated = c.copy(state = CampaignState.CANCELLED, version = Math.addExact(c.version, 1), cancelledAtEpochMillis = nowMillis(), cancellationReason = request.reason)
         putCampaign(updated); audit(actor.id, "GIFT_CANCEL", id, request.requestId, request.reason)
         save(actor.id, request.requestId, fp, detail(updated))
     }
+    private fun GiftTransaction.ordinaryCampaign(id: String, lock: Boolean = false) = campaign(id, lock)?.takeIf { it.compensation == null } ?: missing()
     private fun GiftTransaction.replay(actor: String, requestId: String, fp: String): GiftCampaignDetail? {
         val record = request(actor, requestId) ?: return null
         if (record.fingerprint != fp) conflict()
@@ -174,4 +175,4 @@ class GiftService(val repository: GiftRepository, private val admins: AdminServi
 internal fun uuid(id: String) { if (runCatching { UUID.fromString(id).toString() == id.lowercase() }.getOrDefault(false).not()) invalid() }
 internal fun gift(c: GiftCampaign, r: GiftRecipient, now: Long) = MailboxGift(c.id, c.draft.titleVi, c.draft.titleEn, c.draft.bodyVi, c.draft.bodyEn,
     c.draft.gold, c.draft.xp, c.draft.availableAtEpochMillis, c.draft.expiresAtEpochMillis!!,
-    when { r.claimedAt != null -> GiftState.CLAIMED; c.state == CampaignState.CANCELLED -> GiftState.CANCELLED; now >= c.draft.expiresAtEpochMillis -> GiftState.EXPIRED; else -> GiftState.AVAILABLE }, r.claimedAt)
+    when { r.claimedAt != null -> GiftState.CLAIMED; c.state == CampaignState.CANCELLED -> GiftState.CANCELLED; now >= c.draft.expiresAtEpochMillis -> GiftState.EXPIRED; else -> GiftState.AVAILABLE }, r.claimedAt, c.compensation)

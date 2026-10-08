@@ -21,7 +21,8 @@ import kotlinx.serialization.Serializable
 @Serializable data class GiftCampaign(
     val id: String, val version: Int, val state: CampaignState, val draft: GiftDraftRequest,
     val createdAtEpochMillis: Long, val publishedAtEpochMillis: Long? = null,
-    val cancelledAtEpochMillis: Long? = null, val cancellationReason: String? = null
+    val cancelledAtEpochMillis: Long? = null, val cancellationReason: String? = null,
+    val compensation: CompensationMailboxContext? = null
 )
 @Serializable data class GiftCounters(
     val eligible: Long = 0, val pending: Long = 0, val delivered: Long = 0, val claimed: Long = 0,
@@ -44,6 +45,7 @@ interface GiftRepository {
 }
 interface GiftTransaction {
     val admin: AdminTransaction
+    val compensation: com.hienthai.fastowin.server.compensation.CompensationStore
     fun campaign(id: String, lock: Boolean = false): GiftCampaign?
     fun putCampaign(campaign: GiftCampaign)
     fun campaigns(page: PageRequest): AdminPage<GiftCampaign>
@@ -61,3 +63,4 @@ interface GiftTransaction {
     fun balance(userId: String): GiftBalance
     fun award(userId: String, campaign: GiftCampaign, now: Long): GiftBalance
 }
+internal fun GiftCampaign.walletSourceType() = if (compensation == null) "ADMIN_GIFT" else "COMPENSATION"
