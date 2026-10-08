@@ -2,6 +2,7 @@ package com.hienthai.fastowin.ui.components
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.filled.MonetizationOn
@@ -87,9 +88,16 @@ fun RewardEventValues(gold: Int, xp: Int, factors: Boolean = false, emphasis: Bo
     val typography = if (emphasis) MaterialTheme.typography.titleLarge else MaterialTheme.typography.bodyMedium
     FlowRow(modifier = Modifier.clearAndSetSemantics { contentDescription = description },
         horizontalArrangement = Arrangement.spacedBy(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        listOf(Icons.Default.MonetizationOn to gold, Icons.Default.Star to xp).forEach { (icon, value) ->
+        listOf(Icons.Default.MonetizationOn to gold, Icons.Default.Star to xp).forEachIndexed { index, (icon, value) ->
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                Icon(icon, contentDescription = null, modifier = Modifier.size(20.dp), tint = MaterialTheme.colorScheme.onSurface)
+                if (index == 0) {
+                    // The existing navy currency treatment keeps mission gold legible on LIGHT surfaces.
+                    Surface(shape = CircleShape, color = ArcadePalette.Navy900) {
+                        Icon(icon, contentDescription = null, modifier = Modifier.padding(2.dp).size(20.dp), tint = GoldColor)
+                    }
+                } else {
+                    Icon(icon, contentDescription = null, modifier = Modifier.size(20.dp), tint = MaterialTheme.colorScheme.primary)
+                }
                 Text(if (factors) localized(TextKey.RewardEventFactorValue, "count" to value) else value.toString(), style = typography,
                     fontWeight = if (emphasis) FontWeight.Black else FontWeight.Normal)
             }
