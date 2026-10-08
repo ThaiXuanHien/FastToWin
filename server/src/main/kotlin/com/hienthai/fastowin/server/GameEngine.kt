@@ -2093,6 +2093,12 @@ class GameEngine(
 
     /** Retryable admitted work; no provider or match-result IO holds the engine mutex. */
     suspend fun retryMaintenanceSettlements(): List<Delivery> {
+        val starts = mutex.withLock { preparedStarts.values.filter { it.candidate != null }.toList() }
+        val startDeliveries = starts.flatMap { performPreparedStart(it) }
+        val pending = mutex.withLock { pendingCompletedMatches.values.toList() }
+        val settlementDeliveries = pending.flatMap { settleCompletedMatch(it) }
+        // Keep deferred notifications invalidatable through every storage wait, then check
+        // the participant's current intent immediately before returning them for delivery.
         val matchmakingDeliveries = mutex.withLock {
             val result = pendingMatchmakingDeliveries.mapNotNull { delivery ->
                 delivery.recipients?.filter { sessionsByPlayerId[it]?.isConnected == true &&
@@ -2102,10 +2108,7 @@ class GameEngine(
             pendingMatchmakingDeliveries.clear()
             result
         }
-        val starts = mutex.withLock { preparedStarts.values.filter { it.candidate != null }.toList() }
-        val startDeliveries = starts.flatMap { performPreparedStart(it) }
-        val pending = mutex.withLock { pendingCompletedMatches.values.toList() }
-        return matchmakingDeliveries + startDeliveries + pending.flatMap { settleCompletedMatch(it) }
+        return matchmakingDeliveries + startDeliveries + settlementDeliveries
     }
 
     private suspend fun settleCompletedMatch(completed: CompletedMatch): List<Delivery> = withContext(NonCancellable) {

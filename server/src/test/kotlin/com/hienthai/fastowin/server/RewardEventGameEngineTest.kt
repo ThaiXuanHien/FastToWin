@@ -101,6 +101,84 @@ class RewardEventGameEngineTest {
         assertTrue(engine.handle(guest, ClientMessage.CreateRoom("new", "", ProtocolGameMode.ORDER)).any { it.message is ServerMessage.RoomCreated })
     }
 
+    @Test fun `deferred matchmaking status stays invalidatable while unrelated retained start retry is suspended`() = runTest {
+        val stored = InMemoryActiveRoomRepository(); var fail = true; var blockRetry = false
+        val enteredSave = CompletableDeferred<Unit>(); val releaseSave = CompletableDeferred<Unit>()
+        val repository = object : ActiveRoomRepository by stored {
+            override suspend fun save(room: StoredActiveRoom) {
+                if (room.phase == RoomPhase.PLAYING && fail) error("start acknowledgement unavailable")
+                if (room.phase == RoomPhase.PLAYING && blockRetry) { enteredSave.complete(Unit); releaseSave.await() }
+                stored.save(room)
+            }
+        }
+        val source = MutableSource()
+        val engine = GameEngine(activeRoomRepository = repository, eventRewardSource = source, nowMillis = { 100 })
+        val (c, d, room) = waiting(engine)
+        engine.handle(c, ClientMessage.SetReady(room, true))
+        assertTrue(engine.handle(d, ClientMessage.SetReady(room, true)).none { it.message is ServerMessage.GameStarted })
+        val (a, b) = accounts(engine)
+        val enteredSource = CompletableDeferred<Unit>()
+        source.before = { enteredSource.complete(Unit); awaitCancellation() }
+        engine.handle(a, ClientMessage.JoinMatchmaking(ProtocolGameMode.ORDER))
+        val cancelledStart = async { engine.handle(b, ClientMessage.JoinMatchmaking(ProtocolGameMode.ORDER)) }
+        enteredSource.await(); cancelledStart.cancelAndJoin(); source.before = {}
+        fail = false; blockRetry = true
+        val drain = async { engine.retryMaintenanceSettlements() }
+        enteredSave.await()
+        val searching = engine.handle(a, ClientMessage.JoinMatchmaking(ProtocolGameMode.ORDER))
+        assertTrue(searching.any { (it.message as? ServerMessage.MatchmakingStatus)?.isSearching == true })
+        blockRetry = false; releaseSave.complete(Unit)
+        val deliveries = drain.await()
+        assertEquals(room, deliveries.started().roomId)
+        val terminal = deliveries.filter { it.message is ServerMessage.MatchmakingStatus || it.message is ServerMessage.Error }
+        assertTrue(terminal.none { a in it.recipients.orEmpty() }, "A fresh search must supersede the cancelled attempt through the entire retry wait")
+        assertStopped(terminal, setOf(b))
+        assertEquals(1, terminal.count { it.message is ServerMessage.MatchmakingStatus && b in it.recipients.orEmpty() })
+        assertEquals(1, terminal.count { it.message is ServerMessage.Error && b in it.recipients.orEmpty() })
+        assertTrue(engine.retryMaintenanceSettlements().isEmpty())
+        val e = engine.connectAccount(AuthenticatedAccount(UUID.randomUUID(), "new opponent")).playerId
+        val matched = engine.handle(e, ClientMessage.JoinMatchmaking(ProtocolGameMode.ORDER)).started()
+        assertEquals(setOf(a, e), matched.players.map { it.id }.toSet())
+    }
+
+    @Test fun `deferred matchmaking status stays invalidatable while unrelated pending result retry is suspended`() = runTest {
+        val enteredResult = CompletableDeferred<Unit>(); val releaseResult = CompletableDeferred<Unit>()
+        val stored = InMemoryActiveRoomRepository(); val completed = mutableListOf<CompletedMatch>()
+        var fail = true; var blockRetry = false
+        val resultRepository = MatchResultRepository { match ->
+            if (fail) error("result unavailable")
+            if (blockRetry) { enteredResult.complete(Unit); releaseResult.await() }
+            completed += match
+        }
+        val source = MutableSource()
+        val engine = GameEngine(activeRoomRepository = stored, matchResultRepository = resultRepository,
+            eventRewardSource = source, nowMillis = { 100 })
+        val (c, d, room) = waiting(engine)
+        engine.handle(c, ClientMessage.SetReady(room, true)); engine.handle(d, ClientMessage.SetReady(room, true))
+        finish(engine, c, room)
+        assertTrue(stored.loadAll().single().pendingCompletedMatch != null)
+        val (a, b) = accounts(engine)
+        val enteredSource = CompletableDeferred<Unit>()
+        source.before = { enteredSource.complete(Unit); awaitCancellation() }
+        engine.handle(a, ClientMessage.JoinMatchmaking(ProtocolGameMode.ORDER))
+        val cancelledStart = async { engine.handle(b, ClientMessage.JoinMatchmaking(ProtocolGameMode.ORDER)) }
+        enteredSource.await(); cancelledStart.cancelAndJoin(); source.before = {}
+        fail = false; blockRetry = true
+        val drain = async { engine.retryMaintenanceSettlements() }
+        enteredResult.await()
+        val created = engine.handle(a, ClientMessage.CreateRoom("fresh room", "", ProtocolGameMode.ORDER))
+            .map { it.message }.filterIsInstance<ServerMessage.RoomCreated>().single().game
+        blockRetry = false; releaseResult.complete(Unit)
+        val terminal = drain.await().filter { it.message is ServerMessage.MatchmakingStatus || it.message is ServerMessage.Error }
+        assertTrue(terminal.none { a in it.recipients.orEmpty() }, "A fresh room must supersede the cancelled attempt through the entire settlement wait")
+        assertStopped(terminal, setOf(b))
+        assertEquals(1, terminal.count { it.message is ServerMessage.MatchmakingStatus && b in it.recipients.orEmpty() })
+        assertEquals(1, terminal.count { it.message is ServerMessage.Error && b in it.recipients.orEmpty() })
+        assertTrue(engine.retryMaintenanceSettlements().isEmpty())
+        assertEquals(1, completed.size)
+        assertEquals(created.roomId, stored.loadAll().single { it.host.playerId == a }.roomId)
+    }
+
     @Test fun `disconnect rejects pre capture matchmaking admission and releases hidden room for connected survivor`() = runTest {
         val entered = CompletableDeferred<Unit>(); val release = CompletableDeferred<Unit>()
         val quota = InMemoryPlayQuotaRepository()
