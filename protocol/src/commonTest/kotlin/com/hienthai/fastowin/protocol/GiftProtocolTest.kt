@@ -6,6 +6,14 @@ import kotlinx.serialization.json.Json
 import kotlin.test.*
 
 class GiftProtocolTest {
+    @Test fun `future metadata is ignored while exact rewards and safe stored body survive`() {
+        val gift = MailboxGift("round", "Đền bù", "Compensation", "UTC [0,10). Lý do.",
+            "UTC [0,10). Reason.", 0, Int.MAX_VALUE, 10, 20, GiftState.AVAILABLE,
+            compensation = CompensationMailboxContext("incident", "INC-DEMO", Int.MAX_VALUE, 0, 10, "Lý do", "Reason"))
+        val encoded = ProtocolJson.encodeToString(gift).replace("\"incidentKey\":", "\"futureMetadata\":true,\"incidentKey\":")
+        assertEquals(gift, ProtocolJson.decodeFromString<MailboxGift>(encoded))
+    }
+
     @Test fun `mailbox HTTP payload decodes independently of websocket message types`() {
         val payload="""{"items":[{"campaignId":"gift-id","titleVi":"Quà","titleEn":"Gift","bodyVi":"Cảm ơn","bodyEn":"Thanks","gold":100,"xp":30,"availableAtEpochMillis":1000,"expiresAtEpochMillis":2000,"state":"AVAILABLE"}],"page":0,"pageSize":25,"total":1}"""
         val page=ProtocolJson.decodeFromString<GiftMailboxPage>(payload)

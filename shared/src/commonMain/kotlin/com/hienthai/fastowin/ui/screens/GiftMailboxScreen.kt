@@ -2,6 +2,7 @@ package com.hienthai.fastowin.ui.screens
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -16,18 +17,24 @@ import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.MonetizationOn
 import androidx.compose.material.icons.filled.Redeem
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.hienthai.fastowin.localization.AppLanguage
@@ -44,6 +51,7 @@ import com.hienthai.fastowin.ui.components.ArcadeActionStyle
 import com.hienthai.fastowin.ui.components.ArcadeHeaderIconButton
 import com.hienthai.fastowin.ui.components.ArcadePanel
 import com.hienthai.fastowin.ui.components.FastToWinHeader
+import com.hienthai.fastowin.ui.components.GoldColor
 import com.hienthai.fastowin.ui.components.SystemBackHandler
 import com.hienthai.fastowin.ui.layout.ResponsiveScreen
 import com.hienthai.fastowin.ui.theme.ArcadePalette
@@ -183,21 +191,22 @@ private fun GiftCard(gift: MailboxGift, errorCode: String?, isPending: Boolean, 
     val isVietnamese = language == AppLanguage.VIETNAMESE
     ArcadePanel(modifier = Modifier.fillMaxWidth().testTag("gift_${gift.campaignId}"), accent = ArcadePalette.Gold500) {
         Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            gift.compensation?.let { context ->
+                Text(
+                    localized(TextKey.GiftCompensationRound, "incident" to context.incidentKey, "round" to context.roundNumber),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.testTag("gift_compensation_${gift.campaignId}")
+                )
+            }
             Text(
                 if (isVietnamese) gift.titleVi else gift.titleEn,
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onSurface
             )
+            GiftRewardAmounts(gift.gold, gift.xp)
             Text(if (isVietnamese) gift.bodyVi else gift.bodyEn, color = MaterialTheme.colorScheme.onSurface)
-            Text(
-                listOfNotNull(
-                    gift.gold.takeIf { it > 0 }?.let { localized(TextKey.GiftGoldReward, "count" to it) },
-                    gift.xp.takeIf { it > 0 }?.let { localized(TextKey.GiftXpReward, "count" to it) }
-                ).joinToString(" · "),
-                color = ArcadePalette.Gold500,
-                fontWeight = FontWeight.Bold
-            )
             val status = when (gift.state) {
                 GiftState.AVAILABLE -> {
                     val hours = ((gift.expiresAtEpochMillis - nowMillis).coerceAtLeast(0) + 3_599_999) / 3_600_000
@@ -219,6 +228,34 @@ private fun GiftCard(gift: MailboxGift, errorCode: String?, isPending: Boolean, 
                     modifier = Modifier.fillMaxWidth().testTag("gift_claim_${gift.campaignId}")
                 )
             }
+        }
+    }
+}
+
+/** Stored per-gift amounts, including zero; currency names remain in localized semantics. */
+@Composable
+private fun GiftRewardAmounts(gold: Int, xp: Int) {
+    val description = listOf(
+        localized(TextKey.GiftGoldReward, "count" to gold),
+        localized(TextKey.GiftXpReward, "count" to xp)
+    ).joinToString(", ")
+    FlowRow(
+        modifier = Modifier.fillMaxWidth().clearAndSetSemantics { contentDescription = description },
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            // Same filled coin and tint as Mission; existing event navy backing preserves LIGHT contrast.
+            Surface(shape = CircleShape, color = ArcadePalette.Navy900) {
+                Icon(Icons.Default.MonetizationOn, null, tint = GoldColor, modifier = Modifier.padding(2.dp).size(20.dp))
+            }
+            Text(gold.toString(), style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface)
+        }
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            Icon(Icons.Default.Star, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+            Text(xp.toString(), style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface)
         }
     }
 }

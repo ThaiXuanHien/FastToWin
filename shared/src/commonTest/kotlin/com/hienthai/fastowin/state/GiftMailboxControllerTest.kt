@@ -14,6 +14,32 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class GiftMailboxControllerTest {
+    @Test fun `compensation uses existing claim receipt and profile refresh authority`() = runTest {
+        val context = CompensationMailboxContext("incident", "INC-DEMO", 2, 0, 10, "Lý do", "Reason")
+        val available = gift("round").copy(gold = 0, xp = Int.MAX_VALUE, compensation = context)
+        val receipt = available.copy(state = GiftState.CLAIMED, claimedAtEpochMillis = 2000)
+        val claims = mutableListOf<String>()
+        val gateway = object : GiftGateway {
+            override suspend fun page(page: Int, pageSize: Int) = GiftMailboxPage(listOf(available, gift("ordinary")), 0, 25, 2)
+            override suspend fun claim(id: String): GiftClaimResult {
+                claims += id
+                return GiftClaimResult(receipt, 0, Int.MAX_VALUE, 7, 13)
+            }
+            override suspend fun claimAll(ids: List<String>) = error("no additional claim flow")
+        }
+        var refreshes = 0
+        val controller = GiftMailboxController(gateway, { refreshes++ })
+        controller.open()
+        assertEquals(context, controller.state.value.items.first().compensation)
+        assertEquals(null, controller.state.value.items.last().compensation)
+        controller.claim("round")
+        controller.claim("round")
+        assertEquals(listOf("round"), claims)
+        assertEquals(receipt, controller.state.value.items.first())
+        assertEquals(1, refreshes)
+        assertEquals(gift("ordinary"), controller.state.value.items.last())
+    }
+
     private fun gift(id: String, state: GiftState = GiftState.AVAILABLE) = MailboxGift(
         id, "Quà $id", "Gift $id", "Nội dung", "Message", 25, 5,
         1000, 9000, state

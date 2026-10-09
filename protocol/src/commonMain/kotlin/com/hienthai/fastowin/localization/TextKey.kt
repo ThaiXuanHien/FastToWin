@@ -354,7 +354,7 @@ enum class TextKey {
     GiftMailboxTitle, GiftMailboxSubtitle, GiftMailboxEntryDescription, GiftMailboxEmpty,
     GiftMailboxGuest, GiftClaim, GiftClaimAll, GiftClaiming, GiftClaimed,
     GiftExpired, GiftCancelled, GiftExpiresInHours, GiftExpiresInDays,
-    GiftGoldReward, GiftXpReward, GiftLoadMore, GiftRefresh,
+    GiftGoldReward, GiftXpReward, GiftLoadMore, GiftRefresh, GiftCompensationRound,
     GiftErrorInvalid, GiftErrorUnauthorized, GiftErrorForbidden, GiftErrorNotFound,
     GiftErrorConflict, GiftErrorStorage, GiftErrorNetwork, GiftErrorGeneric,
 
