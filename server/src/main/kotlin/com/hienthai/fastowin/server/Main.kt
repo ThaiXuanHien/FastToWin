@@ -3,6 +3,8 @@ package com.hienthai.fastowin.server
 import com.hienthai.fastowin.server.admin.AdminConfiguration
 import com.hienthai.fastowin.server.admin.AdminService
 import com.hienthai.fastowin.server.admin.InMemoryAdminRepository
+import com.hienthai.fastowin.server.announcements.AnnouncementService
+import com.hienthai.fastowin.server.announcements.AnnouncementPushDelivery
 import com.hienthai.fastowin.server.maintenance.*
 import io.ktor.server.engine.embeddedServer
 import io.ktor.server.netty.Netty
@@ -97,6 +99,11 @@ fun main() {
                 seasonLifecycleRepository = seasonLifecycleRepository,
                 pushReminderService = pushReminderService,
                 adminService = adminService,
+                announcementService = AnnouncementService(notificationRepository.announcements, adminService,
+                    pushConfigured = { pushNotificationService.announcementConfigured }),
+                announcementPushDelivery = database?.let {
+                    AnnouncementPushDelivery(notificationRepository.announcements, pushNotificationService)
+                },
                 analyticsService = adminService?.let { com.hienthai.fastowin.server.analytics.AnalyticsService(
                     database?.analyticsRepository ?: com.hienthai.fastowin.server.analytics.UnavailableAnalyticsRepository, it) },
                 financialSyncService = financialSync,

@@ -16,7 +16,8 @@ internal fun validateTransition(previous: AnnouncementDefinition?, next: Announc
         next.endsAtEpochMillis !in 0..253402300799999L || next.startsAtEpochMillis >= next.endsAtEpochMillis) invalid()
     if ((next.action in setOf(AdminAnnouncementAction.REWARD_EVENT, AdminAnnouncementAction.GIFT_MAILBOX)) != (next.targetId != null)) invalid()
     if (next.audience == AnnouncementAudience.ALL_REGISTERED && next.selectedUserIds.isNotEmpty()) invalid()
-    if (next.audience == AnnouncementAudience.USER_IDS && (next.selectedUserIds.size !in 1..10000 || next.selectedUserIds.distinct().size != next.selectedUserIds.size)) invalid()
+    if (next.audience == AnnouncementAudience.USER_IDS && (next.selectedUserIds.size !in 1..10000 ||
+        (next.status != AnnouncementStatus.DRAFT && next.selectedUserIds.distinct().size != next.selectedUserIds.size))) invalid()
     if (previous == null) {
         if (next.version != 1 || next.status == AnnouncementStatus.CANCELLED) conflict()
         return

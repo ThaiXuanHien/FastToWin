@@ -21,13 +21,17 @@ class InMemoryAdminRepository : AdminRepository {
         val users: MutableMap<String, UserDetail> = linkedMapOf(),
         val matches: MutableMap<String, List<MatchEntry>> = linkedMapOf(),
         val wallet: MutableMap<String, List<WalletEntry>> = linkedMapOf(),
+        val announcementPush: MutableMap<String, Pair<String, String>> = linkedMapOf(),
         var playerStorageAvailable: Boolean = false
     ) {
         fun snapshot() = State(accounts.toMutableMap(), sessions.toMutableMap(), requests.toMutableMap(), audits.toMutableList(),
-            users.toMutableMap(), matches.toMutableMap(), wallet.toMutableMap(), playerStorageAvailable)
+            users.toMutableMap(), matches.toMutableMap(), wallet.toMutableMap(), announcementPush.toMutableMap(), playerStorageAvailable)
     }
     suspend fun seedUser(user: UserDetail, matches: List<MatchEntry> = emptyList(), wallet: List<WalletEntry> = emptyList()) = mutex.withLock {
         state.playerStorageAvailable = true; state.users[user.id] = user; state.matches[user.id] = matches; state.wallet[user.id] = wallet
+    }
+    suspend fun seedAnnouncementPushTarget(userId: String, token: String, language: String = "en") = mutex.withLock {
+        state.announcementPush[userId] = language to token
     }
     override suspend fun <T> transaction(block: AdminTransaction.() -> T): T = coordinatedTransaction({}, block)
 
@@ -36,7 +40,8 @@ class InMemoryAdminRepository : AdminRepository {
         val job = currentCoroutineContext()[Job]
         return mutex.withLock {
         val next = state.snapshot()
-        val tx = object : AdminTransaction, GiftMemoryPlayers {
+        val tx = object : AdminTransaction, GiftMemoryPlayers, com.hienthai.fastowin.server.announcements.AnnouncementMemoryPushTargets {
+            override fun announcementPushTarget(userId: String): Pair<String, String>? = next.announcementPush[userId]
             override fun giftPlayers(): List<GiftPlayer> {
                 available()
                 return next.users.values.filter { it.accountType == "REGISTERED" && it.status != "DELETED" }.map { GiftPlayer(it.id,it.createdAtEpochMillis) }

@@ -5,6 +5,10 @@ import com.hienthai.fastowin.server.InMemoryNotificationRepository
 import com.hienthai.fastowin.server.admin.AdminTransaction
 import com.hienthai.fastowin.server.admin.InMemoryAdminRepository
 
+internal interface AnnouncementMemoryPushTargets {
+    fun announcementPushTarget(userId: String): Pair<String, String>?
+}
+
 /** Lock order: notification mutex, then admin mutex. All three copied states publish under both locks. */
 class InMemoryAnnouncementRepository internal constructor(
     private val owner: InMemoryNotificationRepository,
@@ -61,7 +65,7 @@ class InMemoryAnnouncementRepository internal constructor(
                 object : AnnouncementTransaction {
                     override val admin: AdminTransaction = adminTransaction
                     override val notifications: NotificationPersistence = persistence
-                    override fun definition(id: String) = next.definitions[id]
+                    override fun definition(id: String, lock: Boolean) = next.definitions[id]
                     override fun putDefinition(value: AnnouncementDefinition) {
                         val previous = next.definitions[value.id]
                         validateTransition(previous, value)
@@ -83,6 +87,13 @@ class InMemoryAnnouncementRepository internal constructor(
                         return all.filter { it.accountType == "REGISTERED" && it.status != "DELETED" }
                             .map { AnnouncementPlayer(it.id, "en") }
                     }
+                    override fun currentPlayer(userId: String): AnnouncementPlayer? =
+                        adminTransaction.user(userId)?.takeIf { it.accountType == "REGISTERED" && it.status != "DELETED" }
+                            ?.let {
+                                val target = (adminTransaction as AnnouncementMemoryPushTargets).announcementPushTarget(userId)
+                                AnnouncementPlayer(it.id, target?.first ?: "en", target?.second)
+                            }
+                    override fun publishedTarget(action: com.hienthai.fastowin.protocol.AdminAnnouncementAction, targetId: String): Boolean = false
                     override fun recipient(announcementId: String, userId: String) = next.recipients[announcementId to userId]
                     override fun recipients(announcementId: String, limit: Int, offset: Int) = next.recipients.values
                         .filter { it.announcementId == announcementId }.sortedBy { it.userId }.drop(offset).take(limit)

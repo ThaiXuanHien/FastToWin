@@ -58,3 +58,41 @@ For player history, use `load(..., includeDismissed=true, announcementOnly=true)
 `AnnouncementReplay(actorId,requestId,fingerprint,responseType,responseJson)` has its own actor/request namespace and unique key. The service must serialize only a safe immutable typed result into `responseJson`. `AnnouncementPreference(userId,version,adminEnabled,eventEnabled)` defaults to version 1 and both consents false. It lives in a separate table; the old four-category `UpdatePushPreferences` cannot overwrite it. Same-value/version retries are idempotent; a different value requires the next version. `AnnouncementPushAttempt(announcementId,userId,attemptId,outcome,claimedAtEpochMillis,settledAtEpochMillis)` allows one committed attempt identity per recipient. Only an `ATTEMPTING` fact can settle; repeating the identical settled fact is idempotent. The caller owns the 20-second external deadline, 120-second stale-to-`UNKNOWN` recovery, conditional completion, no automatic resend, and atomic system audit for unknown outcomes.
 
 V58 only adds schema and widens stored notification fallback title/message to 160/4000; the legacy client sync still enforces 120/300. Materialize a recipient checkpoint, the `user_notifications` row, replay and audit in a single `announcements.transaction` block. A thrown error, SQL failure, or cancellation rolls back the JDBC connection or copied memory state. Keep provider calls outside transactions and after durable in-app materialization.
+
+## Task 2 HTTP and delivery contract
+
+All announcement HTTP responses send `Cache-Control: no-store` and `X-Content-Type-Options: nosniff`. The early application setup hook applies no-store before CORS. With admin disabled, every `/admin/api/announcements` path, including preflight, returns 404. Request JSON is strict UTF-8, disallows unknown keys, and is bounded to 32,768 bytes. Errors are `{code,message}` with safe 400/401/403/404/409/503 status as applicable. `page` is zero based, `pageSize` defaults to 25 and is bounded to 1..100.
+
+Admin routes require the `fasttowin_admin` cookie and current admin session. Mutations also require exact configured Origin and `X-Admin-CSRF`. Owner and Operator can create/update/preview drafts; only Owner can publish/cancel; Support can list/detail/capabilities. Each mutation rechecks current role and credentials inside the advisory-locked transaction before replay. No admin announcement routes are mounted when admin is off.
+
+| Method/path | Request | Response |
+| --- | --- | --- |
+| `GET /admin/api/announcements?page=&pageSize=&status=` | Optional `status=DRAFT\|PUBLISHED\|CANCELLED` | `AnnouncementAdminPage` |
+| `POST /admin/api/announcements` | `AnnouncementDraftRequest` | `AnnouncementAdminView`, HTTP 201 |
+| `GET /admin/api/announcements/capabilities` | — | `AnnouncementCapabilities` |
+| `GET /admin/api/announcements/{id}` | — | `AnnouncementAdminView` |
+| `PUT /admin/api/announcements/{id}` | `AnnouncementDraftRequest` with `expectedVersion` | `AnnouncementAdminView` |
+| `POST /admin/api/announcements/{id}/preview` | Empty body | `AnnouncementPreview` |
+| `POST /admin/api/announcements/{id}/publish` | `AnnouncementMutationRequest` with `previewToken` | `AnnouncementAdminView` |
+| `POST /admin/api/announcements/{id}/cancel` | `AnnouncementMutationRequest` without `previewToken` | `AnnouncementAdminView` |
+
+`AnnouncementDraftRequest` has `titleVi,titleEn,bodyVi,bodyEn,category,priority,startsAtEpochMillis,endsAtEpochMillis,showBanner,pushEnabled,action,targetId,supersedesAnnouncementId,audience,selectedUserIds,expectedVersion,requestId,reason`. For create, omit nullable `expectedVersion`; for update, supply the current positive version. Boolean channels default false and in-app is always on. `AnnouncementMutationRequest` has `expectedVersion,requestId,reason,previewToken?`. `AnnouncementAdminView` is `{announcement,counts,serverNowEpochMillis}`; its announcement is the admin-only stored definition. `AnnouncementCounts` has decimal strings `frozen,stored,read,dismissed,bannerHidden,skipped,pushAccepted,pushFailed,pushUnknown,pushInFlight,pushDisabled,pushOptedOut,pushNoToken,pushUnavailable,pushExpired`. `AnnouncementAdminPage` adds `items,page,pageSize,total` with `total` a decimal string. `AnnouncementPreview` has `announcement,recipientCount,duplicateCount,invalidUserIds,previewToken,pushConfigured,pushReminderBodyLimit=240,serverNowEpochMillis`. `AnnouncementCapabilities` has `pushConfigured,serverNowEpochMillis`. Draft USER_IDS may retain duplicate canonical UUIDs (bounded to 10,000); preview reports them and binds the sorted draft plus deduplicated verified recipient IDs. Publication freezes each selected ID once and stores a unique list. Missing/guest/deleted IDs block publication, as do an ended interval or changed audience/token.
+
+Player routes require a current Bearer access token and a registered nondeleted account; guest/deleted accounts have no announcement authority. They never expose internal definition, audience, reason, token, provider, or audit facts.
+
+| Method/path | Response |
+| --- | --- |
+| `GET /api/announcements?page=&pageSize=` | `AnnouncementPlayerPage` including dismissed history and exact decimal `total` |
+| `GET /api/announcements/{id}` | `AnnouncementPlayerItem` only for a stored recipient notification |
+| `GET /api/announcements/banners` | `AnnouncementBanners`, at most one active unhidden item |
+| `POST /api/announcements/{id}/read`, `POST /api/announcements/read-all` | `AnnouncementMutationResult` |
+| `POST /api/announcements/{id}/dismiss`, `POST /api/announcements/dismiss-all` | `AnnouncementMutationResult` |
+| `POST /api/announcements/{id}/hide-banner` | `AnnouncementMutationResult` |
+| `GET /api/announcements/push-preferences` | `AnnouncementPreferenceView` |
+| `PUT /api/announcements/push-preferences` | `AnnouncementPreferenceRequest` → `AnnouncementPreferenceView` |
+
+`AnnouncementPlayerItem` is `{notification,announcement,dismissed,bannerHidden}`. The `announcement` object is the public protocol context with derived `SCHEDULED/ACTIVE/EXPIRED/CANCELLED` state; the stored fallback notification keeps the old `COSMETIC/PROFILE` shape. `AnnouncementPlayerPage` is `{items,page,pageSize,total,serverNowEpochMillis}` and `AnnouncementBanners` is `{items,serverNowEpochMillis}`. `AnnouncementMutationResult` is `{affected,serverNowEpochMillis}` with `affected` a decimal string. `AnnouncementPreferenceRequest` is `{expectedVersion,adminEnabled,eventEnabled}` and the view is `{version,adminEnabled,eventEnabled,serverNowEpochMillis}`. Both consents default false, live separately from the legacy four preferences, and a same-value retry with the preceding version returns the saved view.
+
+`AnnouncementService.deliverDueBatch(limit=100)` materializes due published recipients in bounded checkpointed transactions. Late catch-up stores expired history without an active banner or push; cancellation stops pending delivery. `AnnouncementPushDelivery.deliverDueBatch(limit=100)` claims at most one attempt per stored recipient under announcement/current-account/recipient locks, then calls the provider outside the transaction with a 20-second deadline. `recoverStale(limit=100)` marks claims older than 120 seconds `UNKNOWN` with a system audit entry. Ambiguous/timeout/interrupted sends remain `UNKNOWN` and never auto-retry. The `PushNotificationService` announcement capability and raw bilingual method leave legacy localized social/reminder calls unchanged; reminder body is truncated safely to 240 UTF-16 units, while in-app copy remains full.
+
+The Task 2 store extension adds `definition(id,lock=false)`, `currentPlayer(userId)`, and `publishedTarget(action,targetId)` to `AnnouncementTransaction`. `currentPlayer` reads current registered/nondeleted account language/token with a user row lock in PostgreSQL. `publishedTarget` checks published reward events and gift campaigns on the same JDBC connection. The memory test fixture can seed a current announcement token/language with `InMemoryAdminRepository.seedAnnouncementPushTarget`; this never configures a production provider.

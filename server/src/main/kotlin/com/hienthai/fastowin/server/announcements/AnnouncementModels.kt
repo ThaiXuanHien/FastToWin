@@ -92,7 +92,7 @@ import kotlinx.serialization.Serializable
     val settledAtEpochMillis: Long? = null
 )
 
-data class AnnouncementPlayer(val userId: String, val notificationLanguage: String)
+data class AnnouncementPlayer(val userId: String, val notificationLanguage: String, val fcmToken: String? = null)
 
 data class AnnouncementRecipientCounts(
     val frozen: Long, val stored: Long, val read: Long, val dismissed: Long,

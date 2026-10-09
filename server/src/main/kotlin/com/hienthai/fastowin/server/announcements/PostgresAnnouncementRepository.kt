@@ -55,8 +55,8 @@ internal class JdbcAnnouncementTransaction(private val connection: Connection) :
         statement.executeUpdate()
     }
 
-    override fun definition(id: String): AnnouncementDefinition? = rows(
-        "SELECT payload FROM admin_announcements WHERE id=?", UUID.fromString(id)
+    override fun definition(id: String, lock: Boolean): AnnouncementDefinition? = rows(
+        "SELECT payload FROM admin_announcements WHERE id=? ${if (lock) "FOR UPDATE" else ""}", UUID.fromString(id)
     ) { Json.decodeFromString<AnnouncementDefinition>(it.getString(1)) }.singleOrNull()
 
     override fun putDefinition(value: AnnouncementDefinition) {
@@ -90,9 +90,24 @@ internal class JdbcAnnouncementTransaction(private val connection: Connection) :
     else rows("SELECT count(*) FROM admin_announcements WHERE status=?", status.name) { it.getLong(1) }.single()
 
     override fun registeredPlayers(): List<AnnouncementPlayer> = rows(
-        """SELECT id,notification_language FROM users
+        """SELECT id,notification_language,fcm_token FROM users
            WHERE account_type='REGISTERED' AND status<>'DELETED' ORDER BY id"""
-    ) { AnnouncementPlayer(it.getString(1), it.getString(2)) }
+    ) { AnnouncementPlayer(it.getString(1), it.getString(2), it.getString(3)) }
+
+    override fun currentPlayer(userId: String): AnnouncementPlayer? = rows(
+        """SELECT id,notification_language,fcm_token FROM users
+           WHERE id=? AND account_type='REGISTERED' AND status<>'DELETED' FOR UPDATE""", UUID.fromString(userId)
+    ) { AnnouncementPlayer(it.getString(1), it.getString(2), it.getString(3)) }.singleOrNull()
+
+    override fun publishedTarget(action: com.hienthai.fastowin.protocol.AdminAnnouncementAction, targetId: String): Boolean = when (action) {
+        com.hienthai.fastowin.protocol.AdminAnnouncementAction.REWARD_EVENT -> rows(
+            "SELECT 1 FROM reward_events WHERE id=? AND payload::jsonb->>'publishedAtEpochMillis' IS NOT NULL AND COALESCE((payload::jsonb->>'cancelled')::boolean,false)=false",
+            UUID.fromString(targetId)) { it.getInt(1) }.isNotEmpty()
+        com.hienthai.fastowin.protocol.AdminAnnouncementAction.GIFT_MAILBOX -> rows(
+            "SELECT 1 FROM admin_gift_campaigns WHERE id=? AND state='PUBLISHED'",
+            UUID.fromString(targetId)) { it.getInt(1) }.isNotEmpty()
+        else -> false
+    }
 
     override fun recipient(announcementId: String, userId: String): AnnouncementRecipient? = rows(
         "SELECT payload FROM admin_announcement_recipients WHERE announcement_id=? AND user_id=?",
@@ -188,8 +203,15 @@ internal class JdbcAnnouncementTransaction(private val connection: Connection) :
 
     override fun putPushAttempt(value: AnnouncementPushAttempt) {
         lockAnnouncement(value.announcementId)
-        if (recipient(value.announcementId, value.userId) == null) conflict()
-        val existing = pushAttempt(value.announcementId, value.userId)
+        val recipient = rows(
+            "SELECT 1 FROM admin_announcement_recipients WHERE announcement_id=? AND user_id=? FOR UPDATE",
+            UUID.fromString(value.announcementId), UUID.fromString(value.userId)
+        ) { it.getInt(1) }
+        if (recipient.isEmpty()) conflict()
+        val existing = rows(
+            "SELECT payload FROM admin_announcement_push_attempts WHERE announcement_id=? AND user_id=? FOR UPDATE",
+            UUID.fromString(value.announcementId), UUID.fromString(value.userId)
+        ) { Json.decodeFromString<AnnouncementPushAttempt>(it.getString(1)) }.singleOrNull()
         if (existing == value) return
         if (existing != null && (existing.attemptId != value.attemptId ||
                 existing.outcome != AnnouncementPushOutcome.ATTEMPTING ||

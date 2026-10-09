@@ -2,6 +2,7 @@ package com.hienthai.fastowin.server.announcements
 
 import com.hienthai.fastowin.server.admin.AdminTransaction
 import com.hienthai.fastowin.server.admin.unavailable
+import com.hienthai.fastowin.protocol.AdminAnnouncementAction
 
 interface AnnouncementRepository {
     suspend fun <T> transaction(admin: Boolean = false, block: AnnouncementTransaction.() -> T): T
@@ -10,11 +11,15 @@ interface AnnouncementRepository {
 interface AnnouncementTransaction {
     val admin: AdminTransaction
     val notifications: NotificationPersistence
-    fun definition(id: String): AnnouncementDefinition?
+    fun definition(id: String, lock: Boolean = false): AnnouncementDefinition?
     fun putDefinition(value: AnnouncementDefinition)
     fun definitions(status: AnnouncementStatus?, limit: Int, offset: Int): List<AnnouncementDefinition>
     fun definitionCount(status: AnnouncementStatus?): Long
     fun registeredPlayers(): List<AnnouncementPlayer>
+    /** Current registered account and token under the caller's transaction, for delivery/claim decisions. */
+    fun currentPlayer(userId: String): AnnouncementPlayer?
+    /** Validates an internal published action target without calling another repository. */
+    fun publishedTarget(action: AdminAnnouncementAction, targetId: String): Boolean
     fun recipient(announcementId: String, userId: String): AnnouncementRecipient?
     fun recipients(announcementId: String, limit: Int, offset: Int): List<AnnouncementRecipient>
     fun recipientCounts(announcementId: String): AnnouncementRecipientCounts

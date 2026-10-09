@@ -7,6 +7,10 @@ import com.hienthai.fastowin.server.maintenance.*
 import com.hienthai.fastowin.server.admin.AdminService
 import com.hienthai.fastowin.server.admin.adminRoutes
 import com.hienthai.fastowin.server.admin.adminAssets
+import com.hienthai.fastowin.server.announcements.AnnouncementService
+import com.hienthai.fastowin.server.announcements.AnnouncementPushDelivery
+import com.hienthai.fastowin.server.announcements.UnavailableAnnouncementRepository
+import com.hienthai.fastowin.server.announcements.announcementRoutes
 import com.hienthai.fastowin.server.analytics.analyticsRoutes
 import com.hienthai.fastowin.protocol.ClientMessage
 import com.hienthai.fastowin.protocol.AuthErrorResponse
@@ -95,6 +99,8 @@ fun Application.gameModule(
     websocketPingPeriod: Duration = DEFAULT_WEBSOCKET_PING_PERIOD,
     websocketPongTimeout: Duration = DEFAULT_WEBSOCKET_PONG_TIMEOUT,
     adminService: AdminService? = null,
+    announcementService: AnnouncementService = AnnouncementService(UnavailableAnnouncementRepository, adminService),
+    announcementPushDelivery: AnnouncementPushDelivery? = null,
     giftService: GiftService = GiftService(UnavailableGiftRepository, adminService, newIntentAllowed = engine::newIntentAllowed),
     giftDeliveryEnabled: Boolean = false,
     maintenanceService: MaintenanceService? = null,
@@ -128,10 +134,16 @@ fun Application.gameModule(
     // CORS can reject before routing, so incident/event errors/preflights must receive the same no-store policy.
     intercept(io.ktor.server.application.ApplicationCallPipeline.Setup) {
         val path = call.request.path()
-        if (path == "/api/events" || path.startsWith("/api/events/") ||
+        if (path == "/api/announcements" || path.startsWith("/api/announcements/") ||
+            path == "/admin/api/announcements" || path.startsWith("/admin/api/announcements/") ||
+            path == "/api/events" || path.startsWith("/api/events/") ||
             path == "/admin/api/events" || path.startsWith("/admin/api/events/") ||
             path == "/admin/api/incidents" || path.startsWith("/admin/api/incidents/")) {
             call.response.header(HttpHeaders.CacheControl, "no-store")
+        }
+        if (adminService == null && (path == "/admin/api/announcements" || path.startsWith("/admin/api/announcements/"))) {
+            call.respond(HttpStatusCode.NotFound)
+            finish()
         }
     }
     if (trustProxyHeaders) {
@@ -176,8 +188,21 @@ fun Application.gameModule(
     if (adminService != null) compensationIncidentService?.let { service -> routing { compensationIncidentRoutes(service) } }
     if (adminService != null) compensationRoundService?.let { service -> routing { compensationRoundRoutes(service) } }
     routing { rewardEventRoutes(rewardEventService, adminService != null) }
+    routing { announcementRoutes(announcementService, authService, adminService != null) }
     if (adminService != null) maintenanceService?.let { service -> routing { maintenanceRoutes(service) } }
     if (giftDeliveryEnabled) startGiftDelivery(giftService)
+
+    announcementPushDelivery?.let { delivery -> launch {
+        while (isActive) {
+            try {
+                announcementService.deliverDueBatch()
+                delivery.recoverStale()
+                delivery.deliverDueBatch()
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (_: Exception) { System.err.println("Announcement delivery unavailable") }
+            delay(5_000)
+        }
+    } }
 
     val connections = ConcurrentHashMap<String, SocketConnection>()
 

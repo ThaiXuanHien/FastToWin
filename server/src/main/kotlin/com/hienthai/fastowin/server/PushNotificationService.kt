@@ -35,7 +35,14 @@ interface PushNotificationService {
         content: LocalizedPushContent,
         destinationPath: String = "/notifications"
     ): PushDeliveryStatus
+    val announcementConfigured: Boolean get() = false
+    suspend fun sendAnnouncement(
+        fcmToken: String, languageTag: String, titleVi: String, titleEn: String,
+        bodyVi: String, bodyEn: String, destinationPath: String = "/notifications"
+    ): AnnouncementPushStatus = AnnouncementPushStatus.UNKNOWN
 }
+
+enum class AnnouncementPushStatus { ACCEPTED, FAILED, UNKNOWN }
 
 data class LocalizedPushContent(
     val titleKey: TextKey,
@@ -87,6 +94,39 @@ object NoOpPushNotificationService : PushNotificationService {
 class FirebasePushNotificationService(
     private val webBaseUrl: String? = configuredWebBaseUrl()
 ) : PushNotificationService {
+    override val announcementConfigured: Boolean get() = FirebaseApp.getApps().isNotEmpty()
+
+    override suspend fun sendAnnouncement(
+        fcmToken: String, languageTag: String, titleVi: String, titleEn: String,
+        bodyVi: String, bodyEn: String, destinationPath: String
+    ): AnnouncementPushStatus {
+        if (!announcementConfigured || fcmToken.isBlank()) return AnnouncementPushStatus.FAILED
+        val vietnamese = languageTag.lowercase().startsWith("vi")
+        val rendered = RenderedPushNotification(
+            if (vietnamese) titleVi else titleEn,
+            if (vietnamese) bodyVi else bodyEn,
+            if (vietnamese) "vi" else "en"
+        )
+        return withContext(Dispatchers.IO) {
+            try {
+                val destination = normalizePushDestination(destinationPath)
+                val message = Message.builder().setToken(fcmToken)
+                    .setNotification(Notification.builder().setTitle(rendered.title).setBody(rendered.body).build())
+                    .putData("destination", destination)
+                    .setApnsConfig(ApnsConfig.builder().putHeader("apns-priority", "10")
+                        .setAps(Aps.builder().setSound("default").build()).build())
+                    .apply { webPushConfig(rendered, destination)?.let { setWebpushConfig(it) } }
+                    .build()
+                FirebaseMessaging.getInstance().send(message)
+                AnnouncementPushStatus.ACCEPTED
+            } catch (error: FirebaseMessagingException) {
+                when (error.messagingErrorCode) {
+                    MessagingErrorCode.UNREGISTERED, MessagingErrorCode.INVALID_ARGUMENT -> AnnouncementPushStatus.FAILED
+                    else -> AnnouncementPushStatus.UNKNOWN
+                }
+            } catch (_: Exception) { AnnouncementPushStatus.UNKNOWN }
+        }
+    }
     init {
         if (FirebaseApp.getApps().isEmpty()) {
             runCatching {
