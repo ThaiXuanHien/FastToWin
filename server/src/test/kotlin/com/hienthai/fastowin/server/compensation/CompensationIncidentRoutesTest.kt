@@ -13,6 +13,22 @@ import kotlinx.serialization.json.Json
 import kotlin.test.*
 
 class CompensationIncidentRoutesTest {
+    @Test fun `incident CORS rejected and accepted preflight have early no store`() = testApplication {
+        val f = MemoryGiftFixture(); runBlocking { f.initialize() }
+        application { gameModule(adminService = f.admin, giftService = f.gifts) }
+        for (path in listOf("/admin/api/incidents", "/admin/api/incidents/example/rounds")) {
+            val rejected = client.get(path) { header(HttpHeaders.Origin, "https://evil.test") }
+            assertEquals(HttpStatusCode.Forbidden, rejected.status)
+            assertEquals("no-store", rejected.headers[HttpHeaders.CacheControl])
+            val preflight = client.options(path) {
+                header(HttpHeaders.Origin, f.owner.origin!!)
+                header(HttpHeaders.AccessControlRequestMethod, "POST")
+                header(HttpHeaders.AccessControlRequestHeaders, "Content-Type,X-Admin-CSRF")
+            }
+            assertEquals(HttpStatusCode.OK, preflight.status)
+            assertEquals("no-store", preflight.headers[HttpHeaders.CacheControl])
+        }
+    }
     private suspend fun request(f: MemoryGiftFixture) = CompensationIncidentRequest("outage_1", "Sự cố", "Outage", "An toàn", "Safe", 0, 10,
         "PRIVATE_CAUSE", "PRIVATE_EVIDENCE", f.admin.session(f.owner.token).admin.id, "incident-create", "Fixture")
     private fun HttpRequestBuilder.context(f: MemoryGiftFixture) {

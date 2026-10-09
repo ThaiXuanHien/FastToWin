@@ -22,7 +22,7 @@ class GiftService(val repository: GiftRepository, private val admins: AdminServi
     }
     private fun GiftTransaction.audit(actor: String, action: String, id: String? = null, request: String? = null, reason: String? = null) =
         admin.appendAudit(AuditEntry(UUID.randomUUID().toString(), actor, action, id, request, reason, null, null, nowMillis()))
-    private fun GiftTransaction.detail(c: GiftCampaign) = GiftCampaignDetail(c, counters(c, nowMillis()))
+    private fun GiftTransaction.detail(c: GiftCampaign) = GiftCampaignOperations.detail(this, c, nowMillis())
     suspend fun list(context: GiftAdminContext, page: PageRequest): AdminPage<GiftCampaignDetail> = repository.transaction(true) {
         val actor = authorize(context); val result = campaigns(page)
         audit(actor.id, "GIFT_LIST")
@@ -51,24 +51,8 @@ class GiftService(val repository: GiftRepository, private val admins: AdminServi
         putCampaign(updated); audit(actor.id, "GIFT_UPDATE", id, request.requestId, request.reason)
         save(actor.id, request.requestId, fp, detail(updated))
     }
-    private data class Audience(val users: List<String>, val invalid: List<String>, val duplicates: Int)
-    private fun GiftTransaction.audience(c: GiftCampaign): Audience {
-        val draft = c.draft
-        val registered = registeredPlayers()
-        val ids = registered.map { it.id }.toSet()
-        val requested = draft.userIds.distinct()
-        val selected = when (draft.audience) {
-            GiftAudience.ALL_REGISTERED -> ids.toList()
-            GiftAudience.USER_IDS -> requested.filter { it in ids }
-            GiftAudience.REGISTERED_BETWEEN -> registered.filter { it.registeredAt >= draft.registeredFromEpochMillis!! && it.registeredAt < draft.registeredUntilEpochMillis!! }.map { it.id }
-        }.sorted()
-        return Audience(selected, if (draft.audience == GiftAudience.USER_IDS) requested.filter { it !in ids }.sorted() else emptyList(), draft.userIds.size - requested.size)
-    }
-    private fun preview(c: GiftCampaign, a: Audience): GiftPreview {
-        val token = hashToken(Json.encodeToString(c) + "|" + a.users.joinToString(",") + "|" + a.invalid.joinToString(","))
-        return GiftPreview(c.id, c.version, a.users.size.toLong(), a.duplicates, a.invalid,
-            Math.multiplyExact(c.draft.gold.toLong(), a.users.size.toLong()), Math.multiplyExact(c.draft.xp.toLong(), a.users.size.toLong()), token)
-    }
+    private fun GiftTransaction.audience(c: GiftCampaign) = GiftCampaignOperations.audience(this, c)
+    private fun preview(c: GiftCampaign, a: GiftCampaignOperations.Audience) = GiftCampaignOperations.preview(c, a)
     suspend fun preview(context: GiftAdminContext, id: String, request: GiftPreviewRequest): GiftPreview = repository.transaction(true) {
         val actor = authorize(context, true); uuid(id); val c = ordinaryCampaign(id, true)
         if (c.state != CampaignState.DRAFT || c.version != request.expectedVersion) conflict()
@@ -152,22 +136,7 @@ class GiftService(val repository: GiftRepository, private val admins: AdminServi
             catch (error: AdminException) { GiftClaimItem(id, error = GiftError(error.code, error.message)) }
         })
     }
-    private fun validated(request: GiftDraftRequest): GiftDraftRequest {
-        if (request.titleVi.isBlank() || request.titleEn.isBlank() || request.titleVi.length > 160 || request.titleEn.length > 160 ||
-            request.bodyVi.isBlank() || request.bodyEn.isBlank() || request.bodyVi.length > 4000 || request.bodyEn.length > 4000 ||
-            request.gold < 0 || request.xp < 0 || (request.gold == 0 && request.xp == 0) || request.userIds.size > 10000) invalid()
-        val expiry = try { request.expiresAtEpochMillis ?: Math.addExact(request.availableAtEpochMillis, 30L * 24 * 60 * 60 * 1000) } catch (_: ArithmeticException) { invalid() }
-        if (request.availableAtEpochMillis < 0 || expiry <= request.availableAtEpochMillis || expiry > 253402300799999L) invalid()
-        if (request.audience == GiftAudience.USER_IDS) {
-            if (request.userIds.isEmpty()) invalid()
-            request.userIds.forEach(::uuid)
-        } else if (request.userIds.isNotEmpty()) invalid()
-        if (request.audience == GiftAudience.REGISTERED_BETWEEN) {
-            val from = request.registeredFromEpochMillis ?: invalid(); val until = request.registeredUntilEpochMillis ?: invalid()
-            if (from < 0 || until <= from) invalid()
-        } else if (request.registeredFromEpochMillis != null || request.registeredUntilEpochMillis != null) invalid()
-        return request.copy(expiresAtEpochMillis = expiry, userIds = request.userIds.map { it.lowercase() })
-    }
+    private fun validated(request: GiftDraftRequest) = GiftCampaignOperations.validate(request)
     private fun mutation(reason: String, request: String) {
         if (reason.isBlank() || reason.length > 500 || reason.any(Char::isISOControl) || !request.matches(Regex("[A-Za-z0-9_-]{1,128}"))) invalid()
     }

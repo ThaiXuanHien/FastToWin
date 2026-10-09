@@ -104,7 +104,8 @@ fun Application.gameModule(
         com.hienthai.fastowin.server.analytics.AnalyticsService(com.hienthai.fastowin.server.analytics.UnavailableAnalyticsRepository, it)
     },
     rewardEventService: RewardEventService = RewardEventService(UnavailableRewardEventRepository, adminService),
-    compensationIncidentService: CompensationIncidentService? = adminService?.let { CompensationIncidentService(giftService.repository, it) }
+    compensationIncidentService: CompensationIncidentService? = adminService?.let { CompensationIncidentService(giftService.repository, it) },
+    compensationRoundService: CompensationRoundService? = adminService?.let { CompensationRoundService(giftService.repository, it) }
 ) {
     // The first policy and restored aborts must be applied before any handler/timer can serve game.
     runBlocking { maintenanceRuntime.refresh() }
@@ -124,11 +125,12 @@ fun Application.gameModule(
     )
     val webSessionCookies = WebSessionCookieConfiguration(isProduction)
     val metrics = ServerMetrics()
-    // CORS can reject before routing, so event errors/preflights must receive the same no-store policy.
+    // CORS can reject before routing, so incident/event errors/preflights must receive the same no-store policy.
     intercept(io.ktor.server.application.ApplicationCallPipeline.Setup) {
         val path = call.request.path()
         if (path == "/api/events" || path.startsWith("/api/events/") ||
-            path == "/admin/api/events" || path.startsWith("/admin/api/events/")) {
+            path == "/admin/api/events" || path.startsWith("/admin/api/events/") ||
+            path == "/admin/api/incidents" || path.startsWith("/admin/api/incidents/")) {
             call.response.header(HttpHeaders.CacheControl, "no-store")
         }
     }
@@ -172,6 +174,7 @@ fun Application.gameModule(
     routing { storePurchaseRoutes(engine.storePurchaseService, authService, rateLimiter, rateLimitPolicies) }
     routing { giftRoutes(giftService, authService, adminService != null) }
     if (adminService != null) compensationIncidentService?.let { service -> routing { compensationIncidentRoutes(service) } }
+    if (adminService != null) compensationRoundService?.let { service -> routing { compensationRoundRoutes(service) } }
     routing { rewardEventRoutes(rewardEventService, adminService != null) }
     if (adminService != null) maintenanceService?.let { service -> routing { maintenanceRoutes(service) } }
     if (giftDeliveryEnabled) startGiftDelivery(giftService)

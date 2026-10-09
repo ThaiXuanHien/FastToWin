@@ -1,6 +1,6 @@
-# Compensation foundation (Issue 20, Task 1)
+# Compensation incidents and rounds (Issue 20, Tasks 1–2)
 
-This delivery implements incidents, source capabilities, the transaction-bound store, and the shared player claim/delivery foundation. Production round creation, preview, publication, cancellation and reporting belong to Task 2. The fixture round campaigns in tests do not expose that authority through HTTP.
+This delivery implements incidents, source capabilities, the transaction-bound store, round creation/preview/publication/cancellation/reporting, and the shared player claim/delivery foundation. Player presentation and the admin UI consume these contracts in later tasks.
 
 ## Incident HTTP contract
 
@@ -83,6 +83,108 @@ Wallet source derives from persisted campaign context only: null → `ADMIN_GIFT
 
 Migration V57 is additive after V56. It adds indexed campaign source with legacy ADMIN_GIFT default, incident/round/replay tables and unique identities. Applied V47/V50 migrations are untouched. Repository writes derive the indexed source from persisted context. Real PG tests use only fresh UUID schemas and the existing isolated-schema cleanup policy.
 
-## Remaining authority
+## Round HTTP contract
 
-Task 2 owns all round operation HTTP request/response DTOs and must document them before client work. It also owns bilingual body generation including incident description, exact UTC interval and receiving reason, explicit supplemental rounds, publication recipient freezing, default expiry, ACTIVITY rejection, previous-claim preview binding and decimal-string report counters. Player label/rendering and admin UI remain later tasks. No provider, production compensation, push, deployment or GitHub change is part of this foundation.
+The same enabled-admin, cookie, current authorization, Origin, CSRF, strict JSON (512 KiB), no-store and safe error rules apply to round routes. Owner/Operator create/update/preview; Owner alone publishes/cancels; all authenticated admin roles read list/detail. Path IDs are canonical UUIDs (case-insensitive input). Every successful response is HTTP 200.
+
+| Method/path under `/admin/api/incidents/{incidentId}/rounds` | Request | Response |
+| --- | --- | --- |
+| GET base path, `?page=0&pageSize=25` | none | `CompensationPage<CompensationRoundDetail>` |
+| POST base path | `CompensationRoundRequest` (create) | `CompensationRoundDetail` |
+| GET `/{roundId}` | none | `CompensationRoundDetail` |
+| PUT `/{roundId}` | `CompensationRoundRequest` (update) | `CompensationRoundDetail` |
+| POST `/{roundId}/preview` | `CompensationRoundPreviewRequest` | `CompensationPreview` |
+| POST `/{roundId}/publish` | `CompensationRoundPublishRequest` | `CompensationRoundDetail` |
+| POST `/{roundId}/cancel` | `CompensationRoundCancelRequest` | `CompensationRoundDetail` |
+
+Lists use the incident pagination limits, decimal-string `total`, and descending round number. A round from another incident is 404. There is no delete endpoint. `roundId`, `campaign.id`, `round.campaignId` and the COMPENSATION wallet `source_id` are the same UUID.
+
+### Round definition requests
+
+`CompensationRoundRequest` has exactly the following properties. Nullable/default fields may be omitted; other fields are required. Counts of UTF-16 code units match Kotlin String length.
+
+| Property | Type/default | Meaning/validation |
+| --- | --- | --- |
+| `incidentVersion` | Int | Positive current incident version. |
+| `receivingReasonVi`, `receivingReasonEn` | String each | Player-safe nonblank explanation, each at most 1000. |
+| `gold`, `xp` | Int each | Per-recipient reward, each 0..2147483647, at least one positive. |
+| `availableAtEpochMillis` | Long | Nonnegative UTC availability; before expiry. |
+| `requestId` | String | `[A-Za-z0-9_-]{1,128}`, shared actor-scoped compensation replay namespace. |
+| `reason` | String | Internal nonblank audit reason, at most 500, no ISO controls. |
+| `audience` | CompensationAudience, `ALL_REGISTERED` | `ALL_REGISTERED` or `USER_IDS`; `ACTIVITY` returns 400 `ACTIVITY_SOURCE_UNAVAILABLE`. |
+| `userIds` | List<String>, `[]` | USER_IDS requires 1..10000 canonical UUID inputs; uppercase accepted and normalized lowercase. Other sources require empty. Duplicates remain in the definition for preview diagnostics. |
+| `expiresAtEpochMillis` | Long?, null | Null becomes availability + exactly 2592000000 ms (30 days); explicit/default expiry must be greater than availability and at most 253402300799999. |
+| `expectedNextRoundNumber` | Int?, null | Create requires exactly current maximum + 1. Update requires absent/null. |
+| `supplementalReason` | String?, null | Round 1 requires absent/null. Every round >1 requires nonblank internal reason, at most 500, no ISO controls. |
+| `expectedVersion` | Int?, null | Create requires absent/null. Update requires positive current campaign version. |
+
+Example create body:
+
+```json
+{
+  "incidentVersion": 1,
+  "receivingReasonVi": "Bạn nằm trong nhóm được đền bù cho sự cố này.",
+  "receivingReasonEn": "You are included in compensation for this incident.",
+  "gold": 100, "xp": 30, "availableAtEpochMillis": 1791417600000,
+  "requestId": "round1-create", "reason": "Prepare confirmed compensation",
+  "audience": "USER_IDS", "userIds": ["8e161351-1c86-46bc-b1cc-dff408658658"],
+  "expectedNextRoundNumber": 1
+}
+```
+
+Round 1 cannot be recreated with a new requestId. At most one draft exists per incident; publish or cancel it before an explicit supplemental round. Cancelled numbers remain used. No retry allocates a number. Supplemental rounds may intentionally award the same person again with a new round/source UUID.
+
+### Preview, publish and cancel requests
+
+These DTOs have exactly the properties listed; all are required:
+
+```kotlin
+CompensationRoundPreviewRequest(incidentVersion: Int, expectedVersion: Int, requestId: String, reason: String)
+CompensationRoundPublishRequest(incidentVersion: Int, expectedVersion: Int, previewToken: String, requestId: String, reason: String)
+CompensationRoundCancelRequest(incidentVersion: Int, expectedVersion: Int, requestId: String, reason: String)
+```
+
+Versions must be positive. `requestId`/`reason` use the definition rules. `previewToken` must be 64 lowercase hex characters. Preview/publish require a draft; cancel accepts draft or published. Successful update/publish/cancel increments campaign version; overflow is 409. Exact committed retries return the original typed response after current role/session/Origin/CSRF and request-shape checks, even after claims, edits or cancellation. Changed operation/target/body with the same actor/requestId is 409. Preview retries also retain their original token; use a new requestId to obtain a fresh preview.
+
+`CompensationPreview` has exactly:
+
+```kotlin
+incidentId: String
+incidentVersion: Int
+campaignId: String
+version: Int                     // current campaign version (publish expectedVersion)
+roundNumber: Int
+source: CompensationAudience     // ALL_REGISTERED or USER_IDS
+userIds: List<String>             // normalized explicit selection conditions, empty for ALL_REGISTERED
+sampleUserIds: List<String>       // at most 10 selected UUIDs, sorted
+invalidUserIds: List<String>      // sorted distinct missing/guest/deleted explicit UUIDs
+duplicateUserIds: List<String>    // sorted distinct explicit UUIDs occurring more than once
+duplicateCount: String           // extra input entries after distinct, not duplicateUserIds.size
+recipientCount: String
+totalGold: String
+totalXp: String
+previousClaimedUserCount: String
+previousClaimedEntitlementCount: String
+selectedPreviouslyClaimedUserCount: String
+previewToken: String
+```
+
+All counts/totals are decimal strings. `totalGold`/`totalXp` are selected count × per-recipient reward. Previous counts cover paid receipts of strictly earlier rounds of this incident; users are distinct, entitlements count each earlier paid round, selected overlap is distinct users among the current audience. Receipts survive account deletion. These are three facts from one query, not sums of per-round distinct users.
+
+ALL_REGISTERED selects current registered/nondeleted accounts, including banned accounts; USER_IDS verifies against the same set. The source and normalized `userIds` are the complete selection conditions; there are no activity/date/platform/version predicates. Invalid explicit IDs block publication with 400. Token binds the full incident and round/campaign definitions, versions, sorted selected/invalid IDs and the coherent prior paid summary. Changed incident, round, registered selection or previous claims yields 409 and requires a new preview. Publication freezes the selected entitlements atomically; later registrations receive nothing from that round.
+
+### Round detail and receipt report
+
+`CompensationRoundDetail` has exactly `incidentId: String`, `incidentKey: String`, `incidentVersion: Int`, `round: CompensationRound`, `campaign: GiftCampaign`, `report: CompensationReport`.
+
+`CompensationRound` has exactly `campaignId: String`, `incidentId: String`, `roundNumber: Int`, `supplementalReason: String?`, `receivingReasonVi: String`, `receivingReasonEn: String`, and default-null audit fields `createdByAdminId: String?`, `updatedByAdminId: String?`, `createdAtEpochMillis: Long?`, `updatedAtEpochMillis: Long?`, `publishedByAdminId: String?`, `cancelledByAdminId: String?`. Service-created mappings populate creation/editor fields, then publisher/canceller on those transitions. They remain admin-only.
+
+`GiftCampaign` has exactly `id: String`, `version: Int`, `state: CampaignState` (`DRAFT`, `PUBLISHED`, `CANCELLED`), `draft: GiftDraftRequest`, `createdAtEpochMillis: Long`, default-null `publishedAtEpochMillis: Long?`, `cancelledAtEpochMillis: Long?`, `cancellationReason: String?`, `compensation: CompensationMailboxContext?`. The nested `GiftDraftRequest` fields are `titleVi/titleEn/bodyVi/bodyEn/reason: String`, `gold/xp: Int`, `audience: GiftAudience` (default ALL_REGISTERED), `userIds: List<String>` (default []), `registeredFromEpochMillis/registeredUntilEpochMillis: Long?` (always null for compensation), `availableAtEpochMillis: Long`, `expiresAtEpochMillis: Long?` (normalized nonnull), `requestId: String`, `expectedVersion: Int?` (default null). Compensation uses only ALL_REGISTERED/USER_IDS in this nested audience. No client-provided public title/body/context/source is accepted by the round request.
+
+Draft projections reflect current editable incident copy. Publication freezes bilingual title/body, reasons, exact ISO-8601 UTC half-open interval, GOLD/XP, schedule and compensation context. Body includes the entire description (up to 4000) and receiving reason (up to 1000); only this server-generated envelope has a 5200 UTF-16 bound, while ordinary gifts remain bounded to 4000. Internal diagnostic/evidence, supplemental/audit reason and admin identity are excluded from the player projection. First publication permanently prevents incident edits, including after cancellation. Published campaign definition and original mutation replay responses remain immutable.
+
+`CompensationReport` has exactly nine String fields: `eligible`, `pending`, `delivered`, `claimed`, `expired`, `cancelled`, `skipped`, `claimedGold`, `claimedXp`. Each is a decimal string. Eligible is frozen entitlement count; pending/delivered/skipped use durable delivery checkpoints. Pending becomes zero on cancellation. Claimed counts paid receipts and actual paid totals are claimed × immutable per-recipient GOLD/XP. Expired counts delivered unclaimed entitlements after expiry unless cancelled; cancelled counts all unclaimed non-skipped entitlements after cancellation. Delivered includes claimed/expired/cancelled delivered entitlements, so counters overlap and must not be added as a partition. Delivery is not payout. A cancelled round never reclaims paid assets or deletes its receipts. Reading detail recomputes report from current receipts; a replay deliberately returns its original report snapshot.
+
+## Remaining presentation
+
+Player label/rendering and admin UI remain later tasks. No provider, production compensation, cash/refund/quota operation, push, deployment or GitHub change is part of this delivery.
