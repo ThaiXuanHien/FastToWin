@@ -17,7 +17,8 @@ fun Route.adminAssets() {
         "/admin/admin-gifts.js" to ("admin-gifts.js" to "application/javascript"),
         "/admin/admin-maintenance.js" to ("admin-maintenance.js" to "application/javascript"),
         "/admin/admin-analytics.js" to ("admin-analytics.js" to "application/javascript"),
-        "/admin/admin-events.js" to ("admin-events.js" to "application/javascript")
+        "/admin/admin-events.js" to ("admin-events.js" to "application/javascript"),
+        "/admin/admin-compensation.js" to ("admin-compensation.js" to "application/javascript")
     )
     assets.forEach { (path, asset) ->
         val bytes = requireNotNull(AdminService::class.java.getResourceAsStream("/admin/${asset.first}")) {

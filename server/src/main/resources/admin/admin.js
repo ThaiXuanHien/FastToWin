@@ -66,6 +66,7 @@ function icon(name) {
     gifts: 'M3 8h18v4H3ZM5 12v9h14v-9M12 8v13M12 8H7a3 3 0 1 1 3-3l2 3ZM12 8h5a3 3 0 1 0-3-3l-2 3Z',
     maintenance: 'M4 4h16v6H4ZM4 14h16v6H4ZM7 7h1M7 17h1M12 7h5M12 17h5',
     events: 'M5 5h14v16H5ZM8 2v6M16 2v6M5 10h14M9 15h6M12 12v6',
+    compensation: 'M12 3 3 7v6c0 5 9 9 9 9s9-4 9-9V7l-9-4ZM8 12l3 3 5-6',
     coin: 'M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0ZM12 7v10M15 9h-4a2 2 0 0 0 0 4h2a2 2 0 0 1 0 4H9',
     star: 'm12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2-5.6-3-5.6 3 1.1-6.2L3 9.6l6.2-.9L12 3Z',
   };
@@ -239,6 +240,7 @@ function shell(title, section) {
   links.push(['maintenance', 'Bảo trì', maintenance]);
   if (session.admin.role !== 'SUPPORT') links.push(['gifts', 'Quà admin', giftCampaigns]);
   if (session.admin.role !== 'SUPPORT') links.push(['events', 'Sự kiện thưởng', rewardEvents]);
+  links.push(['compensation', 'Đền bù', compensation]);
   if (session.admin.role === 'OWNER') links.push(['accounts', 'Tài khoản quản trị', accounts], ['audit', 'Nhật ký kiểm toán', audit]);
   for (const [key, label, action] of links) nav.append(decoratedButton(label, action, key, key === section ? { 'aria-current': 'page' } : {}));
   const main = node('main', null, { id: 'main', class: 'panel stack page-' + section, tabindex: '-1' });
@@ -297,6 +299,19 @@ async function rewardEvents() {
       api: (path, request, payload, method) => api(path, request, payload, session?.csrfToken, method),
     });
   } catch (error) { if (task.current() && error.name !== 'AbortError') notices.fail(new Error('Không thể tải sự kiện thưởng. Vui lòng thử lại.')); }
+  finally { pending.delete(task.controller); }
+}
+async function compensation() {
+  if (!session) return;
+  const { task, notices } = beginNavigation('Đền bù', 'compensation');
+  try {
+    const { openCompensation } = await import('./admin-compensation.js');
+    if (!task.current() || !session) return;
+    openCompensation({ node, append, button, icon, iconButton, field, modal, feedback, shell, channel,
+      role: () => session?.admin.role,
+      api: (path, request, payload, method) => api(path, request, payload, session?.csrfToken, method),
+    });
+  } catch (error) { if (task.current() && error.name !== 'AbortError') notices.fail(new Error('Không thể tải đền bù. Vui lòng thử lại.')); }
   finally { pending.delete(task.controller); }
 }
 function showLogin(message = '', blocked = false) {

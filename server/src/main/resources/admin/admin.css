@@ -295,3 +295,26 @@ input[readonly] { background: var(--surface); }
 .maintenance-modal .modal-header { flex: none; margin-bottom: 16px; }
 .maintenance-modal .modal-form { overflow-y: auto; min-height: 0; padding: 8px 4px; }
 .maintenance-modal :is(input, select, textarea, button, [tabindex]) { scroll-margin-block: 16px; }
+/* Incident compensation: white native dialogs with a separate fixed header. */
+.compensation-row { display: grid; grid-template-columns: minmax(0, 1fr) 48px; align-items: center; gap: 16px; padding: 20px 0; border-bottom: 1px solid var(--line); }
+.compensation-row .row-info, .page-compensation h1, .compensation-copy { min-width: 0; overflow-wrap: anywhere; }
+.compensation-row > .icon-button .tooltip { right: 0; left: auto; max-width: 75vw; white-space: normal; overflow-wrap: anywhere; }
+.compensation-actions, .compensation-rewards { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.compensation-reward { display: inline-flex; align-items: center; gap: 8px; padding: 8px 12px; background: var(--surface); border-radius: 12px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; min-width: 0; }
+.compensation-reward .icon { width: 24px; height: 24px; flex: none; fill: currentColor; stroke: none; }
+.compensation-reward.coin .icon { color: #FFC928; filter: drop-shadow(0 0 1px #8A6700); }
+.compensation-reward.star .icon { color: var(--primary); }
+.compensation-languages { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.compensation-copy { padding: 20px; background: var(--surface); border-radius: 16px; }
+.compensation-copy h3 { margin: 0; }
+.compensation-body, .page-compensation dd, .compensation-modal dd { white-space: pre-wrap; overflow-wrap: anywhere; }
+.compensation-modal[open] { display: flex; flex-direction: column; overflow: hidden; }
+.compensation-modal .modal-header { flex: none; background: var(--canvas); padding: 8px 0; }
+.compensation-modal > .modal-form { min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 4px; }
+.compensation-modal .compensation-languages { grid-template-columns: minmax(0, 1fr); }
+.compensation-modal .field > label { position: static; display: block; margin-bottom: 8px; padding: 0; max-width: none; }
+.compensation-modal .field > :is(input, select, textarea) { padding-top: 12px; }
+.compensation-modal :is(input, select, textarea, button, [tabindex]) { scroll-margin-block: 16px; }
+.compensation-modal .alert button { display: block; margin-top: 12px; }
+.page-compensation .pagination { flex-wrap: wrap; }
+@media (max-width: 700px) { .compensation-languages { grid-template-columns: minmax(0, 1fr); } }

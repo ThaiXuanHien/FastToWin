@@ -1,6 +1,6 @@
-# Compensation incidents and rounds (Issue 20, Tasks 1–2)
+# Compensation incidents and rounds (Issue 20)
 
-This delivery implements incidents, source capabilities, the transaction-bound store, round creation/preview/publication/cancellation/reporting, and the shared player claim/delivery foundation. Player presentation and the admin UI consume these contracts in later tasks.
+This delivery implements incidents, source capabilities, the transaction-bound store, round creation/preview/publication/cancellation/reporting, shared player claim/delivery, compatible player presentation and the native admin dialogs.
 
 ## Incident HTTP contract
 
@@ -185,6 +185,16 @@ Draft projections reflect current editable incident copy. Publication freezes bi
 
 `CompensationReport` has exactly nine String fields: `eligible`, `pending`, `delivered`, `claimed`, `expired`, `cancelled`, `skipped`, `claimedGold`, `claimedXp`. Each is a decimal string. Eligible is frozen entitlement count; pending/delivered/skipped use durable delivery checkpoints. Pending becomes zero on cancellation. Claimed counts paid receipts and actual paid totals are claimed × immutable per-recipient GOLD/XP. Expired counts delivered unclaimed entitlements after expiry unless cancelled; cancelled counts all unclaimed non-skipped entitlements after cancellation. Delivered includes claimed/expired/cancelled delivered entitlements, so counters overlap and must not be added as a partition. Delivery is not payout. A cancelled round never reclaims paid assets or deletes its receipts. Reading detail recomputes report from current receipts; a replay deliberately returns its original report snapshot.
 
-## Remaining presentation
+## Admin console
 
-Player label/rendering and admin UI remain later tasks. No provider, production compensation, cash/refund/quota operation, push, deployment or GitHub change is part of this delivery.
+All current admin roles see **Đền bù**. Support reads incidents, independently paginated round history and receipt reports. Owner/Operator create/edit unpublished incidents and round drafts and request previews; Owner confirms publication/cancellation in a separate native dialog. A supplemental draft names the exact next round number and requires an internal supplemental reason. Preview and confirmation display that number/reason and distinguish previous paid users, paid entitlements and selected overlap.
+
+Player-safe VI/EN explanation, receiving reason, UTC affected interval and exact rewards stay separate from labelled internal evidence, cause, responsible UUID and audit reasons. UTC forms include the full year and interpret entries as UTC regardless of the browser timezone. Empty expiry uses the server's exact 30-day default. ACTIVITY is visibly unavailable with the capability explanation; only supported sources can be selected. No activity inference, automatic incident/round/yearly allocation or push is added.
+
+The lazy `admin-compensation.js` module uses existing session/navigation/request/dialog fences. Pending native forms block dismissal and fields. An uncertain retry with identical content keeps the exact request ID and payload; a 409 locks that mutation until reload and renewed preview. First-publication evidence is checked across round history pages before enabling incident edits, including cancelled published history. Published/cancelled definitions are read-only. All compensation count/total formatting and pagination boundaries use BigInt directly from decimal-string transport, including values above 2^53.
+
+Admin assets remain explicitly allowlisted, disabled with admin, no-store and protected by existing CSP. Feature CSS keeps the white Material modal header separate from its scrolling form body; utilities retain accessible 48px targets. Mission-style filled gold coin and primary star summarize exact reward numbers with currency names in accessible labels.
+
+`e2e/tests/admin-compensation.spec.mjs` uses the real module after authenticated fixture login. `e2e/support/admin-compensation-live.mjs` requires a separate owned loopback configuration with a UUID PostgreSQL schema and fresh accounts; it verifies browser incident→round1 ALL_REGISTERED→preview/publication→delivery/claim→identical replay→explicit round2 with previous paid counts→claim→cancel unclaimed, late-registration exclusion, public private-field exclusion and source/served asset hashes. Live traces are disabled. Durable SQL evidence verifies one COMPENSATION wallet source per paid round/player, no ADMIN_GIFT/EVENT_BONUS and unchanged lifetime-earned values. Repository tests remain evidence for rollback, concurrency and restart invariants.
+
+Task4 logs, XML, browser scenario/count maps, original 360/768/1024/1440 and 200% settled images/geometry, source/served hashes and SQL facts live under `.artifacts/admin-compensation-delivery/task4/`. No physical-device, iOS, provider, production compensation, cash/refund/quota, push, merge or deployment claim is made.
