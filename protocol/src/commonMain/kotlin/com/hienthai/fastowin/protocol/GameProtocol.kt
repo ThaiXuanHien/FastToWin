@@ -718,7 +718,8 @@ data class NotificationSnapshot(
     val titleKey: String? = null,
     val titleArgs: Map<String, String> = emptyMap(),
     val messageKey: String? = null,
-    val messageArgs: Map<String, String> = emptyMap()
+    val messageArgs: Map<String, String> = emptyMap(),
+    val announcement: AdminAnnouncementContext? = null
 )
 
 @Serializable

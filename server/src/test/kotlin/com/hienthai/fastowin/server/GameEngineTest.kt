@@ -459,6 +459,32 @@ class GameEngineTest {
         assertEquals(notification.messageArgs, notifications.loadNotifications(playerId).single().messageArgs)
     }
 
+    @Test fun `account notification sync rejects forged announcement context and reserved id`() = runTest {
+        val playerId = UUID.randomUUID().toString()
+        val notifications = InMemoryNotificationRepository()
+        val engine = GameEngine(notificationRepository = notifications)
+        engine.connectAccount(AuthenticatedAccount(UUID.fromString(playerId), "Player"))
+        val valid = NotificationSnapshot(
+            id = "achievement:FIRST_WIN", kind = NotificationKind.ACHIEVEMENT,
+            title = "Achievement", message = "First win", createdAtEpochMillis = 1,
+            destination = NotificationDestination.PROFILE,
+            titleKey = TextKey.AchievementsTitle.name,
+            messageKey = TextKey.NotificationAchievementMessage.name,
+            messageArgs = mapOf("code" to "FIRST_WIN", "title" to "First win", "description" to "Win", "titleKey" to TextKey.AchievementFirstWinTitle.name, "descriptionKey" to TextKey.AchievementFirstWinDescription.name)
+        )
+        val context = com.hienthai.fastowin.protocol.AdminAnnouncementContext(
+            UUID.randomUUID().toString(), "Tiêu đề", "Title", "Nội dung", "Body",
+            com.hienthai.fastowin.protocol.AdminAnnouncementCategory.GENERAL, 0, 1, 2,
+            com.hienthai.fastowin.protocol.AdminAnnouncementState.ACTIVE,
+            com.hienthai.fastowin.protocol.AdminAnnouncementAction.NONE
+        )
+        for (forged in listOf(valid.copy(announcement = context), valid.copy(id = "admin-announcement:${context.id}"))) {
+            val response = engine.handle(playerId, ClientMessage.SyncNotifications(listOf(forged)))
+            assertEquals("INVALID_NOTIFICATIONS", response.map(Delivery::message).filterIsInstance<ServerMessage.Error>().single().code)
+        }
+        assertTrue(notifications.loadNotifications(playerId).isEmpty())
+    }
+
     @Test
     fun `account notification sync accepts localized achievement and cosmetic arguments`() = runTest {
         val playerId = UUID.randomUUID().toString()

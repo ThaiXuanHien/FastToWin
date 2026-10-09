@@ -3,6 +3,10 @@ package com.hienthai.fastowin.server
 import com.hienthai.fastowin.protocol.NotificationDestination
 import com.hienthai.fastowin.protocol.NotificationKind
 import com.hienthai.fastowin.protocol.NotificationSnapshot
+import com.hienthai.fastowin.protocol.AdminAnnouncementContext
+import com.hienthai.fastowin.protocol.AdminAnnouncementCategory
+import com.hienthai.fastowin.protocol.AdminAnnouncementState
+import com.hienthai.fastowin.protocol.AdminAnnouncementAction
 import com.hienthai.fastowin.localization.TextKey
 import com.zaxxer.hikari.HikariConfig
 import com.zaxxer.hikari.HikariDataSource
@@ -15,6 +19,31 @@ import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
 class NotificationRepositoryTest {
+    @Test fun `postgres reload preserves announcement metadata on notification`() = runTest {
+        val url = System.getenv("TEST_DATABASE_URL") ?: return@runTest
+        HikariDataSource(HikariConfig().apply {
+            jdbcUrl = url
+            username = System.getenv("TEST_DATABASE_USER") ?: "fasttowin"
+            password = System.getenv("TEST_DATABASE_PASSWORD") ?: "fasttowin"
+            maximumPoolSize = 2
+        }).use { dataSource ->
+            Flyway.configure().dataSource(dataSource).locations("classpath:db/migration").load().migrate()
+            val auth = AuthenticationService(PostgresAuthRepository(dataSource), PasswordHasher(iterations = 1_000), nowMillis = { NOW })
+            val session = assertIs<AuthResult.Success>(auth.register("announcement-notification-${UUID.randomUUID()}@example.com", PASSWORD, "Notify", "android")).session
+            val context = AdminAnnouncementContext(UUID.randomUUID().toString(), "Tiêu đề", "Title", "Nội dung", "Body", AdminAnnouncementCategory.GENERAL, 1, NOW, NOW + 1000, AdminAnnouncementState.ACTIVE, AdminAnnouncementAction.NONE)
+            try {
+                val notification = notification("admin-announcement:${context.id}", NOW).copy(announcement = context)
+                PostgresNotificationRepository(dataSource).createNotifications(session.userId, listOf(notification))
+                assertEquals(context, PostgresNotificationRepository(dataSource).loadNotifications(session.userId).single().announcement)
+            } finally {
+                dataSource.connection.use { connection ->
+                    connection.prepareStatement("DELETE FROM users WHERE id = ?").use { statement ->
+                        statement.setObject(1, UUID.fromString(session.userId)); statement.executeUpdate()
+                    }
+                }
+            }
+        }
+    }
     @Test
     fun `keyed notification preserves unicode template arguments`() = runTest {
         val repository = InMemoryNotificationRepository()

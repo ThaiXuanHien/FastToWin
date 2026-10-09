@@ -1,9 +1,12 @@
 package com.hienthai.fastowin.server
 
-import com.hienthai.fastowin.protocol.NotificationDestination
-import com.hienthai.fastowin.protocol.NotificationKind
 import com.hienthai.fastowin.protocol.NotificationSnapshot
-import com.hienthai.fastowin.protocol.ProtocolJson
+import com.hienthai.fastowin.server.announcements.AnnouncementRepository
+import com.hienthai.fastowin.server.announcements.InMemoryAnnouncementRepository
+import com.hienthai.fastowin.server.announcements.JdbcNotificationPersistence
+import com.hienthai.fastowin.server.announcements.PostgresAnnouncementRepository
+import com.hienthai.fastowin.server.announcements.UnavailableAnnouncementRepository
+import com.hienthai.fastowin.server.admin.InMemoryAdminRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.sync.Mutex
@@ -11,8 +14,6 @@ import kotlinx.coroutines.sync.withLock
 import java.sql.Timestamp
 import java.util.UUID
 import javax.sql.DataSource
-import kotlinx.serialization.decodeFromString
-import kotlinx.serialization.encodeToString
 
 data class StoredRoomInvitation(
     val id: String,
@@ -25,6 +26,7 @@ data class StoredRoomInvitation(
 )
 
 interface NotificationRepository {
+    val announcements: AnnouncementRepository get() = UnavailableAnnouncementRepository
     suspend fun loadNotifications(userId: String): List<NotificationSnapshot>
     suspend fun createNotifications(userId: String, notifications: List<NotificationSnapshot>)
     suspend fun markNotificationsRead(userId: String, notificationId: String?, nowMillis: Long)
@@ -52,15 +54,24 @@ object NoOpNotificationRepository : NotificationRepository {
     override suspend fun deleteExpiredRoomInvitations(nowMillis: Long) = Unit
 }
 
-class InMemoryNotificationRepository : NotificationRepository {
+class InMemoryNotificationRepository(adminRepository: InMemoryAdminRepository = InMemoryAdminRepository()) : NotificationRepository {
     private val mutex = Mutex()
     private val notifications = linkedMapOf<Pair<String, String>, StoredNotification>()
     private val invitations = linkedMapOf<String, StoredRoomInvitation>()
+    override val announcements = InMemoryAnnouncementRepository(this, adminRepository)
+
+    internal suspend fun <T> withCopiedNotifications(block: suspend (MutableMap<Pair<String, String>, StoredNotification>) -> T): T = mutex.withLock {
+        val copy = notifications.toMutableMap()
+        val result = block(copy)
+        notifications.clear()
+        notifications.putAll(copy)
+        result
+    }
 
     override suspend fun loadNotifications(userId: String) = mutex.withLock {
         notifications.entries
             .filter { it.key.first == userId && !it.value.dismissed }
-            .map { it.value.snapshot }
+            .map { announcements.project(it.value.snapshot) }
             .sortedByDescending(NotificationSnapshot::createdAtEpochMillis)
             .take(100)
     }
@@ -78,6 +89,7 @@ class InMemoryNotificationRepository : NotificationRepository {
             notifications.entries.filter { (key, value) ->
                 key.first == userId && !value.dismissed && (notificationId == null || key.second == notificationId)
             }.forEach { entry -> entry.setValue(entry.value.copy(snapshot = entry.value.snapshot.copy(isRead = true))) }
+            announcements.updateReceipt(userId, notificationId, nowMillis, read = true)
         }
     }
 
@@ -86,6 +98,7 @@ class InMemoryNotificationRepository : NotificationRepository {
             notifications.entries.filter { (key, value) ->
                 key.first == userId && !value.dismissed && (notificationId == null || key.second == notificationId)
             }.forEach { entry -> entry.setValue(entry.value.copy(dismissed = true)) }
+            announcements.updateReceipt(userId, notificationId, nowMillis, read = false)
         }
     }
 
@@ -127,79 +140,22 @@ class InMemoryNotificationRepository : NotificationRepository {
         mutex.withLock { invitations.entries.removeAll { it.value.expiresAtMillis <= nowMillis } }
     }
 
-    private data class StoredNotification(
+    internal data class StoredNotification(
         val snapshot: NotificationSnapshot,
         val dismissed: Boolean = false
     )
 }
 
 class PostgresNotificationRepository(private val dataSource: DataSource) : NotificationRepository {
+    override val announcements = PostgresAnnouncementRepository(dataSource)
     override suspend fun loadNotifications(userId: String): List<NotificationSnapshot> = withContext(Dispatchers.IO) {
-        dataSource.connection.use { connection ->
-            connection.prepareStatement(
-                """
-                SELECT notification_id, kind, title, message, destination, created_at, read_at, action_data,
-                       title_key, title_args, message_key, message_args
-                FROM user_notifications
-                WHERE user_id = ? AND dismissed_at IS NULL
-                ORDER BY created_at DESC
-                LIMIT 100
-                """.trimIndent()
-            ).use { statement ->
-                statement.setObject(1, UUID.fromString(userId))
-                statement.executeQuery().use { result ->
-                    buildList {
-                        while (result.next()) add(NotificationSnapshot(
-                            id = result.getString("notification_id"),
-                            kind = NotificationKind.valueOf(result.getString("kind")),
-                            title = result.getString("title"),
-                            message = result.getString("message"),
-                            createdAtEpochMillis = result.getTimestamp("created_at").time,
-                            isRead = result.getTimestamp("read_at") != null,
-                            destination = NotificationDestination.valueOf(result.getString("destination")),
-                            actionData = result.getString("action_data"),
-                            titleKey = result.getString("title_key"),
-                            titleArgs = ProtocolJson.decodeFromString(result.getString("title_args")),
-                            messageKey = result.getString("message_key"),
-                            messageArgs = ProtocolJson.decodeFromString(result.getString("message_args"))
-                        ))
-                    }
-                }
-            }
-        }
+        dataSource.connection.use { JdbcNotificationPersistence(it).load(userId) }
     }
 
     override suspend fun createNotifications(userId: String, notifications: List<NotificationSnapshot>) {
         if (notifications.isEmpty()) return
         withContext(Dispatchers.IO) {
-            dataSource.connection.use { connection ->
-                connection.prepareStatement(
-                    """
-                    INSERT INTO user_notifications(
-                        user_id, notification_id, kind, title, message, destination, created_at, action_data,
-                        title_key, title_args, message_key, message_args
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?, ?::jsonb)
-                    ON CONFLICT (user_id, notification_id) DO NOTHING
-                    """.trimIndent()
-                ).use { statement ->
-                    notifications.forEach { notification ->
-                        statement.setObject(1, UUID.fromString(userId))
-                        statement.setString(2, notification.id)
-                        statement.setString(3, notification.kind.name)
-                        statement.setString(4, notification.title)
-                        statement.setString(5, notification.message)
-                        statement.setString(6, notification.destination.name)
-                        statement.setTimestamp(7, Timestamp(notification.createdAtEpochMillis))
-                        statement.setString(8, notification.actionData)
-                        statement.setString(9, notification.titleKey)
-                        statement.setString(10, ProtocolJson.encodeToString(notification.titleArgs))
-                        statement.setString(11, notification.messageKey)
-                        statement.setString(12, ProtocolJson.encodeToString(notification.messageArgs))
-                        statement.addBatch()
-                    }
-                    statement.executeBatch()
-                }
-            }
+            dataSource.connection.use { JdbcNotificationPersistence(it).create(userId, notifications) }
         }
     }
 
@@ -212,14 +168,13 @@ class PostgresNotificationRepository(private val dataSource: DataSource) : Notif
     private suspend fun updateNotifications(userId: String, notificationId: String?, column: String, nowMillis: Long) {
         withContext(Dispatchers.IO) {
             dataSource.connection.use { connection ->
-                val sql = "UPDATE user_notifications SET $column = ? WHERE user_id = ?" +
-                    if (notificationId == null) " AND dismissed_at IS NULL" else " AND notification_id = ?"
-                connection.prepareStatement(sql).use { statement ->
-                    statement.setTimestamp(1, Timestamp(nowMillis))
-                    statement.setObject(2, UUID.fromString(userId))
-                    if (notificationId != null) statement.setString(3, notificationId)
-                    statement.executeUpdate()
-                }
+                connection.autoCommit = false
+                try {
+                    val persistence = JdbcNotificationPersistence(connection)
+                    if (column == "read_at") persistence.markRead(userId, notificationId, nowMillis)
+                    else persistence.dismiss(userId, notificationId, nowMillis)
+                    connection.commit()
+                } catch (error: Throwable) { connection.rollback(); throw error }
             }
         }
     }

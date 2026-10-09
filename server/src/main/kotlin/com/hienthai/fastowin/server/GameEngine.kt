@@ -1294,6 +1294,8 @@ class GameEngine(
         val allowedKinds = setOf(NotificationKind.MISSION, NotificationKind.ACHIEVEMENT, NotificationKind.COSMETIC)
         val normalized = notifications.filter { notification ->
             notification.kind in allowedKinds &&
+                notification.announcement == null &&
+                !notification.id.startsWith("admin-announcement:") &&
                 notification.id.length in 1..160 &&
                 notification.title.length in 1..120 &&
                 notification.message.length in 1..300 &&

@@ -8,6 +8,29 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 
 class GameProtocolCompatibilityTest {
+    @Serializable private data class OldNotification(
+        val id: String, val kind: NotificationKind, val title: String, val message: String,
+        val createdAtEpochMillis: Long, val destination: NotificationDestination
+    )
+
+    @Test fun `announcement notification preserves old reader and missing context defaults null`() {
+        val context = AdminAnnouncementContext(
+            "00000000-0000-0000-0000-000000000001", "Tiêu đề", "Title", "Nội dung", "Body",
+            AdminAnnouncementCategory.GENERAL, 2, 100, 200, AdminAnnouncementState.ACTIVE,
+            AdminAnnouncementAction.NONE
+        )
+        val notification = NotificationSnapshot(
+            "admin-announcement:${context.id}", NotificationKind.COSMETIC, "Tiêu đề", "Nội dung",
+            100, destination = NotificationDestination.PROFILE, announcement = context
+        )
+        val wire = ProtocolJson.encodeToString<ServerMessage>(ServerMessage.NotificationsData(listOf(notification)))
+        val old = Json { ignoreUnknownKeys = true }.decodeFromString<kotlinx.serialization.json.JsonObject>(wire)
+        val oldItem = old["notifications"]!!.let { it as kotlinx.serialization.json.JsonArray }.single().toString()
+        assertEquals(notification.id, Json { ignoreUnknownKeys = true }.decodeFromString<OldNotification>(oldItem).id)
+        assertEquals(ServerMessage.NotificationsData(listOf(notification)), ProtocolJson.decodeFromString<ServerMessage>(wire))
+        val oldPayload = """{"id":"legacy","kind":"COSMETIC","title":"Old","message":"Safe","createdAtEpochMillis":1,"destination":"PROFILE"}"""
+        assertEquals(null, ProtocolJson.decodeFromString<NotificationSnapshot>(oldPayload).announcement)
+    }
     @Serializable private data class LegacyGame(val roomId: String, val roomName: String, val hostId: String,
         val gameMode: ProtocolGameMode, val phase: RoomPhase, val players: List<PlayerSnapshot>)
 
