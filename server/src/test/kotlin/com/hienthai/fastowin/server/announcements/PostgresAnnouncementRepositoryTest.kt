@@ -13,9 +13,17 @@ import com.hienthai.fastowin.server.admin.AuditEntry
 import com.hienthai.fastowin.server.admin.AdminException
 import com.zaxxer.hikari.HikariConfig
 import com.zaxxer.hikari.HikariDataSource
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.job
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
 import org.flywaydb.core.Flyway
 import java.util.UUID
+import java.util.concurrent.CompletableFuture
+import java.util.concurrent.TimeUnit
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
@@ -24,6 +32,55 @@ import kotlin.test.assertTrue
 import kotlin.test.assertFailsWith
 
 class PostgresAnnouncementRepositoryTest {
+    @Test fun `legacy read survives concurrent recipient checkpoint merge`() = runTest {
+        withFixture { ds, repo, id, userId, definition ->
+            repo.announcements.transaction {
+                putDefinition(definition)
+                putRecipient(AnnouncementRecipient(id, userId, storedAtEpochMillis = 100))
+                notifications.create(userId, listOf(definition.notification("en", 100)))
+            }
+            val stale = repo.announcements.transaction { recipient(id, userId)!! }
+            ds.connection.use { held ->
+                held.autoCommit = false
+                JdbcNotificationPersistence(held).markRead(userId, "admin-announcement:$id", 200)
+                val blockerPid = held.prepareStatement("SELECT pg_backend_pid()").use { statement ->
+                    statement.executeQuery().use { result -> result.next(); result.getInt(1) }
+                }
+                val writer = CompletableFuture.runAsync {
+                    runBlocking { repo.announcements.transaction { putRecipient(stale.copy(storedAtEpochMillis = 100)) } }
+                }
+                try {
+                    assertTrue(waitForRecipientLock(ds, blockerPid), "announcement writer must wait for the legacy receipt lock")
+                } finally {
+                    held.commit()
+                    writer.get(10, TimeUnit.SECONDS)
+                }
+            }
+            repo.announcements.transaction { assertEquals(200L, recipient(id, userId)?.readAtEpochMillis) }
+            assertTrue(repo.loadNotifications(userId).single().isRead)
+        }
+    }
+
+    @Test fun `cancelled transaction leaves no materialized notification`() = runTest {
+        withFixture { _, repo, id, userId, definition ->
+            repo.announcements.transaction {
+                putDefinition(definition)
+                putRecipient(AnnouncementRecipient(id, userId))
+            }
+            val work = async(Dispatchers.IO) {
+                val job = currentCoroutineContext().job
+                repo.announcements.transaction {
+                    putRecipient(AnnouncementRecipient(id, userId, storedAtEpochMillis = 100))
+                    notifications.create(userId, listOf(definition.notification("en", 100)))
+                    job.cancel()
+                }
+            }
+            try { work.await() } catch (_: CancellationException) { }
+            assertTrue(repo.loadNotifications(userId).isEmpty())
+            repo.announcements.transaction { assertNull(recipient(id, userId)?.storedAtEpochMillis) }
+        }
+    }
+
     @Test fun `postgres freezes one recipient and keeps its facts after user deletion while legacy preferences stay separate`() = runTest {
         val url = System.getenv("TEST_DATABASE_URL") ?: return@runTest
         HikariDataSource(HikariConfig().apply {
@@ -184,5 +241,49 @@ class PostgresAnnouncementRepositoryTest {
                 connection.commit()
             } catch (error: Throwable) { connection.rollback(); throw error }
         }
+    }
+
+    private suspend fun withFixture(block: suspend (HikariDataSource, PostgresNotificationRepository, String, String, AnnouncementDefinition) -> Unit) {
+        val url = System.getenv("TEST_DATABASE_URL") ?: return
+        HikariDataSource(HikariConfig().apply {
+            jdbcUrl = url
+            username = System.getenv("TEST_DATABASE_USER") ?: "fasttowin"
+            password = System.getenv("TEST_DATABASE_PASSWORD") ?: "fasttowin"
+            maximumPoolSize = 3
+        }).use { ds ->
+            Flyway.configure().dataSource(ds).locations("classpath:db/migration").load().migrate()
+            val auth = AuthenticationService(PostgresAuthRepository(ds), PasswordHasher(iterations = 1_000), nowMillis = { 1_800_000_000_000L })
+            val userId = assertIs<AuthResult.Success>(auth.register("announce-review-${UUID.randomUUID()}@example.com", "password123", "Player", "android")).session.userId
+            val id = UUID.randomUUID().toString()
+            try { block(ds, PostgresNotificationRepository(ds), id, userId, AnnouncementRepositoryTest().fixtureDefinition(id)) }
+            finally {
+                try {
+                    ds.connection.use { connection ->
+                        connection.prepareStatement("DELETE FROM users WHERE id=?").use { statement ->
+                            statement.setObject(1, UUID.fromString(userId)); statement.executeUpdate()
+                        }
+                    }
+                } finally { deleteAnnouncementFixture(ds, id) }
+            }
+        }
+    }
+
+    private fun waitForRecipientLock(ds: HikariDataSource, blockerPid: Int): Boolean {
+        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5)
+        while (System.nanoTime() < deadline) {
+            val blocked = ds.connection.use { connection ->
+                connection.prepareStatement(
+                    """SELECT EXISTS(SELECT 1 FROM pg_stat_activity a
+                       WHERE ? = ANY(pg_blocking_pids(a.pid))
+                         AND a.query LIKE '%admin_announcement_recipients%')"""
+                ).use { statement ->
+                    statement.setInt(1, blockerPid)
+                    statement.executeQuery().use { result -> result.next(); result.getBoolean(1) }
+                }
+            }
+            if (blocked) return true
+            Thread.sleep(20)
+        }
+        return false
     }
 }

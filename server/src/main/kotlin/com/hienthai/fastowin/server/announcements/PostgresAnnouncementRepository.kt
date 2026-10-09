@@ -11,6 +11,8 @@ import java.sql.Timestamp
 import java.util.UUID
 import javax.sql.DataSource
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
@@ -25,6 +27,7 @@ class PostgresAnnouncementRepository(private val dataSource: DataSource) : Annou
                     if (admin) connection.prepareStatement("SELECT pg_advisory_xact_lock(7421092187349)").use { it.execute() }
                     val tx = JdbcAnnouncementTransaction(connection)
                     val result = tx.block()
+                    currentCoroutineContext().ensureActive()
                     connection.commit()
                     result
                 } catch (error: Throwable) { connection.rollback(); throw error }
@@ -129,7 +132,10 @@ internal class JdbcAnnouncementTransaction(private val connection: Connection) :
 
     override fun putRecipient(value: AnnouncementRecipient) {
         lockAnnouncement(value.announcementId)
-        val previous = recipient(value.announcementId, value.userId)
+        val previous = rows(
+            "SELECT payload FROM admin_announcement_recipients WHERE announcement_id=? AND user_id=? FOR UPDATE",
+            UUID.fromString(value.announcementId), UUID.fromString(value.userId)
+        ) { Json.decodeFromString<AnnouncementRecipient>(it.getString(1)) }.singleOrNull()
         if (previous == null && value.announcementId !in publishingHere) conflict()
         val merged = value.copy(
             storedAtEpochMillis = value.storedAtEpochMillis ?: previous?.storedAtEpochMillis,

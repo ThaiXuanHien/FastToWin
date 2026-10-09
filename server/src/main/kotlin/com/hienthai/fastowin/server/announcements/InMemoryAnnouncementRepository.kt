@@ -5,7 +5,7 @@ import com.hienthai.fastowin.server.InMemoryNotificationRepository
 import com.hienthai.fastowin.server.admin.AdminTransaction
 import com.hienthai.fastowin.server.admin.InMemoryAdminRepository
 
-/** Lock order: notification mutex, then admin mutex. Copy-on-write publishes both states after success. */
+/** Lock order: notification mutex, then admin mutex. All three copied states publish under both locks. */
 class InMemoryAnnouncementRepository internal constructor(
     private val owner: InMemoryNotificationRepository,
     private val adminRepository: InMemoryAdminRepository
@@ -24,9 +24,12 @@ class InMemoryAnnouncementRepository internal constructor(
     }
 
     override suspend fun <T> transaction(admin: Boolean, block: AnnouncementTransaction.() -> T): T =
-        owner.withCopiedNotifications { notificationCopy ->
+        owner.withCopiedNotifications { notificationCopy, publishNotifications ->
             val next = state.copyState()
-            val result = adminRepository.transaction {
+            adminRepository.coordinatedTransaction(publish = {
+                state = next
+                publishNotifications()
+            }) {
                 val adminTransaction = this
                 val publishingHere = mutableSetOf<String>()
                 val persistence = object : NotificationPersistence {
@@ -135,8 +138,6 @@ class InMemoryAnnouncementRepository internal constructor(
                     }
                 }.block()
             }
-            state = next
-            result
         }
 
     /** Called only while the owner's notification mutex is held. */

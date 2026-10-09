@@ -4,6 +4,17 @@ import com.hienthai.fastowin.protocol.AdminAnnouncementAction
 import com.hienthai.fastowin.protocol.AdminAnnouncementCategory
 import com.hienthai.fastowin.server.InMemoryNotificationRepository
 import com.hienthai.fastowin.server.admin.InMemoryAdminRepository
+import com.hienthai.fastowin.server.admin.AuditEntry
+import com.hienthai.fastowin.server.admin.PageRequest
+import java.util.concurrent.CompletableFuture
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.job
 import kotlinx.coroutines.test.runTest
 import java.util.UUID
 import kotlin.test.Test
@@ -13,6 +24,86 @@ import kotlin.test.assertTrue
 import kotlin.test.assertFailsWith
 
 class AnnouncementRepositoryTest {
+    @Test fun `coordinated memory publish hides partial admin and notification state from concurrent readers`() {
+        val adminRepository = InMemoryAdminRepository()
+        val notifications = InMemoryNotificationRepository(adminRepository)
+        val id = UUID.randomUUID().toString()
+        val userId = UUID.randomUUID().toString()
+        val snapshot = fixtureDefinition(id).notification("en", 100)
+        val audit = AuditEntry(UUID.randomUUID().toString(), null, "ANNOUNCEMENT_TEST", id, null, null, null, null, 100)
+        val insideCommit = CountDownLatch(1)
+        val releaseCommit = CountDownLatch(1)
+        val writer = CompletableFuture.runAsync {
+            runBlocking {
+                notifications.withCopiedNotifications { copy, publishNotifications ->
+                    copy[userId to snapshot.id] = InMemoryNotificationRepository.StoredNotification(snapshot)
+                    adminRepository.coordinatedTransaction(publish = {
+                        publishNotifications()
+                        insideCommit.countDown()
+                        check(releaseCommit.await(5, TimeUnit.SECONDS))
+                    }) { appendAudit(audit) }
+                }
+            }
+        }
+        try {
+            assertTrue(insideCommit.await(5, TimeUnit.SECONDS))
+            val readersStarted = CountDownLatch(2)
+            val adminReader = CompletableFuture.supplyAsync {
+                readersStarted.countDown()
+                runBlocking { adminRepository.transaction { audit(PageRequest()).items.size } }
+            }
+            val inboxReader = CompletableFuture.supplyAsync {
+                readersStarted.countDown()
+                runBlocking { notifications.loadNotifications(userId).size }
+            }
+            assertTrue(readersStarted.await(5, TimeUnit.SECONDS))
+            Thread.sleep(100)
+            assertTrue(!adminReader.isDone && !inboxReader.isDone)
+            releaseCommit.countDown()
+            writer.get(5, TimeUnit.SECONDS)
+            assertEquals(1, adminReader.get(5, TimeUnit.SECONDS))
+            assertEquals(1, inboxReader.get(5, TimeUnit.SECONDS))
+        } finally {
+            releaseCommit.countDown()
+            writer.get(5, TimeUnit.SECONDS)
+        }
+    }
+
+    @Test fun `memory announcement success publishes audit with definition and notification`() = runTest {
+        val adminRepository = InMemoryAdminRepository()
+        val notifications = InMemoryNotificationRepository(adminRepository)
+        val id = UUID.randomUUID().toString()
+        val userId = UUID.randomUUID().toString()
+        notifications.announcements.transaction {
+            putDefinition(fixtureDefinition(id))
+            putRecipient(AnnouncementRecipient(id, userId, storedAtEpochMillis = 100))
+            this.notifications.create(userId, listOf(fixtureDefinition(id).notification("en", 100)))
+            admin.appendAudit(AuditEntry(UUID.randomUUID().toString(), null, "ANNOUNCEMENT_TEST", id, null, null, null, null, 100))
+        }
+        assertEquals(1, adminRepository.transaction { audit(PageRequest()).items.size })
+        assertEquals(id, notifications.announcements.transaction { definition(id)?.id })
+        assertEquals(id, notifications.loadNotifications(userId).single().announcement?.id)
+    }
+    @Test fun `cancelled memory transaction leaves no copied state`() = runTest {
+        val adminRepository = InMemoryAdminRepository()
+        val notifications = InMemoryNotificationRepository(adminRepository)
+        val id = UUID.randomUUID().toString()
+        val userId = UUID.randomUUID().toString()
+        val work = async(Dispatchers.Default) {
+            val job = currentCoroutineContext().job
+            notifications.announcements.transaction {
+                putDefinition(fixtureDefinition(id))
+                putRecipient(AnnouncementRecipient(id, userId, storedAtEpochMillis = 100))
+                this.notifications.create(userId, listOf(fixtureDefinition(id).notification("en", 100)))
+                admin.appendAudit(AuditEntry(UUID.randomUUID().toString(), null, "ANNOUNCEMENT_TEST", id, null, null, null, null, 100))
+                job.cancel()
+            }
+        }
+        try { work.await() } catch (_: CancellationException) { }
+        assertTrue(notifications.loadNotifications(userId).isEmpty())
+        notifications.announcements.transaction { assertNull(definition(id)) }
+        adminRepository.transaction { assertTrue(audit(PageRequest()).items.isEmpty()) }
+    }
     @Test fun `memory announcement rollback does not expose notification or recipient`() = runTest {
         val notifications = InMemoryNotificationRepository(InMemoryAdminRepository())
         val id = UUID.randomUUID().toString()

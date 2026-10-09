@@ -5,6 +5,9 @@ import com.hienthai.fastowin.server.PlayerProgression
 import java.util.UUID
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 
 /** Dev security storage. Player storage is unavailable until explicitly populated by a test fixture. */
 class InMemoryAdminRepository : AdminRepository {
@@ -26,7 +29,12 @@ class InMemoryAdminRepository : AdminRepository {
     suspend fun seedUser(user: UserDetail, matches: List<MatchEntry> = emptyList(), wallet: List<WalletEntry> = emptyList()) = mutex.withLock {
         state.playerStorageAvailable = true; state.users[user.id] = user; state.matches[user.id] = matches; state.wallet[user.id] = wallet
     }
-    override suspend fun <T> transaction(block: AdminTransaction.() -> T): T = mutex.withLock {
+    override suspend fun <T> transaction(block: AdminTransaction.() -> T): T = coordinatedTransaction({}, block)
+
+    /** Caller may publish other copied in-memory state while this mutex is still held. */
+    internal suspend fun <T> coordinatedTransaction(publish: () -> Unit, block: AdminTransaction.() -> T): T {
+        val job = currentCoroutineContext()[Job]
+        return mutex.withLock {
         val next = state.snapshot()
         val tx = object : AdminTransaction, GiftMemoryPlayers {
             override fun giftPlayers(): List<GiftPlayer> {
@@ -77,8 +85,11 @@ class InMemoryAdminRepository : AdminRepository {
             }
         }
         val result = tx.block()
+        job?.ensureActive()
+        publish()
         state = next
         result
+        }
     }
 }
 private fun <T> paginate(items: List<T>, page: PageRequest) = page.result(items.drop(page.offset).take(page.pageSize), items.size.toLong())

@@ -3,6 +3,7 @@ package com.hienthai.fastowin.protocol
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.json.Json
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -10,8 +11,15 @@ import kotlin.test.assertEquals
 class GameProtocolCompatibilityTest {
     @Serializable private data class OldNotification(
         val id: String, val kind: NotificationKind, val title: String, val message: String,
-        val createdAtEpochMillis: Long, val destination: NotificationDestination
+        val createdAtEpochMillis: Long, val isRead: Boolean = false,
+        val destination: NotificationDestination, val actionData: String? = null,
+        val titleKey: String? = null, val titleArgs: Map<String, String> = emptyMap(),
+        val messageKey: String? = null, val messageArgs: Map<String, String> = emptyMap()
     )
+    @Serializable private sealed class OldServerMessage {
+        @Serializable @SerialName("notifications_data")
+        data class NotificationsData(val notifications: List<OldNotification>) : OldServerMessage()
+    }
 
     @Test fun `announcement notification preserves old reader and missing context defaults null`() {
         val context = AdminAnnouncementContext(
@@ -24,9 +32,15 @@ class GameProtocolCompatibilityTest {
             100, destination = NotificationDestination.PROFILE, announcement = context
         )
         val wire = ProtocolJson.encodeToString<ServerMessage>(ServerMessage.NotificationsData(listOf(notification)))
-        val old = Json { ignoreUnknownKeys = true }.decodeFromString<kotlinx.serialization.json.JsonObject>(wire)
-        val oldItem = old["notifications"]!!.let { it as kotlinx.serialization.json.JsonArray }.single().toString()
-        assertEquals(notification.id, Json { ignoreUnknownKeys = true }.decodeFromString<OldNotification>(oldItem).id)
+        val oldReader = Json { classDiscriminator = "type"; ignoreUnknownKeys = true }
+        val old = oldReader.decodeFromString<OldServerMessage>(wire)
+        val oldNotification = (old as OldServerMessage.NotificationsData).notifications.single()
+        assertEquals(notification.id, oldNotification.id)
+        assertEquals(NotificationKind.COSMETIC, oldNotification.kind)
+        assertEquals(NotificationDestination.PROFILE, oldNotification.destination)
+        assertEquals("Tiêu đề", oldNotification.title)
+        assertEquals("Nội dung", oldNotification.message)
+        assertEquals(null, oldNotification.actionData)
         assertEquals(ServerMessage.NotificationsData(listOf(notification)), ProtocolJson.decodeFromString<ServerMessage>(wire))
         val oldPayload = """{"id":"legacy","kind":"COSMETIC","title":"Old","message":"Safe","createdAtEpochMillis":1,"destination":"PROFILE"}"""
         assertEquals(null, ProtocolJson.decodeFromString<NotificationSnapshot>(oldPayload).announcement)

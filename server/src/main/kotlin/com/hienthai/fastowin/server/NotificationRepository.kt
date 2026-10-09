@@ -56,16 +56,15 @@ object NoOpNotificationRepository : NotificationRepository {
 
 class InMemoryNotificationRepository(adminRepository: InMemoryAdminRepository = InMemoryAdminRepository()) : NotificationRepository {
     private val mutex = Mutex()
-    private val notifications = linkedMapOf<Pair<String, String>, StoredNotification>()
+    private var notifications: MutableMap<Pair<String, String>, StoredNotification> = linkedMapOf()
     private val invitations = linkedMapOf<String, StoredRoomInvitation>()
     override val announcements = InMemoryAnnouncementRepository(this, adminRepository)
 
-    internal suspend fun <T> withCopiedNotifications(block: suspend (MutableMap<Pair<String, String>, StoredNotification>) -> T): T = mutex.withLock {
+    internal suspend fun <T> withCopiedNotifications(
+        block: suspend (MutableMap<Pair<String, String>, StoredNotification>, () -> Unit) -> T
+    ): T = mutex.withLock {
         val copy = notifications.toMutableMap()
-        val result = block(copy)
-        notifications.clear()
-        notifications.putAll(copy)
-        result
+        block(copy) { notifications = copy }
     }
 
     override suspend fun loadNotifications(userId: String) = mutex.withLock {
