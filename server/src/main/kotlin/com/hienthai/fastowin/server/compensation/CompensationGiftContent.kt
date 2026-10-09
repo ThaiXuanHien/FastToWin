@@ -1,6 +1,7 @@
 package com.hienthai.fastowin.server.compensation
 
 import com.hienthai.fastowin.protocol.CompensationMailboxContext
+import com.hienthai.fastowin.server.legacyFallback
 import com.hienthai.fastowin.server.admin.*
 import com.hienthai.fastowin.server.gifts.*
 import java.time.Instant
@@ -16,8 +17,8 @@ internal object CompensationGiftContent {
         val until = Instant.ofEpochMilli(incident.affectedUntilEpochMillis).toString()
         return GiftCampaignOperations.validateCompensationContent(GiftDraftRequest(
             incident.titleVi, incident.titleEn,
-            "${incident.descriptionVi}\n\nKhoảng ảnh hưởng (UTC): [$from, $until)\n\nLý do nhận: ${request.receivingReasonVi}",
-            "${incident.descriptionEn}\n\nAffected interval (UTC): [$from, $until)\n\nReceiving reason: ${request.receivingReasonEn}",
+            legacyFallback("${incident.descriptionVi}\n\nKhoảng ảnh hưởng (UTC): [$from, $until)\n\nLý do nhận: ${request.receivingReasonVi}"),
+            legacyFallback("${incident.descriptionEn}\n\nAffected interval (UTC): [$from, $until)\n\nReceiving reason: ${request.receivingReasonEn}"),
             request.reason, request.gold, request.xp,
             if (request.audience == CompensationAudience.USER_IDS) GiftAudience.USER_IDS else GiftAudience.ALL_REGISTERED,
             request.userIds, availableAtEpochMillis = request.availableAtEpochMillis, expiresAtEpochMillis = request.expiresAtEpochMillis,
