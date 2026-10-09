@@ -60,7 +60,7 @@ Task2 defines the test-only observation helpers in the following examples using 
 assertEquals(first, publishIdenticalRequestAgain())
 assertEquals(0, notificationsBeforeStartsAt())
 assertEquals(1, notificationsAfterRestartAtStartsAt())
-assertEquals("ENDED", catchUpAfterEndsAt().announcement!!.state.name)
+assertEquals("EXPIRED", catchUpAfterEndsAt().announcement!!.state.name)
 assertEquals(1, fakePushCallsAfterTimeoutAndRestart())
 assertEquals("UNKNOWN", durableAttempt().status.name)
 assertTrue(hideBannerOnDeviceAThenFetchOnDeviceB().banners.isEmpty())
@@ -82,7 +82,7 @@ assertEquals(walletBefore, walletAfterReadHideAndCancel())
 Task3 defines the test-only observation helpers below around the actual controller with an injected clock/gateway: exclusive-end tick and a late response after account change return controller state; gateway and updateBridge record side effects. The automatic-dialog/award observation records actual dispatched effects and must not be a constant assertion.
 
 ```kotlin
-assertEquals("ENDED", stateAfterTickAtExclusiveEnd().selected!!.announcement!!.state.name)
+assertEquals("EXPIRED", stateAfterTickAtExclusiveEnd().selected!!.announcement!!.state.name)
 assertTrue(stateAfterAccountChangeAndLateResponse().items.isEmpty())
 assertEquals(1, gateway.hideBannerCalls.size)
 assertEquals(0, updateBridge.applyCallsBeforeExplicitUserClick)
