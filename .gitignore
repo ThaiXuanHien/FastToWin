@@ -39,3 +39,9 @@ server/firebase-adminsdk.json
 /e2e/test-results/
 /e2e/playwright-report-js-fallback/
 /e2e/test-results-js-fallback/
+
+# Local tooling, diagnostics and UI capture evidence (may contain private data)
+/.tmp/
+/debug.log
+/e2e/.artifacts/
+/.agents/skills/ui-ux-pro-max/scripts/__pycache__/
