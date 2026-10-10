@@ -10,7 +10,16 @@ const date = value => value == null ? 'Chưa có dữ liệu' : new Intl.DateTim
 // One explicit adapter owns auth, session fencing, network policy and shared UI.
 // Campaign state exists only in this view's closures; view/session changes remove it.
 export function openGiftCampaigns(ui) {
-  const { node, append, button, iconButton, field, modal, feedback, shell, channel, pagination, amount, api, role } = ui;
+  const { node, append, button, iconButton, field, modal, feedback, shell, channel, api, role } = ui;
+  const amount = value => new Intl.NumberFormat('vi-VN').format(BigInt(value));
+  function pagination(parent, data, load) {
+    const pager = node('div', null, { class: 'pagination', role: 'group', 'aria-label': 'Phân trang' });
+    const before = iconButton('Trang trước', () => load(data.page - 1), 'previous'); before.disabled = data.page === 0;
+    const after = iconButton('Trang sau', () => load(data.page + 1), 'next');
+    after.disabled = (BigInt(data.page) + 1n) * BigInt(data.pageSize) >= BigInt(data.total);
+    append(pager, node('span', `Trang ${amount(data.page + 1)} · ${amount(data.total)} mục`), before, after);
+    parent.append(pager);
+  }
   const base = '/gift-campaigns';
   const path = id => base + '/' + encodeURIComponent(id);
   const owner = () => role() === 'OWNER';
@@ -22,6 +31,7 @@ export function openGiftCampaigns(ui) {
   }
   function facts(parent, entries, className = 'facts') {
     const list = node('dl', null, { class: className });
+    if (entries.some(([, value]) => String(value).replace(/\D/g, '').length > 15)) list.classList.add('gift-large-values');
     for (const [title, value] of entries) append(list, append(node('div'), node('dt', title), node('dd', value)));
     parent.append(list);
   }
@@ -175,7 +185,7 @@ export function openGiftCampaigns(ui) {
       const actions = append(node('div', null, { class: 'modal-actions' }), surface.cancel); panel.append(actions);
       if (owner()) {
         const publish = button('Tiếp tục công bố', () => { surface.finish(); publishConfirmation(data, result, opener); }, { class: 'primary' });
-        publish.disabled = result.invalidUserIds.length > 0 || result.recipientCount === 0; actions.append(publish);
+        publish.disabled = result.invalidUserIds.length > 0 || BigInt(result.recipientCount) === 0n; actions.append(publish);
       } else panel.append(node('p', 'Owner sẽ xác nhận công bố chiến dịch.', { class: 'muted' }));
       surface.pending(false); surface.dialog.querySelector('.modal-header button').focus();
     } catch (error) {

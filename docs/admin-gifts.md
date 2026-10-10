@@ -76,12 +76,14 @@ There is no activity audience. UI must disable that option and explain that no o
     "cancellationReason": null
   },
   "counters": {
-    "eligible": 10, "pending": 0, "delivered": 10,
-    "claimed": 3, "expired": 0, "cancelled": 0, "skipped": 0,
-    "claimedGold": 300, "claimedXp": 90
+    "eligible": "10", "pending": "0", "delivered": "10",
+    "claimed": "3", "expired": "0", "cancelled": "0", "skipped": "0",
+    "claimedGold": "300", "claimedXp": "90"
   }
 }
 ```
+
+Every admin counter, preview recipientCount/totalGold/totalXp, and list total is a canonical nonnegative decimal string. Browser consumers format these with BigInt; do not parse through Number. page/pageSize/version/duplicateCount and per-recipient Int rewards remain JSON numbers. This is an HTTP-only projection: domain Long arithmetic, stored mutation replay JSON, player protocol and mailbox/claim responses are unchanged.
 
 Campaign state is `DRAFT|PUBLISHED|CANCELLED`. The draft object retains the last edit's requestId/expectedVersion; consumers must generate a new requestId and use campaign.version for a new edit. Counters: eligible=frozen recipients; pending=undelivered while campaign remains active; delivered=ever delivered, including later claims/expiry/cancellation; claimed=paid; expired=delivered, unclaimed and expired unless cancelled; cancelled=all unclaimed, non-skipped frozen recipients after cancellation; skipped=deleted before delivery. These counts overlap (claimed/expired are subsets of delivered). ClaimedGold/XP are actual paid totals, retained with the frozen receipt even if an account is later deleted. Draft counters are zero; use preview for its estimated audience.
 
@@ -89,11 +91,11 @@ Campaign state is `DRAFT|PUBLISHED|CANCELLED`. The draft object retains the last
 {
   "campaignId": "8e161351-1c86-46bc-b1cc-dff408658d73",
   "version": 1,
-  "recipientCount": 10,
+  "recipientCount": "10",
   "duplicateCount": 2,
   "invalidUserIds": [],
-  "totalGold": 1000,
-  "totalXp": 300,
+  "totalGold": "1000",
+  "totalXp": "300",
   "previewToken": "opaque-sha256"
 }
 ```

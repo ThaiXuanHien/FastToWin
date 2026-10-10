@@ -1,12 +1,12 @@
 import { player, pageOf } from './admin-fixture.mjs';
 export const giftId = '00000000-0000-0000-0000-000000000019';
-export const counters = { eligible: 10, pending: 1, delivered: 8, claimed: 3, expired: 2, cancelled: 0, skipped: 1, claimedGold: 300, claimedXp: 90 };
+export const counters = { eligible: '10', pending: '1', delivered: '8', claimed: '3', expired: '2', cancelled: '0', skipped: '1', claimedGold: '300', claimedXp: '90' };
 export function gifts(fixture) {
   const state = { detail: null, previewCalls: 0 };
   fixture.handlers.set('/admin/api/gift-campaigns', async (call, send) => {
-    if (call.method === 'GET') send(200, pageOf(state.detail ? [state.detail] : [], Number(call.query.get('page') || 0), state.detail ? 26 : 0));
+    if (call.method === 'GET') send(200, { ...pageOf(state.detail ? [state.detail] : [], Number(call.query.get('page') || 0), state.detail ? 26 : 0), total: state.detail ? '26' : '0' });
     else {
-      state.detail = { campaign: { id: giftId, version: 1, state: 'DRAFT', draft: { ...call.body, expiresAtEpochMillis: call.body.expiresAtEpochMillis ?? call.body.availableAtEpochMillis + 30 * 86400000 }, createdAtEpochMillis: Date.now(), publishedAtEpochMillis: null, cancelledAtEpochMillis: null, cancellationReason: null }, counters: Object.fromEntries(Object.keys(counters).map(k => [k, 0])) };
+      state.detail = { campaign: { id: giftId, version: 1, state: 'DRAFT', draft: { ...call.body, expiresAtEpochMillis: call.body.expiresAtEpochMillis ?? call.body.availableAtEpochMillis + 30 * 86400000 }, createdAtEpochMillis: Date.now(), publishedAtEpochMillis: null, cancelledAtEpochMillis: null, cancellationReason: null }, counters: Object.fromEntries(Object.keys(counters).map(k => [k, '0'])) };
       send(200, state.detail);
     } return true;
   });
@@ -15,12 +15,12 @@ export function gifts(fixture) {
     send(200, state.detail); return true;
   });
   fixture.handlers.set(`/admin/api/gift-campaigns/${giftId}/preview`, async (_, send) => {
-    state.previewCalls++; send(200, { campaignId: giftId, version: state.detail.campaign.version, recipientCount: 10, duplicateCount: 2, invalidUserIds: [], totalGold: state.detail.campaign.draft.gold * 10, totalXp: state.detail.campaign.draft.xp * 10, previewToken: 'preview-' + state.previewCalls }); return true;
+    state.previewCalls++; send(200, { campaignId: giftId, version: state.detail.campaign.version, recipientCount: '10', duplicateCount: 2, invalidUserIds: [], totalGold: (BigInt(state.detail.campaign.draft.gold) * 10n).toString(), totalXp: (BigInt(state.detail.campaign.draft.xp) * 10n).toString(), previewToken: 'preview-' + state.previewCalls }); return true;
   });
   for (const operation of ['publish', 'cancel']) fixture.handlers.set(`/admin/api/gift-campaigns/${giftId}/${operation}`, async (call, send) => {
     if (fixture.role !== 'OWNER') { send(403, { code: 'FORBIDDEN', message: 'Không có quyền.' }); return true; }
     state.detail.campaign.state = operation === 'publish' ? 'PUBLISHED' : 'CANCELLED'; state.detail.campaign.version++;
-    state.detail.counters = { ...counters, cancelled: operation === 'cancel' ? 6 : 0 };
+    state.detail.counters = { ...counters, cancelled: operation === 'cancel' ? '6' : '0' };
     state.detail.campaign.cancellationReason = operation === 'cancel' ? call.body.reason : null;
     send(200, state.detail); return true;
   });

@@ -5,6 +5,56 @@ async function draft(page) { await page.getByRole('button', { name: 'Tạo chi�
 async function preview(page) { await page.getByRole('button', { name: 'Xem trước', exact: true }).click(); await expect(page.getByRole('dialog', { name: 'Xem trước chiến dịch' }).getByText('Tổng Vàng', { exact: true })).toBeVisible(); }
 async function confirm(page) { await page.getByRole('button', { name: 'Tiếp tục công bố', exact: true }).click(); await expect(page.getByRole('dialog', { name: 'Xác nhận công bố' })).toBeVisible(); }
 
+test('decimal string zero recipients cannot continue publication', async ({ page, fixture }) => {
+  gifts(fixture); await open(page, fixture); await draft(page);
+  fixture.handlers.set(`/admin/api/gift-campaigns/${giftId}/preview`, async (_, send) => {
+    send(200, { campaignId: giftId, version: 1, recipientCount: '0', duplicateCount: 0,
+      invalidUserIds: [], totalGold: '0', totalXp: '0', previewToken: 'zero' }); return true;
+  });
+  await preview(page);
+  await expect(page.getByRole('button', { name: 'Tiếp tục công bố', exact: true })).toBeDisabled();
+});
+
+for (const width of [360, 1440]) test(`exact gift aggregates above safe integer at ${width}`, async ({ page, fixture }) => {
+  const state = gifts(fixture);
+  await page.setViewportSize({ width, height: 1000 });
+  await open(page, fixture); await draft(page);
+  const large = '9007199254740993', maximum = '9223372036854775807';
+  const formatted = value => new Intl.NumberFormat('vi-VN').format(BigInt(value));
+  fixture.handlers.set(`/admin/api/gift-campaigns/${giftId}/preview`, async (_, send) => {
+    send(200, { campaignId: giftId, version: 1, recipientCount: large, duplicateCount: 0,
+      invalidUserIds: [], totalGold: large, totalXp: maximum, previewToken: 'exact-preview' }); return true;
+  });
+  await preview(page);
+  const assertTotals = async dialog => {
+    await expect(dialog.locator('dl div').filter({ has: page.locator('dt').filter({ hasText: /^Tổng Vàng$/ }) }).locator('dd')).toHaveText(formatted(large));
+    await expect(dialog.locator('dl div').filter({ has: page.locator('dt').filter({ hasText: /^Tổng XP$/ }) }).locator('dd')).toHaveText(formatted(maximum));
+    for (const dd of await dialog.locator('.gift-totals dd').all()) {
+      expect(await dd.evaluate(el => el.getBoundingClientRect().height <= parseFloat(getComputedStyle(el).lineHeight) * 1.1)).toBe(true);
+    }
+  };
+  await assertTotals(page.getByRole('dialog')); await confirm(page); await assertTotals(page.getByRole('dialog'));
+  await page.evaluate(() => Promise.all(document.getAnimations().map(animation => animation.finished.catch(() => {}))));
+  await page.screenshot({ path: `../.artifacts/admin-gift-precision/confirm-${width}.png` });
+  await page.getByRole('button', { name: 'Hủy', exact: true }).click();
+  state.detail.counters = { ...state.detail.counters, claimedGold: large, claimedXp: maximum };
+  await page.getByRole('button', { name: 'Làm mới', exact: true }).click();
+  const report = page.locator('.gift-report');
+  await expect(report.locator('div').filter({ has: page.locator('dt').filter({ hasText: /^Vàng đã nhận$/ }) }).locator('dd')).toHaveText(formatted(large));
+  await expect(report.locator('div').filter({ has: page.locator('dt').filter({ hasText: /^XP đã nhận$/ }) }).locator('dd')).toHaveText(formatted(maximum));
+  await report.scrollIntoViewIfNeeded();
+  await page.evaluate(() => Promise.all(document.getAnimations().map(animation => animation.finished.catch(() => {}))));
+  await page.screenshot({ path: `../.artifacts/admin-gift-precision/report-${width}.png` });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  fixture.handlers.set('/admin/api/gift-campaigns', async (_, send) => {
+    send(200, { items: [state.detail], page: 0, pageSize: 25, total: large }); return true;
+  });
+  await page.getByRole('button', { name: 'Quay lại chiến dịch', exact: true }).click();
+  await expect(page.getByRole('status')).toHaveText(`${formatted(large)} chiến dịch.`);
+  await expect(page.getByRole('group', { name: 'Phân trang' })).toContainText(formatted(large));
+  await expect(page.getByRole('button', { name: 'Trang sau', exact: true })).toBeEnabled();
+});
+
 test('long draft keeps its heading and close control visible when fields scroll', async ({ page, fixture }) => {
   gifts(fixture); await page.setViewportSize({ width: 360, height: 640 }); await open(page, fixture);
   await page.getByRole('button', { name: 'Tạo chiến dịch quà', exact: true }).click();
@@ -82,7 +132,7 @@ test('ambiguous publish preserves identical request body and blocks every dismis
 
 test('invalid recipients prevent confirmation and campaign content is text only', async ({ page, fixture }) => {
   gifts(fixture); await open(page, fixture); await draft(page);
-  fixture.handlers.set(`/admin/api/gift-campaigns/${giftId}/preview`, async (_, send) => { send(200, { campaignId: giftId, version: 1, recipientCount: 0, duplicateCount: 0, invalidUserIds: [player.id], totalGold: 0, totalXp: 0, previewToken: 'invalid' }); return true; });
+  fixture.handlers.set(`/admin/api/gift-campaigns/${giftId}/preview`, async (_, send) => { send(200, { campaignId: giftId, version: 1, recipientCount: '0', duplicateCount: 0, invalidUserIds: [player.id], totalGold: '0', totalXp: '0', previewToken: 'invalid' }); return true; });
   await preview(page); await expect(page.getByRole('dialog').getByText(player.id, { exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Tiếp tục công bố', exact: true })).toBeDisabled();
 });

@@ -16,13 +16,13 @@ import kotlinx.serialization.json.Json
 private val giftJson = Json { ignoreUnknownKeys = false }
 fun Route.giftRoutes(service: GiftService, auth: AuthenticationService, adminEnabled: Boolean) {
     if (adminEnabled) route("/admin/api/gift-campaigns") {
-        get { call.giftResponse { call.respond(service.list(call.context(),call.page())) } }
-        post { call.giftResponse { service.requireOrigin(call.request.header(HttpHeaders.Origin)); call.respond(service.create(call.context(),call.body<GiftDraftRequest>())) } }
-        get("/{id}") { call.giftResponse { call.respond(service.detail(call.context(),call.id())) } }
-        put("/{id}") { call.giftResponse { service.requireOrigin(call.request.header(HttpHeaders.Origin)); call.respond(service.update(call.context(),call.id(),call.body<GiftDraftRequest>())) } }
-        post("/{id}/preview") { call.giftResponse { service.requireOrigin(call.request.header(HttpHeaders.Origin)); call.respond(service.preview(call.context(),call.id(),call.body<GiftPreviewRequest>())) } }
-        post("/{id}/publish") { call.giftResponse { service.requireOrigin(call.request.header(HttpHeaders.Origin)); call.respond(service.publish(call.context(),call.id(),call.body<GiftPublishRequest>())) } }
-        post("/{id}/cancel") { call.giftResponse { service.requireOrigin(call.request.header(HttpHeaders.Origin)); call.respond(service.cancel(call.context(),call.id(),call.body<GiftCancelRequest>())) } }
+        get { call.giftResponse { call.respond(service.list(call.context(),call.page()).adminResponse()) } }
+        post { call.giftResponse { service.requireOrigin(call.request.header(HttpHeaders.Origin)); call.respond(service.create(call.context(),call.body<GiftDraftRequest>()).adminResponse()) } }
+        get("/{id}") { call.giftResponse { call.respond(service.detail(call.context(),call.id()).adminResponse()) } }
+        put("/{id}") { call.giftResponse { service.requireOrigin(call.request.header(HttpHeaders.Origin)); call.respond(service.update(call.context(),call.id(),call.body<GiftDraftRequest>()).adminResponse()) } }
+        post("/{id}/preview") { call.giftResponse { service.requireOrigin(call.request.header(HttpHeaders.Origin)); call.respond(service.preview(call.context(),call.id(),call.body<GiftPreviewRequest>()).adminResponse()) } }
+        post("/{id}/publish") { call.giftResponse { service.requireOrigin(call.request.header(HttpHeaders.Origin)); call.respond(service.publish(call.context(),call.id(),call.body<GiftPublishRequest>()).adminResponse()) } }
+        post("/{id}/cancel") { call.giftResponse { service.requireOrigin(call.request.header(HttpHeaders.Origin)); call.respond(service.cancel(call.context(),call.id(),call.body<GiftCancelRequest>()).adminResponse()) } }
     }
     // Keep the legacy HTTP prefix and the network-only PWA namespace on one handler.
     route("/gifts/mailbox") { playerMailboxRoutes(service, auth) }

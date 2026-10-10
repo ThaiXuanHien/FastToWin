@@ -236,6 +236,8 @@ dd { margin: 6px 0 0; font-weight: 500; overflow-wrap: anywhere; }
 .gift-body { white-space: pre-wrap; overflow-wrap: anywhere; }
 .gift-totals, .gift-report { margin: 0; padding: 20px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px; background: var(--surface); border-radius: var(--radius); }
 .gift-totals dd { font-size: 1.5rem; }
+.gift-totals.gift-large-values, .gift-report.gift-large-values { grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr)); }
+.gift-totals.gift-large-values dd { font-size: 1.125rem; font-variant-numeric: tabular-nums; }
 .gift-field-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
 .gift-help { font-size: .8125rem; }
 .modal .gift-languages { grid-template-columns: minmax(0, 1fr); gap: 16px; }

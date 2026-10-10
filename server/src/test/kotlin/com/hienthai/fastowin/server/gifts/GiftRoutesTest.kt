@@ -9,9 +9,80 @@ import io.ktor.server.testing.testApplication
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonPrimitive
 import kotlin.test.*
 
 class GiftRoutesTest {
+    @Test fun `preview HTTP projection preserves maximum totals without changing domain JSON`() {
+        val preview = GiftPreview("campaign", 1, Long.MAX_VALUE, 0, emptyList(),
+            9_007_199_254_740_993L, Long.MAX_VALUE, "token")
+        val wire = Json.parseToJsonElement(Json.encodeToString(preview.adminResponse())).jsonObject
+        assertEquals("9007199254740993", wire.getValue("totalGold").jsonPrimitive.content)
+        assertEquals(Long.MAX_VALUE.toString(), wire.getValue("totalXp").jsonPrimitive.content)
+        for (key in listOf("recipientCount", "totalGold", "totalXp")) assertTrue(wire.getValue(key).jsonPrimitive.isString)
+        val persisted = Json.parseToJsonElement(Json.encodeToString(preview)).jsonObject
+        assertFalse(persisted.getValue("totalGold").jsonPrimitive.isString)
+        assertEquals(preview, Json.decodeFromString<GiftPreview>(persisted.toString()))
+    }
+    @Test fun `admin aggregates use exact decimal strings on every response`() = testApplication {
+        val f = MemoryGiftFixture()
+        val large = 9_007_199_254_740_993L
+        val wrapped = object : GiftRepository {
+            override suspend fun <T> transaction(admin: Boolean, block: GiftTransaction.() -> T): T =
+                f.gifts.repository.transaction(admin) {
+                    val original = this
+                    block(object : GiftTransaction by original {
+                        override fun campaigns(page: com.hienthai.fastowin.server.admin.PageRequest) = original.campaigns(page).copy(total = large)
+                        override fun counters(campaign: GiftCampaign, now: Long) = GiftCounters(
+                            eligible = large, claimedGold = large, claimedXp = Long.MAX_VALUE
+                        )
+                    })
+                }
+        }
+        val gifts = GiftService(wrapped, f.admin, { f.now })
+        runBlocking { f.initialize() }
+        application { gameModule(adminService = f.admin, giftService = gifts, authService = f.auth) }
+        suspend fun mutate(path: String, body: String, put: Boolean = false): String {
+            val configure: HttpRequestBuilder.() -> Unit = {
+                header(HttpHeaders.Origin, f.owner.origin!!)
+                header(HttpHeaders.Cookie, "fasttowin_admin=${f.owner.token}")
+                header("X-Admin-CSRF", f.owner.csrfToken!!)
+                contentType(ContentType.Application.Json); setBody(body)
+            }
+            val response = if (put) client.put(path, configure) else client.post(path, configure)
+            assertEquals(HttpStatusCode.OK, response.status)
+            assertEquals("no-store", response.headers[HttpHeaders.CacheControl])
+            return response.bodyAsText()
+        }
+        fun assertCounters(body: String) {
+            val counters = Json.parseToJsonElement(body).jsonObject.getValue("counters").jsonObject
+            assertTrue(counters.values.all { it.jsonPrimitive.isString }, body)
+            assertEquals(large.toString(), counters.getValue("claimedGold").jsonPrimitive.content)
+            assertEquals(Long.MAX_VALUE.toString(), counters.getValue("claimedXp").jsonPrimitive.content)
+        }
+        val base = "/admin/api/gift-campaigns"
+        val created = mutate(base, Json.encodeToString(f.request()))
+        val id = Json.parseToJsonElement(created).jsonObject.getValue("campaign").jsonObject.getValue("id").jsonPrimitive.content
+        assertCounters(created)
+        val updated = mutate("$base/$id", Json.encodeToString(f.request().copy(expectedVersion = 1)), true)
+        assertCounters(updated)
+        val preview = Json.parseToJsonElement(mutate("$base/$id/preview", "{\"expectedVersion\":2}")).jsonObject
+        for (key in listOf("recipientCount", "totalGold", "totalXp")) assertTrue(preview.getValue(key).jsonPrimitive.isString, key)
+        assertEquals("100", preview.getValue("totalGold").jsonPrimitive.content)
+        val publishBody = Json.encodeToString(GiftPublishRequest(2, preview.getValue("previewToken").jsonPrimitive.content, "exact-publish", "Test"))
+        assertCounters(mutate("$base/$id/publish", publishBody))
+        assertCounters(mutate("$base/$id/publish", publishBody)) // replay follows the same HTTP projection
+        assertCounters(mutate("$base/$id/cancel", Json.encodeToString(GiftCancelRequest(3, "exact-cancel", "Test"))))
+        val detail = client.get("$base/$id") { header(HttpHeaders.Cookie, "fasttowin_admin=${f.owner.token}") }
+        assertCounters(detail.bodyAsText())
+        val list = client.get(base) { header(HttpHeaders.Cookie, "fasttowin_admin=${f.owner.token}") }
+        val page = Json.parseToJsonElement(list.bodyAsText()).jsonObject
+        assertTrue(page.getValue("total").jsonPrimitive.isString)
+        assertEquals(large.toString(), page.getValue("total").jsonPrimitive.content)
+        assertCounters(page.getValue("items").jsonArray.single().toString())
+    }
     @Test fun `api alias and legacy mailbox share authenticated entitlement and one claim receipt`() = testApplication {
         val f=MemoryGiftFixture(); val campaign=runBlocking { f.initialize(); f.publish().also { f.gifts.deliverDueBatch() } }
         application { gameModule(adminService=f.admin,giftService=f.gifts,authService=f.auth) }
