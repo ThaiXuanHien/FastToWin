@@ -153,7 +153,7 @@ class ArcadeShellUiTest {
             HomeDashboard(
                 state = shellState(LobbyStage.SELECT_MODE), isGuest = false,
                 onQuickMatch = { _, _ -> }, onOpenRooms = {}, onOpenFriends = {},
-                onOpenLeaderboard = {}, onOpenProfile = {}, onOpenNotifications = {},
+                onOpenLeaderboard = {}, onOpenProfile = {}, onOpenNotifications = {}, onOpenGifts = {},
                 onOpenClan = {}, onOpenPractice = {}, onOpenTournament = {}, onOpenShop = {},
                 onClaimDailyCheckIn = {}, onUpgradeGuest = {}, onLogout = {}
             )
