@@ -67,9 +67,9 @@ class AnnouncementController(private val gateway: AnnouncementGateway,
     }
     suspend fun refresh() {
         if (!allowed() || mutable.value.pending || mutable.value.preferenceIntent != null) return
-        requestEpoch++; nextPage = 0
+        requestEpoch++
         when (view) {
-            AnnouncementView.INBOX -> loadPage(false)
+            AnnouncementView.INBOX -> refreshInbox()
             AnnouncementView.HOME -> request {
                 val result = gateway.banners()
                 if (current(it)) {
@@ -88,13 +88,34 @@ class AnnouncementController(private val gateway: AnnouncementGateway,
     }
     suspend fun more() {
         if (!allowed() || view != AnnouncementView.INBOX || mutable.value.loading || !mutable.value.hasMore) return
-        loadPage(true)
+        loadPage()
     }
-    private suspend fun loadPage(append: Boolean) = request { fence ->
+    private suspend fun refreshInbox() = request { fence ->
+        val loadedPages = nextPage.coerceAtLeast(1)
+        val refreshed = mutableListOf<AnnouncementPlayerItem>()
+        var lastPage: AnnouncementPlayerPage? = null
+        for (index in 0 until loadedPages) {
+            val page = gateway.inbox(index, 25)
+            if (!current(fence)) return@request
+            anchor(page.serverNowEpochMillis)
+            refreshed += page.items
+            lastPage = page
+            if (page.items.isEmpty()) break
+        }
+        lastPage?.let { page ->
+            // New first-page rows can shift old rows beyond the loaded window; retain them.
+            val items = (refreshed + mutable.value.items).distinctBy { it.announcement.id }
+            nextPage = page.page + 1
+            mutable.value = mutable.value.copy(items = items, total = page.total,
+                hasMore = page.items.isNotEmpty() && decimalGreaterThan(page.total, items.size))
+            tick()
+        }
+    }
+    private suspend fun loadPage() = request { fence ->
         val page = gateway.inbox(nextPage, 25)
         if (current(fence)) {
             anchor(page.serverNowEpochMillis); nextPage = page.page + 1
-            val items = ((if (append) mutable.value.items else emptyList()) + page.items).distinctBy { it.announcement.id }
+            val items = (mutable.value.items + page.items).distinctBy { it.announcement.id }
             mutable.value = mutable.value.copy(items = items, total = page.total,
                 hasMore = page.items.isNotEmpty() && decimalGreaterThan(page.total, items.size))
             tick()
@@ -109,10 +130,19 @@ class AnnouncementController(private val gateway: AnnouncementGateway,
             if (current(fence)) {
                 mutable.value = mutable.value.copy(selected = result)
                 tick()
+                if (serverAnchor == null) {
+                    // Detail has no time envelope; obtain authority before waiting for read.
+                    try {
+                        val clock = gateway.banners()
+                        if (current(fence)) { anchor(clock.serverNowEpochMillis); tick() }
+                    } catch (cancelled: CancellationException) { throw cancelled }
+                    catch (error: Exception) { if (current(fence)) mutable.value = mutable.value.copy(error = error.code()) }
+                }
+                if (!current(fence)) return@request
                 val receipt = gateway.read(id)
                 if (current(fence)) {
                     anchor(receipt.serverNowEpochMillis)
-                    mutable.value = mutable.value.copy(selected = mutable.value.selected?.let { row ->
+                    mutable.value = mutable.value.copy(error = null, selected = mutable.value.selected?.let { row ->
                         if (row.dismissed) row else row.copy(notification = row.notification.copy(isRead = true))
                     })
                     tick()

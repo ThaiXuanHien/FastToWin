@@ -129,15 +129,90 @@ class AnnouncementControllerTest {
         deferred.complete(item("b")); loading.await()
         assertEquals("b", controller.state.value.selected!!.announcement.id)
     }
+    @Test fun `refresh reconciles loaded history window and keeps the next page after new first page rows`() = runTest {
+        val gateway = Fake().apply {
+            pageTotal = "6"
+            pages = listOf(listOf(item("a"), item("b")), listOf(item("c"), item("d")), listOf(item("e")))
+        }
+        val controller = controller(gateway, AnnouncementView.INBOX)
+        controller.refresh(); controller.more()
+        val pageZero = CompletableDeferred<AnnouncementPlayerPage>()
+        gateway.latePage = pageZero
+        val refreshing = async { controller.refresh() }; kotlinx.coroutines.yield()
+        assertEquals(listOf("a", "b", "c", "d"), controller.state.value.items.map { it.announcement.id })
+        gateway.latePage = null
+        gateway.pages = listOf(listOf(item("n"), item("a")), listOf(item("b", AdminAnnouncementState.CANCELLED, true), item("c")), listOf(item("d"), item("e")))
+        pageZero.complete(AnnouncementPlayerPage(listOf(item("n"), item("a").let { it.copy(notification = it.notification.copy(isRead = true)) }), 0, 25, "6", 1000))
+        refreshing.await()
+        assertEquals(listOf("n", "a", "b", "c", "d"), controller.state.value.items.map { it.announcement.id })
+        assertTrue(controller.state.value.items.first { it.announcement.id == "a" }.notification.isRead)
+        assertTrue(controller.state.value.items.first { it.announcement.id == "b" }.dismissed)
+        assertEquals(AdminAnnouncementState.CANCELLED, controller.state.value.items.first { it.announcement.id == "b" }.announcement.state)
+        controller.more()
+        assertEquals(listOf(0, 1, 0, 1, 2), gateway.pageCalls)
+        assertEquals(listOf("n", "a", "b", "c", "d", "e"), controller.state.value.items.map { it.announcement.id })
+        assertFalse(controller.state.value.hasMore)
+    }
+    @Test fun `fresh direct detail expires with read-only server time when read mutation fails`() = runTest {
+        val gateway = Fake().apply { readError = "NETWORK_ERROR" }; var now = 0L
+        val controller = AnnouncementController(gateway) { now }
+        controller.context("account", "token", AppLanguage.ENGLISH, AnnouncementView.DETAIL)
+        controller.select("a")
+        assertEquals("NETWORK_ERROR", controller.state.value.error)
+        now = 1000; controller.tick()
+        assertEquals(AdminAnnouncementState.EXPIRED, controller.state.value.selected!!.announcement.state)
+        assertFalse(controller.state.value.selected!!.notification.isRead)
+        assertEquals(1, gateway.bannerCalls)
+    }
+    @Test fun `fresh direct detail ticks across exclusive end while read mutation is still waiting`() = runTest {
+        val receipt = CompletableDeferred<AnnouncementMutationResult>()
+        val gateway = Fake().apply { lateRead = receipt }; var now = 0L
+        val controller = AnnouncementController(gateway) { now }
+        controller.context("account", "token", AppLanguage.ENGLISH, AnnouncementView.DETAIL)
+        val selecting = async { controller.select("a") }; kotlinx.coroutines.yield()
+        try {
+            assertEquals(listOf<String?>("a"), gateway.readCalls)
+            now = 999; controller.tick()
+            assertEquals(AdminAnnouncementState.ACTIVE, controller.state.value.selected!!.announcement.state)
+            now = 1000; controller.tick()
+            assertEquals(AdminAnnouncementState.EXPIRED, controller.state.value.selected!!.announcement.state)
+            assertFalse(selecting.isCompleted)
+        } finally { receipt.complete(AnnouncementMutationResult("1", 1000)); selecting.await() }
+        assertEquals(AdminAnnouncementState.EXPIRED, controller.state.value.selected!!.announcement.state)
+    }
+    @Test fun `late detail clock envelope cannot cross account token language view or request epochs`() = runTest {
+        for (change in 0..4) {
+            val clock = CompletableDeferred<AnnouncementBanners>()
+            val gateway = Fake().apply { lateBanners = clock }
+            val controller = controller(gateway, AnnouncementView.DETAIL)
+            val selecting = async { controller.select("a") }; kotlinx.coroutines.yield()
+            try {
+                assertEquals(1, gateway.bannerCalls)
+                when (change) {
+                    0 -> controller.context("other", "token", AppLanguage.ENGLISH, AnnouncementView.DETAIL)
+                    1 -> controller.context("account", "other", AppLanguage.ENGLISH, AnnouncementView.DETAIL)
+                    2 -> controller.context("account", "token", AppLanguage.VIETNAMESE, AnnouncementView.DETAIL)
+                    3 -> controller.context("account", "token", AppLanguage.ENGLISH, AnnouncementView.INACTIVE)
+                    else -> { gateway.lateBanners = null; controller.select("b") }
+                }
+            } finally { clock.complete(AnnouncementBanners(emptyList(), 90000)); selecting.await() }
+            assertTrue(controller.state.value.selected?.announcement?.id != "a", "fence $change")
+            assertTrue((controller.state.value.serverNowEpochMillis ?: 0) < 90000, "clock fence $change")
+            assertEquals(if (change == 4) listOf<String?>("b") else emptyList(), gateway.readCalls)
+        }
+    }
     private fun controller(gateway: Fake, view: AnnouncementView) = AnnouncementController(gateway).also {
         it.context("account", "token", AppLanguage.ENGLISH, view)
     }
     class Fake : AnnouncementGateway {
         var pages = listOf(listOf(item("a")))
+        var pageTotal: String? = null
         var latePage: CompletableDeferred<AnnouncementPlayerPage>? = null
         var lateBanners: CompletableDeferred<AnnouncementBanners>? = null
         var saveError: String? = null
         var detailAction = AdminAnnouncementAction.NONE
+        var readError: String? = null
+        var bannerCalls = 0
         var preferenceCalls = 0
         var lateRead: CompletableDeferred<AnnouncementMutationResult>? = null
         var lateDetail: CompletableDeferred<AnnouncementPlayerItem>? = null
@@ -146,11 +221,11 @@ class AnnouncementControllerTest {
         val saves = mutableListOf<AnnouncementPreferenceRequest>()
         override suspend fun inbox(page: Int, pageSize: Int): AnnouncementPlayerPage {
             pageCalls += page
-            return latePage?.await() ?: AnnouncementPlayerPage(pages.getOrElse(page) { emptyList() }, page, pageSize, if (pages.size > 1) "3" else "1", 1000)
+            return latePage?.await() ?: AnnouncementPlayerPage(pages.getOrElse(page) { emptyList() }, page, pageSize, pageTotal ?: if (pages.size > 1) "3" else "1", 1000)
         }
         override suspend fun detail(id: String) = lateDetail?.await() ?: item(id).let { it.copy(announcement = it.announcement.copy(action = detailAction)) }
-        override suspend fun banners() = lateBanners?.await() ?: AnnouncementBanners(listOf(item("a")), 1000)
-        override suspend fun read(id: String?): AnnouncementMutationResult { readCalls += id; return lateRead?.await() ?: AnnouncementMutationResult("1", 1000) }
+        override suspend fun banners(): AnnouncementBanners { bannerCalls++; return lateBanners?.await() ?: AnnouncementBanners(listOf(item("a")), 1000) }
+        override suspend fun read(id: String?): AnnouncementMutationResult { readCalls += id; readError?.let { throw AnnouncementApiException(it) }; return lateRead?.await() ?: AnnouncementMutationResult("1", 1000) }
         override suspend fun dismiss(id: String?): AnnouncementMutationResult { dismissCalls += id; return AnnouncementMutationResult("1", 1000) }
         override suspend fun hide(id: String): AnnouncementMutationResult { hideBannerCalls += id; return AnnouncementMutationResult("1", 1000) }
         override suspend fun preferences(): AnnouncementPreferenceView { preferenceCalls++; return AnnouncementPreferenceView(1, false, false, 1000) }
