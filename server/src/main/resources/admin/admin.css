@@ -318,3 +318,22 @@ input[readonly] { background: var(--surface); }
 .compensation-modal .alert button { display: block; margin-top: 12px; }
 .page-compensation .pagination { flex-wrap: wrap; }
 @media (max-width: 700px) { .compensation-languages { grid-template-columns: minmax(0, 1fr); } }
+/* Announcement copy and counters retain native-dialog scrolling and focus. */
+.announcement-row { display: grid; grid-template-columns: minmax(0, 1fr) 48px; align-items: center; gap: 16px; padding: 20px 0; border-bottom: 1px solid var(--line); }
+.announcement-row .row-info, .page-announcements h1, .announcement-copy { min-width: 0; overflow-wrap: anywhere; }
+.announcement-row > .icon-button .tooltip { right: 0; left: auto; max-width: 75vw; white-space: normal; overflow-wrap: anywhere; }
+.announcement-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.announcement-languages { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.announcement-copy { padding: 20px; background: var(--surface); border-radius: 16px; }
+.announcement-copy h3 { margin: 0; }
+.announcement-body, .page-announcements dd, .announcement-modal dd { white-space: pre-wrap; overflow-wrap: anywhere; }
+.announcement-modal[open] { display: flex; flex-direction: column; overflow: hidden; }
+.announcement-modal .modal-header { flex: none; background: var(--canvas); padding: 8px 0; }
+.announcement-modal > .modal-form { min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 4px; }
+.announcement-modal .announcement-languages { grid-template-columns: minmax(0, 1fr); }
+.announcement-modal .field > label, .page-announcements .toolbar .field > label { position: static; display: block; margin-bottom: 8px; padding: 0; max-width: none; }
+.announcement-modal .field > :is(input, select, textarea), .page-announcements .toolbar select { padding-top: 12px; }
+.announcement-modal :is(input, select, textarea, button, [tabindex]) { scroll-margin-block: 16px; }
+.announcement-modal .alert button { display: block; margin-top: 12px; }
+.page-announcements .pagination { flex-wrap: wrap; }
+@media (max-width: 700px) { .announcement-languages { grid-template-columns: minmax(0, 1fr); } }

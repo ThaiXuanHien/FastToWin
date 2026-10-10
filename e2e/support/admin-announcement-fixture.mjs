@@ -1,0 +1,14 @@
+import { player } from './admin-fixture.mjs';
+export const base = '/admin/api/announcements';
+export const id = '44444444-4444-4444-8444-444444444444';
+export const definition = (patch = {}) => ({ id, version: 2, status: 'DRAFT', titleVi: 'Thông báo kết nối', titleEn: 'Connection notice', bodyVi: 'Nội dung đầy đủ cho người chơi.\n' + 'Thông báo không trao thưởng. '.repeat(14), bodyEn: 'Full player explanation.\n' + 'This announcement grants no reward. '.repeat(14), category: 'GENERAL', priority: 10, startsAtEpochMillis: 1791504000000, endsAtEpochMillis: 1794096000000, showBanner: true, pushEnabled: false, action: 'NONE', targetId: null, supersedesAnnouncementId: null, audience: 'USER_IDS', selectedUserIds: [player.id], createdByAdminId: 'creator', updatedByAdminId: 'editor', ...patch });
+export const counts = { frozen: '9007199254740993', eligible: '9007199254740992', pending: '5', stored: '101', read: '37', dismissed: '13', bannerHidden: '11', skipped: '1', pushAccepted: '23', pushFailed: '7', pushUnknown: '19', pushInFlight: '3', pushDisabled: '29', pushOptedOut: '31', pushNoToken: '17', pushUnavailable: '41', pushExpired: '43' };
+export function announcements(fixture, patch = {}) {
+  const state = { row: { announcement: definition(patch), counts: { ...counts }, serverNowEpochMillis: 1791505000000 }, token: 'b'.repeat(64), pushConfigured: false };
+  fixture.handlers.set(base + '/capabilities', async (_, send) => { send(200, { pushConfigured: state.pushConfigured, serverNowEpochMillis: state.row.serverNowEpochMillis }); return true; });
+  fixture.handlers.set(base, async (call, send) => { if (call.method === 'POST') state.row.announcement = definition({ ...call.body, version: 1 }); send(call.method === 'POST' ? 201 : 200, call.method === 'POST' ? state.row : { items: [state.row], page: Number(call.query.get('page') || 0), pageSize: 25, total: '1' }); return true; });
+  fixture.handlers.set(base + '/' + id, async (call, send) => { if (call.method === 'PUT') state.row.announcement = { ...state.row.announcement, ...call.body, version: state.row.announcement.version + 1 }; send(200, state.row); return true; });
+  fixture.handlers.set(base + '/' + id + '/preview', async (_, send) => { send(200, { announcement: state.row.announcement, recipientCount: '9007199254740993', duplicateCount: '2', invalidUserIds: [], previewToken: state.token, pushConfigured: state.pushConfigured, pushReminderBodyLimit: 240, serverNowEpochMillis: state.row.serverNowEpochMillis }); return true; });
+  for (const action of ['publish', 'cancel']) fixture.handlers.set(base + '/' + id + '/' + action, async (_, send) => { state.row.announcement.status = action === 'publish' ? 'PUBLISHED' : 'CANCELLED'; state.row.announcement.version++; send(200, state.row); return true; });
+  return state;
+}

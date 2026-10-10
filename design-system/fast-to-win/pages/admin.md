@@ -121,3 +121,13 @@ Amount summaries use Mission's filled MonetizationOn-style gold coin and primary
 Use a fixed native-dialog header and an independently scrolling form body so close remains reachable at 360px and 200% text. Reset preview content to its top after the response replaces the request form. Preserve focus containment/restoration, pending dismissal guards, same-payload/request-ID retry and current role/session/navigation/dialog fencing. Long copy and UUIDs wrap; motion respects reduced-motion preferences.
 
 Actual settled fixture images (list, incident form, round form, preview, report; modal top/footer) and geometry at 360/768/1024/1440 plus 200% normal/reduced motion live under `.artifacts/admin-compensation-delivery/task4/`. Native modals use viewport captures after animation finishes; avoid full-page dialog compositing. The owned browser/Ktor/PostgreSQL runner and SQL evidence are local acceptance only.
+
+## Announcements
+
+Every current role sees **Thông báo** and reads history/report. Owner/Operator create or edit drafts and preview; only Owner confirms publication/cancellation. Keep the existing white Material canvas, one primary create, labelled 48px vector utilities, readable form/confirmation actions and native modal focus containment/restoration. Published copy stays read-only; a correction creates a new draft referencing the old UUID.
+
+Draft fields explicitly name UTC inclusive start/exclusive end, bilingual plain-text copy and verified registration audience. In-app is always enabled; banner and push are explicit optional channels, push off by default. Capability is a provider fact, with unknown distinguished from unavailable, and never a configuration flow. Preview shows full in-app copy separately from safely shortened push reminders, exact recipient/duplicate counts, current version and invalid UUIDs. Internal preview tokens stay in memory.
+
+Report counts describe independent, overlapping facts: durable storage, reading, provider acceptance and unknown outcome cannot be added or equated. Unknown push is never automatically retried. Cancellation preserves history and acknowledges an in-flight external send can finish; announcements never change wallet, gifts or maintenance.
+
+The skill's narrow `modal keyboard focus scroll --domain ux` search verified the All-platform **Focus States** result and Web **Focus Not Obscured (Minimum)** recommendation. Apply visible focus and a fixed header with an independently scrolling modal body; enhanced full visibility is useful guidance without claiming AAA compliance. Body/footer remain reachable with wrapping at 200% text. `.artifacts/admin-announcements-delivery/task4/` retains actual settled viewport captures and geometry; no full-page native-dialog compositing.
