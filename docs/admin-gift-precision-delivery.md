@@ -8,7 +8,7 @@ The gift view uses BigInt for formatting, total pagination comparisons and zero-
 
 Verification evidence is retained in `.artifacts/admin-gift-precision/`:
 
-- Genuine server RED: one route assertion failed because counters were numeric. Final7 route/projection cases pass, zero failures/errors/skips, covering every admin response/replay, maximum Long preview/page totals, unchanged domain JSON and existing player/auth routes.
+- Genuine server RED: one route assertion failed because counters were numeric. Final7 route/projection cases pass, zero failures/errors/skips, covering every admin response/replay, maximum-Long preview/counter values and above-safe-integer page totals, unchanged domain JSON and existing player/auth routes.
 - Genuine browser RED: string `"0"` left publication enabled; two later geometry assertions established long totals wrapping into fragments. The initial locator failures are test defects, not behavioral RED. Large-string formatting itself already passed in the existing browser and is labelled baseline evidence.
 - Final19 gift browser cases pass. A later one-case rerun covers the final invalid-recipient string fixture change; this is19 unique cases, not20. No full admin suite was repeated.
 - Four settled original screenshots at360/1440 cover final confirmation and report. All four were inspected after animations completed and the report was scrolled into view. Exact values9007199254740993 and9223372036854775807 remain readable. Assertions also check no horizontal page overflow and exact list/pagination text.
