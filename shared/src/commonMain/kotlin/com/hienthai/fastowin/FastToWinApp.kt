@@ -34,6 +34,17 @@ import androidx.compose.ui.unit.dp
 import com.hienthai.fastowin.state.GameController
 import com.hienthai.fastowin.state.GiftMailboxController
 import com.hienthai.fastowin.state.GiftMailboxState
+import androidx.compose.runtime.rememberUpdatedState
+import com.hienthai.fastowin.state.AnnouncementController
+import com.hienthai.fastowin.state.AnnouncementState
+import com.hienthai.fastowin.state.AnnouncementView
+import com.hienthai.fastowin.state.AnnouncementNavigation
+import com.hienthai.fastowin.state.isAnnouncementUuid
+import com.hienthai.fastowin.state.isServerAnnouncement
+import com.hienthai.fastowin.state.toAppNotification
+import com.hienthai.fastowin.data.network.AnnouncementApiClient
+import com.hienthai.fastowin.ui.screens.AnnouncementDetailScreen
+import com.hienthai.fastowin.ui.screens.AnnouncementUpdateScreen
 import com.hienthai.fastowin.state.AuthController
 import com.hienthai.fastowin.state.AuthStage
 import com.hienthai.fastowin.data.network.AuthSessionStore
@@ -303,7 +314,11 @@ fun FastToWinApp(
                     accountUserId = authState.session?.userId,
                     accountDisplayName = authState.session?.displayName,
                     accessTokenProvider = authState.session?.let {
-                        { forceRefresh -> authController.validAccessToken(forceRefresh) }
+                        val owner = it.userId
+                        { forceRefresh ->
+                            if (authController.state.value.session?.userId != owner) null
+                            else authController.validAccessToken(forceRefresh).takeIf { authController.state.value.session?.userId == owner }
+                        }
                     },
                     authRequestConfigurator = authRequestConfigurator,
                     storeBillingGateway = storeBillingGateway,
@@ -419,6 +434,11 @@ private fun GameContent(
     val mailboxState by (mailboxController?.state?.collectAsState()
         ?: remember { mutableStateOf(GiftMailboxState()) })
     val mailboxScope = rememberCoroutineScope()
+    val announcementToken = authState.session?.accessToken
+    val currentAnnouncementTokenProvider by rememberUpdatedState(accessTokenProvider)
+    val announcementScope = rememberCoroutineScope()
+    var selectedAnnouncementId by rememberSaveable(accountUserId) { mutableStateOf<String?>(null) }
+    var showAnnouncementUpdate by rememberSaveable(accountUserId) { mutableStateOf(false) }
     DisposableEffect(mailboxController) { onDispose { mailboxController?.close() } }
     LaunchedEffect(controller, language) {
         controller.updateLanguage(language)
@@ -493,6 +513,8 @@ private fun GameContent(
         savedPracticeRoute = null
     }
     val closeLocalScreens = {
+        selectedAnnouncementId = null
+        showAnnouncementUpdate = false
         showRewardEvents = false
         selectedRewardEventId = null
         rewardEventController.reset()
@@ -857,6 +879,15 @@ private fun GameContent(
             showGiftMailbox = true
         }
     }
+    val openAnnouncement: (String) -> Unit = { id ->
+        if (!state.isMatchStarted && !state.isGameOver && !state.isMatchmaking && isAnnouncementUuid(id)) {
+            navigateToRoute(navigationBridge, "/announcements/$id") {
+                closeLocalScreens()
+                controller.openHome()
+                selectedAnnouncementId = id
+            }
+        }
+    }
     val openRewardEvents = {
         navigateToRoute(navigationBridge, "/events") {
             closeLocalScreens()
@@ -874,6 +905,30 @@ private fun GameContent(
             selectedRewardEventId = id
         }
     }
+    val announcementNavigation = object : AnnouncementNavigation {
+        override fun event(id: String) = openRewardEvent(id)
+        override fun mailbox() = openGiftMailbox()
+        override fun update() {
+            navigateToRoute(navigationBridge, "/announcements/update") {
+                closeLocalScreens(); controller.openHome(); showAnnouncementUpdate = true
+            }
+        }
+        override fun correction(id: String) = openAnnouncement(id)
+    }
+    val currentAnnouncementNavigation by rememberUpdatedState(announcementNavigation)
+    val announcementController = remember(serverUrl, accountUserId, isGuest, announcementToken, language, authRequestConfigurator) {
+        if (isGuest || accountUserId == null || accessTokenProvider == null) null else AnnouncementController(
+            AnnouncementApiClient(serverUrl, { force -> currentAnnouncementTokenProvider?.invoke(force) }, authRequestConfigurator),
+            navigation = object : AnnouncementNavigation {
+                override fun event(id: String) = currentAnnouncementNavigation.event(id)
+                override fun mailbox() = currentAnnouncementNavigation.mailbox()
+                override fun update() = currentAnnouncementNavigation.update()
+                override fun correction(id: String) = currentAnnouncementNavigation.correction(id)
+            }, updateBridge = updateBridge
+        )
+    }
+    val announcementState by (announcementController?.state?.collectAsState() ?: remember { mutableStateOf(AnnouncementState()) })
+    DisposableEffect(announcementController) { onDispose { announcementController?.close() } }
     val openSettingsTab = {
         navigateToRoute(navigationBridge, "/settings") { showSettings = true }
     }
@@ -950,6 +1005,8 @@ private fun GameContent(
             showGiftMailbox = false
             mailboxController?.reset()
         }
+        if (!route.startsWith("/announcements/")) selectedAnnouncementId = null
+        if (route != "/announcements/update") showAnnouncementUpdate = false
         val activeRoomRoute = state.currentRoomId?.let { "/room/$it" }
 
         if (state.isMatchStarted && !state.isGameOver && route != activeRoomRoute) {
@@ -1060,6 +1117,13 @@ private fun GameContent(
                 profileSection = null
                 controller.openNotifications()
             }
+            route == "/announcements/update" && !isGuest -> {
+                closeLocalScreens(); controller.openHome(); showAnnouncementUpdate = true
+            }
+            route.startsWith("/announcements/") && !isGuest && isAnnouncementUuid(route.removePrefix("/announcements/")) -> {
+                val id = route.removePrefix("/announcements/")
+                closeLocalScreens(); controller.openHome(); selectedAnnouncementId = id
+            }
             route == "/gifts" -> {
                 if (!showGiftMailbox) {
                     closeLocalScreens()
@@ -1133,6 +1197,8 @@ private fun GameContent(
     }
 
     val screenStateKey = when {
+        selectedAnnouncementId != null && !state.isMatchStarted -> "announcement:$selectedAnnouncementId"
+        showAnnouncementUpdate && !state.isMatchStarted -> "announcement_update"
         showRewardEvents && !state.isMatchStarted && !state.isGameOver -> "reward_events"
         showGiftMailbox -> "gifts"
         state.isNotificationsOpen -> "notifications"
@@ -1155,6 +1221,8 @@ private fun GameContent(
         else -> "lobby"
     }
     val appRoute = when {
+        selectedAnnouncementId != null && !state.isMatchStarted -> "/announcements/$selectedAnnouncementId"
+        showAnnouncementUpdate && !state.isMatchStarted -> "/announcements/update"
         showRewardEvents && !state.isMatchStarted && !state.isGameOver -> selectedRewardEventId?.let { "/events/$it" } ?: "/events"
         showGiftMailbox -> "/gifts"
         state.isNotificationsOpen -> "/notifications"
@@ -1180,6 +1248,29 @@ private fun GameContent(
         else -> "/"
     }
     val rewardEventView = com.hienthai.fastowin.state.rewardEventViewForRoute(appRoute, state)
+    val announcementView = when {
+        state.isMatchStarted || state.isGameOver || state.isMatchmaking -> AnnouncementView.INACTIVE
+        selectedAnnouncementId != null -> AnnouncementView.DETAIL
+        showAnnouncementUpdate -> AnnouncementView.UPDATE
+        state.isNotificationsOpen -> AnnouncementView.INBOX
+        showSettings -> AnnouncementView.SETTINGS
+        appRoute == "/" -> AnnouncementView.HOME
+        else -> AnnouncementView.INACTIVE
+    }
+    LaunchedEffect(announcementController, announcementView, language, announcementToken, selectedAnnouncementId) {
+        val announcements = announcementController ?: return@LaunchedEffect
+        announcements.context(accountUserId, announcementToken, language, announcementView)
+        if (announcementView == AnnouncementView.INACTIVE) return@LaunchedEffect
+        while (true) {
+            if (announcementView == AnnouncementView.DETAIL) selectedAnnouncementId?.let { announcements.select(it) }
+            else announcements.refresh()
+            delay(30_000)
+        }
+    }
+    // Ticking is independent from HTTP waits so the local exclusive-end boundary always applies.
+    LaunchedEffect(announcementController) {
+        while (true) { delay(1000); announcementController?.tick() }
+    }
     LaunchedEffect(rewardEventController, accountUserId, isGuest, language, rewardEventView, selectedRewardEventId) {
         val view = rewardEventView
         if (view == null) { rewardEventController.reset(); return@LaunchedEffect }
@@ -1256,13 +1347,30 @@ private fun GameContent(
                     onUpgradeGuest = onUpgradeGuest
                 )
 
+                selectedAnnouncementId != null && !state.isMatchStarted -> AnnouncementDetailScreen(
+                    state = announcementState,
+                    onBack = { navigateBack { selectedAnnouncementId = null; controller.openNotifications() } },
+                    onRefresh = { selectedAnnouncementId?.let { id -> announcementScope.launch { announcementController?.select(id) } } },
+                    onAction = { announcementController?.action(state.isMatchStarted || state.isGameOver || state.isMatchmaking) },
+                    onCorrection = { id -> announcementController?.correction(id, state.isMatchStarted || state.isGameOver || state.isMatchmaking) }
+                )
+                showAnnouncementUpdate && !state.isMatchStarted -> AnnouncementUpdateScreen(
+                    supported = updateBridge !== NoOpAppUpdateBridge,
+                    available = webUpdateAvailable,
+                    onBack = { navigateBack { showAnnouncementUpdate = false; controller.openNotifications() } },
+                    onApply = { announcementController?.applyUpdate(state.isMatchStarted || state.isGameOver || state.isMatchmaking) }
+                )
                 state.isNotificationsOpen -> NotificationsScreen(
-                    notifications = state.notifications,
+                    notifications = (announcementState.items.map { it.notification.copy(announcement = it.announcement).toAppNotification(localization) } +
+                        state.notifications.filterNot { it.isServerAnnouncement() }).distinctBy { it.id }.sortedByDescending { it.createdAtEpochMillis },
                     onBack = { navigateBack(controller::closeNotifications) },
-                    onOpen = controller::openNotification,
-                    onDismiss = controller::dismissNotification,
-                    onMarkAllRead = controller::markAllNotificationsRead,
-                    onClearAll = controller::clearNotifications
+                    onOpen = { id -> if (id.startsWith("admin-announcement:")) openAnnouncement(id.removePrefix("admin-announcement:")) else controller.openNotification(id) },
+                    onDismiss = { id -> if (id.startsWith("admin-announcement:")) announcementScope.launch { announcementController?.dismiss(id.removePrefix("admin-announcement:")) } else controller.dismissNotification(id) },
+                    onMarkAllRead = { controller.markAllNotificationsRead(); announcementScope.launch { announcementController?.read() } },
+                    onClearAll = { controller.clearNotifications(); announcementScope.launch { announcementController?.dismiss() } },
+                    announcementState = if (isGuest) null else announcementState,
+                    onAnnouncementMore = { announcementScope.launch { announcementController?.more() } },
+                    onAnnouncementRetry = { announcementScope.launch { announcementController?.refresh() } }
                 )
 
                 showTutorial -> TutorialScreen(
@@ -1290,7 +1398,12 @@ private fun GameContent(
                         state.connectionStatus != com.hienthai.fastowin.state.ConnectionStatus.CONNECTED,
                     onPushPreferencesChange = controller::updatePushPreferences,
                     installStatus = installStatus,
-                    onInstallApp = installBridge::install
+                    onInstallApp = installBridge::install,
+                    announcementState = if (isGuest) null else announcementState,
+                    onAnnouncementPreferences = { admin, event -> announcementScope.launch { announcementController?.savePreferences(admin, event) } },
+                    onAnnouncementRetry = { announcementScope.launch {
+                        if (announcementState.preferenceIntent != null) announcementController?.retryPreferences() else announcementController?.refresh()
+                    } }
                 )
 
                 state.isFriendProfileOpen && profileSection == null && !state.isNotificationsOpen -> ProfileScreen(
@@ -1593,6 +1706,9 @@ private fun GameContent(
                     onOpenNotifications = openNotifications,
                     onOpenGifts = openGiftMailbox,
                     rewardEventState = rewardEventState,
+                    announcementState = if (isGuest) null else announcementState,
+                    onOpenAnnouncement = openAnnouncement,
+                    onHideAnnouncement = { id -> announcementScope.launch { announcementController?.hide(id) } },
                     onOpenRewardEvents = openRewardEvents,
                     onRefreshRewardEvents = { rewardEventScope.launch { rewardEventController.refresh() } },
                     onOpenClan = openClanTab,

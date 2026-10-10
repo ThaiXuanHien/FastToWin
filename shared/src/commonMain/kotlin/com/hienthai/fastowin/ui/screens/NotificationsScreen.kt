@@ -26,6 +26,7 @@ import androidx.compose.material.icons.filled.MeetingRoom
 import androidx.compose.material.icons.filled.PersonAdd
 import androidx.compose.material.icons.filled.Redeem
 import androidx.compose.material.icons.filled.TaskAlt
+import androidx.compose.material.icons.filled.Campaign
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -42,6 +43,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.hienthai.fastowin.platform.epochMillis
 import com.hienthai.fastowin.localization.TextKey
@@ -55,6 +57,7 @@ import com.hienthai.fastowin.ui.components.ArcadeFeatureHero
 import com.hienthai.fastowin.ui.components.ArcadeEmptyState
 import com.hienthai.fastowin.ui.components.ArcadeActionButton
 import com.hienthai.fastowin.ui.components.ArcadeActionStyle
+import com.hienthai.fastowin.ui.components.AnnouncementActionButton
 import com.hienthai.fastowin.ui.components.ArcadeDialog
 import com.hienthai.fastowin.ui.components.ArcadeHeaderIconButton
 import com.hienthai.fastowin.ui.components.ArcadeLoadMoreButton
@@ -73,6 +76,9 @@ fun NotificationsScreen(
     onMarkAllRead: () -> Unit,
     onClearAll: () -> Unit,
     nowMillis: Long = epochMillis(),
+    announcementState: com.hienthai.fastowin.state.AnnouncementState? = null,
+    onAnnouncementMore: () -> Unit = {},
+    onAnnouncementRetry: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     SystemBackHandler(onBack = onBack)
@@ -153,6 +159,14 @@ fun NotificationsScreen(
                 modifier = contentModifier.padding(top = 12.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
+            announcementState?.let { announcement ->
+                Text(localized(TextKey.AnnouncementHistory, "count" to announcement.total), fontWeight = FontWeight.Bold)
+                if (announcement.loading && announcement.items.isEmpty()) Text(localized(TextKey.AnnouncementLoading))
+                if (announcement.error != null) {
+                    Text(localized(TextKey.AnnouncementError))
+                    AnnouncementActionButton(localized(TextKey.AnnouncementRetry), onAnnouncementRetry, enabled = !announcement.loading && !announcement.pending)
+                }
+            }
             if (notifications.isEmpty()) {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     ArcadeEmptyState(
@@ -178,6 +192,7 @@ fun NotificationsScreen(
                         NotificationCard(
                             notification = notification,
                             nowMillis = nowMillis,
+                            dismissed = announcementState?.items?.firstOrNull { it.notification.id == notification.id }?.dismissed == true,
                             onOpen = { onOpen(notification.id) },
                             onDismiss = { pendingDelete = notification }
                         )
@@ -196,6 +211,10 @@ fun NotificationsScreen(
                         )
                     }
                     item { Spacer(Modifier.size(12.dp)) }
+                    if (announcementState?.hasMore == true) item(key = "announcement_more") {
+                        AnnouncementActionButton(localized(TextKey.AnnouncementMore), onAnnouncementMore,
+                            enabled = !announcementState.loading && !announcementState.pending, modifier = Modifier.fillMaxWidth())
+                    }
                 }
             }
         }
@@ -232,6 +251,7 @@ fun NotificationsScreen(
 private fun NotificationCard(
     notification: AppNotification,
     nowMillis: Long,
+    dismissed: Boolean = false,
     onOpen: () -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -264,19 +284,27 @@ private fun NotificationCard(
             ) {
                 Box(contentAlignment = Alignment.Center) {
                     Icon(
-                        notificationIcon(notification.kind),
+                        if (notification.announcement != null) Icons.Default.Campaign else notificationIcon(notification.kind),
                         contentDescription = null,
                         tint = if (notification.isRead) MaterialTheme.colorScheme.onSurfaceVariant else ArcadePalette.White
                     )
                 }
             }
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                notification.announcement?.let { context ->
+                    Text(localized(TextKey.AnnouncementLabel), fontWeight = FontWeight.Bold)
+                    Text(localized(com.hienthai.fastowin.ui.components.announcementCategoryKey(context.category)) + " · " +
+                        localized(com.hienthai.fastowin.ui.components.announcementStateKey(context.state)), style = MaterialTheme.typography.bodySmall)
+                    if (dismissed) Text(localized(TextKey.AnnouncementDismissed), style = MaterialTheme.typography.bodySmall)
+                }
                 Text(
                     notification.title,
                     fontWeight = if (notification.isRead) FontWeight.Medium else FontWeight.Bold
                 )
                 Text(
                     notification.message,
+                    maxLines = if (notification.announcement != null) 3 else Int.MAX_VALUE,
+                    overflow = TextOverflow.Ellipsis,
                     color = if (notification.isRead) MaterialTheme.colorScheme.onSurfaceVariant else ArcadePalette.Blue100
                 )
                 Text(
@@ -286,7 +314,7 @@ private fun NotificationCard(
                     fontWeight = FontWeight.Bold
                 )
             }
-            IconButton(onClick = onDismiss) {
+            IconButton(onClick = onDismiss, enabled = !dismissed) {
                 Icon(
                     Icons.Default.Delete,
                     contentDescription = localized(TextKey.DeleteNotification),

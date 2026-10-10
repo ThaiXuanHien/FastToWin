@@ -77,6 +77,7 @@ import com.hienthai.fastowin.localization.resolveSavedLanguage
 import com.hienthai.fastowin.ui.components.ArcadePanel
 import com.hienthai.fastowin.ui.components.ArcadeActionButton
 import com.hienthai.fastowin.ui.components.ArcadeActionStyle
+import com.hienthai.fastowin.ui.components.AnnouncementActionButton
 import com.hienthai.fastowin.ui.components.ArcadeSegmentedControl
 import com.hienthai.fastowin.ui.components.FastToWinHeader
 import com.hienthai.fastowin.ui.components.SystemBackHandler
@@ -103,6 +104,9 @@ fun SettingsScreen(
     onPushPreferencesChange: (PushPreferencesSnapshot) -> Unit = {},
     installStatus: AppInstallStatus = AppInstallStatus.UNSUPPORTED,
     onInstallApp: () -> Unit = {},
+    announcementState: com.hienthai.fastowin.state.AnnouncementState? = null,
+    onAnnouncementPreferences: (Boolean, Boolean) -> Unit = { _, _ -> },
+    onAnnouncementRetry: () -> Unit = {},
     systemLanguageTags: List<String> = platformLanguageTags(),
     modifier: Modifier = Modifier
 ) {
@@ -188,6 +192,9 @@ fun SettingsScreen(
                         }
                     }
 
+                    announcementState?.let { announcement ->
+                        AnnouncementConsentSettings(announcement, onAnnouncementPreferences, onAnnouncementRetry)
+                    }
                     val showDevicePushControl = pushStatus !in setOf(
                         AppPushStatus.UNSUPPORTED,
                         AppPushStatus.UNCONFIGURED
@@ -387,6 +394,27 @@ private fun LanguageSettingRow(code: String, systemLanguage: AppLanguage, onClic
                 )
             }
             Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, contentDescription = null)
+        }
+    }
+}
+
+@Composable
+fun AnnouncementConsentSettings(state: com.hienthai.fastowin.state.AnnouncementState,
+    onChange: (Boolean, Boolean) -> Unit, onRetry: () -> Unit) {
+    SettingsSection(title = localized(TextKey.AnnouncementConsentTitle), subtitle = localized(TextKey.AnnouncementConsentDescription)) {
+        val preferences = state.preferences
+        val enabled = preferences != null && !state.pending && !state.loading && state.preferenceIntent == null
+        SettingsSwitchRow(icon = Icons.Rounded.NotificationsActive, title = localized(TextKey.AnnouncementAdminPush),
+            subtitle = localized(TextKey.AnnouncementAdminPushDescription), checked = preferences?.adminEnabled ?: false,
+            enabled = enabled, onCheckedChange = { onChange(it, preferences?.eventEnabled ?: false) })
+        SettingsSwitchRow(icon = Icons.Rounded.CalendarMonth, title = localized(TextKey.AnnouncementEventPush),
+            subtitle = localized(TextKey.AnnouncementEventPushDescription), checked = preferences?.eventEnabled ?: false,
+            enabled = enabled, onCheckedChange = { onChange(preferences?.adminEnabled ?: false, it) })
+        if (state.pending || (state.loading && state.preferences == null)) Text(localized(if (state.pending) TextKey.AnnouncementSaving else TextKey.AnnouncementLoading))
+        if (state.error != null) {
+            Text(localized(when { state.error == "CONFLICT" -> TextKey.AnnouncementConflict; state.preferenceIntent != null -> TextKey.AnnouncementUncertain; else -> TextKey.AnnouncementError }))
+            AnnouncementActionButton(localized(TextKey.AnnouncementRetry), onRetry, enabled = !state.pending && !state.loading,
+                outline = true, modifier = Modifier.fillMaxWidth())
         }
     }
 }

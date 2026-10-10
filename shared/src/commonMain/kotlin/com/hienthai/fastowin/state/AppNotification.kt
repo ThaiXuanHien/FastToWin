@@ -9,6 +9,8 @@ import com.hienthai.fastowin.protocol.NotificationKind
 import com.hienthai.fastowin.protocol.NotificationSnapshot
 import com.hienthai.fastowin.protocol.PlayerProfileSnapshot
 import com.hienthai.fastowin.protocol.ServerMessage
+import com.hienthai.fastowin.protocol.AdminAnnouncementContext
+import com.hienthai.fastowin.localization.AppLanguage
 
 enum class AppNotificationKind {
     FRIEND_REQUEST,
@@ -34,14 +36,17 @@ data class AppNotification(
     val titleArgs: Map<String, String> = emptyMap(),
     val messageKey: String? = null,
     val messageArgs: Map<String, String> = emptyMap(),
-    val localizationData: Map<String, String> = emptyMap()
+    val localizationData: Map<String, String> = emptyMap(),
+    val announcement: AdminAnnouncementContext? = null
 )
 
 internal fun NotificationSnapshot.toAppNotification(localization: LocalizationService) = AppNotification(
     id = id,
     kind = AppNotificationKind.valueOf(kind.name),
-    title = localizedNotificationText(localization, titleKey, titleArgs, title),
-    message = localizedNotificationText(localization, messageKey, messageArgs, message),
+    title = announcement?.let { if (localization.language == AppLanguage.VIETNAMESE) it.titleVi else it.titleEn }
+        ?: localizedNotificationText(localization, titleKey, titleArgs, title),
+    message = announcement?.let { if (localization.language == AppLanguage.VIETNAMESE) it.bodyVi else it.bodyEn }
+        ?: localizedNotificationText(localization, messageKey, messageArgs, message),
     createdAtEpochMillis = createdAtEpochMillis,
     isRead = isRead,
     destination = AppNotificationDestination.valueOf(destination.name),
@@ -49,7 +54,8 @@ internal fun NotificationSnapshot.toAppNotification(localization: LocalizationSe
     titleKey = titleKey,
     titleArgs = titleArgs,
     messageKey = messageKey,
-    messageArgs = messageArgs
+    messageArgs = messageArgs,
+    announcement = announcement
 )
 
 internal fun AppNotification.toNotificationSnapshot() = NotificationSnapshot(
@@ -66,6 +72,9 @@ internal fun AppNotification.toNotificationSnapshot() = NotificationSnapshot(
     messageKey = messageKey,
     messageArgs = messageArgs
 )
+
+internal fun AppNotification.isServerAnnouncement() = announcement != null || id.startsWith("admin-announcement:")
+internal fun List<AppNotification>.clientSyncSnapshots(): List<NotificationSnapshot> = filterNot(AppNotification::isServerAnnouncement).map(AppNotification::toNotificationSnapshot)
 
 private fun localizedNotificationText(
     localization: LocalizationService,
@@ -328,7 +337,10 @@ private fun completedMissionNotifications(
     }
 }
 
-internal fun AppNotification.relocalized(localization: LocalizationService): AppNotification = when (localizationData["type"]) {
+internal fun AppNotification.relocalized(localization: LocalizationService): AppNotification = if (announcement != null) copy(
+    title = if (localization.language == AppLanguage.VIETNAMESE) announcement.titleVi else announcement.titleEn,
+    message = if (localization.language == AppLanguage.VIETNAMESE) announcement.bodyVi else announcement.bodyEn
+) else when (localizationData["type"]) {
     "friend" -> copy(
         title = localization.text(TextKey.FriendRequests),
         message = localization.text(

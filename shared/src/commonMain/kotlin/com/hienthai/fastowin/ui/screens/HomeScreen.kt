@@ -122,6 +122,9 @@ internal fun HomeDashboard(
     onOpenNotifications: () -> Unit,
     onOpenGifts: () -> Unit,
     rewardEventState: com.hienthai.fastowin.state.RewardEventUiState? = null,
+    announcementState: com.hienthai.fastowin.state.AnnouncementState? = null,
+    onOpenAnnouncement: (String) -> Unit = {},
+    onHideAnnouncement: (String) -> Unit = {},
     onOpenRewardEvents: () -> Unit = {},
     onRefreshRewardEvents: () -> Unit = {},
     onOpenClan: () -> Unit,
@@ -201,6 +204,11 @@ internal fun HomeDashboard(
             )
 
             val season = profile?.progression?.season
+            announcementState?.banner?.let { announcement ->
+                com.hienthai.fastowin.ui.components.AnnouncementBanner(announcement, announcementState.pending,
+                    { onOpenAnnouncement(announcement.announcement.id) }, { onHideAnnouncement(announcement.announcement.id) })
+            }
+            if (announcementState?.error != null) Text(localized(TextKey.AnnouncementError), style = MaterialTheme.typography.bodySmall)
             rewardEventState?.let { events ->
                 com.hienthai.fastowin.ui.components.RewardEventBanner(events, onOpenRewardEvents, onRefreshRewardEvents)
             }

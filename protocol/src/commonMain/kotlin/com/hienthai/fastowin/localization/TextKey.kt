@@ -376,5 +376,13 @@ enum class TextKey {
     TitleMasterName, TitleMasterUnlockDescription,
     TitleConquerorName, TitleConquerorUnlockDescription,
     TitleWarGodName, TitleWarGodUnlockDescription,
-    TitleSpeedKingName, TitleSpeedKingUnlockDescription
+    TitleSpeedKingName, TitleSpeedKingUnlockDescription,
+    AnnouncementLabel, AnnouncementGeneral, AnnouncementEvent, AnnouncementMaintenance, AnnouncementCompensation,
+    AnnouncementActive, AnnouncementScheduled, AnnouncementExpired, AnnouncementCancelled,
+    AnnouncementHistory, AnnouncementDismissed, AnnouncementDetails, AnnouncementHide, AnnouncementMore,
+    AnnouncementLoading, AnnouncementError, AnnouncementRetry, AnnouncementConflict, AnnouncementUncertain,
+    AnnouncementBounds, AnnouncementAuthority, AnnouncementCorrection, AnnouncementOpenEvent, AnnouncementOpenMailbox,
+    AnnouncementUpdateTitle, AnnouncementUpdateUnsupported, AnnouncementUpdateReady, AnnouncementUpdateCurrent, AnnouncementUpdateApply,
+    AnnouncementConsentTitle, AnnouncementConsentDescription, AnnouncementAdminPush, AnnouncementEventPush, AnnouncementSaving,
+    AnnouncementAdminPushDescription, AnnouncementEventPushDescription
 }

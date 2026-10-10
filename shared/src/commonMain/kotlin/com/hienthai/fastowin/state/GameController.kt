@@ -668,6 +668,7 @@ class GameController private constructor(
 
     fun openNotification(notificationId: String) {
         val notification = _uiState.value.notifications.firstOrNull { it.id == notificationId } ?: return
+        if (notification.isServerAnnouncement() || _uiState.value.isMatchStarted) return
         _uiState.update { state ->
             state.copy(
                 notifications = state.notifications.map {
@@ -1156,7 +1157,7 @@ class GameController private constructor(
                 }
                 if (newNotifications.isNotEmpty()) {
                     socket.sendMessage(ClientMessage.SyncNotifications(
-                        newNotifications.map(AppNotification::toNotificationSnapshot)
+                        newNotifications.clientSyncSnapshots()
                     ))
                 }
                 // Auto-load clan details when clanId changes while clan screen is open
