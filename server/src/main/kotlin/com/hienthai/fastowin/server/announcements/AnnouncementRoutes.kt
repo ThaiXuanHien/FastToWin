@@ -69,7 +69,10 @@ private suspend fun ApplicationCall.player(auth: AuthenticationService): String 
 private suspend inline fun <reified T> ApplicationCall.announcementBody(): T {
     if (!request.contentType().match(ContentType.Application.Json)) invalid()
     val channel = receiveChannel()
-    val buffer = ByteArray(32_769)
+    // 10,000 UUIDs escaped as 36 six-byte units + quotes/comma: 2,190,001 bytes.
+    // Bilingual 160/4000 copy: 49,920; reason: 3,000; metadata/keys: < 8,192.
+    val maxBytes = if (T::class == AnnouncementDraftRequest::class) 2_300_000 else 32_768
+    val buffer = ByteArray(maxBytes + 1)
     var size = 0
     while (!channel.isClosedForRead) {
         if (size == buffer.size) invalid()
@@ -77,7 +80,7 @@ private suspend inline fun <reified T> ApplicationCall.announcementBody(): T {
         if (read < 0) break
         size += read
     }
-    if (size > 32_768) invalid()
+    if (size > maxBytes) invalid()
     return try {
         val decoder = Charsets.UTF_8.newDecoder().onMalformedInput(CodingErrorAction.REPORT)
             .onUnmappableCharacter(CodingErrorAction.REPORT)

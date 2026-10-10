@@ -11,6 +11,7 @@ import com.hienthai.fastowin.server.announcements.AnnouncementService
 import com.hienthai.fastowin.server.announcements.AnnouncementPushDelivery
 import com.hienthai.fastowin.server.announcements.UnavailableAnnouncementRepository
 import com.hienthai.fastowin.server.announcements.announcementRoutes
+import com.hienthai.fastowin.server.announcements.startAnnouncementDelivery
 import com.hienthai.fastowin.server.analytics.analyticsRoutes
 import com.hienthai.fastowin.protocol.ClientMessage
 import com.hienthai.fastowin.protocol.AuthErrorResponse
@@ -141,6 +142,10 @@ fun Application.gameModule(
             path == "/admin/api/incidents" || path.startsWith("/admin/api/incidents/")) {
             call.response.header(HttpHeaders.CacheControl, "no-store")
         }
+        if (path == "/api/announcements" || path.startsWith("/api/announcements/") ||
+            path == "/admin/api/announcements" || path.startsWith("/admin/api/announcements/")) {
+            call.response.header("X-Content-Type-Options", "nosniff")
+        }
         if (adminService == null && (path == "/admin/api/announcements" || path.startsWith("/admin/api/announcements/"))) {
             call.respond(HttpStatusCode.NotFound)
             finish()
@@ -192,17 +197,7 @@ fun Application.gameModule(
     if (adminService != null) maintenanceService?.let { service -> routing { maintenanceRoutes(service) } }
     if (giftDeliveryEnabled) startGiftDelivery(giftService)
 
-    announcementPushDelivery?.let { delivery -> launch {
-        while (isActive) {
-            try {
-                announcementService.deliverDueBatch()
-                delivery.recoverStale()
-                delivery.deliverDueBatch()
-            } catch (cancelled: CancellationException) { throw cancelled }
-            catch (_: Exception) { System.err.println("Announcement delivery unavailable") }
-            delay(5_000)
-        }
-    } }
+    announcementPushDelivery?.let { startAnnouncementDelivery(announcementService, it) }
 
     val connections = ConcurrentHashMap<String, SocketConnection>()
 

@@ -91,10 +91,12 @@ object NoOpPushNotificationService : PushNotificationService {
     ): PushDeliveryStatus = PushDeliveryStatus.FAILED
 }
 
-class FirebasePushNotificationService(
-    private val webBaseUrl: String? = configuredWebBaseUrl()
+class FirebasePushNotificationService internal constructor(
+    private val webBaseUrl: String?,
+    private val announcementTransport: ((Message) -> com.google.api.core.ApiFuture<String>)?
 ) : PushNotificationService {
-    override val announcementConfigured: Boolean get() = FirebaseApp.getApps().isNotEmpty()
+    constructor(webBaseUrl: String? = configuredWebBaseUrl()) : this(webBaseUrl, null)
+    override val announcementConfigured: Boolean get() = announcementTransport != null || FirebaseApp.getApps().isNotEmpty()
 
     override suspend fun sendAnnouncement(
         fcmToken: String, languageTag: String, titleVi: String, titleEn: String,
@@ -107,28 +109,28 @@ class FirebasePushNotificationService(
             if (vietnamese) bodyVi else bodyEn,
             if (vietnamese) "vi" else "en"
         )
-        return withContext(Dispatchers.IO) {
-            try {
-                val destination = normalizePushDestination(destinationPath)
-                val message = Message.builder().setToken(fcmToken)
-                    .setNotification(Notification.builder().setTitle(rendered.title).setBody(rendered.body).build())
-                    .putData("destination", destination)
-                    .setApnsConfig(ApnsConfig.builder().putHeader("apns-priority", "10")
-                        .setAps(Aps.builder().setSound("default").build()).build())
-                    .apply { webPushConfig(rendered, destination)?.let { setWebpushConfig(it) } }
-                    .build()
-                FirebaseMessaging.getInstance().send(message)
-                AnnouncementPushStatus.ACCEPTED
-            } catch (error: FirebaseMessagingException) {
-                when (error.messagingErrorCode) {
-                    MessagingErrorCode.UNREGISTERED, MessagingErrorCode.INVALID_ARGUMENT -> AnnouncementPushStatus.FAILED
-                    else -> AnnouncementPushStatus.UNKNOWN
-                }
-            } catch (_: Exception) { AnnouncementPushStatus.UNKNOWN }
-        }
+        return try {
+            val destination = normalizePushDestination(destinationPath)
+            val message = Message.builder().setToken(fcmToken)
+                .setNotification(Notification.builder().setTitle(rendered.title).setBody(rendered.body).build())
+                .putData("destination", destination)
+                .setApnsConfig(ApnsConfig.builder().putHeader("apns-priority", "10")
+                    .setAps(Aps.builder().setSound("default").build()).build())
+                .apply { webPushConfig(rendered, destination)?.let { setWebpushConfig(it) } }
+                .build()
+            (announcementTransport?.invoke(message) ?: FirebaseMessaging.getInstance().sendAsync(message)).awaitAnnouncementResponse()
+            AnnouncementPushStatus.ACCEPTED
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            throw cancelled
+        } catch (error: FirebaseMessagingException) {
+            when (error.messagingErrorCode) {
+                MessagingErrorCode.UNREGISTERED, MessagingErrorCode.INVALID_ARGUMENT -> AnnouncementPushStatus.FAILED
+                else -> AnnouncementPushStatus.UNKNOWN
+            }
+        } catch (_: Exception) { AnnouncementPushStatus.UNKNOWN }
     }
     init {
-        if (FirebaseApp.getApps().isEmpty()) {
+        if (announcementTransport == null && FirebaseApp.getApps().isEmpty()) {
             runCatching {
                 configuredFirebaseCredentialStream().use { serviceAccount ->
                     val options = FirebaseOptions.builder()
@@ -233,6 +235,18 @@ class FirebasePushNotificationService(
         }
     }
 }
+
+/** Only completed futures are read; cancellation never waits for the provider's executor. */
+private suspend fun <T> com.google.api.core.ApiFuture<T>.awaitAnnouncementResponse(): T =
+    kotlinx.coroutines.suspendCancellableCoroutine { continuation ->
+        continuation.invokeOnCancellation { cancel(true) }
+        addListener({
+            try { continuation.resumeWith(Result.success(get())) }
+            catch (error: java.util.concurrent.ExecutionException) {
+                continuation.resumeWith(Result.failure(error.cause ?: error))
+            } catch (error: Exception) { continuation.resumeWith(Result.failure(error)) }
+        }, java.util.concurrent.Executor { it.run() })
+    }
 
 internal fun normalizePushDestination(destinationPath: String): String {
     val normalized = destinationPath.trim().substringBefore('?').substringBefore('#')

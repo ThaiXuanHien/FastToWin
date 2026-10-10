@@ -53,6 +53,7 @@ class AnnouncementRoutesTest {
         val get = client.get("/admin/api/announcements")
         assertEquals(HttpStatusCode.NotFound, get.status)
         assertEquals("no-store", get.headers[HttpHeaders.CacheControl])
+        assertEquals("nosniff", get.headers["X-Content-Type-Options"])
         val preflight = client.request("/admin/api/announcements") {
             method = io.ktor.http.HttpMethod.Options
             header(HttpHeaders.Origin, "http://localhost:8080")
@@ -60,6 +61,16 @@ class AnnouncementRoutesTest {
         }
         assertEquals(HttpStatusCode.NotFound, preflight.status)
         assertEquals("no-store", preflight.headers[HttpHeaders.CacheControl])
+        assertEquals("nosniff", preflight.headers["X-Content-Type-Options"])
+        val deniedCors = client.request("/api/announcements") {
+            method = io.ktor.http.HttpMethod.Options
+            header(HttpHeaders.Origin, "https://untrusted.invalid")
+            header(HttpHeaders.AccessControlRequestMethod, "POST")
+        }
+        assertEquals(HttpStatusCode.Forbidden, deniedCors.status)
+        assertEquals("no-store", deniedCors.headers[HttpHeaders.CacheControl])
+        assertEquals("nosniff", deniedCors.headers["X-Content-Type-Options"])
+
     }
 
     @Test fun `two bearer devices reload durable read and hidden banner without wallet action`() = testApplication {
@@ -143,6 +154,64 @@ class AnnouncementRoutesTest {
         val body = Json.parseToJsonElement(response.bodyAsText()).jsonObject
         assertEquals("105", body["total"]!!.jsonPrimitive.content)
         assertEquals(5, body["items"]!!.jsonArray.size)
+        val readAll = client.post("/api/announcements/read-all") { header(HttpHeaders.Authorization, "Bearer ${session.accessToken}") }
+        assertEquals(HttpStatusCode.OK, readAll.status)
+        assertEquals("105", Json.parseToJsonElement(readAll.bodyAsText()).jsonObject["affected"]!!.jsonPrimitive.content)
+        val readPage = client.get("/api/announcements?page=4&pageSize=25") { header(HttpHeaders.Authorization, "Bearer ${session.accessToken}") }
+        assertTrue(Json.parseToJsonElement(readPage.bodyAsText()).jsonObject["items"]!!.jsonArray.all {
+            it.jsonObject["notification"]!!.jsonObject["isRead"]!!.jsonPrimitive.content == "true"
+        })
+        val dismissed = client.post("/api/announcements/dismiss-all") { header(HttpHeaders.Authorization, "Bearer ${session.accessToken}") }
+        assertEquals(HttpStatusCode.OK, dismissed.status)
+        assertEquals("105", Json.parseToJsonElement(dismissed.bodyAsText()).jsonObject["affected"]!!.jsonPrimitive.content)
+        val history = client.get("/api/announcements?page=4&pageSize=25") { header(HttpHeaders.Authorization, "Bearer ${session.accessToken}") }
+        val historyBody = Json.parseToJsonElement(history.bodyAsText()).jsonObject
+        assertEquals("105", historyBody["total"]!!.jsonPrimitive.content)
+        assertTrue(historyBody["items"]!!.jsonArray.all { it.jsonObject["dismissed"]!!.jsonPrimitive.content == "true" })
+        val retry = client.post("/api/announcements/dismiss-all") { header(HttpHeaders.Authorization, "Bearer ${session.accessToken}") }
+        assertEquals("0", Json.parseToJsonElement(retry.bodyAsText()).jsonObject["affected"]!!.jsonPrimitive.content)
+
+    }
+
+
+    @Test fun `round1 HTTP accepts maximum escaped audience and copy and rejects byte overflow`() = testApplication {
+        val admins = InMemoryAdminRepository()
+        val adminService = AdminService(admins, AdminConfiguration("http://localhost:8080", false), PasswordHasher(iterations = 1_000))
+        val login = runBlocking {
+            adminService.bootstrapOwner("owner@example.com", "GoodPassword123!")
+            adminService.login("owner@example.com", "GoodPassword123!", "http://localhost:8080", "127.0.0.1")
+        }
+        application {
+            install(ContentNegotiation) { json(ProtocolJson) }
+            routing { announcementRoutes(AnnouncementService(InMemoryNotificationRepository(admins).announcements, adminService),
+                AuthenticationService(InMemoryAuthRepository()), true) }
+        }
+        val request = AnnouncementDraftRequest("a".repeat(160), "a".repeat(160), "a".repeat(4000), "a".repeat(4000),
+            com.hienthai.fastowin.protocol.AdminAnnouncementCategory.GENERAL, priority = 100,
+            startsAtEpochMillis = 0, endsAtEpochMillis = 253402300799999,
+            audience = AnnouncementAudience.USER_IDS, selectedUserIds = List(10000) { UUID.randomUUID().toString() },
+            requestId = "a".repeat(128), reason = "a".repeat(500))
+        val fullJson = Json { encodeDefaults = true }
+        fun escaped(value: AnnouncementDraftRequest): String {
+            val raw = fullJson.encodeToString(AnnouncementDraftRequest.serializer(), value)
+            return Regex("\"[^\"]*\"").replace(raw) { match ->
+                "\"" + match.value.drop(1).dropLast(1).map { "\\u%04x".format(it.code) }.joinToString("") + "\""
+            }
+        }
+        suspend fun send(body: String, id: String? = null) = client.request("/admin/api/announcements" + (id?.let { "/$it" } ?: "")) {
+            method = if (id == null) io.ktor.http.HttpMethod.Post else io.ktor.http.HttpMethod.Put
+            header(HttpHeaders.Cookie, "fasttowin_admin=${login.token}")
+            header(HttpHeaders.Origin, "http://localhost:8080"); header("X-Admin-CSRF", login.response.csrfToken)
+            contentType(ContentType.Application.Json); setBody(body)
+        }
+        val maxBody = escaped(request)
+        assertTrue(maxBody.length > 2_200_000)
+        val created = send(maxBody.padEnd(2_300_000, ' '))
+        assertEquals(HttpStatusCode.Created, created.status)
+        val id = Json.parseToJsonElement(created.bodyAsText()).jsonObject["announcement"]!!.jsonObject["id"]!!.jsonPrimitive.content
+        assertEquals(HttpStatusCode.OK, send(escaped(request.copy(expectedVersion = 1, requestId = "b".repeat(128))), id).status)
+        assertEquals(HttpStatusCode.BadRequest, send(maxBody.padEnd(2_300_001, ' ')).status)
+        assertEquals(HttpStatusCode.BadRequest, send(escaped(request.copy(expectedVersion = 2, requestId = "c".repeat(128))).padEnd(2_300_001, ' '), id).status)
     }
 
     @Test fun `admin routes require current cookie and reject unknown JSON and invalid pages`() = testApplication {

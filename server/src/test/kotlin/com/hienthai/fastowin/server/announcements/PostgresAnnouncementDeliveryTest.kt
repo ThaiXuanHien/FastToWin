@@ -90,6 +90,97 @@ class PostgresAnnouncementDeliveryTest {
         return false
     }
 
+
+    @Test fun `round1 hide waiting on announcement does not hold user needed by delivery`() = runTest { isolated {
+        val draft = service.create(owner, AnnouncementDraftRequest("Vi", "En", "Vi body", "En body",
+            com.hienthai.fastowin.protocol.AdminAnnouncementCategory.GENERAL,
+            startsAtEpochMillis = now, endsAtEpochMillis = now + 100_000, showBanner = true,
+            requestId = UUID.randomUUID().toString(), reason = "Fixture"))
+        val id = publish(draft).announcement.id
+        service.deliverDueBatch()
+        ds.connection.use { held ->
+            held.autoCommit = false
+            val tx = JdbcAnnouncementTransaction(held)
+            tx.definition(id, true)
+            val holderPid = held.createStatement().use { it.executeQuery("SELECT pg_backend_pid()").use { r -> r.next(); r.getInt(1) } }
+            val hidden = CompletableFuture.supplyAsync { runBlocking { service.hideBanner(userId, id) } }
+            try {
+                val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5)
+                var blocked = false
+                while (!blocked && System.nanoTime() < deadline) {
+                    blocked = ds.connection.use { c -> c.createStatement().use { st ->
+                        st.executeQuery("SELECT EXISTS(SELECT 1 FROM pg_stat_activity WHERE $holderPid = ANY(pg_blocking_pids(pid)))").use { r -> r.next(); r.getBoolean(1) }
+                    } }
+                    if (!blocked) Thread.sleep(10)
+                }
+                assertTrue(blocked, "hide must be waiting on held announcement")
+                held.createStatement().use { it.execute("SET LOCAL lock_timeout='500ms'") }
+                val read = runCatching { tx.currentPlayer(userId) }
+                assertTrue(read.isSuccess, "delivery must acquire user while hide waits on announcement: ${read.exceptionOrNull()?.javaClass?.simpleName}")
+            } finally { held.rollback(); hidden.get(5, TimeUnit.SECONDS) }
+        }
+    } }
+
+
+    @Test fun `round1 published event ordinary and compensation gift links preserve independent policies and assets`() = runTest { isolated {
+        val actor = admins.session(owner.token).admin.id
+        val events = com.hienthai.fastowin.server.events.PostgresRewardEventRepository(ds)
+        val eventId = UUID.randomUUID().toString()
+        events.transaction { put(com.hienthai.fastowin.server.events.RewardEventAdminView(
+            eventId, 1, com.hienthai.fastowin.protocol.RewardEventState.ACTIVE,
+            com.hienthai.fastowin.server.events.RewardEventDraft("Event", "Event", "Details", "Details", "UTC",
+                now - 1, now + 100_000, 2, 3, setOf(com.hienthai.fastowin.protocol.MatchType.CASUAL)),
+            actor, "Fixture", now, publishedAtEpochMillis = now)) }
+        val gifts = com.hienthai.fastowin.server.gifts.PostgresGiftRepository(ds)
+        val giftIds = List(2) { UUID.randomUUID().toString() }
+        gifts.transaction {
+            giftIds.forEachIndexed { index, id ->
+                val request = com.hienthai.fastowin.server.gifts.GiftDraftRequest("Gift", "Gift", "Body", "Body", "Fixture", 5, 7,
+                    availableAtEpochMillis = now, expiresAtEpochMillis = now + 100_000, requestId = UUID.randomUUID().toString())
+                putCampaign(com.hienthai.fastowin.server.gifts.GiftCampaign(id, 1,
+                    com.hienthai.fastowin.server.gifts.CampaignState.PUBLISHED, request, now, publishedAtEpochMillis = now,
+                    compensation = if (index == 0) null else com.hienthai.fastowin.protocol.CompensationMailboxContext(
+                        UUID.randomUUID().toString(), "OUTAGE_FIXTURE", 1, now - 1000, now, "Affected", "Affected")))
+                freeze(id, listOf(userId))
+                putRecipient(com.hienthai.fastowin.server.gifts.GiftRecipient(id, userId, "DELIVERED"))
+            }
+        }
+        val maintenanceRepository = com.hienthai.fastowin.server.maintenance.PostgresMaintenanceRepository(ds)
+        maintenanceRepository.transaction {
+            val current = snapshot()
+            putSnapshot(current.version, com.hienthai.fastowin.server.maintenance.MaintenanceSnapshot(
+                version = current.version + 1, state = com.hienthai.fastowin.protocol.MaintenanceState.MAINTENANCE,
+                mode = com.hienthai.fastowin.protocol.MaintenanceMode.EMERGENCY, messageVi = "Maintenance", messageEn = "Maintenance",
+                startedAtEpochMillis = now, actorId = actor, reason = "Fixture"))
+        }
+        val maintenance = com.hienthai.fastowin.server.maintenance.MaintenanceService(maintenanceRepository, nowMillis = { now })
+        val policyBefore = maintenance.refresh(0)
+        val snapshotBefore = maintenanceRepository.transaction { snapshot() }
+        val walletBefore = gifts.transaction { balance(userId) }
+        val giftBefore = gifts.transaction { giftIds.map { campaign(it) to recipient(it, userId) } }
+        val eventsBefore = events.publicRead { records() }
+        for ((action, target) in listOf(com.hienthai.fastowin.protocol.AdminAnnouncementAction.REWARD_EVENT to eventId) +
+            giftIds.map { com.hienthai.fastowin.protocol.AdminAnnouncementAction.GIFT_MAILBOX to it }) {
+            val created = service.create(owner, AnnouncementDraftRequest("Notice", "Notice", "Copy", "Copy",
+                com.hienthai.fastowin.protocol.AdminAnnouncementCategory.MAINTENANCE,
+                startsAtEpochMillis = now, endsAtEpochMillis = now + 100_000, showBanner = true,
+                action = action, targetId = target, requestId = UUID.randomUUID().toString(), reason = "Fixture"))
+            val published = publish(created)
+            assertEquals(target, published.announcement.targetId)
+            service.deliverDueBatch()
+            service.markRead(userId, published.announcement.id)
+            service.hideBanner(userId, published.announcement.id)
+            service.cancel(owner, published.announcement.id,
+                AnnouncementMutationRequest(published.announcement.version, UUID.randomUUID().toString(), "Stop notice"))
+            assertEquals(AdminAnnouncementState.CANCELLED, service.playerDetail(userId, published.announcement.id).announcement.state)
+        }
+        assertEquals(walletBefore, gifts.transaction { balance(userId) })
+        assertEquals(giftBefore, gifts.transaction { giftIds.map { campaign(it) to recipient(it, userId) } })
+        assertEquals(eventsBefore, events.publicRead { records() })
+        assertEquals(snapshotBefore, maintenanceRepository.transaction { snapshot() })
+        assertEquals(policyBefore, maintenance.refresh(0))
+    } }
+
     @Test fun `revoked role after admin advisory wait cannot publish`() = runTest { isolated {
         val draft = draft()
         val preview = service.preview(owner, draft.announcement.id)

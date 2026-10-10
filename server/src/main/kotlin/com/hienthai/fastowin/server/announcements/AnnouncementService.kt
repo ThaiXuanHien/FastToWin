@@ -44,7 +44,8 @@ data class AnnouncementAdminContext(val token: String?, val csrfToken: String? =
     val bannerHidden: String, val skipped: String,
     val pushAccepted: String, val pushFailed: String, val pushUnknown: String,
     val pushInFlight: String, val pushDisabled: String, val pushOptedOut: String,
-    val pushNoToken: String, val pushUnavailable: String, val pushExpired: String
+    val pushNoToken: String, val pushUnavailable: String, val pushExpired: String,
+    val eligible: String = "0", val pending: String = "0"
 )
 
 @Serializable data class AnnouncementAdminView(
@@ -59,7 +60,7 @@ data class AnnouncementAdminContext(val token: String?, val csrfToken: String? =
 
 @Serializable data class AnnouncementPreview(
     val announcement: AnnouncementDefinition, val recipientCount: String,
-    val duplicateCount: Int, val invalidUserIds: List<String>, val previewToken: String,
+    val duplicateCount: String, val invalidUserIds: List<String>, val previewToken: String,
     val pushConfigured: Boolean, val pushReminderBodyLimit: Int = 240,
     val serverNowEpochMillis: Long
 )
@@ -86,13 +87,15 @@ class AnnouncementService(
     private val pushConfigured: () -> Boolean = { false },
     private val nowMillis: () -> Long = System::currentTimeMillis
 ) {
-    private fun AnnouncementRecipientCounts.public() = AnnouncementCounts(
+    private fun AnnouncementRecipientCounts.public(status: AnnouncementStatus) = AnnouncementCounts(
         frozen.toString(), stored.toString(), read.toString(), dismissed.toString(), bannerHidden.toString(), skipped.toString(),
         pushAccepted.toString(), pushFailed.toString(), pushUnknown.toString(), pushInFlight.toString(),
-        pushDisabled.toString(), pushOptedOut.toString(), pushNoToken.toString(), pushUnavailable.toString(), pushExpired.toString()
+        pushDisabled.toString(), pushOptedOut.toString(), pushNoToken.toString(), pushUnavailable.toString(), pushExpired.toString(),
+        (frozen - skipped).toString(),
+        (if (status == AnnouncementStatus.PUBLISHED) frozen - stored - skipped else 0L).toString()
     )
     private fun AnnouncementTransaction.view(value: AnnouncementDefinition) =
-        AnnouncementAdminView(value, recipientCounts(value.id).public(), nowMillis())
+        AnnouncementAdminView(value, recipientCounts(value.id).public(value.status), nowMillis())
 
     private fun requireAdmins() = admins ?: missing()
     private fun validateMutation(requestId: String, reason: String) {
@@ -174,6 +177,7 @@ class AnnouncementService(
     suspend fun update(context: AnnouncementAdminContext, id: String, request: AnnouncementDraftRequest): AnnouncementAdminView = repository.transaction(admin = true) {
         val service = requireAdmins(); service.requireOrigin(context.origin)
         validateMutation(request.requestId, request.reason)
+        if (request.expectedVersion == null || request.expectedVersion <= 0) invalid()
         val actor = service.authorize(admin, context.token, context.csrfToken, mutation = true)
         if (actor.role == AdminRole.SUPPORT) forbidden()
         if (!canonical(id)) invalid()
@@ -201,7 +205,7 @@ class AnnouncementService(
         val value = definition(id) ?: missing()
         if (value.status != AnnouncementStatus.DRAFT) conflict()
         val audience = audience(value)
-        AnnouncementPreview(value, audience.ids.size.toString(), audience.duplicates, audience.invalid,
+        AnnouncementPreview(value, audience.ids.size.toString(), audience.duplicates.toString(), audience.invalid,
             token(value, audience), pushConfigured(), serverNowEpochMillis = nowMillis())
     }
     suspend fun publish(context: AnnouncementAdminContext, id: String, request: AnnouncementMutationRequest): AnnouncementAdminView = repository.transaction(admin = true) {
@@ -346,8 +350,9 @@ class AnnouncementService(
         AnnouncementMutationResult(items.size.toString(), now)
     }
     suspend fun hideBanner(userId: String, id: String): AnnouncementMutationResult = repository.transaction {
-        player(userId); if (!canonical(id)) invalid()
+        if (!canonical(id)) invalid()
         val value = definition(id, lock = true) ?: missing()
+        player(userId)
         val receipt = recipient(id, userId) ?: missing()
         if (receipt.storedAtEpochMillis == null || !value.showBanner) missing()
         val now = nowMillis()

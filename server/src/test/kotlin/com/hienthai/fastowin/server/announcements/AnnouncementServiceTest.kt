@@ -121,6 +121,7 @@ class AnnouncementServiceTest {
         assertEquals(walletBefore, f.adminService.user(f.context.token, f.playerId).gold)
         f.service.cancel(f.context, active.announcement.id,
             AnnouncementMutationRequest(active.announcement.version, "cancel-active", "Stop"))
+        assertEquals(walletBefore, f.adminService.user(f.context.token, f.playerId).gold)
         assertEquals(AdminAnnouncementState.CANCELLED, deviceB.playerDetail(f.playerId, active.announcement.id).announcement.state)
         assertEquals("1", f.service.dismiss(f.playerId, active.announcement.id).affected)
         assertEquals("0", f.service.dismiss(f.playerId, active.announcement.id).affected)
@@ -157,12 +158,44 @@ class AnnouncementServiceTest {
         }.status)
     }
 
+
+
+    @Test fun `round1 pending counts include expired catchup and exclude cancelled work`() = runTest {
+        val f = Fixture(); f.setup()
+        val published = f.published(f.draft(starts = f.now + 1000, ends = f.now + 2000))
+        assertEquals("1", published.counts.eligible)
+        assertEquals("1", published.counts.pending)
+        f.now += 2000
+        assertEquals("1", f.service.detail(f.context, published.announcement.id).counts.pending)
+        f.service.deliverDueBatch()
+        val stored = f.service.detail(f.context, published.announcement.id).counts
+        assertEquals("1", stored.eligible)
+        assertEquals("0", stored.pending)
+        val future = f.published(f.draft(starts = f.now + 1000, ends = f.now + 2000))
+        val cancelled = f.service.cancel(f.context, future.announcement.id,
+            AnnouncementMutationRequest(future.announcement.version, "cancel-counts", "Stop"))
+        assertEquals("1", cancelled.counts.frozen)
+        assertEquals("1", cancelled.counts.eligible)
+        assertEquals("0", cancelled.counts.pending)
+    }
+
+    @Test fun `round1 malformed update version is bad request before replay`() = runTest {
+        val f = Fixture(); f.setup()
+        val request = f.draft("update-validation")
+        val created = f.service.create(f.context, request)
+        for (version in listOf(null, 0, -1)) {
+            assertEquals(400, assertFailsWith<AdminException> {
+                f.service.update(f.context, created.announcement.id, request.copy(expectedVersion = version))
+            }.status)
+        }
+    }
+
     @Test fun `draft duplicate user ids are reported and published only once`() = runTest {
         val f = Fixture(); f.setup()
         val draft = f.service.create(f.context, f.draft().copy(
             audience = AnnouncementAudience.USER_IDS, selectedUserIds = listOf(f.playerId, f.playerId)))
         val preview = f.service.preview(f.context, draft.announcement.id)
-        assertEquals(1, preview.duplicateCount)
+        assertEquals("1", preview.duplicateCount)
         assertEquals("1", preview.recipientCount)
         val published = f.service.publish(f.context, draft.announcement.id,
             AnnouncementMutationRequest(draft.announcement.version, "duplicate-publish", "Approved", preview.previewToken))

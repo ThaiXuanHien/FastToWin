@@ -5,6 +5,8 @@ import com.hienthai.fastowin.server.AnnouncementPushStatus
 import com.hienthai.fastowin.server.PushNotificationService
 import com.hienthai.fastowin.server.admin.AuditEntry
 import com.hienthai.fastowin.server.admin.invalid
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
@@ -16,55 +18,27 @@ class AnnouncementPushDelivery(
     private val push: PushNotificationService,
     private val nowMillis: () -> Long = System::currentTimeMillis
 ) {
-    private data class Claim(val definition: AnnouncementDefinition, val player: AnnouncementPlayer, val attempt: AnnouncementPushAttempt)
+    private data class Claim(val definition: AnnouncementDefinition, val player: AnnouncementPlayer?, val attempt: AnnouncementPushAttempt)
 
     suspend fun deliverDueBatch(limit: Int = 100): Int {
         if (limit !in 1..1000) invalid()
-        val claims = repository.transaction {
-            val result = mutableListOf<Claim>()
-            var definitionOffset = 0
-            while (result.size < limit) {
-                val ids = definitions(AnnouncementStatus.PUBLISHED, 100, definitionOffset).map { it.id }
-                if (ids.isEmpty()) break
-                for (id in ids) {
-                    val value = definition(id, lock = true) ?: continue
-                    val now = nowMillis()
-                    if (value.status != AnnouncementStatus.PUBLISHED) continue
-                    var recipientOffset = 0
-                    while (result.size < limit) {
-                        val page = recipients(id, 500, recipientOffset)
-                        if (page.isEmpty()) break
-                        for (recipient in page) {
-                            if (result.size >= limit) break
-                            if (recipient.storedAtEpochMillis == null || pushAttempt(id, recipient.userId) != null) continue
-                            val player = currentPlayer(recipient.userId)
-                            val preference = player?.let { preference(it.userId) }
-                            val outcome = when {
-                                !value.pushEnabled -> AnnouncementPushOutcome.DISABLED
-                                now !in value.startsAtEpochMillis until value.endsAtEpochMillis -> AnnouncementPushOutcome.EXPIRED
-                                player == null -> AnnouncementPushOutcome.EXPIRED
-                                preference == null || !(if (value.category == AdminAnnouncementCategory.EVENT) preference.eventEnabled else preference.adminEnabled) -> AnnouncementPushOutcome.OPTED_OUT
-                                player.fcmToken.isNullOrBlank() -> AnnouncementPushOutcome.NO_TOKEN
-                                !push.announcementConfigured -> AnnouncementPushOutcome.UNAVAILABLE
-                                else -> AnnouncementPushOutcome.ATTEMPTING
-                            }
-                            val attempt = AnnouncementPushAttempt(id, recipient.userId, UUID.randomUUID().toString(), outcome,
-                                now, if (outcome == AnnouncementPushOutcome.ATTEMPTING) null else now)
-                            putPushAttempt(attempt)
-                            if (outcome == AnnouncementPushOutcome.ATTEMPTING && player != null) result.add(Claim(value, player, attempt))
-                        }
-                        recipientOffset += page.size
-                    }
-                }
-                definitionOffset += ids.size
+        var processed = 0
+        while (processed < limit) {
+            // Claim only the next send. No committed ATTEMPTING work waits in a local queue.
+            val claim = claimNext() ?: break
+            processed++
+            if (claim.attempt.outcome != AnnouncementPushOutcome.ATTEMPTING) continue
+            val stillAttempting = repository.transaction {
+                definition(claim.attempt.announcementId, lock = true)
+                pushAttempt(claim.attempt.announcementId, claim.attempt.userId)?.let {
+                    it.attemptId == claim.attempt.attemptId && it.outcome == AnnouncementPushOutcome.ATTEMPTING
+                } == true
             }
-            result.toList()
-        }
-        for (claim in claims) {
+            if (!stillAttempting) continue
             val value = claim.definition
             val status = try {
                 withTimeoutOrNull(20_000) {
-                    push.sendAnnouncement(claim.player.fcmToken!!, claim.player.notificationLanguage,
+                    push.sendAnnouncement(claim.player!!.fcmToken!!, claim.player.notificationLanguage,
                         value.titleVi, value.titleEn,
                         takeCodePointSafeUtf16(value.bodyVi, 240), takeCodePointSafeUtf16(value.bodyEn, 240),
                         "/notifications")
@@ -80,7 +54,46 @@ class AnnouncementPushDelivery(
             }
             settle(claim.attempt, outcome)
         }
-        return claims.size
+        return processed
+    }
+
+    private suspend fun claimNext(): Claim? = repository.transaction {
+        var definitionOffset = 0
+        while (true) {
+            val ids = definitions(AnnouncementStatus.PUBLISHED, 100, definitionOffset).map { it.id }
+            if (ids.isEmpty()) break
+            for (id in ids) {
+                val value = definition(id, lock = true) ?: continue
+                if (value.status != AnnouncementStatus.PUBLISHED) continue
+                var recipientOffset = 0
+                while (true) {
+                    val page = recipients(id, 500, recipientOffset)
+                    if (page.isEmpty()) break
+                    for (recipient in page) {
+                        if (recipient.storedAtEpochMillis == null || pushAttempt(id, recipient.userId) != null) continue
+                        val now = nowMillis()
+                        val player = currentPlayer(recipient.userId)
+                        val preference = player?.let { preference(it.userId) }
+                        val outcome = when {
+                            !value.pushEnabled -> AnnouncementPushOutcome.DISABLED
+                            now !in value.startsAtEpochMillis until value.endsAtEpochMillis -> AnnouncementPushOutcome.EXPIRED
+                            player == null -> AnnouncementPushOutcome.EXPIRED
+                            preference == null || !(if (value.category == AdminAnnouncementCategory.EVENT) preference.eventEnabled else preference.adminEnabled) -> AnnouncementPushOutcome.OPTED_OUT
+                            player.fcmToken.isNullOrBlank() -> AnnouncementPushOutcome.NO_TOKEN
+                            !push.announcementConfigured -> AnnouncementPushOutcome.UNAVAILABLE
+                            else -> AnnouncementPushOutcome.ATTEMPTING
+                        }
+                        val attempt = AnnouncementPushAttempt(id, recipient.userId, UUID.randomUUID().toString(), outcome,
+                            now, if (outcome == AnnouncementPushOutcome.ATTEMPTING) null else now)
+                        putPushAttempt(attempt)
+                        return@transaction Claim(value, player, attempt)
+                    }
+                    recipientOffset += page.size
+                }
+            }
+            definitionOffset += ids.size
+        }
+        null
     }
 
     suspend fun recoverStale(limit: Int = 100): Int {
@@ -139,4 +152,22 @@ internal fun takeCodePointSafeUtf16(value: String, limit: Int): String {
         end += step
     }
     return value.substring(0, end)
+}
+
+internal fun kotlinx.coroutines.CoroutineScope.startAnnouncementDelivery(
+    service: AnnouncementService, delivery: AnnouncementPushDelivery
+) = launch {
+    // Durable in-app history and stale recovery keep progressing during slow external I/O.
+    launch { announcementLoop { service.deliverDueBatch() } }
+    launch { announcementLoop { delivery.recoverStale() } }
+    launch { announcementLoop { delivery.deliverDueBatch() } }
+}
+
+private suspend fun announcementLoop(work: suspend () -> Unit) {
+    while (kotlinx.coroutines.currentCoroutineContext().isActive) {
+        try { work() }
+        catch (cancelled: CancellationException) { throw cancelled }
+        catch (_: Exception) { System.err.println("Announcement delivery unavailable") }
+        kotlinx.coroutines.delay(5_000)
+    }
 }
