@@ -21,18 +21,18 @@ jobs:
       postgres:
         image: postgres:17-alpine
         env:
-          POSTGRES_DB: fasttowin_test
+          POSTGRES_DB: admin_test
           POSTGRES_USER: fasttowin
           POSTGRES_PASSWORD: fasttowin
         ports:
-          - 5432:5432
+          - 15432:5432
         options: >-
-          --health-cmd "pg_isready -U fasttowin -d fasttowin_test"
+          --health-cmd "pg_isready -U fasttowin -d admin_test"
           --health-interval 5s
           --health-timeout 3s
           --health-retries 10
     env:
-      TEST_DATABASE_URL: jdbc:postgresql://localhost:5432/fasttowin_test
+      TEST_DATABASE_URL: jdbc:postgresql://127.0.0.1:15432/admin_test
       TEST_DATABASE_USER: fasttowin
       TEST_DATABASE_PASSWORD: fasttowin
 
