@@ -181,6 +181,100 @@ class RewardEventControllerTest {
         assertTrue(controller.state.value.items.isEmpty())
         controller.close()
     }
+    @Test fun `periodic polling expires the banner while its HTTP refresh is still pending`() = runTest {
+        val release = CompletableDeferred<Unit>()
+        var calls = 0
+        val active = event().copy(endsAtEpochMillis = 33500)
+        val gateway = Gateway {
+            if (calls++ > 0) release.await()
+            RewardEventPublicPage(listOf(active),1500 + testScheduler.currentTime,0,25,1)
+        }
+        val controller = RewardEventController(gateway) { testScheduler.currentTime }
+        val polling = launch {
+            runRewardEventPolling(controller,"a",AppLanguage.VIETNAMESE,RewardEventView.HOME,null)
+        }
+        try {
+            runCurrent()
+            advanceTimeBy(30001)
+            runCurrent()
+            assertEquals(2,calls)
+            assertTrue(controller.state.value.isRefreshing)
+            assertEquals(listOf("a"),controller.state.value.active.map { it.id })
+            advanceTimeBy(3000)
+            runCurrent()
+            assertTrue(controller.state.value.active.isEmpty())
+            assertEquals(RewardEventState.ENDED,controller.state.value.items.single().state)
+            assertTrue(controller.state.value.isRefreshing)
+            assertEquals(2,calls)
+        } finally {
+            polling.cancelAndJoin()
+            controller.reset()
+        }
+        val reset = controller.state.value
+        advanceTimeBy(2000)
+        runCurrent()
+        assertEquals(reset,controller.state.value)
+        controller.close()
+    }
+    @Test fun `polling refreshes at crossed start and end boundaries`() = runTest {
+        var calls = 0
+        val scheduled = event().copy(state = RewardEventState.SCHEDULED,startsAtEpochMillis = 2500,endsAtEpochMillis = 4000)
+        val gateway = Gateway {
+            calls++
+            val now = 1500 + testScheduler.currentTime
+            val items = if (now < 4000) listOf(scheduled) else emptyList()
+            RewardEventPublicPage(items,now,0,25,items.size.toLong())
+        }
+        val controller = RewardEventController(gateway) { testScheduler.currentTime }
+        val polling = launch { runRewardEventPolling(controller,null,AppLanguage.ENGLISH,RewardEventView.HOME,null) }
+        try {
+            runCurrent()
+            assertEquals(RewardEventState.SCHEDULED,controller.state.value.items.single().state)
+            // The sequential poll observes the independent clock on its next one-second tick.
+            advanceTimeBy(2001)
+            runCurrent()
+            assertEquals(2,calls)
+            assertEquals(listOf("a"),controller.state.value.active.map { it.id })
+            advanceTimeBy(2000)
+            runCurrent()
+            assertEquals(3,calls)
+            assertTrue(controller.state.value.items.isEmpty())
+            assertEquals(RewardEventLoad.READY,controller.state.value.load)
+        } finally {
+            polling.cancelAndJoin()
+            controller.close()
+        }
+    }
+    @Test fun `historical polling refreshes the selected detail instead of returning to the list`() = runTest {
+        var pages = 0
+        var details = 0
+        val gateway = Gateway {
+            pages++
+            RewardEventPublicPage(emptyList(),1500,0,25,0)
+        }
+        gateway.detailResponse = { id ->
+            details++
+            RewardEventPublicDetail(event(id).copy(state = RewardEventState.CANCELLED,version = details.toLong(),nameEn = "History $details"),
+                1500 + testScheduler.currentTime)
+        }
+        val controller = RewardEventController(gateway) { testScheduler.currentTime }
+        val polling = launch { runRewardEventPolling(controller,"a",AppLanguage.ENGLISH,RewardEventView.DETAILS,"historical") }
+        try {
+            runCurrent()
+            assertEquals("historical",controller.state.value.selected?.id)
+            assertEquals("History 1",controller.state.value.selected?.nameEn)
+            advanceTimeBy(30001)
+            runCurrent()
+            assertEquals("historical",controller.state.value.selected?.id)
+            assertEquals("History 2",controller.state.value.selected?.nameEn)
+            assertEquals(RewardEventState.CANCELLED,controller.state.value.selected?.state)
+            assertEquals(1,pages)
+            assertFalse(controller.state.value.isRefreshing)
+        } finally {
+            polling.cancelAndJoin()
+            controller.close()
+        }
+    }
     @Test fun `two delayed account language view responses cannot replace current success or loading`() = runTest {
         val first = CompletableDeferred<Unit>(); val second = CompletableDeferred<Unit>()
         var calls = 0

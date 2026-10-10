@@ -1274,19 +1274,8 @@ private fun GameContent(
     LaunchedEffect(rewardEventController, accountUserId, isGuest, language, rewardEventView, selectedRewardEventId) {
         val view = rewardEventView
         if (view == null) { rewardEventController.reset(); return@LaunchedEffect }
-        rewardEventController.enter(accountUserId, language, view)
-        selectedRewardEventId?.let { rewardEventController.select(it) }
-        var ticks = 0
-        while (true) {
-            delay(1000)
-            val oldStates = rewardEventController.state.value.items.map { it.state }
-            rewardEventController.tick()
-            ticks++
-            if (ticks >= 30 || oldStates != rewardEventController.state.value.items.map { it.state }) {
-                ticks = 0
-                selectedRewardEventId?.let { rewardEventController.select(it) } ?: rewardEventController.refresh()
-            }
-        }
+        com.hienthai.fastowin.state.runRewardEventPolling(
+            rewardEventController, accountUserId, language, view, selectedRewardEventId)
     }
     DisposableEffect(rewardEventController, rewardEventView, language, selectedRewardEventId) {
         onDispose { rewardEventController.reset() }
