@@ -47,3 +47,15 @@ The owned preview runtime was restored after both Java and local PostgreSQL had 
 ## Remaining integration
 
 Branch stays local and unmerged. Issue22 admin notifications and verified activity telemetry are outside this compensation plan. Read `docs/admin-compensation.md` for exact APIs, limits, source capability and runtime behavior. Use separate production configuration and explicit release authorization for integration/deployment.
+
+## Counter mapping follow-up — 10 October 2026
+
+This bounded tests-only follow-up addresses the retained M6 observation and the explicit prior-count assertion follow-up for Issue20/21. The compensation renderer already mapped fields correctly; no production rendering, API, reward or database behavior was changed. The default legacy fixture is unchanged. A separate published-round fixture uses distinct decimal-string values for all seven report counters and both paid totals, so a swapped field cannot hide behind equal zeros.
+
+Ten new browser cases pair each report label with its exact literal value for Owner/Operator/Support at360/1440. Paid Gold3700 and XP1110 are asserted independently by displayed text and accessible icon names. Preview for Owner/Operator and Owner's final confirmation explicitly pair prior distinct users2, paid receipts3 and selected prior users1 with their respective labels. Opening confirmation does not send publication/cancellation requests.
+
+Final verification: **12 unique browser cases passed, zero failures/skips** (10 new plus two existing published/cancelled history cases), not a full admin/server suite. Six settled screenshots under `.artifacts/compensation-counter-mapping/screenshots/` were inspected at360/1440 after scrolling the report/preview counts into view; they retain the existing white Material dialogs and Mission coin/star icons.
+
+A controlled browser-response mutation swapped expired/cancelled counters and prior-user/receipt counts without changing production source files. Both old history cases still passed, while the new report and preview cases failed on17→19 and2→3. This establishes assertion sensitivity, not a discovered production bug. Earlier locator and accessible-name assertion errors were corrected test defects, not behavioral RED. Evidence retains `baseline-check.log`, `mutation.log`, `final.log`, `final.xml` and the local mutation harness. These are synthetic HTTP fixtures rendering the real admin assets; no live data, provider, physical-device or release acceptance is implied.
+
+Runnable final gate from `e2e`: `node node_modules/playwright/cli.js test -c admin.playwright.config.mjs admin-compensation.spec.mjs admin-compensation-counters.spec.mjs --grep 'published history is read only|counter mapping' --reporter=list,junit`. The mutation gate used `.tmp/compensation-counter-mutation.config.mjs` and the same selected four baseline/mapping cases. Local progress preserves the earlier delivery/review records as historical evidence.

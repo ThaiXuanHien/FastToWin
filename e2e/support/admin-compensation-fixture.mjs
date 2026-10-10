@@ -2,6 +2,19 @@ import { player } from './admin-fixture.mjs';
 export const base = '/admin/api/incidents';
 export const incident = (patch = {}) => ({ id: '11111111-1111-4111-8111-111111111111', incidentKey: 'LOCAL_OUTAGE', titleVi: 'Sự cố kết nối', titleEn: 'Connection incident', descriptionVi: 'Kết nối có thể bị gián đoạn.', descriptionEn: 'Your connection may have been interrupted.', affectedFromEpochMillis: 1791417600000, affectedUntilEpochMillis: 1791421200000, causeCode: 'PRIVATE_DIAGNOSTIC', evidence: 'PRIVATE_EVIDENCE', responsibleAdminId: '22222222-2222-4222-8222-222222222222', version: 2, createdByAdminId: 'creator', updatedByAdminId: 'editor', createdAtEpochMillis: 1791417600000, updatedAtEpochMillis: 1791417600000, ...patch });
 export const round = (patch = {}) => ({ incidentId: incident().id, incidentKey: incident().incidentKey, incidentVersion: 2, round: { campaignId: '33333333-3333-4333-8333-333333333333', incidentId: incident().id, roundNumber: 1, supplementalReason: null, receivingReasonVi: 'Bạn được đền bù.', receivingReasonEn: 'You receive compensation.', createdByAdminId: 'creator', updatedByAdminId: 'editor' }, campaign: { id: '33333333-3333-4333-8333-333333333333', version: 3, state: 'DRAFT', createdAtEpochMillis: 1791417600000, publishedAtEpochMillis: null, draft: { titleVi: incident().titleVi, titleEn: incident().titleEn, bodyVi: 'Bạn được đền bù.', bodyEn: 'You receive compensation.', gold: 100, xp: 30, audience: 'USER_IDS', userIds: [player.id], availableAtEpochMillis: 1791417600000, expiresAtEpochMillis: 1794009600000 } }, report: { eligible: '3', pending: '0', delivered: '2', claimed: '1', expired: '0', cancelled: '0', skipped: '0', claimedGold: '100', claimedXp: '30' }, ...patch });
+// Distinct values make label/field swaps observable. Counts may overlap;
+// paid totals describe 37 claims of the existing 100 GOLD / 30 XP reward.
+export function reportedRound() {
+  const row = round();
+  return {
+    ...row,
+    campaign: { ...row.campaign, state: 'PUBLISHED', publishedAtEpochMillis: 1791417600000 },
+    report: {
+      eligible: '101', pending: '13', delivered: '83', claimed: '37',
+      expired: '17', cancelled: '19', skipped: '5', claimedGold: '3700', claimedXp: '1110',
+    },
+  };
+}
 export function compensation(fixture, initialRound = round()) {
   const state = { incident: incident(), rounds: initialRound ? [initialRound] : [], token: 'a'.repeat(64) };
   const pageOf = (items, call) => ({ items, page: Number(call.query.get('page') || 0), pageSize: 25, total: String(items.length) });
