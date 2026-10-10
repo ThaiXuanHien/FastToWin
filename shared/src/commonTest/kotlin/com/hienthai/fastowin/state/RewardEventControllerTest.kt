@@ -43,6 +43,144 @@ class RewardEventControllerTest {
         controller.refresh()
         assertEquals(RewardEventLoad.READY,controller.state.value.load)
     }
+    @Test fun `background refresh retains the active banner until replacement arrives`() = runTest {
+        val release = CompletableDeferred<Unit>()
+        val gateway = Gateway { RewardEventPublicPage(listOf(event()),1500,0,25,1) }
+        val controller = RewardEventController(gateway) { 0L }
+        controller.enter("a",AppLanguage.VIETNAMESE,RewardEventView.HOME)
+        gateway.response = {
+            release.await()
+            RewardEventPublicPage(listOf(event("replacement")),1600,0,25,1)
+        }
+        val refresh = launch { controller.refresh() }
+        runCurrent()
+        try {
+            assertEquals(RewardEventLoad.READY,controller.state.value.load)
+            assertEquals(listOf("a"),controller.state.value.active.map { it.id })
+            assertEquals(1500,controller.state.value.serverNowEpochMillis)
+            assertTrue(controller.state.value.isRefreshing)
+        } finally {
+            release.complete(Unit)
+            refresh.join()
+        }
+        assertEquals(listOf("replacement"),controller.state.value.active.map { it.id })
+        assertFalse(controller.state.value.isRefreshing)
+        controller.close()
+    }
+    @Test fun `failed background refresh hides active authority and a retry replaces it`() = runTest {
+        for (unavailable in listOf(false,true)) {
+            val gateway = Gateway { RewardEventPublicPage(listOf(event()),1500,0,25,1) }
+            val controller = RewardEventController(gateway) { 0L }
+            controller.enter("a",AppLanguage.ENGLISH,RewardEventView.HOME)
+            gateway.response = {
+                if (unavailable) throw RewardEventApiException("UNAVAILABLE")
+                throw IllegalStateException("offline")
+            }
+            controller.refresh()
+            assertEquals(if (unavailable) RewardEventLoad.UNAVAILABLE else RewardEventLoad.ERROR,controller.state.value.load)
+            assertTrue(controller.state.value.active.isEmpty())
+            assertFalse(controller.state.value.isRefreshing)
+            gateway.response = { RewardEventPublicPage(listOf(event("new")),1600,0,25,1) }
+            controller.refresh()
+            assertEquals(listOf("new"),controller.state.value.active.map { it.id })
+            assertFalse(controller.state.value.isRefreshing)
+            controller.close()
+        }
+    }
+    @Test fun `load more cannot supersede a pending first page refresh`() = runTest {
+        val release = CompletableDeferred<Unit>()
+        val gateway = Gateway { RewardEventPublicPage(listOf(event()),1500,0,25,2) }
+        val controller = RewardEventController(gateway) { 0L }
+        controller.enter("a",AppLanguage.ENGLISH,RewardEventView.DETAILS)
+        val requestedPages = mutableListOf<Int>()
+        gateway.response = { page ->
+            requestedPages += page
+            release.await()
+            RewardEventPublicPage(listOf(event("fresh")),1600,page,25,2)
+        }
+        val refresh = launch { controller.refresh() }
+        runCurrent()
+        try {
+            // This would issue another request if READY alone enabled pagination.
+            val more = launch { controller.loadMore() }
+            runCurrent()
+            assertTrue(more.isCompleted)
+            assertEquals(listOf(0),requestedPages)
+        } finally {
+            release.complete(Unit)
+            refresh.join()
+        }
+        assertEquals(listOf("fresh"),controller.state.value.items.map { it.id })
+        assertFalse(controller.state.value.isRefreshing)
+        controller.close()
+    }
+    @Test fun `late background response cannot restore the previous account banner or clear a new refresh`() = runTest {
+        for (failure in listOf(false,true)) {
+            val oldRelease = CompletableDeferred<Unit>()
+            val newRelease = CompletableDeferred<Unit>()
+            val gateway = Gateway { RewardEventPublicPage(listOf(event("old")),1500,0,25,1) }
+            val controller = RewardEventController(gateway) { 0L }
+            controller.enter("a",AppLanguage.VIETNAMESE,RewardEventView.HOME)
+            gateway.response = {
+                withContext(NonCancellable) { oldRelease.await() }
+                if (failure) throw IllegalStateException("late old refresh")
+                RewardEventPublicPage(listOf(event("obsolete")),1600,0,25,1)
+            }
+            val oldRefresh = launch { controller.refresh() }
+            runCurrent()
+            controller.reset()
+            assertTrue(controller.state.value.items.isEmpty())
+            assertFalse(controller.state.value.isRefreshing)
+            gateway.response = { RewardEventPublicPage(listOf(event("current")),1500,0,25,1) }
+            controller.enter("b",AppLanguage.ENGLISH,RewardEventView.DETAILS)
+            gateway.response = {
+                newRelease.await()
+                RewardEventPublicPage(listOf(event("newest")),1600,0,25,1)
+            }
+            val newRefresh = launch { controller.refresh() }
+            runCurrent()
+            try {
+                oldRelease.complete(Unit)
+                oldRefresh.join()
+                assertEquals(listOf("current"),controller.state.value.items.map { it.id })
+                assertEquals(RewardEventLoad.READY,controller.state.value.load)
+                assertTrue(controller.state.value.isRefreshing)
+            } finally {
+                newRelease.complete(Unit)
+                newRefresh.join()
+            }
+            assertEquals(listOf("newest"),controller.state.value.active.map { it.id })
+            assertFalse(controller.state.value.isRefreshing)
+            controller.close()
+        }
+    }
+    @Test fun `expiry clock keeps running during a delayed background refresh`() = runTest {
+        var clock = 0L
+        val release = CompletableDeferred<Unit>()
+        val gateway = Gateway { RewardEventPublicPage(listOf(event()),1500,0,25,1) }
+        val controller = RewardEventController(gateway) { clock }
+        controller.enter("a",AppLanguage.ENGLISH,RewardEventView.HOME)
+        gateway.response = {
+            release.await()
+            RewardEventPublicPage(emptyList(),2000,0,25,0)
+        }
+        val refresh = launch { controller.refresh() }
+        runCurrent()
+        try {
+            clock = 500
+            controller.tick()
+            assertEquals(1,controller.state.value.items.size)
+            assertEquals(RewardEventState.ENDED,controller.state.value.items.single().state)
+            assertEquals(2000,controller.state.value.serverNowEpochMillis)
+            assertTrue(controller.state.value.active.isEmpty())
+        } finally {
+            release.complete(Unit)
+            refresh.join()
+        }
+        assertEquals(RewardEventLoad.READY,controller.state.value.load)
+        assertTrue(controller.state.value.items.isEmpty())
+        controller.close()
+    }
     @Test fun `two delayed account language view responses cannot replace current success or loading`() = runTest {
         val first = CompletableDeferred<Unit>(); val second = CompletableDeferred<Unit>()
         var calls = 0

@@ -28,7 +28,8 @@ data class RewardEventUiState(
     val selected: RewardEventPublicView? = null,
     val serverNowEpochMillis: Long? = null,
     val total: Long = 0,
-    val isLoadingMore: Boolean = false
+    val isLoadingMore: Boolean = false,
+    val isRefreshing: Boolean = false
 ) {
     val active: List<RewardEventPublicView> get() = if (load == RewardEventLoad.READY) items.filter { it.state == RewardEventState.ACTIVE } else emptyList()
     val hasMore: Boolean get() = items.size < total
@@ -66,13 +67,15 @@ class RewardEventController(
         generation++
         request?.cancel()
         page = 0
-        serverAnchor = null
-        mutable.value = RewardEventUiState(load = RewardEventLoad.LOADING)
+        val ready = mutable.value.load == RewardEventLoad.READY
+        mutable.value = mutable.value.copy(
+            load = if (ready) RewardEventLoad.READY else RewardEventLoad.LOADING,
+            selected = null, isLoadingMore = false, isRefreshing = ready)
         loadPage(append = false)
     }
     suspend fun loadMore() {
         if (!open || closed || mutable.value.load != RewardEventLoad.READY ||
-            mutable.value.isLoadingMore || !mutable.value.hasMore) return
+            mutable.value.isLoadingMore || mutable.value.isRefreshing || !mutable.value.hasMore) return
         loadPage(append = true)
     }
     private suspend fun loadPage(append: Boolean) {
@@ -96,7 +99,7 @@ class RewardEventController(
         } finally {
             job.complete()
             if (isCurrent(fence) && request == job) {
-                mutable.value = mutable.value.copy(isLoadingMore = false)
+                mutable.value = mutable.value.copy(isLoadingMore = false, isRefreshing = false)
                 request = null
             }
         }
@@ -108,7 +111,7 @@ class RewardEventController(
         val job = Job(currentCoroutineContext()[Job])
         request = job
         val fence = generation to context
-        mutable.value = mutable.value.copy(load = RewardEventLoad.LOADING, selected = null, isLoadingMore = false)
+        mutable.value = mutable.value.copy(load = RewardEventLoad.LOADING, selected = null, isLoadingMore = false, isRefreshing = false)
         try {
             val result = withContext(job) { gateway.detail(id) }
             if (!isCurrent(fence)) return

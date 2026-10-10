@@ -8,6 +8,7 @@ import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.filled.MonetizationOn
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.Icon
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Surface
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.ButtonDefaults
@@ -19,6 +20,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.hienthai.fastowin.localization.*
@@ -43,6 +45,7 @@ fun rewardEventLoadKey(load: RewardEventLoad): TextKey = when (load) {
 @Composable
 fun RewardEventBanner(state: RewardEventUiState, onDetails: () -> Unit, onRefresh: () -> Unit, modifier: Modifier = Modifier) {
     val language = LocalLocalization.current.language
+    val refreshingLabel = localized(TextKey.RewardEventsLoading)
     Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Surface(onClick = onDetails, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("reward_event_banner"),
             shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surface,
@@ -62,7 +65,14 @@ fun RewardEventBanner(state: RewardEventUiState, onDetails: () -> Unit, onRefres
                             style = MaterialTheme.typography.bodyMedium)
                     }
                 }
-                Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, contentDescription = localized(TextKey.RewardEventsDetails))
+                Box(Modifier.size(24.dp), contentAlignment = Alignment.Center) {
+                    if (state.isRefreshing) {
+                        CircularProgressIndicator(Modifier.size(24.dp).semantics { contentDescription = refreshingLabel },
+                            strokeWidth = 2.dp)
+                    } else {
+                        Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, contentDescription = localized(TextKey.RewardEventsDetails))
+                    }
+                }
             }
         }
         if (state.load == RewardEventLoad.ERROR || state.load == RewardEventLoad.UNAVAILABLE) {

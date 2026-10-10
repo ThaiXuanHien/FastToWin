@@ -29,7 +29,8 @@ fun RewardEventDetailsScreen(state: RewardEventUiState, onBack: () -> Unit, onRe
         ResponsiveScreen(modifier = Modifier.padding(padding), maxContentWidth = 760.dp, applySafeDrawingInsets = false) { content ->
             Column(content.verticalScroll(rememberScrollState()).padding(vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 RewardEventActionButton(label = localized(TextKey.RewardEventsRefresh), onClick = onRefresh,
-                    enabled = state.load != RewardEventLoad.LOADING)
+                    enabled = state.load != RewardEventLoad.LOADING && !state.isRefreshing)
+                if (state.isRefreshing) Text(localized(TextKey.RewardEventsLoading))
                 if (state.load != RewardEventLoad.READY || (state.selected == null && state.items.isEmpty())) Text(localized(rewardEventLoadKey(state.load)))
                 val events = if (state.load == RewardEventLoad.READY) state.selected?.let { listOf(it) } ?: state.items else emptyList()
                 events.forEach { event ->
@@ -46,13 +47,13 @@ fun RewardEventDetailsScreen(state: RewardEventUiState, onBack: () -> Unit, onRe
                             Text(localized(TextKey.RewardEventBounds, "start" to utc(event.startsAtEpochMillis),
                                 "end" to utc(event.endsAtEpochMillis), "zone" to event.timezone), style = MaterialTheme.typography.bodyMedium)
                             if (state.selected == null) RewardEventActionButton(label = localized(TextKey.RewardEventsDetails), onClick = { onSelect(event.id) },
-                                enabled = state.load != RewardEventLoad.LOADING)
+                                enabled = state.load != RewardEventLoad.LOADING && !state.isRefreshing)
                         }
                     }
                 }
                 Text(localized(TextKey.RewardEventAuthority), style = MaterialTheme.typography.bodyMedium)
                 if (state.selected == null && state.hasMore) RewardEventActionButton(label = localized(TextKey.RewardEventsMore), onClick = onMore,
-                    enabled = state.load == RewardEventLoad.READY && !state.isLoadingMore)
+                    enabled = state.load == RewardEventLoad.READY && !state.isLoadingMore && !state.isRefreshing)
             }
         }
     }
