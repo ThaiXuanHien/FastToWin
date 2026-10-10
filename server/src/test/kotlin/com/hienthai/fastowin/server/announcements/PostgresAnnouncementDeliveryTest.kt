@@ -51,7 +51,7 @@ class PostgresAnnouncementDeliveryTest {
             s.executeQuery(sql).use { r -> r.next(); r.getLong(1) }
         } }
     }
-    private suspend fun isolated(block: suspend PgFixture.() -> Unit) {
+    private suspend fun isolated(targetVersion: String? = null, block: suspend PgFixture.() -> Unit) {
         val url = System.getenv("TEST_DATABASE_URL") ?: return
         val schema = "announce_task2_${UUID.randomUUID().toString().replace("-", "")}";
         fun config() = HikariConfig().apply {
@@ -64,7 +64,7 @@ class PostgresAnnouncementDeliveryTest {
             try {
                 HikariDataSource(config().apply { this.schema = schema }).use { ds ->
                     Flyway.configure().dataSource(ds).schemas(schema).defaultSchema(schema)
-                        .locations("classpath:db/migration").load().migrate()
+                        .locations("classpath:db/migration").apply { targetVersion?.let { target(it) } }.load().migrate()
                     PgFixture(ds).apply { setup() }.block()
                 }
             } finally {
@@ -90,6 +90,128 @@ class PostgresAnnouncementDeliveryTest {
         return false
     }
 
+
+
+    @Test fun `round2 V59 backfills only published stored unattempted recipients`() = runTest { isolated("58") {
+        val published = AnnouncementRepositoryTest().fixtureDefinition(UUID.randomUUID().toString())
+        val cancelled = published.copy(id = UUID.randomUUID().toString(), status = AnnouncementStatus.CANCELLED,
+            cancelledAtEpochMillis = now, cancelledBy = published.createdBy, cancellationReason = "Fixture")
+        val candidates = List(5) { UUID.randomUUID().toString() }
+        ds.connection.use { c ->
+            c.autoCommit = false
+            for (value in listOf(published, cancelled)) c.prepareStatement(
+                "INSERT INTO admin_announcements(id,version,status,starts_at,ends_at,priority,payload) VALUES (?,?,?,?,?,?,?)").use { st ->
+                st.setObject(1, UUID.fromString(value.id)); st.setInt(2, value.version); st.setString(3, value.status.name)
+                st.setTimestamp(4, java.sql.Timestamp(value.startsAtEpochMillis)); st.setTimestamp(5, java.sql.Timestamp(value.endsAtEpochMillis))
+                st.setInt(6, value.priority); st.setString(7, kotlinx.serialization.json.Json.encodeToString(AnnouncementDefinition.serializer(), value)); st.executeUpdate()
+            }
+            candidates.forEachIndexed { index, user ->
+                val id = if (index == 4) cancelled.id else published.id
+                val receipt = AnnouncementRecipient(id, user, storedAtEpochMillis = if (index == 3) null else now)
+                c.prepareStatement("INSERT INTO admin_announcement_recipients VALUES (?,?,?)").use { st ->
+                    st.setObject(1, UUID.fromString(id)); st.setObject(2, UUID.fromString(user))
+                    st.setString(3, kotlinx.serialization.json.Json.encodeToString(AnnouncementRecipient.serializer(), receipt)); st.executeUpdate()
+                }
+                if (index in 1..2) {
+                    val attempt = AnnouncementPushAttempt(id, user, UUID.randomUUID().toString(),
+                        if (index == 1) AnnouncementPushOutcome.UNKNOWN else AnnouncementPushOutcome.ATTEMPTING, now)
+                    c.prepareStatement("INSERT INTO admin_announcement_push_attempts VALUES (?,?,?)").use { st ->
+                        st.setObject(1, UUID.fromString(id)); st.setObject(2, UUID.fromString(user))
+                        st.setString(3, kotlinx.serialization.json.Json.encodeToString(AnnouncementPushAttempt.serializer(), attempt)); st.executeUpdate()
+                    }
+                }
+            }
+            c.commit()
+        }
+        Flyway.configure().dataSource(ds).schemas(ds.schema).defaultSchema(ds.schema).locations("classpath:db/migration").load().migrate()
+        assertEquals(listOf(AnnouncementPushCandidate(published.id, candidates[0])), repository.announcements.transaction { pendingPushCandidates(100) })
+        assertEquals(2L, count("SELECT count(*) FROM admin_announcement_push_attempts"))
+        assertEquals(5L, count("SELECT count(*) FROM admin_announcement_recipients"))
+    } }
+
+    @Test fun `round2 pending keys rollback with checkpoints attempts and cancellation then survive account deletion`() = runTest { isolated {
+        val first = publish(draft(pushEnabled = true))
+        val second = publish(draft())
+        assertTrue(repository.announcements.transaction { pendingPushCandidates(100) }.isEmpty())
+        now += 1000
+        assertFailsWith<IllegalStateException> {
+            repository.announcements.transaction {
+                putRecipient(recipient(first.announcement.id, userId)!!.copy(storedAtEpochMillis = now))
+                notifications.create(userId, listOf(first.announcement.notification("en", now)))
+                error("rollback checkpoint and queue")
+            }
+        }
+        assertTrue(repository.announcements.transaction { pendingPushCandidates(100) }.isEmpty())
+        assertTrue(repository.loadNotifications(userId).isEmpty())
+        assertEquals(2, service.deliverDueBatch())
+        assertEquals(2, repository.announcements.transaction { pendingPushCandidates(100) }.size)
+        assertFailsWith<IllegalStateException> {
+            repository.announcements.transaction {
+                putPushAttempt(AnnouncementPushAttempt(first.announcement.id, userId, UUID.randomUUID().toString(), AnnouncementPushOutcome.ATTEMPTING, now))
+                error("rollback attempt and dequeue")
+            }
+        }
+        assertEquals(2, repository.announcements.transaction { pendingPushCandidates(100) }.size)
+        assertEquals(null, repository.announcements.transaction { pushAttempt(first.announcement.id, userId) })
+        assertFailsWith<IllegalStateException> {
+            repository.announcements.transaction {
+                putDefinition(second.announcement.copy(version = second.announcement.version + 1, status = AnnouncementStatus.CANCELLED,
+                    cancelledAtEpochMillis = now, cancelledBy = second.announcement.createdBy, cancellationReason = "Fixture"))
+                error("rollback cancellation and dequeue")
+            }
+        }
+        assertEquals(2, repository.announcements.transaction { pendingPushCandidates(100) }.size)
+        service.cancel(owner, second.announcement.id,
+            AnnouncementMutationRequest(second.announcement.version, UUID.randomUUID().toString(), "Stop"))
+        repository.announcements.transaction { putRecipient(recipient(second.announcement.id, userId)!!.copy(readAtEpochMillis = now)) }
+        assertEquals(listOf(AnnouncementPushCandidate(first.announcement.id, userId)), repository.announcements.transaction { pendingPushCandidates(100) })
+        ds.connection.use { c -> c.prepareStatement("DELETE FROM users WHERE id=?").use { st -> st.setObject(1, UUID.fromString(userId)); st.executeUpdate() } }
+        var calls = 0
+        val push = object : PushNotificationService {
+            override val announcementConfigured = true
+            override suspend fun sendNotification(fcmToken: String, language: AppLanguage, content: LocalizedPushContent, destinationPath: String) = PushDeliveryStatus.FAILED
+            override suspend fun sendAnnouncement(fcmToken: String, languageTag: String, titleVi: String, titleEn: String, bodyVi: String, bodyEn: String, destinationPath: String): AnnouncementPushStatus {
+                calls++; return AnnouncementPushStatus.ACCEPTED
+            }
+        }
+        assertEquals(1, AnnouncementPushDelivery(repository.announcements, push, { now }).deliverDueBatch())
+        assertEquals(0, calls)
+        assertTrue(repository.announcements.transaction { pendingPushCandidates(100) }.isEmpty())
+        assertEquals(AnnouncementPushOutcome.EXPIRED, repository.announcements.transaction { pushAttempt(first.announcement.id, userId) }!!.outcome)
+    } }
+
+    @Test fun `round2 concurrent readers of same pending key claim only once with current consent`() = runTest { isolated {
+        val value = publish(draft(pushEnabled = true))
+        now += 1000; service.deliverDueBatch()
+        PostgresPlayerProfileRepository(ds).updateFcmToken(userId, "fake-token", "vi")
+        repository.announcements.transaction { putPreference(AnnouncementPreference(userId, 1, adminEnabled = true)) }
+        val pagesRead = CountDownLatch(2)
+        val underlying = repository.announcements
+        val paused = object : AnnouncementRepository {
+            override suspend fun <T> transaction(admin: Boolean, block: AnnouncementTransaction.() -> T): T {
+                val result = underlying.transaction(admin, block)
+                if (result is List<*> && result.firstOrNull() is AnnouncementPushCandidate) {
+                    pagesRead.countDown()
+                    check(pagesRead.await(5, TimeUnit.SECONDS))
+                    underlying.transaction { val current = preference(userId); if (current.adminEnabled) putPreference(current.copy(version = 2, adminEnabled = false)) }
+                }
+                return result
+            }
+        }
+        val calls = java.util.concurrent.atomic.AtomicInteger()
+        val push = object : PushNotificationService {
+            override val announcementConfigured = true
+            override suspend fun sendNotification(fcmToken: String, language: AppLanguage, content: LocalizedPushContent, destinationPath: String) = PushDeliveryStatus.FAILED
+            override suspend fun sendAnnouncement(fcmToken: String, languageTag: String, titleVi: String, titleEn: String, bodyVi: String, bodyEn: String, destinationPath: String): AnnouncementPushStatus {
+                calls.incrementAndGet(); return AnnouncementPushStatus.ACCEPTED
+            }
+        }
+        val workers = List(2) { CompletableFuture.supplyAsync { runBlocking { AnnouncementPushDelivery(paused, push, { now }).deliverDueBatch(1) } } }
+        assertEquals(1, workers.sumOf { it.get(10, TimeUnit.SECONDS) })
+        assertEquals(0, calls.get())
+        assertEquals(AnnouncementPushOutcome.OPTED_OUT, underlying.transaction { pushAttempt(value.announcement.id, userId) }!!.outcome)
+        assertTrue(underlying.transaction { pendingPushCandidates(100) }.isEmpty())
+    } }
 
     @Test fun `round1 hide waiting on announcement does not hold user needed by delivery`() = runTest { isolated {
         val draft = service.create(owner, AnnouncementDraftRequest("Vi", "En", "Vi body", "En body",

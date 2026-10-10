@@ -8,6 +8,8 @@ interface AnnouncementRepository {
     suspend fun <T> transaction(admin: Boolean = false, block: AnnouncementTransaction.() -> T): T
 }
 
+data class AnnouncementPushCandidate(val announcementId: String, val userId: String)
+
 interface AnnouncementTransaction {
     val admin: AdminTransaction
     val notifications: NotificationPersistence
@@ -28,6 +30,8 @@ interface AnnouncementTransaction {
     fun putReplay(value: AnnouncementReplay)
     fun preference(userId: String): AnnouncementPreference
     fun putPreference(value: AnnouncementPreference)
+    /** Nonlocking bounded pending keys; callers must revalidate authority before claiming. */
+    fun pendingPushCandidates(limit: Int): List<AnnouncementPushCandidate>
     fun pushAttempt(announcementId: String, userId: String): AnnouncementPushAttempt?
     fun putPushAttempt(value: AnnouncementPushAttempt)
 }

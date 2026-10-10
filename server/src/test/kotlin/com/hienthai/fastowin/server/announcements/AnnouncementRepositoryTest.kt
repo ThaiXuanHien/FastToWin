@@ -206,6 +206,46 @@ class AnnouncementRepositoryTest {
         notifications.announcements.transaction { assertEquals(1L, recipientCounts(id).frozen) }
     }
 
+
+    @Test fun `round2 memory pending queue commits with facts and never requeues attempted or cancelled recipients`() = runTest {
+        val repository = InMemoryNotificationRepository().announcements
+        val id = UUID.randomUUID().toString()
+        val first = UUID.randomUUID().toString()
+        val second = UUID.randomUUID().toString()
+        val definition = fixtureDefinition(id)
+        repository.transaction {
+            putDefinition(definition)
+            putRecipient(AnnouncementRecipient(id, first))
+            putRecipient(AnnouncementRecipient(id, second))
+        }
+        assertFailsWith<IllegalStateException> {
+            repository.transaction { putRecipient(recipient(id, first)!!.copy(storedAtEpochMillis = 100)); error("rollback") }
+        }
+        assertTrue(repository.transaction { pendingPushCandidates(100) }.isEmpty())
+        repository.transaction {
+            putRecipient(recipient(id, first)!!.copy(storedAtEpochMillis = 100))
+            putRecipient(recipient(id, second)!!.copy(storedAtEpochMillis = 100))
+        }
+        assertFailsWith<IllegalStateException> {
+            repository.transaction {
+                putPushAttempt(AnnouncementPushAttempt(id, first, UUID.randomUUID().toString(), AnnouncementPushOutcome.ATTEMPTING, 100))
+                error("rollback")
+            }
+        }
+        assertEquals(2, repository.transaction { pendingPushCandidates(100) }.size)
+        repository.transaction {
+            putPushAttempt(AnnouncementPushAttempt(id, first, UUID.randomUUID().toString(), AnnouncementPushOutcome.UNKNOWN, 100, 200))
+            putRecipient(recipient(id, first)!!.copy(readAtEpochMillis = 200))
+        }
+        assertEquals(listOf(AnnouncementPushCandidate(id, second)), repository.transaction { pendingPushCandidates(100) })
+        repository.transaction {
+            putDefinition(definition.copy(version = 2, status = AnnouncementStatus.CANCELLED,
+                cancelledAtEpochMillis = 200, cancelledBy = definition.createdBy, cancellationReason = "Stop"))
+            putRecipient(recipient(id, second)!!.copy(readAtEpochMillis = 200))
+        }
+        assertTrue(repository.transaction { pendingPushCandidates(100) }.isEmpty())
+    }
+
     internal fun fixtureDefinition(id: String) = AnnouncementDefinition(
         id, 1, AnnouncementStatus.PUBLISHED, "Tiêu đề", "Title", "Nội dung", "Body",
         AdminAnnouncementCategory.GENERAL, 1, 50, 500, true, false, AdminAnnouncementAction.NONE,

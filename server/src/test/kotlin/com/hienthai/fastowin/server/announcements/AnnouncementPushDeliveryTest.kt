@@ -172,6 +172,94 @@ class AnnouncementPushDeliveryTest {
         AnnouncementPushDelivery(expired.notifications.announcements, fake { _, _ -> error("must not send") }, { expired.now }).deliverDueBatch()
         expired.notifications.announcements.transaction { assertEquals(AnnouncementPushOutcome.EXPIRED, pushAttempt(expired.id, expired.userId)?.outcome) }
     }
+
+    @Test fun `round2 pending batch does not rescan processed prefix or lock exhausted history`() = runTest {
+        val admins = InMemoryAdminRepository()
+        admins.seedUser(UserDetail(UUID.randomUUID().toString(), "Available fixture", "available@example.com", "REGISTERED", "ACTIVE",
+            100, 1, 0, 0, 0, 1000, null, null, null))
+        val repository = InMemoryNotificationRepository(admins).announcements
+        val id = "ffffffff-ffff-ffff-ffff-ffffffffffff"
+        val now = 1_800_000_000_000L
+        val users = List(10_000) { UUID(0, it.toLong()).toString() }
+        repository.transaction {
+            repeat(25) { putDefinition(AnnouncementRepositoryTest().fixtureDefinition(UUID(1, it.toLong()).toString())) }
+            putDefinition(AnnouncementRepositoryTest().fixtureDefinition(id).copy(pushEnabled = false))
+            users.forEachIndexed { index, user ->
+                putRecipient(AnnouncementRecipient(id, user, storedAtEpochMillis = now))
+                if (index < 9_900) putPushAttempt(AnnouncementPushAttempt(id, user, UUID.randomUUID().toString(),
+                    AnnouncementPushOutcome.DISABLED, now, now))
+            }
+        }
+        var lookups = 0
+        var pendingPages = 0
+        val lockedIds = mutableListOf<String>()
+        val counted = object : AnnouncementRepository {
+            override suspend fun <T> transaction(admin: Boolean, block: AnnouncementTransaction.() -> T): T = repository.transaction(admin) {
+                val actual = this
+                block(object : AnnouncementTransaction by actual {
+                    override fun pendingPushCandidates(limit: Int): List<AnnouncementPushCandidate> {
+                        pendingPages++
+                        return actual.pendingPushCandidates(limit).also { assertTrue(it.size <= limit) }
+                    }
+                    override fun definition(id: String, lock: Boolean): AnnouncementDefinition? {
+                        if (lock) lockedIds.add(id)
+                        return actual.definition(id, lock)
+                    }
+                    override fun pushAttempt(announcementId: String, userId: String): AnnouncementPushAttempt? {
+                        lookups++
+                        assertTrue(lookups <= 200, "pending page of 100 exceeded 200 attempt reads while traversing processed prefix")
+                        return actual.pushAttempt(announcementId, userId)
+                    }
+                })
+            }
+        }
+        var externalCalls = 0
+        val delivery = AnnouncementPushDelivery(counted, fake { _, _ -> externalCalls++; AnnouncementPushStatus.ACCEPTED }, { now })
+        assertEquals(100, delivery.deliverDueBatch(100))
+        assertEquals(0, externalCalls)
+        assertEquals(100, lockedIds.size)
+        assertEquals(1, pendingPages)
+        assertTrue(lockedIds.all { it == id }, "exhausted definitions must not be locked")
+        assertEquals(10_000L, repository.transaction { recipientCounts(id).pushDisabled })
+        lookups = 0; pendingPages = 0; lockedIds.clear()
+        assertEquals(0, delivery.deliverDueBatch(100))
+        assertEquals(0, lookups)
+        assertEquals(1, pendingPages)
+        assertTrue(lockedIds.isEmpty())
+    }
+
+
+    @Test fun `round2 stale candidate page revalidates cancellation without refilling beyond budget`() = runTest {
+        val admins = InMemoryAdminRepository()
+        val user = UUID.randomUUID().toString()
+        admins.seedUser(UserDetail(user, "Available fixture", "available@example.com", "REGISTERED", "ACTIVE",
+            100, 1, 0, 0, 0, 1000, null, null, null))
+        val underlying = InMemoryNotificationRepository(admins).announcements
+        val values = List(3) { AnnouncementRepositoryTest().fixtureDefinition(UUID(0, it.toLong()).toString()) }
+        underlying.transaction { values.forEach { putDefinition(it); putRecipient(AnnouncementRecipient(it.id, user, storedAtEpochMillis = 100)) } }
+        var paused = false
+        val repository = object : AnnouncementRepository {
+            override suspend fun <T> transaction(admin: Boolean, block: AnnouncementTransaction.() -> T): T {
+                val result = underlying.transaction(admin, block)
+                if (!paused && result is List<*> && result.firstOrNull() is AnnouncementPushCandidate) {
+                    paused = true
+                    underlying.transaction { values.take(2).forEach {
+                        putDefinition(it.copy(version = 2, status = AnnouncementStatus.CANCELLED,
+                            cancelledAtEpochMillis = 150, cancelledBy = it.createdBy, cancellationReason = "Stop"))
+                    } }
+                }
+                return result
+            }
+        }
+        var calls = 0
+        val delivery = AnnouncementPushDelivery(repository, fake { _, _ -> calls++; AnnouncementPushStatus.ACCEPTED }, { 200 })
+        assertEquals(0, delivery.deliverDueBatch(2))
+        assertEquals(listOf(AnnouncementPushCandidate(values[2].id, user)), underlying.transaction { pendingPushCandidates(100) })
+        assertEquals(1, delivery.deliverDueBatch(2))
+        assertEquals(0, calls)
+        underlying.transaction { values.take(2).forEach { assertEquals(null, pushAttempt(it.id, user)) } }
+    }
+
     @Test fun `round1 skipped outcomes consume batch capacity`() = runTest {
         val second = UUID.randomUUID().toString()
         val f = Fixture(); f.setup(pushEnabled = false, extraUserId = second)

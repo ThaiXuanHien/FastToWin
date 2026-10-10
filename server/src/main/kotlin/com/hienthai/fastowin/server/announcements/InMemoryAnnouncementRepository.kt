@@ -21,10 +21,11 @@ class InMemoryAnnouncementRepository internal constructor(
         val recipients: MutableMap<Pair<String, String>, AnnouncementRecipient> = linkedMapOf(),
         val replays: MutableMap<Pair<String, String>, AnnouncementReplay> = linkedMapOf(),
         val preferences: MutableMap<String, AnnouncementPreference> = linkedMapOf(),
-        val attempts: MutableMap<Pair<String, String>, AnnouncementPushAttempt> = linkedMapOf()
+        val attempts: MutableMap<Pair<String, String>, AnnouncementPushAttempt> = linkedMapOf(),
+        val pendingPush: java.util.SortedSet<Pair<String, String>> = java.util.TreeSet(compareBy<Pair<String, String>> { it.first }.thenBy { it.second })
     ) {
         fun copyState() = State(definitions.toMutableMap(), recipients.toMutableMap(), replays.toMutableMap(),
-            preferences.toMutableMap(), attempts.toMutableMap())
+            preferences.toMutableMap(), attempts.toMutableMap(), java.util.TreeSet(pendingPush))
     }
 
     override suspend fun <T> transaction(admin: Boolean, block: AnnouncementTransaction.() -> T): T =
@@ -72,6 +73,7 @@ class InMemoryAnnouncementRepository internal constructor(
                         if (value.status == AnnouncementStatus.PUBLISHED && previous?.status != AnnouncementStatus.PUBLISHED)
                             publishingHere.add(value.id)
                         next.definitions[value.id] = value
+                        if (value.status == AnnouncementStatus.CANCELLED) next.pendingPush.removeIf { it.first == value.id }
                     }
                     override fun definitions(status: AnnouncementStatus?, limit: Int, offset: Int) = next.definitions.values
                         .filter { status == null || it.status == status }.sortedBy { it.id }.drop(offset).take(limit)
@@ -120,6 +122,10 @@ class InMemoryAnnouncementRepository internal constructor(
                             dismissedAtEpochMillis = value.dismissedAtEpochMillis ?: previous?.dismissedAtEpochMillis,
                             bannerHiddenAtEpochMillis = value.bannerHiddenAtEpochMillis ?: previous?.bannerHiddenAtEpochMillis
                         )
+                        val key = value.announcementId to value.userId
+                        if (next.recipients[key]?.storedAtEpochMillis != null &&
+                            next.definitions[value.announcementId]?.status == AnnouncementStatus.PUBLISHED && key !in next.attempts)
+                            next.pendingPush.add(key)
                     }
                     override fun replay(actorId: String, requestId: String) = next.replays[actorId to requestId]
                     override fun putReplay(value: AnnouncementReplay) {
@@ -135,6 +141,10 @@ class InMemoryAnnouncementRepository internal constructor(
                             com.hienthai.fastowin.server.admin.conflict()
                         next.preferences[value.userId] = value
                     }
+                    override fun pendingPushCandidates(limit: Int): List<AnnouncementPushCandidate> {
+                        require(limit in 1..1000)
+                        return next.pendingPush.asSequence().take(limit).map { AnnouncementPushCandidate(it.first, it.second) }.toList()
+                    }
                     override fun pushAttempt(announcementId: String, userId: String) = next.attempts[announcementId to userId]
                     override fun putPushAttempt(value: AnnouncementPushAttempt) {
                         if (next.recipients[value.announcementId to value.userId] == null) com.hienthai.fastowin.server.admin.conflict()
@@ -146,6 +156,7 @@ class InMemoryAnnouncementRepository internal constructor(
                                 previous.claimedAtEpochMillis != value.claimedAtEpochMillis))
                             com.hienthai.fastowin.server.admin.conflict()
                         next.attempts[value.announcementId to value.userId] = value
+                        next.pendingPush.remove(value.announcementId to value.userId)
                     }
                 }.block()
             }

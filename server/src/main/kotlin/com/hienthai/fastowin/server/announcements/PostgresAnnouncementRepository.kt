@@ -74,6 +74,8 @@ internal class JdbcAnnouncementTransaction(private val connection: Connection) :
             UUID.fromString(value.id), value.version, value.status.name, Timestamp(value.startsAtEpochMillis),
             Timestamp(value.endsAtEpochMillis), value.priority, Json.encodeToString(value)
         )
+        if (value.status == AnnouncementStatus.CANCELLED)
+            execute("DELETE FROM admin_announcement_pending_push WHERE announcement_id=?", UUID.fromString(value.id))
     }
 
     override fun definitions(status: AnnouncementStatus?, limit: Int, offset: Int): List<AnnouncementDefinition> {
@@ -163,6 +165,16 @@ internal class JdbcAnnouncementTransaction(private val connection: Connection) :
                ON CONFLICT(announcement_id,user_id) DO UPDATE SET payload=EXCLUDED.payload""",
             UUID.fromString(value.announcementId), UUID.fromString(value.userId), Json.encodeToString(merged)
         )
+        if (merged.storedAtEpochMillis != null) execute(
+            """INSERT INTO admin_announcement_pending_push(announcement_id,user_id)
+               SELECT r.announcement_id,r.user_id FROM admin_announcement_recipients r
+               JOIN admin_announcements a ON a.id=r.announcement_id
+               WHERE r.announcement_id=? AND r.user_id=? AND a.status='PUBLISHED'
+                 AND NOT EXISTS (SELECT 1 FROM admin_announcement_push_attempts p
+                     WHERE p.announcement_id=r.announcement_id AND p.user_id=r.user_id)
+               ON CONFLICT DO NOTHING""",
+            UUID.fromString(value.announcementId), UUID.fromString(value.userId)
+        )
     }
 
     override fun replay(actorId: String, requestId: String): AnnouncementReplay? = rows(
@@ -196,6 +208,13 @@ internal class JdbcAnnouncementTransaction(private val connection: Connection) :
         }
     }
 
+    override fun pendingPushCandidates(limit: Int): List<AnnouncementPushCandidate> {
+        require(limit in 1..1000)
+        return rows("SELECT announcement_id,user_id FROM admin_announcement_pending_push ORDER BY announcement_id,user_id LIMIT ?", limit) {
+            AnnouncementPushCandidate(it.getString(1), it.getString(2))
+        }
+    }
+
     override fun pushAttempt(announcementId: String, userId: String): AnnouncementPushAttempt? = rows(
         "SELECT payload FROM admin_announcement_push_attempts WHERE announcement_id=? AND user_id=?",
         UUID.fromString(announcementId), UUID.fromString(userId)
@@ -222,6 +241,8 @@ internal class JdbcAnnouncementTransaction(private val connection: Connection) :
                ON CONFLICT(announcement_id,user_id) DO UPDATE SET payload=EXCLUDED.payload""",
             UUID.fromString(value.announcementId), UUID.fromString(value.userId), Json.encodeToString(value)
         )
+        execute("DELETE FROM admin_announcement_pending_push WHERE announcement_id=? AND user_id=?",
+            UUID.fromString(value.announcementId), UUID.fromString(value.userId))
     }
 
     private fun lockAnnouncement(id: String) {
