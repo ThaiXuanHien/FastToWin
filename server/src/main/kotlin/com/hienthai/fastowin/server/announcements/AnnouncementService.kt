@@ -324,10 +324,10 @@ class AnnouncementService(
         AnnouncementBanners(items, now)
     }
     suspend fun markRead(userId: String, id: String?): AnnouncementMutationResult = mutatePlayer(userId, id) { target, now ->
-        notifications.markRead(userId, target, now)
+        notifications.markRead(userId, target, now, announcementOnly = true)
     }
     suspend fun dismiss(userId: String, id: String?): AnnouncementMutationResult = mutatePlayer(userId, id) { target, now ->
-        notifications.dismiss(userId, target, now)
+        notifications.dismiss(userId, target, now, announcementOnly = true)
     }
     private suspend fun mutatePlayer(userId: String, id: String?, operation: AnnouncementTransaction.(String?, Long) -> Unit): AnnouncementMutationResult = repository.transaction {
         player(userId); if (id != null && !canonical(id)) invalid()
@@ -346,7 +346,9 @@ class AnnouncementService(
             recipient(announcementId, userId)?.dismissedAtEpochMillis == null
         }
         val now = nowMillis()
-        items.forEach { operation(it.id, now) }
+        // A bulk operation must enter persistence once, so all receipts are locked in the
+        // same order as legacy bulk before any notification is changed.
+        if (items.isNotEmpty()) operation(target, now)
         AnnouncementMutationResult(items.size.toString(), now)
     }
     suspend fun hideBanner(userId: String, id: String): AnnouncementMutationResult = repository.transaction {

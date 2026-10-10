@@ -10,6 +10,7 @@ interface NotificationPersistence {
     ): List<NotificationSnapshot>
     fun count(userId: String, includeDismissed: Boolean = false, announcementOnly: Boolean = false): Long
     fun create(userId: String, notifications: List<NotificationSnapshot>)
-    fun markRead(userId: String, notificationId: String?, nowMillis: Long)
-    fun dismiss(userId: String, notificationId: String?, nowMillis: Long)
+    /** Null ID is one bulk operation: acquire all receipt locks in UUID order before notification writes. */
+    fun markRead(userId: String, notificationId: String?, nowMillis: Long, announcementOnly: Boolean = false)
+    fun dismiss(userId: String, notificationId: String?, nowMillis: Long, announcementOnly: Boolean = false)
 }

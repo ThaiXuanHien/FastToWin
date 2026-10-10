@@ -32,6 +32,42 @@ import kotlin.test.assertTrue
 import kotlin.test.assertFailsWith
 
 class PostgresAnnouncementRepositoryTest {
+    @Test fun `HTTP bulk preserves legacy scope and monotonic announcement receipts`() = runTest {
+        withFixture { _, repo, id, userId, definition ->
+            repo.announcements.transaction {
+                putDefinition(definition)
+                putRecipient(AnnouncementRecipient(id, userId, storedAtEpochMillis = 100))
+                notifications.create(userId, listOf(definition.notification("en", 100),
+                    definition.notification("en", 99).copy(id = "legacy-social", announcement = null)))
+            }
+            var now = 200L
+            val service = AnnouncementService(repo.announcements, null, nowMillis = { now })
+            assertEquals("1", service.markRead(userId, null).affected)
+            now = 250
+            service.markRead(userId, null)
+            repo.announcements.transaction {
+                assertEquals(200L, recipient(id, userId)?.readAtEpochMillis)
+                assertEquals(false, notifications.load(userId).single { it.id == "legacy-social" }.isRead)
+            }
+            now = 300
+            assertEquals("1", service.dismiss(userId, null).affected)
+            now = 350
+            assertEquals("0", service.dismiss(userId, null).affected)
+            repo.announcements.transaction {
+                assertEquals(300L, recipient(id, userId)?.dismissedAtEpochMillis)
+                assertEquals(listOf("legacy-social"), notifications.load(userId).map { it.id })
+            }
+            repo.markNotificationsRead(userId, null, 400)
+            assertTrue(repo.loadNotifications(userId).single().isRead)
+            repo.dismissNotifications(userId, null, 500)
+            assertTrue(repo.loadNotifications(userId).isEmpty())
+            repo.announcements.transaction {
+                assertEquals(200L, recipient(id, userId)?.readAtEpochMillis)
+                assertEquals(300L, recipient(id, userId)?.dismissedAtEpochMillis)
+            }
+        }
+    }
+
     @Test fun `legacy read survives concurrent recipient checkpoint merge`() = runTest {
         withFixture { ds, repo, id, userId, definition ->
             repo.announcements.transaction {

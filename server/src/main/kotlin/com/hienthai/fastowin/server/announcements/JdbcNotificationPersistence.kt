@@ -97,11 +97,13 @@ internal class JdbcNotificationPersistence(private val connection: Connection) :
         }
     }
 
-    override fun markRead(userId: String, notificationId: String?, nowMillis: Long) = update(userId, notificationId, nowMillis, true)
-    override fun dismiss(userId: String, notificationId: String?, nowMillis: Long) = update(userId, notificationId, nowMillis, false)
+    override fun markRead(userId: String, notificationId: String?, nowMillis: Long, announcementOnly: Boolean) = update(userId, notificationId, nowMillis, true, announcementOnly)
+    override fun dismiss(userId: String, notificationId: String?, nowMillis: Long, announcementOnly: Boolean) = update(userId, notificationId, nowMillis, false, announcementOnly)
 
-    private fun update(userId: String, notificationId: String?, nowMillis: Long, read: Boolean) {
-        // Recipient first, notification second. Delivery takes announcement then recipient then notification.
+    private fun update(userId: String, notificationId: String?, nowMillis: Long, read: Boolean, announcementOnly: Boolean) {
+        // Both HTTP and legacy bulk acquire the entire receipt set in UUID order BEFORE any
+        // notification write. Single-ID operations use the same recipient -> notification order.
+        // Never acquire an announcement lock here: delivery holds that lock before its receipt.
         val receiptColumn = if (read) "read_at" else "dismissed_at"
         val receiptValue = if (read) "COALESCE(read_at, ?)" else "COALESCE(dismissed_at, ?)"
         connection.prepareStatement(
@@ -131,7 +133,8 @@ internal class JdbcNotificationPersistence(private val connection: Connection) :
             }
         }
         val sql = "UPDATE user_notifications SET $receiptColumn=$receiptValue WHERE user_id=?" +
-            if (notificationId == null) " AND dismissed_at IS NULL" else " AND notification_id=?"
+            (if (notificationId == null) " AND dismissed_at IS NULL" else " AND notification_id=?") +
+            (if (announcementOnly) " AND source='ADMIN_ANNOUNCEMENT' AND dismissed_at IS NULL" else "")
         connection.prepareStatement(sql).use { statement ->
             statement.setTimestamp(1, Timestamp(nowMillis))
             statement.setObject(2, UUID.fromString(userId))

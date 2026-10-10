@@ -102,7 +102,7 @@ export function openAnnouncements(ui) {
         main.querySelector('h1').textContent = item.titleVi; const controls = node('div', null, { class: 'announcement-actions' });
         if (writable() && item.status === 'DRAFT') append(controls, iconButton('Sửa thông báo', () => edit(item), 'edit'), button('Xem trước', () => preview(item)));
         if (writable() && item.status !== 'DRAFT') controls.append(button('Tạo bản sửa mới', () => edit({ ...item, id: null, version: null, status: 'DRAFT', supersedesAnnouncementId: item.id, pushEnabled: false })));
-        if (owner() && item.status !== 'CANCELLED') controls.append(button('Hủy thông báo', () => confirm(row, null, true)));
+        if (owner() && item.status === 'PUBLISHED') controls.append(button('Hủy thông báo', () => confirm(row, null, true)));
         controls.append(button('Báo cáo', () => report(row))); content.append(controls, node('p', phase(item, row.serverNowEpochMillis), { class: 'muted' })); languages(content, item); definitionFacts(content, item);
         if (item.status !== 'DRAFT') content.append(node('p', 'Nội dung đã công bố được giữ nguyên. Muốn sửa, tạo thông báo mới có tham chiếu bản cũ.', { class: 'muted' }));
       } catch (error) { if (task.current() && error.name !== 'AbortError') notices.fail(error); }

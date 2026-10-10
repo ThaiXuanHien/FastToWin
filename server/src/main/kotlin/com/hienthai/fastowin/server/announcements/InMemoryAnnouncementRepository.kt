@@ -52,13 +52,15 @@ class InMemoryAnnouncementRepository internal constructor(
                             notificationCopy.putIfAbsent(userId to notification.id, InMemoryNotificationRepository.StoredNotification(notification))
                         }
                     }
-                    override fun markRead(userId: String, notificationId: String?, nowMillis: Long) {
-                        notificationCopy.entries.filter { it.key.first == userId && !it.value.dismissed && (notificationId == null || it.key.second == notificationId) }
+                    override fun markRead(userId: String, notificationId: String?, nowMillis: Long, announcementOnly: Boolean) {
+                        notificationCopy.entries.filter { it.key.first == userId && !it.value.dismissed && (notificationId == null || it.key.second == notificationId) &&
+                            (!announcementOnly || it.value.snapshot.announcement != null) }
                             .forEach { it.setValue(it.value.copy(snapshot = it.value.snapshot.copy(isRead = true))) }
                         updateReceipt(next, userId, notificationId, nowMillis, true)
                     }
-                    override fun dismiss(userId: String, notificationId: String?, nowMillis: Long) {
-                        notificationCopy.entries.filter { it.key.first == userId && !it.value.dismissed && (notificationId == null || it.key.second == notificationId) }
+                    override fun dismiss(userId: String, notificationId: String?, nowMillis: Long, announcementOnly: Boolean) {
+                        notificationCopy.entries.filter { it.key.first == userId && !it.value.dismissed && (notificationId == null || it.key.second == notificationId) &&
+                            (!announcementOnly || it.value.snapshot.announcement != null) }
                             .forEach { it.setValue(it.value.copy(dismissed = true)) }
                         updateReceipt(next, userId, notificationId, nowMillis, false)
                     }

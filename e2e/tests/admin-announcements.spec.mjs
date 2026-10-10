@@ -6,6 +6,32 @@ async function open(page, fixture) { await login(page, fixture); await page.getB
 async function detail(page) { await page.getByRole('button', { name: 'Xem thông báo Thông báo kết nối', exact: true }).click(); await expect(page.getByRole('button', { name: 'Báo cáo', exact: true })).toBeVisible(); }
 async function preview(page) { await page.getByRole('button', { name: 'Xem trước', exact: true }).click(); await expect(page.getByRole('button', { name: 'Tiếp tục công bố', exact: true })).toBeVisible(); }
 async function fill(page) { for (const [label, value] of [['Tiêu đề (VI)', 'Thông báo kết nối'], ['Title (EN)', 'Connection notice'], ['Nội dung (VI)', 'Nội dung đầy đủ.'], ['Body (EN)', 'Full explanation.'], ['Bắt đầu (UTC, bao gồm)', '2026-10-09T00:00:00.123'], ['Kết thúc (UTC, không bao gồm)', '2026-11-09T00:00:00.456'], ['Lý do bản nháp nội bộ', 'Owned local draft']]) await page.getByLabel(label, { exact: true }).fill(value); }
+for (const width of [360, 1440]) test(`cancel available only for published announcement ${width}`, async ({ page, fixture }) => {
+  const evidence = new URL('../../.artifacts/admin-announcements-delivery/final-fix/', import.meta.url);
+  await mkdir(evidence, { recursive: true });
+  await page.setViewportSize({ width, height: 1000 });
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  const state = announcements(fixture);
+  await open(page, fixture);
+  await detail(page);
+  const cancel = page.getByRole('button', { name: 'Hủy thông báo', exact: true });
+  await expect(cancel).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Xem trước', exact: true })).toBeVisible();
+  await page.screenshot({ path: new URL(`draft-${width}.png`, evidence).pathname.replace(/^\/(\w:)/, '$1') });
+  state.row.announcement.status = 'PUBLISHED';
+  await page.getByRole('button', { name: 'Làm mới thông báo', exact: true }).click();
+  await expect(cancel).toBeVisible();
+  await page.screenshot({ path: new URL(`published-${width}.png`, evidence).pathname.replace(/^\/(\w:)/, '$1') });
+  await cancel.click();
+  await expect(page.getByRole('button', { name: 'Xác nhận hủy', exact: true })).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(cancel).toBeFocused();
+  state.row.announcement.status = 'CANCELLED';
+  await page.getByRole('button', { name: 'Làm mới thông báo', exact: true }).click();
+  await expect(cancel).toHaveCount(0);
+  expect(fixture.calls.filter(call => call.route.endsWith('/cancel'))).toHaveLength(0);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+});
 test('authenticated announcement console opens and previews exact bilingual audience', async ({ page, fixture }) => {
   announcements(fixture); await login(page, fixture);
   await expect(page.getByRole('button', { name: 'Thông báo', exact: true })).toBeVisible();
@@ -19,7 +45,7 @@ test('authenticated announcement console opens and previews exact bilingual audi
 });
 for (const role of ['OWNER', 'OPERATOR', 'SUPPORT']) test(`current ${role} permissions`, async ({ page, fixture }) => {
   announcements(fixture); fixture.role = role; await open(page, fixture); await expect(page.getByRole('button', { name: 'Tạo thông báo', exact: true })).toHaveCount(role === 'SUPPORT' ? 0 : 1); await detail(page);
-  await expect(page.getByRole('button', { name: 'Xem trước', exact: true })).toHaveCount(role === 'SUPPORT' ? 0 : 1); await expect(page.getByRole('button', { name: 'Hủy thông báo', exact: true })).toHaveCount(role === 'OWNER' ? 1 : 0);
+  await expect(page.getByRole('button', { name: 'Xem trước', exact: true })).toHaveCount(role === 'SUPPORT' ? 0 : 1); await expect(page.getByRole('button', { name: 'Hủy thông báo', exact: true })).toHaveCount(0);
   if (role !== 'SUPPORT') { await page.getByRole('button', { name: 'Xem trước', exact: true }).click(); await expect(page.getByRole('dialog')).toContainText('Số người nhận'); await expect(page.getByRole('button', { name: 'Tiếp tục công bố', exact: true })).toHaveCount(role === 'OWNER' ? 1 : 0); }
 });
 test('default push off explicit capabilities exact draft POST PUT UTC validation', async ({ page, fixture }) => {
@@ -44,7 +70,7 @@ test('independent provider accepted read unknown stored facts remain numerically
 for (const state of ['scheduled', 'expired', 'cancelled']) test(`immutable ${state} history`, async ({ page, fixture }) => { announcements(fixture, { status: state === 'cancelled' ? 'CANCELLED' : 'PUBLISHED', startsAtEpochMillis: state === 'scheduled' ? 1791509000000 : 1791500000000, endsAtEpochMillis: state === 'expired' ? 1791501000000 : 1791510000000 }); await open(page, fixture); await expect(page.locator('.announcement-row')).toContainText(state === 'scheduled' ? 'Đã lên lịch' : state === 'expired' ? 'Đã hết hạn' : 'Đã hủy'); await detail(page); await expect(page.getByRole('button', { name: 'Sửa thông báo' })).toHaveCount(0); await expect(page.getByRole('button', { name: 'Tạo bản sửa mới' })).toBeVisible(); });
 test('announcement audit actions use readable Vietnamese labels', async ({ page, fixture }) => { fixture.handlers.set('/admin/api/audit', async (_, send) => { send(200, { items: [{ id: 'audit-announcement', actorId: 'owner-1', action: 'ANNOUNCEMENT_PUBLISH', targetId: id, requestId: 'local-request', reason: 'Owned local', createdAtEpochMillis: 1791505000000 }], page: 0, pageSize: 25, total: 1 }); return true; }); await login(page, fixture); await page.getByRole('button', { name: 'Nhật ký kiểm toán', exact: true }).click(); await expect(page.locator('main')).toContainText('Công bố thông báo'); await expect(page.locator('main')).not.toContainText('ANNOUNCEMENT_PUBLISH'); });
 for (const action of ['save', 'publish', 'cancel']) test(`pending guards exact same uncertain retry ${action}`, async ({ page, fixture }) => {
-  announcements(fixture); await open(page, fixture); let target, submit;
+  announcements(fixture, action === 'cancel' ? { status: 'PUBLISHED' } : {}); await open(page, fixture); let target, submit;
   if (action === 'save') { await page.getByRole('button', { name: 'Tạo thông báo' }).click(); await fill(page); target = base; submit = 'Lưu bản nháp'; }
   else { await detail(page); if (action === 'publish') { await preview(page); await page.getByRole('button', { name: 'Tiếp tục công bố' }).click(); await page.getByLabel('Lý do công bố nội bộ').fill('Owned publish'); submit = 'Công bố thông báo'; } else { await page.getByRole('button', { name: 'Hủy thông báo' }).click(); await page.getByLabel('Lý do hủy nội bộ').fill('Owned cancel'); submit = 'Xác nhận hủy'; } target = base + '/' + id + '/' + action; }
   const original = fixture.handlers.get(target); let release, calls = 0; fixture.handlers.set(target, async (call, send) => { if (call.method === 'GET') return original(call, send); if (++calls === 1) { await new Promise(resolve => release = resolve); send(503, { message: 'Uncertain result' }); return true; } return original(call, send); });

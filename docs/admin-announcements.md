@@ -34,7 +34,7 @@ fun pushAttempt(announcementId: String, userId: String): AnnouncementPushAttempt
 fun putPushAttempt(value: AnnouncementPushAttempt)
 ```
 
-`NotificationPersistence` is also synchronous and connection-bound:
+`NotificationPersistence` is also synchronous and connection-bound. HTTP read-all/dismiss-all invokes one null-ID bulk mutation with `announcementOnly=true`; legacy null-ID mutations retain all-notification scope by default. Both use the same JDBC operation, which acquires the entire matching recipient set in ascending announcement UUID order before notification writes. Single-ID mutations retain recipient-before-notification ordering. A caller must not implement bulk mutation by iterating inbox chronology and holding each receipt lock until commit.
 
 ```kotlin
 fun load(userId: String, limit: Int = 100, offset: Int = 0,
@@ -43,8 +43,8 @@ fun load(userId: String, limit: Int = 100, offset: Int = 0,
 fun count(userId: String, includeDismissed: Boolean = false,
           announcementOnly: Boolean = false): Long
 fun create(userId: String, notifications: List<NotificationSnapshot>)
-fun markRead(userId: String, notificationId: String?, nowMillis: Long)
-fun dismiss(userId: String, notificationId: String?, nowMillis: Long)
+fun markRead(userId: String, notificationId: String?, nowMillis: Long, announcementOnly: Boolean = false)
+fun dismiss(userId: String, notificationId: String?, nowMillis: Long, announcementOnly: Boolean = false)
 ```
 
 For player history, use `load(..., includeDismissed=true, announcementOnly=true)` with a bounded page and `count(..., includeDismissed=true, announcementOnly=true)` for its exact total. For detail, also pass `notificationId="admin-announcement:$id"` and `limit=1`. Keep the existing WebSocket inbox `loadNotifications` limit of 100 for legacy behavior. The HTTP task must authenticate the current registered player and convert internal `Long` counts to decimal strings in public DTOs. It owns response codes, pagination envelopes, request validation, no-store headers, and route authority.
