@@ -478,6 +478,153 @@ class GameStateTest {
         fixture.controller.close()
     }
 
+    @Test
+    fun `completion of a departed tournament preserves current tournament and pending action`() = runTest {
+        val fixture = publicTournamentFixture()
+        fixture.session.server(ServerMessage.SessionReady("player-1"))
+        val a = scheduledLobby("A")
+        val b = scheduledLobby("B")
+        fixture.session.server(ServerMessage.TournamentUpdated(a))
+        runCurrent()
+        fixture.controller.leaveTournament()
+        fixture.session.server(ServerMessage.TournamentHubData(TournamentHubSnapshot()))
+        runCurrent()
+        fixture.controller.joinPublicTournament("B")
+        fixture.session.server(ServerMessage.TournamentUpdated(b))
+        runCurrent()
+        fixture.controller.checkInTournament()
+        runCurrent()
+        val pending = fixture.controller.uiState.value
+        assertTrue(pending.isTournamentLoading)
+        val cancelled = a.copy(phase = TournamentPhase.CANCELLED, serverTimeEpochMillis = 1L)
+        repeat(2) { fixture.session.server(ServerMessage.TournamentUpdated(cancelled)) }
+        runCurrent()
+        val updated = fixture.controller.uiState.value
+        assertEquals(b, updated.tournamentHub.activeTournament)
+        assertEquals(listOf(cancelled), updated.tournamentHub.recentTournaments)
+        assertEquals(pending.isTournamentLoading, updated.isTournamentLoading)
+        assertEquals(pending.tournamentNotice, updated.tournamentNotice)
+        assertEquals(pending.error, updated.error)
+        assertEquals(pending.tournamentServerClock, updated.tournamentServerClock)
+        assertEquals(listOf(ClientMessage.CheckInTournament("B")), fixture.session.sent.filterIsInstance<ClientMessage.CheckInTournament>())
+        fixture.session.server(ServerMessage.TournamentUpdated(b.copy(players = b.players.map { it.copy(isCheckedIn = true) })))
+        runCurrent()
+        assertFalse(fixture.controller.uiState.value.isTournamentLoading)
+        assertTrue(fixture.controller.uiState.value.tournamentHub.activeTournament!!.players.single().isCheckedIn)
+        fixture.controller.close()
+    }
+
+    @Test
+    fun `history only hub refresh preserves pending check in until its own response`() = runTest {
+        val fixture = publicTournamentFixture()
+        fixture.session.server(ServerMessage.SessionReady("player-1"))
+        val b = scheduledLobby("B")
+        val cancelled = scheduledLobby("A").copy(phase = TournamentPhase.CANCELLED)
+        fixture.session.server(ServerMessage.TournamentUpdated(b))
+        runCurrent()
+        fixture.controller.checkInTournament()
+        runCurrent()
+        fixture.session.server(historyRefresh(TournamentHubSnapshot(
+            activeTournament = b.copy(serverTimeEpochMillis = b.serverTimeEpochMillis!! + 100),
+            recentTournaments = listOf(cancelled)
+        )))
+        fixture.session.server(ServerMessage.ProfileData(PlayerProfileSnapshot("player-1", "Tester", "TEST",
+            progression = PlayerProgressionSnapshot(gold = 900))))
+        runCurrent()
+        assertEquals("B", fixture.controller.uiState.value.tournamentHub.activeTournament?.tournamentId)
+        assertEquals(listOf(cancelled), fixture.controller.uiState.value.tournamentHub.recentTournaments)
+        assertEquals(900, fixture.controller.uiState.value.profile?.progression?.gold)
+        assertEquals(b.serverTimeEpochMillis!! + 100, fixture.controller.uiState.value.tournamentServerClock?.serverEpochMillis)
+        assertTrue(fixture.controller.uiState.value.isTournamentLoading)
+        fixture.controller.checkInTournament()
+        runCurrent()
+        assertEquals(listOf(ClientMessage.CheckInTournament("B")), fixture.session.sent.filterIsInstance<ClientMessage.CheckInTournament>())
+        fixture.session.server(ServerMessage.Error("TOURNAMENT_CHECK_IN_CLOSED", "Closed"))
+        runCurrent()
+        assertFalse(fixture.controller.uiState.value.isTournamentLoading)
+        assertTrue(fixture.controller.uiState.value.error != null)
+        fixture.controller.close()
+    }
+
+    @Test
+    fun `unrelated completion preserves existing notice and error but current completion settles action`() = runTest {
+        val fixture = publicTournamentFixture()
+        val b = scheduledLobby("B")
+        fixture.session.server(ServerMessage.TournamentUpdated(b))
+        fixture.session.server(ServerMessage.TournamentNotice("Waiting"))
+        fixture.session.server(ServerMessage.Error("UNKNOWN", "Existing error"))
+        runCurrent()
+        val before = fixture.controller.uiState.value
+        val cancelled = scheduledLobby("A").copy(phase = TournamentPhase.CANCELLED)
+        fixture.session.server(ServerMessage.TournamentUpdated(cancelled))
+        runCurrent()
+        assertEquals(before.tournamentNotice, fixture.controller.uiState.value.tournamentNotice)
+        assertEquals(before.error, fixture.controller.uiState.value.error)
+        fixture.session.server(historyRefresh(TournamentHubSnapshot(activeTournament = b,
+            recentTournaments = listOf(cancelled.copy(finishedAtEpochMillis = 42L)))))
+        runCurrent()
+        assertEquals(before.tournamentNotice, fixture.controller.uiState.value.tournamentNotice)
+        assertEquals(before.error, fixture.controller.uiState.value.error)
+        fixture.controller.leaveTournament()
+        runCurrent()
+        assertTrue(fixture.controller.uiState.value.isTournamentLoading)
+        fixture.session.server(ServerMessage.TournamentUpdated(b.copy(phase = TournamentPhase.CANCELLED)))
+        runCurrent()
+        assertNull(fixture.controller.uiState.value.tournamentHub.activeTournament)
+        assertFalse(fixture.controller.uiState.value.isTournamentLoading)
+        assertNull(fixture.controller.uiState.value.tournamentNotice)
+        assertNull(fixture.controller.uiState.value.error)
+        assertEquals(listOf("B", "A"), fixture.controller.uiState.value.tournamentHub.recentTournaments.map { it.tournamentId })
+        fixture.controller.close()
+    }
+
+    @Test
+    fun `explicit hub response settles loading even when only completed history changed`() = runTest {
+        val fixture = publicTournamentFixture()
+        val b = scheduledLobby("B")
+        fixture.session.server(ServerMessage.TournamentUpdated(b))
+        runCurrent()
+        fixture.controller.openTournament()
+        runCurrent()
+        assertTrue(fixture.controller.uiState.value.isTournamentLoading)
+        fixture.session.server(ServerMessage.TournamentHubData(TournamentHubSnapshot(activeTournament = b,
+            recentTournaments = listOf(scheduledLobby("A").copy(phase = TournamentPhase.CANCELLED)))))
+        runCurrent()
+        assertFalse(fixture.controller.uiState.value.isTournamentLoading)
+        assertEquals("B", fixture.controller.uiState.value.tournamentHub.activeTournament?.tournamentId)
+        fixture.controller.close()
+    }
+
+    private fun historyRefresh(hub: TournamentHubSnapshot): ServerMessage =
+        ServerMessage.TournamentHubData(hub, isHistoryRefresh = true)
+
+    @Test
+    fun `historical finished update does not settle admission while no active tournament exists`() = runTest {
+        val fixture = publicTournamentFixture()
+        fixture.controller.joinPublicTournament("B")
+        runCurrent()
+        assertTrue(fixture.controller.uiState.value.isTournamentLoading)
+        val finished = scheduledLobby("A").copy(phase = TournamentPhase.FINISHED)
+        fixture.session.server(ServerMessage.TournamentUpdated(finished))
+        runCurrent()
+        assertNull(fixture.controller.uiState.value.tournamentHub.activeTournament)
+        assertTrue(fixture.controller.uiState.value.isTournamentLoading)
+        assertEquals(listOf(finished), fixture.controller.uiState.value.tournamentHub.recentTournaments)
+        fixture.session.server(ServerMessage.TournamentUpdated(scheduledLobby("B")))
+        runCurrent()
+        assertEquals("B", fixture.controller.uiState.value.tournamentHub.activeTournament?.tournamentId)
+        assertFalse(fixture.controller.uiState.value.isTournamentLoading)
+        fixture.controller.close()
+    }
+
+    private fun scheduledLobby(id: String): TournamentSnapshot {
+        val now = epochMillis()
+        return TournamentSnapshot(id, "Cup $id", "player-1", ProtocolGameMode.ORDER, TournamentPhase.LOBBY,
+            players = listOf(TournamentPlayerSnapshot("player-1", "Tester", true, true)),
+            schedule = TournamentScheduleSnapshot(now + 60_000, "UTC", now - 840_000, now - 840_000),
+            serverTimeEpochMillis = now, createdAtEpochMillis = now)
+    }
+
     private fun TestScope.publicTournamentFixture(): PublicTournamentFixture {
         val transport = PublicTournamentTransport()
         val controller = GameController(

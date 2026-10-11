@@ -1212,7 +1212,11 @@ sealed class ServerMessage {
 
     @Serializable
     @SerialName("tournament_hub_data")
-    data class TournamentHubData(val hub: TournamentHubSnapshot) : ServerMessage()
+    data class TournamentHubData(
+        val hub: TournamentHubSnapshot,
+        /** Unsolicited history notification; does not acknowledge an in-flight tournament action. */
+        val isHistoryRefresh: Boolean = false
+    ) : ServerMessage()
 
     @Serializable
     @SerialName("public_tournaments_data")

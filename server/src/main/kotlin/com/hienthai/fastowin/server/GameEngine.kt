@@ -799,7 +799,7 @@ class GameEngine(
         return result.deliveries + tournamentDeliveries + affectedPlayers.flatMap { presenceUpdates(it) }
     }
 
-    private suspend fun loadTournamentHub(playerId: String): List<Delivery> {
+    private suspend fun loadTournamentHub(playerId: String, isHistoryRefresh: Boolean = false): List<Delivery> {
         if (!isAccountSession(playerId)) return listOf(accountRequired(playerId))
         val now = nowMillis()
         val hubState = mutex.withLock {
@@ -827,7 +827,8 @@ class GameEngine(
                     activeTournament = hubState.first,
                     invitations = hubState.second,
                     recentTournaments = recent
-                )
+                ),
+                isHistoryRefresh = isHistoryRefresh
             ),
             setOf(playerId)
         ))
@@ -1333,11 +1334,16 @@ class GameEngine(
                                     removedRoomIds = previous.rooms.map { it.id }), activeRoomRepository, playerProfileRepository)
                             }
                             tournamentRepository.cancelWithRefund(cancelled, playerProfileRepository)
-                            deliveries += mutex.withLock {
+                            val (updates, departedPlayers) = mutex.withLock {
+                                val currentPlayers = checkNotNull(tournaments[id]).playerIds()
                                 pendingTournamentProgressions.remove(id)
                                 tournamentInvitations.entries.removeAll { it.value.tournamentId == id }
-                                publishProgression(id, cancelled, emptyList(), null)
+                                publishProgression(id, cancelled, emptyList(), null, currentPlayers) to
+                                    (cancelled.players.map { it.playerId }.toSet() - currentPlayers)
                             }
+                            deliveries += updates
+                            // Historical updates must not clear another tournament on supported older clients.
+                            departedPlayers.forEach { deliveries += loadTournamentHub(it, isHistoryRefresh = true) }
                             cancelled.players.forEach { deliveries += loadProfile(it.playerId) }
                         }
                     }
@@ -3621,14 +3627,15 @@ class GameEngine(
         return checkNotNull(published)
     }
 
-    private fun publishProgression(id: String, snapshot: TournamentSnapshot, generated: List<Room>, completedRoomId: String?): List<Delivery> {
+    private fun publishProgression(id: String, snapshot: TournamentSnapshot, generated: List<Room>, completedRoomId: String?,
+        recipients: Set<String> = snapshot.players.mapTo(linkedSetOf()) { it.playerId }): List<Delivery> {
         tournaments[id] = snapshot.toTournament()
         completedRoomId?.let { roomId ->
             rooms.remove(roomId)?.let { pendingCompletedMatches.remove(it.matchId) }
             pendingRoomRemovals.remove(roomId)
         }
         generated.forEach { rooms[it.id] = it }
-        return listOf(Delivery(ServerMessage.TournamentUpdated(snapshot.copy(serverTimeEpochMillis = nowMillis())), snapshot.players.mapTo(linkedSetOf()) { it.playerId })) +
+        return listOf(Delivery(ServerMessage.TournamentUpdated(snapshot.copy(serverTimeEpochMillis = nowMillis())), recipients)) +
             generated.map { Delivery(ServerMessage.GameStarted(it.snapshot()), it.playerIds()) }
     }
 

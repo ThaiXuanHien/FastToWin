@@ -119,6 +119,59 @@ class ScheduledTournamentTest {
     }
 
     @Test
+    fun `automatic cancellation refreshes departed players history without clearing their next tournament on old clients`() = runTest {
+        for (version in listOf(38, PROTOCOL_VERSION)) {
+            val fixture = Fixture()
+            fixture.connect()
+            val leaver = fixture.ids[1]
+            val a = fixture.engine.handle(fixture.ids.first(), fixture.creation()).update()
+            fixture.engine.handle(leaver, ClientMessage.JoinPublicTournament(a.tournamentId))
+            fixture.engine.handle(leaver, ClientMessage.LeaveTournament(a.tournamentId))
+            val b = fixture.engine.handle(fixture.ids[2], fixture.creation(start = fixture.startsAt + 900_000)).update()
+            fixture.engine.handle(leaver, ClientMessage.JoinPublicTournament(b.tournamentId))
+            // A player may reconnect using any supported client after scheduled admission.
+            fixture.engine.connectAccount(AuthenticatedAccount(UUID.fromString(leaver), "Leaver"), protocolVersion = version)
+            val before = fixture.engine.handle(leaver, ClientMessage.GetTournamentHub).active()
+            assertEquals(800, fixture.wallet.gold.getValue(leaver))
+            fixture.now = fixture.startsAt
+            val deliveries = fixture.engine.advanceScheduledTournaments()
+            val cancelled = deliveries.update()
+            assertEquals(TournamentPhase.CANCELLED, cancelled.phase)
+            assertEquals(setOf(fixture.ids.first(), leaver), cancelled.players.map { it.playerId }.toSet())
+            assertEquals(setOf(fixture.ids.first()), deliveries.single { it.message is ServerMessage.TournamentUpdated }.recipients)
+            val messages = deliveries.filter { it.recipients?.contains(leaver) != false }.map(Delivery::message)
+            assertTrue(messages.filterIsInstance<ServerMessage.TournamentHubData>().single().isHistoryRefresh)
+            var legacyActive: TournamentSnapshot? = before
+            var legacyHistory = emptyList<TournamentSnapshot>()
+            for (message in messages) {
+                // Supported reducers replace active state unconditionally on TournamentUpdated.
+                when (message) {
+                    is ServerMessage.TournamentUpdated -> legacyActive = message.tournament.takeUnless {
+                        it.phase == TournamentPhase.CANCELLED || it.phase == TournamentPhase.FINISHED
+                    }
+                    is ServerMessage.TournamentHubData -> {
+                        legacyActive = message.hub.activeTournament
+                        legacyHistory = message.hub.recentTournaments
+                        assertEquals(fixture.now, legacyActive?.serverTimeEpochMillis)
+                    }
+                    else -> Unit
+                }
+                assertEquals(b.tournamentId, legacyActive?.tournamentId, "Protocol $version must retain B after every delivery")
+            }
+            assertTrue(messages.none { it is ServerMessage.TournamentUpdated && it.tournament.tournamentId == a.tournamentId })
+            assertEquals(listOf(a.tournamentId), legacyHistory.map { it.tournamentId })
+            assertEquals(TournamentPhase.CANCELLED, legacyHistory.single().phase)
+            assertEquals(900, messages.filterIsInstance<ServerMessage.ProfileData>().single().profile.progression.gold)
+            assertEquals(900, fixture.wallet.gold.getValue(leaver))
+            assertEquals(b.tournamentId, fixture.engine.handle(leaver, ClientMessage.GetTournamentHub).active().tournamentId)
+            assertTrue(fixture.engine.advanceScheduledTournaments().isEmpty())
+            if (version == PROTOCOL_VERSION) {
+                assertTrue(fixture.engine.handle(leaver, ClientMessage.CheckInTournament(b.tournamentId)).update().players.single { it.playerId == leaver }.isCheckedIn)
+            }
+        }
+    }
+
+    @Test
     fun `late leave is denied and older clients can still create manual tournaments`() = runTest {
         val fixture = Fixture()
         fixture.connect()

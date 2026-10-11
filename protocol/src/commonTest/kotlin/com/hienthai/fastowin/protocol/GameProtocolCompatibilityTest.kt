@@ -7,6 +7,8 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.json.Json
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 
 class GameProtocolCompatibilityTest {
     @Serializable private data class OldNotification(
@@ -19,6 +21,29 @@ class GameProtocolCompatibilityTest {
     @Serializable private sealed class OldServerMessage {
         @Serializable @SerialName("notifications_data")
         data class NotificationsData(val notifications: List<OldNotification>) : OldServerMessage()
+        @Serializable @SerialName("tournament_hub_data")
+        data class TournamentHubData(val hub: TournamentHubSnapshot) : OldServerMessage()
+    }
+
+    @Test fun `history refresh hub marker is additive and survives current reader`() {
+        val active = TournamentSnapshot("B", "Cup B", "host", ProtocolGameMode.ORDER,
+            TournamentPhase.LOBBY, createdAtEpochMillis = 1L)
+        val hub = TournamentHubSnapshot(activeTournament = active,
+            recentTournaments = listOf(active.copy(tournamentId = "A", phase = TournamentPhase.CANCELLED)))
+        val message = ServerMessage.TournamentHubData(hub, isHistoryRefresh = true)
+        val payload = ProtocolJson.encodeToString<ServerMessage>(message)
+        val current = ProtocolJson.decodeFromString<ServerMessage>(payload) as ServerMessage.TournamentHubData
+        assertTrue(current.isHistoryRefresh)
+        assertEquals(message, current)
+        val oldReader = Json { classDiscriminator = "type"; ignoreUnknownKeys = true }
+        val old = oldReader.decodeFromString<OldServerMessage>(payload) as OldServerMessage.TournamentHubData
+        assertEquals(hub, old.hub)
+        val legacy = ProtocolJson.decodeFromString<ServerMessage>(
+            """{"type":"tournament_hub_data","hub":{}}""") as ServerMessage.TournamentHubData
+        assertFalse(legacy.isHistoryRefresh)
+        assertEquals(TournamentHubSnapshot(), legacy.hub)
+        assertEquals(44, PROTOCOL_VERSION)
+        assertEquals(38, MIN_COMPATIBLE_PROTOCOL_VERSION)
     }
 
     @Test fun `announcement notification preserves old reader and missing context defaults null`() {

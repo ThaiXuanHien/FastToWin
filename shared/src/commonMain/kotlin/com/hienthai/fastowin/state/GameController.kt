@@ -1365,8 +1365,8 @@ class GameController private constructor(
                         tournamentInvitationPrompt = state.tournamentInvitationPrompt?.takeIf {
                             it.invitationId in invitationIds
                         } ?: message.hub.invitations.firstOrNull(),
-                        isTournamentLoading = false,
-                        error = null
+                        isTournamentLoading = state.isTournamentLoading && message.isHistoryRefresh,
+                        error = state.error.takeIf { message.isHistoryRefresh }
                     )
                 }
             }
@@ -1385,12 +1385,15 @@ class GameController private constructor(
                 _uiState.update { state ->
                     val completed = message.tournament.phase == com.hienthai.fastowin.protocol.TournamentPhase.FINISHED ||
                         message.tournament.phase == com.hienthai.fastowin.protocol.TournamentPhase.CANCELLED
+                    val unrelatedCompletion = completed &&
+                        state.tournamentHub.activeTournament?.tournamentId != message.tournament.tournamentId
                     state.copy(
-                        tournamentServerClock = message.tournament.serverTimeEpochMillis?.let {
+                        tournamentServerClock = message.tournament.serverTimeEpochMillis?.takeUnless { unrelatedCompletion }?.let {
                             TournamentServerClock(it, epochMillis())
                         } ?: state.tournamentServerClock,
                         tournamentHub = state.tournamentHub.copy(
-                            activeTournament = message.tournament.takeUnless { completed },
+                            activeTournament = if (unrelatedCompletion) state.tournamentHub.activeTournament
+                                else message.tournament.takeUnless { completed },
                             recentTournaments = if (completed) {
                                 (listOf(message.tournament) + state.tournamentHub.recentTournaments)
                                     .distinctBy { it.tournamentId }
@@ -1399,9 +1402,9 @@ class GameController private constructor(
                                 state.tournamentHub.recentTournaments
                             }
                         ),
-                        isTournamentLoading = false,
-                        tournamentNotice = null,
-                        error = null
+                        isTournamentLoading = state.isTournamentLoading && unrelatedCompletion,
+                        tournamentNotice = state.tournamentNotice.takeIf { unrelatedCompletion },
+                        error = state.error.takeIf { unrelatedCompletion }
                     )
                 }
             }
