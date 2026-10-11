@@ -30,9 +30,9 @@ private fun announcementFixture(state: AdminAnnouncementState = AdminAnnouncemen
     return AnnouncementPlayerItem(NotificationSnapshot("admin-announcement:$announcementId", NotificationKind.COSMETIC, context.titleVi, context.bodyVi,
         ArcadeScreenshotFixtures.NOW_MILLIS, destination = NotificationDestination.PROFILE, announcement = context), context, dismissed, false)
 }
-@Composable private fun AnnouncementFrame(english: Boolean = false, light: Boolean = false, content: @Composable () -> Unit) {
+@Composable private fun AnnouncementFrame(english: Boolean = false, content: @Composable () -> Unit) {
     ProvideLocalization(if (english) AppLanguage.ENGLISH else AppLanguage.VIETNAMESE) {
-        FastToWinTheme(preferences = AppPreferences(themeMode = if (light) AppThemeMode.LIGHT else AppThemeMode.DARK, visualEffectsEnabled = false)) {
+        FastToWinTheme(preferences = AppPreferences(themeMode = AppThemeMode.DARK, visualEffectsEnabled = false)) {
             Surface(Modifier.fillMaxSize()) { content() }
         }
     }
@@ -65,51 +65,51 @@ private fun announcementFixture(state: AdminAnnouncementState = AdminAnnouncemen
 
 @PreviewTest @Preview(name = "home_vi_dark_430", widthDp = 430, heightDp = 932) @Composable
 fun announcementHomeViDark() = AnnouncementFrame { AnnouncementHome() }
-@PreviewTest @Preview(name = "home_en_light_1024", widthDp = 1024, heightDp = 768) @Composable
-fun announcementHomeEnLight() = AnnouncementFrame(true, true) { AnnouncementHome() }
+@PreviewTest @Preview(name = "home_en_dark_1024", widthDp = 1024, heightDp = 768) @Composable
+fun announcementHomeEnDark() = AnnouncementFrame(true) { AnnouncementHome() }
 @PreviewTest @Preview(name = "banner_vi_dark_320_large", widthDp = 320, heightDp = 480, fontScale = 1.6f) @Composable
 fun announcementBannerLarge() = AnnouncementFrame { Column(Modifier.padding(16.dp)) { AnnouncementBanner(announcementFixture(long = true), false, {}, {}) } }
 @PreviewTest @Preview(name = "active_vi_dark_320", widthDp = 320, heightDp = 932) @Composable
 fun announcementActiveViDark() = AnnouncementFrame { Detail() }
-@PreviewTest @Preview(name = "active_en_light_430", widthDp = 430, heightDp = 932) @Composable
-fun announcementActiveEnLight() = AnnouncementFrame(true, true) { Detail() }
+@PreviewTest @Preview(name = "active_en_dark_430", widthDp = 430, heightDp = 932) @Composable
+fun announcementActiveEnDark() = AnnouncementFrame(true) { Detail() }
 @PreviewTest @Preview(name = "expired_en_dark_430_large", widthDp = 430, heightDp = 1500, fontScale = 1.6f) @Composable
 fun announcementExpiredEnDark() = AnnouncementFrame(true) { Detail(AdminAnnouncementState.EXPIRED) }
-@PreviewTest @Preview(name = "cancelled_vi_light_1024_large", widthDp = 1024, heightDp = 1000, fontScale = 1.6f) @Composable
-fun announcementCancelledViLight() = AnnouncementFrame(light = true) { Detail(AdminAnnouncementState.CANCELLED) }
-@PreviewTest @Preview(name = "long_en_light_320_large", widthDp = 320, heightDp = 932, fontScale = 1.6f) @Composable
-fun announcementLongEnLight() = AnnouncementFrame(true, true) { Detail(long = true) }
+@PreviewTest @Preview(name = "cancelled_vi_dark_1024_large", widthDp = 1024, heightDp = 1000, fontScale = 1.6f) @Composable
+fun announcementCancelledViDark() = AnnouncementFrame { Detail(AdminAnnouncementState.CANCELLED) }
+@PreviewTest @Preview(name = "long_en_dark_320_large", widthDp = 320, heightDp = 932, fontScale = 1.6f) @Composable
+fun announcementLongEnDark() = AnnouncementFrame(true) { Detail(long = true) }
 @PreviewTest @Preview(name = "long_vi_dark_430_large", widthDp = 430, heightDp = 932, fontScale = 1.6f) @Composable
 fun announcementLongViDark() = AnnouncementFrame { Detail(long = true) }
-@PreviewTest @Preview(name = "long_footer_en_light_320_large", widthDp = 320, heightDp = 932, fontScale = 1.6f) @Composable
-fun announcementLongFooterEnLight() = AnnouncementFrame(true, true) { Detail(long = true, footer = true) }
+@PreviewTest @Preview(name = "long_footer_en_dark_320_large", widthDp = 320, heightDp = 932, fontScale = 1.6f) @Composable
+fun announcementLongFooterEnDark() = AnnouncementFrame(true) { Detail(long = true, footer = true) }
 @PreviewTest @Preview(name = "long_footer_vi_dark_1024", widthDp = 1024, heightDp = 768) @Composable
 fun announcementLongFooterViDark() = AnnouncementFrame { Detail(long = true, footer = true) }
-@PreviewTest @Preview(name = "landscape_en_light_844_large", widthDp = 844, heightDp = 390, fontScale = 1.6f) @Composable
-fun announcementLandscape() = AnnouncementFrame(true, true) { Detail() }
+@PreviewTest @Preview(name = "landscape_en_dark_844_large", widthDp = 844, heightDp = 390, fontScale = 1.6f) @Composable
+fun announcementLandscape() = AnnouncementFrame(true) { Detail() }
 @PreviewTest @Preview(name = "inbox_legacy_vi_dark_430", widthDp = 430, heightDp = 1200) @Composable
 fun announcementInboxViDark() = AnnouncementFrame { Inbox() }
-@PreviewTest @Preview(name = "inbox_legacy_en_light_1024", widthDp = 1024, heightDp = 768) @Composable
-fun announcementInboxEnLight() = AnnouncementFrame(true, true) { Inbox(AdminAnnouncementState.EXPIRED) }
-@PreviewTest @Preview(name = "inbox_cancelled_dismissed_vi_light_320_large", widthDp = 320, heightDp = 1500, fontScale = 1.6f) @Composable
-fun announcementInboxCancelled() = AnnouncementFrame(light = true) { Inbox(AdminAnnouncementState.CANCELLED, dismissed = true) }
+@PreviewTest @Preview(name = "inbox_legacy_en_dark_1024", widthDp = 1024, heightDp = 768) @Composable
+fun announcementInboxEnDark() = AnnouncementFrame(true) { Inbox(AdminAnnouncementState.EXPIRED) }
+@PreviewTest @Preview(name = "inbox_cancelled_dismissed_vi_dark_320_large", widthDp = 320, heightDp = 1500, fontScale = 1.6f) @Composable
+fun announcementInboxCancelled() = AnnouncementFrame { Inbox(AdminAnnouncementState.CANCELLED, dismissed = true) }
 @PreviewTest @Preview(name = "inbox_long_en_dark_430_large", widthDp = 430, heightDp = 1500, fontScale = 1.6f) @Composable
 fun announcementInboxLong() = AnnouncementFrame(true) { Inbox(long = true) }
-@PreviewTest @Preview(name = "empty_zero_en_light_320", widthDp = 320, heightDp = 568) @Composable
-fun announcementEmpty() = AnnouncementFrame(true, true) { Inbox(empty = true) }
-@PreviewTest @Preview(name = "consent_default_vi_light_320_large", widthDp = 320, heightDp = 1200, fontScale = 1.6f) @Composable
-fun announcementConsentDefault() = AnnouncementFrame(light = true) { Consent() }
+@PreviewTest @Preview(name = "empty_zero_en_dark_320", widthDp = 320, heightDp = 568) @Composable
+fun announcementEmpty() = AnnouncementFrame(true) { Inbox(empty = true) }
+@PreviewTest @Preview(name = "consent_default_vi_dark_320_large", widthDp = 320, heightDp = 1200, fontScale = 1.6f) @Composable
+fun announcementConsentDefault() = AnnouncementFrame { Consent() }
 @PreviewTest @Preview(name = "consent_pending_en_dark_430", widthDp = 430, heightDp = 932) @Composable
 fun announcementConsentPending() = AnnouncementFrame(true) { Consent(pending = true) }
 @PreviewTest @Preview(name = "consent_uncertain_vi_dark_430_large", widthDp = 430, heightDp = 1200, fontScale = 1.6f) @Composable
 fun announcementConsentUncertain() = AnnouncementFrame { Consent("NETWORK_ERROR") }
-@PreviewTest @Preview(name = "consent_conflict_en_light_1024", widthDp = 1024, heightDp = 768) @Composable
-fun announcementConsentConflict() = AnnouncementFrame(true, true) { Consent("CONFLICT") }
-@PreviewTest @Preview(name = "update_unsupported_vi_light_320_large", widthDp = 320, heightDp = 568, fontScale = 1.6f) @Composable
-fun announcementUpdateUnsupportedVi() = AnnouncementFrame(light = true) { AnnouncementUpdateScreen(false, false, {}, {}) }
+@PreviewTest @Preview(name = "consent_conflict_en_dark_1024", widthDp = 1024, heightDp = 768) @Composable
+fun announcementConsentConflict() = AnnouncementFrame(true) { Consent("CONFLICT") }
+@PreviewTest @Preview(name = "update_unsupported_vi_dark_320_large", widthDp = 320, heightDp = 568, fontScale = 1.6f) @Composable
+fun announcementUpdateUnsupportedVi() = AnnouncementFrame { AnnouncementUpdateScreen(false, false, {}, {}) }
 @PreviewTest @Preview(name = "update_unsupported_en_dark_1024", widthDp = 1024, heightDp = 768) @Composable
 fun announcementUpdateUnsupportedEn() = AnnouncementFrame(true) { AnnouncementUpdateScreen(false, false, {}, {}) }
-@PreviewTest @Preview(name = "update_available_en_light_430", widthDp = 430, heightDp = 932) @Composable
-fun announcementUpdateAvailable() = AnnouncementFrame(true, true) { AnnouncementUpdateScreen(true, true, {}, {}) }
+@PreviewTest @Preview(name = "update_available_en_dark_430", widthDp = 430, heightDp = 932) @Composable
+fun announcementUpdateAvailable() = AnnouncementFrame(true) { AnnouncementUpdateScreen(true, true, {}, {}) }
 @PreviewTest @Preview(name = "update_current_vi_dark_landscape", widthDp = 844, heightDp = 390) @Composable
 fun announcementUpdateCurrent() = AnnouncementFrame { AnnouncementUpdateScreen(true, false, {}, {}) }

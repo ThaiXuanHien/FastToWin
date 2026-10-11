@@ -245,7 +245,7 @@ private fun GiftRewardAmounts(gold: Int, xp: Int) {
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-            // Same filled coin and tint as Mission; existing event navy backing preserves LIGHT contrast.
+            // Same filled coin and tint as Mission, on the shared navy backing.
             Surface(shape = CircleShape, color = ArcadePalette.Navy900) {
                 Icon(Icons.Default.MonetizationOn, null, tint = GoldColor, modifier = Modifier.padding(2.dp).size(20.dp))
             }

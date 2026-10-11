@@ -1,12 +1,30 @@
 package com.hienthai.fastowin.data.preferences
 
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.KSerializer
+import kotlinx.serialization.descriptors.PrimitiveKind
+import kotlinx.serialization.descriptors.PrimitiveSerialDescriptor
+import kotlinx.serialization.descriptors.SerialDescriptor
+import kotlinx.serialization.encoding.Decoder
+import kotlinx.serialization.encoding.Encoder
 
-@Serializable
+@Serializable(with = AppThemeModeSerializer::class)
 enum class AppThemeMode {
-    SYSTEM,
-    LIGHT,
     DARK
+}
+
+// Decode legacy LIGHT/SYSTEM values without discarding the other preferences.
+object AppThemeModeSerializer : KSerializer<AppThemeMode> {
+    override val descriptor: SerialDescriptor = PrimitiveSerialDescriptor("AppThemeMode", PrimitiveKind.STRING)
+
+    override fun deserialize(decoder: Decoder): AppThemeMode {
+        decoder.decodeString()
+        return AppThemeMode.DARK
+    }
+
+    override fun serialize(encoder: Encoder, value: AppThemeMode) {
+        encoder.encodeString(value.name)
+    }
 }
 
 @Serializable
@@ -28,8 +46,7 @@ data class AppPreferences(
     val soundEnabled: Boolean = true,
     val vibrationEnabled: Boolean = true,
     val visualEffectsEnabled: Boolean = true,
-    // The approved 2D Arcade canvases use the navy theme. Light and system modes
-    // remain available in Settings, while new installs start with the branded look.
+    // The game always uses the navy theme, including legacy saved preferences.
     val themeMode: AppThemeMode = AppThemeMode.DARK,
     val boardStyle: BoardStyle = BoardStyle.CLASSIC,
     val fontScale: AppFontScale = AppFontScale.STANDARD,

@@ -24,9 +24,9 @@ import com.hienthai.fastowin.ui.components.RewardEventBanner
 import com.hienthai.fastowin.ui.theme.FastToWinTheme
 
 @PreviewTest
-@Preview(name = "phone_vi_light", widthDp = 375, heightDp = 380, showSystemUi = false)
+@Preview(name = "phone_vi_dark", widthDp = 375, heightDp = 380, showSystemUi = false)
 @Composable
-fun rewardEventRefreshPhone() = RefreshComparison(AppLanguage.VIETNAMESE, AppThemeMode.LIGHT)
+fun rewardEventRefreshPhone() = RefreshComparison(AppLanguage.VIETNAMESE, AppThemeMode.DARK)
 
 @PreviewTest
 @Preview(name = "desktop_en_dark", widthDp = 1024, heightDp = 380, showSystemUi = false)
@@ -39,9 +39,9 @@ fun rewardEventRefreshDesktop() = RefreshComparison(AppLanguage.ENGLISH, AppThem
 fun rewardEventRefreshLargeText() = RefreshComparison(AppLanguage.VIETNAMESE, AppThemeMode.DARK)
 
 @PreviewTest
-@Preview(name = "landscape_en_light", widthDp = 844, heightDp = 380, showSystemUi = false)
+@Preview(name = "landscape_en_dark", widthDp = 844, heightDp = 380, showSystemUi = false)
 @Composable
-fun rewardEventRefreshLandscape() = RefreshComparison(AppLanguage.ENGLISH, AppThemeMode.LIGHT)
+fun rewardEventRefreshLandscape() = RefreshComparison(AppLanguage.ENGLISH, AppThemeMode.DARK)
 
 @Composable
 private fun RefreshComparison(language: AppLanguage, theme: AppThemeMode) {

@@ -60,7 +60,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.hienthai.fastowin.data.preferences.AppFontScale
 import com.hienthai.fastowin.data.preferences.AppPreferences
-import com.hienthai.fastowin.data.preferences.AppThemeMode
 import com.hienthai.fastowin.data.preferences.BoardStyle
 import com.hienthai.fastowin.platform.AppPushStatus
 import com.hienthai.fastowin.platform.AppInstallStatus
@@ -305,11 +304,6 @@ fun SettingsScreen(
                         title = localized(TextKey.AppearanceTitle),
                         subtitle = localized(TextKey.AppearanceSubtitle)
                     ) {
-                        val themeLabels = mapOf(
-                            AppThemeMode.SYSTEM to localized(TextKey.ThemeSystem),
-                            AppThemeMode.LIGHT to localized(TextKey.ThemeLight),
-                            AppThemeMode.DARK to localized(TextKey.ThemeDark)
-                        )
                         val boardStyleLabels = mapOf(
                             BoardStyle.CLASSIC to localized(TextKey.BoardClassic),
                             BoardStyle.OCEAN to localized(TextKey.BoardOcean),
@@ -321,14 +315,6 @@ fun SettingsScreen(
                             AppFontScale.LARGE to localized(TextKey.FontLarge)
                         )
                         LanguageSettingRow(preferences.languageCode, systemLanguage) { showLanguageDialog = true }
-                        SettingChoiceTitle(Icons.Rounded.ColorLens, localized(TextKey.SettingsThemeTitle))
-                        ChoiceRow(
-                            entries = AppThemeMode.entries,
-                            selected = preferences.themeMode,
-                            label = themeLabels::getValue,
-                            onSelected = { onPreferencesChange(preferences.copy(themeMode = it)) }
-                        )
-
                         SettingChoiceTitle(Icons.Rounded.ColorLens, localized(TextKey.SettingsBoardStyleTitle))
                         ChoiceRow(
                             entries = BoardStyle.entries,

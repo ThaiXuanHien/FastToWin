@@ -33,7 +33,9 @@ This document is the visual source of truth for Android, iOS and web. Runtime to
 - Reward/selected navigation: gold.
 - Gem/social/success: mint.
 - Header and top-level navigation: arcade navy.
-- Background and surfaces always come from `MaterialTheme.colorScheme` for light/dark support.
+- The game uses Dark mode only on mobile and web. Background and surfaces come from
+  the navy `MaterialTheme.colorScheme`, independently of the device theme.
+- Legacy Light/System preferences decode as Dark without resetting other settings.
 
 ### Components
 

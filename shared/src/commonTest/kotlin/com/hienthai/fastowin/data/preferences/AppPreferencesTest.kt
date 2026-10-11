@@ -8,20 +8,28 @@ import kotlin.test.assertEquals
 
 class AppPreferencesTest {
     @Test
-    fun legacyPreferencesFollowSystemWithoutLosingExistingSettings() {
-        val legacy = """{"soundEnabled":false,"vibrationEnabled":false,"visualEffectsEnabled":false,"themeMode":"LIGHT","boardStyle":"OCEAN","fontScale":"LARGE","hasCompletedTutorial":true}"""
-        val decoded = ProtocolJson.decodeFromString<AppPreferences>(legacy)
+    fun legacyThemesMigrateToDarkWithoutLosingExistingSettings() {
+        for (mode in listOf("LIGHT", "SYSTEM")) {
+            val legacy = """{"soundEnabled":false,"vibrationEnabled":false,"visualEffectsEnabled":false,"themeMode":"$mode","boardStyle":"OCEAN","fontScale":"LARGE","hasCompletedTutorial":true,"languageCode":"en"}"""
+            val decoded = ProtocolJson.decodeFromString<AppPreferences>(legacy)
 
-        assertEquals(AppPreferences(
-            soundEnabled = false,
-            vibrationEnabled = false,
-            visualEffectsEnabled = false,
-            themeMode = AppThemeMode.LIGHT,
-            boardStyle = BoardStyle.OCEAN,
-            fontScale = AppFontScale.LARGE,
-            hasCompletedTutorial = true,
-            languageCode = "system"
-        ), decoded)
+            assertEquals(AppPreferences(
+                soundEnabled = false,
+                vibrationEnabled = false,
+                visualEffectsEnabled = false,
+                themeMode = AppThemeMode.DARK,
+                boardStyle = BoardStyle.OCEAN,
+                fontScale = AppFontScale.LARGE,
+                hasCompletedTutorial = true,
+                languageCode = "en"
+            ), decoded)
+            assertEquals(decoded, ProtocolJson.decodeFromString<AppPreferences>(ProtocolJson.encodeToString(decoded)))
+        }
+    }
+
+    @Test
+    fun onlyDarkThemeCanBeSelected() {
+        assertEquals(listOf("DARK"), AppThemeMode.entries.map { it.name })
     }
 
     @Test

@@ -101,7 +101,7 @@ fun RewardEventValues(gold: Int, xp: Int, factors: Boolean = false, emphasis: Bo
         listOf(Icons.Default.MonetizationOn to gold, Icons.Default.Star to xp).forEachIndexed { index, (icon, value) ->
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 if (index == 0) {
-                    // The existing navy currency treatment keeps mission gold legible on LIGHT surfaces.
+                    // The shared navy currency treatment keeps mission gold legible.
                     Surface(shape = CircleShape, color = ArcadePalette.Navy900) {
                         Icon(icon, contentDescription = null, modifier = Modifier.padding(2.dp).size(20.dp), tint = GoldColor)
                     }

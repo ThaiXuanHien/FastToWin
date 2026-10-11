@@ -85,17 +85,7 @@ fun compensationAvailableViDark() = CompensationMailboxPreview(AppLanguage.VIETN
 @PreviewTest
 @CompensationMailboxDevices
 @Composable
-fun compensationAvailableViLight() = CompensationMailboxPreview(AppLanguage.VIETNAMESE, AppThemeMode.LIGHT)
-
-@PreviewTest
-@CompensationMailboxDevices
-@Composable
 fun compensationAvailableEnDark() = CompensationMailboxPreview(AppLanguage.ENGLISH, AppThemeMode.DARK)
-
-@PreviewTest
-@CompensationMailboxDevices
-@Composable
-fun compensationAvailableEnLight() = CompensationMailboxPreview(AppLanguage.ENGLISH, AppThemeMode.LIGHT)
 
 @PreviewTest
 @Preview(name = "claimed_large", widthDp = 430, heightDp = 932, fontScale = 1.6f, showSystemUi = false)
@@ -105,17 +95,7 @@ fun compensationClaimedViDark() = CompensationMailboxPreview(AppLanguage.VIETNAM
 @PreviewTest
 @Preview(name = "claimed_large", widthDp = 430, heightDp = 932, fontScale = 1.6f, showSystemUi = false)
 @Composable
-fun compensationClaimedViLight() = CompensationMailboxPreview(AppLanguage.VIETNAMESE, AppThemeMode.LIGHT, compensationGift.copy(state = GiftState.CLAIMED, gold = 0, xp = Int.MAX_VALUE))
-
-@PreviewTest
-@Preview(name = "claimed_large", widthDp = 430, heightDp = 932, fontScale = 1.6f, showSystemUi = false)
-@Composable
 fun compensationClaimedEnDark() = CompensationMailboxPreview(AppLanguage.ENGLISH, AppThemeMode.DARK, compensationGift.copy(state = GiftState.CLAIMED, gold = 0, xp = Int.MAX_VALUE))
-
-@PreviewTest
-@Preview(name = "claimed_large", widthDp = 430, heightDp = 932, fontScale = 1.6f, showSystemUi = false)
-@Composable
-fun compensationClaimedEnLight() = CompensationMailboxPreview(AppLanguage.ENGLISH, AppThemeMode.LIGHT, compensationGift.copy(state = GiftState.CLAIMED, gold = 0, xp = Int.MAX_VALUE))
 
 @PreviewTest
 @Preview(name = "expired_large", widthDp = 430, heightDp = 932, fontScale = 1.6f, showSystemUi = false)
@@ -125,17 +105,7 @@ fun compensationExpiredViDark() = CompensationMailboxPreview(AppLanguage.VIETNAM
 @PreviewTest
 @Preview(name = "expired_large", widthDp = 430, heightDp = 932, fontScale = 1.6f, showSystemUi = false)
 @Composable
-fun compensationExpiredViLight() = CompensationMailboxPreview(AppLanguage.VIETNAMESE, AppThemeMode.LIGHT, compensationGift.copy(state = GiftState.EXPIRED, gold = Int.MAX_VALUE, xp = 0))
-
-@PreviewTest
-@Preview(name = "expired_large", widthDp = 430, heightDp = 932, fontScale = 1.6f, showSystemUi = false)
-@Composable
 fun compensationExpiredEnDark() = CompensationMailboxPreview(AppLanguage.ENGLISH, AppThemeMode.DARK, compensationGift.copy(state = GiftState.EXPIRED, gold = Int.MAX_VALUE, xp = 0))
-
-@PreviewTest
-@Preview(name = "expired_large", widthDp = 430, heightDp = 932, fontScale = 1.6f, showSystemUi = false)
-@Composable
-fun compensationExpiredEnLight() = CompensationMailboxPreview(AppLanguage.ENGLISH, AppThemeMode.LIGHT, compensationGift.copy(state = GiftState.EXPIRED, gold = Int.MAX_VALUE, xp = 0))
 
 @PreviewTest
 @Preview(name = "cancelled_large", widthDp = 430, heightDp = 932, fontScale = 1.6f, showSystemUi = false)
@@ -145,17 +115,7 @@ fun compensationCancelledViDark() = CompensationMailboxPreview(AppLanguage.VIETN
 @PreviewTest
 @Preview(name = "cancelled_large", widthDp = 430, heightDp = 932, fontScale = 1.6f, showSystemUi = false)
 @Composable
-fun compensationCancelledViLight() = CompensationMailboxPreview(AppLanguage.VIETNAMESE, AppThemeMode.LIGHT, compensationGift.copy(state = GiftState.CANCELLED, gold = Int.MAX_VALUE, xp = 0))
-
-@PreviewTest
-@Preview(name = "cancelled_large", widthDp = 430, heightDp = 932, fontScale = 1.6f, showSystemUi = false)
-@Composable
 fun compensationCancelledEnDark() = CompensationMailboxPreview(AppLanguage.ENGLISH, AppThemeMode.DARK, compensationGift.copy(state = GiftState.CANCELLED, gold = Int.MAX_VALUE, xp = 0))
-
-@PreviewTest
-@Preview(name = "cancelled_large", widthDp = 430, heightDp = 932, fontScale = 1.6f, showSystemUi = false)
-@Composable
-fun compensationCancelledEnLight() = CompensationMailboxPreview(AppLanguage.ENGLISH, AppThemeMode.LIGHT, compensationGift.copy(state = GiftState.CANCELLED, gold = Int.MAX_VALUE, xp = 0))
 
 @PreviewTest
 @Preview(name = "legacy_large", widthDp = 430, heightDp = 932, fontScale = 1.6f, showSystemUi = false)
@@ -165,17 +125,7 @@ fun compensationLegacyViDark() = CompensationMailboxPreview(AppLanguage.VIETNAME
 @PreviewTest
 @Preview(name = "legacy_large", widthDp = 430, heightDp = 932, fontScale = 1.6f, showSystemUi = false)
 @Composable
-fun compensationLegacyViLight() = CompensationMailboxPreview(AppLanguage.VIETNAMESE, AppThemeMode.LIGHT, legacyGift)
-
-@PreviewTest
-@Preview(name = "legacy_large", widthDp = 430, heightDp = 932, fontScale = 1.6f, showSystemUi = false)
-@Composable
 fun compensationLegacyEnDark() = CompensationMailboxPreview(AppLanguage.ENGLISH, AppThemeMode.DARK, legacyGift)
-
-@PreviewTest
-@Preview(name = "legacy_large", widthDp = 430, heightDp = 932, fontScale = 1.6f, showSystemUi = false)
-@Composable
-fun compensationLegacyEnLight() = CompensationMailboxPreview(AppLanguage.ENGLISH, AppThemeMode.LIGHT, legacyGift)
 
 // Expanded viewport companion to phone captures: inspect the entire long card and its CTA.
 @PreviewTest
@@ -189,10 +139,10 @@ fun compensationLongViDark() = CompensationMailboxPreview(AppLanguage.VIETNAMESE
 @Preview(name = "long_phone_full_card", widthDp = 320, heightDp = 2400, fontScale = 1.6f, showSystemUi = false)
 @Preview(name = "long_desktop", widthDp = 1024, heightDp = 1400, fontScale = 1.6f, showSystemUi = false)
 @Composable
-fun compensationLongEnLight() = CompensationMailboxPreview(AppLanguage.ENGLISH, AppThemeMode.LIGHT, longGift)
+fun compensationLongEnDark() = CompensationMailboxPreview(AppLanguage.ENGLISH, AppThemeMode.DARK, longGift)
 
 @PreviewTest
 @Preview(name = "phone375", widthDp = 375, heightDp = 812, fontScale = 1.6f, showSystemUi = false)
 @Preview(name = "landscape", widthDp = 844, heightDp = 390, fontScale = 1.6f, showSystemUi = false)
 @Composable
-fun compensationOrientation() = CompensationMailboxPreview(AppLanguage.VIETNAMESE, AppThemeMode.LIGHT)
+fun compensationOrientation() = CompensationMailboxPreview(AppLanguage.VIETNAMESE, AppThemeMode.DARK)

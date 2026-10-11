@@ -1,18 +1,15 @@
 package com.hienthai.fastowin.screenshot
 
 import androidx.compose.runtime.Composable
-import androidx.compose.material3.Surface
 import androidx.compose.ui.tooling.preview.Preview
 import com.android.tools.screenshot.PreviewTest
 import com.hienthai.fastowin.data.preferences.AppPreferences
-import com.hienthai.fastowin.data.preferences.AppThemeMode
 import com.hienthai.fastowin.localization.AppLanguage
 import com.hienthai.fastowin.localization.ProvideLocalization
 import com.hienthai.fastowin.protocol.*
 import com.hienthai.fastowin.state.*
 import com.hienthai.fastowin.ui.components.*
 import com.hienthai.fastowin.ui.screens.*
-import com.hienthai.fastowin.ui.theme.FastToWinTheme
 
 private val rewardPreviewEvent = RewardEventPublicView("october",1,RewardEventState.ACTIVE,
     "Tháng Mười bứt tốc", "October sprint", "Nhân đôi GOLD và XP trong trận Thường và Xếp hạng.",
@@ -99,26 +96,6 @@ fun rewardEventEnglishHome() = ArcadeScreenshotFrame { ProvideLocalization(AppLa
 fun rewardEventEnglishResult() = ArcadeScreenshotFrame { ProvideLocalization(AppLanguage.ENGLISH) { RewardEventResultContent() } }
 
 @PreviewTest
-@Preview(name="light_home",widthDp=430,heightDp=932,showSystemUi=false)
-@Composable
-fun rewardEventLightHome() = RewardEventLightFrame { RewardEventHomeContent() }
-
-@PreviewTest
-@Preview(name="light_details",widthDp=430,heightDp=932,showSystemUi=false)
-@Composable
-fun rewardEventLightDetails() = RewardEventLightFrame { RewardEventDetailsScreen(rewardPreviewState.copy(selected=rewardPreviewEvent),{},{},{},{}) }
-
-@PreviewTest
-@Preview(name="light_result",widthDp=430,heightDp=932,showSystemUi=false)
-@Composable
-fun rewardEventLightResult() = RewardEventLightFrame { RewardEventResultContent() }
-
-@PreviewTest
 @Preview(name="landscape_home",widthDp=844,heightDp=390,showSystemUi=false)
 @Composable
 fun rewardEventLandscapeHome() = ArcadeScreenshotFrame { RewardEventHomeContent() }
-
-@Composable
-private fun RewardEventLightFrame(content: @Composable () -> Unit) = ArcadeScreenshotFrame {
-    FastToWinTheme(preferences=AppPreferences(themeMode=AppThemeMode.LIGHT,visualEffectsEnabled=false)) { Surface { content() } }
-}

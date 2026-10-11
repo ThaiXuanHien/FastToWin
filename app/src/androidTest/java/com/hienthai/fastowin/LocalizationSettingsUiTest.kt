@@ -21,6 +21,15 @@ class LocalizationSettingsUiTest {
     @get:Rule val composeRule = createComposeRule()
 
     @Test
+    fun appearanceHasNoThemeSelectorAndKeepsBoardAndFontSettings() {
+        renderSettings()
+        composeRule.onNodeWithText("Màu bàn số").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("Chủ đề ứng dụng").assertDoesNotExist()
+        composeRule.onNodeWithText("Sáng").assertDoesNotExist()
+        composeRule.onNodeWithText("Kích thước chữ").performScrollTo().assertIsDisplayed()
+    }
+
+    @Test
     fun selectionUpdatesTitleClosesDialogAndKeepsScrollPosition() {
         val preferences = renderSettings()
         composeRule.onNodeWithTag("language_setting").performScrollTo().performClick()
