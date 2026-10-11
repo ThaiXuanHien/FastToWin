@@ -103,6 +103,7 @@ class GameEngine(
     private val mutex = Mutex()
     private val restorationMutex = Mutex()
     private val persistenceMutex = Mutex()
+    private val matchmakingSweepMutex = Mutex()
     private val sessionsByPlayerId = mutableMapOf<String, GuestSession>()
     private val rooms = mutableMapOf<String, Room>()
     private val pendingReconnectResultsByPlayerId = mutableMapOf<String, PendingReconnectResult>()
@@ -1795,101 +1796,115 @@ class GameEngine(
         }
         val rating = profile?.statistics?.eloRating ?: DEFAULT_ELO_RATING
         val joinedAt = nowMillis()
-        val candidates = mutex.withLock {
-            if (roomFor(playerId) != null) {
-                return@withLock emptyList<MatchmakingEntry>()
-            }
-            matchmakingEntries.values
-                .filter {
-                    it.playerId != playerId && it.gameMode == command.gameMode && it.matchType == command.matchType
-                }
-                .filter { candidate ->
-                    sessionsByPlayerId[candidate.playerId]?.isConnected == true && roomFor(candidate.playerId) == null
-                }
-                .sortedWith(
-                    if (command.matchType == MatchType.RANKED) {
-                        compareBy<MatchmakingEntry> { kotlin.math.abs(it.eloRating - rating) }
-                            .thenBy { if (command.gameMode == com.hienthai.fastowin.protocol.ProtocolGameMode.TEAM_2V2) (sessionsByPlayerId[it.playerId]?.latencyMillis ?: 0L) >= 150L else false }
-                            .thenBy { it.joinedAtMillis }
-                    } else {
-                        compareBy<MatchmakingEntry> { if (command.gameMode == com.hienthai.fastowin.protocol.ProtocolGameMode.TEAM_2V2) (sessionsByPlayerId[it.playerId]?.latencyMillis ?: 0L) >= 150L else false }
-                            .thenBy { it.joinedAtMillis }
-                    }
-                )
-        }
-        val candidate = candidates.firstOrNull { queued ->
-            !runCatching { friendRepository.isBlockedEitherWay(playerId, queued.playerId) }
-                .onFailure { System.err.println("Could not check blocked players for matchmaking: ${it.message}") }
-                .getOrDefault(true)
-        }
-
-        var matchedStart: PreparedMatchStart? = null
-        val deliveries = mutex.withLock {
-            if (maintenancePolicy.blocksNewIntent) return@withLock listOf(maintenanceError(playerId))
+        val entry = mutex.withLock {
+            if (maintenancePolicy.blocksNewIntent) return listOf(maintenanceError(playerId))
             val player = sessionsByPlayerId[playerId]
                 ?.takeIf { it.isConnected && it.resumeToken == null }
-                ?: return@withLock listOf(error(playerId, "SESSION_NOT_FOUND", legacyFallback("Phiên chơi không còn hợp lệ.")))
+                ?: return listOf(error(playerId, "SESSION_NOT_FOUND", legacyFallback("Phiên chơi không còn hợp lệ.")))
+            if (activeTournamentFor(playerId) != null) {
+                return listOf(error(playerId, "TOURNAMENT_ACTIVE", legacyFallback("Hãy rời hoặc hoàn tất giải đấu hiện tại trước.")))
+            }
             if (roomFor(playerId) != null) {
                 matchmakingEntries.remove(playerId)
-                return@withLock listOf(error(playerId, "ALREADY_IN_ROOM", legacyFallback("Bạn đang ở trong một phòng khác.")))
+                return listOf(error(playerId, "ALREADY_IN_ROOM", legacyFallback("Bạn đang ở trong một phòng khác.")))
             }
-
-            val queuedCandidate = candidate?.let { matchmakingEntries[it.playerId] }?.takeIf { queued ->
-                queued.gameMode == command.gameMode &&
-                    queued.matchType == command.matchType &&
-                    sessionsByPlayerId[queued.playerId]?.isConnected == true &&
-                    roomFor(queued.playerId) == null &&
-                    (command.matchType == MatchType.CASUAL ||
-                        kotlin.math.abs(queued.eloRating - rating) <= maxOf(
-                            matchmakingRange(joinedAt - queued.joinedAtMillis),
-                            matchmakingRange(0L)
-                        ))
+            val existing = matchmakingEntries[playerId]?.takeIf {
+                it.gameMode == command.gameMode && it.matchType == command.matchType
             }
-            if (queuedCandidate == null) {
-                val existing = matchmakingEntries[playerId]
-                matchmakingEntries[playerId] = MatchmakingEntry(
-                    playerId = player.playerId,
-                    gameMode = command.gameMode,
-                    matchType = command.matchType,
-                    eloRating = rating,
-                    joinedAtMillis = existing?.joinedAtMillis ?: joinedAt
-                )
-                return@withLock listOf(Delivery(
-                    ServerMessage.MatchmakingStatus(
-                        isSearching = true,
-                        gameMode = command.gameMode,
-                        matchType = command.matchType,
-                        ratingRange = if (command.matchType == MatchType.RANKED) {
-                            matchmakingRange(joinedAt - (existing?.joinedAtMillis ?: joinedAt))
-                        } else {
-                            0
-                        }
-                    ),
-                    setOf(playerId)
-                ))
-            }
-
-            val hostId = queuedCandidate.playerId
-            val room = Room(
-                id = UUID.randomUUID().toString(),
-                name = legacyFallback("Đấu nhanh"),
-                hostId = hostId,
-                password = null,
-                gameMode = command.gameMode,
-                matchType = command.matchType,
-                guestId = playerId,
-                scores = mutableMapOf(hostId to 0, playerId to 0)
-            )
-            matchmakingEntries.remove(hostId)
-            matchmakingEntries.remove(playerId)
-            room.readyPlayerIds.addAll(room.playerIds())
-            rooms[room.id] = room
-            matchedStart = prepareStart(room, room.matchId, playerId, fromMatchmaking = true)
-            emptyList()
+            MatchmakingEntry(player.playerId, command.gameMode, command.matchType, rating,
+                existing?.joinedAtMillis ?: joinedAt).also { matchmakingEntries[playerId] = it }
         }
-        matchedStart?.let { return performPreparedStart(it) }
-        val affectedPlayers = deliveries.flatMap { it.recipients.orEmpty() }.toSet()
-        return deliveries + affectedPlayers.flatMap { presenceUpdates(it) }
+        val matched = matchQueuedPlayer(entry)
+        val waiting = mutex.withLock {
+            if (!isQueuedForMatchmaking(entry)) emptyList() else listOf(matchmakingStatus(entry, nowMillis()))
+        }
+        return matched + waiting + if (waiting.isNotEmpty()) presenceUpdates(playerId) else emptyList()
+    }
+
+    /** Revisit existing entries without refetching profiles or charging quota until a pair is reserved. */
+    suspend fun advanceMatchmaking(deliver: suspend (List<Delivery>) -> Unit) {
+        if (!matchmakingSweepMutex.tryLock()) return
+        try {
+            val queued = mutex.withLock {
+                matchmakingEntries.values.filter(::isQueuedForMatchmaking).sortedBy { it.joinedAtMillis }
+            }
+            val checkedPairs = mutableSetOf<Set<String>>()
+            for (entry in queued) {
+                val deliveries = try {
+                    matchQueuedPlayer(entry, checkedPairs)
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (failure: Exception) {
+                    // Keep other entries and later ticks working after a transient repository failure.
+                    System.err.println("Could not advance matchmaking: ${failure.javaClass.simpleName}")
+                    emptyList()
+                }
+                // A published room's game timer is already running: send its start before checking another pair.
+                if (deliveries.isNotEmpty()) deliver(deliveries)
+            }
+            // Clients already display the expanding range using their queue timer. Do not send
+            // unsolicited searching acknowledgements that could arrive after a cancel response.
+        } finally {
+            matchmakingSweepMutex.unlock()
+        }
+    }
+
+    // These helpers only inspect engine state while holding mutex.
+    private fun isQueuedForMatchmaking(entry: MatchmakingEntry): Boolean =
+        !maintenancePolicy.blocksNewIntent && matchmakingEntries[entry.playerId] === entry &&
+            sessionsByPlayerId[entry.playerId]?.let { it.isConnected && it.resumeToken == null } == true &&
+            roomFor(entry.playerId) == null && activeTournamentFor(entry.playerId) == null
+
+    private fun MatchmakingEntry.ratingRange(now: Long) =
+        if (matchType == MatchType.RANKED) matchmakingRange(now - joinedAtMillis) else 0
+
+    private fun compatibleForMatchmaking(first: MatchmakingEntry, second: MatchmakingEntry, now: Long): Boolean =
+        first.playerId != second.playerId && first.gameMode == second.gameMode && first.matchType == second.matchType &&
+            isQueuedForMatchmaking(first) && isQueuedForMatchmaking(second) &&
+            (first.matchType == MatchType.CASUAL ||
+                kotlin.math.abs(first.eloRating.toLong() - second.eloRating) <= maxOf(first.ratingRange(now), second.ratingRange(now)))
+
+    private fun matchmakingStatus(entry: MatchmakingEntry, now: Long): Delivery {
+        return Delivery(ServerMessage.MatchmakingStatus(true, entry.gameMode, entry.matchType, entry.ratingRange(now)), setOf(entry.playerId))
+    }
+
+    private suspend fun matchQueuedPlayer(entry: MatchmakingEntry, checkedPairs: MutableSet<Set<String>> = mutableSetOf()): List<Delivery> {
+        val candidates = mutex.withLock {
+            val now = nowMillis()
+            if (!isQueuedForMatchmaking(entry)) return emptyList()
+            matchmakingEntries.values.filter { compatibleForMatchmaking(entry, it, now) }.sortedWith(
+                compareBy<MatchmakingEntry> { if (entry.matchType == MatchType.RANKED) kotlin.math.abs(it.eloRating.toLong() - entry.eloRating) else 0L }
+                    .thenBy { entry.gameMode == ProtocolGameMode.TEAM_2V2 && (sessionsByPlayerId[it.playerId]?.latencyMillis ?: 0L) >= 150L }
+                    .thenBy { it.joinedAtMillis }
+            )
+        }
+        for (candidate in candidates) {
+            if (!mutex.withLock { isQueuedForMatchmaking(entry) }) break
+            if (!checkedPairs.add(setOf(entry.playerId, candidate.playerId))) continue
+            val blocked = try {
+                friendRepository.isBlockedEitherWay(entry.playerId, candidate.playerId)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Exception) {
+                System.err.println("Could not check blocked players for matchmaking: ${failure.javaClass.simpleName}")
+                true
+            }
+            if (blocked) continue
+            val start = mutex.withLock {
+                // Entry identity fences cancel/rejoin, mode switches and concurrent joins/sweeps after I/O.
+                if (!compatibleForMatchmaking(entry, candidate, nowMillis())) return@withLock null
+                val room = Room(id = UUID.randomUUID().toString(), name = legacyFallback("Đấu nhanh"), hostId = candidate.playerId,
+                    password = null, gameMode = entry.gameMode, matchType = entry.matchType, guestId = entry.playerId,
+                    scores = mutableMapOf(candidate.playerId to 0, entry.playerId to 0))
+                matchmakingEntries.remove(candidate.playerId)
+                matchmakingEntries.remove(entry.playerId)
+                room.readyPlayerIds.addAll(room.playerIds())
+                rooms[room.id] = room
+                prepareStart(room, room.matchId, entry.playerId, fromMatchmaking = true)
+            }
+            if (start != null) return performPreparedStart(start)
+        }
+        return emptyList()
     }
 
     private suspend fun cancelMatchmaking(playerId: String): List<Delivery> {
@@ -1921,7 +1936,8 @@ class GameEngine(
     }
 
     private fun matchmakingRange(waitingMillis: Long): Int {
-        val expansions = (waitingMillis.coerceAtLeast(0L) / MATCHMAKING_EXPAND_INTERVAL_MILLIS).toInt()
+        val expansions = (waitingMillis.coerceAtLeast(0L) / MATCHMAKING_EXPAND_INTERVAL_MILLIS)
+            .coerceAtMost(((MATCHMAKING_MAX_RANGE - MATCHMAKING_INITIAL_RANGE) / MATCHMAKING_EXPAND_STEP).toLong()).toInt()
         return (MATCHMAKING_INITIAL_RANGE + expansions * MATCHMAKING_EXPAND_STEP)
             .coerceAtMost(MATCHMAKING_MAX_RANGE)
     }

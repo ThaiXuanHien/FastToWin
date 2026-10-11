@@ -906,6 +906,39 @@ class GameWebSocketTest {
         }
     }
 
+    @Test
+    fun `background matchmaking delivers start to both waiting sockets after elo expansion`() = testApplication {
+        val auth = AuthenticationService(InMemoryAuthRepository(), passwordHasher = PasswordHasher(1_000))
+        val first = auth.registerVerified("queue-first@example.com", "StrongPassword123!", "First")
+        val second = auth.registerVerified("queue-second@example.com", "StrongPassword123!", "Second")
+        val clock = java.util.concurrent.atomic.AtomicLong(1_800_000_000_000L)
+        val engine = GameEngine(nowMillis = clock::get, playerProfileRepository = object : PlayerProfileRepository {
+            override suspend fun findByPlayerId(playerId: String) = com.hienthai.fastowin.protocol.PlayerProfileSnapshot(
+                playerId, "Player", "CODE1234", statistics = com.hienthai.fastowin.protocol.PlayerStatisticsSnapshot(
+                    eloRating = if (playerId == first.userId) 1000 else 1200))
+            override suspend fun updateProfile(playerId: String, displayName: String, avatarId: String?) = false
+        })
+        application { gameModule(engine = engine, authService = auth) }
+        val sockets = createClient { install(WebSockets) }
+        val a = sockets.webSocketSession("/game"); val b = sockets.webSocketSession("/game")
+        try {
+            withTimeout(5_000) {
+                a.sendMessage(ClientMessage.ConnectAccount(first.accessToken)); a.receiveMessage<ServerMessage.SessionReady>()
+                b.sendMessage(ClientMessage.ConnectAccount(second.accessToken)); b.receiveMessage<ServerMessage.SessionReady>()
+                a.sendMessage(ClientMessage.JoinMatchmaking(ProtocolGameMode.ORDER))
+                assertTrue(a.receiveMessage<ServerMessage.MatchmakingStatus>().isSearching)
+                b.sendMessage(ClientMessage.JoinMatchmaking(ProtocolGameMode.ORDER))
+                assertTrue(b.receiveMessage<ServerMessage.MatchmakingStatus>().isSearching)
+                clock.addAndGet(20_000)
+                // No second JoinMatchmaking and no direct engine tick: the application scheduler must deliver this.
+                val firstStart = a.receiveMessage<ServerMessage.GameStarted>().game
+                val secondStart = b.receiveMessage<ServerMessage.GameStarted>().game
+                assertEquals(firstStart.roomId, secondStart.roomId)
+                assertEquals(setOf(first.userId, second.userId), firstStart.players.map { it.id }.toSet())
+            }
+        } finally { a.close(); b.close() }
+    }
+
     private suspend fun DefaultClientWebSocketSession.sendMessage(message: ClientMessage) {
         send(Frame.Text(ProtocolJson.encodeToString<ClientMessage>(message)))
     }

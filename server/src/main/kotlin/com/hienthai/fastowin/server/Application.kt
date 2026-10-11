@@ -247,6 +247,13 @@ fun Application.gameModule(
 
     launch {
         while (isActive) {
+            delay(MATCHMAKING_INTERVAL_MILLIS)
+            engine.advanceMatchmaking(::deliver)
+        }
+    }
+
+    launch {
+        while (isActive) {
             runCatching { pushReminderService.sendDueReminders() }
                 .onSuccess { delivered ->
                     if (delivered > 0) println("Sent $delivered daily push reminder(s).")
@@ -1034,6 +1041,7 @@ private class SocketConnection(val session: io.ktor.server.websocket.DefaultWebS
 
 private const val SESSION_CLEANUP_INTERVAL_MILLIS = 5_000L
 private const val GAME_TIMER_INTERVAL_MILLIS = 250L
+private const val MATCHMAKING_INTERVAL_MILLIS = 1_000L
 private const val PUSH_REMINDER_INTERVAL_MILLIS = 15L * 60L * 1_000L
 private const val SEASON_LIFECYCLE_INTERVAL_MILLIS = 60_000L
 private val DEFAULT_WEBSOCKET_PING_PERIOD = 10.seconds
