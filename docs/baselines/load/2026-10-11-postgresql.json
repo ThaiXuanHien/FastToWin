@@ -1,0 +1,831 @@
+{
+  "createdAt": "2026-10-11T03:49:51.503Z",
+  "workload": {
+    "pairs": 4,
+    "rounds": 1
+  },
+  "storage": "postgresql-isolated-schema",
+  "hardware": {
+    "os": "win32",
+    "release": "10.0.26200",
+    "cpu": "Intel(R) Core(TM) i5-14600K",
+    "logicalCpus": 20,
+    "totalMemoryBytes": 34039918592,
+    "node": "v24.19.0",
+    "jvmHeapMaxBytes": 536870912,
+    "java": "openjdk version \"25.0.2\" 2026-01-20\r OpenJDK Runtime Environment (build 25.0.2+-15348964-b329.117)"
+  },
+  "protocolVersion": 43,
+  "rateLimits": "unchanged",
+  "clickIntervalMs": 200,
+  "startupSeconds": 1.85,
+  "completedMatches": 4,
+  "failedPairs": 0,
+  "persistedMatches": 4,
+  "ownedServerStopped": true,
+  "schemaRemoved": true,
+  "durationSeconds": 11.78,
+  "operations": {
+    "http.login": {
+      "attempts": 8,
+      "successes": 8,
+      "failures": 0,
+      "attemptsPerSecond": 0.68,
+      "p50Ms": 54.74,
+      "p95Ms": 69.98,
+      "p99Ms": 69.98,
+      "errors": {}
+    },
+    "ws.connect": {
+      "attempts": 8,
+      "successes": 8,
+      "failures": 0,
+      "attemptsPerSecond": 0.68,
+      "p50Ms": 67.87,
+      "p95Ms": 80.67,
+      "p99Ms": 80.67,
+      "errors": {}
+    },
+    "http.status": {
+      "attempts": 4,
+      "successes": 4,
+      "failures": 0,
+      "attemptsPerSecond": 0.34,
+      "p50Ms": 8.49,
+      "p95Ms": 8.91,
+      "p99Ms": 8.91,
+      "errors": {}
+    },
+    "ws.list_rooms": {
+      "attempts": 4,
+      "successes": 4,
+      "failures": 0,
+      "attemptsPerSecond": 0.34,
+      "p50Ms": 28.06,
+      "p95Ms": 45.41,
+      "p99Ms": 45.41,
+      "errors": {}
+    },
+    "ws.create_room": {
+      "attempts": 4,
+      "successes": 4,
+      "failures": 0,
+      "attemptsPerSecond": 0.34,
+      "p50Ms": 97.2,
+      "p95Ms": 97.37,
+      "p99Ms": 97.37,
+      "errors": {}
+    },
+    "ws.join_room": {
+      "attempts": 4,
+      "successes": 4,
+      "failures": 0,
+      "attemptsPerSecond": 0.34,
+      "p50Ms": 46.74,
+      "p95Ms": 59.63,
+      "p99Ms": 59.63,
+      "errors": {}
+    },
+    "ws.start_game": {
+      "attempts": 4,
+      "successes": 4,
+      "failures": 0,
+      "attemptsPerSecond": 0.34,
+      "p50Ms": 12.79,
+      "p95Ms": 25.94,
+      "p99Ms": 25.94,
+      "errors": {}
+    },
+    "ws.select_number": {
+      "attempts": 200,
+      "successes": 200,
+      "failures": 0,
+      "attemptsPerSecond": 16.97,
+      "p50Ms": 11.95,
+      "p95Ms": 16.1,
+      "p99Ms": 56.74,
+      "errors": {}
+    },
+    "ws.disconnect_resume": {
+      "attempts": 4,
+      "successes": 4,
+      "failures": 0,
+      "attemptsPerSecond": 0.34,
+      "p50Ms": 229.37,
+      "p95Ms": 234.67,
+      "p99Ms": 234.67,
+      "errors": {}
+    },
+    "ws.leave_room": {
+      "attempts": 8,
+      "successes": 8,
+      "failures": 0,
+      "attemptsPerSecond": 0.68,
+      "p50Ms": 8.06,
+      "p95Ms": 21.32,
+      "p99Ms": 21.32,
+      "errors": {}
+    }
+  },
+  "resources": [
+    {
+      "seconds": 0,
+      "metrics": {
+        "fasttowin_uptime_seconds": 1.113,
+        "fasttowin_websocket_connections": 0,
+        "fasttowin_websocket_connections_total": 0,
+        "fasttowin_authenticated_sessions_total": 0,
+        "fasttowin_websocket_messages_total": 0,
+        "fasttowin_websocket_rate_limited_total": 0,
+        "fasttowin_websocket_invalid_messages_total": 0,
+        "fasttowin_jvm_memory_used_bytes": 26722856,
+        "fasttowin_jvm_memory_max_bytes": 536870912
+      },
+      "process": {
+        "CPU": 5.171875,
+        "WorkingSet64": 270422016
+      }
+    },
+    {
+      "seconds": 3,
+      "metrics": {
+        "fasttowin_uptime_seconds": 3.372,
+        "fasttowin_websocket_connections": 8,
+        "fasttowin_websocket_connections_total": 8,
+        "fasttowin_authenticated_sessions_total": 8,
+        "fasttowin_websocket_messages_total": 60,
+        "fasttowin_websocket_rate_limited_total": 0,
+        "fasttowin_websocket_invalid_messages_total": 0,
+        "fasttowin_jvm_memory_used_bytes": 60569184,
+        "fasttowin_jvm_memory_max_bytes": 536870912
+      },
+      "process": {
+        "CPU": 7.40625,
+        "WorkingSet64": 318001152
+      }
+    },
+    {
+      "seconds": 5,
+      "metrics": {
+        "fasttowin_uptime_seconds": 5.361,
+        "fasttowin_websocket_connections": 8,
+        "fasttowin_websocket_connections_total": 8,
+        "fasttowin_authenticated_sessions_total": 8,
+        "fasttowin_websocket_messages_total": 98,
+        "fasttowin_websocket_rate_limited_total": 0,
+        "fasttowin_websocket_invalid_messages_total": 0,
+        "fasttowin_jvm_memory_used_bytes": 68258256,
+        "fasttowin_jvm_memory_max_bytes": 536870912
+      },
+      "process": {
+        "CPU": 7.484375,
+        "WorkingSet64": 264994816
+      }
+    },
+    {
+      "seconds": 7,
+      "metrics": {
+        "fasttowin_uptime_seconds": 7.366,
+        "fasttowin_websocket_connections": 7,
+        "fasttowin_websocket_connections_total": 11,
+        "fasttowin_authenticated_sessions_total": 11,
+        "fasttowin_websocket_messages_total": 134,
+        "fasttowin_websocket_rate_limited_total": 0,
+        "fasttowin_websocket_invalid_messages_total": 0,
+        "fasttowin_jvm_memory_used_bytes": 79697408,
+        "fasttowin_jvm_memory_max_bytes": 536870912
+      },
+      "process": {
+        "CPU": 7.734375,
+        "WorkingSet64": 272773120
+      }
+    },
+    {
+      "seconds": 9,
+      "metrics": {
+        "fasttowin_uptime_seconds": 9.368,
+        "fasttowin_websocket_connections": 8,
+        "fasttowin_websocket_connections_total": 12,
+        "fasttowin_authenticated_sessions_total": 12,
+        "fasttowin_websocket_messages_total": 171,
+        "fasttowin_websocket_rate_limited_total": 0,
+        "fasttowin_websocket_invalid_messages_total": 0,
+        "fasttowin_jvm_memory_used_bytes": 94227272,
+        "fasttowin_jvm_memory_max_bytes": 536870912
+      },
+      "process": {
+        "CPU": 7.96875,
+        "WorkingSet64": 271953920
+      }
+    },
+    {
+      "seconds": 11,
+      "metrics": {
+        "fasttowin_uptime_seconds": 11.385,
+        "fasttowin_websocket_connections": 8,
+        "fasttowin_websocket_connections_total": 12,
+        "fasttowin_authenticated_sessions_total": 12,
+        "fasttowin_websocket_messages_total": 208,
+        "fasttowin_websocket_rate_limited_total": 0,
+        "fasttowin_websocket_invalid_messages_total": 0,
+        "fasttowin_jvm_memory_used_bytes": 37030432,
+        "fasttowin_jvm_memory_max_bytes": 536870912
+      },
+      "process": {
+        "CPU": 8.21875,
+        "WorkingSet64": 277823488
+      }
+    },
+    {
+      "seconds": 12,
+      "metrics": {
+        "fasttowin_uptime_seconds": 12.896,
+        "fasttowin_websocket_connections": 0,
+        "fasttowin_websocket_connections_total": 12,
+        "fasttowin_authenticated_sessions_total": 12,
+        "fasttowin_websocket_messages_total": 240,
+        "fasttowin_websocket_rate_limited_total": 0,
+        "fasttowin_websocket_invalid_messages_total": 0,
+        "fasttowin_jvm_memory_used_bytes": 59961008,
+        "fasttowin_jvm_memory_max_bytes": 536870912
+      },
+      "process": {
+        "CPU": 8.546875,
+        "WorkingSet64": 284524544
+      }
+    }
+  ],
+  "databaseResources": [
+    {
+      "relname": "achievements",
+      "n_live_tup": 25,
+      "n_tup_ins": 25,
+      "n_tup_upd": 8,
+      "heap_blks_read": 0,
+      "heap_blks_hit": 114,
+      "total_bytes": 40960
+    },
+    {
+      "relname": "active_room_snapshots",
+      "n_live_tup": 0,
+      "n_tup_ins": 4,
+      "n_tup_upd": 223,
+      "heap_blks_read": 0,
+      "heap_blks_hit": 913,
+      "total_bytes": 2588672
+    },
+    {
+      "relname": "admin_accounts",
+      "n_live_tup": 0,
+      "n_tup_ins": 0,
+      "n_tup_upd": 0,
+      "heap_blks_read": 0,
+      "heap_blks_hit": 0,
+      "total_bytes": 24576
+    },
+    {
+      "relname": "admin_announcement_pending_push",
+      "n_live_tup": 0,
+      "n_tup_ins": 0,
+      "n_tup_upd": 0,
+      "heap_blks_read": 0,
+      "heap_blks_hit": 0,
+      "total_bytes": 8192
+    },
+    {
+      "relname": "admin_announcement_preferences",
+      "n_live_tup": 0,
+      "n_tup_ins": 0,
+      "n_tup_upd": 0,
+      "heap_blks_read": 0,
+      "heap_blks_hit": 0,
+      "total_bytes": 8192
+    },
+    {
+      "relname": "admin_announcement_push_attempts",
+      "n_live_tup": 0,
+      "n_tup_ins": 0,
+      "n_tup_upd": 0,
+      "heap_blks_read": 0,
+      "heap_blks_hit": 0,
+      "total_bytes": 16384
+    },
+    {
+      "relname": "admin_announcement_recipients",
+      "n_live_tup": 0,
+      "n_tup_ins": 0,
+      "n_tup_upd": 0,
+      "heap_blks_read": 0,
+      "heap_blks_hit": 0,
+      "total_bytes": 24576
+    },
+    {
+      "relname": "admin_announcement_replays",
+      "n_live_tup": 0,
+      "n_tup_ins": 0,
+      "n_tup_upd": 0,
+      "heap_blks_read": 0,
+      "heap_blks_hit": 0,
+      "total_bytes": 16384
+    },
+    {
+      "relname": "admin_announcements",
+      "n_live_tup": 0,
+      "n_tup_ins": 0,
+      "n_tup_upd": 0,
+      "heap_blks_read": 0,
+      "heap_blks_hit": 0,
+      "total_bytes": 24576
+    },
+    {
+      "relname": "admin_audit",
+      "n_live_tup": 0,
+      "n_tup_ins": 0,
+      "n_tup_upd": 0,
+      "heap_blks_read": 0,
+      "heap_blks_hit": 0,
+      "total_bytes": 32768
+    },
+    {
+      "relname": "admin_gift_campaigns",
+      "n_live_tup": 0,
+      "n_tup_ins": 0,
+      "n_tup_upd": 0,
+      "heap_blks_read": 0,
+      "heap_blks_hit": 0,
+      "total_bytes": 32768
+    },
+    {
+      "relname": "admin_gift_recipients",
+      "n_live_tup": 0,
+      "n_tup_ins": 0,
+      "n_tup_upd": 0,
+      "heap_blks_read": 0,
+      "heap_blks_hit": 0,
+      "total_bytes": 24576
+    },
+    {
+      "relname": "admin_gift_requests",
+      "n_live_tup": 0,
+      "n_tup_ins": 0,
+      "n_tup_upd": 0,
+      "heap_blks_read": 0,
+      "heap_blks_hit": 0,
+      "total_bytes": 16384
+    },
+    {
+      "relname": "admin_requests",
+      "n_live_tup": 0,
+      "n_tup_ins": 0,
+      "n_tup_upd": 0,
+      "heap_blks_read": 0,
+      "heap_blks_hit": 0,
+      "total_bytes": 16384
+    },
+    {
+      "relname": "admin_sessions",
+      "n_live_tup": 0,
+      "n_tup_ins": 0,
+      "n_tup_upd": 0,
+      "heap_blks_read": 0,
+      "heap_blks_hit": 0,
+      "total_bytes": 24576
+    },
+    {
+      "relname": "analytics_financial_events",
+      "n_live_tup": 0,
+      "n_tup_ins": 0,
+      "n_tup_upd": 0,
+      "heap_blks_read": 0,
+      "heap_blks_hit": 0,
+      "total_bytes": 57344
+    },
+    {
+      "relname": "analytics_item_purchases",
+      "n_live_tup": 0,
+      "n_tup_ins": 0,
+      "n_tup_upd": 0,
+      "heap_blks_read": 0,
+      "heap_blks_hit": 0,
+      "total_bytes": 32768
+    },
+    {
+      "relname": "analytics_registrations",
+      "n_live_tup": 8,
+      "n_tup_ins": 8,
+      "n_tup_upd": 0,
+      "heap_blks_read": 0,
+      "heap_blks_hit": 15,
+      "total_bytes": 40960
+    },
+    {
+      "relname": "analytics_source_coverage",
+      "n_live_tup": 4,
+      "n_tup_ins": 4,
+      "n_tup_upd": 10,
+      "heap_blks_read": 0,
+      "heap_blks_hit": 32,
+      "total_bytes": 24576
+    },
+    {
+      "relname": "analytics_subject_links",
+      "n_live_tup": 8,
+      "n_tup_ins": 8,
+      "n_tup_upd": 0,
+      "heap_blks_read": 0,
+      "heap_blks_hit": 31,
+      "total_bytes": 40960
+    },
+    {
+      "relname": "clan_donations",
+      "n_live_tup": 0,
+      "n_tup_ins": 0,
+      "n_tup_upd": 0,
+      "heap_blks_read": 0,
+      "heap_blks_hit": 0,
+      "total_bytes": 24576
+    },
+    {
+      "relname": "clan_join_requests",
+      "n_live_tup": 0,
+      "n_tup_ins": 0,
+      "n_tup_upd": 0,
+      "heap_blks_read": 0,
+      "heap_blks_hit": 0,
+      "total_bytes": 24576
+    },
+    {
+      "relname": "clan_members",
+      "n_live_tup": 0,
+      "n_tup_ins": 0,
+      "n_tup_upd": 0,
+      "heap_blks_read": 0,
+      "heap_blks_hit": 0,
+      "total_bytes": 16384
+    },
+    {
+      "relname": "clans",
+      "n_live_tup": 0,
+      "n_tup_ins": 0,
+      "n_tup_upd": 0,
+      "heap_blks_read": 0,
+      "heap_blks_hit": 0,
+      "total_bytes": 49152
+    },
+    {
+      "relname": "compensation_incidents",
+      "n_live_tup": 0,
+      "n_tup_ins": 0,
+      "n_tup_upd": 0,
+      "heap_blks_read": 0,
+      "heap_blks_hit": 0,
+      "total_bytes": 24576
+    },
+    {
+      "relname": "compensation_replays",
+      "n_live_tup": 0,
+      "n_tup_ins": 0,
+      "n_tup_upd": 0,
+      "heap_blks_read": 0,
+      "heap_blks_hit": 0,
+      "total_bytes": 16384
+    },
+    {
+      "relname": "compensation_rounds",
+      "n_live_tup": 0,
+      "n_tup_ins": 0,
+      "n_tup_upd": 0,
+      "heap_blks_read": 0,
+      "heap_blks_hit": 0,
+      "total_bytes": 24576
+    },
+    {
+      "relname": "daily_check_ins",
+      "n_live_tup": 0,
+      "n_tup_ins": 0,
+      "n_tup_upd": 0,
+      "heap_blks_read": 0,
+      "heap_blks_hit": 0,
+      "total_bytes": 16384
+    },
+    {
+      "relname": "daily_play_quotas",
+      "n_live_tup": 8,
+      "n_tup_ins": 8,
+      "n_tup_upd": 8,
+      "heap_blks_read": 0,
+      "heap_blks_hit": 79,
+      "total_bytes": 24576
+    },
+    {
+      "relname": "email_verification_tokens",
+      "n_live_tup": 8,
+      "n_tup_ins": 8,
+      "n_tup_upd": 8,
+      "heap_blks_read": 0,
+      "heap_blks_hit": 78,
+      "total_bytes": 73728
+    },
+    {
+      "relname": "flyway_schema_history",
+      "n_live_tup": 58,
+      "n_tup_ins": 58,
+      "n_tup_upd": 0,
+      "heap_blks_read": 0,
+      "heap_blks_hit": 172,
+      "total_bytes": 49152
+    },
+    {
+      "relname": "friendships",
+      "n_live_tup": 0,
+      "n_tup_ins": 0,
+      "n_tup_upd": 0,
+      "heap_blks_read": 0,
+      "heap_blks_hit": 0,
+      "total_bytes": 32768
+    },
+    {
+      "relname": "gold_exchange_requests",
+      "n_live_tup": 0,
+      "n_tup_ins": 0,
+      "n_tup_upd": 0,
+      "heap_blks_read": 0,
+      "heap_blks_hit": 0,
+      "total_bytes": 16384
+    },
+    {
+      "relname": "match_events",
+      "n_live_tup": 200,
+      "n_tup_ins": 200,
+      "n_tup_upd": 0,
+      "heap_blks_read": 0,
+      "heap_blks_hit": 831,
+      "total_bytes": 155648
+    },
+    {
+      "relname": "match_players",
+      "n_live_tup": 8,
+      "n_tup_ins": 8,
+      "n_tup_upd": 0,
+      "heap_blks_read": 0,
+      "heap_blks_hit": 359,
+      "total_bytes": 49152
+    },
+    {
+      "relname": "matches",
+      "n_live_tup": 4,
+      "n_tup_ins": 4,
+      "n_tup_upd": 0,
+      "heap_blks_read": 0,
+      "heap_blks_hit": 526,
+      "total_bytes": 49152
+    },
+    {
+      "relname": "password_reset_tokens",
+      "n_live_tup": 0,
+      "n_tup_ins": 0,
+      "n_tup_upd": 0,
+      "heap_blks_read": 0,
+      "heap_blks_hit": 0,
+      "total_bytes": 32768
+    },
+    {
+      "relname": "play_quota_match_consumptions",
+      "n_live_tup": 8,
+      "n_tup_ins": 8,
+      "n_tup_upd": 16,
+      "heap_blks_read": 0,
+      "heap_blks_hit": 99,
+      "total_bytes": 40960
+    },
+    {
+      "relname": "player_blocks",
+      "n_live_tup": 0,
+      "n_tup_ins": 0,
+      "n_tup_upd": 0,
+      "heap_blks_read": 0,
+      "heap_blks_hit": 0,
+      "total_bytes": 16384
+    },
+    {
+      "relname": "player_cosmetics",
+      "n_live_tup": 8,
+      "n_tup_ins": 8,
+      "n_tup_upd": 0,
+      "heap_blks_read": 0,
+      "heap_blks_hit": 27,
+      "total_bytes": 24576
+    },
+    {
+      "relname": "player_stats",
+      "n_live_tup": 8,
+      "n_tup_ins": 8,
+      "n_tup_upd": 24,
+      "heap_blks_read": 0,
+      "heap_blks_hit": 299,
+      "total_bytes": 90112
+    },
+    {
+      "relname": "profiles",
+      "n_live_tup": 8,
+      "n_tup_ins": 8,
+      "n_tup_upd": 0,
+      "heap_blks_read": 0,
+      "heap_blks_hit": 947,
+      "total_bytes": 49152
+    },
+    {
+      "relname": "push_reminder_deliveries",
+      "n_live_tup": 0,
+      "n_tup_ins": 0,
+      "n_tup_upd": 0,
+      "heap_blks_read": 0,
+      "heap_blks_hit": 0,
+      "total_bytes": 16384
+    },
+    {
+      "relname": "rating_history",
+      "n_live_tup": 0,
+      "n_tup_ins": 0,
+      "n_tup_upd": 0,
+      "heap_blks_read": 0,
+      "heap_blks_hit": 0,
+      "total_bytes": 16384
+    },
+    {
+      "relname": "reward_event_requests",
+      "n_live_tup": 0,
+      "n_tup_ins": 0,
+      "n_tup_upd": 0,
+      "heap_blks_read": 0,
+      "heap_blks_hit": 0,
+      "total_bytes": 16384
+    },
+    {
+      "relname": "reward_events",
+      "n_live_tup": 0,
+      "n_tup_ins": 0,
+      "n_tup_upd": 0,
+      "heap_blks_read": 0,
+      "heap_blks_hit": 0,
+      "total_bytes": 16384
+    },
+    {
+      "relname": "rewarded_ad_grants",
+      "n_live_tup": 0,
+      "n_tup_ins": 0,
+      "n_tup_upd": 0,
+      "heap_blks_read": 0,
+      "heap_blks_hit": 0,
+      "total_bytes": 24576
+    },
+    {
+      "relname": "room_invitations",
+      "n_live_tup": 0,
+      "n_tup_ins": 0,
+      "n_tup_upd": 0,
+      "heap_blks_read": 0,
+      "heap_blks_hit": 0,
+      "total_bytes": 32768
+    },
+    {
+      "relname": "runtime_maintenance",
+      "n_live_tup": 1,
+      "n_tup_ins": 1,
+      "n_tup_upd": 0,
+      "heap_blks_read": 0,
+      "heap_blks_hit": 56,
+      "total_bytes": 32768
+    },
+    {
+      "relname": "runtime_maintenance_requests",
+      "n_live_tup": 0,
+      "n_tup_ins": 0,
+      "n_tup_upd": 0,
+      "heap_blks_read": 0,
+      "heap_blks_hit": 0,
+      "total_bytes": 16384
+    },
+    {
+      "relname": "season_leaderboard_archive",
+      "n_live_tup": 0,
+      "n_tup_ins": 0,
+      "n_tup_upd": 0,
+      "heap_blks_read": 0,
+      "heap_blks_hit": 0,
+      "total_bytes": 32768
+    },
+    {
+      "relname": "season_ratings",
+      "n_live_tup": 0,
+      "n_tup_ins": 0,
+      "n_tup_upd": 0,
+      "heap_blks_read": 0,
+      "heap_blks_hit": 0,
+      "total_bytes": 16384
+    },
+    {
+      "relname": "season_reward_claims",
+      "n_live_tup": 0,
+      "n_tup_ins": 0,
+      "n_tup_upd": 0,
+      "heap_blks_read": 0,
+      "heap_blks_hit": 0,
+      "total_bytes": 24576
+    },
+    {
+      "relname": "seasons",
+      "n_live_tup": 1,
+      "n_tup_ins": 1,
+      "n_tup_upd": 1,
+      "heap_blks_read": 0,
+      "heap_blks_hit": 85,
+      "total_bytes": 57344
+    },
+    {
+      "relname": "sessions",
+      "n_live_tup": 16,
+      "n_tup_ins": 16,
+      "n_tup_upd": 20,
+      "heap_blks_read": 0,
+      "heap_blks_hit": 412,
+      "total_bytes": 172032
+    },
+    {
+      "relname": "store_financial_orders",
+      "n_live_tup": 0,
+      "n_tup_ins": 0,
+      "n_tup_upd": 0,
+      "heap_blks_read": 0,
+      "heap_blks_hit": 0,
+      "total_bytes": 32768
+    },
+    {
+      "relname": "store_purchases",
+      "n_live_tup": 0,
+      "n_tup_ins": 0,
+      "n_tup_upd": 0,
+      "heap_blks_read": 0,
+      "heap_blks_hit": 0,
+      "total_bytes": 16384
+    },
+    {
+      "relname": "tournaments",
+      "n_live_tup": 0,
+      "n_tup_ins": 0,
+      "n_tup_upd": 0,
+      "heap_blks_read": 0,
+      "heap_blks_hit": 0,
+      "total_bytes": 40960
+    },
+    {
+      "relname": "user_achievements",
+      "n_live_tup": 8,
+      "n_tup_ins": 8,
+      "n_tup_upd": 0,
+      "heap_blks_read": 0,
+      "heap_blks_hit": 47,
+      "total_bytes": 40960
+    },
+    {
+      "relname": "user_missions",
+      "n_live_tup": 36,
+      "n_tup_ins": 36,
+      "n_tup_upd": 0,
+      "heap_blks_read": 0,
+      "heap_blks_hit": 115,
+      "total_bytes": 40960
+    },
+    {
+      "relname": "user_notifications",
+      "n_live_tup": 0,
+      "n_tup_ins": 0,
+      "n_tup_upd": 0,
+      "heap_blks_read": 0,
+      "heap_blks_hit": 0,
+      "total_bytes": 24576
+    },
+    {
+      "relname": "users",
+      "n_live_tup": 8,
+      "n_tup_ins": 8,
+      "n_tup_upd": 16,
+      "heap_blks_read": 0,
+      "heap_blks_hit": 1331,
+      "total_bytes": 57344
+    },
+    {
+      "relname": "wallet_transactions",
+      "n_live_tup": 16,
+      "n_tup_ins": 16,
+      "n_tup_upd": 0,
+      "heap_blks_read": 0,
+      "heap_blks_hit": 63,
+      "total_bytes": 57344
+    }
+  ],
+  "timedOut": false,
+  "interrupted": false,
+  "status": "PASS",
+  "sourceRevision": "2bf521f (harness introduced in backlog-readiness)"
+}

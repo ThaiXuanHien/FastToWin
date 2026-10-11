@@ -5,6 +5,7 @@ import org.jetbrains.kotlin.gradle.plugin.mpp.KotlinNativeTarget
 import org.jetbrains.kotlin.gradle.ExperimentalWasmDsl
 
 plugins {
+    alias(libs.plugins.kover)
     alias(libs.plugins.kotlin.multiplatform)
     alias(libs.plugins.android.kotlin.multiplatform.library)
     alias(libs.plugins.jetbrains.compose)
@@ -97,6 +98,29 @@ kotlin {
 compose.resources {
     packageOfResClass = "com.hienthai.fastowin.resources"
     publicResClass = true
+}
+
+kover {
+    reports {
+        filters {
+            excludes {
+                classes(
+                    "com.hienthai.fastowin.resources.*",
+                    "com.hienthai.fastowin.ui.*",
+                    "com.hienthai.fastowin.FastToWinAppKt*",
+                    "com.hienthai.fastowin.ComposableSingletons*",
+                    "*\$\$serializer",
+                )
+            }
+        }
+        total {
+            verify {
+                rule {
+                    minBound(providers.gradleProperty("sharedCoverageMinLine").map(String::toInt).getOrElse(52))
+                }
+            }
+        }
+    }
 }
 
 val localizationScannerFixtures = layout.projectDirectory.dir("src/localizationScannerFixtures")

@@ -1,4 +1,5 @@
 plugins {
+    alias(libs.plugins.kover)
     alias(libs.plugins.kotlin.jvm)
     alias(libs.plugins.jetbrains.kotlin.plugin.serialization)
     application
@@ -41,6 +42,23 @@ dependencies {
 
 tasks.test {
     useJUnitPlatform()
+}
+
+kover {
+    reports {
+        filters {
+            excludes {
+                classes("*\$\$serializer")
+            }
+        }
+        total {
+            verify {
+                rule {
+                    minBound(providers.gradleProperty("serverCoverageMinLine").map(String::toInt).getOrElse(86))
+                }
+            }
+        }
+    }
 }
 
 tasks.register<JavaExec>("seedDevFullAccount") {

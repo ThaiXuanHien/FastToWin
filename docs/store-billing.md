@@ -26,6 +26,9 @@ Sandbox chỉ hoạt động khi `FASTTOWIN_ENV=dev`. Production không chấp n
 
 ## Android production
 
+Chủ dự án hiện mới có tài khoản Console. Xem [checklist tạo app, ký bundle và internal testing](google-play-internal-testing.md)
+để cấu hình và nghiệm thu provider thật; phần bên dưới mô tả khả năng mã nguồn hiện có.
+
 Android đang dùng Google Play Billing Library 9.1.0 với:
 
 - `ProductDetails` cho one-time products;

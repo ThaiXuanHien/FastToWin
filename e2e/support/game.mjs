@@ -45,6 +45,16 @@ export const test = base.extend({
         hasTouch: testInfo.project.use.hasTouch ?? false,
       });
       actor.context = context;
+      if (typeof testInfo.project.use.hasTouch === 'boolean') {
+        // Chromium on a touchscreen Windows host can retain native
+        // maxTouchPoints even when event emulation is disabled. Explicit input
+        // projects own this fixture value; they are not real-device tests.
+        await context.addInitScript(hasTouch => {
+          Object.defineProperty(Navigator.prototype, 'maxTouchPoints', {
+            configurable: true, get: () => hasTouch ? 1 : 0,
+          });
+        }, testInfo.project.use.hasTouch);
+      }
       if (options.preferences) {
         await context.addInitScript(preferences => {
           window.localStorage.setItem('fasttowin.preferences', JSON.stringify(preferences));
@@ -178,7 +188,12 @@ export const tag = (page, id) => page.getByTestId(id);
 // Click its real canvas position, not a JS controller or a synthetic server response.
 export async function click(page, locator) {
   await expect(locator).toBeAttached();
-  for (let attempt = 0; attempt < 12; attempt++) {
+  let searchDirection = 1;
+  const visiblePositions = () => page.locator('[id], [role]').evaluateAll(nodes => JSON.stringify(nodes.map(node => {
+    const box = node.getBoundingClientRect();
+    return box.width > 0 && box.height > 0 ? [node.id || node.getAttribute('role'), Math.round(box.x), Math.round(box.y)] : null;
+  }).filter(Boolean)));
+  for (let attempt = 0; attempt < 20; attempt++) {
     // Compose rebuilds its transparent semantics nodes while a LazyColumn is
     // settling. Resolve a short-lived handle for each attempt so a detached
     // WebKit node is retried instead of consuming the locator's full timeout.
@@ -206,10 +221,20 @@ export async function click(page, locator) {
         return;
       }
     }
-    // Offscreen Compose semantics can have a zero-sized box until the canvas scrolls.
+    // Offscreen Compose semantics have zero-size bounds both above and below.
+    // Sweep with small steps; when visible geometry stops moving at a scroll
+    // boundary, reverse rather than repeatedly scrolling past a field above us.
+    if (bounds && bounds.height > 0) searchDirection = bounds.y < 0 ? -1 : 1;
+    const beforeScroll = await visiblePositions();
     await page.mouse.move(viewport.width / 2, viewport.height / 2);
-    await page.mouse.wheel(0, bounds && bounds.y < 0 ? -450 : 450);
-    await page.waitForTimeout(150); // Allow Compose's debounced semantics/layout sync after scroll.
+    await page.mouse.wheel(0, searchDirection * Math.min(240, viewport.height / 3));
+    // Wait through both scroll animation and debounced semantics. An unchanged
+    // first frame alone does not prove a boundary, especially after reversing.
+    let unchanged = true;
+    await expect.poll(visiblePositions, { timeout: 650, intervals: [100, 150, 200] })
+      .not.toBe(beforeScroll).then(() => { unchanged = false; }).catch(() => {});
+    await page.waitForTimeout(150);
+    if (unchanged) searchDirection *= -1;
   }
   throw new Error('UI element could not be brought into the viewport.');
 }

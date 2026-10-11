@@ -6,9 +6,10 @@
 - UI test Android dùng JUnit 4, AndroidJUnitRunner, Compose UI Test và Espresso trong `app/src/androidTest`.
 - Logic dùng `kotlin.test` và coroutine test trong `shared/src/commonTest`.
 - Backend dùng Kotlin Test/JUnit Platform, Ktor test host và coroutine test trong `server/src/test`.
-- Chưa cấu hình Robolectric hoặc JaCoCo; screenshot regression 2D Arcade đã
-  dùng Compose Preview Screenshot Testing trong module Android `app`.
+- Coverage JVM dùng Kover cho server/shared; xem [baseline, phạm vi và ngưỡng CI](test-coverage.md).
+- Screenshot regression 2D Arcade dùng Compose Preview Screenshot Testing trong module Android `app`.
 - Có bộ [Web E2E Playwright](web-e2e.md) cho Chromium, Firefox, WebKit và ma trận responsive; xem tài liệu này để phân biệt kiểm thử tự động với phần còn cần thiết bị/trình duyệt thật.
+- Có [load baseline cách ly](load-testing.md) cho HTTP/WebSocket và PostgreSQL; không phải kiểm chứng tải production.
 
 ## Lệnh kiểm thử trên Windows
 
@@ -52,9 +53,10 @@ Với nhiều emulator Android 17, nên chạy lần lượt từng máy để t
 
 ## Screenshot regression 2D Arcade
 
-Bộ screenshot host-side bảo vệ 10 màn cốt lõi ở điện thoại nhỏ `320 x 568 dp`,
-điện thoại lớn `430 x 932 dp` và tablet `840 x 1180 dp`, thêm hộp thư quà ở
-ba kích thước đó và bản Compose Preview desktop `1024 x 768 dp`. Tổng cộng có 34
+Bộ screenshot host-side bảo vệ đăng nhập, trang chủ, danh sách phòng, màn chơi,
+kết quả, hồ sơ và các luồng giải đấu/sự kiện/quà/thông báo/bảo trì ở điện thoại
+nhỏ `320 x 568 dp`, điện thoại lớn `430 x 932 dp` và tablet `840 x 1180 dp`.
+Một số màn có thêm Compose Preview desktop `1024 x 768 dp`. Tổng cộng có 133
 ảnh chuẩn, cố định giao diện tối, locale tiếng Việt, font scale `1.0` và fixture
 không dùng mạng, database hay thời gian thực. Bộ này kiểm tra thay đổi pixel;
 Compose UI test và Web E2E vẫn chịu trách nhiệm kiểm tra hành vi.
@@ -91,7 +93,7 @@ Chỉ khi thay đổi UI là có chủ ý và đã xem lại đủ ảnh mới c
 - Ảnh render thực tế và ảnh chênh lệch nằm dưới
   `app/build/outputs/screenshotTest-results/preview/debug/dev/rendered/` và
   `app/build/outputs/screenshotTest-results/preview/debug/dev/diffs/`.
-- Trước khi commit baseline, kiểm tra đúng 34 PNG, xem ảnh ở các kích thước
+- Trước khi commit baseline, kiểm tra đúng 133 PNG, xem ảnh ở các kích thước
   điện thoại/tablet/desktop, xem Git diff và chạy lại task `validate`.
 - Ảnh desktop của hộp thư là bản render Compose Preview để kiểm tra bố cục,
   không phải kiểm thử ứng dụng trong trình duyệt.
@@ -100,7 +102,7 @@ Chỉ khi thay đổi UI là có chủ ý và đã xem lại đủ ảnh mới c
 
 Plugin `com.android.compose.screenshot` hiện được pin ở `0.0.1-alpha15`. Khi
 nâng AGP, Kotlin hoặc plugin này, thực hiện trong thay đổi riêng và xác thực lại
-toàn bộ 30 ảnh trước khi merge.
+toàn bộ ảnh trước khi merge.
 
 ## Phạm vi hồi quy chính
 

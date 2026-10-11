@@ -81,6 +81,48 @@ jobs:
             caddy:2.11.4-alpine \
             caddy validate --config /etc/caddy/Caddyfile
 
+      - name: Generate coverage reports and enforce measured thresholds
+        run: >-
+          ./gradlew
+          :server:koverHtmlReport :server:koverXmlReport
+          :shared:koverHtmlReport :shared:koverXmlReport
+          :server:koverVerify :shared:koverVerify
+          --no-daemon
+          --no-configuration-cache
+
+      - name: Set up Node.js for isolated load baseline
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+
+      - name: Validate load-test safeguards and run bounded PostgreSQL workload
+        run: |
+          node --test scripts/tests/load-test-utils.test.mjs
+          ./gradlew :server:installDist --no-daemon --no-configuration-cache
+          mkdir -p .tmp
+          printf '%s' 'fasttowin' > .tmp/load-test-password.txt
+          node --input-type=module -e "import {writeFileSync} from 'node:fs'; import {resolve} from 'node:path'; writeFileSync('.tmp/load-test-settings.json', JSON.stringify({url:'jdbc:postgresql://127.0.0.1:15432/admin_test',user:'fasttowin',passwordFile:resolve('.tmp/load-test-password.txt')}));"
+          node scripts/load-test.mjs --pairs 2 --postgres-settings .tmp/load-test-settings.json
+
+      - name: Upload isolated load baseline
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: isolated-load-baseline
+          path: .artifacts/load-tests/*/report.json
+          retention-days: 7
+          if-no-files-found: warn
+
+      - name: Upload server and shared coverage reports
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: server-and-shared-coverage
+          path: |
+            server/build/reports/kover/
+            shared/build/reports/kover/
+          if-no-files-found: warn
+
       - name: Upload dev APK
         uses: actions/upload-artifact@v7
         with:

@@ -1,6 +1,9 @@
 # Lộ trình hoàn thiện Fast To Win
 
-Cập nhật: 12/09/2026. Đây là danh sách theo dõi thống nhất từ các hạng mục chủ dự án đã duyệt. Có code không đồng nghĩa đã kiểm thử hoặc sẵn sàng production.
+Cập nhật: 11/10/2026. Đây là danh sách theo dõi thống nhất từ các hạng mục chủ dự án đã duyệt. Có code không đồng nghĩa đã kiểm thử hoặc sẵn sàng production.
+
+Đối chiếu trạng thái issue, release và phần còn thiếu tại [backlog audit 11/10/2026](backlog-audit-2026-10-11.md).
+Google Play hiện mới có tài khoản, chưa tạo app/sản phẩm; xem [internal testing](google-play-internal-testing.md).
 
 ## Quy tắc thực hiện
 
@@ -74,7 +77,7 @@ tương ứng đều đã có. Các phần chi tiết ở dưới phải bám th
 
 ### Production và quy mô tải
 
-- [ ] Viết tài liệu chi phí và kiến trúc triển khai riêng cho các mốc 10.000, 50.000 và 100.000 người dùng/kết nối đồng thời; nêu rõ giả định tải thay vì đồng nhất người dùng với request/giây.
+- [x] Viết tài liệu chi phí và kiến trúc triển khai riêng cho các mốc 10.000, 50.000 và 100.000 người dùng/kết nối đồng thời; xem [giả định và chi phí](production-capacity-and-cost.md). Ước tính chưa phải nghiệm thu khả năng chịu tải.
 - [ ] Chốt danh sách dịch vụ cần thuê: compute/container, PostgreSQL, Redis, load balancer/WebSocket gateway, object storage/CDN, email, monitoring/log/cảnh báo, backup, Firebase/APNs, quảng cáo và billing store.
 - [ ] Load test trong môi trường riêng để hiệu chỉnh con số chi phí trước khi ký hợp đồng dịch vụ.
 
@@ -141,7 +144,7 @@ bị và lịch sử mua của tài khoản hiện hữu vẫn được giữ đ
 
 - [x] Giải riêng 8 người với tứ kết, bán kết và chung kết.
 - [x] Giải riêng 16 người với vòng 1/8, tứ kết, bán kết và chung kết.
-- [ ] Giải công khai/toàn hệ thống.
+- [x] Giải công khai/toàn hệ thống: đã có discovery, đăng ký/rời và admission bền vững. Lịch/hạn đăng ký/check-in còn theo #13.
 - [ ] Lịch thi đấu, thời hạn đăng ký và xử lý vắng mặt.
 - [ ] Khán giả xem trận đấu giải (khác với xem phòng thông thường).
 - [x] Hồi quy tạo nhánh đấu 4/8/16 người, reconnect/restart, xử thua khi rời hoặc quá hạn và phần thưởng không trùng.
@@ -171,7 +174,7 @@ Backend hiện dùng trạng thái realtime trong một instance. Không coi cá
 
 - [x] Catalog giao diện dùng chung cho 12 ngôn ngữ; các màn cốt lõi, hồ sơ, xã hội, xếp hạng, giải đấu, thông báo và cửa hàng đã dùng khóa localization ổn định. Tiếng Việt/Anh đã phủ đầy đủ; 10 ngôn ngữ còn lại đã dịch các nội dung chính và dùng English fallback cho nội dung chưa qua kiểm duyệt ngôn ngữ ở bước audit cuối.
 - [x] Chuẩn hóa thông báo động từ backend thành `messageKey/messageArgs`; trường protocol vẫn optional/default và raw fallback cũ được cô lập qua `legacyFallback(...)` để tương thích client cũ.
-- [ ] Screenshot regression test với ảnh chuẩn đã review (ảnh chụp khi test lỗi chưa phải screenshot regression).
+- [x] Screenshot regression test với ảnh chuẩn đã review: 133 ảnh, gồm đăng nhập/phone/tablet; CI chỉ validate và tải diff/report.
 - [ ] Báo cáo độ bao phủ test và ngưỡng phù hợp.
 - [x] Ma trận Playwright Chromium/Firefox/WebKit và JS fallback trong CI.
 - [ ] Kiểm thử hai người trên iOS thật.

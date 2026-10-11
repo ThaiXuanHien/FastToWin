@@ -3,10 +3,36 @@ package com.hienthai.fastowin.screenshot
 import androidx.compose.runtime.Composable
 import com.android.tools.screenshot.PreviewTest
 import com.hienthai.fastowin.data.preferences.AppPreferences
+import com.hienthai.fastowin.state.AuthStage
+import com.hienthai.fastowin.state.AuthState
+import com.hienthai.fastowin.ui.screens.AuthScreen
 import com.hienthai.fastowin.ui.screens.GameScreen
 import com.hienthai.fastowin.ui.screens.LobbyScreen
 import com.hienthai.fastowin.ui.screens.ProfileScreen
 import com.hienthai.fastowin.ui.screens.ResultScreen
+
+@PreviewTest
+@ArcadeScreenshotDevices
+@Composable
+fun login() = ArcadeScreenshotFrame {
+    AuthScreen(
+        state = AuthState(stage = AuthStage.LOGIN),
+        onOpenLogin = {},
+        onOpenRegister = {},
+        onOpenPasswordReset = {},
+        onPlayAsGuest = {},
+        onLogin = { _, _ -> },
+        onRegister = { _, _, _, _ -> },
+        onUpgradeGuest = { _, _ -> },
+        onRequestPasswordReset = {},
+        onConfirmPasswordReset = { _, _, _ -> },
+        onRequestEmailVerification = {},
+        onConfirmEmailVerification = {},
+        onBack = {},
+        onCancelUpgrade = {},
+        onCancelEmailVerification = {}
+    )
+}
 
 @PreviewTest
 @ArcadeScreenshotDevices

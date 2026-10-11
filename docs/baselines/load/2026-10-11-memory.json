@@ -1,0 +1,264 @@
+{
+  "createdAt": "2026-10-11T03:51:15.701Z",
+  "workload": {
+    "pairs": 4,
+    "rounds": 1
+  },
+  "storage": "memory",
+  "hardware": {
+    "os": "win32",
+    "release": "10.0.26200",
+    "cpu": "Intel(R) Core(TM) i5-14600K",
+    "logicalCpus": 20,
+    "totalMemoryBytes": 34039918592,
+    "node": "v24.19.0",
+    "jvmHeapMaxBytes": 536870912,
+    "java": "openjdk version \"25.0.2\" 2026-01-20\r OpenJDK Runtime Environment (build 25.0.2+-15348964-b329.117)"
+  },
+  "protocolVersion": 43,
+  "rateLimits": "unchanged",
+  "clickIntervalMs": 200,
+  "startupSeconds": 0.89,
+  "completedMatches": 4,
+  "failedPairs": 0,
+  "ownedServerStopped": true,
+  "durationSeconds": 11.7,
+  "operations": {
+    "http.login": {
+      "attempts": 8,
+      "successes": 8,
+      "failures": 0,
+      "attemptsPerSecond": 0.68,
+      "p50Ms": 46.35,
+      "p95Ms": 52.7,
+      "p99Ms": 52.7,
+      "errors": {}
+    },
+    "ws.connect": {
+      "attempts": 8,
+      "successes": 8,
+      "failures": 0,
+      "attemptsPerSecond": 0.68,
+      "p50Ms": 61.12,
+      "p95Ms": 63.73,
+      "p99Ms": 63.73,
+      "errors": {}
+    },
+    "http.status": {
+      "attempts": 4,
+      "successes": 4,
+      "failures": 0,
+      "attemptsPerSecond": 0.34,
+      "p50Ms": 7.3,
+      "p95Ms": 8.96,
+      "p99Ms": 8.96,
+      "errors": {}
+    },
+    "ws.list_rooms": {
+      "attempts": 4,
+      "successes": 4,
+      "failures": 0,
+      "attemptsPerSecond": 0.34,
+      "p50Ms": 17.7,
+      "p95Ms": 18.09,
+      "p99Ms": 18.09,
+      "errors": {}
+    },
+    "ws.create_room": {
+      "attempts": 4,
+      "successes": 4,
+      "failures": 0,
+      "attemptsPerSecond": 0.34,
+      "p50Ms": 13.04,
+      "p95Ms": 13.1,
+      "p99Ms": 13.1,
+      "errors": {}
+    },
+    "ws.join_room": {
+      "attempts": 4,
+      "successes": 4,
+      "failures": 0,
+      "attemptsPerSecond": 0.34,
+      "p50Ms": 16.98,
+      "p95Ms": 17.03,
+      "p99Ms": 17.03,
+      "errors": {}
+    },
+    "ws.start_game": {
+      "attempts": 4,
+      "successes": 4,
+      "failures": 0,
+      "attemptsPerSecond": 0.34,
+      "p50Ms": 10.18,
+      "p95Ms": 31.09,
+      "p99Ms": 31.09,
+      "errors": {}
+    },
+    "ws.select_number": {
+      "attempts": 200,
+      "successes": 200,
+      "failures": 0,
+      "attemptsPerSecond": 17.09,
+      "p50Ms": 15.82,
+      "p95Ms": 16.05,
+      "p99Ms": 16.11,
+      "errors": {}
+    },
+    "ws.disconnect_resume": {
+      "attempts": 4,
+      "successes": 4,
+      "failures": 0,
+      "attemptsPerSecond": 0.34,
+      "p50Ms": 232.85,
+      "p95Ms": 233.45,
+      "p99Ms": 233.45,
+      "errors": {}
+    },
+    "ws.leave_room": {
+      "attempts": 8,
+      "successes": 8,
+      "failures": 0,
+      "attemptsPerSecond": 0.68,
+      "p50Ms": 14.94,
+      "p95Ms": 14.96,
+      "p99Ms": 14.96,
+      "errors": {}
+    }
+  },
+  "resources": [
+    {
+      "seconds": 0,
+      "metrics": {
+        "fasttowin_uptime_seconds": 1.122,
+        "fasttowin_websocket_connections": 0,
+        "fasttowin_websocket_connections_total": 0,
+        "fasttowin_authenticated_sessions_total": 0,
+        "fasttowin_websocket_messages_total": 0,
+        "fasttowin_websocket_rate_limited_total": 0,
+        "fasttowin_websocket_invalid_messages_total": 0,
+        "fasttowin_jvm_memory_used_bytes": 44004728,
+        "fasttowin_jvm_memory_max_bytes": 536870912
+      },
+      "process": {
+        "CPU": 3.03125,
+        "WorkingSet64": 224534528
+      }
+    },
+    {
+      "seconds": 3,
+      "metrics": {
+        "fasttowin_uptime_seconds": 3.405,
+        "fasttowin_websocket_connections": 8,
+        "fasttowin_websocket_connections_total": 8,
+        "fasttowin_authenticated_sessions_total": 8,
+        "fasttowin_websocket_messages_total": 64,
+        "fasttowin_websocket_rate_limited_total": 0,
+        "fasttowin_websocket_invalid_messages_total": 0,
+        "fasttowin_jvm_memory_used_bytes": 75328320,
+        "fasttowin_jvm_memory_max_bytes": 536870912
+      },
+      "process": {
+        "CPU": 4.8125,
+        "WorkingSet64": 244977664
+      }
+    },
+    {
+      "seconds": 5,
+      "metrics": {
+        "fasttowin_uptime_seconds": 5.411,
+        "fasttowin_websocket_connections": 8,
+        "fasttowin_websocket_connections_total": 8,
+        "fasttowin_authenticated_sessions_total": 8,
+        "fasttowin_websocket_messages_total": 100,
+        "fasttowin_websocket_rate_limited_total": 0,
+        "fasttowin_websocket_invalid_messages_total": 0,
+        "fasttowin_jvm_memory_used_bytes": 77865432,
+        "fasttowin_jvm_memory_max_bytes": 536870912
+      },
+      "process": {
+        "CPU": 5.09375,
+        "WorkingSet64": 221298688
+      }
+    },
+    {
+      "seconds": 7,
+      "metrics": {
+        "fasttowin_uptime_seconds": 7.411,
+        "fasttowin_websocket_connections": 8,
+        "fasttowin_websocket_connections_total": 12,
+        "fasttowin_authenticated_sessions_total": 12,
+        "fasttowin_websocket_messages_total": 136,
+        "fasttowin_websocket_rate_limited_total": 0,
+        "fasttowin_websocket_invalid_messages_total": 0,
+        "fasttowin_jvm_memory_used_bytes": 81785352,
+        "fasttowin_jvm_memory_max_bytes": 536870912
+      },
+      "process": {
+        "CPU": 5.34375,
+        "WorkingSet64": 225370112
+      }
+    },
+    {
+      "seconds": 9,
+      "metrics": {
+        "fasttowin_uptime_seconds": 9.429,
+        "fasttowin_websocket_connections": 8,
+        "fasttowin_websocket_connections_total": 12,
+        "fasttowin_authenticated_sessions_total": 12,
+        "fasttowin_websocket_messages_total": 172,
+        "fasttowin_websocket_rate_limited_total": 0,
+        "fasttowin_websocket_invalid_messages_total": 0,
+        "fasttowin_jvm_memory_used_bytes": 84677320,
+        "fasttowin_jvm_memory_max_bytes": 536870912
+      },
+      "process": {
+        "CPU": 5.34375,
+        "WorkingSet64": 219721728
+      }
+    },
+    {
+      "seconds": 11,
+      "metrics": {
+        "fasttowin_uptime_seconds": 11.434,
+        "fasttowin_websocket_connections": 8,
+        "fasttowin_websocket_connections_total": 12,
+        "fasttowin_authenticated_sessions_total": 12,
+        "fasttowin_websocket_messages_total": 208,
+        "fasttowin_websocket_rate_limited_total": 0,
+        "fasttowin_websocket_invalid_messages_total": 0,
+        "fasttowin_jvm_memory_used_bytes": 87784648,
+        "fasttowin_jvm_memory_max_bytes": 536870912
+      },
+      "process": {
+        "CPU": 5.484375,
+        "WorkingSet64": 233222144
+      }
+    },
+    {
+      "seconds": 12,
+      "metrics": {
+        "fasttowin_uptime_seconds": 12.824,
+        "fasttowin_websocket_connections": 0,
+        "fasttowin_websocket_connections_total": 12,
+        "fasttowin_authenticated_sessions_total": 12,
+        "fasttowin_websocket_messages_total": 240,
+        "fasttowin_websocket_rate_limited_total": 0,
+        "fasttowin_websocket_invalid_messages_total": 0,
+        "fasttowin_jvm_memory_used_bytes": 91412016,
+        "fasttowin_jvm_memory_max_bytes": 536870912
+      },
+      "process": {
+        "CPU": 5.578125,
+        "WorkingSet64": 233664512
+      }
+    }
+  ],
+  "databaseResources": {
+    "availability": "UNAVAILABLE",
+    "reason": "No PostgreSQL run"
+  },
+  "timedOut": false,
+  "interrupted": false,
+  "status": "PASS",
+  "sourceRevision": "2bf521f (harness introduced in backlog-readiness)"
+}

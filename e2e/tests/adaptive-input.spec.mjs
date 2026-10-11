@@ -55,6 +55,11 @@ test('large text, long content and a compact keyboard viewport remain usable', a
   // open. Resize after opening the dialog, then prove the field and action can
   // still be reached and used without horizontal overflow.
   await page.setViewportSize({ width: 320, height: 360 });
+  // Exercise returning to an offscreen field too. Compose removes offscreen
+  // semantics bounds; a helper must not assume that every zero-size node is below.
+  await page.mouse.move(160, 180);
+  await page.mouse.wheel(0, 1000);
+  await page.waitForTimeout(250);
   await fill(page, tag(page, 'create_room_name'), roomName);
   await expect(page.locator('input:focus')).toHaveValue(roomName);
   await expectHorizontalFit(page, tag(page, 'create_room_name'), 'Focused room-name field');
