@@ -141,7 +141,7 @@ class AdminService(
         if (actor.role == AdminRole.SUPPORT) forbidden()
         val value = reference.trim()
         if (value.isEmpty() || reference.length > 254 || reference.any(Char::isISOControl)) invalid()
-        val result = giftRecipient(value) ?: throw AdminException(404, "NOT_FOUND", "Không tìm thấy tài khoản đã đăng ký đủ điều kiện nhận quà với mã hoặc email này.")
+        val result = giftRecipient(value) ?: throw AdminException(404, "NOT_FOUND", legacyFallback("Không tìm thấy tài khoản đã đăng ký đủ điều kiện nhận quà với mã hoặc email này."))
         auditEntry(actor.id, "GIFT_RECIPIENT_LOOKUP", result.id)
         result
     }
