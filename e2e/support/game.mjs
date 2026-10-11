@@ -249,7 +249,7 @@ export async function fill(page, locator, text) {
   await page.waitForTimeout(250);
 }
 
-export async function login(actor) {
+export async function login(actor, { onboarding = true } = {}) {
   const { page, account } = actor;
   await page.goto('/');
   await click(page, tag(page, 'auth_open_login'));
@@ -266,7 +266,7 @@ export async function login(actor) {
   await click(page, tag(page, 'auth_login_submit'));
   const loginResponse = await loginResponsePromise;
   expect(loginResponse.ok(), 'Login through the visible Web form').toBeTruthy();
-  await click(page, page.getByRole('button', { name: 'Bỏ qua', exact: true }));
+  if (onboarding) await click(page, page.getByRole('button', { name: 'Bỏ qua', exact: true }));
   await expect(tag(page, 'home_screen')).toBeAttached();
   // The shell reaches Home before the authoritative profile snapshot is
   // applied. That snapshot inserts the daily check-in card and moves every

@@ -12,7 +12,7 @@ Bộ test Playwright tại `e2e/` chạy giao diện Compose Web thật, HTTP/We
 6. Chữ lớn, biệt danh/tên phòng dài và viewport thấp mô phỏng vùng hiển thị còn lại khi bàn phím ảo mở trên điện thoại nhỏ.
 7. Smoke test đăng nhập, F5 và Back/Forward trên Firefox, WebKit và bundle Kotlin/JS fallback.
 
-Mỗi ca tạo tài khoản UUID riêng qua API rồi **đăng nhập qua UI**; teardown xóa đúng các tài khoản này. Không dùng tài khoản cá nhân, không reset database. Mặc định backend chạy in-memory, không cần Docker và không có dữ liệu bền vững. Vì vậy bộ này chưa kiểm tra lưu Elo/ví/lịch sử PostgreSQL.
+Mỗi ca tạo tài khoản UUID riêng qua API rồi **đăng nhập qua UI**; teardown xóa đúng các tài khoản này. Không dùng tài khoản cá nhân, không reset database. Mặc định backend chạy in-memory, không cần Docker và không có dữ liệu bền vững. Kiểm thử ví PostgreSQL là nhóm riêng, chỉ bật khi có cấu hình database test local bên dưới; lưu Elo chưa thuộc nhóm này.
 
 ## Chạy trên Windows
 
@@ -52,7 +52,7 @@ Linux CI dùng `pnpm exec playwright install --with-deps chromium firefox webkit
 
 - Mặc định Web ở `http://127.0.0.1:18081`, backend ở `http://127.0.0.1:18080`.
 - Playwright khởi động `support/serve.mjs`, phục vụ bundle webpack và processed resources, hỗ trợ SPA fallback, chờ backend `/health` rồi mới test.
-- Runner bỏ biến môi trường database/Firebase/maintenance khỏi backend con; không đọc file Firebase của server dev. Web config chỉ trỏ về API local.
+- Runner chỉ kế thừa biến PATH, thư mục hệ thống/tạm và JVM; đặt cấu hình dev/local rõ ràng. Backend con không nhận cấu hình email, billing, push, admin hoặc database từ môi trường của app. Web config chỉ trỏ về API local.
 - Runner dừng tiến trình backend do chính nó tạo sau test. Không dừng server dev 8080/8081. Cổng test bị chiếm thì báo lỗi, không tự giết tiến trình.
 - `E2E_BASE_URL`/`E2E_API_URL` có thể đổi sang cổng loopback HTTP khác. Không cho địa chỉ production.
 - `E2E_WEB_TARGET=wasmJs|js` chọn bundle cần test. `E2E_WEB_ROOT` có thể chỉ tới thư mục bundle webpack khác; mặc định lấy đúng thư mục `webApp/build/kotlin-webpack/<target>/developmentExecutable` và resources tương ứng.
@@ -68,6 +68,30 @@ Remove-Item Env:E2E_REUSE_SERVERS, Env:E2E_BASE_URL, Env:E2E_API_URL
 ```
 
 Chế độ này tạo/xóa tài khoản dùng một lần trong database dev và chơi các trận test. Nếu tiến trình bị kill trước teardown, có thể còn dữ liệu test; không tự xóa dữ liệu người dùng để dọn. Nên ưu tiên backend in-memory mặc định.
+
+## Ví bền vững với PostgreSQL local
+
+Nhóm `chromium-wallet` yêu cầu `E2E_POSTGRES_SETTINGS` trỏ tới JSON có ba trường
+`url`, `user`, `passwordFile`. Chỉ chấp nhận URL chính xác
+`jdbc:postgresql://127.0.0.1:15432/admin_test`; mật khẩu đọc từ file ngoài Git.
+`psql` phải có trong PATH hoặc đặt đường dẫn executable qua `E2E_PSQL`.
+
+```powershell
+# Từ thư mục e2e, sau khi build server/Web và khởi động PostgreSQL test local.
+$env:E2E_POSTGRES_SETTINGS='../.artifacts/admin-postgres/test-settings.json'
+pnpm exec playwright test --project=chromium-wallet
+Remove-Item Env:E2E_POSTGRES_SETTINGS
+```
+
+Runner tự tạo schema UUID riêng; caller không chọn schema hiện có. Kiểm thử dùng
+receipt dev để cấp 80 Gem, đăng nhập qua form, đổi 10 Gem lấy 1.000 Vàng bằng UI,
+gửi lại request để kiểm tra chống trùng, F5 và đối chiếu số dư/lịch sử giao dịch.
+Đây chưa phải mua thật qua Google Play, App Store hoặc Web checkout.
+
+Global teardown gọi endpoint local có bearer token ngẫu nhiên để dừng JVM thuộc
+runner rồi dọn đúng schema; lỗi dọn được báo thành lỗi test. Chế độ reuse không
+khởi tạo hoặc dọn fixture này. Báo cáo ở `playwright-report-wallet/` và
+`test-results-wallet/`, đều ngoài Git. CI chạy nhóm này riêng với PostgreSQL 17.
 
 ## Báo cáo và trình duyệt
 

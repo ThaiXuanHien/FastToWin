@@ -4,6 +4,7 @@ import { stat } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
 import { dirname, extname, resolve, sep, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { openLocalPostgres } from './local-postgres.mjs';
 
 const repo = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const webTarget = process.env.E2E_WEB_TARGET || 'wasmJs';
@@ -35,18 +36,17 @@ try {
 const java = process.env.JAVA_HOME
   ? join(process.env.JAVA_HOME, 'bin', process.platform === 'win32' ? 'java.exe' : 'java') : 'java';
 const serverEnv = {
-  ...process.env,
+  ...Object.fromEntries(['PATH', 'Path', 'SystemRoot', 'WINDIR', 'TEMP', 'TMP', 'JAVA_TOOL_OPTIONS']
+    .filter(key => process.env[key]).map(key => [key, process.env[key]])),
   FASTTOWIN_ENV: 'dev',
   FASTTOWIN_WEB_ORIGINS: baseURL.origin,
   SERVER_HOST: apiURL.hostname,
   PORT: apiURL.port,
 };
-// A fresh in-memory backend; do not inherit production/dev DB or push credentials.
-for (const key of Object.keys(serverEnv)) {
-  if (/^(DATABASE_|TEST_DATABASE_|FIREBASE_|GOOGLE_APPLICATION_CREDENTIALS$|FASTTOWIN_MAINTENANCE)/.test(key)) {
-    delete serverEnv[key];
-  }
-}
+// A fresh backend with no inherited DB, email, billing, push or admin settings.
+const database = process.env.E2E_POSTGRES_SETTINGS
+  ? await openLocalPostgres(process.env.E2E_POSTGRES_SETTINGS, process.env.E2E_PSQL || 'psql') : null;
+if (database) Object.assign(serverEnv, database.serverEnvironment);
 const backend = spawn(java, ['-cp', join(lib, '*'), 'com.hienthai.fastowin.server.MainKt'], {
   cwd: resolve(repo, 'e2e'), env: serverEnv, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true,
 });
@@ -61,6 +61,13 @@ const frontend = createServer(async (req, res) => {
   try {
     const pathname = decodeURIComponent(new URL(req.url, baseURL).pathname);
     res.setHeader('Cache-Control', 'no-store');
+    if (pathname === '/__e2e/shutdown') {
+      if (req.method !== 'POST' || !process.env.E2E_SHUTDOWN_TOKEN ||
+          req.headers.authorization !== `Bearer ${process.env.E2E_SHUTDOWN_TOKEN}`) {
+        res.writeHead(403); return res.end();
+      }
+      return await stop(0, res);
+    }
     if (pathname === '/__e2e/ready') { res.writeHead(ready ? 200 : 503); return res.end(ready ? 'OK' : 'Starting'); }
     if (pathname === '/config.js') {
       res.setHeader('Content-Type', 'text/javascript');
@@ -78,13 +85,27 @@ const frontend = createServer(async (req, res) => {
     createReadStream(file).on('error', () => res.destroy()).pipe(res);
   } catch { res.writeHead(400); res.end('Bad request'); }
 });
-function stop(code = 0) {
+async function stop(code = 0, response) {
   if (closing) return;
   closing = true;
   frontend.close();
+  const stopped = new Promise(resolve => {
+    if (backend.exitCode !== null || backend.signalCode !== null || !backend.pid) return resolve();
+    const timer = setTimeout(() => resolve(false), 5_000);
+    backend.once('exit', () => { clearTimeout(timer); resolve(true); });
+  });
   backend.kill();
-  process.exitCode = code;
-  setTimeout(() => process.exit(code), 1000).unref();
+  if (await stopped === false) {
+    console.error('Owned E2E backend did not stop; schema retained for diagnosis.');
+    code = 1;
+  } else if (database) {
+    try { await database.close(); }
+    catch { console.error('Owned E2E schema cleanup failed.'); code = 1; }
+  }
+  if (response) {
+    response.writeHead(code === 0 ? 200 : 500, { 'Content-Type': 'application/json' });
+    response.end(JSON.stringify({ cleaned: code === 0 }), () => process.exit(code));
+  } else process.exit(code);
 }
 process.on('SIGINT', () => stop());
 process.on('SIGTERM', () => stop());

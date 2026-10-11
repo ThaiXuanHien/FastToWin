@@ -1,7 +1,9 @@
 import { defineConfig } from 'playwright/test';
+import { randomUUID } from 'node:crypto';
 
 const reuse = process.env.E2E_REUSE_SERVERS === '1';
 const jsFallback = process.env.E2E_JS_FALLBACK === '1';
+const durable = Boolean(process.env.E2E_POSTGRES_SETTINGS);
 const baseURL = process.env.E2E_BASE_URL || 'http://127.0.0.1:18081';
 const apiURL = process.env.E2E_API_URL || 'http://127.0.0.1:18080';
 
@@ -13,19 +15,21 @@ for (const value of [baseURL, apiURL]) {
   }
 }
 process.env.E2E_API_URL = apiURL;
+process.env.E2E_SHUTDOWN_TOKEN ||= randomUUID();
 
 export default defineConfig({
   testDir: './tests',
+  globalTeardown: reuse ? undefined : './support/teardown.mjs',
   timeout: 180_000,
   expect: { timeout: 20_000 },
   fullyParallel: false,
   workers: 1,
   forbidOnly: !!process.env.CI,
   retries: 0,
-  outputDir: jsFallback ? 'test-results-js-fallback' : 'test-results',
+  outputDir: durable ? 'test-results-wallet' : jsFallback ? 'test-results-js-fallback' : 'test-results',
   reporter: [['list'], ['html', {
     open: 'never',
-    outputFolder: jsFallback ? 'playwright-report-js-fallback' : 'playwright-report',
+    outputFolder: durable ? 'playwright-report-wallet' : jsFallback ? 'playwright-report-js-fallback' : 'playwright-report',
   }]],
   use: {
     baseURL,
@@ -63,6 +67,16 @@ export default defineConfig({
     {
       name: 'chromium',
       testMatch: /game\.spec\.mjs/,
+      use: { browserName: 'chromium' },
+    },
+    {
+      name: 'chromium-wallet',
+      testMatch: /shop\.spec\.mjs/,
+      use: { browserName: 'chromium' },
+    },
+    {
+      name: 'chromium-tournament',
+      testMatch: /tournament-schedule\.spec\.mjs/,
       use: { browserName: 'chromium' },
     },
     {

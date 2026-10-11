@@ -5,7 +5,7 @@ Checkbox hoặc issue OPEN không tự chứng minh một tính năng còn thi�
 
 | Issue | Kết quả đối chiếu | Việc còn lại |
 | --- | --- | --- |
-| #1 | Cửa hàng hiện chỉ bán Gem/đổi Vàng; mua cosmetic đã bỏ. Có kiểm thử billing, ví, trang bị legacy và Android UI | Đối chiếu lại phạm vi, bổ sung E2E Web nếu thiếu; không làm lại cửa hàng cosmetic |
+| #1 | Cửa hàng hiện chỉ bán Gem/đổi Vàng; mua cosmetic đã bỏ. Có kiểm thử billing, ví, trang bị legacy, Android UI và E2E Web PostgreSQL local đạt | Cần merge/CI nhóm mới và nghiệm thu provider thật; không làm lại cửa hàng cosmetic |
 | #2 | CI build iOS simulator; không có máy Mac/iPhone/iPad ở workspace Windows | Chạy simulator và thiết bị thật, ghi cấu hình/bằng chứng; tài khoản Apple không phải điều kiện của build simulator không ký |
 | #3 | Đã bổ sung 3 baseline đăng nhập; tổng 133 ảnh validate đạt, ảnh cũ không đổi | CI cần chạy revision mới; tài liệu đã cập nhật số ảnh |
 | #4 | Đã đo Kover: server 86,67%, shared 52,29%; floor 86%/52%; gate chuẩn đạt và ngưỡng 100% bị từ chối | HTML/XML/artifact/gate đã thêm CI; cần kết quả CI revision mới |
@@ -49,6 +49,7 @@ issue [#28](https://github.com/ThaiXuanHien/FastToWin/issues/28).
 - Review harness đã sửa xác nhận rời phòng, giới hạn/cancel setup, xác nhận listener thuộc JVM vừa tạo và dọn schema khi CREATE không rõ kết quả.
 - CI master `38107748133` kết thúc với Web E2E 88 pass/1 fail/2 skip: ô tên phòng nằm phía trên nhưng helper chỉ cuộn xuống khi semantics bounds bằng 0. Đã có test tái hiện và sửa helper; không quy lỗi này thành gameplay/production mất kết nối.
 - Bản sửa helper đạt 8 kiểm thử Chromium (1 skip có chủ đích cho viewport touch), sau đó 6 kiểm thử WebKit/Chromium gồm language/reload, Dark-only migration và compact dialog. Dùng cả phần tử có role để phát hiện vị trí cuộn WebKit; chỉ phần tử có id không đủ. Firefox local không khởi động được (`spawn UNKNOWN`); kết quả Firefox Linux trong CI vẫn là điều kiện xác minh riêng.
+- Web wallet với schema PostgreSQL riêng: 1/1 đạt; đổi 10 Gem lấy 1.000 Vàng, replay không cộng trùng, F5 giữ 70 Gem/1.000 Vàng và lịch sử đúng nguồn/request/số tiền. Runner mới đạt thêm 6/6 hồi quy memory WebKit/Chromium; dọn schema đã xác nhận. Provider thật vẫn chưa được nghiệm thu.
 
 ## Thứ tự thực hiện
 
