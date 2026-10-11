@@ -167,6 +167,8 @@ fun Application.gameModule(
         allowHeader(HttpHeaders.Authorization)
         allowMethod(HttpMethod.Options)
         allowHeader(HttpHeaders.ContentType)
+        // Player announcement requests explicitly avoid caching, including across Web origins.
+        allowHeader(HttpHeaders.CacheControl)
         allowHeader(WEB_SESSION_HEADER)
         allowHeader(WEB_CSRF_HEADER)
         if (adminService != null) allowHeader("X-Admin-CSRF")

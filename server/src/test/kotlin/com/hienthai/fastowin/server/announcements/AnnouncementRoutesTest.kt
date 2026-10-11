@@ -40,6 +40,29 @@ import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonPrimitive
 
 class AnnouncementRoutesTest {
+    @Test fun `browser banner preflight permits client cache directive only from configured origin`() = testApplication {
+        val origin = "http://127.0.0.1:18081"
+        application { gameModule(allowedWebOriginsValue = origin) }
+        val allowed = client.request("/api/announcements/banners") {
+            method = io.ktor.http.HttpMethod.Options
+            header(HttpHeaders.Origin, origin)
+            header(HttpHeaders.AccessControlRequestMethod, "GET")
+            header(HttpHeaders.AccessControlRequestHeaders, "authorization,cache-control")
+        }
+        assertEquals(HttpStatusCode.OK, allowed.status)
+        assertEquals(origin, allowed.headers[HttpHeaders.AccessControlAllowOrigin])
+        assertTrue(allowed.headers[HttpHeaders.AccessControlAllowHeaders].orEmpty().lowercase().contains("cache-control"))
+        assertEquals("no-store", allowed.headers[HttpHeaders.CacheControl])
+        val denied = client.request("/api/announcements/banners") {
+            method = io.ktor.http.HttpMethod.Options
+            header(HttpHeaders.Origin, "https://untrusted.invalid")
+            header(HttpHeaders.AccessControlRequestMethod, "GET")
+            header(HttpHeaders.AccessControlRequestHeaders, "authorization,cache-control")
+        }
+        assertEquals(HttpStatusCode.Forbidden, denied.status)
+        assertEquals("no-store", denied.headers[HttpHeaders.CacheControl])
+    }
+
     @Test fun `player inbox rejects missing authentication`() = testApplication {
         application {
             val service = AnnouncementService(InMemoryNotificationRepository().announcements, null)

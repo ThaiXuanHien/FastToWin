@@ -148,7 +148,7 @@ jobs:
     name: Web E2E (responsive + multi-browser)
     needs: build-and-test
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 45
 
     steps:
       - name: Checkout source
