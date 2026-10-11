@@ -32,6 +32,7 @@ export const test = base.extend({
         accessToken: session.accessToken,
         errors: [],
         expectedNavigationAbortUntil: 0,
+        correlatedWebKitAbortUntil: 0,
         blocked: false,
         sockets: new Set(),
       };
@@ -108,8 +109,18 @@ export const test = base.extend({
           message,
           now: Date.now(),
           expectedUntil: actor.expectedNavigationAbortUntil,
+          correlatedWebKitAbortUntil: actor.correlatedWebKitAbortUntil,
         });
-        if (expectedNavigationAbort) return;
+        if (expectedNavigationAbort) {
+          if (browserName === 'webkit' && message.endsWith('due to access control checks.')) {
+            // Confirm only the loopback cancellation already accepted above;
+            // its Kotlin/Wasm wrapper follows within the same event burst.
+            actor.correlatedWebKitAbortUntil = Math.min(actor.expectedNavigationAbortUntil, Date.now() + 250);
+          } else if (message === 'Fail to fetch') {
+            actor.correlatedWebKitAbortUntil = 0;
+          }
+          return;
+        }
         actor.errors.push(message);
       });
       actor.navigate = async action => {
