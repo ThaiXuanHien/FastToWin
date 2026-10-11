@@ -35,6 +35,7 @@ export const test = base.extend({
         closing: false,
         expectedNavigationAbortUntil: 0,
         correlatedWebKitAbortUntil: 0,
+        cancelledWebKitRequest: null,
         blocked: false,
         sockets: new Set(),
       };
@@ -109,6 +110,15 @@ export const test = base.extend({
       };
       actor.reconnect = () => { actor.blocked = false; };
       actor.page = await context.newPage();
+      actor.page.on('requestfailed', request => {
+        const at = Date.now();
+        if (testInfo.project.use.browserName !== 'webkit' || at > actor.expectedNavigationAbortUntil) return;
+        const url = new URL(request.url());
+        actor.cancelledWebKitRequest = {
+          url: `${url.origin}${url.pathname}`, method: request.method(),
+          failureText: request.failure()?.errorText, at,
+        };
+      });
       actor.page.on('pageerror', error => {
         // Browsers can report an in-flight fetch cancelled by an explicit
         // reload/history navigation as a page error. It can arrive just after
@@ -122,6 +132,8 @@ export const test = base.extend({
           now: Date.now(),
           expectedUntil: actor.expectedNavigationAbortUntil,
           correlatedWebKitAbortUntil: actor.correlatedWebKitAbortUntil,
+          cancelledRequest: actor.cancelledWebKitRequest,
+          loopbackOrigins: [new URL(baseURL).origin, new URL(process.env.E2E_API_URL).origin],
         });
         if (expectedNavigationAbort) {
           if (browserName === 'webkit' && message.endsWith('due to access control checks.')) {
@@ -130,6 +142,7 @@ export const test = base.extend({
             actor.correlatedWebKitAbortUntil = Math.min(actor.expectedNavigationAbortUntil, Date.now() + 250);
           } else if (message === 'Fail to fetch') {
             actor.correlatedWebKitAbortUntil = 0;
+            actor.cancelledWebKitRequest = null;
           }
           return;
         }
@@ -141,6 +154,7 @@ export const test = base.extend({
       actor.navigate = async action => {
         const tracksNavigationAbort = ['webkit', 'firefox'].includes(testInfo.project.use.browserName);
         if (tracksNavigationAbort) {
+          actor.cancelledWebKitRequest = null;
           actor.expectedNavigationAbortUntil = Date.now() + 3_000;
         }
         try {

@@ -127,6 +127,7 @@ Playwright WebKit không thay thế Safari/iOS thật; Chromium không thay th�
 - Không khẳng định nút disabled qua HTML: semantics hiện chưa xuất đủ thuộc tính disabled. Bộ này kiểm tra chữ **ĐÃ MỜI**, popup người nhận và trạng thái sau từ chối; kiểm tra màu tối/khóa bấm cần screenshot/UI test riêng.
 - F5 tại phòng chờ và kết quả là các bước kiểm tra rõ ràng trong kịch bản, không phải retry ngầm. Khi đóng modal tạo giải, test chờ Back xuất hiện trong cây accessibility, click vị trí hiện tại và yêu cầu Home/bottom bar phục hồi. Navigation Material xuất role `tab`; helper tìm đúng role này.
 - Khi lỗi browser chưa được chấp nhận xảy ra, fixture đính kèm stack, thời điểm, URL và trạng thái navigation/đóng context để chẩn đoán. Mọi lỗi này vẫn làm test thất bại; không bỏ qua lỗi chung chỉ vì xảy ra gần F5.
+- WebKit có thể chỉ phát `Fail to fetch` sau khi báo request bị hủy qua `requestfailed`, không có lỗi access-control đi kèm. Fixture chỉ tương quan wrapper với GET tới đúng origin loopback của test, lý do chính xác `Load request cancelled`, trong cửa sổ reload/history đã khai báo và tối đa 250 ms sau request bị hủy. POST, origin khác, lỗi kết nối, timestamp cũ/tương lai và wrapper không có bằng chứng vẫn thất bại; correlation bị xóa khi đã tiêu thụ hoặc bắt đầu điều hướng mới.
 
 Cách quản lý server và ngắt WebSocket dựa trên [Playwright webServer](https://playwright.dev/docs/test-webserver) và [WebSocketRoute](https://playwright.dev/docs/api/class-websocketroute).
 

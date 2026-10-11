@@ -2,6 +2,36 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { isExpectedNavigationAbort } from './navigation-errors.mjs';
 
+test('WebKit generic wrapper requires a recent cancelled local GET request during navigation', () => {
+  const args = {
+    browserName: 'webkit', message: 'Fail to fetch', now: 1_000, expectedUntil: 1_500,
+    loopbackOrigins: ['http://127.0.0.1:18084', 'http://127.0.0.1:18085'],
+    cancelledRequest: {
+      url: 'http://127.0.0.1:18085/api/announcements/push-preferences',
+      method: 'GET', failureText: 'Load request cancelled', at: 980,
+    },
+  };
+  assert.equal(isExpectedNavigationAbort(args), true);
+  for (const patch of [
+    { browserName: 'chromium' },
+    { browserName: 'firefox' },
+    { expectedUntil: 999 },
+    { loopbackOrigins: [] },
+    { cancelledRequest: null },
+    ...[
+      { at: 749 }, { at: 1_001 }, { method: 'POST' },
+      { failureText: 'Could not connect to the server.' },
+      { url: 'http://127.0.0.1:19000/api/status' },
+      { url: 'https://fasttowin.up.railway.app/api/status' },
+      { url: 'malformed' },
+    ].map(request => ({ cancelledRequest: { ...args.cancelledRequest, ...request } })),
+    { loopbackOrigins: ['http://example.com'],
+      cancelledRequest: { ...args.cancelledRequest, url: 'http://example.com/api/status' } },
+  ]) {
+    assert.equal(isExpectedNavigationAbort({ ...args, ...patch }), false, JSON.stringify(patch));
+  }
+});
+
 const genericWasmError = 'Exception was thrown while running JavaScript code';
 
 test('accepts the WebKit fetch wrapper only with a correlated navigation cancellation', () => {
