@@ -32,6 +32,7 @@ export const test = base.extend({
         accessToken: session.accessToken,
         errors: [],
         errorDetails: [],
+        navigationRequestFailures: [],
         closing: false,
         expectedNavigationAbortUntil: 0,
         correlatedWebKitAbortUntil: 0,
@@ -112,12 +113,18 @@ export const test = base.extend({
       actor.page = await context.newPage();
       actor.page.on('requestfailed', request => {
         const at = Date.now();
-        if (testInfo.project.use.browserName !== 'webkit' || at > actor.expectedNavigationAbortUntil) return;
+        const browserName = testInfo.project.use.browserName;
+        if (!['webkit', 'firefox'].includes(browserName) || at > actor.expectedNavigationAbortUntil) return;
         const url = new URL(request.url());
-        actor.cancelledWebKitRequest = {
+        const failure = {
           url: `${url.origin}${url.pathname}`, method: request.method(),
           failureText: request.failure()?.errorText, at,
         };
+        // Diagnostic metadata only: never retain query strings, headers or bodies.
+        // Firefox wrappers still fail until their actual request cause is proven.
+        actor.navigationRequestFailures.push(failure);
+        if (actor.navigationRequestFailures.length > 8) actor.navigationRequestFailures.shift();
+        if (browserName === 'webkit') actor.cancelledWebKitRequest = failure;
       });
       actor.page.on('pageerror', error => {
         // Browsers can report an in-flight fetch cancelled by an explicit
@@ -149,11 +156,13 @@ export const test = base.extend({
         actor.errors.push(message);
         actor.errorDetails.push({ message, stack: error.stack, at: Date.now(),
           url: actor.page.url(), closing: actor.closing,
-          expectedNavigationAbortUntil: actor.expectedNavigationAbortUntil });
+          expectedNavigationAbortUntil: actor.expectedNavigationAbortUntil,
+          navigationRequestFailures: [...actor.navigationRequestFailures] });
       });
       actor.navigate = async action => {
         const tracksNavigationAbort = ['webkit', 'firefox'].includes(testInfo.project.use.browserName);
         if (tracksNavigationAbort) {
+          actor.navigationRequestFailures = [];
           actor.cancelledWebKitRequest = null;
           actor.expectedNavigationAbortUntil = Date.now() + 3_000;
         }
