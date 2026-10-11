@@ -10,6 +10,29 @@ import kotlinx.serialization.json.*
 import kotlin.test.*
 
 class AdminRoutesTest {
+    @Test fun `gift recipient endpoint requires admin session returns public code and never caches lookup`() = testApplication {
+        val f = AdminFixture()
+        val login = runBlocking {
+            f.owner()
+            f.repository.seedUser(UserDetail("11111111-1111-1111-1111-111111111111", "Player", "player@example.com", "REGISTERED", "ACTIVE", 1, 1, 0, 0, 0, 1000, null, null, null, playerCode = "FTW123AB"))
+            f.login()
+        }
+        application { gameModule(adminService = f.service) }
+        assertEquals(HttpStatusCode.Unauthorized, client.get("/admin/api/gift-recipient?q=FTW123AB").status)
+        for (reference in listOf("ftw123ab", "PLAYER@EXAMPLE.COM")) {
+            val response = client.get("/admin/api/gift-recipient") {
+                parameter("q", reference); header(HttpHeaders.Cookie, "fasttowin_admin=${login.token}")
+            }
+            assertEquals(HttpStatusCode.OK, response.status)
+            assertEquals("no-store", response.headers[HttpHeaders.CacheControl])
+            assertEquals("FTW123AB", Json.parseToJsonElement(response.bodyAsText()).jsonObject.getValue("playerCode").jsonPrimitive.content)
+        }
+        val unknown = client.get("/admin/api/gift-recipient?q=FTW123") { header(HttpHeaders.Cookie, "fasttowin_admin=${login.token}") }
+        assertEquals(HttpStatusCode.NotFound, unknown.status)
+        assertEquals(HttpStatusCode.Forbidden, client.get("/admin/api/gift-recipient?q=FTW123AB") {
+            header(HttpHeaders.Cookie, "fasttowin_admin=${login.token}"); header(HttpHeaders.Origin, "https://untrusted.example")
+        }.status)
+    }
     @Test fun `disabled admin has no routes`() = testApplication {
         application { gameModule() }
         assertEquals(HttpStatusCode.NotFound, client.get("/admin/api/users").status)

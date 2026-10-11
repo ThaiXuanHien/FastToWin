@@ -19,6 +19,7 @@ interface AdminTransaction {
     fun audit(page: PageRequest): AdminPage<AuditEntry>
     fun users(query: String, includeEmail: Boolean, page: PageRequest): AdminPage<UserSummary>
     fun user(id: String): UserDetail?
+    fun giftRecipient(reference: String): UserSummary?
     fun matches(id: String, page: PageRequest): AdminPage<MatchEntry>
     fun wallet(id: String, giftsOnly: Boolean, page: PageRequest): AdminPage<WalletEntry>
 }

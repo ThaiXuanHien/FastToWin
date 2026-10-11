@@ -1,7 +1,7 @@
 'use strict';
 
 const states = { DRAFT: 'Bản nháp', PUBLISHED: 'Đã công bố', CANCELLED: 'Đã hủy' };
-const audiences = { ALL_REGISTERED: 'Tất cả tài khoản đã đăng ký', USER_IDS: 'Danh sách ID người chơi', REGISTERED_BETWEEN: 'Đăng ký trong khoảng thời gian' };
+const audiences = { ALL_REGISTERED: 'Tất cả tài khoản đã đăng ký', SINGLE_PLAYER: 'Một người chơi', USER_IDS: 'Danh sách UUID (nâng cao)', REGISTERED_BETWEEN: 'Đăng ký trong khoảng thời gian' };
 const DAY = 86400000, BANGKOK = 7 * 3600000;
 const localDate = value => new Date(value + BANGKOK).toISOString().slice(0, 23).replace(/:00\.000$/, '').replace(/\.000$/, '');
 const epoch = value => Date.parse(value + '+07:00');
@@ -42,7 +42,11 @@ export function openGiftCampaigns(ui) {
     } parent.append(languages);
   }
   function schedule(parent, draft) {
-    facts(parent, [['Người nhận', audiences[draft.audience]], ['Phần thưởng mỗi người', `${amount(draft.gold)} Vàng · ${amount(draft.xp)} XP`], ['Thời gian phát', date(draft.availableAtEpochMillis)], ['Hết hạn', date(draft.expiresAtEpochMillis)]]);
+    facts(parent, [['Người nhận', audiences[isIndividual(draft) ? 'SINGLE_PLAYER' : draft.audience]], ['Phần thưởng mỗi người', `${amount(draft.gold)} Vàng · ${amount(draft.xp)} XP`], ['Thời gian phát', date(draft.availableAtEpochMillis)], ['Hết hạn', date(draft.expiresAtEpochMillis)]]);
+  }
+  function isIndividual(draft) { return draft.audience === 'USER_IDS' && draft.userIds.length === 1; }
+  function recipientFacts(parent, person, className = 'facts gift-recipient') {
+    facts(parent, [['Người chơi', person.displayName], ['Mã người chơi', person.playerCode || '—'], ['Email', person.email ?? 'Không có email']], className);
   }
   function totals(parent, preview) {
     facts(parent, [['Người nhận', amount(preview.recipientCount)], ['Tổng Vàng', amount(preview.totalGold)], ['Tổng XP', amount(preview.totalXp)]], 'gift-totals');
@@ -110,7 +114,14 @@ export function openGiftCampaigns(ui) {
         if (owner() && campaign.state !== 'CANCELLED') actions.append(button('Hủy chiến dịch', () => cancel(data)));
         container.append(actions); content(container, draft); schedule(container, draft);
         facts(container, [['ID chiến dịch', campaign.id], ['Phiên bản', amount(campaign.version)], ['Lý do chiến dịch', draft.reason], ['Ngày công bố', date(campaign.publishedAtEpochMillis)], ...(campaign.state === 'CANCELLED' ? [['Lý do hủy', campaign.cancellationReason], ['Ngày hủy', date(campaign.cancelledAtEpochMillis)]] : [])]);
-        if (draft.audience === 'USER_IDS') container.append(node('p', draft.userIds.join('\n'), { class: 'mono gift-body' }));
+        if (isIndividual(draft)) {
+          try { recipientFacts(container, await api('/users/' + encodeURIComponent(draft.userIds[0]), task)); }
+          catch (error) {
+            if (error.status !== 404) throw error;
+            container.append(node('p', draft.userIds[0], { class: 'mono gift-body' }));
+          }
+        }
+        else if (draft.audience === 'USER_IDS') container.append(node('p', draft.userIds.join('\n'), { class: 'mono gift-body' }));
         if (draft.audience === 'REGISTERED_BETWEEN') facts(container, [['Đăng ký từ (bao gồm)', date(draft.registeredFromEpochMillis)], ['Đăng ký đến (không bao gồm)', date(draft.registeredUntilEpochMillis)]]);
         container.append(node('h2', 'Báo cáo chiến dịch'));
         facts(container, [['Đủ điều kiện', counters.eligible], ['Chờ phát', counters.pending], ['Đã phát', counters.delivered], ['Đã nhận', counters.claimed], ['Hết hạn', counters.expired], ['Đã hủy chưa nhận', counters.cancelled], ['Bỏ qua', counters.skipped], ['Vàng đã nhận', counters.claimedGold], ['XP đã nhận', counters.claimedXp]].map(([key, value]) => [key, amount(value)]), 'gift-report');
@@ -131,10 +142,29 @@ export function openGiftCampaigns(ui) {
     const xp = field(rewards, 'XP mỗi người', 'gift-xp', 'number', { required: '', min: '0', max: '2147483647', step: '1' });
     const audience = select(form, 'Người nhận', 'gift-audience', audiences);
     const activity = node('option', 'Theo hoạt động gần nhất — chưa hỗ trợ', { value: 'ACTIVITY', disabled: '' }); audience.append(activity);
-    form.append(node('p', 'Chưa có nguồn hoạt động gần nhất chính thức. Không dùng ngày đăng ký thay thế.', { class: 'muted gift-help' }));
+    const activityHelp = node('p', 'Chưa có nguồn hoạt động gần nhất chính thức. Không dùng ngày đăng ký thay thế.', { class: 'muted gift-help' }); form.append(activityHelp);
+    const individual = node('div', null, { class: 'stack' }); form.append(individual);
+    const reference = field(individual, 'Mã người chơi hoặc email', 'gift-reference', 'text', { maxlength: '254', autocomplete: 'off', autocapitalize: 'none', spellcheck: 'false', 'aria-describedby': 'gift-reference-help' });
+    individual.append(node('p', 'Nhập đúng mã trong hồ sơ game hoặc email đăng ký, rồi tra cứu để kiểm tra người nhận.', { class: 'muted gift-help', id: 'gift-reference-help' }));
+    const recipientPanel = node('div', null, { class: 'gift-recipient', 'aria-live': 'polite' });
+    const lookupNotices = feedback(individual), lookupRequest = channel(); let resolved = null;
+    function clearRecipient() { lookupRequest(); resolved = null; recipientPanel.replaceChildren(); lookupNotices.clear(); lookup.disabled = false; }
+    const lookup = button('Tra cứu người nhận', async () => {
+      const value = reference.value.trim(); clearRecipient();
+      if (!value) { lookupNotices.fail(new Error('Nhập mã người chơi hoặc email.'), true); return; }
+      const task = lookupRequest(); lookup.disabled = true; lookupNotices.status.textContent = 'Đang tra cứu người nhận…';
+      try {
+        const person = await api('/gift-recipient?q=' + encodeURIComponent(value), task);
+        if (!task.current() || !surface.dialog.open || reference.value.trim() !== value || audience.value !== 'SINGLE_PLAYER') return;
+        resolved = { reference: value, person }; recipientPanel.replaceChildren(); recipientFacts(recipientPanel, person, 'facts');
+        lookupNotices.status.textContent = 'Đã xác định người nhận.';
+      } catch (error) { if (task.current() && surface.dialog.open && error.name !== 'AbortError') lookupNotices.fail(error, true); }
+      finally { if (task.current() && surface.dialog.open) lookup.disabled = false; }
+    });
+    append(individual, lookup, recipientPanel); reference.addEventListener('input', clearRecipient);
     const idsGroup = node('div', null, { class: 'stack' }); form.append(idsGroup);
     const ids = field(idsGroup, 'ID người chơi', 'gift-ids', 'textarea', { 'aria-describedby': 'gift-ids-help' });
-    idsGroup.append(node('p', 'Mỗi ID một dòng hoặc phân cách bằng dấu phẩy. Tối đa 10.000 UUID; ID trùng được gộp khi xem trước.', { class: 'muted gift-help', id: 'gift-ids-help' }));
+    idsGroup.append(node('p', 'Nhập từ 1 đến 10.000 UUID nội bộ, mỗi ID một dòng hoặc phân cách bằng dấu phẩy. Không cần đủ 10.000. Để dùng mã game hoặc email, chọn “Một người chơi”. ID trùng được gộp khi xem trước.', { class: 'muted gift-help', id: 'gift-ids-help' }));
     const bounds = node('div', null, { class: 'stack' }); form.append(bounds);
     const from = field(bounds, 'Đăng ký từ (Bangkok, bao gồm)', 'gift-from', 'datetime-local', { step: '0.001' });
     const until = field(bounds, 'Đăng ký đến (Bangkok, không bao gồm)', 'gift-until', 'datetime-local', { step: '0.001' });
@@ -144,6 +174,7 @@ export function openGiftCampaigns(ui) {
     const reason = field(form, 'Lý do chiến dịch', 'gift-reason', 'textarea', { required: '', maxlength: '500' });
     const values = { titleVi, titleEn, bodyVi, bodyEn, gold, xp, reason, audience };
     for (const [key, input] of Object.entries(values)) input.value = draft?.[key] ?? (key === 'audience' ? 'ALL_REGISTERED' : ['gold', 'xp'].includes(key) ? '0' : '');
+    if (draft && isIndividual(draft)) audience.value = 'SINGLE_PLAYER';
     ids.value = draft?.userIds?.join('\n') ?? '';
     from.value = draft?.registeredFromEpochMillis == null ? '' : localDate(draft.registeredFromEpochMillis);
     until.value = draft?.registeredUntilEpochMillis == null ? '' : localDate(draft.registeredUntilEpochMillis);
@@ -152,7 +183,7 @@ export function openGiftCampaigns(ui) {
     let customExpiry = Boolean(draft);
     expires.addEventListener('input', () => { customExpiry = true; });
     available.addEventListener('input', () => { if (!customExpiry && Number.isFinite(epoch(available.value))) expires.value = localDate(epoch(available.value) + 30 * DAY); });
-    function audienceChanged() { idsGroup.hidden = audience.value !== 'USER_IDS'; bounds.hidden = audience.value !== 'REGISTERED_BETWEEN'; ids.required = !idsGroup.hidden; from.required = until.required = !bounds.hidden; }
+    function audienceChanged() { clearRecipient(); individual.hidden = audience.value !== 'SINGLE_PLAYER'; activityHelp.hidden = !individual.hidden; reference.required = !individual.hidden; idsGroup.hidden = audience.value !== 'USER_IDS'; bounds.hidden = audience.value !== 'REGISTERED_BETWEEN'; ids.required = !idsGroup.hidden; from.required = until.required = !bounds.hidden; }
     audience.addEventListener('change', audienceChanged); audienceChanged();
     const notices = feedback(form), submit = node('button', 'Lưu bản nháp', { type: 'submit', class: 'primary' });
     form.append(append(node('div', null, { class: 'modal-actions' }), surface.cancel, submit));
@@ -162,7 +193,13 @@ export function openGiftCampaigns(ui) {
       for (const key of ['titleVi', 'titleEn', 'bodyVi', 'bodyEn', 'reason']) if (!body[key]) throw new Error('Nội dung và lý do không được chỉ gồm khoảng trắng.');
       if (/[\u0000-\u001f\u007f]/.test(body.reason)) throw new Error('Lý do cần nằm trên một dòng và không chứa ký tự điều khiển.');
       body.userIds = body.audience === 'USER_IDS' ? ids.value.split(/[\s,;]+/).filter(Boolean) : [];
-      if (body.userIds.length > 10000 || body.userIds.some(id => !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id))) throw new Error('Nhập tối đa 10.000 ID người chơi theo định dạng UUID.');
+      if (body.audience === 'SINGLE_PLAYER') {
+        if (!resolved || resolved.reference !== reference.value.trim()) throw new Error('Tra cứu và kiểm tra người nhận trước khi lưu bản nháp.');
+        body.audience = 'USER_IDS'; body.userIds = [resolved.person.id];
+      }
+      if (body.userIds.length > 10000) throw new Error('Danh sách vượt giới hạn 10.000 ID. Có thể gửi cho một người bằng lựa chọn “Một người chơi”.');
+      if (body.audience === 'USER_IDS' && !body.userIds.length) throw new Error('Nhập ít nhất một UUID hoặc chọn “Một người chơi” để dùng mã game hoặc email.');
+      if (body.userIds.some(id => !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id))) throw new Error('Danh sách nâng cao chỉ nhận UUID nội bộ. Để nhập mã game hoặc email, chọn “Một người chơi”.');
       body.registeredFromEpochMillis = body.audience === 'REGISTERED_BETWEEN' ? epoch(from.value) : null;
       body.registeredUntilEpochMillis = body.audience === 'REGISTERED_BETWEEN' ? epoch(until.value) : null;
       if (body.audience === 'REGISTERED_BETWEEN' && !(body.registeredFromEpochMillis >= 0 && body.registeredUntilEpochMillis > body.registeredFromEpochMillis)) throw new Error('Khoảng đăng ký cần có mốc kết thúc sau mốc bắt đầu.');
@@ -171,6 +208,15 @@ export function openGiftCampaigns(ui) {
       if (campaign) body.expectedVersion = campaign.version; return body;
     }, result => { surface.finish(); detail(result.campaign.id, 'Đã lưu bản nháp.'); }, campaign ? 'PUT' : 'POST', () => { surface.finish(); detail(campaign.id, '', 'Bản nháp đã thay đổi. Kiểm tra dữ liệu mới trước khi sửa lại.'); });
     surface.show(titleVi);
+    if (draft && isIndividual(draft)) {
+      const task = lookupRequest(); lookup.disabled = true; lookupNotices.status.textContent = 'Đang tải người nhận đã lưu…';
+      api('/users/' + encodeURIComponent(draft.userIds[0]), task).then(person => {
+        if (!task.current() || !surface.dialog.open || audience.value !== 'SINGLE_PLAYER') return;
+        reference.value = person.playerCode || person.email || ''; recipientFacts(recipientPanel, person, 'facts');
+        lookupNotices.status.textContent = 'Tra cứu lại để xác nhận người nhận trước khi lưu.';
+      }).catch(error => { if (task.current() && surface.dialog.open && error.name !== 'AbortError') lookupNotices.fail(error); })
+        .finally(() => { if (task.current() && surface.dialog.open) lookup.disabled = false; });
+    }
   }
   async function preview(data, opener) {
     const { campaign } = data, request = channel(), task = request();
@@ -179,7 +225,12 @@ export function openGiftCampaigns(ui) {
     try {
       const result = await api(path(campaign.id) + '/preview', task, { expectedVersion: campaign.version });
       if (result.campaignId !== campaign.id || result.version !== campaign.version) throw Object.assign(new Error('Dữ liệu xem trước đã thay đổi.'), { status: 409 });
+      if (isIndividual(campaign.draft) && !result.invalidUserIds.includes(campaign.draft.userIds[0])) {
+        try { result.recipient = await api('/users/' + encodeURIComponent(campaign.draft.userIds[0]), task); }
+        catch (error) { if (error.status !== 404) throw error; }
+      }
       panel.replaceChildren(); totals(panel, result); content(panel, campaign.draft); schedule(panel, campaign.draft);
+      if (result.recipient) recipientFacts(panel, result.recipient);
       panel.append(node('p', `${amount(result.duplicateCount)} ID trùng đã được gộp.`, { class: 'muted' }));
       if (result.invalidUserIds.length) append(panel, node('p', 'ID không hợp lệ hoặc không đủ điều kiện. Sửa bản nháp trước khi công bố.', { role: 'alert', class: 'alert' }), node('p', result.invalidUserIds.join('\n'), { class: 'mono gift-body' }));
       const actions = append(node('div', null, { class: 'modal-actions' }), surface.cancel); panel.append(actions);
@@ -198,6 +249,7 @@ export function openGiftCampaigns(ui) {
     const { campaign } = data, surface = giftModal('Xác nhận công bố', opener), form = node('form', null, { class: 'stack' }); surface.dialog.append(form);
     append(form, node('p', campaign.draft.titleVi), node('p', 'Công bố sẽ cố định nội dung, phần thưởng, người nhận và lịch phát. Sau đó không thể sửa chiến dịch.', { class: 'muted' }));
     totals(form, preview); facts(form, [['Thời gian phát', date(campaign.draft.availableAtEpochMillis)], ['Hết hạn', date(campaign.draft.expiresAtEpochMillis)], ['Lý do công bố', campaign.draft.reason]]);
+    if (preview.recipient) recipientFacts(form, preview.recipient);
     const notices = feedback(form), submit = node('button', 'Công bố chiến dịch', { type: 'submit', class: 'primary' });
     form.append(append(node('div', null, { class: 'modal-actions' }), surface.cancel, submit));
     mutation(form, submit, notices, surface, path(campaign.id) + '/publish', () => ({ expectedVersion: campaign.version, previewToken: preview.previewToken, reason: campaign.draft.reason }), () => { surface.finish(); detail(campaign.id, 'Đã công bố chiến dịch.'); }, 'POST', () => { surface.finish(); detail(campaign.id, '', 'Dữ liệu đã thay đổi. Xem trước lại trước khi công bố.'); });

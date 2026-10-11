@@ -76,11 +76,16 @@ class InMemoryAdminRepository : AdminRepository {
             fun available() { if (!next.playerStorageAvailable) unavailable() }
             override fun users(query: String, includeEmail: Boolean, page: PageRequest): AdminPage<UserSummary> {
                 available()
-                val items = next.users.values.filter { query.isEmpty() || it.id == query || it.displayName.contains(query, true) || (includeEmail && it.email?.contains(query, true) == true) }
+                val items = next.users.values.filter { query.isEmpty() || it.id == query || it.playerCode.equals(query, true) || it.displayName.contains(query, true) || (includeEmail && it.email?.contains(query, true) == true) }
                     .sortedWith(compareByDescending<UserDetail> { it.createdAtEpochMillis }.thenBy { it.id }).map { it.summary() }
                 return paginate(items, page)
             }
             override fun user(id: String): UserDetail? { available(); return next.users[id] }
+            override fun giftRecipient(reference: String): UserSummary? {
+                available()
+                return next.users.values.filter { it.accountType == "REGISTERED" && it.status != "DELETED" &&
+                    (it.playerCode.equals(reference, true) || it.email?.equals(reference, true) == true) }.singleOrNull()?.summary()
+            }
             override fun matches(id: String, page: PageRequest): AdminPage<MatchEntry> {
                 available(); return paginate(next.matches[id].orEmpty().sortedWith(compareByDescending<MatchEntry> { it.finishedAtEpochMillis }.thenBy { it.id }), page)
             }

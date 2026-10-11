@@ -381,16 +381,16 @@ function directory() {
   if (!session) return;
   const main = shell('Người chơi', 'users');
   const support = session.admin.role === 'SUPPORT';
-  const help = node('p', support ? 'Support chỉ tìm bằng ID hoặc tên. Email được che bởi máy chủ.' : 'Tra cứu ID, tên hoặc email. Dữ liệu người chơi chỉ để đọc.', { class: 'muted', id: 'search-help' }); main.append(help);
+  const help = node('p', support ? 'Support chỉ tìm bằng mã người chơi hoặc tên. Email được che bởi máy chủ.' : 'Tra cứu mã người chơi, tên hoặc email. Dữ liệu người chơi chỉ để đọc.', { class: 'muted', id: 'search-help' }); main.append(help);
   const form = node('form', null, { class: 'search' });
   const query = field(form, 'Tìm người chơi', 'query', 'search', { maxlength: '128', 'aria-describedby': 'search-help', autocomplete: 'off' });
-  query.setAttribute('placeholder', support ? 'Nhập ID hoặc tên người chơi…' : 'Nhập ID, tên hoặc email…');
+  query.setAttribute('placeholder', support ? 'Nhập mã người chơi hoặc tên…' : 'Nhập mã người chơi, tên hoặc email…');
   const search = iconButton('Tìm kiếm', null, 'search', { type: 'submit', class: 'primary' }); form.append(search); main.append(form);
   const notices = feedback(main), results = node('div', null, { class: 'results' }); main.append(results);
   const request = channel(); let currentQuery = '';
   async function load(page = 0) {
     const task = request(); results.replaceChildren(); notices.clear();
-    if (support && currentQuery.includes('@')) { notices.fail(new Error('Support chỉ tìm bằng ID hoặc tên.'), true); return; }
+    if (support && currentQuery.includes('@')) { notices.fail(new Error('Support chỉ tìm bằng mã người chơi hoặc tên.'), true); return; }
     notices.status.textContent = 'Đang tải người chơi…';
     try {
       const data = await api(`/users?q=${encodeURIComponent(currentQuery)}&page=${page}&pageSize=25`, task);
@@ -399,7 +399,7 @@ function directory() {
       for (const user of data.items) {
         const row = node('article', null, { class: 'row' }), text = node('div', null, { class: 'row-info' });
         const metadata = node('div', null, { class: 'row-meta' });
-        append(text, node('strong', user.displayName), node('p', user.email ?? 'Không có email', { class: 'muted' }));
+        append(text, node('strong', user.displayName), append(node('p', null, { class: 'muted' }), node('span', `Mã: ${user.playerCode || '—'}`), node('span', ' · ', { 'aria-hidden': 'true' }), node('span', user.email ?? 'Không có email')));
         append(metadata, node('span', label(user.accountType), { class: 'badge' }), node('span', label(user.status), { class: 'badge badge-' + (user.status === 'ACTIVE' ? 'active' : 'inactive') }));
         append(row, avatar(user.displayName), text, metadata, iconButton('Xem người chơi', () => detail(user.id), 'eye')); results.append(row);
       }
@@ -421,7 +421,7 @@ function detail(id) {
     try {
       const user = await api('/users/' + encodeURIComponent(id), task);
       notices.status.textContent = ''; main.querySelector('h1').textContent = user.displayName;
-      append(content, node('p', user.email ?? 'Không có email'), node('p', user.id, { class: 'mono muted' }));
+      append(content, node('p', user.email ?? 'Không có email'), node('p', `Mã người chơi: ${user.playerCode || '—'}`, { class: 'mono' }), node('p', `UUID: ${user.id}`, { class: 'mono muted' }));
       const metrics = node('dl', null, { class: 'metrics' });
       for (const [label, value] of [['Cấp độ', user.level], ['XP', user.xp], ['Vàng', user.gold], ['Gem', user.gems], ['Elo', user.elo]]) append(metrics, append(node('div', null, { class: 'metric' }), node('dt', label), node('dd', amount(value))));
       const facts = node('dl', null, { class: 'facts' });

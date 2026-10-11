@@ -86,23 +86,29 @@ internal class JdbcAdminTransaction(private val connection: Connection) : AdminT
         when {
             query.isEmpty() -> { condition="TRUE"; values=emptyList() }
             id != null -> { condition="u.id=?"; values=listOf(id) }
-            includeEmail -> { condition="(p.display_name ILIKE ? ESCAPE '!' OR u.email_normalized ILIKE ? ESCAPE '!')"; values=listOf(pattern,pattern) }
-            else -> { condition="p.display_name ILIKE ? ESCAPE '!'"; values=listOf(pattern) }
+            includeEmail -> { condition="(UPPER(p.player_code)=UPPER(?) OR p.display_name ILIKE ? ESCAPE '!' OR u.email_normalized ILIKE ? ESCAPE '!')"; values=listOf(query,pattern,pattern) }
+            else -> { condition="(UPPER(p.player_code)=UPPER(?) OR p.display_name ILIKE ? ESCAPE '!')"; values=listOf(query,pattern) }
         }
         val from = "FROM users u JOIN profiles p ON p.user_id=u.id WHERE $condition"
-        val items = rows("SELECT u.id,p.display_name,u.email_normalized,u.account_type,u.status,u.created_at $from ORDER BY u.created_at DESC,u.id LIMIT ? OFFSET ?", values + listOf(page.pageSize,page.offset)) {
-            UserSummary(it.getString("id"),it.getString("display_name"),it.getString("email_normalized"),it.getString("account_type"),it.getString("status"),it.getTimestamp("created_at").time)
+        val items = rows("SELECT u.id,p.display_name,p.player_code,u.email_normalized,u.account_type,u.status,u.created_at $from ORDER BY u.created_at DESC,u.id LIMIT ? OFFSET ?", values + listOf(page.pageSize,page.offset)) {
+            UserSummary(it.getString("id"),it.getString("display_name"),it.getString("email_normalized"),it.getString("account_type"),it.getString("status"),it.getTimestamp("created_at").time,it.getString("player_code"))
         }
         return page.result(items,count("SELECT count(*) $from",values))
     }
-    override fun user(id: String): UserDetail? = rows("""SELECT u.id,p.display_name,u.email_normalized,u.account_type,u.status,u.created_at,
+    override fun giftRecipient(reference: String): UserSummary? = rows("""SELECT u.id,p.display_name,p.player_code,u.email_normalized,u.account_type,u.status,u.created_at
+        FROM users u JOIN profiles p ON p.user_id=u.id WHERE u.account_type='REGISTERED' AND u.status<>'DELETED'
+        AND (UPPER(p.player_code)=UPPER(?) OR u.email_normalized=?) LIMIT 2""",
+        listOf(reference, reference.lowercase(java.util.Locale.ROOT))) {
+        UserSummary(it.getString("id"),it.getString("display_name"),it.getString("email_normalized"),it.getString("account_type"),it.getString("status"),it.getTimestamp("created_at").time,it.getString("player_code"))
+    }.singleOrNull()
+    override fun user(id: String): UserDetail? = rows("""SELECT u.id,p.display_name,p.player_code,u.email_normalized,u.account_type,u.status,u.created_at,
         COALESCE(ps.experience_points,0) AS xp,COALESCE(ps.gold,0) AS gold,COALESCE(ps.gems,0) AS gems,COALESCE(ps.elo_rating,1000) AS elo,
         c.id AS clan_id,c.name AS clan_name,(SELECT max(s.last_seen_at) FROM sessions s WHERE s.user_id=u.id) AS last_activity
         FROM users u JOIN profiles p ON p.user_id=u.id LEFT JOIN player_stats ps ON ps.user_id=u.id
         LEFT JOIN clan_members cm ON cm.user_id=u.id LEFT JOIN clans c ON c.id=cm.clan_id WHERE u.id=?""", listOf(UUID.fromString(id))) {
         val xp=it.getInt("xp")
         UserDetail(it.getString("id"),it.getString("display_name"),it.getString("email_normalized"),it.getString("account_type"),it.getString("status"),it.getTimestamp("created_at").time,
-            PlayerProgression.levelForExperience(xp),xp,it.getInt("gold"),it.getInt("gems"),it.getInt("elo"),it.getString("clan_id"),it.getString("clan_name"),it.getTimestamp("last_activity")?.time)
+            PlayerProgression.levelForExperience(xp),xp,it.getInt("gold"),it.getInt("gems"),it.getInt("elo"),it.getString("clan_id"),it.getString("clan_name"),it.getTimestamp("last_activity")?.time,it.getString("player_code"))
     }.singleOrNull()
     override fun matches(id: String, page: PageRequest): AdminPage<MatchEntry> {
         val from="FROM match_players mp JOIN matches m ON m.id=mp.match_id WHERE mp.user_id=?"

@@ -33,6 +33,26 @@ internal class MemoryGiftFixture {
     }
 }
 class InMemoryGiftRepositoryTest {
+    @Test fun `resolved individual recipient uses existing preview publish mailbox and idempotent claim`() = runTest {
+        val f = MemoryGiftFixture(); f.initialize()
+        val player = f.admin.user(f.owner.token, f.player).copy(playerCode = "FTW123AB")
+        f.repository.seedUser(player)
+        val other = player.copy(id = UUID.randomUUID().toString(), email = "other@example.com", playerCode = "OTHER123")
+        f.repository.seedUser(other)
+        val recipient = f.admin.giftRecipient(f.owner.token, "ftw123ab")
+        assertEquals(recipient.id, f.admin.giftRecipient(f.owner.token, "PLAYER@EXAMPLE.COM").id)
+        val draft = f.request().copy(audience = GiftAudience.USER_IDS, userIds = listOf(recipient.id))
+        val campaign = f.gifts.create(f.owner, draft).campaign
+        val preview = f.gifts.preview(f.owner, campaign.id, GiftPreviewRequest(1))
+        assertEquals(1, preview.recipientCount); assertEquals(100, preview.totalGold)
+        f.gifts.publish(f.owner, campaign.id, GiftPublishRequest(1, preview.previewToken, UUID.randomUUID().toString(), "Individual gift"))
+        f.gifts.deliverDueBatch()
+        assertEquals(0, f.gifts.mailbox(other.id, PageRequest()).total)
+        assertEquals(1, f.gifts.mailbox(player.id, PageRequest()).total)
+        repeat(2) { f.gifts.claim(player.id, campaign.id) }
+        assertEquals(100, f.admin.user(f.owner.token, player.id).gold)
+        assertEquals(1, f.admin.wallet(f.owner.token, player.id, true, PageRequest()).total)
+    }
     @Test fun `memory awards share admin player balance history and retry state`() = runTest {
         val f=MemoryGiftFixture(); f.initialize(); val c=f.publish(); f.gifts.deliverDueBatch()
         coroutineScope { List(2) { async { f.gifts.claim(f.player,c.id) } }.awaitAll() }

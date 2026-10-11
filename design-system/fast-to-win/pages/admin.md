@@ -39,7 +39,7 @@ Use semantic tokens for hover/pressed states. Text contrast must exceed 4.5:1; f
 - Use locally available Roboto/Segoe UI/system fonts with Vietnamese support; 16px body, 30px page title (26px on phones), 13px metadata. Keep 8px spacing rhythm.
 - Pill buttons, selected navigation and light surface groups; avoid repeated boxes and heavy borders. Minimum control height: 48px. Outlined fields have persistent floating labels.
 - Familiar utility actions use 48×48px icon buttons: pagination chevrons, edit pencil, view eye, refresh, back, add, logout and dialog close. Search uses 56×56px to align with its input. Keep accessible Vietnamese names and tooltips on hover/keyboard focus; account edit names include the target email. Keep section names, form labels and save/cancel/sign-in actions readable as text.
-- Directory shows name, email, account type, status and profile action. Account list shows email, role, status and edit action. Long text wraps without truncating identifying data.
+- Directory shows name, public player code, email, account type, status and profile action. Search accepts public player codes case-insensitively; UUID remains secondary technical metadata in the profile. Account list shows email, role, status and edit action. Long text wraps without truncating identifying data.
 - Profile metrics share a single tonal surface; profile facts and history use light dividers. Keep all existing read-only data accessible.
 - Login uses a restrained 440px outlined card with full-width inputs and submit.
 - Account creation and access editing open native modal dialogs; width at most 560px, 28px radius, subdued scrim and one primary action. Content scrolls within short viewports. Header close and footer cancel remain available when idle.
@@ -52,6 +52,10 @@ Use semantic tokens for hover/pressed states. Text contrast must exceed 4.5:1; f
 `e2e/tests/admin.spec.mjs` covers focus containment/restoration, dismissal, abandoned secrets, pending mutations, retry IDs, expired sessions and role changes. Screenshots cover directory, profile, accounts, create/edit modals, login and audit at 360, 768, 1024 and 1440px. The light-console check verifies white canvas, text contrast including primary hover, and minimum control height in reduced-motion mode. Captures use fixture data and live under `.artifacts/admin-*.png`.
 
 ## Gift campaigns
+
+For an individual gift, choose **Một người chơi**, enter the public player code or registered email, then explicitly look up the recipient. Show name/code/email before saving, in preview and at publication confirmation. Editing the reference or audience clears the selection and fences late responses; editing a saved individual draft requires another lookup. Owner and Operator can resolve recipients; Support cannot. Keep UUIDs internal to the existing campaign payload. **Danh sách UUID (nâng cao)** remains available for bulk workflows and accepts 1–10,000 IDs; invalid-format errors must not suggest entering 10,000 IDs. The UUID field is hidden and not required for individual gifts.
+
+The gift modal header stays outside the scrollable form/preview body. Wrap long recipient emails without hiding identifying text. Phone/desktop captures for code/email lookup, directory and profile live under `.artifacts/admin-player-code/`.
 
 The Owner/Operator navigation adds **Quà admin** using the same vector/selected pill pattern. The primary add icon opens a draft modal; familiar edit/view/refresh/back utilities remain 48px icon controls. Save, preview, publish and cancellation confirmations keep readable Vietnamese text. Field labels stay Vietnamese while player content is separately authored in Vietnamese and English.
 

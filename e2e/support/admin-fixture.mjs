@@ -3,7 +3,7 @@ import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 
-export const player = { id: '00000000-0000-0000-0000-000000000001', displayName: 'Người chơi mẫu', email: 'seeded-player@example.com', accountType: 'REGISTERED', status: 'ACTIVE', createdAtEpochMillis: 1700000000000, level: 8, xp: 430, gold: 1200, gems: 12, elo: 1450, clanId: 'clan-1', clanName: 'Bang mẫu', lastActivityAtEpochMillis: null };
+export const player = { id: '00000000-0000-0000-0000-000000000001', playerCode: 'FTW123AB', displayName: 'Người chơi mẫu', email: 'seeded-player@example.com', accountType: 'REGISTERED', status: 'ACTIVE', createdAtEpochMillis: 1700000000000, level: 8, xp: 430, gold: 1200, gems: 12, elo: 1450, clanId: 'clan-1', clanName: 'Bang mẫu', lastActivityAtEpochMillis: null };
 const identity = { id: 'owner-1', email: 'owner@example.com', role: 'OWNER', active: true };
 export const pageOf = (items, page = 0, total = items.length) => ({ items, page, pageSize: 25, total });
 export const securityHeaders = { 'Content-Security-Policy': "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'", 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' };

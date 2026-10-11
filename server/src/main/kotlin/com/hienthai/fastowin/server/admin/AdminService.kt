@@ -136,6 +136,15 @@ class AdminService(
         val result = user(id) ?: missing(); auditEntry(actor.id, "USER_DETAIL", id)
         if (actor.role == AdminRole.SUPPORT) result.copy(email = maskEmail(result.email)) else result
     }
+    suspend fun giftRecipient(token: String?, reference: String): UserSummary = repository.transaction {
+        val actor = principal(token).second.identity
+        if (actor.role == AdminRole.SUPPORT) forbidden()
+        val value = reference.trim()
+        if (value.isEmpty() || reference.length > 254 || reference.any(Char::isISOControl)) invalid()
+        val result = giftRecipient(value) ?: throw AdminException(404, "NOT_FOUND", "Không tìm thấy tài khoản đã đăng ký đủ điều kiện nhận quà với mã hoặc email này.")
+        auditEntry(actor.id, "GIFT_RECIPIENT_LOOKUP", result.id)
+        result
+    }
     suspend fun matches(token: String?, id: String, page: PageRequest): AdminPage<MatchEntry> = repository.transaction {
         val actor = principal(token).second.identity; uuid(id); user(id) ?: missing()
         val result = matches(id, page); auditEntry(actor.id, "USER_MATCHES", id); result

@@ -5,6 +5,116 @@ async function draft(page) { await page.getByRole('button', { name: 'Tạo chi�
 async function preview(page) { await page.getByRole('button', { name: 'Xem trước', exact: true }).click(); await expect(page.getByRole('dialog', { name: 'Xem trước chiến dịch' }).getByText('Tổng Vàng', { exact: true })).toBeVisible(); }
 async function confirm(page) { await page.getByRole('button', { name: 'Tiếp tục công bố', exact: true }).click(); await expect(page.getByRole('dialog', { name: 'Xác nhận công bố' })).toBeVisible(); }
 
+test('UUID list accepts one ID and reports format separately from maximum count', async ({ page, fixture }) => {
+  const state = gifts(fixture); await open(page, fixture);
+  await page.getByRole('button', { name: 'Tạo chiến dịch quà', exact: true }).click(); await fillGift(page);
+  await page.getByLabel('Người nhận', { exact: true }).selectOption('SINGLE_PLAYER');
+  await expect(page.getByLabel('ID người chơi', { exact: true })).toBeHidden();
+  await expect(page.getByLabel('ID người chơi', { exact: true })).not.toHaveAttribute('required', '');
+  await page.getByLabel('Người nhận', { exact: true }).selectOption('USER_IDS');
+  const ids = page.getByLabel('ID người chơi', { exact: true }); await ids.fill(player.playerCode);
+  await page.getByRole('button', { name: 'Lưu bản nháp', exact: true }).click();
+  await expect(page.getByRole('alert')).toContainText('Một người chơi');
+  await expect(page.getByRole('alert')).not.toContainText('10.000');
+  await ids.fill(Array(10001).fill('x').join(','));
+  await page.getByRole('button', { name: 'Lưu bản nháp', exact: true }).click();
+  await expect(page.getByRole('alert')).toContainText('vượt giới hạn 10.000');
+  await ids.fill(player.id); await page.getByRole('button', { name: 'Lưu bản nháp', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Quà kiểm thử', exact: true, level: 1 })).toBeVisible();
+  expect(state.detail.campaign.draft.userIds).toEqual([player.id]);
+});
+
+for (const width of [360, 1440]) for (const reference of [player.playerCode.toLowerCase(), player.email.toUpperCase()]) test(`individual recipient ${reference} at ${width}`, async ({ page, fixture }) => {
+  const state = gifts(fixture);
+  fixture.handlers.set('/admin/api/gift-recipient', async (call, send) => {
+    expect(call.query.get('q')).toBe(reference); send(200, player); return true;
+  });
+  await page.setViewportSize({ width, height: 1000 }); await open(page, fixture);
+  await page.getByRole('button', { name: 'Tạo chiến dịch quà', exact: true }).click(); await fillGift(page);
+  await page.getByLabel('Người nhận', { exact: true }).selectOption('SINGLE_PLAYER');
+  const input = page.getByLabel('Mã người chơi hoặc email', { exact: true }); await input.fill(reference);
+  await page.getByRole('button', { name: 'Lưu bản nháp', exact: true }).click();
+  await expect(page.getByRole('alert')).toContainText('Tra cứu');
+  expect(fixture.calls.filter(c => c.route === '/admin/api/gift-campaigns' && c.method === 'POST')).toHaveLength(0);
+  await page.getByRole('button', { name: 'Tra cứu người nhận', exact: true }).click();
+  await expect(page.locator('.gift-recipient')).toContainText(player.playerCode);
+  await expect(page.locator('.gift-recipient')).toContainText(player.email);
+  await page.screenshot({ path: `../.artifacts/admin-player-code/recipient-${width}-${reference.includes('@') ? 'email' : 'code'}.png`, fullPage: true });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.getByRole('button', { name: 'Lưu bản nháp', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Quà kiểm thử', exact: true, level: 1 })).toBeVisible();
+  expect(state.detail.campaign.draft.audience).toBe('USER_IDS');
+  expect(state.detail.campaign.draft.userIds).toEqual([player.id]);
+  await preview(page);
+  await expect(page.getByRole('dialog').locator('.gift-recipient')).toContainText(player.playerCode);
+  await confirm(page);
+  await expect(page.getByRole('dialog').locator('.gift-recipient')).toContainText(player.email);
+});
+
+test('individual recipient must be looked up again after editing and lookup failure cannot save', async ({ page, fixture }) => {
+  gifts(fixture); let calls = 0;
+  fixture.handlers.set('/admin/api/gift-recipient', async (_, send) => {
+    if (++calls === 1) send(200, player); else send(404, { code: 'NOT_FOUND', message: 'Không tìm thấy người nhận.' }); return true;
+  });
+  await open(page, fixture); await page.getByRole('button', { name: 'Tạo chiến dịch quà', exact: true }).click(); await fillGift(page);
+  await page.getByLabel('Người nhận', { exact: true }).selectOption('SINGLE_PLAYER');
+  await page.getByLabel('Mã người chơi hoặc email', { exact: true }).fill(player.playerCode);
+  await page.getByRole('button', { name: 'Tra cứu người nhận', exact: true }).click();
+  await expect(page.locator('.gift-recipient')).toContainText(player.playerCode);
+  await page.getByLabel('Mã người chơi hoặc email', { exact: true }).fill('UNKNOWN');
+  await expect(page.locator('.gift-recipient')).toBeEmpty();
+  await page.getByRole('button', { name: 'Tra cứu người nhận', exact: true }).click();
+  await expect(page.getByRole('alert')).toContainText('Không tìm thấy');
+  await page.getByRole('button', { name: 'Lưu bản nháp', exact: true }).click();
+  expect(fixture.calls.filter(c => c.route === '/admin/api/gift-campaigns' && c.method === 'POST')).toHaveLength(0);
+});
+
+test('late recipient lookup cannot restore selection after input changes', async ({ page, fixture }) => {
+  gifts(fixture); let release, calls = 0;
+  fixture.handlers.set('/admin/api/gift-recipient', async (_, send) => {
+    if (++calls === 1) { await new Promise(resolve => release = resolve); send(200, player); }
+    else send(404, { code: 'NOT_FOUND', message: 'Không tìm thấy người nhận mới.' }); return true;
+  });
+  await open(page, fixture); await page.getByRole('button', { name: 'Tạo chiến dịch quà', exact: true }).click(); await fillGift(page);
+  await page.getByLabel('Người nhận', { exact: true }).selectOption('SINGLE_PLAYER');
+  const input = page.getByLabel('Mã người chơi hoặc email', { exact: true }); await input.fill(player.playerCode);
+  await page.getByRole('button', { name: 'Tra cứu người nhận', exact: true }).click();
+  await expect.poll(() => Boolean(release)).toBe(true);
+  await input.fill('UNKNOWN'); await page.getByRole('button', { name: 'Tra cứu người nhận', exact: true }).click();
+  await expect(page.getByRole('alert')).toContainText('Không tìm thấy người nhận mới'); release();
+  await page.getByRole('button', { name: 'Lưu bản nháp', exact: true }).click();
+  await expect(page.locator('.gift-recipient')).toBeEmpty();
+  expect(fixture.calls.filter(c => c.route === '/admin/api/gift-campaigns' && c.method === 'POST')).toHaveLength(0);
+});
+
+test('editing an individual draft displays public code and requires recipient confirmation', async ({ page, fixture }) => {
+  const state = gifts(fixture);
+  await open(page, fixture); await draft(page);
+  state.detail.campaign.draft.audience = 'USER_IDS'; state.detail.campaign.draft.userIds = [player.id];
+  await page.getByRole('button', { name: 'Làm mới', exact: true }).click();
+  await page.getByRole('button', { name: 'Sửa bản nháp', exact: true }).click();
+  await expect(page.getByLabel('Người nhận', { exact: true })).toHaveValue('SINGLE_PLAYER');
+  await expect(page.getByLabel('Mã người chơi hoặc email', { exact: true })).toHaveValue(player.playerCode);
+  await page.getByRole('button', { name: 'Lưu bản nháp', exact: true }).click();
+  await expect(page.getByRole('alert')).toContainText('Tra cứu');
+  expect(fixture.calls.filter(c => c.route === '/admin/api/gift-campaigns/' + giftId && c.method === 'PUT')).toHaveLength(0);
+});
+
+for (const status of [401, 403]) test(`${status} recipient lookup clears sensitive modal data`, async ({ page, fixture }) => {
+  gifts(fixture);
+  fixture.handlers.set('/admin/api/gift-recipient', async (_, send) => {
+    fixture.role = 'SUPPORT'; if (status === 401) fixture.signedIn = false;
+    send(status, { code: status === 401 ? 'UNAUTHORIZED' : 'FORBIDDEN', message: 'Quyền đã thay đổi.' }); return true;
+  });
+  await open(page, fixture); await page.getByRole('button', { name: 'Tạo chiến dịch quà', exact: true }).click();
+  await page.getByLabel('Người nhận', { exact: true }).selectOption('SINGLE_PLAYER');
+  await page.getByLabel('Mã người chơi hoặc email', { exact: true }).fill(player.email);
+  await page.getByRole('button', { name: 'Tra cứu người nhận', exact: true }).click();
+  await expect(page.getByRole('heading', { name: status === 401 ? 'Đăng nhập quản trị' : 'Người chơi', exact: true })).toBeVisible();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(page.getByLabel('Mã người chơi hoặc email', { exact: true })).toHaveCount(0);
+});
+
 test('decimal string zero recipients cannot continue publication', async ({ page, fixture }) => {
   gifts(fixture); await open(page, fixture); await draft(page);
   fixture.handlers.set(`/admin/api/gift-campaigns/${giftId}/preview`, async (_, send) => {
@@ -128,6 +238,19 @@ test('ambiguous publish preserves identical request body and blocks every dismis
   await expect(page.getByRole('alert')).toContainText('Kết quả chưa xác nhận');
   await page.getByRole('button', { name: 'Công bố chiến dịch', exact: true }).click(); await expect(page.locator('.confirmation')).toContainText('Đã công bố');
   const calls = fixture.calls.filter(c => c.route === path); expect(calls[0].body).toEqual(calls[1].body);
+});
+
+test('unknown single UUID keeps the campaign report and invalid preview visible', async ({ page, fixture }) => {
+  const state = gifts(fixture); await open(page, fixture); await draft(page);
+  state.detail.campaign.draft.audience = 'USER_IDS'; state.detail.campaign.draft.userIds = [player.id];
+  fixture.handlers.set(`/admin/api/users/${player.id}`, async (_, send) => { send(404, { code: 'NOT_FOUND', message: 'Không tìm thấy dữ liệu.' }); return true; });
+  fixture.handlers.set(`/admin/api/gift-campaigns/${giftId}/preview`, async (_, send) => { send(200, { campaignId: giftId, version: 1, recipientCount: '0', duplicateCount: 0, invalidUserIds: [player.id], totalGold: '0', totalXp: '0', previewToken: 'invalid' }); return true; });
+  await page.getByRole('button', { name: 'Làm mới', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Báo cáo chiến dịch' })).toBeVisible();
+  await preview(page);
+  await expect(page.getByRole('dialog').getByRole('alert')).toContainText('không đủ điều kiện');
+  await expect(page.getByRole('dialog').getByText(player.id, { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Tiếp tục công bố', exact: true })).toBeDisabled();
 });
 
 test('invalid recipients prevent confirmation and campaign content is text only', async ({ page, fixture }) => {

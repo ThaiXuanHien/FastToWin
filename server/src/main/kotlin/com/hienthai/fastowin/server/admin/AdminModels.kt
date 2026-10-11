@@ -12,13 +12,13 @@ import com.hienthai.fastowin.server.legacyFallback
 @Serializable data class AdminError(val code: String, val message: String)
 @Serializable data class AdminOk(val ok: Boolean = true)
 @Serializable data class AdminPage<T>(val items: List<T>, val page: Int, val pageSize: Int, val total: Long)
-@Serializable data class UserSummary(val id: String, val displayName: String, val email: String?, val accountType: String, val status: String, val createdAtEpochMillis: Long)
+@Serializable data class UserSummary(val id: String, val displayName: String, val email: String?, val accountType: String, val status: String, val createdAtEpochMillis: Long, val playerCode: String = "")
 @Serializable data class UserDetail(
     val id: String, val displayName: String, val email: String?, val accountType: String, val status: String,
     val createdAtEpochMillis: Long, val level: Int, val xp: Int, val gold: Int, val gems: Int, val elo: Int,
-    val clanId: String?, val clanName: String?, val lastActivityAtEpochMillis: Long?
+    val clanId: String?, val clanName: String?, val lastActivityAtEpochMillis: Long?, val playerCode: String = ""
 ) {
-    fun summary() = UserSummary(id, displayName, email, accountType, status, createdAtEpochMillis)
+    fun summary() = UserSummary(id, displayName, email, accountType, status, createdAtEpochMillis, playerCode)
 }
 @Serializable data class MatchEntry(val id: String, val matchType: String, val outcome: String, val score: Int, val finishedAtEpochMillis: Long)
 @Serializable data class WalletEntry(val id: String, val sourceType: String, val sourceId: String, val goldDelta: Int, val gemsDelta: Int, val xpDelta: Int, val createdAtEpochMillis: Long)

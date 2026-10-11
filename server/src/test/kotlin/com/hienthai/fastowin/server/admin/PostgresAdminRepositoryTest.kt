@@ -12,6 +12,33 @@ import java.util.UUID
 import kotlin.test.*
 
 class PostgresAdminRepositoryTest {
+    @Test fun `sql public codes and normalized emails resolve exactly and exclude ineligible recipients`() = runTest {
+        database { source ->
+            val service = service(source); service.bootstrapOwner("owner@example.com", "GoodPassword123!"); val owner = login(service)
+            val auth = AuthenticationService(PostgresAuthRepository(source), passwordHasher = PasswordHasher(1_000))
+            val a = assertIs<AuthResult.Success>(auth.register("recipient@example.com", "GoodPassword123!", "Recipient", "test")).session.userId
+            val b = assertIs<AuthResult.Success>(auth.register("removed@example.com", "GoodPassword123!", "Removed", "test")).session.userId
+            val code = service.user(owner.token, a).playerCode
+            val deletedCode = service.user(owner.token, b).playerCode
+            assertTrue(code.isNotBlank())
+            assertEquals(code, service.users(owner.token, " ${code.lowercase()} ", PageRequest()).items.single().playerCode)
+            for (reference in listOf(code.lowercase(), " RECIPIENT@EXAMPLE.COM ")) {
+                assertEquals(a, service.giftRecipient(owner.token, reference).id)
+            }
+            for (reference in listOf(code.dropLast(1), "recipient@", "Recipient", a, "%", "_", "' OR TRUE --")) {
+                assertEquals(404, assertFailsWith<AdminException> { service.giftRecipient(owner.token, reference) }.status)
+            }
+            source.connection.use { connection ->
+                connection.prepareStatement("UPDATE users SET status='DELETED' WHERE id=?").use { it.setObject(1, UUID.fromString(b)); it.executeUpdate() }
+            }
+            assertEquals(404, assertFailsWith<AdminException> { service.giftRecipient(owner.token, deletedCode) }.status)
+            source.connection.use { connection ->
+                connection.createStatement().use { it.execute("ALTER TABLE admin_audit ADD CONSTRAINT reject_lookup CHECK(action <> 'GIFT_RECIPIENT_LOOKUP') NOT VALID") }
+            }
+            assertEquals(503, assertFailsWith<AdminException> { service.giftRecipient(owner.token, code) }.status)
+            assertFalse(service.audit(owner.token, PageRequest(pageSize = 100)).items.toString().contains("recipient@example.com"))
+        }
+    }
     private suspend fun database(block: suspend (HikariDataSource) -> Unit) {
         val url = System.getenv("TEST_DATABASE_URL")
         assumeTrue(!url.isNullOrBlank(), "TEST_DATABASE_URL absent: PostgreSQL coverage skipped")

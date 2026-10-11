@@ -1,6 +1,22 @@
 import { test, expect, login, player, pageOf } from '../support/admin-fixture.mjs';
 import { readFile } from 'node:fs/promises';
 
+for (const width of [360, 1440]) test(`search public player code and show it in directory and profile at ${width}`, async ({ page, fixture }) => {
+  await page.setViewportSize({ width, height: 1000 }); await login(page, fixture);
+  fixture.handlers.set('/admin/api/users', async (call, send) => {
+    expect(call.query.get('q')).toBe('ftw123ab'); send(200, pageOf([player], 0, 1)); return true;
+  });
+  await page.getByLabel('Tìm người chơi', { exact: true }).fill(' ftw123ab ');
+  await page.getByRole('button', { name: 'Tìm kiếm', exact: true }).click();
+  await expect(page.getByText('Mã: ' + player.playerCode, { exact: true })).toBeVisible();
+  await expect(page.getByRole('status')).toHaveText('1 người chơi phù hợp.');
+  await page.screenshot({ path: `../.artifacts/admin-player-code/directory-${width}.png`, fullPage: true });
+  await page.getByRole('button', { name: 'Xem người chơi', exact: true }).click();
+  await expect(page.getByText('Mã người chơi: ' + player.playerCode, { exact: true })).toBeVisible();
+  await page.screenshot({ path: `../.artifacts/admin-player-code/profile-${width}.png`, fullPage: true });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+});
+
 test('login errors focus feedback, pending submission is unique and passwords are cleared', async ({ page, fixture }) => {
   let release;
   fixture.handlers.set('/admin/api/login', async (call, send) => { await new Promise(r => release = r); send(401, { code: 'UNAUTHORIZED', message: 'Đăng nhập không thành công.' }); return true; });
@@ -62,7 +78,7 @@ for (const role of ['SUPPORT', 'OPERATOR']) test(`${role} hides owner controls a
     const before = fixture.calls.length;
     await page.getByLabel('Tìm người chơi').fill('player@example.com');
     await page.getByRole('button', { name: 'Tìm kiếm', exact: true }).click();
-    await expect(page.getByRole('alert')).toContainText('Support chỉ tìm bằng ID hoặc tên');
+    await expect(page.getByRole('alert')).toContainText('Support chỉ tìm bằng mã người chơi hoặc tên');
     expect(fixture.calls.length).toBe(before);
   }
 });
