@@ -51,6 +51,16 @@ export const test = base.extend({
       }
       if (options.iosStandalone) {
         await context.addInitScript(() => {
+          // Standalone iOS has no desktop window chrome. Windows WebKit adds
+          // 39px to outerHeight unless the standalone fixture models it.
+          // Page/context init-script order is unspecified; preserve dimensions
+          // owned by a page's keyboard/status-bar fixture if it ran first.
+          if (!window.__fastToWinIosViewportMock) {
+            Object.defineProperty(window, 'outerHeight', {
+              configurable: true,
+              value: window.innerHeight,
+            });
+          }
           Object.defineProperty(window.navigator, 'standalone', {
             configurable: true,
             get: () => true,

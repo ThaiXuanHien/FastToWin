@@ -8,9 +8,12 @@ async function installIosKeyboardViewport(page, statusBarExcluded = false) {
     const layoutHeight = windowHeight - (statusBarExcluded ? 62 : 0);
     let height = layoutHeight;
     let offsetTop = 0;
+    window.__fastToWinIosViewportMock = true;
+    // A standalone iOS window has no desktop browser chrome. Windows WebKit
+    // otherwise adds 39px to outerHeight even with a fixed test viewport.
+    Object.defineProperty(window, 'outerHeight', { configurable: true, value: windowHeight });
     if (statusBarExcluded) {
       Object.defineProperty(window, 'innerHeight', { configurable: true, value: layoutHeight });
-      Object.defineProperty(window, 'outerHeight', { configurable: true, value: windowHeight });
     }
     Object.defineProperty(navigator, 'standalone', { configurable: true, value: true });
     Object.defineProperty(navigator, 'userAgent', {
@@ -713,9 +716,10 @@ for (const size of [
       const viewport = window.visualViewport;
       const windowHeight = window.innerHeight;
       let height = windowHeight - 84;
+      // Model the chromeless standalone window, including on Windows WebKit.
+      Object.defineProperty(window, 'outerHeight', { configurable: true, value: windowHeight });
       if (statusBarExcluded) {
         Object.defineProperty(window, 'innerHeight', { configurable: true, value: windowHeight - 62 });
-        Object.defineProperty(window, 'outerHeight', { configurable: true, value: windowHeight });
       }
       localStorage.setItem('fasttowin.preferences', JSON.stringify({ languageCode: 'vi', fontScale }));
       Object.defineProperty(navigator, 'standalone', { configurable: true, value: true });
