@@ -1,0 +1,5 @@
+# Exact test-only pins: WebKit2374 contains the Windows canvas snapshot fix.
+# Remove these exemptions when the fix is available in stable Playwright.
+minimumReleaseAgeExclude:
+  - playwright-core@1.65.0-alpha-2026-10-11
+  - playwright@1.65.0-alpha-2026-10-11

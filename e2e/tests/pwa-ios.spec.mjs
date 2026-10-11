@@ -50,6 +50,35 @@ async function expectFullIosCanvas(page, hasBottomBar = true) {
   }).toBeCloseTo(height - 12, 0);
 }
 
+// Screenshot pixels catch blank WebGL output that geometry and semantics miss.
+// Sample the header, outside the native text editor, without reading a cleared
+// WebGL back buffer or changing the app's rendering context attributes.
+async function expectPaintedHeader(page, bounds) {
+  expect(bounds?.width).toBeGreaterThan(0);
+  expect(bounds?.height).toBeGreaterThan(0);
+  const png = await page.screenshot({ clip: bounds, scale: 'css' });
+  const colors = await page.evaluate(base64 => new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onerror = () => reject(new Error('Could not decode header screenshot'));
+    image.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = image.width;
+      canvas.height = image.height;
+      const context = canvas.getContext('2d');
+      context.drawImage(image, 0, 0);
+      const pixels = context.getImageData(0, 0, canvas.width, canvas.height).data;
+      const colors = new Set();
+      for (let index = 0; index < pixels.length; index += 4) {
+        colors.add(`${pixels[index]},${pixels[index + 1]},${pixels[index + 2]}`);
+      }
+      resolve(colors.size);
+    };
+    image.src = `data:image/png;base64,${base64}`;
+  }), png.toString('base64'));
+  expect(colors, 'Header screenshot must contain rendered controls, not a uniform blank canvas')
+    .toBeGreaterThan(8);
+}
+
 async function tapNativeInput(page, label, visibleHeight = page.viewportSize().height) {
   const input = page.locator('[data-fasttowin-native-input]').and(page.getByLabel(label, { exact: true }));
   await expect(input).toBeAttached();
@@ -268,6 +297,7 @@ for (const { width, height, dismissal, statusBarExcluded = false } of [
     }, safeTop);
     await expect.poll(async () => (await tag(page, 'app_header').boundingBox())?.y ?? -1)
       .toBeCloseTo(safeTop, 0);
+    const headerBounds = await tag(page, 'app_header').boundingBox();
     const backBounds = await page.getByRole('button', { name: 'Quay lại', exact: true }).first().boundingBox();
     expect(backBounds?.width).toBeGreaterThan(0);
     expect(backBounds?.height).toBeGreaterThan(0);
@@ -307,16 +337,20 @@ for (const { width, height, dismissal, statusBarExcluded = false } of [
       await expect(name).toHaveValue('Kiểm tra bàn phím');
     }
     await page.screenshot({ path: testInfo.outputPath(`tournament-keyboard-${dismissal}.png`) });
+    await expectPaintedHeader(page, headerBounds);
     await click(page, tag(page, 'arcade_dialog_close'));
     await expect(name).not.toBeAttached();
     await expectFullIosCanvas(page, false);
+    // Wait for the background accessibility tree after the closing animation,
+    // then use the current Back control rather than its pre-dialog position.
+    const back = page.getByRole('button', { name: 'Quay lại', exact: true }).first();
+    await expect(back).toBeAttached();
+    await expectPaintedHeader(page, headerBounds);
     await page.screenshot({ path: testInfo.outputPath(`tournament-dialog-closed-${dismissal}.png`) });
-    // Compose can omit background accessibility nodes after disposing a dialog.
-    // Try the real Back position measured before opening, after restoring the
-    // same viewport and safe area; still require Home and its bottom bar below.
-    await page.mouse.click(backBounds.x + backBounds.width / 2, backBounds.y + backBounds.height / 2);
+    await click(page, back);
     await expect(tag(page, 'home_screen')).toBeAttached();
     await expectFullIosCanvas(page);
+    await expectPaintedHeader(page, headerBounds);
     await page.screenshot({ path: testInfo.outputPath(`home-after-keyboard-${dismissal}.png`) });
   });
 }

@@ -60,7 +60,7 @@ test('large text, long content and a compact keyboard viewport remain usable', a
   await page.mouse.move(160, 180);
   await page.mouse.wheel(0, 1000);
   await page.waitForTimeout(250);
-  await fill(page, tag(page, 'create_room_name'), roomName);
+  await fill(page, tag(page, 'create_room_name'), roomName, 'Tên phòng');
   await expect(page.locator('input:focus')).toHaveValue(roomName);
   await expectHorizontalFit(page, tag(page, 'create_room_name'), 'Focused room-name field');
   await expectNoDocumentOverflow(page);

@@ -121,13 +121,37 @@ Playwright WebKit không thay thế Safari/iOS thật; Chromium không thay th�
 
 ## Ghi chú Compose Web
 
-- Compose 1.11.1 xuất `testTag` thành DOM `id` trong shadow root, nên cấu hình `testIdAttribute: 'id'`.
+- Compose xuất `testTag` thành DOM `id` trong shadow root, nên cấu hình `testIdAttribute: 'id'`.
 - Accessibility DOM trong suốt; helper lấy bounds từ semantics và click canvas bằng chuột thật. Các ô nhập của app dùng HTML native trên Web qua `HtmlElementView`; viền, nhãn và icon vẫn là Material. Helper bàn phím cũ vẫn nhập được vào những ô này.
+- Helper chỉ bấm khi tâm control nằm trong vùng clip của modal/DOM và không bị header hoặc bottom bar che. Với input có nhãn native, cuộn theo geometry Compose trước rồi focus input thật: `HtmlElementView` ẩn input bị clip nhưng giữ bounds cũ, nên bounds của input ẩn không thể quyết định hướng cuộn.
 - Không khẳng định nút disabled qua HTML: semantics hiện chưa xuất đủ thuộc tính disabled. Bộ này kiểm tra chữ **ĐÃ MỜI**, popup người nhận và trạng thái sau từ chối; kiểm tra màu tối/khóa bấm cần screenshot/UI test riêng.
-- F5 tại phòng chờ và kết quả là các bước kiểm tra rõ ràng trong kịch bản, không phải retry ngầm. Bộ này chưa đảm bảo cây accessibility được khôi phục đầy đủ sau mọi dialog.
+- F5 tại phòng chờ và kết quả là các bước kiểm tra rõ ràng trong kịch bản, không phải retry ngầm. Khi đóng modal tạo giải, test chờ Back xuất hiện trong cây accessibility, click vị trí hiện tại và yêu cầu Home/bottom bar phục hồi. Navigation Material xuất role `tab`; helper tìm đúng role này.
 - Khi lỗi browser chưa được chấp nhận xảy ra, fixture đính kèm stack, thời điểm, URL và trạng thái navigation/đóng context để chẩn đoán. Mọi lỗi này vẫn làm test thất bại; không bỏ qua lỗi chung chỉ vì xảy ra gần F5.
 
 Cách quản lý server và ngắt WebSocket dựa trên [Playwright webServer](https://playwright.dev/docs/test-webserver) và [WebSocketRoute](https://playwright.dev/docs/api/class-websocketroute).
+
+### Hồi quy đóng Dialog và resize Web — issue #30
+
+Compose Web 1.11.1 và 1.12.1 giữ một semantics owner, bị mất owner màn chính
+khi đóng Dialog. Web runtime được pin riêng tới Compose1.13.0-alpha02 và
+Skiko0.153.0, chứa [sửa nhiều owner](https://github.com/JetBrains/compose-multiplatform-core/pull/3298)
+và [tái sử dụng context khi resize](https://github.com/JetBrains/skiko/pull/1256).
+Gradle chỉ áp dụng trên configurations JS/Wasm của shared/webApp; plugin Compose
+và dependencies Android/iOS giữ phiên bản hiện có. Runtime Skiko JS/Wasm được
+unpack từ classifier khớp Klib, tránh ghép runtime cũ với API mới.
+
+Windows WebKit còn có [lỗi snapshot canvas sau resize](https://github.com/microsoft/playwright/issues/42885)
+tái hiện bằng WebGL thuần, độc lập với app. Playwright1.64.0 dùng WebKit2370
+vẫn bị lỗi; công cụ test được pin chính xác `1.65.0-alpha-2026-10-11` chứa
+WebKit2374. Hai exemption tuổi package trong `pnpm-workspace.yaml` chỉ áp dụng
+cho hai version test này. Chuyển về stable và bỏ exemption khi stable chứa sửa.
+
+Các pin alpha là rủi ro được theo dõi tại [issue #30](https://github.com/ThaiXuanHien/FastToWin/issues/30),
+cần kiểm tra đầy đủ Web/JS fallback và CI trước khi tích hợp. Kiểm thử PWA
+kiểm tra pixel ảnh header ngoài native editor, không đọc WebGL back buffer đã
+xóa, không bật `preserveDrawingBuffer` hay monkey-patch renderer. Giữ kiểm tra
+focus/giá trị nhập, Back/Home, bottom bar, lỗi browser và cleanup. Ảnh sau đóng
+được chụp khi Back đã trở lại, thay vì dùng tọa độ đo trước modal.
 
 ## Ô nhập native — thử nghiệm Safari, 16/09/2026
 

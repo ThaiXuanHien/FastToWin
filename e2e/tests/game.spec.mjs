@@ -5,7 +5,7 @@ test('login, F5 and browser Back/Forward preserve the account', async ({ actors 
   await login(player);
   await player.page.reload();
   await expect(tag(player.page, 'home_screen')).toBeAttached();
-  await click(player.page, player.page.getByRole('button', { name: 'Phòng', exact: true }));
+  await click(player.page, player.page.getByRole('tab', { name: 'Phòng', exact: true }));
   await expect(player.page).toHaveURL(/\/rooms$/);
   await player.page.goBack();
   await expect(tag(player.page, 'home_screen')).toBeAttached();

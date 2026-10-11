@@ -18,6 +18,7 @@
 - Check-in 15 minutes before, registration closes then. Existing 4/8/16 formats require full eligible roster or cancellation with all recorded fees refunded once.
 - Publish scheduled mutations only after durable acknowledgement. Maintenance wins. Actual iOS/device/provider acceptance remains external.
 - Read UI skill `.agents/skills/ui-ux-pro-max/SKILL.md` before UI changes. Existing dark design system and 48dp touch targets.
+- Issue30 verification exposed separate Windows WebKit snapshot and Compose Web semantics-owner bugs. Pin Web-only Compose1.13.0-alpha02/Skiko0.153.0 and exact test-only Playwright1.65.0-alpha-2026-10-11; Android/iOS keep current dependencies. These prerelease choices require full Web/JS regression and review before integration. Restore background Back accessibility and inspect actual screenshot pixels; never waive Home/browser errors to pass.
 
 ## Task 1: Protocol and durable scheduled tournament lifecycle
 

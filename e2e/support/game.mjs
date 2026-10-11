@@ -234,6 +234,7 @@ export async function click(page, locator) {
     const handle = await locator.elementHandle({ timeout: 500 }).catch(() => null);
     const bounds = handle ? await handle.boundingBox().catch(() => null) : null;
     const viewport = page.viewportSize();
+    let blockedDirection = null;
     if (bounds && bounds.width > 0 && bounds.height > 0) {
       const y = bounds.y + bounds.height / 2;
       if (y >= 0 && y < viewport.height) {
@@ -251,14 +252,64 @@ export async function click(page, locator) {
           Math.abs(stableBounds.width - bounds.width) <= 1 &&
           Math.abs(stableBounds.height - bounds.height) <= 1;
         if (!isStable) continue;
-        await page.mouse.click(bounds.x + bounds.width / 2, y);
-        return;
+        const dialog = await tag(page, 'arcade_dialog').evaluateAll(nodes => nodes.map(node => {
+          const box = node.getBoundingClientRect();
+          return { x: box.x, y: box.y, width: box.width, height: box.height };
+        }).findLast(box => box.width > 0 && box.height > 0) || null);
+        const chrome = dialog ? [] : await page.locator('#app_header, #bottom_bar').evaluateAll(nodes =>
+          nodes.map(node => {
+            const box = node.getBoundingClientRect();
+            return { id: node.id, x: box.x, y: box.y, width: box.width, height: box.height };
+          }));
+        const exposure = await stableHandle.evaluate((node, { viewport, dialog, chrome }) => {
+          const box = node.getBoundingClientRect();
+          const x = box.x + box.width / 2;
+          const y = box.y + box.height / 2;
+          let top = dialog?.y ?? 0;
+          let bottom = dialog ? dialog.y + dialog.height : viewport.height;
+          let left = dialog?.x ?? 0;
+          let right = dialog ? dialog.x + dialog.width : viewport.width;
+          // New Compose semantics retain offscreen bounds. Respect actual DOM
+          // clipping ancestors and modal bounds before clicking the canvas.
+          for (let parent = node.parentElement; parent; parent = parent.parentElement) {
+            const style = getComputedStyle(parent);
+            const clip = parent.getBoundingClientRect();
+            if (/hidden|clip|scroll|auto/.test(style.overflowY)) {
+              top = Math.max(top, clip.top);
+              bottom = Math.min(bottom, clip.bottom);
+            }
+            if (/hidden|clip|scroll|auto/.test(style.overflowX)) {
+              left = Math.max(left, clip.left);
+              right = Math.min(right, clip.right);
+            }
+          }
+          for (const region of chrome) {
+            if (node.closest(`#${region.id}`) || !region.width || !region.height) continue;
+            if (x >= region.x && x < region.x + region.width &&
+                y >= region.y && y < region.y + region.height) {
+              return { exposed: false, direction: region.id === 'app_header' ? -1 : 1 };
+            }
+          }
+          const native = node.matches('[data-fasttowin-native-input]');
+          return {
+            exposed: x >= left && x < right && y >= top && y < bottom &&
+              (!native || document.elementFromPoint(x, y) === node),
+            direction: y < top ? -1 : 1,
+          };
+        }, { viewport, dialog, chrome });
+        if (!exposure.exposed) {
+          blockedDirection = exposure.direction;
+        } else {
+          await page.mouse.click(bounds.x + bounds.width / 2, y);
+          return;
+        }
       }
     }
-    // Offscreen Compose semantics have zero-size bounds both above and below.
-    // Sweep with small steps; when visible geometry stops moving at a scroll
-    // boundary, reverse rather than repeatedly scrolling past a field above us.
-    if (bounds && bounds.height > 0) searchDirection = bounds.y < 0 ? -1 : 1;
+    // Offscreen Compose semantics can have zero bounds or retain clipped bounds.
+    // Follow the clipping direction when known; otherwise sweep in small steps
+    // and reverse at a scroll boundary instead of skipping a field above us.
+    if (blockedDirection !== null) searchDirection = blockedDirection;
+    else if (bounds && bounds.height > 0) searchDirection = bounds.y < 0 ? -1 : 1;
     const beforeScroll = await visiblePositions();
     // Native HTML input overlays receive wheel events themselves. Choose a
     // point on the real canvas inside the dialog, outside those input bounds.
@@ -276,11 +327,19 @@ export async function click(page, locator) {
   throw new Error('UI element could not be brought into the viewport.');
 }
 
-export async function fill(page, locator, text) {
+export async function fill(page, locator, text, nativeLabel = null) {
+  const input = nativeLabel ? page.getByLabel(nativeLabel, { exact: true })
+    .and(page.locator('[data-fasttowin-native-input]')) : null;
+  // HtmlElementView hides a clipped editor but retains its last visible bounds.
+  // Reveal the field through Compose geometry first, then focus the real input.
   await click(page, locator);
-  // Focusing Compose replaces the semantics div with a backing native input.
+  if (input) await click(page, input);
+  if (input) await expect(input).toBeFocused();
+  // Use the native overlay explicitly when its label is supplied; other callers
+  // focus through Compose semantics before sending real keyboard input.
   await page.keyboard.press('ControlOrMeta+A');
   await page.keyboard.insertText(text);
+  if (input) await expect(input).toHaveValue(text);
   // Clicking the next control performs the blur. Sending Tab here makes
   // Firefox apply Compose's pending edit a second time and duplicates text.
   await page.waitForTimeout(250);
@@ -357,13 +416,13 @@ export async function openLanguageDialog(page) {
 
 export async function createRoom(actor) {
   const page = actor.page;
-  await click(page, page.getByRole('button', { name: 'Phòng', exact: true }));
+  await click(page, page.getByRole('tab', { name: 'Phòng', exact: true }));
   await expect(page).toHaveURL(/\/rooms$/);
   await click(page, tag(page, 'create_room_open'));
   await click(page, tag(page, 'match_type:CASUAL'));
   await click(page, tag(page, 'game_mode:ORDER'));
   const name = `E2E-${randomUUID().slice(0, 8)}`;
-  await fill(page, tag(page, 'create_room_name'), name);
+  await fill(page, tag(page, 'create_room_name'), name, 'Tên phòng');
   await click(page, tag(page, 'create_room_submit'));
   await expect(page).toHaveURL(/\/room\/[\w-]+$/);
   const roomURL = page.url();
