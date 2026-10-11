@@ -1,0 +1,65 @@
+package com.hienthai.fastowin.localization.catalogs
+
+import com.hienthai.fastowin.localization.AppLanguage
+import com.hienthai.fastowin.localization.TextKey
+
+internal val tournamentScheduleTexts = mapOf(
+    AppLanguage.ENGLISH to mapOf(
+        TextKey.InvalidTournamentSchedule to "Choose a valid time zone and a start between 15 minutes and 365 days from now.",
+        TextKey.TournamentClientUpdateRequired to "Update the app to join or create a scheduled tournament.",
+        TextKey.TournamentRegistrationClosed to "Registration is closed. Players can no longer join or leave.",
+        TextKey.TournamentAutomaticStart to "This tournament starts automatically at its scheduled time.",
+        TextKey.TournamentCheckInClosed to "Check-in is available during the 15 minutes before the scheduled start.",
+        TextKey.TournamentScheduleNotFound to "You are not a participant in this tournament.",
+        TextKey.TournamentRefundRuleCompact to "Needs all {max} players checked in, connected and free at the start. Cancellation refunds every paid entry once.",
+        TextKey.ScheduleTournament to "Schedule a start time",
+        TextKey.TournamentLocalStart to "Local start date and time",
+        TextKey.TournamentTimeZone to "Time zone",
+        TextKey.TournamentDateTimeHint to "YYYY-MM-DD HH:mm · at least 15 minutes ahead",
+        TextKey.TournamentTimeZoneHint to "IANA zone, for example Asia/Bangkok or UTC",
+        TextKey.TournamentLocalTimeError to "Enter a valid date, time and IANA time zone. This local time must exist in that zone.",
+        TextKey.TournamentRegistrationDeadline to "Registration closes: {time}",
+        TextKey.TournamentCheckInDeadline to "Check-in opens: {time}",
+        TextKey.TournamentStartDeadline to "Starts: {time}",
+        TextKey.TournamentCheckIn to "Check in",
+        TextKey.TournamentCheckedIn to "Checked in",
+        TextKey.TournamentCheckInCount to "Checked in: {current}/{max}",
+        TextKey.TournamentCheckInCountdown to "Check-in opens in {time}",
+        TextKey.TournamentStartCountdown to "Starts in {time}",
+        TextKey.TournamentStarting to "Waiting for the scheduled start",
+        TextKey.TournamentRefundRule to "All {max} players must check in, stay connected and be free at the start. Otherwise the tournament is cancelled and every paid entry is refunded once. Leaving gives no immediate refund; a later cancellation still refunds your entry.",
+        TextKey.TournamentScheduledHostInfo to "Starts automatically. Stay here and connected after checking in.",
+        TextKey.TournamentCancelledRefund to "Cancelled tournament: all paid entries are refunded once.",
+        TextKey.TournamentRecordedParticipants to "Entry history: {players}",
+        TextKey.TournamentScheduledInvitationRule to "For scheduled tournaments, registration closes 15 minutes before the start. All {max} players must check in, stay connected and be free at the start, or all paid entries are refunded once. Leaving gives no immediate refund; cancellation still refunds your entry."
+    ),
+    AppLanguage.VIETNAMESE to mapOf(
+        TextKey.InvalidTournamentSchedule to "Chọn múi giờ hợp lệ và giờ bắt đầu từ 15 phút đến 365 ngày kể từ bây giờ.",
+        TextKey.TournamentClientUpdateRequired to "Cập nhật ứng dụng để tạo hoặc tham gia giải có lịch.",
+        TextKey.TournamentRegistrationClosed to "Đã khóa đăng ký. Không thể tham gia hoặc rời giải.",
+        TextKey.TournamentAutomaticStart to "Giải này tự bắt đầu vào giờ đã hẹn.",
+        TextKey.TournamentCheckInClosed to "Check-in mở trong 15 phút trước giờ bắt đầu giải.",
+        TextKey.TournamentScheduleNotFound to "Bạn không phải người tham gia giải này.",
+        TextKey.TournamentRefundRuleCompact to "Cần đủ {max} người check-in, giữ kết nối và không bận khi bắt đầu. Nếu hủy, mọi phí đã trả được hoàn một lần.",
+        TextKey.ScheduleTournament to "Hẹn giờ bắt đầu",
+        TextKey.TournamentLocalStart to "Ngày và giờ bắt đầu tại địa phương",
+        TextKey.TournamentTimeZone to "Múi giờ",
+        TextKey.TournamentDateTimeHint to "YYYY-MM-DD HH:mm · cách hiện tại ít nhất 15 phút",
+        TextKey.TournamentTimeZoneHint to "Múi giờ IANA, ví dụ Asia/Bangkok hoặc UTC",
+        TextKey.TournamentLocalTimeError to "Nhập ngày, giờ và múi giờ IANA hợp lệ. Giờ địa phương này phải tồn tại trong múi giờ đã chọn.",
+        TextKey.TournamentRegistrationDeadline to "Đăng ký đóng: {time}",
+        TextKey.TournamentCheckInDeadline to "Check-in mở: {time}",
+        TextKey.TournamentStartDeadline to "Bắt đầu: {time}",
+        TextKey.TournamentCheckIn to "Check-in",
+        TextKey.TournamentCheckedIn to "Đã check-in",
+        TextKey.TournamentCheckInCount to "Đã check-in: {current}/{max}",
+        TextKey.TournamentCheckInCountdown to "Check-in mở sau {time}",
+        TextKey.TournamentStartCountdown to "Bắt đầu sau {time}",
+        TextKey.TournamentStarting to "Đang chờ bắt đầu theo lịch",
+        TextKey.TournamentRefundRule to "Cả {max} người phải check-in, giữ kết nối và không bận khi bắt đầu. Nếu thiếu người, giải bị hủy và mọi phí đã trả được hoàn một lần. Tự rời chưa được hoàn ngay; nếu giải bị hủy sau đó, phí của bạn vẫn được hoàn.",
+        TextKey.TournamentScheduledHostInfo to "Giải tự bắt đầu. Hãy ở lại và giữ kết nối sau khi check-in.",
+        TextKey.TournamentCancelledRefund to "Giải đã hủy: mọi phí đã trả được hoàn một lần.",
+        TextKey.TournamentRecordedParticipants to "Lịch sử đăng ký: {players}",
+        TextKey.TournamentScheduledInvitationRule to "Với giải có lịch, đăng ký đóng trước giờ bắt đầu 15 phút. Cả {max} người phải check-in, giữ kết nối và không bận khi bắt đầu; nếu thiếu người, mọi phí đã trả được hoàn một lần. Tự rời chưa được hoàn ngay; nếu giải bị hủy, phí của bạn vẫn được hoàn."
+    )
+)

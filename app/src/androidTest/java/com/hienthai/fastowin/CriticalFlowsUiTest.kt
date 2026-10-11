@@ -240,6 +240,7 @@ class CriticalFlowsUiTest {
         }
 
         composeRule.onNodeWithTag("tournament_screen").assertIsDisplayed()
+        composeRule.onNodeWithTag("open_create_tournament").performScrollTo().performClick()
         composeRule.onNodeWithTag("tournament_name").performScrollTo().performTextInput("Cúp cuối tuần")
         composeRule.onNodeWithTag("tournament_size_16").performScrollTo().performClick()
         composeRule.onNodeWithTag("create_tournament")

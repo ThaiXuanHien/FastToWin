@@ -31,6 +31,8 @@ export const test = base.extend({
         account,
         accessToken: session.accessToken,
         errors: [],
+        errorDetails: [],
+        closing: false,
         expectedNavigationAbortUntil: 0,
         correlatedWebKitAbortUntil: 0,
         blocked: false,
@@ -132,6 +134,9 @@ export const test = base.extend({
           return;
         }
         actor.errors.push(message);
+        actor.errorDetails.push({ message, stack: error.stack, at: Date.now(),
+          url: actor.page.url(), closing: actor.closing,
+          expectedNavigationAbortUntil: actor.expectedNavigationAbortUntil });
       });
       actor.navigate = async action => {
         const tracksNavigationAbort = ['webkit', 'firefox'].includes(testInfo.project.use.browserName);
@@ -159,7 +164,14 @@ export const test = base.extend({
         if (testInfo.status !== testInfo.expectedStatus || actor.errors.length) {
           await actor.page?.screenshot({ path: testInfo.outputPath(`player-${index}.png`) }).catch(() => {});
         }
+        actor.closing = true;
         await actor.context?.close();
+        if (actor.errorDetails.length) {
+          await testInfo.attach(`player-${index}-browser-errors`, {
+            body: Buffer.from(JSON.stringify(actor.errorDetails, null, 2)),
+            contentType: 'application/json',
+          });
+        }
       } catch (error) { cleanupErrors.push(error); }
       try {
         const cleanupSessionResponse = await request.post(`${process.env.E2E_API_URL}/auth/login`, {
@@ -193,6 +205,28 @@ export async function click(page, locator) {
     const box = node.getBoundingClientRect();
     return box.width > 0 && box.height > 0 ? [node.id || node.getAttribute('role'), Math.round(box.x), Math.round(box.y)] : null;
   }).filter(Boolean)));
+  const wheelPoint = async viewport => {
+    const dialogs = await tag(page, 'arcade_dialog').evaluateAll(nodes => nodes.map(node => {
+      const box = node.getBoundingClientRect();
+      return { x: box.x, y: box.y, width: box.width, height: box.height };
+    }));
+    const region = dialogs.findLast(box => box.width > 0 && box.height > 0 &&
+      box.y < viewport.height && box.y + box.height > 0)
+      || { x: 0, y: 0, width: viewport.width, height: viewport.height };
+    const inputs = await page.locator('input, textarea').evaluateAll(nodes => nodes.map(node => {
+      const box = node.getBoundingClientRect();
+      return { x: box.x, y: box.y, width: box.width, height: box.height };
+    }));
+    const x = region.x + region.width / 2;
+    for (const fraction of [0.5, 0.7, 0.3, 0.85, 0.15]) {
+      const y = Math.max(1, Math.min(viewport.height - 1, region.y + region.height * fraction));
+      if (!inputs.some(box => box.width > 0 && box.height > 0 &&
+          x >= box.x && x <= box.x + box.width && y >= box.y && y <= box.y + box.height)) {
+        return { x, y };
+      }
+    }
+    throw new Error('No canvas scroll point outside native text inputs.');
+  };
   for (let attempt = 0; attempt < 20; attempt++) {
     // Compose rebuilds its transparent semantics nodes while a LazyColumn is
     // settling. Resolve a short-lived handle for each attempt so a detached
@@ -226,7 +260,10 @@ export async function click(page, locator) {
     // boundary, reverse rather than repeatedly scrolling past a field above us.
     if (bounds && bounds.height > 0) searchDirection = bounds.y < 0 ? -1 : 1;
     const beforeScroll = await visiblePositions();
-    await page.mouse.move(viewport.width / 2, viewport.height / 2);
+    // Native HTML input overlays receive wheel events themselves. Choose a
+    // point on the real canvas inside the dialog, outside those input bounds.
+    const point = await wheelPoint(viewport);
+    await page.mouse.move(point.x, point.y);
     await page.mouse.wheel(0, searchDirection * Math.min(240, viewport.height / 3));
     // Wait through both scroll animation and debounced semantics. An unchanged
     // first frame alone does not prove a boundary, especially after reversing.
@@ -293,14 +330,19 @@ export async function openLanguageDialog(page) {
   // tree on slower CI runners, so wait for the destination screen itself.
   await expect(tag(page, 'settings_screen')).toBeAttached({ timeout: 30_000 });
   const setting = tag(page, 'language_setting');
-  // WebKit exposes only the currently materialized portion of Compose's
-  // accessibility tree. The language row sits below optional install/push
-  // sections, so reveal it before asking the generic click helper for bounds.
-  for (let attempt = 0; attempt < 12 && await setting.count() === 0; attempt++) {
+  // This row starts below optional install/push sections. Chromium can attach
+  // it with zero bounds while only fixed header nodes have measurable geometry.
+  // Scroll the known downward path until the row itself has bounds: fixed
+  // header positions cannot prove that the canvas reached a scroll boundary.
+  for (let attempt = 0; attempt < 12; attempt++) {
     const viewport = page.viewportSize();
+    const handle = await setting.elementHandle({ timeout: 250 }).catch(() => null);
+    const bounds = handle ? await handle.boundingBox().catch(() => null) : null;
+    if (bounds && bounds.width > 0 && bounds.height > 0 &&
+        bounds.y + bounds.height > 0 && bounds.y < viewport.height) break;
     await page.mouse.move(viewport.width / 2, viewport.height / 2);
-    await page.mouse.wheel(0, 450);
-    await page.waitForTimeout(150);
+    await page.mouse.wheel(0, Math.min(240, viewport.height / 3));
+    await page.waitForTimeout(250);
   }
   await expect(setting).toBeAttached();
   const dialog = tag(page, 'language_dialog');

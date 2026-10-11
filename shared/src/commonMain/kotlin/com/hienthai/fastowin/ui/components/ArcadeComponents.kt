@@ -27,8 +27,11 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -269,6 +272,7 @@ fun ArcadeDialog(
     onDismissRequest: () -> Unit,
     modifier: Modifier = Modifier,
     subtitle: String? = null,
+    showCloseButton: Boolean = false,
     content: @Composable () -> Unit
 ) {
     Dialog(
@@ -302,7 +306,28 @@ fun ArcadeDialog(
                         .padding(18.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
+                    if (showCloseButton) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Text(
+                                title,
+                                modifier = Modifier.weight(1f),
+                                style = MaterialTheme.typography.titleLarge,
+                                fontWeight = FontWeight.Black
+                            )
+                            IconButton(
+                                onClick = onDismissRequest,
+                                modifier = Modifier.size(48.dp).testTag("arcade_dialog_close")
+                            ) {
+                                Icon(Icons.Rounded.Close, contentDescription = localized(TextKey.Close))
+                            }
+                        }
+                    } else {
+                        Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
+                    }
                     subtitle?.let {
                         Text(
                             it,

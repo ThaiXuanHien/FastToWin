@@ -776,7 +776,8 @@ private fun GameContent(
             TournamentInvitationDialog(
                 invitation = invitation,
                 onRespond = { accept -> controller.respondTournamentInvitation(invitation.invitationId, accept) },
-                onDefer = controller::dismissTournamentInvitationPrompt
+                onDefer = controller::dismissTournamentInvitationPrompt,
+                serverClock = state.tournamentServerClock
             )
         }
     }
@@ -1458,7 +1459,9 @@ private fun GameContent(
                 state.isTournamentOpen -> TournamentScreen(
                     state = state,
                     onBack = { navigateBack(controller::closeTournament) },
-                    onCreate = controller::createTournament,
+                    onCreate = { name, mode, fee, size, visibility -> controller.createTournament(name, mode, fee, size, visibility) },
+                    onCreateScheduled = controller::createTournament,
+                    onCheckIn = controller::checkInTournament,
                     onPublicFiltersChange = controller::updatePublicTournamentFilters,
                     onRefreshPublic = controller::refreshPublicTournaments,
                     onJoinPublic = controller::joinPublicTournament,

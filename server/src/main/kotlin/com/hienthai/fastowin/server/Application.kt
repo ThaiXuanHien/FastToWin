@@ -247,6 +247,19 @@ fun Application.gameModule(
 
     launch {
         while (isActive) {
+            try {
+                deliver(engine.advanceScheduledTournaments())
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
+            } catch (failure: Exception) {
+                org.slf4j.LoggerFactory.getLogger("ScheduledTournaments").error("Scheduled tournament tick failed; will retry", failure)
+            }
+            delay(1_000)
+        }
+    }
+
+    launch {
+        while (isActive) {
             delay(MATCHMAKING_INTERVAL_MILLIS)
             engine.advanceMatchmaking(::deliver)
         }
@@ -640,7 +653,7 @@ fun Application.gameModule(
                                         ?: throw InvalidAccessTokenException()
                                     if (!account.emailVerified) throw UnverifiedEmailException()
                                     accountAccessToken = message.accessToken
-                                    engine.connectAccount(account, message.resumeToken)
+                                    engine.connectAccount(account, message.resumeToken, message.protocolVersion)
                                 }
                             }
                         }.getOrElse { error ->

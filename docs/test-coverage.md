@@ -24,6 +24,12 @@ all paths. Branch coverage is reported, but initially only lines gate CI.
 Do not lower floors or exclude business code merely to pass a failing build.
 Raise floors deliberately when adding meaningful coverage.
 
+Schedule revision measured later the same day with PostgreSQL configured:
+646 server, 242 shared and 104 protocol tests have zero failures/errors/skips.
+Server lines 12,216/14,070 (86.82%), branches 6,469/9,725 (66.52%);
+shared lines 2,358/4,458 (52.89%), branches 1,131/2,693 (42.00%).
+Both existing line floors pass; no exclusions or thresholds changed for scheduling.
+
 ## Report scope
 
 - Both modules exclude generated Kotlin serialization `$$serializer` classes.

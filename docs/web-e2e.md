@@ -11,6 +11,7 @@ Bộ test Playwright tại `e2e/` chạy giao diện Compose Web thật, HTTP/We
 5. Responsive trên điện thoại nhỏ `320×568`, điện thoại lớn `430×932`, tablet `834×1112` và màn ngang `932×430`: nội dung mobile được căn giữa, không tràn ngang, bottom bar, hồ sơ và luồng tạo phòng vẫn thao tác được.
 6. Chữ lớn, biệt danh/tên phòng dài và viewport thấp mô phỏng vùng hiển thị còn lại khi bàn phím ảo mở trên điện thoại nhỏ.
 7. Smoke test đăng nhập, F5 và Back/Forward trên Firefox, WebKit và bundle Kotlin/JS fallback.
+8. Lịch giải trên điện thoại và desktop: lỗi tạo giải trong modal, xác thực giờ/múi giờ, tạo lịch, countdown, check-in bằng thời gian server thật, F5 giữ trạng thái và hủy qua UI. Nhóm `chromium-tournament` dùng giờ bắt đầu hơn 15 phút để cửa sổ check-in mở trong khoảng 40–100 giây; không thêm đồng hồ debug vào production.
 
 Mỗi ca tạo tài khoản UUID riêng qua API rồi **đăng nhập qua UI**; teardown xóa đúng các tài khoản này. Không dùng tài khoản cá nhân, không reset database. Mặc định backend chạy in-memory, không cần Docker và không có dữ liệu bền vững. Kiểm thử ví PostgreSQL là nhóm riêng, chỉ bật khi có cấu hình database test local bên dưới; lưu Elo chưa thuộc nhóm này.
 
@@ -112,7 +113,8 @@ pnpm test:chromium      # 4 luồng game cốt lõi
 pnpm test:responsive    # 4 kích thước trên Chromium
 pnpm test:cross-browser # Firefox và WebKit smoke test
 pnpm test:js-fallback   # Chromium smoke test bundle Kotlin/JS compatibility
-pnpm test               # toàn bộ ma trận Wasm 11 ca
+pnpm exec playwright test --project=chromium-tournament # lịch giải phone/desktop
+pnpm test               # toàn bộ ma trận Wasm, bao gồm các nhóm trên
 ```
 
 Playwright WebKit không thay thế Safari/iOS thật; Chromium không thay thế đầy đủ Chrome/Edge thật. Service worker bị chặn trong bộ này để tránh cache cũ và push; cần test PWA/update/push riêng. Test adaptive dùng cỡ chữ lớn của app và viewport thấp để bắt lỗi bố cục phổ biến, nhưng không thay thế việc mở bàn phím ảo và đổi font scale hệ điều hành trên thiết bị thật.
@@ -123,6 +125,7 @@ Playwright WebKit không thay thế Safari/iOS thật; Chromium không thay th�
 - Accessibility DOM trong suốt; helper lấy bounds từ semantics và click canvas bằng chuột thật. Các ô nhập của app dùng HTML native trên Web qua `HtmlElementView`; viền, nhãn và icon vẫn là Material. Helper bàn phím cũ vẫn nhập được vào những ô này.
 - Không khẳng định nút disabled qua HTML: semantics hiện chưa xuất đủ thuộc tính disabled. Bộ này kiểm tra chữ **ĐÃ MỜI**, popup người nhận và trạng thái sau từ chối; kiểm tra màu tối/khóa bấm cần screenshot/UI test riêng.
 - F5 tại phòng chờ và kết quả là các bước kiểm tra rõ ràng trong kịch bản, không phải retry ngầm. Bộ này chưa đảm bảo cây accessibility được khôi phục đầy đủ sau mọi dialog.
+- Khi lỗi browser chưa được chấp nhận xảy ra, fixture đính kèm stack, thời điểm, URL và trạng thái navigation/đóng context để chẩn đoán. Mọi lỗi này vẫn làm test thất bại; không bỏ qua lỗi chung chỉ vì xảy ra gần F5.
 
 Cách quản lý server và ngắt WebSocket dựa trên [Playwright webServer](https://playwright.dev/docs/test-webserver) và [WebSocketRoute](https://playwright.dev/docs/api/class-websocketroute).
 

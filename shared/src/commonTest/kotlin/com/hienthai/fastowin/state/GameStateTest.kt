@@ -432,6 +432,52 @@ class GameStateTest {
         fixture.controller.close()
     }
 
+    @Test
+    fun `scheduled creation serializes its instant and zone and manual stays optional`() = runTest {
+        val fixture = publicTournamentFixture()
+        val schedule = TournamentScheduleRequest(2_000_000, "Asia/Bangkok")
+        fixture.controller.createTournament("Scheduled", GameMode.ORDER, schedule = schedule)
+        runCurrent()
+        assertEquals(schedule, fixture.session.sent.filterIsInstance<ClientMessage.CreateTournament>().single().schedule)
+        fixture.controller.close()
+    }
+
+    @Test
+    fun `check in targets active lobby and prevents concurrent duplicate requests`() = runTest {
+        val fixture = publicTournamentFixture()
+        fixture.session.server(ServerMessage.SessionReady("player-1"))
+        val now = epochMillis()
+        val tournament = TournamentSnapshot(
+            "scheduled", "Cup", "player-1", ProtocolGameMode.ORDER, TournamentPhase.LOBBY,
+            players = listOf(TournamentPlayerSnapshot("player-1", "Tester", true, true)),
+            schedule = TournamentScheduleSnapshot(now + 60_000, "UTC", now - 840_000, now - 840_000),
+            serverTimeEpochMillis = now, createdAtEpochMillis = now
+        )
+        fixture.session.server(ServerMessage.TournamentUpdated(tournament))
+        runCurrent()
+        fixture.controller.checkInTournament()
+        fixture.controller.checkInTournament()
+        runCurrent()
+        assertEquals(listOf(ClientMessage.CheckInTournament("scheduled")), fixture.session.sent.filterIsInstance<ClientMessage.CheckInTournament>())
+        assertTrue(fixture.controller.uiState.value.isTournamentLoading)
+        fixture.controller.close()
+    }
+
+    @Test
+    fun `check in without scheduled lobby or after disconnect does not start loading`() = runTest {
+        val fixture = publicTournamentFixture()
+        fixture.controller.checkInTournament()
+        runCurrent()
+        assertFalse(fixture.controller.uiState.value.isTournamentLoading)
+        fixture.session.close()
+        runCurrent()
+        fixture.controller.checkInTournament()
+        runCurrent()
+        assertTrue(fixture.session.sent.filterIsInstance<ClientMessage.CheckInTournament>().isEmpty())
+        assertFalse(fixture.controller.uiState.value.isTournamentLoading)
+        fixture.controller.close()
+    }
+
     private fun TestScope.publicTournamentFixture(): PublicTournamentFixture {
         val transport = PublicTournamentTransport()
         val controller = GameController(

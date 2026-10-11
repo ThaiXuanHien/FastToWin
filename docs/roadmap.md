@@ -174,7 +174,7 @@ Backend hiện dùng trạng thái realtime trong một instance. Không coi cá
 
 - [x] Catalog giao diện dùng chung cho 12 ngôn ngữ; các màn cốt lõi, hồ sơ, xã hội, xếp hạng, giải đấu, thông báo và cửa hàng đã dùng khóa localization ổn định. Tiếng Việt/Anh đã phủ đầy đủ; 10 ngôn ngữ còn lại đã dịch các nội dung chính và dùng English fallback cho nội dung chưa qua kiểm duyệt ngôn ngữ ở bước audit cuối.
 - [x] Chuẩn hóa thông báo động từ backend thành `messageKey/messageArgs`; trường protocol vẫn optional/default và raw fallback cũ được cô lập qua `legacyFallback(...)` để tương thích client cũ.
-- [x] Screenshot regression test với ảnh chuẩn đã review: 133 ảnh, gồm đăng nhập/phone/tablet; CI chỉ validate và tải diff/report.
+- [x] Screenshot regression test với ảnh chuẩn đã review: 137 ảnh, gồm đăng nhập/phone/tablet và lịch giải trên phone/chữ lớn/màn ngang/desktop; CI chỉ validate và tải diff/report.
 - [ ] Báo cáo độ bao phủ test và ngưỡng phù hợp.
 - [x] Ma trận Playwright Chromium/Firefox/WebKit và JS fallback trong CI.
 - [ ] Kiểm thử hai người trên iOS thật.

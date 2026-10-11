@@ -215,6 +215,7 @@ data class GameState(
     val isTournamentOpen: Boolean = false,
     val isTournamentLoading: Boolean = false,
     val tournamentHub: TournamentHubSnapshot = TournamentHubSnapshot(),
+    val tournamentServerClock: TournamentServerClock? = null,
     val publicTournaments: List<PublicTournamentSummary> = emptyList(),
     val publicTournamentFilters: PublicTournamentFilters = PublicTournamentFilters(),
     val isPublicTournamentsLoading: Boolean = false,

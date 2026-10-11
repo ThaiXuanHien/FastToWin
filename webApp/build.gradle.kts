@@ -53,11 +53,13 @@ kotlin {
             resources.srcDir("src/wasmJsMain/resources")
             dependencies {
                 implementation(libs.ktor.client.js)
+                implementation(npm("@js-joda/timezone", "2.23.0"))
             }
         }
 
         wasmJsMain.dependencies {
             implementation(libs.ktor.client.wasm)
+            implementation(npm("@js-joda/timezone", "2.23.0"))
         }
     }
 }

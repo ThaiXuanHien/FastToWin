@@ -9,8 +9,10 @@ import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.getValue
@@ -34,9 +36,12 @@ import com.hienthai.fastowin.protocol.TournamentMatchSnapshot
 import com.hienthai.fastowin.protocol.TournamentPhase
 import com.hienthai.fastowin.protocol.TournamentPlayerSnapshot
 import com.hienthai.fastowin.protocol.TournamentSnapshot
+import com.hienthai.fastowin.protocol.TournamentScheduleSnapshot
+import com.hienthai.fastowin.protocol.TournamentScheduleRequest
 import com.hienthai.fastowin.state.GameState
 import com.hienthai.fastowin.state.PlayerState
 import com.hienthai.fastowin.ui.screens.TournamentScreen
+import com.hienthai.fastowin.ui.screens.TournamentInvitationDialog
 import com.hienthai.fastowin.ui.theme.FastToWinTheme
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -48,6 +53,103 @@ import org.junit.Test
 class TournamentScreenTest {
     @get:Rule
     val composeRule = createComposeRule()
+
+    @Test
+    fun createTournamentDialogCanCloseAndReopenWithoutCreatingTournament() {
+        var created = 0
+        composeRule.setContent { FastToWinTheme { TournamentScreen(
+            state = GameState(connectionStatus = ConnectionStatus.CONNECTED), onBack = {},
+            onCreate = { _, _, _, _, _ -> created++ }, onInvite = {}, onRespondInvitation = { _, _ -> },
+            onStart = {}, onLeave = {}, onOpenFriendProfile = {}
+        ) } }
+        composeRule.onNodeWithTag("open_create_tournament").performScrollTo().performClick()
+        composeRule.onNodeWithTag("tournament_name").performScrollTo().performTextInput("Draft Cup")
+        composeRule.onNodeWithContentDescription("Đóng").assertIsDisplayed()
+        composeRule.onNodeWithTag("arcade_dialog_close").assertIsDisplayed().performClick()
+        composeRule.onNodeWithTag("tournament_create_form").assertDoesNotExist()
+        composeRule.runOnIdle { assertEquals(0, created) }
+        composeRule.onNodeWithTag("open_create_tournament").performScrollTo().performClick()
+        composeRule.onNodeWithTag("tournament_create_form").assertIsDisplayed()
+        composeRule.onNodeWithTag("arcade_dialog_close").assertIsDisplayed()
+    }
+
+    @Test
+    fun invitationShowsActualScheduleAndFeeAndLocksAcceptanceAtDeadline() {
+        val opensAt = 1_792_039_500_000L
+        var now by mutableStateOf(opensAt - 1)
+        var accepted = 0
+        composeRule.setContent { FastToWinTheme {
+            TournamentInvitationDialog(
+                invitation = TournamentInvitationSnapshot("invite", "cup", "Cup", "host", "Host",
+                    ProtocolGameMode.ORDER, expiresAtEpochMillis = opensAt + 1_000,
+                    entryFee = 100, schedule = TournamentScheduleSnapshot(opensAt + 900_000,
+                        "Asia/Bangkok", opensAt, opensAt)),
+                onRespond = { if (it) accepted++ }, onDefer = {}, nowEpochMillis = now
+            )
+        } }
+        composeRule.onNodeWithText("Asia/Bangkok").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("Bắt đầu: 2026-10-15 12:00").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithTag("accept_tournament_invitation").performScrollTo().performClick()
+        composeRule.runOnIdle { assertEquals(1, accepted); now = opensAt }
+        composeRule.onNodeWithTag("accept_tournament_invitation").performScrollTo().assertIsNotEnabled()
+    }
+
+    @Test
+    fun runningScheduledTournamentDoesNotShowWaitingCountdown() {
+        val lobby = tournamentLobbyState(4)
+        val tournament = checkNotNull(lobby.tournamentHub.activeTournament).copy(
+            phase = TournamentPhase.RUNNING,
+            schedule = TournamentScheduleSnapshot(1_000_000, "UTC", 100_000, 100_000)
+        )
+        composeRule.setContent { FastToWinTheme { TournamentScreen(
+            state = lobby.copy(tournamentHub = TournamentHubSnapshot(activeTournament = tournament)),
+            onBack = {}, onCreate = { _, _, _, _, _ -> }, onInvite = {}, onRespondInvitation = { _, _ -> },
+            onStart = {}, onLeave = {}, onOpenFriendProfile = {}, nowEpochMillis = 1_000_001
+        ) } }
+        composeRule.onNodeWithTag("tournament_countdown").assertDoesNotExist()
+    }
+
+    @Test
+    fun scheduleDialogValidatesLocalTimeAndShowsDeadlinesBeforeCreation() {
+        var created: TournamentScheduleRequest? = null
+        composeRule.setContent { FastToWinTheme { TournamentScreen(
+            state = GameState(connectionStatus = ConnectionStatus.CONNECTED), onBack = {},
+            onCreate = { _, _, _, _, _ -> }, onInvite = {}, onRespondInvitation = { _, _ -> },
+            onStart = {}, onLeave = {}, onOpenFriendProfile = {}, nowEpochMillis = 1_792_000_000_000,
+            onCreateScheduled = { _, _, _, _, _, schedule -> created = schedule }
+        ) } }
+        composeRule.onNodeWithTag("open_create_tournament").performScrollTo().performClick()
+        composeRule.onNodeWithTag("tournament_name").performScrollTo().performTextInput("Scheduled Cup")
+        composeRule.onNodeWithTag("tournament_schedule_toggle").performScrollTo().performClick()
+        composeRule.onNodeWithTag("tournament_schedule_local_start").performScrollTo().performTextInput("bad")
+        composeRule.onNodeWithTag("tournament_schedule_error").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithTag("create_tournament").performScrollTo().assertIsNotEnabled()
+        composeRule.onNodeWithTag("tournament_schedule_local_start").performScrollTo().performTextReplacement("2026-10-15 12:00")
+        composeRule.onNodeWithTag("tournament_schedule_time_zone").performScrollTo().performTextReplacement("Asia/Bangkok")
+        composeRule.onNodeWithText("Đăng ký đóng: 2026-10-15 11:45").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("Check-in mở: 2026-10-15 11:45").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithTag("create_tournament").performScrollTo().performClick()
+        composeRule.runOnIdle { assertEquals(TournamentScheduleRequest(1_792_040_400_000, "Asia/Bangkok"), created) }
+    }
+
+    @Test
+    fun scheduledHostUsesAutomaticStartAndCheckInClosesAtDeadline() {
+        var now by mutableStateOf(1_000_000L)
+        var checkedIn = 0
+        val tournament = tournamentLobbyState(4).tournamentHub.activeTournament!!.copy(
+            schedule = TournamentScheduleSnapshot(1_100_000, "UTC", 200_000, 200_000))
+        composeRule.setContent { FastToWinTheme { TournamentScreen(
+            state = tournamentLobbyState(4).copy(connectionStatus = ConnectionStatus.CONNECTED,
+                tournamentHub = TournamentHubSnapshot(activeTournament = tournament)), onBack = {},
+            onCreate = { _, _, _, _, _ -> }, onInvite = {}, onRespondInvitation = { _, _ -> },
+            onStart = {}, onLeave = {}, onOpenFriendProfile = {}, onCheckIn = { checkedIn++ }, nowEpochMillis = now
+        ) } }
+        composeRule.onNodeWithTag("start_tournament").assertDoesNotExist()
+        composeRule.onNodeWithTag("tournament_check_in").performScrollTo().performClick()
+        composeRule.runOnIdle { assertEquals(1, checkedIn); now = 1_100_000 }
+        composeRule.onNodeWithTag("tournament_check_in").assertDoesNotExist()
+        composeRule.onNodeWithTag("leave_tournament").performScrollTo().assertIsNotEnabled()
+    }
 
     @Test
     fun paidJoinRequiresExplicitConfirmation() {
@@ -182,6 +284,7 @@ class TournamentScreenTest {
     fun createDefaultsToPublicAndCanSelectPrivate() {
         val created = mutableListOf<TournamentVisibility>()
         setDiscoveryContent(GameState(), onCreate = { created += it })
+        composeRule.onNodeWithTag("open_create_tournament").performScrollTo().performClick()
         composeRule.onNodeWithTag("tournament_visibility_public").performScrollTo().assertIsSelected()
         composeRule.onNodeWithTag("tournament_name").performScrollTo().performTextInput("Weekend Cup")
         composeRule.onNodeWithTag("create_tournament").performScrollTo().performClick()
@@ -305,6 +408,7 @@ class TournamentScreenTest {
             }
         }
 
+        composeRule.onNodeWithTag("open_create_tournament").performScrollTo().performClick()
         composeRule.onNodeWithTag("tournament_fee_section").performScrollTo()
         val optionWidths = listOf(0, 50, 100, 200, 500, 1000).map { fee ->
             composeRule.onNodeWithTag("tournament_fee_$fee")
@@ -347,6 +451,7 @@ class TournamentScreenTest {
             }
         }
 
+        composeRule.onNodeWithTag("open_create_tournament").performScrollTo().performClick()
         val before = composeRule.onNodeWithTag("tournament_fee_section")
             .performScrollTo()
             .fetchSemanticsNode().boundsInRoot.height

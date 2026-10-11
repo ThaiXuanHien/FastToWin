@@ -5,6 +5,8 @@ import com.hienthai.fastowin.protocol.AuthSessionResponse
 import com.hienthai.fastowin.protocol.LoginRequest
 import com.hienthai.fastowin.protocol.ProtocolGameMode
 import com.hienthai.fastowin.protocol.ProtocolJson
+import com.hienthai.fastowin.protocol.PROTOCOL_VERSION
+import com.hienthai.fastowin.protocol.MIN_COMPATIBLE_PROTOCOL_VERSION
 import com.hienthai.fastowin.protocol.RewardedAdAvailability
 import com.hienthai.fastowin.protocol.RewardedAdBonusStatus
 import com.hienthai.fastowin.protocol.RewardedAdProvider
@@ -46,12 +48,12 @@ class GameWebSocketTest {
         application { gameModule() }
         val webSocketClient = createClient { install(WebSockets) }
 
-        for (version in 38..42) {
+        for (version in MIN_COMPATIBLE_PROTOCOL_VERSION..PROTOCOL_VERSION) {
             val socket = webSocketClient.webSocketSession("/game")
             try {
                 socket.sendMessage(ClientMessage.ConnectGuest("Protocol $version", protocolVersion = version))
                 val session = withTimeout(2_000) { socket.receiveMessage<ServerMessage.SessionReady>() }
-                assertEquals(43, session.protocolVersion)
+                assertEquals(PROTOCOL_VERSION, session.protocolVersion)
                 withTimeout(2_000) { socket.receiveMessage<ServerMessage.RoomList>() }
             } finally {
                 socket.close()
@@ -64,7 +66,7 @@ class GameWebSocketTest {
         application { gameModule() }
         val webSocketClient = createClient { install(WebSockets) }
 
-        for (version in listOf(37, 44)) {
+        for (version in listOf(MIN_COMPATIBLE_PROTOCOL_VERSION - 1, PROTOCOL_VERSION + 1)) {
             val socket = webSocketClient.webSocketSession("/game")
             try {
                 socket.sendMessage(ClientMessage.ConnectGuest("Protocol $version", protocolVersion = version))

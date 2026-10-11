@@ -384,5 +384,14 @@ enum class TextKey {
     AnnouncementBounds, AnnouncementAuthority, AnnouncementCorrection, AnnouncementOpenEvent, AnnouncementOpenMailbox,
     AnnouncementUpdateTitle, AnnouncementUpdateUnsupported, AnnouncementUpdateReady, AnnouncementUpdateCurrent, AnnouncementUpdateApply,
     AnnouncementConsentTitle, AnnouncementConsentDescription, AnnouncementAdminPush, AnnouncementEventPush, AnnouncementSaving,
-    AnnouncementAdminPushDescription, AnnouncementEventPushDescription
+    AnnouncementAdminPushDescription, AnnouncementEventPushDescription,
+    InvalidTournamentSchedule, TournamentClientUpdateRequired, TournamentRegistrationClosed,
+    TournamentAutomaticStart, TournamentCheckInClosed, TournamentScheduleNotFound,
+    ScheduleTournament, TournamentLocalStart, TournamentTimeZone, TournamentDateTimeHint,
+    TournamentTimeZoneHint, TournamentLocalTimeError, TournamentRegistrationDeadline,
+    TournamentCheckInDeadline, TournamentStartDeadline, TournamentCheckIn,
+    TournamentCheckedIn, TournamentCheckInCount, TournamentCheckInCountdown,
+    TournamentStartCountdown, TournamentStarting, TournamentRefundRule, TournamentScheduledHostInfo,
+    TournamentCancelledRefund, TournamentRecordedParticipants, TournamentScheduledInvitationRule,
+    TournamentRefundRuleCompact
 }

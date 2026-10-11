@@ -20,6 +20,9 @@ interface TournamentRepository {
     /** Durably cancel with a full, idempotent refund of each recorded entry payment. */
     suspend fun cancelForMaintenance(cancelled: TournamentSnapshot, profiles: PlayerProfileRepository)
 
+    /** Every cancellation reason shares the existing canonical refund ledger key, including pre-upgrade refunds. */
+    suspend fun cancelWithRefund(cancelled: TournamentSnapshot, profiles: PlayerProfileRepository) = cancelForMaintenance(cancelled, profiles)
+
     /** Acknowledges bracket, generated rooms, prize and completed-room removal as one durable unit. */
     suspend fun commitProgression(batch: TournamentProgression, rooms: ActiveRoomRepository, profiles: PlayerProfileRepository)
 
@@ -80,7 +83,7 @@ open class InMemoryTournamentRepository : TournamentRepository {
     override suspend fun cancelForMaintenance(cancelled: TournamentSnapshot, profiles: PlayerProfileRepository) {
         require(cancelled.phase == TournamentPhase.CANCELLED && cancelled.championPlayerId == null)
         if (cancelled.entryFee > 0) {
-            for (playerId in entrants[cancelled.tournamentId] ?: cancelled.players.map { it.playerId }.toSet()) {
+            for (playerId in entrants[cancelled.tournamentId] ?: (cancelled.players + cancelled.recordedPlayers).map { it.playerId }.toSet()) {
                 val result = profiles.applyWalletTransaction(playerId, "TOURNAMENT_MAINTENANCE_REFUND", cancelled.tournamentId,
                     goldDelta = cancelled.entryFee)
                 check(result == WalletMutationStatus.APPLIED || result == WalletMutationStatus.DUPLICATE)
@@ -209,11 +212,19 @@ class PostgresTournamentRepository(
                 connection.autoCommit = false
                 try {
                     // Read the payment ledger, including entrants who left the lobby before closure.
+                    connection.prepareStatement("SELECT status FROM tournaments WHERE tournament_id=? FOR UPDATE").use {
+                        it.setObject(1, UUID.fromString(cancelled.tournamentId))
+                        it.executeQuery().use { rows ->
+                            check(rows.next()) { "Cancellation tournament missing" }
+                            check(rows.getString(1) != "FINISHED") { "Cannot refund a completed tournament" }
+                        }
+                    }
                     val payments = connection.prepareStatement("SELECT user_id, -gold_delta FROM wallet_transactions WHERE source_type = 'TOURNAMENT_ENTRY' AND source_id = ? ORDER BY user_id").use {
                         it.setString(1, cancelled.tournamentId)
                         it.executeQuery().use { rows -> buildList { while (rows.next()) add(rows.getObject(1, UUID::class.java) to rows.getInt(2)) } }
                     }
                     for ((userId, gold) in payments) {
+                        check(gold > 0) { "Entry payment must be a debit" }
                         connection.prepareStatement("SELECT gold FROM player_stats WHERE user_id = ? FOR UPDATE").use {
                             it.setObject(1, userId); it.executeQuery().use { rows -> check(rows.next()) }
                         }

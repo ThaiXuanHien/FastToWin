@@ -268,6 +268,10 @@ for (const { width, height, dismissal, statusBarExcluded = false } of [
     }, safeTop);
     await expect.poll(async () => (await tag(page, 'app_header').boundingBox())?.y ?? -1)
       .toBeCloseTo(safeTop, 0);
+    const backBounds = await page.getByRole('button', { name: 'Quay lại', exact: true }).first().boundingBox();
+    expect(backBounds?.width).toBeGreaterThan(0);
+    expect(backBounds?.height).toBeGreaterThan(0);
+    await click(page, tag(page, 'open_create_tournament'));
     // Keep the editor inside the upcoming keyboard viewport, so WebKit does
     // not hide/blur it merely because a desktop-mocked viewport clipped it.
     const name = await tapNativeInput(page, 'Tên giải đấu', keyboardHeight);
@@ -303,7 +307,14 @@ for (const { width, height, dismissal, statusBarExcluded = false } of [
       await expect(name).toHaveValue('Kiểm tra bàn phím');
     }
     await page.screenshot({ path: testInfo.outputPath(`tournament-keyboard-${dismissal}.png`) });
-    await click(page, page.getByRole('button', { name: 'Quay lại', exact: true }).first());
+    await click(page, tag(page, 'arcade_dialog_close'));
+    await expect(name).not.toBeAttached();
+    await expectFullIosCanvas(page, false);
+    await page.screenshot({ path: testInfo.outputPath(`tournament-dialog-closed-${dismissal}.png`) });
+    // Compose can omit background accessibility nodes after disposing a dialog.
+    // Try the real Back position measured before opening, after restoring the
+    // same viewport and safe area; still require Home and its bottom bar below.
+    await page.mouse.click(backBounds.x + backBounds.width / 2, backBounds.y + backBounds.height / 2);
     await expect(tag(page, 'home_screen')).toBeAttached();
     await expectFullIosCanvas(page);
     await page.screenshot({ path: testInfo.outputPath(`home-after-keyboard-${dismissal}.png`) });
@@ -321,7 +332,7 @@ test('iOS keyboard dismissal restores other shared text-input screens and dialog
 
   const cases = [
     { route: '/tournament', field: 'public_tournament_search', label: 'Tìm theo tên giải đấu' },
-    { route: '/tournament', open: ['tournament_fee_custom'], field: 'tournament_custom_fee_input', label: 'Nhập số vàng lệ phí', text: '12' },
+    { route: '/tournament', open: ['open_create_tournament', 'tournament_fee_custom'], field: 'tournament_custom_fee_input', label: 'Nhập số vàng lệ phí', text: '12', dialog: true },
     { route: '/rooms', open: ['create_room_open', 'match_type:CASUAL', 'game_mode:ORDER'], field: 'create_room_name', label: 'Tên phòng', dialog: true },
     { route: '/clan', field: 'clan_search_field', label: 'Tìm bang hội' },
     { route: '/clan', open: ['open_create_clan'], field: 'create_clan_name', label: 'Tên bang', dialog: true },
@@ -357,7 +368,8 @@ test('iOS keyboard dismissal restores other shared text-input screens and dialog
       await expect(input).toHaveValue(value);
       await page.screenshot({ path: testInfo.outputPath(`${scenario.field || 'friend-code'}-keyboard-restored.png`) });
       if (scenario.dialog) {
-        await click(page, page.getByRole('button', { name: /^hủy$/i }).last());
+        if (scenario.route === '/tournament') await click(page, tag(page, 'arcade_dialog_close'));
+        else await click(page, page.getByRole('button', { name: /^hủy$/i }).last());
         await expect(input).not.toBeAttached();
         // Compose can delay restoring background accessibility nodes after
         // dialog disposal. Check the canvas geometry independently and retain

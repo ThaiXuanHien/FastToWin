@@ -49,6 +49,8 @@ import com.hienthai.fastowin.protocol.TournamentMatchSnapshot
 import com.hienthai.fastowin.protocol.TournamentPhase
 import com.hienthai.fastowin.protocol.TournamentPlayerSnapshot
 import com.hienthai.fastowin.protocol.TournamentSnapshot
+import com.hienthai.fastowin.protocol.TournamentScheduleSnapshot
+import com.hienthai.fastowin.protocol.PROTOCOL_VERSION
 import com.hienthai.fastowin.protocol.TITLE_CATALOG
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.currentCoroutineContext
@@ -154,6 +156,19 @@ class GameEngine(
     suspend fun reconcileMaintenancePolicy(): MaintenanceApplication {
         restoreActiveRooms()
         val result = persistenceMutex.withLock {
+            val abandonedScheduledStarts = mutex.withLock {
+                synchronized(maintenancePublicationLock) {
+                    if (maintenancePolicy.isFullyClosed) maintenanceWritesPending = true
+                }
+                if (maintenancePolicy.isFullyClosed) pendingTournamentProgressions.filterValues {
+                    it.paused.phase == TournamentPhase.LOBBY && it.paused.schedule != null
+                }.toMap() else emptyMap()
+            }
+            for ((id, staged) in abandonedScheduledStarts) withContext(NonCancellable) {
+                tournamentRepository.commitProgression(TournamentProgression(staged.paused, emptyList(),
+                    removedRoomIds = staged.rooms.map { it.id }), activeRoomRepository, playerProfileRepository)
+                mutex.withLock { pendingTournamentProgressions.remove(id) }
+            }
             val abandonedMatchmaking = mutableListOf<PreparedMatchStart>()
             val change = mutex.withLock {
                 synchronized(maintenancePublicationLock) {
@@ -180,8 +195,7 @@ class GameEngine(
                 }
                 tournaments.values.filter { maintenancePolicy.isFullyClosed && it.phase in setOf(TournamentPhase.LOBBY, TournamentPhase.RUNNING) &&
                     it.id !in pendingTournamentProgressions && it.matches.none { match -> rooms[match.roomId]?.matchId in pendingCompletedMatches } }.forEach { tournament ->
-                    pendingMaintenanceTournaments[tournament.id] = tournament.snapshot().copy(phase = TournamentPhase.CANCELLED,
-                        championPlayerId = null, prizePool = 0, finishedAtEpochMillis = nowMillis())
+                    pendingMaintenanceTournaments[tournament.id] = tournament.cancelledSnapshot().copy(prizePool = 0)
                 }
                 MaintenanceApplication(matchmakingStopped + aborted.map { room -> Delivery(ServerMessage.RoomClosed(room.id,
                     LocalizationService(com.hienthai.fastowin.localization.AppLanguage.VIETNAMESE).text(TextKey.MaintenanceDefaultMessage),
@@ -227,7 +241,7 @@ class GameEngine(
         return connectIdentity(identity.playerId, identity.displayName, identity.resumeToken)
     }
 
-    suspend fun connectAccount(account: AuthenticatedAccount, resumeToken: String? = null): ConnectedPlayer {
+    suspend fun connectAccount(account: AuthenticatedAccount, resumeToken: String? = null, protocolVersion: Int = PROTOCOL_VERSION): ConnectedPlayer {
         restoreActiveRooms()
         val legacyRestored = mutex.withLock {
             val existing = sessionsByPlayerId[account.userId.toString()]
@@ -248,7 +262,8 @@ class GameEngine(
             resumeToken = null,
             accountResumeToken = if (legacyRestored) newAccountResumeToken() else resumeToken ?: newAccountResumeToken(),
             avatarId = appearance?.avatarId,
-            frameId = appearance?.frameId ?: "frame_default"
+            frameId = appearance?.frameId ?: "frame_default",
+            protocolVersion = protocolVersion
         )
     }
 
@@ -258,7 +273,8 @@ class GameEngine(
         resumeToken: String?,
         accountResumeToken: String? = null,
         avatarId: String? = null,
-        frameId: String = "frame_default"
+        frameId: String = "frame_default",
+        protocolVersion: Int = PROTOCOL_VERSION
     ): ConnectedPlayer {
         val connected = mutex.withLock {
             if (maintenancePolicy.blocksNewIntent) {
@@ -287,6 +303,7 @@ class GameEngine(
                 sessionsByPlayerId[created.playerId] = created
             }
             session.isConnected = true
+            session.protocolVersion = protocolVersion
             legacyRestoredAccounts.remove(identityPlayerId)
             session.disconnectedAtMillis = null
 
@@ -582,6 +599,7 @@ class GameEngine(
             return respondTournamentInvitation(playerId, message)
         }
         if (message is ClientMessage.StartTournament) return startTournament(playerId, message.tournamentId)
+        if (message is ClientMessage.CheckInTournament) return checkInTournament(playerId, message.tournamentId)
         if (message is ClientMessage.LeaveTournament) return leaveTournament(playerId, message.tournamentId)
         if (message is ClientMessage.SyncNotifications) return syncNotifications(playerId, message.notifications)
         if (message is ClientMessage.MarkNotificationsRead) {
@@ -704,6 +722,7 @@ class GameEngine(
                 is ClientMessage.InviteTournamentPlayer -> HandleResult(emptyList())
                 is ClientMessage.RespondTournamentInvitation -> HandleResult(emptyList())
                 is ClientMessage.StartTournament -> HandleResult(emptyList())
+                is ClientMessage.CheckInTournament -> HandleResult(emptyList())
                 is ClientMessage.LeaveTournament -> HandleResult(emptyList())
                 is ClientMessage.SyncNotifications -> HandleResult(emptyList())
                 is ClientMessage.MarkNotificationsRead -> HandleResult(emptyList())
@@ -794,7 +813,7 @@ class GameEngine(
             }?.snapshot()
             val invitations = tournamentInvitations.values
                 .filter { it.inviteeId == playerId && it.expiresAtMillis > now }
-                .map(TournamentInvitationRecord::snapshot)
+                .map { it.snapshot(now) }
             active to invitations
         }
         val recent = runCatching { tournamentRepository.loadRecent(playerId, TOURNAMENT_HISTORY_LIMIT) }
@@ -850,7 +869,9 @@ class GameEngine(
                         maxPlayers = tournament.maxPlayers,
                         entryFee = tournament.entryFee,
                         prizePool = tournament.prizePool,
-                        createdAtEpochMillis = tournament.createdAtMillis
+                        createdAtEpochMillis = tournament.createdAtMillis,
+                        schedule = tournament.schedule,
+                        serverTimeEpochMillis = nowMillis()
                     )
                 }
                 .sortedWith(compareBy<PublicTournamentSummary> { it.maxPlayers - it.playerCount }
@@ -888,6 +909,16 @@ class GameEngine(
             val host = sessionsByPlayerId[playerId]
                 ?.takeIf { it.isConnected && it.resumeToken == null }
                 ?: return@withLock listOf(error(playerId, "SESSION_NOT_FOUND", legacyFallback("Phiên chơi không còn hợp lệ.")))
+            val schedule = command.schedule?.let { request ->
+                if (host.protocolVersion < 44) return@withLock listOf(scheduleError(playerId, "TOURNAMENT_CLIENT_UPDATE_REQUIRED"))
+                val now = nowMillis()
+                if (request.startsAtEpochMillis < now + 900_000L || request.startsAtEpochMillis > now + 31_536_000_000L ||
+                    runCatching { java.time.ZoneId.of(request.timeZoneId) }.isFailure) {
+                    return@withLock listOf(scheduleError(playerId, "INVALID_TOURNAMENT_SCHEDULE"))
+                }
+                TournamentScheduleSnapshot(request.startsAtEpochMillis, request.timeZoneId,
+                    request.startsAtEpochMillis - 900_000L, request.startsAtEpochMillis - 900_000L)
+            }
             if (activeTournamentFor(playerId) != null) {
                 return@withLock listOf(error(playerId, "TOURNAMENT_ALREADY_ACTIVE", legacyFallback("Bạn đang tham gia một giải khác.")))
             }
@@ -905,7 +936,8 @@ class GameEngine(
                 prizePool = 0,
                 participants = mutableListOf(TournamentParticipant(playerId, host.displayName)),
                 matches = createTournamentMatches(command.maxPlayers),
-                createdAtMillis = nowMillis()
+                createdAtMillis = nowMillis(),
+                schedule = schedule
             )
             currentCoroutineContext().ensureActive()
             withContext(NonCancellable) {
@@ -983,6 +1015,8 @@ class GameEngine(
                 tournamentName = tournament.name,
                 gameMode = tournament.gameMode,
                 maxPlayers = tournament.maxPlayers,
+                entryFee = tournament.entryFee,
+                schedule = tournament.schedule,
                 expiresAtMillis = nowMillis() + TOURNAMENT_INVITATION_TTL_MILLIS
             )
             tournamentInvitations[invitation.id] = invitation
@@ -1009,7 +1043,7 @@ class GameEngine(
             }
             
             listOf(
-                Delivery(ServerMessage.TournamentInvitation(invitation.snapshot()), setOf(friendId)),
+                Delivery(ServerMessage.TournamentInvitation(invitation.snapshot(nowMillis())), setOf(friendId)),
                 Delivery(ServerMessage.TournamentNotice(
                     message = legacyFallback("Đã gửi lời mời tham gia giải."),
                     messageKey = TextKey.TournamentInvitationSentNotice.name,
@@ -1086,6 +1120,10 @@ class GameEngine(
         source: TournamentAdmissionSource
     ): List<Delivery> {
         if (maintenancePolicy.blocksNewIntent) return listOf(maintenanceError(playerId))
+        if (tournament.schedule != null) {
+            if ((sessionsByPlayerId[playerId]?.protocolVersion ?: 0) < 44) return listOf(scheduleError(playerId, "TOURNAMENT_CLIENT_UPDATE_REQUIRED"))
+            if (nowMillis() >= tournament.schedule.registrationClosesAtEpochMillis) return listOf(scheduleError(playerId, "TOURNAMENT_REGISTRATION_CLOSED"))
+        }
         if (source == TournamentAdmissionSource.PUBLIC_DISCOVERY && tournament.visibility != TournamentVisibility.PUBLIC) {
             return listOf(error(playerId, "TOURNAMENT_NOT_PUBLIC", legacyFallback("Giải này không còn được công khai.")))
         }
@@ -1133,6 +1171,9 @@ class GameEngine(
             }
             val snapshot = checkNotNull(result.tournament)
             tournament.participants += TournamentParticipant(playerId, session.displayName)
+            if (tournament.schedule != null && tournament.recordedPlayers.none { it.playerId == playerId }) {
+                tournament.recordedPlayers += TournamentPlayerSnapshot(playerId, session.displayName)
+            }
             tournament.prizePool = snapshot.prizePool
             listOf(
                 Delivery(ServerMessage.TournamentUpdated(snapshot), tournament.playerIds()),
@@ -1155,6 +1196,7 @@ class GameEngine(
             val tournament = tournaments[tournamentId]
                 ?.takeIf { it.hostId == playerId && it.phase == TournamentPhase.LOBBY }
                 ?: return@withLock listOf(error(playerId, "TOURNAMENT_NOT_STARTABLE", legacyFallback("Bạn không thể bắt đầu giải này.")))
+            if (tournament.schedule != null) return@withLock listOf(scheduleError(playerId, "TOURNAMENT_AUTOMATIC_START"))
             if (tournament.participants.size != tournament.maxPlayers) {
                 return@withLock listOf(
                     error(playerId, "TOURNAMENT_NOT_FULL", legacyFallback("Cần đủ ${tournament.maxPlayers} người để bắt đầu."))
@@ -1196,8 +1238,153 @@ class GameEngine(
         return deliveries + snapshotToSave?.players.orEmpty().flatMap { presenceUpdates(it.playerId) }
     }
 
+    private fun scheduleError(playerId: String, code: String): Delivery {
+        val key = when (code) {
+            "INVALID_TOURNAMENT_SCHEDULE" -> TextKey.InvalidTournamentSchedule
+            "TOURNAMENT_CLIENT_UPDATE_REQUIRED" -> TextKey.TournamentClientUpdateRequired
+            "TOURNAMENT_REGISTRATION_CLOSED" -> TextKey.TournamentRegistrationClosed
+            "TOURNAMENT_AUTOMATIC_START" -> TextKey.TournamentAutomaticStart
+            "TOURNAMENT_CHECK_IN_CLOSED" -> TextKey.TournamentCheckInClosed
+            else -> TextKey.TournamentScheduleNotFound
+        }
+        return Delivery(ServerMessage.Error(code, LocalizationService(com.hienthai.fastowin.localization.AppLanguage.VIETNAMESE).text(key),
+            messageKey = key.name), setOf(playerId))
+    }
+
+    private suspend fun checkInTournament(playerId: String, tournamentId: String): List<Delivery> {
+        if (!isAccountSession(playerId)) return listOf(accountRequired(playerId))
+        return persistenceMutex.withLock { mutex.withLock {
+            if (maintenancePolicy.blocksNewIntent) return@withLock listOf(maintenanceError(playerId))
+            val tournament = tournaments[tournamentId]?.takeIf { playerId in it.playerIds() }
+                ?: return@withLock listOf(scheduleError(playerId, "TOURNAMENT_NOT_FOUND"))
+            if ((sessionsByPlayerId[playerId]?.protocolVersion ?: 0) < 44) {
+                return@withLock listOf(scheduleError(playerId, "TOURNAMENT_CLIENT_UPDATE_REQUIRED"))
+            }
+            val schedule = tournament.schedule
+            val now = nowMillis()
+            if (tournament.phase != TournamentPhase.LOBBY || schedule == null ||
+                now < schedule.checkInOpensAtEpochMillis || now >= schedule.startsAtEpochMillis) {
+                return@withLock listOf(scheduleError(playerId, "TOURNAMENT_CHECK_IN_CLOSED"))
+            }
+            val candidate = tournament.snapshot().let { snapshot -> snapshot.copy(players = snapshot.players.map {
+                if (it.playerId == playerId) it.copy(isCheckedIn = true) else it
+            }) }
+            withContext(NonCancellable) {
+                tournamentRepository.save(candidate)
+                tournaments[tournamentId] = candidate.toTournament()
+                listOf(Delivery(ServerMessage.TournamentUpdated(candidate), tournament.playerIds()))
+            }
+        } }
+    }
+
+    private fun scheduledRosterAvailable(tournament: Tournament): Boolean =
+        tournament.participants.size == tournament.maxPlayers && tournament.participants.all { participant ->
+            participant.isCheckedIn && sessionsByPlayerId[participant.playerId]?.let {
+                it.isConnected && it.resumeToken == null && it.protocolVersion >= 44
+            } == true && roomFor(participant.playerId) == null && participant.playerId !in matchmakingEntries
+        }
+
+    private fun Tournament.cancelledSnapshot(): TournamentSnapshot = snapshot().let { snapshot ->
+        snapshot.copy(phase = TournamentPhase.CANCELLED, championPlayerId = null, finishedAtEpochMillis = nowMillis(),
+            players = if (schedule == null) snapshot.players else (snapshot.players + snapshot.recordedPlayers).distinctBy { it.playerId })
+    }
+
+    /** Scheduler and request mutations share serialization; no catch-up starts before complete restoration. */
+    suspend fun advanceScheduledTournaments(): List<Delivery> {
+        restoreActiveRooms()
+        return persistenceMutex.withLock {
+            val ids = mutex.withLock {
+                if (maintenancePolicy.blocksNewIntent) emptyList() else tournaments.values.filter {
+                    it.phase == TournamentPhase.LOBBY && it.schedule?.startsAtEpochMillis?.let { start -> nowMillis() >= start } == true
+                }.map { it.id }
+            }
+            val deliveries = mutableListOf<Delivery>()
+            var tickFailure: Exception? = null
+            for (id in ids) {
+                try {
+                    val staged = mutex.withLock {
+                        val tournament = tournaments[id] ?: return@withLock null
+                        if (maintenancePolicy.blocksNewIntent || tournament.phase != TournamentPhase.LOBBY) return@withLock null
+                        if (!scheduledRosterAvailable(tournament)) return@withLock null
+                        pendingTournamentProgressions.getOrPut(id) {
+                            val candidate = tournament.snapshot().toTournament()
+                            candidate.phase = TournamentPhase.RUNNING
+                            candidate.startedAtMillis = nowMillis()
+                            val players = candidate.participants.map { it.playerId }
+                            val generated = candidate.matches.filter { it.round == 1 }.sortedBy { it.position }.mapIndexed { index, match ->
+                                match.playerOneId = players[index]
+                                match.playerTwoId = players[players.lastIndex - index]
+                                createTournamentRoom(candidate, match, publish = false)
+                            }
+                            StagedProgression(TournamentProgression(candidate.snapshot(), generated.map { it.toStoredRoom() }), tournament.snapshot(), generated)
+                        }
+                    }
+                    if (staged != null) {
+                        deliveries += withContext(NonCancellable) { commitStagedProgression(id, staged) }
+                    } else {
+                        val cancelled = mutex.withLock {
+                            val tournament = tournaments[id]
+                            if (maintenancePolicy.blocksNewIntent || tournament?.phase != TournamentPhase.LOBBY) null else tournament.cancelledSnapshot()
+                        } ?: continue
+                        withContext(NonCancellable) {
+                            // A timed activation may have committed but failed its publication deadline on a prior tick.
+                            pendingTournamentProgressions[id]?.let { previous ->
+                                tournamentRepository.commitProgression(TournamentProgression(previous.paused, emptyList(),
+                                    removedRoomIds = previous.rooms.map { it.id }), activeRoomRepository, playerProfileRepository)
+                            }
+                            tournamentRepository.cancelWithRefund(cancelled, playerProfileRepository)
+                            deliveries += mutex.withLock {
+                                pendingTournamentProgressions.remove(id)
+                                tournamentInvitations.entries.removeAll { it.value.tournamentId == id }
+                                publishProgression(id, cancelled, emptyList(), null)
+                            }
+                            cancelled.players.forEach { deliveries += loadProfile(it.playerId) }
+                        }
+                    }
+                    deliveries += mutex.withLock {
+                        if (tournaments[id]?.visibility == TournamentVisibility.PUBLIC) listOf(publicTournamentsInvalidated()) else emptyList()
+                    }
+                } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                    throw cancelled
+                } catch (failure: Exception) {
+                    org.slf4j.LoggerFactory.getLogger("ScheduledTournaments").error("Scheduled tournament $id failed; will retry", failure)
+                    tickFailure = failure
+                }
+            }
+            // Preserve already acknowledged deliveries if another schedule failed later in this tick.
+            if (deliveries.isEmpty()) tickFailure?.let { throw it }
+            deliveries
+        }
+    }
+
+    private suspend fun leaveScheduledTournament(playerId: String, tournamentId: String): List<Delivery>? = persistenceMutex.withLock {
+        val deliveries = mutex.withLock {
+            val tournament = tournaments[tournamentId]?.takeIf { it.schedule != null } ?: return@withLock null
+            if (playerId !in tournament.playerIds()) return@withLock listOf(scheduleError(playerId, "TOURNAMENT_NOT_FOUND"))
+            if (tournament.phase != TournamentPhase.LOBBY) return@withLock listOf(scheduleError(playerId, "TOURNAMENT_CHECK_IN_CLOSED"))
+            val hostCancellation = tournament.hostId == playerId && nowMillis() < checkNotNull(tournament.schedule).startsAtEpochMillis
+            if (!hostCancellation && nowMillis() >= checkNotNull(tournament.schedule).registrationClosesAtEpochMillis) {
+                return@withLock listOf(scheduleError(playerId, "TOURNAMENT_REGISTRATION_CLOSED"))
+            }
+            val candidate = if (hostCancellation) tournament.cancelledSnapshot() else tournament.snapshot().let {
+                it.copy(players = it.players.filter { player -> player.playerId != playerId })
+            }
+            withContext(NonCancellable) {
+                if (hostCancellation) tournamentRepository.cancelWithRefund(candidate, playerProfileRepository) else tournamentRepository.save(candidate)
+                tournaments[tournamentId] = candidate.toTournament()
+                tournamentInvitations.entries.removeAll { it.value.tournamentId == tournamentId && (hostCancellation || it.value.inviteeId == playerId) }
+                listOf(Delivery(ServerMessage.TournamentUpdated(candidate), tournament.playerIds())) +
+                    if (tournament.visibility == TournamentVisibility.PUBLIC) listOf(publicTournamentsInvalidated()) else emptyList()
+            }
+        } ?: return@withLock null
+        val cancelled = deliveries.map { it.message }.filterIsInstance<ServerMessage.TournamentUpdated>().singleOrNull()?.tournament
+            ?.takeIf { it.phase == TournamentPhase.CANCELLED }
+        deliveries + cancelled?.players.orEmpty().flatMap { loadProfile(it.playerId) }
+    }
+
     private suspend fun leaveTournament(playerId: String, tournamentId: String): List<Delivery> {
         if (!isAccountSession(playerId)) return listOf(accountRequired(playerId))
+        leaveScheduledTournament(playerId, tournamentId)?.let { return it + loadTournamentHub(playerId) }
         var snapshotToSave: TournamentSnapshot? = null
         val deliveries = mutex.withLock {
             val tournament = tournaments[tournamentId]
@@ -3416,7 +3603,13 @@ class GameEngine(
             check(staged.rooms.none { it.activationPending && nowMillis() >= checkNotNull(it.startedAtEpochMillis) }) {
                 "Timed round activation elapsed before publication"
             }
-            if (maintenancePolicy.blocksNewIntent && staged.rooms.isNotEmpty()) null else publishProgression(id, staged.batch.tournament, staged.rooms, staged.batch.completedRoomId)
+            if (staged.rooms.isNotEmpty() && (maintenancePolicy.blocksNewIntent ||
+                (staged.paused.phase == TournamentPhase.LOBBY && staged.paused.schedule != null &&
+                    !scheduledRosterAvailable(checkNotNull(tournaments[id]))))) null
+            else {
+                tournamentInvitations.entries.removeAll { it.value.tournamentId == id }
+                publishProgression(id, staged.batch.tournament, staged.rooms, staged.batch.completedRoomId)
+            }
         }
         if (published == null) {
             // Policy changed during storage: keep the completed round, durably return the unexposed next round to PENDING.
@@ -3435,7 +3628,7 @@ class GameEngine(
             pendingRoomRemovals.remove(roomId)
         }
         generated.forEach { rooms[it.id] = it }
-        return listOf(Delivery(ServerMessage.TournamentUpdated(snapshot), snapshot.players.mapTo(linkedSetOf()) { it.playerId })) +
+        return listOf(Delivery(ServerMessage.TournamentUpdated(snapshot.copy(serverTimeEpochMillis = nowMillis())), snapshot.players.mapTo(linkedSetOf()) { it.playerId })) +
             generated.map { Delivery(ServerMessage.GameStarted(it.snapshot()), it.playerIds()) }
     }
 
@@ -3484,6 +3677,7 @@ class GameEngine(
                 playerId = participant.playerId,
                 displayName = sessionsByPlayerId[participant.playerId]?.displayName ?: participant.displayName,
                 isHost = participant.playerId == hostId,
+                isCheckedIn = participant.isCheckedIn,
                 isOnline = sessionsByPlayerId[participant.playerId]?.let {
                     it.isConnected && it.resumeToken == null
                 } == true
@@ -3504,7 +3698,12 @@ class GameEngine(
         championPlayerId = championPlayerId,
         createdAtEpochMillis = createdAtMillis,
         startedAtEpochMillis = startedAtMillis,
-        finishedAtEpochMillis = finishedAtMillis
+        finishedAtEpochMillis = finishedAtMillis,
+        schedule = schedule,
+        serverTimeEpochMillis = nowMillis(),
+        recordedPlayers = if (schedule == null) emptyList() else (recordedPlayers + participants.map {
+            TournamentPlayerSnapshot(it.playerId, it.displayName, isHost = it.playerId == hostId)
+        }).distinctBy { it.playerId }
     )
 
     private fun TournamentSnapshot.toTournament(): Tournament = Tournament(
@@ -3516,7 +3715,7 @@ class GameEngine(
         maxPlayers = maxPlayers,
         entryFee = entryFee,
         prizePool = prizePool,
-        participants = players.mapTo(mutableListOf()) { TournamentParticipant(it.playerId, it.displayName) },
+        participants = players.mapTo(mutableListOf()) { TournamentParticipant(it.playerId, it.displayName, it.isCheckedIn) },
         matches = matches.mapTo(mutableListOf()) { match ->
             TournamentMatch(
                 id = match.matchId,
@@ -3533,7 +3732,9 @@ class GameEngine(
         championPlayerId = championPlayerId,
         createdAtMillis = createdAtEpochMillis,
         startedAtMillis = startedAtEpochMillis,
-        finishedAtMillis = finishedAtEpochMillis
+        finishedAtMillis = finishedAtEpochMillis,
+        schedule = schedule,
+        recordedPlayers = recordedPlayers.toMutableList()
     )
 
     private fun roomFor(playerId: String): Room? = rooms.values.firstOrNull { playerId in it.activePlayerIds() }
@@ -3971,7 +4172,8 @@ class GameEngine(
         var frameId: String = "frame_default",
         var isConnected: Boolean = true,
         var disconnectedAtMillis: Long? = null,
-        var latencyMillis: Long? = null
+        var latencyMillis: Long? = null,
+        var protocolVersion: Int = PROTOCOL_VERSION
     )
 
     private data class PendingReconnectResult(
@@ -4125,7 +4327,8 @@ class GameEngine(
 
     private data class TournamentParticipant(
         val playerId: String,
-        val displayName: String
+        val displayName: String,
+        val isCheckedIn: Boolean = false
     )
 
     private data class TournamentMatch(
@@ -4154,7 +4357,9 @@ class GameEngine(
         var championPlayerId: String? = null,
         val createdAtMillis: Long,
         var startedAtMillis: Long? = null,
-        var finishedAtMillis: Long? = null
+        var finishedAtMillis: Long? = null,
+        val schedule: TournamentScheduleSnapshot? = null,
+        val recordedPlayers: MutableList<TournamentPlayerSnapshot> = mutableListOf()
     ) {
         fun playerIds(): Set<String> = participants.mapTo(linkedSetOf(), TournamentParticipant::playerId)
     }
@@ -4168,9 +4373,11 @@ class GameEngine(
         val tournamentName: String,
         val gameMode: ProtocolGameMode,
         val maxPlayers: Int,
+        val entryFee: Int,
+        val schedule: TournamentScheduleSnapshot?,
         val expiresAtMillis: Long
     ) {
-        fun snapshot() = TournamentInvitationSnapshot(
+        fun snapshot(serverTime: Long) = TournamentInvitationSnapshot(
             invitationId = id,
             tournamentId = tournamentId,
             tournamentName = tournamentName,
@@ -4178,7 +4385,10 @@ class GameEngine(
             hostDisplayName = hostDisplayName,
             gameMode = gameMode,
             maxPlayers = maxPlayers,
-            expiresAtEpochMillis = expiresAtMillis
+            expiresAtEpochMillis = expiresAtMillis,
+            entryFee = entryFee,
+            schedule = schedule,
+            serverTimeEpochMillis = serverTime
         )
     }
 

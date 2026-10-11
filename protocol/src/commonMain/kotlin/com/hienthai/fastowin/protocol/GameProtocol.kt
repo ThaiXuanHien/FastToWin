@@ -4,7 +4,7 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
-const val PROTOCOL_VERSION = 43
+const val PROTOCOL_VERSION = 44
 const val MIN_COMPATIBLE_PROTOCOL_VERSION = 38
 
 fun isCompatibleProtocolVersion(version: Int): Boolean =
@@ -140,7 +140,8 @@ data class TournamentPlayerSnapshot(
     val playerId: String,
     val displayName: String,
     val isHost: Boolean = false,
-    val isOnline: Boolean = false
+    val isOnline: Boolean = false,
+    val isCheckedIn: Boolean = false
 )
 
 @Serializable
@@ -181,6 +182,19 @@ data class PublicTournamentSummary(
     val entryFee: Int,
     val prizePool: Int,
     val createdAtEpochMillis: Long,
+    val schedule: TournamentScheduleSnapshot? = null,
+    val serverTimeEpochMillis: Long? = null,
+)
+
+@Serializable
+data class TournamentScheduleRequest(val startsAtEpochMillis: Long, val timeZoneId: String)
+
+@Serializable
+data class TournamentScheduleSnapshot(
+    val startsAtEpochMillis: Long,
+    val timeZoneId: String,
+    val registrationClosesAtEpochMillis: Long,
+    val checkInOpensAtEpochMillis: Long
 )
 
 @Serializable
@@ -199,7 +213,10 @@ data class TournamentSnapshot(
     val createdAtEpochMillis: Long,
     val startedAtEpochMillis: Long? = null,
     val finishedAtEpochMillis: Long? = null,
-    val visibility: TournamentVisibility = TournamentVisibility.PRIVATE
+    val visibility: TournamentVisibility = TournamentVisibility.PRIVATE,
+    val schedule: TournamentScheduleSnapshot? = null,
+    val serverTimeEpochMillis: Long? = null,
+    val recordedPlayers: List<TournamentPlayerSnapshot> = emptyList()
 )
 
 @Serializable
@@ -211,7 +228,10 @@ data class TournamentInvitationSnapshot(
     val hostDisplayName: String,
     val gameMode: ProtocolGameMode,
     val maxPlayers: Int = 4,
-    val expiresAtEpochMillis: Long
+    val expiresAtEpochMillis: Long,
+    val entryFee: Int = 0,
+    val schedule: TournamentScheduleSnapshot? = null,
+    val serverTimeEpochMillis: Long? = null
 )
 
 @Serializable
@@ -883,7 +903,8 @@ sealed class ClientMessage {
         val gameMode: ProtocolGameMode,
         val entryFee: Int = 0,
         val maxPlayers: Int = 4,
-        val visibility: TournamentVisibility = TournamentVisibility.PUBLIC
+        val visibility: TournamentVisibility = TournamentVisibility.PUBLIC,
+        val schedule: TournamentScheduleRequest? = null
     ) : ClientMessage()
 
     @Serializable
@@ -903,6 +924,10 @@ sealed class ClientMessage {
     @Serializable
     @SerialName("start_tournament")
     data class StartTournament(val tournamentId: String) : ClientMessage()
+
+    @Serializable
+    @SerialName("check_in_tournament")
+    data class CheckInTournament(val tournamentId: String) : ClientMessage()
 
     @Serializable
     @SerialName("leave_tournament")

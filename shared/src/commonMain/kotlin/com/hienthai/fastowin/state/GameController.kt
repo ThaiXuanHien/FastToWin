@@ -26,6 +26,7 @@ import com.hienthai.fastowin.protocol.RematchEvent
 import com.hienthai.fastowin.protocol.RoomPhase
 import com.hienthai.fastowin.protocol.ServerMessage
 import com.hienthai.fastowin.protocol.TournamentVisibility
+import com.hienthai.fastowin.protocol.TournamentScheduleRequest
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -553,11 +554,12 @@ class GameController private constructor(
         mode: GameMode,
         entryFee: Int = 0,
         maxPlayers: Int = 4,
-        visibility: TournamentVisibility = TournamentVisibility.PUBLIC
+        visibility: TournamentVisibility = TournamentVisibility.PUBLIC,
+        schedule: TournamentScheduleRequest? = null
     ) {
         _uiState.update { it.copy(isTournamentLoading = true, tournamentNotice = null, error = null) }
         scope.launch {
-            socket.sendMessage(ClientMessage.CreateTournament(name, mode.toProtocol(), entryFee, maxPlayers, visibility))
+            socket.sendMessage(ClientMessage.CreateTournament(name, mode.toProtocol(), entryFee, maxPlayers, visibility, schedule))
         }
     }
 
@@ -589,6 +591,20 @@ class GameController private constructor(
         val tournamentId = _uiState.value.tournamentHub.activeTournament?.tournamentId ?: return
         _uiState.update { it.copy(isTournamentLoading = true, error = null) }
         scope.launch { socket.sendMessage(ClientMessage.StartTournament(tournamentId)) }
+    }
+
+    fun checkInTournament() {
+        val state = _uiState.value
+        val tournament = state.tournamentHub.activeTournament ?: return
+        val schedule = tournament.schedule ?: return
+        val now = state.tournamentServerClock?.now(epochMillis()) ?: epochMillis()
+        if (state.connectionStatus != ConnectionStatus.CONNECTED || state.isTournamentLoading ||
+            state.currentRoomId != null || state.isSearching || state.isMatchmaking ||
+            tournament.phase != com.hienthai.fastowin.protocol.TournamentPhase.LOBBY ||
+            schedule.stageAt(now) != TournamentScheduleStage.CHECK_IN ||
+            tournament.players.none { it.playerId == state.player.id && !it.isCheckedIn }) return
+        _uiState.update { it.copy(isTournamentLoading = true, tournamentNotice = null, error = null) }
+        scope.launch { socket.sendMessage(ClientMessage.CheckInTournament(tournament.tournamentId)) }
     }
 
     fun leaveTournament() {
@@ -1342,6 +1358,10 @@ class GameController private constructor(
                     val invitationIds = message.hub.invitations.mapTo(mutableSetOf()) { it.invitationId }
                     state.copy(
                         tournamentHub = message.hub,
+                        tournamentServerClock = (message.hub.activeTournament?.serverTimeEpochMillis
+                            ?: message.hub.invitations.mapNotNull { it.serverTimeEpochMillis }.maxOrNull())?.let {
+                            TournamentServerClock(it, epochMillis())
+                        } ?: state.tournamentServerClock,
                         tournamentInvitationPrompt = state.tournamentInvitationPrompt?.takeIf {
                             it.invitationId in invitationIds
                         } ?: message.hub.invitations.firstOrNull(),
@@ -1353,7 +1373,9 @@ class GameController private constructor(
 
             is ServerMessage.PublicTournamentsData -> {
                 _uiState.update {
-                    it.copy(publicTournaments = message.tournaments, isPublicTournamentsLoading = false)
+                    it.copy(publicTournaments = message.tournaments, isPublicTournamentsLoading = false,
+                        tournamentServerClock = message.tournaments.mapNotNull { item -> item.serverTimeEpochMillis }
+                            .maxOrNull()?.let { server -> TournamentServerClock(server, epochMillis()) } ?: it.tournamentServerClock)
                 }
             }
 
@@ -1364,6 +1386,9 @@ class GameController private constructor(
                     val completed = message.tournament.phase == com.hienthai.fastowin.protocol.TournamentPhase.FINISHED ||
                         message.tournament.phase == com.hienthai.fastowin.protocol.TournamentPhase.CANCELLED
                     state.copy(
+                        tournamentServerClock = message.tournament.serverTimeEpochMillis?.let {
+                            TournamentServerClock(it, epochMillis())
+                        } ?: state.tournamentServerClock,
                         tournamentHub = state.tournamentHub.copy(
                             activeTournament = message.tournament.takeUnless { completed },
                             recentTournaments = if (completed) {
@@ -1386,6 +1411,9 @@ class GameController private constructor(
                     val invitations = state.tournamentHub.invitations
                         .filterNot { it.invitationId == message.invitation.invitationId } + message.invitation
                     state.copy(
+                        tournamentServerClock = message.invitation.serverTimeEpochMillis?.let {
+                            TournamentServerClock(it, epochMillis())
+                        } ?: state.tournamentServerClock,
                         tournamentHub = state.tournamentHub.copy(invitations = invitations),
                         tournamentInvitationPrompt = state.tournamentInvitationPrompt ?: message.invitation,
                         tournamentNotice = null

@@ -104,6 +104,7 @@ test('numeric tournament fee keeps typed digits in browser order', async ({ acto
   await login(player);
   await click(player.page, tag(player.page, 'home_tournament'));
   await expect(tag(player.page, 'tournament_screen')).toBeAttached();
+  await click(player.page, tag(player.page, 'open_create_tournament'));
   await click(player.page, tag(player.page, 'tournament_fee_custom'));
 
   // The fixed three-column preset grid is taller than the old FlowRow on
@@ -124,11 +125,12 @@ test('numeric tournament fee keeps typed digits in browser order', async ({ acto
   await expect(numeric).toHaveAttribute('autocapitalize', 'none');
 });
 
-test('labeled tournament example appears only while focused and empty', async ({ actors }) => {
+test('labeled tournament example appears only while focused and empty', async ({ actors }, testInfo) => {
   const player = await actors('Tournament placeholder');
   await login(player);
   await click(player.page, tag(player.page, 'home_tournament'));
   await expect(tag(player.page, 'tournament_screen')).toBeAttached();
+  await click(player.page, tag(player.page, 'open_create_tournament'));
 
   const tournamentName = player.page.locator(
     'input[data-fasttowin-native-input][aria-label="Tên giải đấu"]',
@@ -156,4 +158,11 @@ test('labeled tournament example appears only while focused and empty', async ({
     placeholderShown: input.matches(':placeholder-shown'),
   }));
   expect(afterFill).toEqual({ value: 'Cúp cuối tuần', placeholderShown: false });
+  await player.page.screenshot({ path: testInfo.outputPath('tournament-create-phone.png') });
+  await player.page.setViewportSize({ width: 1280, height: 800 });
+  await expect(player.page.locator('canvas').first()).toHaveCSS('width', '1280px');
+  await expect(tag(player.page, 'arcade_dialog_close')).toBeAttached();
+  await player.page.screenshot({ path: testInfo.outputPath('tournament-create-desktop.png') });
+  await click(player.page, tag(player.page, 'arcade_dialog_close'));
+  await expect(tournamentName).not.toBeAttached();
 });

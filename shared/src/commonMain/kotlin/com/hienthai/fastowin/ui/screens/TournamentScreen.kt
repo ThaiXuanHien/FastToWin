@@ -25,6 +25,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.EmojiEvents
 import androidx.compose.material.icons.rounded.GroupAdd
 import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material.icons.rounded.Schedule
+import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.material3.Switch
 import androidx.compose.material.icons.filled.MonetizationOn
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -49,6 +52,8 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -64,6 +69,17 @@ import com.hienthai.fastowin.protocol.TournamentMatchPhase
 import com.hienthai.fastowin.protocol.TournamentMatchSnapshot
 import com.hienthai.fastowin.protocol.TournamentPhase
 import com.hienthai.fastowin.protocol.TournamentSnapshot
+import com.hienthai.fastowin.protocol.TournamentScheduleRequest
+import com.hienthai.fastowin.protocol.TournamentScheduleSnapshot
+import com.hienthai.fastowin.state.TournamentScheduleStage
+import com.hienthai.fastowin.state.parseTournamentSchedule
+import com.hienthai.fastowin.state.stageAt
+import com.hienthai.fastowin.state.toScheduleSnapshot
+import com.hienthai.fastowin.state.tournamentCountdown
+import com.hienthai.fastowin.state.tournamentLocalDateTime
+import com.hienthai.fastowin.platform.epochMillis
+import kotlinx.coroutines.delay
+import kotlinx.datetime.TimeZone
 import com.hienthai.fastowin.state.GameState
 import com.hienthai.fastowin.state.PublicTournamentFilters
 import com.hienthai.fastowin.state.ConnectionStatus
@@ -96,11 +112,22 @@ fun TournamentScreen(
     onRefreshPublic: () -> Unit = {},
     onJoinPublic: (String) -> Unit = {},
     onOpenNotifications: () -> Unit = {},
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onCreateScheduled: ((String, GameMode, Int, Int, TournamentVisibility, TournamentScheduleRequest?) -> Unit)? = null,
+    onCheckIn: () -> Unit = {},
+    nowEpochMillis: Long? = null
 ) {
     SystemBackHandler(onBack = onBack)
 
     val tournament = state.tournamentHub.activeTournament
+    var localNow by remember { mutableStateOf(epochMillis()) }
+    LaunchedEffect(nowEpochMillis) {
+        if (nowEpochMillis == null) while (true) {
+            localNow = epochMillis()
+            delay(1_000)
+        }
+    }
+    val now = nowEpochMillis ?: state.tournamentServerClock?.now(localNow) ?: localNow
     Scaffold(
         modifier = modifier.fillMaxSize().testTag("tournament_screen"),
         containerColor = Color.Transparent,
@@ -172,18 +199,22 @@ fun TournamentScreen(
                         isConnected = LocalNewOnlineIntentAllowed.current && state.connectionStatus == ConnectionStatus.CONNECTED,
                         onFiltersChange = onPublicFiltersChange,
                         onRefresh = onRefreshPublic,
-                        onJoin = onJoinPublic
+                        onJoin = onJoinPublic,
+                        now = now
                     )
                     if (state.tournamentHub.invitations.isNotEmpty()) {
                         SectionLabel(localized(TextKey.JoinInvitations))
                         state.tournamentHub.invitations.forEach { invitation ->
-                            InvitationCard(invitation, onRespondInvitation)
+                            InvitationCard(invitation, onRespondInvitation, now)
                         }
                     }
                     CreateTournamentCard(
                         playerLevel = state.profile?.progression?.level ?: 1,
                         enabled = LocalNewOnlineIntentAllowed.current && !state.isTournamentLoading,
-                        onCreate = onCreate
+                        onCreate = onCreate,
+                        onCreateScheduled = onCreateScheduled,
+                        now = now,
+                        error = state.error
                     )
                     if (state.tournamentHub.recentTournaments.isNotEmpty()) {
                         SectionLabel(localized(TextKey.RecentTournaments))
@@ -201,7 +232,9 @@ fun TournamentScreen(
                         onInvite = onInvite,
                         onStart = onStart,
                         onLeave = onLeave,
-                        onOpenFriendProfile = onOpenFriendProfile
+                        onOpenFriendProfile = onOpenFriendProfile,
+                        onCheckIn = onCheckIn,
+                        now = now
                     )
                 }
                 Spacer(Modifier.height(12.dp))
@@ -214,8 +247,18 @@ fun TournamentScreen(
 fun TournamentInvitationDialog(
     invitation: TournamentInvitationSnapshot,
     onRespond: (Boolean) -> Unit,
-    onDefer: () -> Unit
+    onDefer: () -> Unit,
+    serverClock: com.hienthai.fastowin.state.TournamentServerClock? = null,
+    nowEpochMillis: Long? = null
 ) {
+    var localNow by remember { mutableStateOf(epochMillis()) }
+    LaunchedEffect(nowEpochMillis) {
+        if (nowEpochMillis == null) while (true) {
+            localNow = epochMillis()
+            delay(1_000)
+        }
+    }
+    val now = nowEpochMillis ?: serverClock?.now(localNow) ?: localNow
     ArcadeDialog(
         title = localized(TextKey.TournamentInvitationTitle),
         subtitle = localized(TextKey.TournamentInvitationDescription, "host" to invitation.hostDisplayName, "tournament" to invitation.tournamentName, "mode" to invitation.gameMode.title(), "players" to invitation.maxPlayers),
@@ -223,15 +266,17 @@ fun TournamentInvitationDialog(
         modifier = Modifier.testTag("tournament_invitation_dialog")
     ) {
         Column(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
+            InvitationDetails(invitation, now)
             ArcadeActionButton(
                 label = localized(TextKey.JoinTournament),
                 onClick = { onRespond(true) },
-                enabled = LocalNewOnlineIntentAllowed.current,
+                enabled = LocalNewOnlineIntentAllowed.current &&
+                    (invitation.schedule?.registrationClosesAtEpochMillis?.let { now < it } ?: true),
                 style = ArcadeActionStyle.GOLD,
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.fillMaxWidth().testTag("accept_tournament_invitation")
             )
             ArcadeActionButton(
                 label = localized(TextKey.DecideLater),
@@ -258,7 +303,8 @@ private fun PublicTournamentSection(
     isConnected: Boolean,
     onFiltersChange: (PublicTournamentFilters) -> Unit,
     onRefresh: () -> Unit,
-    onJoin: (String) -> Unit
+    onJoin: (String) -> Unit,
+    now: Long
 ) {
     var pendingJoinId by remember { mutableStateOf<String?>(null) }
     val currentPending = tournaments.firstOrNull {
@@ -268,9 +314,11 @@ private fun PublicTournamentSection(
         if (currentPending == null) pendingJoinId = null
     }
     if (currentPending != null) {
-        val canConfirm = isConnected && !isLoading && !isJoining
+        val canConfirm = isConnected && !isLoading && !isJoining &&
+            (currentPending.schedule?.registrationClosesAtEpochMillis?.let { now < it } ?: true)
         PaidTournamentJoinDialog(
             tournament = currentPending,
+            now = now,
             enabled = canConfirm,
             onConfirm = {
                 if (canConfirm) {
@@ -313,7 +361,9 @@ private fun PublicTournamentSection(
     tournaments.forEach { tournament ->
         PublicTournamentCard(
             tournament = tournament,
-            enabled = isConnected && !isJoining && !isLoading && tournament.playerCount < tournament.maxPlayers,
+            enabled = isConnected && !isJoining && !isLoading && tournament.playerCount < tournament.maxPlayers &&
+                (tournament.schedule?.registrationClosesAtEpochMillis?.let { now < it } ?: true),
+            now = now,
             onJoin = {
                 if (tournament.entryFee == 0) onJoin(tournament.tournamentId)
                 else pendingJoinId = tournament.tournamentId
@@ -390,10 +440,11 @@ private fun TournamentFilterChip(label: String, selected: Boolean, tag: String, 
 }
 
 @Composable
-private fun PublicTournamentCard(tournament: PublicTournamentSummary, enabled: Boolean, onJoin: () -> Unit) {
+private fun PublicTournamentCard(tournament: PublicTournamentSummary, enabled: Boolean, now: Long, onJoin: () -> Unit) {
     ArcadePanel(Modifier.fillMaxWidth().testTag("public_tournament_${tournament.tournamentId}"), accent = ArcadePalette.Gold500) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(tournament.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            tournament.schedule?.let { TournamentSchedulePanel(it, now, tournament.maxPlayers, compact = true) }
             Text(localized(TextKey.PublicTournamentHost, "host" to tournament.hostDisplayName), color = MaterialTheme.colorScheme.onSurfaceVariant)
             Text(localized(TextKey.PublicTournamentSummary, "mode" to tournament.gameMode.title(),
                 "current" to tournament.playerCount, "max" to tournament.maxPlayers, "prize" to tournament.prizePool))
@@ -417,6 +468,7 @@ private fun PublicTournamentCard(tournament: PublicTournamentSummary, enabled: B
 @Composable
 private fun PaidTournamentJoinDialog(
     tournament: PublicTournamentSummary,
+    now: Long,
     enabled: Boolean,
     onConfirm: () -> Unit,
     onDismiss: () -> Unit
@@ -431,6 +483,10 @@ private fun PaidTournamentJoinDialog(
         ),
         onDismissRequest = onDismiss
     ) {
+        Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        tournament.schedule?.let {
+            TournamentSchedulePanel(it, now, tournament.maxPlayers)
+        }
         ArcadeActionButton(
             label = localized(TextKey.Confirm),
             onClick = onConfirm,
@@ -444,6 +500,7 @@ private fun PaidTournamentJoinDialog(
             style = ArcadeActionStyle.OUTLINE,
             modifier = Modifier.fillMaxWidth().testTag("cancel_public_tournament_join")
         )
+        }
     }
 }
 
@@ -451,7 +508,35 @@ private fun PaidTournamentJoinDialog(
 private fun CreateTournamentCard(
     playerLevel: Int,
     enabled: Boolean,
-    onCreate: (String, GameMode, Int, Int, TournamentVisibility) -> Unit
+    onCreate: (String, GameMode, Int, Int, TournamentVisibility) -> Unit,
+    onCreateScheduled: ((String, GameMode, Int, Int, TournamentVisibility, TournamentScheduleRequest?) -> Unit)?,
+    now: Long,
+    error: String?
+) {
+    var showCreate by rememberSaveable { mutableStateOf(false) }
+    ArcadeActionButton(
+        label = localized(TextKey.CreateTournamentTitle), onClick = { showCreate = true },
+        enabled = enabled, style = ArcadeActionStyle.GOLD,
+        modifier = Modifier.fillMaxWidth().testTag("open_create_tournament")
+    )
+    if (!showCreate) return
+    ArcadeDialog(
+        title = localized(TextKey.CreateTournamentTitle),
+        onDismissRequest = { showCreate = false },
+        showCloseButton = true
+    ) {
+        CreateTournamentForm(playerLevel, enabled, onCreate, onCreateScheduled, now, error)
+    }
+}
+
+@Composable
+private fun CreateTournamentForm(
+    playerLevel: Int,
+    enabled: Boolean,
+    onCreate: (String, GameMode, Int, Int, TournamentVisibility) -> Unit,
+    onCreateScheduled: ((String, GameMode, Int, Int, TournamentVisibility, TournamentScheduleRequest?) -> Unit)?,
+    now: Long,
+    error: String?
 ) {
     var name by remember { mutableStateOf("") }
     var mode by remember { mutableStateOf(GameMode.ORDER) }
@@ -459,6 +544,10 @@ private fun CreateTournamentCard(
     var visibility by rememberSaveable { mutableStateOf(TournamentVisibility.PUBLIC) }
     var showModePicker by remember { mutableStateOf(false) }
     val customFeeBringIntoViewRequester = remember { BringIntoViewRequester() }
+    val errorBringIntoViewRequester = remember { BringIntoViewRequester() }
+    LaunchedEffect(error) {
+        if (error != null) errorBringIntoViewRequester.bringIntoView()
+    }
     if (showModePicker) {
         GameModePickerDialog(
             title = localized(TextKey.ChooseTournamentMode),
@@ -470,8 +559,13 @@ private fun CreateTournamentCard(
             }
         )
     }
-    ArcadePanel(modifier = Modifier.fillMaxWidth(), accent = ArcadePalette.Gold500) {
-        Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+    Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).testTag("tournament_create_form"),
+        verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            error?.let {
+                Box(Modifier.testTag("tournament_create_error").bringIntoViewRequester(errorBringIntoViewRequester)) {
+                    MessageCard(it, isError = true)
+                }
+            }
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -705,10 +799,48 @@ private fun CreateTournamentCard(
                 }
             }
 
+            var scheduled by rememberSaveable { mutableStateOf(false) }
+            var localStart by rememberSaveable { mutableStateOf("") }
+            var timeZone by rememberSaveable { mutableStateOf(TimeZone.currentSystemDefault().id) }
+            val parsed = if (scheduled) parseTournamentSchedule(localStart, timeZone) else null
+            val request = parsed?.getOrNull()
+            val validRange = request?.let { it.startsAtEpochMillis >= now + 900_000 &&
+                it.startsAtEpochMillis <= now + 365L * 24 * 60 * 60_000 } ?: !scheduled
+            if (onCreateScheduled != null) {
+                Row(Modifier.fillMaxWidth().heightIn(min = 48.dp),
+                    verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    val scheduleLabel = localized(TextKey.ScheduleTournament)
+                    Text(scheduleLabel, modifier = Modifier.weight(1f))
+                    Switch(checked = scheduled, onCheckedChange = { scheduled = it },
+                        modifier = Modifier.heightIn(min = 48.dp).testTag("tournament_schedule_toggle")
+                            .semantics { contentDescription = scheduleLabel })
+                }
+            }
+            if (scheduled) {
+                OutlinedTextField(value = localStart, onValueChange = { localStart = it },
+                    label = localized(TextKey.TournamentLocalStart),
+                    placeholder = "YYYY-MM-DD HH:mm", singleLine = true,
+                    modifier = Modifier.fillMaxWidth().testTag("tournament_schedule_local_start"))
+                Text(localized(TextKey.TournamentDateTimeHint), style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                OutlinedTextField(value = timeZone, onValueChange = { timeZone = it },
+                    label = localized(TextKey.TournamentTimeZone), singleLine = true,
+                    modifier = Modifier.fillMaxWidth().testTag("tournament_schedule_time_zone"))
+                Text(localized(TextKey.TournamentTimeZoneHint), style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (localStart.isNotBlank() && (request == null || !validRange)) {
+                    Text(localized(if (request == null) TextKey.TournamentLocalTimeError else TextKey.InvalidTournamentSchedule),
+                        color = MaterialTheme.colorScheme.error, modifier = Modifier.testTag("tournament_schedule_error"))
+                }
+                request?.let { TournamentSchedulePanel(it.toScheduleSnapshot(), now, maxPlayers, showCountdown = false) }
+            }
             ArcadeActionButton(
                 label = localized(TextKey.CreateTournamentAction),
-                onClick = { onCreate(name.trim(), mode, entryFee, maxPlayers, visibility) },
-                enabled = enabled && name.trim().length >= 3 && (!isCustomFee || customFeeText.isNotEmpty()),
+                onClick = {
+                    if (scheduled) onCreateScheduled?.invoke(name.trim(), mode, entryFee, maxPlayers, visibility, request)
+                    else onCreate(name.trim(), mode, entryFee, maxPlayers, visibility)
+                },
+                enabled = enabled && name.trim().length >= 3 && (!isCustomFee || customFeeText.isNotEmpty()) && validRange && (!scheduled || request != null),
                 style = ArcadeActionStyle.GOLD,
                 modifier = Modifier.fillMaxWidth().testTag("create_tournament")
             )
@@ -724,7 +856,6 @@ private fun CreateTournamentCard(
                     color = MaterialTheme.colorScheme.onSecondaryContainer
                 )
             }
-        }
     }
 }
 
@@ -815,10 +946,33 @@ private fun ActiveTournamentContent(
     onInvite: (String) -> Unit,
     onStart: () -> Unit,
     onLeave: () -> Unit,
-    onOpenFriendProfile: (String) -> Unit
+    onOpenFriendProfile: (String) -> Unit,
+    onCheckIn: () -> Unit,
+    now: Long
 ) {
     val myId = state.player.id
     val isHost = tournament.hostPlayerId == myId
+    val schedule = tournament.schedule
+    val registrationOpen = schedule?.registrationClosesAtEpochMillis?.let { now < it } ?: true
+    val myParticipant = tournament.players.firstOrNull { it.playerId == myId }
+    if (schedule != null) {
+        TournamentSchedulePanel(schedule, now, tournament.maxPlayers,
+            checkedInCount = tournament.players.count { it.isCheckedIn }, compact = true,
+            showCountdown = tournament.phase == TournamentPhase.LOBBY)
+        if (tournament.phase == TournamentPhase.LOBBY) {
+            Text(localized(TextKey.TournamentScheduledHostInfo), color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (schedule.stageAt(now) == TournamentScheduleStage.CHECK_IN || myParticipant?.isCheckedIn == true) {
+                ArcadeActionButton(label = localized(if (myParticipant?.isCheckedIn == true) TextKey.TournamentCheckedIn else TextKey.TournamentCheckIn),
+                    onClick = onCheckIn,
+                    enabled = LocalNewOnlineIntentAllowed.current && state.connectionStatus == ConnectionStatus.CONNECTED &&
+                        !state.isTournamentLoading && myParticipant?.isCheckedIn == false &&
+                        schedule.stageAt(now) == TournamentScheduleStage.CHECK_IN && state.currentRoomId == null &&
+                        !state.isSearching && !state.isMatchmaking,
+                    icon = Icons.Rounded.CheckCircle, style = ArcadeActionStyle.GOLD,
+                    modifier = Modifier.fillMaxWidth().testTag("tournament_check_in"))
+            }
+        }
+    }
     
     ArcadePanel(modifier = Modifier.fillMaxWidth(), accent = ArcadePalette.Gold500) {
         Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -937,6 +1091,10 @@ private fun ActiveTournamentContent(
                                     color = ArcadePalette.Blue300
                                 )
                             }
+                            if (participant?.isCheckedIn == true) {
+                                Text(localized(TextKey.TournamentCheckedIn), style = MaterialTheme.typography.labelMedium,
+                                    color = ArcadePalette.Mint100)
+                            }
                         }
                     }
                     
@@ -971,7 +1129,7 @@ private fun ActiveTournamentContent(
         val availableFriends = state.social.friends.filter { friend ->
             tournament.players.none { it.playerId == friend.userId }
         }
-        if (tournament.players.size < tournament.maxPlayers) {
+        if (registrationOpen && tournament.players.size < tournament.maxPlayers) {
             SectionLabel(localized(TextKey.InviteFriends))
             if (availableFriends.isEmpty()) {
                 Text(
@@ -1015,7 +1173,7 @@ private fun ActiveTournamentContent(
         
         Spacer(Modifier.height(8.dp))
         
-        ArcadeActionButton(
+        if (schedule == null) ArcadeActionButton(
             label = localized(TextKey.StartTournament),
             onClick = onStart,
             enabled = LocalNewOnlineIntentAllowed.current && tournament.players.size == tournament.maxPlayers &&
@@ -1035,9 +1193,10 @@ private fun ActiveTournamentContent(
         ArcadeActionButton(
             label = localized(if (isHost) TextKey.CancelTournament else TextKey.LeaveTournament),
             onClick = onLeave,
-            enabled = !state.isTournamentLoading,
+            enabled = !state.isTournamentLoading && state.connectionStatus == ConnectionStatus.CONNECTED &&
+                (schedule == null || if (isHost) now < schedule.startsAtEpochMillis else registrationOpen),
             style = ArcadeActionStyle.DANGER,
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier.fillMaxWidth().testTag("leave_tournament")
         )
     } else if (tournament.phase == TournamentPhase.RUNNING) {
         Surface(
@@ -1264,7 +1423,8 @@ private fun TournamentPlayerLine(
 @Composable
 private fun InvitationCard(
     invitation: TournamentInvitationSnapshot,
-    onRespond: (String, Boolean) -> Unit
+    onRespond: (String, Boolean) -> Unit,
+    now: Long
 ) {
     ArcadePanel(modifier = Modifier.fillMaxWidth(), accent = ArcadePalette.Gold500) {
         Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -1273,6 +1433,7 @@ private fun InvitationCard(
                 localized(TextKey.TournamentInviteCompact, "host" to invitation.hostDisplayName, "mode" to invitation.gameMode.title(), "players" to invitation.maxPlayers),
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
+            InvitationDetails(invitation, now)
             Column(
                 modifier = Modifier.fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -1280,7 +1441,8 @@ private fun InvitationCard(
                 ArcadeActionButton(
                     label = localized(TextKey.JoinTournament),
                     onClick = { onRespond(invitation.invitationId, true) },
-                    enabled = LocalNewOnlineIntentAllowed.current,
+                    enabled = LocalNewOnlineIntentAllowed.current &&
+                        (invitation.schedule?.registrationClosesAtEpochMillis?.let { now < it } ?: true),
                     style = ArcadeActionStyle.GOLD,
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -1291,6 +1453,19 @@ private fun InvitationCard(
                     modifier = Modifier.fillMaxWidth()
                 )
             }
+        }
+    }
+}
+
+@Composable
+private fun InvitationDetails(invitation: TournamentInvitationSnapshot, now: Long) {
+    Text(if (invitation.entryFee == 0) localized(TextKey.Free)
+        else localized(TextKey.PublicTournamentEntryFee, "fee" to invitation.entryFee),
+        fontWeight = FontWeight.Bold)
+    invitation.schedule?.let {
+        TournamentSchedulePanel(it, now, invitation.maxPlayers, showCountdown = false)
+        if (now >= it.registrationClosesAtEpochMillis) {
+            Text(localized(TextKey.TournamentRegistrationClosed), color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
@@ -1312,6 +1487,12 @@ private fun TournamentHistoryCard(
         Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(tournament.name, fontWeight = FontWeight.Bold)
             Text("${tournament.gameMode.title()} • ${tournament.phase.label()}")
+            if (tournament.schedule != null && tournament.phase == TournamentPhase.CANCELLED) {
+                Text(localized(TextKey.TournamentCancelledRefund), color = ArcadePalette.Mint100)
+                val entries = (tournament.players + tournament.recordedPlayers).distinctBy { it.playerId }
+                Text(localized(TextKey.TournamentRecordedParticipants, "players" to entries.joinToString { it.displayName }),
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
             champion?.let { Text(localized(TextKey.ChampionCompact, "player" to it), color = ArcadePalette.Gold500, fontWeight = FontWeight.Bold) }
             Text(
                 localized(if (expanded) TextKey.HideBracket else TextKey.ViewBracket),
