@@ -141,6 +141,13 @@ class ScheduledTournamentTest {
             assertEquals(setOf(fixture.ids.first()), deliveries.single { it.message is ServerMessage.TournamentUpdated }.recipients)
             val messages = deliveries.filter { it.recipients?.contains(leaver) != false }.map(Delivery::message)
             assertTrue(messages.filterIsInstance<ServerMessage.TournamentHubData>().single().isHistoryRefresh)
+            val profileRefresh = messages.filterIsInstance<ServerMessage.ProfileData>().single()
+            assertTrue(profileRefresh.isBackgroundRefresh)
+            assertTrue(messages.indexOf(messages.filterIsInstance<ServerMessage.TournamentHubData>().single()) <
+                messages.indexOf(profileRefresh))
+            val explicitProfile = fixture.engine.handle(leaver, ClientMessage.GetProfile)
+                .map(Delivery::message).filterIsInstance<ServerMessage.ProfileData>().single()
+            assertFalse(explicitProfile.isBackgroundRefresh)
             var legacyActive: TournamentSnapshot? = before
             var legacyHistory = emptyList<TournamentSnapshot>()
             for (message in messages) {
@@ -161,7 +168,7 @@ class ScheduledTournamentTest {
             assertTrue(messages.none { it is ServerMessage.TournamentUpdated && it.tournament.tournamentId == a.tournamentId })
             assertEquals(listOf(a.tournamentId), legacyHistory.map { it.tournamentId })
             assertEquals(TournamentPhase.CANCELLED, legacyHistory.single().phase)
-            assertEquals(900, messages.filterIsInstance<ServerMessage.ProfileData>().single().profile.progression.gold)
+            assertEquals(900, profileRefresh.profile.progression.gold)
             assertEquals(900, fixture.wallet.gold.getValue(leaver))
             assertEquals(b.tournamentId, fixture.engine.handle(leaver, ClientMessage.GetTournamentHub).active().tournamentId)
             assertTrue(fixture.engine.advanceScheduledTournaments().isEmpty())

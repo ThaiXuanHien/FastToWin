@@ -19,10 +19,29 @@ class GameProtocolCompatibilityTest {
         val messageKey: String? = null, val messageArgs: Map<String, String> = emptyMap()
     )
     @Serializable private sealed class OldServerMessage {
+        @Serializable @SerialName("profile_data")
+        data class ProfileData(val profile: PlayerProfileSnapshot) : OldServerMessage()
         @Serializable @SerialName("notifications_data")
         data class NotificationsData(val notifications: List<OldNotification>) : OldServerMessage()
         @Serializable @SerialName("tournament_hub_data")
         data class TournamentHubData(val hub: TournamentHubSnapshot) : OldServerMessage()
+    }
+
+    @Test fun `background profile marker preserves old payloads and readers`() {
+        val profile = PlayerProfileSnapshot("player-1", "Tester", "TEST",
+            progression = PlayerProgressionSnapshot(gold = 900))
+        val message = ServerMessage.ProfileData(profile, isBackgroundRefresh = true)
+        val payload = ProtocolJson.encodeToString<ServerMessage>(message)
+        assertEquals(message, ProtocolJson.decodeFromString<ServerMessage>(payload))
+        val oldReader = Json { classDiscriminator = "type"; ignoreUnknownKeys = true }
+        val old = oldReader.decodeFromString<OldServerMessage>(payload) as OldServerMessage.ProfileData
+        assertEquals(profile, old.profile)
+        val oldPayload = oldReader.encodeToString<OldServerMessage>(OldServerMessage.ProfileData(profile))
+        val current = ProtocolJson.decodeFromString<ServerMessage>(oldPayload) as ServerMessage.ProfileData
+        assertFalse(current.isBackgroundRefresh)
+        assertEquals(profile, current.profile)
+        assertEquals(44, PROTOCOL_VERSION)
+        assertEquals(38, MIN_COMPATIBLE_PROTOCOL_VERSION)
     }
 
     @Test fun `history refresh hub marker is additive and survives current reader`() {

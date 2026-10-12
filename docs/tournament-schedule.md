@@ -40,3 +40,22 @@ Web Wasm và JavaScript fallback nạp `@js-joda/timezone` 2.23.0 trước khi k
 Kiểm tra biên thời gian trước/đúng/sau hạn, check-in giả mạo/lặp, đăng ký qua invitation và public, rời sau hạn, start thủ công, phiên bản client cũ; đủ người tự bắt đầu đúng một lần; thiếu người hủy/hoàn một lần; PostgreSQL rollback và restart trước/sau hạn; maintenance không khởi động giải. Kiểm thử controller và UI thực Web; ảnh chụp điện thoại và desktop. Các kiểm tra iOS trên thiết bị thật cần máy Mac/thiết bị của người dùng.
 
 Nghiệm thu Web yêu cầu cây accessibility nền phục hồi sau đóng modal: chờ nút Quay lại hiện tại, kiểm tra pixel header ngoài native editor và giữ điều hướng Home/bottom bar. Không dùng vị trí nút đo trước modal để bỏ qua cây accessibility đã mất. [Issue #30](https://github.com/ThaiXuanHien/FastToWin/issues/30) tách lỗi snapshot Windows WebKit và lỗi semantics owner của Compose; cấu hình sửa chỉ cho Web và pin công cụ test được mô tả tại [web-e2e.md](web-e2e.md#hồi-quy-đóng-dialog-và-resize-web--issue-30). Các dependency alpha cần đầy đủ hồi quy và review trước khi tích hợp. Test Android bao phủ đóng/mở lại; CI commit4b1a079 đã chạy Android UI thành công, không đồng nghĩa kiểm thử thiết bị iOS thật.
+## Background refund profile updates (#31)
+
+Automatic scheduled cancellation sends the departed player's authoritative
+`TournamentHubData(isHistoryRefresh=true)`, followed by
+`ProfileData(isBackgroundRefresh=true)` containing the refunded wallet. The
+profile flag is self-contained: repeated or interleaved background messages
+update the profile without acknowledging another client action, clearing its
+error/notice, or settling pending profile loading/saving/equipment operations.
+Tournament loading, active tournament and check-in target remain governed by
+their own responses.
+
+`GetProfile` and existing explicit profile mutation replies keep the default
+`isBackgroundRefresh=false`; they retain the previous settlement behavior.
+Explicit hub responses and updates for the current tournament also retain their
+existing behavior. No message-order flag, refund transaction or UI design was
+changed. Protocol44/min38 stay unchanged: older readers ignore the added field,
+and new readers default missing fields to the old explicit-response behavior.
+Consequently already installed old clients retain their previous display
+behavior until updated; the additive payload does not retrofit their reducers.
