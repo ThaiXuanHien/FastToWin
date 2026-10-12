@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { test as base, expect } from 'playwright/test';
-import { isExpectedNavigationAbort } from './navigation-errors.mjs';
+import { isExpectedNavigationAbort, createFirefoxNavigationErrorFence } from './navigation-errors.mjs';
 
 export { expect };
 export const test = base.extend({
@@ -41,6 +41,15 @@ export const test = base.extend({
         sockets: new Set(),
       };
       actors.push(actor);
+      const loopbackOrigins = [new URL(baseURL).origin, new URL(process.env.E2E_API_URL).origin];
+      const recordBrowserError = detail => {
+        actor.errors.push(detail.message);
+        actor.errorDetails.push(detail);
+      };
+      const firefoxNavigationErrors = createFirefoxNavigationErrorFence({
+        loopbackOrigins, onError: recordBrowserError,
+      });
+      actor.flushNavigationErrors = () => firefoxNavigationErrors.flush();
       const context = await browser.newContext({
         baseURL,
         viewport: testInfo.project.use.viewport,
@@ -121,10 +130,12 @@ export const test = base.extend({
           failureText: request.failure()?.errorText, at,
         };
         // Diagnostic metadata only: never retain query strings, headers or bodies.
-        // Firefox wrappers still fail until their actual request cause is proven.
+        // Generic Firefox wrappers require this exact local GET cancellation;
+        // the error fence also handles requestfailed arriving after pageerror.
         actor.navigationRequestFailures.push(failure);
         if (actor.navigationRequestFailures.length > 8) actor.navigationRequestFailures.shift();
         if (browserName === 'webkit') actor.cancelledWebKitRequest = failure;
+        if (browserName === 'firefox') firefoxNavigationErrors.recordCancellation(failure);
       });
       actor.page.on('pageerror', error => {
         // Browsers can report an in-flight fetch cancelled by an explicit
@@ -140,7 +151,7 @@ export const test = base.extend({
           expectedUntil: actor.expectedNavigationAbortUntil,
           correlatedWebKitAbortUntil: actor.correlatedWebKitAbortUntil,
           cancelledRequest: actor.cancelledWebKitRequest,
-          loopbackOrigins: [new URL(baseURL).origin, new URL(process.env.E2E_API_URL).origin],
+          loopbackOrigins,
         });
         if (expectedNavigationAbort) {
           if (browserName === 'webkit' && message.endsWith('due to access control checks.')) {
@@ -153,15 +164,19 @@ export const test = base.extend({
           }
           return;
         }
-        actor.errors.push(message);
-        actor.errorDetails.push({ message, stack: error.stack, at: Date.now(),
+        const detail = { message, stack: error.stack, at: Date.now(),
           url: actor.page.url(), closing: actor.closing,
           expectedNavigationAbortUntil: actor.expectedNavigationAbortUntil,
-          navigationRequestFailures: [...actor.navigationRequestFailures] });
+          navigationRequestFailures: [...actor.navigationRequestFailures] };
+        if (browserName === 'firefox' &&
+            firefoxNavigationErrors.capture(detail, actor.expectedNavigationAbortUntil)) return;
+        recordBrowserError(detail);
       });
       actor.navigate = async action => {
         const tracksNavigationAbort = ['webkit', 'firefox'].includes(testInfo.project.use.browserName);
         if (tracksNavigationAbort) {
+          await firefoxNavigationErrors.flush();
+          firefoxNavigationErrors.resetCancellation();
           actor.navigationRequestFailures = [];
           actor.cancelledWebKitRequest = null;
           actor.expectedNavigationAbortUntil = Date.now() + 3_000;
@@ -184,11 +199,19 @@ export const test = base.extend({
     for (const [index, actor] of actors.entries()) {
       try {
         actor.reconnect?.();
+        await actor.flushNavigationErrors?.();
         if (testInfo.status !== testInfo.expectedStatus || actor.errors.length) {
           await actor.page?.screenshot({ path: testInfo.outputPath(`player-${index}.png`) }).catch(() => {});
         }
         actor.closing = true;
         await actor.context?.close();
+        await actor.flushNavigationErrors?.();
+        if (actor.navigationRequestFailures.length || actor.errorDetails.length) {
+          await testInfo.attach(`player-${index}-navigation-request-failures`, {
+            body: Buffer.from(JSON.stringify(actor.navigationRequestFailures, null, 2)),
+            contentType: 'application/json',
+          });
+        }
         if (actor.errorDetails.length) {
           await testInfo.attach(`player-${index}-browser-errors`, {
             body: Buffer.from(JSON.stringify(actor.errorDetails, null, 2)),
