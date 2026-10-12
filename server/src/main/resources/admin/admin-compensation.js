@@ -1,10 +1,14 @@
 'use strict';
 
 const states = { DRAFT: 'Bản nháp', PUBLISHED: 'Đã công bố', CANCELLED: 'Đã hủy' };
-const sources = { ALL_REGISTERED: 'Tất cả tài khoản đã đăng ký', USER_IDS: 'Danh sách UUID đã xác minh', ACTIVITY: 'Theo hoạt động — chưa khả dụng' };
+const sources = { ALL_REGISTERED: 'Tất cả tài khoản đã đăng ký', USER_IDS: 'Danh sách UUID đã xác minh', ACTIVITY: 'Tài khoản đã đăng ký có kết nối game' };
 const exact = value => new Intl.NumberFormat('vi-VN').format(BigInt(value));
 const utc = value => new Date(value).toISOString();
 const utcInput = value => utc(value).slice(0, 23);
+// Old committed replies may omit metadata: only the saved draft supplies fallback.
+const savedSource = row => row.round.audience ?? (row.campaign.draft.audience === 'USER_IDS' ? 'USER_IDS' : 'ALL_REGISTERED');
+const coverageStates = { COMPLETE: 'Đầy đủ', PARTIAL: 'Một phần', UNAVAILABLE: 'Chưa có dữ liệu' };
+const observedUtc = value => value == null ? 'Chưa có dữ liệu' : new Intl.DateTimeFormat('vi-VN', { timeZone: 'UTC', dateStyle: 'short', timeStyle: 'medium', hourCycle: 'h23' }).format(new Date(value));
 
 // Aggregate transport is decimal strings. Never reuse the legacy numeric gift formatter.
 export function openCompensation(ui) {
@@ -49,10 +53,14 @@ export function openCompensation(ui) {
     languages(parent, item.titleVi, item.titleEn, item.descriptionVi, item.descriptionEn);
     facts(parent, [['Mã sự cố', item.incidentKey], ['Ảnh hưởng từ UTC (bao gồm)', utc(item.affectedFromEpochMillis)], ['Ảnh hưởng đến UTC (không bao gồm)', utc(item.affectedUntilEpochMillis)]]);
   }
-  function roundCopy(parent, row) {
-    const draft = row.campaign.draft;
+  function roundCopy(parent, row, item) {
+    const draft = row.campaign.draft, source = savedSource(row);
     languages(parent, draft.titleVi, draft.titleEn, draft.bodyVi, draft.bodyEn); rewards(parent, draft.gold, draft.xp);
-    facts(parent, [['Nguồn người nhận', sources[draft.audience]], ['UUID được chọn', draft.userIds.join('\n') || 'Toàn bộ tài khoản đã đăng ký tại lúc công bố'], ['Có thể nhận từ UTC', utc(draft.availableAtEpochMillis)], ['Hết hạn UTC', utc(draft.expiresAtEpochMillis)], ['Lý do nhận (VI)', row.round.receivingReasonVi], ['Receiving reason (EN)', row.round.receivingReasonEn]]);
+    facts(parent, [['Nguồn người nhận', sources[source] || source], ['UUID được chọn', source === 'USER_IDS' ? draft.userIds.join('\n') : source === 'ACTIVITY' ? 'Kết nối game trong khoảng ảnh hưởng của sự cố; chốt người nhận khi công bố' : 'Toàn bộ tài khoản đã đăng ký tại lúc công bố'], ['Có thể nhận từ UTC', utc(draft.availableAtEpochMillis)], ['Hết hạn UTC', utc(draft.expiresAtEpochMillis)], ['Lý do nhận (VI)', row.round.receivingReasonVi], ['Receiving reason (EN)', row.round.receivingReasonEn]]);
+    if (source === 'ACTIVITY') {
+      parent.append(node('p', 'Tài khoản đã đăng ký có kết nối game trong khoảng ảnh hưởng, gồm chờ ở sảnh. Lưu lịch sử 90 ngày; khoảng chọn phải có độ phủ đầy đủ.', { class: 'muted' }));
+      if (item) facts(parent, [['Khoảng chọn từ UTC (bao gồm)', utc(item.affectedFromEpochMillis)], ['Khoảng chọn đến UTC (không bao gồm)', utc(item.affectedUntilEpochMillis)]]);
+    }
     parent.append(node('p', 'Số thưởng cho mỗi người. Đền bù không nhân hệ số sự kiện và không tăng Vàng kiếm được trên bảng xếp hạng.', { class: 'muted' }));
   }
   function report(parent, row) {
@@ -98,6 +106,9 @@ export function openCompensation(ui) {
         if (error.status === 409) {
           conflicted = true; notices.fail(new Error('Phiên bản, nhóm người nhận hoặc biên nhận đã thay đổi. Tải lại dữ liệu và xem trước lại.'), true);
           notices.error.append(button('Tải lại dữ liệu', () => { dialog.finish(); reload(); }));
+        } else if (['ACTIVITY_SOURCE_UNAVAILABLE', 'ACTIVITY_RANGE_INCOMPLETE'].includes(error.code)) {
+          const message = error.code === 'ACTIVITY_SOURCE_UNAVAILABLE' ? 'Nguồn hoạt động chưa khả dụng. Kiểm tra lần cập nhật nguồn và tải lại dữ liệu.' : 'Khoảng ảnh hưởng chưa có dữ liệu hoạt động đầy đủ hoặc đã vượt 90 ngày lưu lịch sử. Kiểm tra khoảng ảnh hưởng rồi xem trước lại.';
+          notices.fail(new Error(message + ' Không thể lưu hoặc công bố theo nguồn hoạt động; không đổi sang tất cả tài khoản.'), true);
         } else notices.fail(new Error((error.message || 'Không thể kết nối.') + ' Kết quả chưa được xác nhận; thử lại cùng nội dung sẽ giữ nguyên mã yêu cầu.'), true);
       } finally {
         if (task.current()) { busy = false; dialog.pending(false); submit.textContent = original; submit.disabled = conflicted;
@@ -151,7 +162,7 @@ export function openCompensation(ui) {
         content.append(node('h2', 'Lịch sử các đợt')); const history = node('div'); content.append(history); const historyRequest = channel();
         function render(data) {
           history.replaceChildren();
-          for (const row of data.items) history.append(append(node('article', null, { class: 'compensation-row' }), append(node('div', null, { class: 'row-info' }), node('strong', `Đợt ${row.round.roundNumber} · ${states[row.campaign.state]}`), node('p', row.round.supplementalReason || 'Đợt đầu tiên', { class: 'muted' })), iconButton('Xem đợt ' + row.round.roundNumber, () => roundDetail(item, row.campaign.id), 'eye')));
+          for (const row of data.items) history.append(append(node('article', null, { class: 'compensation-row' }), append(node('div', null, { class: 'row-info' }), node('strong', `Đợt ${row.round.roundNumber} · ${states[row.campaign.state]}`), node('p', `${row.round.supplementalReason || 'Đợt đầu tiên'} · ${sources[savedSource(row)] || savedSource(row)}`, { class: 'muted' })), iconButton('Xem đợt ' + row.round.roundNumber, () => roundDetail(item, row.campaign.id), 'eye')));
           if (!data.items.length) history.append(node('p', 'Chưa có đợt. Tạo đợt đầu tiên bằng hành động ở trên.', { class: 'muted' })); paginate(history, data, loadHistory);
         }
         async function loadHistory(page) { const next = historyRequest(); try { const data = await api(roundsPath(id) + `?page=${page}&pageSize=25`, next); if (next.current() && readable()) render(data); } catch (error) { if (next.current() && error.name !== 'AbortError') notices.fail(error); } }
@@ -192,7 +203,7 @@ export function openCompensation(ui) {
         const controls = node('div', null, { class: 'compensation-actions' });
         if (writable() && row.campaign.state === 'DRAFT') append(controls, button('Xem trước', () => preview(currentIncident, row), { class: 'primary' }), iconButton('Sửa bản nháp đợt', () => editRound(currentIncident, row), 'edit'));
         if (owner() && row.campaign.state !== 'CANCELLED') controls.append(button('Hủy đợt', () => confirm(currentIncident, row, 'cancel')));
-        content.append(controls); roundCopy(content, row); report(content, row);
+        content.append(controls); roundCopy(content, row, currentIncident); report(content, row);
         facts(content, [['UUID đợt / nguồn ví', row.campaign.id], ['Phiên bản đợt', exact(row.campaign.version)], ['Lý do bổ sung nội bộ', row.round.supplementalReason || 'Đợt đầu tiên'], ['Người tạo', row.round.createdByAdminId ?? 'Không rõ'], ['Người công bố', row.round.publishedByAdminId ?? (row.campaign.publishedAtEpochMillis == null ? 'Chưa công bố' : 'Không rõ')], ['Người sửa gần nhất', row.round.updatedByAdminId ?? 'Không rõ'], ['Người hủy', row.round.cancelledByAdminId ?? 'Chưa hủy']]);
         if (row.campaign.state !== 'DRAFT') content.append(node('p', 'Định nghĩa đã công bố hoặc hủy chỉ để xem. Người đăng ký sau khi công bố không được thêm vào đợt.', { class: 'muted' }));
       } catch (error) { if (task.current() && error.name !== 'AbortError') notices.fail(error); }
@@ -212,12 +223,14 @@ export function openCompensation(ui) {
     const available = utcField(form, 'Có thể nhận từ (UTC)', 'available', draft?.availableAtEpochMillis), expiry = utcField(form, 'Hết hạn (UTC, bỏ trống = 30 ngày)', 'expiry', draft?.expiresAtEpochMillis, false);
     const wrapper = node('div', null, { class: 'field' }), audience = node('select', null, { id: 'compensation-audience', disabled: '' }); append(wrapper, node('label', 'Nguồn người nhận', { for: audience.id }), audience); form.append(wrapper);
     const ids = input(form, 'UUID người chơi (mỗi dòng hoặc dấu phẩy)', 'ids', 'textarea', draft?.userIds.join('\n'), { rows: '3' });
-    const capability = node('p', 'Đang kiểm tra nguồn người nhận…', { class: 'muted', role: 'status' }); form.append(capability);
+    const capability = node('div', 'Đang kiểm tra nguồn người nhận…', { class: 'muted', role: 'status', id: 'compensation-source-status' }); form.append(capability);
+    audience.setAttribute('aria-describedby', capability.id);
+    facts(form, [['Khoảng ảnh hưởng từ UTC (bao gồm)', utc(item.affectedFromEpochMillis)], ['Khoảng ảnh hưởng đến UTC (không bao gồm)', utc(item.affectedUntilEpochMillis)]]);
     const why = reason(form, 'Lý do bản nháp nội bộ'), notices = feedback(form), submit = actions(form, dialog, 'Lưu bản nháp đợt'); submit.disabled = true;
     const request = channel(), task = request(), current = task.current; task.current = () => current() && writable() && dialog.dialog.isConnected && dialog.dialog.open;
-    const sync = () => { ids.closest('.field').hidden = audience.value !== 'USER_IDS'; }; audience.addEventListener('change', sync);
+    const sync = () => { ids.closest('.field').hidden = audience.value !== 'USER_IDS'; submit.disabled = audience.disabled || !audience.selectedOptions[0] || audience.selectedOptions[0].disabled; }; audience.addEventListener('change', sync);
     mutate(form, submit, notices, dialog, row ? roundPath(row) : roundsPath(item.id), () => {
-      if (!['ALL_REGISTERED', 'USER_IDS'].includes(audience.value) || audience.disabled) throw new Error('Nguồn người nhận chưa khả dụng.');
+      if (!Object.hasOwn(sources, audience.value) || audience.disabled || audience.selectedOptions[0]?.disabled) throw new Error('Nguồn người nhận chưa khả dụng.');
       const goldValue = Number(gold.value), xpValue = Number(xp.value); if (!Number.isInteger(goldValue) || !Number.isInteger(xpValue) || goldValue + xpValue <= 0) throw new Error('Cần ít nhất một loại thưởng lớn hơn 0.');
       const from = parseUtc(available), until = expiry.value ? parseUtc(expiry) : null; if (until != null && until <= from) throw new Error('Hết hạn phải sau thời điểm có thể nhận UTC.');
       return { incidentVersion: item.version, receivingReasonVi: vi.value, receivingReasonEn: en.value, gold: goldValue, xp: xpValue, availableAtEpochMillis: from, expiresAtEpochMillis: until, audience: audience.value, userIds: audience.value === 'USER_IDS' ? ids.value.split(/[\s,]+/).filter(Boolean) : [], reason: why.value, ...(supplemental ? { supplementalReason: supplemental.value } : {}), ...(row ? { expectedVersion: row.campaign.version } : { expectedNextRoundNumber: number }) };
@@ -225,18 +238,24 @@ export function openCompensation(ui) {
     dialog.show(supplemental || vi);
     api(base + '/capabilities', task).then(data => {
       if (!task.current()) return;
-      for (const source of data.sources) audience.append(node('option', sources[source.source] || source.source, { value: source.source, ...(!source.available || !['ALL_REGISTERED', 'USER_IDS'].includes(source.source) ? { disabled: '' } : {}) }));
-      const activity = data.sources.find(source => source.source === 'ACTIVITY'); capability.textContent = 'Theo hoạt động chưa khả dụng: ' + (activity?.explanation || 'Chưa xác minh đủ dữ liệu hoạt động.');
-      audience.disabled = false; audience.value = draft?.audience ?? 'ALL_REGISTERED'; sync(); submit.disabled = !audience.selectedOptions[0] || audience.selectedOptions[0].disabled;
+      for (const source of data.sources) audience.append(node('option', source.source === 'ACTIVITY' ? 'Kết nối game' : sources[source.source] || source.source, { value: source.source, ...(!source.available || !Object.hasOwn(sources, source.source) ? { disabled: '' } : {}) }));
+      const activity = data.sources.find(source => source.source === 'ACTIVITY');
+      capability.replaceChildren(node('strong', activity?.available ? 'Kết nối game · Sẵn sàng' : 'Kết nối game · Chưa khả dụng'));
+      capability.append(node('p', 'Chỉ tài khoản đã đăng ký, gồm chờ ở sảnh. Trạng thái nguồn không xác nhận khoảng ảnh hưởng đầy đủ; máy chủ kiểm tra khi lưu, xem trước và công bố.'));
+      facts(capability, [['Lưu lịch sử', `${activity?.retentionDays ?? 90} ngày`], ['Độ phủ gần đây', coverageStates[activity?.coverage?.status] || 'Chưa có dữ liệu'], ['Thu thập từ UTC', observedUtc(activity?.coverage?.coverageStart)], ['Cập nhật nguồn UTC', observedUtc(activity?.coverage?.freshness)]]);
+      const explanation = node('p', activity?.explanation || 'Chưa xác minh đủ dữ liệu hoạt động.', { id: 'compensation-source-explanation', hidden: '' });
+      const explain = button('Giải thích nguồn', () => { explanation.hidden = !explanation.hidden; explain.setAttribute('aria-expanded', String(!explanation.hidden)); }, { 'aria-expanded': 'false', 'aria-controls': explanation.id });
+      append(capability, explain, explanation);
+      audience.disabled = false; audience.value = row ? savedSource(row) : 'ALL_REGISTERED'; sync();
     }).catch(error => { if (task.current() && error.name !== 'AbortError') notices.fail(error); });
   }
   function preview(item, row) {
     if (!writable() || row.campaign.state !== 'DRAFT') return;
-    const dialog = surface('Xem trước đợt ' + row.round.roundNumber), form = bodyForm(dialog); roundCopy(form, row);
+    const dialog = surface('Xem trước đợt ' + row.round.roundNumber), form = bodyForm(dialog); roundCopy(form, row, item);
     const why = reason(form, 'Lý do xem trước'), notices = feedback(form), submit = actions(form, dialog, 'Tạo bản xem trước');
     mutate(form, submit, notices, dialog, roundPath(row) + '/preview', () => ({ incidentVersion: item.version, expectedVersion: row.campaign.version, reason: why.value }), result => {
-      form.replaceChildren(); incidentCopy(form, item); roundCopy(form, row); approvalFacts(form, row);
-      facts(form, [['Nguồn chọn', sources[result.source]], ['Điều kiện UUID', result.userIds.join('\n') || 'Tất cả tài khoản đã đăng ký tại lúc công bố'], ['Người nhận', exact(result.recipientCount)], ['Người đã nhận ở các đợt trước (khác nhau)', exact(result.previousClaimedUserCount)], ['Biên nhận đã trả ở các đợt trước', exact(result.previousClaimedEntitlementCount)], ['Người trong đợt này đã nhận trước', exact(result.selectedPreviouslyClaimedUserCount)], ['UUID trùng', result.duplicateUserIds.join('\n') || 'Không có'], ['Số mục trùng thêm', exact(result.duplicateCount)], ['UUID không hợp lệ', result.invalidUserIds.join('\n') || 'Không có'], ['Mẫu tối đa 10 UUID', result.sampleUserIds.join('\n') || 'Không có']]);
+      form.replaceChildren(); incidentCopy(form, item); roundCopy(form, row, item); approvalFacts(form, row);
+      facts(form, [['Nguồn chọn', sources[result.source]], ['Điều kiện UUID', result.source === 'USER_IDS' ? result.userIds.join('\n') : result.source === 'ACTIVITY' ? 'Kết nối game trong khoảng ảnh hưởng của sự cố' : 'Tất cả tài khoản đã đăng ký tại lúc công bố'], ['Người nhận', exact(result.recipientCount)], ['Người đã nhận ở các đợt trước (khác nhau)', exact(result.previousClaimedUserCount)], ['Biên nhận đã trả ở các đợt trước', exact(result.previousClaimedEntitlementCount)], ['Người trong đợt này đã nhận trước', exact(result.selectedPreviouslyClaimedUserCount)], ['UUID trùng', result.duplicateUserIds.join('\n') || 'Không có'], ['Số mục trùng thêm', exact(result.duplicateCount)], ['UUID không hợp lệ', result.invalidUserIds.join('\n') || 'Không có'], ['Mẫu tối đa 10 UUID', result.sampleUserIds.join('\n') || 'Không có']]);
       form.append(node('p', 'Tổng thưởng dự kiến', { class: 'muted' })); rewards(form, result.totalGold, result.totalXp);
       form.append(node('p', 'Công bố chốt nhóm người nhận. Có thể trả lại cho người đã nhận ở đợt trước khi đợt bổ sung được xác nhận; đây là nguồn ví riêng.', { class: 'muted' }));
       const controls = append(node('div', null, { class: 'actions' }), dialog.cancel);
@@ -249,7 +268,7 @@ export function openCompensation(ui) {
     if (!owner()) return;
     const publish = action === 'publish', dialog = surface(publish ? 'Xác nhận công bố đợt' : 'Xác nhận hủy đợt'), form = bodyForm(dialog);
     form.append(node('p', publish ? 'Chốt nhóm người nhận và nội dung. Sự cố sẽ khóa vĩnh viễn sau công bố đầu tiên. Người đăng ký sau đó không được thêm vào đợt.' : 'Dừng phần chưa nhận. Thưởng và biên nhận đã trả được giữ nguyên.', { class: 'muted' }));
-    roundCopy(form, row); approvalFacts(form, row);
+    roundCopy(form, row, item); approvalFacts(form, row);
     if (publish) { facts(form, [['Người nhận', exact(preview.recipientCount)], ['Đã nhận ở đợt trước', exact(preview.previousClaimedUserCount)], ['Biên nhận trước', exact(preview.previousClaimedEntitlementCount)], ['Trùng người đã nhận', exact(preview.selectedPreviouslyClaimedUserCount)]]); rewards(form, preview.totalGold, preview.totalXp); }
     const why = reason(form, publish ? 'Lý do công bố nội bộ' : 'Lý do hủy nội bộ'), notices = feedback(form), submit = actions(form, dialog, publish ? 'Công bố đợt' : 'Xác nhận hủy đợt');
     mutate(form, submit, notices, dialog, roundPath(row) + '/' + action, () => ({ incidentVersion: publish ? preview.incidentVersion : item.version, expectedVersion: publish ? preview.version : row.campaign.version, ...(publish ? { previewToken: preview.previewToken } : {}), reason: why.value }), result => { dialog.finish(); roundDetail(item, result.campaign.id, publish ? 'Đã công bố đợt.' : 'Đã hủy đợt.'); }, () => roundDetail(item, row.campaign.id), 'POST', owner); dialog.show(why);

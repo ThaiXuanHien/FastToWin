@@ -42,6 +42,7 @@ distinct counts have their own query; bucket distinct counts must not be summed.
 | Metrics | Roles | Summary/unit |
 | --- | --- | --- |
 | REGISTRATIONS | Owner, Operator | First successful REGISTERED transitions / REGISTRATIONS |
+| ACTIVE_PLAYERS | Owner, Operator | Distinct accepted registered game connections overlapping the interval / PLAYERS; SERVER/LIVE, no currency |
 | ITEM_SPEND | Owner, Operator | Committed item debit / GOLD or GEMS, separate groups |
 | ITEM_PURCHASES, TOP_ITEMS | Owner, Operator | Successful item purchases / PURCHASES |
 | ITEM_BUYERS | Owner, Operator | Whole-range distinct anonymous subjects / BUYERS |
@@ -182,3 +183,9 @@ turnover evidence. Both LIVE stores remained UNAVAILABLE, and the SANDBOX source
 was returned to UNAVAILABLE after capture. No production credentials or provider
 requests were involved. Store permissions and App Store amount/refund support
 remain the prerequisites documented above.
+
+## Connected-account activity in the console
+
+The metric selector includes **Tài khoản kết nối game**. It hides the filter action and clears previous item/financial filters. Counts use exact decimal strings with the existing native SVG, point selector and table. The source panel describes aggregate coverage/start/freshness. Activity tables label points as observed or unknown, without inferring per-bucket completeness: AnalyticsPoint still carries only from/until/value. Missing values break the chart and remain unknown in summaries and comparisons. A positive partial summary remains explicitly partial; whole-period distinct users are never a sum of buckets.
+
+Visible Vietnamese guidance defines accepted registered-account game connections, including idle/lobby, 90-day retention since collection, gaps and observation lag. A range ending near now may remain partial through normal checkpoint lag; neither source freshness nor a plotted count proves complete interval coverage. See [admin-activity.md](admin-activity.md). Browser fixtures in admin-analytics.spec.mjs cover exact values above 2^53, COMPLETE/PARTIAL/UNAVAILABLE, clearing incompatible filters and inspected 360/1440px partial-history captures under `.artifacts/connected-activity/`.

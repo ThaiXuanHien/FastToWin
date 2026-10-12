@@ -1,13 +1,13 @@
 'use strict';
 
 const metrics = {
-  REGISTRATIONS: 'Đăng ký mới', ITEM_SPEND: 'Chi mua vật phẩm', ITEM_PURCHASES: 'Lượt mua vật phẩm',
+  REGISTRATIONS: 'Đăng ký mới', ACTIVE_PLAYERS: 'Tài khoản kết nối game', ITEM_SPEND: 'Chi mua vật phẩm', ITEM_PURCHASES: 'Lượt mua vật phẩm',
   ITEM_BUYERS: 'Người mua vật phẩm', TOP_ITEMS: 'Top vật phẩm', MONEY_PAID: 'Tiền thanh toán',
   MONEY_REFUNDED: 'Tiền hoàn', MONEY_NET: 'Sau hoàn tiền', STORE_PURCHASES: 'Lượt mua cửa hàng', STORE_BUYERS: 'Người mua cửa hàng',
 };
 const financial = metric => metric.startsWith('MONEY_') || metric.startsWith('STORE_');
 const sources = { SERVER: 'Máy chủ game', GOOGLE_PLAY: 'Google Play', APP_STORE: 'App Store' };
-const units = { REGISTRATIONS: 'đăng ký', PURCHASES: 'lượt mua', BUYERS: 'người mua', GOLD: 'Vàng', GEMS: 'Gem' };
+const units = { REGISTRATIONS: 'đăng ký', PURCHASES: 'lượt mua', BUYERS: 'người mua', PLAYERS: 'người chơi', GOLD: 'Vàng', GEMS: 'Gem' };
 const statuses = { COMPLETE: 'Đầy đủ', PARTIAL: 'Một phần', UNAVAILABLE: 'Chưa có dữ liệu' };
 const date = value => value == null ? 'Chưa có dữ liệu' : new Intl.DateTimeFormat('vi-VN', { timeZone: 'Asia/Bangkok', dateStyle: 'short', timeStyle: 'medium', hourCycle: 'h23' }).format(new Date(value));
 const rangeLabel = range => `${date(range.from)} → ${date(range.until)} (không gồm mốc đến)`;
@@ -34,7 +34,7 @@ export function openAnalytics(ui) {
   const { node, append, button, iconButton, field, modal, feedback, shell, channel, api } = ui;
   if (!ui.role() || ui.role() === 'SUPPORT') return;
   const main = shell('Thống kê', 'analytics');
-  main.append(node('p', 'Đăng ký, mua vật phẩm và giao dịch đã xác minh.', { class: 'muted' }));
+  main.append(node('p', 'Đăng ký, tài khoản kết nối game, mua vật phẩm và giao dịch đã xác minh.', { class: 'muted' }));
   let filters = {}, groupSequence = 0;
   function select(parent, label, name, options) {
     const wrapper = node('div', null, { class: 'field' });
@@ -58,7 +58,7 @@ export function openAnalytics(ui) {
   const results = node('div', null, { class: 'analytics-results stack', 'aria-busy': 'false' }); main.append(results);
   const request = channel();
   const clear = () => { results.replaceChildren(); notices.clear(); };
-  metric.addEventListener('change', () => { filters = {}; filterButton.hidden = metric.value === 'REGISTRATIONS'; load(); });
+  metric.addEventListener('change', () => { filters = {}; filterButton.hidden = ['REGISTRATIONS', 'ACTIVE_PLAYERS'].includes(metric.value); load(); });
   bucket.addEventListener('change', load);
   preset.addEventListener('change', () => { dates.hidden = preset.value !== 'custom'; if (dates.hidden) load(); else { request(); clear(); refresh.disabled = false; results.setAttribute('aria-busy', 'false'); notices.status.textContent = 'Chọn hai mốc ngày rồi áp dụng. Giới hạn 24 tháng.'; } });
   dates.addEventListener('submit', event => { event.preventDefault(); load(); });
@@ -118,9 +118,10 @@ export function openAnalytics(ui) {
   }
   function render(data) {
     results.append(append(node('div', null, { class: 'analytics-range' }), node('p', 'Kỳ hiện tại: ' + rangeLabel(data.range)), node('p', 'Kỳ trước: ' + rangeLabel(data.comparisonRange)), node('p', `Bangkok UTC+7 · Tuần bắt đầu thứ Hai · Snapshot: ${date(data.snapshotAt)}`, { class: 'muted' })));
-    results.append(node('p', 'Dữ liệu nhập muộn có thể cập nhật kỳ lịch sử. “Một phần” chỉ phản ánh dữ liệu đã ghi nhận; chưa có dữ liệu không có nghĩa là 0.', { class: 'muted analytics-note' }));
+    if (!data.metrics.some(result => result.metric === 'ACTIVE_PLAYERS')) results.append(node('p', 'Dữ liệu nhập muộn có thể cập nhật kỳ lịch sử. “Một phần” chỉ phản ánh dữ liệu đã ghi nhận; chưa có dữ liệu không có nghĩa là 0.', { class: 'muted analytics-note' }));
     for (const metricData of data.metrics) {
       results.append(coveragePanel(metricData.coverage));
+      if (metricData.metric === 'ACTIVE_PLAYERS') results.append(node('p', 'Tài khoản đã đăng ký có kết nối game được máy chủ chấp nhận, kể cả khi chờ ở sảnh. Lưu lịch sử 90 ngày từ khi thu thập, không bổ sung quá khứ. Độ phủ có thể thiếu vì gián đoạn hoặc lần ghi nhận chưa tới mốc đến; chưa có dữ liệu không có nghĩa là 0.', { class: 'muted analytics-note' }));
       if (metricData.metric === 'MONEY_NET') results.append(node('p', 'Thanh toán trong kỳ trừ hoàn tiền trong kỳ, trước phí và điều chỉnh thuế; có thể âm.', { class: 'muted' }));
       if (!metricData.groups.length) results.append(node('p', 'Chưa có dữ liệu cho nguồn và đơn vị đã chọn.'));
       for (const group of metricData.groups) {
@@ -136,9 +137,10 @@ export function openAnalytics(ui) {
         if (complete && group.comparison.absoluteChange != null) comparison.append(node('p', `Thay đổi: ${valueLabel(group.comparison.absoluteChange, group)}${group.comparison.percentageChange == null ? ' · không có tỷ lệ (kỳ trước bằng 0)' : ' · ' + decimal(group.comparison.percentageChange) + '%'}`));
         else comparison.append(node('p', 'Chưa đủ dữ liệu để so sánh.', { class: 'muted' }));
         summary.append(comparison); section.append(summary);
+        if (metricData.metric === 'ACTIVE_PLAYERS') section.append(node('p', 'Tài khoản phân biệt trong toàn kỳ; không cộng các điểm theo thời gian.', { class: 'muted' }));
         if (metricData.metric.includes('BUYERS')) section.append(node('p', 'Người mua phân biệt trong toàn kỳ; không cộng các điểm theo thời gian.', { class: 'muted' }));
         if (metricData.metric === 'TOP_ITEMS') topView(section, group);
-        else timeView(section, group, title);
+        else timeView(section, group, title, metricData.metric === 'ACTIVE_PLAYERS');
         results.append(section);
       }
     }
@@ -151,7 +153,7 @@ export function openAnalytics(ui) {
     for (const values of rows) { const row = node('tr'); values.forEach((value, index) => row.append(node(index ? 'td' : 'th', value, index ? {} : { scope: 'row' }))); body.append(row); }
     table.append(body); wrapper.append(table); parent.append(wrapper);
   }
-  function timeView(parent, group, title) {
+  function timeView(parent, group, title, activity) {
     const points = group.series;
     if (!points.length) { parent.append(node('p', 'Chưa có điểm thời gian.')); return; }
     const numeric = points.filter(point => point.value != null).map(point => BigInt(point.value));
@@ -181,7 +183,7 @@ export function openAnalytics(ui) {
       previous.disabled = index === 0; next.disabled = index === points.length - 1;
     }
     selector.addEventListener('change', inspect); inspect();
-    table(parent, 'Số liệu theo thời gian · Bangkok · mốc đến không gồm', ['Khoảng thời gian', 'Giá trị'], points.map(point => [bucketLabel(point), valueLabel(point.value, group)]));
+    table(parent, 'Số liệu theo thời gian · Bangkok · mốc đến không gồm', ['Khoảng thời gian', 'Giá trị', ...(activity ? ['Trạng thái dữ liệu'] : [])], points.map(point => [bucketLabel(point), valueLabel(point.value, group), ...(activity ? [point.value == null ? 'Chưa có dữ liệu' : 'Đã ghi nhận'] : [])]));
   }
   function topView(parent, group) {
     if (!group.top.length) { parent.append(node('p', 'Chưa có vật phẩm được ghi nhận trong kỳ.')); return; }

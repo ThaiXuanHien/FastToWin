@@ -84,7 +84,7 @@ test('Owner dashboard loads exact summary and comparison with default request', 
 for (const role of ['OPERATOR', 'SUPPORT']) test(`${role} only sees permitted analytics`, async ({ page, fixture }) => {
   fixture.role = role; analytics(fixture); await login(page, fixture);
   if (role === 'SUPPORT') { await expect(page.getByRole('button', { name: 'Thống kê', exact: true })).toHaveCount(0); expect(lastQuery(fixture)).toBeUndefined(); }
-  else { await page.getByRole('button', { name: 'Thống kê', exact: true }).click(); await expect(page.getByLabel('Chỉ số', { exact: true }).locator('option')).toHaveCount(5); await expect(page.getByLabel('Chỉ số', { exact: true }).locator('option[value="MONEY_PAID"]')).toHaveCount(0); }
+  else { await page.getByRole('button', { name: 'Thống kê', exact: true }).click(); await expect(page.getByLabel('Chỉ số', { exact: true }).locator('option')).toHaveCount(6); await expect(page.getByLabel('Chỉ số', { exact: true }).locator('option[value="MONEY_PAID"]')).toHaveCount(0); }
 });
 test('presets, buckets and exclusive Bangkok custom dates drive actual query', async ({ page, fixture }) => {
   analytics(fixture); await open(page, fixture);
@@ -200,4 +200,27 @@ for (const width of [360, 768, 1024, 1440]) test(`responsive analytics ${width}`
   await page.screenshot({ path: `../.artifacts/admin-analytics-${width}.png`, fullPage: true });
   await page.getByLabel('Chỉ số', { exact: true }).selectOption('MONEY_PAID'); await page.getByRole('button', { name: 'Bộ lọc', exact: true }).click(); await expect(page.getByRole('dialog')).toBeVisible(); await page.screenshot({ path: `../.artifacts/admin-analytics-${width}-filters.png`, fullPage: true }); await page.keyboard.press('Escape');
   await expect(page.getByRole('button', { name: 'Bộ lọc', exact: true })).toBeFocused();
+});
+
+for (const status of ['COMPLETE', 'PARTIAL', 'UNAVAILABLE']) test(`connected activity exact chart table ${status}`, async ({ page, fixture }) => {
+  const values = ['9007199254740993', null, '0', '4', null, '2', '3'];
+  const active = group({ unit: 'PLAYERS', summary: status === 'UNAVAILABLE' ? null : '9007199254740993', series: group().series.map((p, i) => ({ ...p, value: status === 'UNAVAILABLE' ? null : values[i] })), comparison: { ...group().comparison, value: null, absoluteChange: null, percentageChange: null, coverage: coverage('SERVER', 'UNAVAILABLE') } });
+  analytics(fixture, call => call.query.get('metric') === 'ACTIVE_PLAYERS' ? snapshot('ACTIVE_PLAYERS', [active], [coverage('SERVER', status)]) : snapshot());
+  await open(page, fixture); await page.getByLabel('Chỉ số', { exact: true }).selectOption('ITEM_SPEND'); await page.getByRole('button', { name: 'Bộ lọc', exact: true }).click(); await page.getByLabel('Đơn vị game').selectOption('GOLD'); await page.getByRole('button', { name: 'Áp dụng', exact: true }).click();
+  await page.getByLabel('Chỉ số', { exact: true }).selectOption('ACTIVE_PLAYERS');
+  await expect(page.getByRole('button', { name: 'Bộ lọc', exact: true })).toBeHidden();
+  await expect(page.locator('.analytics-results')).toContainText('90 ngày'); await expect(page.locator('.analytics-results')).toContainText('kể cả khi chờ ở sảnh');
+  await expect(page.locator('.analytics-results')).toContainText('không cộng các điểm theo thời gian');
+  await expect(page.locator('.analytics-summary')).toContainText(status === 'UNAVAILABLE' ? 'Chưa có dữ liệu' : '9.007.199.254.740.993 người chơi');
+  await expect(page.getByRole('table')).toContainText('Trạng thái dữ liệu'); await expect(page.getByRole('table')).toContainText('Chưa có dữ liệu');
+  if (status === 'PARTIAL') await expect(page.locator('.analytics-summary')).toContainText('một phần');
+  const query = lastQuery(fixture); expect(query.get('metric')).toBe('ACTIVE_PLAYERS'); for (const key of ['currency', 'item', 'store', 'product', 'environment']) expect(query.has(key)).toBe(false);
+  expect(await page.locator('.analytics-chart .analytics-marker').count()).toBe(status === 'UNAVAILABLE' ? 1 : 6);
+});
+for (const width of [360, 1440]) test(`connected activity captures ${width}`, async ({ page, fixture }) => {
+  const points = group().series.map((p, i) => ({ ...p, value: i === 2 ? null : String(i + 1) }));
+  analytics(fixture, snapshot('ACTIVE_PLAYERS', [group({ unit: 'PLAYERS', summary: '9', series: points, comparison: { ...group().comparison, value: null, absoluteChange: null, percentageChange: null, coverage: coverage('SERVER', 'UNAVAILABLE') } })], [coverage('SERVER', 'PARTIAL')]));
+  await page.setViewportSize({ width, height: 1000 }); await page.emulateMedia({ reducedMotion: 'reduce' }); await open(page, fixture); await page.getByLabel('Chỉ số', { exact: true }).selectOption('ACTIVE_PLAYERS'); await expect(page.locator('.analytics-summary')).toContainText('9 người chơi');
+  await page.screenshot({ path: `../.artifacts/connected-activity/analytics-${width}-partial.png`, fullPage: true });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 });
