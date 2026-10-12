@@ -227,27 +227,32 @@ private fun ClanDiscoveryView(
 
         notice?.let { item(key = "clan_notice") { ClanNotice(it) } }
 
+        // A native background editor would otherwise paint over the modal and
+        // remain reachable by keyboard. Keep its lazy item observing modal state
+        // so the cached composition disposes the editor, retaining the query.
         item(key = "clan_search") {
-            OutlinedTextField(
-                value = searchQuery,
-                onValueChange = { searchQuery = it },
-                label = localized(TextKey.SearchClan),
-                placeholder = localized(TextKey.SearchClanPlaceholder),
-                modifier = Modifier.fillMaxWidth().testTag("clan_search_field"),
-                singleLine = true,
-                leadingIcon = { Icon(Icons.Rounded.Search, contentDescription = null) },
-                trailingIcon = {
-                    IconButton(
-                        onClick = {
-                            visibleClanCount = DEFAULT_ARCADE_PAGE_SIZE
-                            onSearch(searchQuery.trim().takeIf(String::isNotEmpty))
-                        },
-                        modifier = Modifier.semantics { contentDescription = searchActionDescription }
-                    ) {
-                        Icon(Icons.Rounded.Search, contentDescription = null)
+            if (!showCreateDialog) {
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    label = localized(TextKey.SearchClan),
+                    placeholder = localized(TextKey.SearchClanPlaceholder),
+                    modifier = Modifier.fillMaxWidth().testTag("clan_search_field"),
+                    singleLine = true,
+                    leadingIcon = { Icon(Icons.Rounded.Search, contentDescription = null) },
+                    trailingIcon = {
+                        IconButton(
+                            onClick = {
+                                visibleClanCount = DEFAULT_ARCADE_PAGE_SIZE
+                                onSearch(searchQuery.trim().takeIf(String::isNotEmpty))
+                            },
+                            modifier = Modifier.semantics { contentDescription = searchActionDescription }
+                        ) {
+                            Icon(Icons.Rounded.Search, contentDescription = null)
+                        }
                     }
-                }
-            )
+                )
+            }
         }
 
         item(key = "create_clan") {
@@ -387,7 +392,8 @@ private fun CreateClanDialog(
         title = localized(TextKey.CreateClanTitle),
         subtitle = localized(TextKey.CreateClanDescription),
         onDismissRequest = onDismiss,
-        modifier = Modifier.testTag("create_clan_dialog")
+        modifier = Modifier.testTag("create_clan_dialog"),
+        scrollableContent = true
     ) {
         OutlinedTextField(
             value = name,

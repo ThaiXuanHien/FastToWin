@@ -83,7 +83,7 @@ private class JdbcGiftTransaction(private val c: Connection) : GiftTransaction {
         val claimed = it.getLong("claimed"); val cancelled = campaign.state == CampaignState.CANCELLED
         GiftCounters(it.getLong("eligible"), if (cancelled) 0 else it.getLong("pending"), it.getLong("delivered"), claimed,
             if (!cancelled && now >= campaign.draft.expiresAtEpochMillis!!) it.getLong("delivered_unclaimed") else 0,
-            if (cancelled) it.getLong("unclaimed") else 0, it.getLong("skipped"), Math.multiplyExact(claimed,campaign.draft.gold.toLong()), Math.multiplyExact(claimed,campaign.draft.xp.toLong()))
+            if (cancelled) it.getLong("unclaimed") else 0, it.getLong("skipped"), Math.multiplyExact(claimed,campaign.draft.gold.toLong()), Math.multiplyExact(claimed,campaign.draft.xp.toLong()), Math.multiplyExact(claimed,campaign.draft.gems.toLong()))
     }.single()
     override fun mailbox(userId: String, now: Long, page: PageRequest): Pair<List<Pair<GiftCampaign, GiftRecipient>>, Long> {
         val from = "FROM admin_gift_recipients r JOIN admin_gift_campaigns c ON c.id=r.campaign_id WHERE r.user_id=? AND r.delivery='DELIVERED' AND c.available_at <= ?"
@@ -93,15 +93,20 @@ private class JdbcGiftTransaction(private val c: Connection) : GiftTransaction {
         }
         return items to rows("SELECT count(*) $from", values) { it.getLong(1) }.single()
     }
+    override fun mailboxAvailableCount(userId: String, now: Long): Long = rows("""SELECT count(*)
+        FROM admin_gift_recipients r JOIN admin_gift_campaigns c ON c.id=r.campaign_id
+        WHERE r.user_id=? AND r.delivery='DELIVERED' AND r.claimed_at IS NULL
+        AND c.state='PUBLISHED' AND c.available_at <= ? AND c.expires_at > ?""",
+        listOf(id(userId), Timestamp(now), Timestamp(now))) { it.getLong(1) }.single()
     override fun balance(userId: String): GiftBalance {
         update("INSERT INTO player_stats(user_id,updated_at) VALUES (?,CURRENT_TIMESTAMP) ON CONFLICT(user_id) DO NOTHING", id(userId))
-        return rows("SELECT gold,experience_points FROM player_stats WHERE user_id=? FOR UPDATE", listOf(id(userId))) { GiftBalance(it.getInt(1),it.getInt(2)) }.single()
+        return rows("SELECT gold,experience_points,gems FROM player_stats WHERE user_id=? FOR UPDATE", listOf(id(userId))) { GiftBalance(it.getInt(1),it.getInt(2),it.getInt(3)) }.single()
     }
     override fun award(userId: String, campaign: GiftCampaign, now: Long): GiftBalance {
         val before = balance(userId)
-        val after = try { GiftBalance(Math.addExact(before.gold,campaign.draft.gold), Math.addExact(before.xp,campaign.draft.xp)) } catch (_: ArithmeticException) { conflict() }
-        update("UPDATE player_stats SET gold=?,experience_points=?,updated_at=? WHERE user_id=?", after.gold,after.xp,Timestamp(now),id(userId))
-        update("INSERT INTO wallet_transactions(id,user_id,source_type,source_id,gold_delta,xp_delta,created_at) VALUES (?,?,?,?,?,?,?)", UUID.randomUUID(),id(userId),campaign.walletSourceType(),campaign.id,campaign.draft.gold,campaign.draft.xp,Timestamp(now))
+        val after = try { GiftBalance(Math.addExact(before.gold,campaign.draft.gold), Math.addExact(before.xp,campaign.draft.xp), Math.addExact(before.gems,campaign.draft.gems)) } catch (_: ArithmeticException) { conflict() }
+        update("UPDATE player_stats SET gold=?,experience_points=?,gems=?,updated_at=? WHERE user_id=?", after.gold,after.xp,after.gems,Timestamp(now),id(userId))
+        update("INSERT INTO wallet_transactions(id,user_id,source_type,source_id,gold_delta,xp_delta,gems_delta,created_at) VALUES (?,?,?,?,?,?,?,?)", UUID.randomUUID(),id(userId),campaign.walletSourceType(),campaign.id,campaign.draft.gold,campaign.draft.xp,campaign.draft.gems,Timestamp(now))
         return after
     }
 }

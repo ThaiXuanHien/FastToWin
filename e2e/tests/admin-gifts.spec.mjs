@@ -325,3 +325,37 @@ for (const width of [360, 768, 1024, 1440]) test(`gift surfaces at ${width}px co
   await page.screenshot({ path: `../.artifacts/admin-gifts-${width}-confirm.png`, fullPage: true });
   await page.keyboard.press('Escape'); await expect(page.getByRole('dialog')).toHaveCount(0); await expect(page.getByRole('button', { name: 'Xem trước', exact: true })).toBeFocused();
 });
+
+
+for (const width of [360, 1440]) test(`Gem-only gift draft preview publication report and edit at ${width}`, async ({ page, fixture }) => {
+  const state = gifts(fixture);
+  await page.setViewportSize({ width, height: 1000 });
+  await open(page, fixture);
+  await page.getByRole('button', { name: 'Tạo chiến dịch quà', exact: true }).click();
+  await fillGift(page);
+  await page.getByLabel('Vàng mỗi người', { exact: true }).fill('0');
+  await page.getByLabel('XP mỗi người', { exact: true }).fill('0');
+  await page.getByLabel('Gem mỗi người', { exact: true }).fill('7');
+  await page.evaluate(() => Promise.all(document.getAnimations().map(a => a.finished.catch(() => {}))));
+  await page.screenshot({ path: `../.artifacts/admin-gift-gems/edit-${width}.png` });
+  await page.getByRole('button', { name: 'Lưu bản nháp', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Quà kiểm thử', exact: true, level: 1 })).toBeVisible();
+  expect(state.detail.campaign.draft).toMatchObject({ gold: 0, xp: 0, gems: 7 });
+  await page.getByRole('button', { name: 'Sửa bản nháp', exact: true }).click();
+  await expect(page.getByLabel('Gem mỗi người', { exact: true })).toHaveValue('7');
+  await page.getByRole('button', { name: 'Đóng hộp thoại' }).click();
+  await preview(page);
+  const total = page.getByRole('dialog').locator('dl div').filter({ has: page.locator('dt').filter({ hasText: /^Tổng Gem$/ }) }).locator('dd');
+  await expect(total).toHaveText('70');
+  await confirm(page);
+  await expect(total).toHaveText('70');
+  await page.getByRole('button', { name: 'Công bố chiến dịch', exact: true }).click();
+  await expect(page.locator('.confirmation')).toContainText('Đã công bố');
+  state.detail.counters.claimedGems = '9007199254740993';
+  await page.getByRole('button', { name: 'Làm mới', exact: true }).click();
+  const report = page.locator('.gift-report');
+  await expect(report.locator('div').filter({ has: page.locator('dt').filter({ hasText: /^Gem đã nhận$/ }) }).locator('dd')).toHaveText(new Intl.NumberFormat('vi-VN').format(9007199254740993n));
+  await report.scrollIntoViewIfNeeded();
+  await page.screenshot({ path: `../.artifacts/admin-gift-gems/report-${width}.png` });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+});

@@ -1,6 +1,6 @@
 import { player, pageOf } from './admin-fixture.mjs';
 export const giftId = '00000000-0000-0000-0000-000000000019';
-export const counters = { eligible: '10', pending: '1', delivered: '8', claimed: '3', expired: '2', cancelled: '0', skipped: '1', claimedGold: '300', claimedXp: '90' };
+export const counters = { eligible: '10', pending: '1', delivered: '8', claimed: '3', expired: '2', cancelled: '0', skipped: '1', claimedGold: '300', claimedXp: '90', claimedGems: '21' };
 export function gifts(fixture) {
   const state = { detail: null, previewCalls: 0 };
   fixture.handlers.set('/admin/api/gift-campaigns', async (call, send) => {
@@ -15,7 +15,7 @@ export function gifts(fixture) {
     send(200, state.detail); return true;
   });
   fixture.handlers.set(`/admin/api/gift-campaigns/${giftId}/preview`, async (_, send) => {
-    state.previewCalls++; send(200, { campaignId: giftId, version: state.detail.campaign.version, recipientCount: '10', duplicateCount: 2, invalidUserIds: [], totalGold: (BigInt(state.detail.campaign.draft.gold) * 10n).toString(), totalXp: (BigInt(state.detail.campaign.draft.xp) * 10n).toString(), previewToken: 'preview-' + state.previewCalls }); return true;
+    state.previewCalls++; send(200, { campaignId: giftId, version: state.detail.campaign.version, recipientCount: '10', duplicateCount: 2, invalidUserIds: [], totalGold: (BigInt(state.detail.campaign.draft.gold) * 10n).toString(), totalXp: (BigInt(state.detail.campaign.draft.xp) * 10n).toString(), totalGems: (BigInt(state.detail.campaign.draft.gems ?? 0) * 10n).toString(), previewToken: 'preview-' + state.previewCalls }); return true;
   });
   for (const operation of ['publish', 'cancel']) fixture.handlers.set(`/admin/api/gift-campaigns/${giftId}/${operation}`, async (call, send) => {
     if (fixture.role !== 'OWNER') { send(403, { code: 'FORBIDDEN', message: 'Không có quyền.' }); return true; }

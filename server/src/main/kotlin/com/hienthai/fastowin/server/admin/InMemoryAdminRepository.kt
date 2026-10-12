@@ -47,15 +47,15 @@ class InMemoryAdminRepository : AdminRepository {
                 return next.users.values.filter { it.accountType == "REGISTERED" && it.status != "DELETED" }.map { GiftPlayer(it.id,it.createdAtEpochMillis) }
             }
             override fun giftBalance(id: String): GiftBalance {
-                available(); val user = next.users[id] ?: missing(); return GiftBalance(user.gold,user.xp)
+                available(); val user = next.users[id] ?: missing(); return GiftBalance(user.gold,user.xp,user.gems)
             }
             override fun giftAward(id: String, campaign: GiftCampaign, now: Long): GiftBalance {
                 val user = next.users[id] ?: missing()
-                val balance = try { GiftBalance(Math.addExact(user.gold,campaign.draft.gold),Math.addExact(user.xp,campaign.draft.xp)) } catch (_: ArithmeticException) { conflict() }
+                val balance = try { GiftBalance(Math.addExact(user.gold,campaign.draft.gold),Math.addExact(user.xp,campaign.draft.xp),Math.addExact(user.gems,campaign.draft.gems)) } catch (_: ArithmeticException) { conflict() }
                 val history = next.wallet[id].orEmpty()
                 if (history.any { it.sourceType == campaign.walletSourceType() && it.sourceId == campaign.id }) conflict()
-                next.users[id] = user.copy(gold=balance.gold,xp=balance.xp,level=PlayerProgression.levelForExperience(balance.xp))
-                next.wallet[id] = history + WalletEntry(UUID.randomUUID().toString(),campaign.walletSourceType(),campaign.id,campaign.draft.gold,0,campaign.draft.xp,now)
+                next.users[id] = user.copy(gold=balance.gold,xp=balance.xp,gems=balance.gems,level=PlayerProgression.levelForExperience(balance.xp))
+                next.wallet[id] = history + WalletEntry(UUID.randomUUID().toString(),campaign.walletSourceType(),campaign.id,campaign.draft.gold,campaign.draft.gems,campaign.draft.xp,now)
                 return balance
             }
             override fun accountByEmail(email: String) = next.accounts.values.firstOrNull { it.identity.email == email }

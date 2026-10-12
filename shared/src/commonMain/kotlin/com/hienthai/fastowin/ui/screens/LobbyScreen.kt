@@ -112,6 +112,7 @@ fun LobbyScreen(
     onUpgradeGuest: () -> Unit,
     onOpenNotifications: () -> Unit,
     onOpenGifts: () -> Unit = {},
+    unclaimedGiftCount: Long = 0,
     rewardEventState: com.hienthai.fastowin.state.RewardEventUiState? = null,
     announcementState: com.hienthai.fastowin.state.AnnouncementState? = null,
     onOpenAnnouncement: (String) -> Unit = {},
@@ -226,6 +227,7 @@ fun LobbyScreen(
                     onOpenProfile = onOpenProfile,
                     onOpenNotifications = onOpenNotifications,
                     onOpenGifts = onOpenGifts,
+                    unclaimedGiftCount = if (isGuest) 0 else unclaimedGiftCount,
                     rewardEventState = rewardEventState,
                     announcementState = announcementState,
                     onOpenAnnouncement = onOpenAnnouncement,
@@ -275,6 +277,7 @@ fun LobbyScreen(
             FastToWinBottomBar(
                 selected = if (state.lobbyStage == LobbyStage.ROOM_BROWSER) MainTab.ROOMS else MainTab.HOME,
                 friendNotificationCount = 0,
+                unclaimedGiftCount = if (isGuest) 0 else unclaimedGiftCount,
                 onHome = if (state.lobbyStage == LobbyStage.ROOM_BROWSER) onBackToMode else ({}),
                 onRooms = {
                     if (state.lobbyStage != LobbyStage.ROOM_BROWSER) {

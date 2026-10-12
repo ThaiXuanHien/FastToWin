@@ -173,6 +173,20 @@ composition tiếng Trung và chèn giữa chuỗi, giữ vị trí con trỏ kh
 vượt giới hạn bị khôi phục, gỡ input khi quay lại, đăng nhập
 tài khoản dùng một lần/F5/Back–Forward và lưu ngôn ngữ qua reload.
 
+Hồi quy tạo bang hội (#35) nằm trong cả hai project native-input và có cấu hình
+riêng `clan-keyboard.playwright.config.mjs` (loopback 18180/18181). Ca thử giữ
+nguyên native editor khi mô phỏng visualViewport bàn phím mở/đóng nhiều lần,
+kiểm tra focus không bị mất, tiếp tục gõ, chủ động blur, xoay màn hình và resize
+desktop. Đóng bằng Hủy/Escape phải phục hồi truy vấn tìm bang và xóa form đã bỏ.
+`NativeDialogInputScope` tách DOM root và theo dõi thứ tự các ô HTML cho từng
+ArcadeDialog; toàn bộ layout hiện có nằm trong scope, Android/iOS giữ wrapper
+no-op. Đây là workaround cô lập cho internal API của Compose UI đang pin,
+liên quan [CMP-9366](https://youtrack.jetbrains.com/issue/CMP-9366). Khi nâng
+Compose, chạy lại kiểm thử rồi bỏ workaround nếu upstream đã xử lý.
+
+Đây là mô phỏng thay đổi viewport trên app thật, chưa thay thế nghiệm thu bàn
+phím hệ điều hành trên PWA đã cài vào điện thoại.
+
 Chưa xác nhận bàn phím ảo trên Safari iPhone thật. Sau khi deploy bản mới,
 kiểm tra Safari và bản thêm vào màn hình chính: đăng nhập/đăng ký, quên mật khẩu,
 sửa biệt danh, tìm/tạo phòng và nhập trong dialog. Kiểm tra bàn phím mở, ô đang

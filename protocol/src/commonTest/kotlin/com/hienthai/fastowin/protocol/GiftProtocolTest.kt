@@ -6,6 +6,24 @@ import kotlinx.serialization.json.Json
 import kotlin.test.*
 
 class GiftProtocolTest {
+    @Test fun `legacy claim JSON defaults gems while new receipts round trip`() {
+        val gift = MailboxGift("gift", "Quà", "Gift", "Quà", "Gift", 100, 30, 1, 2, GiftState.CLAIMED)
+        val encodedGift = ProtocolJson.encodeToString(gift)
+        val legacy = """{"gift":$encodedGift,"awardedGold":100,"awardedXp":30,"gold":200,"xp":60}"""
+        val old = ProtocolJson.decodeFromString<GiftClaimResult>(legacy)
+        assertEquals(0, old.awardedGems); assertEquals(0, old.gems)
+        val current = old.copy(gift = gift.copy(gems = 7), awardedGems = 7, gems = 14)
+        assertEquals(current, ProtocolJson.decodeFromString<GiftClaimResult>(ProtocolJson.encodeToString(current)))
+        val page = GiftMailboxPage(listOf(current.gift), 1, 1, 9, availableCount = 4)
+        assertEquals(page, ProtocolJson.decodeFromString<GiftMailboxPage>(ProtocolJson.encodeToString(page)))
+    }
+
+    @Test fun `gem rewards in mailbox payload survive decode and encode`() {
+        val payload = """{"campaignId":"gift","titleVi":"Quà","titleEn":"Gift","bodyVi":"Quà","bodyEn":"Gift","gold":0,"xp":0,"gems":25,"availableAtEpochMillis":1,"expiresAtEpochMillis":2,"state":"AVAILABLE"}"""
+        val gift = ProtocolJson.decodeFromString<MailboxGift>(payload)
+        val encoded = ProtocolJson.encodeToString(gift)
+        assertTrue(encoded.contains("\"gems\":25"), encoded)
+    }
     @Test fun `future metadata is ignored while exact rewards and safe stored body survive`() {
         val gift = MailboxGift("round", "Đền bù", "Compensation", "UTC [0,10). Lý do.",
             "UTC [0,10). Reason.", 0, Int.MAX_VALUE, 10, 20, GiftState.AVAILABLE,
@@ -19,6 +37,7 @@ class GiftProtocolTest {
         val page=ProtocolJson.decodeFromString<GiftMailboxPage>(payload)
         assertEquals("Quà",page.items.single().titleVi); assertNull(page.items.single().claimedAtEpochMillis)
         assertNull(page.items.single().compensation)
+        assertEquals(0, page.items.single().gems); assertEquals(0L, page.availableCount)
         assertEquals(page,ProtocolJson.decodeFromString<GiftMailboxPage>(ProtocolJson.encodeToString(page)))
         assertFalse(ProtocolJson.encodeToString(page).contains("actorId"))
     }

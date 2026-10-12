@@ -109,7 +109,7 @@ class GiftService(val repository: GiftRepository, private val admins: AdminServi
     suspend fun mailbox(userId: String, page: PageRequest): GiftMailboxPage = repository.transaction {
         uuid(userId); if (!activePlayer(userId)) unauthorized()
         val now = nowMillis(); val (rows, total) = mailbox(userId, now, page)
-        GiftMailboxPage(rows.map { (c, r) -> gift(c, r, now) }, page.page, page.pageSize, total)
+        GiftMailboxPage(rows.map { (c, r) -> gift(c, r, now) }, page.page, page.pageSize, total, mailboxAvailableCount(userId, now))
     }
     suspend fun claim(userId: String, campaignId: String, receivedAt: Long = nowMillis()): GiftClaimResult = repository.transaction {
         uuid(userId); uuid(campaignId)
@@ -119,7 +119,7 @@ class GiftService(val repository: GiftRepository, private val admins: AdminServi
         if (!activePlayer(userId)) unauthorized()
         if (r.claimedAt != null) {
             val current = balance(userId)
-            return@transaction GiftClaimResult(gift(c, r, receivedAt), c.draft.gold, c.draft.xp, current.gold, current.xp)
+            return@transaction GiftClaimResult(gift(c, r, receivedAt), c.draft.gold, c.draft.xp, current.gold, current.xp, c.draft.gems, current.gems)
         }
         if (!newIntentAllowed()) throw AdminException(503, "MAINTENANCE",
             com.hienthai.fastowin.localization.LocalizationService(com.hienthai.fastowin.localization.AppLanguage.VIETNAMESE)
@@ -127,7 +127,7 @@ class GiftService(val repository: GiftRepository, private val admins: AdminServi
         if (c.state != CampaignState.PUBLISHED || receivedAt < c.draft.availableAtEpochMillis || receivedAt >= c.draft.expiresAtEpochMillis!!) conflict()
         val current = award(userId, c, receivedAt)
         val claimed = r.copy(claimedAt = receivedAt); putRecipient(claimed)
-        GiftClaimResult(gift(c, claimed, receivedAt), c.draft.gold, c.draft.xp, current.gold, current.xp)
+        GiftClaimResult(gift(c, claimed, receivedAt), c.draft.gold, c.draft.xp, current.gold, current.xp, c.draft.gems, current.gems)
     }
     suspend fun claimAll(userId: String, request: GiftClaimAllRequest, receivedAt: Long = nowMillis()): GiftClaimAllResult {
         if (request.campaignIds.size !in 1..100) invalid()
@@ -144,4 +144,4 @@ class GiftService(val repository: GiftRepository, private val admins: AdminServi
 internal fun uuid(id: String) { if (runCatching { UUID.fromString(id).toString() == id.lowercase() }.getOrDefault(false).not()) invalid() }
 internal fun gift(c: GiftCampaign, r: GiftRecipient, now: Long) = MailboxGift(c.id, c.draft.titleVi, c.draft.titleEn, c.draft.bodyVi, c.draft.bodyEn,
     c.draft.gold, c.draft.xp, c.draft.availableAtEpochMillis, c.draft.expiresAtEpochMillis!!,
-    when { r.claimedAt != null -> GiftState.CLAIMED; c.state == CampaignState.CANCELLED -> GiftState.CANCELLED; now >= c.draft.expiresAtEpochMillis -> GiftState.EXPIRED; else -> GiftState.AVAILABLE }, r.claimedAt, c.compensation)
+    when { r.claimedAt != null -> GiftState.CLAIMED; c.state == CampaignState.CANCELLED -> GiftState.CANCELLED; now >= c.draft.expiresAtEpochMillis -> GiftState.EXPIRED; else -> GiftState.AVAILABLE }, r.claimedAt, c.compensation, c.draft.gems)

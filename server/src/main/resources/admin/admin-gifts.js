@@ -42,14 +42,14 @@ export function openGiftCampaigns(ui) {
     } parent.append(languages);
   }
   function schedule(parent, draft) {
-    facts(parent, [['Người nhận', audiences[isIndividual(draft) ? 'SINGLE_PLAYER' : draft.audience]], ['Phần thưởng mỗi người', `${amount(draft.gold)} Vàng · ${amount(draft.xp)} XP`], ['Thời gian phát', date(draft.availableAtEpochMillis)], ['Hết hạn', date(draft.expiresAtEpochMillis)]]);
+    facts(parent, [['Người nhận', audiences[isIndividual(draft) ? 'SINGLE_PLAYER' : draft.audience]], ['Phần thưởng mỗi người', `${amount(draft.gold)} Vàng · ${amount(draft.xp)} XP · ${amount(draft.gems ?? 0)} Gem`], ['Thời gian phát', date(draft.availableAtEpochMillis)], ['Hết hạn', date(draft.expiresAtEpochMillis)]]);
   }
   function isIndividual(draft) { return draft.audience === 'USER_IDS' && draft.userIds.length === 1; }
   function recipientFacts(parent, person, className = 'facts gift-recipient') {
     facts(parent, [['Người chơi', person.displayName], ['Mã người chơi', person.playerCode || '—'], ['Email', person.email ?? 'Không có email']], className);
   }
   function totals(parent, preview) {
-    facts(parent, [['Người nhận', amount(preview.recipientCount)], ['Tổng Vàng', amount(preview.totalGold)], ['Tổng XP', amount(preview.totalXp)]], 'gift-totals');
+    facts(parent, [['Người nhận', amount(preview.recipientCount)], ['Tổng Vàng', amount(preview.totalGold)], ['Tổng XP', amount(preview.totalXp)], ['Tổng Gem', amount(preview.totalGems ?? 0)]], 'gift-totals');
   }
   // Retry identity is bound to the exact payload, not a submit click.
   function mutation(form, submit, notices, surface, target, payload, success, method = 'POST', conflict) {
@@ -73,7 +73,7 @@ export function openGiftCampaigns(ui) {
   function list() {
     if (!role() || role() === 'SUPPORT') return;
     const main = shell('Quà admin', 'gifts');
-    main.append(node('p', 'Soạn quà Vàng và XP, xem trước người nhận và theo dõi chiến dịch.', { class: 'muted' }));
+    main.append(node('p', 'Soạn quà Vàng, XP và Gem, xem trước người nhận và theo dõi chiến dịch.', { class: 'muted' }));
     const toolbar = node('div', null, { class: 'toolbar' });
     append(toolbar, iconButton('Tạo chiến dịch quà', () => edit(), 'add', { class: 'primary' }), iconButton('Làm mới', () => load(currentPage), 'refresh')); main.append(toolbar);
     const notices = feedback(main), results = node('div', null, { class: 'results' }); main.append(results);
@@ -85,7 +85,7 @@ export function openGiftCampaigns(ui) {
         if (!data.items.length) results.append(node('p', 'Chưa có chiến dịch quà.', { class: 'muted' }));
         for (const { campaign, counters } of data.items) {
           const row = node('article', null, { class: 'gift-row' });
-          append(row, append(node('div', null, { class: 'row-info' }), node('strong', campaign.draft.titleVi), node('p', `${amount(campaign.draft.gold)} Vàng · ${amount(campaign.draft.xp)} XP / người`, { class: 'muted' }), node('p', date(campaign.draft.availableAtEpochMillis), { class: 'muted' })),
+          append(row, append(node('div', null, { class: 'row-info' }), node('strong', campaign.draft.titleVi), node('p', `${amount(campaign.draft.gold)} Vàng · ${amount(campaign.draft.xp)} XP · ${amount(campaign.draft.gems ?? 0)} Gem / người`, { class: 'muted' }), node('p', date(campaign.draft.availableAtEpochMillis), { class: 'muted' })),
             append(node('div', null, { class: 'row-meta' }), node('span', states[campaign.state], { class: 'badge badge-' + (campaign.state === 'PUBLISHED' ? 'active' : campaign.state === 'CANCELLED' ? 'inactive' : 'draft') }), node('span', `Đã nhận: ${amount(counters.claimed)}`, { class: 'muted' })),
             iconButton('Xem chiến dịch ' + campaign.draft.titleVi, () => detail(campaign.id), 'eye'));
           results.append(row);
@@ -124,8 +124,8 @@ export function openGiftCampaigns(ui) {
         else if (draft.audience === 'USER_IDS') container.append(node('p', draft.userIds.join('\n'), { class: 'mono gift-body' }));
         if (draft.audience === 'REGISTERED_BETWEEN') facts(container, [['Đăng ký từ (bao gồm)', date(draft.registeredFromEpochMillis)], ['Đăng ký đến (không bao gồm)', date(draft.registeredUntilEpochMillis)]]);
         container.append(node('h2', 'Báo cáo chiến dịch'));
-        facts(container, [['Đủ điều kiện', counters.eligible], ['Chờ phát', counters.pending], ['Đã phát', counters.delivered], ['Đã nhận', counters.claimed], ['Hết hạn', counters.expired], ['Đã hủy chưa nhận', counters.cancelled], ['Bỏ qua', counters.skipped], ['Vàng đã nhận', counters.claimedGold], ['XP đã nhận', counters.claimedXp]].map(([key, value]) => [key, amount(value)]), 'gift-report');
-        container.append(node('p', 'Các chỉ số có phần giao nhau: đã nhận và hết hạn nằm trong đã phát. Vàng / XP đã nhận là tổng thực trả; hủy không thu hồi quà đã nhận.', { class: 'muted' }));
+        facts(container, [['Đủ điều kiện', counters.eligible], ['Chờ phát', counters.pending], ['Đã phát', counters.delivered], ['Đã nhận', counters.claimed], ['Hết hạn', counters.expired], ['Đã hủy chưa nhận', counters.cancelled], ['Bỏ qua', counters.skipped], ['Vàng đã nhận', counters.claimedGold], ['XP đã nhận', counters.claimedXp], ['Gem đã nhận', counters.claimedGems ?? 0]].map(([key, value]) => [key, amount(value)]), 'gift-report');
+        container.append(node('p', 'Các chỉ số có phần giao nhau: đã nhận và hết hạn nằm trong đã phát. Vàng / XP / Gem đã nhận là tổng thực trả; hủy không thu hồi quà đã nhận.', { class: 'muted' }));
       } catch (error) { if (task.current() && error.name !== 'AbortError') notices.fail(error); }
     } load();
   }
@@ -137,9 +137,10 @@ export function openGiftCampaigns(ui) {
     const bodyVi = field(form, 'Nội dung tiếng Việt', 'gift-body-vi', 'textarea', { required: '', maxlength: '4000' });
     const titleEn = field(form, 'Tiêu đề tiếng Anh', 'gift-title-en', 'text', { required: '', maxlength: '160', lang: 'en' });
     const bodyEn = field(form, 'Nội dung tiếng Anh', 'gift-body-en', 'textarea', { required: '', maxlength: '4000', lang: 'en' });
-    const rewards = node('div', null, { class: 'gift-field-pair' }); form.append(rewards);
+    const rewards = node('div', null, { class: 'gift-field-pair gift-reward-fields' }); form.append(rewards);
     const gold = field(rewards, 'Vàng mỗi người', 'gift-gold', 'number', { required: '', min: '0', max: '2147483647', step: '1' });
     const xp = field(rewards, 'XP mỗi người', 'gift-xp', 'number', { required: '', min: '0', max: '2147483647', step: '1' });
+    const gems = field(rewards, 'Gem mỗi người', 'gift-gems', 'number', { required: '', min: '0', max: '2147483647', step: '1' });
     const audience = select(form, 'Người nhận', 'gift-audience', audiences);
     const activity = node('option', 'Theo hoạt động gần nhất — chưa hỗ trợ', { value: 'ACTIVITY', disabled: '' }); audience.append(activity);
     const activityHelp = node('p', 'Chưa có nguồn hoạt động gần nhất chính thức. Không dùng ngày đăng ký thay thế.', { class: 'muted gift-help' }); form.append(activityHelp);
@@ -172,8 +173,8 @@ export function openGiftCampaigns(ui) {
     const expires = field(form, 'Hết hạn (Bangkok)', 'gift-expires', 'datetime-local', { required: '', step: '0.001' });
     form.append(node('p', 'Mặc định hết hạn sau 30 ngày từ thời gian phát. Có thể chỉnh mốc này; phát chậm không gia hạn.', { class: 'muted gift-help' }));
     const reason = field(form, 'Lý do chiến dịch', 'gift-reason', 'textarea', { required: '', maxlength: '500' });
-    const values = { titleVi, titleEn, bodyVi, bodyEn, gold, xp, reason, audience };
-    for (const [key, input] of Object.entries(values)) input.value = draft?.[key] ?? (key === 'audience' ? 'ALL_REGISTERED' : ['gold', 'xp'].includes(key) ? '0' : '');
+    const values = { titleVi, titleEn, bodyVi, bodyEn, gold, xp, gems, reason, audience };
+    for (const [key, input] of Object.entries(values)) input.value = draft?.[key] ?? (key === 'audience' ? 'ALL_REGISTERED' : ['gold', 'xp', 'gems'].includes(key) ? '0' : '');
     if (draft && isIndividual(draft)) audience.value = 'SINGLE_PLAYER';
     ids.value = draft?.userIds?.join('\n') ?? '';
     from.value = draft?.registeredFromEpochMillis == null ? '' : localDate(draft.registeredFromEpochMillis);
@@ -188,8 +189,8 @@ export function openGiftCampaigns(ui) {
     const notices = feedback(form), submit = node('button', 'Lưu bản nháp', { type: 'submit', class: 'primary' });
     form.append(append(node('div', null, { class: 'modal-actions' }), surface.cancel, submit));
     mutation(form, submit, notices, surface, campaign ? path(campaign.id) : base, () => {
-      const body = Object.fromEntries(Object.entries(values).map(([key, input]) => [key, ['gold', 'xp'].includes(key) ? Number(input.value) : input.value.trim()]));
-      if (!body.gold && !body.xp) throw new Error('Cần ít nhất một phần thưởng Vàng hoặc XP lớn hơn 0.');
+      const body = Object.fromEntries(Object.entries(values).map(([key, input]) => [key, ['gold', 'xp', 'gems'].includes(key) ? Number(input.value) : input.value.trim()]));
+      if (!body.gold && !body.xp && !body.gems) throw new Error('Cần ít nhất một phần thưởng Vàng, XP hoặc Gem lớn hơn 0.');
       for (const key of ['titleVi', 'titleEn', 'bodyVi', 'bodyEn', 'reason']) if (!body[key]) throw new Error('Nội dung và lý do không được chỉ gồm khoảng trắng.');
       if (/[\u0000-\u001f\u007f]/.test(body.reason)) throw new Error('Lý do cần nằm trên một dòng và không chứa ký tự điều khiển.');
       body.userIds = body.audience === 'USER_IDS' ? ids.value.split(/[\s,;]+/).filter(Boolean) : [];

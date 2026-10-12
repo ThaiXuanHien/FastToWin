@@ -28,12 +28,13 @@ internal object GiftCampaignOperations {
     fun preview(c: GiftCampaign, a: Audience): GiftPreview {
         val token = hashToken(Json.encodeToString(c) + "|" + a.users.joinToString(",") + "|" + a.invalid.joinToString(","))
         return GiftPreview(c.id, c.version, a.users.size.toLong(), a.duplicates, a.invalid,
-            Math.multiplyExact(c.draft.gold.toLong(), a.users.size.toLong()), Math.multiplyExact(c.draft.xp.toLong(), a.users.size.toLong()), token)
+            Math.multiplyExact(c.draft.gold.toLong(), a.users.size.toLong()), Math.multiplyExact(c.draft.xp.toLong(), a.users.size.toLong()), token,
+            Math.multiplyExact(c.draft.gems.toLong(), a.users.size.toLong()))
     }
     private fun normalize(request: GiftDraftRequest, bodyLimit: Int): GiftDraftRequest {
         if (request.titleVi.isBlank() || request.titleEn.isBlank() || request.titleVi.length > 160 || request.titleEn.length > 160 ||
             request.bodyVi.isBlank() || request.bodyEn.isBlank() || request.bodyVi.length > bodyLimit || request.bodyEn.length > bodyLimit ||
-            request.gold < 0 || request.xp < 0 || (request.gold == 0 && request.xp == 0) || request.userIds.size > 10000) invalid()
+            request.gold < 0 || request.xp < 0 || request.gems < 0 || (request.gold == 0 && request.xp == 0 && request.gems == 0) || request.userIds.size > 10000) invalid()
         val expiry = try { request.expiresAtEpochMillis ?: Math.addExact(request.availableAtEpochMillis, 30L * 24 * 60 * 60 * 1000) } catch (_: ArithmeticException) { invalid() }
         if (request.availableAtEpochMillis < 0 || expiry <= request.availableAtEpochMillis || expiry > 253402300799999L) invalid()
         if (request.audience == GiftAudience.USER_IDS) {

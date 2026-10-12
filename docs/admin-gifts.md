@@ -1,6 +1,6 @@
 # Admin gift campaigns and player mailbox
 
-Issue #19 backend contract. Dates are UTC epoch milliseconds (`Long`); admin UI inputs and labels use Asia/Bangkok. Player text has separate Vietnamese/English fields. No websocket enum or push notification is required.
+Issues #19 and #34 backend/client contract. Dates are UTC epoch milliseconds (`Long`); admin UI inputs and labels use Asia/Bangkok. Player text has separate Vietnamese/English fields. No websocket enum or push notification is required.
 
 ## Admin authentication and routes
 
@@ -31,6 +31,7 @@ Successful operations return HTTP200. List pagination uses page>=0 and pageSize1
   "reason": "October event",
   "gold": 100,
   "xp": 30,
+  "gems": 15,
   "audience": "ALL_REGISTERED",
   "userIds": [],
   "registeredFromEpochMillis": null,
@@ -42,7 +43,7 @@ Successful operations return HTTP200. List pagination uses page>=0 and pageSize1
 }
 ```
 
-`expectedVersion` is absent/null for create and required for update. `expiresAtEpochMillis` absent/null defaults to exactly30 days after availableAt, then is persisted as a concrete timestamp. Schedule must be nonnegative, expire strictly after availableAt and by253402300799999. Gold/XP are Int0..2147483647 and at least one positive. Titles1..160 characters; bodies1..4000; whitespace-only content is invalid. Reason is nonblank, <=500 chars, without control characters. RequestId matches `[A-Za-z0-9_-]{1,128}`. JSON bodies are limited to512KiB; unknown fields and invalid JSON are rejected.
+`expectedVersion` is absent/null for create and required for update. `expiresAtEpochMillis` absent/null defaults to exactly30 days after availableAt, then is persisted as a concrete timestamp. Schedule must be nonnegative, expire strictly after availableAt and by253402300799999. Gold/XP/Gem are Int0..2147483647 and at least one positive; gem-only gifts are valid. Missing `gems` defaults to0 for old drafts/receipts. Titles1..160 characters; bodies1..4000; whitespace-only content is invalid. Reason is nonblank, <=500 chars, without control characters. RequestId matches `[A-Za-z0-9_-]{1,128}`. JSON bodies are limited to512KiB; unknown fields and invalid JSON are rejected.
 
 Audience options:
 
@@ -63,7 +64,7 @@ There is no activity audience. UI must disable that option and explain that no o
     "draft": {
       "titleVi": "Quà sự kiện", "titleEn": "Event gift",
       "bodyVi": "Cảm ơn bạn!", "bodyEn": "Thank you!",
-      "reason": "October event", "gold": 100, "xp": 30,
+      "reason": "October event", "gold": 100, "xp": 30, "gems": 15,
       "audience": "ALL_REGISTERED", "userIds": [],
       "registeredFromEpochMillis": null, "registeredUntilEpochMillis": null,
       "availableAtEpochMillis": 1790899200000,
@@ -78,14 +79,14 @@ There is no activity audience. UI must disable that option and explain that no o
   "counters": {
     "eligible": "10", "pending": "0", "delivered": "10",
     "claimed": "3", "expired": "0", "cancelled": "0", "skipped": "0",
-    "claimedGold": "300", "claimedXp": "90"
+    "claimedGold": "300", "claimedXp": "90", "claimedGems": "45"
   }
 }
 ```
 
-Every admin counter, preview recipientCount/totalGold/totalXp, and list total is a canonical nonnegative decimal string. Browser consumers format these with BigInt; do not parse through Number. page/pageSize/version/duplicateCount and per-recipient Int rewards remain JSON numbers. This is an HTTP-only projection: domain Long arithmetic, stored mutation replay JSON, player protocol and mailbox/claim responses are unchanged.
+Every admin counter, preview recipientCount/totalGold/totalXp/totalGems, and list total is a canonical nonnegative decimal string. Browser consumers format these with BigInt; do not parse through Number. page/pageSize/version/duplicateCount and per-recipient Int rewards remain JSON numbers. This is an HTTP-only projection: domain Long arithmetic, stored mutation replay JSON, player mailbox/claim balances remain JSON numbers. Gem and available-count fields are additive, with defaults for old stored payloads.
 
-Campaign state is `DRAFT|PUBLISHED|CANCELLED`. The draft object retains the last edit's requestId/expectedVersion; consumers must generate a new requestId and use campaign.version for a new edit. Counters: eligible=frozen recipients; pending=undelivered while campaign remains active; delivered=ever delivered, including later claims/expiry/cancellation; claimed=paid; expired=delivered, unclaimed and expired unless cancelled; cancelled=all unclaimed, non-skipped frozen recipients after cancellation; skipped=deleted before delivery. These counts overlap (claimed/expired are subsets of delivered). ClaimedGold/XP are actual paid totals, retained with the frozen receipt even if an account is later deleted. Draft counters are zero; use preview for its estimated audience.
+Campaign state is `DRAFT|PUBLISHED|CANCELLED`. The draft object retains the last edit's requestId/expectedVersion; consumers must generate a new requestId and use campaign.version for a new edit. Counters: eligible=frozen recipients; pending=undelivered while campaign remains active; delivered=ever delivered, including later claims/expiry/cancellation; claimed=paid; expired=delivered, unclaimed and expired unless cancelled; cancelled=all unclaimed, non-skipped frozen recipients after cancellation; skipped=deleted before delivery. These counts overlap (claimed/expired are subsets of delivered). ClaimedGold/XP/Gems are actual paid totals, retained with the frozen receipt even if an account is later deleted. Draft counters are zero; use preview for its estimated audience.
 
 ```json
 {
@@ -96,6 +97,7 @@ Campaign state is `DRAFT|PUBLISHED|CANCELLED`. The draft object retains the last
   "invalidUserIds": [],
   "totalGold": "1000",
   "totalXp": "300",
+  "totalGems": "150",
   "previewToken": "opaque-sha256"
 }
 ```
@@ -116,15 +118,17 @@ GET `/api/gifts/mailbox?page=0&pageSize=25` (or `/gifts/mailbox?page=0&pageSize=
     "campaignId": "8e161351-1c86-46bc-b1cc-dff408658d73",
     "titleVi": "Quà sự kiện", "titleEn": "Event gift",
     "bodyVi": "Cảm ơn bạn!", "bodyEn": "Thank you!",
-    "gold": 100, "xp": 30,
+    "gold": 100, "xp": 30, "gems": 15,
     "availableAtEpochMillis": 1790899200000,
     "expiresAtEpochMillis": 1793491200000,
     "state": "AVAILABLE",
     "claimedAtEpochMillis": null
   }],
-  "page": 0, "pageSize": 25, "total": 1
+  "page": 0, "pageSize": 25, "total": 1, "availableCount": 1
 }
 ```
+
+`availableCount` counts claimable gifts across the entire mailbox, independent of pagination: delivered, published, unclaimed, and availableAt <= server time < expiresAt. Claimed, expired, cancelled, future and undelivered gifts do not count. Clients can request page0/pageSize1 for a small background count refresh.
 
 Mailbox uses availableAt descending, campaignId descending tie-break; includes only delivered gifts after their availability time. States are `AVAILABLE|CLAIMED|EXPIRED|CANCELLED`. Claim takes precedence over cancellation/expiry; cancellation takes precedence over expiry. Drafts, pending recipients and skipped recipients are never exposed. Page/pageSize have the same limits as admin.
 
@@ -136,17 +140,17 @@ POST `/api/gifts/mailbox/{campaignId}/claim` (or `/gifts/mailbox/{campaignId}/cl
     "campaignId": "8e161351-1c86-46bc-b1cc-dff408658d73",
     "titleVi": "Quà sự kiện", "titleEn": "Event gift",
     "bodyVi": "Cảm ơn bạn!", "bodyEn": "Thank you!",
-    "gold": 100, "xp": 30,
+    "gold": 100, "xp": 30, "gems": 15,
     "availableAtEpochMillis": 1790899200000,
     "expiresAtEpochMillis": 1793491200000,
     "state": "CLAIMED", "claimedAtEpochMillis": 1790900000000
   },
-  "awardedGold": 100, "awardedXp": 30,
-  "gold": 450, "xp": 230
+  "awardedGold": 100, "awardedXp": 30, "awardedGems": 15,
+  "gold": 450, "xp": 230, "gems": 45
 }
 ```
 
-`gold`/`xp` are current total wallet/experience balances. `awardedGold`/`awardedXp` describe the original receipt, including on retry; clients must replace displayed balances or refresh the profile, never add these values locally. Retry returns the already claimed receipt without paying again, including after expiry/cancellation. Existing PostgreSQL player profile refresh sees the same player_stats balances and derives level as usual. Lifetime earned gold/gems are unaffected.
+`gold`/`xp`/`gems` are current total wallet/experience balances. `awardedGold`/`awardedXp`/`awardedGems` describe the original receipt, including on retry; clients must replace displayed balances or refresh the profile, never add these values locally. Retry returns the already claimed receipt without paying again, including after expiry/cancellation. Existing PostgreSQL player profile refresh sees the same player_stats balances and derives level as usual. Lifetime earned gold/gems are unaffected.
 
 Claim validity uses server request-received time in `[availableAt,expiresAt)`, captured before bearer authentication/database waits. A valid request waiting for locks does not expire while queued. Single-claim expired/cancelled responses are409; refresh mailbox for final state. Undelivered or somebody else's gift returns404.
 
@@ -170,6 +174,8 @@ Shared serializable DTOs live in `protocol/GiftProtocol.kt`: `GiftState`, `Mailb
 The Home discovery section opens a separate `/gifts` route in the shared Compose app. Guests can see sign-in guidance; only registered accounts request mailbox pages. Opening the route fetches page0 and never claims gifts. The screen keeps server states (`AVAILABLE`, `CLAIMED`, `EXPIRED`, `CANCELLED`), displays the stored Vietnamese/English content using the current app language, and offers explicit **Nhận** / **Nhận tất cả** actions. Load more fetches the next server page; Claim all reads every server page and sends available campaign IDs in batches of at most100. Per-item failures remain visible and retryable, while successful receipts trigger the existing authoritative GameController profile refresh. The client never adds awarded amounts to its local wallet.
 
 Mailbox state belongs to the registered account's app lifecycle. Leaving the screen clears pending UI state; opening it again fetches server truth. Account changes dispose the client and fence late responses. Access-token refresh within the same account retries one unauthorized HTTP request with a fresh bearer token. Notification records, taps, and deletion do not affect gift visibility or claims.
+
+The Home mailbox entry and existing HOME bottom tab show an accessible count badge while claimable gifts remain (visual cap99+, semantic count remains exact). Registered clients refresh while connected, on reconnect/return to Home and after claims. Route-away clears mailbox page state but preserves the badge; account teardown clears it and fences pending responses. A count response started before a claim cannot overwrite the newer count. Background refresh errors retain the last known count until a successful refresh; the badge is not a push notification or a promise of instant delivery.
 
 ### PWA and reverse proxy routing
 

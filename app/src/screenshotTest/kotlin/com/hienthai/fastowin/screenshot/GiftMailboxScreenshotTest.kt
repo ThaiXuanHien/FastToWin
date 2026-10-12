@@ -13,7 +13,7 @@ private val previewGifts = listOf(
         "event-one", "Quà sự kiện tháng Mười", "October event gift",
         "Cảm ơn bạn đã đồng hành cùng FastToWin!", "Thank you for playing FastToWin!",
         250, 40, ArcadeScreenshotFixtures.NOW_MILLIS - 86_400_000,
-        ArcadeScreenshotFixtures.NOW_MILLIS + 172_800_000, GiftState.AVAILABLE
+        ArcadeScreenshotFixtures.NOW_MILLIS + 172_800_000, GiftState.AVAILABLE, gems = 15
     ),
     MailboxGift(
         "event-two", "Quà chào mừng", "Welcome gift",

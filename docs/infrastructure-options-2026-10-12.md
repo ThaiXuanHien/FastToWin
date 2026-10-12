@@ -7,6 +7,10 @@ chưa gồm thuế/phí thanh toán; cần xác nhận lại tại checkout theo
 vùng và chu kỳ thanh toán. Các ví dụ tải/chi phí bên dưới là giả định để chọn,
 không phải số đo hay hóa đơn hiện tại của FastToWin.
 
+Ưu tiên chủ dự án bổ sung: chọn **free hoặc chi phí thấp nhất đáp ứng nhu cầu**;
+triển khai hạ tầng sau task quà Gem/badge #34 và lỗi bàn phím PWA #35. Chưa chốt
+ngân sách hoặc mua gói; so sánh Pro bên dưới là phương án để cân nhắc khi public.
+
 ## 1. Chọn nhanh theo giai đoạn
 
 Code hiện tại dùng Ktor/JVM, PostgreSQL, web qua Caddy và một backend giữ trạng

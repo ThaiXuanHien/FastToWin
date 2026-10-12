@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
@@ -48,6 +49,8 @@ import androidx.compose.material.icons.rounded.LocalFireDepartment
 import androidx.compose.material.icons.rounded.Shuffle
 import androidx.compose.material.icons.rounded.Speed
 import androidx.compose.material.icons.rounded.Timer
+import androidx.compose.material3.Badge
+import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ElevatedCard
@@ -72,6 +75,9 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
@@ -121,6 +127,7 @@ internal fun HomeDashboard(
     onOpenProfile: () -> Unit,
     onOpenNotifications: () -> Unit,
     onOpenGifts: () -> Unit,
+    unclaimedGiftCount: Long = 0,
     rewardEventState: com.hienthai.fastowin.state.RewardEventUiState? = null,
     announcementState: com.hienthai.fastowin.state.AnnouncementState? = null,
     onOpenAnnouncement: (String) -> Unit = {},
@@ -266,7 +273,8 @@ internal fun HomeDashboard(
                     Icons.Default.Redeem,
                     ArcadePalette.Gold500,
                     onOpenGifts,
-                    Modifier.fillMaxWidth().testTag("home_gift_mailbox")
+                    Modifier.fillMaxWidth().testTag("home_gift_mailbox"),
+                    badgeCount = if (isGuest) 0 else unclaimedGiftCount
                 )
                 HomeQuickAction(
                     localized(TextKey.Tournament),
@@ -717,6 +725,7 @@ private fun DelayedConnectionNotice(status: ConnectionStatus) {
 internal fun FastToWinBottomBar(
     selected: MainTab,
     friendNotificationCount: Int,
+    unclaimedGiftCount: Long = 0,
     onHome: () -> Unit,
     onRooms: () -> Unit,
     onLeaderboard: () -> Unit,
@@ -724,6 +733,7 @@ internal fun FastToWinBottomBar(
     onAccount: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val navigationHeight = 56.dp + 40.dp * (LocalDensity.current.fontScale - 1f).coerceAtLeast(0f)
     Surface(
         modifier = modifier
             .fillMaxWidth()
@@ -739,7 +749,7 @@ internal fun FastToWinBottomBar(
                         WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom
                     )
                 )
-                .height(56.dp),
+                .height(navigationHeight),
             verticalAlignment = Alignment.CenterVertically
         ) {
             BottomBarItem(
@@ -748,7 +758,8 @@ internal fun FastToWinBottomBar(
                 icon = Icons.Default.Home,
                 selected = selected == MainTab.HOME,
                 onClick = onHome,
-                modifier = Modifier.weight(1f)
+                modifier = Modifier.weight(1f),
+                giftBadgeCount = unclaimedGiftCount
             )
             BottomBarItem(
                 tab = MainTab.ROOMS,
@@ -793,8 +804,10 @@ private fun BottomBarItem(
     icon: ImageVector,
     selected: Boolean,
     onClick: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    giftBadgeCount: Long = 0
 ) {
+    val giftDescription = if (giftBadgeCount > 0) localized(TextKey.GiftUnclaimedCount, "count" to giftBadgeCount) else null
     val itemColor = if (selected) ArcadePalette.Gold400 else Color.White.copy(alpha = 0.72f)
     TextButton(
         onClick = onClick,
@@ -804,6 +817,10 @@ private fun BottomBarItem(
             .semantics(mergeDescendants = true) {
                 role = Role.Tab
                 this.selected = selected
+                if (giftDescription != null) {
+                    stateDescription = giftDescription
+                    liveRegion = LiveRegionMode.Polite
+                }
             },
         shape = RoundedCornerShape(0.dp),
         contentPadding = PaddingValues(0.dp)
@@ -823,11 +840,9 @@ private fun BottomBarItem(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(2.dp)
             ) {
-                Icon(
-                    icon,
-                    contentDescription = null,
-                    tint = itemColor
-                )
+                BadgedBox(badge = { GiftCountBadge(giftBadgeCount, Modifier.offset(y = 4.dp)) }) {
+                    Icon(icon, contentDescription = null, tint = itemColor)
+                }
                 Text(
                     label,
                     style = MaterialTheme.typography.labelSmall,
@@ -846,13 +861,16 @@ private fun HomeQuickAction(
     icon: ImageVector,
     accent: Color,
     onClick: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    badgeCount: Long = 0
 ) {
+    val giftDescription = if (badgeCount > 0) localized(TextKey.GiftUnclaimedCount, "count" to badgeCount) else null
     ElevatedCard(
         onClick = onClick,
         modifier = modifier
             .heightIn(min = 92.dp)
             .testTag("home_action:$title")
+            .semantics { if (giftDescription != null) stateDescription = giftDescription }
             .border(1.dp, accent.copy(alpha = 0.4f), RoundedCornerShape(18.dp)),
         shape = RoundedCornerShape(18.dp),
         colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -886,7 +904,10 @@ private fun HomeQuickAction(
                     modifier = Modifier.weight(1f),
                     verticalArrangement = Arrangement.Center
                 ) {
-                    Text(title, fontWeight = FontWeight.Bold, maxLines = 1)
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(title, fontWeight = FontWeight.Bold, maxLines = 1, modifier = Modifier.weight(1f, fill = false))
+                        GiftCountBadge(badgeCount)
+                    }
                     Text(
                         subtitle,
                         style = MaterialTheme.typography.bodySmall,
@@ -897,6 +918,19 @@ private fun HomeQuickAction(
                 }
             }
         }
+    }
+}
+
+/** The parent control announces the exact contextual count; the visual cap remains decorative. */
+@Composable
+private fun GiftCountBadge(count: Long, modifier: Modifier = Modifier) {
+    if (count <= 0) return
+    Badge(
+        modifier = modifier.clearAndSetSemantics {},
+        containerColor = ArcadePalette.Coral400,
+        contentColor = ArcadePalette.Navy900
+    ) {
+        Text(if (count > 99) "99+" else count.toString(), fontWeight = FontWeight.Bold)
     }
 }
 
