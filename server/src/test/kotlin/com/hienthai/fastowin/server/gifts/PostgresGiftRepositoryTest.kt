@@ -72,6 +72,64 @@ class PostgresGiftRepositoryTest {
         suspend fun error(status: Int, block: suspend () -> Unit) { assertEquals(status, assertFailsWith<AdminException> { block() }.status) }
     }
 
+    @Test fun `mixed gem claims serialize across connections and preserve one ledger entry after restart`() = runTest { database {
+        val campaign = publish(draft(request().copy(gems = 13)))
+        gifts.deliverDueBatch(); val before = balance()
+        val receipts = coroutineScope { List(4) { async(Dispatchers.IO) { gifts.claim(player, campaign.id) } }.awaitAll() }
+        assertTrue(receipts.all { it == receipts.first() })
+        val result = receipts.first()
+        assertEquals(13, result.awardedGems); assertEquals(before.gems + 13, result.gems)
+        assertEquals(13, result.gift.gems); assertEquals(before.gold + 100, result.gold); assertEquals(before.xp + 30, result.xp)
+        gifts = GiftService(PostgresGiftRepository(source), admin, { now })
+        assertEquals(result, gifts.claim(player, campaign.id))
+        assertEquals(before.gems + 13, balance().gems)
+        assertEquals(1L, number("SELECT count(*) FROM wallet_transactions WHERE source_type='ADMIN_GIFT' AND source_id='${campaign.id}'"))
+        assertEquals(13L, number("SELECT gems_delta FROM wallet_transactions WHERE source_id='${campaign.id}'"))
+        assertEquals(13L, gifts.detail(owner, campaign.id).counters.claimedGems)
+        assertEquals(0L, gifts.mailbox(player, PageRequest(0, 1)).availableCount)
+    } }
+    @Test fun `gem only campaign previews exact totals and pays real player stats`() = runTest { database {
+        val campaign = draft(request().copy(gold = 0, xp = 0, gems = 23))
+        assertEquals(23L, gifts.preview(owner, campaign.id, GiftPreviewRequest(1)).totalGems)
+        publish(campaign); gifts.deliverDueBatch(); val before = balance()
+        val result = gifts.claim(player, campaign.id)
+        assertEquals(23, result.awardedGems); assertEquals(before.gems + 23, result.gems)
+        assertEquals(before.gold, result.gold); assertEquals(before.xp, result.xp)
+        assertEquals(23L, number("SELECT gems_delta FROM wallet_transactions WHERE source_id='${campaign.id}'"))
+    } }
+    @Test fun `gem overflow and ledger failure roll back every reward and claim marker`() = runTest { database {
+        val campaign = publish(draft(request().copy(gems = 5))); gifts.deliverDueBatch(); balance()
+        sql("UPDATE player_stats SET gold=11,experience_points=22,gems=2147483643 WHERE user_id='$player'")
+        val before = balance()
+        error(409) { gifts.claim(player, campaign.id) }
+        assertEquals(before, balance()); assertEquals(0L, number("SELECT count(*) FROM wallet_transactions"))
+        assertEquals(GiftState.AVAILABLE, gifts.mailbox(player, PageRequest()).items.single().state)
+        sql("UPDATE player_stats SET gems=7 WHERE user_id='$player'")
+        sql("ALTER TABLE wallet_transactions ADD CONSTRAINT reject_gems CHECK (gems_delta = 0)")
+        error(503) { gifts.claim(player, campaign.id) }
+        assertEquals(GiftBalance(11, 22, 7), balance())
+        assertEquals(1L, gifts.mailbox(player, PageRequest()).availableCount)
+        assertEquals(0L, number("SELECT count(*) FROM wallet_transactions"))
+        sql("ALTER TABLE wallet_transactions DROP CONSTRAINT reject_gems")
+        assertEquals(12, gifts.claim(player, campaign.id).gems)
+    } }
+    @Test fun `available count spans pages and uses exact time state ownership and delivery filters`() = runTest { database {
+        publish(); publish()
+        publish(draft(request().copy(expiresAtEpochMillis = now + 10)))
+        val cancelled = publish(); val claimed = publish()
+        val future = publish(draft(request().copy(availableAtEpochMillis = now + 100)))
+        gifts.deliverDueBatch()
+        gifts.cancel(owner, cancelled.id, GiftCancelRequest(2, "cancel-count", "Cancel"))
+        gifts.claim(player, claimed.id)
+        val pending = publish(); val unpublished = draft()
+        sql("UPDATE admin_gift_recipients SET delivery='DELIVERED' WHERE campaign_id='${future.id}'")
+        sql("INSERT INTO admin_gift_recipients(campaign_id,user_id,delivery) VALUES ('${unpublished.id}','$player','DELIVERED')")
+        assertEquals(1L, number("SELECT count(*) FROM admin_gift_recipients WHERE campaign_id='${pending.id}' AND delivery='PENDING'"))
+        now += 10
+        for (page in listOf(0, 1, 99)) assertEquals(2L, gifts.mailbox(player, PageRequest(page, 1)).availableCount)
+        val other = register()
+        assertEquals(0L, gifts.mailbox(other, PageRequest()).availableCount)
+    } }
     @Test fun `current roles csrf and origin guard campaign mutations`() = runTest { database {
         val campaign = draft(); val preview = gifts.preview(operator, campaign.id, GiftPreviewRequest(1))
         val publish = GiftPublishRequest(1, preview.previewToken, "pub", "Publish")

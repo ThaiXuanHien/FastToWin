@@ -528,7 +528,7 @@ class GameStateTest {
             activeTournament = b.copy(serverTimeEpochMillis = b.serverTimeEpochMillis!! + 100),
             recentTournaments = listOf(cancelled)
         )))
-        fixture.session.server(ServerMessage.ProfileData(PlayerProfileSnapshot("player-1", "Tester", "TEST",
+        fixture.session.server(backgroundProfile(PlayerProfileSnapshot("player-1", "Tester", "TEST",
             progression = PlayerProgressionSnapshot(gold = 900))))
         runCurrent()
         assertEquals("B", fixture.controller.uiState.value.tournamentHub.activeTournament?.tournamentId)
@@ -594,6 +594,81 @@ class GameStateTest {
         assertEquals("B", fixture.controller.uiState.value.tournamentHub.activeTournament?.tournamentId)
         fixture.controller.close()
     }
+
+    @Test
+    fun `background refund updates wallet without dismissing the current tournament error`() = runTest {
+        val fixture = publicTournamentFixture()
+        fixture.session.server(ServerMessage.SessionReady("player-1"))
+        val b = scheduledLobby("B")
+        val cancelled = scheduledLobby("A").copy(phase = TournamentPhase.CANCELLED)
+        fixture.session.server(ServerMessage.TournamentUpdated(b))
+        runCurrent()
+        fixture.controller.checkInTournament()
+        runCurrent()
+        fixture.session.server(ServerMessage.TournamentNotice("Waiting for B"))
+        fixture.session.server(ServerMessage.Error("TOURNAMENT_CHECK_IN_CLOSED", "Closed"))
+        runCurrent()
+        val before = fixture.controller.uiState.value
+        assertTrue(before.error != null)
+        assertFalse(before.isTournamentLoading)
+        val refund = PlayerProfileSnapshot("player-1", "Tester", "TEST",
+            progression = PlayerProgressionSnapshot(gold = 900))
+        // Real cancellation sends history then refund. The profile marker is self-contained:
+        // replaying the refund without a preceding hub must also preserve the displayed error.
+        fixture.session.server(historyRefresh(TournamentHubSnapshot(activeTournament = b,
+            recentTournaments = listOf(cancelled))))
+        runCurrent()
+        val historyClock = fixture.controller.uiState.value.tournamentServerClock
+        repeat(2) { fixture.session.server(backgroundProfile(refund)) }
+        runCurrent()
+        val after = fixture.controller.uiState.value
+        assertEquals(before.error, after.error)
+        assertEquals(before.tournamentNotice, after.tournamentNotice)
+        assertEquals(before.isTournamentLoading, after.isTournamentLoading)
+        assertEquals(b, after.tournamentHub.activeTournament)
+        assertEquals(listOf(cancelled), after.tournamentHub.recentTournaments)
+        assertEquals(900, after.profile?.progression?.gold)
+        assertEquals(before.tournamentServerClock?.serverEpochMillis, after.tournamentServerClock?.serverEpochMillis)
+        assertEquals(historyClock, after.tournamentServerClock)
+        fixture.controller.checkInTournament()
+        runCurrent()
+        assertEquals(listOf(ClientMessage.CheckInTournament("B"), ClientMessage.CheckInTournament("B")),
+            fixture.session.sent.filterIsInstance<ClientMessage.CheckInTournament>())
+        fixture.session.server(ServerMessage.TournamentUpdated(b.copy(players = b.players.map { it.copy(isCheckedIn = true) })))
+        runCurrent()
+        assertNull(fixture.controller.uiState.value.error)
+        assertFalse(fixture.controller.uiState.value.isTournamentLoading)
+        fixture.controller.close()
+    }
+
+    @Test
+    fun `explicit profile response still dismisses the error after a background refund`() = runTest {
+        val fixture = publicTournamentFixture()
+        fixture.session.server(ServerMessage.SessionReady("player-1"))
+        fixture.session.server(ServerMessage.Error("TOURNAMENT_CHECK_IN_CLOSED", "Closed"))
+        runCurrent()
+        fixture.controller.refreshProfile()
+        runCurrent()
+        assertTrue(fixture.controller.uiState.value.isProfileLoading)
+        fixture.session.server(ServerMessage.Error("TOURNAMENT_CHECK_IN_CLOSED", "Closed during refresh"))
+        runCurrent()
+        val errorDuringRefresh = fixture.controller.uiState.value.error
+        assertTrue(errorDuringRefresh != null)
+        val profile = PlayerProfileSnapshot("player-1", "Tester", "TEST")
+        fixture.session.server(backgroundProfile(profile))
+        runCurrent()
+        assertTrue(fixture.controller.uiState.value.isProfileLoading)
+        assertEquals(errorDuringRefresh, fixture.controller.uiState.value.error)
+        fixture.session.server(ServerMessage.ProfileData(profile))
+        runCurrent()
+        assertFalse(fixture.controller.uiState.value.isProfileLoading)
+        assertNull(fixture.controller.uiState.value.error)
+        fixture.controller.close()
+    }
+
+    private fun backgroundProfile(profile: PlayerProfileSnapshot): ServerMessage =
+        ProtocolJson.decodeFromString(
+            """{"type":"profile_data","profile":${ProtocolJson.encodeToString(profile)},"isBackgroundRefresh":true}""")
 
     private fun historyRefresh(hub: TournamentHubSnapshot): ServerMessage =
         ServerMessage.TournamentHubData(hub, isHistoryRefresh = true)

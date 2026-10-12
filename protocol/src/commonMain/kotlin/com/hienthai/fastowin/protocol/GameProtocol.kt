@@ -1103,7 +1103,12 @@ sealed class ServerMessage {
 
     @Serializable
     @SerialName("profile_data")
-    data class ProfileData(val profile: PlayerProfileSnapshot) : ServerMessage()
+    data class ProfileData(
+        val profile: PlayerProfileSnapshot,
+        // Unsolicited wallet/profile synchronization does not acknowledge a client action.
+        // Absent on older servers: retain the existing explicit-response behavior.
+        val isBackgroundRefresh: Boolean = false
+    ) : ServerMessage()
 
     @Serializable
     @SerialName("play_quota_data")

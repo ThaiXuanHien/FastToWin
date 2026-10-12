@@ -18,6 +18,23 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
 class GiftApiClientTest {
+
+    @Test fun `Gem claim receipt decodes awarded amount wallet and mailbox summary`() = runTest {
+        val client = HttpClient(MockEngine { request ->
+            val body = if (request.method.value == "GET")
+                """{"items":[],"page":0,"pageSize":1,"total":30,"availableCount":7}"""
+            else """{"gift":{"campaignId":"gem-gift","titleVi":"Quà","titleEn":"Gift","bodyVi":"Nội dung","bodyEn":"Message","gold":0,"xp":0,"gems":15,"availableAtEpochMillis":1,"expiresAtEpochMillis":9000,"state":"CLAIMED"},"awardedGold":0,"awardedXp":0,"gold":100,"xp":20,"awardedGems":15,"gems":45}"""
+            respond(body, headers = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString()))
+        }) { install(ContentNegotiation) { json(ProtocolJson) } }
+        val api = GiftApiClient("http://localhost:8080", { "registered" }, client = client)
+        assertEquals(7L, api.page(0, 1).availableCount)
+        val receipt = api.claim("gem-gift")
+        assertEquals(15, receipt.gift.gems)
+        assertEquals(15, receipt.awardedGems)
+        assertEquals(45, receipt.gems)
+        api.close()
+    }
+
     @Test fun `mailbox retries unauthorized once with refreshed bearer on exact route`() = runTest {
         val seen = mutableListOf<String?>()
         val client = HttpClient(MockEngine { request ->

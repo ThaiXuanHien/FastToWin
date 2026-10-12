@@ -19,6 +19,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.remember
@@ -431,8 +432,9 @@ private fun GameContent(
                 controller::refreshProfileAfterGiftClaim
             )
     }
-    val mailboxState by (mailboxController?.state?.collectAsState()
-        ?: remember { mutableStateOf(GiftMailboxState()) })
+    val mailboxState by key(mailboxController) {
+        mailboxController?.state?.collectAsState() ?: remember { mutableStateOf(GiftMailboxState()) }
+    }
     val mailboxScope = rememberCoroutineScope()
     val announcementToken = authState.session?.accessToken
     val currentAnnouncementTokenProvider by rememberUpdatedState(accessTokenProvider)
@@ -1248,6 +1250,17 @@ private fun GameContent(
         state.lobbyStage == com.hienthai.fastowin.state.LobbyStage.ROOM_BROWSER -> "/rooms"
         else -> "/"
     }
+    // One tiny first-page request discovers gifts across the whole mailbox. Reconnect and
+    // returning Home refresh immediately; the timer also catches new gifts and expiry.
+    LaunchedEffect(mailboxController, state.connectionStatus, appRoute == "/") {
+        val mailbox = mailboxController ?: return@LaunchedEffect
+        if (state.connectionStatus == com.hienthai.fastowin.state.ConnectionStatus.CONNECTED) {
+            while (true) {
+                mailbox.refreshAvailableCount()
+                delay(60_000)
+            }
+        }
+    }
     val rewardEventView = com.hienthai.fastowin.state.rewardEventViewForRoute(appRoute, state)
     val announcementView = when {
         state.isMatchStarted || state.isGameOver || state.isMatchmaking -> AnnouncementView.INACTIVE
@@ -1508,6 +1521,7 @@ private fun GameContent(
                     state = state,
                     selected = MainTab.LEADERBOARD,
                     friendNotificationCount = state.pendingSocialInvitationCount,
+                    unclaimedGiftCount = mailboxState.availableCount,
                     onHome = openHome,
                     onRooms = openRoomsTab,
                     onLeaderboard = controller::openLeaderboard,
@@ -1534,6 +1548,7 @@ private fun GameContent(
                     state = state,
                     selected = MainTab.ACCOUNT,
                     friendNotificationCount = state.pendingSocialInvitationCount,
+                    unclaimedGiftCount = mailboxState.availableCount,
                     onHome = openHome,
                     onRooms = openRoomsTab,
                     onLeaderboard = openLeaderboardTab,
@@ -1600,6 +1615,7 @@ private fun GameContent(
                     state = state,
                     selected = MainTab.CLAN,
                     friendNotificationCount = state.pendingSocialInvitationCount,
+                    unclaimedGiftCount = mailboxState.availableCount,
                     onHome = openHome,
                     onRooms = openRoomsTab,
                     onLeaderboard = openLeaderboardTab,
@@ -1697,6 +1713,7 @@ private fun GameContent(
                     onUpgradeGuest = onUpgradeGuest,
                     onOpenNotifications = openNotifications,
                     onOpenGifts = openGiftMailbox,
+                    unclaimedGiftCount = mailboxState.availableCount,
                     rewardEventState = rewardEventState,
                     announcementState = if (isGuest) null else announcementState,
                     onOpenAnnouncement = openAnnouncement,
@@ -1908,6 +1925,7 @@ private fun TopLevelTabIfNeeded(
     state: com.hienthai.fastowin.state.GameState,
     selected: MainTab,
     friendNotificationCount: Int,
+    unclaimedGiftCount: Long = 0,
     onHome: () -> Unit,
     onRooms: () -> Unit,
     onLeaderboard: () -> Unit,
@@ -1946,6 +1964,7 @@ private fun TopLevelTabIfNeeded(
         FastToWinBottomBar(
             selected = selected,
             friendNotificationCount = friendNotificationCount,
+            unclaimedGiftCount = unclaimedGiftCount,
             onHome = onHome,
             onRooms = onRooms,
             onLeaderboard = onLeaderboard,

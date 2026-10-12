@@ -1125,7 +1125,7 @@ class GameController private constructor(
             }
 
             is ServerMessage.ProfileData -> {
-                val wasSaving = _uiState.value.isProfileSaving
+                val wasSaving = !message.isBackgroundRefresh && _uiState.value.isProfileSaving
                 val previousClanId = _uiState.value.profile?.clanId
                 val newNotifications = progressionNotifications(
                     previous = _uiState.value.profile,
@@ -1152,11 +1152,12 @@ class GameController private constructor(
                             avatarId = message.profile.avatarId,
                             frameId = equippedFrameId
                         ),
-                        isProfileLoading = false,
-                        isProfileSaving = false,
-                        isPushPreferencesSaving = false,
-                        equippingCosmeticId = null,
-                        profileNotice = if (wasSaving) messageMapper.text(TextKey.ProfileSaved) else null,
+                        isProfileLoading = state.isProfileLoading && message.isBackgroundRefresh,
+                        isProfileSaving = state.isProfileSaving && message.isBackgroundRefresh,
+                        isPushPreferencesSaving = state.isPushPreferencesSaving && message.isBackgroundRefresh,
+                        equippingCosmeticId = state.equippingCosmeticId.takeIf { message.isBackgroundRefresh },
+                        profileNotice = if (message.isBackgroundRefresh) state.profileNotice
+                            else if (wasSaving) messageMapper.text(TextKey.ProfileSaved) else null,
                         lastMatchEloChange = completedMatch?.eloChange ?: state.lastMatchEloChange,
                         lastMatchEloRating = if (completedMatch != null) {
                             message.profile.statistics.eloRating
@@ -1168,7 +1169,7 @@ class GameController private constructor(
                             newNotifications,
                             state.dismissedNotificationIds
                         ),
-                        error = null
+                        error = state.error.takeIf { message.isBackgroundRefresh }
                     )
                 }
                 if (newNotifications.isNotEmpty()) {

@@ -1,6 +1,7 @@
 package com.hienthai.fastowin.server.analytics
 
 import com.hienthai.fastowin.server.admin.*
+import com.hienthai.fastowin.server.activity.JdbcActivityReader
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.math.BigDecimal
@@ -32,7 +33,7 @@ class PostgresAnalyticsRepository(private val source: DataSource) : AnalyticsRep
                     val snapshot = rows(connection, "SELECT clock_timestamp()") { it.getTimestamp(1).time }.single()
                     transaction.appendAudit(AuditEntry(UUID.randomUUID().toString(), actor.id, "ANALYTICS_READ", null, null,
                         "from=${query.range.from};until=${query.range.until};metrics=${query.metrics.joinToString(",")}", null, null, snapshot))
-                    val reader = Reader(connection, query)
+                    val reader = Reader(connection, query, snapshot)
                     val response = AnalyticsResponse(query.range, query.comparisonRange, "Asia/Bangkok", query.bucket,
                         snapshot, query.metrics.map(reader::metric))
                     connection.commit()
@@ -57,7 +58,8 @@ class PostgresAnalyticsRepository(private val source: DataSource) : AnalyticsRep
         } catch (_: SQLException) { unavailable() }
     }
 
-    private class Reader(private val connection: Connection, private val query: AnalyticsQuery) {
+    private class Reader(private val connection: Connection, private val query: AnalyticsQuery, private val snapshot: Long) {
+        private val activity = JdbcActivityReader(connection)
         private val coverageCache = mutableMapOf<Pair<String, String>, AnalyticsCoverage>()
         private data class Dimension(val source: String, val currency: String?, val exponent: Int?)
         private data class Aggregate(val value: String, val events: Long)
@@ -70,7 +72,7 @@ class PostgresAnalyticsRepository(private val source: DataSource) : AnalyticsRep
                 val currentCoverage = coverage.single { it.source == source }
                 val priorCoverage = coverage(metric, source, query.comparisonRange)
                 val dimensions = when {
-                    metric == AnalyticsMetric.REGISTRATIONS -> listOf(Dimension(source, null, null))
+                    metric == AnalyticsMetric.REGISTRATIONS || metric == AnalyticsMetric.ACTIVE_PLAYERS -> listOf(Dimension(source, null, null))
                     !metric.financial -> (query.currency?.let(::listOf) ?: listOf("GOLD", "GEMS")).map { Dimension(source, it, 0) }
                     currentCoverage.status == CoverageStatus.UNAVAILABLE && priorCoverage.status == CoverageStatus.UNAVAILABLE -> emptyList()
                     metric in setOf(AnalyticsMetric.STORE_PURCHASES, AnalyticsMetric.STORE_BUYERS) -> listOf(Dimension(source, null, null))
@@ -89,6 +91,7 @@ class PostgresAnalyticsRepository(private val source: DataSource) : AnalyticsRep
         }
 
         private fun coverage(metric: AnalyticsMetric, source: String, range: AnalyticsRange): AnalyticsCoverage {
+            if (metric == AnalyticsMetric.ACTIVE_PLAYERS) return activity.coverage(range.from, range.until, snapshot)
             val family = when { metric.financial -> "FINANCIAL"; metric == AnalyticsMetric.REGISTRATIONS -> "REGISTRATIONS"; else -> "ITEM_PURCHASES" }
             val raw = coverageCache.getOrPut(family to source) { rows(connection, "SELECT status,coverage_start,freshness FROM analytics_source_coverage WHERE metric=? AND source=? AND environment=?",
                 listOf(family, source, query.environment)) {
@@ -109,6 +112,7 @@ class PostgresAnalyticsRepository(private val source: DataSource) : AnalyticsRep
                 AnalyticsMetric.MONEY_PAID, AnalyticsMetric.MONEY_REFUNDED, AnalyticsMetric.MONEY_NET -> "MONEY_MINOR"
                 AnalyticsMetric.ITEM_BUYERS, AnalyticsMetric.STORE_BUYERS -> "BUYERS"
                 AnalyticsMetric.REGISTRATIONS -> "REGISTRATIONS"
+                AnalyticsMetric.ACTIVE_PLAYERS -> "PLAYERS"
                 else -> "PURCHASES"
             }
             val byBucket = if (current.status == CoverageStatus.UNAVAILABLE) emptyMap() else series(metric, dimension)
@@ -130,6 +134,10 @@ class PostgresAnalyticsRepository(private val source: DataSource) : AnalyticsRep
 
         private fun value(metric: AnalyticsMetric, dimension: Dimension, range: AnalyticsRange, coverage: AnalyticsCoverage): String? {
             if (coverage.status == CoverageStatus.UNAVAILABLE) return null
+            if (metric == AnalyticsMetric.ACTIVE_PLAYERS) {
+                val count = activity.activeSubjects(range.from, range.until, snapshot)
+                return if (count == 0L && coverage.status != CoverageStatus.COMPLETE) null else count.toString()
+            }
             val filter = filter(metric, range, dimension)
             val result = rows(connection, "SELECT ${expression(metric)}::text,COUNT(*) FROM ${table(metric)} WHERE ${filter.sql}", filter.values) {
                 Aggregate(it.getString(1) ?: "0", it.getLong(2))
@@ -138,6 +146,10 @@ class PostgresAnalyticsRepository(private val source: DataSource) : AnalyticsRep
         }
 
         private fun series(metric: AnalyticsMetric, dimension: Dimension): Map<Long, String> {
+            if (metric == AnalyticsMetric.ACTIVE_PLAYERS) return query.buckets().mapNotNull { range ->
+                val count = activity.activeSubjects(range.from, range.until, snapshot)
+                if (count > 0) range.from to count.toString() else null
+            }.toMap()
             val filter = filter(metric, query.range, dimension)
             val bucket = "date_trunc(?, ${timeColumn(metric)} AT TIME ZONE 'Asia/Bangkok') AT TIME ZONE 'Asia/Bangkok'"
             return rows(connection, "SELECT $bucket AS bucket, ${expression(metric)}::text FROM ${table(metric)} WHERE ${filter.sql} GROUP BY bucket ORDER BY bucket",

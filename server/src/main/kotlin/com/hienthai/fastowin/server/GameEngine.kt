@@ -1344,7 +1344,7 @@ class GameEngine(
                             deliveries += updates
                             // Historical updates must not clear another tournament on supported older clients.
                             departedPlayers.forEach { deliveries += loadTournamentHub(it, isHistoryRefresh = true) }
-                            cancelled.players.forEach { deliveries += loadProfile(it.playerId) }
+                            cancelled.players.forEach { deliveries += loadProfile(it.playerId, isBackgroundRefresh = true) }
                         }
                     }
                     deliveries += mutex.withLock {
@@ -2284,7 +2284,7 @@ class GameEngine(
     private fun com.hienthai.fastowin.protocol.PlayQuotaSnapshot.withRewardedAdAvailability() =
         copy(rewardedAdAvailability = this@GameEngine.rewardedAdAvailability)
 
-    private suspend fun loadProfile(playerId: String): List<Delivery> {
+    private suspend fun loadProfile(playerId: String, isBackgroundRefresh: Boolean = false): List<Delivery> {
         val session = mutex.withLock { sessionsByPlayerId[playerId]?.copy() }
             ?: return listOf(error(playerId, "SESSION_NOT_FOUND", legacyFallback("Phiên chơi không còn hợp lệ.")))
         if (session.resumeToken == null) {
@@ -2299,7 +2299,7 @@ class GameEngine(
             displayName = session.displayName,
             playerCode = playerId.replace("-", "").take(10).uppercase()
         )
-        return listOf(Delivery(ServerMessage.ProfileData(profile), setOf(playerId)))
+        return listOf(Delivery(ServerMessage.ProfileData(profile, isBackgroundRefresh), setOf(playerId)))
     }
 
     /** Retryable admitted work; no provider or match-result IO holds the engine mutex. */

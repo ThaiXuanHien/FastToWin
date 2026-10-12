@@ -19,6 +19,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Payments
 import androidx.compose.material.icons.filled.MonetizationOn
 import androidx.compose.material.icons.filled.Redeem
 import androidx.compose.material.icons.filled.Refresh
@@ -51,6 +52,7 @@ import com.hienthai.fastowin.ui.components.ArcadeActionStyle
 import com.hienthai.fastowin.ui.components.ArcadeHeaderIconButton
 import com.hienthai.fastowin.ui.components.ArcadePanel
 import com.hienthai.fastowin.ui.components.FastToWinHeader
+import com.hienthai.fastowin.ui.components.GemColor
 import com.hienthai.fastowin.ui.components.GoldColor
 import com.hienthai.fastowin.ui.components.SystemBackHandler
 import com.hienthai.fastowin.ui.layout.ResponsiveScreen
@@ -205,7 +207,7 @@ private fun GiftCard(gift: MailboxGift, errorCode: String?, isPending: Boolean, 
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onSurface
             )
-            GiftRewardAmounts(gift.gold, gift.xp)
+            GiftRewardAmounts(gift.gold, gift.xp, gift.gems)
             Text(if (isVietnamese) gift.bodyVi else gift.bodyEn, color = MaterialTheme.colorScheme.onSurface)
             val status = when (gift.state) {
                 GiftState.AVAILABLE -> {
@@ -234,11 +236,12 @@ private fun GiftCard(gift: MailboxGift, errorCode: String?, isPending: Boolean, 
 
 /** Stored per-gift amounts, including zero; currency names remain in localized semantics. */
 @Composable
-private fun GiftRewardAmounts(gold: Int, xp: Int) {
-    val description = listOf(
-        localized(TextKey.GiftGoldReward, "count" to gold),
-        localized(TextKey.GiftXpReward, "count" to xp)
-    ).joinToString(", ")
+private fun GiftRewardAmounts(gold: Int, xp: Int, gems: Int) {
+    val description = buildList {
+        add(localized(TextKey.GiftGoldReward, "count" to gold))
+        add(localized(TextKey.GiftXpReward, "count" to xp))
+        if (gems > 0) add(localized(TextKey.RewardGemsDescription, "count" to gems))
+    }.joinToString(", ")
     FlowRow(
         modifier = Modifier.fillMaxWidth().clearAndSetSemantics { contentDescription = description },
         horizontalArrangement = Arrangement.spacedBy(16.dp),
@@ -255,6 +258,11 @@ private fun GiftRewardAmounts(gold: Int, xp: Int) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
             Icon(Icons.Default.Star, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
             Text(xp.toString(), style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface)
+        }
+        if (gems > 0) Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            Icon(Icons.Default.Payments, null, tint = GemColor, modifier = Modifier.size(20.dp))
+            Text(gems.toString(), style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onSurface)
         }
     }

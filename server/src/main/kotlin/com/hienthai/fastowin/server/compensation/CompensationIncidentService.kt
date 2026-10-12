@@ -1,6 +1,9 @@
 package com.hienthai.fastowin.server.compensation
 
 import com.hienthai.fastowin.server.admin.*
+import com.hienthai.fastowin.server.activity.ACTIVITY_MAX_GAP_MILLIS
+import com.hienthai.fastowin.server.activity.ACTIVITY_RETENTION_MILLIS
+import com.hienthai.fastowin.server.analytics.CoverageStatus
 import com.hienthai.fastowin.server.gifts.*
 import com.hienthai.fastowin.server.hashToken
 import kotlinx.serialization.encodeToString
@@ -32,10 +35,15 @@ class CompensationIncidentService(val repository: GiftRepository, private val ad
     }
     suspend fun capabilities(context: GiftAdminContext): CompensationCapabilities = repository.transaction(true) {
         val actor = authorize(context); audit(actor, "COMPENSATION_CAPABILITIES")
+        val now = nowMillis()
+        val coverage = activityCoverage(maxOf(0, now - ACTIVITY_MAX_GAP_MILLIS), now, now)
+        val fresh = coverage.status != CoverageStatus.UNAVAILABLE && coverage.freshness?.let { it in (now - ACTIVITY_MAX_GAP_MILLIS)..now } == true
         CompensationCapabilities(listOf(
             CompensationCapability(CompensationAudience.ALL_REGISTERED, true, "Current registered accounts are frozen at publication."),
             CompensationCapability(CompensationAudience.USER_IDS, true, "Explicit registered user UUIDs are verified before publication."),
-            CompensationCapability(CompensationAudience.ACTIVITY, false, "Reliable incident activity coverage and retention are unavailable.")
+            CompensationCapability(CompensationAudience.ACTIVITY, fresh,
+                "Accepted registered game connections, including idle/lobby. Retained for 90 days. Full incident coverage is checked at draft, preview and publication.",
+                coverage, (ACTIVITY_RETENTION_MILLIS / 86_400_000L).toInt())
         ))
     }
     suspend fun create(context: GiftAdminContext, request: CompensationIncidentRequest): CompensationIncident = repository.transaction(true) {

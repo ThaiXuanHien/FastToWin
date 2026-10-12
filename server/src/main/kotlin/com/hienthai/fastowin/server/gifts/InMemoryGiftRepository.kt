@@ -48,13 +48,18 @@ class InMemoryGiftRepository(private val admins: InMemoryAdminRepository) : Gift
                     val claimed = all.count { it.claimedAt != null }.toLong()
                     return GiftCounters(all.size.toLong(), if (cancelled) 0 else all.count { it.delivery == "PENDING" }.toLong(), all.count { it.delivery == "DELIVERED" }.toLong(), claimed,
                         if (!cancelled && now >= campaign.draft.expiresAtEpochMillis!!) all.count { it.delivery == "DELIVERED" && it.claimedAt == null }.toLong() else 0,
-                        if (cancelled) all.count { it.delivery != "SKIPPED" && it.claimedAt == null }.toLong() else 0, all.count { it.delivery == "SKIPPED" }.toLong(), claimed * campaign.draft.gold, claimed * campaign.draft.xp)
+                        if (cancelled) all.count { it.delivery != "SKIPPED" && it.claimedAt == null }.toLong() else 0, all.count { it.delivery == "SKIPPED" }.toLong(), claimed * campaign.draft.gold, claimed * campaign.draft.xp, claimed * campaign.draft.gems)
                 }
                 override fun mailbox(userId: String, now: Long, page: PageRequest): Pair<List<Pair<GiftCampaign, GiftRecipient>>, Long> {
                     val all = next.recipients.values.filter { it.userId == userId && it.delivery == "DELIVERED" }.map { next.campaigns.getValue(it.campaignId) to it }
                         .filter { it.first.draft.availableAtEpochMillis <= now }.sortedWith(compareByDescending<Pair<GiftCampaign,GiftRecipient>> { it.first.draft.availableAtEpochMillis }.thenByDescending { it.first.id })
                     return all.drop(page.offset).take(page.pageSize) to all.size.toLong()
                 }
+                override fun mailboxAvailableCount(userId: String, now: Long) = next.recipients.values.count { r ->
+                    val c = next.campaigns.getValue(r.campaignId)
+                    r.userId == userId && r.delivery == "DELIVERED" && r.claimedAt == null &&
+                        c.state == CampaignState.PUBLISHED && c.draft.availableAtEpochMillis <= now && now < c.draft.expiresAtEpochMillis!!
+                }.toLong()
                 override fun balance(userId: String) = players.giftBalance(userId)
                 override fun award(userId: String, campaign: GiftCampaign, now: Long) = players.giftAward(userId, campaign, now)
             }

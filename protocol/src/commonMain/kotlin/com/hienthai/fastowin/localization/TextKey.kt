@@ -351,7 +351,7 @@ enum class TextKey {
     FrameSupremeName, FrameSupremeUnlockDescription,
     FramePeerlessName, FramePeerlessUnlockDescription,
 
-    GiftMailboxTitle, GiftMailboxSubtitle, GiftMailboxEntryDescription, GiftMailboxEmpty,
+    GiftMailboxTitle, GiftMailboxSubtitle, GiftUnclaimedCount, GiftMailboxEntryDescription, GiftMailboxEmpty,
     GiftMailboxGuest, GiftClaim, GiftClaimAll, GiftClaiming, GiftClaimed,
     GiftExpired, GiftCancelled, GiftExpiresInHours, GiftExpiresInDays,
     GiftGoldReward, GiftXpReward, GiftLoadMore, GiftRefresh, GiftCompensationRound,

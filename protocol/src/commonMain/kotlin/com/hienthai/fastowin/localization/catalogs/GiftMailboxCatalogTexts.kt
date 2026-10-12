@@ -6,6 +6,7 @@ import com.hienthai.fastowin.localization.TextKey
 internal val giftMailboxTexts = mapOf(
     AppLanguage.ENGLISH to mapOf(
         TextKey.GiftMailboxTitle to "Gift mailbox",
+        TextKey.GiftUnclaimedCount to "{count} unclaimed gifts",
         TextKey.GiftMailboxSubtitle to "Gifts from the team, ready when you are.",
         TextKey.GiftMailboxEntryDescription to "View and claim your gifts",
         TextKey.GiftMailboxEmpty to "No gifts have arrived yet.",
@@ -34,6 +35,7 @@ internal val giftMailboxTexts = mapOf(
     ),
     AppLanguage.VIETNAMESE to mapOf(
         TextKey.GiftMailboxTitle to "Hộp thư quà",
+        TextKey.GiftUnclaimedCount to "{count} quà chưa nhận",
         TextKey.GiftMailboxSubtitle to "Quà từ đội ngũ đang chờ bạn nhận.",
         TextKey.GiftMailboxEntryDescription to "Xem và nhận quà của bạn",
         TextKey.GiftMailboxEmpty to "Bạn chưa có quà nào.",

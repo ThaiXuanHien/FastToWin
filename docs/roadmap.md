@@ -1,13 +1,13 @@
 # Lộ trình hoàn thiện Fast To Win
 
-Cập nhật: 11/10/2026. Đây là danh sách theo dõi thống nhất từ các hạng mục chủ dự án đã duyệt. Có code không đồng nghĩa đã kiểm thử hoặc sẵn sàng production.
+Cập nhật: 12/10/2026. Đây là danh sách theo dõi thống nhất từ các hạng mục chủ dự án đã duyệt. Có code không đồng nghĩa đã kiểm thử hoặc sẵn sàng production.
 
-Đối chiếu trạng thái issue, release và phần còn thiếu tại [backlog audit 11/10/2026](backlog-audit-2026-10-11.md).
+Đối chiếu trạng thái issue, release và phần còn thiếu tại [backlog audit 12/10/2026](backlog-audit-2026-10-12.md).
 Google Play hiện mới có tài khoản, chưa tạo app/sản phẩm; xem [internal testing](google-play-internal-testing.md).
 
 ## Quy tắc thực hiện
 
-- Ưu tiên hoàn thiện Web → iOS → cửa hàng/giải đấu mở rộng → production và mở rộng hạ tầng.
+- Thứ tự đã chốt 12/10: sửa #31 → nghiệm thu #9/#17–24 và bổ sung hoạt động kết nối 90 ngày → lựa chọn staging/avatar/Redis. Google Play và thiết bị thật để sau theo phản hồi chủ dự án.
 - Kiểm thử đi cùng từng bước, không chờ tới cuối mới kiểm thử.
 - Hoàn thành một bước thì báo kết quả, phần chưa xác minh và đề xuất bước tiếp theo để chủ dự án duyệt.
 - Không tự kích hoạt thanh toán thật, gửi email hàng loạt, mua dịch vụ hoặc triển khai production.
@@ -112,7 +112,7 @@ Phần đang làm và còn lại:
 - [x] Mở rộng kiểm thử responsive tự động: điện thoại nhỏ/lớn, tablet, ngang, chữ lớn, nội dung dài và viewport thấp mô phỏng bàn phím ảo.
 - [x] Smoke test tự động Chromium/Firefox/WebKit và bundle Kotlin/JS fallback trong CI.
 - [ ] Smoke test Chrome/Edge/Safari và bàn phím ảo thật trên thiết bị. Playwright WebKit không thay thế Safari trên thiết bị Apple.
-- [ ] Mua Gem trên Web: cần thống nhất cổng thanh toán, phí và xác thực giao dịch backend trước khi làm.
+- Đã bỏ #10 theo quyết định 12/10/2026: không tích hợp thanh toán Gem bằng tiền thật trên Web; mua qua ứng dụng. Ví và đổi Gem/Vàng trong game vẫn giữ.
 
 Chi tiết: [audit Web](web-wasm-audit.md), [hướng dẫn Web E2E](web-e2e.md).
 
@@ -144,9 +144,9 @@ bị và lịch sử mua của tài khoản hiện hữu vẫn được giữ đ
 
 - [x] Giải riêng 8 người với tứ kết, bán kết và chung kết.
 - [x] Giải riêng 16 người với vòng 1/8, tứ kết, bán kết và chung kết.
-- [x] Giải công khai/toàn hệ thống: đã có discovery, đăng ký/rời và admission bền vững. Lịch/hạn đăng ký/check-in còn theo #13.
-- [ ] Lịch thi đấu, thời hạn đăng ký và xử lý vắng mặt.
-- [ ] Khán giả xem trận đấu giải (khác với xem phòng thông thường).
+- [x] Giải công khai/toàn hệ thống: discovery, đăng ký/rời và admission bền vững; lịch/hạn đăng ký/check-in của #13 đã merge/deploy tại master 0a88a75.
+- [x] Lịch thi đấu tự bắt đầu, khóa đăng ký/check-in trước 15 phút; thiếu người thì hủy và hoàn phí một lần (#13, release 12/10/2026).
+- Đã bỏ #16 theo quyết định 12/10/2026: không triển khai chế độ khán giả giải đấu.
 - [x] Hồi quy tạo nhánh đấu 4/8/16 người, reconnect/restart, xử thua khi rời hoặc quá hạn và phần thưởng không trùng.
 
 ## 5. Tài khoản và cấu hình production
@@ -236,3 +236,7 @@ server; Web production không tự giả lập quảng cáo.
 
 StoreKit/APNs production tiếp tục tạm hoãn vì phụ thuộc tài khoản Apple. Các bản
 dịch fallback tiếng Anh còn lại vẫn cần người bản ngữ kiểm duyệt.
+
+## Lựa chọn hạ tầng đang chờ chủ dự án
+
+Xem [staging, avatar/CDN và Redis](infrastructure-options-2026-10-12.md): đề xuất Railway staging, Cloudflare R2 và Railway Redis; chưa tạo dịch vụ/tính phí hoặc tăng replica. #12 phải hoàn tất ownership/định tuyến/phục hồi trước #15. #28/#1 chờ Console; #2/#7/#14 chờ thiết bị/tài khoản Apple theo phản hồi chủ dự án.

@@ -55,6 +55,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -273,69 +274,73 @@ fun ArcadeDialog(
     modifier: Modifier = Modifier,
     subtitle: String? = null,
     showCloseButton: Boolean = false,
+    scrollableContent: Boolean = false,
     content: @Composable () -> Unit
 ) {
     Dialog(
         onDismissRequest = onDismissRequest,
         properties = DialogProperties(usePlatformDefaultWidth = false)
     ) {
-        BoxWithConstraints(
-            modifier = Modifier.fillMaxSize().padding(horizontal = 10.dp, vertical = 12.dp),
-            contentAlignment = Alignment.Center
-        ) {
-            val dialogMaxHeight = (maxHeight - 24.dp).coerceAtLeast(240.dp)
-            Surface(
-                modifier = modifier
-                    .widthIn(max = 420.dp)
-                    .fillMaxWidth()
-                    .heightIn(max = dialogMaxHeight)
-                    .imePadding(),
-                shape = RoundedCornerShape(24.dp),
-                color = Color.Transparent,
-                contentColor = Color.White,
-                border = BorderStroke(1.dp, Color(0xFF5680CA)),
-                shadowElevation = 14.dp
+        NativeDialogInputScope {
+            BoxWithConstraints(
+                modifier = Modifier.fillMaxSize().padding(horizontal = 10.dp, vertical = 12.dp),
+                contentAlignment = Alignment.Center
             ) {
-                Column(
-                    modifier = Modifier
+                val dialogMaxHeight = (maxHeight - 24.dp).coerceAtLeast(240.dp)
+                Surface(
+                    modifier = modifier
+                        .widthIn(max = 420.dp)
                         .fillMaxWidth()
-                        .testTag("arcade_dialog")
-                        .background(
-                            Brush.verticalGradient(listOf(Color(0xFF123269), Color(0xFF091D43)))
-                        )
-                        .padding(18.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                        .heightIn(max = dialogMaxHeight)
+                        .imePadding(),
+                    shape = RoundedCornerShape(24.dp),
+                    color = Color.Transparent,
+                    contentColor = Color.White,
+                    border = BorderStroke(1.dp, Color(0xFF5680CA)),
+                    shadowElevation = 14.dp
                 ) {
-                    if (showCloseButton) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Text(
-                                title,
-                                modifier = Modifier.weight(1f),
-                                style = MaterialTheme.typography.titleLarge,
-                                fontWeight = FontWeight.Black
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("arcade_dialog")
+                            .background(
+                                Brush.verticalGradient(listOf(Color(0xFF123269), Color(0xFF091D43)))
                             )
-                            IconButton(
-                                onClick = onDismissRequest,
-                                modifier = Modifier.size(48.dp).testTag("arcade_dialog_close")
+                            .then(if (scrollableContent) Modifier.verticalScroll(rememberScrollState()) else Modifier)
+                            .padding(18.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        if (showCloseButton) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
-                                Icon(Icons.Rounded.Close, contentDescription = localized(TextKey.Close))
+                                Text(
+                                    title,
+                                    modifier = Modifier.weight(1f),
+                                    style = MaterialTheme.typography.titleLarge,
+                                    fontWeight = FontWeight.Black
+                                )
+                                IconButton(
+                                    onClick = onDismissRequest,
+                                    modifier = Modifier.size(48.dp).testTag("arcade_dialog_close")
+                                ) {
+                                    Icon(Icons.Rounded.Close, contentDescription = localized(TextKey.Close))
+                                }
                             }
+                        } else {
+                            Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
                         }
-                    } else {
-                        Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
+                        subtitle?.let {
+                            Text(
+                                it,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Color(0xFFA9BADC)
+                            )
+                        }
+                        content()
                     }
-                    subtitle?.let {
-                        Text(
-                            it,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = Color(0xFFA9BADC)
-                        )
-                    }
-                    content()
                 }
             }
         }

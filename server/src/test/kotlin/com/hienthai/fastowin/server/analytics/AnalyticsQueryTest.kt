@@ -43,6 +43,14 @@ class AnalyticsQueryTest {
             assertEquals(400, assertFailsWith<AdminException> { AnalyticsQuery.parse(parameters, now) }.status)
         }
     }
+    @Test fun activityIsNonFinancialAndRejectsAllDimensions() {
+        val query = AnalyticsQuery.parse(mapOf("metric" to listOf("ACTIVE_PLAYERS")), now)
+        assertFalse(query.metrics.single().financial)
+        for ((key, value) in listOf("currency" to "GOLD", "currency" to "THB", "item" to "hat", "store" to "GOOGLE_PLAY", "product" to "sku", "environment" to "SANDBOX")) {
+            assertEquals(400, assertFailsWith<AdminException> { AnalyticsQuery.parse(mapOf("metric" to listOf("ACTIVE_PLAYERS"), key to listOf(value)), now) }.status)
+        }
+        assertTrue(AnalyticsMetric.valueOf("STORE_BUYERS").financial)
+    }
     private fun query(from: String, until: String, bucket: String) = AnalyticsQuery.parse(mapOf(
         "from" to listOf("${time(from)}"), "until" to listOf("${time(until)}"), "bucket" to listOf(bucket)), now)
     companion object { fun time(value: String) = Instant.parse(value).toEpochMilli() }

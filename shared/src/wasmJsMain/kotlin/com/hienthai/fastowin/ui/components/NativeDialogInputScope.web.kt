@@ -1,0 +1,42 @@
+@file:Suppress("INVISIBLE_MEMBER", "INVISIBLE_REFERENCE")
+
+package com.hienthai.fastowin.ui.components
+
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.remember
+import androidx.compose.ui.viewinterop.InteropViewGroup
+import androidx.compose.ui.viewinterop.LocalInteropContainer
+import androidx.compose.ui.viewinterop.TrackInteropPlacementContainer
+import androidx.compose.ui.viewinterop.WebInteropContainer
+import kotlinx.browser.document
+import org.w3c.dom.HTMLElement
+
+/**
+ * Compose dialog scenes do not track their native editors in the main scene's
+ * placement tree (CMP-9366). Each editor is otherwise repeatedly inserted at
+ * index zero during resize, which blurs a focused input and closes the keyboard.
+ * Give this scene its own DOM root and placement tracker. Keep this workaround
+ * isolated while Compose UI is pinned; remove it once upstream fixes dialog
+ * interop and the clan-keyboard Chromium/WebKit regression passes without it.
+ */
+@Composable
+internal actual fun NativeDialogInputScope(content: @Composable () -> Unit) {
+    val root = remember {
+        (document.createElement("div") as HTMLElement).apply {
+            setAttribute("data-fasttowin-dialog-inputs", "")
+            style.position = "fixed"
+            style.left = "0"
+            style.top = "0"
+        }
+    }
+    val container = remember(root) { WebInteropContainer(InteropViewGroup(root)) }
+    DisposableEffect(root) {
+        document.body!!.appendChild(root)
+        onDispose { root.parentNode?.removeChild(root) }
+    }
+    CompositionLocalProvider(LocalInteropContainer provides container) {
+        container.TrackInteropPlacementContainer(content)
+    }
+}
