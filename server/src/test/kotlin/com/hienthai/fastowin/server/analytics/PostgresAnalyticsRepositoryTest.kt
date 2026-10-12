@@ -226,7 +226,8 @@ class PostgresAnalyticsRepositoryTest {
                 origin?.let { header(HttpHeaders.Origin,it) }
             }
             for ((metric, token, status) in listOf(Triple("REGISTRATIONS", ownerToken, HttpStatusCode.OK),
-                Triple("REGISTRATIONS", operator, HttpStatusCode.OK), Triple("MONEY_NET", operator, HttpStatusCode.Forbidden),
+                Triple("REGISTRATIONS", operator, HttpStatusCode.OK), Triple("ACTIVE_PLAYERS", operator, HttpStatusCode.OK),
+                Triple("ACTIVE_PLAYERS", support, HttpStatusCode.Forbidden), Triple("MONEY_NET", operator, HttpStatusCode.Forbidden),
                 Triple("REGISTRATIONS", support, HttpStatusCode.Forbidden), Triple("REGISTRATIONS", null, HttpStatusCode.Unauthorized),
                 Triple("NOT_A_METRIC", ownerToken, HttpStatusCode.BadRequest))) {
                 val response = request(metric, token)
@@ -268,6 +269,86 @@ class PostgresAnalyticsRepositoryTest {
         assertEquals(CoverageStatus.PARTIAL, next.coverage.single().status)
     } }
 
+    @Test fun activityDistinctSummaryCountsOverlappingIntervalsAcrossBangkokDays() = runTest { database {
+        activityWindow("2026-09-28T17:00:00Z", "2026-10-04T17:00:00Z")
+        val subject = UUID.randomUUID()
+        activity(subject, "2026-10-01T16:59:59Z", "2026-10-02T17:00:01Z")
+        activity(subject, "2026-10-03T01:00:00Z", "2026-10-03T02:00:00Z")
+        activity(UUID.randomUUID(), "2026-10-02T17:00:00Z", "2026-10-02T17:00:00Z")
+        val result = read("ACTIVE_PLAYERS").metrics.single()
+        assertEquals(CoverageStatus.COMPLETE, result.coverage.single().status)
+        val group = result.groups.single()
+        assertEquals("PLAYERS", group.unit); assertNull(group.currency)
+        assertEquals("2", group.summary); assertEquals(listOf("1", "2", "0"), group.series.map { it.value })
+        assertEquals("1", group.comparison.value); assertEquals("1", group.comparison.absoluteChange)
+        assertEquals("100", group.comparison.percentageChange)
+    } }
+    @Test fun activityWeekAndMonthBucketsCountCrossBoundaryPresence() = runTest { database {
+        activityWindow("2026-09-20T00:00:00Z", "2026-10-05T17:00:00Z")
+        activity(UUID.randomUUID(), "2026-09-30T16:59:59Z", "2026-09-30T17:00:01Z")
+        activity(UUID.randomUUID(), "2026-10-04T16:59:59Z", "2026-10-04T17:00:01Z")
+        val week = read("ACTIVE_PLAYERS", "2026-09-30T16:59:59Z", "2026-10-05T17:00:00Z", "WEEK").metrics.single().groups.single()
+        assertEquals("2", week.summary); assertEquals(listOf("2", "1"), week.series.map { it.value })
+        val month = read("ACTIVE_PLAYERS", "2026-09-30T16:59:59Z", "2026-10-05T17:00:00Z", "MONTH").metrics.single().groups.single()
+        assertEquals(listOf("1", "2"), month.series.map { it.value })
+    } }
+    @Test fun activityGapsNeverProveZeroAndCompleteEmptyBucketsDo() = runTest { database {
+        val absent = read("ACTIVE_PLAYERS").metrics.single()
+        assertEquals(CoverageStatus.UNAVAILABLE, absent.coverage.single().status)
+        assertNull(absent.groups.single().summary); assertTrue(absent.groups.single().series.all { it.value == null })
+        activityWindow("2026-10-01T17:00:00Z", "2026-10-02T17:00:00Z")
+        activityWindow("2026-10-03T17:00:00Z", "2026-10-04T17:00:00Z")
+        val gap = read("ACTIVE_PLAYERS").metrics.single()
+        assertEquals(CoverageStatus.PARTIAL, gap.coverage.single().status)
+        assertNull(gap.groups.single().summary)
+        assertEquals(listOf("0", null, "0"), gap.groups.single().series.map { it.value })
+        activity(UUID.randomUUID(), "2026-10-02T18:00:00Z", "2026-10-02T19:00:00Z")
+        val partial = read("ACTIVE_PLAYERS").metrics.single().groups.single()
+        assertEquals("1", partial.summary); assertEquals(listOf("0", "1", "0"), partial.series.map { it.value })
+        assertNull(partial.comparison.value); assertNull(partial.comparison.absoluteChange); assertNull(partial.comparison.percentageChange)
+    } }
+    @Test fun activityRetentionAppliesBeforePhysicalCleanup() = runTest { database {
+        activityWindow("2026-01-01T00:00:00Z", "2026-01-04T00:00:00Z")
+        activity(UUID.randomUUID(), "2026-01-02T00:00:00Z", "2026-01-03T00:00:00Z")
+        val result = read("ACTIVE_PLAYERS", "2026-01-02T00:00:00Z", "2026-01-04T00:00:00Z").metrics.single()
+        assertEquals(CoverageStatus.UNAVAILABLE, result.coverage.single().status); assertNull(result.groups.single().summary)
+        assertEquals(1, number("SELECT count(*) FROM activity_connection_observations"))
+    } }
+    @Test fun activityComparisonUsesIndependentWholeRangeDistinctAndCurrentRole() = runTest { database {
+        activityWindow("2026-09-28T17:00:00Z", "2026-10-04T17:00:00Z")
+        activity(UUID.randomUUID(), "2026-09-29T00:00:00Z", "2026-10-03T00:00:00Z")
+        activity(UUID.randomUUID(), "2026-10-02T00:00:00Z", "2026-10-02T01:00:00Z")
+        val operator = principal(AdminRole.OPERATOR); val support = principal(AdminRole.SUPPORT)
+        val group = read("ACTIVE_PLAYERS", token = operator).metrics.single().groups.single()
+        assertEquals("2", group.summary); assertEquals("1", group.comparison.value)
+        assertEquals("1", group.comparison.absoluteChange); assertEquals("100", group.comparison.percentageChange)
+        assertEquals(403, assertFailsWith<AdminException> { read("ACTIVE_PLAYERS", token = support) }.status)
+        assertEquals(403, assertFailsWith<AdminException> { read("ACTIVE_PLAYERS,MONEY_NET", token = operator) }.status)
+        assertEquals(401, assertFailsWith<AdminException> { read("ACTIVE_PLAYERS", token = null) }.status)
+    } }
+    @Test fun activitySummaryBucketsCoverageAndComparisonUseOneSnapshot() = runTest { database {
+        activityWindow("2026-09-28T17:00:00Z", "2026-10-04T17:00:00Z")
+        activity(UUID.randomUUID(), "2026-10-02T00:00:00Z", "2026-10-02T01:00:00Z")
+        sql("CREATE FUNCTION hold_activity_read() RETURNS trigger LANGUAGE plpgsql AS ${'$'}${'$'} BEGIN IF NEW.action='ANALYTICS_READ' THEN PERFORM pg_advisory_xact_lock(918273647); END IF; RETURN NEW; END ${'$'}${'$'}")
+        sql("CREATE TRIGGER hold_activity_read BEFORE INSERT ON admin_audit FOR EACH ROW EXECUTE FUNCTION hold_activity_read()")
+        source.connection.use { blocker ->
+            blocker.autoCommit = false; blocker.createStatement().use { it.execute("SELECT pg_advisory_xact_lock(918273647)") }
+            coroutineScope {
+                val pending = async(Dispatchers.IO) { read("ACTIVE_PLAYERS") }
+                awaitWait("INSERT INTO admin_audit")
+                activity(UUID.randomUUID(), "2026-10-02T00:00:00Z", "2026-10-02T01:00:00Z")
+                sql("DELETE FROM activity_coverage_windows")
+                blocker.commit()
+                val result = pending.await().metrics.single()
+                assertEquals(CoverageStatus.COMPLETE, result.coverage.single().status)
+                assertEquals("1", result.groups.single().summary)
+                assertEquals(listOf("1", "0", "0"), result.groups.single().series.map { it.value })
+                assertEquals("0", result.groups.single().comparison.value)
+            }
+        }
+        assertEquals(CoverageStatus.UNAVAILABLE, read("ACTIVE_PLAYERS").metrics.single().coverage.single().status)
+    } }
+
     private suspend fun database(block: suspend Fixture.() -> Unit) {
         val url = System.getenv("TEST_DATABASE_URL"); assumeTrue(!url.isNullOrBlank(), "Configured local PostgreSQL required")
         val schema = "analytics_api_${UUID.randomUUID().toString().replace("-", "")}"
@@ -297,6 +378,8 @@ class PostgresAnalyticsRepositoryTest {
         suspend fun read(metric: String, from: String = "2026-10-01T17:00:00Z", until: String = "2026-10-04T17:00:00Z", bucket: String = "DAY",
             extra: Map<String,List<String>> = emptyMap(), token: String? = ownerToken) = service.read(token, null,
             mapOf("metric" to listOf(metric), "from" to listOf("${time(from)}"), "until" to listOf("${time(until)}"), "bucket" to listOf(bucket)) + extra)
+        fun activityWindow(from: String, until: String) = sql("INSERT INTO activity_coverage_windows VALUES ('${UUID.randomUUID()}','$from','$until')")
+        fun activity(subject: UUID, from: String, until: String) = sql("INSERT INTO activity_connection_observations VALUES ('${UUID.randomUUID()}','${UUID.randomUUID()}','$subject','$from','$until')")
         fun coverage(metric: String, source: String = "SERVER", start: String = "2026-09-01T00:00:00Z") = sql("UPDATE analytics_source_coverage SET status='COMPLETE',coverage_start='$start',freshness='2026-10-05T17:00:00Z' WHERE metric='$metric' AND source='$source'")
         fun item(buyer: UUID, item: String, currency: String, amount: String, time: String) = sql("INSERT INTO analytics_item_purchases(event_id,subject_key,item_id,currency,amount,purchased_at) VALUES ('${UUID.randomUUID()}','$buyer','$item','$currency',$amount,'$time')")
         fun financial(source: String, environment: String, type: String, amount: String, currency: String, exponent: Int, time: String) = sql("INSERT INTO analytics_financial_events(source,environment,event_id,event_type,transaction_id,product_id,subject_key,amount_minor,currency,currency_exponent,occurred_at) VALUES ('$source','$environment','${UUID.randomUUID()}','$type','${UUID.randomUUID()}','product','${UUID.randomUUID()}',$amount,'$currency',$exponent,'$time')")

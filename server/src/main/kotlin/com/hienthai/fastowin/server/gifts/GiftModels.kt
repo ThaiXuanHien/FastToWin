@@ -49,6 +49,10 @@ interface GiftTransaction {
     fun campaign(id: String, lock: Boolean = false): GiftCampaign?
     fun putCampaign(campaign: GiftCampaign)
     fun campaigns(page: PageRequest): AdminPage<GiftCampaign>
+    fun activityCoverage(from: Long, until: Long, now: Long): com.hienthai.fastowin.server.analytics.AnalyticsCoverage =
+        com.hienthai.fastowin.server.analytics.AnalyticsCoverage("SERVER", "LIVE", com.hienthai.fastowin.server.analytics.CoverageStatus.UNAVAILABLE, null, null)
+    fun activityRecipients(from: Long, until: Long, now: Long): List<String> =
+        throw AdminException(400, "ACTIVITY_SOURCE_UNAVAILABLE", "Connected account activity is unavailable for this interval.")
     fun registeredPlayers(): List<GiftPlayer>
     fun activePlayer(id: String): Boolean
     fun request(actor: String, requestId: String): GiftRequestRecord?

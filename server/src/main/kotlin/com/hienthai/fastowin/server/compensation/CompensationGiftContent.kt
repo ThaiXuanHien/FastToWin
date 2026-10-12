@@ -9,8 +9,6 @@ import java.time.Instant
 /** Player-safe copy only; the internal cause, evidence and actor never enter this projection. */
 internal object CompensationGiftContent {
     fun draft(incident: CompensationIncident, request: CompensationRoundRequest): GiftDraftRequest {
-        if (request.audience == CompensationAudience.ACTIVITY)
-            throw AdminException(400, "ACTIVITY_SOURCE_UNAVAILABLE", "Reliable incident activity coverage and retention are unavailable.")
         for (value in listOf(request.receivingReasonVi, request.receivingReasonEn))
             if (value.isBlank() || value.length > 1000) invalid()
         val from = Instant.ofEpochMilli(incident.affectedFromEpochMillis).toString()

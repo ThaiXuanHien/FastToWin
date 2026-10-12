@@ -9,8 +9,11 @@ import java.time.DayOfWeek
 
 @Serializable enum class AnalyticsMetric {
     REGISTRATIONS, ITEM_SPEND, ITEM_PURCHASES, ITEM_BUYERS, TOP_ITEMS,
-    MONEY_PAID, MONEY_REFUNDED, MONEY_NET, STORE_PURCHASES, STORE_BUYERS;
-    val financial: Boolean get() = ordinal >= MONEY_PAID.ordinal
+    MONEY_PAID, MONEY_REFUNDED, MONEY_NET, STORE_PURCHASES, STORE_BUYERS, ACTIVE_PLAYERS;
+    val financial: Boolean get() = when (this) {
+        MONEY_PAID, MONEY_REFUNDED, MONEY_NET, STORE_PURCHASES, STORE_BUYERS -> true
+        else -> false
+    }
 }
 @Serializable enum class AnalyticsBucket { DAY, WEEK, MONTH }
 @Serializable enum class CoverageStatus { COMPLETE, PARTIAL, UNAVAILABLE }
@@ -60,7 +63,7 @@ data class AnalyticsQuery(val range: AnalyticsRange, val comparisonRange: Analyt
             if (metrics.any { !it.financial } && (store != null || product != null || environment != "LIVE")) invalid()
             if (metrics.any { it.financial } && (item != null || currency in setOf("GOLD", "GEMS"))) invalid()
             if (metrics.any { !it.financial && it != AnalyticsMetric.REGISTRATIONS } && currency != null && currency !in setOf("GOLD", "GEMS")) invalid()
-            if (metrics.contains(AnalyticsMetric.REGISTRATIONS) && (currency != null || item != null)) invalid()
+            if (metrics.any { it == AnalyticsMetric.REGISTRATIONS || it == AnalyticsMetric.ACTIVE_PLAYERS } && (currency != null || item != null)) invalid()
             return AnalyticsQuery(AnalyticsRange(from, until), AnalyticsRange(previousFrom, from), bucket, metrics, store, currency, item, product, environment)
         }
     }

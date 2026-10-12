@@ -48,6 +48,10 @@ private class JdbcGiftTransaction(private val c: Connection) : GiftTransaction {
         val items = rows("SELECT payload FROM admin_gift_campaigns WHERE source_type='ADMIN_GIFT' ORDER BY id DESC LIMIT ? OFFSET ?", listOf(page.pageSize, page.offset)) { Json.decodeFromString<GiftCampaign>(it.getString(1)) }
         return page.result(items, rows("SELECT count(*) FROM admin_gift_campaigns WHERE source_type='ADMIN_GIFT'") { it.getLong(1) }.single())
     }
+    override fun activityCoverage(from: Long, until: Long, now: Long) =
+        com.hienthai.fastowin.server.activity.JdbcActivityReader(c).coverage(from, until, now)
+    override fun activityRecipients(from: Long, until: Long, now: Long) =
+        com.hienthai.fastowin.server.activity.JdbcActivityReader(c).registeredRecipients(from, until, now)
     override fun registeredPlayers() = rows("SELECT id,created_at FROM users WHERE account_type='REGISTERED' AND status <> 'DELETED' ORDER BY id") { GiftPlayer(it.getString(1), it.getTimestamp(2).time) }
     override fun activePlayer(id: String) = rows("SELECT id FROM users WHERE id=? AND account_type='REGISTERED' AND status <> 'DELETED' FOR KEY SHARE", listOf(id(id))) { it.getString(1) }.isNotEmpty()
     override fun request(actor: String, requestId: String) = rows("SELECT fingerprint,safe_result FROM admin_gift_requests WHERE actor_id=? AND request_id=?", listOf(id(actor), requestId)) {

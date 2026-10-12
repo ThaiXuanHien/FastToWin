@@ -51,18 +51,24 @@ class CompensationRoundService(val repository: GiftRepository, private val admin
         val c = campaign(id, lock)?.takeIf { it.compensation?.incidentId == i.id && it.compensation.roundNumber == r.roundNumber } ?: missing()
         return r to c
     }
+    private fun audience(r: CompensationRound, c: GiftCampaign): CompensationAudience = r.audience ?:
+        if (c.draft.audience == GiftAudience.USER_IDS) CompensationAudience.USER_IDS else CompensationAudience.ALL_REGISTERED
+    private fun GiftTransaction.verifyActivity(i: CompensationIncident, source: CompensationAudience) {
+        if (source == CompensationAudience.ACTIVITY)
+            activityRecipients(i.affectedFromEpochMillis, i.affectedUntilEpochMillis, nowMillis())
+    }
     // Incident edits before first publication are reflected in draft projections and the frozen publish snapshot.
     private fun content(i: CompensationIncident, r: CompensationRound, c: GiftCampaign): GiftCampaign {
         if (c.state != CampaignState.DRAFT) return c
         val d = c.draft
         val request = CompensationRoundRequest(i.version, r.receivingReasonVi, r.receivingReasonEn, d.gold, d.xp,
-            d.availableAtEpochMillis, d.requestId, d.reason, if (d.audience == GiftAudience.USER_IDS) CompensationAudience.USER_IDS else CompensationAudience.ALL_REGISTERED,
+            d.availableAtEpochMillis, d.requestId, d.reason, audience(r, c),
             d.userIds, d.expiresAtEpochMillis, supplementalReason = r.supplementalReason, expectedVersion = d.expectedVersion)
         return c.copy(draft = CompensationGiftContent.draft(i, request), compensation = CompensationGiftContent.context(i, r))
     }
     private fun GiftTransaction.result(i: CompensationIncident, r: CompensationRound, c: GiftCampaign): CompensationRoundDetail {
         val counts = GiftCampaignOperations.detail(this, c, nowMillis()).counters
-        return CompensationRoundDetail(i.id, i.incidentKey, i.version, r, content(i, r, c), CompensationReport(
+        return CompensationRoundDetail(i.id, i.incidentKey, i.version, r.copy(audience = audience(r, c)), content(i, r, c), CompensationReport(
             counts.eligible.toString(), counts.pending.toString(), counts.delivered.toString(), counts.claimed.toString(), counts.expired.toString(),
             counts.cancelled.toString(), counts.skipped.toString(), counts.claimedGold.toString(), counts.claimedXp.toString()))
     }
@@ -86,9 +92,10 @@ class CompensationRoundService(val repository: GiftRepository, private val admin
         if (i.version != request.incidentVersion) conflict()
         val maximum = compensation.maximumRoundNumber(i.id)
         if (maximum == Int.MAX_VALUE || number != maximum + 1 || compensation.hasDraftRound(i.id)) conflict()
+        verifyActivity(i, request.audience)
         val now = nowMillis()
         val r = CompensationRound(UUID.randomUUID().toString(), i.id, number, request.supplementalReason, request.receivingReasonVi, request.receivingReasonEn,
-            actor.id, actor.id, now, now)
+            actor.id, actor.id, now, now, audience = request.audience)
         val c = GiftCampaign(r.campaignId, 1, CampaignState.DRAFT, draft, nowMillis(), compensation = CompensationGiftContent.context(i, r))
         putCampaign(c); compensation.putRound(r); audit(actor, "COMPENSATION_ROUND_CREATE", c.id, request.requestId, request.reason, after = 1)
         save(actor.id, request.requestId, fp, "ROUND_DETAIL", result(i, r, c))
@@ -103,20 +110,27 @@ class CompensationRoundService(val repository: GiftRepository, private val admin
         if (i.version != request.incidentVersion) conflict()
         val (old, c) = mapped(i, roundId, true); supplemental(old.roundNumber, request.supplementalReason)
         if (c.state != CampaignState.DRAFT || c.version != request.expectedVersion) conflict()
-        val r = old.copy(supplementalReason = request.supplementalReason, receivingReasonVi = request.receivingReasonVi, receivingReasonEn = request.receivingReasonEn,
+        verifyActivity(i, request.audience)
+        val r = old.copy(audience = request.audience, supplementalReason = request.supplementalReason, receivingReasonVi = request.receivingReasonVi, receivingReasonEn = request.receivingReasonEn,
             updatedByAdminId = actor.id, updatedAtEpochMillis = nowMillis())
         val updated = c.copy(version = nextVersion(c.version), draft = draft, compensation = CompensationGiftContent.context(i, r))
         putCampaign(updated); compensation.putRound(r); audit(actor, "COMPENSATION_ROUND_UPDATE", roundId, request.requestId, request.reason, c.version, updated.version)
         save(actor.id, request.requestId, fp, "ROUND_DETAIL", result(i, r, updated))
     }
     private fun GiftTransaction.preview(i: CompensationIncident, r: CompensationRound, original: GiftCampaign): Pair<CompensationPreview, GiftCampaignOperations.Audience> {
-        val c = content(i, r, original); val a = GiftCampaignOperations.audience(this, c)
+        val c = content(i, r, original)
+        val source = audience(r, c)
+        val a = if (source == CompensationAudience.ACTIVITY) GiftCampaignOperations.Audience(
+            activityRecipients(i.affectedFromEpochMillis, i.affectedUntilEpochMillis, nowMillis()), emptyList(), 0)
+        else GiftCampaignOperations.audience(this, c)
         val prior = compensation.previousClaims(i.id, r.roundNumber, a.users)
         val duplicates = c.draft.userIds.groupingBy { it }.eachCount().filterValues { it > 1 }.keys.sorted()
-        val token = hashToken(Json.encodeToString(i) + "|" + Json.encodeToString(r) + "|" + Json.encodeToString(c) + "|" +
+        // Bind the interpretation as well as saved source, interval, versions and selected identities.
+        val definition = "connected-registered-game-v1;retention=90d;checkpoint=30s;max-gap=60s"
+        val token = hashToken("$source|$definition|" + Json.encodeToString(i) + "|" + Json.encodeToString(r) + "|" + Json.encodeToString(c) + "|" +
             a.users.joinToString(",") + "|" + a.invalid.joinToString(",") + "|" + Json.encodeToString(prior))
         return CompensationPreview(i.id, i.version, c.id, c.version, r.roundNumber,
-            if (c.draft.audience == GiftAudience.USER_IDS) CompensationAudience.USER_IDS else CompensationAudience.ALL_REGISTERED,
+            source,
             c.draft.userIds, a.users.take(10), a.invalid, duplicates, a.duplicates.toString(), a.users.size.toString(),
             Math.multiplyExact(c.draft.gold.toLong(), a.users.size.toLong()).toString(), Math.multiplyExact(c.draft.xp.toLong(), a.users.size.toLong()).toString(),
             prior.distinctUsers, prior.entitlements, prior.selectedOverlap, token) to a

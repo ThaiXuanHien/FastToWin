@@ -3,6 +3,12 @@ package com.hienthai.fastowin.server.compensation
 import com.hienthai.fastowin.protocol.*
 import com.hienthai.fastowin.server.*
 import com.hienthai.fastowin.server.admin.*
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
+import io.ktor.client.request.*
+import io.ktor.client.statement.bodyAsText
+import io.ktor.http.*
+import io.ktor.server.testing.testApplication
 import com.hienthai.fastowin.server.events.*
 import com.hienthai.fastowin.server.gifts.*
 import com.zaxxer.hikari.HikariConfig
@@ -72,11 +78,147 @@ class PostgresCompensationRoundTest {
             rounds.publish(owner, i.id, c.campaign.id, publishRequest(i, c, preview(i, c)))
         suspend fun cancel(i: CompensationIncident, c: CompensationRoundDetail) = rounds.cancel(owner, i.id, c.campaign.id,
             CompensationRoundCancelRequest(i.version, c.campaign.version, UUID.randomUUID().toString(), "Stop unclaimed compensation"))
+        fun activityWindow(from: Long, until: Long) = sql("INSERT INTO activity_coverage_windows VALUES ('${UUID.randomUUID()}',to_timestamp($from/1000.0),to_timestamp($until/1000.0))")
+        fun activity(user: String, from: Long, until: Long) = sql("INSERT INTO activity_connection_observations SELECT '${UUID.randomUUID()}','${UUID.randomUUID()}',subject_key,to_timestamp($from/1000.0),to_timestamp($until/1000.0) FROM analytics_subject_links WHERE user_id='$user'")
         fun sql(sql: String) = source.connection.use { it.createStatement().use { s -> s.execute(sql) } }
         fun number(sql: String): Long = source.connection.use { it.createStatement().use { s -> s.executeQuery(sql).use { r -> r.next(); r.getLong(1) } } }
         suspend fun error(status: Int, block: suspend () -> Unit) = assertEquals(status, assertFailsWith<AdminException> { block() }.status)
         suspend fun balance() = repository.transaction { balance(player) }
     }
+
+    @Test fun `activity publication selects observed accounts freezes and replays after source loss`() = runTest { database {
+        val inactive = register(); val deleted = register()
+        val i = incidents.create(owner, request().copy(affectedFromEpochMillis = now-30_000, affectedUntilEpochMillis = now-1000))
+        activityWindow(now-30_000, now)
+        activity(player, now-29_000, now-2000); activity(deleted, now-29_000, now-2000)
+        assertTrue(PostgresAuthRepository(source).deleteAccount(UUID.fromString(deleted)))
+        val c = draft(i, audience = CompensationAudience.ACTIVITY)
+        assertTrue(Json.encodeToString(c.round).contains("\"audience\":\"ACTIVITY\""))
+        val p = preview(i, c); assertEquals(CompensationAudience.ACTIVITY, p.source)
+        assertEquals("1", p.recipientCount); assertEquals(listOf(player), p.sampleUserIds)
+        val publication = publishRequest(i, c, p); val published = rounds.publish(owner, i.id, c.campaign.id, publication)
+        assertEquals("1", published.report.eligible)
+        val late = register(); activity(late, now-29_000, now-2000)
+        sql("DELETE FROM activity_coverage_windows")
+        assertEquals(published, rounds.publish(owner, i.id, c.campaign.id, publication))
+        gifts.deliverDueBatch(); assertTrue(gifts.mailbox(inactive, PageRequest()).items.isEmpty())
+        assertTrue(gifts.mailbox(late, PageRequest()).items.isEmpty())
+        val claimed = gifts.claim(player, c.campaign.id); assertEquals(claimed, gifts.claim(player, c.campaign.id))
+        assertEquals(1, number("SELECT count(*) FROM wallet_transactions WHERE source_type='COMPENSATION'"))
+        admin.logout(owner.token, owner.csrfToken, owner.origin)
+        error(401) { rounds.publish(owner, i.id, c.campaign.id, publication) }
+    } }
+    @Test fun `activity audience changes deletion source and incident range invalidate preview`() = runTest { database {
+        val i = incidents.create(owner, request().copy(affectedFromEpochMillis = now-30_000, affectedUntilEpochMillis = now-1000))
+        activityWindow(now-30_000, now); activity(player, now-29_000, now-2000)
+        val c = draft(i, audience = CompensationAudience.ACTIVITY); val p = preview(i, c)
+        val extra = register(); activity(extra, now-29_000, now-2000)
+        error(409) { rounds.publish(owner, i.id, c.campaign.id, publishRequest(i, c, p)) }
+        val withExtra = preview(i, c); assertEquals("2", withExtra.recipientCount)
+        assertTrue(PostgresAuthRepository(source).deleteAccount(UUID.fromString(extra)))
+        error(409) { rounds.publish(owner, i.id, c.campaign.id, publishRequest(i, c, withExtra)) }
+        val beforeGap = preview(i, c)
+        sql("DELETE FROM activity_coverage_windows")
+        assertEquals("ACTIVITY_SOURCE_UNAVAILABLE", assertFailsWith<AdminException> { preview(i, c) }.code)
+        assertEquals("ACTIVITY_SOURCE_UNAVAILABLE", assertFailsWith<AdminException> { rounds.publish(owner, i.id, c.campaign.id, publishRequest(i, c, beforeGap)) }.code)
+        activityWindow(now-20_000, now)
+        assertEquals("ACTIVITY_RANGE_INCOMPLETE", assertFailsWith<AdminException> { preview(i, c) }.code)
+        sql("DELETE FROM activity_coverage_windows"); activityWindow(now-30_000, now)
+        val changed = incidents.update(owner, i.id, request().copy(affectedFromEpochMillis = now-31_000, affectedUntilEpochMillis = now-1000, expectedVersion = 1))
+        error(409) { rounds.publish(owner, i.id, c.campaign.id, publishRequest(i, c, beforeGap)) }
+        assertEquals("ACTIVITY_RANGE_INCOMPLETE", assertFailsWith<AdminException> { preview(changed, c) }.code)
+        assertEquals(0, number("SELECT count(*) FROM admin_gift_recipients"))
+    } }
+    @Test fun `activity capability reflects freshness and creation requires complete incident retention`() = runTest { database {
+        fun CompensationCapabilities.activity() = sources.single { it.source == CompensationAudience.ACTIVITY }
+        assertFalse(incidents.capabilities(owner).activity().available)
+        val i = incidents.create(owner, request().copy(affectedFromEpochMillis = now-30_000, affectedUntilEpochMillis = now-1000))
+        assertEquals("ACTIVITY_SOURCE_UNAVAILABLE", assertFailsWith<AdminException> { draft(i, audience = CompensationAudience.ACTIVITY) }.code)
+        activityWindow(now-20_000, now)
+        assertTrue(incidents.capabilities(owner).activity().available)
+        sql("DELETE FROM activity_coverage_windows"); activityWindow(now-60_000, now-30_000)
+        val lagged = incidents.capabilities(owner).activity()
+        assertTrue(lagged.available); assertEquals(now-30_000, lagged.coverage?.freshness); assertEquals(90, lagged.retentionDays)
+        sql("DELETE FROM activity_coverage_windows"); activityWindow(now-20_000, now)
+        assertEquals("ACTIVITY_RANGE_INCOMPLETE", assertFailsWith<AdminException> { draft(i, audience = CompensationAudience.ACTIVITY) }.code)
+        sql("DELETE FROM activity_coverage_windows"); activityWindow(now-120_000, now-61_000)
+        assertFalse(incidents.capabilities(owner).activity().available)
+        sql("DELETE FROM activity_coverage_windows"); activityWindow(0, 10)
+        assertEquals("ACTIVITY_SOURCE_UNAVAILABLE", assertFailsWith<AdminException> { draft(incidents.create(owner, request().copy(incidentKey = "expired")), audience = CompensationAudience.ACTIVITY) }.code)
+    } }
+    @Test fun `legacy round missing source infers saved explicit audience`() = runTest { database {
+        val i = incident(); val c = draft(i, audience = CompensationAudience.USER_IDS, users = listOf(player))
+        sql("UPDATE compensation_rounds SET payload=(payload::jsonb - 'audience')::text")
+        val restored = rounds.detail(owner, i.id, c.campaign.id)
+        assertTrue(Json.encodeToString(restored.round).contains("\"audience\":\"USER_IDS\""))
+        assertEquals(CompensationAudience.USER_IDS, preview(i, restored).source)
+        assertEquals("1", publish(i, restored).report.eligible)
+    } }
+
+    @Test fun `updating source binds preview and preserves saved source in detail`() = runTest { database {
+        val inactive = register()
+        val i = incidents.create(owner, request().copy(affectedFromEpochMillis = now-30_000, affectedUntilEpochMillis = now-1000))
+        activityWindow(now-30_000, now); activity(player, now-29_000, now-2000)
+        val c = draft(i); val all = preview(i, c); assertEquals("2", all.recipientCount)
+        val update = roundRequest(audience = CompensationAudience.ACTIVITY).copy(expectedNextRoundNumber = null, expectedVersion = 1)
+        val activity = rounds.update(owner, i.id, c.campaign.id, update)
+        assertEquals(CompensationAudience.ACTIVITY, activity.round.audience)
+        error(409) { rounds.publish(owner, i.id, c.campaign.id, publishRequest(i, c, all)) }
+        val selected = preview(i, activity); assertEquals("1", selected.recipientCount)
+        val reverted = rounds.update(owner, i.id, c.campaign.id, update.copy(audience = CompensationAudience.USER_IDS, userIds = listOf(inactive), expectedVersion = 2, requestId = "source-userids"))
+        assertEquals(CompensationAudience.USER_IDS, reverted.round.audience)
+        error(409) { rounds.publish(owner, i.id, c.campaign.id, publishRequest(i, activity, selected)) }
+        assertEquals(listOf(inactive), preview(i, reverted).sampleUserIds)
+        assertEquals(CompensationAudience.USER_IDS, rounds.detail(owner, i.id, c.campaign.id).round.audience)
+    } }
+    @Test fun `activity healthy empty interval freezes zero and expired preview cannot publish`() = runTest { database {
+        val cutoff = now - 90L*86_400_000
+        val i = incidents.create(owner, request().copy(affectedFromEpochMillis = cutoff+1000, affectedUntilEpochMillis = cutoff+2000))
+        activityWindow(cutoff+1000, cutoff+2000)
+        val c = draft(i, audience = CompensationAudience.ACTIVITY); val p = preview(i, c)
+        assertEquals("0", p.recipientCount); assertTrue(p.sampleUserIds.isEmpty())
+        rounds = CompensationRoundService(repository, admin, { now+3000 })
+        assertEquals("ACTIVITY_SOURCE_UNAVAILABLE", assertFailsWith<AdminException> { rounds.publish(owner, i.id, c.campaign.id, publishRequest(i, c, p)) }.code)
+        assertEquals(0, number("SELECT count(*) FROM admin_gift_recipients"))
+        rounds = CompensationRoundService(repository, admin, { now })
+        assertEquals("0", rounds.publish(owner, i.id, c.campaign.id, publishRequest(i, c, p)).report.eligible)
+    } }
+
+    @Test fun `activity HTTP capabilities preview publication headers roles and source errors`() = runTest { database {
+        val i = incidents.create(owner, request().copy(affectedFromEpochMillis = now-30_000, affectedUntilEpochMillis = now-1000))
+        activityWindow(now-30_000, now-1000); activity(player, now-29_000, now-2000)
+        val c = draft(i, audience = CompensationAudience.ACTIVITY)
+        val fixture = this
+        testApplication {
+            application { gameModule(adminService = fixture.admin, giftService = fixture.gifts,
+                compensationIncidentService = fixture.incidents, compensationRoundService = fixture.rounds) }
+            fun HttpRequestBuilder.context(ctx: GiftAdminContext = owner) {
+                header(HttpHeaders.Origin, ctx.origin!!); header(HttpHeaders.Cookie, "$ADMIN_COOKIE=${ctx.token}")
+                header(ADMIN_CSRF_HEADER, ctx.csrfToken!!); contentType(ContentType.Application.Json)
+            }
+            val capability = client.get("/admin/api/incidents/capabilities") { context() }
+            assertEquals(HttpStatusCode.OK, capability.status)
+            val source = Json.decodeFromString<CompensationCapabilities>(capability.bodyAsText()).sources.single { it.source == CompensationAudience.ACTIVITY }
+            assertTrue(source.available); assertEquals(now-1000, source.coverage?.freshness)
+            val path = "/admin/api/incidents/${i.id}/rounds/${c.campaign.id}"
+            val preview = client.post("$path/preview") { context(operator); setBody(Json.encodeToString(CompensationRoundPreviewRequest(1, 1, "http-preview", "Review"))) }
+            assertEquals(HttpStatusCode.OK, preview.status)
+            assertEquals("no-store", preview.headers[HttpHeaders.CacheControl]); assertEquals("nosniff", preview.headers["X-Content-Type-Options"])
+            val p = Json.decodeFromString<CompensationPreview>(preview.bodyAsText())
+            assertEquals(CompensationAudience.ACTIVITY, p.source); assertEquals("1", p.recipientCount)
+            val publication = publishRequest(i, c, p)
+            assertEquals(HttpStatusCode.Forbidden, client.post("$path/publish") { context(operator); setBody(Json.encodeToString(publication)) }.status)
+            sql("DELETE FROM activity_coverage_windows"); activityWindow(now-20_000, now-1000)
+            val gap = client.post("$path/preview") { context(); setBody(Json.encodeToString(CompensationRoundPreviewRequest(1, 1, "http-gap", "Review"))) }
+            assertEquals(HttpStatusCode.BadRequest, gap.status)
+            assertEquals("ACTIVITY_RANGE_INCOMPLETE", Json.decodeFromString<AdminError>(gap.bodyAsText()).code)
+            assertEquals("no-store", gap.headers[HttpHeaders.CacheControl])
+            sql("DELETE FROM activity_coverage_windows"); activityWindow(now-30_000, now-1000)
+            val published = client.post("$path/publish") { context(); setBody(Json.encodeToString(publication)) }
+            assertEquals(HttpStatusCode.OK, published.status)
+            assertEquals(CompensationAudience.ACTIVITY, Json.decodeFromString<CompensationRoundDetail>(published.bodyAsText()).round.audience)
+        }
+    } }
 
     @Test fun `multiple admins same next number create exactly one mapping`() = runTest { database {
         val i = incident(); val r = roundRequest()

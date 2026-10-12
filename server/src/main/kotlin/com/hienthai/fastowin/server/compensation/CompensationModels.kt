@@ -19,14 +19,17 @@ import kotlinx.serialization.Serializable
 )
 @Serializable data class CompensationPage<T>(val items: List<T>, val page: Int, val pageSize: Int, val total: String)
 @Serializable enum class CompensationAudience { ALL_REGISTERED, USER_IDS, ACTIVITY }
-@Serializable data class CompensationCapability(val source: CompensationAudience, val available: Boolean, val explanation: String)
+@Serializable data class CompensationCapability(val source: CompensationAudience, val available: Boolean, val explanation: String,
+    val coverage: com.hienthai.fastowin.server.analytics.AnalyticsCoverage? = null, val retentionDays: Int? = null)
 @Serializable data class CompensationCapabilities(val sources: List<CompensationCapability>)
 @Serializable data class CompensationRound(
     val campaignId: String, val incidentId: String, val roundNumber: Int,
     val supplementalReason: String?, val receivingReasonVi: String, val receivingReasonEn: String,
     val createdByAdminId: String? = null, val updatedByAdminId: String? = null,
     val createdAtEpochMillis: Long? = null, val updatedAtEpochMillis: Long? = null,
-    val publishedByAdminId: String? = null, val cancelledByAdminId: String? = null
+    val publishedByAdminId: String? = null, val cancelledByAdminId: String? = null,
+    // Absent on legacy rows; infer only from their saved campaign audience.
+    val audience: CompensationAudience? = null
 )
 /** Internal receipt, never returned as an admin or player DTO. */
 data class CompensationReplay(val fingerprint: String, val responseType: String, internal val responseJson: String)
