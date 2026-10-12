@@ -12,6 +12,7 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.decodeFromString
 import java.util.UUID
 import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.atomic.AtomicReference
 import kotlin.test.*
 
 class ActivityApplicationTest {
@@ -22,8 +23,12 @@ class ActivityApplicationTest {
         val code = assertIs<AccountActionResult.Success>(auth.requestEmailVerification(registered.accessToken)).emailVerificationCode!!
         assertIs<AccountActionResult.Success>(auth.confirmEmailVerification(registered.accessToken, code))
         val observations = CopyOnWriteArrayList<ActivityObservation>()
+        val latestObservations = AtomicReference<List<ActivityObservation>>(emptyList())
         val tracker = ActivityTracker(object : ActivityRepository {
-            override suspend fun checkpoint(checkpoint: ActivityCheckpoint) { observations.addAll(checkpoint.observations) }
+            override suspend fun checkpoint(checkpoint: ActivityCheckpoint) {
+                observations.addAll(checkpoint.observations)
+                latestObservations.set(checkpoint.observations)
+            }
         })
         application { gameModule(authService = auth, activityTracker = tracker) }
         val sockets = createClient { install(WebSockets) }
@@ -55,7 +60,14 @@ class ActivityApplicationTest {
         withTimeout(5000) { while (ProtocolJson.decodeFromString<ServerMessage>((replacement.incoming.receive() as Frame.Text).readText()) !is ServerMessage.SessionReady) {} }
         val second = observations.last { it.connectionId != initial.connectionId }
         withTimeout(5000) { accepted.closeReason.await() }
-        delay(20)
+        withTimeout(5000) {
+            while (true) {
+                // Each probe waits for the tracker mutex and observes a whole current snapshot.
+                tracker.checkpoint()
+                if (latestObservations.get().none { it.connectionId == initial.connectionId }) break
+                delay(100)
+            }
+        }
         val afterOldClose = observations.size
         tracker.checkpoint()
         val next = observations.drop(afterOldClose)

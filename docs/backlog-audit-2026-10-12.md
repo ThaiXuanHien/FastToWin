@@ -78,5 +78,6 @@ Không backfill hoặc suy diễn từ last_seen.
 Đây là bản local trong branch `codex/activity-history`; chưa merge/deploy.
 Nguồn chỉ bảo đảm coverage một backend. Không kích hoạt provider, phát đền bù
 thật, mua hạ tầng hoặc thay nghiệm thu thiết bị/staging. Revenue Google vẫn OFF,
-Apple UNAVAILABLE theo phạm vi đã hoãn. Minor còn theo dõi: đồng bộ finalizer
-trong test socket replacement bằng delay20ms; final review sẽ phân loại trước PR.
+Apple UNAVAILABLE theo phạm vi đã hoãn. Minor đồng bộ finalizer trong test
+socket replacement đã sửa: chờ có timeout đến khi checkpoint không còn ID cũ,
+rồi kiểm tra độc lập chỉ thu thập ID thay thế; không còn giả định delay20ms.
