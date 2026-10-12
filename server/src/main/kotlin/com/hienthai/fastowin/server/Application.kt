@@ -106,6 +106,7 @@ fun Application.gameModule(
     giftDeliveryEnabled: Boolean = false,
     maintenanceService: MaintenanceService? = null,
     maintenanceRuntime: MaintenanceRuntime = MaintenanceRuntime(engine, maintenanceService, serviceStatusProvider),
+    activityTracker: com.hienthai.fastowin.server.activity.ActivityTracker = com.hienthai.fastowin.server.activity.ActivityTracker(),
     financialSyncService: com.hienthai.fastowin.server.analytics.FinancialSyncService? = null,
     analyticsService: com.hienthai.fastowin.server.analytics.AnalyticsService? = adminService?.let {
         com.hienthai.fastowin.server.analytics.AnalyticsService(com.hienthai.fastowin.server.analytics.UnavailableAnalyticsRepository, it)
@@ -117,6 +118,7 @@ fun Application.gameModule(
     // The first policy and restored aborts must be applied before any handler/timer can serve game.
     runBlocking { maintenanceRuntime.refresh() }
     runBlocking { financialSyncService?.initialize() }
+    launch { activityTracker.run() }
     financialSyncService?.let { service -> launch {
         while (isActive) {
             try { service.runBatch() }
@@ -590,6 +592,7 @@ fun Application.gameModule(
             var playerId: String? = null
             var playerRateLimitKey: String? = null
             var accountAccessToken: String? = null
+            var activityConnectionId: java.util.UUID? = null
             try {
                 for (frame in incoming) {
                     val ipMessageLimit = rateLimiter.consume(
@@ -684,6 +687,11 @@ fun Application.gameModule(
                             continue
                         }
                         playerId = connected.playerId
+                        if (message is ClientMessage.ConnectAccount) {
+                            val id = java.util.UUID.randomUUID()
+                            activityConnectionId = id
+                            activityTracker.connected(id, connected.playerId)
+                        }
                         metrics.sessionAuthenticated()
                         playerRateLimitKey = stableRateLimitKey(connected.playerId)
                         val connection = SocketConnection(this)
@@ -749,6 +757,9 @@ fun Application.gameModule(
                 }
             } finally {
                 metrics.webSocketClosed()
+                kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) {
+                    activityConnectionId?.let { activityTracker.disconnected(it) }
+                }
                 playerId?.let { id ->
                     val connection = connections[id]
                     if (connection?.session === this && connections.remove(id, connection)) {
