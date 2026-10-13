@@ -60,7 +60,11 @@ logback = "1.6.3"
 screenshot = "0.0.1-alpha15"
 kover = "0.9.11"
 
+awsS3 = "2.55.14"
+
 [libraries]
+aws-s3 = { group = "software.amazon.awssdk", name = "s3", version.ref = "awsS3" }
+aws-url-connection = { group = "software.amazon.awssdk", name = "url-connection-client", version.ref = "awsS3" }
 kotlinx-datetime = { group = "org.jetbrains.kotlinx", name = "kotlinx-datetime", version.ref = "kotlinxDatetime" }
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
 junit = { group = "junit", name = "junit", version.ref = "junit" }

@@ -98,7 +98,10 @@ class GameEngine(
     private val rematchTimeoutMillis: Long = DEFAULT_REMATCH_TIMEOUT_MILLIS,
     val storePurchaseService: StorePurchaseService = StorePurchaseService(playerProfileRepository, storePurchaseVerifier),
     private val nowMillis: () -> Long = System::currentTimeMillis,
-    private val eventRewardSource: com.hienthai.fastowin.server.events.EventRewardSource = com.hienthai.fastowin.server.events.NoRewardEventSource
+    private val eventRewardSource: com.hienthai.fastowin.server.events.EventRewardSource = com.hienthai.fastowin.server.events.NoRewardEventSource,
+    val avatarService: com.hienthai.fastowin.server.avatars.AvatarService =
+        com.hienthai.fastowin.server.avatars.AvatarService(
+            com.hienthai.fastowin.server.avatars.ProfileAvatarRepository(playerProfileRepository))
 ) {
     constructor(nowMillis: () -> Long) : this(nowMillis = nowMillis, eventRewardSource = com.hienthai.fastowin.server.events.NoRewardEventSource)
 
@@ -4716,11 +4719,11 @@ class GameEngine(
             error(playerId, "INVITE_SENT", legacyFallback("Đã gửi lời mời."))
         )
     }
-    suspend fun getAvatarData(playerId: String): String? = playerProfileRepository.getAvatarData(playerId)
+
 
 
     private suspend fun updateAvatar(playerId: String, base64: String): List<Delivery> {
-        val success = playerProfileRepository.updateAvatarData(playerId, base64)
+        val success = avatarService.upload(playerId, base64)
         if (success) {
             return loadProfile(playerId)
         }

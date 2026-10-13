@@ -42,6 +42,7 @@ import io.ktor.http.HttpMethod
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.CookieEncoding
 import io.ktor.http.ContentType
+import com.hienthai.fastowin.server.avatars.avatarRoutes
 import io.ktor.server.application.ApplicationCall
 import io.ktor.server.application.Application
 import io.ktor.server.application.call
@@ -119,6 +120,14 @@ fun Application.gameModule(
     runBlocking { maintenanceRuntime.refresh() }
     runBlocking { financialSyncService?.initialize() }
     launch { activityTracker.run() }
+    launch {
+        while (isActive) {
+            try { engine.avatarService.cleanupBatch() }
+            catch (cancelled: CancellationException) { throw cancelled }
+            catch (_: Exception) { System.err.println("Avatar cleanup unavailable") }
+            delay(60_000)
+        }
+    }
     financialSyncService?.let { service -> launch {
         while (isActive) {
             try { service.runBatch() }
@@ -562,24 +571,7 @@ fun Application.gameModule(
             call.respondAccountAction(authService.deleteAccount(request.accessToken, request.password))
         }
 
-        get("/api/avatar/{playerId}") {
-            val playerId = call.parameters["playerId"] ?: return@get call.respond(HttpStatusCode.BadRequest)
-            call.response.header(HttpHeaders.CacheControl, "no-store, max-age=0")
-            val base64Data = engine.getAvatarData(playerId)
-            if (base64Data != null) {
-                val cleanBase64 = base64Data.substringAfter(",")
-                try {
-                    val bytes = java.util.Base64.getDecoder().decode(cleanBase64)
-                    call.respondBytes(bytes, io.ktor.http.ContentType.Image.JPEG)
-                } catch (e: Exception) {
-                    call.respond(HttpStatusCode.InternalServerError)
-                }
-            } else {
-                call.respond(HttpStatusCode.NotFound)
-            }
-        }
-
-
+        avatarRoutes(engine.avatarService)
 
         webSocket("/game") {
             metrics.webSocketOpened()
@@ -837,6 +829,12 @@ private suspend fun RateLimiter.consumeActionLimit(
             RateLimitBuckets.SELECT_NUMBER_IP,
             clientKey,
             policies.selectNumberPerIp
+        ).takeUnless(RateLimitResult::allowed)
+
+        is ClientMessage.UpdateAvatar -> consume(
+            RateLimitBuckets.AVATAR_PLAYER, playerKey, policies.avatarPerPlayer
+        ).takeUnless(RateLimitResult::allowed) ?: consume(
+            RateLimitBuckets.AVATAR_IP, clientKey, policies.avatarPerIp
         ).takeUnless(RateLimitResult::allowed)
 
         is ClientMessage.VerifyStorePurchase -> consume(
