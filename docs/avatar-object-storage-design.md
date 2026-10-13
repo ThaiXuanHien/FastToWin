@@ -1,6 +1,6 @@
 # Avatar trên object storage — thiết kế #11
 
-Trạng thái: đề xuất kỹ thuật để chủ dự án xem trước triển khai.
+Trạng thái: chủ dự án đã duyệt thiết kế và năm giai đoạn setup ngày 12/10/2026; provider activation/nghiệm thu thực tế còn chờ.
 Issue: https://github.com/ThaiXuanHien/FastToWin/issues/11
 Ngày: 12/10/2026. Người dùng chưa có tài khoản Cloudflare hoặc tên miền.
 
