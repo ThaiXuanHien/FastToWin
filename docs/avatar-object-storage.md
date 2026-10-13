@@ -12,6 +12,26 @@ Bước này giữ bucket private và phục vụ ảnh qua backend; chưa bật
 | `FASTTOWIN_AVATAR_R2_BUCKET` | Bucket private riêng cho môi trường, 3–63 chữ thường/số/dấu gạch ngang; bắt đầu/kết thúc bằng chữ hoặc số |
 | `FASTTOWIN_AVATAR_R2_ACCESS_KEY_ID` | R2 S3 Access Key ID, 32 ký tự hex |
 | `FASTTOWIN_AVATAR_R2_SECRET_ACCESS_KEY` | R2 S3 Secret Access Key, 64 ký tự hex |
+| `FASTTOWIN_AVATAR_R2_ACCESS_KEY_ID_FILE` | Đường dẫn file UTF-8 chỉ chứa Access Key ID, thay cho biến trực tiếp tương ứng |
+| `FASTTOWIN_AVATAR_R2_SECRET_ACCESS_KEY_FILE` | Đường dẫn file UTF-8 chỉ chứa Secret Access Key, thay cho biến trực tiếp tương ứng |
+
+Mỗi credential chọn một nguồn: biến trực tiếp hoặc `*_FILE`. Có thể dùng cả
+hai file hoặc phối hợp một credential trực tiếp và một credential từ file.
+Không đặt đồng thời biến trực tiếp và `*_FILE` của cùng credential; backend
+từ chối cấu hình xung đột. File không đọc được, trống hoặc sai định dạng cũng
+làm startup thất bại; thông báo không chứa đường dẫn, nội dung hay nested cause.
+Dòng mới CR/LF cuối giá trị được bỏ theo helper secret hiện có; không thêm
+khoảng trắng vào credential.
+
+Ví dụ chỉ dùng file mount cho hai credential:
+
+```text
+FASTTOWIN_AVATAR_R2_ACCESS_KEY_ID_FILE=/run/secrets/avatar-r2-access-key-id
+FASTTOWIN_AVATAR_R2_SECRET_ACCESS_KEY_FILE=/run/secrets/avatar-r2-secret-access-key
+```
+
+Mỗi file trên chỉ chứa giá trị của một credential, không phải toàn bộ file
+`credentials.env` nhiều biến do wizard chuẩn bị.
 
 R2 cần PostgreSQL để lưu metadata và cleanup bền vững. Cấu hình thiếu/sai làm
 startup thất bại bằng thông báo chỉ nêu tên biến, không in giá trị. Endpoint
@@ -60,7 +80,8 @@ R2 bật mà upload lỗi sẽ trả thất bại, không tự ghi fallback DB. 
 commit thành công mới xóa blob legacy hiện hành. `avatar_url` vẫn là cosmetic ID.
 
 Đổi `FASTTOWIN_AVATAR_STORAGE=database` chỉ đổi nơi ghi ảnh mới. Giữ cả bốn
-biến R2 để backend vẫn đọc metadata R2 đã lưu và chạy cleanup. Nếu bỏ credential
+giá trị R2 (Account ID/bucket và hai credential trực tiếp hoặc qua `*_FILE`)
+để backend vẫn đọc metadata R2 đã lưu và chạy cleanup. Nếu bỏ credential
 khi còn metadata thì ảnh R2 trả 503; không tự quay về blob cũ. Rollback binary
 phải giữ service đọc metadata R2 và migration additive V61.
 

@@ -1,5 +1,7 @@
 package com.hienthai.fastowin.server.avatars
 
+import com.hienthai.fastowin.server.readEnvironmentSecret
+
 enum class AvatarStorageMode { DATABASE, R2 }
 
 // Credential-bearing configuration intentionally has no generated toString/copy/component functions.
@@ -12,14 +14,29 @@ class AvatarStorageConfiguration(val mode: AvatarStorageMode, val r2: R2AvatarCo
     }
     override fun toString() = "AvatarStorageConfiguration(mode=$mode)"
     companion object {
-        fun fromEnvironment(values: Map<String, String> = System.getenv()): AvatarStorageConfiguration {
+        private fun credential(name: String, values: Map<String, String>, fileReader: (String) -> String): String? =
+            try {
+                readEnvironmentSecret(name, values, fileReader)
+            } catch (_: IllegalArgumentException) {
+                // The shared helper can attach an unsafe file path/cause. Keep avatar startup errors value-free.
+                throw IllegalArgumentException("Could not resolve $name or ${name}_FILE; configure one readable source.")
+            }
+
+        fun fromEnvironment(
+            values: Map<String, String> = System.getenv(),
+            fileReader: (String) -> String = { java.nio.file.Files.readString(java.nio.file.Path.of(it)) }
+        ): AvatarStorageConfiguration {
             val mode = when (values["FASTTOWIN_AVATAR_STORAGE"] ?: "database") {
                 "database" -> AvatarStorageMode.DATABASE
                 "r2" -> AvatarStorageMode.R2
                 else -> throw IllegalArgumentException("FASTTOWIN_AVATAR_STORAGE must be database or r2.")
             }
-            val names = listOf("ACCOUNT_ID", "BUCKET", "ACCESS_KEY_ID", "SECRET_ACCESS_KEY")
-            val supplied = names.map { values["FASTTOWIN_AVATAR_R2_$it"] }
+            val supplied = listOf(
+                values["FASTTOWIN_AVATAR_R2_ACCOUNT_ID"],
+                values["FASTTOWIN_AVATAR_R2_BUCKET"],
+                credential("FASTTOWIN_AVATAR_R2_ACCESS_KEY_ID", values, fileReader),
+                credential("FASTTOWIN_AVATAR_R2_SECRET_ACCESS_KEY", values, fileReader)
+            )
             if (mode == AvatarStorageMode.DATABASE && supplied.all { it == null }) return AvatarStorageConfiguration(mode, null)
             require(supplied.all { !it.isNullOrBlank() }) { "Complete FASTTOWIN_AVATAR_R2 configuration is required." }
             val (account, bucket, access, secret) = supplied.map { it!! }
