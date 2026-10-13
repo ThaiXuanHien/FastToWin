@@ -7,12 +7,12 @@ import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.platform.LocalContext
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
 
@@ -24,26 +24,30 @@ actual fun ImagePicker(
     val resolver = LocalContext.current.contentResolver
     val scope = rememberCoroutineScope()
     val currentCallback = rememberUpdatedState(onImageSelected)
+    val preparation = remember(scope, resolver) {
+        AvatarPreparationCoordinator(
+            scope = scope,
+            prepare = { uri: Uri ->
+                withContext(Dispatchers.IO) { prepareAndroidAvatar(resolver, uri) }
+            },
+            onResult = { bytes -> currentCallback.value(bytes) }
+        )
+    }
+    DisposableEffect(preparation) {
+        onDispose(preparation::cancel)
+    }
     val launcher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
         if (uri == null) {
+            preparation.cancel()
             currentCallback.value(null)
-            return@rememberLauncherForActivityResult
-        }
-        scope.launch {
-            val bytes = try {
-                withContext(Dispatchers.IO) { prepareAndroidAvatar(resolver, uri) }
-            } catch (cancelled: CancellationException) {
-                throw cancelled
-            } catch (_: Exception) {
-                null
-            }
-            currentCallback.value(bytes)
+        } else {
+            preparation.select(uri)
         }
     }
 
-    content { launcher.launch("image/*") }
+    content { preparation.cancel(); launcher.launch("image/*") }
 }
 
 private fun prepareAndroidAvatar(resolver: ContentResolver, uri: Uri): ByteArray? {

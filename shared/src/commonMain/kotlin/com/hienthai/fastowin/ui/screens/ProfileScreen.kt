@@ -227,8 +227,7 @@ fun ProfileScreen(
     var showAccountSecurity by remember { mutableStateOf(false) }
     var showAccountSessions by remember { mutableStateOf(false) }
     var showLogoutConfirmation by remember { mutableStateOf(false) }
-    var pendingAvatarBytes by remember(profile?.userId) { mutableStateOf<ByteArray?>(null) }
-    var pendingAvatarBitmap by remember(profile?.userId) { mutableStateOf<ImageBitmap?>(null) }
+    val avatarSelection = remember(profile?.userId, isEditing) { AvatarEditSelection<ImageBitmap>() }
     var isPlayerCodeCopied by remember(profile?.playerCode) { mutableStateOf(false) }
     if (!isExternalProfile && showAccountSecurity) {
         AccountSecurityDialog(
@@ -302,8 +301,7 @@ fun ProfileScreen(
     LaunchedEffect(state.profileNotice) {
         if (state.profileNotice != null) {
             isEditing = false
-            pendingAvatarBytes = null
-            pendingAvatarBitmap = null
+            avatarSelection.clear()
         }
     }
     LaunchedEffect(isPlayerCodeCopied) {
@@ -374,8 +372,7 @@ fun ProfileScreen(
             sessionStartedAtMillis = sessionStartedAtMillis,
             onEdit = {
                 if (isEditing) {
-                    pendingAvatarBytes = null
-                    pendingAvatarBitmap = null
+                    avatarSelection.clear()
                 }
                 isEditing = !isEditing
             },
@@ -411,7 +408,7 @@ fun ProfileScreen(
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth().testTag("profile_display_name")
                     )
-                    pendingAvatarBitmap?.let { bitmap ->
+                    avatarSelection.preview?.let { bitmap ->
                         Box(
                             modifier = Modifier.fillMaxWidth().testTag("profile_avatar_preview"),
                             contentAlignment = Alignment.Center
@@ -435,22 +432,23 @@ fun ProfileScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(localized(TextKey.Avatar), fontWeight = FontWeight.Medium)
-                        imagePicker(
-                            { bytes ->
-                                if (bytes != null) {
-                                    val bitmap = runCatching { bytes.toImageBitmap() }.getOrNull()
-                                    if (bitmap != null) {
-                                        pendingAvatarBytes = bytes
-                                        pendingAvatarBitmap = bitmap
-                                    }
+                        key(avatarSelection) {
+                            imagePicker(
+                                { bytes ->
+                                    val bitmap = bytes?.let { runCatching { it.toImageBitmap() }.getOrNull() }
+                                    avatarSelection.finishPreparation(bytes, bitmap)
                                 }
-                            }
-                        ) { onClick ->
-                            TextButton(
-                                onClick = onClick,
-                                modifier = Modifier.testTag("profile_avatar_picker")
-                            ) {
-                                Text(localized(TextKey.UploadImage))
+                            ) { onClick ->
+                                TextButton(
+                                    onClick = {
+                                        avatarSelection.beginPreparation()
+                                        onClick()
+                                    },
+                                    enabled = !state.isProfileSaving,
+                                    modifier = Modifier.testTag("profile_avatar_picker")
+                                ) {
+                                    Text(localized(if (avatarSelection.isPreparing) TextKey.Processing else TextKey.UploadImage))
+                                }
                             }
                         }
                     }
@@ -459,12 +457,17 @@ fun ProfileScreen(
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         ArcadeActionButton(
-                            label = if (state.isProfileSaving) localized(TextKey.Saving) else localized(TextKey.Save),
+                            label = localized(
+                                when {
+                                    state.isProfileSaving -> TextKey.Saving
+                                    avatarSelection.isPreparing -> TextKey.Processing
+                                    else -> TextKey.Save
+                                }
+                            ),
                             onClick = {
-                                pendingAvatarBytes?.let(onUploadAvatar)
-                                onSave(displayName, profile.avatarId)
+                                avatarSelection.save(displayName, profile.avatarId, state.isProfileSaving, onUploadAvatar, onSave)
                             },
-                            enabled = displayName.isNotBlank() && !state.isProfileSaving,
+                            enabled = avatarSelection.canSave(displayName, state.isProfileSaving),
                             modifier = Modifier.fillMaxWidth(),
                             style = ArcadeActionStyle.GOLD
                         )
@@ -472,8 +475,7 @@ fun ProfileScreen(
                             label = localized(TextKey.Cancel),
                             onClick = {
                                 displayName = profile.displayName
-                                pendingAvatarBytes = null
-                                pendingAvatarBitmap = null
+                                avatarSelection.clear()
                                 isEditing = false
                             },
                             enabled = !state.isProfileSaving,
