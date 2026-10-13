@@ -9,6 +9,7 @@ import com.hienthai.fastowin.localization.AppLanguage
 import com.hienthai.fastowin.localization.LocalizationService
 import com.hienthai.fastowin.localization.LocalizedMessageMapper
 import com.hienthai.fastowin.localization.TextKey
+import com.hienthai.fastowin.platform.AVATAR_UPLOAD_MAX_BYTES
 import com.hienthai.fastowin.platform.epochMillis
 import com.hienthai.fastowin.platform.RewardedAdReceipt
 import com.hienthai.fastowin.protocol.ClientMessage
@@ -411,8 +412,14 @@ class GameController private constructor(
     }
 
     @OptIn(ExperimentalEncodingApi::class)
-    fun updateAvatar(base64: ByteArray) {
-        val base64String = Base64.Default.encode(base64)
+    fun updateAvatar(bytes: ByteArray) {
+        if (bytes.isEmpty() || bytes.size > AVATAR_UPLOAD_MAX_BYTES) {
+            _uiState.update {
+                it.copy(profileNotice = null, error = messageMapper.text(TextKey.InvalidAvatar))
+            }
+            return
+        }
+        val base64String = Base64.Default.encode(bytes)
         _uiState.update { it.copy(isProfileSaving = true, profileNotice = null, error = null) }
         scope.launch { socket.sendMessage(ClientMessage.UpdateAvatar(base64String)) }
     }
@@ -1052,7 +1059,9 @@ class GameController private constructor(
             is ServerMessage.SessionReady -> {
                 val wasRecoveringRoom = _uiState.value.currentRoomId != null
                 playerId = message.playerId
-                _uiState.update { it.withReadySession(message.playerId) }
+                _uiState.update {
+                    it.withReadySession(message.playerId).copy(avatarRevision = it.avatarRevision + 1)
+                }
                 if (accountDisplayName == null) dispatchPendingGiftProfileRefresh()
                 if (_uiState.value.isTournamentOpen) refreshPublicTournaments()
                 startLatencyMonitoring()
@@ -1145,7 +1154,7 @@ class GameController private constructor(
                     }
                     state.copy(
                         profile = message.profile,
-                        avatarRevision = if (wasSaving) state.avatarRevision + 1 else state.avatarRevision,
+                        avatarRevision = state.avatarRevision + 1,
                         player = state.player.copy(
                             name = message.profile.displayName,
                             id = message.profile.userId,

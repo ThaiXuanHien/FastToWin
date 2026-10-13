@@ -3,6 +3,7 @@ package com.hienthai.fastowin.state
 import com.hienthai.fastowin.localization.AppLanguage
 import com.hienthai.fastowin.localization.LocalizationService
 import com.hienthai.fastowin.localization.LocalizedMessageMapper
+import com.hienthai.fastowin.data.network.toAvatarImageUrl
 import com.hienthai.fastowin.data.network.InMemoryResumeTokenStore
 import com.hienthai.fastowin.data.network.SocketSession
 import com.hienthai.fastowin.data.network.SocketTransport
@@ -56,11 +57,112 @@ import kotlinx.serialization.encodeToString
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class GameStateTest {
+    @Test
+    fun `avatar upload accepts exactly 45 KiB without exceeding websocket frame budget`() = runTest {
+        val fixture = publicTournamentFixture()
+        try {
+            fixture.session.server(ServerMessage.SessionReady("player-1"))
+            runCurrent()
+            fixture.controller.updateAvatar(ByteArray(45 * 1024))
+            runCurrent()
+            val upload = fixture.session.sent.filterIsInstance<ClientMessage.UpdateAvatar>().single()
+            assertTrue(ProtocolJson.encodeToString<ClientMessage>(upload).length < 64 * 1024)
+            assertTrue(fixture.controller.uiState.value.isProfileSaving)
+            assertNull(fixture.controller.uiState.value.error)
+        } finally { fixture.controller.close() }
+    }
+
+    @Test
+    fun `empty and oversized avatar bytes fail locally without sending or entering saving state`() = runTest {
+        for (size in listOf(0, 45 * 1024 + 1)) {
+            val fixture = publicTournamentFixture()
+            try {
+                fixture.session.server(ServerMessage.SessionReady("player-1"))
+                runCurrent()
+                fixture.controller.updateAvatar(ByteArray(size))
+                runCurrent()
+                assertTrue(fixture.session.sent.none { it is ClientMessage.UpdateAvatar }, "Sent invalid size $size")
+                assertFalse(fixture.controller.uiState.value.isProfileSaving)
+                assertTrue(!fixture.controller.uiState.value.error.isNullOrBlank())
+            } finally { fixture.controller.close() }
+        }
+    }
+
+    @Test
+    fun `rejected avatar bytes preserve an existing in-flight save`() = runTest {
+        val fixture = publicTournamentFixture()
+        try {
+            fixture.session.server(ServerMessage.SessionReady("player-1"))
+            runCurrent()
+            fixture.controller.updateAvatar(ByteArray(1024))
+            runCurrent()
+            fixture.controller.updateAvatar(ByteArray(45 * 1024 + 1))
+            runCurrent()
+            assertEquals(1, fixture.session.sent.filterIsInstance<ClientMessage.UpdateAvatar>().size)
+            assertTrue(fixture.controller.uiState.value.isProfileSaving)
+            assertTrue(!fixture.controller.uiState.value.error.isNullOrBlank())
+            val profile = PlayerProfileSnapshot(userId = "player-1", displayName = "Player", playerCode = "PLAYER01")
+            fixture.session.server(ServerMessage.ProfileData(profile, isBackgroundRefresh = true))
+            runCurrent()
+            assertTrue(fixture.controller.uiState.value.isProfileSaving)
+            fixture.session.server(ServerMessage.ProfileData(profile))
+            runCurrent()
+            assertFalse(fixture.controller.uiState.value.isProfileSaving)
+            assertNull(fixture.controller.uiState.value.error)
+            assertTrue(!fixture.controller.uiState.value.profileNotice.isNullOrBlank())
+        } finally { fixture.controller.close() }
+    }
+
+    @Test
+    fun `authoritative profile refresh changes avatar URL even when no save is pending`() = runTest {
+        val fixture = publicTournamentFixture()
+        try {
+            fixture.session.server(ServerMessage.SessionReady("player-1"))
+            runCurrent()
+            val profile = PlayerProfileSnapshot(userId = "player-1", displayName = "Player", playerCode = "PLAYER01")
+            for (background in listOf(false, true)) {
+                val oldRevision = fixture.controller.uiState.value.avatarRevision
+                fixture.session.server(ServerMessage.ProfileData(profile, isBackgroundRefresh = background))
+                runCurrent()
+                assertNotEquals(
+                    "ws://test".toAvatarImageUrl("player-1", oldRevision),
+                    "ws://test".toAvatarImageUrl("player-1", fixture.controller.uiState.value.avatarRevision)
+                )
+                assertFalse(fixture.controller.uiState.value.isProfileSaving)
+            }
+        } finally { fixture.controller.close() }
+    }
+
+    @Test
+    fun `reconnected session refreshes avatar URL and requests authoritative profile`() = runTest {
+        val fixture = publicTournamentFixture()
+        try {
+            fixture.session.server(ServerMessage.SessionReady("player-1"))
+            fixture.session.server(ServerMessage.ProfileData(PlayerProfileSnapshot(
+                userId = "player-1", displayName = "Player", playerCode = "PLAYER01")))
+            runCurrent()
+            val oldRevision = fixture.controller.uiState.value.avatarRevision
+            fixture.session.close()
+            runCurrent()
+            advanceTimeBy(1_000)
+            runCurrent()
+            val replacement = fixture.transport.sessions.last()
+            replacement.server(ServerMessage.SessionReady("player-1"))
+            runCurrent()
+            assertNotEquals(
+                "ws://test".toAvatarImageUrl("player-1", oldRevision),
+                "ws://test".toAvatarImageUrl("player-1", fixture.controller.uiState.value.avatarRevision)
+            )
+            assertEquals(1, replacement.sent.filterIsInstance<ClientMessage.GetProfile>().size)
+        } finally { fixture.controller.close() }
+    }
+
     @Test
     fun `maintenance rematch rejection clears pending action and gives localized new room recovery`() {
         val error = ServerMessage.Error("MAINTENANCE_REMATCH_UNAVAILABLE", "legacy")
