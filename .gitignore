@@ -47,3 +47,6 @@ server/firebase-adminsdk.json
 /debug.log
 /e2e/.artifacts/
 /.agents/skills/ui-ux-pro-max/scripts/__pycache__/
+
+# Local caches for staging operation helpers
+/scripts/__pycache__/

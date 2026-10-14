@@ -1,15 +1,20 @@
 # Lựa chọn gói hạ tầng — FastToWin, 12/10/2026
 
-Phạm vi đã chốt: **tài liệu và checklist chọn gói trước** cho #6, #11,
-#12 → #15 và email đăng ký. Chưa mua gói, tạo tài nguyên, đổi provider hoặc cấu
-hình production. Giá tham khảo USD đối chiếu nguồn chính thức ngày 12/10/2026,
+Phạm vi ban đầu: **tài liệu và checklist chọn gói trước** cho #6, #11,
+#12 → #15 và email đăng ký. Tại thời điểm lập lựa chọn, chưa mua gói, tạo tài
+nguyên hoặc đổi provider. Kết quả triển khai sau khi duyệt được ghi bên dưới. Giá tham khảo USD đối chiếu nguồn chính thức ngày 12/10/2026,
 chưa gồm thuế/phí thanh toán; cần xác nhận lại tại checkout theo tài khoản,
 vùng và chu kỳ thanh toán. Các ví dụ tải/chi phí bên dưới là giả định để chọn,
 không phải số đo hay hóa đơn hiện tại của FastToWin.
 
 Ưu tiên chủ dự án bổ sung: chọn **free hoặc chi phí thấp nhất đáp ứng nhu cầu**;
 triển khai hạ tầng sau task quà Gem/badge #34 và lỗi bàn phím PWA #35. Chưa chốt
-ngân sách hoặc mua gói; so sánh Pro bên dưới là phương án để cân nhắc khi public.
+ngân sách cho avatar/Redis/email; so sánh Pro bên dưới là phương án để cân nhắc khi public.
+
+Cập nhật triển khai 12/10: chủ dự án đã nâng **Hobby trả phí** và đồng ý staging
+theo đợt. Staging dùng project riêng để tránh API áp dụng cấu hình qua nhiều
+environment. Xem [runbook và bằng chứng staging](staging-rehearsal.md). Các phần
+avatar, Redis và email trong tài liệu này vẫn là lựa chọn, chưa tự mua/chuyển.
 
 ## 1. Chọn nhanh theo giai đoạn
 
@@ -21,11 +26,11 @@ tế để cam kết sức chứa người chơi. Xem [hướng dẫn deploy](ra
 | Giai đoạn | Bộ gói đề xuất | Khi cần chuyển bước |
 | --- | --- | --- |
 | Alpha/test ít người, một người vận hành | Railway **Hobby**; một backend + web + PostgreSQL; staging chỉ bật theo đợt; **Brevo Free** nếu mọi email còn dư hạn mức | Sắp phát hành công khai/thu tiền, cần tính năng Pro hoặc email gần chạm trần |
-| Phát hành công khai, chuẩn bị Google Play | Railway **Pro**; vẫn một backend; staging theo đợt hoặc liên tục tùy ngân sách; **Brevo Starter theo lượng gửi tháng** | Tải đo được vượt khả năng service, email tăng ổn định hoặc cần nhiều backend |
+| Phát hành công khai, chuẩn bị Google Play | Railway **Hobby** trước; chọn Pro khi cần tính năng/giới hạn của Pro; vẫn một backend; staging theo đợt; **Brevo Starter theo lượng gửi tháng** | Tải đo được vượt khả năng service, email tăng ổn định hoặc cần nhiều backend |
 | Mở rộng sau khi có số đo | Pro + **R2 Standard** cho avatar; Redis Railway hoặc **Upstash Fixed 250 MB** nếu phù hợp tải; email so sánh Brevo với **Resend Pro/SES** | Chỉ tăng replica sau khi #12/#15 đạt nghiệm thu hai instance |
 
 Đề xuất cho project lúc này: hoàn thành staging theo đợt trước, giữ Brevo HTTPS;
-chọn Pro khi chuẩn bị public. Avatar và Redis triển khai riêng sau khi chọn
+giữ Hobby đến khi số đo hoặc tính năng vận hành yêu cầu nâng gói. Avatar và Redis triển khai riêng sau khi chọn
 dịch vụ. Chưa có căn cứ mua Enterprise, Redis lớn hoặc tăng backend ngay.
 
 ### Railway: gói và cách dự trù
@@ -67,10 +72,12 @@ trong workspace ngừng chạy**; environment staging chung workspace không có
 
 ## 2. Staging riêng (#6)
 
-**Chọn đề xuất:** environment `staging` trên Railway, một backend + web +
-PostgreSQL riêng, chạy khi diễn tập. Cùng phiên bản production nhưng dữ liệu,
-tài khoản và bí mật riêng. Duplicate Environment có thể sao chép cả biến và
-tham chiếu; phải kiểm tra trước deploy. [Environments](https://docs.railway.com/environments).
+**Đã triển khai:** project riêng `FastToWin Staging`, chỉ một environment
+`staging`; backend + web + PostgreSQL + Mailpit riêng, chạy theo đợt. Dùng
+artifact đã kiểm chứng, dữ liệu mẫu, tài khoản và bí mật riêng. Không duplicate
+environment production vì có thể sao chép biến/tham chiếu. Project riêng cũng
+tránh tác động chéo từ API cấu hình service qua nhiều environment. Đợt đầu
+đã hoàn tất và dừng compute; xem [bằng chứng và cách chạy lại](staging-rehearsal.md). [Environments](https://docs.railway.com/environments).
 
 | Lựa chọn | Khi phù hợp | Chi phí/vận hành |
 | --- | --- | --- |
@@ -84,15 +91,15 @@ Backend realtime production cần chạy liên tục. Không dựa vào Serverle
 
 Checklist chuẩn bị và nghiệm thu:
 
-- [ ] Chọn giờ bật staging/tháng, vùng gần production, domain Railway hoặc
+- [x] Chọn giờ bật staging/tháng, vùng gần production, domain Railway hoặc
   subdomain riêng; chưa cần mua domain để bắt đầu. Không đổi vùng production
   chỉ để làm staging.
-- [ ] DB/volume, Owner test, JWT/CSRF, cookie/origin và client trỏ riêng; dùng
+- [x] DB/volume, Owner test, JWT/CSRF, cookie/origin và client trỏ riêng; dùng
   dữ liệu mẫu, email sink, push tắt và provider sandbox/tắt.
-- [ ] Backup có checksum/chính sách lưu; restore **thực sự** vào DB cách ly rồi
+- [x] Backup có checksum/chính sách lưu; restore **thực sự** vào DB cách ly rồi
   kiểm tra schema, tài khoản, ví; ghi lại thời gian phục hồi/lượng dữ liệu có thể mất.
-- [ ] Diễn tập planned/emergency maintenance, drain/reconnect và về ACTIVE.
-- [ ] Deploy rồi rollback backend/web đồng bộ, xác minh tương thích schema;
+- [x] Diễn tập planned/emergency maintenance, drain/reconnect và về ACTIVE.
+- [x] Deploy rồi rollback backend/web đồng bộ, xác minh tương thích schema;
   lưu bằng chứng không chứa bí mật, tắt staging sau khi xong nếu chọn theo đợt.
 
 ## 3. Avatar object storage/CDN (#11)
@@ -248,7 +255,8 @@ vi này; checklist trên là đầu việc cho giai đoạn sau khi chọn gói.
 
 ## 6. Phiếu quyết định trước triển khai
 
-- [ ] Railway: **Hobby / Pro**; ngân sách toàn workspace `___ USD/tháng`;
+- [x] Railway: **Hobby trả phí** do chủ dự án kích hoạt 12/10/2026; staging theo đợt.
+- [ ] Ngân sách toàn workspace `___ USD/tháng`;
   ngưỡng cảnh báo mềm `___`; đã hiểu tác động downtime nếu đặt hard limit.
 - [ ] Staging: **theo đợt / liên tục**; `___ giờ/tháng`; vùng `___`;
   ai truy cập `___`; thời gian phục hồi và mức mất dữ liệu chấp nhận `___`.
@@ -262,5 +270,6 @@ vi này; checklist trên là đầu việc cho giai đoạn sau khi chọn gói.
 - [ ] Xác nhận các con số bằng usage thực tế; chọn từng phần rồi mới tạo tài
   nguyên/tích hợp/diễn tập và cập nhật bằng chứng vào issue tương ứng.
 
-Không cần quyết định tất cả cùng lúc. Bước đầu phù hợp nhất là chọn Railway và
-cách chạy staging; email ưu tiên nâng Brevo khi lượng gửi chứng minh cần thiết.
+Không cần quyết định tất cả cùng lúc. Railway Hobby và staging theo đợt đã
+được chọn; bước kế tiếp là avatar. Email ưu tiên nâng Brevo khi lượng gửi
+chứng minh cần thiết.
