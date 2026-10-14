@@ -65,6 +65,55 @@ import kotlin.test.assertTrue
 @OptIn(ExperimentalCoroutinesApi::class)
 class GameStateTest {
     @Test
+    fun `daily reward refresh cannot acknowledge avatar or hide a later profile write failure`() = runTest {
+        assertRewardRefreshDuringSave(ServerMessage.DailyCheckInResult(true, 5, 10), profileFails = true)
+    }
+
+    @Test
+    fun `mission reward refresh cannot complete a paired save before its profile acknowledgement`() = runTest {
+        assertRewardRefreshDuringSave(ServerMessage.MissionRewardResult("DAILY_WIN_1", true, 15, 20), profileFails = false)
+    }
+
+    private suspend fun TestScope.assertRewardRefreshDuringSave(reward: ServerMessage, profileFails: Boolean) {
+        val fixture = publicTournamentFixture()
+        try {
+            fixture.session.server(ServerMessage.SessionReady("player-1"))
+            runCurrent()
+            fixture.controller.saveProfile("New name", null, byteArrayOf(7))
+            runCurrent()
+            val profile = PlayerProfileSnapshot(userId = "player-1", displayName = "Old name", playerCode = "PLAYER01")
+            fixture.session.server(ServerMessage.ProfileData(profile, isBackgroundRefresh = true))
+            fixture.session.server(reward)
+            runCurrent()
+            assertTrue(fixture.controller.uiState.value.isProfileSaving)
+            assertTrue(fixture.session.sent.none { it is ClientMessage.UpdateProfile })
+            // Only the avatar write's foreground reply admits the companion write.
+            fixture.session.server(ServerMessage.ProfileData(profile))
+            runCurrent()
+            assertEquals(1, fixture.session.sent.filterIsInstance<ClientMessage.UpdateProfile>().size)
+            assertTrue(fixture.controller.uiState.value.isProfileSaving)
+            fixture.session.server(ServerMessage.ProfileData(profile, isBackgroundRefresh = true))
+            runCurrent()
+            assertTrue(fixture.controller.uiState.value.isProfileSaving)
+            assertNull(fixture.controller.uiState.value.profileNotice)
+            if (profileFails) {
+                fixture.session.server(ServerMessage.Error("PROFILE_UPDATE_UNAVAILABLE", "Profile write failed"))
+            } else {
+                fixture.session.server(ServerMessage.ProfileData(profile.copy(displayName = "New name")))
+            }
+            runCurrent()
+            assertFalse(fixture.controller.uiState.value.isProfileSaving)
+            if (profileFails) {
+                assertTrue(!fixture.controller.uiState.value.profileSaveError.isNullOrBlank())
+                assertNull(fixture.controller.uiState.value.profileNotice)
+            } else {
+                assertNull(fixture.controller.uiState.value.profileSaveError)
+                assertTrue(!fixture.controller.uiState.value.profileNotice.isNullOrBlank())
+            }
+        } finally { fixture.controller.close() }
+    }
+
+    @Test
     fun `paired avatar upload failure remains visible after successful profile and later refreshes`() = runTest {
         assertPairedAvatarFailure("UPLOAD_FAILED")
     }

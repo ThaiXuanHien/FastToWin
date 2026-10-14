@@ -70,7 +70,13 @@ class AvatarRoutesTest {
             while (next() !is ServerMessage.RoomList) { }
             send(ClientMessage.UpdateAvatar(imageBase64()))
             send(ClientMessage.ListRooms)
-            while (next() !is ServerMessage.RoomList) { }
+            var avatarAcknowledgement: ServerMessage.ProfileData? = null
+            var response = next()
+            while (response !is ServerMessage.RoomList) {
+                if (response is ServerMessage.ProfileData) avatarAcknowledgement = response
+                response = next()
+            }
+            assertFalse(assertNotNull(avatarAcknowledgement).isBackgroundRefresh)
             assertEquals(setOf(owner.userId), writes.keys)
             val previous = writes[owner.userId]
             send(ClientMessage.UpdateAvatar(imageBase64(50)))

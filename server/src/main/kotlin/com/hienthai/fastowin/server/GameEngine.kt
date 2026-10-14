@@ -570,7 +570,7 @@ class GameEngine(
         }
         // Admission for economic/profile/social work is short; accepted atomic work may finish.
         if (mutex.withLock { !message.allowedDuringMaintenance(maintenancePolicy) }) return listOf(maintenanceError(playerId))
-        if (message is ClientMessage.GetProfile) return loadProfile(playerId)
+        if (message is ClientMessage.GetProfile) return loadProfile(playerId, isBackgroundRefresh = false)
         if (message is ClientMessage.GetPlayQuota) return loadPlayQuota(playerId)
         if (message is ClientMessage.ClaimRewardedAdBonus) return claimRewardedAdBonus(playerId, message)
         if (message is ClientMessage.AcknowledgeSeasonReward) {
@@ -2287,7 +2287,8 @@ class GameEngine(
     private fun com.hienthai.fastowin.protocol.PlayQuotaSnapshot.withRewardedAdAvailability() =
         copy(rewardedAdAvailability = this@GameEngine.rewardedAdAvailability)
 
-    private suspend fun loadProfile(playerId: String, isBackgroundRefresh: Boolean = false): List<Delivery> {
+    // Indirect balance/reward/clan snapshots must not acknowledge an unrelated profile write.
+    private suspend fun loadProfile(playerId: String, isBackgroundRefresh: Boolean = true): List<Delivery> {
         val session = mutex.withLock { sessionsByPlayerId[playerId]?.copy() }
             ?: return listOf(error(playerId, "SESSION_NOT_FOUND", legacyFallback("Phiên chơi không còn hợp lệ.")))
         if (session.resumeToken == null) {
@@ -2645,7 +2646,7 @@ class GameEngine(
             roomFor(playerId)?.id
         }
         activeRoomId?.let { persistRoom(it) }
-        return loadProfile(playerId)
+        return loadProfile(playerId, isBackgroundRefresh = false)
     }
 
     private suspend fun updateProfile(
@@ -2705,7 +2706,7 @@ class GameEngine(
             roomFor(playerId)?.id
         }
         activeRoomId?.let { persistRoom(it) }
-        return loadProfile(playerId) + Delivery(roomList()) + presenceUpdates(playerId)
+        return loadProfile(playerId, isBackgroundRefresh = false) + Delivery(roomList()) + presenceUpdates(playerId)
     }
 
     private suspend fun updatePushPreferences(
@@ -2719,7 +2720,7 @@ class GameEngine(
             System.err.println("Could not update push preferences for $playerId: ${error.message}")
         }.getOrDefault(false)
         return if (updated) {
-            loadProfile(playerId)
+            loadProfile(playerId, isBackgroundRefresh = false)
         } else {
             listOf(error(
                 playerId,
@@ -4725,7 +4726,7 @@ class GameEngine(
     private suspend fun updateAvatar(playerId: String, base64: String): List<Delivery> {
         val success = avatarService.upload(playerId, base64)
         if (success) {
-            return loadProfile(playerId)
+            return loadProfile(playerId, isBackgroundRefresh = false)
         }
         return listOf(error(playerId, "UPLOAD_FAILED", legacyFallback("Không thể tải ảnh đại diện lên.")))
     }
@@ -4748,7 +4749,7 @@ class GameEngine(
                 }
                 activeRoomId?.let { persistRoom(it) }
             }
-            return loadProfile(playerId)
+            return loadProfile(playerId, isBackgroundRefresh = false)
         }
         return emptyList()
     }

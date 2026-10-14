@@ -297,8 +297,9 @@ fun ProfileScreen(
             if (!isEditing) displayName = it.displayName
         }
     }
-    LaunchedEffect(state.profileNotice) {
-        if (state.profileNotice != null) {
+    val profileSavedNotice = localized(TextKey.ProfileSaved)
+    LaunchedEffect(state.profileNotice, profileSavedNotice) {
+        if (state.profileNotice == profileSavedNotice) {
             isEditing = false
             avatarSelection.clear()
         }

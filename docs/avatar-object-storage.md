@@ -130,6 +130,18 @@ Save cho phép retry, Save bị khóa trong 2,5 giây decode và không tràn ng
 Controller đã xem ảnh chụp retry sau reconnect ở cả hai kích thước; đây vẫn là
 kiểm thử local, không thay thế nghiệm thu R2 thật hoặc thiết bị Android/iOS.
 
+Bổ sung N1 sau review ngày 14/10/2026: snapshot gián tiếp từ thưởng, tài sản,
+giải đấu và bang hội dùng refresh nền, không xác nhận thao tác lưu đang chờ.
+GetProfile và phản hồi ghi profile/avatar/cosmetics/push preferences vẫn là
+foreground. Thông báo nhận thưởng giữ editor và ảnh đã chọn; chỉ thông báo lưu
+hồ sơ thành công mới đóng editor. Fixture screenshot dùng callback ba tham số.
+Lượt kiểm tra mới: **716 backend + 287 client host**, **145 screenshot**, đều
+không failure/error/skip; Android/Web build thành công. **4/4 ca browser** ở
+kích thước phone/desktop đạt, gồm hai ca thông báo daily/mission giữ draft rồi
+lưu thành công và hai ca upload/rate-limit/reconnect; ảnh chụp đã được xem.
+Test browser thông báo thưởng dùng frame test qua WebSocket local; kiểm thử
+engine xác nhận cờ refresh từ các handler thật. Chưa nghiệm thu provider/device.
+
 - [ ] Chủ dự án thực hiện signup/verify, checkout và quyết định budget alert.
 - [ ] Tạo/kiểm tra hai bucket Standard private và token scope/expiry; giữ secret an toàn.
 - [ ] Có ủy quyền staging smoke; đặt các biến staging và PostgreSQL, chỉ sau đó
