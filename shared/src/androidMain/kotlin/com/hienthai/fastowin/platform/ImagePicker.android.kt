@@ -3,6 +3,8 @@ package com.hienthai.fastowin.platform
 import android.content.ContentResolver
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.Canvas
+import android.graphics.Color
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -65,10 +67,23 @@ private fun prepareAndroidAvatar(resolver: ContentResolver, uri: Uri): ByteArray
                 Bitmap.createScaledBitmap(bitmap, width, height, true)
             } else bitmap
             try {
-                ByteArrayOutputStream().use { output ->
-                    if (scaled.compress(Bitmap.CompressFormat.JPEG, (quality * 100).toInt(), output)) {
-                        output.toByteArray()
-                    } else null
+                // JPEG cannot retain alpha. Match the server's white background before encoding.
+                val opaque = if (scaled.hasAlpha()) {
+                    Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888).apply {
+                        Canvas(this).apply {
+                            drawColor(Color.WHITE)
+                            drawBitmap(scaled, 0f, 0f, null)
+                        }
+                    }
+                } else scaled
+                try {
+                    ByteArrayOutputStream().use { output ->
+                        if (opaque.compress(Bitmap.CompressFormat.JPEG, (quality * 100).toInt(), output)) {
+                            output.toByteArray()
+                        } else null
+                    }
+                } finally {
+                    if (opaque !== scaled) opaque.recycle()
                 }
             } finally {
                 if (scaled !== bitmap) scaled.recycle()
