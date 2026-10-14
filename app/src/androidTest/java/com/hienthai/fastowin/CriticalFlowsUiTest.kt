@@ -292,8 +292,7 @@ class CriticalFlowsUiTest {
                     onCloseMatchDetail = {},
                     onEquipCosmetics = { _, _ -> },
                     onClaimMissionReward = {},
-                    onSave = { _, _ -> },
-                    onUploadAvatar = {},
+                    onSave = { _, _, _ -> },
                     canEdit = true,
                     isAccountLoading = false,
                     accountError = null,
@@ -515,7 +514,9 @@ class CriticalFlowsUiTest {
         composeRule.onNodeWithTag("match_type:CASUAL").performClick()
         composeRule.onNodeWithTag("game_mode:ORDER").performClick()
         composeRule.onNodeWithTag("create_room_name").performTextInput("Phòng công khai")
-        composeRule.onNodeWithTag("create_room_submit").performClick()
+        // The IME can shrink the dialog while the name field remains focused.
+        composeRule.onNodeWithTag("create_room_submit")
+            .performScrollTo().assertIsDisplayed().assertIsEnabled().performClick()
 
         composeRule.runOnIdle { assertEquals("Phòng công khai" to "", createdRoom) }
     }

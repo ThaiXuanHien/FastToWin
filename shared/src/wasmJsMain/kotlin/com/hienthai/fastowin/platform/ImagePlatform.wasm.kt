@@ -6,6 +6,9 @@
 package com.hienthai.fastowin.platform
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.graphics.ImageBitmap
 import kotlin.io.encoding.Base64
 import org.jetbrains.compose.resources.decodeToImageBitmap
@@ -15,13 +18,21 @@ actual fun ImagePicker(
     onImageSelected: (ByteArray?) -> Unit,
     content: @Composable (onClick: () -> Unit) -> Unit
 ) {
+    val selections = remember { AvatarSelectionToken() }
+    val currentCallback = rememberUpdatedState(onImageSelected)
+    DisposableEffect(selections) {
+        onDispose(selections::invalidate)
+    }
     content {
+        val selection = selections.next()
         openBrowserImagePicker { dataUrl ->
-            val bytes = dataUrl
-                ?.substringAfter(',', missingDelimiterValue = "")
-                ?.takeIf { it.isNotBlank() }
-                ?.let { encoded -> runCatching { Base64.Default.decode(encoded) }.getOrNull() }
-            onImageSelected(bytes)
+            if (selections.isCurrent(selection)) {
+                val bytes = dataUrl
+                    ?.substringAfter(',', missingDelimiterValue = "")
+                    ?.takeIf { it.isNotBlank() }
+                    ?.let { encoded -> runCatching { Base64.Default.decode(encoded) }.getOrNull() }
+                currentCallback.value(bytes)
+            }
         }
     }
 }
@@ -103,7 +114,7 @@ private fun openBrowserImagePicker(onResult: (String?) -> Unit): Unit = js(
         };
 
         input.oncancel = () => {
-            input.remove();
+            finish(null);
         };
 
         input.click();

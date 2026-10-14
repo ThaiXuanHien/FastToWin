@@ -24,10 +24,10 @@ test('Gold exchange preserves balances and one wallet entry after retry and relo
   await expect(tag(page, 'gem_package_fasttowin_gems_80')).toBeAttached();
   await click(page, tag(page, 'shop_tab:GOLD'));
   const exchange = tag(page, 'gold_exchange:gold_bag');
-  // Compose's transparent DOM omits aria-disabled, so verify the rendered
-  // reason and a real inert canvas click rather than native-DOM enabled state.
+  // Deliberately tap the disabled canvas action and verify it is inert.
+  // Keep geometry checks while opting out of the helper's normal enabled wait.
   await expect(exchange).toContainText('Không đủ Gem.');
-  await click(page, exchange);
+  await click(page, exchange, { allowDisabled: true });
   await expect(tag(page, 'gold_exchange_confirmation')).not.toBeAttached();
   expect(commands).toHaveLength(0);
   const initialGold = await tag(page, 'header_gold').innerText();

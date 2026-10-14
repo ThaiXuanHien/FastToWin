@@ -166,3 +166,70 @@ test('labeled tournament example appears only while focused and empty', async ({
   await click(player.page, tag(player.page, 'arcade_dialog_close'));
   await expect(tournamentName).not.toBeAttached();
 });
+
+
+// Exercise the shared pointer helper independently of server/Compose timing.
+test('canvas click resamples a target that moves after stable bounds were sampled', async ({ page }) => {
+  await page.setContent(`
+    <style>
+      button { position: absolute; left: 20px; top: 160px; width: 200px; height: 44px; }
+      #moving-target { z-index: 2; }
+    </style>
+    <button id="old-position">Other action</button>
+    <button id="moving-target">Intended action</button>
+  `);
+  await page.evaluate(() => {
+    window.clickedAction = null;
+    document.querySelector('#old-position').addEventListener('click', () => { window.clickedAction = 'other'; });
+    const target = document.querySelector('#moving-target');
+    target.addEventListener('click', () => { window.clickedAction = 'intended'; });
+    const readBounds = target.getBoundingClientRect.bind(target);
+    let moved = false;
+    // Protocol bounding-box reads remain stable. The final in-page exposure
+    // read observes the same late layout movement captured in the CI trace.
+    target.getBoundingClientRect = () => {
+      if (!moved) { target.style.top = '105px'; moved = true; }
+      return readBounds();
+    };
+  });
+  await click(page, tag(page, 'moving-target'));
+  expect(await page.evaluate(() => window.clickedAction)).toBe('intended');
+});
+
+test('canvas click waits until an attached control becomes enabled', async ({ page }) => {
+  await page.setContent('<button id="ready-target" disabled style="position:absolute;left:20px;top:160px;width:200px;height:44px">Ready action</button>');
+  await page.evaluate(() => {
+    window.clickedAction = null;
+    const target = document.querySelector('#ready-target');
+    target.addEventListener('click', () => { window.clickedAction = 'ready'; });
+    setTimeout(() => { target.disabled = false; }, 1000);
+  });
+  await click(page, tag(page, 'ready-target'));
+  expect(await page.evaluate(() => window.clickedAction)).toBe('ready');
+});
+
+
+test('canvas click deliberately targets an inert control while retaining geometry checks', async ({ page }) => {
+  await page.setContent(`
+    <style>
+      [role=button] { position: absolute; left: 20px; top: 160px; width: 200px; height: 44px; }
+      #inert-target { z-index: 2; }
+    </style>
+    <div id="old-position" role="button">Other action</div>
+    <div id="inert-target" role="button" aria-disabled="true">Inert action</div>
+  `);
+  await page.evaluate(() => {
+    window.clickedAction = null;
+    document.querySelector('#old-position').addEventListener('click', () => { window.clickedAction = 'other'; });
+    const target = document.querySelector('#inert-target');
+    target.addEventListener('click', () => { window.clickedAction = 'inert'; });
+    const readBounds = target.getBoundingClientRect.bind(target);
+    let moved = false;
+    target.getBoundingClientRect = () => {
+      if (!moved) { target.style.top = '105px'; moved = true; }
+      return readBounds();
+    };
+  });
+  await click(page, tag(page, 'inert-target'), { allowDisabled: true });
+  expect(await page.evaluate(() => window.clickedAction)).toBe('inert');
+});

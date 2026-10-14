@@ -55,10 +55,13 @@ private class IosImagePickerCoordinator(
     private val onImageSelected: (ByteArray?) -> Unit
 ) : NSObject(), PHPickerViewControllerDelegateProtocol {
     private var activePicker: PHPickerViewController? = null
+    private var activeSelection: Long? = null
+    private val selections = AvatarSelectionToken()
     private var disposed = false
 
     fun present() {
         if (disposed || activePicker != null) return
+        val selection = selections.next()
 
         val presenter = topViewController(
             UIApplication.sharedApplication.keyWindow?.rootViewController
@@ -77,38 +80,43 @@ private class IosImagePickerCoordinator(
         }
 
         activePicker = picker
+        activeSelection = selection
         presenter.presentViewController(picker, animated = true, completion = null)
     }
 
     override fun picker(picker: PHPickerViewController, didFinishPicking: List<*>) {
+        val selection = activeSelection ?: return
         activePicker = null
+        activeSelection = null
         picker.delegate = null
         picker.dismissViewControllerAnimated(true, completion = null)
 
         val result = didFinishPicking.firstOrNull() as? PHPickerResult
         if (result == null) {
-            deliver(null)
+            deliver(null, selection)
             return
         }
 
         result.itemProvider.loadDataRepresentationForTypeIdentifier("public.image") { data, _ ->
             val avatarBytes = data?.let(::prepareAvatar)
-            deliver(avatarBytes)
+            deliver(avatarBytes, selection)
         }
     }
 
     fun dispose() {
         disposed = true
+        selections.invalidate()
         activePicker?.apply {
             delegate = null
             dismissViewControllerAnimated(false, completion = null)
         }
         activePicker = null
+        activeSelection = null
     }
 
-    private fun deliver(bytes: ByteArray?) {
+    private fun deliver(bytes: ByteArray?, selection: Long) {
         dispatch_async(dispatch_get_main_queue()) {
-            if (!disposed) onImageSelected(bytes)
+            if (!disposed && selections.isCurrent(selection)) onImageSelected(bytes)
         }
     }
 }

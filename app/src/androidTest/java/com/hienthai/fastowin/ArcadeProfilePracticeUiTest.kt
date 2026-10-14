@@ -187,8 +187,7 @@ class ArcadeProfilePracticeUiTest {
                 onCloseMatchDetail = {},
                 onEquipCosmetics = { _, _ -> },
                 onClaimMissionReward = {},
-                onSave = { _, _ -> },
-                onUploadAvatar = {},
+                onSave = { _, _, _ -> },
                 canEdit = true,
                 isAccountLoading = false,
                 accountError = null,
@@ -234,11 +233,11 @@ class ArcadeProfilePracticeUiTest {
                 onCloseMatchDetail = {},
                 onEquipCosmetics = { _, _ -> },
                 onClaimMissionReward = {},
-                onSave = { name, avatar ->
+                onSave = { name, avatar, bytes ->
                     savedName = name
                     savedAvatar = avatar
+                    assertNull(bytes)
                 },
-                onUploadAvatar = {},
                 canEdit = true,
                 isAccountLoading = false,
                 accountError = null,
@@ -290,8 +289,7 @@ class ArcadeProfilePracticeUiTest {
                 serverUrl = "",
                 state = GameState(profile = profile),
                 onBack = {}, onRefresh = {}, onOpenMatchDetail = {}, onCloseMatchDetail = {},
-                onEquipCosmetics = { _, _ -> }, onClaimMissionReward = {}, onSave = { _, _ -> },
-                onUploadAvatar = {}, canEdit = true, isAccountLoading = false,
+                onEquipCosmetics = { _, _ -> }, onClaimMissionReward = {}, onSave = { _, _, _ -> }, canEdit = true, isAccountLoading = false,
                 accountError = null, accountNotice = null, accountSessions = emptyList(),
                 areSessionsLoading = false, onChangePassword = { _, _ -> }, onDeleteAccount = {},
                 onClearAccountFeedback = {}, onLoadSessions = {}, onRevokeSession = {},
@@ -308,20 +306,22 @@ class ArcadeProfilePracticeUiTest {
         var uploadedAvatar: ByteArray? = null
         var uploadCount = 0
         val selectedAvatar = onePixelPng()
+        val profileState = mutableStateOf(GameState(profile = profileFixture()))
         setAdaptiveContent(360.dp, 720.dp, 1f) {
             ProfileScreen(
                 serverUrl = "",
-                state = GameState(profile = profileFixture()),
+                state = profileState.value,
                 onBack = {},
                 onRefresh = {},
                 onOpenMatchDetail = {},
                 onCloseMatchDetail = {},
                 onEquipCosmetics = { _, _ -> },
                 onClaimMissionReward = {},
-                onSave = { _, _ -> },
-                onUploadAvatar = {
-                    uploadCount += 1
-                    uploadedAvatar = it
+                onSave = { _, _, bytes ->
+                    if (bytes != null) {
+                        uploadCount += 1
+                        uploadedAvatar = bytes
+                    }
                 },
                 imagePicker = { onImageSelected, content ->
                     content { onImageSelected(selectedAvatar) }
@@ -351,11 +351,19 @@ class ArcadeProfilePracticeUiTest {
             assertNull(uploadedAvatar)
         }
 
+        composeRule.runOnIdle {
+            profileState.value = profileState.value.copy(profileNotice = "Đã nhận 10 Vàng + 5 XP.")
+        }
+        composeRule.onNodeWithTag("profile_avatar_preview").assertIsDisplayed()
+        composeRule.onNodeWithTag("profile_display_name").assertExists()
+
         composeRule.onNodeWithText("Lưu").performScrollTo().performClick()
         composeRule.runOnIdle {
             assertEquals(1, uploadCount)
             assertArrayEquals(selectedAvatar, uploadedAvatar)
+            profileState.value = profileState.value.copy(profileNotice = "Đã lưu hồ sơ.")
         }
+        composeRule.onNodeWithTag("profile_display_name").assertDoesNotExist()
     }
 
     @Test
@@ -372,8 +380,7 @@ class ArcadeProfilePracticeUiTest {
                 onCloseMatchDetail = {},
                 onEquipCosmetics = { _, _ -> },
                 onClaimMissionReward = {},
-                onSave = { _, _ -> },
-                onUploadAvatar = { uploadedAvatar = it },
+                onSave = { _, _, bytes -> uploadedAvatar = bytes },
                 imagePicker = { onImageSelected, content ->
                     content { onImageSelected(selectedAvatar) }
                 },

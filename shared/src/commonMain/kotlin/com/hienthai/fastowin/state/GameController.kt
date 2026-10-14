@@ -9,6 +9,7 @@ import com.hienthai.fastowin.localization.AppLanguage
 import com.hienthai.fastowin.localization.LocalizationService
 import com.hienthai.fastowin.localization.LocalizedMessageMapper
 import com.hienthai.fastowin.localization.TextKey
+import com.hienthai.fastowin.platform.AVATAR_UPLOAD_MAX_BYTES
 import com.hienthai.fastowin.platform.epochMillis
 import com.hienthai.fastowin.platform.RewardedAdReceipt
 import com.hienthai.fastowin.protocol.ClientMessage
@@ -97,6 +98,18 @@ class GameController private constructor(
     private val scope = controllerScope ?: CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
     private var playerId: String? = null
+    private enum class EditorSaveStage { WAITING, AVATAR, PROFILE }
+    private data class EditorProfileSave(
+        val profile: ClientMessage.UpdateProfile,
+        val avatar: ClientMessage.UpdateAvatar?,
+        var stage: EditorSaveStage = EditorSaveStage.WAITING
+    )
+    private var editorProfileSave: EditorProfileSave? = null
+    private var editorProfileSaveFailure: String?
+        get() = _uiState.value.profileSaveError
+        set(value) { _uiState.update { it.copy(profileSaveError = value) } }
+    private var pendingProfileRefreshes = 0
+    private var profileRefreshAfterSave = false
     private var profileRefreshAfterGiftPending = false
     private var observedStoreProfileRevision = 0
     private var sessionJob: Job? = null
@@ -249,6 +262,7 @@ class GameController private constructor(
         if (status == ConnectionStatus.RECONNECTING || status == ConnectionStatus.DISCONNECTED ||
             status == ConnectionStatus.TERMINAL
         ) {
+            interruptEditorProfileSave()
             publicTournamentFilterJob?.cancel()
         }
         _uiState.update { state ->
@@ -296,7 +310,7 @@ class GameController private constructor(
                 isFriendsOpen = false,
                 isClanOpen = false,
                 isNotificationsOpen = false,
-                error = null
+                error = editorProfileSaveFailure
             )
         }
         if (sessionJob?.isActive != true) {
@@ -304,13 +318,17 @@ class GameController private constructor(
             return
         }
         if (playerId == null) return
-        scope.launch { socket.sendMessage(ClientMessage.GetProfile) }
+        scope.launch { requestProfileRefresh() }
     }
 
     fun refreshProfile() {
+        if (editorProfileSave != null) {
+            profileRefreshAfterSave = true
+            return
+        }
         if (_uiState.value.isProfileLoading || playerId == null) return
-        _uiState.update { it.copy(isProfileLoading = true, error = null) }
-        scope.launch { socket.sendMessage(ClientMessage.GetProfile) }
+        _uiState.update { it.copy(isProfileLoading = true, error = editorProfileSaveFailure) }
+        scope.launch { requestProfileRefresh() }
     }
 
     fun refreshProfileAfterGiftClaim() {
@@ -389,7 +407,64 @@ class GameController private constructor(
         }
     }
 
+    /** One editor Save, with the existing protocol's two writes serialized by their replies. */
+    @OptIn(ExperimentalEncodingApi::class)
+    fun saveProfile(displayName: String, avatarId: String?, avatarBytes: ByteArray? = null) {
+        if (editorProfileSave != null || _uiState.value.isProfileSaving) return
+        editorProfileSaveFailure = null
+        val safeName = displayName.trim()
+        if (safeName.isEmpty() || safeName.length > MAX_PROFILE_DISPLAY_NAME_LENGTH ||
+            (avatarId != null && avatarId !in PROFILE_AVATAR_IDS)) {
+            updateProfile(displayName, avatarId) // Preserve existing localized validation.
+            return
+        }
+        if (avatarBytes != null && (avatarBytes.isEmpty() || avatarBytes.size > AVATAR_UPLOAD_MAX_BYTES)) {
+            updateAvatar(avatarBytes)
+            return
+        }
+        editorProfileSave = EditorProfileSave(
+            ClientMessage.UpdateProfile(safeName, avatarId),
+            avatarBytes?.let { ClientMessage.UpdateAvatar(Base64.Default.encode(it)) }
+        )
+        _uiState.update { it.copy(isProfileSaving = true, profileNotice = null, error = null) }
+        dispatchEditorProfileSave()
+    }
+
+    private fun dispatchEditorProfileSave() {
+        val save = editorProfileSave ?: return
+        val state = _uiState.value
+        if (save.stage != EditorSaveStage.WAITING || pendingProfileRefreshes > 0 ||
+            state.isProfileLoading || state.equippingCosmeticId != null || state.isPushPreferencesSaving) return
+        save.stage = if (save.avatar != null) EditorSaveStage.AVATAR else EditorSaveStage.PROFILE
+        scope.launch {
+            if (editorProfileSave === save) socket.sendMessage(save.avatar ?: save.profile)
+        }
+    }
+
+    private suspend fun requestProfileRefresh() {
+        val save = editorProfileSave
+        // An already-requested load must finish before the editor starts its writes.
+        if (save != null && (save.stage != EditorSaveStage.WAITING || !_uiState.value.isProfileLoading)) {
+            profileRefreshAfterSave = true
+            return
+        }
+        pendingProfileRefreshes++
+        socket.sendMessage(ClientMessage.GetProfile)
+    }
+
+    private fun interruptEditorProfileSave() {
+        if (editorProfileSave != null) {
+            editorProfileSaveFailure = editorProfileSaveFailure ?: messageMapper.text(TextKey.ConnectionDisconnected)
+            editorProfileSave = null
+            _uiState.update { it.copy(isProfileSaving = false, profileNotice = null, error = editorProfileSaveFailure) }
+        }
+        pendingProfileRefreshes = 0
+        profileRefreshAfterSave = false
+    }
+
     fun updateProfile(displayName: String, avatarId: String?) {
+        if (editorProfileSave != null) return
+        editorProfileSaveFailure = null
         val safeName = displayName.trim()
         if (safeName.isEmpty() || safeName.length > MAX_PROFILE_DISPLAY_NAME_LENGTH) {
             _uiState.update {
@@ -411,8 +486,16 @@ class GameController private constructor(
     }
 
     @OptIn(ExperimentalEncodingApi::class)
-    fun updateAvatar(base64: ByteArray) {
-        val base64String = Base64.Default.encode(base64)
+    fun updateAvatar(bytes: ByteArray) {
+        if (editorProfileSave != null) return
+        editorProfileSaveFailure = null
+        if (bytes.isEmpty() || bytes.size > AVATAR_UPLOAD_MAX_BYTES) {
+            _uiState.update {
+                it.copy(profileNotice = null, error = messageMapper.text(TextKey.InvalidAvatar))
+            }
+            return
+        }
+        val base64String = Base64.Default.encode(bytes)
         _uiState.update { it.copy(isProfileSaving = true, profileNotice = null, error = null) }
         scope.launch { socket.sendMessage(ClientMessage.UpdateAvatar(base64String)) }
     }
@@ -431,7 +514,7 @@ class GameController private constructor(
                 isFriendsOpen = false,
                 isClanOpen = false,
                 isNotificationsOpen = false,
-                error = null
+                error = editorProfileSaveFailure
             )
         }
         if (sessionJob?.isActive != true) {
@@ -455,7 +538,7 @@ class GameController private constructor(
                 isLeaderboardOpen = false,
                 isClanOpen = false,
                 isNotificationsOpen = false,
-                error = null
+                error = editorProfileSaveFailure
             )
         }
         if (sessionJob?.isActive != true) {
@@ -942,6 +1025,7 @@ class GameController private constructor(
     }
 
     fun equipCosmetics(frameId: String, titleId: String) {
+        if (editorProfileSave != null) return
         val state = _uiState.value
         if (state.equippingCosmeticId != null) return
         val cosmetics = state.profile?.progression?.cosmetics ?: return
@@ -1051,15 +1135,20 @@ class GameController private constructor(
         when (message) {
             is ServerMessage.SessionReady -> {
                 val wasRecoveringRoom = _uiState.value.currentRoomId != null
+                interruptEditorProfileSave()
                 playerId = message.playerId
-                _uiState.update { it.withReadySession(message.playerId) }
+                _uiState.update {
+                    it.withReadySession(message.playerId).copy(
+                        avatarRevision = it.avatarRevision + 1, error = editorProfileSaveFailure
+                    )
+                }
                 if (accountDisplayName == null) dispatchPendingGiftProfileRefresh()
                 if (_uiState.value.isTournamentOpen) refreshPublicTournaments()
                 startLatencyMonitoring()
                 if (accountDisplayName != null) {
                     scope.launch {
                         socket.sendMessage(ClientMessage.ListRooms)
-                        socket.sendMessage(ClientMessage.GetProfile)
+                        requestProfileRefresh()
                         socket.sendMessage(ClientMessage.GetFriends)
                         socket.sendMessage(ClientMessage.GetRoomInvitations)
                         socket.sendMessage(ClientMessage.GetNotifications)
@@ -1125,7 +1214,14 @@ class GameController private constructor(
             }
 
             is ServerMessage.ProfileData -> {
-                val wasSaving = !message.isBackgroundRefresh && _uiState.value.isProfileSaving
+                val save = editorProfileSave
+                val refreshResponse = !message.isBackgroundRefresh && pendingProfileRefreshes > 0
+                if (refreshResponse) pendingProfileRefreshes--
+                val editorCompleted = !message.isBackgroundRefresh && !refreshResponse && save?.stage == EditorSaveStage.PROFILE
+                val avatarCompleted = !message.isBackgroundRefresh && !refreshResponse && save?.stage == EditorSaveStage.AVATAR
+                val wasSaving = !message.isBackgroundRefresh && _uiState.value.isProfileSaving &&
+                    (save == null || editorCompleted) && editorProfileSaveFailure == null
+                if (editorCompleted) editorProfileSave = null
                 val previousClanId = _uiState.value.profile?.clanId
                 val newNotifications = progressionNotifications(
                     previous = _uiState.value.profile,
@@ -1145,7 +1241,7 @@ class GameController private constructor(
                     }
                     state.copy(
                         profile = message.profile,
-                        avatarRevision = if (wasSaving) state.avatarRevision + 1 else state.avatarRevision,
+                        avatarRevision = state.avatarRevision + 1,
                         player = state.player.copy(
                             name = message.profile.displayName,
                             id = message.profile.userId,
@@ -1153,7 +1249,7 @@ class GameController private constructor(
                             frameId = equippedFrameId
                         ),
                         isProfileLoading = state.isProfileLoading && message.isBackgroundRefresh,
-                        isProfileSaving = state.isProfileSaving && message.isBackgroundRefresh,
+                        isProfileSaving = state.isProfileSaving && (if (save != null) !editorCompleted else message.isBackgroundRefresh),
                         isPushPreferencesSaving = state.isPushPreferencesSaving && message.isBackgroundRefresh,
                         equippingCosmeticId = state.equippingCosmeticId.takeIf { message.isBackgroundRefresh },
                         profileNotice = if (message.isBackgroundRefresh) state.profileNotice
@@ -1169,7 +1265,7 @@ class GameController private constructor(
                             newNotifications,
                             state.dismissedNotificationIds
                         ),
-                        error = state.error.takeIf { message.isBackgroundRefresh }
+                        error = editorProfileSaveFailure ?: state.error.takeIf { message.isBackgroundRefresh }
                     )
                 }
                 if (newNotifications.isNotEmpty()) {
@@ -1181,6 +1277,15 @@ class GameController private constructor(
                 val newClanId = message.profile.clanId
                 if (newClanId != null && newClanId != previousClanId && _uiState.value.isClanOpen) {
                     socket.sendMessage(ClientMessage.GetClanInfo(newClanId))
+                }
+                if (avatarCompleted) {
+                    save.stage = EditorSaveStage.PROFILE
+                    socket.sendMessage(save.profile)
+                }
+                dispatchEditorProfileSave()
+                if (editorProfileSave == null && profileRefreshAfterSave) {
+                    profileRefreshAfterSave = false
+                    requestProfileRefresh()
                 }
                 dispatchPendingGiftProfileRefresh()
             }
@@ -1437,14 +1542,14 @@ class GameController private constructor(
             is ServerMessage.GameStateUpdated -> {
                 applyGameSnapshot(message.game)
                 if (message.game.phase == RoomPhase.FINISHED && accountDisplayName != null) {
-                    socket.sendMessage(ClientMessage.GetProfile)
+                    requestProfileRefresh()
                     socket.sendMessage(ClientMessage.GetFriends)
                 }
             }
             is ServerMessage.GameFinished -> {
                 applyGameSnapshot(message.game)
                 if (accountDisplayName != null) {
-                    socket.sendMessage(ClientMessage.GetProfile)
+                    requestProfileRefresh()
                     socket.sendMessage(ClientMessage.GetFriends)
                 }
             }
@@ -1481,7 +1586,7 @@ class GameController private constructor(
                 if (message.success) {
                     when (message.action) {
                         "create_clan", "join_clan_approved" -> {
-                            socket.sendMessage(ClientMessage.GetProfile)
+                            requestProfileRefresh()
                             socket.sendMessage(ClientMessage.GetClanList())
                         }
                         "request_join_clan", "join_clan_rejected" -> {
@@ -1493,7 +1598,7 @@ class GameController private constructor(
                             }
                         }
                         "leave_clan" -> {
-                            socket.sendMessage(ClientMessage.GetProfile)
+                            requestProfileRefresh()
                             socket.sendMessage(ClientMessage.GetClanList())
                         }
                     }
@@ -1672,6 +1777,21 @@ class GameController private constructor(
 
     private fun handleServerError(error: ServerMessage.Error) {
         val localizedError = messageMapper.message(error)
+        val profileError = error.code in setOf(
+            "UPLOAD_FAILED", "RATE_LIMITED", "INVALID_DISPLAY_NAME", "INVALID_AVATAR", "AVATAR_LOCKED",
+            "PROFILE_UPDATE_UNAVAILABLE", "PUSH_PREFERENCES_UNAVAILABLE", "COSMETIC_LOCKED",
+            "ACCOUNT_REQUIRED", "SESSION_NOT_FOUND", "CONNECTION_NOT_READY", "CONNECTION_FAILED", "SEND_FAILED"
+        )
+        if (profileError && editorProfileSave != null) {
+            editorProfileSaveFailure = localizedError
+            editorProfileSave = null
+            profileRefreshAfterSave = false
+        }
+        if (pendingProfileRefreshes > 0 && error.code in setOf(
+                "RATE_LIMITED", "SESSION_NOT_FOUND", "CONNECTION_NOT_READY", "CONNECTION_FAILED", "SEND_FAILED")) {
+            pendingProfileRefreshes--
+            _uiState.update { it.copy(isProfileLoading = false) }
+        }
         if (error.code == "WRONG_NUMBER") {
             return
         }
@@ -1710,7 +1830,7 @@ class GameController private constructor(
                         } else {
                             it.lobbyStage
                         },
-                        isProfileSaving = false,
+                        isProfileSaving = editorProfileSave != null,
                         isPushPreferencesSaving = false,
                         equippingCosmeticId = null,
                         isFriendProfileLoading = false,
@@ -1795,6 +1915,8 @@ class GameController private constructor(
     }
 
     fun resetGame() {
+        interruptEditorProfileSave()
+        editorProfileSaveFailure = null
         if (resettingSocket) return
         resettingSocket = true
         profileRefreshAfterGiftPending = false
@@ -1833,6 +1955,7 @@ class GameController private constructor(
     }
 
     fun updatePushPreferences(preferences: PushPreferencesSnapshot) {
+        if (editorProfileSave != null) return
         if (_uiState.value.isPushPreferencesSaving) return
         _uiState.update { it.copy(isPushPreferencesSaving = true) }
         scope.launch { socket.sendMessage(ClientMessage.UpdatePushPreferences(preferences)) }
@@ -2117,6 +2240,7 @@ class GameController private constructor(
     }
 
     fun equipCosmetic(cosmeticId: String) {
+        if (editorProfileSave != null) return
         scope.launch { socket.sendMessage(ClientMessage.EquipCosmetic(cosmeticId)) }
     }
 

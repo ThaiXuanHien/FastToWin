@@ -635,6 +635,7 @@ class GameEngineTest {
             .single()
 
         assertEquals(updated, response.profile.pushPreferences)
+        assertFalse(response.isBackgroundRefresh)
     }
 
     @Test
@@ -659,11 +660,12 @@ class GameEngineTest {
         val engine = GameEngine(playerProfileRepository = repository)
         engine.connectAccount(AuthenticatedAccount(UUID.fromString(playerId), "Hiền"))
 
-        val profile = engine.handle(playerId, ClientMessage.GetProfile)
+        val response = engine.handle(playerId, ClientMessage.GetProfile)
             .map(Delivery::message)
             .filterIsInstance<ServerMessage.ProfileData>()
             .single()
-            .profile
+        assertFalse(response.isBackgroundRefresh)
+        val profile = response.profile
 
         assertTrue(settled)
         assertEquals(1_000, profile.progression.gold)
@@ -709,6 +711,7 @@ class GameEngineTest {
 
         assertTrue(acknowledged)
         assertTrue(refreshed.profile.progression.latestSeasonReward!!.acknowledged)
+        assertTrue(refreshed.isBackgroundRefresh)
 
         val guest = engine.connectGuest("Khách", null)
         val denied = engine.handle(guest.playerId, ClientMessage.AcknowledgeSeasonReward(3))
@@ -792,6 +795,7 @@ class GameEngineTest {
         engine.connectAccount(AuthenticatedAccount(UUID.fromString(playerId), "Hiền"))
 
         val first = engine.handle(playerId, ClientMessage.ClaimDailyCheckIn).map(Delivery::message)
+        assertTrue(first.filterIsInstance<ServerMessage.ProfileData>().single().isBackgroundRefresh)
         assertEquals(5, first.filterIsInstance<ServerMessage.ProfileData>().single().profile.progression.experiencePoints)
         assertEquals(5, first.filterIsInstance<ServerMessage.DailyCheckInResult>().single().rewardXp)
         assertTrue(first.filterIsInstance<ServerMessage.DailyCheckInResult>().single().claimed)
@@ -839,6 +843,7 @@ class GameEngineTest {
 
         val first = engine.handle(playerId, ClientMessage.ClaimMissionReward("DAILY_WIN_1"))
             .map(Delivery::message)
+        assertTrue(first.filterIsInstance<ServerMessage.ProfileData>().single().isBackgroundRefresh)
         assertEquals(15, first.filterIsInstance<ServerMessage.MissionRewardResult>().single().rewardXp)
         assertTrue(first.filterIsInstance<ServerMessage.ProfileData>().single()
             .profile.progression.dailyMissions.single().rewardClaimed)
@@ -930,6 +935,7 @@ class GameEngineTest {
         val granted = first.filterIsInstance<ServerMessage.StorePurchaseResult>().single()
         assertEquals(StorePurchaseStatus.GRANTED, granted.status)
         assertEquals(TextKey.BillingGemsAdded.name, granted.messageKey)
+        assertTrue(first.filterIsInstance<ServerMessage.ProfileData>().single().isBackgroundRefresh)
         assertEquals(85, first.filterIsInstance<ServerMessage.ProfileData>().single().profile.progression.gems)
 
         val duplicate = engine.handle(playerId, request).map(Delivery::message)
@@ -981,6 +987,7 @@ class GameEngineTest {
             assertEquals(10, spentGems)
             assertEquals(1_000, receivedGold)
         }
+        assertTrue(grantedMessages.filterIsInstance<ServerMessage.ProfileData>().single().isBackgroundRefresh)
         with(grantedMessages.filterIsInstance<ServerMessage.ProfileData>().single().profile.progression) {
             assertEquals(10, gems)
             assertEquals(1_000, gold)
@@ -1297,6 +1304,7 @@ class GameEngineTest {
             .filterIsInstance<ServerMessage.ProfileData>()
             .single()
 
+        assertFalse(response.isBackgroundRefresh)
         assertEquals("Tên mới", response.profile.displayName)
         assertEquals("rocket", response.profile.avatarId)
 

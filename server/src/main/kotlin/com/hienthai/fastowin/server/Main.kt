@@ -1,5 +1,6 @@
 package com.hienthai.fastowin.server
 
+import com.hienthai.fastowin.server.avatars.*
 import com.hienthai.fastowin.server.admin.AdminConfiguration
 import com.hienthai.fastowin.server.admin.AdminService
 import com.hienthai.fastowin.server.admin.InMemoryAdminRepository
@@ -21,7 +22,12 @@ fun main() {
     val trustProxyHeaders = System.getenv("FASTTOWIN_TRUST_PROXY_HEADERS")
         ?.equals("true", ignoreCase = true) == true
     val adminConfiguration = AdminConfiguration.fromEnvironment(environment)
-    val database = DatabaseSettings.fromEnvironment(environment)?.let(DatabaseRuntime::open)
+    val avatarConfiguration = AvatarStorageConfiguration.fromEnvironment()
+    val databaseSettings = DatabaseSettings.fromEnvironment(environment)
+    avatarConfiguration.validateDatabase(databaseSettings != null)
+    val database = databaseSettings?.let(DatabaseRuntime::open)
+    val avatarObjects = try { avatarConfiguration.r2?.let(S3AvatarObjectStore::open) }
+        catch (failure: Throwable) { database?.close(); throw failure }
     val adminService = adminConfiguration?.let { configuration ->
         AdminService(database?.adminRepository ?: InMemoryAdminRepository(), configuration)
     }
@@ -30,6 +36,8 @@ fun main() {
     val identityRepository = database?.identityRepository ?: InMemoryGuestIdentityRepository()
     val matchResultRepository = database?.matchResultRepository ?: NoOpMatchResultRepository
     val playerProfileRepository = database?.playerProfileRepository ?: NoOpPlayerProfileRepository
+    val avatarService = AvatarService(database?.avatarRepository ?: ProfileAvatarRepository(playerProfileRepository),
+        avatarObjects, objectWrites = avatarConfiguration.mode == AvatarStorageMode.R2)
     val leaderboardRepository = database?.leaderboardRepository ?: NoOpLeaderboardRepository
     val friendRepository = database?.friendRepository ?: NoOpFriendRepository
     val notificationRepository = database?.notificationRepository ?: NoOpNotificationRepository
@@ -66,6 +74,7 @@ fun main() {
         clanRepository,
         pushNotificationService,
         storePurchaseService = storePurchaseService,
+        avatarService = avatarService,
         playQuotaRepository = playQuotaRepository,
         rewardedAdVerifier = rewardedAdVerifier,
         rewardedAdAvailability = rewardedAdAvailability,
@@ -122,6 +131,7 @@ fun main() {
             )
         }.start(wait = true)
     } finally {
+        avatarObjects?.close()
         database?.close()
     }
 }

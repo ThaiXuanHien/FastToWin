@@ -12,6 +12,10 @@ Vận hành production dùng `production-ops.sh` hoặc `production-ops.cmd` cho
 bảo trì, backup có xác minh/restore drill và rollback có kiểm soát; xem hướng dẫn
 production trước khi chạy.
 
+Thiết lập avatar R2 private: chạy `bash scripts/setup-r2.sh` trong Git Bash; xem
+[runbook object storage](docs/avatar-object-storage.md) trước khi kích hoạt billing
+và bàn giao staging. Wizard chưa tạo account, triển khai hay bật CDN.
+
 ## Tính năng đấu giải riêng
 
 - Người đã đăng nhập có thể tạo giải loại trực tiếp dành cho 4, 8 hoặc 16 người và mời bạn bè đang online.

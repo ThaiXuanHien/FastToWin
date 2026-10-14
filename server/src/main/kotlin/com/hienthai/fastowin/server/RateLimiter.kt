@@ -38,7 +38,9 @@ data class ServerRateLimitPolicies(
     val selectNumberPerPlayer: RateLimitPolicy = RateLimitPolicy(20, 1_000L),
     val selectNumberPerIp: RateLimitPolicy = RateLimitPolicy(80, 1_000L),
     val verifyPurchasePerPlayer: RateLimitPolicy = RateLimitPolicy(6, 60_000L),
-    val verifyPurchasePerIp: RateLimitPolicy = RateLimitPolicy(20, 60_000L)
+    val verifyPurchasePerIp: RateLimitPolicy = RateLimitPolicy(20, 60_000L),
+    val avatarPerPlayer: RateLimitPolicy = RateLimitPolicy(3, 10 * 60_000L),
+    val avatarPerIp: RateLimitPolicy = RateLimitPolicy(10, 10 * 60_000L)
 )
 
 data class RateLimitResult(
@@ -134,6 +136,8 @@ class InMemoryRateLimiter(
 }
 
 internal object RateLimitBuckets {
+    const val AVATAR_PLAYER = "avatar-player"
+    const val AVATAR_IP = "avatar-ip"
     const val LOGIN_IP = "login-ip"
     const val LOGIN_ACCOUNT = "login-account"
     const val PASSWORD_RESET_IP = "password-reset-ip"
