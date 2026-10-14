@@ -54,6 +54,7 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
+import com.hienthai.fastowin.ui.screens.AvatarEditSelection
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -63,6 +64,274 @@ import kotlin.test.assertTrue
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class GameStateTest {
+    @Test
+    fun `paired avatar upload failure remains visible after successful profile and later refreshes`() = runTest {
+        assertPairedAvatarFailure("UPLOAD_FAILED")
+    }
+
+    @Test
+    fun `paired avatar rate limit remains visible after successful profile and later refreshes`() = runTest {
+        assertPairedAvatarFailure("RATE_LIMITED")
+    }
+
+    private suspend fun TestScope.assertPairedAvatarFailure(code: String) {
+        val fixture = publicTournamentFixture()
+        try {
+            fixture.session.server(ServerMessage.SessionReady("player-1"))
+            runCurrent()
+            val selection = AvatarEditSelection<String>()
+            val bytes = byteArrayOf(7)
+            selection.finishPreparation(bytes, "chosen preview")
+            selection.save("New name", null, false, fixture.controller::saveProfile)
+            runCurrent()
+            assertEquals(1, fixture.session.sent.filterIsInstance<ClientMessage.UpdateAvatar>().size)
+            assertEquals(0, fixture.session.sent.filterIsInstance<ClientMessage.UpdateProfile>().size)
+            fixture.session.server(ServerMessage.Error(code, "Avatar failed"))
+            runCurrent()
+            val failure = fixture.controller.uiState.value.error
+            assertTrue(!failure.isNullOrBlank())
+            val profile = PlayerProfileSnapshot(userId = "player-1", displayName = "New name", playerCode = "PLAYER01")
+            fixture.session.server(ServerMessage.ProfileData(profile))
+            runCurrent()
+            assertEquals(failure, fixture.controller.uiState.value.error, code)
+            assertFalse(fixture.controller.uiState.value.isProfileSaving)
+            assertNull(fixture.controller.uiState.value.profileNotice)
+            assertEquals("chosen preview", selection.preview)
+            assertTrue(selection.bytes === bytes)
+            assertTrue(selection.canSave("New name", fixture.controller.uiState.value.isProfileSaving))
+            fixture.controller.refreshProfile()
+            runCurrent()
+            assertEquals(failure, fixture.controller.uiState.value.error)
+            fixture.session.server(ServerMessage.ProfileData(profile, isBackgroundRefresh = true))
+            fixture.session.server(ServerMessage.ProfileData(profile))
+            fixture.session.server(ServerMessage.SessionReady("player-1"))
+            runCurrent()
+            fixture.session.server(ServerMessage.ProfileData(profile))
+            runCurrent()
+            assertEquals(failure, fixture.controller.uiState.value.error)
+            assertNull(fixture.controller.uiState.value.profileNotice)
+            fixture.controller.updateProfile("Retry name", null)
+            runCurrent()
+            fixture.session.server(ServerMessage.ProfileData(profile.copy(displayName = "Retry name")))
+            runCurrent()
+            assertNull(fixture.controller.uiState.value.error)
+            assertFalse(fixture.controller.uiState.value.isProfileSaving)
+            assertTrue(!fixture.controller.uiState.value.profileNotice.isNullOrBlank())
+        } finally { fixture.controller.close() }
+    }
+
+    @Test
+    fun `paired save waits for both acknowledgements and ignores foreground and background refresh`() = runTest {
+        val fixture = publicTournamentFixture()
+        try {
+            fixture.session.server(ServerMessage.SessionReady("player-1"))
+            runCurrent()
+            fixture.controller.openProfile()
+            fixture.controller.saveProfile("New name", null, byteArrayOf(7))
+            runCurrent()
+            val profile = PlayerProfileSnapshot(userId = "player-1", displayName = "New name", playerCode = "PLAYER01")
+            assertTrue(fixture.session.sent.none { it is ClientMessage.UpdateAvatar })
+            // GetProfile was sent before the pair; finish it before sending the avatar.
+            fixture.session.server(ServerMessage.ProfileData(profile))
+            fixture.session.server(ServerMessage.ProfileData(profile, isBackgroundRefresh = true))
+            runCurrent()
+            assertTrue(fixture.controller.uiState.value.isProfileSaving)
+            assertNull(fixture.controller.uiState.value.profileNotice)
+            fixture.session.server(ServerMessage.ProfileData(profile))
+            runCurrent()
+            assertTrue(fixture.controller.uiState.value.isProfileSaving)
+            assertNull(fixture.controller.uiState.value.profileNotice)
+            fixture.session.server(ServerMessage.ProfileData(profile))
+            runCurrent()
+            assertFalse(fixture.controller.uiState.value.isProfileSaving)
+            assertNull(fixture.controller.uiState.value.error)
+            assertTrue(!fixture.controller.uiState.value.profileNotice.isNullOrBlank())
+        } finally { fixture.controller.close() }
+    }
+
+    @Test
+    fun `name only selection saves with one acknowledgement`() = runTest {
+        val fixture = publicTournamentFixture()
+        try {
+            fixture.session.server(ServerMessage.SessionReady("player-1"))
+            runCurrent()
+            AvatarEditSelection<String>().save("Name only", null, false, fixture.controller::saveProfile)
+            runCurrent()
+            assertTrue(fixture.session.sent.none { it is ClientMessage.UpdateAvatar })
+            assertTrue(fixture.controller.uiState.value.isProfileSaving)
+            fixture.session.server(ServerMessage.ProfileData(PlayerProfileSnapshot(userId = "player-1", displayName = "Name only", playerCode = "PLAYER01")))
+            runCurrent()
+            assertFalse(fixture.controller.uiState.value.isProfileSaving)
+            assertTrue(!fixture.controller.uiState.value.profileNotice.isNullOrBlank())
+        } finally { fixture.controller.close() }
+    }
+
+    @Test
+    fun `reconnect does not report an interrupted paired save as success`() = runTest {
+        val fixture = publicTournamentFixture()
+        try {
+            fixture.session.server(ServerMessage.SessionReady("player-1"))
+            runCurrent()
+            fixture.controller.saveProfile("New name", null, byteArrayOf(7))
+            runCurrent()
+            fixture.session.server(ServerMessage.SessionReady("player-1"))
+            fixture.session.server(ServerMessage.ProfileData(PlayerProfileSnapshot(userId = "player-1", displayName = "Old name", playerCode = "PLAYER01")))
+            runCurrent()
+            assertFalse(fixture.controller.uiState.value.isProfileSaving)
+            assertNull(fixture.controller.uiState.value.profileNotice)
+        } finally { fixture.controller.close() }
+    }
+
+    @Test
+    fun `paired save defers refresh and ignores unrelated errors until both writes finish`() = runTest {
+        val fixture = publicTournamentFixture()
+        try {
+            fixture.session.server(ServerMessage.SessionReady("player-1"))
+            runCurrent()
+            fixture.controller.saveProfile("New name", null, byteArrayOf(7))
+            runCurrent()
+            fixture.controller.refreshProfile()
+            fixture.controller.updatePushPreferences(PushPreferencesSnapshot())
+            fixture.controller.equipCosmetic("legacy-item")
+            runCurrent()
+            assertTrue(fixture.session.sent.none { it is ClientMessage.GetProfile || it is ClientMessage.UpdatePushPreferences || it is ClientMessage.EquipCosmetic })
+            assertFalse(fixture.controller.uiState.value.isProfileLoading)
+            fixture.session.server(ServerMessage.Error("FRIEND_NOT_FOUND", "Unrelated friend failure"))
+            runCurrent()
+            assertTrue(fixture.controller.uiState.value.isProfileSaving)
+            val profile = PlayerProfileSnapshot(userId = "player-1", displayName = "New name", playerCode = "PLAYER01")
+            fixture.session.server(ServerMessage.ProfileData(profile))
+            runCurrent()
+            assertEquals(1, fixture.session.sent.filterIsInstance<ClientMessage.UpdateProfile>().size)
+            assertTrue(fixture.controller.uiState.value.isProfileSaving)
+            assertNull(fixture.controller.uiState.value.profileNotice)
+            fixture.session.server(ServerMessage.ProfileData(profile))
+            runCurrent()
+            assertFalse(fixture.controller.uiState.value.isProfileSaving)
+            assertTrue(!fixture.controller.uiState.value.profileNotice.isNullOrBlank())
+            assertEquals(1, fixture.session.sent.filterIsInstance<ClientMessage.GetProfile>().size)
+        } finally { fixture.controller.close() }
+    }
+
+    @Test
+    fun `paired save cancels when preceding refresh fails and can retry`() = runTest {
+        val fixture = publicTournamentFixture()
+        try {
+            fixture.session.server(ServerMessage.SessionReady("player-1"))
+            runCurrent()
+            fixture.controller.openProfile()
+            fixture.controller.saveProfile("New name", null, byteArrayOf(7))
+            runCurrent()
+            assertTrue(fixture.session.sent.none { it is ClientMessage.UpdateAvatar })
+            fixture.session.server(ServerMessage.Error("RATE_LIMITED", "Refresh limited"))
+            runCurrent()
+            assertFalse(fixture.controller.uiState.value.isProfileSaving)
+            assertFalse(fixture.controller.uiState.value.isProfileLoading)
+            assertTrue(!fixture.controller.uiState.value.error.isNullOrBlank())
+            fixture.controller.saveProfile("Retry", null, byteArrayOf(7))
+            runCurrent()
+            assertEquals(1, fixture.session.sent.filterIsInstance<ClientMessage.UpdateAvatar>().size)
+            assertTrue(fixture.controller.uiState.value.isProfileSaving)
+        } finally { fixture.controller.close() }
+    }
+
+    @Test
+    fun `paired save waits for preexisting push preference write before avatar`() = runTest {
+        val fixture = publicTournamentFixture()
+        try {
+            fixture.session.server(ServerMessage.SessionReady("player-1"))
+            runCurrent()
+            fixture.controller.updatePushPreferences(PushPreferencesSnapshot())
+            fixture.controller.saveProfile("New name", null, byteArrayOf(7))
+            runCurrent()
+            assertTrue(fixture.session.sent.none { it is ClientMessage.UpdateAvatar })
+            fixture.session.server(ServerMessage.ProfileData(PlayerProfileSnapshot(userId = "player-1", displayName = "Old name", playerCode = "PLAYER01")))
+            runCurrent()
+            assertEquals(1, fixture.session.sent.filterIsInstance<ClientMessage.UpdateAvatar>().size)
+            assertTrue(fixture.controller.uiState.value.isProfileSaving)
+            assertNull(fixture.controller.uiState.value.profileNotice)
+        } finally { fixture.controller.close() }
+    }
+
+    @Test
+    fun `paired profile failure after avatar success remains retryable`() = runTest {
+        val fixture = publicTournamentFixture()
+        try {
+            fixture.session.server(ServerMessage.SessionReady("player-1"))
+            runCurrent()
+            fixture.controller.saveProfile("New name", null, byteArrayOf(7))
+            runCurrent()
+            val profile = PlayerProfileSnapshot(userId = "player-1", displayName = "Old name", playerCode = "PLAYER01")
+            fixture.session.server(ServerMessage.ProfileData(profile))
+            runCurrent()
+            fixture.session.server(ServerMessage.Error("PROFILE_UPDATE_UNAVAILABLE", "Profile failed"))
+            runCurrent()
+            val error = fixture.controller.uiState.value.error
+            fixture.session.server(ServerMessage.ProfileData(profile, isBackgroundRefresh = true))
+            fixture.session.server(ServerMessage.ProfileData(profile))
+            runCurrent()
+            assertTrue(!error.isNullOrBlank())
+            assertEquals(error, fixture.controller.uiState.value.error)
+            assertFalse(fixture.controller.uiState.value.isProfileSaving)
+            assertNull(fixture.controller.uiState.value.profileNotice)
+        } finally { fixture.controller.close() }
+    }
+    @Test
+    fun `paired avatar failure survives reconnect social and leaderboard replies until explicit retry`() = runTest {
+        val fixture = publicTournamentFixture()
+        try {
+            fixture.session.server(ServerMessage.SessionReady("player-1"))
+            runCurrent()
+            fixture.controller.saveProfile("Draft name", null, byteArrayOf(7))
+            runCurrent()
+            fixture.session.server(ServerMessage.Error("RATE_LIMITED", "Avatar limited"))
+            runCurrent()
+            val failure = fixture.controller.uiState.value.error
+            assertTrue(!failure.isNullOrBlank())
+            fixture.session.server(ServerMessage.SessionReady("player-1"))
+            fixture.session.server(ServerMessage.ProfileData(PlayerProfileSnapshot(userId = "player-1", displayName = "Old name", playerCode = "PLAYER01")))
+            fixture.session.server(ServerMessage.FriendsData(FriendsSnapshot()))
+            fixture.session.server(ServerMessage.LeaderboardData(LeaderboardSnapshot()))
+            fixture.session.server(ServerMessage.NotificationsData(emptyList()))
+            runCurrent()
+            // Reconnect's other reducers clear generic error; profile feedback must survive independently.
+            assertNull(fixture.controller.uiState.value.error)
+            assertEquals(failure, fixture.controller.uiState.value.profileSaveError)
+            assertNull(fixture.controller.uiState.value.profileNotice)
+            assertFalse(fixture.controller.uiState.value.isProfileSaving)
+            fixture.controller.saveProfile("Retry name", null)
+            runCurrent()
+            assertNull(fixture.controller.uiState.value.profileSaveError)
+        } finally { fixture.controller.close() }
+    }
+    @Test
+    fun `explicit paired retry validation replaces stale avatar failure`() = runTest {
+        val fixture = publicTournamentFixture()
+        try {
+            fixture.session.server(ServerMessage.SessionReady("player-1"))
+            runCurrent()
+            fixture.controller.saveProfile("Draft", null, byteArrayOf(7))
+            runCurrent()
+            fixture.session.server(ServerMessage.Error("RATE_LIMITED", "Avatar limited"))
+            runCurrent()
+            val oldFailure = fixture.controller.uiState.value.error
+            fixture.controller.saveProfile("", null)
+            runCurrent()
+            assertNull(fixture.controller.uiState.value.profileSaveError)
+            assertTrue(!fixture.controller.uiState.value.error.isNullOrBlank())
+            assertNotEquals(oldFailure, fixture.controller.uiState.value.error)
+            fixture.controller.saveProfile("Draft", null, byteArrayOf(7))
+            runCurrent()
+            fixture.session.server(ServerMessage.Error("RATE_LIMITED", "Avatar limited"))
+            runCurrent()
+            fixture.controller.saveProfile("Retry", null, ByteArray(45 * 1024 + 1))
+            runCurrent()
+            assertNull(fixture.controller.uiState.value.profileSaveError)
+            assertTrue(!fixture.controller.uiState.value.error.isNullOrBlank())
+            assertNotEquals(oldFailure, fixture.controller.uiState.value.error)
+            assertFalse(fixture.controller.uiState.value.isProfileSaving)
+        } finally { fixture.controller.close() }
+    }
     @Test
     fun `avatar upload accepts exactly 45 KiB without exceeding websocket frame budget`() = runTest {
         val fixture = publicTournamentFixture()

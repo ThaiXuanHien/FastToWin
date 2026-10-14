@@ -15,7 +15,8 @@ class AvatarEditSelectionTest {
 
         selected.beginPreparation()
         assertFalse(selected.canSave("New name", isProfileSaving = false))
-        selected.save("New name", "avatar_default", isProfileSaving = false, uploaded::add) { name, _ ->
+        selected.save("New name", "avatar_default", isProfileSaving = false) { name, _, bytes ->
+            bytes?.let(uploaded::add)
             saved += name
         }
         assertTrue(uploaded.isEmpty())
@@ -23,7 +24,8 @@ class AvatarEditSelectionTest {
 
         selected.finishPreparation(chosen, "preview")
         assertTrue(selected.canSave("New name", isProfileSaving = false))
-        selected.save("New name", "avatar_default", isProfileSaving = false, uploaded::add) { name, _ ->
+        selected.save("New name", "avatar_default", isProfileSaving = false) { name, _, bytes ->
+            bytes?.let(uploaded::add)
             saved += name
         }
         assertEquals(listOf(chosen), uploaded)

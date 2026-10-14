@@ -187,6 +187,7 @@ data class GameState(
     val donatingClanRequestId: String? = null,
     val clanDonationResult: com.hienthai.fastowin.protocol.ServerMessage.ClanDonationResult? = null,
     val profileNotice: String? = null,
+    val profileSaveError: String? = null,
     val profile: PlayerProfileSnapshot? = null,
     val avatarRevision: Long = 0L,
     val walletTransactions: List<WalletTransactionSnapshot> = emptyList(),

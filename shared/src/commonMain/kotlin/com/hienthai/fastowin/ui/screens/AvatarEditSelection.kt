@@ -37,11 +37,9 @@ internal class AvatarEditSelection<Preview> {
         displayName: String,
         avatarId: String?,
         isProfileSaving: Boolean,
-        onUploadAvatar: (ByteArray) -> Unit,
-        onSave: (String, String?) -> Unit
+        onSave: (String, String?, ByteArray?) -> Unit
     ) {
         if (!canSave(displayName, isProfileSaving)) return
-        bytes?.let(onUploadAvatar)
-        onSave(displayName, avatarId)
+        onSave(displayName, avatarId, bytes)
     }
 }

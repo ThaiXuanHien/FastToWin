@@ -118,6 +118,18 @@ thử local/PostgreSQL và browser; chưa chứng minh provider R2 thật hoặc
 Android/iOS thật hoạt động. Controller cập nhật trạng thái GitHub
 sau review; issue #11 vẫn mở, PR dùng `Refs #11`, không dùng `Closes #11`.
 
+Bổ sung final-fix ngày 14/10/2026: editor chờ upload avatar thành công rồi mới
+lưu tên, chỉ báo hoàn tất sau cả hai bước; lỗi upload/rate-limit giữ qua refresh
+và reconnect để retry, kể cả khi các phản hồi friends/leaderboard xóa lỗi chung.
+Cleanup claim từng object ngay trước delete; fixture ARGB và metadata PNG/JPEG
+kiểm tra nền trắng/loại metadata. Backend **716 tests/111 suites**, client mới nhất
+**285 tests/46 suites**, không failure/error/skip; Android compile, server
+installDist và Wasm webpack đều thành công. Browser phone/desktop đạt **2/2**
+(57,4 giây): rate-limit player thật, lỗi và draft/preview còn sau reconnect,
+Save cho phép retry, Save bị khóa trong 2,5 giây decode và không tràn ngang.
+Controller đã xem ảnh chụp retry sau reconnect ở cả hai kích thước; đây vẫn là
+kiểm thử local, không thay thế nghiệm thu R2 thật hoặc thiết bị Android/iOS.
+
 - [ ] Chủ dự án thực hiện signup/verify, checkout và quyết định budget alert.
 - [ ] Tạo/kiểm tra hai bucket Standard private và token scope/expiry; giữ secret an toàn.
 - [ ] Có ủy quyền staging smoke; đặt các biến staging và PostgreSQL, chỉ sau đó

@@ -64,7 +64,9 @@ class AvatarService(
 
     suspend fun cleanupBatch() {
         val storage = objectStore ?: return
-        for (item in repository.claimCleanup(25)) {
+        repeat(25) {
+            // Start the lease immediately before its delete, not while earlier items are waiting.
+            val item = repository.claimCleanup(1).singleOrNull() ?: return
             try {
                 storage.delete(item.key)
                 repository.completeCleanup(item.key)

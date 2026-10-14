@@ -185,8 +185,7 @@ fun ProfileScreen(
     onCloseMatchDetail: () -> Unit,
     onEquipCosmetics: (String, String) -> Unit,
     onClaimMissionReward: (String) -> Unit,
-    onSave: (String, String?) -> Unit,
-    onUploadAvatar: (ByteArray) -> Unit,
+    onSave: (String, String?, ByteArray?) -> Unit,
     canEdit: Boolean,
     profileOverride: PlayerProfileSnapshot? = null,
     isExternalProfile: Boolean = false,
@@ -295,7 +294,7 @@ fun ProfileScreen(
     }
     LaunchedEffect(profile) {
         profile?.let {
-            displayName = it.displayName
+            if (!isEditing) displayName = it.displayName
         }
     }
     LaunchedEffect(state.profileNotice) {
@@ -465,7 +464,7 @@ fun ProfileScreen(
                                 }
                             ),
                             onClick = {
-                                avatarSelection.save(displayName, profile.avatarId, state.isProfileSaving, onUploadAvatar, onSave)
+                                avatarSelection.save(displayName, profile.avatarId, state.isProfileSaving, onSave)
                             },
                             enabled = avatarSelection.canSave(displayName, state.isProfileSaving),
                             modifier = Modifier.fillMaxWidth(),
@@ -490,7 +489,7 @@ fun ProfileScreen(
         if (!isExternalProfile) state.profileNotice?.let {
             Text(it, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Medium)
         }
-        state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+        (state.profileSaveError ?: state.error)?.let { Text(it, color = MaterialTheme.colorScheme.error) }
 
         if (isExternalProfile) {
             ArcadeStatGrid(

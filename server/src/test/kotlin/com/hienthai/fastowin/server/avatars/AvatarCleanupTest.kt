@@ -1,10 +1,62 @@
 package com.hienthai.fastowin.server.avatars
 
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.async
 import java.util.UUID
 import kotlin.test.*
 
 class AvatarCleanupTest {
+    @Test fun `slow batch claims each delete just in time so another worker cannot reclaim unstarted items`() = runTest {
+        avatarDatabase { source, player ->
+            var now = System.currentTimeMillis()
+            val repository = PostgresAvatarRepository(source, nowMillis = { now })
+            val keys = (1..3).map { "avatars/$player/${UUID.randomUUID()}.jpg" }
+            keys.forEach { key ->
+                assertTrue(repository.beginIntent(player, 0, key))
+                now += 1 // Deterministic oldest-first ordering.
+            }
+            now += 2 * 60 * 60_000L
+            val secondStarted = CompletableDeferred<Unit>()
+            val finishSecond = CompletableDeferred<Unit>()
+            val deletes = mutableMapOf<String, Int>()
+            val storage = object : AvatarObjectStore {
+                override suspend fun put(key: String, bytes: ByteArray, contentType: String) = error("unused")
+                override suspend fun read(key: String, maximumBytes: Int): ByteArray? = error("unused")
+                override suspend fun delete(key: String) {
+                    deletes[key] = deletes.getOrDefault(key, 0) + 1
+                    if (key == keys[0]) now += 45_000
+                    if (key == keys[1] && deletes[key] == 1) {
+                        now += 30_000 // Initial batch lease expired; this delete's own lease has not.
+                        secondStarted.complete(Unit)
+                        finishSecond.await()
+                    }
+                }
+            }
+            val first = async { AvatarService(repository, storage).cleanupBatch() }
+            try {
+                secondStarted.await()
+                AvatarService(PostgresAvatarRepository(source, nowMillis = { now }), storage).cleanupBatch()
+            } finally { finishSecond.complete(Unit) }
+            first.await()
+            assertEquals(keys.associateWith { 1 }, deletes)
+            source.connection.use { connection ->
+                connection.prepareStatement("SELECT attempts, state FROM avatar_cleanup WHERE object_key LIKE ?").use {
+                    it.setString(1, "avatars/$player/%")
+                    it.executeQuery().use { rows ->
+                        var count = 0
+                        while (rows.next()) {
+                            count++
+                            assertEquals(1, rows.getInt(1))
+                            assertEquals("deleted", rows.getString(2))
+                        }
+                        assertEquals(3, count)
+                    }
+                }
+            }
+        }
+    }
+
     @Test fun `failed cleanup persists a future retry without discarding the intent`() = runTest {
         avatarDatabase { source, player ->
             var now = System.currentTimeMillis()
