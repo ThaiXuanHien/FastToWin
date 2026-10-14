@@ -244,7 +244,8 @@ export const tag = (page, id) => page.getByTestId(id);
 
 // Compose renders a canvas plus a transparent accessibility DOM in a shadow root.
 // Click its real canvas position, not a JS controller or a synthetic server response.
-export async function click(page, locator) {
+// allowDisabled is reserved for tests asserting a real disabled canvas tap is inert.
+export async function click(page, locator, { allowDisabled = false } = {}) {
   await expect(locator).toBeAttached();
   let searchDirection = 1;
   const visiblePositions = () => page.locator('[id], [role]').evaluateAll(nodes => JSON.stringify(nodes.map(node => {
@@ -274,6 +275,8 @@ export async function click(page, locator) {
     throw new Error('No canvas scroll point outside native text inputs.');
   };
   for (let attempt = 0; attempt < 20; attempt++) {
+    // Attachment alone can precede session readiness and a moving error row.
+    if (!allowDisabled) await expect(locator).toBeEnabled();
     // Compose rebuilds its transparent semantics nodes while a LazyColumn is
     // settling. Resolve a short-lived handle for each attempt so a detached
     // WebKit node is retried instead of consuming the locator's full timeout.
@@ -307,10 +310,15 @@ export async function click(page, locator) {
             const box = node.getBoundingClientRect();
             return { id: node.id, x: box.x, y: box.y, width: box.width, height: box.height };
           }));
-        const exposure = await stableHandle.evaluate((node, { viewport, dialog, chrome }) => {
+        const exposure = await stableHandle.evaluate((node, { viewport, dialog, chrome, stableBounds }) => {
           const box = node.getBoundingClientRect();
           const x = box.x + box.width / 2;
           const y = box.y + box.height / 2;
+          const current = {
+            point: { x, y },
+            moved: ['x', 'y', 'width', 'height'].some(key => Math.abs(box[key] - stableBounds[key]) > 1),
+            enabled: !node.matches(':disabled') && !node.closest('[aria-disabled="true"]'),
+          };
           let top = dialog?.y ?? 0;
           let bottom = dialog ? dialog.y + dialog.height : viewport.height;
           let left = dialog?.x ?? 0;
@@ -333,20 +341,24 @@ export async function click(page, locator) {
             if (node.closest(`#${region.id}`) || !region.width || !region.height) continue;
             if (x >= region.x && x < region.x + region.width &&
                 y >= region.y && y < region.y + region.height) {
-              return { exposed: false, direction: region.id === 'app_header' ? -1 : 1 };
+              return { ...current, exposed: false, direction: region.id === 'app_header' ? -1 : 1 };
             }
           }
           const native = node.matches('[data-fasttowin-native-input]');
           return {
+            ...current,
             exposed: x >= left && x < right && y >= top && y < bottom &&
               (!native || document.elementFromPoint(x, y) === node),
             direction: y < top ? -1 : 1,
           };
-        }, { viewport, dialog, chrome });
+        }, { viewport, dialog, chrome, stableBounds });
+        // The final exposure read may observe a layout change after both
+        // protocol samples. Resample instead of clicking discarded coordinates.
+        if (exposure.moved || (!allowDisabled && !exposure.enabled)) continue;
         if (!exposure.exposed) {
           blockedDirection = exposure.direction;
         } else {
-          await page.mouse.click(bounds.x + bounds.width / 2, y);
+          await page.mouse.click(exposure.point.x, exposure.point.y);
           return;
         }
       }

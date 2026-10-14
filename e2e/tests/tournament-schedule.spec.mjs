@@ -82,8 +82,8 @@ for (const viewport of [
     await fillScheduleField(page, 'tournament_schedule_local_start', 'Ngày và giờ bắt đầu tại địa phương', 'invalid');
     await fillScheduleField(page, 'tournament_schedule_time_zone', 'Múi giờ', viewport.timeZone);
     await expect(tag(page, 'tournament_schedule_error')).toBeAttached();
-    // Compose does not publish aria-disabled. Verify a real inert canvas click.
-    await click(page, tag(page, 'create_tournament'));
+    // Deliberately tap the disabled action; invalid input must remain inert.
+    await click(page, tag(page, 'create_tournament'), { allowDisabled: true });
     expect(commands).toHaveLength(1);
 
     // Real server time, with enough room to type and submit. Check-in opens
@@ -111,14 +111,16 @@ for (const viewport of [
     await expect(tag(page, 'tournament_check_in')).toBeAttached({ timeout: 120_000 });
     await click(page, tag(page, 'tournament_check_in'));
     await expect(tag(page, 'tournament_check_in')).toContainText('Đã check-in');
-    await click(page, tag(page, 'tournament_check_in'));
+    // Deliberate repeated taps must not submit another check-in command.
+    await click(page, tag(page, 'tournament_check_in'), { allowDisabled: true });
     expect(commands.filter(message => message.type === 'check_in_tournament')).toHaveLength(1);
     await expect(tag(page, 'tournament_check_in_count')).toContainText('1/4');
     await page.screenshot({ path: testInfo.outputPath(`scheduled-${viewport.name}-checked-in.png`) });
     await host.navigate(() => page.reload());
     await expect(tag(page, 'tournament_screen')).toBeAttached();
     await expect(tag(page, 'tournament_check_in')).toContainText('Đã check-in');
-    await click(page, tag(page, 'tournament_check_in'));
+    // Deliberate repeated taps must not submit another check-in command.
+    await click(page, tag(page, 'tournament_check_in'), { allowDisabled: true });
     expect(commands.filter(message => message.type === 'check_in_tournament')).toHaveLength(1);
     await expect(tag(page, 'tournament_check_in_count')).toContainText('1/4');
     await expect(page.getByText(viewport.timeZone, { exact: true })).toBeAttached();
