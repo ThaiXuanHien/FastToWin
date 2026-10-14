@@ -76,6 +76,7 @@ import com.hienthai.fastowin.ui.screens.nextFriendRequestPrompt
 import com.hienthai.fastowin.ui.screens.RoomInvitationDialog
 import com.hienthai.fastowin.ui.screens.LobbyScreen
 import com.hienthai.fastowin.ui.screens.ProfileScreen
+import com.hienthai.fastowin.ui.screens.rememberProfileEditorState
 import com.hienthai.fastowin.ui.screens.ProfileSection
 import com.hienthai.fastowin.ui.screens.ProfileSectionScreen
 import com.hienthai.fastowin.ui.screens.LeaderboardScreen
@@ -1223,6 +1224,8 @@ private fun GameContent(
         activePracticeStateKey != null -> activePracticeStateKey
         else -> "lobby"
     }
+    // The account/controller owns the draft even while OfflineScreen replaces the profile.
+    val profileEditor = rememberProfileEditorState(controller, state.profileNotice, screenStateKey == "profile")
     val appRoute = when {
         selectedAnnouncementId != null && !state.isMatchStarted -> "/announcements/$selectedAnnouncementId"
         showAnnouncementUpdate && !state.isMatchStarted -> "/announcements/update"
@@ -1587,7 +1590,8 @@ private fun GameContent(
                     onOpenSettings = openSettingsTab,
                     onOpenSection = openOwnProfileSection,
                     showBackButton = !showTopLevelNavigation,
-                    modifier = contentModifier
+                    modifier = contentModifier,
+                    profileEditState = profileEditor
                 ) }
                 
                 state.isShopOpen -> ShopScreen(
