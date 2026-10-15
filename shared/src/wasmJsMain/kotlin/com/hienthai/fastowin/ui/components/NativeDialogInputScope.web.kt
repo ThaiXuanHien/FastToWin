@@ -3,6 +3,7 @@
 package com.hienthai.fastowin.ui.components
 
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.window.DialogProperties
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.remember
@@ -40,3 +41,5 @@ internal actual fun NativeDialogInputScope(content: @Composable () -> Unit) {
         container.TrackInteropPlacementContainer(content)
     }
 }
+
+internal actual fun arcadeDialogProperties() = DialogProperties(usePlatformDefaultWidth = false)

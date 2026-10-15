@@ -6,6 +6,7 @@ import androidx.compose.ui.test.FontScale
 import androidx.compose.ui.test.ForcedSize
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -120,7 +121,8 @@ class TournamentScreenTest {
         ) } }
         composeRule.onNodeWithTag("open_create_tournament").performScrollTo().performClick()
         composeRule.onNodeWithTag("tournament_name").performScrollTo().performTextInput("Scheduled Cup")
-        composeRule.onNodeWithTag("tournament_schedule_toggle").performScrollTo().performClick()
+        composeRule.onNodeWithTag("tournament_schedule_toggle")
+            .performScrollTo().assertIsDisplayed().performClick().assertIsOn()
         composeRule.onNodeWithTag("tournament_schedule_local_start").performScrollTo().performTextInput("bad")
         composeRule.onNodeWithTag("tournament_schedule_error").performScrollTo().assertIsDisplayed()
         composeRule.onNodeWithTag("create_tournament").performScrollTo().assertIsNotEnabled()
