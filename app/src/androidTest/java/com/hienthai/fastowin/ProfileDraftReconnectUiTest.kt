@@ -1,9 +1,22 @@
 package com.hienthai.fastowin
 
+import android.graphics.Bitmap
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.test.DeviceConfigurationOverride
+import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.ForcedSize
+import androidx.compose.ui.test.captureToImage
+import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.printToString
+import androidx.compose.ui.unit.DpSize
+import androidx.compose.ui.unit.dp
+import androidx.test.platform.app.InstrumentationRegistry
+import androidx.test.espresso.Espresso.closeSoftKeyboard
+import java.io.File
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertTextContains
@@ -27,6 +40,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
 
+@OptIn(ExperimentalTestApi::class)
 class ProfileDraftReconnectUiTest {
     @get:Rule val composeRule = createComposeRule()
     private val online = mutableStateOf(true)
@@ -36,6 +50,7 @@ class ProfileDraftReconnectUiTest {
     private val image = android.util.Base64.decode(
         "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=", 0)
     private var saves = 0
+    private var pickerCalls = 0
     private var savedName: String? = null
     private var savedImage: ByteArray? = null
     private var lateImage: ((ByteArray?) -> Unit)? = null
@@ -121,11 +136,40 @@ class ProfileDraftReconnectUiTest {
         assertEquals(0, saves)
     }
 
-    private fun editDraft() {
+    @Test fun desktopViewportKeepsDraftAndSaveActionAfterReconnect() {
+        render(desktop = true)
+        try {
+            editDraft(hideSoftwareKeyboard = true)
+        } catch (failure: Throwable) {
+            runCatching {
+                val cache = InstrumentationRegistry.getInstrumentation().targetContext.cacheDir
+                File(cache, "profile-draft-desktop-failure.txt").writeText(
+                    "pickerCalls=$pickerCalls owner=${owner.value} online=${online.value}\n" +
+                        composeRule.onRoot(useUnmergedTree = true).printToString())
+                File(cache, "profile-draft-desktop-failure.png").outputStream().use {
+                    composeRule.onRoot().captureToImage().asAndroidBitmap().compress(Bitmap.CompressFormat.PNG, 100, it)
+                }
+            }.onFailure(failure::addSuppressed)
+            throw failure
+        }
+        reconnect()
+        assertDraft()
+        composeRule.onNodeWithText("Lưu").performScrollTo().assertIsDisplayed().assertIsEnabled()
+        assertEquals(0, saves)
+        val screenshot = composeRule.onRoot().captureToImage().asAndroidBitmap()
+        val file = File(InstrumentationRegistry.getInstrumentation().targetContext.cacheDir,
+            "profile-draft-desktop.png")
+        file.outputStream().use { screenshot.compress(Bitmap.CompressFormat.PNG, 100, it) }
+    }
+
+    private fun editDraft(hideSoftwareKeyboard: Boolean = false) {
         composeRule.onNodeWithTag("profile_edit").performClick()
         composeRule.onNodeWithTag("profile_display_name").performScrollTo().performTextReplacement("Draft name")
+        // Forced desktop density does not scale the phone's real IME insets. Model hardware input here.
+        // The real Samsung IME failure is tracked independently in #41.
+        if (hideSoftwareKeyboard) closeSoftKeyboard()
         composeRule.onNodeWithTag("profile_avatar_picker").performScrollTo().performClick()
-        composeRule.onNodeWithTag("profile_avatar_preview").assertIsDisplayed()
+        composeRule.onNodeWithTag("profile_avatar_preview").performScrollTo().assertIsDisplayed()
     }
 
     private fun reconnect() {
@@ -139,8 +183,8 @@ class ProfileDraftReconnectUiTest {
         composeRule.onNodeWithTag("profile_avatar_preview").performScrollTo().assertIsDisplayed()
     }
 
-    private fun render() {
-        composeRule.setContent {
+    private fun render(desktop: Boolean = false) {
+        val content: @Composable () -> Unit = {
             ProvideLocalization(AppLanguage.VIETNAMESE) {
                 FastToWinTheme {
                     owner.value?.let { id ->
@@ -154,6 +198,13 @@ class ProfileDraftReconnectUiTest {
                     }
                 }
             }
+        }
+        composeRule.setContent {
+            if (desktop) {
+                DeviceConfigurationOverride(DeviceConfigurationOverride.ForcedSize(DpSize(1200.dp, 800.dp))) {
+                    content()
+                }
+            } else content()
         }
     }
 
@@ -171,6 +222,7 @@ class ProfileDraftReconnectUiTest {
             showBackButton = false, profileEditState = editor,
             imagePicker = { selected, content ->
                 content {
+                    pickerCalls++
                     if (holdNextPicker) lateImage = selected else selected(image)
                 }
             }
