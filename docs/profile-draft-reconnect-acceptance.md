@@ -1,5 +1,7 @@
 # Giữ profile draft khi offline/reconnect — #39
 
+Cập nhật: #41 được triển khai cùng PR #42. Kết quả bàn phím ở các mục dưới là lịch sử vòng #39; xem [nghiệm thu bàn phím](profile-keyboard-acceptance.md) cho bản sửa và giới hạn nghiệm thu hiện tại.
+
 Nghiệm thu mạng thật ngày14/10/2026; hoàn tất regression/cleanup ngày15/10/2026. Issue: https://github.com/ThaiXuanHien/FastToWin/issues/39 .
 Bản sửa dựa trên nhánh PNG alpha của PR #40, commit nguồn `3afd7ea`.
 
