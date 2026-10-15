@@ -90,25 +90,54 @@ internal class JdbcAdminTransaction(private val connection: Connection) : AdminT
             else -> { condition="(UPPER(p.player_code)=UPPER(?) OR p.display_name ILIKE ? ESCAPE '!')"; values=listOf(query,pattern) }
         }
         val from = "FROM users u JOIN profiles p ON p.user_id=u.id WHERE $condition"
-        val items = rows("SELECT u.id,p.display_name,p.player_code,u.email_normalized,u.account_type,u.status,u.created_at $from ORDER BY u.created_at DESC,u.id LIMIT ? OFFSET ?", values + listOf(page.pageSize,page.offset)) {
-            UserSummary(it.getString("id"),it.getString("display_name"),it.getString("email_normalized"),it.getString("account_type"),it.getString("status"),it.getTimestamp("created_at").time,it.getString("player_code"))
+        val items = rows("SELECT u.id,p.display_name,p.player_code,u.email_normalized,u.account_type,u.status,u.created_at,COALESCE((SELECT ps.experience_points FROM player_stats ps WHERE ps.user_id=u.id),0) AS xp $from ORDER BY u.created_at DESC,u.id LIMIT ? OFFSET ?", values + listOf(page.pageSize,page.offset)) {
+            UserSummary(it.getString("id"),it.getString("display_name"),it.getString("email_normalized"),it.getString("account_type"),it.getString("status"),it.getTimestamp("created_at").time,it.getString("player_code"),PlayerProgression.levelForExperience(it.getInt("xp")))
         }
         return page.result(items,count("SELECT count(*) $from",values))
     }
-    override fun giftRecipient(reference: String): UserSummary? = rows("""SELECT u.id,p.display_name,p.player_code,u.email_normalized,u.account_type,u.status,u.created_at
-        FROM users u JOIN profiles p ON p.user_id=u.id WHERE u.account_type='REGISTERED' AND u.status<>'DELETED'
+    override fun playerOverview(todayFrom: Long, todayUntil: Long): PlayerOverviewStats = rows("""
+        WITH population AS (
+            SELECT u.id,u.account_type,u.status,COALESCE(ps.total_matches,0) AS total_matches,
+                COALESCE(ps.wins,0) AS wins,COALESCE(ps.losses,0) AS losses,COALESCE(ps.draws,0) AS draws,
+                COALESCE(ps.elo_rating,1000) AS elo
+            FROM users u JOIN profiles p ON p.user_id=u.id LEFT JOIN player_stats ps ON ps.user_id=u.id
+        )
+        SELECT count(*)::text AS total_players,
+            (count(*) FILTER (WHERE account_type='REGISTERED'))::text AS registered_players,
+            (count(*) FILTER (WHERE account_type='GUEST'))::text AS guest_players,
+            (count(*) FILTER (WHERE status='ACTIVE'))::text AS playable_accounts,
+            (SELECT count(*)::text FROM matches WHERE ended_at>=? AND ended_at<?) AS matches_today,
+            COALESCE(sum(total_matches::numeric),0)::text AS recorded_participations,
+            COALESCE(sum(wins::numeric),0)::text AS recorded_wins,
+            COALESCE(sum(losses::numeric),0)::text AS recorded_losses,
+            COALESCE(sum(draws::numeric),0)::text AS recorded_draws,
+            (count(*) FILTER (WHERE total_matches>0))::text AS played_profiles,
+            (SELECT count(*)::text FROM clans) AS clan_count,
+            (SELECT count(DISTINCT cm.user_id)::text FROM clan_members cm JOIN population p ON p.id=cm.user_id) AS clan_members,
+            round(avg(elo::numeric),1)::text AS average_elo,max(elo) AS max_elo
+        FROM population
+        """, listOf(Timestamp(todayFrom), Timestamp(todayUntil))) {
+        PlayerOverviewStats(it.getString("total_players"),it.getString("registered_players"),it.getString("guest_players"),
+            it.getString("playable_accounts"),it.getString("matches_today"),it.getString("recorded_participations"),
+            it.getString("recorded_wins"),it.getString("recorded_losses"),it.getString("recorded_draws"),
+            it.getString("played_profiles"),it.getString("clan_count"),it.getString("clan_members"),
+            it.getString("average_elo"),it.getObject("max_elo")?.let { value -> (value as Number).toInt() })
+    }.single()
+    override fun giftRecipient(reference: String): UserSummary? = rows("""SELECT u.id,p.display_name,p.player_code,u.email_normalized,u.account_type,u.status,u.created_at,COALESCE(ps.experience_points,0) AS xp
+        FROM users u JOIN profiles p ON p.user_id=u.id LEFT JOIN player_stats ps ON ps.user_id=u.id WHERE u.account_type='REGISTERED' AND u.status<>'DELETED'
         AND (UPPER(p.player_code)=UPPER(?) OR u.email_normalized=?) LIMIT 2""",
         listOf(reference, reference.lowercase(java.util.Locale.ROOT))) {
-        UserSummary(it.getString("id"),it.getString("display_name"),it.getString("email_normalized"),it.getString("account_type"),it.getString("status"),it.getTimestamp("created_at").time,it.getString("player_code"))
+        UserSummary(it.getString("id"),it.getString("display_name"),it.getString("email_normalized"),it.getString("account_type"),it.getString("status"),it.getTimestamp("created_at").time,it.getString("player_code"),PlayerProgression.levelForExperience(it.getInt("xp")))
     }.singleOrNull()
     override fun user(id: String): UserDetail? = rows("""SELECT u.id,p.display_name,p.player_code,u.email_normalized,u.account_type,u.status,u.created_at,
         COALESCE(ps.experience_points,0) AS xp,COALESCE(ps.gold,0) AS gold,COALESCE(ps.gems,0) AS gems,COALESCE(ps.elo_rating,1000) AS elo,
+        COALESCE(ps.total_matches,0) AS total_matches,COALESCE(ps.wins,0) AS wins,COALESCE(ps.losses,0) AS losses,COALESCE(ps.draws,0) AS draws,
         c.id AS clan_id,c.name AS clan_name,(SELECT max(s.last_seen_at) FROM sessions s WHERE s.user_id=u.id) AS last_activity
         FROM users u JOIN profiles p ON p.user_id=u.id LEFT JOIN player_stats ps ON ps.user_id=u.id
         LEFT JOIN clan_members cm ON cm.user_id=u.id LEFT JOIN clans c ON c.id=cm.clan_id WHERE u.id=?""", listOf(UUID.fromString(id))) {
         val xp=it.getInt("xp")
         UserDetail(it.getString("id"),it.getString("display_name"),it.getString("email_normalized"),it.getString("account_type"),it.getString("status"),it.getTimestamp("created_at").time,
-            PlayerProgression.levelForExperience(xp),xp,it.getInt("gold"),it.getInt("gems"),it.getInt("elo"),it.getString("clan_id"),it.getString("clan_name"),it.getTimestamp("last_activity")?.time,it.getString("player_code"))
+            PlayerProgression.levelForExperience(xp),xp,it.getInt("gold"),it.getInt("gems"),it.getInt("elo"),it.getString("clan_id"),it.getString("clan_name"),it.getTimestamp("last_activity")?.time,it.getString("player_code"),it.getInt("total_matches"),it.getInt("wins"),it.getInt("losses"),it.getInt("draws"))
     }.singleOrNull()
     override fun matches(id: String, page: PageRequest): AdminPage<MatchEntry> {
         val from="FROM match_players mp JOIN matches m ON m.id=mp.match_id WHERE mp.user_id=?"

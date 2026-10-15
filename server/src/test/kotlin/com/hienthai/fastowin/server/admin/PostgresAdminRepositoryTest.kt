@@ -12,6 +12,77 @@ import java.util.UUID
 import kotlin.test.*
 
 class PostgresAdminRepositoryTest {
+    @Test fun `player overview aggregates persisted totals once and honors Bangkok boundaries and directory population`() = runTest {
+        database { source ->
+            val now = java.time.Instant.parse("2026-10-15T02:30:00Z").toEpochMilli()
+            val start = java.time.Instant.parse("2026-10-14T17:00:00Z").toEpochMilli()
+            val service = AdminService(PostgresAdminRepository(source), AdminConfiguration("http://localhost:8080", false), PasswordHasher(1_000), { now })
+            service.bootstrapOwner("owner@example.com", "GoodPassword123!")
+            val owner = login(service)
+            val users = List(4) { UUID.randomUUID() }
+            val clan = UUID.randomUUID()
+            source.connection.use { c ->
+                c.prepareStatement("INSERT INTO users(id,account_type,status,email_normalized,password_hash,created_at,updated_at) VALUES (?,?,?,?,?,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)").use { s ->
+                    users.forEachIndexed { i, id ->
+                        s.setObject(1, id); s.setString(2, if (i == 1) "GUEST" else "REGISTERED"); s.setString(3, listOf("ACTIVE", "BLOCKED", "DELETED", "ACTIVE")[i]); s.setString(4, "fixture$i@example.com"); s.setString(5, "unused-fixture-hash"); s.executeUpdate()
+                    }
+                }
+                c.prepareStatement("INSERT INTO profiles(user_id,display_name,player_code,created_at,updated_at) VALUES (?,'Player',?,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)").use { s ->
+                    users.take(3).forEachIndexed { i, id -> s.setObject(1, id); s.setString(2, "TESTCODE$i"); s.executeUpdate() }
+                }
+                c.prepareStatement("INSERT INTO player_stats(user_id,total_matches,wins,losses,draws,experience_points,elo_rating,updated_at) VALUES (?,?,?,?,?,?,?,CURRENT_TIMESTAMP)").use { s ->
+                    users.take(3).forEachIndexed { i, id ->
+                        s.setObject(1, id); s.setInt(2, if (i == 0) Int.MAX_VALUE else 3); s.setInt(3, if (i == 0) Int.MAX_VALUE - 2 else 1)
+                        s.setInt(4, 1); s.setInt(5, 1); s.setInt(6, if (i == 0) 210 else 0); s.setInt(7, 1000 + i * 100); s.executeUpdate()
+                    }
+                }
+                c.prepareStatement("INSERT INTO clans(id,name,owner_id,created_at) VALUES (?,'Clan',?,CURRENT_TIMESTAMP)").use { s -> s.setObject(1, clan); s.setObject(2, users[0]); s.executeUpdate() }
+                c.prepareStatement("INSERT INTO clan_members(clan_id,user_id,role,joined_at) VALUES (?,?,'MEMBER',CURRENT_TIMESTAMP)").use { s ->
+                    for (id in users.take(3)) { s.setObject(1, clan); s.setObject(2, id); s.executeUpdate() }
+                }
+                c.prepareStatement("INSERT INTO matches(id,room_name,game_mode,started_at,ended_at) VALUES (?,'Test','ORDER',?,?)").use { s ->
+                    for (finished in listOf(start - 1, start, now - 1, now, now + 1)) {
+                        val match = UUID.randomUUID(); s.setObject(1, match); s.setTimestamp(2, java.sql.Timestamp(finished - 100)); s.setTimestamp(3, java.sql.Timestamp(finished)); s.executeUpdate()
+                        c.prepareStatement("INSERT INTO match_players(match_id,user_id,display_name,score,outcome) VALUES (?,?,'Player',10,'DRAW')").use { p ->
+                            for (id in users.take(2)) { p.setObject(1, match); p.setObject(2, id); p.executeUpdate() }
+                        }
+                    }
+                }
+            }
+            val result = service.playerOverview(owner.token)
+            assertEquals(now, result.snapshotAt); assertEquals(start, result.todayFrom); assertEquals(now, result.todayUntil)
+            assertEquals("3", result.totalPlayers); assertEquals("2", result.registeredPlayers); assertEquals("1", result.guestPlayers)
+            assertEquals("1", result.playableAccounts); assertEquals("2", result.matchesToday)
+            assertEquals("2147483653", result.recordedParticipations); assertEquals("2147483647", result.recordedWins)
+            assertEquals("3", result.recordedLosses); assertEquals("3", result.recordedDraws); assertEquals("3", result.playedProfiles)
+            assertEquals("1", result.clanCount); assertEquals("3", result.clanMembers)
+            assertEquals("1100.0", result.averageElo); assertEquals(1200, result.maxElo)
+            val detail = service.user(owner.token, users[0].toString())
+            assertEquals(3, detail.level); assertEquals(3, service.users(owner.token, users[0].toString(), PageRequest()).items.single().level)
+            assertEquals(Int.MAX_VALUE, detail.totalMatches); assertEquals(Int.MAX_VALUE - 2, detail.wins)
+            assertEquals(1, detail.losses); assertEquals(1, detail.draws)
+            assertEquals(5, service.matches(owner.token, users[0].toString(), PageRequest(pageSize = 1)).total)
+            assertEquals(1, service.audit(owner.token, PageRequest(pageSize = 100)).items.count { it.action == "PLAYER_OVERVIEW" })
+            source.connection.use { c -> c.createStatement().use { it.execute("ALTER TABLE admin_audit ADD CONSTRAINT reject_overview CHECK(action <> 'PLAYER_OVERVIEW') NOT VALID") } }
+            assertEquals(503, assertFailsWith<AdminException> { service.playerOverview(owner.token) }.status)
+        }
+    }
+    @Test fun `empty directory has zero totals and unplayed profiles use actual default stats and level`() = runTest {
+        database { source ->
+            val service = service(source); service.bootstrapOwner("owner@example.com", "GoodPassword123!"); val owner = login(service)
+            val empty = service.playerOverview(owner.token)
+            assertEquals("0", empty.totalPlayers); assertEquals("0", empty.recordedParticipations); assertEquals("0", empty.matchesToday)
+            assertEquals("0", empty.clanMembers); assertEquals("0", empty.playedProfiles); assertNull(empty.averageElo); assertNull(empty.maxElo)
+            val auth = AuthenticationService(PostgresAuthRepository(source), passwordHasher = PasswordHasher(1_000))
+            val id = assertIs<AuthResult.Success>(auth.register("unplayed@example.com", "GoodPassword123!", "Unplayed", "test")).session.userId
+            val unplayed = service.playerOverview(owner.token)
+            assertEquals("1", unplayed.totalPlayers); assertEquals("0", unplayed.recordedParticipations); assertEquals("0", unplayed.playedProfiles)
+            assertEquals("1000.0", unplayed.averageElo); assertEquals(1000, unplayed.maxElo)
+            val detail = service.user(owner.token, id)
+            assertEquals(0, detail.totalMatches); assertEquals(0, detail.wins); assertEquals(0, detail.losses); assertEquals(0, detail.draws)
+            assertEquals(1, service.giftRecipient(owner.token, detail.playerCode).level)
+        }
+    }
     @Test fun `sql public codes and normalized emails resolve exactly and exclude ineligible recipients`() = runTest {
         database { source ->
             val service = service(source); service.bootstrapOwner("owner@example.com", "GoodPassword123!"); val owner = login(service)

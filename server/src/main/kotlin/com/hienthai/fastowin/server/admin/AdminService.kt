@@ -131,6 +131,19 @@ class AdminService(
         auditEntry(actor.id, "USER_SEARCH") // Never persist the query or player email.
         result.copy(items = result.items.map { if (actor.role == AdminRole.SUPPORT) it.copy(email = maskEmail(it.email)) else it })
     }
+    suspend fun playerOverview(token: String?): PlayerOverviewResponse = repository.transaction {
+        val actor = principal(token).second.identity
+        if (actor.role == AdminRole.SUPPORT) forbidden()
+        val snapshotAt = nowMillis()
+        val todayFrom = java.time.Instant.ofEpochMilli(snapshotAt).atZone(java.time.ZoneId.of("Asia/Bangkok"))
+            .toLocalDate().atStartOfDay(java.time.ZoneId.of("Asia/Bangkok")).toInstant().toEpochMilli()
+        val stats = playerOverview(todayFrom, snapshotAt)
+        auditEntry(actor.id, "PLAYER_OVERVIEW")
+        PlayerOverviewResponse(snapshotAt, todayFrom, snapshotAt, stats.totalPlayers, stats.registeredPlayers,
+            stats.guestPlayers, stats.playableAccounts, stats.matchesToday, stats.recordedParticipations,
+            stats.recordedWins, stats.recordedLosses, stats.recordedDraws, stats.playedProfiles, stats.clanCount,
+            stats.clanMembers, stats.averageElo, stats.maxElo)
+    }
     suspend fun user(token: String?, id: String): UserDetail = repository.transaction {
         val actor = principal(token).second.identity; uuid(id)
         val result = user(id) ?: missing(); auditEntry(actor.id, "USER_DETAIL", id)

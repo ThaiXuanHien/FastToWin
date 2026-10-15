@@ -2,7 +2,9 @@ import { test, expect, login } from '../support/admin-fixture.mjs';
 import { analytics, analyticsPath, snapshot, group, coverage } from '../support/admin-analytics-fixture.mjs';
 import { maintenance } from '../support/maintenance-fixture.mjs';
 async function open(page, fixture) { await login(page, fixture); await page.getByRole('button', { name: 'Thống kê', exact: true }).click(); }
-const lastQuery = fixture => fixture.calls.filter(c => c.route === analyticsPath).at(-1)?.query;
+// The directory loads its own two-metric overview before console navigation.
+// Inspect console requests independently when checking obsolete lazy imports.
+const lastQuery = fixture => fixture.calls.filter(c => c.route === analyticsPath && c.query.get('metric') !== 'ACTIVE_PLAYERS,REGISTRATIONS').at(-1)?.query;
 
 // Delay only the real module response; production navigation and module bodies run unchanged.
 async function delayedImport(page, name, fail = false) {
