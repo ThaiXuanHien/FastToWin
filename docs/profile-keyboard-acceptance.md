@@ -42,3 +42,16 @@ Không cần khởi động staging hoặc ghi dữ liệu backend cho kiểm th
 ## Dọn dẹp và giới hạn thiết bị
 
 Emulator được khôi phục cấu hình IME/rotation ban đầu, gỡ riêng Dev/test của vòng này và tắt sau nghiệm thu; giữ app production có sẵn. Không thay đổi network/font scale toàn hệ thống. Samsung không còn kết nối nên chưa gỡ lại Dev/test được cài trong lượt #41; cần dọn khi có máy. Vòng này chỉ dùng fixture UI trong bộ nhớ, không tạo tài khoản/token hoặc ảnh cá nhân trên máy.
+
+## Nghiệm thu bổ sung Samsung bản cuối — 16/10/2026
+
+Source `fd8219975b71047ab67a02c69f14b2cf8be68c26`, Samsung A36 SM-A366B, Android 16/API36, Dev riêng trỏ staging WSS/R2 private. Đây là cập nhật cho các giới hạn Samsung còn chờ ở báo cáo lịch sử phía trên.
+
+- Log thiết bị ngày 16/10 xác nhận 9/9 regression draft/PNG đạt. Bốn cấu hình bàn phím Samsung đạt: portrait chữ thường và font 1.4 (2/2), landscape chữ thường (1/1) và font 1.4 chạy riêng (1/1). Lượt gộp landscape trước đó có một timeout tại bước chờ orientation, trước khi dựng editor; không tính lượt lỗi đó là pass.
+- Ảnh đã xem xác nhận trường nhập và Lưu/Hủy nằm trên IME, safe area còn giữ và navigation trở lại khi đóng bàn phím. Bằng chứng local ignored: `.artifacts/profile-keyboard-20261016/` tại checkout gốc.
+- Lượt mạng thật cuối: nhập `QADraftResume16`, chọn ảnh QA xanh tổng hợp, chưa Lưu; tắt Wi-Fi/data 40 giây đến màn Offline. Sau bật lại mạng, app tự reconnect, editor/tên/preview còn nguyên; header vẫn tên cũ `QADraft16`.
+- HTTP avatar không đổi trước/sau reconnect: SHA-256 `6ab12b75f9af179017649610557c6214d9ee909d9c8370103ebe3186754dcf36`. Chỉ sau bấm Lưu, editor đóng, hiện “Đã lưu hồ sơ”, tên đổi `QADraftResume16` và HTTP trả đúng ảnh QA xanh mới, SHA-256 `fbb1563496e7c8fe21355933734b0358ecb2d68d84684cc3fa1c0ed3fda0a541`.
+- Lượt thử trước bị ngắt bởi “phiên hết hạn” do quy trình QA đăng nhập observer cùng tài khoản. `Authentication.login`/`PostgresAuthRepository.replaceSessions` chủ động thu hồi các phiên cũ. Lượt cuối chỉ dùng HTTP avatar công khai để đối chiếu khi Samsung đang chạy; không sửa mã xác thực và không coi lỗi do observer là regression của PR.
+- Rà soát độc lập PR #40/#42 đã hoàn tất, không có finding cần sửa trong phạm vi PNG/draft/keyboard. CI head `fd82199` đạt toàn bộ năm nhóm; sau tích hợp master phải kiểm tra CI của head mới riêng.
+
+Samsung cuối đã nghiệm thu; browser/iOS runtime và CDN vẫn chưa được chứng minh bằng lượt này. Không coi Android Dev là bản đã phát hành Google Play. Production chưa được thay đổi bởi lượt kiểm thử này.
