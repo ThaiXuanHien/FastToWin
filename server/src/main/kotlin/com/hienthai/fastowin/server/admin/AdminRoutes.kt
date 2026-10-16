@@ -28,6 +28,7 @@ fun Route.adminRoutes(service: AdminService) {
             call.adminCookie("", service.configuration.secureCookie, expire = true); call.respond(AdminOk())
         } }
         get("/users") { call.adminResponse(service) { call.respond(service.users(call.adminToken(), call.request.queryParameters["q"].orEmpty(), call.adminPage())) } }
+        get("/player-overview") { call.adminResponse(service) { call.respond(service.playerOverview(call.adminToken())) } }
         get("/gift-recipient") { call.adminResponse(service) { call.respond(service.giftRecipient(call.adminToken(), call.request.queryParameters["q"].orEmpty())) } }
         get("/users/{id}") { call.adminResponse(service) { call.respond(service.user(call.adminToken(), call.adminId())) } }
         get("/users/{id}/matches") { call.adminResponse(service) { call.respond(service.matches(call.adminToken(), call.adminId(), call.adminPage())) } }

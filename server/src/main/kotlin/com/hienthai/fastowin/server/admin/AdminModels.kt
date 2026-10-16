@@ -12,14 +12,32 @@ import com.hienthai.fastowin.server.legacyFallback
 @Serializable data class AdminError(val code: String, val message: String)
 @Serializable data class AdminOk(val ok: Boolean = true)
 @Serializable data class AdminPage<T>(val items: List<T>, val page: Int, val pageSize: Int, val total: Long)
-@Serializable data class UserSummary(val id: String, val displayName: String, val email: String?, val accountType: String, val status: String, val createdAtEpochMillis: Long, val playerCode: String = "")
+@Serializable data class UserSummary(val id: String, val displayName: String, val email: String?, val accountType: String, val status: String, val createdAtEpochMillis: Long, val playerCode: String = "", val level: Int? = null)
 @Serializable data class UserDetail(
     val id: String, val displayName: String, val email: String?, val accountType: String, val status: String,
     val createdAtEpochMillis: Long, val level: Int, val xp: Int, val gold: Int, val gems: Int, val elo: Int,
-    val clanId: String?, val clanName: String?, val lastActivityAtEpochMillis: Long?, val playerCode: String = ""
+    val clanId: String?, val clanName: String?, val lastActivityAtEpochMillis: Long?, val playerCode: String = "",
+    val totalMatches: Int? = null, val wins: Int? = null, val losses: Int? = null, val draws: Int? = null
 ) {
-    fun summary() = UserSummary(id, displayName, email, accountType, status, createdAtEpochMillis, playerCode)
+    fun summary() = UserSummary(id, displayName, email, accountType, status, createdAtEpochMillis, playerCode, level)
 }
+/** Profile population matches the directory, including DELETED accounts. Counts are decimal strings;
+ * null means the storage cannot supply that metric. Matches are unique completed persisted matches.
+ * Recorded results are participant totals, not unique match totals. Elo includes unplayed profiles
+ * with the same default rating (1000) as player details. Clan count includes empty clans. */
+data class PlayerOverviewStats(
+    val totalPlayers: String?, val registeredPlayers: String?, val guestPlayers: String?, val playableAccounts: String?,
+    val matchesToday: String?, val recordedParticipations: String?, val recordedWins: String?, val recordedLosses: String?,
+    val recordedDraws: String?, val playedProfiles: String?, val clanCount: String?, val clanMembers: String?,
+    val averageElo: String?, val maxElo: Int?
+)
+@Serializable data class PlayerOverviewResponse(
+    val snapshotAt: Long, val todayFrom: Long, val todayUntil: Long,
+    val totalPlayers: String?, val registeredPlayers: String?, val guestPlayers: String?, val playableAccounts: String?,
+    val matchesToday: String?, val recordedParticipations: String?, val recordedWins: String?, val recordedLosses: String?,
+    val recordedDraws: String?, val playedProfiles: String?, val clanCount: String?, val clanMembers: String?,
+    val averageElo: String?, val maxElo: Int?
+)
 @Serializable data class MatchEntry(val id: String, val matchType: String, val outcome: String, val score: Int, val finishedAtEpochMillis: Long)
 @Serializable data class WalletEntry(val id: String, val sourceType: String, val sourceId: String, val goldDelta: Int, val gemsDelta: Int, val xpDelta: Int, val createdAtEpochMillis: Long)
 @Serializable data class AuditEntry(

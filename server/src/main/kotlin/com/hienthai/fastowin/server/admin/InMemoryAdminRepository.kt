@@ -74,6 +74,22 @@ class InMemoryAdminRepository : AdminRepository {
             override fun accounts(page: PageRequest) = paginate(next.accounts.values.map { it.identity }.sortedBy { it.id }, page)
             override fun audit(page: PageRequest) = paginate(next.audits.sortedWith(compareByDescending<AuditEntry> { it.createdAtEpochMillis }.thenByDescending { it.id }), page)
             fun available() { if (!next.playerStorageAvailable) unavailable() }
+            override fun playerOverview(todayFrom: Long, todayUntil: Long): PlayerOverviewStats {
+                available()
+                val users = next.users.values
+                fun total(value: (UserDetail) -> Int?): String? {
+                    if (users.any { value(it) == null }) return null
+                    return users.fold(java.math.BigInteger.ZERO) { sum, user -> sum + java.math.BigInteger.valueOf(value(user)!!.toLong()) }.toString()
+                }
+                // Seeded per-user history cannot establish global match/clan totals or complete lifetime results.
+                return PlayerOverviewStats(users.size.toString(),users.count { it.accountType == "REGISTERED" }.toString(),
+                    users.count { it.accountType == "GUEST" }.toString(),users.count { it.status == "ACTIVE" }.toString(),
+                    null,total { it.totalMatches },total { it.wins },total { it.losses },total { it.draws },
+                    if (users.all { it.totalMatches != null }) users.count { it.totalMatches!! > 0 }.toString() else null,
+                    null,users.count { it.clanId != null }.toString(),
+                    if (users.isEmpty()) null else users.fold(java.math.BigDecimal.ZERO) { sum, user -> sum + user.elo.toBigDecimal() }
+                        .divide(users.size.toBigDecimal(),1,java.math.RoundingMode.HALF_UP).toPlainString(),users.maxOfOrNull { it.elo })
+            }
             override fun users(query: String, includeEmail: Boolean, page: PageRequest): AdminPage<UserSummary> {
                 available()
                 val items = next.users.values.filter { query.isEmpty() || it.id == query || it.playerCode.equals(query, true) || it.displayName.contains(query, true) || (includeEmail && it.email?.contains(query, true) == true) }

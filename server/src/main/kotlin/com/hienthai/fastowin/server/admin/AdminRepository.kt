@@ -18,6 +18,7 @@ interface AdminTransaction {
     fun accounts(page: PageRequest): AdminPage<AdminIdentity>
     fun audit(page: PageRequest): AdminPage<AuditEntry>
     fun users(query: String, includeEmail: Boolean, page: PageRequest): AdminPage<UserSummary>
+    fun playerOverview(todayFrom: Long, todayUntil: Long): PlayerOverviewStats
     fun user(id: String): UserDetail?
     fun giftRecipient(reference: String): UserSummary?
     fun matches(id: String, page: PageRequest): AdminPage<MatchEntry>

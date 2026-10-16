@@ -58,7 +58,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
 import com.hienthai.fastowin.resources.Res
 import com.hienthai.fastowin.resources.fast_to_win_logo_banner
 import com.hienthai.fastowin.localization.TextKey
@@ -279,7 +278,7 @@ fun ArcadeDialog(
 ) {
     Dialog(
         onDismissRequest = onDismissRequest,
-        properties = DialogProperties(usePlatformDefaultWidth = false)
+        properties = arcadeDialogProperties()
     ) {
         NativeDialogInputScope {
             BoxWithConstraints(

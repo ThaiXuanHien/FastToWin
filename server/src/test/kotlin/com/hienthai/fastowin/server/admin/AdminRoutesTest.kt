@@ -10,6 +10,41 @@ import kotlinx.serialization.json.*
 import kotlin.test.*
 
 class AdminRoutesTest {
+    @Test fun `player overview requires privileged admin and exposes exact Bangkok snapshot counts`() = testApplication {
+        val f = AdminFixture()
+        f.now = java.time.Instant.parse("2026-10-15T02:30:00Z").toEpochMilli()
+        val owner = runBlocking {
+            f.owner()
+            f.repository.seedUser(UserDetail("11111111-1111-1111-1111-111111111111", "Player", "player@example.com", "REGISTERED", "ACTIVE", 1, 4, 500, 0, 0, 1200, null, null, null))
+            val login = f.login()
+            for (role in listOf(AdminRole.OPERATOR, AdminRole.SUPPORT)) f.service.createAccount(login.token, login.response.csrfToken, f.configuration.origin,
+                CreateAdminRequest("${role.name.lowercase()}@example.com", "GoodPassword123!", role, "Access", role.name))
+            login
+        }
+        application { gameModule(adminService = f.service) }
+        assertEquals(HttpStatusCode.Unauthorized, client.get("/admin/api/player-overview").status)
+        assertEquals(HttpStatusCode.Unauthorized, client.get("/admin/api/player-overview") { bearerAuth("player-token") }.status)
+        val support = runBlocking { f.login("support@example.com") }
+        assertEquals(HttpStatusCode.Forbidden, client.get("/admin/api/player-overview") { header(HttpHeaders.Cookie, "$ADMIN_COOKIE=${support.token}") }.status)
+        for (token in listOf(owner.token, runBlocking { f.login("operator@example.com") }.token)) {
+            val response = client.get("/admin/api/player-overview") { header(HttpHeaders.Cookie, "$ADMIN_COOKIE=$token") }
+            assertEquals(HttpStatusCode.OK, response.status)
+            assertEquals("no-store", response.headers[HttpHeaders.CacheControl])
+            val json = Json.parseToJsonElement(response.bodyAsText()).jsonObject
+            assertEquals(f.now, json.getValue("snapshotAt").jsonPrimitive.long)
+            assertEquals(java.time.Instant.parse("2026-10-14T17:00:00Z").toEpochMilli(), json.getValue("todayFrom").jsonPrimitive.long)
+            assertEquals(f.now, json.getValue("todayUntil").jsonPrimitive.long)
+            assertEquals(JsonPrimitive("1"), json.getValue("totalPlayers"))
+            assertEquals(JsonPrimitive("1"), json.getValue("playableAccounts"))
+            assertEquals(JsonNull, json.getValue("recordedParticipations"))
+            assertEquals(JsonNull, json.getValue("matchesToday"))
+            assertEquals(JsonNull, json.getValue("clanCount"))
+        }
+        assertEquals(2, runBlocking { f.service.audit(owner.token, PageRequest(pageSize = 100)) }.items.count { it.action == "PLAYER_OVERVIEW" })
+        assertEquals(HttpStatusCode.Forbidden, client.get("/admin/api/player-overview") {
+            header(HttpHeaders.Cookie, "$ADMIN_COOKIE=${owner.token}"); header(HttpHeaders.Origin, "https://untrusted.example")
+        }.status)
+    }
     @Test fun `gift recipient endpoint requires admin session returns public code and never caches lookup`() = testApplication {
         val f = AdminFixture()
         val login = runBlocking {
