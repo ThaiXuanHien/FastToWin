@@ -8,6 +8,7 @@ import androidx.compose.ui.test.ForcedSize
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
@@ -489,13 +490,26 @@ class CriticalFlowsUiTest {
         composeRule.onNodeWithTag("create_room_open").performClick()
         composeRule.onNodeWithTag("match_type:CASUAL").performClick()
         composeRule.onNodeWithTag("game_mode:ORDER").performClick()
-        composeRule.onNodeWithTag("create_room_name").performTextInput("Phòng của Hiền")
-        composeRule.onNodeWithTag("create_room_privacy_toggle").performClick()
-        composeRule.onNodeWithTag("create_room_password").performTextInput("12345678")
-        composeRule.onNodeWithTag("create_room_password").performImeAction()
-        composeRule.onNodeWithTag("create_room_submit").performScrollTo().performClick()
+        withDialogIme("create-private", composeRule.onNodeWithTag("create_room_name"),
+            composeRule.onNodeWithTag("create_room_privacy_toggle"), composeRule.onNodeWithTag("create_room_submit")) { ime ->
+            composeRule.onNodeWithTag("create_room_name").performTextInput("Phòng của Hiền")
+            ime.show()
+            composeRule.waitUntil { ime.isSettled(visible = true) }
+            composeRule.waitForIdle()
+            composeRule.onNodeWithTag("create_room_privacy_toggle")
+                .performScrollTo().assertFullyVisibleAboveIme().performClick().assertIsSelected()
+            composeRule.onNodeWithTag("create_room_password")
+                .performScrollTo().assertFullyVisibleAboveIme().performTextInput("12345678")
+            composeRule.onNodeWithTag("create_room_submit").performScrollTo().assertFullyVisibleAboveIme()
+            composeRule.onNodeWithTag("create_room_password").performImeAction()
+            ime.hide()
+            composeRule.waitUntil { ime.isSettled(visible = false) }
+            composeRule.waitForIdle()
+            composeRule.onNodeWithTag("create_room_submit")
+                .performScrollTo().assertFullyVisibleAboveIme().assertIsEnabled().performClick()
 
-        composeRule.runOnIdle { assertEquals("Phòng của Hiền" to "12345678", createdRoom) }
+            composeRule.runOnIdle { assertEquals("Phòng của Hiền" to "12345678", createdRoom) }
+        }
     }
 
     @Test
@@ -513,12 +527,17 @@ class CriticalFlowsUiTest {
         composeRule.onNodeWithTag("create_room_open").performClick()
         composeRule.onNodeWithTag("match_type:CASUAL").performClick()
         composeRule.onNodeWithTag("game_mode:ORDER").performClick()
-        composeRule.onNodeWithTag("create_room_name").performTextInput("Phòng công khai")
-        // The IME can shrink the dialog while the name field remains focused.
-        composeRule.onNodeWithTag("create_room_submit")
-            .performScrollTo().assertIsDisplayed().assertIsEnabled().performClick()
+        withDialogIme("create-public", composeRule.onNodeWithTag("create_room_name"),
+            composeRule.onNodeWithTag("create_room_submit")) { ime ->
+            composeRule.onNodeWithTag("create_room_name").performTextInput("Phòng công khai")
+            ime.show()
+            composeRule.waitUntil { ime.isSettled(visible = true) }
+            composeRule.waitForIdle()
+            composeRule.onNodeWithTag("create_room_submit")
+                .performScrollTo().assertFullyVisibleAboveIme().assertIsEnabled().performClick()
 
-        composeRule.runOnIdle { assertEquals("Phòng công khai" to "", createdRoom) }
+            composeRule.runOnIdle { assertEquals("Phòng công khai" to "", createdRoom) }
+        }
     }
 
     @Test
@@ -534,10 +553,16 @@ class CriticalFlowsUiTest {
         }
 
         composeRule.onNodeWithTag("room_item:room-1").performClick()
-        composeRule.onNodeWithTag("join_room_password").performTextInput("matkhau")
-        composeRule.onNodeWithTag("join_room_submit").performClick()
+        withDialogIme("join-private", composeRule.onNodeWithTag("join_room_password"),
+            composeRule.onNodeWithTag("join_room_submit")) { ime ->
+            composeRule.onNodeWithTag("join_room_password").performTextInput("matkhau")
+            ime.show()
+            composeRule.waitUntil { ime.isSettled(visible = true) }
+            composeRule.waitForIdle()
+            composeRule.onNodeWithTag("join_room_submit").assertFullyVisibleAboveIme().assertIsEnabled().performClick()
 
-        composeRule.runOnIdle { assertEquals("room-1" to "matkhau", joinedRoom) }
+            composeRule.runOnIdle { assertEquals("room-1" to "matkhau", joinedRoom) }
+        }
     }
 
     @Test
