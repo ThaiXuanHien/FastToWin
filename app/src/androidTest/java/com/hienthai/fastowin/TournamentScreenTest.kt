@@ -5,6 +5,7 @@ import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.FontScale
 import androidx.compose.ui.test.ForcedSize
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.junit4.v2.createComposeRule
@@ -288,11 +289,19 @@ class TournamentScreenTest {
         setDiscoveryContent(GameState(), onCreate = { created += it })
         composeRule.onNodeWithTag("open_create_tournament").performScrollTo().performClick()
         composeRule.onNodeWithTag("tournament_visibility_public").performScrollTo().assertIsSelected()
-        composeRule.onNodeWithTag("tournament_name").performScrollTo().performTextInput("Weekend Cup")
-        composeRule.onNodeWithTag("create_tournament").performScrollTo().performClick()
-        composeRule.onNodeWithTag("tournament_visibility_private").performScrollTo().performClick().assertIsSelected()
-        composeRule.onNodeWithTag("create_tournament").performScrollTo().performClick()
-        composeRule.runOnIdle { assertEquals(listOf(TournamentVisibility.PUBLIC, TournamentVisibility.PRIVATE), created) }
+        withDialogIme("create-tournament", composeRule.onNodeWithTag("tournament_name"),
+            composeRule.onNodeWithTag("create_tournament")) { ime ->
+            composeRule.onNodeWithTag("tournament_name").performScrollTo().performTextInput("Weekend Cup")
+            ime.show()
+            composeRule.waitUntil { ime.isSettled(visible = true) }
+            composeRule.waitForIdle()
+            composeRule.onNodeWithTag("create_tournament").performScrollTo().assertFullyVisibleAboveIme().assertIsEnabled().performClick()
+            composeRule.runOnIdle { assertEquals(listOf(TournamentVisibility.PUBLIC), created) }
+            composeRule.onNodeWithTag("tournament_visibility_private")
+                .performScrollTo().assertFullyVisibleAboveIme().performClick().assertIsSelected()
+            composeRule.onNodeWithTag("create_tournament").performScrollTo().assertFullyVisibleAboveIme().assertIsEnabled().performClick()
+            composeRule.runOnIdle { assertEquals(listOf(TournamentVisibility.PUBLIC, TournamentVisibility.PRIVATE), created) }
+        }
     }
 
     @Test

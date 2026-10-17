@@ -80,4 +80,5 @@ dependencies {
     screenshotTestImplementation(libs.jetbrains.compose.foundation)
     // Compose Multiplatform 1.11.1 currently pins Material 3 to 1.9.0.
     screenshotTestImplementation("org.jetbrains.compose.material3:material3:1.9.0")
+    androidTestImplementation("org.jetbrains.compose.material3:material3:1.9.0")
 }

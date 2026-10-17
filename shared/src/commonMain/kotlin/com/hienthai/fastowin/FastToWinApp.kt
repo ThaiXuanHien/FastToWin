@@ -4,9 +4,17 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material3.AlertDialog
@@ -28,6 +36,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
@@ -76,6 +85,7 @@ import com.hienthai.fastowin.ui.screens.nextFriendRequestPrompt
 import com.hienthai.fastowin.ui.screens.RoomInvitationDialog
 import com.hienthai.fastowin.ui.screens.LobbyScreen
 import com.hienthai.fastowin.ui.screens.ProfileScreen
+import com.hienthai.fastowin.ui.screens.rememberProfileEditorState
 import com.hienthai.fastowin.ui.screens.ProfileSection
 import com.hienthai.fastowin.ui.screens.ProfileSectionScreen
 import com.hienthai.fastowin.ui.screens.LeaderboardScreen
@@ -1223,6 +1233,8 @@ private fun GameContent(
         activePracticeStateKey != null -> activePracticeStateKey
         else -> "lobby"
     }
+    // The account/controller owns the draft even while OfflineScreen replaces the profile.
+    val profileEditor = rememberProfileEditorState(controller, state.profileNotice, screenStateKey == "profile")
     val appRoute = when {
         selectedAnnouncementId != null && !state.isMatchStarted -> "/announcements/$selectedAnnouncementId"
         showAnnouncementUpdate && !state.isMatchStarted -> "/announcements/update"
@@ -1587,7 +1599,8 @@ private fun GameContent(
                     onOpenSettings = openSettingsTab,
                     onOpenSection = openOwnProfileSection,
                     showBackButton = !showTopLevelNavigation,
-                    modifier = contentModifier
+                    modifier = contentModifier,
+                    profileEditState = profileEditor
                 ) }
                 
                 state.isShopOpen -> ShopScreen(
@@ -1918,7 +1931,7 @@ private fun profileSectionFromRoute(route: String): ProfileSection? = when (rout
 }
 
 @Composable
-private fun TopLevelTabIfNeeded(
+internal fun TopLevelTabIfNeeded(
     enabled: Boolean,
     state: com.hienthai.fastowin.state.GameState,
     selected: MainTab,
@@ -1938,36 +1951,47 @@ private fun TopLevelTabIfNeeded(
         content(Modifier.fillMaxSize())
         return
     }
-    Column(modifier = Modifier.fillMaxSize()) {
-        FastToWinHeader(
-            title = when (selected) {
-                MainTab.HOME -> ""
-                MainTab.ROOMS -> localized(TextKey.Rooms)
-                MainTab.LEADERBOARD -> localized(TextKey.Leaderboard)
-                MainTab.CLAN -> localized(TextKey.Clan)
-                MainTab.ACCOUNT -> localized(TextKey.Account)
-            },
-            gold = state.profile?.progression?.gold ?: 0,
-            gems = state.profile?.progression?.gems ?: 0,
-            unreadNotifications = state.unreadNotificationCount,
-            onNotifications = onNotifications,
-            onBack = null,
-            actions = {
-                onRefresh?.let { refresh ->
-                    HeaderRefreshAction(isRefreshing = isRefreshing, onRefresh = refresh)
+    // Consume the IME once above both siblings: otherwise the bottom bar's safeDrawing
+    // and the editor's imePadding each reserve the keyboard height, collapsing the form.
+    BoxWithConstraints(modifier = Modifier.fillMaxSize().imePadding()) {
+        // Landscape IMEs can leave less room than the header and navigation together.
+        val compactKeyboard = maxHeight < 320.dp && WindowInsets.ime.getBottom(LocalDensity.current) > 0
+        val compactSafeArea = if (compactKeyboard) {
+            Modifier.windowInsetsPadding(
+                WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal)
+            )
+        } else Modifier
+        Column(modifier = Modifier.fillMaxSize().then(compactSafeArea)) {
+            if (!compactKeyboard) FastToWinHeader(
+                title = when (selected) {
+                    MainTab.HOME -> ""
+                    MainTab.ROOMS -> localized(TextKey.Rooms)
+                    MainTab.LEADERBOARD -> localized(TextKey.Leaderboard)
+                    MainTab.CLAN -> localized(TextKey.Clan)
+                    MainTab.ACCOUNT -> localized(TextKey.Account)
+                },
+                gold = state.profile?.progression?.gold ?: 0,
+                gems = state.profile?.progression?.gems ?: 0,
+                unreadNotifications = state.unreadNotificationCount,
+                onNotifications = onNotifications,
+                onBack = null,
+                actions = {
+                    onRefresh?.let { refresh ->
+                        HeaderRefreshAction(isRefreshing = isRefreshing, onRefresh = refresh)
+                    }
                 }
-            }
-        )
-        content(Modifier.weight(1f))
-        FastToWinBottomBar(
-            selected = selected,
-            friendNotificationCount = friendNotificationCount,
-            unclaimedGiftCount = unclaimedGiftCount,
-            onHome = onHome,
-            onRooms = onRooms,
-            onLeaderboard = onLeaderboard,
-            onClan = onClan,
-            onAccount = onAccount
-        )
+            )
+            content(Modifier.weight(1f))
+            if (!compactKeyboard) FastToWinBottomBar(
+                selected = selected,
+                friendNotificationCount = friendNotificationCount,
+                unclaimedGiftCount = unclaimedGiftCount,
+                onHome = onHome,
+                onRooms = onRooms,
+                onLeaderboard = onLeaderboard,
+                onClan = onClan,
+                onAccount = onAccount
+            )
+        }
     }
 }
