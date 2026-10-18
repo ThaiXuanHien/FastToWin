@@ -9,6 +9,7 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.test.platform.app.InstrumentationRegistry
 import org.junit.Assert.assertTrue
 import java.io.Closeable
+import java.io.File
 
 /** Observe the native dialog window without replacing Compose's own insets listener. */
 internal class DialogImeSynchronizer(field: SemanticsNodeInteraction) : Closeable {
@@ -60,6 +61,16 @@ internal class DialogImeSynchronizer(field: SemanticsNodeInteraction) : Closeabl
         return settled
     }
 
+    fun diagnosticState(): String {
+        var state = ""
+        instrumentation.runOnMainSync {
+            val insets = ViewCompat.getRootWindowInsets(composeView)
+            state = "hasWindowFocus=${composeView.hasWindowFocus()} imeVisible=${insets?.isVisible(WindowInsetsCompat.Type.ime())} " +
+                "imeBottom=${insets?.getInsets(WindowInsetsCompat.Type.ime())?.bottom} " +
+                "pendingImeAnimations=${animations.map { "duration=${it.durationMillis} fraction=${it.fraction}" }}"
+        }
+        return state
+    }
     override fun close() {
         instrumentation.runOnMainSync { ViewCompat.setWindowInsetsAnimationCallback(decorView, null) }
     }
@@ -71,6 +82,10 @@ internal fun withDialogIme(label: String, field: SemanticsNodeInteraction,
         try {
             block(ime)
         } catch (failure: Throwable) {
+            runCatching {
+                val cache = InstrumentationRegistry.getInstrumentation().targetContext.cacheDir
+                File(cache, "dialog-$label-ime.txt").writeText(ime.diagnosticState())
+            }.onFailure(failure::addSuppressed)
             runCatching { captureDialogFailure(label, field, *actions) }.onFailure(failure::addSuppressed)
             throw failure
         }

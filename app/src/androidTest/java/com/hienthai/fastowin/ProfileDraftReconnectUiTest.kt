@@ -141,6 +141,7 @@ class ProfileDraftReconnectUiTest {
         try {
             editDraft(hideSoftwareKeyboard = true)
         } catch (failure: Throwable) {
+            runCatching { captureNativeInputFailure("profile-draft-desktop-failure") }.onFailure(failure::addSuppressed)
             runCatching {
                 val cache = InstrumentationRegistry.getInstrumentation().targetContext.cacheDir
                 File(cache, "profile-draft-desktop-failure.txt").writeText(

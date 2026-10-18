@@ -17,6 +17,7 @@ internal fun captureDialogFailure(label: String, vararg interactions: SemanticsN
             instrumentation.uiAutomation.takeScreenshot().compress(Bitmap.CompressFormat.PNG, 100, it)
         }
     }
+    val native = runCatching { captureNativeInputFailure("dialog-$label") }
     val semantics = runCatching {
         val details = buildString {
             interactions.forEach { interaction ->
@@ -31,6 +32,7 @@ internal fun captureDialogFailure(label: String, vararg interactions: SemanticsN
                     val view = (node.root as ViewRootForTest).view
                     val insets = ViewCompat.getRootWindowInsets(view)
                     val position = IntArray(2).also(view::getLocationOnScreen)
+                    appendLine("hasWindowFocus=${view.hasWindowFocus()} hasFocus=${view.hasFocus()} attached=${view.isAttachedToWindow}")
                     appendLine("view=${view.width}x${view.height} screen=${position.toList()} ime=${insets?.getInsets(WindowInsetsCompat.Type.ime())} visible=${insets?.isVisible(WindowInsetsCompat.Type.ime())}")
                 }
                 var parent = node.parent
@@ -43,8 +45,9 @@ internal fun captureDialogFailure(label: String, vararg interactions: SemanticsN
         }
         File(cache, "dialog-$label.txt").writeText(details)
     }
-    val failure = screenshot.exceptionOrNull() ?: semantics.exceptionOrNull()
+    val failure = screenshot.exceptionOrNull() ?: native.exceptionOrNull() ?: semantics.exceptionOrNull()
     if (failure != null) {
+        native.exceptionOrNull()?.takeIf { it !== failure }?.let(failure::addSuppressed)
         semantics.exceptionOrNull()?.takeIf { it !== failure }?.let(failure::addSuppressed)
         throw failure
     }

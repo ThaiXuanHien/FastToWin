@@ -115,6 +115,7 @@ class ProfileKeyboardUiTest {
             capture("$label-keyboard-closed")
         } catch (failure: Throwable) {
             testFailure = failure
+            runCatching { captureNativeInputFailure("profile-keyboard-$label-failure") }.onFailure(failure::addSuppressed)
             runCatching { capture("$label-failure") }.onFailure(failure::addSuppressed)
             throw failure
         } finally {

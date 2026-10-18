@@ -318,18 +318,17 @@ jobs:
           arch: x86_64
           profile: pixel_7
           disable-animations: true
-          script: >-
-            ./gradlew
-            :app:connectedDevDebugAndroidTest
-            --no-daemon
-            --no-configuration-cache
+          script: bash scripts/run-android-ui-tests.sh
 
       - name: Upload Android UI test report
         if: always()
         uses: actions/upload-artifact@v7
         with:
           name: android-ui-test-report
-          path: app/build/reports/androidTests/connected/
+          path: |
+            app/build/reports/androidTests/connected/
+            .artifacts/android-ui/
+          include-hidden-files: true
           if-no-files-found: warn
 
   ios-build:
