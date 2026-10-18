@@ -73,6 +73,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.key
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -86,7 +87,6 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
@@ -214,19 +214,25 @@ fun ProfileScreen(
     ) -> Unit = { onImageSelected, content ->
         com.hienthai.fastowin.platform.ImagePicker(onImageSelected, content)
     },
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    profileEditState: ProfileEditorState? = null
 ) {
     SystemBackHandler(enabled = showBackButton, onBack = onBack)
     val profile = if (isExternalProfile) profileOverride else state.profile
     val isProfileLoading = if (isExternalProfile) state.isFriendProfileLoading else state.isProfileLoading
     val clipboard = LocalClipboard.current
     val coroutineScope = rememberCoroutineScope()
-    var isEditing by remember { mutableStateOf(false) }
-    var displayName by remember { mutableStateOf("") }
+    val editor = profileEditState ?: rememberProfileEditorState(profile?.userId, state.profileNotice)
+    val isEditing = editor.isEditing
+    var displayName by editor::displayName
     var showAccountSecurity by remember { mutableStateOf(false) }
     var showAccountSessions by remember { mutableStateOf(false) }
     var showLogoutConfirmation by remember { mutableStateOf(false) }
-    val avatarSelection = remember(profile?.userId, isEditing) { AvatarEditSelection<ImageBitmap>() }
+    val avatarSelection = editor.avatarSelection
+    DisposableEffect(avatarSelection) {
+        // Image preparation is canceled when the picker leaves composition. Keep its last good draft.
+        onDispose { avatarSelection.finishPreparation(null, null) }
+    }
     var isPlayerCodeCopied by remember(profile?.playerCode) { mutableStateOf(false) }
     if (!isExternalProfile && showAccountSecurity) {
         AccountSecurityDialog(
@@ -297,13 +303,6 @@ fun ProfileScreen(
             if (!isEditing) displayName = it.displayName
         }
     }
-    val profileSavedNotice = localized(TextKey.ProfileSaved)
-    LaunchedEffect(state.profileNotice, profileSavedNotice) {
-        if (state.profileNotice == profileSavedNotice) {
-            isEditing = false
-            avatarSelection.clear()
-        }
-    }
     LaunchedEffect(isPlayerCodeCopied) {
         if (isPlayerCodeCopied) {
             delay(1_200)
@@ -371,10 +370,7 @@ fun ProfileScreen(
             isExternalProfile = isExternalProfile,
             sessionStartedAtMillis = sessionStartedAtMillis,
             onEdit = {
-                if (isEditing) {
-                    avatarSelection.clear()
-                }
-                isEditing = !isEditing
+                if (isEditing) editor.discard() else editor.begin(profile.displayName)
             },
             onCopyCode = {
                 coroutineScope.launch {
@@ -474,9 +470,7 @@ fun ProfileScreen(
                         ArcadeActionButton(
                             label = localized(TextKey.Cancel),
                             onClick = {
-                                displayName = profile.displayName
-                                avatarSelection.clear()
-                                isEditing = false
+                                editor.discard()
                             },
                             enabled = !state.isProfileSaving,
                             modifier = Modifier.fillMaxWidth(),
