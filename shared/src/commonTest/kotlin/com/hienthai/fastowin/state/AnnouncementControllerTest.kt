@@ -201,10 +201,130 @@ class AnnouncementControllerTest {
             assertEquals(if (change == 4) listOf<String?>("b") else emptyList(), gateway.readCalls)
         }
     }
+    @Test fun `fetch Error during detail reports network failure and allows retry`() = runTest {
+        val gateway = Fake().apply { failure = Error("Fail to fetch") }
+        val controller = controller(gateway, AnnouncementView.DETAIL)
+        controller.select("a")
+        assertEquals("NETWORK_ERROR", controller.state.value.error)
+        assertFalse(controller.state.value.loading)
+        assertNull(controller.state.value.selected)
+        gateway.failure = null
+        controller.select("a")
+        assertNull(controller.state.value.error)
+        assertTrue(controller.state.value.selected!!.notification.isRead)
+    }
+    @Test fun `fetch Error during mutations leaves receipts unchanged and allows retry`() = runTest {
+        for (operation in listOf("read", "dismiss", "hide")) {
+            val gateway = Fake()
+            val controller = controller(gateway, if (operation == "hide") AnnouncementView.HOME else AnnouncementView.INBOX)
+            controller.refresh()
+            suspend fun mutate() = when (operation) {
+                "read" -> controller.read("a")
+                "dismiss" -> controller.dismiss("a")
+                else -> controller.hide("a")
+            }
+            gateway.failure = Error("Fail to fetch")
+            mutate()
+            assertEquals("NETWORK_ERROR", controller.state.value.error, operation)
+            assertFalse(controller.state.value.pending, operation)
+            if (operation == "hide") assertNotNull(controller.state.value.banner)
+            else {
+                assertFalse(controller.state.value.items.single().notification.isRead)
+                assertFalse(controller.state.value.items.single().dismissed)
+            }
+            gateway.failure = null
+            mutate()
+            assertNull(controller.state.value.error)
+            when (operation) {
+                "read" -> assertTrue(controller.state.value.items.single().notification.isRead)
+                "dismiss" -> assertTrue(controller.state.value.items.single().dismissed)
+                else -> assertNull(controller.state.value.banner)
+            }
+        }
+    }
+    @Test fun `fetch Error during consent save preserves uncertain intent for identical retry`() = runTest {
+        val gateway = Fake(); val controller = controller(gateway, AnnouncementView.SETTINGS)
+        controller.refresh()
+        gateway.failure = Error("Fail to fetch")
+        controller.savePreferences(true, false)
+        assertEquals("NETWORK_ERROR", controller.state.value.error)
+        assertFalse(controller.state.value.pending)
+        assertFalse(controller.state.value.preferences!!.adminEnabled)
+        assertEquals(AnnouncementPreferenceRequest(1, true, false), controller.state.value.preferenceIntent)
+        gateway.failure = null
+        controller.retryPreferences()
+        assertTrue(controller.state.value.preferences!!.adminEnabled)
+        assertNull(controller.state.value.preferenceIntent)
+        assertNull(controller.state.value.error)
+    }
+    @Test fun `fetch Error during conflict reload leaves consent unavailable until authority returns`() = runTest {
+        val gateway = Fake(); val controller = controller(gateway, AnnouncementView.SETTINGS)
+        controller.refresh()
+        gateway.saveError = "CONFLICT"; gateway.preferenceFailure = Error("Fail to fetch")
+        controller.savePreferences(true, false)
+        assertEquals("CONFLICT", controller.state.value.error)
+        assertFalse(controller.state.value.pending)
+        assertNull(controller.state.value.preferences)
+        assertNull(controller.state.value.preferenceIntent)
+        gateway.preferenceFailure = null
+        controller.refresh()
+        assertNotNull(controller.state.value.preferences)
+    }
+    @Test fun `fetch Error obtaining detail clock does not prevent a successful read receipt`() = runTest {
+        val gateway = Fake().apply { lateBanners = CompletableDeferred<AnnouncementBanners>().also { it.completeExceptionally(Error("Fail to fetch")) } }
+        val controller = controller(gateway, AnnouncementView.DETAIL)
+        controller.select("a")
+        assertTrue(controller.state.value.selected!!.notification.isRead)
+        assertEquals(1000L, controller.state.value.serverNowEpochMillis)
+        assertNull(controller.state.value.error)
+        assertFalse(controller.state.value.loading)
+    }
+    @Test fun `late fetch Error cannot overwrite a new account token language view or request`() = runTest {
+        for (change in 0..4) {
+            val response = CompletableDeferred<AnnouncementBanners>()
+            val gateway = Fake().apply { lateBanners = response }
+            val controller = controller(gateway, AnnouncementView.HOME)
+            val loading = async { controller.refresh() }; kotlinx.coroutines.yield()
+            when (change) {
+                0 -> controller.context("other", "token", AppLanguage.ENGLISH, AnnouncementView.HOME)
+                1 -> controller.context("account", "other", AppLanguage.ENGLISH, AnnouncementView.HOME)
+                2 -> controller.context("account", "token", AppLanguage.VIETNAMESE, AnnouncementView.HOME)
+                3 -> controller.context("account", "token", AppLanguage.ENGLISH, AnnouncementView.INACTIVE)
+                else -> { gateway.lateBanners = null; controller.refresh() }
+            }
+            response.completeExceptionally(Error("Fail to fetch")); loading.await()
+            assertNull(controller.state.value.error, "fence $change")
+            assertFalse(controller.state.value.loading, "fence $change")
+            if (change == 4) assertNotNull(controller.state.value.banner)
+        }
+    }
+    @Test fun `cancellation propagates without becoming network failure at every request boundary`() = runTest {
+        for (operation in listOf("load", "read", "preferences")) {
+            val gateway = Fake()
+            val controller = controller(gateway, if (operation == "preferences") AnnouncementView.SETTINGS else AnnouncementView.INBOX)
+            controller.refresh()
+            val cancellation = kotlinx.coroutines.CancellationException("Owned cancellation")
+            gateway.failure = cancellation
+            val caught = assertFailsWith<kotlinx.coroutines.CancellationException> {
+                when (operation) {
+                    "load" -> controller.refresh()
+                    "read" -> controller.read("a")
+                    else -> controller.savePreferences(true, false)
+                }
+            }
+            assertSame(cancellation, caught)
+            assertNull(controller.state.value.error)
+            assertFalse(controller.state.value.loading)
+            assertFalse(controller.state.value.pending)
+        }
+    }
     private fun controller(gateway: Fake, view: AnnouncementView) = AnnouncementController(gateway).also {
         it.context("account", "token", AppLanguage.ENGLISH, view)
     }
     class Fake : AnnouncementGateway {
+        var failure: Throwable? = null
+        var preferenceFailure: Throwable? = null
+        private fun fail() { failure?.let { throw it } }
         var pages = listOf(listOf(item("a")))
         var pageTotal: String? = null
         var latePage: CompletableDeferred<AnnouncementPlayerPage>? = null
@@ -220,16 +340,18 @@ class AnnouncementControllerTest {
         val readCalls = mutableListOf<String?>(); val dismissCalls = mutableListOf<String?>()
         val saves = mutableListOf<AnnouncementPreferenceRequest>()
         override suspend fun inbox(page: Int, pageSize: Int): AnnouncementPlayerPage {
+            fail()
             pageCalls += page
             return latePage?.await() ?: AnnouncementPlayerPage(pages.getOrElse(page) { emptyList() }, page, pageSize, pageTotal ?: if (pages.size > 1) "3" else "1", 1000)
         }
-        override suspend fun detail(id: String) = lateDetail?.await() ?: item(id).let { it.copy(announcement = it.announcement.copy(action = detailAction)) }
-        override suspend fun banners(): AnnouncementBanners { bannerCalls++; return lateBanners?.await() ?: AnnouncementBanners(listOf(item("a")), 1000) }
-        override suspend fun read(id: String?): AnnouncementMutationResult { readCalls += id; readError?.let { throw AnnouncementApiException(it) }; return lateRead?.await() ?: AnnouncementMutationResult("1", 1000) }
-        override suspend fun dismiss(id: String?): AnnouncementMutationResult { dismissCalls += id; return AnnouncementMutationResult("1", 1000) }
-        override suspend fun hide(id: String): AnnouncementMutationResult { hideBannerCalls += id; return AnnouncementMutationResult("1", 1000) }
-        override suspend fun preferences(): AnnouncementPreferenceView { preferenceCalls++; return AnnouncementPreferenceView(1, false, false, 1000) }
+        override suspend fun detail(id: String): AnnouncementPlayerItem { fail(); return lateDetail?.await() ?: item(id).let { it.copy(announcement = it.announcement.copy(action = detailAction)) } }
+        override suspend fun banners(): AnnouncementBanners { fail(); bannerCalls++; return lateBanners?.await() ?: AnnouncementBanners(listOf(item("a")), 1000) }
+        override suspend fun read(id: String?): AnnouncementMutationResult { fail(); readCalls += id; readError?.let { throw AnnouncementApiException(it) }; return lateRead?.await() ?: AnnouncementMutationResult("1", 1000) }
+        override suspend fun dismiss(id: String?): AnnouncementMutationResult { fail(); dismissCalls += id; return AnnouncementMutationResult("1", 1000) }
+        override suspend fun hide(id: String): AnnouncementMutationResult { fail(); hideBannerCalls += id; return AnnouncementMutationResult("1", 1000) }
+        override suspend fun preferences(): AnnouncementPreferenceView { fail(); preferenceFailure?.let { throw it }; preferenceCalls++; return AnnouncementPreferenceView(1, false, false, 1000) }
         override suspend fun savePreferences(request: AnnouncementPreferenceRequest): AnnouncementPreferenceView {
+            fail()
             saves += request; saveError?.let { throw AnnouncementApiException(it) }
             return AnnouncementPreferenceView(2, request.adminEnabled, request.eventEnabled, 1000)
         }
