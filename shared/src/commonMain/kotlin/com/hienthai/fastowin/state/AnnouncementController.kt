@@ -136,7 +136,7 @@ class AnnouncementController(private val gateway: AnnouncementGateway,
                         val clock = gateway.banners()
                         if (current(fence)) { anchor(clock.serverNowEpochMillis); tick() }
                     } catch (cancelled: CancellationException) { throw cancelled }
-                    catch (error: Exception) { if (current(fence)) mutable.value = mutable.value.copy(error = error.code()) }
+                    catch (error: Throwable) { if (current(fence)) mutable.value = mutable.value.copy(error = error.code()) }
                 }
                 if (!current(fence)) return@request
                 val receipt = gateway.read(id)
@@ -172,7 +172,7 @@ class AnnouncementController(private val gateway: AnnouncementGateway,
             val receipt = call()
             if (current(fence)) { anchor(receipt.serverNowEpochMillis); mutable.value = apply(mutable.value); tick() }
         } catch (cancelled: CancellationException) { throw cancelled }
-        catch (error: Exception) { if (current(fence)) mutable.value = mutable.value.copy(error = error.code()) }
+        catch (error: Throwable) { if (current(fence)) mutable.value = mutable.value.copy(error = error.code()) }
         finally { if (current(fence)) mutable.value = mutable.value.copy(pending = false) }
     }
     suspend fun savePreferences(admin: Boolean, event: Boolean) {
@@ -191,7 +191,7 @@ class AnnouncementController(private val gateway: AnnouncementGateway,
             val saved = gateway.savePreferences(intent)
             if (current(fence)) { anchor(saved.serverNowEpochMillis); mutable.value = mutable.value.copy(preferences = saved, preferenceIntent = null) }
         } catch (cancelled: CancellationException) { throw cancelled }
-        catch (error: Exception) {
+        catch (error: Throwable) {
             if (current(fence)) {
                 val code = error.code()
                 if (code == "CONFLICT") {
@@ -200,7 +200,7 @@ class AnnouncementController(private val gateway: AnnouncementGateway,
                         val latest = gateway.preferences()
                         if (current(fence)) { anchor(latest.serverNowEpochMillis); mutable.value = mutable.value.copy(preferences = latest, error = code) }
                     } catch (cancelled: CancellationException) { throw cancelled }
-                    catch (_: Exception) { /* Retry loads authority again; no stale switch is enabled. */ }
+                    catch (_: Throwable) { /* Retry loads authority again; no stale switch is enabled. */ }
                 } else mutable.value = mutable.value.copy(error = code)
             }
         } finally { if (current(fence)) mutable.value = mutable.value.copy(pending = false) }
@@ -210,7 +210,7 @@ class AnnouncementController(private val gateway: AnnouncementGateway,
         mutable.value = mutable.value.copy(loading = true, error = null)
         try { block(fence) }
         catch (cancelled: CancellationException) { throw cancelled }
-        catch (error: Exception) { if (current(fence)) mutable.value = mutable.value.copy(error = error.code(),
+        catch (error: Throwable) { if (current(fence)) mutable.value = mutable.value.copy(error = error.code(),
             banner = if (view == AnnouncementView.HOME) null else mutable.value.banner) }
         finally { if (current(fence)) mutable.value = mutable.value.copy(loading = false) }
     }
@@ -249,7 +249,8 @@ class AnnouncementController(private val gateway: AnnouncementGateway,
         if (!allowed() || view != AnnouncementView.UPDATE) return false
         return applyAnnouncementUpdate(updateBridge, matchBlocked)
     }
-    private fun Exception.code() = (this as? AnnouncementApiException)?.code ?: "NETWORK_ERROR"
+    // Ktor browser fetch failures can be Kotlin Error; cancellation is rethrown at each boundary.
+    private fun Throwable.code() = (this as? AnnouncementApiException)?.code ?: "NETWORK_ERROR"
 }
 
 private fun decimalGreaterThan(total: String, loaded: Int): Boolean {
