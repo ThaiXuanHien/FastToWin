@@ -1,5 +1,6 @@
 import org.jetbrains.kotlin.gradle.ExperimentalWasmDsl
 import org.jetbrains.kotlin.gradle.targets.js.webpack.KotlinWebpackConfig
+import org.jetbrains.kotlin.gradle.targets.js.ir.KotlinJsIrLink
 
 plugins {
     alias(libs.plugins.kotlin.multiplatform)
@@ -62,4 +63,13 @@ kotlin {
             implementation(npm("@js-joda/timezone", "2.23.0"))
         }
     }
+}
+
+// Kotlin 2.4.10 copies JS glue in the optimizer, but only declares .wasm inputs.
+// Track all linker outputs so a JS-only change cannot reuse stale production glue.
+tasks.named("compileProductionExecutableKotlinWasmJsOptimize") {
+    inputs.dir(tasks.named<KotlinJsIrLink>("compileProductionExecutableKotlinWasmJs")
+        .flatMap { it.destinationDirectory })
+        .withPropertyName("linkedWasmArtifacts")
+        .withPathSensitivity(PathSensitivity.RELATIVE)
 }

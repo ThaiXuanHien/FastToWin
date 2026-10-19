@@ -94,6 +94,11 @@ runner rồi dọn đúng schema; lỗi dọn được báo thành lỗi test. C
 khởi tạo hoặc dọn fixture này. Báo cáo ở `playwright-report-wallet/` và
 `test-results-wallet/`, đều ngoài Git. CI chạy nhóm này riêng với PostgreSQL 17.
 
+Nhóm này cũng chạy `avatar-picker.spec.mjs`: chọn PNG trong suốt/bán trong suốt
+và JPEG opaque qua image picker thật, Hủy không upload, Lưu rồi giải mã pixel JPEG
+để kiểm tra ghép nền trắng, giới hạn cạnh/payload và hash ảnh sau reload. Avatar
+cần PostgreSQL vì repository in-memory không hỗ trợ lưu ảnh.
+
 ## Báo cáo và trình duyệt
 
 ```bash
