@@ -85,6 +85,8 @@ private fun openBrowserImagePicker(onResult: (String?) -> Unit): Unit = js(
                         canvas.width = width;
                         canvas.height = height;
                         const context = canvas.getContext('2d');
+                        context.fillStyle = '#ffffff';
+                        context.fillRect(0, 0, width, height);
                         context.drawImage(image, 0, 0, width, height);
 
                         dataUrl = canvas.toDataURL('image/jpeg', quality);

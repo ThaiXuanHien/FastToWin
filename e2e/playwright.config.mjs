@@ -71,7 +71,7 @@ export default defineConfig({
     },
     {
       name: 'chromium-wallet',
-      testMatch: /shop\.spec\.mjs/,
+      testMatch: /(?:shop|avatar-picker)\.spec\.mjs/,
       use: { browserName: 'chromium' },
     },
     {
