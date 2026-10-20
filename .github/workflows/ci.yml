@@ -277,6 +277,7 @@ jobs:
           if-no-files-found: warn
 
   android-ui-test:
+    if: ${{ vars.FASTTOWIN_ANDROID_EMULATOR_TESTS == 'true' }}
     name: Android UI test
     needs: build-and-test
     runs-on: ubuntu-latest

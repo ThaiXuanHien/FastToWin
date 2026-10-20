@@ -45,11 +45,16 @@ data object RejectingRewardedAdVerifier : RewardedAdVerifier {
 fun devRewardedAdProof(userId: String, providerTransactionId: String): String =
     "FASTTOWIN_DEV_REWARDED_V1:$userId:$providerTransactionId"
 
-fun configuredRewardedAdVerifier(environment: String): RewardedAdVerifier =
-    if (environment == "dev") DevRewardedAdVerifier() else RejectingRewardedAdVerifier
-
-fun configuredRewardedAdAvailability(environment: String): RewardedAdAvailability =
-    if (environment == "dev") {
+fun configuredRewardedAdVerifier(environment: String, adMob: RewardedAdVerifier? = null): RewardedAdVerifier {
+    val fallback = if (environment == "dev") DevRewardedAdVerifier() else RejectingRewardedAdVerifier
+    if (adMob == null) return fallback
+    return RewardedAdVerifier { userId, provider, transactionId, proof ->
+        if (provider == RewardedAdProvider.ADMOB_ANDROID) adMob.verify(userId, provider, transactionId, proof)
+        else fallback.verify(userId, provider, transactionId, proof)
+    }
+}
+fun configuredRewardedAdAvailability(environment: String, adMobEnabled: Boolean = false): RewardedAdAvailability =
+    if (adMobEnabled) RewardedAdAvailability.MOBILE_PRODUCTION else if (environment == "dev") {
         RewardedAdAvailability.DEV_SIMULATED
     } else {
         RewardedAdAvailability.UNAVAILABLE

@@ -180,66 +180,12 @@ class PostgresPlayQuotaRepository(
     ): PlayQuotaGrant = withContext(Dispatchers.IO) {
         require(providerTransactionId.isNotBlank()) { "Provider transaction ID must not be blank." }
         require(providerTransactionId.length <= 256) { "Provider transaction ID is too long." }
-        val parsedUserId = UUID.fromString(userId)
-        val quotaDate = PlayQuotaRules.quotaDate(nowMillis)
         dataSource.connection.use { connection ->
             connection.autoCommit = false
             try {
-                ensureDailyRows(connection, listOf(parsedUserId), quotaDate)
-                val quota = loadSnapshots(
-                    connection,
-                    listOf(parsedUserId),
-                    nowMillis,
-                    lockRows = true
-                ).getValue(userId)
-                val inserted = connection.prepareStatement(
-                    """
-                    INSERT INTO rewarded_ad_grants (
-                        id, user_id, provider, provider_transaction_id, matches_granted
-                    ) VALUES (?, ?, ?, ?, ?)
-                    ON CONFLICT (provider, provider_transaction_id) DO NOTHING
-                    """.trimIndent()
-                ).use { statement ->
-                    statement.setObject(1, UUID.randomUUID())
-                    statement.setObject(2, parsedUserId)
-                    statement.setString(3, provider.name)
-                    statement.setString(4, providerTransactionId)
-                    statement.setInt(5, PlayQuotaRules.REWARDED_AD_MATCHES)
-                    statement.executeUpdate()
-                }
-                if (inserted == 0) {
-                    connection.commit()
-                    return@withContext PlayQuotaGrant(
-                        status = RewardedAdBonusStatus.ALREADY_GRANTED,
-                        quota = quota
-                    )
-                }
-
-                connection.prepareStatement(
-                    """
-                    UPDATE daily_play_quotas
-                    SET bonus_matches_granted = bonus_matches_granted + ?,
-                        updated_at = CURRENT_TIMESTAMP
-                    WHERE user_id = ? AND quota_date = ?
-                    """.trimIndent()
-                ).use { statement ->
-                    statement.setInt(1, PlayQuotaRules.REWARDED_AD_MATCHES)
-                    statement.setObject(2, parsedUserId)
-                    statement.setDate(3, Date.valueOf(quotaDate))
-                    check(statement.executeUpdate() == 1)
-                }
+                val grant = grantRewardedAd(connection, userId, provider, providerTransactionId, nowMillis)
                 connection.commit()
-                val updatedBonus = quota.bonusMatchesGranted + PlayQuotaRules.REWARDED_AD_MATCHES
-                PlayQuotaGrant(
-                    status = RewardedAdBonusStatus.GRANTED,
-                    quota = quota.copy(
-                        bonusMatchesGranted = updatedBonus,
-                        remainingMatches = PlayQuotaRules.remaining(
-                            matchesConsumed = quota.matchesConsumed,
-                            bonusMatchesGranted = updatedBonus
-                        )
-                    )
-                )
+                grant
             } catch (error: Throwable) {
                 connection.rollback()
                 throw error
@@ -247,6 +193,67 @@ class PostgresPlayQuotaRepository(
                 connection.autoCommit = true
             }
         }
+    }
+
+    /** Reuses a caller-owned transaction for durable SSV acceptance and the existing global receipt. */
+    internal fun grantRewardedAd(connection: Connection, userId: String, provider: RewardedAdProvider,
+        providerTransactionId: String, nowMillis: Long): PlayQuotaGrant {
+        require(providerTransactionId.isNotBlank() && providerTransactionId.length <= 256)
+        val parsedUserId = UUID.fromString(userId)
+        val quotaDate = PlayQuotaRules.quotaDate(nowMillis)
+        ensureDailyRows(connection, listOf(parsedUserId), quotaDate)
+        val quota = loadSnapshots(
+            connection,
+            listOf(parsedUserId),
+            nowMillis,
+            lockRows = true
+        ).getValue(userId)
+        val inserted = connection.prepareStatement(
+            """
+            INSERT INTO rewarded_ad_grants (
+                id, user_id, provider, provider_transaction_id, matches_granted
+            ) VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT (provider, provider_transaction_id) DO NOTHING
+            """.trimIndent()
+        ).use { statement ->
+            statement.setObject(1, UUID.randomUUID())
+            statement.setObject(2, parsedUserId)
+            statement.setString(3, provider.name)
+            statement.setString(4, providerTransactionId)
+            statement.setInt(5, PlayQuotaRules.REWARDED_AD_MATCHES)
+            statement.executeUpdate()
+        }
+        if (inserted == 0) {
+            return PlayQuotaGrant(
+                status = RewardedAdBonusStatus.ALREADY_GRANTED,
+                quota = quota
+            )
+        }
+
+        connection.prepareStatement(
+            """
+            UPDATE daily_play_quotas
+            SET bonus_matches_granted = bonus_matches_granted + ?,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE user_id = ? AND quota_date = ?
+            """.trimIndent()
+        ).use { statement ->
+            statement.setInt(1, PlayQuotaRules.REWARDED_AD_MATCHES)
+            statement.setObject(2, parsedUserId)
+            statement.setDate(3, Date.valueOf(quotaDate))
+            check(statement.executeUpdate() == 1)
+        }
+        val updatedBonus = quota.bonusMatchesGranted + PlayQuotaRules.REWARDED_AD_MATCHES
+        return PlayQuotaGrant(
+            status = RewardedAdBonusStatus.GRANTED,
+            quota = quota.copy(
+                bonusMatchesGranted = updatedBonus,
+                remainingMatches = PlayQuotaRules.remaining(
+                    matchesConsumed = quota.matchesConsumed,
+                    bonusMatchesGranted = updatedBonus
+                )
+            )
+        )
     }
 
     private fun parseUserIds(userIds: Set<String>): List<UUID> {

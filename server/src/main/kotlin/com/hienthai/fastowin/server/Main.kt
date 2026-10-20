@@ -25,6 +25,7 @@ fun main() {
     val avatarConfiguration = AvatarStorageConfiguration.fromEnvironment()
     val databaseSettings = DatabaseSettings.fromEnvironment(environment)
     avatarConfiguration.validateDatabase(databaseSettings != null)
+    val adMobConfiguration = com.hienthai.fastowin.server.ads.AdMobConfiguration.fromEnvironment(environment, databaseSettings != null)
     val database = databaseSettings?.let(DatabaseRuntime::open)
     val avatarObjects = try { avatarConfiguration.r2?.let(S3AvatarObjectStore::open) }
         catch (failure: Throwable) { database?.close(); throw failure }
@@ -48,8 +49,9 @@ fun main() {
     val storage = if (database == null) "memory" else "postgresql"
     val storePurchaseVerifier = configuredStorePurchaseVerifier(environment)
     val playQuotaRepository = database?.playQuotaRepository ?: InMemoryPlayQuotaRepository()
-    val rewardedAdVerifier = configuredRewardedAdVerifier(environment)
-    val rewardedAdAvailability = configuredRewardedAdAvailability(environment)
+    val adMobRepository = database?.adMobRepository ?: com.hienthai.fastowin.server.ads.InMemoryAdMobRepository(playQuotaRepository)
+    val rewardedAdVerifier = configuredRewardedAdVerifier(environment, adMobConfiguration?.let { com.hienthai.fastowin.server.ads.AdMobRewardedAdVerifier(adMobRepository) })
+    val rewardedAdAvailability = configuredRewardedAdAvailability(environment, adMobConfiguration != null)
     val pushNotificationService = FirebasePushNotificationService()
     val pushReminderService = if (database == null) {
         NoOpPushReminderService
@@ -126,6 +128,8 @@ fun main() {
                 giftDeliveryEnabled = database != null,
                 rewardEventService = com.hienthai.fastowin.server.events.RewardEventService(
                     database?.rewardEventRepository ?: com.hienthai.fastowin.server.events.UnavailableRewardEventRepository, adminService),
+                adMobService = adMobConfiguration?.let { com.hienthai.fastowin.server.ads.AdMobService(it, adMobRepository,
+                    playQuotaRepository, newIntentAllowed = engine::newIntentAllowed) },
                 maintenanceService = maintenanceService,
                 maintenanceRuntime = maintenanceRuntime
             )
