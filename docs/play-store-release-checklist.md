@@ -46,13 +46,13 @@ Chọn cách chơi phù hợp với bạn:
 - Tham gia bang hội, hoàn thành nhiệm vụ và nhận phần thưởng trong game.
 - Tùy chỉnh hồ sơ và mở khóa vật phẩm bằng Vàng/Gem.
 
-Fast To Win hỗ trợ tiếng Việt và tiếng Anh. Các tính năng trực tuyến cần kết nối Internet và tài khoản đã xác minh email; chế độ luyện tập offline không cần đối thủ trực tuyến.
+Fast To Win hỗ trợ tiếng Việt và tiếng Anh. Chế độ trực tuyến cần kết nối Internet. Ghép cặp tự động và đấu xếp hạng cần tài khoản đã xác minh email; bạn có thể luyện tập offline hoặc dùng phòng ở chế độ khách.
 
 Asset gate: 512×512 icon from the existing brand, 1024×500 feature graphic, 2–8 truthful phone screenshots. Never show another player's private information or unshipped ads/features. Confirm the selected screenshots match the release submitted.
 
 ## Console completion and review gate
 
-The initial console checkpoint was 8/11 tasks. App access, category/contact, IARC and target ages were saved. Privacy policy, Data safety and store listing remain to be verified in Console after public URLs/assets are available. No public review submission is authorized by saving a draft.
+The initial console checkpoint was 8/11 tasks. On 2026-10-20, privacy URL, Data safety and the Vietnamese store listing/assets were saved. The dashboard now says “Sẵn sàng xuất bản trò chơi” and no longer shows the setup checklist. Changes have not been sent for Google review; the app remains a draft and production access is inactive. Console currently requires a closed test with at least 12 opted-in testers continuously for 14 days (currently zero closed-test opt-ins). Internal testers do not satisfy that separate gate. No public review submission is authorized by saving metadata.
 
 Data safety worksheet: account name/email/user ID/gender, avatar photos, interactions/other user content, purchase history, FCM installation/device identifiers. Distinguish collection from sharing, providers from independent third parties, required/optional data by actual flow, and ephemeral processing from retained logs. Do not mark all data optional merely because offline play exists.
 
@@ -66,19 +66,31 @@ All entries: collected, no third-party sharing declared under service-provider/u
 
 | Type | Required/optional | Ephemeral | Purposes |
 |---|---|---|---|
-| Nickname/name | Required for registered online account | No | Functionality, account management |
-| Email | Required for registered online account | No | Functionality, account management, security |
+| Nickname/name | Required, including persistent guest nickname | No | Functionality, account management |
+| Email | Optional account-only flow; guest rooms work without signup | No | Functionality, account management, security |
 | User IDs | Required, including guest/account IDs | No | Functionality, account management, analytics, security |
-| Other personal info (profile gender selection) | Required for registered account/profile flow | No | Functionality, account management, personalization |
+| Other personal info (profile gender selection) | Optional account-only profile flow | No | Functionality, account management, personalization |
 | Purchase history | Optional purchase flow | No | Functionality, security |
 | Photos | Optional avatar upload | No | Functionality, account management, personalization |
-| Contacts | Optional in-game friend relationships only | No | Functionality |
-| App interactions | Required authenticated usage/session handling | No | Functionality, analytics, security |
+| Contacts | Required in-game social graph, including automatic recent opponents | No | Functionality |
+| App interactions | Required guest/account session handling and authenticated activity | No | Functionality, analytics, security |
 | In-app search history | Optional clan search terms | Yes | Functionality |
 | Other user-generated content | Optional clan/profile text | No | Functionality |
-| Other actions | Core gameplay/progression | No | Functionality, analytics, security |
+| Other actions | Required core gameplay/progression | No | Functionality, analytics, security |
 | Device/other IDs | FCM/Firebase Installations automatically collected | No | Functionality, developer communications |
 
-Source clarification: `GameProtocol.GetClanList(query)`, `GameEngine.getClanList` and `PostgresClanRepository.getClanList` use a transient SELECT/ILIKE query, with no search-history write in that flow. `FriendSnapshot`, friend requests and `PostgresFriendRepository` persist the in-game social graph. Google includes social-graph information in its Contacts definition; this does not imply READ_CONTACTS or address-book upload. Firebase official guidance documents automatic FID collection and limits FCM notification interaction metrics to configurations with Analytics/BigQuery (not configured here).
+Source clarification: `GameProtocol.GetClanList(query)`, `GameEngine.getClanList` and `PostgresClanRepository.getClanList` use a transient SELECT/ILIKE query, with no search-history write in that flow. `FriendSnapshot`, friend requests and `PostgresFriendRepository` persist the in-game social graph. Google includes social-graph information in its Contacts definition; this does not imply READ_CONTACTS or address-book upload. Firebase official guidance documents automatic FID collection. Delivery metrics require enabling BigQuery export; notification interaction events require the Analytics SDK. Neither configuration is enabled here.
 
-Console checkpoint is a draft, not a public review approval. Verify the final preview and live privacy/deletion URLs before saving the declaration as ready. Registered online play requires verified account fields; secondary guest/offline practice does not mean every SDK/gameplay collection is optional. Reassess the required/optional distinction if primary guest capabilities or signup fields change.
+Console declarations were saved after reviewing the final preview and live privacy/deletion URLs. This is not Google review approval. Guest players can create/join online rooms; automatic matchmaking/ranked play requires a verified registered account. Nicknames, guest/account IDs, recent-opponent relationships and gameplay/session data still have required collection paths. Email and profile gender are optional at app level because guest rooms work without registration. Reassess collection and optionality when these flows change.
+
+
+## Release evidence and remaining gates — 2026-10-20
+
+- Web deployment `b285de01-34f5-45bd-9807-46ee0c6f3b86`: SUCCESS. All six public legal URLs returned HTTP 200 as static HTML with `Cache-Control: no-cache`; home/admin/health also returned 200. Backend/admin were not redeployed.
+- Public entry points: https://fasttowin.up.railway.app/privacy , https://fasttowin.up.railway.app/delete-account , https://fasttowin.up.railway.app/terms ; append `/en` for English.
+- Source: PR #54, `codex/play-store-legal`. Web compatibility distribution, Android production-debug compilation, JS/Wasm compilation, 108 protocol JVM tests, 8 worker tests, both Caddy routing suites and local retention safety checks passed before deployment.
+- CI screenshot comparison found exactly two Settings previews changed by the new service-information section (phone and large text). Rendered output/diffs were inspected; only those two references were updated from canonical CI renders. This is host-rendered preview coverage, not physical-device acceptance.
+- Store phone images are 840×1491 native Compose fixture renders, with fully opaque alpha removed without changing RGB pixels. They meet basic upload dimensions; they do not satisfy the separate 1080×1920 recommendation target. Their provenance is recorded in `artwork/play-store/README.md`.
+- Current Play internal version remains 1.0 (1); no new AAB was uploaded. The new Settings links require a subsequent signed Android internal release. No Samsung was connected during this verification.
+- Keep #53 open for UGC reporting/moderation and acceptance before content creation. Keep #28 open for Play products/prices/provider configuration, actual purchase tests and device acceptance. Metadata completion does not close these gates or authorize a public review submission.
+- Evidence is private in the main checkout `.artifacts/play-legal-20261020/`; never upload reviewer credentials or database dumps to public issues.
