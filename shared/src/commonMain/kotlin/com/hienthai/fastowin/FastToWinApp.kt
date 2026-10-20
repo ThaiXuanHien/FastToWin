@@ -459,7 +459,16 @@ private fun GameContent(
     var deferredFriendRequestIds by rememberSaveable(accountUserId) {
         mutableStateOf(emptyList<String>())
     }
-    val rewardedAdGateway = rememberRewardedAdGateway()
+    val currentAdTokenProvider by rememberUpdatedState(accessTokenProvider)
+    val currentAdOwner by rememberUpdatedState(accountUserId)
+    val rewardedAdSessionGateway = remember(serverUrl, accountUserId, isGuest, authRequestConfigurator) {
+        if (isGuest || accountUserId == null || accessTokenProvider == null) null else
+            com.hienthai.fastowin.data.network.RewardedAdApiClient(
+                serverUrl, accountUserId, { force -> if (currentAdOwner == accountUserId) currentAdTokenProvider?.invoke(force) else null }, authRequestConfigurator)
+    }
+    DisposableEffect(rewardedAdSessionGateway) { onDispose { rewardedAdSessionGateway?.close() } }
+    val rewardedAdGateway = rememberRewardedAdGateway(rewardedAdSessionGateway)
+    val adPrivacyOptionsRequired by rewardedAdGateway.privacyOptionsRequired.collectAsState()
     val rewardedAdState by rewardedAdGateway.state.collectAsState()
     val textSharer = rememberTextSharer()
     val sessionStartedAtMillis = rememberSaveable { epochMillis() }
@@ -481,7 +490,7 @@ private fun GameContent(
         }
     }
 
-    LaunchedEffect(state.playQuota?.rewardedAdAvailability) {
+    LaunchedEffect(rewardedAdGateway, state.playQuota?.rewardedAdAvailability) {
         rewardedAdGateway.configure(
             state.playQuota?.rewardedAdAvailability
                 ?: com.hienthai.fastowin.protocol.RewardedAdAvailability.UNAVAILABLE
@@ -711,7 +720,7 @@ private fun GameContent(
             onWatchAd = {
                 (state.profile?.userId ?: accountUserId)?.let(rewardedAdGateway::show)
             },
-            onDismiss = controller::dismissPlayQuotaDialog
+            onDismiss = { rewardedAdGateway.cancel(); controller.dismissPlayQuotaDialog() }
         )
     }
     GlobalPromptSlot(globalPrompt, GlobalPrompt.PLAY_FLOW_REJECTION) {
@@ -1414,6 +1423,8 @@ private fun GameContent(
                     onPushPreferencesChange = controller::updatePushPreferences,
                     installStatus = installStatus,
                     onInstallApp = installBridge::install,
+                    adPrivacyOptionsRequired = adPrivacyOptionsRequired,
+                    onAdPrivacyOptions = rewardedAdGateway::showPrivacyOptions,
                     announcementState = if (isGuest) null else announcementState,
                     onAnnouncementPreferences = { admin, event -> announcementScope.launch { announcementController?.savePreferences(admin, event) } },
                     onAnnouncementRetry = { announcementScope.launch {

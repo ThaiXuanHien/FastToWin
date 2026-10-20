@@ -5,7 +5,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.remember
 
 @Composable
-actual fun rememberRewardedAdGateway(): RewardedAdGateway {
+actual fun rememberRewardedAdGateway(sessionGateway: com.hienthai.fastowin.data.network.RewardedAdSessionGateway?): RewardedAdGateway {
     val gateway = remember { DefaultRewardedAdGateway(isWeb = true) }
     DisposableEffect(gateway) {
         onDispose(gateway::close)

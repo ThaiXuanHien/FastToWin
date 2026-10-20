@@ -71,6 +71,8 @@ kotlin {
             implementation(libs.androidx.core.ktx)
             implementation(libs.androidx.activity.compose)
             implementation(libs.play.billing)
+            implementation(libs.gma.nextgen)
+            implementation(libs.ump)
         }
 
         iosMain.dependencies {

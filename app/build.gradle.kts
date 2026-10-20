@@ -5,6 +5,24 @@ plugins {
     id("com.google.gms.google-services")
 }
 
+// Public identifiers only; no signing/private configuration is consumed here.
+val adMobMode = providers.gradleProperty("FASTTOWIN_ADMOB_MODE").orElse("").get().lowercase()
+require(adMobMode in setOf("", "disabled", "demo", "test", "live")) { "FASTTOWIN_ADMOB_MODE must be disabled, demo, test or live" }
+val adMobAppId = if (adMobMode == "demo") "ca-app-pub-3940256099942544~3347511713"
+    else providers.gradleProperty("FASTTOWIN_ADMOB_APP_ID").orElse("").get()
+val adMobUnitId = if (adMobMode == "demo") "ca-app-pub-3940256099942544/5224354917"
+    else providers.gradleProperty("FASTTOWIN_ADMOB_AD_UNIT_ID").orElse("").get()
+val adMobTestDeviceIds = providers.gradleProperty("FASTTOWIN_ADMOB_TEST_DEVICE_IDS").orElse("").get()
+    .split(',').map { it.trim().uppercase() }.filter(String::isNotEmpty)
+require(adMobTestDeviceIds.all { Regex("[A-F0-9]{32}").matches(it) }) { "Test-device hashes must contain 32 hex characters" }
+require(adMobAppId.isEmpty() || Regex("ca-app-pub-[0-9]{16}~[0-9]{10}").matches(adMobAppId)) { "Invalid AdMob App ID" }
+require(adMobUnitId.isEmpty() || Regex("ca-app-pub-[0-9]{16}/[0-9]{10}").matches(adMobUnitId)) { "Invalid AdMob ad unit ID" }
+if (adMobMode in setOf("test", "live")) {
+    require(Regex("ca-app-pub-[0-9]{16}~[0-9]{10}").matches(adMobAppId) && !adMobAppId.startsWith("ca-app-pub-3940256099942544")) { "An owned AdMob App ID is required" }
+    require(Regex("ca-app-pub-[0-9]{16}/[0-9]{10}").matches(adMobUnitId) && !adMobUnitId.startsWith("ca-app-pub-3940256099942544")) { "An owned rewarded ad unit is required" }
+    if (adMobMode == "test") require(adMobTestDeviceIds.isNotEmpty() && adMobTestDeviceIds.all { Regex("[A-Fa-f0-9]{32}").matches(it) }) { "Explicit test-device hash allowlist is required for owned test ads" }
+}
+
 android {
     namespace = "com.hienthai.fastowin"
     compileSdk = 37
@@ -14,8 +32,13 @@ android {
         applicationId = "com.hienthai.fastowin"
         minSdk = 29
         targetSdk = 37
-        versionCode = 1
+        versionCode = 2
         versionName = "1.0"
+        buildConfigField("String", "ADMOB_MODE", "\"$adMobMode\"")
+        buildConfigField("String", "ADMOB_APP_ID", "\"$adMobAppId\"")
+        buildConfigField("String", "ADMOB_AD_UNIT_ID", "\"$adMobUnitId\"")
+        buildConfigField("String", "ADMOB_TEST_DEVICE_IDS", "\"${adMobTestDeviceIds.joinToString(",")}\"")
+        resValue("string", "admob_app_id", adMobAppId)
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 

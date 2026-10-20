@@ -1,5 +1,6 @@
 package com.hienthai.fastowin.localization
 
+import com.hienthai.fastowin.localization.catalogs.rewardedAdTexts
 import com.hienthai.fastowin.localization.catalogs.accountSecurityTexts
 import com.hienthai.fastowin.localization.catalogs.announcementTexts
 import com.hienthai.fastowin.localization.catalogs.rewardEventTexts
@@ -59,7 +60,7 @@ val allLocalizationCatalogs: Map<AppLanguage, LocalizationCatalog> = run {
     ).associateBy { it.language }
     val englishTexts = baseCatalogs.getValue(AppLanguage.ENGLISH).texts
     baseCatalogs.mapValues { (language, catalog) ->
-        val additions = expandedProfileTexts[language].orEmpty() + leaderboardTexts[language].orEmpty() +
+        val additions = rewardedAdTexts.getValue(language) + expandedProfileTexts[language].orEmpty() + leaderboardTexts[language].orEmpty() +
             matchFlowTexts[language].orEmpty() + seasonProfileTexts[language].orEmpty() +
             shopPurchaseTexts[language].orEmpty() + accountSecurityTexts[language].orEmpty() +
             matchResultTexts[language].orEmpty() + clanNotificationTexts[language].orEmpty() +

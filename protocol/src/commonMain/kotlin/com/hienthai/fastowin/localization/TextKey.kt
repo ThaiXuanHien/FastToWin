@@ -65,6 +65,7 @@ enum class TextKey {
     OnlineMatchesRemaining, OnlineQuotaExhaustedTitle, OnlineQuotaExhaustedMessage,
     WatchAdForTwoMatches, RewardedAdGranted, RewardedAdCancelled,
     RewardedAdUnavailable, RewardedAdUseMobile, OnlineAccountRequired,
+    RewardedAdLoading, RewardedAdPending, RewardedAdVerifyRetry, RewardedAdPrivacyDenied, RewardedAdAgeTitle, RewardedAdAgeMessage, RewardedAdAgeBlocked, RewardedAdPrivacyOptions, RewardedAdPrivacyDescription, RewardedAdAgeUnder13, RewardedAdAge13To15, RewardedAdAge16To17, RewardedAdAge18Plus,
     Explore, FeaturesAndActivities, Tournament, RegisterToJoin, TournamentDescription,
     Shop, ShopDiscoveryDescription, OfflinePracticeTitle, OfflinePracticeDescription,
     SaveProgress, SaveProgressDescription, ExitGuestMode, ChooseCompetitionType,
