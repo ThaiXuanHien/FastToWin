@@ -59,3 +59,26 @@ Data safety worksheet: account name/email/user ID/gender, avatar photos, interac
 UGC reporting and terms acceptance before content creation are tracked separately in #53; publishing a terms page alone does not implement that gate. Keep #28 open for Play products/pricing/API/license/IAP testing and device acceptance. Do not close these based on metadata completion.
 
 Sources: Google Play account deletion https://support.google.com/googleplay/android-developer/answer/13327111 ; Data safety https://support.google.com/googleplay/android-developer/answer/10787469 ; assets https://support.google.com/googleplay/android-developer/answer/9866151 ; Railway backups https://docs.railway.com/volumes/backups .
+
+## Data safety draft checkpoint — 12 types completed in Console
+
+All entries: collected, no third-party sharing declared under service-provider/user-initiated transfer exceptions. No advertising purpose is declared for internal 1.0 (1). No precise/approximate location, phone address book access, installed-app inventory, audio/video, Crashlytics/Analytics SDK, or independent security certification is asserted.
+
+| Type | Required/optional | Ephemeral | Purposes |
+|---|---|---|---|
+| Nickname/name | Required for registered online account | No | Functionality, account management |
+| Email | Required for registered online account | No | Functionality, account management, security |
+| User IDs | Required, including guest/account IDs | No | Functionality, account management, analytics, security |
+| Other personal info (profile gender selection) | Required for registered account/profile flow | No | Functionality, account management, personalization |
+| Purchase history | Optional purchase flow | No | Functionality, security |
+| Photos | Optional avatar upload | No | Functionality, account management, personalization |
+| Contacts | Optional in-game friend relationships only | No | Functionality |
+| App interactions | Required authenticated usage/session handling | No | Functionality, analytics, security |
+| In-app search history | Optional clan search terms | Yes | Functionality |
+| Other user-generated content | Optional clan/profile text | No | Functionality |
+| Other actions | Core gameplay/progression | No | Functionality, analytics, security |
+| Device/other IDs | FCM/Firebase Installations automatically collected | No | Functionality, developer communications |
+
+Source clarification: `GameProtocol.GetClanList(query)`, `GameEngine.getClanList` and `PostgresClanRepository.getClanList` use a transient SELECT/ILIKE query, with no search-history write in that flow. `FriendSnapshot`, friend requests and `PostgresFriendRepository` persist the in-game social graph. Google includes social-graph information in its Contacts definition; this does not imply READ_CONTACTS or address-book upload. Firebase official guidance documents automatic FID collection and limits FCM notification interaction metrics to configurations with Analytics/BigQuery (not configured here).
+
+Console checkpoint is a draft, not a public review approval. Verify the final preview and live privacy/deletion URLs before saving the declaration as ready. Registered online play requires verified account fields; secondary guest/offline practice does not mean every SDK/gameplay collection is optional. Reassess the required/optional distinction if primary guest capabilities or signup fields change.
