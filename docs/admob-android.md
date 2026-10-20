@@ -59,7 +59,7 @@ Version code is 2, above the previously uploaded Play internal version 1. Signin
 
 Neutral age bands are local per authenticated account, without DOB or server age collection. UNKNOWN/under 13 cannot initialize/request ads. Ages 13–15 use restrictive under-consent handling; teens receive non-personalized handling/content restrictions. UMP must permit requests, and Settings exposes privacy options when UMP requires them. Consent forms are not repeatedly reopened on each retry. SDK/UMP versions are pinned at 1.5.0/4.0.0.
 
-The SDK loads before allocating a server session. Immediately before show, prepare/persist the owner-bound session and attach its opaque `custom_data`; never attach email/access tokens. Completion is a UI signal only. Polling, including HTTP calls, is bounded to 60 seconds; pending verification remains retryable across dialog close, network loss and process restart. Owner/generation fencing rejects stale callbacks. Backup excludes local age/pending preferences. No exact-age/legal declaration is submitted by this code.
+The SDK loads before allocating a server session. Immediately before show, prepare/persist the owner-bound session and attach its opaque `custom_data`; never attach email/access tokens. Completion is a UI signal only. Polling, including HTTP calls, is bounded to 60 seconds; pending verification remains retryable across dialog close, network loss and process restart. Once HTTP confirms GRANTED, the account controller retains the verified receipt until its WebSocket result arrives and replays the identical receipt after authenticated reconnect. The server returns the existing grant and current quota; the client never adds matches locally. Owner/generation fencing rejects stale callbacks. Backup excludes local age/pending preferences. No exact-age/legal declaration is submitted by this code.
 
 ## Staging and acceptance evidence
 
@@ -67,7 +67,7 @@ Temporary callback used for QA: `https://staging-web-staging-b446.up.railway.app
 
 Evidence collected on 2026-10-20:
 
-- Protocol 109 and full shared 315 host tests passed; final focused 24 and screenshot comparisons 11 passed before the presentation-feedback review fix. Covering fix results are recorded separately, without adding overlapping counts.
+- Final integrated gate at `477805b`: protocol 109, full shared 320 and server 54 tests, plus 17 screenshot comparisons passed with zero failures/errors/skips. Production bundle/localization/JS/Wasm compilation passed; lint reported 0 errors and 87 warnings. Final handoff-recovery covering results are recorded separately, without adding overlapping counts.
 - Actual isolated PostgreSQL: signature/replay/concurrency/rollback tests ran, including 12 simultaneous duplicate callbacks, global transaction collisions and day-change/restart outcomes.
 - Production bundle/localization/JS/Wasm compilation passed; lint 0 errors, 87 disclosed existing/tooling warnings. No emulator QA.
 - HTTPS staging health 200; unsigned SSV 400; anonymous prepare/status 401; application schema V62.
@@ -90,7 +90,7 @@ Do not log callback queries, nonces, auth tokens or account-linked ad IDs. Appli
 
 After QA, remove the temporary staging callback unless an intentionally running acceptance endpoint is retained; stop staging compute while retaining its volumes/backups, revoke only the session SSH key and verify production deployment IDs unchanged. Stop the owned loopback Java/PG runtime, remove only its USB reverse, restore font 1.0 and remove only the Dev QA app/artifacts created for this acceptance. Never uninstall/clear the production package.
 
-Device/local cleanup completed for this acceptance: the Dev QA package was removed (it was absent before this QA), the production package remained installed, font was 1.0, USB reverse list was empty and loopback backend/PG were stopped. The temporary Railway SSH key was revoked. Callback/staging compute cleanup is recorded in #51 after the owner's selection; no cleanup completion is inferred from an attempted action.
+Device/local cleanup completed for this acceptance: the Dev QA package was removed (it was absent before this QA), the production package remained installed, font was 1.0, USB reverse list was empty and loopback backend/PG were stopped, including the local PostgreSQL runtime used by the final integrated gate. The temporary Railway SSH key was revoked. Cleanup evidence in `staging-cleanup.json` records all four staging services STOPPED, retained volumes/backups and unchanged production deployment IDs; no SSH keys remain. The owner confirmed manually removing the temporary staging callback and saving the change. Browser tooling was unavailable, so callback removal was not independently reverified. Retained staging storage can remain billable.
 
 ## Primary references
 

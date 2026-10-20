@@ -33,7 +33,7 @@ data class RewardedAdGatewayState(
 /** The exact feedback list rendered by the quota dialog. */
 fun rewardedAdFeedback(state: RewardedAdGatewayState): List<LocalizedText> {
     val presentation = when (state.presentationOutcome) {
-        RewardedAdShowResult.DISMISSED -> LocalizedText(TextKey.RewardedAdCancelled)
+        RewardedAdShowResult.DISMISSED -> LocalizedText(TextKey.RewardedAdClosed)
         RewardedAdShowResult.UNAVAILABLE -> LocalizedText(TextKey.RewardedAdUnavailable)
         else -> null
     }

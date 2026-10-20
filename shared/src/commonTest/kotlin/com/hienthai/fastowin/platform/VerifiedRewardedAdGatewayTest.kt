@@ -40,7 +40,7 @@ class VerifiedRewardedAdGatewayTest {
         VerifiedRewardedAdGateway(api, driver, store, backgroundScope, nowMillis = { testScheduler.currentTime })
 
     @Test fun `dismissal remains visible during pending verification timeout and retry`() = runTest {
-        assertPendingOutcomeFeedback(RewardedAdShowResult.DISMISSED, com.hienthai.fastowin.localization.TextKey.RewardedAdCancelled)
+        assertPendingOutcomeFeedback(RewardedAdShowResult.DISMISSED, com.hienthai.fastowin.localization.TextKey.RewardedAdClosed)
     }
     @Test fun `show failure remains visible during pending verification timeout and retry`() = runTest {
         assertPendingOutcomeFeedback(RewardedAdShowResult.UNAVAILABLE, com.hienthai.fastowin.localization.TextKey.RewardedAdUnavailable)

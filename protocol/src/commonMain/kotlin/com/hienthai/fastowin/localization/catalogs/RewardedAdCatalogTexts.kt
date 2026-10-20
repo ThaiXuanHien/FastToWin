@@ -6,6 +6,7 @@ import com.hienthai.fastowin.localization.TextKey
 internal val rewardedAdTexts = mapOf(
     AppLanguage.ENGLISH to mapOf(
         TextKey.RewardedAdLoading to "Loading your ad…",
+        TextKey.RewardedAdClosed to "Ad closed.",
         TextKey.RewardedAdPending to "Waiting for secure reward verification. You can close this and check again.",
         TextKey.RewardedAdVerifyRetry to "Check reward status",
         TextKey.RewardedAdPrivacyDenied to "Ads are unavailable with your current privacy choices.",
@@ -21,6 +22,7 @@ internal val rewardedAdTexts = mapOf(
     ),
     AppLanguage.VIETNAMESE to mapOf(
         TextKey.RewardedAdLoading to "Đang tải quảng cáo…",
+        TextKey.RewardedAdClosed to "Đã đóng quảng cáo.",
         TextKey.RewardedAdPending to "Đang chờ xác minh phần thưởng an toàn. Bạn có thể đóng và kiểm tra lại.",
         TextKey.RewardedAdVerifyRetry to "Kiểm tra phần thưởng",
         TextKey.RewardedAdPrivacyDenied to "Quảng cáo không khả dụng với lựa chọn quyền riêng tư hiện tại.",
@@ -36,6 +38,7 @@ internal val rewardedAdTexts = mapOf(
     ),
     AppLanguage.SIMPLIFIED_CHINESE to mapOf(
         TextKey.RewardedAdLoading to "正在加载广告…",
+        TextKey.RewardedAdClosed to "广告已关闭。",
         TextKey.RewardedAdPending to "正在等待安全验证奖励。你可以关闭并稍后查询。",
         TextKey.RewardedAdVerifyRetry to "查询奖励状态",
         TextKey.RewardedAdPrivacyDenied to "当前隐私设置下无法提供广告。",
@@ -51,6 +54,7 @@ internal val rewardedAdTexts = mapOf(
     ),
     AppLanguage.JAPANESE to mapOf(
         TextKey.RewardedAdLoading to "広告を読み込み中…",
+        TextKey.RewardedAdClosed to "広告を閉じました。",
         TextKey.RewardedAdPending to "報酬の安全な確認を待っています。閉じて後で確認できます。",
         TextKey.RewardedAdVerifyRetry to "報酬の状況を確認",
         TextKey.RewardedAdPrivacyDenied to "現在のプライバシー設定では広告を利用できません。",
@@ -66,6 +70,7 @@ internal val rewardedAdTexts = mapOf(
     ),
     AppLanguage.KOREAN to mapOf(
         TextKey.RewardedAdLoading to "광고를 불러오는 중…",
+        TextKey.RewardedAdClosed to "광고를 닫았습니다.",
         TextKey.RewardedAdPending to "안전한 보상 확인을 기다리고 있습니다. 닫고 나중에 다시 확인할 수 있습니다.",
         TextKey.RewardedAdVerifyRetry to "보상 상태 확인",
         TextKey.RewardedAdPrivacyDenied to "현재 개인정보 설정으로는 광고를 이용할 수 없습니다.",
@@ -81,6 +86,7 @@ internal val rewardedAdTexts = mapOf(
     ),
     AppLanguage.SPANISH to mapOf(
         TextKey.RewardedAdLoading to "Cargando anuncio…",
+        TextKey.RewardedAdClosed to "Anuncio cerrado.",
         TextKey.RewardedAdPending to "Esperando la verificación segura de la recompensa. Puedes cerrar y volver a consultar.",
         TextKey.RewardedAdVerifyRetry to "Consultar recompensa",
         TextKey.RewardedAdPrivacyDenied to "Los anuncios no están disponibles con tus opciones de privacidad actuales.",
@@ -96,6 +102,7 @@ internal val rewardedAdTexts = mapOf(
     ),
     AppLanguage.BRAZILIAN_PORTUGUESE to mapOf(
         TextKey.RewardedAdLoading to "Carregando anúncio…",
+        TextKey.RewardedAdClosed to "Anúncio fechado.",
         TextKey.RewardedAdPending to "Aguardando a verificação segura da recompensa. Você pode fechar e consultar novamente.",
         TextKey.RewardedAdVerifyRetry to "Consultar recompensa",
         TextKey.RewardedAdPrivacyDenied to "Os anúncios não estão disponíveis com suas opções de privacidade atuais.",
@@ -111,6 +118,7 @@ internal val rewardedAdTexts = mapOf(
     ),
     AppLanguage.FRENCH to mapOf(
         TextKey.RewardedAdLoading to "Chargement de la publicité…",
+        TextKey.RewardedAdClosed to "Publicité fermée.",
         TextKey.RewardedAdPending to "Vérification sécurisée de la récompense en attente. Vous pouvez fermer et revenir vérifier.",
         TextKey.RewardedAdVerifyRetry to "Vérifier la récompense",
         TextKey.RewardedAdPrivacyDenied to "Les publicités sont indisponibles avec vos choix de confidentialité actuels.",
@@ -126,6 +134,7 @@ internal val rewardedAdTexts = mapOf(
     ),
     AppLanguage.GERMAN to mapOf(
         TextKey.RewardedAdLoading to "Werbung wird geladen…",
+        TextKey.RewardedAdClosed to "Werbung geschlossen.",
         TextKey.RewardedAdPending to "Die sichere Prüfung der Belohnung steht aus. Du kannst schließen und später nachsehen.",
         TextKey.RewardedAdVerifyRetry to "Belohnung prüfen",
         TextKey.RewardedAdPrivacyDenied to "Mit deinen aktuellen Datenschutzeinstellungen ist Werbung nicht verfügbar.",
@@ -141,6 +150,7 @@ internal val rewardedAdTexts = mapOf(
     ),
     AppLanguage.INDONESIAN to mapOf(
         TextKey.RewardedAdLoading to "Memuat iklan…",
+        TextKey.RewardedAdClosed to "Iklan ditutup.",
         TextKey.RewardedAdPending to "Menunggu verifikasi hadiah yang aman. Anda dapat menutup dan memeriksa lagi.",
         TextKey.RewardedAdVerifyRetry to "Periksa hadiah",
         TextKey.RewardedAdPrivacyDenied to "Iklan tidak tersedia dengan pilihan privasi Anda saat ini.",
@@ -156,6 +166,7 @@ internal val rewardedAdTexts = mapOf(
     ),
     AppLanguage.THAI to mapOf(
         TextKey.RewardedAdLoading to "กำลังโหลดโฆษณา…",
+        TextKey.RewardedAdClosed to "ปิดโฆษณาแล้ว",
         TextKey.RewardedAdPending to "กำลังรอการยืนยันรางวัลอย่างปลอดภัย คุณสามารถปิดแล้วกลับมาตรวจสอบได้",
         TextKey.RewardedAdVerifyRetry to "ตรวจสอบสถานะรางวัล",
         TextKey.RewardedAdPrivacyDenied to "โฆษณาไม่พร้อมใช้งานตามตัวเลือกความเป็นส่วนตัวปัจจุบัน",
@@ -171,6 +182,7 @@ internal val rewardedAdTexts = mapOf(
     ),
     AppLanguage.RUSSIAN to mapOf(
         TextKey.RewardedAdLoading to "Загрузка рекламы…",
+        TextKey.RewardedAdClosed to "Реклама закрыта.",
         TextKey.RewardedAdPending to "Ожидается безопасная проверка награды. Можно закрыть окно и проверить позже.",
         TextKey.RewardedAdVerifyRetry to "Проверить награду",
         TextKey.RewardedAdPrivacyDenied to "Реклама недоступна с текущими настройками конфиденциальности.",
