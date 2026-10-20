@@ -55,3 +55,35 @@ fun rewardedAdPrivacySettings() = RewardedAdPreview {
     SettingsScreen(AppPreferences(languageCode = "vi", visualEffectsEnabled = false), {}, {}, {}, {},
         adPrivacyOptionsRequired = true, systemLanguageTags = listOf("vi-VN"))
 }
+
+@Composable
+private fun RewardedAdOutcomePreview(outcome: com.hienthai.fastowin.platform.RewardedAdShowResult, loading: Boolean) = RewardedAdPreview {
+    PlayQuotaExhaustedDialog(null,
+        RewardedAdGatewayState(availability = RewardedAdAvailability.MOBILE_PRODUCTION, isReady = true,
+            isLoading = loading, isPendingVerification = true, presentationOutcome = outcome,
+            notice = LocalizedText(TextKey.RewardedAdPending)), false, {}, {})
+}
+@PreviewTest
+@Preview(name = "dismissed_pending", widthDp = 375, heightDp = 812)
+@Composable
+fun rewardedAdDismissedPending() = RewardedAdOutcomePreview(com.hienthai.fastowin.platform.RewardedAdShowResult.DISMISSED, true)
+@PreviewTest
+@Preview(name = "dismissed_timeout", widthDp = 320, heightDp = 812, fontScale = 1.6f)
+@Composable
+fun rewardedAdDismissedTimeout() = RewardedAdOutcomePreview(com.hienthai.fastowin.platform.RewardedAdShowResult.DISMISSED, false)
+@PreviewTest
+@Preview(name = "dismissed_retry", widthDp = 1024, heightDp = 768)
+@Composable
+fun rewardedAdDismissedRetry() = RewardedAdOutcomePreview(com.hienthai.fastowin.platform.RewardedAdShowResult.DISMISSED, true)
+@PreviewTest
+@Preview(name = "unavailable_pending", widthDp = 375, heightDp = 812)
+@Composable
+fun rewardedAdUnavailablePending() = RewardedAdOutcomePreview(com.hienthai.fastowin.platform.RewardedAdShowResult.UNAVAILABLE, true)
+@PreviewTest
+@Preview(name = "unavailable_timeout", widthDp = 320, heightDp = 812, fontScale = 1.6f)
+@Composable
+fun rewardedAdUnavailableTimeout() = RewardedAdOutcomePreview(com.hienthai.fastowin.platform.RewardedAdShowResult.UNAVAILABLE, false)
+@PreviewTest
+@Preview(name = "unavailable_retry", widthDp = 1024, heightDp = 768)
+@Composable
+fun rewardedAdUnavailableRetry() = RewardedAdOutcomePreview(com.hienthai.fastowin.platform.RewardedAdShowResult.UNAVAILABLE, true)

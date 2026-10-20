@@ -19,6 +19,7 @@ import androidx.compose.ui.unit.dp
 import com.hienthai.fastowin.localization.TextKey
 import com.hienthai.fastowin.localization.localized
 import com.hienthai.fastowin.platform.RewardedAdGatewayState
+import com.hienthai.fastowin.platform.rewardedAdFeedback
 import com.hienthai.fastowin.protocol.PlayQuotaSnapshot
 
 @Composable
@@ -69,11 +70,15 @@ fun PlayQuotaExhaustedDialog(
                     )
                 }
 
-                val feedback = rewardedAdState.notice ?: rewardedAdState.error
-                if (feedback != null && rewardedAdState.isReady) {
-                    Text(text = localized(feedback), style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        modifier = Modifier.fillMaxWidth().semantics { liveRegion = LiveRegionMode.Polite }.testTag("rewarded_ad_feedback"))
+                val feedback = rewardedAdFeedback(rewardedAdState)
+                if (feedback.isNotEmpty() && rewardedAdState.isReady) {
+                    Column(modifier = Modifier.fillMaxWidth().semantics { liveRegion = LiveRegionMode.Polite }.testTag("rewarded_ad_feedback"),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        feedback.forEach { message ->
+                            Text(text = localized(message), style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurface)
+                        }
+                    }
                 }
             }
             ArcadeActionButton(

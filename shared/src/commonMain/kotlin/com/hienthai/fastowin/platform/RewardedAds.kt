@@ -25,9 +25,20 @@ data class RewardedAdGatewayState(
     val isLoading: Boolean = false,
     val isReady: Boolean = false,
     val isPendingVerification: Boolean = false,
+    val presentationOutcome: RewardedAdShowResult? = null,
     val notice: LocalizedText? = null,
     val error: LocalizedText? = null
 )
+
+/** The exact feedback list rendered by the quota dialog. */
+fun rewardedAdFeedback(state: RewardedAdGatewayState): List<LocalizedText> {
+    val presentation = when (state.presentationOutcome) {
+        RewardedAdShowResult.DISMISSED -> LocalizedText(TextKey.RewardedAdCancelled)
+        RewardedAdShowResult.UNAVAILABLE -> LocalizedText(TextKey.RewardedAdUnavailable)
+        else -> null
+    }
+    return listOfNotNull(presentation, state.notice ?: state.error).distinct()
+}
 
 private val unsupportedAdPrivacy = MutableStateFlow(false).asStateFlow()
 

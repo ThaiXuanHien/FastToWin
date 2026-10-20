@@ -39,6 +39,37 @@ class VerifiedRewardedAdGatewayTest {
     private fun TestScope.gateway(api: Api, driver: Driver, store: Store = Store()) =
         VerifiedRewardedAdGateway(api, driver, store, backgroundScope, nowMillis = { testScheduler.currentTime })
 
+    @Test fun `dismissal remains visible during pending verification timeout and retry`() = runTest {
+        assertPendingOutcomeFeedback(RewardedAdShowResult.DISMISSED, com.hienthai.fastowin.localization.TextKey.RewardedAdCancelled)
+    }
+    @Test fun `show failure remains visible during pending verification timeout and retry`() = runTest {
+        assertPendingOutcomeFeedback(RewardedAdShowResult.UNAVAILABLE, com.hienthai.fastowin.localization.TextKey.RewardedAdUnavailable)
+    }
+    private suspend fun TestScope.assertPendingOutcomeFeedback(outcome: RewardedAdShowResult, feedbackKey: com.hienthai.fastowin.localization.TextKey) {
+        val api = Api(); val driver = Driver(); val store = Store(); val gateway = gateway(api, driver, store)
+        val receipts = mutableListOf<RewardedAdReceipt>()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { gateway.receipts.toList(receipts) }
+        gateway.configure(RewardedAdAvailability.MOBILE_PRODUCTION); gateway.show("owner"); runCurrent()
+        driver.outcome.complete(outcome); runCurrent()
+        fun assertVisiblePending() {
+            assertTrue(gateway.state.value.isPendingVerification)
+            assertEquals(outcome, gateway.state.value.presentationOutcome)
+            assertEquals(listOf(feedbackKey, com.hienthai.fastowin.localization.TextKey.RewardedAdPending), rewardedAdFeedback(gateway.state.value).map { it.key })
+            assertEquals("session_1", store.read("owner")); assertTrue(receipts.isEmpty())
+        }
+        assertVisiblePending(); assertTrue(gateway.state.value.isLoading)
+        advanceTimeBy(60001); runCurrent()
+        assertVisiblePending(); assertFalse(gateway.state.value.isLoading)
+        gateway.show("owner"); runCurrent()
+        assertVisiblePending(); assertTrue(gateway.state.value.isLoading)
+        assertEquals(1, api.prepared); assertEquals(1, driver.shown)
+        api.next = pending.copy(status = RewardedAdSessionStatus.GRANTED, providerTransactionId = "verified", quota = PlayQuotaSnapshot("2026-10-20", nextResetAtEpochMillis = 999999))
+        advanceTimeBy(1000); runCurrent()
+        assertEquals(1, receipts.size); assertFalse(gateway.state.value.isPendingVerification)
+        assertNull(gateway.state.value.presentationOutcome)
+        assertEquals(listOf(com.hienthai.fastowin.localization.TextKey.RewardedAdGranted), rewardedAdFeedback(gateway.state.value).map { it.key })
+        gateway.close()
+    }
     @Test fun `becoming available clears initial unavailable error`() = runTest {
         val gateway = gateway(Api(), Driver())
         gateway.configure(RewardedAdAvailability.UNAVAILABLE)

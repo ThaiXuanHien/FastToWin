@@ -84,7 +84,8 @@ class VerifiedRewardedAdGateway(
     private fun start(recoverOnly: Boolean) {
         busy = true
         val fence = ++generation
-        mutableState.value = state.value.copy(isLoading = true, error = null, notice = LocalizedText(TextKey.RewardedAdLoading))
+        mutableState.value = state.value.copy(isLoading = true, error = null, notice = LocalizedText(TextKey.RewardedAdLoading),
+            presentationOutcome = if (store.read(api.ownerId) != null) state.value.presentationOutcome else null)
         job = scope.launch {
             try {
                 val existing = store.read(api.ownerId)
@@ -108,12 +109,8 @@ class VerifiedRewardedAdGateway(
                 val outcome = driver.show(session)
                 currentCoroutineContext().ensureActive()
                 if (!current(fence)) return@launch
-                if (outcome == RewardedAdShowResult.UNAVAILABLE) {
-                    // The SDK may have started a show: retain the session for a delayed signed callback.
-                    mutableState.value = state.value.copy(error = LocalizedText(TextKey.RewardedAdUnavailable))
-                } else if (outcome == RewardedAdShowResult.DISMISSED) {
-                    mutableState.value = state.value.copy(notice = LocalizedText(TextKey.RewardedAdCancelled))
-                }
+                // Keep the presentation result distinct from the still-authoritative server verification.
+                mutableState.value = state.value.copy(presentationOutcome = outcome.takeUnless { it == RewardedAdShowResult.EARNED })
                 poll(session.sessionId, fence)
             } catch (cancelled: CancellationException) { throw cancelled
             } catch (_: Exception) {
@@ -139,7 +136,7 @@ class VerifiedRewardedAdGateway(
                         if (transaction == null || result.quota == null) return@withTimeoutOrNull false
                         if (emitted.add(sessionId)) mutableReceipts.emit(RewardedAdReceipt(sessionId, RewardedAdProvider.ADMOB_ANDROID, transaction, sessionId))
                         store.write(api.ownerId, null)
-                        mutableState.value = state.value.copy(isPendingVerification = false, notice = LocalizedText(TextKey.RewardedAdGranted), error = null)
+                        mutableState.value = state.value.copy(isPendingVerification = false, presentationOutcome = null, notice = LocalizedText(TextKey.RewardedAdGranted), error = null)
                         return@withTimeoutOrNull true
                     }
                     RewardedAdSessionStatus.EXPIRED, RewardedAdSessionStatus.FAILED -> {
@@ -155,7 +152,7 @@ class VerifiedRewardedAdGateway(
         if (finished != true && current(fence)) pending()
     }
     private fun pending() { mutableState.value = state.value.copy(isPendingVerification = true, notice = LocalizedText(TextKey.RewardedAdPending)) }
-    private fun fail(key: TextKey) { mutableState.value = state.value.copy(isPendingVerification = false, notice = null, error = LocalizedText(key)) }
+    private fun fail(key: TextKey) { mutableState.value = state.value.copy(isPendingVerification = false, presentationOutcome = null, notice = null, error = LocalizedText(key)) }
     private fun current(fence: Int) = !closed && generation == fence
     override fun cancel() {
         if (closed) return
