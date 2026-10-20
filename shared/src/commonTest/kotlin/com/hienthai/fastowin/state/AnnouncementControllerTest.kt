@@ -272,7 +272,9 @@ class AnnouncementControllerTest {
     }
     @Test fun `fetch Error obtaining detail clock does not prevent a successful read receipt`() = runTest {
         val gateway = Fake().apply { lateBanners = CompletableDeferred<AnnouncementBanners>().also { it.completeExceptionally(Error("Fail to fetch")) } }
-        val controller = controller(gateway, AnnouncementView.DETAIL)
+        // Assert the receipt clock without depending on real milliseconds elapsed on CI.
+        val controller = AnnouncementController(gateway) { 0L }
+        controller.context("account", "token", AppLanguage.ENGLISH, AnnouncementView.DETAIL)
         controller.select("a")
         assertTrue(controller.state.value.selected!!.notification.isRead)
         assertEquals(1000L, controller.state.value.serverNowEpochMillis)
