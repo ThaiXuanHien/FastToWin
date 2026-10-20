@@ -51,6 +51,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalUriHandler
+import com.hienthai.fastowin.localization.LocalLocalization
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
@@ -109,6 +111,8 @@ fun SettingsScreen(
     systemLanguageTags: List<String> = platformLanguageTags(),
     modifier: Modifier = Modifier
 ) {
+    val uriHandler = LocalUriHandler.current
+    val legalSuffix = if (LocalLocalization.current.language == AppLanguage.VIETNAMESE) "" else "/en"
     var showLanguageDialog by rememberSaveable { mutableStateOf(false) }
     val systemLanguage = resolveSavedLanguage("system", systemLanguageTags)
     if (showLanguageDialog) {
@@ -338,6 +342,24 @@ fun SettingsScreen(
                         style = ArcadeActionStyle.PRIMARY,
                         modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)
                     )
+
+                    SettingsSection(
+                        title = localized(TextKey.LegalTitle),
+                        subtitle = localized(TextKey.LegalSubtitle)
+                    ) {
+                        listOf(
+                            TextKey.LegalPrivacy to "privacy",
+                            TextKey.LegalTerms to "terms",
+                            TextKey.LegalDeleteAccount to "delete-account"
+                        ).forEach { (label, path) ->
+                            ArcadeActionButton(
+                                label = localized(label),
+                                onClick = { uriHandler.openUri("https://fasttowin.up.railway.app/$path$legalSuffix") },
+                                style = ArcadeActionStyle.OUTLINE,
+                                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("legal_$path")
+                            )
+                        }
+                    }
 
                     ArcadeActionButton(
                         label = localized(TextKey.SettingsResetDefaults),

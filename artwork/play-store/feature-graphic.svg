@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="500" viewBox="0 0 1024 500" role="img" aria-labelledby="title desc">
+<title id="title">Fast To Win</title><desc id="desc">Trò chơi tìm số từ 1 đến 50, với các ô số xanh và vàng trên nền navy.</desc>
+<defs><linearGradient id="bg"><stop stop-color="#071a44"/><stop offset="1" stop-color="#152459"/></linearGradient><linearGradient id="blue" x2="0.6" y2="1"><stop stop-color="#3989ff"/><stop offset="1" stop-color="#1552d8"/></linearGradient><linearGradient id="purple" x2="0.5" y2="1"><stop stop-color="#8a64ff"/><stop offset="1" stop-color="#5534cb"/></linearGradient><linearGradient id="gold" x2="0.5" y2="1"><stop stop-color="#ffe567"/><stop offset="1" stop-color="#ffc928"/></linearGradient></defs>
+<rect width="1024" height="500" fill="url(#bg)"/>
+<g fill="none" stroke="#6387db" opacity=".1"><path d="M0 100H1024M0 200H1024M0 300H1024M0 400H1024M100 0V500M200 0V500M300 0V500M400 0V500M500 0V500M600 0V500M700 0V500M800 0V500M900 0V500"/></g>
+<circle cx="834" cy="250" r="205" fill="#246bfd" opacity=".09"/>
+<g font-family="Segoe UI,Arial,sans-serif"><text x="80" y="142" fill="#ffc928" font-size="17" font-weight="700" letter-spacing="3">NHANH MẮT · NHANH TAY</text><text x="76" y="226" fill="#f4f8ff" font-size="70" font-weight="900" letter-spacing="-2">Fast To Win</text><text x="80" y="285" fill="#c8d9f8" font-size="28">Tìm số 1–50.</text><text x="80" y="325" fill="#c8d9f8" font-size="28">Chinh phục từng giây.</text><path d="M80 369H167" stroke="#ffc928" stroke-width="5" stroke-linecap="round"/>
+<g transform="translate(665 90) rotate(7 115 160)"><rect x="-8" y="-8" width="260" height="333" rx="30" fill="#06132f" stroke="#4966a1" stroke-width="2"/>
+<rect width="110" height="126" rx="22" fill="url(#blue)" stroke="#8dc7ff" stroke-width="3"/><text x="55" y="86" text-anchor="middle" fill="white" font-size="76" font-weight="900">1</text>
+<rect x="129" width="110" height="126" rx="22" fill="url(#purple)" stroke="#b197ff" stroke-width="3"/><text x="184" y="82" text-anchor="middle" fill="white" font-size="60" font-weight="900">25</text>
+<rect y="148" width="239" height="158" rx="24" fill="url(#gold)" stroke="#fff1aa" stroke-width="3"/><text x="120" y="258" text-anchor="middle" fill="#071a44" font-size="100" font-weight="900">50</text></g>
+</g></svg>
