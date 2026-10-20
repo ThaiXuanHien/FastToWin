@@ -9,14 +9,15 @@ import java.security.Signature
 import java.util.Base64
 import kotlin.test.*
 
-internal class AdMobFixture {
+internal class AdMobFixture(environment: String = "dev") {
     val pair = KeyPairGenerator.getInstance("EC").apply { initialize(256) }.generateKeyPair()
     var now = 1_800_000_000_000L
     val unit = "ca-app-pub-1234567890123456/1234567890"
     val quota = InMemoryPlayQuotaRepository()
     val repository = InMemoryAdMobRepository(quota)
     val verifier = AdMobSsvVerifier(AdMobPublicKeys { if (it == "7") pair.public else null })
-    val service = AdMobService(AdMobConfiguration(unit), repository, quota, verifier, { now })
+    val availability = configuredRewardedAdAvailability(environment, adMobEnabled = true)
+    val service = AdMobService(AdMobConfiguration(unit), repository, quota, verifier, { now }, rewardedAdAvailability = availability)
     fun signed(customData: String?, tx: String = "abcdef1234", timestamp: Long = now,
         unit: String = "1234567890", reward: String = "2", item: String = "online_matches", extra: String = ""): String {
         val content = "ad_network=5450213213286189855&ad_unit=$unit" +
@@ -27,6 +28,20 @@ internal class AdMobFixture {
 }
 
 class AdMobServiceTest {
+    @Test fun `granted production session advertises enabled mobile production availability`() = runTest {
+        val f = AdMobFixture("prod")
+        val session = f.service.prepare("owner", "production-session")
+        f.service.callback(f.signed(session.customData))
+        assertEquals(RewardedAdAvailability.MOBILE_PRODUCTION, f.service.status("owner", session.sessionId)?.quota?.rewardedAdAvailability)
+    }
+    @Test fun `granted session preserves development snapshot availability`() = runTest {
+        val f = AdMobFixture()
+        val session = f.service.prepare("owner", "dev-session")
+        f.service.callback(f.signed(session.customData))
+        val granted = assertNotNull(f.service.status("owner", session.sessionId))
+        assertEquals(12, granted.quota?.remainingMatches)
+        assertEquals(RewardedAdAvailability.DEV_SIMULATED, granted.quota?.rewardedAdAvailability)
+    }
     @Test fun `signed console probes with unknown nonce acknowledge canned policy without credit`() = runTest {
         val f = AdMobFixture()
         f.service.callback(f.signed("console-probe", unit = "0", reward = "10", item = "coins", timestamp = 1))
@@ -107,7 +122,7 @@ class AdMobServiceTest {
         repeat(3) { f.service.prepare("owner", "request-$it") }
         assertFailsWith<AdMobTooManySessions> { f.service.prepare("owner", "fourth") }
         assertEquals(RewardedAdSessionStatus.PENDING, f.service.prepare("owner", "request-0").status)
-        val disabled = AdMobService(null, f.repository, f.quota, f.verifier)
+        val disabled = AdMobService(null, f.repository, f.quota, f.verifier, rewardedAdAvailability = RewardedAdAvailability.UNAVAILABLE)
         assertFailsWith<AdMobUnavailable> { disabled.prepare("owner", "request") }
         assertFailsWith<AdMobUnavailable> { disabled.callback(f.signed(null)) }
         assertNull(AdMobConfiguration.fromEnvironment("prod", false, emptyMap()))

@@ -17,7 +17,7 @@ class PostgresAdMobRepositoryTest {
         database { source, owner, other ->
             val f = AdMobFixture(); val quota = PostgresPlayQuotaRepository(source)
             val repository = PostgresAdMobRepository(source)
-            val service = AdMobService(AdMobConfiguration(f.unit), repository, quota, f.verifier, { f.now })
+            val service = AdMobService(AdMobConfiguration(f.unit), repository, quota, f.verifier, { f.now }, rewardedAdAvailability = configuredRewardedAdAvailability("prod", true))
             service.callback(f.signed("console-probe", unit = "0", reward = "10", item = "coins", timestamp = 1))
             assertEquals(0, count(source, "admob_rewarded_sessions", owner))
             assertEquals(0, count(source, "rewarded_ad_grants", owner))
@@ -31,7 +31,7 @@ class PostgresAdMobRepositoryTest {
             service.callback(f.signed(session.customData, tx = "abcd0001"))
             assertEquals(12, quota.getSnapshot(owner, f.now).remainingMatches)
             assertEquals(1, count(source, "rewarded_ad_grants", owner))
-            val restarted = AdMobService(AdMobConfiguration(f.unit), PostgresAdMobRepository(source), quota, f.verifier, { f.now })
+            val restarted = AdMobService(AdMobConfiguration(f.unit), PostgresAdMobRepository(source), quota, f.verifier, { f.now }, rewardedAdAvailability = configuredRewardedAdAvailability("prod", true))
             assertEquals("abcdef1234", restarted.status(owner, session.sessionId)?.providerTransactionId)
             assertEquals(RewardedAdBonusStatus.ALREADY_GRANTED, quota.grantRewardedAd(owner, RewardedAdProvider.ADMOB_ANDROID, "abcdef1234", f.now).status)
             val otherSession = service.prepare(other, "other-request")
@@ -47,7 +47,7 @@ class PostgresAdMobRepositoryTest {
         database { source, owner, _ ->
             val f = AdMobFixture(); val quota = PostgresPlayQuotaRepository(source)
             val repository = PostgresAdMobRepository(source)
-            val service = AdMobService(AdMobConfiguration(f.unit), repository, quota, f.verifier, { f.now })
+            val service = AdMobService(AdMobConfiguration(f.unit), repository, quota, f.verifier, { f.now }, rewardedAdAvailability = configuredRewardedAdAvailability("prod", true))
             val session = service.prepare(owner, "rollback")
             val constraint = "admob_test_failure_${UUID.randomUUID().toString().replace("-", "")}"
             source.connection.use { c -> c.createStatement().use { it.execute("ALTER TABLE admob_rewarded_sessions ADD CONSTRAINT $constraint CHECK (id <> '${session.sessionId}' OR provider_transaction_id IS NULL)") } }
@@ -64,7 +64,7 @@ class PostgresAdMobRepositoryTest {
     @Test fun `SQL session expiry frees bound while delayed completion credits processing date`() = runTest {
         database { source, owner, _ ->
             val f = AdMobFixture(); val quota = PostgresPlayQuotaRepository(source)
-            val service = AdMobService(AdMobConfiguration(f.unit), PostgresAdMobRepository(source), quota, f.verifier, { f.now })
+            val service = AdMobService(AdMobConfiguration(f.unit), PostgresAdMobRepository(source), quota, f.verifier, { f.now }, rewardedAdAvailability = configuredRewardedAdAvailability("prod", true))
             val session = service.prepare(owner, "delayed"); val event = f.now
             service.prepare(owner, "cancelled-2"); service.prepare(owner, "cancelled-3")
             assertFailsWith<AdMobTooManySessions> { service.prepare(owner, "fourth") }

@@ -55,7 +55,9 @@ class AdMobRoutesTest {
         val granted = client.get("/api/rewarded-ads/sessions/${session.sessionId}") { bearerAuth(owner.accessToken) }
         assertEquals(HttpStatusCode.OK, granted.status)
         assertEquals("no-store", granted.headers[HttpHeaders.CacheControl])
-        assertEquals(12, ProtocolJson.decodeFromString<RewardedAdSessionView>(granted.bodyAsText()).quota?.remainingMatches)
+        val grantedQuota = assertNotNull(ProtocolJson.decodeFromString<RewardedAdSessionView>(granted.bodyAsText()).quota)
+        assertEquals(12, grantedQuota.remainingMatches)
+        assertEquals(RewardedAdAvailability.DEV_SIMULATED, grantedQuota.rewardedAdAvailability)
         val hidden = client.get("/api/rewarded-ads/sessions/${session.sessionId}") { bearerAuth(other.accessToken) }
         assertEquals(HttpStatusCode.NotFound, hidden.status)
         assertFalse(hidden.bodyAsText().contains(session.customData))
@@ -80,7 +82,7 @@ class AdMobRoutesTest {
         val broken = object : AdMobRepository by f.repository {
             override suspend fun accept(event: VerifiedAdMobEvent, now: Long): AdMobSession? = throw SQLException("private callback storage")
         }
-        val service = AdMobService(AdMobConfiguration(f.unit), broken, f.quota, f.verifier, { f.now })
+        val service = AdMobService(AdMobConfiguration(f.unit), broken, f.quota, f.verifier, { f.now }, rewardedAdAvailability = f.availability)
         application { gameModule(authService = auth, adMobService = service) }
         val session = runBlocking { service.prepare("owner", "sql-failure") }
         val response = client.get("/api/rewarded-ads/ssv?${f.signed(session.customData)}")
@@ -90,14 +92,14 @@ class AdMobRoutesTest {
     }
     @Test fun `new session maintenance admission rejects while existing session and callback recover`() = runTest {
         val f = AdMobFixture(); var allowed = true
-        val service = AdMobService(AdMobConfiguration(f.unit), f.repository, f.quota, f.verifier, { f.now }, { allowed })
+        val service = AdMobService(AdMobConfiguration(f.unit), f.repository, f.quota, f.verifier, { f.now }, { allowed }, rewardedAdAvailability = f.availability)
         val existing = service.prepare("owner", "request"); allowed = false
         assertEquals(existing, service.prepare("owner", "request"))
         assertFailsWith<AdMobUnavailable> { service.prepare("owner", "new") }
         service.callback(f.signed(existing.customData))
         assertEquals(12, service.status("owner", existing.sessionId)?.quota?.remainingMatches)
         val cancelled = AdMobService(AdMobConfiguration(f.unit), f.repository, f.quota,
-            AdMobSsvVerifier(AdMobPublicKeys { throw CancellationException("cancel") }), { f.now })
+            AdMobSsvVerifier(AdMobPublicKeys { throw CancellationException("cancel") }), { f.now }, rewardedAdAvailability = f.availability)
         assertFailsWith<CancellationException> { cancelled.callback(f.signed(existing.customData)) }
         assertEquals(12, f.quota.getSnapshot("owner", f.now).remainingMatches)
     }

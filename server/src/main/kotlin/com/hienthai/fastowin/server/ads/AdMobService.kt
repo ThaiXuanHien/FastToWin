@@ -9,7 +9,8 @@ class AdMobService(
     private val quota: PlayQuotaRepository,
     private val verifier: AdMobSsvVerifier = AdMobSsvVerifier(),
     private val nowMillis: () -> Long = System::currentTimeMillis,
-    private val newIntentAllowed: () -> Boolean = { true }
+    private val newIntentAllowed: () -> Boolean = { true },
+    private val rewardedAdAvailability: RewardedAdAvailability
 ) {
     suspend fun prepare(userId: String, requestId: String): RewardedAdSessionView {
         val config = configuration ?: throw AdMobUnavailable()
@@ -38,6 +39,6 @@ class AdMobService(
         session.id, session.customData, session.adUnitId, session.expiresAt,
         if (session.transactionId != null) RewardedAdSessionStatus.GRANTED else if (now >= session.expiresAt) RewardedAdSessionStatus.EXPIRED else RewardedAdSessionStatus.PENDING,
         session.transactionId,
-        if (session.transactionId != null) quota.getSnapshot(session.userId, now).copy(rewardedAdAvailability = RewardedAdAvailability.MOBILE_PRODUCTION) else null
+        if (session.transactionId != null) quota.getSnapshot(session.userId, now).copy(rewardedAdAvailability = rewardedAdAvailability) else null
     )
 }

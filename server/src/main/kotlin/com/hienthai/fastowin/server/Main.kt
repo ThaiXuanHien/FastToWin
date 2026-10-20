@@ -129,7 +129,8 @@ fun main() {
                 rewardEventService = com.hienthai.fastowin.server.events.RewardEventService(
                     database?.rewardEventRepository ?: com.hienthai.fastowin.server.events.UnavailableRewardEventRepository, adminService),
                 adMobService = adMobConfiguration?.let { com.hienthai.fastowin.server.ads.AdMobService(it, adMobRepository,
-                    playQuotaRepository, newIntentAllowed = engine::newIntentAllowed) },
+                    playQuotaRepository, newIntentAllowed = engine::newIntentAllowed,
+                    rewardedAdAvailability = rewardedAdAvailability) },
                 maintenanceService = maintenanceService,
                 maintenanceRuntime = maintenanceRuntime
             )

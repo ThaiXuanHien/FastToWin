@@ -54,8 +54,8 @@ fun configuredRewardedAdVerifier(environment: String, adMob: RewardedAdVerifier?
     }
 }
 fun configuredRewardedAdAvailability(environment: String, adMobEnabled: Boolean = false): RewardedAdAvailability =
-    if (adMobEnabled) RewardedAdAvailability.MOBILE_PRODUCTION else if (environment == "dev") {
-        RewardedAdAvailability.DEV_SIMULATED
-    } else {
-        RewardedAdAvailability.UNAVAILABLE
+    when {
+        environment == "dev" -> RewardedAdAvailability.DEV_SIMULATED
+        adMobEnabled -> RewardedAdAvailability.MOBILE_PRODUCTION
+        else -> RewardedAdAvailability.UNAVAILABLE
     }
