@@ -2344,3 +2344,7 @@ dd {
     animation: none !important;
   }
 }
+
+/* Moderation reuses existing surfaces; only long evidence and current-avatar sizing differ. */
+.moderation-copy { overflow-wrap: anywhere; }
+.moderation-avatar img { object-fit: contain; max-width: 100%; border-radius: var(--radius, 12px); }

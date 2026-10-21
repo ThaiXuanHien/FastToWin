@@ -69,6 +69,7 @@ function icon(name) {
     maintenance: 'M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z M9 15l-4 4 M19 5l-1 1',
     events: 'M3 4h18v18H3z M16 2v4 M8 2v4 M3 10h18 M12 12.5l.8 1.6 1.8.3-1.3 1.3.3 1.8-1.6-.8-1.6.8.3-1.8-1.3-1.3 1.8-.3z',
     compensation: 'M11 15l2 2a1 1 0 0 0 1.4 0l4.3-4.3a1 1 0 0 0 0-1.4l-2.6-2.6a1 1 0 0 0-1.4 0l-1.3 1.3 M13 9.5l-2.3-2.3a1 1 0 0 0-1.4 0l-4.3 4.3a1 1 0 0 0 0 1.4l2 2 M18 10l3-3a2.1 2.1 0 0 0-3-3l-2.5 2.5 M6 14.5l-3 3a2.1 2.1 0 0 0 3 3l2.5-2.5',
+    moderation: 'M5 3h14v11l-7 7-7-7V3ZM9 11l2 2 4-4',
     announcements: 'M3 11l18-5v12L3 14v-3z M11.6 16.8a3 3 0 1 1-5.8-1.6',
     coin: 'M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0ZM12 7v10M15 9h-4a2 2 0 0 0 0 4h2a2 2 0 0 1 0 4H9',
     star: 'm12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2-5.6-3-5.6 3 1.1-6.2L3 9.6l6.2-.9L12 3Z',
@@ -346,6 +347,7 @@ function shell(title, section) {
   if (session.admin.role !== 'SUPPORT') links.push(['events', 'Sự kiện thưởng', rewardEvents]);
   links.push(['compensation', 'Đền bù', compensation]);
   links.push(['announcements', 'Thông báo', announcements]);
+  links.push(['moderation', 'Kiểm duyệt', moderation]);
   if (session.admin.role === 'OWNER') links.push(['accounts', 'Tài khoản quản trị', accounts], ['audit', 'Nhật ký kiểm toán', audit]);
   for (const [key, label, action] of links) nav.append(decoratedButton(label, action, key, key === section ? { 'aria-current': 'page' } : {}));
   const main = node('main', null, { id: 'main', class: 'panel stack page-' + section, tabindex: '-1' });
@@ -430,6 +432,19 @@ async function announcements() {
       api: (path, request, payload, method) => api(path, request, payload, session?.csrfToken, method),
     });
   } catch (error) { if (task.current() && error.name !== 'AbortError') notices.fail(new Error('Không thể tải thông báo. Vui lòng thử lại.')); }
+  finally { pending.delete(task.controller); }
+}
+async function moderation() {
+  if (!session) return;
+  const { task, notices } = beginNavigation('Kiểm duyệt', 'moderation');
+  try {
+    const { openModeration } = await import('./admin-moderation.js');
+    if (!task.current() || !session) return;
+    openModeration({ node, append, button, iconButton, field, modal, feedback, shell, channel,
+      role: () => session?.admin.role,
+      api: (path, request, payload, method) => api(path, request, payload, session?.csrfToken, method),
+    });
+  } catch (error) { if (task.current() && error.name !== 'AbortError') notices.fail(new Error('Không thể tải kiểm duyệt. Vui lòng thử lại.')); }
   finally { pending.delete(task.controller); }
 }
 function showLogin(message = '', blocked = false) {

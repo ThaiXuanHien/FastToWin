@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 export const player = { id: '00000000-0000-0000-0000-000000000001', playerCode: 'FTW123AB', displayName: 'Người chơi mẫu', email: 'seeded-player@example.com', accountType: 'REGISTERED', status: 'ACTIVE', createdAtEpochMillis: 1700000000000, level: 8, xp: 430, gold: 1200, gems: 12, elo: 1450, clanId: 'clan-1', clanName: 'Bang mẫu', lastActivityAtEpochMillis: null };
 const identity = { id: 'owner-1', email: 'owner@example.com', role: 'OWNER', active: true };
 export const pageOf = (items, page = 0, total = items.length) => ({ items, page, pageSize: 25, total });
-export const securityHeaders = { 'Content-Security-Policy': "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'", 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' };
+export const securityHeaders = { 'Content-Security-Policy': "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'", 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' };
 const assets = fileURLToPath(new URL('../../server/src/main/resources/admin/', import.meta.url));
 export const test = base.extend({
   fixture: async ({}, use) => {
@@ -33,7 +33,7 @@ export const test = base.extend({
         res.end(html ? '<!doctype html><title>Game shell</title><p>Game offline shell</p>' : ''); return;
       }
       if (!route.startsWith('/admin/api/')) {
-        const name = { '/admin/': 'index.html', '/admin/index.html': 'index.html', '/admin/admin.css': 'admin.css', '/admin/admin.js': 'admin.js', '/admin/admin-network.js': 'admin-network.js', '/admin/admin-gifts.js': 'admin-gifts.js', '/admin/admin-maintenance.js': 'admin-maintenance.js', '/admin/admin-analytics.js': 'admin-analytics.js', '/admin/admin-events.js': 'admin-events.js', '/admin/admin-compensation.js': 'admin-compensation.js', '/admin/admin-announcements.js': 'admin-announcements.js' }[route];
+        const name = { '/admin/': 'index.html', '/admin/index.html': 'index.html', '/admin/admin.css': 'admin.css', '/admin/admin.js': 'admin.js', '/admin/admin-network.js': 'admin-network.js', '/admin/admin-gifts.js': 'admin-gifts.js', '/admin/admin-maintenance.js': 'admin-maintenance.js', '/admin/admin-analytics.js': 'admin-analytics.js', '/admin/admin-events.js': 'admin-events.js', '/admin/admin-compensation.js': 'admin-compensation.js', '/admin/admin-moderation.js': 'admin-moderation.js', '/admin/admin-announcements.js': 'admin-announcements.js' }[route];
         try {
           const body = name && await readFile(assets + name);
           if (!body) throw new Error('missing');
