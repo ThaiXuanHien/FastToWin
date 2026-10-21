@@ -57,7 +57,8 @@ data class AvailableRoom(
     val gameMode: GameMode,
     val matchType: MatchType = MatchType.CASUAL,
     val requiresPassword: Boolean,
-    val lastSeenAtMillis: Long
+    val lastSeenAtMillis: Long,
+    val hostId: String? = null
 )
 
 data class PlayerState(

@@ -777,6 +777,7 @@ class GameStateTest {
     fun `public tournament creation defaults to public while explicit private remains private`() = runTest {
         val fixture = publicTournamentFixture()
         fixture.controller.createTournament("Open", GameMode.ORDER)
+        runCurrent() // Complete the server terms check before a separate creation intent.
         fixture.controller.createTournament("Invite only", GameMode.ORDER, visibility = TournamentVisibility.PRIVATE)
         runCurrent()
 
@@ -1123,7 +1124,8 @@ class GameStateTest {
     private fun TestScope.publicTournamentFixture(): PublicTournamentFixture {
         val transport = PublicTournamentTransport()
         val controller = GameController(
-            "ws://test", InMemoryResumeTokenStore(), transport = transport, controllerScope = backgroundScope
+            "ws://test", InMemoryResumeTokenStore().apply { save("ws://test", "existing-guest-session") },
+            transport = transport, controllerScope = backgroundScope
         )
         controller.openRoomBrowser("Tester")
         runCurrent()
@@ -1611,7 +1613,11 @@ private class PublicTournamentSession : SocketSession {
     val sent = mutableListOf<ClientMessage>()
 
     override suspend fun send(frame: Frame) {
-        sent += ProtocolJson.decodeFromString<ClientMessage>((frame as Frame.Text).readText())
+        val message = ProtocolJson.decodeFromString<ClientMessage>((frame as Frame.Text).readText())
+        sent += message
+        if (message == ClientMessage.GetContentTerms) {
+            server(ServerMessage.ContentTermsData(ContentTermsStatus("2026-10-20", null, enforced = false)))
+        }
     }
 
     override suspend fun close() { incoming.close() }

@@ -1,5 +1,11 @@
 package com.hienthai.fastowin.ui.screens
 
+import com.hienthai.fastowin.ui.components.ReportableText
+import com.hienthai.fastowin.ui.components.UgcReportButton
+import com.hienthai.fastowin.ui.components.UgcSafetyButton
+import com.hienthai.fastowin.ui.components.UgcTarget
+import com.hienthai.fastowin.protocol.UgcTargetType
+
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -351,8 +357,8 @@ private fun ClanSummaryIdentity(clan: ClanSummarySnapshot, modifier: Modifier = 
     ) {
         ClanLogoMark(logoId = clan.logoId, modifier = Modifier.size(56.dp))
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-            Text(
-                clan.name,
+            ReportableText(
+                clan.name, UgcTargetType.CLAN, clan.id,
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Black,
                 maxLines = 2,
@@ -490,6 +496,7 @@ fun ClanDetailView(
             )
         }
 
+        item(key = "clan_report") { UgcReportButton(UgcTargetType.CLAN, clan.id, clan.name) }
         notice?.let { item(key = "clan_detail_notice") { ClanNotice(it) } }
 
         item(key = "clan_stats") { ClanStats(clan) }
@@ -909,7 +916,7 @@ private fun ClanJoinRequestCard(
             ) {
                 ClanLogoMark(logoId = "shield", modifier = Modifier.size(48.dp))
                 Column(modifier = Modifier.weight(1f)) {
-                    Text(request.displayName, fontWeight = FontWeight.Black)
+                    ReportableText(request.displayName, UgcTargetType.PLAYER_PROFILE, request.userId, fontWeight = FontWeight.Black)
                     Text(
                         localized(TextKey.PlayerCodeShort, "code" to request.playerCode),
                         style = MaterialTheme.typography.bodySmall,
@@ -953,7 +960,7 @@ private fun ClanMemberCard(
         ) {
             ClanLogoMark(logoId = member.displayName, modifier = Modifier.size(46.dp))
             Column(modifier = Modifier.weight(1f)) {
-                Text(member.displayName, fontWeight = FontWeight.Black, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                ReportableText(member.displayName, UgcTargetType.PLAYER_PROFILE, member.userId, fontWeight = FontWeight.Black, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text(
                     localized(TextKey.ClanMemberSummary, "role" to member.role.localizedName(), "trophies" to formatNumber(member.trophies)),
                     style = MaterialTheme.typography.bodySmall,

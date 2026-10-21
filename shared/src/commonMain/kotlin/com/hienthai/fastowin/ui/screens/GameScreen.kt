@@ -1,4 +1,10 @@
-﻿package com.hienthai.fastowin.ui.screens
+package com.hienthai.fastowin.ui.screens
+
+import com.hienthai.fastowin.ui.components.ReportableText
+import com.hienthai.fastowin.ui.components.UgcReportButton
+import com.hienthai.fastowin.ui.components.UgcSafetyButton
+import com.hienthai.fastowin.ui.components.UgcTarget
+import com.hienthai.fastowin.protocol.UgcTargetType
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -189,7 +195,11 @@ fun GameScreen(
                 onBack = if (allowExit) ({ showExitConfirmation = true }) else null,
                 backIcon = Icons.Rounded.Close,
                 showBalances = false,
-                showNotifications = false
+                showNotifications = false,
+                actions = { UgcSafetyButton(listOf(UgcTarget(UgcTargetType.ROOM, state.currentRoomId, state.currentRoomName.orEmpty())) +
+                    (listOf(state.player, state.opponent) + state.teammates + state.opponents).map {
+                        UgcTarget(UgcTargetType.PLAYER_PROFILE, it.id, it.name)
+                    }) }
             )
         }
     ) { paddingValues ->

@@ -298,6 +298,13 @@ fun FastToWinApp(
                     )
                 }
             } else if (authState.stage != AuthStage.PLAYING) {
+                val entryState by authController.contentEntryConsent.state.collectAsState()
+                val entryScope = rememberCoroutineScope()
+                if (entryState.showTerms) com.hienthai.fastowin.ui.components.ContentTermsDialog(entryState,
+                    authController.contentEntryConsent::check,
+                    { entryScope.launch { authController.contentEntryConsent.accept() } },
+                    { entryScope.launch { authController.contentEntryConsent.retry() } },
+                    authController.contentEntryConsent::dismiss, dismissWhileSubmitting = false)
                 AuthScreen(
                     state = authState,
                     onOpenLogin = authController::openLogin,
@@ -427,6 +434,13 @@ private fun GameContent(
         )
     }
     val state by controller.uiState.collectAsState()
+    val guestConsent by controller.guestContentConsent.state.collectAsState()
+    val guestConsentScope = rememberCoroutineScope()
+    if (guestConsent.showTerms) com.hienthai.fastowin.ui.components.ContentTermsDialog(guestConsent,
+        controller.guestContentConsent::check,
+        { guestConsentScope.launch { controller.guestContentConsent.accept() } },
+        { guestConsentScope.launch { controller.guestContentConsent.retry() } },
+        { controller.guestContentConsent.dismiss(); controller.backToModeSelection() })
     val rewardEventController = remember(serverUrl, accountUserId, isGuest) {
         com.hienthai.fastowin.state.RewardEventController(com.hienthai.fastowin.data.network.RewardEventApiClient(serverUrl))
     }
@@ -1317,7 +1331,7 @@ private fun GameContent(
         }
     }
 
-    AvatarImageProvider(serverUrl = serverUrl, revision = state.avatarRevision) {
+    com.hienthai.fastowin.ui.components.UgcSafetyProvider(serverUrl, state.avatarRevision, controller, isGuest, state.player.id) {
         HeaderWalletNavigationProvider(
             onGold = { openShopTab(ShopTab.GOLD) },
             onGems = { openShopTab(ShopTab.GEMS) }
