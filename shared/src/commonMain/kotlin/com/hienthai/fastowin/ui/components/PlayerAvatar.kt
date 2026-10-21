@@ -22,6 +22,7 @@ import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.hienthai.fastowin.data.network.toAvatarImageUrl
+import com.hienthai.fastowin.protocol.MODERATED_AVATAR_ID
 import com.hienthai.fastowin.protocol.DAILY_CHECK_IN_AVATAR_ID
 import com.hienthai.fastowin.protocol.DEFAULT_FEMALE_AVATAR_ID
 import com.hienthai.fastowin.protocol.FRAME_CATALOG
@@ -76,12 +77,8 @@ fun PlayerAvatar(
 ) {
     val avatarServerUrl = LocalAvatarServerUrl.current
     val avatarRevision = LocalAvatarRevision.current
-    val resolvedImageUrl = imageUrl.ifBlank {
-        userId
-            ?.takeIf { it.isNotBlank() && avatarServerUrl.isNotBlank() }
-            ?.let { avatarServerUrl.toAvatarImageUrl(it, avatarRevision) }
-            .orEmpty()
-    }
+    val resolvedImageUrl = resolvePlayerAvatarImageUrl(avatarId, userId, imageUrl, avatarServerUrl, avatarRevision)
+    val isModerated = avatarId == MODERATED_AVATAR_ID
     val frameName = localizedAvatarFrameName(frameId)
     val avatarDescription = localized(TextKey.AvatarOfPlayer, "player" to displayName)
     val frameResource = avatarFrameResource(frameId)
@@ -109,7 +106,10 @@ fun PlayerAvatar(
                 .background(MaterialTheme.colorScheme.surfaceContainerHighest),
             contentAlignment = Alignment.Center
         ) {
-            if (previewBitmap != null) {
+            if (isModerated) {
+                Image(painterResource(Res.drawable.avatar_player_blue), contentDescription = null,
+                    contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+            } else if (previewBitmap != null) {
                 Image(
                     bitmap = previewBitmap,
                     contentDescription = null,
@@ -139,6 +139,16 @@ fun PlayerAvatar(
             contentScale = ContentScale.Fit,
             modifier = Modifier.fillMaxSize()
         )
+    }
+}
+
+/** A removed avatar must never resolve a cache key or a remote URL, including explicit callers. */
+internal fun resolvePlayerAvatarImageUrl(avatarId: String?, userId: String?, imageUrl: String,
+    serverUrl: String, revision: Long): String {
+    if (avatarId == MODERATED_AVATAR_ID) return ""
+    return imageUrl.ifBlank {
+        userId?.takeIf { it.isNotBlank() && serverUrl.isNotBlank() }
+            ?.let { serverUrl.toAvatarImageUrl(it, revision) }.orEmpty()
     }
 }
 

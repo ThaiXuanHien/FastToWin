@@ -417,7 +417,7 @@ fun ProfileScreen(
                         ) {
                             PlayerAvatar(
                                 displayName = displayName.ifBlank { profile.displayName },
-                                avatarId = profile.avatarId,
+                                avatarId = if (bitmap != null && profile.avatarId == com.hienthai.fastowin.protocol.MODERATED_AVATAR_ID) null else profile.avatarId,
                                 userId = profile.userId,
                                 frameId = progression.cosmetics
                                     .firstOrNull { it.type == CosmeticType.FRAME && it.equipped }

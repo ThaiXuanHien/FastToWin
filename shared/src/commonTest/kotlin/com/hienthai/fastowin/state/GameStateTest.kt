@@ -65,6 +65,19 @@ import kotlin.test.assertTrue
 @OptIn(ExperimentalCoroutinesApi::class)
 class GameStateTest {
     @Test
+    fun `editing a moderated profile can replace its nickname without submitting the sentinel avatar`() = runTest {
+        val fixture = publicTournamentFixture()
+        fixture.session.server(ServerMessage.SessionReady("player-1"))
+        runCurrent()
+        fixture.controller.saveProfile("Updated nickname", MODERATED_AVATAR_ID)
+        runCurrent()
+        val update = fixture.session.sent.filterIsInstance<ClientMessage.UpdateProfile>().singleOrNull()
+        assertEquals("Updated nickname", update?.displayName)
+        assertNull(update?.avatarId)
+        fixture.controller.close()
+    }
+
+    @Test
     fun `daily reward refresh cannot acknowledge avatar or hide a later profile write failure`() = runTest {
         assertRewardRefreshDuringSave(ServerMessage.DailyCheckInResult(true, 5, 10), profileFails = true)
     }

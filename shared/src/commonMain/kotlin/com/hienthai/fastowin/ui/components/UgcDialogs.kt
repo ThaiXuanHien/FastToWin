@@ -79,7 +79,7 @@ fun UgcReportButton(type: UgcTargetType, id: String?, label: String, modifier: M
     val actions = LocalUgcActions.current ?: return
     if (id.isNullOrBlank() || (type in playerTypes && id == actions.selfId)) return
     val description = localized(TextKey.UgcReportNamed, "content" to label)
-    TooltipBox(positionProvider = TooltipDefaults.rememberTooltipPositionProvider(),
+    TooltipBox(positionProvider = TooltipDefaults.rememberTooltipPositionProvider(TooltipAnchorPosition.Above),
         tooltip = { PlainTooltip { Text(description) } }, state = rememberTooltipState()) {
         IconButton({ actions.report(UgcTarget(type, id, label)) }, modifier.size(48.dp).testTag("report:${type.name}:$id")) {
             Icon(Icons.Rounded.Flag, contentDescription = description)

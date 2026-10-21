@@ -52,3 +52,11 @@ fun ugcConsentLandscape() = UgcFrame(true) { UgcConsent() }
 fun ugcConsentPending() = UgcFrame { UgcConsent(pending = true) }
 @PreviewTest @Preview(name = "consent_error", widthDp = 375, heightDp = 812) @Composable
 fun ugcConsentError() = UgcFrame { UgcConsent(error = true) }
+
+@PreviewTest @Preview(name = "moderated_avatar_cached_image", widthDp = 375, heightDp = 320) @Composable
+fun ugcModeratedAvatar() = UgcFrame {
+    androidx.compose.foundation.layout.Box(Modifier.fillMaxSize(), contentAlignment = androidx.compose.ui.Alignment.Center) {
+        PlayerAvatar("Player", MODERATED_AVATAR_ID, "12345678-1234-1234-1234-123456789abc",
+            size = androidx.compose.ui.unit.Dp(120f), imageUrl = "https://images.example/removed-avatar.jpg")
+    }
+}

@@ -431,12 +431,13 @@ class GameController private constructor(
     /** One editor Save, with the existing protocol's two writes serialized by their replies. */
     @OptIn(ExperimentalEncodingApi::class)
     fun saveProfile(displayName: String, avatarId: String?, avatarBytes: ByteArray? = null) {
+        val safeAvatarId = avatarId.takeUnless { it == com.hienthai.fastowin.protocol.MODERATED_AVATAR_ID }
         if (editorProfileSave != null || _uiState.value.isProfileSaving) return
         editorProfileSaveFailure = null
         val safeName = displayName.trim()
         if (safeName.isEmpty() || safeName.length > MAX_PROFILE_DISPLAY_NAME_LENGTH ||
-            (avatarId != null && avatarId !in PROFILE_AVATAR_IDS)) {
-            updateProfile(displayName, avatarId) // Preserve existing localized validation.
+            (safeAvatarId != null && safeAvatarId !in PROFILE_AVATAR_IDS)) {
+            updateProfile(displayName, safeAvatarId) // Preserve existing localized validation.
             return
         }
         if (avatarBytes != null && (avatarBytes.isEmpty() || avatarBytes.size > AVATAR_UPLOAD_MAX_BYTES)) {
@@ -444,7 +445,7 @@ class GameController private constructor(
             return
         }
         editorProfileSave = EditorProfileSave(
-            ClientMessage.UpdateProfile(safeName, avatarId),
+            ClientMessage.UpdateProfile(safeName, safeAvatarId),
             avatarBytes?.let { ClientMessage.UpdateAvatar(Base64.Default.encode(it)) }
         )
         _uiState.update { it.copy(isProfileSaving = true, profileNotice = null, error = null) }
@@ -484,6 +485,7 @@ class GameController private constructor(
     }
 
     fun updateProfile(displayName: String, avatarId: String?) {
+        val safeAvatarId = avatarId.takeUnless { it == com.hienthai.fastowin.protocol.MODERATED_AVATAR_ID }
         if (editorProfileSave != null) return
         editorProfileSaveFailure = null
         val safeName = displayName.trim()
@@ -498,12 +500,12 @@ class GameController private constructor(
             }
             return
         }
-        if (avatarId != null && avatarId !in PROFILE_AVATAR_IDS) {
+        if (safeAvatarId != null && safeAvatarId !in PROFILE_AVATAR_IDS) {
             _uiState.update { it.copy(error = messageMapper.text(TextKey.InvalidAvatar)) }
             return
         }
         _uiState.update { it.copy(isProfileSaving = true, profileNotice = null, error = null) }
-        scope.launch { sendMessage(ClientMessage.UpdateProfile(safeName, avatarId)) }
+        scope.launch { sendMessage(ClientMessage.UpdateProfile(safeName, safeAvatarId)) }
     }
 
     @OptIn(ExperimentalEncodingApi::class)
