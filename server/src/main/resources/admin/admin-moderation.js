@@ -76,8 +76,8 @@ export function openModeration(ui) {
   }
   async function detail(id) {
     if (!readable(role())) return;
-    const dialog = modal('Chi tiết báo cáo'); dialog.dialog.classList.add('announcement-modal');
-    const body = node('div', null, { class: 'stack' }); dialog.dialog.append(body); const notices = feedback(body);
+    const dialog = modal('Chi tiết báo cáo'); dialog.dialog.classList.add('announcement-modal', 'moderation-detail');
+    const body = node('div', null, { class: 'stack modal-form' }); dialog.dialog.append(body); const notices = feedback(body);
     body.append(dialog.cancel); dialog.show(dialog.cancel); const request = channel(), task = request();
     const originalCurrent = task.current;
     task.current = () => originalCurrent() && dialog.dialog.isConnected && dialog.dialog.open && readable(role());

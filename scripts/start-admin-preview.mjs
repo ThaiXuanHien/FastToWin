@@ -7,7 +7,7 @@ import { gifts } from '../e2e/support/admin-gift-fixture.mjs';
 import { events } from '../e2e/support/admin-event-fixture.mjs';
 import { announcements } from '../e2e/support/admin-announcement-fixture.mjs';
 import { compensation } from '../e2e/support/admin-compensation-fixture.mjs';
-import { moderation } from '../e2e/support/admin-moderation-fixture.mjs';
+import { moderation, longReport } from '../e2e/support/admin-moderation-fixture.mjs';
 import { maintenance } from '../e2e/support/maintenance-fixture.mjs';
 
 const port = Number(process.env.PORT || 8080);
@@ -35,7 +35,7 @@ events({ handlers: state.handlers, role: state.role });
 announcements({ handlers: state.handlers });
 compensation({ handlers: state.handlers });
 maintenance({ handlers: state.handlers });
-moderation(state);
+moderation(state, process.env.PREVIEW_MODERATION_LONG === 'true' ? longReport : {});
 
 // Additional mock players for rich directory display
 const extraPlayers = [

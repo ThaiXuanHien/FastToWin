@@ -2204,6 +2204,7 @@ dd {
 .announcement-modal[open] { display: flex; flex-direction: column; overflow: hidden; }
 .announcement-modal .modal-header { flex: none; background: var(--canvas); padding: 8px 0; }
 .announcement-modal > .modal-form { min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 4px; }
+.moderation-detail .modal-actions > .icon-button .tooltip { right: 0; left: auto; max-width: min(280px, 75vw); white-space: normal; overflow-wrap: anywhere; }
 .announcement-modal .announcement-languages { grid-template-columns: minmax(0, 1fr); }
 .announcement-modal .field > label, .page-announcements .toolbar .field > label {
   position: static;

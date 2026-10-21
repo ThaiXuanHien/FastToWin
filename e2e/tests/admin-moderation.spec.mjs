@@ -1,5 +1,5 @@
 import { test, expect, login } from '../support/admin-fixture.mjs';
-import { moderation, base, reportId } from '../support/admin-moderation-fixture.mjs';
+import { moderation, base, reportId, longReport } from '../support/admin-moderation-fixture.mjs';
 async function open(page, fixture) {
   await login(page, fixture); await page.getByRole('button', { name: 'Kiểm duyệt', exact: true }).click();
   await page.getByRole('button', { name: 'Xem báo cáo ' + reportId }).click();
@@ -35,4 +35,25 @@ for (const width of [375, 1280]) test(`moderation readable and keyboard dismissa
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await page.keyboard.press('Escape'); await expect(page.getByRole('dialog')).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Xem báo cáo ' + reportId })).toBeFocused();
+});
+
+for (const width of [375, 1280]) test(`long moderation detail scrolls to bottom actions ${width}`, async ({ page, fixture }) => {
+  await page.setViewportSize({ width, height: 640 }); moderation(fixture, longReport); await open(page, fixture);
+  const dialog = page.getByRole('dialog', { name: 'Chi tiết báo cáo', exact: true });
+  const body = dialog.locator(':scope > .stack');
+  await expect(dialog.getByText(longReport.note, { exact: true })).toHaveCount(1);
+  // A clipped, non-shrinking body cannot scroll even when the page itself is locked.
+  expect(await body.evaluate(element => element.scrollHeight > element.clientHeight)).toBe(true);
+  expect(await body.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
+  await body.hover(); await page.mouse.wheel(0, 20000);
+  await expect.poll(() => body.evaluate(element => element.scrollTop)).toBeGreaterThan(0);
+  await expect(dialog.getByRole('heading', { name: 'Chi tiết báo cáo', exact: true })).toBeInViewport();
+  const resolve = dialog.getByRole('button', { name: 'Xử lý báo cáo', exact: true });
+  await expect(resolve).toBeInViewport();
+  await dialog.getByRole('button', { name: 'Khóa tài khoản', exact: true }).hover();
+  expect(await body.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await resolve.click();
+  await expect(page.getByRole('dialog', { name: 'Xử lý báo cáo', exact: true })).toBeVisible();
+  await expect(page.getByLabel('Lý do xử lý nội bộ', { exact: true })).toBeVisible();
 });
