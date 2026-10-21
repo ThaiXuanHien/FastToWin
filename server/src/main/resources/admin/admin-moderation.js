@@ -87,6 +87,7 @@ export function openModeration(ui) {
       notices.clear(); const report = view.report;
       facts(body, [['Loại nội dung', types[report.targetType]], ['Trạng thái', states[report.status]], ['Lý do báo cáo', reasons[report.reason]], ['Thời điểm', time(report.createdAtEpochMillis)], ['Đóng báo cáo', time(report.closedAtEpochMillis)], ['Phiên bản', String(report.version)]]);
       // All untrusted text uses the shared text-only node factory, never innerHTML.
+      if (view.lastActionReason) body.append(node('h3', 'Lý do xử lý gần nhất'), node('p', view.lastActionReason, { class: 'announcement-body moderation-copy' }));
       body.append(node('h3', 'Nội dung được ghi nhận'), node('p', report.evidenceText || 'Không có bản chụp văn bản.', { class: 'announcement-body moderation-copy' }), node('h3', 'Ghi chú của người báo cáo'), node('p', report.note || 'Không có ghi chú.', { class: 'announcement-body moderation-copy' }));
       if (report.targetType === 'PLAYER_AVATAR') {
         body.append(node('p', 'Không lưu bản sao ảnh làm bằng chứng. Kiểm tra ảnh hiện tại trước khi xử lý.', { class: 'muted' }));
