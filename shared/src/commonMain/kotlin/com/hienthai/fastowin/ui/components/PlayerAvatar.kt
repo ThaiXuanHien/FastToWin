@@ -77,8 +77,9 @@ fun PlayerAvatar(
 ) {
     val avatarServerUrl = LocalAvatarServerUrl.current
     val avatarRevision = LocalAvatarRevision.current
-    val resolvedImageUrl = resolvePlayerAvatarImageUrl(avatarId, userId, imageUrl, avatarServerUrl, avatarRevision)
-    val isModerated = avatarId == MODERATED_AVATAR_ID
+    val suppressedIds = LocalSuppressedAvatarIds.current
+    val resolvedImageUrl = resolvePlayerAvatarImageUrl(avatarId, userId, imageUrl, avatarServerUrl, avatarRevision, suppressedIds)
+    val isModerated = avatarId == MODERATED_AVATAR_ID || (previewBitmap == null && userId in suppressedIds)
     val frameName = localizedAvatarFrameName(frameId)
     val avatarDescription = localized(TextKey.AvatarOfPlayer, "player" to displayName)
     val frameResource = avatarFrameResource(frameId)
@@ -119,6 +120,7 @@ fun PlayerAvatar(
             } else {
                 NetworkImage(
                     url = resolvedImageUrl,
+                    allowStaleCache = userId !in LocalInvalidatedAvatarIds.current,
                     modifier = Modifier.fillMaxSize(),
                     contentDescription = null,
                     fallback = {
@@ -144,8 +146,8 @@ fun PlayerAvatar(
 
 /** A removed avatar must never resolve a cache key or a remote URL, including explicit callers. */
 internal fun resolvePlayerAvatarImageUrl(avatarId: String?, userId: String?, imageUrl: String,
-    serverUrl: String, revision: Long): String {
-    if (avatarId == MODERATED_AVATAR_ID) return ""
+    serverUrl: String, revision: Long, suppressedIds: Set<String> = emptySet()): String {
+    if (avatarId == MODERATED_AVATAR_ID || userId in suppressedIds) return ""
     return imageUrl.ifBlank {
         userId?.takeIf { it.isNotBlank() && serverUrl.isNotBlank() }
             ?.let { serverUrl.toAvatarImageUrl(it, revision) }.orEmpty()
@@ -153,17 +155,23 @@ internal fun resolvePlayerAvatarImageUrl(avatarId: String?, userId: String?, ima
 }
 
 private val LocalAvatarServerUrl = staticCompositionLocalOf { "" }
+private val LocalSuppressedAvatarIds = staticCompositionLocalOf { emptySet<String>() }
+private val LocalInvalidatedAvatarIds = staticCompositionLocalOf { emptySet<String>() }
 private val LocalAvatarRevision = staticCompositionLocalOf { 0L }
 
 @Composable
 fun AvatarImageProvider(
     serverUrl: String,
     revision: Long,
+    suppressedIds: Set<String> = emptySet(),
+    invalidatedIds: Set<String> = emptySet(),
     content: @Composable () -> Unit
 ) {
     CompositionLocalProvider(
         LocalAvatarServerUrl provides serverUrl,
         LocalAvatarRevision provides revision,
+        LocalSuppressedAvatarIds provides suppressedIds,
+        LocalInvalidatedAvatarIds provides invalidatedIds,
         content = content
     )
 }

@@ -31,7 +31,8 @@ private val LocalUgcActions = staticCompositionLocalOf<UgcActions?> { null }
 
 @Composable
 fun UgcSafetyProvider(serverUrl: String, revision: Long, controller: GameController,
-    isGuest: Boolean, currentPlayerId: String?, content: @Composable () -> Unit) {
+    isGuest: Boolean, currentPlayerId: String?, suppressedAvatarIds: Set<String> = emptySet(),
+    invalidatedAvatarIds: Set<String> = emptySet(), content: @Composable () -> Unit) {
     val state by controller.ugc.state.collectAsState()
     val scope = rememberCoroutineScope()
     var blockTarget by remember { mutableStateOf<UgcReportDraft?>(null) }
@@ -47,7 +48,7 @@ fun UgcSafetyProvider(serverUrl: String, revision: Long, controller: GameControl
     CompositionLocalProvider(LocalUgcActions provides UgcActions(currentPlayerId) { target ->
         target.id?.let { controller.ugc.openReport(target.type, it, target.label) }
     }) {
-        AvatarImageProvider(serverUrl, revision, content)
+        AvatarImageProvider(serverUrl, revision, suppressedAvatarIds, invalidatedAvatarIds, content)
         state.report?.let { draft ->
             UgcReportDialog(draft,
                 onEdit = { reason, note, type -> controller.ugc.editReport(reason, note, type) },

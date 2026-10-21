@@ -1331,7 +1331,8 @@ private fun GameContent(
         }
     }
 
-    com.hienthai.fastowin.ui.components.UgcSafetyProvider(serverUrl, state.avatarRevision, controller, isGuest, state.player.id) {
+    com.hienthai.fastowin.ui.components.UgcSafetyProvider(serverUrl, state.avatarRevision, controller, isGuest, state.player.id,
+        state.suppressedAvatarIds, state.invalidatedAvatarIds) {
         HeaderWalletNavigationProvider(
             onGold = { openShopTab(ShopTab.GOLD) },
             onGems = { openShopTab(ShopTab.GEMS) }

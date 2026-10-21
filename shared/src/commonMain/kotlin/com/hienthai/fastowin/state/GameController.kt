@@ -1156,16 +1156,43 @@ class GameController private constructor(
 
     private suspend fun handleMessage(message: ServerMessage) {
         ugc.receive(message)
+        if (message !is ServerMessage.SessionReady) {
+            _uiState.update { it.withAuthoritativeAvatars(message.authoritativeAvatars()) }
+        }
         when (message) {
+            is ServerMessage.ContentModerationChanged -> {
+                if (playerId != null) {
+                    _uiState.update { it.withContentModerationChange(message.targetType, message.targetId) }
+                    // Reads only: an administrative refresh must never resume an unpublished draft.
+                    requestProfileRefresh()
+                    sendMessage(ClientMessage.ListRooms)
+                    if (accountDisplayName != null) {
+                        sendMessage(ClientMessage.GetFriends)
+                        sendMessage(ClientMessage.GetRoomInvitations)
+                        sendMessage(ClientMessage.GetNotifications)
+                        sendMessage(ClientMessage.GetLeaderboard)
+                        sendMessage(ClientMessage.GetTournamentHub)
+                    }
+                    val state = _uiState.value
+                    if (state.isTournamentOpen) sendMessage(ClientMessage.GetPublicTournaments(state.publicTournamentFilters.toQuery()))
+                    state.viewedFriendUserId?.let { sendMessage(ClientMessage.GetFriendProfile(it)) }
+                    state.currentClan?.id?.let { sendMessage(ClientMessage.GetClanInfo(it)) }
+                    if (state.isClanOpen) sendMessage(ClientMessage.GetClanList())
+                    state.matchDetail?.summary?.matchId?.let { sendMessage(ClientMessage.GetMatchDetail(it)) }
+                }
+            }
             is ServerMessage.SessionReady -> {
                 val wasRecoveringRoom = _uiState.value.currentRoomId != null
                 if (editorProfileSave != null) ugc.dismissTerms()
                 interruptEditorProfileSave()
-                if (playerId != null && playerId != message.playerId) ugc.clearSession()
+                if (playerId != null && playerId != message.playerId) {
+                    ugc.clearSession()
+                    _uiState.update { it.copy(suppressedAvatarIds = emptySet(), invalidatedAvatarIds = emptySet()) }
+                }
                 sendMessage(ClientMessage.GetContentTerms)
                 playerId = message.playerId
                 _uiState.update {
-                    it.withReadySession(message.playerId).copy(
+                    it.withReadySession(message.playerId).withAuthoritativeAvatars(message.authoritativeAvatars()).copy(
                         avatarRevision = it.avatarRevision + 1, error = editorProfileSaveFailure
                     )
                 }
@@ -1969,7 +1996,10 @@ class GameController private constructor(
         timerJob?.cancel()
         countdownJob?.cancel()
         gameStarted = false
-        _uiState.value = GameState(player = PlayerState(displayName))
+        _uiState.value = GameState(player = PlayerState(displayName),
+            avatarRevision = _uiState.value.avatarRevision,
+            suppressedAvatarIds = _uiState.value.suppressedAvatarIds,
+            invalidatedAvatarIds = _uiState.value.invalidatedAvatarIds)
 
         scope.launch {
             try {
