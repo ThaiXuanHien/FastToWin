@@ -1,6 +1,9 @@
 package com.hienthai.fastowin.server
 
 import com.hienthai.fastowin.server.maintenance.*
+import com.hienthai.fastowin.server.moderation.*
+import com.hienthai.fastowin.protocol.UgcTargetType
+import com.hienthai.fastowin.protocol.CONTENT_TERMS_VERSION
 import com.hienthai.fastowin.protocol.MaintenanceState
 
 import com.hienthai.fastowin.protocol.ClientMessage
@@ -99,11 +102,28 @@ class GameEngine(
     val storePurchaseService: StorePurchaseService = StorePurchaseService(playerProfileRepository, storePurchaseVerifier),
     private val nowMillis: () -> Long = System::currentTimeMillis,
     private val eventRewardSource: com.hienthai.fastowin.server.events.EventRewardSource = com.hienthai.fastowin.server.events.NoRewardEventSource,
+    val moderationService: ModerationService = ModerationService(InMemoryModerationRepository()),
     val avatarService: com.hienthai.fastowin.server.avatars.AvatarService =
         com.hienthai.fastowin.server.avatars.AvatarService(
-            com.hienthai.fastowin.server.avatars.ProfileAvatarRepository(playerProfileRepository))
+            com.hienthai.fastowin.server.avatars.ProfileAvatarRepository(playerProfileRepository),
+            publicationAllowed = { moderationService.requireContentTerms(it) },
+            contentSuppressed = { id, revision -> moderationService.isSuppressed(UgcTargetType.PLAYER_AVATAR, id, revision) })
 ) {
     constructor(nowMillis: () -> Long) : this(nowMillis = nowMillis, eventRewardSource = com.hienthai.fastowin.server.events.NoRewardEventSource)
+
+    init {
+        if (moderationService.repository is InMemoryModerationRepository) {
+            val previous = moderationService.onContentRemoved
+            moderationService.onContentRemoved = { ownerId, reportId ->
+                previous(ownerId, reportId)
+                notificationRepository.createNotifications(ownerId, listOf(NotificationSnapshot(
+                    id = "moderation:$reportId", kind = NotificationKind.COSMETIC,
+                    title = "Content removed", message = "Public content was removed after review.",
+                    createdAtEpochMillis = nowMillis(), destination = NotificationDestination.PROFILE,
+                    titleKey = TextKey.UgcContentRemovedTitle.name, messageKey = TextKey.UgcContentRemovedBody.name)))
+            }
+        }
+    }
 
     private val mutex = Mutex()
     private val restorationMutex = Mutex()
@@ -235,17 +255,28 @@ class GameEngine(
         message = LocalizationService(com.hienthai.fastowin.localization.AppLanguage.VIETNAMESE).text(TextKey.MaintenanceDefaultMessage),
         messageKey = TextKey.MaintenanceDefaultMessage.name), setOf(playerId))
 
-    suspend fun connectGuest(displayName: String, resumeToken: String?): ConnectedPlayer {
+    suspend fun connectGuest(displayName: String, resumeToken: String?, acceptedContentTermsVersion: String? = null): ConnectedPlayer {
+        if (resumeToken == null || acceptedContentTermsVersion != null) moderationService.validateAcceptedVersion(acceptedContentTermsVersion)
         restoreActiveRooms()
         val safeName = displayName.trim().take(MAX_PLAYER_NAME_LENGTH)
         require(safeName.isNotEmpty()) { "Player name must not be blank." }
-        val identity = identityRepository.resolveGuest(safeName, resumeToken, nowMillis())
+        val requiredVersion = moderationService.publicTerms().takeIf { it.enforced }?.requiredVersion
+        val identity = identityRepository.resolveGuest(safeName, resumeToken, nowMillis(), acceptedContentTermsVersion, requiredVersion) { id ->
+            if (moderationService.isBlocked(id)) throw ModerationException(403,"ACCOUNT_BLOCKED","ACCOUNT_BLOCKED")
+            if (requiredVersion == null) null else moderationService.terms(id).acceptedVersion
+        }
+        moderationService.registerIdentity(identity.playerId)
+        if (moderationService.isBlocked(identity.playerId)) throw ModerationException(403, "ACCOUNT_BLOCKED", "ACCOUNT_BLOCKED")
+        acceptedContentTermsVersion?.let { moderationService.acceptTerms(identity.playerId, it) }
+        moderationService.requireContentTerms(identity.playerId)
 
         return connectIdentity(identity.playerId, identity.displayName, identity.resumeToken)
     }
 
     suspend fun connectAccount(account: AuthenticatedAccount, resumeToken: String? = null, protocolVersion: Int = PROTOCOL_VERSION): ConnectedPlayer {
         restoreActiveRooms()
+        moderationService.registerIdentity(account.userId.toString())
+        if (moderationService.isBlocked(account.userId.toString())) throw ModerationException(403, "ACCOUNT_BLOCKED", "ACCOUNT_BLOCKED")
         val legacyRestored = mutex.withLock {
             val existing = sessionsByPlayerId[account.userId.toString()]
             val expectedToken = existing?.accountResumeToken
@@ -559,7 +590,78 @@ class GameEngine(
         }
     }
 
+    /** Re-projects the current room without changing sequence, timers, scores or admission state. */
+    internal suspend fun currentModerationSnapshot(playerId: String): ServerMessage? = mutex.withLock {
+        val room = rooms.values.firstOrNull { playerId in it.participantIds() } ?: return@withLock null
+        val game = room.snapshot()
+        if (room.phase == RoomPhase.WAITING) ServerMessage.RoomUpdated(game)
+        else ServerMessage.GameStateUpdated(game, acceptedNumber = 0, selectedByPlayerId = "", selectionAccepted = false)
+    }
+
+    suspend fun suppressionsForProjection(): List<ContentSuppression> = moderationService.suppressions().filter {
+        it.targetType != UgcTargetType.PLAYER_AVATAR || avatarService.currentRevision(it.targetId) == it.revision
+    }
+
+    private suspend fun publishMemoryTarget(type: UgcTargetType, id: String) {
+        if (moderationService.repository !is InMemoryModerationRepository) return
+        val target = when (type) {
+            UgcTargetType.PLAYER_PROFILE -> {
+                val name = playerProfileRepository.findByPlayerId(id)?.displayName
+                    ?: mutex.withLock { sessionsByPlayerId[id]?.displayName }
+                name?.let { UgcTarget(type, id, id, it, contentRevision(it)) }
+            }
+            UgcTargetType.PLAYER_AVATAR -> avatarService.currentRevision(id)?.let {
+                UgcTarget(type, id, id, "", it, "avatar-revision:$it")
+            }
+            UgcTargetType.CLAN -> clanRepository.getClanById(id)?.let {
+                val text = it.name + "\n" + it.description
+                UgcTarget(type, id, it.ownerId, text, contentRevision(text))
+            }
+            UgcTargetType.ROOM -> mutex.withLock { rooms[id]?.let { UgcTarget(type, id, it.hostId, it.name, contentRevision(it.name)) } }
+            UgcTargetType.TOURNAMENT -> mutex.withLock { tournaments[id]?.let { UgcTarget(type, id, it.hostId, it.name, contentRevision(it.name)) } }
+        }
+        moderationService.repository.transaction {
+            if (target == null || (target.ownerId != null && !playerExists(target.ownerId))) removeTarget(type, id)
+            else putTarget(target)
+        }
+    }
+
+    private suspend fun refreshMemoryTargets() {
+        if (moderationService.repository !is InMemoryModerationRepository) return
+        val keys = moderationService.repository.transaction { publishedTargets() }.toSet() + mutex.withLock {
+            sessionsByPlayerId.keys.map { UgcTargetType.PLAYER_PROFILE to it } +
+                rooms.keys.map { UgcTargetType.ROOM to it } + tournaments.keys.map { UgcTargetType.TOURNAMENT to it }
+        }
+        keys.forEach { (type, id) -> publishMemoryTarget(type, id) }
+    }
+
     suspend fun handle(playerId: String, message: ClientMessage): List<Delivery> {
+        val deliveries = handleCommand(playerId, message)
+        refreshMemoryTargets()
+        return deliveries
+    }
+
+    private suspend fun handleCommand(playerId: String, message: ClientMessage): List<Delivery> {
+        if (!mutex.withLock { sessionsByPlayerId[playerId]?.isConnected == true }) return listOf(
+            error(playerId, "SESSION_NOT_FOUND", "Session is no longer active."))
+        if (moderationService.isBlocked(playerId)) return listOf(error(playerId, "ACCOUNT_BLOCKED", "Account is restricted."))
+        try {
+            when (message) {
+                ClientMessage.GetContentTerms -> return listOf(Delivery(ServerMessage.ContentTermsData(moderationService.terms(playerId)), setOf(playerId)))
+                is ClientMessage.AcceptContentTerms -> return listOf(Delivery(ServerMessage.ContentTermsData(moderationService.acceptTerms(playerId, message.version)), setOf(playerId)))
+                is ClientMessage.ReportContent -> {
+                    publishMemoryTarget(message.request.targetType, message.request.targetId)
+                    return listOf(Delivery(ServerMessage.ContentReportResult(message.request.requestId, moderationService.report(playerId, message.request)), setOf(playerId)))
+                }
+                is ClientMessage.UpdateProfile, is ClientMessage.UpdateAvatar, is ClientMessage.UpdateClanLogo,
+                is ClientMessage.CreateClan, is ClientMessage.CreateRoom, is ClientMessage.CreateTournament -> moderationService.requireContentTerms(playerId)
+                else -> Unit
+            }
+        } catch (failure: ModerationException) {
+            return listOf(Delivery(if (message is ClientMessage.ReportContent)
+                ServerMessage.ContentReportResult(message.request.requestId, errorCode = failure.code)
+                else ServerMessage.Error(failure.code, publicModerationMessage(failure.code)), setOf(playerId)))
+        }
         restoreActiveRooms()
         if (message is ClientMessage.JoinMatchmaking || message is ClientMessage.CreateRoom) mutex.withLock {
             // A new intent supersedes deferred notifications from a cancelled request coroutine.
@@ -690,6 +792,7 @@ class GameEngine(
             }
 
             when (message) {
+                ClientMessage.GetContentTerms, is ClientMessage.AcceptContentTerms, is ClientMessage.ReportContent -> HandleResult(emptyList())
                 is ClientMessage.ConnectGuest -> HandleResult(listOf(
                     error(playerId, "ALREADY_CONNECTED", legacyFallback("Phiên WebSocket đã được xác thực."))
                 ))
@@ -1471,7 +1574,7 @@ class GameEngine(
                 destination = NotificationDestination.FRIENDS,
                 titleKey = TextKey.FriendRequests.name,
                 messageKey = TextKey.NotificationFriendRequestMessage.name,
-                messageArgs = mapOf("player" to request.displayName)
+                messageArgs = mapOf("player" to request.displayName, "playerId" to request.userId)
             )
         }
         notificationRepository.createNotifications(playerId, pendingFriendNotifications)
@@ -1554,7 +1657,7 @@ class GameEngine(
                             destination = NotificationDestination.FRIENDS,
                             titleKey = TextKey.FriendRequests.name,
                             messageKey = TextKey.NotificationFriendRequestMessage.name,
-                            messageArgs = mapOf("player" to request.displayName)
+                            messageArgs = mapOf("player" to request.displayName, "playerId" to request.userId)
                         ))
                     )
                 }
@@ -1757,6 +1860,8 @@ class GameEngine(
                     messageKey = TextKey.NotificationRoomInvitationMessage.name,
                     messageArgs = mapOf(
                         "player" to invitation.inviterDisplayName,
+                        "playerId" to invitation.inviterId,
+                        "roomId" to invitation.roomId,
                         "room" to invitation.roomName
                     )
                 ))
@@ -2807,6 +2912,7 @@ class GameEngine(
                 else -> null
             }?.let { persistRoom(it) }
         }
+        refreshMemoryTargets()
         return advances.map(TimedAdvance::delivery) + tournamentDeliveries
     }
 
@@ -2970,6 +3076,7 @@ class GameEngine(
         }
         val tournamentDeliveries = cleanup.completedMatches.flatMap { settleCompletedMatch(it) }
         cleanup.removedRoomIds.forEach { persistRoom(it) }
+        refreshMemoryTargets()
         return cleanup.deliveries + tournamentDeliveries +
             refreshNotificationsFor(removedInvitations.mapTo(mutableSetOf()) { it.inviteeId })
     }
@@ -3912,7 +4019,8 @@ class GameEngine(
                 hostName = sessionsByPlayerId[room.hostId]?.displayName.orEmpty(),
                 gameMode = room.gameMode,
                 requiresPassword = room.password != null,
-                matchType = room.matchType
+                matchType = room.matchType,
+                hostId = room.hostId
             )
         }
         .sortedBy { it.name.lowercase() }
@@ -4084,6 +4192,7 @@ class GameEngine(
         activationPending = false
         val winnerTeam = winnerTeamId()
         return CompletedMatch(
+            roomId = id,
             matchId = matchId,
             roomName = name,
             gameMode = gameMode,
@@ -4471,6 +4580,8 @@ class GameEngine(
                     messageKey = TextKey.NotificationClanJoinRequestMessage.name,
                     messageArgs = mapOf(
                         "player" to requesterName,
+                        "playerId" to playerId,
+                        "clanId" to clan.id,
                         "clan" to clan.name
                     )
                 )
@@ -4552,7 +4663,7 @@ class GameEngine(
                     } else {
                         TextKey.ClanJoinRejectedNotice.name
                     },
-                    messageArgs = mapOf("clan" to clan.name)
+                    messageArgs = mapOf("clan" to clan.name, "clanId" to clan.id)
                 )
                 notificationRepository.createNotifications(command.userId, listOf(notification))
                 val updatedClan = clanRepository.getClanById(command.clanId)
@@ -4581,7 +4692,7 @@ class GameEngine(
                             } else {
                                 TextKey.ClanJoinRejectedNotice.name
                             },
-                            messageArgs = mapOf("clan" to clan.name)
+                            messageArgs = mapOf("clan" to clan.name, "clanId" to clan.id)
                         ),
                         setOf(command.userId)
                     ))
@@ -4709,6 +4820,8 @@ class GameEngine(
             messageKey = TextKey.NotificationClanInvitationMessage.name,
             messageArgs = mapOf(
                 "player" to inviterProfile.displayName,
+                "playerId" to playerId,
+                "clanId" to clan.id,
                 "clan" to clan.name
             )
         )

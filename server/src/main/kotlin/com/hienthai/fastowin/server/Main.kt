@@ -31,13 +31,18 @@ fun main() {
     val adminService = adminConfiguration?.let { configuration ->
         AdminService(database?.adminRepository ?: InMemoryAdminRepository(), configuration)
     }
-    val authService = AuthenticationService(database?.authRepository ?: InMemoryAuthRepository())
+    val moderationService = com.hienthai.fastowin.server.moderation.ModerationService(
+        database?.moderationRepository ?: com.hienthai.fastowin.server.moderation.InMemoryModerationRepository(),
+        adminService, enforcementEnabled = { contentTermsEnforced() })
+    val authService = AuthenticationService(database?.authRepository ?: InMemoryAuthRepository(), moderationService = moderationService)
     val authEmailSender = configuredAuthEmailSender()
     val identityRepository = database?.identityRepository ?: InMemoryGuestIdentityRepository()
     val matchResultRepository = database?.matchResultRepository ?: NoOpMatchResultRepository
     val playerProfileRepository = database?.playerProfileRepository ?: NoOpPlayerProfileRepository
     val avatarService = AvatarService(database?.avatarRepository ?: ProfileAvatarRepository(playerProfileRepository),
-        avatarObjects, objectWrites = avatarConfiguration.mode == AvatarStorageMode.R2)
+        avatarObjects, objectWrites = avatarConfiguration.mode == AvatarStorageMode.R2,
+        publicationAllowed = { moderationService.requireContentTerms(it) },
+        contentSuppressed = { id, revision -> moderationService.isSuppressed(com.hienthai.fastowin.protocol.UgcTargetType.PLAYER_AVATAR, id, revision) })
     val leaderboardRepository = database?.leaderboardRepository ?: NoOpLeaderboardRepository
     val friendRepository = database?.friendRepository ?: NoOpFriendRepository
     val notificationRepository = database?.notificationRepository ?: NoOpNotificationRepository
@@ -75,6 +80,7 @@ fun main() {
         pushNotificationService,
         storePurchaseService = storePurchaseService,
         avatarService = avatarService,
+        moderationService = moderationService,
         playQuotaRepository = playQuotaRepository,
         rewardedAdVerifier = rewardedAdVerifier,
         rewardedAdAvailability = rewardedAdAvailability,

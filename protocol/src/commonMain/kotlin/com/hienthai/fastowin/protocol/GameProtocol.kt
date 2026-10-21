@@ -248,7 +248,8 @@ data class RoomSummary(
     val hostName: String,
     val gameMode: ProtocolGameMode,
     val requiresPassword: Boolean,
-    val matchType: MatchType = MatchType.CASUAL
+    val matchType: MatchType = MatchType.CASUAL,
+    val hostId: String? = null
 )
 
 @Serializable
@@ -322,7 +323,9 @@ data class MatchHistorySnapshot(
     val endedAtEpochMillis: Long,
     val eloChange: Int = 0,
     val matchType: MatchType = MatchType.CASUAL,
-    val rewardBreakdown: MatchRewardBreakdown? = null
+    val rewardBreakdown: MatchRewardBreakdown? = null,
+    val roomId: String? = null,
+    val opponentUserId: String? = null
 )
 
 @Serializable
@@ -561,7 +564,8 @@ data class MatchEventSnapshot(
     val number: Int,
     val expectedNumber: Int,
     val accepted: Boolean,
-    val occurredAtEpochMillis: Long
+    val occurredAtEpochMillis: Long,
+    val playerId: String? = null
 )
 
 @Serializable
@@ -744,12 +748,20 @@ data class NotificationSnapshot(
 
 @Serializable
 sealed class ClientMessage {
+    @Serializable @SerialName("get_content_terms")
+    data object GetContentTerms : ClientMessage()
+    @Serializable @SerialName("accept_content_terms")
+    data class AcceptContentTerms(val version: String) : ClientMessage()
+    @Serializable @SerialName("report_content")
+    data class ReportContent(val request: ContentReportRequest) : ClientMessage()
+
     @Serializable
     @SerialName("connect_guest")
     data class ConnectGuest(
         val displayName: String,
         val resumeToken: String? = null,
-        val protocolVersion: Int = PROTOCOL_VERSION
+        val protocolVersion: Int = PROTOCOL_VERSION,
+        val acceptedContentTermsVersion: String? = null
     ) : ClientMessage()
 
     @Serializable
@@ -1088,6 +1100,14 @@ sealed class ClientMessage {
 
 @Serializable
 sealed class ServerMessage {
+    @Serializable @SerialName("content_moderation_changed")
+    data class ContentModerationChanged(val targetType: UgcTargetType, val targetId: String) : ServerMessage()
+
+    @Serializable @SerialName("content_terms_data")
+    data class ContentTermsData(val status: ContentTermsStatus) : ServerMessage()
+    @Serializable @SerialName("content_report_result")
+    data class ContentReportResult(val requestId: String, val receipt: ContentReportReceipt? = null, val errorCode: String? = null) : ServerMessage()
+
     @Serializable
     @SerialName("session_ready")
     data class SessionReady(

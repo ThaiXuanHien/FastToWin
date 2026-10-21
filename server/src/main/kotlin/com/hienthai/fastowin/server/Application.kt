@@ -1,5 +1,6 @@
 package com.hienthai.fastowin.server
 
+import com.hienthai.fastowin.server.moderation.*
 import com.hienthai.fastowin.server.gifts.*
 import com.hienthai.fastowin.server.compensation.*
 import com.hienthai.fastowin.server.events.*
@@ -116,6 +117,7 @@ fun Application.gameModule(
     compensationIncidentService: CompensationIncidentService? = adminService?.let { CompensationIncidentService(giftService.repository, it) },
     compensationRoundService: CompensationRoundService? = adminService?.let { CompensationRoundService(giftService.repository, it) }
 ) {
+    authService.useModerationService(engine.moderationService)
     // The first policy and restored aborts must be applied before any handler/timer can serve game.
     runBlocking { maintenanceRuntime.refresh() }
     runBlocking { financialSyncService?.initialize() }
@@ -198,7 +200,7 @@ fun Application.gameModule(
         maxFrameSize = 64 * 1024
     }
 
-    adminService?.let { service -> routing { adminAssets(); adminRoutes(service) } }
+    adminService?.let { service -> routing { adminAssets(); adminRoutes(service); moderationRoutes(engine.moderationService) } }
     if (adminService != null) analyticsService?.let { service -> routing { analyticsRoutes(service) } }
 
     routing { storePurchaseRoutes(engine.storePurchaseService, authService, rateLimiter, rateLimitPolicies) }
@@ -213,6 +215,14 @@ fun Application.gameModule(
     announcementPushDelivery?.let { startAnnouncementDelivery(announcementService, it) }
 
     val connections = ConcurrentHashMap<String, SocketConnection>()
+    launch {
+        while (isActive) {
+            try { engine.moderationService.cleanup() }
+            catch (cancelled: CancellationException) { throw cancelled }
+            catch (_: Exception) { this@gameModule.environment.log.warn("Moderation retention cleanup failed") }
+            delay(86_400_000L)
+        }
+    }
 
     launch {
         while (isActive) {
@@ -223,15 +233,33 @@ fun Application.gameModule(
     }
 
     suspend fun deliver(deliveries: List<Delivery>) {
+        if (deliveries.isEmpty()) return
+        val suppressions = engine.suppressionsForProjection()
         deliveries.forEach { delivery ->
+            val message = sanitizeContent(delivery.message, suppressions)
             val targets = delivery.recipients?.mapNotNull(connections::get) ?: connections.values.toList()
             targets.forEach { connection ->
                 try {
-                    connection.send(delivery.message)
+                    connection.send(message)
                 } catch (_: Exception) {
                     // The connection cleanup path will remove stale sockets.
                 }
             }
+        }
+    }
+
+    val previousSuppressionChanged = engine.moderationService.onSuppressionChanged
+    engine.moderationService.onSuppressionChanged = { targetType, targetId ->
+        previousSuppressionChanged(targetType, targetId)
+        val event = ServerMessage.ContentModerationChanged(targetType, targetId)
+        val suppressions = engine.suppressionsForProjection()
+        connections.entries.filter { it.value.moderationAware }.forEach { (playerId, connection) ->
+            try {
+                connection.send(event)
+                engine.currentModerationSnapshot(playerId)?.let { connection.send(sanitizeContent(it, suppressions)) }
+            }
+            catch (cancelled: CancellationException) { throw cancelled }
+            catch (_: Exception) { /* Socket cleanup handles disconnected clients. */ }
         }
     }
 
@@ -245,6 +273,14 @@ fun Application.gameModule(
     launch {
         while (isActive) {
             delay(SESSION_CLEANUP_INTERVAL_MILLIS)
+            connections.entries.toList().forEach { (id, connection) ->
+                try {
+                    if (engine.moderationService.isBlocked(id)) {
+                        connection.session.close(CloseReason(CloseReason.Codes.VIOLATED_POLICY, "Account restricted"))
+                    }
+                } catch (cancelled: CancellationException) { throw cancelled }
+                catch (_: Exception) { this@gameModule.environment.log.warn("Could not check restricted game sessions") }
+            }
             deliver(engine.cleanupExpiredSessions())
         }
     }
@@ -302,6 +338,7 @@ fun Application.gameModule(
             )
         }
 
+        get("/api/content-terms") { call.respond(engine.moderationService.publicTerms()) }
         post("/auth/register") {
             if (call.rejectMaintenanceNewIntent(engine.newIntentAllowed())) return@post
             val request = call.receiveOrReject<RegisterRequest>() ?: return@post
@@ -313,7 +350,8 @@ fun Application.gameModule(
                     request.password,
                     request.displayName,
                     request.devicePlatform,
-                    request.gender
+                    request.gender,
+                    request.acceptedContentTermsVersion
                 ),
                 successStatus = HttpStatusCode.Created,
                 webSession = webSession,
@@ -368,7 +406,8 @@ fun Application.gameModule(
                     request.resumeToken,
                     request.email,
                     request.password,
-                    request.devicePlatform
+                    request.devicePlatform,
+                    request.acceptedContentTermsVersion
                 ),
                 webSession = webSession,
                 cookieConfiguration = webSessionCookies
@@ -584,6 +623,7 @@ fun Application.gameModule(
             var playerId: String? = null
             var playerRateLimitKey: String? = null
             var accountAccessToken: String? = null
+            var moderationAware = false
             var activityConnectionId: java.util.UUID? = null
             try {
                 for (frame in incoming) {
@@ -611,6 +651,11 @@ fun Application.gameModule(
                     }
 
                     if (playerId == null) {
+                        if (message is ClientMessage.GetContentTerms) {
+                            moderationAware = true
+                            send(ProtocolJson.encodeToString<ServerMessage>(ServerMessage.ContentTermsData(engine.moderationService.publicTerms())))
+                            continue
+                        }
                         if (message !is ClientMessage.ConnectGuest && message !is ClientMessage.ConnectAccount) {
                             send(ProtocolJson.encodeToString<ServerMessage>(
                                 structuredServerError("AUTH_REQUIRED", legacyFallback("Hãy khởi tạo phiên chơi trước."))
@@ -642,7 +687,7 @@ fun Application.gameModule(
                         val connected = runCatching {
                             when (message) {
                                 is ClientMessage.ConnectGuest ->
-                                    engine.connectGuest(message.displayName, message.resumeToken)
+                                    engine.connectGuest(message.displayName, message.resumeToken, message.acceptedContentTermsVersion)
                                 is ClientMessage.ConnectAccount -> {
                                     val account = authService.authenticateAccessToken(message.accessToken)
                                         ?: throw InvalidAccessTokenException()
@@ -655,6 +700,7 @@ fun Application.gameModule(
                             send(ProtocolJson.encodeToString<ServerMessage>(
                                 when (error) {
                                     is CancellationException -> throw error
+                                    is ModerationException -> ServerMessage.Error(error.code, publicModerationMessage(error.code))
                                     is MaintenanceAdmissionException -> ServerMessage.Error("MAINTENANCE",
                                         com.hienthai.fastowin.localization.LocalizationService(com.hienthai.fastowin.localization.AppLanguage.VIETNAMESE).text(TextKey.MaintenanceDefaultMessage),
                                         messageKey = TextKey.MaintenanceDefaultMessage.name)
@@ -686,14 +732,14 @@ fun Application.gameModule(
                         }
                         metrics.sessionAuthenticated()
                         playerRateLimitKey = stableRateLimitKey(connected.playerId)
-                        val connection = SocketConnection(this)
+                        val connection = SocketConnection(this, moderationAware)
                         connections.put(connected.playerId, connection)?.closeForReplacement()
                         connection.send(
-                            ServerMessage.SessionReady(
+                            sanitizeContent(ServerMessage.SessionReady(
                                 playerId = connected.playerId,
                                 resumeToken = connected.resumeToken,
                                 currentGame = connected.currentGame
-                            )
+                            ), engine.suppressionsForProjection())
                         )
                         deliver(listOf(Delivery(engine.roomList())))
                         deliver(engine.presenceUpdates(connected.playerId))
@@ -701,6 +747,13 @@ fun Application.gameModule(
                     }
 
                     val activePlayerId = playerId
+                    if (message is ClientMessage.GetContentTerms) connections[activePlayerId]
+                        ?.takeIf { it.session === this }?.moderationAware = true
+                    if (engine.moderationService.isBlocked(activePlayerId)) {
+                        send(ProtocolJson.encodeToString<ServerMessage>(ServerMessage.Error("ACCOUNT_BLOCKED", "Account is restricted.")))
+                        close(CloseReason(CloseReason.Codes.VIOLATED_POLICY, "Account restricted"))
+                        break
+                    }
                     val activePlayerRateLimitKey = checkNotNull(playerRateLimitKey)
                     val playerMessageLimit = rateLimiter.consume(
                         RateLimitBuckets.WEBSOCKET_MESSAGE_PLAYER,
@@ -721,6 +774,10 @@ fun Application.gameModule(
                     )
                     if (actionLimit != null) {
                         metrics.webSocketRateLimited()
+                        if (message is ClientMessage.ReportContent) {
+                            send(ProtocolJson.encodeToString<ServerMessage>(ServerMessage.ContentReportResult(message.request.requestId, errorCode = "REPORT_RATE_LIMITED")))
+                            continue
+                        }
                         sendRateLimited(
                             actionLimit,
                             requestId = when (message) {
@@ -795,6 +852,7 @@ private suspend fun RateLimiter.consumeActionLimit(
     policies: ServerRateLimitPolicies
 ): RateLimitResult? {
     return when (message) {
+        is ClientMessage.ReportContent -> consume("content-report-ip", clientKey, policies.reportPerIp).takeUnless(RateLimitResult::allowed)
         is ClientMessage.CreateRoom -> consume(
             RateLimitBuckets.CREATE_ROOM_PLAYER,
             playerKey,
@@ -1049,7 +1107,10 @@ private suspend fun ApplicationCall.respondAccountSessions(result: AccountSessio
     }
 }
 
-private class SocketConnection(val session: io.ktor.server.websocket.DefaultWebSocketServerSession) {
+private class SocketConnection(
+    val session: io.ktor.server.websocket.DefaultWebSocketServerSession,
+    @Volatile var moderationAware: Boolean = false
+) {
     private val sendMutex = Mutex()
 
     suspend fun send(message: ServerMessage) = sendMutex.withLock {

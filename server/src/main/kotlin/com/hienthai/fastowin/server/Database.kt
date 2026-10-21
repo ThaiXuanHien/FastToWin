@@ -37,6 +37,7 @@ data class DatabaseSettings(
 }
 
 class DatabaseRuntime private constructor(
+    val moderationRepository: com.hienthai.fastowin.server.moderation.PostgresModerationRepository,
     val avatarRepository: com.hienthai.fastowin.server.avatars.PostgresAvatarRepository,
     val activityRepository: com.hienthai.fastowin.server.activity.PostgresActivityRepository,
     val rewardEventRepository: com.hienthai.fastowin.server.events.PostgresRewardEventRepository,
@@ -81,6 +82,7 @@ class DatabaseRuntime private constructor(
                     .load()
                     .migrate()
                 return DatabaseRuntime(
+                    moderationRepository = com.hienthai.fastowin.server.moderation.PostgresModerationRepository(dataSource),
                     avatarRepository = com.hienthai.fastowin.server.avatars.PostgresAvatarRepository(dataSource),
                     activityRepository = com.hienthai.fastowin.server.activity.PostgresActivityRepository(dataSource),
                     rewardEventRepository = com.hienthai.fastowin.server.events.PostgresRewardEventRepository(dataSource),
