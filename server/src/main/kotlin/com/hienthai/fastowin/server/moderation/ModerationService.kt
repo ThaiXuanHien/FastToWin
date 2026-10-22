@@ -4,6 +4,7 @@ import com.hienthai.fastowin.protocol.*
 import com.hienthai.fastowin.server.admin.*
 import com.hienthai.fastowin.server.hashToken
 import java.util.UUID
+import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
@@ -130,8 +131,16 @@ class ModerationService(
             putReplay(ModerationReplay(actor.id,request.requestId,fingerprint,"ADMIN_REPORT","",id,nowMillis()+91L*86_400_000))
             view(next)
         }
-        if(request.removeContent && repository is InMemoryModerationRepository) result.targetOwnerId?.let {onContentRemoved(it,id)}
-        if(request.removeContent) result.report.targetId?.let {onSuppressionChanged(result.report.targetType,it)}
+        if(request.removeContent && repository is InMemoryModerationRepository) result.targetOwnerId?.let {
+            try { onContentRemoved(it,id) }
+            catch(cancelled:CancellationException) { throw cancelled }
+            catch(_:Exception) { /* Committed moderation must still invalidate public content. */ }
+        }
+        if(request.removeContent) result.report.targetId?.let {
+            try { onSuppressionChanged(result.report.targetType,it) }
+            catch(cancelled:CancellationException) { throw cancelled }
+            catch(_:Exception) { /* A delivery failure cannot undo the committed result. */ }
+        }
         return result
     }
     suspend fun userRestriction(context: ModerationAdminContext,userId: String): ModerationRestrictionView = repository.transaction {

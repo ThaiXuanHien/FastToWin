@@ -4,6 +4,7 @@ import com.hienthai.fastowin.protocol.*
 import com.hienthai.fastowin.server.moderation.ContentSuppression
 import com.hienthai.fastowin.server.moderation.contentRevision
 import kotlinx.serialization.json.*
+import java.util.UUID
 
 /** A single projection boundary covers live snapshots, nested history, invitations and social lists. */
 internal fun sanitizeContent(message: ServerMessage, suppressions: List<ContentSuppression>): ServerMessage {
@@ -49,20 +50,25 @@ internal fun sanitizeContent(message: ServerMessage, suppressions: List<ContentS
                 if ("logoId" in element) result["logoId"] = JsonNull
             }
         }
-        // Historical localized notifications predate target references. Neutralize their UGC arguments
-        // by exact content fingerprint; unrelated names and notifications retain their original text.
+        // Trusted target references scope new notifications precisely. Historical notifications
+        // without references retain exact content-fingerprint matching.
         var changedArgs = false
         for (field in listOf("titleArgs", "messageArgs")) {
             val args = result[field] as? JsonObject ?: continue
             val safe = args.mapValues { (key, value) ->
                 val kind = when (key) {
-                    "player", "opponent", "host" -> UgcTargetType.PLAYER_PROFILE to "Player"
-                    "room" -> UgcTargetType.ROOM to "Room"
-                    "tournament" -> UgcTargetType.TOURNAMENT to "Tournament"
-                    "clan" -> UgcTargetType.CLAN to "Clan"
+                    "player", "opponent", "host" -> Triple(UgcTargetType.PLAYER_PROFILE, "Player", "playerId")
+                    "room" -> Triple(UgcTargetType.ROOM, "Room", "roomId")
+                    "tournament" -> Triple(UgcTargetType.TOURNAMENT, "Tournament", "tournamentId")
+                    "clan" -> Triple(UgcTargetType.CLAN, "Clan", "clanId")
                     else -> null
                 }
-                if (kind != null && suppressed(kind.first, null, (value as? JsonPrimitive)?.contentOrNull, legacy = true)) {
+                val hasReference = kind != null && args.containsKey(kind.third)
+                val rawReference = kind?.third?.let { (args[it] as? JsonPrimitive)?.contentOrNull }
+                val reference = rawReference?.let { raw ->
+                    runCatching { UUID.fromString(raw).toString() }.getOrNull()?.takeIf { it.equals(raw, ignoreCase = true) }
+                }
+                if (kind != null && suppressed(kind.first, reference, (value as? JsonPrimitive)?.contentOrNull, legacy = !hasReference)) {
                     changedArgs = true; JsonPrimitive(kind.second)
                 } else value
             }

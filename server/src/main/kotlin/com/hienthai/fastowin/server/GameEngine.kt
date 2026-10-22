@@ -115,7 +115,9 @@ class GameEngine(
         if (moderationService.repository is InMemoryModerationRepository) {
             val previous = moderationService.onContentRemoved
             moderationService.onContentRemoved = { ownerId, reportId ->
-                previous(ownerId, reportId)
+                try { previous(ownerId, reportId) }
+                catch (cancelled: CancellationException) { throw cancelled }
+                catch (_: Exception) { /* The owner warning remains independent of earlier listeners. */ }
                 notificationRepository.createNotifications(ownerId, listOf(NotificationSnapshot(
                     id = "moderation:$reportId", kind = NotificationKind.COSMETIC,
                     title = "Content removed", message = "Public content was removed after review.",

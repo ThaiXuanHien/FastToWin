@@ -250,7 +250,9 @@ fun Application.gameModule(
 
     val previousSuppressionChanged = engine.moderationService.onSuppressionChanged
     engine.moderationService.onSuppressionChanged = { targetType, targetId ->
-        previousSuppressionChanged(targetType, targetId)
+        try { previousSuppressionChanged(targetType, targetId) }
+        catch (cancelled: CancellationException) { throw cancelled }
+        catch (_: Exception) { /* Other listeners cannot suppress delivery to connected clients. */ }
         val event = ServerMessage.ContentModerationChanged(targetType, targetId)
         val suppressions = engine.suppressionsForProjection()
         connections.entries.filter { it.value.moderationAware }.forEach { (playerId, connection) ->

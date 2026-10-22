@@ -12,12 +12,13 @@ import kotlinx.serialization.encodeToString
 import kotlin.test.*
 
 class UgcLiveUpdateTest {
-    @Test fun `committed removal invalidates aware client while legacy socket remains usable`() = testApplication {
+    @Test fun `prior listener failure still invalidates aware client while legacy socket remains usable`() = testApplication {
         val admins=InMemoryAdminRepository()
         val admin=AdminService(admins,AdminConfiguration("http://localhost:8080",false),PasswordHasher(1000))
         admin.bootstrapOwner("owner@example.com","GoodPassword123!")
         val login=admin.login("owner@example.com","GoodPassword123!","http://localhost:8080","127.0.0.1")
         val moderation=ModerationService(InMemoryModerationRepository(admins),admin)
+        moderation.onSuppressionChanged={_,_->error("previous live listener unavailable")}
         val engine=GameEngine(moderationService=moderation)
         val auth=AuthenticationService(InMemoryAuthRepository(),PasswordHasher(1000),moderationService=moderation)
         val account=assertIs<AuthResult.Success>(auth.register("aware@example.com","Password-123","Aware",null)).session
