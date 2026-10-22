@@ -29,6 +29,13 @@ data class UgcTarget(val type: UgcTargetType, val id: String?, val label: String
 private data class UgcActions(val selfId: String?, val report: (UgcTarget) -> Unit)
 private val LocalUgcActions = staticCompositionLocalOf<UgcActions?> { null }
 
+/** Supplies report actions without coupling content layouts to the socket/controller lifecycle. */
+@Composable
+fun ProvideUgcReportActions(currentPlayerId: String?, onReport: (UgcTarget) -> Unit,
+    content: @Composable () -> Unit) {
+    CompositionLocalProvider(LocalUgcActions provides UgcActions(currentPlayerId, onReport), content = content)
+}
+
 @Composable
 fun UgcSafetyProvider(serverUrl: String, revision: Long, controller: GameController,
     isGuest: Boolean, currentPlayerId: String?, suppressedAvatarIds: Set<String> = emptySet(),
@@ -45,7 +52,7 @@ fun UgcSafetyProvider(serverUrl: String, revision: Long, controller: GameControl
     LaunchedEffect(state.termsPending) {
         if (state.termsPending) { kotlinx.coroutines.delay(15_000); controller.ugc.termsTimedOut() }
     }
-    CompositionLocalProvider(LocalUgcActions provides UgcActions(currentPlayerId) { target ->
+    ProvideUgcReportActions(currentPlayerId, { target ->
         target.id?.let { controller.ugc.openReport(target.type, it, target.label) }
     }) {
         AvatarImageProvider(serverUrl, revision, suppressedAvatarIds, invalidatedAvatarIds, content)

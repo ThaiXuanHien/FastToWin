@@ -5,6 +5,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.dp
 import com.android.tools.screenshot.PreviewTest
 import com.hienthai.fastowin.data.preferences.*
 import com.hienthai.fastowin.localization.*
@@ -58,5 +59,26 @@ fun ugcModeratedAvatar() = UgcFrame {
     androidx.compose.foundation.layout.Box(Modifier.fillMaxSize(), contentAlignment = androidx.compose.ui.Alignment.Center) {
         PlayerAvatar("Player", MODERATED_AVATAR_ID, "12345678-1234-1234-1234-123456789abc",
             size = androidx.compose.ui.unit.Dp(120f), imageUrl = "https://images.example/removed-avatar.jpg")
+    }
+}
+
+
+@PreviewTest @Preview(name = "tournament_friend_phone", widthDp = 375, heightDp = 240) @Composable
+fun ugcTournamentFriendPhone() = UgcTournamentFriendRow()
+@PreviewTest @Preview(name = "tournament_friend_small_large_text", widthDp = 320, heightDp = 280, fontScale = 1.6f) @Composable
+fun ugcTournamentFriendSmallLargeText() = UgcTournamentFriendRow()
+@PreviewTest @Preview(name = "tournament_friend_desktop_large_text", widthDp = 1024, heightDp = 320, fontScale = 1.6f) @Composable
+fun ugcTournamentFriendDesktop() = UgcTournamentFriendRow(english = true)
+
+@Composable private fun UgcTournamentFriendRow(english: Boolean = false) = UgcFrame(english) {
+    ProvideUgcReportActions("12345678-1234-1234-1234-123456789aaa", {}) {
+        Box(Modifier.fillMaxSize().padding(16.dp),
+            contentAlignment = androidx.compose.ui.Alignment.Center) {
+            com.hienthai.fastowin.ui.screens.TournamentFriendInviteRow(
+                friend = FriendSnapshot("12345678-1234-1234-1234-123456789abc",
+                    "Người bạn có biệt danh rất dài — Tournament champion with a long nickname", "FRIEND123",
+                    presence = FriendPresence.PLAYING),
+                onInvite = {}, modifier = Modifier.widthIn(max = 920.dp).fillMaxWidth())
+        }
     }
 }

@@ -103,6 +103,47 @@ import com.hienthai.fastowin.resources.Res
 import com.hienthai.fastowin.resources.arcade_tournament_trophy
 import com.hienthai.fastowin.ui.theme.ArcadePalette
 
+
+/** Shared with host previews so the report action and Invite compete for the real row's width. */
+@Composable
+fun TournamentFriendInviteRow(
+    friend: com.hienthai.fastowin.protocol.FriendSnapshot,
+    onInvite: (String) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.surface,
+        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Row(
+                modifier = Modifier.weight(1f),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                ReportableText(friend.displayName, UgcTargetType.PLAYER_PROFILE, friend.userId,
+                    modifier = Modifier.weight(1f), fontWeight = FontWeight.Medium,
+                    maxLines = 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                FriendPresenceIndicator(friend.presence)
+            }
+            TextButton(
+                onClick = { onInvite(friend.userId) },
+                modifier = Modifier.heightIn(min = 48.dp).testTag("tournament_invite_${friend.userId}"),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Icon(Icons.Rounded.GroupAdd, contentDescription = null, modifier = Modifier.size(18.dp))
+                Text(localized(TextKey.InviteAction))
+            }
+        }
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TournamentScreen(
@@ -1147,33 +1188,7 @@ private fun ActiveTournamentContent(
             }
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 availableFriends.forEach { friend ->
-                    Surface(
-                        shape = RoundedCornerShape(16.dp),
-                        color = MaterialTheme.colorScheme.surface,
-                        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
-                    ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth().padding(12.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)
-                            ) {
-                                ReportableText(friend.displayName, UgcTargetType.PLAYER_PROFILE, friend.userId, fontWeight = FontWeight.Medium)
-                                FriendPresenceIndicator(friend.presence)
-                            }
-                            TextButton(
-                                onClick = { onInvite(friend.userId) },
-                                modifier = Modifier.heightIn(min = 48.dp).testTag("tournament_invite_${friend.userId}"),
-                                shape = RoundedCornerShape(12.dp)
-                            ) {
-                                Icon(Icons.Rounded.GroupAdd, contentDescription = null, modifier = Modifier.size(18.dp))
-                                Text(localized(TextKey.InviteAction))
-                            }
-                        }
-                    }
+                    TournamentFriendInviteRow(friend = friend, onInvite = onInvite)
                 }
             }
         }
