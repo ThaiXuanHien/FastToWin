@@ -42,7 +42,7 @@ fun UgcSafetyProvider(serverUrl: String, revision: Long, controller: GameControl
     invalidatedAvatarIds: Set<String> = emptySet(), content: @Composable () -> Unit) {
     val state by controller.ugc.state.collectAsState()
     val scope = rememberCoroutineScope()
-    var blockTarget by remember { mutableStateOf<UgcReportDraft?>(null) }
+    var blockTarget by remember(currentPlayerId) { mutableStateOf<UgcReportDraft?>(null) }
     LaunchedEffect(state.report?.request?.requestId, state.report?.pending) {
         if (state.report?.pending == true) {
             kotlinx.coroutines.delay(15_000)
@@ -67,15 +67,23 @@ fun UgcSafetyProvider(serverUrl: String, revision: Long, controller: GameControl
             { scope.launch { controller.ugc.acceptTerms() } },
             { scope.launch { controller.ugc.retryTerms() } }, controller::dismissContentTerms)
         blockTarget?.let { target ->
-            ArcadeDialog(localized(TextKey.BlockPlayerTitle), { blockTarget = null },
-                subtitle = localized(TextKey.BlockFriendDescription, "player" to target.targetLabel)) {
-                ArcadeActionButton(localized(TextKey.BlockPlayerTitle), {
+            UgcBlockConfirmationDialog(target.targetLabel,
+                onBlock = {
                     controller.blockPlayer(target.targetId)
                     blockTarget = null
-                }, modifier = Modifier.fillMaxWidth(), style = ArcadeActionStyle.DANGER)
-                TextButton({ blockTarget = null }, Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text(localized(TextKey.Cancel)) }
-            }
+                },
+                onDismiss = { blockTarget = null })
         }
+    }
+}
+
+@Composable
+fun UgcBlockConfirmationDialog(targetLabel: String, onBlock: () -> Unit, onDismiss: () -> Unit) {
+    ArcadeDialog(localized(TextKey.BlockPlayerTitle, "player" to targetLabel), onDismiss,
+        subtitle = localized(TextKey.BlockFriendDescription, "player" to targetLabel)) {
+        ArcadeActionButton(localized(TextKey.Block), onBlock,
+            modifier = Modifier.fillMaxWidth(), style = ArcadeActionStyle.DANGER)
+        TextButton(onDismiss, Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text(localized(TextKey.Cancel)) }
     }
 }
 
@@ -219,7 +227,7 @@ fun UgcReportDialog(draft: UgcReportDraft,
             }), onSubmit, enabled = !draft.pending,
                 modifier = Modifier.fillMaxWidth().testTag("ugc_report_submit"), style = ArcadeActionStyle.GOLD)
         }
-        onBlock?.let { TextButton(it, Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text(localized(TextKey.BlockPlayerTitle)) } }
+        onBlock?.let { TextButton(it, Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text(localized(TextKey.Block)) } }
         TextButton(onDismiss, Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
             Text(localized(if (draft.receipt != null) TextKey.Close else TextKey.Cancel))
         }

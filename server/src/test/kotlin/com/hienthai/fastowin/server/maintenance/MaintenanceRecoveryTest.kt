@@ -221,6 +221,7 @@ class MaintenanceRecoveryTest {
                 assertTrue(room.deadlinesAtEpochMillis.values.all { it - now >= expectedDuration })
             }
             val game = retry.deliveries.map { it.message }.filterIsInstance<ServerMessage.GameStarted>().first().game
+            retryEngine.connectAccount(AuthenticatedAccount(UUID.fromString(game.hostId), "host"))
             assertEquals("GAME_NOT_PLAYING", retryEngine.handle(game.hostId, ClientMessage.SelectNumber(game.roomId, 1, "early")).errorCode())
             assertTrue(saved.loadAll().all { it.selectionEvents.isEmpty() && it.activationPending })
             assertTrue(retryEngine.advanceTimedGames().none { it.message is ServerMessage.GameFinished })

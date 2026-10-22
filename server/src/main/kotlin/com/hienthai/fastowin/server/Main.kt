@@ -28,12 +28,7 @@ fun main() {
     val database = databaseSettings?.let(DatabaseRuntime::open)
     val avatarObjects = try { avatarConfiguration.r2?.let(S3AvatarObjectStore::open) }
         catch (failure: Throwable) { database?.close(); throw failure }
-    val adminService = adminConfiguration?.let { configuration ->
-        AdminService(database?.adminRepository ?: InMemoryAdminRepository(), configuration)
-    }
-    val moderationService = com.hienthai.fastowin.server.moderation.ModerationService(
-        database?.moderationRepository ?: com.hienthai.fastowin.server.moderation.InMemoryModerationRepository(),
-        adminService, enforcementEnabled = { contentTermsEnforced() })
+    val (adminService, moderationService) = createModerationRuntime(database, adminConfiguration)
     val authService = AuthenticationService(database?.authRepository ?: InMemoryAuthRepository(), moderationService = moderationService)
     val authEmailSender = configuredAuthEmailSender()
     val identityRepository = database?.identityRepository ?: InMemoryGuestIdentityRepository()
@@ -140,4 +135,19 @@ fun main() {
         avatarObjects?.close()
         database?.close()
     }
+}
+
+/** Shared startup assembly for admin and moderation services. */
+internal fun createModerationRuntime(
+    database: DatabaseRuntime?,
+    adminConfiguration: AdminConfiguration?
+): Pair<AdminService?, com.hienthai.fastowin.server.moderation.ModerationService> {
+    val memoryAdmins = if (database == null) InMemoryAdminRepository() else null
+    val adminService = adminConfiguration?.let { configuration ->
+        AdminService(database?.adminRepository ?: checkNotNull(memoryAdmins), configuration)
+    }
+    val moderationService = com.hienthai.fastowin.server.moderation.ModerationService(
+        database?.moderationRepository ?: com.hienthai.fastowin.server.moderation.InMemoryModerationRepository(checkNotNull(memoryAdmins)),
+        adminService, enforcementEnabled = { contentTermsEnforced() })
+    return adminService to moderationService
 }

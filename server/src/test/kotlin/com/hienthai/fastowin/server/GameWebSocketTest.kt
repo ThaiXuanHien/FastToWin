@@ -875,11 +875,16 @@ class GameWebSocketTest {
                 }
             }
 
-            val hostUpdate = host.receiveMessage<ServerMessage.GameStateUpdated>().game
-            val guestUpdate = guest.receiveMessage<ServerMessage.GameStateUpdated>().game
+            // Each concurrent input publishes a snapshot. The first snapshot on each
+            // socket need not represent the same input; compare after both were processed.
+            val settledSequence = hostStarted.sequence + 2
+            val hostUpdate = host.receiveGameUpdateAtLeast(settledSequence)
+            val guestUpdate = guest.receiveGameUpdateAtLeast(settledSequence)
             assertEquals(2, hostUpdate.currentTarget)
             assertEquals(hostUpdate, guestUpdate)
             assertEquals(10, hostUpdate.players.sumOf { it.score })
+            assertEquals(1, hostUpdate.players.sumOf { it.correctSelections })
+            assertEquals(1, hostUpdate.players.sumOf { it.wrongSelections })
 
             host.close()
             delay(100)
@@ -989,6 +994,14 @@ class GameWebSocketTest {
         val hostStarted = host.receiveMessage<ServerMessage.GameStarted>().game
         val guestStarted = guest.receiveMessage<ServerMessage.GameStarted>().game
         return hostStarted to guestStarted
+    }
+
+    private suspend fun DefaultClientWebSocketSession.receiveGameUpdateAtLeast(
+        sequence: Long
+    ): com.hienthai.fastowin.protocol.GameSnapshot = withTimeout(5_000) {
+        var game = receiveMessage<ServerMessage.GameStateUpdated>().game
+        while (game.sequence < sequence) game = receiveMessage<ServerMessage.GameStateUpdated>().game
+        game
     }
 
     private suspend inline fun <reified T : ServerMessage> DefaultClientWebSocketSession.receiveMessage(): T {

@@ -82,3 +82,12 @@ fun ugcTournamentFriendDesktop() = UgcTournamentFriendRow(english = true)
         }
     }
 }
+
+@PreviewTest @Preview(name = "block_phone_vi", widthDp = 375, heightDp = 812) @Composable
+fun ugcBlockPhone() = UgcFrame {
+    UgcBlockConfirmationDialog("<b>Player nickname</b>", {}, {})
+}
+@PreviewTest @Preview(name = "block_desktop_en", widthDp = 1024, heightDp = 768) @Composable
+fun ugcBlockDesktop() = UgcFrame(true) {
+    UgcBlockConfirmationDialog("<b>Player nickname</b>", {}, {})
+}

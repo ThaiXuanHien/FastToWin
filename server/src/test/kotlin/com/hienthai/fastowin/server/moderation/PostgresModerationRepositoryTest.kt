@@ -158,6 +158,54 @@ class PostgresModerationRepositoryTest {
             }
         }
     }
+    @Test fun `reported owner erasure scrubs removal and standalone restriction while preserving unrelated records`()=runTest {
+        fixture {ds,reporter,target ->
+            val authority=com.hienthai.fastowin.server.admin.AdminService(
+                com.hienthai.fastowin.server.admin.PostgresAdminRepository(ds),
+                com.hienthai.fastowin.server.admin.AdminConfiguration("http://localhost:8080",false),
+                com.hienthai.fastowin.server.PasswordHasher(iterations=1_000))
+            authority.bootstrapOwner("owner@example.com","GoodPassword123!")
+            val login=authority.login("owner@example.com","GoodPassword123!","http://localhost:8080","127.0.0.1")
+            val context=ModerationAdminContext(login.token,login.response.csrfToken,"http://localhost:8080")
+            val repo=PostgresModerationRepository(ds);val service=ModerationService(repo,authority)
+            val receipt=service.report(reporter,ContentReportRequest(UgcTargetType.PLAYER_PROFILE,target,UgcReportReason.OTHER,"Private owner evidence","owner-report"))
+            service.resolve(context,receipt.reportId,ModerationResolveRequest(1,"owner-remove","Private removal",ModerationStatus.RESOLVED,true))
+            service.restrict(context,target,ModerationRestrictionRequest(0,"owner-block","Private restriction",true))
+            service.acceptTerms(reporter,CONTENT_TERMS_VERSION)
+            val unrelatedAction=UUID.randomUUID().toString()
+            repo.transaction {
+                appendAction(ModerationActionRecord(unrelatedAction,null,reporter,null,"MODERATION_WARN","Unrelated reason",100,Long.MAX_VALUE))
+                putSuppression(ContentSuppression(UgcTargetType.PLAYER_PROFILE,reporter,contentRevision("Name"),reporter))
+                putReplay(ModerationReplay(reporter,"unrelated","fingerprint","RESTRICTION","""{"userId":"$reporter","version":0,"blocked":false}""",null,Long.MAX_VALUE))
+            }
+            fun count(table:String):Int=ds.connection.use {connection ->
+                connection.createStatement().use {statement ->statement.executeQuery("SELECT count(*) FROM $table").use {it.next();it.getInt(1)}}
+            }
+            assertEquals(3,count("ugc_moderation_actions"))
+            assertEquals(4,count("ugc_request_replays"))
+            assertEquals(2,count("ugc_content_suppressions"))
+            assertEquals(1,count("ugc_account_restrictions"))
+
+            service.erasePlayer(target)
+
+            repo.transaction {
+                val erased=assertNotNull(report(receipt.reportId))
+                assertEquals(reporter,erased.reporterId)
+                assertNull(erased.targetId);assertNull(erased.targetOwnerId)
+                assertEquals("",erased.note);assertEquals("",erased.evidenceText)
+                assertNull(erased.targetRevision);assertNull(erased.imageReference)
+                assertNull(lastActionReason(receipt.reportId))
+                assertEquals(listOf(reporter),suppressions().map {it.targetId})
+                assertNotNull(replay(reporter,"unrelated"))
+            }
+            assertEquals(1,count("ugc_moderation_actions"))
+            assertEquals(1,count("ugc_request_replays"))
+            assertEquals(1,count("ugc_content_suppressions"))
+            assertEquals(0,count("ugc_account_restrictions"))
+            assertEquals(CONTENT_TERMS_VERSION,service.terms(reporter).acceptedVersion)
+            assertEquals(1,repo.transaction {rateCount(reporter,0)})
+        }
+    }
     private suspend fun fixture(block:suspend (HikariDataSource,String,String)->Unit) {
         val url=System.getenv("TEST_DATABASE_URL")
         assumeTrue(!url.isNullOrBlank(),"TEST_DATABASE_URL required for real PostgreSQL moderation tests")

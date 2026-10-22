@@ -1136,6 +1136,9 @@ class GameEngine(
                 PushNotificationCategory.TOURNAMENT_INVITATIONS
             )
             if (pushTarget != null) {
+                val safeInvitation = (sanitizeContent(
+                    ServerMessage.TournamentInvitation(invitation.snapshot(nowMillis())),
+                    moderationService.suppressions()) as ServerMessage.TournamentInvitation).invitation
                 sendPushNotification(
                     playerId = friendId,
                     target = pushTarget,
@@ -1143,8 +1146,8 @@ class GameEngine(
                         titleKey = TextKey.PushTournamentInvitationTitle,
                         bodyKey = TextKey.PushTournamentInvitationMessage,
                         bodyArguments = mapOf(
-                            "player" to invitation.hostDisplayName,
-                            "tournament" to invitation.tournamentName
+                            "player" to safeInvitation.hostDisplayName,
+                            "tournament" to safeInvitation.tournamentName
                         )
                     ),
                     destinationPath = "/tournament"
@@ -1874,6 +1877,8 @@ class GameEngine(
                 PushNotificationCategory.ROOM_INVITATIONS
             )
             if (pushTarget != null) {
+                val safeInvitation = sanitizeContent(invitation.toMessage(),
+                    moderationService.suppressions()) as ServerMessage.RoomInvitation
                 sendPushNotification(
                     playerId = invitation.inviteeId,
                     target = pushTarget,
@@ -1881,8 +1886,8 @@ class GameEngine(
                         titleKey = TextKey.PushRoomInvitationTitle,
                         bodyKey = TextKey.PushRoomInvitationMessage,
                         bodyArguments = mapOf(
-                            "player" to invitation.inviterDisplayName,
-                            "room" to invitation.roomName
+                            "player" to safeInvitation.fromDisplayName,
+                            "room" to safeInvitation.roomName
                         )
                     ),
                     destinationPath = "/friends"
