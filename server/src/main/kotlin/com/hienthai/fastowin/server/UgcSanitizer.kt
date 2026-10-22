@@ -86,8 +86,8 @@ internal fun sanitizeContent(message: ServerMessage, suppressions: List<ContentS
 
 /** Readable fallback is retained for clients released before versioned content terms existed. */
 internal fun publicModerationMessage(code: String): String = when (code) {
-    "CONTENT_TERMS_REQUIRED" -> "Vui lòng cập nhật ứng dụng và đồng ý Quy tắc nội dung trước khi tạo hoặc sửa nội dung công khai."
-    "CONTENT_TERMS_VERSION_INVALID" -> "Quy tắc nội dung đã thay đổi. Vui lòng cập nhật ứng dụng và đọc phiên bản mới."
-    "ACCOUNT_BLOCKED" -> "Tài khoản đã bị khóa. Vui lòng liên hệ hỗ trợ."
+    "CONTENT_TERMS_REQUIRED" -> legacyFallback("Vui lòng cập nhật ứng dụng và đồng ý Quy tắc nội dung trước khi tạo hoặc sửa nội dung công khai.")
+    "CONTENT_TERMS_VERSION_INVALID" -> legacyFallback("Quy tắc nội dung đã thay đổi. Vui lòng cập nhật ứng dụng và đọc phiên bản mới.")
+    "ACCOUNT_BLOCKED" -> legacyFallback("Tài khoản đã bị khóa. Vui lòng liên hệ hỗ trợ.")
     else -> code
 }

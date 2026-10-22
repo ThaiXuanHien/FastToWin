@@ -18,7 +18,7 @@ class ContentTermsApiClient(serverUrl: String, private val client: HttpClient = 
     private val url = "${serverUrl.toHttpBaseUrl()}/api/content-terms"
     suspend fun fetch(): ContentTermsStatus {
         val response = client.get(url)
-        check(response.status.isSuccess()) { "Content terms unavailable" }
+        check(response.status.isSuccess()) { "CONTENT_TERMS_UNAVAILABLE" }
         return response.body<ContentTermsStatus>().also { check(it.requiredVersion.isNotBlank()) }
     }
     fun close() = client.close()

@@ -138,7 +138,7 @@ fun FriendsScreen(
     }
     blockTarget?.let { target ->
         ArcadeDialog(
-            title = localized(TextKey.BlockPlayerTitle),
+            title = localized(TextKey.BlockPlayerTitle, "player" to target.displayName),
             subtitle = localized(TextKey.BlockFriendDescription, "player" to target.displayName),
             onDismissRequest = { blockTarget = null }
         ) {
