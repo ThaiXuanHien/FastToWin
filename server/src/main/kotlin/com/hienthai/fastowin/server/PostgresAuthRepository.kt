@@ -19,8 +19,11 @@ class PostgresAuthRepository(private val dataSource: DataSource) : AuthRepositor
         dataSource.connection.use { connection ->
             connection.autoCommit = false
             try {
+                connection.prepareStatement("SELECT pg_advisory_xact_lock(7421092187349)").use { it.execute() }
+                val moderation = com.hienthai.fastowin.server.moderation.JdbcModerationTransaction(connection)
                 insertUser(connection, account)
                 insertProfile(connection, account)
+                account.acceptedContentTermsVersion?.let { moderation.acceptTerms(account.userId.toString(), it, account.session.nowMillis) }
                 insertSession(connection, account.userId, account.devicePlatform, account.session)
                 AnalyticsFacts.recordRegistration(connection, account.userId.toString(), account.session.nowMillis)
                 connection.commit()
@@ -91,11 +94,11 @@ class PostgresAuthRepository(private val dataSource: DataSource) : AuthRepositor
                     // Serialize logins per account so two simultaneous requests cannot
                     // both create an active session after revoking the previous one.
                     connection.prepareStatement(
-                        "SELECT id FROM users WHERE id = ? FOR UPDATE"
+                        "SELECT id FROM users WHERE id = ? AND status = 'ACTIVE' FOR UPDATE"
                     ).use { statement ->
                         statement.setObject(1, userId)
                         statement.executeQuery().use { result ->
-                            check(result.next()) { "Cannot create a session for a missing user" }
+                            if (!result.next()) throw InactiveAccountException()
                         }
                     }
                     connection.prepareStatement(
@@ -326,12 +329,15 @@ class PostgresAuthRepository(private val dataSource: DataSource) : AuthRepositor
             dataSource.connection.use { connection ->
                 connection.autoCommit = false
                 try {
+                    connection.prepareStatement("SELECT pg_advisory_xact_lock(7421092187349)").use { it.execute() }
+                    val moderation = com.hienthai.fastowin.server.moderation.JdbcModerationTransaction(connection)
                     val guest = findGuestForUpgrade(connection, upgrade)
                     if (guest == null) {
                         connection.rollback()
                         return@withContext GuestUpgradeResult.InvalidGuestSession
                     }
 
+                    upgrade.acceptedContentTermsVersion?.let { moderation.acceptTerms(guest.userId.toString(), it, upgrade.session.nowMillis) }
                     connection.prepareStatement(
                         """
                         UPDATE users
@@ -636,6 +642,8 @@ class PostgresAuthRepository(private val dataSource: DataSource) : AuthRepositor
         dataSource.connection.use { connection ->
             connection.autoCommit = false
             try {
+                connection.prepareStatement("SELECT pg_advisory_xact_lock(7421092187349)").use { it.execute() }
+                val moderation = com.hienthai.fastowin.server.moderation.JdbcModerationTransaction(connection)
                 val eligible = connection.prepareStatement(
                     "SELECT id FROM users WHERE id = ? AND account_type = 'REGISTERED' AND status = 'ACTIVE' FOR UPDATE"
                 ).use { statement ->
@@ -646,6 +654,7 @@ class PostgresAuthRepository(private val dataSource: DataSource) : AuthRepositor
                     connection.rollback()
                     return@withContext false
                 }
+                moderation.erasePlayer(userId.toString())
                 AnalyticsFacts.eraseIdentityLink(connection, userId.toString())
                 val deleted = connection.prepareStatement("DELETE FROM users WHERE id = ?").use { statement ->
                     statement.setObject(1, userId)

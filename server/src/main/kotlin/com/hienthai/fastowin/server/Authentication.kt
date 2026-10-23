@@ -1,5 +1,6 @@
 package com.hienthai.fastowin.server
 
+import com.hienthai.fastowin.server.moderation.*
 import com.hienthai.fastowin.protocol.AuthSessionResponse
 import com.hienthai.fastowin.protocol.AccountSessionSnapshot
 import com.hienthai.fastowin.localization.TextKey
@@ -22,7 +23,8 @@ data class NewAccount(
     val playerCode: String,
     val devicePlatform: String?,
     val session: NewAuthSession,
-    val gender: PlayerGender = PlayerGender.MALE
+    val gender: PlayerGender = PlayerGender.MALE,
+    val acceptedContentTermsVersion: String? = null
 )
 
 data class NewAuthSession(
@@ -74,7 +76,8 @@ data class GuestUpgrade(
     val emailNormalized: String,
     val passwordHash: String,
     val devicePlatform: String?,
-    val session: NewAuthSession
+    val session: NewAuthSession,
+    val acceptedContentTermsVersion: String? = null
 )
 
 sealed interface GuestUpgradeResult {
@@ -135,18 +138,26 @@ sealed interface AccountSessionsResult {
     data class Failure(val code: String, val message: String) : AccountSessionsResult
 }
 
+internal class InactiveAccountException : RuntimeException("Account is not active")
+
 class AuthenticationService(
     private val repository: AuthRepository,
     private val passwordHasher: PasswordHasher = PasswordHasher(),
-    private val nowMillis: () -> Long = System::currentTimeMillis
+    private val nowMillis: () -> Long = System::currentTimeMillis,
+    private var moderationService: ModerationService? = null
 ) {
+    internal fun useModerationService(service: ModerationService) { moderationService = service }
+
     suspend fun register(
         email: String,
         password: String,
         displayName: String,
         devicePlatform: String?,
-        gender: PlayerGender = PlayerGender.MALE
+        gender: PlayerGender = PlayerGender.MALE,
+        acceptedContentTermsVersion: String? = null
     ): AuthResult {
+        try { moderationService?.validateAcceptedVersion(acceptedContentTermsVersion) }
+        catch (failure: ModerationException) { return AuthResult.Failure(failure.code, publicModerationMessage(failure.code)) }
         val normalizedEmail = normalizeEmail(email)
             ?: return AuthResult.Failure("INVALID_EMAIL", legacyFallback("Email không hợp lệ."))
         val passwordError = validatePassword(password)
@@ -172,10 +183,13 @@ class AuthenticationService(
                 playerCode = playerCode(userId),
                 devicePlatform = normalizeDevicePlatform(devicePlatform),
                 session = issued.record,
-                gender = gender
+                gender = gender,
+                acceptedContentTermsVersion = acceptedContentTermsVersion
             )
         )
         if (!created) return AuthResult.Failure("EMAIL_ALREADY_EXISTS", legacyFallback("Email này đã được sử dụng."))
+        moderationService?.registerIdentity(userId.toString())
+        acceptedContentTermsVersion?.let { moderationService?.acceptTerms(userId.toString(), it) }
         return AuthResult.Success(issued.response)
     }
 
@@ -188,6 +202,10 @@ class AuthenticationService(
             passwordHasher.verify(password, account.passwordHash)
         }
         if (!passwordMatches) return invalidCredentials()
+        if (moderationService?.isBlocked(account.userId.toString()) == true) {
+            repository.revokeAllSessions(account.userId, nowMillis())
+            return AuthResult.Failure("ACCOUNT_BLOCKED", "ACCOUNT_BLOCKED")
+        }
 
         val issued = issueTokens(
             account.userId,
@@ -195,7 +213,12 @@ class AuthenticationService(
             nowMillis(),
             emailVerified = account.emailVerified
         )
-        repository.replaceSessions(account.userId, normalizeDevicePlatform(devicePlatform), issued.record)
+        try { repository.replaceSessions(account.userId, normalizeDevicePlatform(devicePlatform), issued.record) }
+        catch (_: InactiveAccountException) { return AuthResult.Failure("ACCOUNT_BLOCKED", publicModerationMessage("ACCOUNT_BLOCKED")) }
+        if (moderationService?.isBlocked(account.userId.toString()) == true) {
+            repository.revokeAllSessions(account.userId, nowMillis())
+            return AuthResult.Failure("ACCOUNT_BLOCKED", publicModerationMessage("ACCOUNT_BLOCKED"))
+        }
         return AuthResult.Success(issued.response)
     }
 
@@ -203,8 +226,11 @@ class AuthenticationService(
         resumeToken: String,
         email: String,
         password: String,
-        devicePlatform: String?
+        devicePlatform: String?,
+        acceptedContentTermsVersion: String? = null
     ): AuthResult {
+        try { moderationService?.validateAcceptedVersion(acceptedContentTermsVersion) }
+        catch (failure: ModerationException) { return AuthResult.Failure(failure.code, publicModerationMessage(failure.code)) }
         if (!isValidTokenShape(resumeToken)) return invalidGuestSession()
         val normalizedEmail = normalizeEmail(email)
             ?: return AuthResult.Failure("INVALID_EMAIL", legacyFallback("Email không hợp lệ."))
@@ -221,7 +247,8 @@ class AuthenticationService(
                 emailNormalized = normalizedEmail,
                 passwordHash = passwordHash,
                 devicePlatform = normalizeDevicePlatform(devicePlatform),
-                session = issued.record
+                session = issued.record,
+                acceptedContentTermsVersion = acceptedContentTermsVersion
             )
         )) {
             is GuestUpgradeResult.Success -> AuthResult.Success(
@@ -249,6 +276,10 @@ class AuthenticationService(
         val replacement = issueTokens(placeholderUserId, "", now)
         val userId = repository.rotateSession(hashToken(refreshToken), replacement.record)
             ?: return invalidRefreshToken()
+        if (moderationService?.isBlocked(userId.toString()) == true) {
+            repository.revokeAllSessions(userId, now)
+            return AuthResult.Failure("ACCOUNT_BLOCKED", "ACCOUNT_BLOCKED")
+        }
         return AuthResult.Success(replacement.response.copy(userId = userId.toString()))
     }
 
@@ -258,7 +289,12 @@ class AuthenticationService(
 
     suspend fun authenticateAccessToken(accessToken: String): AuthenticatedAccount? {
         if (!isValidTokenShape(accessToken)) return null
-        return repository.findActiveSession(hashToken(accessToken), nowMillis())
+        val identity = repository.findActiveSession(hashToken(accessToken), nowMillis()) ?: return null
+        if (moderationService?.isBlocked(identity.userId.toString()) == true) {
+            repository.revokeAllSessions(identity.userId, nowMillis())
+            return null
+        }
+        return identity
     }
 
     suspend fun listSessions(accessToken: String): AccountSessionsResult {
@@ -430,6 +466,7 @@ class AuthenticationService(
             legacyFallback("Mật khẩu không đúng.")
         )
         return if (repository.deleteAccount(authenticated.userId)) {
+            moderationService?.erasePlayer(authenticated.userId.toString())
             AccountActionResult.Success(legacyFallback("Tài khoản và dữ liệu cá nhân đã được xóa."), messageKey = TextKey.AccountDeleted.name)
         } else invalidAccountSession()
     }

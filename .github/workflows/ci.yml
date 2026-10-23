@@ -4,6 +4,12 @@ on:
   push:
   pull_request:
   workflow_dispatch:
+    inputs:
+      run_android_ui:
+        description: 'Run Android UI tests on an emulator (explicit opt-in)'
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -277,7 +283,8 @@ jobs:
           if-no-files-found: warn
 
   android-ui-test:
-    if: ${{ vars.FASTTOWIN_ANDROID_EMULATOR_TESTS == 'true' }}
+    # Emulator use is always explicit; normal push/PR checks remain host-only.
+    if: github.event_name == 'workflow_dispatch' && inputs.run_android_ui
     name: Android UI test
     needs: build-and-test
     runs-on: ubuntu-latest

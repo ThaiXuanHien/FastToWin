@@ -77,6 +77,8 @@ class AuthController(
     )
     val state: StateFlow<AuthState> = _state.asStateFlow()
     private val refreshMutex = Mutex()
+    private val termsApi = com.hienthai.fastowin.data.network.ContentTermsApiClient(serverUrl)
+    val contentEntryConsent = ContentEntryConsent(termsApi::fetch)
 
     fun updateLanguage(language: AppLanguage) {
         if (messageMapper.language == language) return
@@ -122,35 +124,32 @@ class AuthController(
 
     fun register(email: String, password: String, displayName: String, gender: PlayerGender) {
         if (_state.value.isLoading) return
-        _state.update { it.copy(isLoading = true, error = null) }
-        scope.launch {
-            runCatching {
-                val response = api.register(email, password, displayName, devicePlatform, gender)
+        scope.launch { contentEntryConsent.begin { version ->
+            _state.update { it.copy(isLoading = true, error = null) }
+            try {
+                val response = api.register(email, password, displayName, devicePlatform, gender, version)
                 persist(email, displayName.trim(), response)
                 if (!response.emailVerified) requestEmailVerification()
-            }
-                .onFailure(::showError)
-        }
+            } catch (error: Exception) { showError(error); throw error }
+        } }
     }
 
     fun upgradeGuest(email: String, password: String) {
         if (_state.value.isLoading) return
         val resumeToken = resumeTokenStore.load(serverUrl)
         if (resumeToken == null) {
-            _state.update {
-                it.copy(error = messageMapper.text(TextKey.GuestSessionMissing))
-            }
+            _state.update { it.copy(error = messageMapper.text(TextKey.GuestSessionMissing)) }
             return
         }
-        _state.update { it.copy(isLoading = true, error = null) }
-        scope.launch {
-            runCatching {
-                val response = api.upgradeGuest(resumeToken, email, password, devicePlatform)
+        scope.launch { contentEntryConsent.begin { version ->
+            _state.update { it.copy(isLoading = true, error = null) }
+            try {
+                val response = api.upgradeGuest(resumeToken, email, password, devicePlatform, version)
                 persist(email, response.displayName, response)
                 resumeTokenStore.clear(serverUrl)
                 if (!response.emailVerified) requestEmailVerification()
-            }.onFailure(::showError)
-        }
+            } catch (error: Exception) { showError(error); throw error }
+        } }
     }
 
     suspend fun validAccessToken(forceRefresh: Boolean = false): String? = refreshMutex.withLock {
@@ -382,6 +381,8 @@ class AuthController(
     fun clearFeedback() = _state.update { it.copy(error = null, notice = null) }
 
     fun close() {
+        contentEntryConsent.dismiss()
+        termsApi.close()
         api.close()
         scope.cancel()
     }

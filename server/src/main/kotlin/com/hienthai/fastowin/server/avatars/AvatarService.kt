@@ -11,12 +11,15 @@ class AvatarService(
     private val repository: AvatarRepository,
     private val objectStore: AvatarObjectStore? = null,
     private val objectWrites: Boolean = false,
-    private val normalizer: AvatarImageNormalizer = AvatarImageNormalizer()
+    private val normalizer: AvatarImageNormalizer = AvatarImageNormalizer(),
+    private val publicationAllowed: suspend (String) -> Unit = {},
+    private val contentSuppressed: suspend (String, String) -> Boolean = { _, _ -> false }
 ) {
     init { require(!objectWrites || objectStore != null) { "Object avatar writes require configured object storage." } }
 
     suspend fun upload(playerId: String, base64: String): Boolean {
         if (!isAvatarPlayerId(playerId)) return false
+        publicationAllowed(playerId)
         return try {
             val image = withContext(Dispatchers.Default) { normalizer.normalize(base64) } ?: return false
             val previous = repository.current(playerId) ?: return false
@@ -41,6 +44,7 @@ class AvatarService(
         if (!isAvatarPlayerId(playerId)) return AvatarReadResult.NotFound
         return try {
             val snapshot = repository.current(playerId) ?: return AvatarReadResult.NotFound
+            if (contentSuppressed(playerId, snapshot.revision.toString())) return AvatarReadResult.NotFound
             val metadata = snapshot.metadata
             if (metadata == null) {
                 val legacy = snapshot.legacyBase64 ?: return AvatarReadResult.NotFound
@@ -61,6 +65,9 @@ class AvatarService(
             AvatarReadResult.Unavailable
         }
     }
+
+    suspend fun currentRevision(playerId: String): String? = repository.current(playerId)
+        ?.takeIf { it.metadata != null || it.legacyBase64 != null }?.revision?.toString()
 
     suspend fun cleanupBatch() {
         val storage = objectStore ?: return

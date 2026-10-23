@@ -57,7 +57,8 @@ data class AvailableRoom(
     val gameMode: GameMode,
     val matchType: MatchType = MatchType.CASUAL,
     val requiresPassword: Boolean,
-    val lastSeenAtMillis: Long
+    val lastSeenAtMillis: Long,
+    val hostId: String? = null
 )
 
 data class PlayerState(
@@ -190,6 +191,8 @@ data class GameState(
     val profileSaveError: String? = null,
     val profile: PlayerProfileSnapshot? = null,
     val avatarRevision: Long = 0L,
+    val suppressedAvatarIds: Set<String> = emptySet(),
+    val invalidatedAvatarIds: Set<String> = emptySet(),
     val walletTransactions: List<WalletTransactionSnapshot> = emptyList(),
     val isWalletHistoryLoading: Boolean = false,
     val isDailyCheckInClaiming: Boolean = false,

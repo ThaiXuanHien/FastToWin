@@ -10,6 +10,14 @@ $caddy = (Resolve-Path -LiteralPath $CaddyExecutable).Path
 $fixtureDir = Join-Path $projectDir ('.artifacts/caddy-routing-tests/' + [guid]::NewGuid().ToString('N'))
 $null = New-Item -ItemType Directory -Path $fixtureDir -Force
 [IO.File]::WriteAllText((Join-Path $fixtureDir 'index.html'), 'alpha-static-fixture')
+foreach ($route in @('privacy', 'delete-account', 'terms')) {
+    foreach ($language in @('vi', 'en')) {
+        $suffix = if ($language -eq 'en') { '/en' } else { '' }
+        $legalFixture = Join-Path $fixtureDir "legal/$route$suffix"
+        $null = New-Item -ItemType Directory -Path $legalFixture -Force
+        [IO.File]::WriteAllText((Join-Path $legalFixture 'index.html'), "legal-$route-$language")
+    }
+}
 $savedVariables = @{}
 foreach ($name in @('PORT', 'BACKEND_UPSTREAM', 'FASTTOWIN_DOMAIN', 'ACME_EMAIL')) {
     $savedVariables[$name] = [Environment]::GetEnvironmentVariable($name, 'Process')
@@ -65,6 +73,17 @@ try {
                 $response = Invoke-WebRequest "http://127.0.0.1:$Port$path" -UseBasicParsing -TimeoutSec 3
                 if ($response.StatusCode -ne 200 -or $response.Content -ne 'alpha-static-fixture') { throw "Static fallback failed for $relativeConfig $path" }
             }
+            foreach ($route in @('privacy', 'delete-account', 'terms')) {
+                foreach ($language in @('vi', 'en')) {
+                    $suffix = if ($language -eq 'en') { '/en' } else { '' }
+                    foreach ($trailing in @('', '/')) {
+                        # No Authorization header: Play reviewers must read these while logged out.
+                        $response = Invoke-WebRequest "http://127.0.0.1:$Port/$route$suffix$trailing" -UseBasicParsing -TimeoutSec 3
+                        if ($response.Content -ne "legal-$route-$language") { throw "Legal route fell back to SPA: $relativeConfig /$route$suffix$trailing" }
+                        if ($response.Headers['Cache-Control'] -notcontains 'no-cache') { throw 'Legal policy must revalidate' }
+                    }
+                }
+            }
             $adminCsp = "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'"
             foreach ($path in @('/admin', '/admin/', '/admin/admin.js', '/admin/api/session')) {
                 foreach ($disabled in @($false, $true)) {
@@ -102,7 +121,7 @@ try {
                 }
                 if ($status -ne 404) { throw "$relativeConfig $path must return 404 before SPA fallback, got $status" }
             }
-            Write-Host "PASS: $relativeConfig forwards both mailbox APIs/admin enabled+disabled, retains JSON/auth/body/CSP/no-store, blocks internal paths and preserves /gifts SPA."
+            Write-Host "PASS: $relativeConfig forwards both mailbox APIs/admin enabled+disabled, retains JSON/auth/body/CSP/no-store, blocks internal paths and preserves /gifts SPA; serves 12 logged-out legal URLs without SPA fallback."
         } finally {
             if (-not $process.HasExited) { Stop-Process -Id $process.Id; $process.WaitForExit() }
         }

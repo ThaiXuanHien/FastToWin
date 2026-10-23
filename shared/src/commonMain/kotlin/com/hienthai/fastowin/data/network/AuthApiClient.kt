@@ -58,10 +58,11 @@ class AuthApiClient(
         password: String,
         displayName: String,
         devicePlatform: String,
-        gender: PlayerGender
+        gender: PlayerGender,
+        acceptedContentTermsVersion: String? = null
     ): AuthSessionResponse = execute(
         "$baseUrl/auth/register",
-        RegisterRequest(email, password, displayName, devicePlatform, gender)
+        RegisterRequest(email, password, displayName, devicePlatform, gender, acceptedContentTermsVersion)
     )
 
     suspend fun login(email: String, password: String, devicePlatform: String): AuthSessionResponse =
@@ -71,10 +72,11 @@ class AuthApiClient(
         resumeToken: String,
         email: String,
         password: String,
-        devicePlatform: String
+        devicePlatform: String,
+        acceptedContentTermsVersion: String? = null
     ): AuthSessionResponse = execute(
         "$baseUrl/auth/upgrade-guest",
-        UpgradeGuestRequest(resumeToken, email, password, devicePlatform)
+        UpgradeGuestRequest(resumeToken, email, password, devicePlatform, acceptedContentTermsVersion)
     )
 
     suspend fun refresh(refreshToken: String): AuthSessionResponse =

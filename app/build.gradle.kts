@@ -32,8 +32,8 @@ android {
         applicationId = "com.hienthai.fastowin"
         minSdk = 29
         targetSdk = 37
-        versionCode = 2
-        versionName = "1.0"
+        versionCode = 3
+        versionName = "1.0.2"
         buildConfigField("String", "ADMOB_MODE", "\"$adMobMode\"")
         buildConfigField("String", "ADMOB_APP_ID", "\"$adMobAppId\"")
         buildConfigField("String", "ADMOB_AD_UNIT_ID", "\"$adMobUnitId\"")

@@ -4,9 +4,9 @@ Issue: #51. Rewarded ads are opt-in and grant exactly **2 online matches** after
 
 ## Delivery status
 
-Backend session/SSV/SQL code and Android integration are independently reviewed, including the presentation-feedback fix at `425682b`. Release builds default to ads disabled. Do not interpret an SDK earned callback, a Console probe, or a demo ad as a committed player reward.
+Backend session/SSV/SQL code and Android integration are integrated with reviewed UGC, legal pages and the master Billing fix for internal version **1.0.2 (3)**. Release builds default to ads disabled. The AdMob account is approved; the app itself currently **Requires review**, with empty store details and SSV unset (controller verification, 2026-10-23). Account approval does not satisfy app readiness. Do not interpret an SDK earned callback, a Console probe, or a demo ad as a committed player reward.
 
-Owned unpublished Android app: `ca-app-pub-1914037185148012~8507808229`. Rewarded unit: `ca-app-pub-1914037185148012/7821587525`, saved reward `2 online_matches`. These public IDs were supplied by the owner and the unit/reward verified in AdMob Console on 2026-10-20. A supported public store listing and live readiness are still separate gates.
+Owned unpublished Android app: `ca-app-pub-1914037185148012~8507808229`. Rewarded unit: `ca-app-pub-1914037185148012/7821587525`, saved reward `2 online_matches`. These public IDs were supplied by the owner and the unit/reward verified in AdMob Console on 2026-10-20. A supported public store listing, app status **Ready** and the existing consent/provider/device gates remain required before live activation. No Console or callback configuration changes are part of source integration.
 
 ## Backend configuration
 
@@ -53,13 +53,29 @@ Dev quota snapshots retain DEV_SIMULATED for Web/iOS compatibility. Android's ex
 
 Capture the exact test hash from Google's SDK `setTestDeviceIds` registration line after a genuine demo request. Do not derive it from serial/Android ID. TEST checks `RequestConfiguration.isTestDevice(context)` before initialization/loading an owned unit. Confirm the visible **Test Ad** label. Never click live ads during QA.
 
-Version code is 2, above the previously uploaded Play internal version 1. Signing uses the owner's permanent keystore outside Git; no password belongs in Gradle source, logs or this runbook. An ads-disabled release bundle is not a live-ad activation.
+Version name/code is **1.0.2 (3)**, above the already published Play internal **1.0.1 (2)**. Signing uses the owner's permanent keystore outside Git; no password belongs in Gradle source, logs or this runbook. An ads-disabled release bundle is not a live-ad activation.
 
 ## Privacy and recovery
 
 Neutral age bands are local per authenticated account, without DOB or server age collection. UNKNOWN/under 13 cannot initialize/request ads. Ages 13–15 use restrictive under-consent handling; teens receive non-personalized handling/content restrictions. UMP must permit requests, and Settings exposes privacy options when UMP requires them. Consent forms are not repeatedly reopened on each retry. SDK/UMP versions are pinned at 1.5.0/4.0.0.
 
 The SDK loads before allocating a server session. Immediately before show, prepare/persist the owner-bound session and attach its opaque `custom_data`; never attach email/access tokens. Completion is a UI signal only. Polling, including HTTP calls, is bounded to 60 seconds; pending verification remains retryable across dialog close, network loss and process restart. Once HTTP confirms GRANTED, the account controller retains the verified receipt until its WebSocket result arrives and replays the identical receipt after authenticated reconnect. The server returns the existing grant and current quota; the client never adds matches locally. Owner/generation fencing rejects stale callbacks. Backup excludes local age/pending preferences. No exact-age/legal declaration is submitted by this code.
+
+## Integrated migration and release gates
+
+UGC and AdMob independently used V62 on isolated staging. The final tree retains `V62__ugc_moderation.sql` and uses `V63__admob_rewarded_sessions.sql` (the AdMob SQL body is unchanged). Production had received neither feature at integration. Validate on a fresh isolated schema/database; do not run Flyway clean/repair or rewrite a production migration. Historical AdMob-only V62 fixture databases are not compatible upgrade evidence for this numbering.
+
+Keep backend `FASTTOWIN_ADMOB_ENABLED=false`, UGC `FASTTOWIN_CONTENT_TERMS_ENFORCED=false`, the production Billing QA gate to its one selected player, separate Billing/Firebase credentials and LIVE financial collection disabled. Source integration does not activate either feature gate. CI Android emulator UI is manual-only: `workflow_dispatch` with explicit `run_android_ui=true`; regular push/PR checks run host suites. No emulator/device AdMob acceptance was run for this integration.
+
+Internal **1.0.2 (3)** distribution is controller-owned after review, CI and deployment gates. Closed testing is a separate draft with no tester group, rollout or public review submission. Final signed-device acceptance, regional UMP denial/required-options forms, provider no-fill/early dismissal and live app readiness remain pending. Earlier signed SSV/device results below are historical evidence for their stated commits.
+
+## Integration verification (2026-10-23)
+
+The combined UGC/legal/AdMob tree passed 819 server, 113 protocol JVM and 361 shared Android host tests with zero failures/errors/skips, including actual fresh PostgreSQL AdMob replay/concurrency/rollback (3 cases), UGC SQL (13 cases), Billing response handling (5 host cases) and rewarded-receipt handoff/reconnect (5 host cases). Localization, unchanged server/shared Kover gates, instrumentation compilation, Dev APK and server distribution passed. All 173 screenshot comparisons and 18 legal/moderation script checks passed; no reference image changed. These checks are local host evidence, not provider/device acceptance or hosted CI.
+
+The default production bundle is `com.hienthai.fastowin` **1.0.2 (3)**; lint reports **0 errors, 88 warnings**. Its generated BuildConfig has `DEBUG=false`, `APP_ENV=prod` and empty mode/app/unit/test-device fields; MainActivity resolves that omitted production mode to `DISABLED`, so it creates no native rewarded-ad driver. Binary inspection still finds Next-Gen SDK/UMP classes, `AD_ID` and `READ_BASIC_PHONE_STATE` permissions (both supplied by Next-Gen 1.5.0), FirebaseInitProvider and AndroidX Startup initializers. No GMA initialization provider is present, and no Firebase collection/auto-init disabling metadata is present. Disabled rewarded-ad mode does not establish that every bundled SDK is inactive or settle Play Data safety/Advertising ID declarations. No manifest permission was removed. Upload signing and actual-build Play declarations remain controller-owned.
+
+Fresh Flyway evidence confirms UGC V62 and AdMob V63 successful with both tables present. The initial run against a new `task3_test` database hit existing exact-local-URL guards (13 failures); it was retained as diagnostic evidence, then rerun successfully against a fresh owned cluster named `admin_test`. No runtime fix, test weakening or production clean/repair was needed. Local logs/counts/binary evidence use the `task3-` prefix under the integration artifact directory.
 
 ## Staging and acceptance evidence
 

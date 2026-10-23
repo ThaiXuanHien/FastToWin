@@ -7,6 +7,7 @@ import { gifts } from '../e2e/support/admin-gift-fixture.mjs';
 import { events } from '../e2e/support/admin-event-fixture.mjs';
 import { announcements } from '../e2e/support/admin-announcement-fixture.mjs';
 import { compensation } from '../e2e/support/admin-compensation-fixture.mjs';
+import { moderation, longReport } from '../e2e/support/admin-moderation-fixture.mjs';
 import { maintenance } from '../e2e/support/maintenance-fixture.mjs';
 
 const port = Number(process.env.PORT || 8080);
@@ -34,6 +35,7 @@ events({ handlers: state.handlers, role: state.role });
 announcements({ handlers: state.handlers });
 compensation({ handlers: state.handlers });
 maintenance({ handlers: state.handlers });
+moderation(state, process.env.PREVIEW_MODERATION_LONG === 'true' ? longReport : {});
 
 // Additional mock players for rich directory display
 const extraPlayers = [
@@ -88,7 +90,7 @@ const server = createServer(async (req, res) => {
       '/admin/admin-analytics.js': 'admin-analytics.js',
       '/admin/admin-events.js': 'admin-events.js',
       '/admin/admin-compensation.js': 'admin-compensation.js',
-      '/admin/admin-announcements.js': 'admin-announcements.js',
+      '/admin/admin-moderation.js': 'admin-moderation.js', '/admin/admin-announcements.js': 'admin-announcements.js',
     };
     const name = assetMap[route];
     if (name) {

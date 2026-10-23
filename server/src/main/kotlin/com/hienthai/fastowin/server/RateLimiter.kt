@@ -45,7 +45,8 @@ data class ServerRateLimitPolicies(
     val adMobStatusPerIp: RateLimitPolicy = RateLimitPolicy(300, 60_000L),
     val adMobCallbackPerIp: RateLimitPolicy = RateLimitPolicy(300, 60_000L),
     val avatarPerPlayer: RateLimitPolicy = RateLimitPolicy(3, 10 * 60_000L),
-    val avatarPerIp: RateLimitPolicy = RateLimitPolicy(10, 10 * 60_000L)
+    val avatarPerIp: RateLimitPolicy = RateLimitPolicy(10, 10 * 60_000L),
+    val reportPerIp: RateLimitPolicy = RateLimitPolicy(30, 10 * 60_000L)
 )
 
 data class RateLimitResult(

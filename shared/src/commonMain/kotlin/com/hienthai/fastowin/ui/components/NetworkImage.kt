@@ -39,16 +39,17 @@ fun NetworkImage(
     modifier: Modifier = Modifier,
     contentDescription: String? = null,
     contentScale: ContentScale = ContentScale.Crop,
+    allowStaleCache: Boolean = true,
     fallback: @Composable () -> Unit = {}
 ) {
     // Keep the previous bitmap while only the cache-busting revision changes.
     // A different player URL still resets immediately and cannot show another user's avatar.
     val sourceKey = url.substringBefore('?')
-    var imageBitmap by remember(sourceKey) {
-        mutableStateOf(imageCache.peekExact(url) ?: imageCache.peekLatest(sourceKey))
+    var imageBitmap by remember(if (allowStaleCache) sourceKey else url, allowStaleCache) {
+        mutableStateOf(imageCache.peekForDisplay(url, sourceKey, allowStaleCache))
     }
 
-    LaunchedEffect(url) {
+    LaunchedEffect(url, allowStaleCache) {
         if (url.isEmpty()) return@LaunchedEffect
         try {
             val bitmap = imageCache.load(url, sourceKey)
@@ -86,6 +87,9 @@ internal class SharedResourceCache<K, S, V>(
     private val exact = LinkedHashMap<K, V>()
     private val latest = LinkedHashMap<S, LatestResource<K, V>>()
     private val pending = mutableMapOf<K, Deferred<V>>()
+
+    fun peekForDisplay(key: K, source: S, allowStale: Boolean): V? =
+        exact[key] ?: if (allowStale) latest[source]?.value else null
 
     fun peekExact(key: K): V? = exact[key]
 

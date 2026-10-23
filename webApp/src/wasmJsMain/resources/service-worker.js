@@ -1,5 +1,5 @@
 const CACHE_PREFIX = 'fast-to-win-';
-const SHELL_CACHE = `${CACHE_PREFIX}shell-v8`;
+const SHELL_CACHE = `${CACHE_PREFIX}shell-v9`;
 const APP_SHELL = [
     '/',
     '/index.html',
@@ -64,6 +64,10 @@ function isGiftMailboxPath(path) {
     return ['/gifts/mailbox', '/api/gifts/mailbox'].some(prefix => path === prefix || path.startsWith(prefix + '/'));
 }
 
+function isLegalPath(path) {
+    return /^\/(privacy|delete-account|terms)(\/en)?\/?$/.test(path) || path.startsWith('/legal/');
+}
+
 function isStatusPath(path) {
     return path === '/status' || path === '/api/status';
 }
@@ -73,7 +77,7 @@ async function purgeSensitiveCaches() {
         const cache = await caches.open(name);
         for (const request of await cache.keys()) {
             const url = new URL(request.url);
-            if (url.origin === self.location.origin && (isAdminPath(url.pathname) || isGiftMailboxPath(url.pathname) || isStatusPath(url.pathname))) await cache.delete(request);
+            if (url.origin === self.location.origin && (isAdminPath(url.pathname) || isGiftMailboxPath(url.pathname) || isStatusPath(url.pathname) || isLegalPath(url.pathname))) await cache.delete(request);
         }
     }
 }
@@ -84,6 +88,8 @@ self.addEventListener('fetch', event => {
 
     const url = new URL(request.url);
     if (url.origin !== self.location.origin) return;
+    // Public legal documents must not use a cached policy or offline game shell.
+    if (isLegalPath(url.pathname)) return;
     // Private admin and player mailbox responses must always reach the network.
     // /gifts itself remains an offline-capable game SPA navigation.
     if (isAdminPath(url.pathname) || isGiftMailboxPath(url.pathname) || isStatusPath(url.pathname)) return;

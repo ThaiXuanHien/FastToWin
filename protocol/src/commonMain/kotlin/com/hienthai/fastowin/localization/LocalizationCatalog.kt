@@ -1,6 +1,7 @@
 package com.hienthai.fastowin.localization
 
 import com.hienthai.fastowin.localization.catalogs.rewardedAdTexts
+import com.hienthai.fastowin.localization.catalogs.ugcTexts
 import com.hienthai.fastowin.localization.catalogs.accountSecurityTexts
 import com.hienthai.fastowin.localization.catalogs.announcementTexts
 import com.hienthai.fastowin.localization.catalogs.rewardEventTexts
@@ -80,6 +81,25 @@ val allLocalizationCatalogs: Map<AppLanguage, LocalizationCatalog> = run {
             (announcementTexts[language] ?: announcementTexts.getValue(AppLanguage.ENGLISH)) +
             (tournamentScheduleTexts[language] ?: tournamentScheduleTexts.getValue(AppLanguage.ENGLISH))
         val untranslated = additions.filter { (key, _) -> catalog.texts[key] == englishTexts[key] }
-        catalog.copy(texts = catalog.texts + untranslated)
+        catalog.copy(texts = catalog.texts + untranslated + legalTexts(language) + ugcTexts(language))
     }
+}
+
+/** Legal pages use the two selectable languages; legacy catalogs use English. */
+private fun legalTexts(language: AppLanguage): Map<TextKey, String> = if (language == AppLanguage.VIETNAMESE) {
+    mapOf(
+        TextKey.LegalTitle to "Thông tin dịch vụ",
+        TextKey.LegalSubtitle to "Mở trang web công khai, không cần đăng nhập.",
+        TextKey.LegalPrivacy to "Chính sách quyền riêng tư",
+        TextKey.LegalTerms to "Điều khoản sử dụng",
+        TextKey.LegalDeleteAccount to "Hướng dẫn xóa tài khoản",
+    )
+} else {
+    mapOf(
+        TextKey.LegalTitle to "Service information",
+        TextKey.LegalSubtitle to "Open a public web page, no sign-in required.",
+        TextKey.LegalPrivacy to "Privacy policy",
+        TextKey.LegalTerms to "Terms of use",
+        TextKey.LegalDeleteAccount to "Account deletion guide",
+    )
 }

@@ -27,7 +27,8 @@ data class RegisterRequest(
     val password: String,
     val displayName: String,
     val devicePlatform: String? = null,
-    val gender: PlayerGender = PlayerGender.MALE
+    val gender: PlayerGender = PlayerGender.MALE,
+    val acceptedContentTermsVersion: String? = null
 )
 
 @Serializable
@@ -42,7 +43,8 @@ data class UpgradeGuestRequest(
     val resumeToken: String,
     val email: String,
     val password: String,
-    val devicePlatform: String? = null
+    val devicePlatform: String? = null,
+    val acceptedContentTermsVersion: String? = null
 )
 
 @Serializable

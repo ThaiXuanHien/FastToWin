@@ -65,6 +65,95 @@ import kotlin.test.assertTrue
 @OptIn(ExperimentalCoroutinesApi::class)
 class GameStateTest {
     @Test
+    fun `live moderation refresh cannot acknowledge or discard an unsubmitted profile editor draft`() = runTest {
+        val fixture = publicTournamentFixture()
+        fixture.session.server(ServerMessage.SessionReady("player-1"))
+        fixture.session.server(ServerMessage.ProfileData(PlayerProfileSnapshot("player-1", "Original", "CODE")))
+        runCurrent()
+        val editor = com.hienthai.fastowin.ui.screens.ProfileEditorState()
+        editor.begin("Unsubmitted nickname")
+        editor.avatarSelection.beginPreparation()
+        val avatarOwner = editor.avatarSelection
+        fixture.session.server(ServerMessage.ContentModerationChanged(UgcTargetType.PLAYER_AVATAR, "player-1"))
+        runCurrent()
+        fixture.session.server(ServerMessage.ProfileData(PlayerProfileSnapshot("player-1", "Authoritative name", "CODE",
+            avatarId = MODERATED_AVATAR_ID)))
+        runCurrent()
+        assertNull(fixture.controller.uiState.value.profileNotice)
+        assertFalse(fixture.controller.uiState.value.isProfileSaving)
+        assertEquals("Unsubmitted nickname", editor.displayName)
+        assertTrue(editor.isEditing)
+        assertTrue(avatarOwner === editor.avatarSelection)
+        assertTrue(editor.avatarSelection.isPreparing)
+        fixture.controller.close()
+    }
+
+    @Test
+    fun `resetting a game keeps removed avatar bytes hidden for the same identity`() = runTest {
+        val fixture = publicTournamentFixture()
+        fixture.session.server(ServerMessage.SessionReady("player-1"))
+        runCurrent()
+        fixture.session.server(ServerMessage.ContentModerationChanged(UgcTargetType.PLAYER_AVATAR, "target"))
+        runCurrent()
+        val revision = fixture.controller.uiState.value.avatarRevision
+        fixture.controller.resetGame()
+        assertEquals(revision, fixture.controller.uiState.value.avatarRevision)
+        assertEquals(setOf("target"), fixture.controller.uiState.value.suppressedAvatarIds)
+        assertEquals(setOf("target"), fixture.controller.uiState.value.invalidatedAvatarIds)
+        fixture.controller.close()
+    }
+
+    @Test
+    fun `a changed socket identity cannot inherit the previous account's avatar suppression or report draft`() = runTest {
+        val fixture = publicTournamentFixture()
+        fixture.session.server(ServerMessage.SessionReady("old-identity"))
+        runCurrent()
+        fixture.controller.ugc.openReport(UgcTargetType.ROOM, "room", "Room")
+        fixture.controller.ugc.editReport(UgcReportReason.OTHER, "Private note")
+        fixture.session.server(ServerMessage.ContentModerationChanged(UgcTargetType.PLAYER_AVATAR, "target"))
+        runCurrent()
+        assertTrue("target" in fixture.controller.uiState.value.suppressedAvatarIds)
+        fixture.session.server(ServerMessage.SessionReady("new-identity"))
+        runCurrent()
+        assertTrue(fixture.controller.uiState.value.suppressedAvatarIds.isEmpty())
+        assertTrue(fixture.controller.uiState.value.invalidatedAvatarIds.isEmpty())
+        assertNull(fixture.controller.ugc.state.value.report)
+        fixture.controller.close()
+    }
+
+    @Test
+    fun `live moderation hides an avatar immediately and requests only authoritative reads without publishing drafts`() = runTest {
+        val fixture = publicTournamentFixture()
+        fixture.session.server(ServerMessage.SessionReady("player-1"))
+        runCurrent()
+        assertEquals(1, fixture.session.sent.count { it == ClientMessage.GetContentTerms })
+        fixture.controller.ugc.openReport(UgcTargetType.ROOM, "report-target", "Room")
+        fixture.controller.ugc.editReport(UgcReportReason.OTHER, "Keep private note")
+        fixture.session.sent.clear()
+        fixture.session.server(ServerMessage.ContentModerationChanged(UgcTargetType.PLAYER_AVATAR, "player-1"))
+        runCurrent()
+        assertTrue("player-1" in fixture.controller.uiState.value.suppressedAvatarIds)
+        assertTrue(fixture.session.sent.any { it == ClientMessage.GetProfile })
+        assertTrue(fixture.session.sent.any { it == ClientMessage.ListRooms })
+        assertFalse(fixture.session.sent.any { it.publishesUserContent() || it is ClientMessage.ReportContent })
+        assertEquals("Keep private note", fixture.controller.ugc.state.value.report?.note)
+        fixture.controller.close()
+    }
+
+    @Test
+    fun `editing a moderated profile can replace its nickname without submitting the sentinel avatar`() = runTest {
+        val fixture = publicTournamentFixture()
+        fixture.session.server(ServerMessage.SessionReady("player-1"))
+        runCurrent()
+        fixture.controller.saveProfile("Updated nickname", MODERATED_AVATAR_ID)
+        runCurrent()
+        val update = fixture.session.sent.filterIsInstance<ClientMessage.UpdateProfile>().singleOrNull()
+        assertEquals("Updated nickname", update?.displayName)
+        assertNull(update?.avatarId)
+        fixture.controller.close()
+    }
+
+    @Test
     fun `daily reward refresh cannot acknowledge avatar or hide a later profile write failure`() = runTest {
         assertRewardRefreshDuringSave(ServerMessage.DailyCheckInResult(true, 5, 10), profileFails = true)
     }
@@ -777,6 +866,7 @@ class GameStateTest {
     fun `public tournament creation defaults to public while explicit private remains private`() = runTest {
         val fixture = publicTournamentFixture()
         fixture.controller.createTournament("Open", GameMode.ORDER)
+        runCurrent() // Complete the server terms check before a separate creation intent.
         fixture.controller.createTournament("Invite only", GameMode.ORDER, visibility = TournamentVisibility.PRIVATE)
         runCurrent()
 
@@ -1123,7 +1213,8 @@ class GameStateTest {
     private fun TestScope.publicTournamentFixture(): PublicTournamentFixture {
         val transport = PublicTournamentTransport()
         val controller = GameController(
-            "ws://test", InMemoryResumeTokenStore(), transport = transport, controllerScope = backgroundScope
+            "ws://test", InMemoryResumeTokenStore().apply { save("ws://test", "existing-guest-session") },
+            transport = transport, controllerScope = backgroundScope
         )
         controller.openRoomBrowser("Tester")
         runCurrent()
@@ -1611,7 +1702,11 @@ private class PublicTournamentSession : SocketSession {
     val sent = mutableListOf<ClientMessage>()
 
     override suspend fun send(frame: Frame) {
-        sent += ProtocolJson.decodeFromString<ClientMessage>((frame as Frame.Text).readText())
+        val message = ProtocolJson.decodeFromString<ClientMessage>((frame as Frame.Text).readText())
+        sent += message
+        if (message == ClientMessage.GetContentTerms) {
+            server(ServerMessage.ContentTermsData(ContentTermsStatus("2026-10-20", null, enforced = false)))
+        }
     }
 
     override suspend fun close() { incoming.close() }
