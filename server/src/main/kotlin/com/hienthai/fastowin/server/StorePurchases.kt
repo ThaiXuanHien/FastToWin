@@ -12,7 +12,6 @@ import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
-import java.io.FileInputStream
 import java.net.URI
 import java.net.URLEncoder
 import java.net.http.HttpClient
@@ -89,7 +88,8 @@ class GooglePlayPurchaseVerifier(
     private val credentials: GoogleCredentials,
     private val httpClient: HttpClient = HttpClient.newBuilder().build(),
     private val sandboxAllowed: Boolean = false,
-    private val endpoint: URI = URI.create("https://androidpublisher.googleapis.com/")
+    private val endpoint: URI = URI.create("https://androidpublisher.googleapis.com/"),
+    private val testPlayerIds: Set<String> = emptySet()
 ) : StorePurchaseVerifier {
     init {
         require(endpoint == URI.create("https://androidpublisher.googleapis.com/") ||
@@ -123,7 +123,8 @@ class GooglePlayPurchaseVerifier(
                     return@withContext StoreVerificationResult(status, legacyFallback("Google Play từ chối giao dịch."))
                 }
                 val payload = Json.parseToJsonElement(response.body()).jsonObject
-                if (!sandboxAllowed && "testPurchaseContext" in payload) {
+                val sandbox = "testPurchaseContext" in payload
+                if (sandbox && !sandboxAllowed && purchase.userId !in testPlayerIds) {
                     return@withContext StoreVerificationResult(StoreVerificationStatus.INVALID, legacyFallback("Giao dịch sandbox không hợp lệ."))
                 }
                 val state = payload["purchaseStateContext"]
@@ -134,13 +135,14 @@ class GooglePlayPurchaseVerifier(
                 val expectedAccount = obfuscatedStoreAccountId(purchase.userId)
                 val purchasedAccount = payload["obfuscatedExternalAccountId"]
                     ?.jsonPrimitive?.contentOrNull
-                val accountMatches = purchasedAccount == null || purchasedAccount == expectedAccount
-                if (state == "PURCHASED" && productMatches && accountMatches) {
-                    val orderId = payload["orderId"]?.jsonPrimitive?.contentOrNull
-                        ?.takeIf { it.length in 1..256 && it.all { c -> c.isLetterOrDigit() || c in ".-_" } }
+                val accountMatches = if (sandbox && !sandboxAllowed) purchasedAccount == expectedAccount
+                    else purchasedAccount == null || purchasedAccount == expectedAccount
+                val orderId = payload["orderId"]?.jsonPrimitive?.contentOrNull
+                    ?.takeIf { it.length in 1..256 && it.all { c -> c.isLetterOrDigit() || c in ".-_" } }
+                if (state == "PURCHASED" && productMatches && accountMatches && (!sandbox || orderId != null)) {
                     StoreVerificationResult(StoreVerificationStatus.PURCHASED, legacyFallback("Google Play đã xác thực."),
                         verifiedOrder = orderId?.let { VerifiedStoreOrder(it, packageName,
-                            if ("testPurchaseContext" in payload) "SANDBOX" else "LIVE") })
+                            if (sandbox) "SANDBOX" else "LIVE") })
                 } else {
                     StoreVerificationResult(StoreVerificationStatus.INVALID, legacyFallback("Giao dịch chưa hoàn tất hoặc không khớp tài khoản."))
                 }
@@ -153,14 +155,13 @@ class GooglePlayPurchaseVerifier(
         }
 }
 
-fun configuredStorePurchaseVerifier(environment: String): StorePurchaseVerifier {
-    val credentialsPath = System.getenv("GOOGLE_APPLICATION_CREDENTIALS")?.takeIf(String::isNotBlank)
-    val packageName = System.getenv("GOOGLE_PLAY_PACKAGE_NAME")?.takeIf(String::isNotBlank)
-    val googleVerifier = if (credentialsPath != null && packageName != null) {
-        val credentials = FileInputStream(credentialsPath).use {
-            GoogleCredentials.fromStream(it).createScoped(ANDROID_PUBLISHER_SCOPE)
-        }
-        GooglePlayPurchaseVerifier(packageName, credentials, sandboxAllowed = environment == "dev")
+fun configuredStorePurchaseVerifier(environment: String, values: Map<String, String> = System.getenv()): StorePurchaseVerifier {
+    val packageName = values["GOOGLE_PLAY_PACKAGE_NAME"]?.takeIf(String::isNotBlank)
+    val testPlayerIds = googlePlayTestPlayerIds(values)
+    val credentials = if (packageName != null) googlePlayBillingCredentials(values) else null
+    val googleVerifier = if (credentials != null && packageName != null) {
+        GooglePlayPurchaseVerifier(packageName, credentials, sandboxAllowed = environment == "dev",
+            testPlayerIds = testPlayerIds)
     } else {
         null
     }
@@ -175,5 +176,3 @@ fun obfuscatedStoreAccountId(userId: String): String = sha256(userId)
 private fun sha256(value: String): String = MessageDigest.getInstance("SHA-256")
     .digest(value.toByteArray(StandardCharsets.UTF_8))
     .joinToString("") { byte -> "%02x".format(byte) }
-
-private const val ANDROID_PUBLISHER_SCOPE = "https://www.googleapis.com/auth/androidpublisher"
