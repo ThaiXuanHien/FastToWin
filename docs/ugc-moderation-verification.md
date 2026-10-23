@@ -149,6 +149,39 @@ Other deliberate decisions:
   Local results above are not a hosted CI verdict. Coverage thresholds and all
   host regression jobs remain unchanged; physical-device acceptance is separate.
 
+## Isolated staging backend and CI follow-up — 2026-10-23
+
+Paid Hobby active status and target guards were checked before starting the
+existing staging services. Fresh synthetic database `ugc_acceptance_20261023`
+preserves previous staging databases. Backend migration/startup and private
+health passed; financial, push and production credentials are not used.
+
+Over a loopback-only SSH tunnel, actual staging HTTP/WebSocket checks passed:
+public terms/version, missing-consent rejection, receipt/replay/conflict,
+unauthenticated queue rejection, invalid CSRF, SUPPORT triage versus denied
+removal/restriction, stale version conflict, OWNER exact-profile removal,
+live invalidation and sanitized refetch, active-session restriction/unblock,
+and unchanged gold/Gem balances. A separate synthetic player was registered and
+verified using the actual private Mailpit email, without reading OTP from SQL.
+These are backend checks, not a claim that every client entry point was accepted.
+
+Server distribution plus production Wasm/JS compatibility Web build passed in
+17m49s. Context files were hashed; staging Web uses same-origin configuration
+without production push configuration. Public staging HTTPS health returned OK.
+Private runtime manifests/credentials and fixture screenshots stay outside Git.
+
+Hosted run `39881330275` passed all screenshot and iOS build checks and skipped
+the emulator job as intended. It found one server-test teardown failure:
+`PostgresStorePurchaseRoutesTest` closed Hikari before outer `testApplication`
+stopped its timer. The application scope now ends inside the pool lifetime;
+all original race/receipt/wallet/safe-503 assertions are retained. Independent
+rereview found no Critical/Important issue. After restarting the existing local
+test PostgreSQL and waiting for crash recovery/readiness, the full server suite
+passed again: **788 tests, 0 failures/errors/skips**, Kover gate passed, 3m11s.
+The earlier local attempt while PostgreSQL was unavailable is not counted as green.
+No production code, coverage threshold, or retry allowance was changed for this fix.
+A new hosted result is still required for the corrected revision.
+
 ## Remaining release gates
 
 Keep the PR Draft and #53 open until dependency integration, suitable hosted CI,
