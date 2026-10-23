@@ -170,7 +170,7 @@ GitHub Actions chạy với mọi push, pull request và khi kích hoạt thủ 
 - Unit/integration test của server và shared.
 - Biên dịch Android UI test để phát hiện lỗi import/dependency trước khi khởi động emulator.
 - Build APK dev và biên dịch Web/Wasm.
-- Chạy Compose UI test trên Android emulator.
+- Android emulator mặc định **không chạy** trên push, pull request hoặc lần chạy thủ công thông thường. Chỉ chạy Compose UI test khi chọn rõ `Run Android UI tests on an emulator (explicit opt-in)` trong **Actions → CI → Run workflow**. Các ca UI trên thiết bị thật vẫn có thể chạy bằng ADB/Gradle riêng.
 - So sánh 160 ảnh chuẩn 2D Arcade trên host, không cần emulator; khi lỗi lưu
   report HTML, ảnh thực tế và ảnh diff trong artifact riêng.
 - Chạy Web E2E game trên Chromium, responsive ở bốn kích thước, chữ lớn/nội dung dài/viewport bàn phím, smoke test Firefox/WebKit và bundle Kotlin/JS fallback với backend in-memory riêng; lưu trace/ảnh khi lỗi.

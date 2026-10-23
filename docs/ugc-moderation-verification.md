@@ -111,9 +111,11 @@ Other deliberate decisions:
 - New invalidation events are negotiated through `GetContentTerms`. Legacy
   clients remain connected and receive sanitized later snapshots. An old binary's
   cached avatar may remain until refresh/update; compatible release is a rollout gate.
-- Final draft tip uses `[skip ci]` because current hosted CI automatically starts
-  an Android emulator, which the user excluded. Local results above are not a
-  fresh hosted CI verdict. No CI workflow or coverage threshold was weakened.
+- Initial draft tips used `[skip ci]` to avoid the then-automatic emulator job.
+  On 2026-10-23 the owner approved retaining automatic host/build/coverage/Web
+  checks while making emulator UI tests an explicit, default-off manual input.
+  Local results above are not a hosted CI verdict. Coverage thresholds and all
+  host regression jobs remain unchanged; physical-device acceptance is separate.
 
 ## Remaining release gates
 
