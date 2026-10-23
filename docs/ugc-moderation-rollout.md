@@ -49,5 +49,8 @@ signed-client, physical-device, compatible-client rollout or production
 enforcement gate. Keep `FASTTOWIN_CONTENT_TERMS_ENFORCED=false` until that explicit
 rollout approval; no public Play submission or production moderation is implied.
 
-The selected Play operation is a closed-testing draft only, without a tester group.
-It does not authorize starting rollout or submitting the draft for review.
+Closed testing (Alpha) is a draft only, without a tester group; do not start its
+rollout or submit that draft for review. The separately authorized internal
+1.0.2 (3) release remains controller-owned after review, CI and deployment gates.
+Neither action enables content-terms enforcement or live AdMob, and the remaining
+feature/device acceptance stays open.

@@ -10,6 +10,7 @@ import { fileURLToPath } from 'node:url';
 import { randomUUID, createHash } from 'node:crypto';
 import { chromium, expect } from 'playwright/test';
 import { openLocalPostgres } from './local-postgres.mjs';
+import { finishModerationAcceptance } from './admin-moderation-cleanup.mjs';
 
 const repo = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const artifact = resolve(process.env.UGC_E2E_ARTIFACT_DIR || join(repo, '.artifacts/admin-moderation-live'));
@@ -35,7 +36,7 @@ const ownerPassword = randomUUID() + 'Aa9!';
 const email = `ugc-owner-${randomUUID()}@example.invalid`;
 const lib = join(repo, 'server/build/install/server/lib/*');
 const evidence = { status: 'RUNNING', browserFlows: 1, traces: 'off', provider: 'none', database: 'owned loopback PostgreSQL/UUID schema', schema, stages: [] };
-let backend, browser, context;
+let backend, browser, context, failure;
 const sockets = [];
 function run(executable, args, env = environment, input) {
   return new Promise((yes, no) => {
@@ -137,10 +138,19 @@ try {
   const resumed = await guest('LOCAL report sender', reporter.resumeToken); assert.equal(resumed.id, reporter.id); resumed.send({ type: 'get_content_terms' }); assert.equal((await resumed.next('content_terms_data')).status.acceptedVersion, '2026-10-20'); evidence.stages.push('guest-resume-after-backend-restart-consent-persisted');
   await page.reload(); await page.getByRole('button', { name: 'Kiểm duyệt', exact: true }).click(); await page.getByLabel('Trạng thái báo cáo').selectOption('RESOLVED'); await page.getByRole('button', { name: 'Xem báo cáo ' + reportId }).click(); await expect(page.getByRole('dialog').getByText('Đã xử lý', { exact: true })).toBeVisible(); await absentAvatar(); evidence.stages.push('backend-restart-browser-reload-persistence');
   assert.deepEqual(await page.evaluate(() => [localStorage.length, sessionStorage.length]), [0, 0]); evidence.status = 'PASS';
+} catch (error) {
+  failure = error;
 } finally {
-  sockets.forEach(ws => ws.close()); await context?.close(); await browser?.close();
-  await unlink(passwordFile).catch(() => {});
-  await stop(); await database.close(); evidence.cleanup = 'owned backend stopped; UUID schema dropped; owner password file removed';
-  await writeFile(join(artifact, 'acceptance.json'), JSON.stringify(evidence, null, 2));
+  await finishModerationAcceptance({
+    evidence, failure,
+    closeSockets: async () => {
+      const results = await Promise.allSettled(sockets.map(async ws => ws.close()));
+      const errors = results.filter(result => result.status === 'rejected').map(result => result.reason);
+      if (errors.length) throw new AggregateError(errors, 'Owned socket cleanup failed');
+    },
+    closeContext: async () => context?.close(), closeBrowser: async () => browser?.close(),
+    removePassword: () => unlink(passwordFile), stopBackend: stop, dropSchema: () => database.close(),
+    writeEvidence: value => writeFile(join(artifact, 'acceptance.json'), JSON.stringify(value, null, 2)),
+  });
 }
 console.log(JSON.stringify(evidence));

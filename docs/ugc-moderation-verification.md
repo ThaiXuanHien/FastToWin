@@ -187,7 +187,9 @@ A new hosted result is still required for the corrected revision.
 
 Integrated reviewed legal/Billing commit `4f75eacda937fb32ff96ae441d0157e9e109eded`
 into UGC at merge `cdd1290ec0f186a6b03bbe29e51f3036542431b5`. The only conflict
-was the screenshot count in `docs/testing.md`: retained the current 160 references.
+was the screenshot count in `docs/testing.md`. The initial integration mistakenly
+committed its delimiters despite recording it resolved; the review follow-up removed
+the delimiters and obsolete 145 line, retaining the current 160 references.
 Billing mapping/configuration and app-version files have no differences against
 that reviewed legal integration. No production UI or runtime code changed here.
 
@@ -277,6 +279,42 @@ Images/logs/XML summaries are ignored artifacts under
 `.artifacts/play-integration-20261023/` (`task2-*`). No emulator, physical device,
 cloud moderation fixture, provider acceptance or signed release ran in this task.
 
+### Review follow-up: merge markers and teardown failure handling
+
+Review found the initial report's merge-resolution claim was incorrect: the
+committed `docs/testing.md` still contained delimiters and both counts. The fix
+removes all four stale lines and retains 160. Exact tracked-file conflict-marker
+scan and whitespace checks across both the fix and full integration ranges pass.
+
+The new opt-in harness teardown now independently attempts socket/context/browser
+closure and password removal, then stops the owned backend; schema deletion runs
+only after that stop succeeds. Only `ENOENT` is accepted for password removal.
+Original acceptance errors and all cleanup failures are retained in an
+`AggregateError`; evidence records each cleanup outcome and `FAIL` when any stage
+fails, without claiming a failed password removal succeeded.
+
+Six focused injected-failure checks were first run against the extracted old
+teardown: **6 failed** (RED). With the corrected helper, executed:
+
+```powershell
+node --test scripts/tests/admin-moderation-cleanup.test.mjs scripts/tests/admin-moderation.test.mjs scripts/tests/legal-worker.test.mjs
+```
+
+**18 passed, 0 failed/skipped** (GREEN): browser/context rejection still reaches
+password/backend/schema cleanup, password `EACCES` is preserved, failed backend
+stop retains the schema, only missing-password `ENOENT` is benign, and original
+acceptance/evidence-write errors cannot be replaced by a false successful result.
+
+Repeated the one actual browser/PostgreSQL flow using the same command/environment
+above with `UGC_E2E_ARTIFACT_DIR` ending in `task2-r1-admin-live`: **PASS**. Its
+cleanup evidence reports sockets/context/browser/backend/schema `done`, password
+`already-absent`, and no failed steps. Confirmed zero owned UUID schemas, absent
+Owner password file, stopped owned PostgreSQL and connection refusal on ports
+15432/18084. Artifacts are `task2-r1-cleanup-red.log`, `task2-r1-node-green.log`,
+`task2-r1-admin-live.log`, `task2-r1-admin-live/acceptance.json` and
+`task2-r1-cleanup.log` under the same ignored artifact root. Gradle/screenshots
+were not repeated for this test-harness/documentation-only correction; the prior
+results above remain their exact historical evidence. No runtime/UI change.
 ### Remaining matrix mapped to evidence
 
 | Surface / gate | Executed evidence and precise limit |
@@ -291,11 +329,13 @@ cloud moderation fixture, provider acceptance or signed release ran in this task
 
 ## Remaining release gates
 
-Keep the PR Draft and #53 open until dependency integration, suitable hosted CI,
-staging end-to-end acceptance, a matching signed Android build and physical-device
-checks are complete. The selected Play action for this integration is a closed-testing
-draft only, with no tester group; do not start rollout or submit it for review.
-Recheck Play Data safety against the exact build before any later distribution.
+Keep #53 open for the remaining compatible-client, staged end-to-end and signed
+physical-device feature acceptance. The controller owns PR readiness/merge and
+the authorized internal 1.0.2 (3) release after review, CI and deployment gates.
+Closed testing (Alpha) is a draft only, with no tester group: do not start its
+rollout or submit that draft for review. This Alpha scope does not cancel the
+separately authorized internal release. Recheck Play Data safety against the
+exact build before distribution. Local results do not close device/provider gates.
 No production database migration, moderation action, enforcement enablement,
 public store submission or paid infrastructure change was performed here.
 `FASTTOWIN_CONTENT_TERMS_ENFORCED` remains false by default. Follow
