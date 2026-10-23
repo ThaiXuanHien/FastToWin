@@ -2,6 +2,7 @@
 
 Recorded 2026-10-22–23 (Asia/Bangkok). Core regression source: `2fd6f3b`, based on
 `336dd53` from Draft PR [#54](https://github.com/ThaiXuanHien/FastToWin/pull/54).
+Draft implementation PR: [#55](https://github.com/ThaiXuanHien/FastToWin/pull/55).
 This record covers source and isolated local verification. It does not certify
 production, a physical device, a signed release or Google Play acceptance.
 

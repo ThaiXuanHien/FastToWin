@@ -63,10 +63,14 @@ Task 5 owns legal/docs/release verification; no production enablement. Update pr
 - [x] Verify every approved spec bullet maps to implemented/tested behavior. Run protocol/server/state tests, client compilation, JS security tests and static route checks.
 - [x] Review migration/retention/account deletion and account restrictions with an independent reviewer. Resolve important findings and rerun affected tests.
 - [x] Update legal copy for reports/terms and 90-day retention; no claim of live enforcement until rollout switch enabled. Document how client-first rollout and old-client upgrade work.
-- [ ] Create dependency-aware draft PR and update #53/#28 with concrete evidence, remaining device/staging/rollout gates and CI status. Do not close #53 prematurely.
+- [x] Create dependency-aware draft PR and update #53/#28 with concrete evidence, remaining device/staging/rollout gates and CI status. Do not close #53 prematurely.
 
 ## Source verification record
 
 See [UGC verification](../../ugc-moderation-verification.md) for executed results,
 independent review findings and explicit device/staging/CI limits. Completion of
 source tasks does not authorize production enforcement or close #53.
+
+Draft PR: [#55](https://github.com/ThaiXuanHien/FastToWin/pull/55), based on
+`codex/play-store-legal` / PR #54. Source tasks are complete; #53 remains open
+for the release gates in the verification record.
