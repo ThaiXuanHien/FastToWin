@@ -1,4 +1,4 @@
-## Thiết kế đề xuất #53 — chờ duyệt trước triển khai
+## Thiết kế #53 — đã duyệt
 
 Đã chốt với chủ dự án: báo cáo giữ trong thời gian xử lý; xóa nội dung và định danh báo cáo sau 90 ngày kể từ lúc đóng. Khi xóa tài khoản, gỡ định danh người báo cáo ngay. Backup tiếp tục áp dụng 14 ngày.
 
@@ -30,4 +30,4 @@ Worker hằng ngày dọn báo cáo đã đóng >90 ngày. Gỡ định danh ng�
 
 Kiểm tra hợp đồng protocol và migration PostgreSQL; bypass điều khoản/giả danh/CSRF/sai quyền; hạn mức/trùng/retry; xóa tài khoản và hết hạn 90 ngày; xử lý nội dung đã đổi; thu hồi session khóa tài khoản; không tác động số dư/giải đấu; render văn bản an toàn, phone/desktop. Không chạy emulator; nghiệm thu Samsung khi có máy. Hoàn tất trên staging trước khi đề xuất AAB và bật production.
 
-Chưa bắt đầu viết mã phần #53. Đây là thiết kế cụ thể để chủ dự án duyệt.
+Chủ dự án đã duyệt thiết kế và cho phép triển khai tại [bình luận thiết kế của #53](https://github.com/ThaiXuanHien/FastToWin/issues/53#issuecomment-6291437295). Bằng chứng kiểm tra và giới hạn phát hành được ghi trong `docs/ugc-moderation-rollout.md`; phê duyệt thiết kế không đồng nghĩa đã bật production.

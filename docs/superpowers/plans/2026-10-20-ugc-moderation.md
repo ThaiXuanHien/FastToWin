@@ -35,32 +35,38 @@ Task 5 owns legal/docs/release verification; no production enablement. Update pr
 
 ### Task 1: Domain, storage and admin service
 
-- [ ] Add failing service tests: duplicate request returns same ID, changed payload conflicts, sixth/10min and twenty-first/day rejected, absent target rejected, SUPPORT cannot remove, stale revision cannot mutate, expired closed reports removed, account erasure removes identity/evidence. Test names describe these actual behaviors with in-memory fixtures and PostgreSQL integration where available.
-- [ ] Run `:server:test --tests '*Moderation*'` and confirm missing-feature failure before implementation.
-- [ ] Implement module/migration/service and safe admin routes using existing advisory lock `7421092187349`; transactionally read current admin role before each mutation. Persist rate counters separately from report retention, with bounded expiry. Store suppression keyed by target/type/revision; no wallet changes.
-- [ ] Run domain tests and migration tests, inspect SQL constraints, commit scoped files.
+- [x] Add failing service tests: duplicate request returns same ID, changed payload conflicts, sixth/10min and twenty-first/day rejected, absent target rejected, SUPPORT cannot remove, stale revision cannot mutate, expired closed reports removed, account erasure removes identity/evidence. Test names describe these actual behaviors with in-memory fixtures and PostgreSQL integration where available.
+- [x] Run `:server:test --tests '*Moderation*'` and confirm missing-feature failure before implementation.
+- [x] Implement module/migration/service and safe admin routes using existing advisory lock `7421092187349`; transactionally read current admin role before each mutation. Persist rate counters separately from report retention, with bounded expiry. Store suppression keyed by target/type/revision; no wallet changes.
+- [x] Run domain tests and migration tests, inspect SQL constraints, commit scoped files.
 
 ### Task 2: Server integration and protocol
 
-- [ ] Add tests where unsigned/guest identity spoofing fails, old acceptance cannot publish when enforcement enabled, unaccepted login/delete still work, blocked active WS refuses action, deleting account scrubs reports, suppressed avatar cannot be read. Run failing tests first.
-- [ ] Add protocol commands/messages and auth/guest accepted version fields. Wire service through production configuration/Application/GameEngine and every UGC mutation. Sanitize nested snapshots/invitations/history, not only list pages. Gate content revisions on moderation actions.
-- [ ] Verify protocol serialization/backward defaults, auth/WebSocket integration, targeted PostgreSQL tests; commit scoped files.
+- [x] Add tests where unsigned/guest identity spoofing fails, old acceptance cannot publish when enforcement enabled, unaccepted login/delete still work, blocked active WS refuses action, deleting account scrubs reports, suppressed avatar cannot be read. Run failing tests first.
+- [x] Add protocol commands/messages and auth/guest accepted version fields. Wire service through production configuration/Application/GameEngine and every UGC mutation. Sanitize nested snapshots/invitations/history, not only list pages. Gate content revisions on moderation actions.
+- [x] Verify protocol serialization/backward defaults, auth/WebSocket integration, targeted PostgreSQL tests; commit scoped files.
 
 ### Task 3: Player consent/report UI
 
-- [ ] Add failing state/protocol tests proving stable report request ID, success only on receipt, stale errors do not clear drafts, consent version server controlled.
-- [ ] Implement shared report modal and content terms consent modal; links open trusted VI/EN legal URLs. Connect guest/signup acceptance and existing player publication interception; expose report action on profile/avatar/clan/room/tournament visible surfaces with block action separately available.
-- [ ] Compile Android/JS/Wasm and run state tests; inspect phone/desktop output without emulator. Commit scoped files.
+- [x] Add failing state/protocol tests proving stable report request ID, success only on receipt, stale errors do not clear drafts, consent version server controlled.
+- [x] Implement shared report modal and content terms consent modal; links open trusted VI/EN legal URLs. Connect guest/signup acceptance and existing player publication interception; expose report action on profile/avatar/clan/room/tournament visible surfaces with block action separately available.
+- [x] Compile Android/JS/Wasm and run state tests; inspect phone/desktop output without emulator. Commit scoped files.
 
 ### Task 4: Admin queue
 
-- [ ] Add failing admin UI/network tests for escaped report text, SUPPORT restrictions, request reason/version/CSRF payload and failed action retention.
-- [ ] Implement queue/detail/action modals using existing admin components; state NEW/REVIEWING/RESOLVED/DISMISSED; enforce server RBAC regardless of button visibility.
-- [ ] Run Node and browser fixture tests, inspect phone/desktop screenshots, commit scoped files.
+- [x] Add failing admin UI/network tests for escaped report text, SUPPORT restrictions, request reason/version/CSRF payload and failed action retention.
+- [x] Implement queue/detail/action modals using existing admin components; state NEW/REVIEWING/RESOLVED/DISMISSED; enforce server RBAC regardless of button visibility.
+- [x] Run Node and browser fixture tests, inspect phone/desktop screenshots, commit scoped files.
 
 ### Task 5: Integration, privacy and release evidence
 
-- [ ] Verify every approved spec bullet maps to implemented/tested behavior. Run protocol/server/state tests, client compilation, JS security tests and static route checks.
-- [ ] Review migration/retention/account deletion and account restrictions with an independent reviewer. Resolve important findings and rerun affected tests.
-- [ ] Update legal copy for reports/terms and 90-day retention; no claim of live enforcement until rollout switch enabled. Document how client-first rollout and old-client upgrade work.
+- [x] Verify every approved spec bullet maps to implemented/tested behavior. Run protocol/server/state tests, client compilation, JS security tests and static route checks.
+- [x] Review migration/retention/account deletion and account restrictions with an independent reviewer. Resolve important findings and rerun affected tests.
+- [x] Update legal copy for reports/terms and 90-day retention; no claim of live enforcement until rollout switch enabled. Document how client-first rollout and old-client upgrade work.
 - [ ] Create dependency-aware draft PR and update #53/#28 with concrete evidence, remaining device/staging/rollout gates and CI status. Do not close #53 prematurely.
+
+## Source verification record
+
+See [UGC verification](../../ugc-moderation-verification.md) for executed results,
+independent review findings and explicit device/staging/CI limits. Completion of
+source tasks does not authorize production enforcement or close #53.

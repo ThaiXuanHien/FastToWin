@@ -1,5 +1,6 @@
 package com.hienthai.fastowin.ui.screens
 
+import com.hienthai.fastowin.ui.components.canReportUgcTarget
 import com.hienthai.fastowin.ui.components.ReportableText
 import com.hienthai.fastowin.ui.components.UgcReportButton
 import com.hienthai.fastowin.ui.components.UgcSafetyButton
@@ -478,6 +479,7 @@ fun ClanDetailView(
     val isOwner = clan.ownerId == currentUserId
     val currentMember = clan.members.firstOrNull { it.userId == currentUserId }
     val visibleMembers = clan.members.take(visibleMemberCount)
+    val canReportClan = canReportUgcTarget(UgcTargetType.CLAN, clan.id)
 
     LazyColumn(
         modifier = modifier.testTag("clan_detail_list"),
@@ -496,7 +498,9 @@ fun ClanDetailView(
             )
         }
 
-        item(key = "clan_report") { UgcReportButton(UgcTargetType.CLAN, clan.id, clan.name) }
+        if (canReportClan) {
+            item(key = "clan_report") { UgcReportButton(UgcTargetType.CLAN, clan.id, clan.name) }
+        }
         notice?.let { item(key = "clan_detail_notice") { ClanNotice(it) } }
 
         item(key = "clan_stats") { ClanStats(clan) }

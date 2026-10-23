@@ -32,10 +32,10 @@ Compatible clients request `GetContentTerms` after session readiness, enabling `
 
 ## Play declarations and reviewer flow
 
-Reports add security/moderation purposes to existing user IDs, app interactions and other user-generated-content collection; they do not add location, phone contacts or photo-library upload. Review Data safety with the exact shipped build before submission, including whether optional report text is now used for security. Internal version 1.0 (1) is unchanged until a new signed AAB is uploaded. AdMob PR52 remains a separate release and requires its own declaration review.
+Reports add security/moderation purposes to existing user IDs, app interactions and other user-generated-content collection; they do not add location, phone contacts or photo-library upload. Review Data safety with the exact shipped build before submission, including whether optional report text is now used for security. This implementation does not upload or replace the published internal build; that requires a separate signed AAB release. AdMob PR52 remains a separate release and requires its own declaration review.
 
 Reviewer flow after release: use the separate approved reviewer player account, inspect another fixture player/clan/room/tournament, open Report, select reason and submit. The app confirms only after a server receipt. A block action is separate; do not report or penalize real users just to demonstrate the feature. Admin moderation requires a separately authorized role and is not available to the Play reviewer player.
 
 ## Verification record
 
-Current implementation and evidence status is tracked in #53 and the draft PR; the plan ledger is private during development. Host-rendered Compose previews and localhost browser fixtures are not Samsung acceptance. Do not close #53 on source compilation alone or claim Google approval.
+Executed local regression, independent review and remaining gates are recorded in [ugc-moderation-verification.md](ugc-moderation-verification.md), #53 and the draft PR; the plan ledger is private during development. Host-rendered Compose previews and localhost browser fixtures are not Samsung acceptance. Do not close #53 on source compilation alone or claim Google approval.

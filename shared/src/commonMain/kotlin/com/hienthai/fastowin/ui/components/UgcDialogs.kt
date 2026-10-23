@@ -89,11 +89,18 @@ fun UgcBlockConfirmationDialog(targetLabel: String, onBlock: () -> Unit, onDismi
 
 private val playerTypes = setOf(UgcTargetType.PLAYER_PROFILE, UgcTargetType.PLAYER_AVATAR)
 
+/** Lets lazy containers omit the entire item when its report control is unavailable. */
+@Composable
+fun canReportUgcTarget(type: UgcTargetType, id: String?): Boolean {
+    val actions = LocalUgcActions.current ?: return false
+    return !id.isNullOrBlank() && !(type in playerTypes && id == actions.selfId)
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun UgcReportButton(type: UgcTargetType, id: String?, label: String, modifier: Modifier = Modifier) {
     val actions = LocalUgcActions.current ?: return
-    if (id.isNullOrBlank() || (type in playerTypes && id == actions.selfId)) return
+    if (!canReportUgcTarget(type, id)) return
     val description = localized(TextKey.UgcReportNamed, "content" to label)
     TooltipBox(positionProvider = TooltipDefaults.rememberTooltipPositionProvider(TooltipAnchorPosition.Above),
         tooltip = { PlainTooltip { Text(description) } }, state = rememberTooltipState()) {
