@@ -168,17 +168,13 @@ private class AndroidStoreBillingGateway(
     }
 
     override fun onPurchasesUpdated(result: BillingResult, purchases: MutableList<Purchase>?) {
-        when (result.responseCode) {
-            BillingClient.BillingResponseCode.OK -> processPurchases(purchases.orEmpty())
-            BillingClient.BillingResponseCode.USER_CANCELED ->
-                _state.update { it.copy(purchasingProductId = null, notice = LocalizedText(TextKey.BillingCancelled)) }
-            BillingClient.BillingResponseCode.ITEM_ALREADY_OWNED -> {
-                _state.update { it.copy(purchasingProductId = null, notice = LocalizedText(TextKey.BillingRestoring)) }
-                queryUnfinishedPurchases()
-            }
-            BillingClient.BillingResponseCode.BILLING_UNAVAILABLE ->
-                _state.update { it.copy(purchasingProductId = null, error = LocalizedText(TextKey.BillingUnavailable)) }
-            else -> _state.update { it.copy(purchasingProductId = null, error = LocalizedText(TextKey.BillingIncomplete)) }
+        if (result.responseCode == BillingClient.BillingResponseCode.OK) {
+            processPurchases(purchases.orEmpty())
+            return
+        }
+        _state.update { it.afterPlayPurchaseUpdate(result.responseCode) }
+        if (result.responseCode == BillingClient.BillingResponseCode.ITEM_ALREADY_OWNED) {
+            queryUnfinishedPurchases()
         }
     }
 
