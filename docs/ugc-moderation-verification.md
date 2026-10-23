@@ -87,6 +87,38 @@ long report details scroll within the modal, no inner horizontal overflow, botto
 actions remain reachable, Escape/cancel return focus, and markup stays plain text.
 This uses disposable fixture data, not production reports or real player accounts.
 
+## Samsung component acceptance — 2026-10-23
+
+Physical Samsung SM-A366B, Android 16, ADB device (no emulator). Four new
+`UgcSafetyUiTest` instrumentation cases passed: 4 tests, 0 failures/errors/skips.
+They exercise the real production dialogs/controller with isolated protocol
+fixtures, not a running backend or real player accounts:
+
+- Consent starts unchecked, requires a deliberate check and disables submission
+  and checkbox while the request is pending.
+- A typed report note survives disconnect; first outbound target/note are correct,
+  retry reuses the entire request, and a receipt appears only after explicit ack.
+- Vietnamese block confirmation renders player markup literally and invokes the
+  block callback only on the explicit action.
+- Self/missing report targets remain hidden, another player keeps the correct action.
+
+```powershell
+$env:ANDROID_SERIAL='<physical-device-serial>'
+.\gradlew.bat :app:connectedDevDebugAndroidTest '-Pandroid.testInstrumentationRunnerArguments.class=com.hienthai.fastowin.UgcSafetyUiTest' --max-workers=1 --no-parallel --no-daemon --no-configuration-cache
+```
+
+The first run found a test-harness scroll request on a non-scroll block dialog;
+that call was corrected to assert visibility and click, without production edits.
+The strengthened payload assertions passed on a fresh run (41s). A further 28s
+run retained the Dev APK long enough to pull four fixture screenshots for visual
+inspection; captures contain no live account data. The Dev package is separate
+from the installed production app. This component result does not replace the
+remaining staging/auth/avatar/moderation end-to-end device acceptance.
+
+CI configuration was validated with checksum-verified actionlint 1.7.12 and an
+independent review. No Critical/Important finding; automatic host jobs are
+unchanged, emulator job is an explicit typed boolean opt-in, default false.
+
 ## Independent review and decisions
 
 Core, server integration, player client and admin UI received separate reviews.
