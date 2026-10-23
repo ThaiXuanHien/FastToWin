@@ -39,3 +39,15 @@ Reviewer flow after release: use the separate approved reviewer player account, 
 ## Verification record
 
 Executed local regression, independent review and remaining gates are recorded in [ugc-moderation-verification.md](ugc-moderation-verification.md), #53 and the draft PR; the plan ledger is private during development. Host-rendered Compose previews and localhost browser fixtures are not Samsung acceptance. Do not close #53 on source compilation alone or claim Google approval.
+
+Local legal/Billing integration verification on 2026-10-23 executed the previously
+unrun eight admin fixture browser cases plus one separate browser → actual Ktor
+→ isolated PostgreSQL avatar-removal flow, including endpoint invalidation and
+restart persistence. The verification record maps every remaining surface/gate
+to executed evidence and its limits. These host/Web checks do not satisfy the
+signed-client, physical-device, compatible-client rollout or production
+enforcement gate. Keep `FASTTOWIN_CONTENT_TERMS_ENFORCED=false` until that explicit
+rollout approval; no public Play submission or production moderation is implied.
+
+The selected Play operation is a closed-testing draft only, without a tester group.
+It does not authorize starting rollout or submitting the draft for review.

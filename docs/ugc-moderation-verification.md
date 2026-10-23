@@ -52,7 +52,8 @@ Additional checks:
   including 12 logged-out legal URLs each, no SPA fallback, protected API forwarding
   and retained CSP/no-store behavior.
 - Admin Playwright configuration discovers 8 new moderation cases. These cases
-  were **not executed** in this verification; discovery is not a passing E2E result.
+  were **not executed** in this original verification; see the integrated local
+  acceptance below for their subsequent execution. Discovery alone is not E2E evidence.
 
 ## UI rendering and browser fixture
 
@@ -182,11 +183,119 @@ The earlier local attempt while PostgreSQL was unavailable is not counted as gre
 No production code, coverage threshold, or retry allowance was changed for this fix.
 A new hosted result is still required for the corrected revision.
 
+## Integrated local acceptance — 2026-10-23
+
+Integrated reviewed legal/Billing commit `4f75eacda937fb32ff96ae441d0157e9e109eded`
+into UGC at merge `cdd1290ec0f186a6b03bbe29e51f3036542431b5`. The only conflict
+was the screenshot count in `docs/testing.md`: retained the current 160 references.
+Billing mapping/configuration and app-version files have no differences against
+that reviewed legal integration. No production UI or runtime code changed here.
+
+A new owned PostgreSQL 17.11 cluster was initialized in the ignored
+`.artifacts/play-integration-20261023/task2-pg-data` directory only after port
+15432 was confirmed free. It listened on `127.0.0.1:15432`; `admin_test` and all
+credentials were synthetic. Tests migrated their own UUID schemas through V62.
+Existing PostgreSQL data directories and staging/cloud fixtures were not reused.
+After verification, owned schemas and backend processes were removed/stopped and
+the owned PostgreSQL cluster was stopped. No production settings were changed.
+
+With `TEST_DATABASE_*` set to that owned database and the JBR/SDK/socket settings
+above, executed:
+
+```powershell
+.\gradlew.bat :protocol:jvmTest :server:test :shared:checkLocalizedUiText :shared:testAndroidHostTest :app:compileDevDebugAndroidTestKotlin :app:assembleDevDebug :webApp:compileKotlinWasmJs :webApp:compileKotlinJs :server:koverVerify :shared:koverVerify :server:installDist --max-workers=1 --no-parallel --no-daemon --no-configuration-cache '-Pkotlin.incremental=false' '-Pkotlin.compiler.execution.strategy=in-process'
+node --test scripts/tests/admin-moderation.test.mjs scripts/tests/legal-worker.test.mjs
+.\gradlew.bat :app:validateDevDebugScreenshotTest --max-workers=1 --no-parallel --no-daemon --no-configuration-cache
+```
+
+Results: Gradle **BUILD SUCCESSFUL in 5m20s**, server **798**, protocol JVM **112**,
+shared Android host **330**, each with **0 failures/errors/skips**. In particular,
+`PostgresUgcIntegrationTest` ran **5** and `PostgresModerationRepositoryTest` ran
+**8** real PostgreSQL cases, with no skipped DB tests. Both unchanged Kover gates
+(server 86%, shared 52%), localization validation, Android instrumentation
+compilation/APK assembly, server distribution and Web Wasm/JS compilation passed.
+Node checks: **12 passed, 0 skipped**. Full screenshot validation: **160 passed,
+0 failures/errors/skips**, **BUILD SUCCESSFUL in 2m**; no reference PNG changed.
+Existing compiler/SDK/SLF4J warnings remain; no dependency upgrade was included.
+
+### Eight fixture browser cases and one database-backed browser flow
+
+From `e2e`, executed the existing admin Playwright command directly:
+
+```powershell
+node node_modules/playwright/cli.js test --config=admin.playwright.config.mjs tests/admin-moderation.spec.mjs --output=D:/HienTX/Work/Android/FastToWin/.artifacts/play-integration-20261023/task2-admin-fixture-results
+```
+
+**8 passed in 7.5s**, no skips: OWNER/OPERATOR/SUPPORT controls, literal evidence,
+retry identity/current-version/CSRF, keyboard dismissal/focus and long-detail
+scrolling at 375px/1280px. These use `admin-fixture.mjs`, an in-process synthetic
+HTTP fixture serving production assets. They do **not** connect to PostgreSQL.
+
+Added one opt-in flow, `e2e/support/admin-moderation-live.mjs`. It reuses
+`openLocalPostgres`, rejects non-loopback/unknown database targets and occupied
+backend port 18084, owns a random schema, bootstraps a synthetic Owner offline,
+starts the built backend with an allowlist of environment variables and removes
+its schema after stopping the backend. It inherits no email/Billing/Firebase/R2
+provider settings. Traces are off; generated Owner credentials are removed.
+The caller owns PostgreSQL startup/shutdown. Run from the repository root:
+
+```powershell
+# E2E_POSTGRES_SETTINGS points to a private {url,user,passwordFile} JSON.
+# url must be jdbc:postgresql://127.0.0.1:15432/admin_test (no schema override).
+# JAVA_HOME and JAVA_TOOL_OPTIONS use the JBR/socket values recorded above.
+$env:E2E_POSTGRES_SETTINGS='<private-local-settings-json>'
+$env:E2E_PSQL='<local-postgresql-bin>/psql.exe'
+$env:UGC_E2E_ARTIFACT_DIR='D:/HienTX/Work/Android/FastToWin/.artifacts/play-integration-20261023/task2-admin-live'
+node e2e/support/admin-moderation-live.mjs
+```
+
+**1 browser/HTTP/PostgreSQL flow passed** on the final source. It creates two
+disposable guests/avatars, receives a server report receipt, logs the Owner in
+through the actual browser, views the current avatar and removes that exact
+revision. SQL proves report `RESOLVED`, version 2 and one matching typed/revision
+suppression. A negotiated socket receives invalidation; `/api/avatar/{id}` returns
+404 with no-store/nosniff. The other avatar and both players' profile fields,
+gold/Gem balances and avatar revisions remain unchanged. After actual backend
+restart, the guest resume token restores the same identity and persisted terms
+`2026-10-20`; browser reload preserves the resolved report and avatar HTTP 404.
+Browser storage stays empty. Served admin JS/CSS hashes match repository assets.
+The flow runs with `FASTTOWIN_CONTENT_TERMS_ENFORCED=false`.
+
+The new package alias is `pnpm test:admin-moderation-live` from `e2e`. This
+managed worktree shares `node_modules` with the main checkout; pnpm's automatic
+install refused that junction with `ERR_PNPM_UNSAFE_MODULES_DIR`. Shared modules
+were left untouched; the equivalent native Node entry above passed. Initial
+verification-only failures (old browser-cache selection and a harness query of
+wallet columns on `profiles` instead of `player_stats`) were diagnosed/corrected;
+the retained failure logs are not counted as passing evidence.
+
+Captured and visually inspected actual backend admin detail top/footer at 375px
+and 1280px. The white Material theme, readable labels, contained scrolling,
+no horizontal overflow and reachable bottom actions are retained. Existing game
+Dark Arcade rendering is covered by the unchanged 160-reference comparison.
+Images/logs/XML summaries are ignored artifacts under
+`.artifacts/play-integration-20261023/` (`task2-*`). No emulator, physical device,
+cloud moderation fixture, provider acceptance or signed release ran in this task.
+
+### Remaining matrix mapped to evidence
+
+| Surface / gate | Executed evidence and precise limit |
+| --- | --- |
+| Profile/name and avatar report entry | Compiled production Profile/Leaderboard/Friends/room/player components and `UgcReportDialog` player-content choice; controller report/retry tests, PostgreSQL target resolution and exact removal; new real browser avatar flow above. Traversal of every player screen on the shipped client remains pending. |
+| Clan, room and tournament entries | Compiled `ReportableText`/`UgcReportButton` wiring in their existing screens; unchanged screenshots including clan/tournament; PostgreSQL all-target-type resolution, sanitizer/projection and room invalidation tests passed. Full compatible-client click-through on staging/device remains pending. |
+| Enforcement false/true and stale terms | `UgcRolloutConfigTest`, `UgcSessionIntegrationTest`, `UgcIntegrationTest`, `UgcEntryConsentTest` and `UgcControllerTest` passed: explicit acknowledgement/version checks, old terms rejection and false-gate publication. Production enforcement stays false. |
+| Registered upgrade/reconnect | PostgreSQL guest upgrade preserves identity/acceptance; authentication and host `GameStateTest` reconnect/authoritative-profile refresh plus controller draft/consent tests passed. A signed-client registered upgrade/reconnect journey against staging remains pending. |
+| Guest restart | New flow resumes the same guest and accepted terms after an actual backend restart; PostgreSQL identity/consent tests passed. Restart of an installed physical-client binary remains a separate gate. |
+| Self/missing targets, blocked users and roles | Existing physical component record above proves self/missing player controls are hidden; no device test was repeated. Full host/server run covers blocked identity/session/reconnect and transactional RBAC, and eight fixture browser cases cover role-specific controls. Self-report hiding is a client UI rule; no new server-side self-target rejection was introduced. |
+| Avatar invalidation and unchanged content | New browser flow proves typed revision SQL suppression, socket invalidation, HTTP 200→404 across restart and unrelated avatar/profile/wallet preservation; shared avatar-cache host tests passed. Compatible client cache refresh on the signed physical build remains pending. |
+
 ## Remaining release gates
 
 Keep the PR Draft and #53 open until dependency integration, suitable hosted CI,
-staging end-to-end acceptance, signed Android internal release and physical-device
-checks are complete. Recheck Play Data safety against that exact shipped build.
+staging end-to-end acceptance, a matching signed Android build and physical-device
+checks are complete. The selected Play action for this integration is a closed-testing
+draft only, with no tester group; do not start rollout or submit it for review.
+Recheck Play Data safety against the exact build before any later distribution.
 No production database migration, moderation action, enforcement enablement,
 public store submission or paid infrastructure change was performed here.
 `FASTTOWIN_CONTENT_TERMS_ENFORCED` remains false by default. Follow
