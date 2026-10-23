@@ -16,9 +16,11 @@ when authorized to enable collection:
 | Setting | Purpose |
 | --- | --- |
 | `FINANCIAL_GOOGLE_ENABLED=true` | Explicit opt-in; omitted/false makes no financial provider requests |
-| `GOOGLE_APPLICATION_CREDENTIALS` | Mounted service-account JSON file; same file-path convention as store verification |
+| `GOOGLE_APPLICATION_CREDENTIALS` | Legacy mounted service-account JSON file used by this collector; do not replace a Firebase identity without reviewing its dependencies |
 | `GOOGLE_PLAY_PACKAGE_NAME` | Exact application package used by both purchase verification and Orders requests |
 | `FINANCIAL_COLLECTION_START` | Required UTC RFC3339 instant, no later than now; earliest supported payment time |
+
+The purchase verifier additionally supports dedicated Billing JSON/file credentials and an explicit Google-verified QA allowlist; see [store-billing.md](store-billing.md). These verifier-only settings do not enable this collector or change its credential source. Captured test orders remain SANDBOX; default LIVE totals exclude them.
 
 The service account needs access to the configured app and the Android Publisher
 scope. Missing/malformed credentials or configuration keep financial collection

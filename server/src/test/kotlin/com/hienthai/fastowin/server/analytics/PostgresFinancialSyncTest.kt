@@ -206,6 +206,29 @@ class PostgresFinancialSyncTest {
         assertEquals("UNAVAILABLE", text("SELECT status FROM analytics_source_coverage WHERE source='GOOGLE_PLAY' AND environment='LIVE'"))
     } }
 
+    @Test fun allowlistedProductionQaGrantsOnceAndNeverCreatesLiveRevenue() = runTest { database {
+        sandbox = true
+        response = response.replace("private-token", "private-qa-token")
+        val qa = PostgresGuestIdentityRepository(db).resolveGuest("QA", null, NOW.toEpochMilli())
+        purchasedAccount = obfuscatedStoreAccountId(qa.playerId)
+        val verifier = EnvironmentStorePurchaseVerifier("prod", GooglePlayPurchaseVerifier("example.app", credentials,
+            endpoint = endpoint, testPlayerIds = setOf(qa.playerId)))
+        val qaService = StorePurchaseService(PostgresPlayerProfileRepository(db), verifier)
+        val request = StorePurchaseRequest(requestId="qa", store=StorePlatform.GOOGLE_PLAY,
+            productId="fasttowin_gems_80", purchaseToken="private-qa-token")
+        assertEquals(StorePurchaseStatus.GRANTED, qaService.verify(qa.playerId, request).status)
+        assertEquals(StorePurchaseStatus.ALREADY_GRANTED, qaService.verify(qa.playerId, request).status)
+        val other = PostgresGuestIdentityRepository(db).resolveGuest("Other", null, NOW.toEpochMilli())
+        assertEquals(StorePurchaseStatus.INVALID, qaService.verify(other.playerId, request).status)
+        assertEquals("80", text("SELECT gems FROM player_stats WHERE user_id='${qa.playerId}'"))
+        assertEquals(1, count("wallet_transactions"))
+        assertEquals("SANDBOX", text("SELECT environment FROM store_financial_orders"))
+        assertTrue(sync.syncNext(provider, START, NOW))
+        assertEquals("SANDBOX", text("SELECT environment FROM analytics_financial_events"))
+        assertEquals("0", text("SELECT COUNT(*) FROM analytics_financial_events WHERE environment='LIVE'"))
+        assertEquals("UNAVAILABLE", text("SELECT status FROM analytics_source_coverage WHERE source='GOOGLE_PLAY' AND environment='LIVE'"))
+    } }
+
     private suspend fun database(block: suspend Fixture.() -> Unit) {
         val url = System.getenv("TEST_DATABASE_URL"); assumeTrue(!url.isNullOrBlank(), "Configured PostgreSQL required")
         val schema = "financial_test_${UUID.randomUUID().toString().replace("-", "")}"
@@ -223,12 +246,13 @@ class PostgresFinancialSyncTest {
         var response = GoogleOrdersFinancialSourceTest.payload
         var code = 200
         var sandbox = false
+        var purchasedAccount: String? = null
         var orderRequest: () -> Unit = {}
         val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0).apply {
             createContext("/") { exchange ->
                 val purchase = exchange.requestURI.path.contains("/purchases/productsv2/")
                 if (!purchase) orderRequest()
-                val json = if (purchase) """{"orderId":"GPA.1234","purchaseStateContext":{"purchaseState":"PURCHASED"},"productLineItem":[{"productId":"fasttowin_gems_80"}]${if (sandbox) ",\"testPurchaseContext\":{}" else ""}}""" else response
+                val json = if (purchase) """{"orderId":"GPA.1234","purchaseStateContext":{"purchaseState":"PURCHASED"},"productLineItem":[{"productId":"fasttowin_gems_80"}]${if (sandbox) ",\"testPurchaseContext\":{}" else ""}${purchasedAccount?.let { ",\"obfuscatedExternalAccountId\":\"$it\"" } ?: ""}}""" else response
                 val bytes = json.toByteArray()
                 exchange.sendResponseHeaders(if (exchange.requestHeaders.getFirst("Authorization") != "Bearer local-access") 403 else if (purchase) 200 else code, bytes.size.toLong())
                 exchange.responseBody.use { it.write(bytes) }

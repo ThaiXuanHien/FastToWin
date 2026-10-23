@@ -33,6 +33,44 @@ class StorePurchaseVerifierTest {
     @Test fun `production rejects provider test purchases`() = runTest {
         assertEquals(StoreVerificationStatus.INVALID, verifier { purchased.dropLast(1) + ",\"testPurchaseContext\":{}}" }.verify(receipt).status)
     }
+    private fun qaVerifier(body: String) = GooglePlayPurchaseVerifier(
+        "example.invalid", GoogleCredentials.create(AccessToken("fake-access", Date(Long.MAX_VALUE))),
+        FakeHttpClient { body }, testPlayerIds = setOf("account")
+    )
+    private val qaPurchase = purchased.dropLast(1) +
+        ",\"testPurchaseContext\":{},\"orderId\":\"GPA.1234\",\"obfuscatedExternalAccountId\":\"" +
+        "9af211329b2fc82e5efe906062c730082819b23fe8394bc435e0b1bf0458eb54\"}"
+
+    @Test fun `allowlisted QA receives provider verified sandbox order`() = runTest {
+        val result = qaVerifier(qaPurchase).verify(receipt)
+        assertEquals(StoreVerificationStatus.PURCHASED, result.status)
+        assertEquals(VerifiedStoreOrder("GPA.1234", "example.invalid", "SANDBOX"), result.verifiedOrder)
+    }
+    @Test fun `QA sandbox purchase cannot be claimed by another player`() = runTest {
+        assertEquals(StoreVerificationStatus.INVALID,
+            qaVerifier(qaPurchase).verify(receipt.copy(userId = "another-account")).status)
+    }
+    @Test fun `QA sandbox requires exact provider account binding and durable order`() = runTest {
+        val payloads = listOf(
+            qaPurchase.replace(Regex(",\\\"obfuscatedExternalAccountId\\\":\\\"[^\\\"]*\\\""), ""),
+            qaPurchase.replace("9af211329b2fc82e5efe906062c730082819b23fe8394bc435e0b1bf0458eb54", "wrong"),
+            qaPurchase.replace(",\"orderId\":\"GPA.1234\"", ""),
+            qaPurchase.replace("GPA.1234", "invalid order"),
+            qaPurchase.replace("PURCHASED", "PENDING"),
+            qaPurchase.replace("fasttowin_gems_80", "unknown-product")
+        )
+        for (body in payloads) {
+            assertEquals(StoreVerificationStatus.INVALID, qaVerifier(body).verify(receipt).status)
+        }
+    }
+    @Test fun `allowlisting does not label a live purchase sandbox or allow dev tokens`() = runTest {
+        val live = qaPurchase.replace(",\"testPurchaseContext\":{}", "")
+        assertEquals("LIVE", qaVerifier(live).verify(receipt).verifiedOrder?.environment)
+        val production = EnvironmentStorePurchaseVerifier("prod", qaVerifier(qaPurchase))
+        assertEquals(StoreVerificationStatus.INVALID,
+            production.verify(receipt.copy(purchaseToken = "dev:GOOGLE_PLAY:fake")).status)
+    }
+
     @Test fun `provider cancellation propagates`() = runTest {
         assertFailsWith<CancellationException> { verifier { throw CancellationException("cancel") }.verify(receipt) }
     }
