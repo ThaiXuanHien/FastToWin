@@ -77,3 +77,13 @@ tasks.register<JavaExec>("bootstrapAdminOwner") {
     mainClass.set("com.hienthai.fastowin.server.admin.AdminBootstrapKt")
     standardInput = System.`in`
 }
+
+// Export only the test launcher classpath; production distributions contain main sources only.
+tasks.register("missionAcceptanceClasspath") {
+    group = "verification"
+    dependsOn(tasks.testClasses)
+    val acceptanceClasspath = sourceSets.test.get().runtimeClasspath
+    val output = layout.buildDirectory.file("mission-acceptance-classpath.txt")
+    outputs.file(output)
+    doLast { output.get().asFile.writeText(acceptanceClasspath.asPath) }
+}

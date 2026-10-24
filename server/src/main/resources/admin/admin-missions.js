@@ -73,14 +73,14 @@ export function openMissions(ui) {
   }
   function errorFields(form, notices, errors, controls) {
     form.querySelectorAll('.mission-field-error').forEach(el => el.remove());
-    for (const control of Object.values(controls)) { control.removeAttribute('aria-invalid'); control.removeAttribute('aria-describedby'); }
+    for (const control of Object.values(controls)) { control.removeAttribute('aria-invalid'); const hints = (control.getAttribute('aria-describedby') || '').split(/\s+/).filter(id => id && id !== control.id + '-error'); if (hints.length) control.setAttribute('aria-describedby', hints.join(' ')); else control.removeAttribute('aria-describedby'); }
     if (!Object.keys(errors).length) return false;
     notices.fail(new Error('Kiểm tra các trường sau:'), true);
     const list = node('ul'); notices.error.append(list);
     for (const [key, message] of Object.entries(errors)) {
       const control = controls[key]; if (!control) continue;
       control.parentElement.hidden = false;
-      const id = control.id + '-error'; control.setAttribute('aria-invalid', 'true'); control.setAttribute('aria-describedby', id);
+      const id = control.id + '-error'; control.setAttribute('aria-invalid', 'true'); control.setAttribute('aria-describedby', [control.getAttribute('aria-describedby'), id].filter(Boolean).join(' '));
       control.parentElement.append(node('p', message, { id, class: 'mission-field-error' }));
       const link = node('a', message, { href: '#' + control.id }); link.addEventListener('click', event => { event.preventDefault(); control.focus(); }); list.append(append(node('li'), link));
     }

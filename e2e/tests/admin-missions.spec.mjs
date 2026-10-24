@@ -87,3 +87,11 @@ for(const enlarged of [false,true])test(`phone publication footer keyboard reach
 test('scope switches fence pending list response and loading never appears as empty',async({page,fixture})=>{
   missions(fixture);let release;fixture.handlers.set('/admin/api/missions',async(c,s)=>{if(c.query.get('scope')==='PERSONAL'){await new Promise(r=>release=r);s(200,pageOf([view({draft:{...config(),code:'LATE_PERSONAL'}})]));}else s(200,pageOf([view({draft:{...config('CLAN'),code:'CURRENT_CLAN'}})]));return true;});await open(page,fixture);await expect(page.getByRole('status').filter({hasText:'Đang tải nhiệm vụ'})).toBeVisible();await expect(page.locator('main')).not.toContainText('Không có nhiệm vụ phù hợp');await expect.poll(()=>!!release).toBe(true);await page.getByRole('button',{name:'Bang hội',exact:true}).click();await expect(page.locator('main')).toContainText('CURRENT_CLAN');release();await expect(page.locator('main')).not.toContainText('LATE_PERSONAL');await expect(page.getByRole('button',{name:'Bang hội',exact:true})).toHaveAttribute('aria-pressed','true');
 });
+test('validation preserves target and economy hints alongside inline errors',async({page,fixture})=>{
+  missions(fixture);await open(page,fixture);await page.getByRole('button',{name:'Tạo nhiệm vụ',exact:true}).click();await fill(page,'CLAN');await page.getByLabel('Loại hành động',{exact:true}).selectOption('DONATE_GOLD');await page.getByLabel('Mục tiêu',{exact:true}).fill('0');await page.getByRole('button',{name:'Lưu bản nháp',exact:true}).click();
+  for(const [label,hint] of [['Mục tiêu','mission-condition-hint'],['Vàng','mission-economy-hint']]){
+    const control=page.getByLabel(label,{exact:true});const ids=(await control.getAttribute('aria-describedby')).split(/\s+/);expect(ids).toContain(hint);expect(ids).toContain((await control.getAttribute('id'))+'-error');
+  }
+  await page.getByLabel('Mục tiêu',{exact:true}).fill('5');await page.getByLabel('Mã nhiệm vụ',{exact:true}).fill('');await page.getByLabel('Vàng',{exact:true}).fill('0');await page.getByRole('button',{name:'Lưu bản nháp',exact:true}).click();
+  await expect(page.getByLabel('Mục tiêu',{exact:true})).toHaveAttribute('aria-describedby','mission-condition-hint');await expect(page.getByLabel('Vàng',{exact:true})).toHaveAttribute('aria-describedby','mission-economy-hint');
+});
