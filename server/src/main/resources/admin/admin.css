@@ -2349,3 +2349,18 @@ dd {
 /* Moderation reuses existing surfaces; only long evidence and current-avatar sizing differ. */
 .moderation-copy { overflow-wrap: anywhere; }
 .moderation-avatar img { object-fit: contain; max-width: 100%; border-radius: var(--radius, 12px); }
+
+/* Mission catalog uses the existing Material list and white modal surfaces. */
+.mission-groups { display: flex; flex-wrap: wrap; gap: 8px; }
+.mission-groups button[aria-pressed="true"] { color: var(--primary); background: var(--primary-subtle); border-color: var(--primary); }
+.mission-modal .field[hidden] { display: none; }
+.mission-modal .field > label { font-size: 0.875rem; }
+.mission-modal input[readonly] { background: var(--surface); }
+.mission-modal .mission-field-error { color: var(--error); margin: 8px 0 0; font-size: 0.875rem; }
+.mission-modal [aria-invalid="true"] { border-color: var(--error); }
+.mission-modal .alert a { color: inherit; text-decoration: underline; }
+.mission-modal .alert ul { padding-left: 20px; }
+.mission-row, .mission-modal { overflow-wrap: anywhere; }
+.mission-row .row-info { min-width: 0; }
+.mission-modal .modal-header h2 { min-width: 0; }
+.mission-modal .modal-header > button { flex-shrink: 0; }

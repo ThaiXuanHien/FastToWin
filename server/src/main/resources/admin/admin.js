@@ -67,6 +67,7 @@ function icon(name) {
     add: 'M12 5v14M5 12h14',
     gifts: 'M3 8h18v4H3ZM5 12v9h14v-9M12 8v13M12 8H7a3 3 0 1 1 3-3l2 3ZM12 8h5a3 3 0 1 0-3-3l-2 3Z',
     maintenance: 'M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z M9 15l-4 4 M19 5l-1 1',
+    missions: 'M4 3h16v18H4z M8 8l2 2 4-4 M8 15h8',
     events: 'M3 4h18v18H3z M16 2v4 M8 2v4 M3 10h18 M12 12.5l.8 1.6 1.8.3-1.3 1.3.3 1.8-1.6-.8-1.6.8.3-1.8-1.3-1.3 1.8-.3z',
     compensation: 'M11 15l2 2a1 1 0 0 0 1.4 0l4.3-4.3a1 1 0 0 0 0-1.4l-2.6-2.6a1 1 0 0 0-1.4 0l-1.3 1.3 M13 9.5l-2.3-2.3a1 1 0 0 0-1.4 0l-4.3 4.3a1 1 0 0 0 0 1.4l2 2 M18 10l3-3a2.1 2.1 0 0 0-3-3l-2.5 2.5 M6 14.5l-3 3a2.1 2.1 0 0 0 3 3l2.5-2.5',
     moderation: 'M5 3h14v11l-7 7-7-7V3ZM9 11l2 2 4-4',
@@ -345,6 +346,7 @@ function shell(title, section) {
   links.push(['maintenance', 'Bảo trì', maintenance]);
   if (session.admin.role !== 'SUPPORT') links.push(['gifts', 'Quà admin', giftCampaigns]);
   if (session.admin.role !== 'SUPPORT') links.push(['events', 'Sự kiện thưởng', rewardEvents]);
+  if (session.admin.role !== 'SUPPORT') links.push(['missions', 'Nhiệm vụ', missions]);
   links.push(['compensation', 'Đền bù', compensation]);
   links.push(['announcements', 'Thông báo', announcements]);
   links.push(['moderation', 'Kiểm duyệt', moderation]);
@@ -406,6 +408,19 @@ async function rewardEvents() {
       api: (path, request, payload, method) => api(path, request, payload, session?.csrfToken, method),
     });
   } catch (error) { if (task.current() && error.name !== 'AbortError') notices.fail(new Error('Không thể tải sự kiện thưởng. Vui lòng thử lại.')); }
+  finally { pending.delete(task.controller); }
+}
+async function missions() {
+  if (!session || session.admin.role === 'SUPPORT') return;
+  const { task, notices } = beginNavigation('Nhiệm vụ', 'missions');
+  try {
+    const { openMissions } = await import('./admin-missions.js');
+    if (!task.current()) return;
+    openMissions({ node, append, button, iconButton, field, modal, feedback, shell, channel, pagination, amount,
+      role: () => session?.admin.role,
+      api: (path, request, payload, method) => api(path, request, payload, session?.csrfToken, method),
+    });
+  } catch (error) { if (task.current() && error.name !== 'AbortError') notices.fail(new Error('Không thể tải nhiệm vụ. Vui lòng thử lại.')); }
   finally { pending.delete(task.controller); }
 }
 async function compensation() {
