@@ -2,7 +2,7 @@
 
 Ngày: 24/10/2026, Asia/Bangkok.
 
-Trạng thái: bản thiết kế để chủ dự án duyệt trước kế hoạch triển khai.
+Trạng thái: chủ dự án đã duyệt ngày 24/10/2026 trong cuộc trao đổi; triển khai theo kế hoạch admin-missions cùng ngày.
 
 ## Mục tiêu và phạm vi
 
