@@ -83,6 +83,7 @@ tasks.register("missionAcceptanceClasspath") {
     group = "verification"
     dependsOn(tasks.testClasses)
     val acceptanceClasspath = sourceSets.test.get().runtimeClasspath
+    inputs.property("acceptanceClasspath", acceptanceClasspath.asPath)
     val output = layout.buildDirectory.file("mission-acceptance-classpath.txt")
     outputs.file(output)
     doLast { output.get().asFile.writeText(acceptanceClasspath.asPath) }
