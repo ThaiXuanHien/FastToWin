@@ -63,6 +63,7 @@ Các quyết định toàn đợt được ghi tại `.artifacts/clan-missions-2
 - Sự kiện có ID và thời điểm server. Uniqueness theo nguồn sự kiện/instance/người đóng góp ngăn replay tăng tiến độ; cùng match nhiều lần không tạo nhiều completion. Hai sự kiện khác nhau vẫn có thể cộng tiến độ đồng thời mà không mất cập nhật.
 - Claim và thay đổi ví/XP/ledger/dấu đã nhận phải commit trong một transaction. Request chạy đồng thời nhận cùng kết quả bền vững; lỗi database không trả success trước khi grant được lưu.
 - Target, reward, điểm và phép nhân dùng validation cùng kiểm tra overflow. Bảo toàn luật kinh tế cũ: nhiệm vụ quyên góp không hoàn lại nhiều tài sản cùng loại hơn số đã quyên góp; không tự thay đổi các bộ đếm tài sản hợp lệ.
+- Áp dụng luật trên với nhiệm vụ bang mới: DONATE_GOLD không thưởng lại Vàng, DONATE_GEMS không thưởng lại Gem; vẫn chọn được XP và tài sản khác. Nhiệm vụ cá nhân giữ trần thưởng cùng loại không vượt target. Quy tắc này tránh tổng hoàn trả vượt quyên góp khi nhiều thành viên nhận và ra/vào bang, đồng thời không thêm ngưỡng đóng góp cá nhân ngầm; quyền nhận legacy được giữ nguyên. Admin phải thấy giải thích ngay trường phần thưởng.
 - Điểm cống hiến từ nhiệm vụ ghi thành một nguồn sự kiện riêng có khóa chống lặp. Module đua top sau này đọc điểm nhiệm vụ và quyên góp; claim lại không phát thêm sự kiện điểm.
 
 ## Chuyển dữ liệu cũ
