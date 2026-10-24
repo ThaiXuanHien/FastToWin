@@ -37,4 +37,3 @@ class UgcNotificationReferencesTest {
     private fun notification(args: Map<String, String>) = AppNotification("notification", AppNotificationKind.ROOM_INVITATION,
         "Invitation", "Player invited you to Room", 1, destination = AppNotificationDestination.FRIENDS, messageArgs = args)
 }
-

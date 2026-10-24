@@ -60,7 +60,7 @@ Badge quà có thêm ca zero/guest, số lượng lớn, chữ lớn và landsca
 UGC có 15 ca cho điều khoản, báo cáo/biên nhận/thử lại, chặn người chơi,
 avatar đã gỡ và hàng mời giải đấu; gồm Việt/Anh, màn hình nhỏ/ngang/desktop
 và chữ lớn 1.6. Đây là render trên host, không thay nghiệm thu thiết bị thật.
-Một số màn có thêm Compose Preview desktop `1024 x 768 dp`. Tổng cộng có 160
+Một số màn có thêm Compose Preview desktop `1024 x 768 dp`. Tổng cộng có 173
 ảnh chuẩn, cố định giao diện tối, locale Việt/Anh và font scale theo từng preview
 (`1.0`, `1.3`, `1.4` hoặc `1.6` cho ca chữ lớn), với fixture
 không dùng mạng, database hay thời gian thực. Bộ này kiểm tra thay đổi pixel;
@@ -98,7 +98,7 @@ Chỉ khi thay đổi UI là có chủ ý và đã xem lại đủ ảnh mới c
 - Ảnh render thực tế và ảnh chênh lệch nằm dưới
   `app/build/outputs/screenshotTest-results/preview/debug/dev/rendered/` và
   `app/build/outputs/screenshotTest-results/preview/debug/dev/diffs/`.
-- Trước khi commit baseline, kiểm tra đúng 160 PNG, xem ảnh ở các kích thước
+- Trước khi commit baseline, kiểm tra đúng 173 PNG (160 ảnh UGC/legal và 13 ảnh AdMob), xem ảnh ở các kích thước
   điện thoại/tablet/desktop, xem Git diff và chạy lại task `validate`.
 - Ảnh desktop của hộp thư là bản render Compose Preview để kiểm tra bố cục,
   không phải kiểm thử ứng dụng trong trình duyệt.
@@ -171,7 +171,7 @@ GitHub Actions chạy với mọi push, pull request và khi kích hoạt thủ 
 - Biên dịch Android UI test để phát hiện lỗi import/dependency trước khi khởi động emulator.
 - Build APK dev và biên dịch Web/Wasm.
 - Android emulator mặc định **không chạy** trên push, pull request hoặc lần chạy thủ công thông thường. Chỉ chạy Compose UI test khi chọn rõ `Run Android UI tests on an emulator (explicit opt-in)` trong **Actions → CI → Run workflow**. Các ca UI trên thiết bị thật vẫn có thể chạy bằng ADB/Gradle riêng.
-- So sánh 160 ảnh chuẩn 2D Arcade trên host, không cần emulator; khi lỗi lưu
+- So sánh 173 ảnh chuẩn 2D Arcade trên host, không cần emulator; khi lỗi lưu
   report HTML, ảnh thực tế và ảnh diff trong artifact riêng.
 - Chạy Web E2E game trên Chromium, responsive ở bốn kích thước, chữ lớn/nội dung dài/viewport bàn phím, smoke test Firefox/WebKit và bundle Kotlin/JS fallback với backend in-memory riêng; lưu trace/ảnh khi lỗi.
 - Lưu APK cùng báo cáo test thành artifact.

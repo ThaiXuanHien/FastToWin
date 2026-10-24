@@ -23,6 +23,7 @@ import com.hienthai.fastowin.protocol.PROFILE_AVATAR_IDS
 import com.hienthai.fastowin.protocol.ProtocolGameMode
 import com.hienthai.fastowin.protocol.PushPreferencesSnapshot
 import com.hienthai.fastowin.protocol.MatchType
+import com.hienthai.fastowin.protocol.RewardedAdProvider
 import com.hienthai.fastowin.protocol.RematchEvent
 import com.hienthai.fastowin.protocol.RoomPhase
 import com.hienthai.fastowin.protocol.ServerMessage
@@ -40,6 +41,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.isActive
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlin.random.Random
@@ -72,9 +74,11 @@ class GameController private constructor(
         serverUrl: String,
         resumeTokenStore: ResumeTokenStore,
         transport: SocketTransport,
-        controllerScope: CoroutineScope
+        controllerScope: CoroutineScope,
+        accountDisplayName: String? = null,
+        accessTokenProvider: (suspend (Boolean) -> String?)? = null
     ) : this(
-        serverUrl, resumeTokenStore, null, null, null, AppLanguage.VIETNAMESE,
+        serverUrl, resumeTokenStore, accountDisplayName, accessTokenProvider, null, AppLanguage.VIETNAMESE,
         {}, transport, controllerScope
     )
 
@@ -110,6 +114,9 @@ class GameController private constructor(
         _uiState.update { it.copy(isSearching = false, isTournamentLoading = false) }
     }
     private var playerId: String? = null
+    private data class PendingRewardedAdClaim(val receipt: RewardedAdReceipt, val playerId: String?)
+    // HTTP GRANTED is already committed. Keep its idempotent handoff until the socket acknowledges it.
+    private var pendingRewardedAdClaim: PendingRewardedAdClaim? = null
     private enum class EditorSaveStage { WAITING, AVATAR, PROFILE }
     private data class EditorProfileSave(
         val profile: ClientMessage.UpdateProfile,
@@ -1185,6 +1192,16 @@ class GameController private constructor(
                 val wasRecoveringRoom = _uiState.value.currentRoomId != null
                 if (editorProfileSave != null) ugc.dismissTerms()
                 interruptEditorProfileSave()
+                pendingRewardedAdClaim?.let { pending ->
+                    pendingRewardedAdClaim = when {
+                        pending.playerId == null -> pending.copy(playerId = message.playerId)
+                        pending.playerId == message.playerId -> pending
+                        else -> null
+                    }
+                    if (pendingRewardedAdClaim == null) {
+                        _uiState.update { it.copy(claimingRewardedAdRequestId = null) }
+                    }
+                }
                 if (playerId != null && playerId != message.playerId) {
                     ugc.clearSession()
                     _uiState.update { it.copy(suppressedAvatarIds = emptySet(), invalidatedAvatarIds = emptySet()) }
@@ -1196,6 +1213,7 @@ class GameController private constructor(
                         avatarRevision = it.avatarRevision + 1, error = editorProfileSaveFailure
                     )
                 }
+                pendingRewardedAdClaim?.let(::sendPendingRewardedAdClaim)
                 if (accountDisplayName == null) dispatchPendingGiftProfileRefresh()
                 if (_uiState.value.isTournamentOpen) refreshPublicTournaments()
                 startLatencyMonitoring()
@@ -1367,6 +1385,9 @@ class GameController private constructor(
                 _uiState.update { it.withPlayQuota(message) }
             }
             is ServerMessage.RewardedAdBonusResult -> {
+                val pending = pendingRewardedAdClaim
+                if (pending != null && message.requestId != pending.receipt.requestId) return
+                pendingRewardedAdClaim = null
                 _uiState.update {
                     it.withRewardedAdBonus(message, messageMapper.message(message))
                 }
@@ -1832,6 +1853,10 @@ class GameController private constructor(
     }
 
     private fun handleServerError(error: ServerMessage.Error) {
+        if (error.requestId == pendingRewardedAdClaim?.receipt?.requestId &&
+            error.code !in setOf("CONNECTION_NOT_READY", "CONNECTION_FAILED", "SEND_FAILED")) {
+            pendingRewardedAdClaim = null
+        }
         if (error.code in setOf("CONTENT_TERMS_REQUIRED", "CONTENT_TERMS_VERSION_INVALID") &&
             accountDisplayName == null && playerId == null) {
             scope.launch {
@@ -1918,7 +1943,8 @@ class GameController private constructor(
                         verifyingStorePurchaseRequestId = null,
                         exchangingGoldRequestId = null,
                         claimingRewardedAdRequestId = if (
-                            error.requestId != null && error.requestId == it.claimingRewardedAdRequestId
+                            pendingRewardedAdClaim == null &&
+                                error.requestId != null && error.requestId == it.claimingRewardedAdRequestId
                         ) null else it.claimingRewardedAdRequestId,
                         storePurchaseResult = if (
                             error.requestId != null && error.requestId == it.verifyingStorePurchaseRequestId
@@ -2034,6 +2060,7 @@ class GameController private constructor(
     }
 
     fun close() {
+        pendingRewardedAdClaim = null
         guestContentConsent.dismiss()
         termsApi.close()
         ugc.clearSession()
@@ -2193,7 +2220,11 @@ class GameController private constructor(
     }
 
     fun claimRewardedAdBonus(receipt: RewardedAdReceipt): Boolean {
-        if (accountDisplayName == null) return false
+        if (accountDisplayName == null || !scope.isActive) return false
+        pendingRewardedAdClaim?.let { return it.receipt == receipt }
+        val pending = if (receipt.provider == RewardedAdProvider.ADMOB_ANDROID) {
+            PendingRewardedAdClaim(receipt, playerId).also { pendingRewardedAdClaim = it }
+        } else null
         _uiState.update {
             it.copy(
                 rewardedAdBonusResult = null,
@@ -2202,18 +2233,28 @@ class GameController private constructor(
                 error = null
             )
         }
-        scope.launch {
-            sendMessage(
-                ClientMessage.ClaimRewardedAdBonus(
-                    requestId = receipt.requestId,
-                    provider = receipt.provider,
-                    providerTransactionId = receipt.providerTransactionId,
-                    proof = receipt.proof
-                )
-            )
-        }
+        if (pending != null) sendPendingRewardedAdClaim(pending)
+        else scope.launch { socket.sendMessage(receipt.toClaimMessage()) }
         return true
     }
+
+    private fun sendPendingRewardedAdClaim(pending: PendingRewardedAdClaim) {
+        _uiState.update { it.copy(claimingRewardedAdRequestId = pending.receipt.requestId) }
+        scope.launch {
+            // A queued send must still belong to this controller, account and pending session.
+            if (pendingRewardedAdClaim === pending &&
+                (pending.playerId == null || pending.playerId == playerId)) {
+                socket.sendMessage(pending.receipt.toClaimMessage())
+            }
+        }
+    }
+
+    private fun RewardedAdReceipt.toClaimMessage() = ClientMessage.ClaimRewardedAdBonus(
+        requestId = requestId,
+        provider = provider,
+        providerTransactionId = providerTransactionId,
+        proof = proof
+    )
 
     fun dismissPlayQuotaDialog() {
         _uiState.update { it.copy(showPlayQuotaExhaustedDialog = false, error = null) }

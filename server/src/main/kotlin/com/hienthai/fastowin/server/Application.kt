@@ -1,4 +1,5 @@
 package com.hienthai.fastowin.server
+import com.hienthai.fastowin.server.ads.adMobRoutes
 
 import com.hienthai.fastowin.server.moderation.*
 import com.hienthai.fastowin.server.gifts.*
@@ -108,6 +109,7 @@ fun Application.gameModule(
     giftDeliveryEnabled: Boolean = false,
     maintenanceService: MaintenanceService? = null,
     maintenanceRuntime: MaintenanceRuntime = MaintenanceRuntime(engine, maintenanceService, serviceStatusProvider),
+    adMobService: com.hienthai.fastowin.server.ads.AdMobService? = null,
     activityTracker: com.hienthai.fastowin.server.activity.ActivityTracker = com.hienthai.fastowin.server.activity.ActivityTracker(),
     financialSyncService: com.hienthai.fastowin.server.analytics.FinancialSyncService? = null,
     analyticsService: com.hienthai.fastowin.server.analytics.AnalyticsService? = adminService?.let {
@@ -148,6 +150,7 @@ fun Application.gameModule(
     // CORS can reject before routing, so incident/event errors/preflights must receive the same no-store policy.
     intercept(io.ktor.server.application.ApplicationCallPipeline.Setup) {
         val path = call.request.path()
+        if (path.startsWith("/api/rewarded-ads")) call.response.header(HttpHeaders.CacheControl, "no-store")
         if (path == "/api/announcements" || path.startsWith("/api/announcements/") ||
             path == "/admin/api/announcements" || path.startsWith("/admin/api/announcements/") ||
             path == "/api/events" || path.startsWith("/api/events/") ||
@@ -171,7 +174,7 @@ fun Application.gameModule(
         json(ProtocolJson)
     }
     install(CallLogging) {
-        filter { call -> call.request.path() !in QUIET_LOG_PATHS && !call.request.path().startsWith("/admin") }
+        filter { call -> call.request.path() !in QUIET_LOG_PATHS && !call.request.path().startsWith("/admin") && !call.request.path().startsWith("/api/rewarded-ads") }
     }
     install(CORS) {
         allowMethod(HttpMethod.Get)
@@ -203,6 +206,7 @@ fun Application.gameModule(
     adminService?.let { service -> routing { adminAssets(); adminRoutes(service); moderationRoutes(engine.moderationService) } }
     if (adminService != null) analyticsService?.let { service -> routing { analyticsRoutes(service) } }
 
+    routing { adMobRoutes(adMobService, authService, rateLimiter, rateLimitPolicies) }
     routing { storePurchaseRoutes(engine.storePurchaseService, authService, rateLimiter, rateLimitPolicies) }
     routing { giftRoutes(giftService, authService, adminService != null) }
     if (adminService != null) compensationIncidentService?.let { service -> routing { compensationIncidentRoutes(service) } }

@@ -18,4 +18,3 @@ class UgcAvatarImageTest {
             "", "https://game.example", 4))
     }
 }
-

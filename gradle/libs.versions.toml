@@ -55,6 +55,8 @@ hikari = "7.0.2"
 flyway = "13.0.0"
 postgresql = "42.7.13"
 billing = "9.1.0"
+gmaNextGen = "1.5.0"
+ump = "4.0.0"
 angusMail = "2.0.5"
 logback = "1.6.3"
 screenshot = "0.0.1-alpha15"
@@ -120,6 +122,8 @@ hikari = { group = "com.zaxxer", name = "HikariCP", version.ref = "hikari" }
 flyway-core = { group = "org.flywaydb", name = "flyway-core", version.ref = "flyway" }
 flyway-database-postgresql = { group = "org.flywaydb", name = "flyway-database-postgresql", version.ref = "flyway" }
 postgresql = { group = "org.postgresql", name = "postgresql", version.ref = "postgresql" }
+gma-nextgen = { module = "com.google.android.libraries.ads.mobile.sdk:ads-mobile-sdk", version.ref = "gmaNextGen" }
+ump = { module = "com.google.android.ump:user-messaging-platform", version.ref = "ump" }
 play-billing = { group = "com.android.billingclient", name = "billing", version.ref = "billing" }
 angus-mail = { group = "org.eclipse.angus", name = "jakarta.mail", version.ref = "angusMail" }
 logback-classic = { group = "ch.qos.logback", name = "logback-classic", version.ref = "logback" }

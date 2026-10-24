@@ -24,16 +24,33 @@ data class RewardedAdGatewayState(
     val availability: RewardedAdAvailability = RewardedAdAvailability.UNAVAILABLE,
     val isLoading: Boolean = false,
     val isReady: Boolean = false,
+    val isPendingVerification: Boolean = false,
+    val presentationOutcome: RewardedAdShowResult? = null,
     val notice: LocalizedText? = null,
     val error: LocalizedText? = null
 )
 
+/** The exact feedback list rendered by the quota dialog. */
+fun rewardedAdFeedback(state: RewardedAdGatewayState): List<LocalizedText> {
+    val presentation = when (state.presentationOutcome) {
+        RewardedAdShowResult.DISMISSED -> LocalizedText(TextKey.RewardedAdClosed)
+        RewardedAdShowResult.UNAVAILABLE -> LocalizedText(TextKey.RewardedAdUnavailable)
+        else -> null
+    }
+    return listOfNotNull(presentation, state.notice ?: state.error).distinct()
+}
+
+private val unsupportedAdPrivacy = MutableStateFlow(false).asStateFlow()
+
 interface RewardedAdGateway {
+    val privacyOptionsRequired: StateFlow<Boolean> get() = unsupportedAdPrivacy
+    fun showPrivacyOptions() = Unit
     val state: StateFlow<RewardedAdGatewayState>
     val receipts: Flow<RewardedAdReceipt>
 
     fun configure(availability: RewardedAdAvailability)
     fun show(userId: String)
+    fun cancel() = Unit
     fun close()
 }
 
@@ -115,4 +132,4 @@ private fun randomRewardedAdId(): String = buildString {
 }
 
 @Composable
-expect fun rememberRewardedAdGateway(): RewardedAdGateway
+expect fun rememberRewardedAdGateway(sessionGateway: com.hienthai.fastowin.data.network.RewardedAdSessionGateway? = null): RewardedAdGateway

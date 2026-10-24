@@ -105,6 +105,8 @@ fun SettingsScreen(
     onPushPreferencesChange: (PushPreferencesSnapshot) -> Unit = {},
     installStatus: AppInstallStatus = AppInstallStatus.UNSUPPORTED,
     onInstallApp: () -> Unit = {},
+    adPrivacyOptionsRequired: Boolean = false,
+    onAdPrivacyOptions: () -> Unit = {},
     announcementState: com.hienthai.fastowin.state.AnnouncementState? = null,
     onAnnouncementPreferences: (Boolean, Boolean) -> Unit = { _, _ -> },
     onAnnouncementRetry: () -> Unit = {},
@@ -154,6 +156,12 @@ fun SettingsScreen(
                     verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
                     SettingsHero()
+                    if (adPrivacyOptionsRequired) {
+                        SettingsSection(title = localized(TextKey.RewardedAdPrivacyOptions), subtitle = localized(TextKey.RewardedAdPrivacyDescription)) {
+                            ArcadeActionButton(label = localized(TextKey.RewardedAdPrivacyOptions), onClick = onAdPrivacyOptions,
+                                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("ad_privacy_options"))
+                        }
+                    }
 
                     if (installStatus != AppInstallStatus.UNSUPPORTED) {
                         SettingsSection(
