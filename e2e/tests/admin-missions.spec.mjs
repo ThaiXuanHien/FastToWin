@@ -95,3 +95,24 @@ test('validation preserves target and economy hints alongside inline errors',asy
   await page.getByLabel('Mục tiêu',{exact:true}).fill('5');await page.getByLabel('Mã nhiệm vụ',{exact:true}).fill('');await page.getByLabel('Vàng',{exact:true}).fill('0');await page.getByRole('button',{name:'Lưu bản nháp',exact:true}).click();
   await expect(page.getByLabel('Mục tiêu',{exact:true})).toHaveAttribute('aria-describedby','mission-condition-hint');await expect(page.getByLabel('Vàng',{exact:true})).toHaveAttribute('aria-describedby','mission-economy-hint');
 });
+
+for (const scope of ['PERSONAL','CLAN']) for (const action of ['PLAY','WIN']) test(`${scope} ${action} to WIN_STREAK clears unsupported mode from DOM and payload`,async({page,fixture})=>{
+  missions(fixture);await open(page,fixture);await page.getByRole('button',{name:'Tạo nhiệm vụ',exact:true}).click();await fill(page,scope);
+  const mode=page.getByLabel('Loại trận',{exact:true}), actionField=page.getByLabel('Loại hành động',{exact:true});
+  await actionField.selectOption(action);await mode.selectOption('RANKED');await actionField.selectOption('WIN_STREAK');
+  await expect(mode).toBeHidden();expect(await mode.inputValue()).toBe('');
+  await expect(page.locator('#mission-condition-hint')).toContainText('Đấu thường và Đấu hạng');
+  // Returning to a supported action must reveal an empty selector, not revive the stale mode.
+  await actionField.selectOption(action);await expect(mode).toBeVisible();await expect(mode).toHaveValue('');
+  await mode.selectOption('CASUAL');await actionField.selectOption('WIN_STREAK');
+  if(scope==='PERSONAL')await page.getByLabel('Mục tiêu',{exact:true}).fill('3');
+  if(action==='PLAY') {
+    await mkdir(artifacts,{recursive:true});await page.setViewportSize({width:scope==='PERSONAL'?375:1440,height:900});
+    await page.emulateMedia({reducedMotion:'reduce'});await page.locator('#mission-condition-hint').scrollIntoViewIfNeeded();
+    await page.screenshot({path:`${artifacts}/final-fix-${scope}-streak.png`});
+  }
+  await page.getByRole('button',{name:'Lưu bản nháp',exact:true}).click();await expect(page.getByRole('heading',{name:'TEST_'+scope,exact:true})).toBeVisible();
+  const body=fixture.calls.find(c=>c.route==='/admin/api/missions'&&c.method==='POST').body;
+  expect(body.draft).not.toHaveProperty('matchType');expect(body.draft.action).toBe('WIN_STREAK');
+  expect(body.draft.target).toBe(scope==='CLAN'?5:3);if(scope==='CLAN')expect(body.draft.streakThreshold).toBe(3);
+});

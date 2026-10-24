@@ -31,3 +31,11 @@ test('current role, view fence and double submit guard every mutation', async ()
   await assert.rejects(submit.submit({reason:'Publish',expectedVersion:1}),/xử lý/); resolve({}); await pending;
   role='OPERATOR'; await assert.rejects(submit.submit({}),/quyền/); role='OWNER';current=false; await assert.rejects(submit.submit({}),/hết hiệu lực/); assert.equal(calls.length,1);
 });
+
+test('mode-qualified streaks are rejected but supported mode-qualified actions remain valid',()=>{
+  for(const scope of ['PERSONAL','CLAN']) for(const matchType of ['CASUAL','RANKED']) {
+    const streak={...draft,scope,action:'WIN_STREAK',matchType,...(scope==='CLAN'?{streakThreshold:3}:{})};
+    assert.ok(validateMission(streak).matchType);assert.deepEqual(validateMission({...streak,matchType:null}),{});
+    for(const action of ['PLAY','WIN','CORRECT','ACCURACY','PERFECT_WIN'])assert.deepEqual(validateMission({...draft,scope,action,matchType,...(action==='ACCURACY'?{accuracyPercent:90}:{})}),{});
+  }
+});

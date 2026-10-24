@@ -5,7 +5,7 @@ const periods = { DAILY: 'Hàng ngày', WEEKLY: 'Hàng tuần' };
 const difficulties = { EASY: 'Dễ', NORMAL: 'Thường', HARD: 'Khó', ELITE: 'Tinh anh' };
 const states = { DRAFT: 'Bản nháp', PUBLISHED: 'Đã phát hành', ARCHIVED: 'Đã lưu trữ' };
 const modes = { CASUAL: 'Đấu thường', RANKED: 'Đấu hạng' };
-const noMatch = action => ['CHECK_IN', 'DONATE_GOLD', 'DONATE_GEMS'].includes(action);
+const noMatch = action => ['WIN_STREAK', 'CHECK_IN', 'DONATE_GOLD', 'DONATE_GEMS'].includes(action);
 const rewardKeys = { xp: 'XP', gold: 'Vàng', gems: 'Gem', contributionPoints: 'Điểm cống hiến' };
 const units = draft => draft.scope === 'CLAN' && draft.action === 'WIN_STREAK' ? 'thành viên đạt mốc' : ({ CORRECT: 'số đúng', DONATE_GOLD: 'Vàng', DONATE_GEMS: 'Gem', CHECK_IN: 'lần điểm danh', WIN_STREAK: 'trận thắng liên tiếp' }[draft.action] || 'trận');
 export function missionSummary(draft) {
@@ -175,7 +175,7 @@ export function openMissions(ui) {
       accuracy.parentElement.hidden = action.value !== 'ACCURACY'; streak.parentElement.hidden = !clanStreak;
       // An incompatible existing reward stays visible for correction; never silently erase an asset.
       controls.contributionPoints.parentElement.hidden = scope.value !== 'CLAN' && +controls.contributionPoints.value === 0;
-      hint.textContent = clanStreak ? 'Đếm thành viên đạt chuỗi cá nhân; không cộng độ dài chuỗi của nhiều người.' : `Đơn vị mục tiêu: ${units({ scope: scope.value, action: action.value })}.`;
+      hint.textContent = action.value === 'WIN_STREAK' ? `${clanStreak ? 'Đếm thành viên đạt chuỗi cá nhân; không cộng độ dài chuỗi của nhiều người. ' : ''}Chuỗi thắng tính chung Đấu thường và Đấu hạng; không tách theo loại trận.` : `Đơn vị mục tiêu: ${units({ scope: scope.value, action: action.value })}.`;
       economy.textContent = action.value.startsWith('DONATE_') ? scope.value === 'CLAN' ? 'Nhiệm vụ bang: quyên góp Vàng không thưởng lại Vàng; quyên góp Gem không thưởng lại Gem. Chọn XP hoặc tài sản khác.' : 'Nhiệm vụ cá nhân: thưởng cùng tài sản không được vượt mục tiêu quyên góp.' : 'Điểm cống hiến chỉ dùng cho nhiệm vụ bang, tách khỏi XP bang.';
       for (const key of ['gold', 'gems']) controls[key].setAttribute('aria-describedby', 'mission-economy-hint'); economy.id = 'mission-economy-hint';
     }

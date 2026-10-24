@@ -551,6 +551,89 @@ class MissionEnginePostgresTest {
         }
     }
 
+    @Test fun `personal mode qualified streak create is rejected before persistence`() = typedStreakRejected(MissionScope.PERSONAL,"create")
+    @Test fun `clan mode qualified streak create is rejected before persistence`() = typedStreakRejected(MissionScope.CLAN,"create")
+    @Test fun `personal mode qualified streak update is rejected before persistence`() = typedStreakRejected(MissionScope.PERSONAL,"update")
+    @Test fun `clan mode qualified streak update is rejected before persistence`() = typedStreakRejected(MissionScope.CLAN,"update")
+    @Test fun `personal mode qualified streak publish is rejected before persistence`() = typedStreakRejected(MissionScope.PERSONAL,"publish")
+    @Test fun `clan mode qualified streak publish is rejected before persistence`() = typedStreakRejected(MissionScope.CLAN,"publish")
+
+    private fun typedStreakRejected(scope:MissionScope,operation:String) = runTest {
+        database { source ->
+            val now=Instant.parse("2026-10-24T06:00:00Z").toEpochMilli()
+            val admins=AdminService(PostgresAdminRepository(source),AdminConfiguration("https://admin.example",false),PasswordHasher(iterations=1000),{now})
+            admins.bootstrapOwner("owner@example.com","GoodPassword123!")
+            val login=admins.login("owner@example.com","GoodPassword123!","https://admin.example","127.0.0.1")
+            val context=MissionAdminContext(login.token,login.response.csrfToken,"https://admin.example")
+            val repo=PostgresMissionRepository(source);val service=MissionService(repo,admins,{now})
+            testApplication {
+                application { gameModule(adminService=admins,missionService=service,giftDeliveryEnabled=false) }
+                for(mode in listOf(MatchType.CASUAL,MatchType.RANKED)) {
+                    val code="TYPED_${scope.name}_${mode.name}"
+                    val config=MissionConfig(code,scope,MissionAction.WIN_STREAK,MissionCadence.DAILY,MissionDifficulty.HARD,
+                        if(scope==MissionScope.CLAN) 2 else 3,MissionReward(),matchType=mode,streakThreshold=if(scope==MissionScope.CLAN) 3 else null)
+                    // Settlement's 2 CASUAL + 1 RANKED wins produce global streak3; neither is a three-win mode streak.
+                    // Reject the unsupported condition rather than promising a per-mode statistic we do not store.
+                    val draft=if(operation=="create") null else service.create(context,MissionDraftRequest(
+                        config.copy(action=MissionAction.WIN,streakThreshold=null),reason="Supported mode fixture",requestId="setup-$mode"))
+                    if(operation=="publish") repo.transaction { put(draft!!.copy(draft=config)) } // Pre-fix saved draft.
+                    val before=draft?.let { service.detail(context,it.id) }
+                    val definitions=number(source,"SELECT count(*) FROM mission_definitions")
+                    val revisions=number(source,"SELECT count(*) FROM mission_revisions")
+                    val route=when(operation) { "create" -> "/admin/api/missions";"update" -> "/admin/api/missions/${draft!!.id}/draft";else -> "/admin/api/missions/${draft!!.id}/publish" }
+                    val response=client.request(route) {
+                        method=if(operation=="update") HttpMethod.Put else HttpMethod.Post
+                        contentType(ContentType.Application.Json);header(HttpHeaders.Origin,context.origin)
+                        header(HttpHeaders.Cookie,"fasttowin_admin=${login.token}");header("X-Admin-CSRF",login.response.csrfToken)
+                        setBody(if(operation=="publish") Json.encodeToString(MissionMutationRequest(draft!!.version,"Reject unsupported mode","reject-$mode"))
+                            else Json.encodeToString(MissionDraftRequest(config,draft?.version?:0,"Reject unsupported mode","reject-$mode")))
+                    }
+                    assertEquals(HttpStatusCode.BadRequest,response.status,"$scope $mode $operation: ${response.bodyAsText()}")
+                    assertEquals("INVALID_REQUEST",Json.decodeFromString<MissionApiError>(response.bodyAsText()).code)
+                    assertEquals(definitions,number(source,"SELECT count(*) FROM mission_definitions"))
+                    assertEquals(revisions,number(source,"SELECT count(*) FROM mission_revisions"))
+                    if(before!=null) assertEquals(before,service.detail(context,before.id))
+                }
+            }
+        }
+    }
+
+    @Test fun `unrestricted streak uses actual global mixed mode settlement and typed wins retain filtering`() = runTest {
+        database { source ->
+            var now=Instant.parse("2026-10-23T06:00:00Z").toEpochMilli()
+            val ids=PostgresGuestIdentityRepository(source)
+            val one=ids.resolveGuest("Mixed modes",null,1000).playerId;val two=ids.resolveGuest("Other",null,1001).playerId
+            clan(source,one,listOf(two))
+            val admins=AdminService(PostgresAdminRepository(source),AdminConfiguration("https://admin.example",false),PasswordHasher(iterations=1000),{now})
+            admins.bootstrapOwner("owner@example.com","GoodPassword123!")
+            val login=admins.login("owner@example.com","GoodPassword123!","https://admin.example","127.0.0.1")
+            val context=MissionAdminContext(login.token,login.response.csrfToken,"https://admin.example")
+            val service=MissionService(PostgresMissionRepository(source),admins,{now})
+            execute(source,"UPDATE mission_definitions SET archived_from='2026-10-24'")
+            val configs=listOf(
+                MissionConfig("GLOBAL_PERSONAL",MissionScope.PERSONAL,MissionAction.WIN_STREAK,MissionCadence.DAILY,MissionDifficulty.HARD,3,MissionReward()),
+                MissionConfig("GLOBAL_CLAN",MissionScope.CLAN,MissionAction.WIN_STREAK,MissionCadence.DAILY,MissionDifficulty.HARD,2,MissionReward(),streakThreshold=3),
+                MissionConfig("RANKED_WINS",MissionScope.PERSONAL,MissionAction.WIN,MissionCadence.DAILY,MissionDifficulty.NORMAL,3,MissionReward(),matchType=MatchType.RANKED))
+            for(config in configs) {
+                val draft=service.create(context,MissionDraftRequest(config,reason="Global semantics",requestId="create-${config.code}"))
+                service.publish(context,draft.id,MissionMutationRequest(draft.version,"Publish","publish-${config.code}"))
+            }
+            now=System.currentTimeMillis()
+            val matches=PostgresMatchResultRepository(source)
+            for((index,mode) in listOf(MatchType.CASUAL,MatchType.CASUAL,MatchType.RANKED).withIndex()) {
+                val match=CompletedMatch(UUID.randomUUID().toString(),"Mixed mode streak",ProtocolGameMode.ORDER,now-1000,now,one,
+                    listOf(CompletedMatchPlayer(one,"Mixed modes",1,MatchOutcome.WIN),CompletedMatchPlayer(two,"Other",0,MatchOutcome.LOSS)),matchType=mode)
+                matches.save(match);matches.save(match)
+                val personal=service.personal(one).items
+                assertEquals(if(index==2) 3 else 0,personal.single { it.code=="GLOBAL_PERSONAL" }.progress)
+                assertEquals(if(index==2) 1 else 0,personal.single { it.code=="RANKED_WINS" }.progress)
+                assertEquals(if(index==2) 1 else 0,service.clan(one).items.single { it.code=="GLOBAL_CLAN" }.progress)
+            }
+            assertEquals(3,number(source,"SELECT current_win_streak FROM player_stats WHERE user_id='$one'"))
+            assertEquals(1,service.clan(one).items.single { it.code=="GLOBAL_CLAN" }.personalContribution)
+        }
+    }
+
     private fun legacyRenderedTitle(mission:MissionSnapshot,language:AppLanguage):String =
         mission.titleKey?.let { raw -> TextKey.entries.firstOrNull { it.name==raw } }
             ?.let { key -> runCatching { LocalizationService(language).text(key,emptyMap()) }.getOrNull() } ?: mission.title

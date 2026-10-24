@@ -105,7 +105,8 @@ class MissionService(
         if(value.scope==MissionScope.CLAN && value.action==MissionAction.WIN_STREAK) {
             if(value.streakThreshold==null || value.streakThreshold !in 1..1_000_000_000) invalid()
         } else if(value.streakThreshold!=null) invalid()
-        if(value.matchType!=null && value.action in setOf(MissionAction.CHECK_IN,MissionAction.DONATE_GOLD,MissionAction.DONATE_GEMS)) invalid()
+        // Settlement records one global streak across eligible match types.
+        if(value.matchType!=null && value.action in setOf(MissionAction.WIN_STREAK,MissionAction.CHECK_IN,MissionAction.DONATE_GOLD,MissionAction.DONATE_GEMS)) invalid()
         val start=value.startsOn?.let { date(it) };val end=value.endsOn?.let { date(it) }
         if(start!=null && end!=null && start>=end) invalid()
     }
