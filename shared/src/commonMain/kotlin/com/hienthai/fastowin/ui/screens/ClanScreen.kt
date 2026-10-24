@@ -1,5 +1,8 @@
 package com.hienthai.fastowin.ui.screens
 
+import com.hienthai.fastowin.state.MissionState
+import com.hienthai.fastowin.ui.components.ServerMissionList
+
 import com.hienthai.fastowin.ui.components.canReportUgcTarget
 import com.hienthai.fastowin.ui.components.ReportableText
 import com.hienthai.fastowin.ui.components.UgcReportButton
@@ -77,7 +80,6 @@ import com.hienthai.fastowin.protocol.CLAN_CREATION_GOLD_COST
 import com.hienthai.fastowin.protocol.ClanDonationCurrency
 import com.hienthai.fastowin.protocol.ClanJoinRequestSnapshot
 import com.hienthai.fastowin.protocol.ClanMemberSnapshot
-import com.hienthai.fastowin.protocol.ClanQuestSnapshot
 import com.hienthai.fastowin.protocol.ClanRole
 import com.hienthai.fastowin.protocol.ClanSnapshot
 import com.hienthai.fastowin.protocol.ClanSummarySnapshot
@@ -134,6 +136,9 @@ fun ClanScreen(
     onOpenNotifications: () -> Unit = {},
     showBackButton: Boolean = true,
     modifier: Modifier = Modifier,
+    missionState: MissionState? = null,
+    onRefreshMissions: () -> Unit = {},
+    onClaimMissionInstance: (String) -> Unit = {}
 ) {
     SystemBackHandler(enabled = showBackButton, onBack = onBack)
 
@@ -182,6 +187,9 @@ fun ClanScreen(
                     onRespondJoinRequest = onRespondJoinRequest,
                     onUpdateLogo = { logoId -> onUpdateLogo(currentClan.id, logoId) },
                     onClaimQuest = { onClaimQuest(currentClan.id) },
+                    missionState = missionState,
+                    onRefreshMissions = onRefreshMissions,
+                    onClaimMissionInstance = onClaimMissionInstance,
                     gold = gold,
                     gems = gems,
                     isDonationPending = isDonationPending,
@@ -469,7 +477,10 @@ fun ClanDetailView(
     gems: Int = 0,
     isDonationPending: Boolean = false,
     onDonate: (ClanDonationCurrency, Int) -> Unit = { _, _ -> },
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    missionState: MissionState? = null,
+    onRefreshMissions: () -> Unit = {},
+    onClaimMissionInstance: (String) -> Unit = {}
 ) {
     var showLogoDialog by remember { mutableStateOf(false) }
     var showLeaveConfirmation by remember { mutableStateOf(false) }
@@ -513,13 +524,9 @@ fun ClanDetailView(
             )
         }
 
-        clan.quest?.let { quest ->
-            item(key = "clan_quest") {
-                ClanQuestCard(
-                    quest = quest,
-                    alreadyClaimed = currentMember?.questRewardClaimed == true,
-                    onClaim = onClaimQuest
-                )
+        if (currentMember != null && missionState != null) {
+            item(key = "clan_missions") {
+                ServerMissionList(missionState, onRefreshMissions, onClaimMissionInstance)
             }
         }
 
@@ -843,62 +850,6 @@ private fun ClanStatCard(value: String, label: String, modifier: Modifier = Modi
                 color = ArcadePalette.Blue100,
                 maxLines = 2
             )
-        }
-    }
-}
-
-@Composable
-private fun ClanQuestCard(
-    quest: ClanQuestSnapshot,
-    alreadyClaimed: Boolean,
-    onClaim: () -> Unit
-) {
-    val progress = (quest.progress.toFloat() / quest.target.coerceAtLeast(1)).coerceIn(0f, 1f)
-    ArcadePanel(modifier = Modifier.fillMaxWidth(), accent = ArcadePalette.Gold500) {
-        Column(
-            modifier = Modifier.fillMaxWidth().padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            Text(
-                localized(TextKey.WeeklyClanQuest),
-                style = MaterialTheme.typography.labelMedium,
-                color = ArcadePalette.Gold500,
-                fontWeight = FontWeight.Black
-            )
-            Text(
-                localized(TextKey.WinClanMatches, "count" to quest.target),
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Black
-            )
-            LinearProgressIndicator(
-                progress = { progress },
-                modifier = Modifier.fillMaxWidth().height(9.dp),
-                color = ArcadePalette.Gold500,
-                trackColor = ArcadePalette.Navy700
-            )
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Text("${quest.progress}/${quest.target}", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                RewardAmounts(gold = quest.rewardGold, xp = quest.rewardXp, gems = quest.rewardGems)
-            }
-            when {
-                alreadyClaimed -> ArcadeActionButton(
-                    label = localized(TextKey.Claimed),
-                    onClick = {},
-                    enabled = false,
-                    style = ArcadeActionStyle.OUTLINE,
-                    modifier = Modifier.fillMaxWidth()
-                )
-                quest.progress >= quest.target -> ArcadeActionButton(
-                    label = localized(TextKey.ClaimReward),
-                    onClick = onClaim,
-                    style = ArcadeActionStyle.GOLD,
-                    modifier = Modifier.fillMaxWidth()
-                )
-            }
         }
     }
 }

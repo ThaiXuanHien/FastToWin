@@ -11,6 +11,7 @@ enum class TextKey {
     UgcTermsTitle, UgcTermsDescription, UgcTermsAgreement, UgcTermsRead, UgcTermsVersion, UgcTermsFailed, UgcTermsAccept,
     UgcReportRateLimit, UgcReportUnavailable, UgcReportFrozen, UgcConnectionInterrupted,
     LegalTitle, LegalSubtitle, LegalPrivacy, LegalTerms, LegalDeleteAccount,
+    MissionPeriodRange, MissionContributionPoints, MissionRequestError, MissionRefresh, MissionOngoingClan,
     Back, Cancel, Confirm, Retry, Close, Save, Delete, Loading, UnknownError, WelcomePlayer,
     SettingsTitle, LanguageTitle, ChooseLanguageTitle, SystemLanguage, ResolvedSystemLanguage,
     AppearanceTitle, AppearanceSubtitle,

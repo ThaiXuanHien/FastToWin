@@ -114,8 +114,6 @@ import com.hienthai.fastowin.protocol.MatchType
 import com.hienthai.fastowin.protocol.MatchDetailSnapshot
 import com.hienthai.fastowin.protocol.CosmeticSnapshot
 import com.hienthai.fastowin.protocol.CosmeticType
-import com.hienthai.fastowin.protocol.MissionDifficulty
-import com.hienthai.fastowin.protocol.MissionSnapshot
 import com.hienthai.fastowin.protocol.DailyCheckInSnapshot
 import com.hienthai.fastowin.protocol.DAILY_CHECK_IN_AVATAR_ID
 import com.hienthai.fastowin.protocol.DAILY_CHECK_IN_FRAME_TARGET
@@ -136,6 +134,8 @@ import com.hienthai.fastowin.state.accountPasswordError
 import com.hienthai.fastowin.localization.localized
 import com.hienthai.fastowin.localization.localizedNetworkText
 import com.hienthai.fastowin.localization.TextKey
+import com.hienthai.fastowin.state.MissionState
+import com.hienthai.fastowin.ui.components.ServerMissionList
 import com.hienthai.fastowin.localization.LocalLocalization
 import com.hienthai.fastowin.ui.components.SystemBackHandler
 import com.hienthai.fastowin.platform.epochMillis
@@ -878,7 +878,10 @@ fun ProfileSectionScreen(
     onClaimMissionReward: (String) -> Unit,
     onSave: (String, String?) -> Unit,
     onOpenNotifications: () -> Unit,
-    onOpenRewardEvent: ((String) -> Unit)? = null
+    onOpenRewardEvent: ((String) -> Unit)? = null,
+    missionState: MissionState = MissionState(),
+    onRefreshMissions: () -> Unit = {},
+    onClaimMissionInstance: (String) -> Unit = {}
 ) {
     SystemBackHandler(onBack = onBack)
     val isLoading = when {
@@ -964,11 +967,10 @@ fun ProfileSectionScreen(
                                 totalCheckIns = checkIn.totalCheckIns
                             )
                         }
-                        ProfileSection.MISSIONS -> MissionSectionContent(
-                            state = state,
-                            profile = profile,
-                            canEdit = canEdit,
-                            onClaimMissionReward = onClaimMissionReward
+                        ProfileSection.MISSIONS -> ServerMissionList(
+                            state = missionState,
+                            onRefresh = onRefreshMissions,
+                            onClaim = onClaimMissionInstance
                         )
                         ProfileSection.COLLECTION -> CollectionSectionContent(
                             state = state,
@@ -1011,7 +1013,7 @@ private fun ProfileSectionHero(section: ProfileSection) {
             Res.drawable.arcade_leaderboard_trophy
         )
         ProfileSection.MISSIONS -> Triple(
-            localized(TextKey.TodayMissions),
+            localized(TextKey.MissionsTitle),
             localized(TextKey.TodayMissionsDescription),
             Res.drawable.arcade_notifications_inbox
         )
@@ -1293,123 +1295,6 @@ private fun StatisticsAchievementsSectionContent(profile: PlayerProfileSnapshot)
 }
 
 @Composable
-private fun MissionSectionContent(
-    state: GameState,
-    profile: PlayerProfileSnapshot,
-    canEdit: Boolean,
-    onClaimMissionReward: (String) -> Unit
-) {
-    val missionGroups = listOf(
-        localized(TextKey.DailyMissions) to profile.progression.dailyMissions,
-        localized(TextKey.WeeklyMissions) to profile.progression.weeklyMissions
-    )
-    if (missionGroups.all { it.second.isEmpty() }) {
-        Text(localized(TextKey.NoMissions), color = MaterialTheme.colorScheme.onSurfaceVariant)
-        return
-    }
-    missionGroups.forEach { (sectionTitle, missions) ->
-        if (missions.isNotEmpty()) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(sectionTitle, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
-                Text(
-                    localized(TextKey.MissionProgress, "completed" to missions.count { it.completed }, "total" to missions.size),
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-        }
-        missions.forEach { mission ->
-            key(mission.code) {
-                MissionArcadeCard(
-                    mission = mission,
-                    canEdit = canEdit,
-                    claimingMissionCode = state.claimingMissionCode,
-                    onClaim = { onClaimMissionReward(mission.code) }
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun MissionArcadeCard(
-    mission: MissionSnapshot,
-    canEdit: Boolean,
-    claimingMissionCode: String?,
-    onClaim: () -> Unit
-) {
-    val accent = when (mission.difficulty) {
-        MissionDifficulty.EASY -> ArcadeSuccess
-        MissionDifficulty.NORMAL -> MaterialTheme.colorScheme.primary
-        MissionDifficulty.HARD -> ArcadeGold
-        MissionDifficulty.ELITE -> ArcadeOpponent
-    }
-    ArcadePanel(modifier = Modifier.fillMaxWidth(), accent = accent) {
-        BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
-            val compact = maxWidth < 440.dp
-            if (compact) {
-                Column(
-                    modifier = Modifier.fillMaxWidth().padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    MissionArcadeDetails(mission)
-                    MissionClaimControl(
-                        mission = mission,
-                        canEdit = canEdit,
-                        claimingMissionCode = claimingMissionCode,
-                        onClaim = onClaim,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                }
-            } else {
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(16.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(16.dp)
-                ) {
-                    MissionArcadeDetails(mission, Modifier.weight(1f))
-                    MissionClaimControl(
-                        mission = mission,
-                        canEdit = canEdit,
-                        claimingMissionCode = claimingMissionCode,
-                        onClaim = onClaim
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun MissionArcadeDetails(mission: MissionSnapshot, modifier: Modifier = Modifier) {
-    Column(modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Text(localizedMissionTitle(mission), fontWeight = FontWeight.Black, modifier = Modifier.weight(1f))
-            MissionDifficultyBadge(mission.difficulty)
-        }
-        LinearProgressIndicator(
-            progress = { mission.progress.toFloat() / mission.target.coerceAtLeast(1) },
-            modifier = Modifier.fillMaxWidth().height(8.dp),
-            color = if (mission.completed) ArcadeSuccess else MaterialTheme.colorScheme.primary
-        )
-        Text(
-            "${mission.progress}/${mission.target}",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-        RewardAmounts(gold = mission.rewardGold, xp = mission.rewardXp, gems = mission.rewardGems)
-    }
-}
-
-@Composable
 private fun localizedAchievementTitle(achievement: com.hienthai.fastowin.protocol.AchievementSnapshot): String =
     localizedNetworkText(
         achievement.titleKey ?: legacyAchievementTitleKey(achievement.code)?.name,
@@ -1441,84 +1326,6 @@ private fun legacyAchievementDescriptionKey(code: String): TextKey? = when (code
     "SPEED_50" -> TextKey.AchievementSpeedDescription
     "DAILY_STREAK_7" -> TextKey.AchievementCheckInDescription
     else -> null
-}
-
-@Composable
-private fun localizedMissionTitle(mission: MissionSnapshot): String =
-    localizedNetworkText(
-        mission.titleKey ?: when (mission.code) {
-            "DAILY_PLAY_3" -> TextKey.MissionPlayThree.name
-            "DAILY_WIN_1" -> TextKey.MissionWinOne.name
-            "WEEKLY_CORRECT_100" -> TextKey.MissionCorrectHundred.name
-            "WEEKLY_PERFECT_1" -> TextKey.MissionPerfectWin.name
-            else -> null
-        },
-        emptyMap(),
-        mission.title
-    )
-
-@Composable
-private fun MissionClaimControl(
-    mission: MissionSnapshot,
-    canEdit: Boolean,
-    claimingMissionCode: String?,
-    onClaim: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    when {
-        mission.rewardClaimed -> ArcadeActionButton(
-            label = localized(TextKey.Claimed),
-            onClick = {},
-            enabled = false,
-            style = ArcadeActionStyle.OUTLINE,
-            modifier = modifier.heightIn(min = 48.dp).testTag("claim_mission:${mission.code}")
-        )
-        mission.completed && canEdit -> ArcadeActionButton(
-            label = localized(if (claimingMissionCode == mission.code) TextKey.Claiming else TextKey.ClaimReward),
-            onClick = onClaim,
-            // Keep sibling mission actions visually stable while one request is
-            // pending. GameController still serializes claims authoritatively.
-            enabled = claimingMissionCode != mission.code,
-            style = ArcadeActionStyle.GOLD,
-            modifier = modifier.heightIn(min = 48.dp).testTag("claim_mission:${mission.code}")
-        )
-        mission.completed -> Text(localized(TextKey.MissionCompleted), modifier = modifier, style = MaterialTheme.typography.bodySmall)
-    }
-}
-
-@Composable
-private fun MissionDifficultyBadge(difficulty: MissionDifficulty) {
-    val label = when (difficulty) {
-        MissionDifficulty.EASY -> localized(TextKey.DifficultyEasy)
-        MissionDifficulty.NORMAL -> localized(TextKey.DifficultyNormal)
-        MissionDifficulty.HARD -> localized(TextKey.DifficultyHard)
-        MissionDifficulty.ELITE -> localized(TextKey.DifficultyElite)
-    }
-    val containerColor = when (difficulty) {
-        MissionDifficulty.EASY -> MaterialTheme.colorScheme.secondaryContainer
-        MissionDifficulty.NORMAL -> MaterialTheme.colorScheme.primaryContainer
-        MissionDifficulty.HARD -> MaterialTheme.colorScheme.tertiaryContainer
-        MissionDifficulty.ELITE -> MaterialTheme.colorScheme.errorContainer
-    }
-    val contentColor = when (difficulty) {
-        MissionDifficulty.EASY -> MaterialTheme.colorScheme.onSecondaryContainer
-        MissionDifficulty.NORMAL -> MaterialTheme.colorScheme.onPrimaryContainer
-        MissionDifficulty.HARD -> MaterialTheme.colorScheme.onTertiaryContainer
-        MissionDifficulty.ELITE -> MaterialTheme.colorScheme.onErrorContainer
-    }
-    Surface(
-        shape = RoundedCornerShape(8.dp),
-        color = containerColor,
-        modifier = Modifier.testTag("mission_difficulty_${difficulty.name.lowercase()}")
-    ) {
-        Text(
-            label,
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
-            style = MaterialTheme.typography.labelSmall,
-            fontWeight = FontWeight.Bold,
-            color = contentColor
-        )
-    }
 }
 
 @Composable

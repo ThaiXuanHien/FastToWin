@@ -4,7 +4,8 @@ import androidx.compose.runtime.Composable
 import com.android.tools.screenshot.PreviewTest
 import com.hienthai.fastowin.platform.StoreBillingState
 import com.hienthai.fastowin.platform.StoreProductPrice
-import com.hienthai.fastowin.protocol.StorePlatform
+import com.hienthai.fastowin.protocol.*
+import com.hienthai.fastowin.state.MissionState
 import com.hienthai.fastowin.ui.screens.ClanScreen
 import com.hienthai.fastowin.ui.screens.LeaderboardScreen
 import com.hienthai.fastowin.ui.screens.NotificationsScreen
@@ -66,6 +67,13 @@ fun clanDetail() = ArcadeScreenshotFrame {
         onRespondJoinRequest = { _, _, _ -> },
         onUpdateLogo = { _, _ -> },
         onClaimQuest = {},
+        missionState = MissionState(items = listOf(MissionInstanceView(
+            instanceId = "legacy-clan-period", code = "LEGACY_CLAN_QUEST", scope = MissionScope.CLAN,
+            action = MissionAction.WIN, period = MissionCadence.WEEKLY, difficulty = MissionDifficulty.NORMAL,
+            periodStart = "1970-01-01", periodEndExclusive = "1970-01-05", target = 350, progress = 261,
+            personalContribution = 86, reward = MissionReward(xp = 800, gold = 5000, gems = 10),
+            state = MissionClaimState.IN_PROGRESS, titleKey = "MissionActionWIN", titleArguments = mapOf("target" to "350")
+        ))),
         onViewClan = {},
         onBack = {},
         gold = state.profile?.progression?.gold ?: 0,
