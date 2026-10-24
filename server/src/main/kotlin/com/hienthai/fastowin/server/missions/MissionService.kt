@@ -60,7 +60,7 @@ class MissionService(
     }
     suspend fun archive(context:MissionAdminContext,id:String,request:MissionMutationRequest):MissionAdminView=mutate(context,"ARCHIVE",id,request.expectedVersion,request.reason,request.requestId,Json.encodeToString(request),true) { before,_ ->
         val old=before?:missing();if(old.publishedRevision==null || old.state==MissionCatalogState.ARCHIVED) conflict()
-        old.copy(version=Math.addExact(old.version,1),state=MissionCatalogState.ARCHIVED).also { archive(it,nextPeriod(it.draft.period,missionDate(nowMillis()))) }
+        old.copy(version=Math.addExact(old.version,1),state=MissionCatalogState.ARCHIVED).also { archive(it,archiveCutoff(old.id,missionDate(nowMillis()))) }
     }
     suspend fun deleteDraft(context:MissionAdminContext,id:String,request:MissionMutationRequest):MissionAdminView=mutate(context,"DELETE",id,request.expectedVersion,request.reason,request.requestId,Json.encodeToString(request)) { before,_ ->
         val old=before?:missing();if(old.publishedRevision!=null || old.state!=MissionCatalogState.DRAFT) conflict();delete(old);old

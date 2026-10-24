@@ -51,6 +51,18 @@ class JdbcMissionStore(private val c:Connection) {
             id(value.id),value.version,Json.encodeToString(config),Date.valueOf(value.effectiveFrom),config.target,config.reward.xp,config.reward.gold,config.reward.gems)
         put(value)
     }
+    internal fun archiveCutoff(definitionId:String,date:LocalDate):LocalDate {
+        val published=rows("SELECT revision,effective_from,config FROM mission_revisions WHERE definition_id=? ORDER BY revision",listOf(id(definitionId))) {
+            Triple(it.getLong(1),it.getDate(2).toLocalDate(),Json.decodeFromString<MissionConfig>(it.getString(3)))
+        }
+        // A cadence already in progress can retain its old revision when another cadence starts mid-period.
+        val current=MissionCadence.entries.mapNotNull { cadence ->
+            published.lastOrNull { it.second<=periodStart(cadence,date) }?.takeIf { it.third.period==cadence }
+        }
+        // Archive also cancels scheduled revisions; an unpublished draft never determines this boundary.
+        val pending=published.filter { it.second>date }
+        return (current+pending).minOfOrNull { nextPeriod(it.third.period,date) }?:conflict()
+    }
     internal fun archive(value:MissionAdminView,from:LocalDate) { put(value);update("UPDATE mission_definitions SET archived_from=? WHERE id=?",Date.valueOf(from),id(value.id)) }
     internal fun delete(value:MissionAdminView) { update("DELETE FROM mission_definitions WHERE id=?",id(value.id)) }
     internal fun replay(actor:String,request:String):Pair<String,MissionAdminView>?=rows("SELECT fingerprint,result FROM mission_admin_requests WHERE actor_id=? AND request_id=?",listOf(id(actor),request)) { it.getString(1) to Json.decodeFromString<MissionAdminView>(it.getString(2)) }.singleOrNull()
@@ -190,8 +202,20 @@ class JdbcMissionStore(private val c:Connection) {
     }
     internal fun legacyDefinitions(player:String,date:LocalDate):List<com.hienthai.fastowin.server.MissionDefinition> = ensure(player,MissionScope.PERSONAL,date).filter { it.start==periodStart(it.selection.config.period,date) }.map {
         val config=it.selection.config
-        val key=com.hienthai.fastowin.localization.TextKey.valueOf("MissionAction${config.action.name}")
-        val title=com.hienthai.fastowin.localization.LocalizationService(com.hienthai.fastowin.localization.AppLanguage.VIETNAMESE).text(key,mapOf("target" to config.target,"accuracy" to (config.accuracyPercent?:90)))
+        val localization=com.hienthai.fastowin.localization.LocalizationService(com.hienthai.fastowin.localization.AppLanguage.VIETNAMESE)
+        val specificKey=when {
+            config.action==MissionAction.PLAY && config.matchType==MatchType.CASUAL && config.target==2 -> com.hienthai.fastowin.localization.TextKey.MissionCasualTwo
+            config.action==MissionAction.PLAY && config.matchType==MatchType.RANKED && config.target==2 -> com.hienthai.fastowin.localization.TextKey.MissionRankedTwo
+            config.action==MissionAction.WIN && config.matchType==MatchType.RANKED && config.target==3 -> com.hienthai.fastowin.localization.TextKey.MissionWeeklyRankedWinThree
+            else -> null
+        }
+        val key=specificKey?:com.hienthai.fastowin.localization.TextKey.valueOf("MissionAction${config.action.name}")
+        val base=localization.text(key,mapOf("target" to config.target,"accuracy" to (config.accuracyPercent?:90)))
+        // Legacy snapshots have no template arguments/matchType field. Their fallback must carry the whole condition.
+        val title=if(specificKey==null && config.matchType!=null) {
+            val mode=if(config.matchType==MatchType.CASUAL) com.hienthai.fastowin.localization.TextKey.CasualMatch else com.hienthai.fastowin.localization.TextKey.RankedMatch
+            "$base (${localization.text(mode)})"
+        } else base
         com.hienthai.fastowin.server.MissionDefinition(config.code,title,key,config.target,config.reward.xp,config.reward.gold,config.reward.gems,com.hienthai.fastowin.server.MissionPeriod.valueOf(config.period.name),config.difficulty)
     }
     private fun legacyDefinition(config:MissionConfig):MissionSelection {

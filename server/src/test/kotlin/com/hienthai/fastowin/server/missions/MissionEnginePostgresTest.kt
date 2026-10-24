@@ -1,6 +1,7 @@
 package com.hienthai.fastowin.server.missions
 
 import com.hienthai.fastowin.protocol.*
+import com.hienthai.fastowin.localization.*
 import com.hienthai.fastowin.server.*
 import com.hienthai.fastowin.server.admin.*
 import com.zaxxer.hikari.HikariConfig
@@ -438,6 +439,121 @@ class MissionEnginePostgresTest {
             assertEquals(1,number(source,"SELECT count(*) FROM admin_audit WHERE action='MISSION_DELETE' AND target_id='${draft.id}' AND reason='Remove unused'"))
         }
     }
+    @Test fun `archive ignores unpublished weekly draft and stops the next published daily period`() = runTest {
+        database { source ->
+            var now=Instant.parse("2026-10-23T06:00:00Z").toEpochMilli()
+            val player=PostgresGuestIdentityRepository(source).resolveGuest("Daily archive",null,1000).playerId
+            val admins=AdminService(PostgresAdminRepository(source),AdminConfiguration("https://admin.example",false),PasswordHasher(iterations=1000),{now})
+            admins.bootstrapOwner("owner@example.com","GoodPassword123!")
+            suspend fun context():MissionAdminContext { val login=admins.login("owner@example.com","GoodPassword123!","https://admin.example","127.0.0.1");return MissionAdminContext(login.token,login.response.csrfToken,"https://admin.example") }
+            execute(source,"UPDATE mission_definitions SET archived_from='2026-10-24'")
+            val repo=PostgresMissionRepository(source);val service=MissionService(repo,admins,{now})
+            val config=MissionConfig("ARCHIVE_MIXED_DAILY",MissionScope.PERSONAL,MissionAction.PLAY,MissionCadence.DAILY,MissionDifficulty.NORMAL,1,MissionReward(gold=13))
+            val draft=service.create(context(),MissionDraftRequest(config,reason="Fixture",requestId="create"))
+            val published=service.publish(context(),draft.id,MissionMutationRequest(draft.version,"Publish","publish"))
+            now=Instant.parse("2026-10-24T06:00:00Z").toEpochMilli()
+            repo.transaction { record(MissionProgressEvent("match:earned",player,now,played=true)) }
+            val earned=service.personal(player).items.single { it.code==config.code }
+            val context=context()
+            val edited=service.update(context,draft.id,MissionDraftRequest(config.copy(period=MissionCadence.WEEKLY),published.version,"Unpublished weekly draft","edit"))
+            service.archive(context,draft.id,MissionMutationRequest(edited.version,"Stop next published period","archive"))
+            now=Instant.parse("2026-10-25T06:00:00Z").toEpochMilli()
+            val retained=service.personal(player).items.filter { it.code==config.code }
+            assertEquals(listOf("2026-10-24"),retained.map { it.periodStart })
+            assertEquals(listOf(earned.instanceId),retained.map { it.instanceId })
+            assertEquals(1,number(source,"SELECT count(*) FROM mission_instances WHERE owner_id='$player' AND definition_id='${draft.id}'"))
+            service.claim(player,earned.instanceId,MissionClaimRequest("earned-after-mixed-archive"))
+            assertEquals(listOf(13,0,0),balances(source,player))
+        }
+    }
+
+    @Test fun `archive follows current weekly schedule and cancels a pending daily revision despite later draft`() = runTest {
+        for(pendingDaily in listOf(false,true)) database { source ->
+            var now=Instant.parse("2026-10-18T06:00:00Z").toEpochMilli()
+            val player=PostgresGuestIdentityRepository(source).resolveGuest("Weekly archive",null,1000).playerId
+            val admins=AdminService(PostgresAdminRepository(source),AdminConfiguration("https://admin.example",false),PasswordHasher(iterations=1000),{now})
+            admins.bootstrapOwner("owner@example.com","GoodPassword123!")
+            suspend fun context():MissionAdminContext { val login=admins.login("owner@example.com","GoodPassword123!","https://admin.example","127.0.0.1");return MissionAdminContext(login.token,login.response.csrfToken,"https://admin.example") }
+            execute(source,"UPDATE mission_definitions SET archived_from='2026-10-19'")
+            val repo=PostgresMissionRepository(source);val service=MissionService(repo,admins,{now})
+            val config=MissionConfig("ARCHIVE_MIXED_WEEKLY",MissionScope.PERSONAL,MissionAction.PLAY,MissionCadence.WEEKLY,MissionDifficulty.NORMAL,1,MissionReward(gold=17))
+            val draft=service.create(context(),MissionDraftRequest(config,reason="Fixture",requestId="create"))
+            var value=service.publish(context(),draft.id,MissionMutationRequest(draft.version,"Publish","publish"))
+            now=Instant.parse("2026-10-24T06:00:00Z").toEpochMilli()
+            repo.transaction { record(MissionProgressEvent("match:earned",player,now,played=true)) }
+            val earned=service.personal(player).items.single { it.code==config.code }
+            val context=context()
+            value=service.update(context,draft.id,MissionDraftRequest(config.copy(period=MissionCadence.DAILY),value.version,"Daily draft","daily-draft"))
+            if(pendingDaily) {
+                value=service.publish(context,draft.id,MissionMutationRequest(value.version,"Schedule Sunday daily","publish-daily"))
+                value=service.update(context,draft.id,MissionDraftRequest(config,value.version,"Unpublished weekly draft","weekly-draft"))
+            }
+            service.archive(context,draft.id,MissionMutationRequest(value.version,"Stop all published schedules","archive"))
+            val cutoff=if(pendingDaily) "2026-10-25" else "2026-10-26"
+            assertEquals(1,number(source,"SELECT count(*) FROM mission_definitions WHERE id='${draft.id}' AND archived_from='$cutoff'"))
+            for(date in listOf("2026-10-25","2026-10-26")) {
+                now=Instant.parse("${date}T06:00:00Z").toEpochMilli()
+                assertEquals(listOf(earned.instanceId),service.personal(player).items.filter { it.code==config.code }.map { it.instanceId })
+            }
+            assertEquals(1,number(source,"SELECT count(*) FROM mission_instances WHERE owner_id='$player' AND definition_id='${draft.id}'"))
+            service.claim(player,earned.instanceId,MissionClaimRequest("weekly-earned"))
+            assertEquals(listOf(17,0,0),balances(source,player))
+        }
+    }
+
+    @Test fun `legacy mode-specific snapshots preserve old localized keys and reject other match types`() = runTest {
+        database { source ->
+            val now=Instant.parse("2026-10-24T06:00:00Z").toEpochMilli()
+            val clock=Clock.fixed(Instant.ofEpochMilli(now),ZoneId.of("Asia/Bangkok"))
+            data class Case(val code:String,val start:String,val target:Int,val mode:MatchType,val key:String,val title:String,val english:String)
+            val cases=listOf(
+                Case("DAILY_CASUAL_2","2026-10-24",2,MatchType.CASUAL,"MissionCasualTwo","Chơi 2 trận đấu thường","Play 2 casual matches"),
+                Case("DAILY_RANKED_2","2026-10-24",2,MatchType.RANKED,"MissionRankedTwo","Chơi 2 trận đấu hạng","Play 2 ranked matches"),
+                Case("WEEKLY_RANKED_WIN_3","2026-10-19",3,MatchType.RANKED,"MissionWeeklyRankedWinThree","Thắng 3 trận đấu hạng","Win 3 ranked matches")
+            )
+            val repo=PostgresMissionRepository(source)
+            for(case in cases) {
+                val player=PostgresGuestIdentityRepository(source).resolveGuest("Legacy mode",null,1000).playerId
+                execute(source,"INSERT INTO user_missions(user_id,mission_code,period_start,progress,target,reward_xp,reward_gold,reward_gems) VALUES ('$player','${case.code}','${case.start}',0,${case.target},0,0,0)")
+                val profile=PostgresPlayerProfileRepository(source,clock)
+                fun snapshot(value:PlayerProfileSnapshot)=(value.progression.dailyMissions+value.progression.weeklyMissions).single { it.code==case.code }
+                val mission=snapshot(profile.findByPlayerId(player)!!)
+                assertEquals(case.title,mission.title);assertEquals(case.key,mission.titleKey)
+                assertEquals(case.english,legacyRenderedTitle(mission,AppLanguage.ENGLISH))
+                val other=if(case.mode==MatchType.CASUAL) MatchType.RANKED else MatchType.CASUAL
+                repo.transaction { record(MissionProgressEvent("match:other",player,now,matchType=other,played=true,won=true)) }
+                assertEquals(0,snapshot(profile.findByPlayerId(player)!!).progress)
+                repo.transaction { record(MissionProgressEvent("match:eligible",player,now,matchType=case.mode,played=true,won=true)) }
+                assertEquals(1,snapshot(profile.findByPlayerId(player)!!).progress)
+            }
+        }
+    }
+
+    @Test fun `changed legacy targets use truthful mode-qualified fallback instead of a fixed old key`() = runTest {
+        database { source ->
+            val now=Instant.parse("2026-10-24T06:00:00Z").toEpochMilli()
+            val clock=Clock.fixed(Instant.ofEpochMilli(now),ZoneId.of("Asia/Bangkok"))
+            data class Case(val code:String,val start:String,val fixedKey:String,val title:String)
+            val cases=listOf(
+                Case("DAILY_CASUAL_2","2026-10-24","MissionCasualTwo","Chơi 7 trận (Đấu thường)"),
+                Case("DAILY_RANKED_2","2026-10-24","MissionRankedTwo","Chơi 7 trận (Đấu xếp hạng)"),
+                Case("WEEKLY_RANKED_WIN_3","2026-10-19","MissionWeeklyRankedWinThree","Thắng 7 trận (Đấu xếp hạng)")
+            )
+            for(case in cases) {
+                val player=PostgresGuestIdentityRepository(source).resolveGuest("Changed legacy mode",null,1000).playerId
+                execute(source,"INSERT INTO user_missions(user_id,mission_code,period_start,progress,target,reward_xp,reward_gold,reward_gems) VALUES ('$player','${case.code}','${case.start}',0,7,0,0,0)")
+                val profile=PostgresPlayerProfileRepository(source,clock).findByPlayerId(player)!!
+                val mission=(profile.progression.dailyMissions+profile.progression.weeklyMissions).single { it.code==case.code }
+                assertEquals(7,mission.target);assertEquals(case.title,mission.title);assertNotEquals(case.fixedKey,mission.titleKey)
+                // Legacy consumers supply emptyMap. They must show complete fallback, never a fixed2/3 target or broad unqualified action.
+                assertEquals(case.title,legacyRenderedTitle(mission,AppLanguage.ENGLISH))
+            }
+        }
+    }
+
+    private fun legacyRenderedTitle(mission:MissionSnapshot,language:AppLanguage):String =
+        mission.titleKey?.let { raw -> TextKey.entries.firstOrNull { it.name==raw } }
+            ?.let { key -> runCatching { LocalizationService(language).text(key,emptyMap()) }.getOrNull() } ?: mission.title
     private fun markLegacyClan(source:HikariDataSource,clan:String) {
         execute(source,"INSERT INTO mission_legacy_clans(clan_id,target,reward_xp,reward_gold,reward_gems) SELECT id,quest_target,quest_reward_xp,quest_reward_gold,quest_reward_gems FROM clans WHERE id='$clan'")
         execute(source,"INSERT INTO mission_legacy_clan_members(clan_id,user_id,contribution,claimed) SELECT clan_id,user_id,quest_contribution,quest_reward_claimed FROM clan_members WHERE clan_id='$clan'")
