@@ -66,7 +66,7 @@ val allLocalizationCatalogs: Map<AppLanguage, LocalizationCatalog> = run {
             shopPurchaseTexts[language].orEmpty() + accountSecurityTexts[language].orEmpty() +
             matchResultTexts[language].orEmpty() + clanNotificationTexts[language].orEmpty() +
             practiceTexts[language].orEmpty() + checkInTexts[language].orEmpty() +
-            missionWalletTexts[language].orEmpty() + roomMatchTexts[language].orEmpty() +
+            missionWalletTexts[language].orEmpty() + missionActionTexts[language].orEmpty() + roomMatchTexts[language].orEmpty() +
             profileStatsTexts[language].orEmpty() + collectionMatchDetailsTexts[language].orEmpty() +
             friendManagementTexts[language].orEmpty() + tournamentSetupTexts[language].orEmpty() +
             tournamentBracketTexts[language].orEmpty() + profileCollectionStatusTexts[language].orEmpty() +

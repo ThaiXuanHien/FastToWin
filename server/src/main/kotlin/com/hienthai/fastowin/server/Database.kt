@@ -37,6 +37,7 @@ data class DatabaseSettings(
 }
 
 class DatabaseRuntime private constructor(
+    val missionRepository: com.hienthai.fastowin.server.missions.PostgresMissionRepository,
     val adMobRepository: com.hienthai.fastowin.server.ads.PostgresAdMobRepository,
     val moderationRepository: com.hienthai.fastowin.server.moderation.PostgresModerationRepository,
     val avatarRepository: com.hienthai.fastowin.server.avatars.PostgresAvatarRepository,
@@ -82,7 +83,16 @@ class DatabaseRuntime private constructor(
                     .locations("classpath:db/migration")
                     .load()
                     .migrate()
+                // Import legacy state before any runtime reader switches to mission instances. Idempotent on restart.
+                dataSource.connection.use { connection ->
+                    connection.autoCommit = false
+                    try {
+                        val missions = com.hienthai.fastowin.server.missions.JdbcMissionStore(connection)
+                        missions.lock(); missions.migrateLegacy(); connection.commit()
+                    } catch (error: Throwable) { connection.rollback(); throw error }
+                }
                 return DatabaseRuntime(
+                    missionRepository = com.hienthai.fastowin.server.missions.PostgresMissionRepository(dataSource),
                     adMobRepository = com.hienthai.fastowin.server.ads.PostgresAdMobRepository(dataSource),
                     moderationRepository = com.hienthai.fastowin.server.moderation.PostgresModerationRepository(dataSource),
                     avatarRepository = com.hienthai.fastowin.server.avatars.PostgresAvatarRepository(dataSource),

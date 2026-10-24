@@ -56,6 +56,12 @@ class PostgresClanRepositoryTest {
                 val shortSuffix = suffix.take(8)
                 val firstClanId = requireNotNull(clans.createClan(firstOwner.userId, "Clan A $shortSuffix", "A").clanId)
                 val secondClanId = requireNotNull(clans.createClan(secondOwner.userId, "Clan B $shortSuffix", "B").clanId)
+                // This fixture represents a clan whose quest already existed before mission-catalog cutover.
+                dataSource.connection.use { connection ->
+                    connection.prepareStatement("INSERT INTO mission_legacy_clans(clan_id,target,reward_xp,reward_gold,reward_gems) SELECT id,quest_target,quest_reward_xp,quest_reward_gold,quest_reward_gems FROM clans WHERE id=?").use {
+                        it.setObject(1,UUID.fromString(secondClanId));it.executeUpdate()
+                    }
+                }
 
                 assertEquals(
                     ClanJoinRequestResult.OWN_CLAN,

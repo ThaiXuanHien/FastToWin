@@ -1,5 +1,6 @@
 package com.hienthai.fastowin.server
 
+import com.hienthai.fastowin.server.missions.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import com.hienthai.fastowin.protocol.MatchType
@@ -18,6 +19,7 @@ class PostgresMatchResultRepository(
     override suspend fun save(match: CompletedMatch): Unit = withContext(Dispatchers.IO) {
         dataSource.connection.use { connection ->
             connection.autoCommit = false
+            JdbcMissionStore(connection).lock()
             try {
                 if (insertMatch(connection, match)) {
                     insertPlayers(connection, match)
@@ -26,7 +28,7 @@ class PostgresMatchResultRepository(
                     updateStats(connection, match)
                     unlockAchievements(connection, match)
                     updateMissions(connection, match)
-                    if (match.matchType == MatchType.RANKED) updateClanWarsAndQuests(connection, match)
+                    if (match.matchType == MatchType.RANKED) updateClanTrophies(connection, match)
                 }
                 connection.commit()
             } catch (error: Throwable) {
@@ -409,65 +411,15 @@ class PostgresMatchResultRepository(
 
     private fun updateMissions(connection: Connection, match: CompletedMatch) {
         val metricsByPlayer = calculateSelectionMetrics(match)
-        val matchDate = missionDateAt(match.endedAtMillis)
-        val activeDefinitions =
-            MissionRotation.forPeriod(MissionPeriod.DAILY, matchDate) +
-                MissionRotation.forPeriod(MissionPeriod.WEEKLY, matchDate)
-        connection.prepareStatement(
-            """
-            INSERT INTO user_missions (
-                user_id, mission_code, period_start, progress, target, reward_xp,
-                reward_gold, reward_gems, completed_at
-            )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, CASE WHEN ? >= ? THEN CAST(? AS TIMESTAMPTZ) ELSE NULL END)
-            ON CONFLICT (user_id, mission_code, period_start) DO UPDATE SET
-                progress = LEAST(user_missions.target, user_missions.progress + EXCLUDED.progress),
-                target = EXCLUDED.target,
-                reward_xp = EXCLUDED.reward_xp,
-                reward_gold = EXCLUDED.reward_gold,
-                reward_gems = EXCLUDED.reward_gems,
-                completed_at = CASE
-                    WHEN user_missions.completed_at IS NOT NULL THEN user_missions.completed_at
-                    WHEN user_missions.progress + EXCLUDED.progress >= user_missions.target THEN CURRENT_TIMESTAMP
-                    ELSE NULL
-                END
-            """.trimIndent()
-        ).use { statement ->
-            match.players.forEach { player ->
-                val metrics = metricsByPlayer[player.playerId] ?: SelectionMetrics()
-                val currentStreak = currentWinStreak(connection, player.playerId)
-                val missions = activeDefinitions.map { definition ->
-                    MissionProgress(
-                        definition = definition,
-                        periodStart = java.sql.Date.valueOf(missionPeriodStart(definition, matchDate)),
-                        increment = missionIncrement(
-                            definition = definition,
-                            matchType = match.matchType,
-                            player = player,
-                            metrics = metrics,
-                            currentStreak = currentStreak
-                        )
-                    )
-                }
-                missions.filter { it.increment > 0 }.forEach { mission ->
-                    statement.setObject(1, UUID.fromString(player.playerId))
-                    statement.setString(2, mission.definition.code)
-                    statement.setDate(3, mission.periodStart)
-                    statement.setInt(4, mission.increment)
-                    statement.setInt(5, mission.definition.target)
-                    statement.setInt(6, mission.definition.rewardXp)
-                    statement.setInt(7, mission.definition.rewardGold)
-                    statement.setInt(8, mission.definition.rewardGems)
-                    statement.setInt(9, mission.increment)
-                    statement.setInt(10, mission.definition.target)
-                    statement.setTimestamp(11, match.endedAtMillis.toTimestamp())
-                    statement.addBatch()
-                }
-            }
-            statement.executeBatch()
+        val store = JdbcMissionStore(connection)
+        for (player in match.players) {
+            val metrics = metricsByPlayer[player.playerId] ?: SelectionMetrics()
+            store.record(MissionProgressEvent("match:${match.matchId}",player.playerId,match.endedAtMillis,
+                matchType=match.matchType,played=true,won=player.outcome==MatchOutcome.WIN,
+                correct=metrics.correct,wrong=metrics.wrong,perfectWin=player.isPerfectWinner(metrics),
+                winStreak=currentWinStreak(connection,player.playerId),intentionalLeave=player.intentionalLeave))
         }
     }
-
     private fun currentWinStreak(connection: Connection, playerId: String): Int =
         connection.prepareStatement("SELECT current_win_streak FROM player_stats WHERE user_id = ?").use { statement ->
             statement.setObject(1, UUID.fromString(playerId))
@@ -477,35 +429,6 @@ class PostgresMatchResultRepository(
             }
         }
 
-    private fun missionIncrement(
-        definition: MissionDefinition,
-        matchType: MatchType,
-        player: CompletedMatchPlayer,
-        metrics: SelectionMetrics,
-        currentStreak: Int
-    ): Int {
-        if (player.intentionalLeave) return 0
-        val won = player.outcome == MatchOutcome.WIN
-        val perfectWin = player.isPerfectWinner(metrics)
-        val totalSelections = metrics.correct.toLong() + metrics.wrong.toLong()
-        val hasNinetyPercentAccuracy =
-            totalSelections > 0 && metrics.correct.toLong() * 100 >= totalSelections * 90
-        return when (definition.code) {
-            "DAILY_PLAY_1", "DAILY_PLAY_3", "WEEKLY_PLAY_15" -> 1
-            "DAILY_CASUAL_2" -> if (matchType == MatchType.CASUAL) 1 else 0
-            "DAILY_RANKED_2" -> if (matchType == MatchType.RANKED) 1 else 0
-            "DAILY_WIN_1", "WEEKLY_WIN_5" -> if (won) 1 else 0
-            "WEEKLY_RANKED_WIN_3" -> if (matchType == MatchType.RANKED && won) 1 else 0
-            "DAILY_CORRECT_100", "WEEKLY_CORRECT_500" -> metrics.correct
-            "DAILY_ACCURACY_90" -> if (hasNinetyPercentAccuracy) 1 else 0
-            "DAILY_PERFECT_WIN_1", "WEEKLY_PERFECT_3" -> if (perfectWin) 1 else 0
-            "WEEKLY_STREAK_3" -> if (currentStreak >= definition.target) definition.target else 0
-            "DAILY_CHECK_IN", "DAILY_DONATE_GOLD_500",
-            "WEEKLY_DONATE_GOLD_2000", "WEEKLY_DONATE_GEMS_5" -> 0
-            else -> 0
-        }
-    }
-
     private data class SelectionMetrics(
         var correct: Int = 0,
         var wrong: Int = 0,
@@ -513,18 +436,12 @@ class PostgresMatchResultRepository(
         var reactionSamples: Int = 0
     )
 
-    private data class MissionProgress(
-        val definition: MissionDefinition,
-        val periodStart: java.sql.Date,
-        val increment: Int
-    )
-
     private fun CompletedMatchPlayer.isPerfectWinner(metrics: SelectionMetrics): Boolean =
         qualifiesForPerfectGame(outcome, metrics.correct, metrics.wrong)
 
     private fun Long.toTimestamp(): Timestamp = Timestamp.from(Instant.ofEpochMilli(this))
 
-    private fun updateClanWarsAndQuests(connection: Connection, match: CompletedMatch) {
+    private fun updateClanTrophies(connection: Connection, match: CompletedMatch) {
         if (match.matchType != MatchType.RANKED) return
         
         for (player in match.players) {
@@ -534,7 +451,6 @@ class PostgresMatchResultRepository(
             if (isDraw) continue
             
             val trophiesChange = if (isWinner) 5 else -2
-            val questProgress = if (isWinner) 1 else 0
 
             val userUuid = UUID.fromString(player.playerId)
             
@@ -556,21 +472,7 @@ class PostgresMatchResultRepository(
                     it.executeUpdate()
                 }
                 
-                // Update Clan Quest
-                if (questProgress > 0) {
-                    connection.prepareStatement("UPDATE clans SET quest_progress = quest_progress + ? WHERE id = ?").use {
-                        it.setInt(1, questProgress)
-                        it.setObject(2, clanId)
-                        it.executeUpdate()
-                    }
-                    
-                    connection.prepareStatement("UPDATE clan_members SET quest_contribution = quest_contribution + ? WHERE clan_id = ? AND user_id = ?").use {
-                        it.setInt(1, questProgress)
-                        it.setObject(2, clanId)
-                        it.setObject(3, userUuid)
-                        it.executeUpdate()
-                    }
-                }
+
             }
         }
     }

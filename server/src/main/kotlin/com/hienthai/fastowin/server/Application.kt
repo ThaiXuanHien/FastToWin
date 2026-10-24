@@ -1,4 +1,5 @@
 package com.hienthai.fastowin.server
+import com.hienthai.fastowin.server.missions.*
 import com.hienthai.fastowin.server.ads.adMobRoutes
 
 import com.hienthai.fastowin.server.moderation.*
@@ -115,6 +116,7 @@ fun Application.gameModule(
     analyticsService: com.hienthai.fastowin.server.analytics.AnalyticsService? = adminService?.let {
         com.hienthai.fastowin.server.analytics.AnalyticsService(com.hienthai.fastowin.server.analytics.UnavailableAnalyticsRepository, it)
     },
+    missionService: MissionService = MissionService(null, adminService),
     rewardEventService: RewardEventService = RewardEventService(UnavailableRewardEventRepository, adminService),
     compensationIncidentService: CompensationIncidentService? = adminService?.let { CompensationIncidentService(giftService.repository, it) },
     compensationRoundService: CompensationRoundService? = adminService?.let { CompensationRoundService(giftService.repository, it) }
@@ -211,6 +213,7 @@ fun Application.gameModule(
     routing { giftRoutes(giftService, authService, adminService != null) }
     if (adminService != null) compensationIncidentService?.let { service -> routing { compensationIncidentRoutes(service) } }
     if (adminService != null) compensationRoundService?.let { service -> routing { compensationRoundRoutes(service) } }
+    routing { missionRoutes(missionService, authService, adminService != null) }
     routing { rewardEventRoutes(rewardEventService, adminService != null) }
     routing { announcementRoutes(announcementService, authService, adminService != null) }
     if (adminService != null) maintenanceService?.let { service -> routing { maintenanceRoutes(service) } }

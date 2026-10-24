@@ -127,6 +127,7 @@ fun main() {
                 compensationRoundService = adminService?.let { com.hienthai.fastowin.server.compensation.CompensationRoundService(
                     database?.giftRepository ?: com.hienthai.fastowin.server.gifts.UnavailableGiftRepository, it) },
                 giftDeliveryEnabled = database != null,
+                missionService = com.hienthai.fastowin.server.missions.MissionService(database?.missionRepository, adminService),
                 rewardEventService = com.hienthai.fastowin.server.events.RewardEventService(
                     database?.rewardEventRepository ?: com.hienthai.fastowin.server.events.UnavailableRewardEventRepository, adminService),
                 adMobService = adMobConfiguration?.let { com.hienthai.fastowin.server.ads.AdMobService(it, adMobRepository,
