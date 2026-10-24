@@ -1,5 +1,11 @@
 package com.hienthai.fastowin.ui.screens
 
+import com.hienthai.fastowin.ui.components.ReportableText
+import com.hienthai.fastowin.ui.components.UgcReportButton
+import com.hienthai.fastowin.ui.components.UgcSafetyButton
+import com.hienthai.fastowin.ui.components.UgcTarget
+import com.hienthai.fastowin.protocol.UgcTargetType
+
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
@@ -411,7 +417,7 @@ fun ProfileScreen(
                         ) {
                             PlayerAvatar(
                                 displayName = displayName.ifBlank { profile.displayName },
-                                avatarId = profile.avatarId,
+                                avatarId = if (profile.avatarId == com.hienthai.fastowin.protocol.MODERATED_AVATAR_ID) null else profile.avatarId,
                                 userId = profile.userId,
                                 frameId = progression.cosmetics
                                     .firstOrNull { it.type == CosmeticType.FRAME && it.equipped }
@@ -753,8 +759,8 @@ private fun ProfileIdentityDetails(
         horizontalAlignment = if (centered) Alignment.CenterHorizontally else Alignment.Start,
         verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
-        Text(
-            profile.displayName,
+        ReportableText(
+            profile.displayName, UgcTargetType.PLAYER_PROFILE, profile.userId,
             modifier = if (centered) Modifier.fillMaxWidth() else Modifier,
             style = MaterialTheme.typography.titleLarge,
             fontWeight = FontWeight.Black,
@@ -2793,6 +2799,8 @@ private fun MatchDetailDialog(
                     modifier = Modifier.heightIn(max = 520.dp).verticalScroll(rememberScrollState()),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
+                    UgcSafetyButton(listOf(UgcTarget(UgcTargetType.ROOM, detail.summary.roomId, detail.summary.roomName)) +
+                        events.filter { !it.isCurrentPlayer }.map { UgcTarget(UgcTargetType.PLAYER_PROFILE, it.playerId, it.playerName) })
                     MatchDetailScoreboard(detail.summary, Modifier.testTag("match_detail_scoreboard"))
                     com.hienthai.fastowin.ui.components.RewardBreakdownCard(detail.summary.rewardBreakdown, persisted = true, onOpenEvent = onOpenRewardEvent)
                     ArcadeStatGrid(
@@ -2880,8 +2888,8 @@ private fun MatchDetailScoreboard(summary: MatchHistorySnapshot, modifier: Modif
                     fontWeight = FontWeight.Black,
                     color = ArcadeOpponent
                 )
-                Text(
-                    summary.opponentName,
+                ReportableText(
+                    summary.opponentName, UgcTargetType.PLAYER_PROFILE, summary.opponentUserId,
                     style = MaterialTheme.typography.labelMedium,
                     fontWeight = FontWeight.Black,
                     maxLines = 1,
@@ -2941,8 +2949,8 @@ private fun MatchHistoryCard(match: MatchHistorySnapshot, onClick: (() -> Unit)?
             val eloText = if (match.eloChange >= 0) "+${match.eloChange}" else match.eloChange.toString()
             val details: @Composable () -> Unit = {
                 Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                    Text(
-                        "${localized(TextKey.Versus)} ${match.opponentName} · ${match.playerScore} – ${match.opponentScore}",
+                    ReportableText(
+                        "${localized(TextKey.Versus)} ${match.opponentName} · ${match.playerScore} – ${match.opponentScore}", UgcTargetType.PLAYER_PROFILE, match.opponentUserId,
                         fontWeight = FontWeight.Black,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis

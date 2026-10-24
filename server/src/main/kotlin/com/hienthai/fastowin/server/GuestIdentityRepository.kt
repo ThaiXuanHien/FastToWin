@@ -14,6 +14,18 @@ data class GuestIdentity(
 
 interface GuestIdentityRepository {
     suspend fun resolveGuest(displayName: String, resumeToken: String?, nowMillis: Long): GuestIdentity
+    suspend fun resolveGuest(displayName: String, resumeToken: String?, nowMillis: Long, acceptedContentTermsVersion: String?): GuestIdentity =
+        resolveGuest(displayName, resumeToken, nowMillis)
+
+    /** Validate persisted acceptance before publishing a resumed nickname, inside the identity write lock. */
+    suspend fun resolveGuest(
+        displayName: String, resumeToken: String?, nowMillis: Long, acceptedContentTermsVersion: String?,
+        requiredContentTermsVersion: String?, storedContentTermsVersion: suspend (String) -> String?
+    ): GuestIdentity {
+        if (requiredContentTermsVersion != null && acceptedContentTermsVersion != requiredContentTermsVersion)
+            throw com.hienthai.fastowin.server.moderation.ModerationException(403,"CONTENT_TERMS_REQUIRED","CONTENT_TERMS_REQUIRED")
+        return resolveGuest(displayName,resumeToken,nowMillis,acceptedContentTermsVersion)
+    }
 
     suspend fun markDisconnected(playerId: String, nowMillis: Long) = Unit
 }
@@ -26,13 +38,26 @@ class InMemoryGuestIdentityRepository : GuestIdentityRepository {
         displayName: String,
         resumeToken: String?,
         nowMillis: Long
+    ): GuestIdentity = resolveGuest(displayName,resumeToken,nowMillis,null,null) { null }
+
+    override suspend fun resolveGuest(displayName: String,resumeToken: String?,nowMillis: Long,acceptedContentTermsVersion: String?): GuestIdentity =
+        resolveGuest(displayName,resumeToken,nowMillis,acceptedContentTermsVersion,null) { null }
+
+    override suspend fun resolveGuest(
+        displayName: String,resumeToken: String?,nowMillis: Long,acceptedContentTermsVersion: String?,
+        requiredContentTermsVersion: String?,storedContentTermsVersion: suspend (String) -> String?
     ): GuestIdentity = mutex.withLock {
         resumeToken?.let(identitiesByToken::get)?.let { existing ->
+            val stored = storedContentTermsVersion(existing.playerId)
+            if (requiredContentTermsVersion != null && acceptedContentTermsVersion != requiredContentTermsVersion && stored != requiredContentTermsVersion)
+                throw com.hienthai.fastowin.server.moderation.ModerationException(403,"CONTENT_TERMS_REQUIRED","CONTENT_TERMS_REQUIRED")
             val updated = existing.copy(displayName = displayName)
             identitiesByToken[resumeToken] = updated
             return@withLock updated
         }
 
+        if (requiredContentTermsVersion != null && acceptedContentTermsVersion != requiredContentTermsVersion)
+            throw com.hienthai.fastowin.server.moderation.ModerationException(403,"CONTENT_TERMS_REQUIRED","CONTENT_TERMS_REQUIRED")
         GuestIdentity(
             playerId = UUID.randomUUID().toString(),
             resumeToken = newResumeToken(),

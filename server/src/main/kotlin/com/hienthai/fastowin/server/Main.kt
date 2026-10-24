@@ -28,16 +28,16 @@ fun main() {
     val database = databaseSettings?.let(DatabaseRuntime::open)
     val avatarObjects = try { avatarConfiguration.r2?.let(S3AvatarObjectStore::open) }
         catch (failure: Throwable) { database?.close(); throw failure }
-    val adminService = adminConfiguration?.let { configuration ->
-        AdminService(database?.adminRepository ?: InMemoryAdminRepository(), configuration)
-    }
-    val authService = AuthenticationService(database?.authRepository ?: InMemoryAuthRepository())
+    val (adminService, moderationService) = createModerationRuntime(database, adminConfiguration)
+    val authService = AuthenticationService(database?.authRepository ?: InMemoryAuthRepository(), moderationService = moderationService)
     val authEmailSender = configuredAuthEmailSender()
     val identityRepository = database?.identityRepository ?: InMemoryGuestIdentityRepository()
     val matchResultRepository = database?.matchResultRepository ?: NoOpMatchResultRepository
     val playerProfileRepository = database?.playerProfileRepository ?: NoOpPlayerProfileRepository
     val avatarService = AvatarService(database?.avatarRepository ?: ProfileAvatarRepository(playerProfileRepository),
-        avatarObjects, objectWrites = avatarConfiguration.mode == AvatarStorageMode.R2)
+        avatarObjects, objectWrites = avatarConfiguration.mode == AvatarStorageMode.R2,
+        publicationAllowed = { moderationService.requireContentTerms(it) },
+        contentSuppressed = { id, revision -> moderationService.isSuppressed(com.hienthai.fastowin.protocol.UgcTargetType.PLAYER_AVATAR, id, revision) })
     val leaderboardRepository = database?.leaderboardRepository ?: NoOpLeaderboardRepository
     val friendRepository = database?.friendRepository ?: NoOpFriendRepository
     val notificationRepository = database?.notificationRepository ?: NoOpNotificationRepository
@@ -75,6 +75,7 @@ fun main() {
         pushNotificationService,
         storePurchaseService = storePurchaseService,
         avatarService = avatarService,
+        moderationService = moderationService,
         playQuotaRepository = playQuotaRepository,
         rewardedAdVerifier = rewardedAdVerifier,
         rewardedAdAvailability = rewardedAdAvailability,
@@ -134,4 +135,19 @@ fun main() {
         avatarObjects?.close()
         database?.close()
     }
+}
+
+/** Shared startup assembly for admin and moderation services. */
+internal fun createModerationRuntime(
+    database: DatabaseRuntime?,
+    adminConfiguration: AdminConfiguration?
+): Pair<AdminService?, com.hienthai.fastowin.server.moderation.ModerationService> {
+    val memoryAdmins = if (database == null) InMemoryAdminRepository() else null
+    val adminService = adminConfiguration?.let { configuration ->
+        AdminService(database?.adminRepository ?: checkNotNull(memoryAdmins), configuration)
+    }
+    val moderationService = com.hienthai.fastowin.server.moderation.ModerationService(
+        database?.moderationRepository ?: com.hienthai.fastowin.server.moderation.InMemoryModerationRepository(checkNotNull(memoryAdmins)),
+        adminService, enforcementEnabled = { contentTermsEnforced() })
+    return adminService to moderationService
 }

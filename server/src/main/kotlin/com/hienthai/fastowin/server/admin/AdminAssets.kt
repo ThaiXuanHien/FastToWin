@@ -19,7 +19,8 @@ fun Route.adminAssets() {
         "/admin/admin-analytics.js" to ("admin-analytics.js" to "application/javascript"),
         "/admin/admin-events.js" to ("admin-events.js" to "application/javascript"),
         "/admin/admin-compensation.js" to ("admin-compensation.js" to "application/javascript"),
-        "/admin/admin-announcements.js" to ("admin-announcements.js" to "application/javascript")
+        "/admin/admin-announcements.js" to ("admin-announcements.js" to "application/javascript"),
+        "/admin/admin-moderation.js" to ("admin-moderation.js" to "application/javascript")
     )
     assets.forEach { (path, asset) ->
         val bytes = requireNotNull(AdminService::class.java.getResourceAsStream("/admin/${asset.first}")) {
@@ -29,7 +30,7 @@ fun Route.adminAssets() {
             call.response.header(HttpHeaders.CacheControl, "no-store")
             call.response.header("X-Content-Type-Options", "nosniff")
             call.response.header("Referrer-Policy", "no-referrer")
-            call.response.header("Content-Security-Policy", "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'")
+            call.response.header("Content-Security-Policy", "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'")
             call.respondBytes(bytes, ContentType.parse(asset.second).withParameter("charset", "utf-8"))
         }
     }

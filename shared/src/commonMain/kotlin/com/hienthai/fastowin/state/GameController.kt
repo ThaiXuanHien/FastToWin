@@ -97,6 +97,18 @@ class GameController private constructor(
     )
     private val scope = controllerScope ?: CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
+    val ugc = UgcController { socket.sendMessage(it) }
+    private val termsApi = com.hienthai.fastowin.data.network.ContentTermsApiClient(serverUrl)
+    val guestContentConsent = ContentEntryConsent(termsApi::fetch)
+    private val hasStoredGuestSession = resumeTokenStore.load(serverUrl) != null
+    private suspend fun sendMessage(message: ClientMessage) {
+        if (message.publishesUserContent()) ugc.publish(message) else socket.sendMessage(message)
+    }
+    fun dismissContentTerms() {
+        ugc.dismissTerms()
+        interruptEditorProfileSave()
+        _uiState.update { it.copy(isSearching = false, isTournamentLoading = false) }
+    }
     private var playerId: String? = null
     private enum class EditorSaveStage { WAITING, AVATAR, PROFILE }
     private data class EditorProfileSave(
@@ -232,6 +244,13 @@ class GameController private constructor(
 
     private fun ensureSocketSession(displayName: String = _uiState.value.player.name) {
         if (resettingSocket) return
+        if (accountDisplayName == null && playerId == null && !hasStoredGuestSession && socket.acceptedContentTermsVersion == null) {
+            scope.launch { guestContentConsent.begin { version ->
+                socket.acceptedContentTermsVersion = version
+                ensureSocketSession(displayName)
+            } }
+            return
+        }
         if (sessionJob?.isActive == true) {
             requestRoomList()
             return
@@ -262,6 +281,8 @@ class GameController private constructor(
         if (status == ConnectionStatus.RECONNECTING || status == ConnectionStatus.DISCONNECTED ||
             status == ConnectionStatus.TERMINAL
         ) {
+            if (editorProfileSave != null) ugc.dismissTerms()
+            ugc.disconnected()
             interruptEditorProfileSave()
             publicTournamentFilterJob?.cancel()
         }
@@ -293,7 +314,7 @@ class GameController private constructor(
             ensureSocketSession()
             return
         }
-        scope.launch { socket.sendMessage(ClientMessage.ListRooms) }
+        scope.launch { sendMessage(ClientMessage.ListRooms) }
     }
 
     fun retryConnection() {
@@ -386,13 +407,13 @@ class GameController private constructor(
             return
         }
         if (playerId == null) return
-        scope.launch { socket.sendMessage(ClientMessage.GetFriendProfile(friendUserId)) }
+        scope.launch { sendMessage(ClientMessage.GetFriendProfile(friendUserId)) }
     }
 
     fun refreshFriendProfile() {
         val friendUserId = _uiState.value.viewedFriendUserId ?: return
         _uiState.update { it.copy(isFriendProfileLoading = true, error = null) }
-        scope.launch { socket.sendMessage(ClientMessage.GetFriendProfile(friendUserId)) }
+        scope.launch { sendMessage(ClientMessage.GetFriendProfile(friendUserId)) }
     }
 
     fun closeFriendProfile() {
@@ -410,12 +431,13 @@ class GameController private constructor(
     /** One editor Save, with the existing protocol's two writes serialized by their replies. */
     @OptIn(ExperimentalEncodingApi::class)
     fun saveProfile(displayName: String, avatarId: String?, avatarBytes: ByteArray? = null) {
+        val safeAvatarId = avatarId.takeUnless { it == com.hienthai.fastowin.protocol.MODERATED_AVATAR_ID }
         if (editorProfileSave != null || _uiState.value.isProfileSaving) return
         editorProfileSaveFailure = null
         val safeName = displayName.trim()
         if (safeName.isEmpty() || safeName.length > MAX_PROFILE_DISPLAY_NAME_LENGTH ||
-            (avatarId != null && avatarId !in PROFILE_AVATAR_IDS)) {
-            updateProfile(displayName, avatarId) // Preserve existing localized validation.
+            (safeAvatarId != null && safeAvatarId !in PROFILE_AVATAR_IDS)) {
+            updateProfile(displayName, safeAvatarId) // Preserve existing localized validation.
             return
         }
         if (avatarBytes != null && (avatarBytes.isEmpty() || avatarBytes.size > AVATAR_UPLOAD_MAX_BYTES)) {
@@ -423,7 +445,7 @@ class GameController private constructor(
             return
         }
         editorProfileSave = EditorProfileSave(
-            ClientMessage.UpdateProfile(safeName, avatarId),
+            ClientMessage.UpdateProfile(safeName, safeAvatarId),
             avatarBytes?.let { ClientMessage.UpdateAvatar(Base64.Default.encode(it)) }
         )
         _uiState.update { it.copy(isProfileSaving = true, profileNotice = null, error = null) }
@@ -437,7 +459,7 @@ class GameController private constructor(
             state.isProfileLoading || state.equippingCosmeticId != null || state.isPushPreferencesSaving) return
         save.stage = if (save.avatar != null) EditorSaveStage.AVATAR else EditorSaveStage.PROFILE
         scope.launch {
-            if (editorProfileSave === save) socket.sendMessage(save.avatar ?: save.profile)
+            if (editorProfileSave === save) sendMessage(save.avatar ?: save.profile)
         }
     }
 
@@ -449,7 +471,7 @@ class GameController private constructor(
             return
         }
         pendingProfileRefreshes++
-        socket.sendMessage(ClientMessage.GetProfile)
+        sendMessage(ClientMessage.GetProfile)
     }
 
     private fun interruptEditorProfileSave() {
@@ -463,6 +485,7 @@ class GameController private constructor(
     }
 
     fun updateProfile(displayName: String, avatarId: String?) {
+        val safeAvatarId = avatarId.takeUnless { it == com.hienthai.fastowin.protocol.MODERATED_AVATAR_ID }
         if (editorProfileSave != null) return
         editorProfileSaveFailure = null
         val safeName = displayName.trim()
@@ -477,12 +500,12 @@ class GameController private constructor(
             }
             return
         }
-        if (avatarId != null && avatarId !in PROFILE_AVATAR_IDS) {
+        if (safeAvatarId != null && safeAvatarId !in PROFILE_AVATAR_IDS) {
             _uiState.update { it.copy(error = messageMapper.text(TextKey.InvalidAvatar)) }
             return
         }
         _uiState.update { it.copy(isProfileSaving = true, profileNotice = null, error = null) }
-        scope.launch { socket.sendMessage(ClientMessage.UpdateProfile(safeName, avatarId)) }
+        scope.launch { sendMessage(ClientMessage.UpdateProfile(safeName, safeAvatarId)) }
     }
 
     @OptIn(ExperimentalEncodingApi::class)
@@ -497,12 +520,12 @@ class GameController private constructor(
         }
         val base64String = Base64.Default.encode(bytes)
         _uiState.update { it.copy(isProfileSaving = true, profileNotice = null, error = null) }
-        scope.launch { socket.sendMessage(ClientMessage.UpdateAvatar(base64String)) }
+        scope.launch { sendMessage(ClientMessage.UpdateAvatar(base64String)) }
     }
 
     fun updateClanLogo(clanId: String, logoId: String) {
         _uiState.update { it.copy(error = null) }
-        scope.launch { socket.sendMessage(ClientMessage.UpdateClanLogo(clanId, logoId)) }
+        scope.launch { sendMessage(ClientMessage.UpdateClanLogo(clanId, logoId)) }
     }
 
     fun openLeaderboard() {
@@ -522,7 +545,7 @@ class GameController private constructor(
             return
         }
         if (playerId == null) return
-        scope.launch { socket.sendMessage(ClientMessage.GetLeaderboard) }
+        scope.launch { sendMessage(ClientMessage.GetLeaderboard) }
     }
 
     fun closeLeaderboard() {
@@ -547,8 +570,8 @@ class GameController private constructor(
         }
         if (playerId == null) return
         scope.launch {
-            socket.sendMessage(ClientMessage.GetFriends)
-            socket.sendMessage(ClientMessage.GetRoomInvitations)
+            sendMessage(ClientMessage.GetFriends)
+            sendMessage(ClientMessage.GetRoomInvitations)
         }
     }
 
@@ -563,7 +586,7 @@ class GameController private constructor(
     fun openNotifications() {
         _uiState.update(GameState::openNotificationsOverlay)
         if (accountDisplayName != null) {
-            scope.launch { socket.sendMessage(ClientMessage.GetNotifications) }
+            scope.launch { sendMessage(ClientMessage.GetNotifications) }
         }
     }
 
@@ -587,9 +610,9 @@ class GameController private constructor(
                 error = null
             )
         }
-        scope.launch { socket.sendMessage(ClientMessage.GetFriends) }
-        scope.launch { socket.sendMessage(ClientMessage.GetTournamentHub) }
-        scope.launch { socket.sendMessage(ClientMessage.GetPublicTournaments()) }
+        scope.launch { sendMessage(ClientMessage.GetFriends) }
+        scope.launch { sendMessage(ClientMessage.GetTournamentHub) }
+        scope.launch { sendMessage(ClientMessage.GetPublicTournaments()) }
     }
 
     fun closeTournament() {
@@ -611,7 +634,7 @@ class GameController private constructor(
         publicTournamentFilterJob = scope.launch {
             delay(250)
             if (_uiState.value.isTournamentOpen) {
-                socket.sendMessage(ClientMessage.GetPublicTournaments(_uiState.value.publicTournamentFilters.toQuery()))
+                sendMessage(ClientMessage.GetPublicTournaments(_uiState.value.publicTournamentFilters.toQuery()))
             }
         }
     }
@@ -622,14 +645,14 @@ class GameController private constructor(
         _uiState.update { it.copy(isPublicTournamentsLoading = true) }
         scope.launch {
             if (_uiState.value.isTournamentOpen) {
-                socket.sendMessage(ClientMessage.GetPublicTournaments(_uiState.value.publicTournamentFilters.toQuery()))
+                sendMessage(ClientMessage.GetPublicTournaments(_uiState.value.publicTournamentFilters.toQuery()))
             }
         }
     }
 
     fun joinPublicTournament(tournamentId: String) {
         _uiState.update { it.copy(isTournamentLoading = true, tournamentNotice = null, error = null) }
-        scope.launch { socket.sendMessage(ClientMessage.JoinPublicTournament(tournamentId)) }
+        scope.launch { sendMessage(ClientMessage.JoinPublicTournament(tournamentId)) }
     }
 
     fun createTournament(
@@ -642,13 +665,13 @@ class GameController private constructor(
     ) {
         _uiState.update { it.copy(isTournamentLoading = true, tournamentNotice = null, error = null) }
         scope.launch {
-            socket.sendMessage(ClientMessage.CreateTournament(name, mode.toProtocol(), entryFee, maxPlayers, visibility, schedule))
+            sendMessage(ClientMessage.CreateTournament(name, mode.toProtocol(), entryFee, maxPlayers, visibility, schedule))
         }
     }
 
     fun inviteTournamentPlayer(friendPlayerId: String) {
         val tournamentId = _uiState.value.tournamentHub.activeTournament?.tournamentId ?: return
-        scope.launch { socket.sendMessage(ClientMessage.InviteTournamentPlayer(tournamentId, friendPlayerId)) }
+        scope.launch { sendMessage(ClientMessage.InviteTournamentPlayer(tournamentId, friendPlayerId)) }
     }
 
     fun respondTournamentInvitation(invitationId: String, accept: Boolean) {
@@ -663,7 +686,7 @@ class GameController private constructor(
                 error = null
             )
         }
-        scope.launch { socket.sendMessage(ClientMessage.RespondTournamentInvitation(invitationId, accept)) }
+        scope.launch { sendMessage(ClientMessage.RespondTournamentInvitation(invitationId, accept)) }
     }
 
     fun dismissTournamentInvitationPrompt() {
@@ -673,7 +696,7 @@ class GameController private constructor(
     fun startTournament() {
         val tournamentId = _uiState.value.tournamentHub.activeTournament?.tournamentId ?: return
         _uiState.update { it.copy(isTournamentLoading = true, error = null) }
-        scope.launch { socket.sendMessage(ClientMessage.StartTournament(tournamentId)) }
+        scope.launch { sendMessage(ClientMessage.StartTournament(tournamentId)) }
     }
 
     fun checkInTournament() {
@@ -687,18 +710,18 @@ class GameController private constructor(
             schedule.stageAt(now) != TournamentScheduleStage.CHECK_IN ||
             tournament.players.none { it.playerId == state.player.id && !it.isCheckedIn }) return
         _uiState.update { it.copy(isTournamentLoading = true, tournamentNotice = null, error = null) }
-        scope.launch { socket.sendMessage(ClientMessage.CheckInTournament(tournament.tournamentId)) }
+        scope.launch { sendMessage(ClientMessage.CheckInTournament(tournament.tournamentId)) }
     }
 
     fun leaveTournament() {
         val tournamentId = _uiState.value.tournamentHub.activeTournament?.tournamentId ?: return
         _uiState.update { it.copy(isTournamentLoading = true, error = null) }
-        scope.launch { socket.sendMessage(ClientMessage.LeaveTournament(tournamentId)) }
+        scope.launch { sendMessage(ClientMessage.LeaveTournament(tournamentId)) }
     }
 
     fun sendEmoji(emojiId: String) {
         val roomId = _uiState.value.currentRoomId ?: return
-        scope.launch { socket.sendMessage(ClientMessage.SendEmoji(roomId, emojiId)) }
+        scope.launch { sendMessage(ClientMessage.SendEmoji(roomId, emojiId)) }
     }
 
     fun openTournamentAfterMatch() {
@@ -728,8 +751,8 @@ class GameController private constructor(
                 error = null
             )
         }
-        scope.launch { socket.sendMessage(ClientMessage.GetTournamentHub) }
-        scope.launch { socket.sendMessage(ClientMessage.GetPublicTournaments(_uiState.value.publicTournamentFilters.toQuery())) }
+        scope.launch { sendMessage(ClientMessage.GetTournamentHub) }
+        scope.launch { sendMessage(ClientMessage.GetPublicTournaments(_uiState.value.publicTournamentFilters.toQuery())) }
     }
 
     fun markAllNotificationsRead() {
@@ -737,7 +760,7 @@ class GameController private constructor(
             state.copy(notifications = state.notifications.map { it.copy(isRead = true) })
         }
         if (accountDisplayName != null) {
-            scope.launch { socket.sendMessage(ClientMessage.MarkNotificationsRead()) }
+            scope.launch { sendMessage(ClientMessage.MarkNotificationsRead()) }
         }
     }
 
@@ -749,7 +772,7 @@ class GameController private constructor(
             )
         }
         if (accountDisplayName != null) {
-            scope.launch { socket.sendMessage(ClientMessage.DismissNotifications(notificationId)) }
+            scope.launch { sendMessage(ClientMessage.DismissNotifications(notificationId)) }
         }
     }
 
@@ -761,7 +784,7 @@ class GameController private constructor(
             )
         }
         if (accountDisplayName != null) {
-            scope.launch { socket.sendMessage(ClientMessage.DismissNotifications()) }
+            scope.launch { sendMessage(ClientMessage.DismissNotifications()) }
         }
     }
 
@@ -777,7 +800,7 @@ class GameController private constructor(
             )
         }
         if (accountDisplayName != null) {
-            scope.launch { socket.sendMessage(ClientMessage.MarkNotificationsRead(notificationId)) }
+            scope.launch { sendMessage(ClientMessage.MarkNotificationsRead(notificationId)) }
         }
         when (notification.destination) {
             AppNotificationDestination.FRIENDS -> openFriends()
@@ -794,7 +817,7 @@ class GameController private constructor(
 
     fun sendFriendRequest(playerCode: String) {
         _uiState.update { it.copy(isFriendsLoading = true, error = null, socialNotice = null) }
-        scope.launch { socket.sendMessage(ClientMessage.SendFriendRequest(playerCode)) }
+        scope.launch { sendMessage(ClientMessage.SendFriendRequest(playerCode)) }
     }
 
     fun respondFriendRequest(requestId: String, accept: Boolean) {
@@ -808,27 +831,27 @@ class GameController private constructor(
                 }
             )
         }
-        scope.launch { socket.sendMessage(ClientMessage.RespondFriendRequest(requestId, accept)) }
+        scope.launch { sendMessage(ClientMessage.RespondFriendRequest(requestId, accept)) }
     }
 
     fun cancelFriendRequest(requestId: String) {
         _uiState.update { it.copy(isFriendsLoading = true, error = null, socialNotice = null) }
-        scope.launch { socket.sendMessage(ClientMessage.CancelFriendRequest(requestId)) }
+        scope.launch { sendMessage(ClientMessage.CancelFriendRequest(requestId)) }
     }
 
     fun removeFriend(friendUserId: String) {
         _uiState.update { it.copy(isFriendsLoading = true, error = null, socialNotice = null) }
-        scope.launch { socket.sendMessage(ClientMessage.RemoveFriend(friendUserId)) }
+        scope.launch { sendMessage(ClientMessage.RemoveFriend(friendUserId)) }
     }
 
     fun blockPlayer(playerUserId: String) {
         _uiState.update { it.copy(isFriendsLoading = true, error = null, socialNotice = null) }
-        scope.launch { socket.sendMessage(ClientMessage.BlockPlayer(playerUserId)) }
+        scope.launch { sendMessage(ClientMessage.BlockPlayer(playerUserId)) }
     }
 
     fun unblockPlayer(playerUserId: String) {
         _uiState.update { it.copy(isFriendsLoading = true, error = null, socialNotice = null) }
-        scope.launch { socket.sendMessage(ClientMessage.UnblockPlayer(playerUserId)) }
+        scope.launch { sendMessage(ClientMessage.UnblockPlayer(playerUserId)) }
     }
 
     fun inviteFriend(friendUserId: String) {
@@ -840,7 +863,7 @@ class GameController private constructor(
                 error = null
             )
         }
-        scope.launch { socket.sendMessage(ClientMessage.InviteFriend(friendUserId, roomId)) }
+        scope.launch { sendMessage(ClientMessage.InviteFriend(friendUserId, roomId)) }
     }
 
     fun respondRoomInvitation(invitationId: String, accept: Boolean) {
@@ -856,7 +879,7 @@ class GameController private constructor(
                 error = null
             )
         }
-        scope.launch { socket.sendMessage(ClientMessage.RespondRoomInvitation(invitationId, accept)) }
+        scope.launch { sendMessage(ClientMessage.RespondRoomInvitation(invitationId, accept)) }
     }
 
     fun dismissRoomInvitationPrompt() {
@@ -886,7 +909,7 @@ class GameController private constructor(
             )
         }
         scope.launch {
-            socket.sendMessage(
+            sendMessage(
                 ClientMessage.CreateRoom(
                     roomName = roomName,
                     password = password,
@@ -915,13 +938,13 @@ class GameController private constructor(
                 error = null
             )
         }
-        scope.launch { socket.sendMessage(ClientMessage.JoinRoom(roomId, password)) }
+        scope.launch { sendMessage(ClientMessage.JoinRoom(roomId, password)) }
     }
 
     fun leaveRoom() {
         val state = _uiState.value
         val roomId = state.currentRoomId
-        if (roomId != null) scope.launch { socket.sendMessage(ClientMessage.LeaveRoom(roomId)) }
+        if (roomId != null) scope.launch { sendMessage(ClientMessage.LeaveRoom(roomId)) }
         if (roomId != null && state.isMatchStarted && !state.isGameOver) {
             _uiState.update {
                 it.copy(
@@ -961,7 +984,7 @@ class GameController private constructor(
             )
         }
         scope.launch {
-            socket.sendMessage(
+            sendMessage(
                 if (isAcceptingInvitation) {
                     ClientMessage.RespondRematch(roomId, accept = true)
                 } else {
@@ -984,7 +1007,7 @@ class GameController private constructor(
             (!state.isRematchRequestedByMe && !state.isRematchRequestedByOpponent)
         ) return
         _uiState.update { it.copy(isRematchActionPending = true, error = null) }
-        scope.launch { socket.sendMessage(ClientMessage.RespondRematch(roomId, accept)) }
+        scope.launch { sendMessage(ClientMessage.RespondRematch(roomId, accept)) }
     }
 
     fun connectWithOpponent() {
@@ -1008,8 +1031,8 @@ class GameController private constructor(
         val opponentId = state.opponent.id ?: return
         val roomId = state.currentRoomId
         scope.launch {
-            socket.sendMessage(ClientMessage.BlockPlayer(opponentId))
-            if (roomId != null) socket.sendMessage(ClientMessage.LeaveRoom(roomId))
+            sendMessage(ClientMessage.BlockPlayer(opponentId))
+            if (roomId != null) sendMessage(ClientMessage.LeaveRoom(roomId))
             returnToRoomBrowser()
             _uiState.update { it.copy(socialNotice = messageMapper.text(TextKey.PlayerBlockedAndLeft)) }
         }
@@ -1017,7 +1040,7 @@ class GameController private constructor(
 
     fun openMatchDetail(matchId: String) {
         _uiState.update { it.copy(matchDetail = null, isMatchDetailLoading = true, error = null) }
-        scope.launch { socket.sendMessage(ClientMessage.GetMatchDetail(matchId)) }
+        scope.launch { sendMessage(ClientMessage.GetMatchDetail(matchId)) }
     }
 
     fun closeMatchDetail() {
@@ -1041,7 +1064,7 @@ class GameController private constructor(
             else -> return
         }
         _uiState.update { it.copy(equippingCosmeticId = changingCosmeticId, error = null) }
-        scope.launch { socket.sendMessage(ClientMessage.EquipCosmetics(frameId, titleId)) }
+        scope.launch { sendMessage(ClientMessage.EquipCosmetics(frameId, titleId)) }
     }
 
     fun claimDailyCheckIn() {
@@ -1050,7 +1073,7 @@ class GameController private constructor(
         _uiState.update {
             it.copy(isDailyCheckInClaiming = true, error = null)
         }
-        scope.launch { socket.sendMessage(ClientMessage.ClaimDailyCheckIn) }
+        scope.launch { sendMessage(ClientMessage.ClaimDailyCheckIn) }
     }
 
     fun claimMissionReward(missionCode: String) {
@@ -1061,7 +1084,7 @@ class GameController private constructor(
         _uiState.update {
             it.copy(claimingMissionCode = missionCode, profileNotice = null, error = null)
         }
-        scope.launch { socket.sendMessage(ClientMessage.ClaimMissionReward(missionCode)) }
+        scope.launch { sendMessage(ClientMessage.ClaimMissionReward(missionCode)) }
     }
 
     fun acknowledgeSeasonReward(seasonNumber: Int) {
@@ -1080,18 +1103,18 @@ class GameController private constructor(
                 )
             )
         }
-        scope.launch { socket.sendMessage(ClientMessage.AcknowledgeSeasonReward(seasonNumber)) }
+        scope.launch { sendMessage(ClientMessage.AcknowledgeSeasonReward(seasonNumber)) }
     }
 
     fun refreshWalletHistory() {
         if (accountDisplayName == null || _uiState.value.isWalletHistoryLoading) return
         _uiState.update { it.copy(isWalletHistoryLoading = true, error = null) }
-        scope.launch { socket.sendMessage(ClientMessage.GetWalletHistory) }
+        scope.launch { sendMessage(ClientMessage.GetWalletHistory) }
     }
 
     fun setReady(ready: Boolean) {
         val roomId = _uiState.value.currentRoomId ?: return
-        scope.launch { socket.sendMessage(ClientMessage.SetReady(roomId, ready)) }
+        scope.launch { sendMessage(ClientMessage.SetReady(roomId, ready)) }
     }
 
     fun startMatchmaking(mode: GameMode, matchType: MatchType) {
@@ -1108,7 +1131,7 @@ class GameController private constructor(
                 error = null
             )
         }
-        scope.launch { socket.sendMessage(ClientMessage.JoinMatchmaking(mode.toProtocol(), matchType)) }
+        scope.launch { sendMessage(ClientMessage.JoinMatchmaking(mode.toProtocol(), matchType)) }
     }
 
     fun cancelMatchmaking() {
@@ -1121,24 +1144,55 @@ class GameController private constructor(
                 error = null
             )
         }
-        scope.launch { socket.sendMessage(ClientMessage.CancelMatchmaking) }
+        scope.launch { sendMessage(ClientMessage.CancelMatchmaking) }
     }
 
     fun kickOpponent() {
         val state = _uiState.value
         val roomId = state.currentRoomId ?: return
         val opponentId = state.opponent.id ?: return
-        scope.launch { socket.sendMessage(ClientMessage.KickPlayer(roomId, opponentId)) }
+        scope.launch { sendMessage(ClientMessage.KickPlayer(roomId, opponentId)) }
     }
 
     private suspend fun handleMessage(message: ServerMessage) {
+        ugc.receive(message)
+        if (message !is ServerMessage.SessionReady) {
+            _uiState.update { it.withAuthoritativeAvatars(message.authoritativeAvatars()) }
+        }
         when (message) {
+            is ServerMessage.ContentModerationChanged -> {
+                if (playerId != null) {
+                    _uiState.update { it.withContentModerationChange(message.targetType, message.targetId) }
+                    // Reads only: an administrative refresh must never resume an unpublished draft.
+                    requestProfileRefresh()
+                    sendMessage(ClientMessage.ListRooms)
+                    if (accountDisplayName != null) {
+                        sendMessage(ClientMessage.GetFriends)
+                        sendMessage(ClientMessage.GetRoomInvitations)
+                        sendMessage(ClientMessage.GetNotifications)
+                        sendMessage(ClientMessage.GetLeaderboard)
+                        sendMessage(ClientMessage.GetTournamentHub)
+                    }
+                    val state = _uiState.value
+                    if (state.isTournamentOpen) sendMessage(ClientMessage.GetPublicTournaments(state.publicTournamentFilters.toQuery()))
+                    state.viewedFriendUserId?.let { sendMessage(ClientMessage.GetFriendProfile(it)) }
+                    state.currentClan?.id?.let { sendMessage(ClientMessage.GetClanInfo(it)) }
+                    if (state.isClanOpen) sendMessage(ClientMessage.GetClanList())
+                    state.matchDetail?.summary?.matchId?.let { sendMessage(ClientMessage.GetMatchDetail(it)) }
+                }
+            }
             is ServerMessage.SessionReady -> {
                 val wasRecoveringRoom = _uiState.value.currentRoomId != null
+                if (editorProfileSave != null) ugc.dismissTerms()
                 interruptEditorProfileSave()
+                if (playerId != null && playerId != message.playerId) {
+                    ugc.clearSession()
+                    _uiState.update { it.copy(suppressedAvatarIds = emptySet(), invalidatedAvatarIds = emptySet()) }
+                }
+                sendMessage(ClientMessage.GetContentTerms)
                 playerId = message.playerId
                 _uiState.update {
-                    it.withReadySession(message.playerId).copy(
+                    it.withReadySession(message.playerId).withAuthoritativeAvatars(message.authoritativeAvatars()).copy(
                         avatarRevision = it.avatarRevision + 1, error = editorProfileSaveFailure
                     )
                 }
@@ -1147,16 +1201,16 @@ class GameController private constructor(
                 startLatencyMonitoring()
                 if (accountDisplayName != null) {
                     scope.launch {
-                        socket.sendMessage(ClientMessage.ListRooms)
+                        sendMessage(ClientMessage.ListRooms)
                         requestProfileRefresh()
-                        socket.sendMessage(ClientMessage.GetFriends)
-                        socket.sendMessage(ClientMessage.GetRoomInvitations)
-                        socket.sendMessage(ClientMessage.GetNotifications)
-                        socket.sendMessage(ClientMessage.GetLeaderboard)
-                        socket.sendMessage(ClientMessage.GetTournamentHub)
-                        socket.sendMessage(ClientMessage.GetPlayQuota)
+                        sendMessage(ClientMessage.GetFriends)
+                        sendMessage(ClientMessage.GetRoomInvitations)
+                        sendMessage(ClientMessage.GetNotifications)
+                        sendMessage(ClientMessage.GetLeaderboard)
+                        sendMessage(ClientMessage.GetTournamentHub)
+                        sendMessage(ClientMessage.GetPlayQuota)
                         _uiState.value.viewedFriendUserId?.let { friendUserId ->
-                            socket.sendMessage(ClientMessage.GetFriendProfile(friendUserId))
+                            sendMessage(ClientMessage.GetFriendProfile(friendUserId))
                         }
                     }
                 }
@@ -1187,7 +1241,8 @@ class GameController private constructor(
                         gameMode = room.gameMode.toUi(),
                         matchType = room.matchType,
                         requiresPassword = room.requiresPassword,
-                        lastSeenAtMillis = epochMillis()
+                        lastSeenAtMillis = epochMillis(),
+                        hostId = room.hostId
                     )
                 }
                 _uiState.update { state ->
@@ -1269,18 +1324,18 @@ class GameController private constructor(
                     )
                 }
                 if (newNotifications.isNotEmpty()) {
-                    socket.sendMessage(ClientMessage.SyncNotifications(
+                    sendMessage(ClientMessage.SyncNotifications(
                         newNotifications.clientSyncSnapshots()
                     ))
                 }
                 // Auto-load clan details when clanId changes while clan screen is open
                 val newClanId = message.profile.clanId
                 if (newClanId != null && newClanId != previousClanId && _uiState.value.isClanOpen) {
-                    socket.sendMessage(ClientMessage.GetClanInfo(newClanId))
+                    sendMessage(ClientMessage.GetClanInfo(newClanId))
                 }
                 if (avatarCompleted) {
                     save.stage = EditorSaveStage.PROFILE
-                    socket.sendMessage(save.profile)
+                    sendMessage(save.profile)
                 }
                 dispatchEditorProfileSave()
                 if (editorProfileSave == null && profileRefreshAfterSave) {
@@ -1543,14 +1598,14 @@ class GameController private constructor(
                 applyGameSnapshot(message.game)
                 if (message.game.phase == RoomPhase.FINISHED && accountDisplayName != null) {
                     requestProfileRefresh()
-                    socket.sendMessage(ClientMessage.GetFriends)
+                    sendMessage(ClientMessage.GetFriends)
                 }
             }
             is ServerMessage.GameFinished -> {
                 applyGameSnapshot(message.game)
                 if (accountDisplayName != null) {
                     requestProfileRefresh()
-                    socket.sendMessage(ClientMessage.GetFriends)
+                    sendMessage(ClientMessage.GetFriends)
                 }
             }
             is ServerMessage.EmojiBroadcast -> {
@@ -1587,19 +1642,19 @@ class GameController private constructor(
                     when (message.action) {
                         "create_clan", "join_clan_approved" -> {
                             requestProfileRefresh()
-                            socket.sendMessage(ClientMessage.GetClanList())
+                            sendMessage(ClientMessage.GetClanList())
                         }
                         "request_join_clan", "join_clan_rejected" -> {
-                            socket.sendMessage(ClientMessage.GetClanList())
+                            sendMessage(ClientMessage.GetClanList())
                         }
                         "respond_clan_join_request" -> {
                             _uiState.value.currentClan?.id?.let {
-                                socket.sendMessage(ClientMessage.GetClanInfo(it))
+                                sendMessage(ClientMessage.GetClanInfo(it))
                             }
                         }
                         "leave_clan" -> {
                             requestProfileRefresh()
-                            socket.sendMessage(ClientMessage.GetClanList())
+                            sendMessage(ClientMessage.GetClanList())
                         }
                     }
                 }
@@ -1671,7 +1726,7 @@ class GameController private constructor(
             is ServerMessage.LatencyPong -> {
                 val ping = (epochMillis() - message.clientSentAtEpochMillis).coerceAtLeast(0L)
                 _uiState.update { it.copy(latencyMillis = ping) }
-                scope.launch { socket.sendMessage(ClientMessage.UpdateLatency(ping)) }
+                scope.launch { sendMessage(ClientMessage.UpdateLatency(ping)) }
             }
             is ServerMessage.MatchmakingStatus -> {
                 _uiState.update {
@@ -1708,6 +1763,7 @@ class GameController private constructor(
                 }
             }
 
+            is ServerMessage.ContentTermsData, is ServerMessage.ContentReportResult -> Unit
             is ServerMessage.Error -> handleServerError(message)
         }
     }
@@ -1776,6 +1832,19 @@ class GameController private constructor(
     }
 
     private fun handleServerError(error: ServerMessage.Error) {
+        if (error.code in setOf("CONTENT_TERMS_REQUIRED", "CONTENT_TERMS_VERSION_INVALID") &&
+            accountDisplayName == null && playerId == null) {
+            scope.launch {
+                socket.disconnect()
+                sessionJob?.cancelAndJoin()
+                sessionJob = null
+                guestContentConsent.begin { version ->
+                    socket.acceptedContentTermsVersion = version
+                    ensureSocketSession()
+                }
+            }
+            return
+        }
         val localizedError = messageMapper.message(error)
         val profileError = error.code in setOf(
             "UPLOAD_FAILED", "RATE_LIMITED", "INVALID_DISPLAY_NAME", "INVALID_AVATAR", "AVATAR_LOCKED",
@@ -1904,7 +1973,7 @@ class GameController private constructor(
             }
         }
         scope.launch {
-            socket.sendMessage(
+            sendMessage(
                 ClientMessage.SelectNumber(
                     roomId = roomId,
                     number = number,
@@ -1927,11 +1996,14 @@ class GameController private constructor(
         timerJob?.cancel()
         countdownJob?.cancel()
         gameStarted = false
-        _uiState.value = GameState(player = PlayerState(displayName))
+        _uiState.value = GameState(player = PlayerState(displayName),
+            avatarRevision = _uiState.value.avatarRevision,
+            suppressedAvatarIds = _uiState.value.suppressedAvatarIds,
+            invalidatedAvatarIds = _uiState.value.invalidatedAvatarIds)
 
         scope.launch {
             try {
-                if (roomId != null) socket.sendMessage(ClientMessage.LeaveRoom(roomId))
+                if (roomId != null) sendMessage(ClientMessage.LeaveRoom(roomId))
                 socket.disconnect()
                 activeSession?.cancelAndJoin()
                 sessionJob = null
@@ -1945,7 +2017,7 @@ class GameController private constructor(
         val normalizedToken = token.trim().takeIf(String::isNotEmpty) ?: return
         lastFcmToken = normalizedToken
         scope.launch {
-            socket.sendMessage(
+            sendMessage(
                 ClientMessage.UpdateFcmToken(
                     token = normalizedToken,
                     languageTag = localization.language.languageTag
@@ -1958,10 +2030,13 @@ class GameController private constructor(
         if (editorProfileSave != null) return
         if (_uiState.value.isPushPreferencesSaving) return
         _uiState.update { it.copy(isPushPreferencesSaving = true) }
-        scope.launch { socket.sendMessage(ClientMessage.UpdatePushPreferences(preferences)) }
+        scope.launch { sendMessage(ClientMessage.UpdatePushPreferences(preferences)) }
     }
 
     fun close() {
+        guestContentConsent.dismiss()
+        termsApi.close()
+        ugc.clearSession()
         profileRefreshAfterGiftPending = false
         publicTournamentFilterJob?.cancel()
         timerJob?.cancel()
@@ -1978,7 +2053,7 @@ class GameController private constructor(
         latencyJob?.cancel()
         latencyJob = scope.launch {
             while (true) {
-                socket.sendMessage(ClientMessage.MeasureLatency(epochMillis()))
+                sendMessage(ClientMessage.MeasureLatency(epochMillis()))
                 delay(5_000)
             }
         }
@@ -2062,7 +2137,7 @@ class GameController private constructor(
                 error = null
             )
         }
-        scope.launch { socket.sendMessage(ClientMessage.GetClanList()) }
+        scope.launch { sendMessage(ClientMessage.GetClanList()) }
     }
 
     fun closeClan() {
@@ -2070,51 +2145,51 @@ class GameController private constructor(
     }
 
     fun createClan(name: String, description: String) {
-        scope.launch { socket.sendMessage(ClientMessage.CreateClan(name, description)) }
+        scope.launch { sendMessage(ClientMessage.CreateClan(name, description)) }
     }
 
     fun joinClan(clanId: String) {
         _uiState.update { it.copy(clanNotice = null, error = null) }
-        scope.launch { socket.sendMessage(ClientMessage.JoinClan(clanId)) }
+        scope.launch { sendMessage(ClientMessage.JoinClan(clanId)) }
     }
 
     fun respondClanJoinRequest(clanId: String, userId: String, accept: Boolean) {
         _uiState.update { it.copy(clanNotice = null, error = null) }
         scope.launch {
-            socket.sendMessage(ClientMessage.RespondClanJoinRequest(clanId, userId, accept))
+            sendMessage(ClientMessage.RespondClanJoinRequest(clanId, userId, accept))
         }
     }
 
     fun leaveClan() {
-        scope.launch { socket.sendMessage(ClientMessage.LeaveClan) }
+        scope.launch { sendMessage(ClientMessage.LeaveClan) }
         _uiState.update { it.copy(currentClan = null) }
     }
 
     fun viewClan(clanId: String) {
-        scope.launch { socket.sendMessage(ClientMessage.GetClanInfo(clanId)) }
+        scope.launch { sendMessage(ClientMessage.GetClanInfo(clanId)) }
     }
 
     fun searchClan(query: String?) {
-        scope.launch { socket.sendMessage(ClientMessage.GetClanList(query)) }
+        scope.launch { sendMessage(ClientMessage.GetClanList(query)) }
     }
 
     fun inviteToClan(playerCode: String) {
-        scope.launch { socket.sendMessage(ClientMessage.InviteToClan(playerCode)) }
+        scope.launch { sendMessage(ClientMessage.InviteToClan(playerCode)) }
     }
 
     fun kickClanMember(clanId: String, memberId: String) {
-        scope.launch { socket.sendMessage(ClientMessage.KickClanMember(clanId, memberId)) }
+        scope.launch { sendMessage(ClientMessage.KickClanMember(clanId, memberId)) }
     }
 
 
     fun claimClanQuestReward(clanId: String) {
         _uiState.update { it.copy(error = null) }
-        scope.launch { socket.sendMessage(ClientMessage.ClaimClanQuestReward(clanId)) }
+        scope.launch { sendMessage(ClientMessage.ClaimClanQuestReward(clanId)) }
     }
 
     fun requestPlayQuota() {
         if (accountDisplayName == null) return
-        scope.launch { socket.sendMessage(ClientMessage.GetPlayQuota) }
+        scope.launch { sendMessage(ClientMessage.GetPlayQuota) }
     }
 
     fun claimRewardedAdBonus(receipt: RewardedAdReceipt): Boolean {
@@ -2128,7 +2203,7 @@ class GameController private constructor(
             )
         }
         scope.launch {
-            socket.sendMessage(
+            sendMessage(
                 ClientMessage.ClaimRewardedAdBonus(
                     requestId = receipt.requestId,
                     provider = receipt.provider,
@@ -2160,7 +2235,7 @@ class GameController private constructor(
             )
         }
         scope.launch {
-            socket.sendMessage(
+            sendMessage(
                 ClientMessage.DonateToClan(
                     clanId = clanId,
                     requestId = requestId,
@@ -2182,7 +2257,7 @@ class GameController private constructor(
                 error = null
             )
         }
-        scope.launch { socket.sendMessage(ClientMessage.GetGemStoreCatalog) }
+        scope.launch { sendMessage(ClientMessage.GetGemStoreCatalog) }
     }
 
     fun closeShop() {
@@ -2204,7 +2279,7 @@ class GameController private constructor(
             )
         }
         scope.launch {
-            socket.sendMessage(ClientMessage.VerifyStorePurchase(
+            sendMessage(ClientMessage.VerifyStorePurchase(
                 requestId = requestId,
                 store = store,
                 productId = productId,
@@ -2230,18 +2305,18 @@ class GameController private constructor(
             )
         }
         scope.launch {
-            socket.sendMessage(ClientMessage.ExchangeGemsForGold(requestId, offerId))
+            sendMessage(ClientMessage.ExchangeGemsForGold(requestId, offerId))
         }
         return true
     }
 
     fun buyCosmetic(cosmeticId: String) {
-        scope.launch { socket.sendMessage(ClientMessage.BuyCosmetic(cosmeticId)) }
+        scope.launch { sendMessage(ClientMessage.BuyCosmetic(cosmeticId)) }
     }
 
     fun equipCosmetic(cosmeticId: String) {
         if (editorProfileSave != null) return
-        scope.launch { socket.sendMessage(ClientMessage.EquipCosmetic(cosmeticId)) }
+        scope.launch { sendMessage(ClientMessage.EquipCosmetic(cosmeticId)) }
     }
 
     private fun rewardNotice(gold: Int, xp: Int, gems: Int): String {

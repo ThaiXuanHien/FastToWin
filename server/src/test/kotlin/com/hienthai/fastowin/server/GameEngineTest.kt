@@ -1600,7 +1600,7 @@ class GameEngineTest {
         assertEquals(TextKey.PendingApproval.name, joinRequestNotification.titleKey)
         assertEquals(TextKey.NotificationClanJoinRequestMessage.name, joinRequestNotification.messageKey)
         assertEquals(
-            mapOf("player" to "Tân binh", "clan" to "Speed"),
+            mapOf("player" to "Tân binh", "playerId" to applicantId, "clanId" to clanId, "clan" to "Speed"),
             joinRequestNotification.messageArgs
         )
 
@@ -1619,7 +1619,7 @@ class GameEngineTest {
         val approvalNotification = notifications.loadNotifications(applicantId).single()
         assertEquals(TextKey.NotificationClanJoinApprovedTitle.name, approvalNotification.titleKey)
         assertEquals(TextKey.ClanJoinApprovedNotice.name, approvalNotification.messageKey)
-        assertEquals(mapOf("clan" to "Speed"), approvalNotification.messageArgs)
+        assertEquals(mapOf("clanId" to clanId, "clan" to "Speed"), approvalNotification.messageArgs)
     }
 
     @Test
@@ -1725,7 +1725,7 @@ class GameEngineTest {
         assertEquals(TextKey.RoomInvitationTitle.name, restoredNotification.titleKey)
         assertEquals(TextKey.NotificationRoomInvitationMessage.name, restoredNotification.messageKey)
         assertEquals(
-            mapOf("player" to "Host", "room" to "Restart invitation"),
+            mapOf("player" to "Host", "playerId" to hostId, "roomId" to room.roomId, "room" to "Restart invitation"),
             restoredNotification.messageArgs
         )
     }

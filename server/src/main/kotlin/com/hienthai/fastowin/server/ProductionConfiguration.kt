@@ -137,3 +137,9 @@ private fun Map<String, String>.strictBoolean(name: String, default: Boolean): B
     return rawValue.toBooleanStrictOrNull()
         ?: throw IllegalArgumentException("$name must be either true or false.")
 }
+
+/** Client-first rollout: absent configuration never enables publication enforcement. */
+internal fun contentTermsEnforced(values: Map<String, String> = System.getenv()): Boolean =
+    values["FASTTOWIN_CONTENT_TERMS_ENFORCED"]?.trim()?.let {
+        it.toBooleanStrictOrNull() ?: throw IllegalArgumentException("FASTTOWIN_CONTENT_TERMS_ENFORCED must be true or false.")
+    } ?: false

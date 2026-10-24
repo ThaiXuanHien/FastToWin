@@ -158,7 +158,7 @@ class PostgresPlayerProfileRepository(
 
             val recentMatches = connection.prepareStatement(
                 legacyFallback("""
-                SELECT m.id, m.room_name, m.game_mode, m.match_type, m.ended_at,
+                SELECT m.id, m.room_id, opponent.user_id AS opponent_user_id, m.room_name, m.game_mode, m.match_type, m.ended_at,
                        mine.score AS player_score, mine.outcome, mine.reward_breakdown::text AS reward_breakdown,
                        COALESCE(rh.rating_change, 0) AS elo_change,
                        COALESCE(opponent.display_name, 'Đối thủ') AS opponent_name,
@@ -181,6 +181,8 @@ class PostgresPlayerProfileRepository(
                                 roomName = result.getString("room_name"),
                                 gameMode = ProtocolGameMode.valueOf(result.getString("game_mode")),
                                 opponentName = result.getString("opponent_name"),
+                                roomId = result.getObject("room_id", UUID::class.java)?.toString(),
+                                opponentUserId = result.getObject("opponent_user_id", UUID::class.java)?.toString(),
                                 playerScore = result.getInt("player_score"),
                                 opponentScore = result.getInt("opponent_score"),
                                 outcome = MatchHistoryOutcome.valueOf(result.getString("outcome")),
@@ -933,6 +935,7 @@ class PostgresPlayerProfileRepository(
                                 add(MatchEventSnapshot(
                                     sequence = result.getInt("sequence"),
                                     playerName = result.getString("display_name"),
+                                    playerId = eventPlayerId.toString(),
                                     isCurrentPlayer = eventPlayerId == playerUuid,
                                     number = result.getInt("number"),
                                     expectedNumber = result.getInt("expected_number"),

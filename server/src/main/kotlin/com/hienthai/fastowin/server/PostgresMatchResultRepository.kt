@@ -1,4 +1,4 @@
-﻿package com.hienthai.fastowin.server
+package com.hienthai.fastowin.server
 
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -39,8 +39,8 @@ class PostgresMatchResultRepository(
     private fun insertMatch(connection: Connection, match: CompletedMatch): Boolean =
         connection.prepareStatement(
             """
-            INSERT INTO matches (id, room_name, game_mode, started_at, ended_at, winner_user_id, match_type, event_rewards)
-            VALUES (?, ?, ?, ?, ?, ?, ?, CAST(? AS jsonb))
+            INSERT INTO matches (id, room_name, game_mode, started_at, ended_at, winner_user_id, match_type, event_rewards, room_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, CAST(? AS jsonb), ?)
             ON CONFLICT (id) DO NOTHING
             """.trimIndent()
         ).use { statement ->
@@ -52,6 +52,7 @@ class PostgresMatchResultRepository(
             statement.setObject(6, match.winnerPlayerId?.let(UUID::fromString))
             statement.setString(7, match.matchType.name)
             statement.setString(8, ProtocolJson.encodeToString(match.eventRewards))
+            statement.setObject(9, match.roomId?.let(UUID::fromString))
             statement.executeUpdate() == 1
         }
 

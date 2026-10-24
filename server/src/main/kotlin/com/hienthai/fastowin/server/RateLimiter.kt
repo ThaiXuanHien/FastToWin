@@ -40,7 +40,8 @@ data class ServerRateLimitPolicies(
     val verifyPurchasePerPlayer: RateLimitPolicy = RateLimitPolicy(6, 60_000L),
     val verifyPurchasePerIp: RateLimitPolicy = RateLimitPolicy(20, 60_000L),
     val avatarPerPlayer: RateLimitPolicy = RateLimitPolicy(3, 10 * 60_000L),
-    val avatarPerIp: RateLimitPolicy = RateLimitPolicy(10, 10 * 60_000L)
+    val avatarPerIp: RateLimitPolicy = RateLimitPolicy(10, 10 * 60_000L),
+    val reportPerIp: RateLimitPolicy = RateLimitPolicy(30, 10 * 60_000L)
 )
 
 data class RateLimitResult(

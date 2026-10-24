@@ -1,4 +1,10 @@
 package com.hienthai.fastowin.ui.screens
+
+import com.hienthai.fastowin.ui.components.ReportableText
+import com.hienthai.fastowin.ui.components.UgcReportButton
+import com.hienthai.fastowin.ui.components.UgcSafetyButton
+import com.hienthai.fastowin.ui.components.UgcTarget
+import com.hienthai.fastowin.protocol.UgcTargetType
 import com.hienthai.fastowin.ui.components.LocalNewOnlineIntentAllowed
 
 import androidx.compose.foundation.BorderStroke
@@ -329,6 +335,10 @@ private fun ScoreBoard(
     opponentScore: Int,
     onOpponentInfo: (() -> Unit)? = null
 ) {
+    UgcSafetyButton((listOf(state.player, state.opponent) + state.teammates + state.opponents).map {
+        UgcTarget(UgcTargetType.PLAYER_PROFILE, it.id, it.name)
+    })
+
     val is2v2 = state.gameMode == com.hienthai.fastowin.navigation.GameMode.TEAM_2V2
     val myName = if (is2v2) localized(TextKey.YourTeam) else localized(TextKey.PlayerYou, "player" to state.player.name)
     val opponentName = if (is2v2) localized(TextKey.OpponentTeam) else state.opponent.name
@@ -444,8 +454,8 @@ private fun ResultScoreCard(
                 size = 42.dp
             )
             Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    name,
+                ReportableText(
+                    name, UgcTargetType.PLAYER_PROFILE, player.id,
                     style = MaterialTheme.typography.labelMedium,
                     color = content.copy(alpha = 0.78f),
                     maxLines = 1,

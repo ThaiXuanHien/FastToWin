@@ -1,5 +1,11 @@
 package com.hienthai.fastowin.ui.screens
 
+import com.hienthai.fastowin.ui.components.ReportableText
+import com.hienthai.fastowin.ui.components.UgcReportButton
+import com.hienthai.fastowin.ui.components.UgcSafetyButton
+import com.hienthai.fastowin.ui.components.UgcTarget
+import com.hienthai.fastowin.protocol.UgcTargetType
+
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -401,8 +407,8 @@ private fun CurrentPlayerPanel(
                     fontWeight = FontWeight.Black,
                     color = ArcadePalette.Gold500
                 )
-                Text(
-                    "#${entry.rank} · ${entry.displayName}",
+                ReportableText(
+                    "#${entry.rank} · ${entry.displayName}", UgcTargetType.PLAYER_PROFILE, entry.userId,
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Black,
                     maxLines = 1,
@@ -536,7 +542,7 @@ private fun CurrentClanPanel(
                     fontWeight = FontWeight.Black,
                     color = ArcadePalette.Gold500
                 )
-                Text(entry.clanName, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black)
+                ReportableText(entry.clanName, UgcTargetType.CLAN, entry.clanId, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black)
             }
             Text(
                 clanMetricText(entry, metric),
@@ -584,8 +590,8 @@ private fun ClanLeaderboardCard(
         ) {
             ArcadeRankBadge(entry.rank)
             Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    entry.clanName + if (highlighted) localized(TextKey.YouSuffix) else "",
+                ReportableText(
+                    entry.clanName + if (highlighted) localized(TextKey.YouSuffix) else "", UgcTargetType.CLAN, entry.clanId,
                     fontWeight = FontWeight.Black,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
@@ -635,8 +641,8 @@ private fun LeaderboardCard(
                 size = 44.dp
             )
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(
-                    entry.displayName + if (highlighted) localized(TextKey.YouSuffix) else "",
+                ReportableText(
+                    entry.displayName + if (highlighted) localized(TextKey.YouSuffix) else "", UgcTargetType.PLAYER_PROFILE, entry.userId,
                     fontWeight = FontWeight.Black,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis

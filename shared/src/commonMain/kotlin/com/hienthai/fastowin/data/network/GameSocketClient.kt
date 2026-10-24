@@ -105,6 +105,7 @@ internal class GameSocketClient(
     private var currentMailbox: AttemptMailbox? = null
     private var resumeToken: String? = tokenStore.load(serverUrl)
     private var forceAccessTokenRefresh = false
+    var acceptedContentTermsVersion: String? = null
     private var hasConnected = false
     private var resumeRejected = false
     private var resumeRetryUsed = false
@@ -348,7 +349,7 @@ internal class GameSocketClient(
         run: ConnectRun
     ): AuthResult = coroutineScope {
         if (accessTokenProvider == null) {
-            return@coroutineScope AuthResult.Ready(ClientMessage.ConnectGuest(displayName, resumeToken))
+            return@coroutineScope AuthResult.Ready(ClientMessage.ConnectGuest(displayName, resumeToken, acceptedContentTermsVersion = acceptedContentTermsVersion))
         }
 
         val forceRefresh = forceAccessTokenRefresh

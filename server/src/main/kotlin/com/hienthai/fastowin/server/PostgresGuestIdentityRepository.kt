@@ -12,17 +12,32 @@ import javax.sql.DataSource
 class PostgresGuestIdentityRepository(
     private val dataSource: DataSource
 ) : GuestIdentityRepository {
+    override suspend fun resolveGuest(displayName: String, resumeToken: String?, nowMillis: Long): GuestIdentity =
+        resolveGuest(displayName, resumeToken, nowMillis, null)
     override suspend fun resolveGuest(
         displayName: String,
         resumeToken: String?,
-        nowMillis: Long
+        nowMillis: Long,
+        acceptedContentTermsVersion: String?
+    ): GuestIdentity = resolveGuest(displayName,resumeToken,nowMillis,acceptedContentTermsVersion,null) { null }
+
+    override suspend fun resolveGuest(
+        displayName: String,resumeToken: String?,nowMillis: Long,acceptedContentTermsVersion: String?,
+        requiredContentTermsVersion: String?,storedContentTermsVersion: suspend (String) -> String?
     ): GuestIdentity = withContext(Dispatchers.IO) {
         dataSource.connection.use { connection ->
             connection.autoCommit = false
             try {
-                val identity = resumeToken
-                    ?.let { findAndRefresh(connection, displayName, it, nowMillis) }
-                    ?: createGuest(connection, displayName, nowMillis)
+                connection.prepareStatement("SELECT pg_advisory_xact_lock(7421092187349)").use { it.execute() }
+                val moderation = com.hienthai.fastowin.server.moderation.JdbcModerationTransaction(connection)
+                val identity = if (resumeToken != null) findAndRefresh(connection, displayName, resumeToken, nowMillis,
+                    acceptedContentTermsVersion, requiredContentTermsVersion)
+                    ?: throw InvalidResumeTokenException() else {
+                    if (requiredContentTermsVersion != null && acceptedContentTermsVersion != requiredContentTermsVersion)
+                        throw com.hienthai.fastowin.server.moderation.ModerationException(403,"CONTENT_TERMS_REQUIRED","CONTENT_TERMS_REQUIRED")
+                    createGuest(connection, displayName, nowMillis)
+                }
+                acceptedContentTermsVersion?.let { moderation.acceptTerms(identity.playerId, it, nowMillis) }
                 connection.commit()
                 identity
             } catch (error: Throwable) {
@@ -50,7 +65,9 @@ class PostgresGuestIdentityRepository(
         connection: Connection,
         displayName: String,
         resumeToken: String,
-        nowMillis: Long
+        nowMillis: Long,
+        acceptedContentTermsVersion: String?,
+        requiredContentTermsVersion: String?
     ): GuestIdentity? {
         val tokenHash = hashToken(resumeToken)
         val playerId = connection.prepareStatement(
@@ -69,6 +86,9 @@ class PostgresGuestIdentityRepository(
             }
         } ?: return null
 
+        val storedVersion = com.hienthai.fastowin.server.moderation.JdbcModerationTransaction(connection).acceptedVersion(playerId.toString())
+        if (requiredContentTermsVersion != null && acceptedContentTermsVersion != requiredContentTermsVersion && storedVersion != requiredContentTermsVersion)
+            throw com.hienthai.fastowin.server.moderation.ModerationException(403,"CONTENT_TERMS_REQUIRED","CONTENT_TERMS_REQUIRED")
         connection.prepareStatement(
             "UPDATE profiles SET display_name = ?, updated_at = ? WHERE user_id = ?"
         ).use { statement ->

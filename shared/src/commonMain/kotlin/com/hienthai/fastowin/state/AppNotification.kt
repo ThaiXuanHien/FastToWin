@@ -160,7 +160,7 @@ internal fun friendRequestNotifications(
         destination = AppNotificationDestination.FRIENDS,
         titleKey = TextKey.FriendRequests.name,
         messageKey = TextKey.NotificationFriendRequestMessage.name,
-        messageArgs = mapOf("player" to request.displayName),
+        messageArgs = mapOf("player" to request.displayName, "playerId" to request.userId),
         localizationData = mapOf("type" to "friend", "player" to request.displayName)
     )
 }
@@ -181,7 +181,8 @@ internal fun roomInvitationNotification(
     destination = AppNotificationDestination.FRIENDS,
     titleKey = TextKey.RoomInvitationTitle.name,
     messageKey = TextKey.NotificationRoomInvitationMessage.name,
-    messageArgs = mapOf("player" to invitation.fromDisplayName, "room" to invitation.roomName),
+    messageArgs = mapOf("player" to invitation.fromDisplayName, "room" to invitation.roomName,
+        "playerId" to invitation.fromUserId, "roomId" to invitation.roomId),
     localizationData = mapOf(
         "type" to "room",
         "player" to invitation.fromDisplayName,

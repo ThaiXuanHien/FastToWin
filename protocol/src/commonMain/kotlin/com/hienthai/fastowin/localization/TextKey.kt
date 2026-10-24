@@ -2,6 +2,13 @@ package com.hienthai.fastowin.localization
 
 /** Stable keys shared by clients and the backend. Never use player input as a key. */
 enum class TextKey {
+    UgcContentRemovedTitle, UgcContentRemovedBody,
+    UgcReportTitle, UgcReportNamed, UgcReportDescription, UgcReportReason, UgcReportNote, UgcReportSend,
+    UgcReportReceived, UgcReportFailed, UgcReportRetry, UgcReportSending, UgcReportReceipt,
+    UgcPlayerProfile, UgcPlayerAvatar, UgcClan, UgcRoom, UgcTournament, UgcSafetyActions,
+    UgcHarassment, UgcHate, UgcSexualContent, UgcViolence, UgcSpam, UgcPersonalInformation, UgcOther,
+    UgcTermsTitle, UgcTermsDescription, UgcTermsAgreement, UgcTermsRead, UgcTermsVersion, UgcTermsFailed, UgcTermsAccept,
+    UgcReportRateLimit, UgcReportUnavailable, UgcReportFrozen, UgcConnectionInterrupted,
     LegalTitle, LegalSubtitle, LegalPrivacy, LegalTerms, LegalDeleteAccount,
     Back, Cancel, Confirm, Retry, Close, Save, Delete, Loading, UnknownError, WelcomePlayer,
     SettingsTitle, LanguageTitle, ChooseLanguageTitle, SystemLanguage, ResolvedSystemLanguage,

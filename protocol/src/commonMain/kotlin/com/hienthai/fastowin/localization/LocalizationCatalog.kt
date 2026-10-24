@@ -1,5 +1,6 @@
 package com.hienthai.fastowin.localization
 
+import com.hienthai.fastowin.localization.catalogs.ugcTexts
 import com.hienthai.fastowin.localization.catalogs.accountSecurityTexts
 import com.hienthai.fastowin.localization.catalogs.announcementTexts
 import com.hienthai.fastowin.localization.catalogs.rewardEventTexts
@@ -79,7 +80,7 @@ val allLocalizationCatalogs: Map<AppLanguage, LocalizationCatalog> = run {
             (announcementTexts[language] ?: announcementTexts.getValue(AppLanguage.ENGLISH)) +
             (tournamentScheduleTexts[language] ?: tournamentScheduleTexts.getValue(AppLanguage.ENGLISH))
         val untranslated = additions.filter { (key, _) -> catalog.texts[key] == englishTexts[key] }
-        catalog.copy(texts = catalog.texts + untranslated + legalTexts(language))
+        catalog.copy(texts = catalog.texts + untranslated + legalTexts(language) + ugcTexts(language))
     }
 }
 
