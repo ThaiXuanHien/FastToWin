@@ -19,7 +19,7 @@ class ClanRaceService(private val repository:PostgresClanRaceRepository?,private
         if(mutation) service.requireOrigin(ctx.origin) else ctx.origin?.let(service::requireOrigin)
         return service.authorize(admin,ctx.token,ctx.csrfToken,mutation,owner).also { if(it.role==AdminRole.SUPPORT) forbidden() }
     }
-    suspend fun list(ctx:ClanRaceAdminContext,page:PageRequest=PageRequest()):AdminPage<ClanRaceAdminView> = storage(true) { authorize(ctx);val all=catalog();page.result(all.drop(page.offset).take(page.pageSize),all.size.toLong()) }
+    suspend fun list(ctx:ClanRaceAdminContext,page:PageRequest=PageRequest()):AdminPage<ClanRaceAdminView> = storage(true) { authorize(ctx);val (items,total)=configPage(page);page.result(items.map(::withSettlement),total) }
     suspend fun detail(ctx:ClanRaceAdminContext,week:String):ClanRaceAdminView=storage(true) { authorize(ctx);date(week);find(week) }
     suspend fun create(ctx:ClanRaceAdminContext,req:ClanRaceDraftRequest):ClanRaceAdminView=mutate(ctx,"CREATE",req.weekStart,req.expectedVersion,req.reason,req.requestId,Json.encodeToString(req),true,false) { old,_ ->
         if(old!=null || req.expectedVersion!=0L) conflict();future(req.weekStart);ClanRaceAdminView(req.weekStart,1,ClanRaceConfigState.DRAFT,validate(req.config)).also(::put)
@@ -30,7 +30,7 @@ class ClanRaceService(private val repository:PostgresClanRaceRepository?,private
         before.copy(version=Math.addExact(before.version,1),config=config).also(::put)
     }
     suspend fun clone(ctx:ClanRaceAdminContext,from:String,req:ClanRaceCloneRequest):ClanRaceAdminView=mutate(ctx,"CLONE",from,req.expectedVersion,req.reason,req.requestId,Json.encodeToString(req)) { old,_ ->
-        val before=old?:missing();future(req.weekStart);if(catalog().any { it.weekStart==req.weekStart }) conflict()
+        val before=old?:missing();future(req.weekStart);if(config(req.weekStart)!=null) conflict()
         ClanRaceAdminView(req.weekStart,1,ClanRaceConfigState.DRAFT,before.config).also(::put)
     }
     suspend fun publish(ctx:ClanRaceAdminContext,week:String,req:ClanRaceMutationRequest):ClanRaceAdminView=mutate(ctx,"PUBLISH",week,req.expectedVersion,req.reason,req.requestId,Json.encodeToString(req),true) { old,_ ->
@@ -51,7 +51,7 @@ class ClanRaceService(private val repository:PostgresClanRaceRepository?,private
         if(version<0 || reason.isBlank() || reason.length>500 || reason.any(Char::isISOControl) || !request.matches(Regex("[A-Za-z0-9_-]{1,128}"))) invalid()
         val fingerprint=hashToken("$action:$week:$payload")
         replay(actor.id,request)?.let { if(it.first!=fingerprint) conflict();return@storage it.second }
-        val before=catalog().firstOrNull { it.weekStart==week };if(existing && before==null) missing()
+        val before=config(week)?.let(::withSettlement);if(existing && before==null) missing()
         if(before!=null && before.version!=version) throw AdminException(409,"STALE_VERSION","Race config changed; reload before editing.")
         val result=change(before,actor);audit(actor.id,action,before,result,request,reason);remember(actor.id,request,fingerprint,result);result
     }
@@ -80,7 +80,7 @@ class ClanRaceService(private val repository:PostgresClanRaceRepository?,private
     }
     suspend fun history(player:String,page:PageRequest=PageRequest()):ClanRaceHistory=storage {
         val now=nowMillis();val week=raceWeekStart(now)
-        val all=catalog().filter { it.state==ClanRaceConfigState.PUBLISHED && date(it.weekStart)<week }.map { current(date(it.weekStart),now) }
-        ClanRaceHistory(all.drop(page.offset).take(page.pageSize),page.page,page.pageSize,all.size,now)
+        val (items,total)=configPage(page,week)
+        ClanRaceHistory(items.map { current(date(it.weekStart),now,it) },page.page,page.pageSize,Math.toIntExact(total),now)
     }
 }
