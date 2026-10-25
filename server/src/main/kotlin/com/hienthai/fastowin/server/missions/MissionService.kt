@@ -84,7 +84,7 @@ class MissionService(
     suspend fun clan(player:String):MissionListResponse=storage { MissionListResponse(list(player,MissionScope.CLAN,nowMillis()),nowMillis()) }
     suspend fun claim(player:String,id:String,request:MissionClaimRequest):MissionClaimResponse {
         validId(id);validRequest(request.requestId)
-        return storage { claim(player,id,request.requestId) }
+        return storage { claim(player,id,request.requestId,nowMillis()) }
     }
     private fun effective(config:MissionConfig):LocalDate {
         val next=nextPeriod(config.period,missionDate(nowMillis()))

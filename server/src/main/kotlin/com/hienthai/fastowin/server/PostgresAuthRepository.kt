@@ -643,6 +643,7 @@ class PostgresAuthRepository(private val dataSource: DataSource) : AuthRepositor
             connection.autoCommit = false
             try {
                 connection.prepareStatement("SELECT pg_advisory_xact_lock(7421092187349)").use { it.execute() }
+                com.hienthai.fastowin.server.clanrace.JdbcClanRaceStore(connection).lock()
                 val moderation = com.hienthai.fastowin.server.moderation.JdbcModerationTransaction(connection)
                 val eligible = connection.prepareStatement(
                     "SELECT id FROM users WHERE id = ? AND account_type = 'REGISTERED' AND status = 'ACTIVE' FOR UPDATE"

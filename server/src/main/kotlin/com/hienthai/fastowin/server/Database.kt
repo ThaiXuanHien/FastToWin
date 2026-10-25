@@ -37,6 +37,7 @@ data class DatabaseSettings(
 }
 
 class DatabaseRuntime private constructor(
+    val clanRaceRepository: com.hienthai.fastowin.server.clanrace.PostgresClanRaceRepository,
     val missionRepository: com.hienthai.fastowin.server.missions.PostgresMissionRepository,
     val adMobRepository: com.hienthai.fastowin.server.ads.PostgresAdMobRepository,
     val moderationRepository: com.hienthai.fastowin.server.moderation.PostgresModerationRepository,
@@ -92,6 +93,7 @@ class DatabaseRuntime private constructor(
                     } catch (error: Throwable) { connection.rollback(); throw error }
                 }
                 return DatabaseRuntime(
+                    clanRaceRepository = com.hienthai.fastowin.server.clanrace.PostgresClanRaceRepository(dataSource),
                     missionRepository = com.hienthai.fastowin.server.missions.PostgresMissionRepository(dataSource),
                     adMobRepository = com.hienthai.fastowin.server.ads.PostgresAdMobRepository(dataSource),
                     moderationRepository = com.hienthai.fastowin.server.moderation.PostgresModerationRepository(dataSource),

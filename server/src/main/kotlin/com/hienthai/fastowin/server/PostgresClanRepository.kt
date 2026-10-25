@@ -11,6 +11,7 @@ import com.hienthai.fastowin.protocol.ClanQuestSnapshot
 import com.hienthai.fastowin.protocol.ClanSnapshot
 import com.hienthai.fastowin.protocol.ClanSummarySnapshot
 import com.hienthai.fastowin.server.missions.*
+import com.hienthai.fastowin.server.clanrace.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.util.UUID
@@ -19,7 +20,8 @@ import javax.sql.DataSource
 private const val CLAN_MAX_MEMBERS = 50
 
 class PostgresClanRepository(
-    private val dataSource: DataSource
+    private val dataSource: DataSource,
+    private val nowMillis: () -> Long = System::currentTimeMillis
 ) : ClanRepository {
     override suspend fun createClan(ownerId: String, name: String, description: String): ClanCreationResult = withContext(Dispatchers.IO) {
         dataSource.connection.use { connection ->
@@ -28,6 +30,7 @@ class PostgresClanRepository(
 
             try {
                 connection.autoCommit = false
+                JdbcClanRaceStore(connection).apply { lock(); setTime(nowMillis()) }
                 connection.prepareStatement("SELECT 1 FROM users WHERE id = ? FOR UPDATE").use {
                     it.setObject(1, ownerUuid)
                     it.executeQuery().use { result ->
@@ -131,6 +134,7 @@ class PostgresClanRepository(
         dataSource.connection.use { connection ->
             try {
                 connection.autoCommit = false
+                JdbcClanRaceStore(connection).apply { lock(); setTime(nowMillis()) }
                 val userUuid = UUID.fromString(userId)
                 val clanUuid = UUID.fromString(clanId)
 
@@ -208,6 +212,7 @@ class PostgresClanRepository(
         dataSource.connection.use { connection ->
             try {
                 connection.autoCommit = false
+                JdbcClanRaceStore(connection).apply { lock(); setTime(nowMillis()) }
                 val clanUuid = UUID.fromString(clanId)
                 val ownerUuid = UUID.fromString(ownerId)
                 val userUuid = UUID.fromString(userId)
@@ -323,6 +328,7 @@ class PostgresClanRepository(
         dataSource.connection.use { connection ->
             try {
                 connection.autoCommit = false
+                JdbcClanRaceStore(connection).apply { lock(); setTime(nowMillis()) }
                 val userUuid = UUID.fromString(userId)
 
                 // Discover the clan first, then lock every departure in the same
@@ -566,20 +572,12 @@ class PostgresClanRepository(
         list
     }
 
-    override suspend fun kickMember(clanId: String, currentUserId: String, targetUserId: String): Boolean = withContext(Dispatchers.IO) {
-        dataSource.connection.use { connection ->
-            try {
-                connection.prepareStatement("DELETE FROM clan_members WHERE clan_id = ? AND user_id = ?").use {
-                    it.setObject(1, UUID.fromString(clanId))
-                    it.setObject(2, UUID.fromString(targetUserId))
-                    it.executeUpdate() > 0
-                }
-            } catch (e: Exception) {
-                false
-            }
+    override suspend fun kickMember(clanId: String, currentUserId: String, targetUserId: String): Boolean = try {
+        PostgresClanRaceRepository(dataSource).transaction {
+            setTime(nowMillis())
+            update("DELETE FROM clan_members WHERE clan_id=? AND user_id=?",uuid(clanId),uuid(targetUserId))>0
         }
-    }
-
+    } catch (_: Exception) { false }
     override suspend fun updateLogoId(clanId: String, logoId: String): Boolean = withContext(Dispatchers.IO) {
         dataSource.connection.use { connection ->
             connection.prepareStatement("UPDATE clans SET logo_id = ? WHERE id = ?").use { statement ->
@@ -617,6 +615,8 @@ class PostgresClanRepository(
         dataSource.connection.use { connection ->
             connection.autoCommit = false
             JdbcMissionStore(connection).lock()
+            val donationNow=nowMillis()
+            JdbcClanRaceStore(connection).setTime(donationNow)
             try {
                 val userUuid = UUID.fromString(userId)
                 val clanUuid = UUID.fromString(clanId)
@@ -774,7 +774,8 @@ class PostgresClanRepository(
                     check(statement.executeUpdate() == 1)
                 }
 
-                JdbcMissionStore(connection).record(MissionProgressEvent("donation:$requestId",userId,System.currentTimeMillis(),
+                JdbcClanRaceStore(connection).recordDonation(userId,clanId,requestId,currency,amount.toLong(),donationNow)
+                JdbcMissionStore(connection).record(MissionProgressEvent("donation:$requestId",userId,donationNow,
                     donatedGold=goldSpent,donatedGems=gemsSpent))
                 connection.commit()
                 ClanDonationResult(

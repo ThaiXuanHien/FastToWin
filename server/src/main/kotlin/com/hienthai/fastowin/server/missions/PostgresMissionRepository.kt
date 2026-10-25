@@ -3,6 +3,7 @@ package com.hienthai.fastowin.server.missions
 import com.hienthai.fastowin.protocol.*
 import com.hienthai.fastowin.server.*
 import com.hienthai.fastowin.server.admin.*
+import com.hienthai.fastowin.server.clanrace.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
@@ -140,7 +141,8 @@ class JdbcMissionStore(private val c:Connection) {
     }
     private fun applyProgress(instance:MissionInstance,player:String,source:String,increment:Int,now:Long) {
         val config=instance.selection.config
-        if(update("INSERT INTO mission_progress_events(instance_id,user_id,source_id,amount,occurred_at) VALUES (?,?,?,?,?) ON CONFLICT DO NOTHING",id(instance.id),id(player),source,increment,Timestamp(now))==0) return
+        val tenure=if(config.scope==MissionScope.CLAN && instance.progress<config.target) JdbcClanRaceStore(c).currentTenure(player,instance.owner) else null
+        if(update("INSERT INTO mission_progress_events(instance_id,user_id,source_id,amount,occurred_at,race_tenure_id) VALUES (?,?,?,?,?,?) ON CONFLICT DO NOTHING",id(instance.id),id(player),source,increment,Timestamp(now),tenure?.let(::id))==0) return
         update("UPDATE mission_instances SET progress=LEAST(?,progress::bigint+?) WHERE id=?",config.target,increment,id(instance.id))
         if(instance.legacySource=="CLAN_QUEST") {
             update("UPDATE clans SET quest_progress=quest_progress+? WHERE id=?",increment,id(instance.owner))
@@ -160,7 +162,7 @@ class JdbcMissionStore(private val c:Connection) {
             ON CONFLICT(user_id,mission_code,period_start) DO UPDATE SET progress=excluded.progress,completed_at=COALESCE(user_missions.completed_at,excluded.completed_at)""",
             id(player),config.code,Date.valueOf(instance.start),instance.progress,config.target,config.reward.xp,config.reward.gold,config.reward.gems,instance.progress,config.target)
     }
-    internal fun claim(player:String,instanceId:String,requestId:String):MissionClaimResponse {
+    internal fun claim(player:String,instanceId:String,requestId:String,now:Long=System.currentTimeMillis()):MissionClaimResponse {
         activePlayer(player)
         val instance=rows("SELECT * FROM mission_instances WHERE id=? FOR UPDATE",listOf(id(instanceId)),::instanceRow).singleOrNull()?:missing()
         val config=instance.selection.config
@@ -180,6 +182,7 @@ class JdbcMissionStore(private val c:Connection) {
         val grant=if(reward.gold!=0 || reward.gems!=0 || reward.xp!=0) update("INSERT INTO wallet_transactions(id,user_id,source_type,source_id,gold_delta,gems_delta,xp_delta) VALUES (?,?,?,?,?,?,?) ON CONFLICT(user_id,source_type,source_id) DO NOTHING",UUID.randomUUID(),id(player),sourceType,sourceId,reward.gold,reward.gems,reward.xp)==1 else true
         if(grant) update("UPDATE player_stats SET gold=?,gems=?,experience_points=?,updated_at=CURRENT_TIMESTAMP WHERE user_id=?",balances.first,balances.second,balances.third,id(player))
         update("INSERT INTO mission_claims(instance_id,user_id,request_id) VALUES (?,?,?)",id(instanceId),id(player),requestId)
+        if(grant && config.scope==MissionScope.CLAN) JdbcClanRaceStore(c).recordMission(player,instance.owner,instanceId,reward.contributionPoints,now)
         if(config.scope==MissionScope.PERSONAL) update("UPDATE user_missions SET claimed_at=CURRENT_TIMESTAMP WHERE user_id=? AND mission_code=? AND period_start=?",id(player),config.code,Date.valueOf(instance.start))
         if(instance.legacySource=="CLAN_QUEST") update("UPDATE clan_members SET quest_reward_claimed=TRUE WHERE clan_id=? AND user_id=?",id(instance.owner),id(player))
         if(config.scope==MissionScope.CLAN && reward.contributionPoints>0 && grant) update("INSERT INTO mission_contribution_events(source_id,user_id,clan_id,points,source_type) VALUES (?,?,?,?,'MISSION') ON CONFLICT DO NOTHING",instanceId,id(player),id(instance.owner),reward.contributionPoints)
