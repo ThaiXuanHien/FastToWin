@@ -58,7 +58,8 @@ class ClanRaceController(private val gateway: ClanRaceGateway) {
                 lastRefreshedAtEpochMillis = current.serverNowEpochMillis)
         } catch (cancelled: CancellationException) {
             throw cancelled
-        } catch (error: Exception) {
+        } catch (error: Throwable) {
+            // Ktor/Wasm browser fetch failures can be Error rather than Exception.
             if (valid()) mutableState.value = mutableState.value.copy(loadError = (error as? ClanRaceApiException)?.code ?: "NETWORK_ERROR")
         } finally {
             if (valid()) mutableState.value = mutableState.value.copy(isLoading = false)

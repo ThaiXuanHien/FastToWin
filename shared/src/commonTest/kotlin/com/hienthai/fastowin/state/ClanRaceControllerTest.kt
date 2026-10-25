@@ -71,4 +71,24 @@ class ClanRaceControllerTest {
         assertNull(controller.state.value.contributions)
         assertEquals("CONFLICT", controller.state.value.loadError)
     }
+    @Test fun `wasm fetch Error keeps last snapshot and can retry without escaping refresh`() = runTest {
+        val api = Gateway(); val controller = ClanRaceController(api); controller.setContext("me", "own")
+        controller.refresh()
+        // Ktor's Wasm commonFetch wraps a rejected browser fetch in kotlin.Error, not Exception.
+        api.load = { throw Error("Fail to fetch") }
+        controller.refresh()
+        assertEquals(ClanRaceState.ACTIVE, controller.state.value.current?.state)
+        assertEquals("NETWORK_ERROR", controller.state.value.loadError)
+        assertFalse(controller.state.value.isLoading)
+        api.load = { current(7) }; controller.refresh()
+        assertEquals(7, controller.state.value.lastRefreshedAtEpochMillis)
+        assertNull(controller.state.value.loadError)
+    }
+    @Test fun `refresh cancellation propagates without converting it into network error`() = runTest {
+        val api = Gateway(); val controller = ClanRaceController(api); controller.setContext("me", "own")
+        api.load = { throw kotlinx.coroutines.CancellationException("closed view") }
+        assertFailsWith<kotlinx.coroutines.CancellationException> { controller.refresh() }
+        assertFalse(controller.state.value.isLoading)
+        assertNull(controller.state.value.loadError)
+    }
 }
