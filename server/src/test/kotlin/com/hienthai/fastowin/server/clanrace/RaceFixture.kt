@@ -16,7 +16,16 @@ internal class RaceFixture(val source:HikariDataSource) {
     lateinit var actor:AdminIdentity
     suspend fun setup() { actor=admins.bootstrapOwner("race-owner@example.com","GoodPassword123!");login=admins.login(actor.email,"GoodPassword123!","https://admin.example","127.0.0.1") }
     suspend fun player(name:String="Player")=assertIs<AuthResult.Success>(auth.register("${UUID.randomUUID()}@example.com","GoodPassword123!",name,"android")).session
-    fun execute(sql:String) { source.connection.use { it.createStatement().use { s -> s.execute(sql) } } }
+    fun execute(sql:String) {
+        source.connection.use { connection ->
+            connection.autoCommit=false
+            try {
+                JdbcClanRaceStore(connection).apply { lock();setTime(now) }
+                connection.createStatement().use { it.execute(sql) }
+                connection.commit()
+            } catch(error:Throwable) { connection.rollback();throw error }
+        }
+    }
     fun scalar(sql:String):String=source.connection.use { it.createStatement().use { s -> s.executeQuery(sql).use { r -> check(r.next());r.getString(1) } } }
     fun hasTable(table:String)=scalar("SELECT count(*) FROM information_schema.tables WHERE table_schema=current_schema() AND table_name='$table'")=="1"
     fun clan(owner:String,name:String="Clan ${UUID.randomUUID().toString().take(8)}"):String {
@@ -30,7 +39,7 @@ internal class RaceFixture(val source:HikariDataSource) {
 internal suspend fun raceDatabase(block:suspend RaceFixture.()->Unit) {
     val url=requireNotNull(System.getenv("TEST_DATABASE_URL")) { "Real PostgreSQL is required for clan race coverage." }
     val schema="race_fixture_"+UUID.randomUUID().toString().replace("-","")
-    fun source(value:String)=HikariDataSource(HikariConfig().apply { jdbcUrl=value;username=System.getenv("TEST_DATABASE_USER");password=System.getenv("TEST_DATABASE_PASSWORD");maximumPoolSize=6 })
+    fun source(value:String)=HikariDataSource(HikariConfig().apply { jdbcUrl=value;username=System.getenv("TEST_DATABASE_USER");password=System.getenv("TEST_DATABASE_PASSWORD");maximumPoolSize=6;addDataSourceProperty("ApplicationName",schema) })
     source(url).use { owner ->
         owner.connection.use { it.createStatement().use { s -> s.execute("CREATE SCHEMA $schema") } }
         try {

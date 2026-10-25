@@ -9,6 +9,27 @@ import java.util.UUID
 import kotlin.test.*
 
 class ClanRaceTenurePostgresTest {
+    @Test fun `fixture mutations freeze historical identities joins and exits in a fixed past`()=runTest {
+        raceDatabase {
+            advance("2000-01-03T06:00:00Z")
+            val owner=player("Past owner").userId;val member=player("Past member").userId
+            val clan=clan(owner)
+            execute("INSERT INTO clan_members(clan_id,user_id,role,joined_at) VALUES ('$clan','$member','MEMBER',CURRENT_TIMESTAMP)")
+            assertEquals("946879200000",scalar("SELECT (extract(epoch FROM created_at)*1000)::bigint FROM clan_race_clans WHERE clan_id='$clan'"))
+            assertEquals("946879200000",scalar("SELECT (extract(epoch FROM valid_from)*1000)::bigint FROM clan_race_clan_versions WHERE clan_id='$clan'"))
+            assertEquals("2",scalar("SELECT count(*) FROM clan_race_tenures WHERE clan_id='$clan' AND joined_at='2000-01-03T06:00:00Z'"))
+            advance("2000-01-04T12:00:00Z")
+            execute("DELETE FROM clan_members WHERE clan_id='$clan' AND user_id='$member'")
+            assertEquals("946987200000",scalar("SELECT (extract(epoch FROM ended_at)*1000)::bigint FROM clan_race_tenures WHERE clan_id='$clan' AND user_id='$member'"))
+            execute("UPDATE clans SET name='Past renamed' WHERE id='$clan'")
+            assertEquals("946987200000",scalar("SELECT (extract(epoch FROM valid_from)*1000)::bigint FROM clan_race_clan_versions WHERE clan_id='$clan' AND valid_until IS NULL"))
+            advance("2000-01-05T12:00:00Z")
+            execute("DELETE FROM clans WHERE id='$clan'")
+            assertEquals("947073600000",scalar("SELECT (extract(epoch FROM deleted_at)*1000)::bigint FROM clan_race_clans WHERE clan_id='$clan'"))
+            assertEquals("947073600000",scalar("SELECT (extract(epoch FROM ended_at)*1000)::bigint FROM clan_race_tenures WHERE clan_id='$clan' AND user_id='$owner'"))
+            assertEquals("947073600000",scalar("SELECT (extract(epoch FROM valid_until)*1000)::bigint FROM clan_race_clan_versions WHERE clan_id='$clan' AND name='Past renamed'"))
+        }
+    }
     @Test fun `cutoff history survives kick rejoin clan dissolution and account deletion after cutoff`()=runTest {
         raceDatabase {
             publishRace(rate="0.000001")

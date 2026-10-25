@@ -116,10 +116,24 @@ class ClanRaceScoringPostgresTest {
             advance("2026-11-01T16:59:59.999Z")
             source.connection.use { blocker ->
                 blocker.autoCommit=false;JdbcClanRaceStore(blocker).lock()
+                val blockerPid=blocker.createStatement().use { statement -> statement.executeQuery("SELECT pg_backend_pid()").use { it.next();it.getInt(1) } }
+                assertTrue(scalar("SELECT current_setting('application_name')").startsWith("race_fixture_"))
                 coroutineScope {
                     val donation=async(Dispatchers.IO) { PostgresClanRepository(source,{now}).donateToClan(player,clan,UUID.randomUUID().toString(),ClanDonationCurrency.GOLD,100) }
-                    delay(100);advance("2026-11-01T17:00:00Z");blocker.commit()
-                    assertEquals(ClanDonationStatus.APPLIED,donation.await().status)
+                    try {
+                        // This fixture has one pending operation; its unique application name excludes other schemas.
+                        // Use real IO time for the bound: runTest's virtual delays must not outrun the JDBC worker.
+                        withContext(Dispatchers.IO) {
+                            withTimeout(5_000) {
+                                while(scalar("""SELECT count(*) FROM pg_stat_activity a
+                                  WHERE a.application_name=current_setting('application_name')
+                                  AND a.wait_event_type='Lock' AND a.wait_event='advisory'
+                                  AND $blockerPid=ANY(pg_blocking_pids(a.pid))""")!="1") delay(10)
+                            }
+                        }
+                        advance("2026-11-01T17:00:00Z");blocker.commit()
+                        assertEquals(ClanDonationStatus.APPLIED,donation.await().status)
+                    } finally { blocker.rollback() }
                 }
             }
             assertEquals("2026-11-02",scalar("SELECT week_start FROM clan_race_events"))
