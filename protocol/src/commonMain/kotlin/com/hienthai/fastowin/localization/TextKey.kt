@@ -2,6 +2,10 @@ package com.hienthai.fastowin.localization
 
 /** Stable keys shared by clients and the backend. Never use player input as a key. */
 enum class TextKey {
+    ClanRaceMailboxIntro, ClanRaceGiftExpires,
+    ClanRaceSettlementFailed,
+    ClanRaceError, ClanRaceForbidden, ClanRaceConflict,
+ClanRaceTitle, ClanRacePrizes, ClanRacePerMember, ClanRaceEligibility, ClanRaceWeek, ClanRaceCutoff, ClanRaceTimeLeft, ClanRaceActive, ClanRaceInactive, ClanRacePending, ClanRaceSettled, ClanRaceStandings, ClanRaceContributions, ClanRaceMission, ClanRaceDonation, ClanRaceEligible, ClanRaceIneligible, ClanRaceFormer, ClanRaceHistory, ClanRaceEmpty, ClanRaceRefresh, ClanRaceUpdated, ClanRaceRankPoints, ClanRaceGift, ClanRaceGiftReason, ClanRaceWalletSource, ClanRacePage,
     MissionClanStreak, MissionActionPLAY, MissionActionWIN, MissionActionCORRECT, MissionActionACCURACY, MissionActionPERFECT_WIN, MissionActionWIN_STREAK, MissionActionCHECK_IN, MissionActionDONATE_GOLD, MissionActionDONATE_GEMS,
     UgcContentRemovedTitle, UgcContentRemovedBody,
     UgcReportTitle, UgcReportNamed, UgcReportDescription, UgcReportReason, UgcReportNote, UgcReportSend,

@@ -1145,7 +1145,7 @@ private fun WalletHistorySectionContent(transactions: List<WalletTransactionSnap
 private fun walletSourceIcon(sourceType: String): ImageVector = when (sourceType) {
     "DAILY_CHECK_IN" -> Icons.Default.DateRange
     "MISSION", "CLAN_QUEST" -> Icons.AutoMirrored.Filled.Assignment
-    "MATCH", "TOURNAMENT_PRIZE", "SEASON_REWARD" -> Icons.Default.EmojiEvents
+    "MATCH", "TOURNAMENT_PRIZE", "SEASON_REWARD", "CLAN_WEEKLY_RACE" -> Icons.Default.EmojiEvents
     "COSMETIC_PURCHASE", "STORE_PURCHASE" -> Icons.Default.ShoppingBag
     else -> Icons.Default.AccountBalanceWallet
 }
@@ -1156,6 +1156,7 @@ private fun walletSourceLabel(sourceType: String): String = localized(when (sour
     "MISSION" -> TextKey.MissionRewardSource
     "MATCH" -> TextKey.MatchRewardSource
     "CLAN_QUEST" -> TextKey.ClanMissionSource
+    "CLAN_WEEKLY_RACE" -> TextKey.ClanRaceWalletSource
     "COSMETIC_PURCHASE" -> TextKey.CosmeticPurchaseSource
     "TOURNAMENT_ENTRY" -> TextKey.TournamentEntrySource
     "TOURNAMENT_PRIZE" -> TextKey.TournamentPrizeSource

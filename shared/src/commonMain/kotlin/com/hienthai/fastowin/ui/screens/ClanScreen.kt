@@ -138,7 +138,8 @@ fun ClanScreen(
     modifier: Modifier = Modifier,
     missionState: MissionState? = null,
     onRefreshMissions: () -> Unit = {},
-    onClaimMissionInstance: (String) -> Unit = {}
+    onClaimMissionInstance: (String) -> Unit = {},
+    onOpenRace: (() -> Unit)? = null
 ) {
     SystemBackHandler(enabled = showBackButton, onBack = onBack)
 
@@ -164,44 +165,54 @@ fun ClanScreen(
             maxContentWidth = 920.dp,
             applySafeDrawingInsets = false
         ) { contentModifier ->
-            when {
-                myClanId == null -> ClanDiscoveryView(
-                    clanList = clanList,
-                    pendingJoinClanIds = pendingJoinClanIds,
-                    notice = notice,
-                    onCreateClan = onCreateClan,
-                    onJoinClan = onJoinClan,
-                    onSearch = onSearch,
-                    gold = gold,
-                    gems = gems,
-                    modifier = contentModifier
-                )
-
-                currentClan != null -> ClanDetailView(
-                    serverUrl = serverUrl,
-                    currentUserId = currentUserId,
-                    clan = currentClan,
-                    notice = notice,
-                    onLeave = onLeaveClan,
-                    onKickMember = onKickMember,
-                    onRespondJoinRequest = onRespondJoinRequest,
-                    onUpdateLogo = { logoId -> onUpdateLogo(currentClan.id, logoId) },
-                    onClaimQuest = { onClaimQuest(currentClan.id) },
-                    missionState = missionState,
-                    onRefreshMissions = onRefreshMissions,
-                    onClaimMissionInstance = onClaimMissionInstance,
-                    gold = gold,
-                    gems = gems,
-                    isDonationPending = isDonationPending,
-                    onDonate = { currency, amount -> onDonate(currentClan.id, currency, amount) },
-                    modifier = contentModifier
-                )
-
-                else -> {
-                    Box(contentModifier, contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator(color = ArcadePalette.Gold500)
+            Column(contentModifier) {
+                onOpenRace?.let { open ->
+                    androidx.compose.material3.OutlinedButton(open,
+                        modifier = Modifier.fillMaxWidth().padding(top = 12.dp).heightIn(min = 48.dp).testTag("clan_weekly_race_entry")) {
+                        Text(localized(TextKey.ClanRaceTitle), fontWeight = FontWeight.Bold)
                     }
-                    LaunchedEffect(myClanId) { onViewClan(myClanId) }
+                }
+                Box(Modifier.weight(1f)) {
+                    when {
+                        myClanId == null -> ClanDiscoveryView(
+                            clanList = clanList,
+                            pendingJoinClanIds = pendingJoinClanIds,
+                            notice = notice,
+                            onCreateClan = onCreateClan,
+                            onJoinClan = onJoinClan,
+                            onSearch = onSearch,
+                            gold = gold,
+                            gems = gems,
+                            modifier = Modifier.fillMaxSize()
+                        )
+
+                        currentClan != null -> ClanDetailView(
+                            serverUrl = serverUrl,
+                            currentUserId = currentUserId,
+                            clan = currentClan,
+                            notice = notice,
+                            onLeave = onLeaveClan,
+                            onKickMember = onKickMember,
+                            onRespondJoinRequest = onRespondJoinRequest,
+                            onUpdateLogo = { logoId -> onUpdateLogo(currentClan.id, logoId) },
+                            onClaimQuest = { onClaimQuest(currentClan.id) },
+                            missionState = missionState,
+                            onRefreshMissions = onRefreshMissions,
+                            onClaimMissionInstance = onClaimMissionInstance,
+                            gold = gold,
+                            gems = gems,
+                            isDonationPending = isDonationPending,
+                            onDonate = { currency, amount -> onDonate(currentClan.id, currency, amount) },
+                            modifier = Modifier.fillMaxSize()
+                        )
+
+                        else -> {
+                            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                CircularProgressIndicator(color = ArcadePalette.Gold500)
+                            }
+                            LaunchedEffect(myClanId) { onViewClan(myClanId) }
+                        }
+                    }
                 }
             }
         }
@@ -992,7 +1003,7 @@ private fun ClanLogoDialog(
 }
 
 @Composable
-private fun ClanLogoMark(logoId: String?, modifier: Modifier = Modifier) {
+internal fun ClanLogoMark(logoId: String?, modifier: Modifier = Modifier) {
     val normalized = logoId.orEmpty().lowercase()
     val accent = when (normalized) {
         "sword" -> ArcadePalette.Coral400

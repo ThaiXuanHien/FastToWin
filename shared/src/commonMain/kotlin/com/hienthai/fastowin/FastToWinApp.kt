@@ -545,6 +545,26 @@ private fun GameContent(
     val clanMissionState by key(clanMissions) {
         clanMissions?.state?.collectAsState() ?: remember { mutableStateOf(com.hienthai.fastowin.state.MissionState()) }
     }
+    var showClanRace by rememberSaveable(accountUserId) { mutableStateOf(false) }
+    val currentRaceTokenProvider by rememberUpdatedState(accessTokenProvider)
+    val raceController = remember(serverUrl, accountUserId, isGuest, authRequestConfigurator) {
+        if (isGuest || accountUserId == null || accessTokenProvider == null) null else
+            com.hienthai.fastowin.state.ClanRaceController(
+                com.hienthai.fastowin.data.network.ClanRaceApiClient(serverUrl,
+                    { force -> if (currentMissionOwner == accountUserId) currentRaceTokenProvider?.invoke(force) else null }, authRequestConfigurator))
+    }
+    val raceState by key(raceController) {
+        raceController?.state?.collectAsState() ?: remember { mutableStateOf(com.hienthai.fastowin.state.ClanRaceUiState()) }
+    }
+    val raceOpen = showClanRace && state.isClanOpen && !state.isMatchStarted
+    androidx.compose.runtime.SideEffect {
+        raceController?.setContext(accountUserId, state.profile?.clanId, if (raceOpen) "open" else "closed", missionSessionEpoch)
+    }
+    LaunchedEffect(raceController, raceOpen, missionSessionEpoch, state.profile?.clanId, state.connectionStatus) {
+        raceController?.setContext(accountUserId, state.profile?.clanId, if (raceOpen) "open" else "closed", missionSessionEpoch)
+        if (raceOpen) raceController?.refresh()
+    }
+    DisposableEffect(raceController) { onDispose { raceController?.close() } }
     val personalMissionsOpen = profileSection == ProfileSection.MISSIONS && !profileSectionExternal
     val clanMissionsOpen = state.isClanOpen && state.profile?.clanId != null && state.currentClan?.id == state.profile?.clanId
     // Context changes fence suspended HTTP completions before launching a new request.
@@ -594,6 +614,7 @@ private fun GameContent(
         savedPracticeRoute = null
     }
     val closeLocalScreens = {
+        showClanRace = false
         selectedAnnouncementId = null
         showAnnouncementUpdate = false
         showRewardEvents = false
@@ -1078,6 +1099,7 @@ private fun GameContent(
     ) {
         val requested = requestedAppRoute ?: return@LaunchedEffect
         val route = normalizeAppRoute(requested)
+        if (route != "/clan/race") showClanRace = false
         if (route != "/events" && !route.startsWith("/events/")) {
             showRewardEvents = false
             selectedRewardEventId = null
@@ -1128,6 +1150,11 @@ private fun GameContent(
             route == "/clan" -> {
                 closeLocalScreens()
                 openClanTab()
+            }
+            route == "/clan/race" -> {
+                closeLocalScreens()
+                controller.openClan()
+                showClanRace = true
             }
             route == "/account" -> {
                 closeLocalScreens()
@@ -1279,6 +1306,7 @@ private fun GameContent(
     }
 
     val screenStateKey = when {
+        raceOpen -> "clan_race"
         selectedAnnouncementId != null && !state.isMatchStarted -> "announcement:$selectedAnnouncementId"
         showAnnouncementUpdate && !state.isMatchStarted -> "announcement_update"
         showRewardEvents && !state.isMatchStarted && !state.isGameOver -> "reward_events"
@@ -1305,6 +1333,7 @@ private fun GameContent(
     // The account/controller owns the draft even while OfflineScreen replaces the profile.
     val profileEditor = rememberProfileEditorState(controller, state.profileNotice, screenStateKey == "profile")
     val appRoute = when {
+        raceOpen -> "/clan/race"
         selectedAnnouncementId != null && !state.isMatchStarted -> "/announcements/$selectedAnnouncementId"
         showAnnouncementUpdate && !state.isMatchStarted -> "/announcements/update"
         showRewardEvents && !state.isMatchStarted && !state.isGameOver -> selectedRewardEventId?.let { "/events/$it" } ?: "/events"
@@ -1420,6 +1449,13 @@ private fun GameContent(
                     onRefresh = { rewardEventScope.launch { selectedRewardEventId?.let { rewardEventController.select(it) } ?: rewardEventController.refresh() } },
                     onSelect = { id -> navigateToRoute(navigationBridge, "/events/$id") { selectedRewardEventId = id } },
                     onMore = { rewardEventScope.launch { rewardEventController.loadMore() } }
+                )
+                raceOpen -> com.hienthai.fastowin.ui.screens.ClanRaceScreen(
+                    state = raceState, isGuest = isGuest,
+                    onBack = { navigateBack { showClanRace = false } },
+                    onRefresh = { missionScope.launch { raceController?.refresh(raceState.standings?.page ?: 0, raceState.history?.page ?: 0) } },
+                    onStandingsPage = { page -> missionScope.launch { raceController?.refresh(page, raceState.history?.page ?: 0) } },
+                    onHistoryPage = { page -> missionScope.launch { raceController?.refresh(raceState.standings?.page ?: 0, page) } }
                 )
                 showGiftMailbox -> GiftMailboxScreen(
                     state = mailboxState,
@@ -1739,7 +1775,8 @@ private fun GameContent(
                     modifier = contentModifier,
                     missionState = if (clanMissionsOpen) clanMissionState else null,
                     onRefreshMissions = { missionScope.launch { clanMissions?.refresh() } },
-                    onClaimMissionInstance = { id -> missionScope.launch { clanMissions?.claim(id) } }
+                    onClaimMissionInstance = { id -> missionScope.launch { clanMissions?.claim(id) } },
+                    onOpenRace = { navigateToRoute(navigationBridge, "/clan/race") { showClanRace = true } }
                 ) }
 
                 state.isGameOver -> ResultScreen(
