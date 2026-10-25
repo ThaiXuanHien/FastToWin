@@ -100,4 +100,3 @@ App giữ Arcade hiện có, admin Material sáng, áp dụngui-ux-pro-max và d
 ## Các đề xuất bổ sung đã được duyệt cùng bản thiết kế
 
 Chủ dự án đã chọn “Duyệt, triển khai theo thiết kế” cho các lựa chọn: thứHai00chốttuần; tie-breakđạtđiểmsớmhơn; thưởngmỗithànhviên; hạnnhận7ngày; chínhxáctỷlệ6chữsố; điểmclaimghi tuầnnhậnkểcảnhiệmvụcũ. Nhữngquyếtđịnhrõcủangườidùng ở mục trênđãchốt vàkhônghỏilại. Bản thiết kế đã được duyệt; tiếp tục viết kế hoạch và triển khai trong worktree riêng.
-

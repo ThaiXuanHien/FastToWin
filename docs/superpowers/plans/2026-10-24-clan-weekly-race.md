@@ -130,4 +130,3 @@ assertEquals(1, entitlementCountForB)
 - [ ] Exercise actualstorage503/retry, accountclanswitch/fencedreload, no-configweek, sparsepositivefraction/tie, exactboundary; preserveallactualresponseevidence withouttokens/traces. Snapshotusercontentfromotherenvironmentsneverneeded.
 - [ ] Finalrelatedfullserver/protocol/shared/gift/admin/browser/compile/localization/coverage/screens once onfinaltree, inspectXMLactualcounts/thresholds. Do notredo unchangedgateswithoutreason; honestcachedprovenance. Viewfinalphone/desktopimages.
 - [ ] Documentconfiguration/lifecycle/restart/cutoff/rejoin/rounding/mailbox/rolloutandrollbacklimits. Committaskandreportfullevidence+cleanup/no-productionstatus. Controllerdoesindependenttaskreviewandwholebranchreviewbeforeclaimingdone, thenpreservereportsandhumanintegrationdecision.
-
