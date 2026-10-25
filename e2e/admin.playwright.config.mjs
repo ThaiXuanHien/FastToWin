@@ -1,7 +1,7 @@
 import { defineConfig } from 'playwright/test';
 
 export default defineConfig({
-  testDir: './tests', testMatch: ['admin-player-metrics.spec.mjs', 'admin.spec.mjs', 'admin-worker.spec.mjs', 'admin-gifts.spec.mjs', 'gift-worker.spec.mjs', 'admin-maintenance.spec.mjs', 'maintenance-worker.spec.mjs', 'admin-analytics.spec.mjs', 'admin-events.spec.mjs', 'admin-missions.spec.mjs', 'admin-compensation.spec.mjs', 'admin-compensation-counters.spec.mjs', 'admin-announcements.spec.mjs', 'admin-moderation.spec.mjs'],
+  testDir: './tests', testMatch: ['admin-player-metrics.spec.mjs', 'admin.spec.mjs', 'admin-worker.spec.mjs', 'admin-gifts.spec.mjs', 'gift-worker.spec.mjs', 'admin-maintenance.spec.mjs', 'maintenance-worker.spec.mjs', 'admin-analytics.spec.mjs', 'admin-events.spec.mjs', 'admin-missions.spec.mjs', 'admin-clan-race.spec.mjs', 'admin-compensation.spec.mjs', 'admin-compensation-counters.spec.mjs', 'admin-announcements.spec.mjs', 'admin-moderation.spec.mjs'],
   fullyParallel: false, workers: 1, timeout: 15000,
   expect: { timeout: 3000 },
   outputDir: '../.artifacts/admin-playwright',
