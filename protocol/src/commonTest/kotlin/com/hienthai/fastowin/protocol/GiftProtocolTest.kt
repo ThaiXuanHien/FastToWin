@@ -6,6 +6,19 @@ import kotlinx.serialization.json.Json
 import kotlin.test.*
 
 class GiftProtocolTest {
+    @Test fun `race mailbox context round trips exact large scores and legacy payload keeps null context`() {
+        val legacy="""{"campaignId":"gift","titleVi":"Quà","titleEn":"Gift","bodyVi":"Quà","bodyEn":"Gift","gold":300,"xp":30,"availableAtEpochMillis":1,"expiresAtEpochMillis":604800001,"state":"AVAILABLE"}"""
+        val old=ProtocolJson.decodeFromString<MailboxGift>(legacy)
+        assertNull(old.clanRace)
+        val context=ClanRaceMailboxContext("gift","2026-10-26",0,1,"clan","Winner",1,
+            "99999999999999999999999999999999999999","99999999999999999999999999999999.999999",true,1,
+            1,604800001,ClanRaceReward(30,300,3),"CLAN_WEEKLY_RACE")
+        val gift=old.copy(clanRace=context,gems=3)
+        val encoded=ProtocolJson.encodeToString(gift)
+        assertEquals(gift,ProtocolJson.decodeFromString<MailboxGift>(encoded))
+        assertEquals(LegacyGift("gift",300,30),Json { ignoreUnknownKeys=true }.decodeFromString<LegacyGift>(encoded))
+        assertNull(ProtocolJson.decodeFromString<ClanRaceCurrent>("""{"weekStart":"2026-10-26","startEpochMillis":0,"endEpochMillis":1,"state":"CLOSED","serverNowEpochMillis":2}""").settlement)
+    }
     @Test fun `legacy claim JSON defaults gems while new receipts round trip`() {
         val gift = MailboxGift("gift", "Quà", "Gift", "Quà", "Gift", 100, 30, 1, 2, GiftState.CLAIMED)
         val encodedGift = ProtocolJson.encodeToString(gift)

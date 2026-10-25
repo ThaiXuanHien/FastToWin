@@ -31,7 +31,7 @@ class JdbcClanRaceStore(internal val c:Connection) {
     }
     internal fun update(sql:String,vararg values:Any?):Int=c.prepareStatement(sql).use { s -> values.forEachIndexed { i,v -> s.setObject(i+1,v) };s.executeUpdate() }
     internal fun uuid(id:String)=UUID.fromString(id)
-    internal fun catalog():List<ClanRaceAdminView> = rows("SELECT * FROM clan_race_configs ORDER BY week_start DESC") { ClanRaceAdminView(it.getDate("week_start").toString(),it.getLong("version"),ClanRaceConfigState.valueOf(it.getString("state")),Json.decodeFromString(it.getString("config")),(it.getObject("published_revision") as Number?)?.toLong()) }
+    internal fun catalog():List<ClanRaceAdminView> = rows("SELECT * FROM clan_race_configs ORDER BY week_start DESC") { ClanRaceAdminView(it.getDate("week_start").toString(),it.getLong("version"),ClanRaceConfigState.valueOf(it.getString("state")),Json.decodeFromString(it.getString("config")),(it.getObject("published_revision") as Number?)?.toLong(),settlementStatus(it.getDate("week_start").toLocalDate())) }
     internal fun find(week:String)=catalog().firstOrNull { it.weekStart==week }?:missing()
     internal fun put(value:ClanRaceAdminView) {
         update("""INSERT INTO clan_race_configs(week_start,version,state,config,published_revision) VALUES(?,?,?,?,?)
@@ -44,7 +44,7 @@ class JdbcClanRaceStore(internal val c:Connection) {
     internal fun remember(actor:String,request:String,fingerprint:String,value:ClanRaceAdminView) { update("INSERT INTO clan_race_admin_requests VALUES(?,?,?,?)",uuid(actor),request,fingerprint,Json.encodeToString(value)) }
     fun current(week:LocalDate,now:Long):ClanRaceCurrent {
         val value=catalog().firstOrNull { it.weekStart==week.toString() && it.state==ClanRaceConfigState.PUBLISHED }
-        return ClanRaceCurrent(week.toString(),raceWeekMillis(week),raceWeekMillis(week.plusWeeks(1)),if(value==null) ClanRaceState.INACTIVE else if(now>=raceWeekMillis(week.plusWeeks(1))) ClanRaceState.CLOSED else ClanRaceState.ACTIVE,value?.config,value?.publishedRevision,now)
+        return ClanRaceCurrent(week.toString(),raceWeekMillis(week),raceWeekMillis(week.plusWeeks(1)),if(value==null) ClanRaceState.INACTIVE else if(value.settlement?.state==ClanRaceSettlementState.SETTLED) ClanRaceState.SETTLED else if(now>=raceWeekMillis(week.plusWeeks(1))) ClanRaceState.CLOSED else ClanRaceState.ACTIVE,value?.config,value?.publishedRevision,now,value?.settlement?:if(value!=null && now>=raceWeekMillis(week.plusWeeks(1))) ClanRaceSettlementStatus(ClanRaceSettlementState.PENDING) else null)
     }
     internal fun published(week:LocalDate):ClanRaceConfig?=rows("SELECT r.config FROM clan_race_revisions r JOIN clan_race_configs d USING(week_start) WHERE r.week_start=? AND d.state='PUBLISHED'",listOf(Date.valueOf(week))) { Json.decodeFromString<ClanRaceConfig>(it.getString(1)) }.singleOrNull()
 }

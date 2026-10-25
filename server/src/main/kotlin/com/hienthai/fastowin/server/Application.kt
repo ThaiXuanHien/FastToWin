@@ -119,6 +119,8 @@ fun Application.gameModule(
     },
     missionService: MissionService = MissionService(null, adminService),
     clanRaceService: ClanRaceService = ClanRaceService(null, adminService),
+    clanRaceSettlement: ClanRaceSettlement? = null,
+    clanRaceDelivery: ClanRaceDelivery? = null,
     rewardEventService: RewardEventService = RewardEventService(UnavailableRewardEventRepository, adminService),
     compensationIncidentService: CompensationIncidentService? = adminService?.let { CompensationIncidentService(giftService.repository, it) },
     compensationRoundService: CompensationRoundService? = adminService?.let { CompensationRoundService(giftService.repository, it) }
@@ -220,6 +222,7 @@ fun Application.gameModule(
     routing { announcementRoutes(announcementService, authService, adminService != null) }
     if (adminService != null) maintenanceService?.let { service -> routing { maintenanceRoutes(service) } }
     if (giftDeliveryEnabled) startGiftDelivery(giftService)
+    if (giftDeliveryEnabled && clanRaceSettlement != null && clanRaceDelivery != null) startClanRaceDelivery(clanRaceSettlement,clanRaceDelivery)
 
     announcementPushDelivery?.let { startAnnouncementDelivery(announcementService, it) }
 

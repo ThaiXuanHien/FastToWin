@@ -22,7 +22,8 @@ import kotlinx.serialization.Serializable
     val id: String, val version: Int, val state: CampaignState, val draft: GiftDraftRequest,
     val createdAtEpochMillis: Long, val publishedAtEpochMillis: Long? = null,
     val cancelledAtEpochMillis: Long? = null, val cancellationReason: String? = null,
-    val compensation: CompensationMailboxContext? = null
+    val compensation: CompensationMailboxContext? = null,
+    val clanRace: ClanRaceMailboxContext? = null
 )
 @Serializable data class GiftCounters(
     val eligible: Long = 0, val pending: Long = 0, val delivered: Long = 0, val claimed: Long = 0,
@@ -68,4 +69,4 @@ interface GiftTransaction {
     fun balance(userId: String): GiftBalance
     fun award(userId: String, campaign: GiftCampaign, now: Long): GiftBalance
 }
-internal fun GiftCampaign.walletSourceType() = if (compensation == null) "ADMIN_GIFT" else "COMPENSATION"
+internal fun GiftCampaign.walletSourceType() = when { clanRace != null -> "CLAN_WEEKLY_RACE"; compensation != null -> "COMPENSATION"; else -> "ADMIN_GIFT" }

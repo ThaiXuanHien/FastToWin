@@ -81,7 +81,7 @@ class GiftService(val repository: GiftRepository, private val admins: AdminServi
         putCampaign(updated); audit(actor.id, "GIFT_CANCEL", id, request.requestId, request.reason)
         save(actor.id, request.requestId, fp, detail(updated))
     }
-    private fun GiftTransaction.ordinaryCampaign(id: String, lock: Boolean = false) = campaign(id, lock)?.takeIf { it.compensation == null } ?: missing()
+    private fun GiftTransaction.ordinaryCampaign(id: String, lock: Boolean = false) = campaign(id, lock)?.takeIf { it.compensation == null && it.clanRace == null } ?: missing()
     private fun GiftTransaction.replay(actor: String, requestId: String, fp: String): GiftCampaignDetail? {
         val record = request(actor, requestId) ?: return null
         if (record.fingerprint != fp) conflict()
@@ -144,4 +144,4 @@ class GiftService(val repository: GiftRepository, private val admins: AdminServi
 internal fun uuid(id: String) { if (runCatching { UUID.fromString(id).toString() == id.lowercase() }.getOrDefault(false).not()) invalid() }
 internal fun gift(c: GiftCampaign, r: GiftRecipient, now: Long) = MailboxGift(c.id, c.draft.titleVi, c.draft.titleEn, c.draft.bodyVi, c.draft.bodyEn,
     c.draft.gold, c.draft.xp, c.draft.availableAtEpochMillis, c.draft.expiresAtEpochMillis!!,
-    when { r.claimedAt != null -> GiftState.CLAIMED; c.state == CampaignState.CANCELLED -> GiftState.CANCELLED; now >= c.draft.expiresAtEpochMillis -> GiftState.EXPIRED; else -> GiftState.AVAILABLE }, r.claimedAt, c.compensation, c.draft.gems)
+    when { r.claimedAt != null -> GiftState.CLAIMED; c.state == CampaignState.CANCELLED -> GiftState.CANCELLED; now >= c.draft.expiresAtEpochMillis -> GiftState.EXPIRED; else -> GiftState.AVAILABLE }, r.claimedAt, c.compensation, c.draft.gems, c.clanRace)

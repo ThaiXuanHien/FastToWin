@@ -15,7 +15,8 @@ import kotlinx.serialization.Serializable
     val availableAtEpochMillis: Long, val expiresAtEpochMillis: Long,
     val state: GiftState, val claimedAtEpochMillis: Long? = null,
     val compensation: CompensationMailboxContext? = null,
-    val gems: Int = 0
+    val gems: Int = 0,
+    val clanRace: ClanRaceMailboxContext? = null
 )
 @Serializable data class GiftMailboxPage(val items: List<MailboxGift>, val page: Int, val pageSize: Int, val total: Long, val availableCount: Long = 0)
 @Serializable data class GiftClaimResult(val gift: MailboxGift, val awardedGold: Int, val awardedXp: Int, val gold: Int, val xp: Int, val awardedGems: Int = 0, val gems: Int = 0)

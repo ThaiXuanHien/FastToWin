@@ -19,6 +19,8 @@ class PostgresGiftRepository(private val source: DataSource) : GiftRepository {
                 connection.autoCommit = false
                 try {
                     if (admin) connection.createStatement().use { it.execute("SELECT pg_advisory_xact_lock(7421092187349)") }
+                    // Shared race/mission gate precedes campaign, recipient, user and wallet row locks.
+                    connection.createStatement().use { it.execute("SELECT pg_advisory_xact_lock(7421092187355)") }
                     val result = JdbcGiftTransaction(connection).block()
                     connection.commit(); result
                 } catch (error: Throwable) { connection.rollback(); throw error }
@@ -26,7 +28,7 @@ class PostgresGiftRepository(private val source: DataSource) : GiftRepository {
         } catch (_: SQLException) { unavailable() }
     }
 }
-private class JdbcGiftTransaction(private val c: Connection) : GiftTransaction {
+internal class JdbcGiftTransaction(private val c: Connection) : GiftTransaction {
     override val admin: AdminTransaction = JdbcAdminTransaction(c)
     override val compensation = com.hienthai.fastowin.server.compensation.JdbcCompensationStore(c)
     private fun <T> rows(sql: String, values: List<Any?> = emptyList(), read: (ResultSet) -> T): List<T> = c.prepareStatement(sql).use { s ->
