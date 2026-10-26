@@ -732,7 +732,7 @@ function directory() {
       chartContent.replaceChildren(createBarChart(points));
       if (points.length) {
         const details = node('details'), table = node('table', null, { class: 'data-table' });
-        const heading = append(node('tr'), node('th', 'Ngày (Bangkok)', { scope: 'col' }), node('th', 'Tài khoản kết nối', { scope: 'col' }));
+        const heading = append(node('tr'), node('th', 'Ngày · Giờ Việt Nam (UTC+7)', { scope: 'col' }), node('th', 'Tài khoản kết nối', { scope: 'col' }));
         table.append(append(node('thead'), heading)); const body = node('tbody');
         for (const p of points) body.append(append(node('tr'), node('td', bangkokDate(p.from)), node('td', countValue(p.value) == null ? 'Chưa có dữ liệu' : countLabel(p.value))));
         table.append(body); append(details, node('summary', 'Dữ liệu theo ngày'), table); chartContent.append(details);

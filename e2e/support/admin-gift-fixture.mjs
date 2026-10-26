@@ -27,6 +27,6 @@ export function gifts(fixture) {
   return state;
 }
 export async function fillGift(page, title = 'Quà kiểm thử') {
-  for (const [name, value] of [['Tiêu đề tiếng Việt', title], ['Tiêu đề tiếng Anh', 'Test gift'], ['Nội dung tiếng Việt', 'Cảm ơn bạn!\nQuà tháng 10.'], ['Nội dung tiếng Anh', 'Thank you!'], ['Vàng mỗi người', '100'], ['XP mỗi người', '30'], ['Lý do chiến dịch', 'Local test'], ['Thời gian phát (Bangkok)', '2026-10-02T12:00']]) await page.getByLabel(name, { exact: true }).fill(value);
+  for (const [name, value] of [['Tiêu đề tiếng Việt', title], ['Tiêu đề tiếng Anh', 'Test gift'], ['Nội dung tiếng Việt', 'Cảm ơn bạn!\nQuà tháng 10.'], ['Nội dung tiếng Anh', 'Thank you!'], ['Vàng mỗi người', '100'], ['XP mỗi người', '30'], ['Lý do chiến dịch', 'Local test'], ['Thời gian phát · Giờ Việt Nam (UTC+7)', '2026-10-02T12:00']]) await page.getByLabel(name, { exact: true }).fill(value);
 }
 export { player };

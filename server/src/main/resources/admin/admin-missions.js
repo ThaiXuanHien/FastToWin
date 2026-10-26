@@ -63,7 +63,7 @@ export function openMissions(ui) {
   const rewardText = reward => Object.entries(rewardKeys).map(([key, label]) => `${amount(reward[key] || 0)} ${label}`).join(' · ');
   function definition(parent, draft, reward = draft.reward) {
     parent.append(node('h3', missionSummary(draft)));
-    facts(parent, [['Nhóm', scopes[draft.scope]], ['Kỳ', periods[draft.period]], ['Độ khó', difficulties[draft.difficulty]], ['Mục tiêu', `${amount(draft.target)} ${units(draft)}`], ['Thưởng một lần / người nhận', rewardText(reward)], ['Lịch (Asia/Bangkok)', `${draft.startsOn || 'Từ kỳ khả dụng tiếp theo'} → ${draft.endsOn || 'Không giới hạn'} (kết thúc không bao gồm)`]]);
+    facts(parent, [['Nhóm', scopes[draft.scope]], ['Kỳ', periods[draft.period]], ['Độ khó', difficulties[draft.difficulty]], ['Mục tiêu', `${amount(draft.target)} ${units(draft)}`], ['Thưởng một lần / người nhận', rewardText(reward)], ['Lịch · Giờ Việt Nam (UTC+7)', `${draft.startsOn || 'Từ kỳ khả dụng tiếp theo'} → ${draft.endsOn || 'Không giới hạn'} (kết thúc không bao gồm)`]]);
     if (draft.scope === 'CLAN') parent.append(node('p', 'Tiến độ tổng hợp theo bang; mỗi người nhận một lần theo quyền do máy chủ xác định. Điểm cống hiến tách khỏi XP bang.', { class: 'muted' }));
   }
   function missionModal(title, opener) { const surface = modal(title, opener); surface.dialog.classList.add('mission-modal', 'event-modal'); return surface; }
@@ -151,7 +151,7 @@ export function openMissions(ui) {
     if (!permitted() || (mission?.state === 'ARCHIVED' && !clone)) return;
     const existing = mission && !clone, draft = mission?.draft, surface = missionModal(clone ? 'Nhân bản nhiệm vụ' : existing ? 'Sửa bản nháp nhiệm vụ' : 'Tạo nhiệm vụ');
     const form = node('form', null, { class: 'stack modal-form', novalidate: '' }); surface.dialog.append(form); const notices = feedback(form), controls = {};
-    form.append(node('p', 'Ngày và ranh giới kỳ theo Asia/Bangkok. Ngày bắt đầu bao gồm, ngày kết thúc không bao gồm; ngày mới 00:00, tuần mới thứ Hai. Lưu nháp chưa thay đổi kỳ hiện tại.', { class: 'muted' }));
+    form.append(node('p', 'Ngày và ranh giới kỳ theo Giờ Việt Nam (UTC+7). Ngày bắt đầu bao gồm, ngày kết thúc không bao gồm; ngày mới 00:00, tuần mới thứ Hai. Lưu nháp chưa thay đổi kỳ hiện tại.', { class: 'muted' }));
     function input(key, label, type = 'text', attributes = {}) { const control = field(form, label, 'mission-' + key, type, attributes); controls[key] = control; return control; }
     function choice(key, label, options) { return controls[key] = select(form, label, 'mission-' + key, options); }
     const code = input('code', 'Mã nhiệm vụ', 'text', { maxlength: '32', required: '' }); code.value = existing ? draft.code : ''; if (existing) code.readOnly = true;
@@ -201,7 +201,7 @@ export function openMissions(ui) {
       try {
         const data = await api(path(mission.id) + '/preview', task, {}); if (!task.current()) return;
         const result = node('div', null, { class: 'stack' }); definition(result, data.mission.draft, data.reward);
-        facts(result, [['Kỳ hiệu lực dự kiến', `${data.effectiveFrom} · ${periods[data.mission.draft.period]} · Asia/Bangkok`], ['Phiên bản xem trước', String(data.mission.version)], ['Mã trong danh sách kỳ dự kiến', data.selectedCodes.join(', ') || 'Chưa được chọn']]);
+        facts(result, [['Kỳ hiệu lực dự kiến', `${data.effectiveFrom} · ${periods[data.mission.draft.period]} · Giờ Việt Nam (UTC+7)`], ['Phiên bản xem trước', String(data.mission.version)], ['Mã trong danh sách kỳ dự kiến', data.selectedCodes.join(', ') || 'Chưa được chọn']]);
         for (const warning of data.warnings) result.append(node('p', warning === 'MISSION_POOL_SHORTAGE' ? 'Thiếu nhiệm vụ cho một số slot; máy chủ chọn số nhiệm vụ khả dụng, không lặp để lấp slot.' : warning, { class: 'alert' }));
         result.append(node('p', 'Đây là danh sách dự kiến; kế hoạch kỳ được máy chủ đóng băng khi xác lập. Phát hành không thay đổi instance hoặc phần thưởng đã có.', { class: 'muted' }));
         content.insertBefore(result, actions); notices.status.textContent = ''; retry.remove();
@@ -213,7 +213,7 @@ export function openMissions(ui) {
   function confirm(mission, action, effectiveFrom) {
     if (!permitted() || (action !== 'delete' && !owner())) return;
     const labels = { publish: 'Phát hành nhiệm vụ', archive: 'Ngừng từ kỳ tiếp theo', delete: 'Xóa bản nháp' }, surface = missionModal(labels[action]), form = node('form', null, { class: 'stack modal-form', novalidate: '' }); surface.dialog.append(form); const notices = feedback(form);
-    form.append(node('p', action === 'publish' ? `Phát hành ${mission.draft.code} từ ${effectiveFrom} (Asia/Bangkok). Kỳ đã xác lập giữ nguyên.` : action === 'archive' ? 'Ngừng tạo instance từ kỳ tiếp theo của revision đã phát hành. Lịch sử, tiến độ và quyền nhận thưởng vẫn được giữ; không xóa nhiệm vụ đã dùng.' : 'Chỉ xóa bản nháp chưa từng phát hành. Không xóa lịch sử hoặc phần thưởng.'));
+    form.append(node('p', action === 'publish' ? `Phát hành ${mission.draft.code} từ ${effectiveFrom} · Giờ Việt Nam (UTC+7). Kỳ đã xác lập giữ nguyên.` : action === 'archive' ? 'Ngừng tạo instance từ kỳ tiếp theo của revision đã phát hành. Lịch sử, tiến độ và quyền nhận thưởng vẫn được giữ; không xóa nhiệm vụ đã dùng.' : 'Chỉ xóa bản nháp chưa từng phát hành. Không xóa lịch sử hoặc phần thưởng.'));
     if (action === 'publish') definition(form, mission.draft);
     const reason = field(form, 'Lý do thay đổi', 'mission-reason', 'textarea', { required: '', maxlength: '500' }), submit = node('button', labels[action], { type: 'submit', class: 'primary' }); form.append(append(node('div', null, { class: 'modal-actions' }), surface.cancel, submit));
     mutation(form, submit, notices, surface, path(mission.id) + (action === 'delete' ? '/draft' : '/' + action), () => {

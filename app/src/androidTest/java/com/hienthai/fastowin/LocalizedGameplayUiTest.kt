@@ -40,18 +40,18 @@ class LocalizedGameplayUiTest {
     }
 
     @Test
-    fun roomBrowserUsesGermanCopy() {
-        setLocalizedContent(AppLanguage.GERMAN) {
+    fun roomBrowserUsesVietnameseCopy() {
+        setLocalizedContent(AppLanguage.VIETNAMESE) {
             LocalizedLobbyScreen(state = lobbyState(LobbyStage.ROOM_BROWSER), isGuest = false)
         }
 
-        composeRule.onNodeWithText("ÖFFENTLICHE RÄUME").assertIsDisplayed()
-        composeRule.onNodeWithText("Raum erstellen", ignoreCase = true).performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("PHÒNG CÔNG KHAI").assertIsDisplayed()
+        composeRule.onNodeWithText("Tạo phòng", ignoreCase = true).performScrollTo().assertIsDisplayed()
     }
 
     @Test
-    fun gameUsesJapaneseCopy() {
-        setLocalizedContent(AppLanguage.JAPANESE) {
+    fun gameUsesVietnameseCopy() {
+        setLocalizedContent(AppLanguage.VIETNAMESE) {
             GameScreen(
                 state = activeGameState(),
                 onNumberClick = {},
@@ -60,13 +60,13 @@ class LocalizedGameplayUiTest {
             )
         }
 
-        composeRule.onNodeWithText("次の数字").assertIsDisplayed()
-        composeRule.onNodeWithText("クラシック · ランク戦").assertIsDisplayed()
+        composeRule.onNodeWithText("SỐ TIẾP THEO").assertIsDisplayed()
+        composeRule.onNodeWithText("Cổ điển · Xếp hạng").assertIsDisplayed()
     }
 
     @Test
-    fun resultUsesRussianCopy() {
-        setLocalizedContent(AppLanguage.RUSSIAN) {
+    fun resultUsesVietnameseCopy() {
+        setLocalizedContent(AppLanguage.VIETNAMESE) {
             ResultScreen(
                 state = finishedGameState(),
                 onRestart = {},
@@ -79,8 +79,8 @@ class LocalizedGameplayUiTest {
             )
         }
 
-        composeRule.onNodeWithText("ПОБЕДА!").assertIsDisplayed()
-        composeRule.onNodeWithText("Результат матча").assertIsDisplayed()
+        composeRule.onNodeWithText("CHIẾN THẮNG!").assertIsDisplayed()
+        composeRule.onNodeWithText("Kết quả trận").assertIsDisplayed()
     }
 
     @Test
@@ -109,7 +109,7 @@ class LocalizedGameplayUiTest {
     }
 
     @Test
-    fun switchingPracticeToThaiKeepsBoardProgress() {
+    fun switchingPracticeToEnglishKeepsBoardProgress() {
         val language = mutableStateOf(AppLanguage.VIETNAMESE)
         val challenge = createPracticeChallenge(GameMode.ORDER, seed = 0x12345678)
         composeRule.setContent {
@@ -129,9 +129,9 @@ class LocalizedGameplayUiTest {
         composeRule.onNodeWithTag("practice_score").assertTextEquals("10")
         composeRule.onNodeWithTag("practice_target").assertTextEquals("2")
 
-        composeRule.runOnIdle { language.value = AppLanguage.THAI }
+        composeRule.runOnIdle { language.value = AppLanguage.ENGLISH }
 
-        composeRule.onNodeWithText("คะแนน").assertIsDisplayed()
+        composeRule.onNodeWithText("Score").assertIsDisplayed()
         composeRule.onNodeWithTag("practice_score").assertTextEquals("10")
         composeRule.onNodeWithTag("practice_target").assertTextEquals("2")
     }

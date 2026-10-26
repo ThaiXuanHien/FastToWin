@@ -4,7 +4,6 @@ import com.hienthai.fastowin.protocol.BlockedPlayerSnapshot
 import com.hienthai.fastowin.protocol.FriendRequestSnapshot
 import com.hienthai.fastowin.protocol.FriendSnapshot
 import com.hienthai.fastowin.protocol.RecentPlayerSnapshot
-import java.util.UUID
 
 data class StoredFriends(
     val friends: List<FriendSnapshot> = emptyList(),

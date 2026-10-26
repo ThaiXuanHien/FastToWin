@@ -29,19 +29,19 @@ class LocalizedProfileUiTest {
     val composeRule = createComposeRule()
 
     @Test
-    fun profileUsesSpanishActivityCopy() {
-        setLocalizedContent(AppLanguage.SPANISH) {
+    fun profileUsesVietnameseActivityCopy() {
+        setLocalizedContent(AppLanguage.VIETNAMESE) {
             ProfileTestScreen()
         }
 
-        composeRule.onNodeWithText("Actividad").performScrollTo().assertIsDisplayed()
-        composeRule.onNodeWithText("Estadísticas y logros").performScrollTo().assertIsDisplayed()
-        composeRule.onNodeWithText("Historial de recursos").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("Hoạt động").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("Thống kê & thành tích").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("Lịch sử tài sản").performScrollTo().assertIsDisplayed()
     }
 
     @Test
-    fun walletUsesBrazilianPortugueseFilters() {
-        setLocalizedContent(AppLanguage.BRAZILIAN_PORTUGUESE) {
+    fun walletUsesVietnameseFilters() {
+        setLocalizedContent(AppLanguage.VIETNAMESE) {
             ProfileTestSection(
                 section = ProfileSection.WALLET,
                 state = profileState().copy(
@@ -58,35 +58,35 @@ class LocalizedProfileUiTest {
             )
         }
 
-        composeRule.onNodeWithText("Todos").assertIsDisplayed()
-        composeRule.onNodeWithText("Recebidos").assertIsDisplayed()
-        composeRule.onNodeWithText("Usados").assertIsDisplayed()
+        composeRule.onNodeWithText("Tất cả").assertIsDisplayed()
+        composeRule.onNodeWithText("Nhận").assertIsDisplayed()
+        composeRule.onNodeWithText("Đã dùng").assertIsDisplayed()
     }
 
     @Test
-    fun dailyCheckInUsesFrenchCopy() {
-        setLocalizedContent(AppLanguage.FRENCH) {
+    fun dailyCheckInUsesVietnameseCopy() {
+        setLocalizedContent(AppLanguage.VIETNAMESE) {
             ProfileTestSection(ProfileSection.DAILY_CHECK_IN)
         }
 
-        composeRule.onNodeWithText("Historique des pointages").assertIsDisplayed()
-        composeRule.onNodeWithText("Parcours d’assiduité").assertIsDisplayed()
+        composeRule.onNodeWithText("Lịch sử điểm danh").assertIsDisplayed()
+        composeRule.onNodeWithText("Hành trình chuyên cần").assertIsDisplayed()
     }
 
     @Test
-    fun logoutConfirmationUsesGermanCopy() {
-        setLocalizedContent(AppLanguage.GERMAN) {
+    fun logoutConfirmationUsesVietnameseCopy() {
+        setLocalizedContent(AppLanguage.VIETNAMESE) {
             ProfileTestScreen()
         }
 
         composeRule.onNodeWithTag("profile_logout").performScrollTo().performClick()
-        composeRule.onNodeWithText("Abmelden?").assertIsDisplayed()
-        composeRule.onNodeWithText("ABMELDEN").assertIsDisplayed()
+        composeRule.onNodeWithText("Đăng xuất?").assertIsDisplayed()
+        composeRule.onNodeWithText("ĐĂNG XUẤT").assertIsDisplayed()
     }
 
     @Test
-    fun defaultSeasonHistoryAndReceiptUseRussianCopyWhileCustomNameIsPreserved() {
-        setLocalizedContent(AppLanguage.RUSSIAN) {
+    fun defaultSeasonHistoryAndReceiptUseEnglishCopyWhileCustomNameIsPreserved() {
+        setLocalizedContent(AppLanguage.ENGLISH) {
             SeasonHistoryScreen(
                 state = profileState().copy(
                     profile = profileFixture().copy(
@@ -130,16 +130,16 @@ class LocalizedProfileUiTest {
             )
         }
 
-        composeRule.onNodeWithText("История сезонов").assertIsDisplayed()
-        composeRule.onNodeWithText("Достижения по сезонам").assertIsDisplayed()
-        composeRule.onNodeWithText("Стартовый сезон").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("Season history").assertIsDisplayed()
+        composeRule.onNodeWithText("Achievements by season").assertIsDisplayed()
+        composeRule.onNodeWithText("Opening Season").performScrollTo().assertIsDisplayed()
         composeRule.onNodeWithText("Creator Cup").performScrollTo().assertIsDisplayed()
         composeRule.onNodeWithText("Mùa Khởi Đầu").assertDoesNotExist()
     }
 
     @Test
     fun switchingLanguageKeepsScrolledProfileItemVisible() {
-        val language = mutableStateOf(AppLanguage.SPANISH)
+        val language = mutableStateOf(AppLanguage.VIETNAMESE)
         composeRule.setContent {
             ProvideLocalization(language.value) {
                 FastToWinTheme { ProfileTestScreen() }

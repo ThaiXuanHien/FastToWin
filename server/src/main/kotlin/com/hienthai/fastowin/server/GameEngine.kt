@@ -3,7 +3,6 @@ package com.hienthai.fastowin.server
 import com.hienthai.fastowin.server.maintenance.*
 import com.hienthai.fastowin.server.moderation.*
 import com.hienthai.fastowin.protocol.UgcTargetType
-import com.hienthai.fastowin.protocol.CONTENT_TERMS_VERSION
 import com.hienthai.fastowin.protocol.MaintenanceState
 
 import com.hienthai.fastowin.protocol.ClientMessage

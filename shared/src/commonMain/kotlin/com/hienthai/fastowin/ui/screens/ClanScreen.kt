@@ -5,9 +5,7 @@ import com.hienthai.fastowin.ui.components.ServerMissionList
 
 import com.hienthai.fastowin.ui.components.canReportUgcTarget
 import com.hienthai.fastowin.ui.components.ReportableText
-import com.hienthai.fastowin.ui.components.UgcReportButton
-import com.hienthai.fastowin.ui.components.UgcSafetyButton
-import com.hienthai.fastowin.ui.components.UgcTarget
+import com.hienthai.fastowin.ui.components.UgcClanReportAction
 import com.hienthai.fastowin.protocol.UgcTargetType
 
 import androidx.compose.foundation.BorderStroke
@@ -101,7 +99,6 @@ import com.hienthai.fastowin.ui.components.ArcadeSegmentedControl
 import com.hienthai.fastowin.ui.components.CrossedSwordsIcon
 import com.hienthai.fastowin.ui.components.DEFAULT_ARCADE_PAGE_SIZE
 import com.hienthai.fastowin.ui.components.FastToWinHeader
-import com.hienthai.fastowin.ui.components.RewardAmounts
 import com.hienthai.fastowin.ui.components.SystemBackHandler
 import com.hienthai.fastowin.ui.components.nextArcadePageItemCount
 import com.hienthai.fastowin.ui.layout.ResponsiveScreen
@@ -520,9 +517,6 @@ fun ClanDetailView(
             )
         }
 
-        if (canReportClan) {
-            item(key = "clan_report") { UgcReportButton(UgcTargetType.CLAN, clan.id, clan.name) }
-        }
         notice?.let { item(key = "clan_detail_notice") { ClanNotice(it) } }
 
         item(key = "clan_stats") { ClanStats(clan) }
@@ -591,6 +585,11 @@ fun ClanDetailView(
                 style = ArcadeActionStyle.DANGER,
                 modifier = Modifier.fillMaxWidth().testTag("leave_clan")
             )
+        }
+        if (canReportClan) {
+            item(key = "clan_report") {
+                UgcClanReportAction(clan.id, clan.name, Modifier.fillMaxWidth())
+            }
         }
     }
 

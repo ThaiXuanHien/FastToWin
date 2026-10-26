@@ -45,7 +45,7 @@ fun RewardEventDetailsScreen(state: RewardEventUiState, onBack: () -> Unit, onRe
                                 localization.text(if (it == MatchType.RANKED) TextKey.Ranked else TextKey.Casual)
                             }))
                             Text(localized(TextKey.RewardEventBounds, "start" to utc(event.startsAtEpochMillis),
-                                "end" to utc(event.endsAtEpochMillis), "zone" to event.timezone), style = MaterialTheme.typography.bodyMedium)
+                                "end" to utc(event.endsAtEpochMillis), "zone" to localization.timeZoneDisplayLabel(event.timezone)), style = MaterialTheme.typography.bodyMedium)
                             if (state.selected == null) RewardEventActionButton(label = localized(TextKey.RewardEventsDetails), onClick = { onSelect(event.id) },
                                 enabled = state.load != RewardEventLoad.LOADING && !state.isRefreshing)
                         }

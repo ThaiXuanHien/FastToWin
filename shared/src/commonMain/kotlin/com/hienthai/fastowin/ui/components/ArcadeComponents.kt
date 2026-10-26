@@ -274,6 +274,7 @@ fun ArcadeDialog(
     subtitle: String? = null,
     showCloseButton: Boolean = false,
     scrollableContent: Boolean = false,
+    fixedActions: (@Composable () -> Unit)? = null,
     content: @Composable () -> Unit
 ) {
     Dialog(
@@ -305,7 +306,7 @@ fun ArcadeDialog(
                             .background(
                                 Brush.verticalGradient(listOf(Color(0xFF123269), Color(0xFF091D43)))
                             )
-                            .then(if (scrollableContent) Modifier.verticalScroll(rememberScrollState()) else Modifier)
+                            .then(if (scrollableContent && fixedActions == null) Modifier.verticalScroll(rememberScrollState()) else Modifier)
                             .padding(18.dp),
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
@@ -338,7 +339,14 @@ fun ArcadeDialog(
                                 color = Color(0xFFA9BADC)
                             )
                         }
-                        content()
+                        if (fixedActions != null) {
+                            Column(
+                                Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState())
+                                    .testTag("arcade_dialog_body"),
+                                verticalArrangement = Arrangement.spacedBy(12.dp)
+                            ) { content() }
+                            fixedActions()
+                        } else content()
                     }
                 }
             }

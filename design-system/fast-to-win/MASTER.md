@@ -51,9 +51,7 @@ This document is the visual source of truth for Android, iOS and web. Runtime to
 
 - `artwork/app-icon/fast-to-win-app-icon-1024.png`: master app icon shared by Android and iOS; the 1–50 number tiles and lightning bolt must remain inside adaptive-icon safe masks.
 
-- `arcade_home_hero.png`: full-bleed arena art for the home match hero. Keep text on the dark left side.
 - `fast_to_win_logo_banner.png`: opaque 3:1 brand banner used by authentication screens.
-- `arcade_screen_background.png`: shared portrait arena backdrop with a quiet center crop.
 - `arcade_room_portal.png`: room browser and invitation portal artwork.
 - `arcade_leaderboard_trophy.png`: individual/clan leaderboard and season-history artwork.
 - `arcade_clan_crest.png`: crossed-sword clan crest and clan-list thumbnail.

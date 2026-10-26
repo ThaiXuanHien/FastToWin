@@ -29,7 +29,6 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -72,7 +71,6 @@ import com.hienthai.fastowin.platform.NoOpAppUpdateBridge
 import com.hienthai.fastowin.platform.AppInstallBridge
 import com.hienthai.fastowin.platform.NoOpAppInstallBridge
 import com.hienthai.fastowin.platform.AppPushBridge
-import com.hienthai.fastowin.platform.AppPushStatus
 import com.hienthai.fastowin.platform.NoOpAppPushBridge
 import com.hienthai.fastowin.platform.ChallengeDeepLinkRouter
 import com.hienthai.fastowin.platform.playFeedbackSound
@@ -131,7 +129,6 @@ import com.hienthai.fastowin.platform.StoreBillingGateway
 import com.hienthai.fastowin.protocol.STORE_PRODUCT_CATALOG
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.distinctUntilChanged
-import com.hienthai.fastowin.navigation.GameMode
 import com.hienthai.fastowin.navigation.ResultNavigationActions
 import com.hienthai.fastowin.state.PracticeChallenge
 import com.hienthai.fastowin.state.createPracticeChallenge
@@ -142,7 +139,6 @@ import com.hienthai.fastowin.ui.components.FastToWinHeader
 import com.hienthai.fastowin.ui.components.HeaderRefreshAction
 import com.hienthai.fastowin.ui.components.HeaderWalletNavigationProvider
 import com.hienthai.fastowin.ui.components.ArcadeBackdrop
-import com.hienthai.fastowin.ui.components.AvatarImageProvider
 import com.hienthai.fastowin.ui.components.SeasonRewardSummaryDialog
 import com.hienthai.fastowin.ui.components.UpdateAvailableDialog
 import com.hienthai.fastowin.ui.components.PlayQuotaExhaustedDialog

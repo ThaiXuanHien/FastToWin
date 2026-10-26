@@ -14,6 +14,7 @@ import com.hienthai.fastowin.localization.ProvideLocalization
 import com.hienthai.fastowin.protocol.*
 import com.hienthai.fastowin.state.*
 import com.hienthai.fastowin.ui.components.*
+import com.hienthai.fastowin.ui.screens.FriendsScreen
 import com.hienthai.fastowin.ui.theme.FastToWinTheme
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
@@ -109,6 +110,31 @@ class UgcSafetyUiTest {
         composeRule.onNodeWithTag("report:PLAYER_AVATAR:null").assertDoesNotExist()
         composeRule.onNodeWithTag("report:PLAYER_PROFILE:other-player").performClick()
         composeRule.runOnIdle { assertEquals(UgcTarget(UgcTargetType.PLAYER_PROFILE, "other-player", "Other"), selected) }
+    }
+
+    @Test fun friendReportLivesInActionsMenuAndDismissesItBeforeOpeningReport() {
+        var selected: UgcTarget? = null
+        val friend = FriendSnapshot("other-player", "QA friend", "FRIEND123")
+        render {
+            ProvideUgcReportActions(playerId, { selected = it }) {
+                FriendsScreen(
+                    state = GameState(social = FriendsSnapshot(friends = listOf(friend))),
+                    onBack = {}, onRefresh = {}, onSendRequest = {}, onRespondRequest = { _, _ -> },
+                    onCancelRequest = {}, onRemoveFriend = {}, onBlockPlayer = {}, onUnblockPlayer = {},
+                    onInviteFriend = {}, onRespondRoomInvitation = { _, _ -> }, onOpenFriendProfile = {}
+                )
+            }
+        }
+        composeRule.onNodeWithTag("report:PLAYER_PROFILE:other-player").assertDoesNotExist()
+        composeRule.onNodeWithTag("friend_more:other-player").performScrollTo().performClick()
+        composeRule.onNodeWithText("REMOVE FRIEND").assertIsDisplayed()
+        composeRule.onNodeWithText("BLOCK").assertIsDisplayed()
+        composeRule.onNodeWithTag("report:PLAYER_PROFILE:other-player").performClick()
+        composeRule.runOnIdle {
+            assertEquals(UgcTarget(UgcTargetType.PLAYER_PROFILE, friend.userId, friend.displayName), selected)
+        }
+        composeRule.onNodeWithText("REMOVE FRIEND").assertDoesNotExist()
+        composeRule.onNodeWithTag("report:PLAYER_PROFILE:other-player").assertDoesNotExist()
     }
 
     private fun render(language: AppLanguage = AppLanguage.ENGLISH, content: @Composable () -> Unit) {

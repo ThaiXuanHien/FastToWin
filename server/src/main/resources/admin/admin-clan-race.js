@@ -24,7 +24,7 @@ function rateUnits(value) {
 function points(units) { const fraction = (units % 1000000n).toString().padStart(6, '0').replace(/0+$/, ''); return `${units / 1000000n}${fraction ? '.' + fraction : ''}`; }
 export function validateRace(weekStart, config, now = Date.now()) {
   const errors = {};
-  if (!monday(weekStart) || weekStart <= raceWeek(now)) errors.weekStart = 'Chọn thứ Hai của tuần tương lai (Asia/Bangkok).';
+  if (!monday(weekStart) || weekStart <= raceWeek(now)) errors.weekStart = 'Chọn thứ Hai của tuần tương lai theo Giờ Việt Nam (UTC+7).';
   for (const key of ['goldRate', 'gemRate']) { const units = rateUnits(config[key]); if (units == null || units * (key === 'goldRate' ? 100n : 1n) > maximumUnits) errors[key] = 'Nhập số dương, tối đa 6 chữ số thập phân, trong giới hạn điểm; không dùng số mũ.'; }
   for (const [rank, reward] of config.rewards.entries()) {
     for (const key of Object.keys(assets)) if (!Number.isInteger(reward[key]) || reward[key] < 0 || reward[key] > 2147483647) errors[`${rank}-${key}`] = 'Nhập số nguyên từ 0 đến 2.147.483.647.';
@@ -77,7 +77,7 @@ export function openClanRace(ui) {
     if (!value) { if (race.state === 'PUBLISHED' && race.weekStart < raceWeek()) parent.append(node('p', 'Chưa có kết quả chốt. Máy chủ xử lý tự động; tải lại để xem trạng thái.', { class: 'muted' })); return; }
     facts(parent, [['Lần xử lý', String(value.attempts ?? 0)], ['Mã lỗi gần nhất', value.lastErrorCode || 'Không có']]);
     if (value.result) {
-      const result = value.result; facts(parent, [['Revision đã chốt', String(result.revision)], ['Mốc chốt (Asia/Bangkok)', bangkokTime(result.cutoffEpochMillis)], ['Đã chốt lúc (Asia/Bangkok)', bangkokTime(result.settledAtEpochMillis)]]);
+      const result = value.result; facts(parent, [['Revision đã chốt', String(result.revision)], ['Mốc chốt · Giờ Việt Nam (UTC+7)', bangkokTime(result.cutoffEpochMillis)], ['Đã chốt lúc · Giờ Việt Nam (UTC+7)', bangkokTime(result.settledAtEpochMillis)]]);
       parent.append(node('h3', 'Thưởng lịch sử · mỗi thành viên đủ điều kiện'));
       for (const winner of result.winners) parent.append(append(node('section', null, { class: 'race-history' }), node('h4', `Top ${winner.standing.rank} · ${winner.standing.name}`), node('p', `${winner.standing.points} điểm · ${winner.eligibleMembers} thành viên đủ điều kiện`), node('p', rewardText(winner.reward))));
       parent.append(node('h3', 'Bảng hạng tại mốc chốt'));
@@ -125,7 +125,7 @@ export function openClanRace(ui) {
   function list() {
     if (!permitted()) return;
     const main = shell('Đua top bang', 'clanRace');
-    main.append(node('p', 'Tuần từ 00:00 thứ Hai đến 00:00 thứ Hai kế tiếp, Asia/Bangkok. Không tự mở tuần mới hoặc sao chép cấu hình cũ.', { class: 'muted' }));
+    main.append(node('p', 'Tuần từ 00:00 thứ Hai đến 00:00 thứ Hai kế tiếp, theo Giờ Việt Nam (UTC+7). Không tự mở tuần mới hoặc sao chép cấu hình cũ.', { class: 'muted' }));
     const toolbar = node('div', null, { class: 'toolbar' }); if (owner()) toolbar.append(iconButton('Tạo tuần đua', () => edit(), 'add', { class: 'primary' })); toolbar.append(iconButton('Làm mới tuần đua', () => load(currentPage), 'refresh')); main.append(toolbar);
     const current = append(node('section', null, { class: 'race-current stack', 'aria-label': 'Tuần hiện tại' }), node('h2', 'Tuần hiện tại · ' + raceWeek())); main.append(current);
     const lookup = node('form', null, { class: 'race-lookup' }), week = field(lookup, 'Xem tuần theo ngày thứ Hai', 'race-lookup', 'date', { min: '1970-01-01', max: '9999-12-31' }); lookup.append(button('Xem tuần', null, { type: 'submit' })); main.append(lookup); const lookupNotices = feedback(main);
@@ -156,7 +156,7 @@ export function openClanRace(ui) {
         actions.append(button('Xem trước', event => preview(race, event.currentTarget)), button('Nhân bản sang tuần tương lai', () => edit(race, true)));
         if (future(race) && race.state === 'DRAFT' && owner()) actions.append(iconButton('Sửa bản nháp', () => edit(race), 'edit'));
         if (future(race) && race.state !== 'INACTIVE' && owner()) actions.append(button('Ngừng tuần tương lai', () => confirm(race, 'archive')));
-        facts(container, [['Tuần (Asia/Bangkok)', race.weekStart], ['Phiên bản', String(race.version)], ['Revision đã phát hành', race.publishedRevision == null ? 'Chưa có' : String(race.publishedRevision)]]);
+        facts(container, [['Tuần · Giờ Việt Nam (UTC+7)', race.weekStart], ['Phiên bản', String(race.version)], ['Revision đã phát hành', race.publishedRevision == null ? 'Chưa có' : String(race.publishedRevision)]]);
         if (race.publishedRevision) container.append(node('p', 'Cấu hình đã phát hành được đóng băng. Bản nháp tuần tương lai không thay đổi thưởng hoặc điểm của tuần này.', { class: 'muted' }));
         if (!owner()) container.append(node('p', 'Operator được nhân bản nguyên cấu hình sang tuần tương lai và xem trước. Chỉ Owner đặt tỷ lệ, thưởng, phát hành hoặc ngừng tuần tương lai.', { class: 'muted' }));
         definition(container, race); settlement(container, race);
@@ -168,7 +168,7 @@ export function openClanRace(ui) {
     const existing = race && !clone, surface = raceModal(clone ? 'Nhân bản tuần đua' : existing ? 'Sửa bản nháp tuần đua' : 'Tạo tuần đua');
     const form = node('form', null, { class: 'stack modal-form', novalidate: '' }); surface.dialog.append(form); const notices = feedback(form), controls = {};
     const input = (key, label, type = 'text', attributes = {}) => controls[key] = field(form, label, 'race-' + key, type, attributes);
-    form.append(node('p', 'Chỉ cấu hình tuần tương lai. Tuần bắt đầu 00:00 thứ Hai (bao gồm), kết thúc 00:00 thứ Hai tiếp theo (không bao gồm), Asia/Bangkok. Lưu nháp chưa mở đua.', { class: 'muted' }));
+    form.append(node('p', 'Chỉ cấu hình tuần tương lai. Tuần bắt đầu 00:00 thứ Hai (bao gồm), kết thúc 00:00 thứ Hai tiếp theo (không bao gồm), theo Giờ Việt Nam (UTC+7). Lưu nháp chưa mở đua.', { class: 'muted' }));
     const week = input('weekStart', 'Tuần bắt đầu (thứ Hai)', 'date', { min: '1970-01-01', max: '9999-12-31', required: '' }); week.value = existing ? race.weekStart : ''; week.readOnly = !!existing;
     form.append(node('p', 'Điểm cho 1 đơn vị tiền, số dương tối đa 6 chữ số thập phân. Khoản nhỏ giữ điểm dương chính xác, không làm tròn từng giao dịch về 0.', { id: 'race-rate-hint', class: 'muted' }));
     for (const [key, label] of [['goldRate', 'Điểm / 1 Vàng'], ['gemRate', 'Điểm / 1 Gem']]) { const control = input(key, label, 'text', { inputmode: 'decimal', maxlength: '39', 'aria-describedby': 'race-rate-hint' }); control.value = race?.config[key] ?? ''; control.readOnly = clone; }
@@ -198,7 +198,7 @@ export function openClanRace(ui) {
       try {
         const data = await api(path(race.weekStart) + '/preview', task, {}); if (!task.current()) return;
         const result = node('div', null, { class: 'stack' }); definition(result, data.race, true);
-        facts(result, [['Tuần và phiên bản', `${data.race.weekStart} · ${data.race.version}`], ['Bắt đầu (bao gồm, Asia/Bangkok)', bangkokTime(data.startEpochMillis)], ['Chốt (không bao gồm, Asia/Bangkok)', bangkokTime(data.endEpochMillis)], ['100 Vàng', data.gold100Points + ' điểm'], ['1 Gem', data.gem1Points + ' điểm'], ['Số người tối đa', `${data.maximumRecipientsPerRank} / hạng · ${data.maximumRecipients} / 3 hạng`], ['Ngân sách tối đa (3 hạng)', rewardText(data.maximumBudget)], ['Máy chủ xác nhận lúc (Asia/Bangkok)', bangkokTime(data.serverNowEpochMillis)]]);
+        facts(result, [['Tuần và phiên bản', `${data.race.weekStart} · ${data.race.version}`], ['Bắt đầu (bao gồm) · Giờ Việt Nam (UTC+7)', bangkokTime(data.startEpochMillis)], ['Chốt (không bao gồm) · Giờ Việt Nam (UTC+7)', bangkokTime(data.endEpochMillis)], ['100 Vàng', data.gold100Points + ' điểm'], ['1 Gem', data.gem1Points + ' điểm'], ['Số người tối đa', `${data.maximumRecipientsPerRank} / hạng · ${data.maximumRecipients} / 3 hạng`], ['Ngân sách tối đa (3 hạng)', rewardText(data.maximumBudget)], ['Máy chủ xác nhận lúc · Giờ Việt Nam (UTC+7)', bangkokTime(data.serverNowEpochMillis)]]);
         content.insertBefore(result, actions); notices.status.textContent = ''; retry.remove();
         if (owner() && data.race.state === 'DRAFT' && data.race.weekStart > raceWeek(data.serverNowEpochMillis)) actions.append(button('Tiếp tục phát hành', () => { surface.finish(); confirm(data.race, 'publish', data); }, { class: 'primary' }));
       } catch (error) { if (task.current() && error.name !== 'AbortError') notices.fail(error); }
@@ -209,7 +209,7 @@ export function openClanRace(ui) {
     if (!owner() || !future(race) || (action === 'publish' && race.state !== 'DRAFT')) return;
     const label = action === 'publish' ? 'Phát hành tuần đua' : 'Ngừng tuần tương lai', surface = raceModal(label), form = node('form', null, { class: 'stack modal-form', novalidate: '' }); surface.dialog.append(form); const notices = feedback(form);
     form.append(node('p', action === 'publish' ? `Phát hành tuần ${race.weekStart}, phiên bản ${race.version}. Cấu hình được đóng băng; chỉ bắt đầu từ tuần này, không mở bù tuần hiện tại.` : `Ngừng tuần tương lai ${race.weekStart}. Tuần hiện tại, lịch sử và quyền thưởng đã chốt được giữ nguyên.`));
-    if (action === 'publish') { definition(form, race, true); facts(form, [['Ngân sách tối đa (150 người)', rewardText(previewData.maximumBudget)], ['Mốc chốt (Asia/Bangkok)', bangkokTime(previewData.endEpochMillis)]]); }
+    if (action === 'publish') { definition(form, race, true); facts(form, [['Ngân sách tối đa (150 người)', rewardText(previewData.maximumBudget)], ['Mốc chốt · Giờ Việt Nam (UTC+7)', bangkokTime(previewData.endEpochMillis)]]); }
     const reason = field(form, 'Lý do thay đổi', 'race-reason', 'textarea', { maxlength: '500', required: '' }), submit = node('button', label, { type: 'submit', class: 'primary' }); form.append(append(node('div', null, { class: 'modal-actions' }), surface.cancel, submit));
     mutation(form, submit, notices, surface, path(race.weekStart) + '/' + action, () => { if (errors(form, notices, reasonError(reason), { reason })) return null; return { expectedVersion: race.version, reason: reason.value.trim() }; }, saved => { surface.finish(); detail(saved.weekStart, action === 'publish' ? 'Đã phát hành; cấu hình tuần được đóng băng.' : 'Đã ngừng tuần tương lai.'); }, race.weekStart, 'POST', true); surface.show(reason);
   }

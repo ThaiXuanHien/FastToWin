@@ -2,8 +2,7 @@ package com.hienthai.fastowin.ui.screens
 
 import com.hienthai.fastowin.ui.components.ReportableText
 import com.hienthai.fastowin.ui.components.UgcReportButton
-import com.hienthai.fastowin.ui.components.UgcSafetyButton
-import com.hienthai.fastowin.ui.components.UgcTarget
+import com.hienthai.fastowin.ui.components.UgcReportMenuItem
 import com.hienthai.fastowin.protocol.UgcTargetType
 
 import androidx.compose.foundation.BorderStroke
@@ -685,7 +684,7 @@ private fun FriendCard(
                     frameId = friend.frameId
                 )
                 Column(modifier = Modifier.weight(1f)) {
-                    ReportableText(friend.displayName, UgcTargetType.PLAYER_PROFILE, friend.userId, fontWeight = FontWeight.Black)
+                    Text(friend.displayName, fontWeight = FontWeight.Black)
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(6.dp)
@@ -709,6 +708,9 @@ private fun FriendCard(
                         onDismissRequest = { showActions = false },
                         containerColor = ArcadePalette.Navy800
                     ) {
+                        UgcReportMenuItem(UgcTargetType.PLAYER_PROFILE, friend.userId, friend.displayName) {
+                            showActions = false
+                        }
                         DropdownMenuItem(
                             text = { Text(localized(TextKey.RemoveFriendAction), color = ArcadePalette.White) },
                             leadingIcon = {

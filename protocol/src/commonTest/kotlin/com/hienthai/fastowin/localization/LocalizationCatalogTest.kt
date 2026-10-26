@@ -9,20 +9,16 @@ import kotlin.test.assertTrue
 
 class LocalizationCatalogTest {
     @Test
+    fun shippedCatalogsContainOnlyVietnameseAndEnglish() {
+        assertEquals(setOf("vi", "en"), allLocalizationCatalogs.keys.map { it.code }.toSet())
+        assertEquals(setOf("vi", "en"), AppLanguage.entries.map { it.code }.toSet())
+    }
+
+    @Test
     fun shopDiscoveryCopyDescribesOnlyTheCurrentGemAndGoldEconomy() {
         val expected = mapOf(
             AppLanguage.VIETNAMESE to "Mua Gem hoặc đổi Gem lấy Vàng",
             AppLanguage.ENGLISH to "Buy Gems or exchange Gems for Gold",
-            AppLanguage.SIMPLIFIED_CHINESE to "购买宝石，或用宝石兑换金币",
-            AppLanguage.JAPANESE to "ジェムを購入、またはジェムをゴールドに交換",
-            AppLanguage.KOREAN to "젬을 구매하거나 젬을 골드로 교환하세요",
-            AppLanguage.SPANISH to "Compra gemas o cámbialas por oro",
-            AppLanguage.BRAZILIAN_PORTUGUESE to "Compre Gemas ou troque Gemas por Ouro",
-            AppLanguage.FRENCH to "Achetez des Gemmes ou échangez-les contre de l'Or",
-            AppLanguage.GERMAN to "Kaufe Juwelen oder tausche sie gegen Gold",
-            AppLanguage.INDONESIAN to "Beli Gem atau tukarkan Gem dengan Emas",
-            AppLanguage.THAI to "ซื้อเจมหรือแลกเจมเป็นทอง",
-            AppLanguage.RUSSIAN to "Покупайте самоцветы или обменивайте их на золото",
         )
 
         expected.forEach { (language, copy) ->
@@ -66,7 +62,7 @@ class LocalizationCatalogTest {
             TextKey.RewardReceivedSummary,
         )
 
-        AppLanguage.entries.filterNot { it in setOf(AppLanguage.ENGLISH, AppLanguage.VIETNAMESE) }
+        AppLanguage.entries.filterNot { it == AppLanguage.ENGLISH }
             .forEach { language ->
                 val translated = residualTexts(language)
                 assertEquals(english.keys, translated.keys, language.code)
@@ -98,7 +94,7 @@ class LocalizationCatalogTest {
     }
 
     @Test
-    fun explicitPreferenceWinsAndUnknownPreferenceUsesDevice() {
+    fun unsupportedPreferencesUseEnglishAndSystemSelectionUsesDevice() {
         assertEquals(AppLanguage.ENGLISH, resolveAppLanguage("de", listOf("vi-VN")))
         assertEquals(AppLanguage.ENGLISH, resolveAppLanguage("future", listOf("ja-JP")))
         assertEquals(AppLanguage.ENGLISH, resolveAppLanguage("system", emptyList()))
@@ -111,7 +107,7 @@ class LocalizationCatalogTest {
 
     @Test
     fun catalogsCoverEveryKeyAndHaveMatchingPlaceholders() {
-        assertEquals(12, allLocalizationCatalogs.size)
+        assertEquals(2, allLocalizationCatalogs.size)
         assertEquals(AppLanguage.entries.toSet(), allLocalizationCatalogs.keys)
         val english = allLocalizationCatalogs.getValue(AppLanguage.ENGLISH)
         val tokens = Regex("\\{([A-Za-z][A-Za-z0-9_]*)\\}")
@@ -187,27 +183,11 @@ class LocalizationCatalogTest {
     }
 
     @Test
-    fun russianQuantitiesHandleTeenAndLastDigitBoundaries() {
-        val service = LocalizationService(AppLanguage.RUSSIAN)
-        mapOf(0 to "0 игроков", 1 to "1 игрок", 2 to "2 игрока", 5 to "5 игроков",
-            11 to "11 игроков", 14 to "14 игроков", 21 to "21 игрок", 22 to "22 игрока",
-            25 to "25 игроков", 101 to "101 игрок", 111 to "111 игроков").forEach { (count, expected) ->
-            assertEquals(expected, service.quantity(QuantityKey.Players, count))
-        }
-        assertEquals("1 матч", service.quantity(QuantityKey.Matches, 1))
-        assertEquals("2 матча", service.quantity(QuantityKey.Matches, 2))
-        assertEquals("5 матчей", service.quantity(QuantityKey.Matches, 5))
-        assertEquals("21 сезон", service.quantity(QuantityKey.Seasons, 21))
-        assertEquals("1 участник", service.quantity(QuantityKey.Members, 1))
-        assertEquals("2 участника", service.quantity(QuantityKey.Members, 2))
-        assertEquals("5 участников", service.quantity(QuantityKey.Members, 5))
-    }
-
-    @Test
-    fun uninflectedLanguagesUseOtherAndPluralFallbackStaysInOneLanguage() {
+    fun vietnameseUsesOtherAndMissingQuantitiesFallBackToEnglish() {
         assertEquals("2 người chơi", LocalizationService(AppLanguage.VIETNAMESE).quantity(QuantityKey.Players, 2))
-        val russian = allLocalizationCatalogs.getValue(AppLanguage.RUSSIAN).copy(quantities = emptyMap())
-        val service = LocalizationService(AppLanguage.RUSSIAN, allLocalizationCatalogs + (AppLanguage.RUSSIAN to russian))
+        val vietnamese = allLocalizationCatalogs.getValue(AppLanguage.VIETNAMESE).copy(quantities = emptyMap())
+        val service = LocalizationService(AppLanguage.VIETNAMESE, allLocalizationCatalogs + (AppLanguage.VIETNAMESE to vietnamese))
+        assertEquals("1 player", service.quantity(QuantityKey.Players, 1))
         assertEquals("21 players", service.quantity(QuantityKey.Players, 21))
     }
 }

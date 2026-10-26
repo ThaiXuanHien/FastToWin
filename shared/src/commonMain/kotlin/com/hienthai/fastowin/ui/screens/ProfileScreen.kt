@@ -1,7 +1,6 @@
 package com.hienthai.fastowin.ui.screens
 
 import com.hienthai.fastowin.ui.components.ReportableText
-import com.hienthai.fastowin.ui.components.UgcReportButton
 import com.hienthai.fastowin.ui.components.UgcSafetyButton
 import com.hienthai.fastowin.ui.components.UgcTarget
 import com.hienthai.fastowin.protocol.UgcTargetType
@@ -31,7 +30,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.windowInsetsPadding
-import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyHorizontalGrid
@@ -64,16 +62,12 @@ import androidx.compose.material.icons.filled.AccountBalanceWallet
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.ShoppingBag
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import com.hienthai.fastowin.ui.components.AppOutlinedTextField as OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -95,11 +89,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -142,7 +134,6 @@ import com.hienthai.fastowin.platform.epochMillis
 import com.hienthai.fastowin.platform.createPlainTextClipEntry
 import com.hienthai.fastowin.platform.toImageBitmap
 import com.hienthai.fastowin.ui.layout.ResponsiveScreen
-import com.hienthai.fastowin.ui.components.RewardAmounts
 import com.hienthai.fastowin.ui.components.ArcadeActionButton
 import com.hienthai.fastowin.ui.components.ArcadeActionStyle
 import com.hienthai.fastowin.ui.components.ArcadeDialog
@@ -169,7 +160,6 @@ import com.hienthai.fastowin.ui.theme.ArcadePalette
 import com.hienthai.fastowin.ui.theme.ArcadeSuccess
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import org.jetbrains.compose.resources.painterResource
 
 enum class ProfileSection {
     STATISTICS,
@@ -2424,41 +2414,6 @@ private fun StatCard(label: String, value: String, modifier: Modifier = Modifier
                 textAlign = TextAlign.Center,
                 maxLines = 2
             )
-        }
-    }
-}
-
-@Composable
-private fun ArcadeProfileChip(
-    selected: Boolean,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-    enabled: Boolean = true,
-    content: @Composable () -> Unit
-) {
-    Surface(
-        onClick = onClick,
-        enabled = enabled,
-        modifier = modifier
-            .heightIn(min = 48.dp)
-            .semantics { this.selected = selected },
-        shape = RoundedCornerShape(14.dp),
-        color = if (selected) ArcadePalette.Blue700 else ArcadePalette.Navy800,
-        contentColor = if (enabled) ArcadePalette.White else ArcadePalette.OutlineDark,
-        border = BorderStroke(
-            1.dp,
-            when {
-                selected -> ArcadePalette.Gold500
-                enabled -> ArcadePalette.OutlineDark
-                else -> ArcadePalette.Navy700
-            }
-        )
-    ) {
-        Box(
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 9.dp),
-            contentAlignment = Alignment.Center
-        ) {
-            content()
         }
     }
 }

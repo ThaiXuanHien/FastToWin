@@ -9,9 +9,9 @@ for (const role of ['OWNER', 'OPERATOR', 'SUPPORT']) test(`decision context visi
   fixture.role = role; maintenance(fixture, 'MAINTENANCE'); await open(page, fixture);
   const fact = name => page.locator('.facts > div').filter({ has: page.locator('dt', { hasText: name }) }).locator('dd');
   await expect(fact('Nguyên nhân')).toHaveText('Cập nhật');
-  await expect(fact('Bắt đầu lúc')).toHaveText('11:00:00 3/10/26 (Bangkok)');
+  await expect(fact('Bắt đầu lúc')).toHaveText('11:00:00 3/10/26 · Giờ Việt Nam (UTC+7)');
   await expect(fact('Người thay đổi')).toHaveText('owner-maintenance-7');
-  await expect(fact('Thay đổi lúc')).toHaveText('11:01:00 3/10/26 (Bangkok)');
+  await expect(fact('Thay đổi lúc')).toHaveText('11:01:00 3/10/26 · Giờ Việt Nam (UTC+7)');
 });
 
 test('reopen health is bounded, fresh then stale and refreshable without automatic mutation', async ({ page, fixture }) => {
@@ -21,7 +21,7 @@ test('reopen health is bounded, fresh then stale and refreshable without automat
   await expect(page.getByText('Máy chủ phản hồi OK', { exact: true })).toBeVisible();
   await expect(page.getByRole('dialog')).toContainText('không xác nhận cơ sở dữ liệu, trận đấu hay an toàn bảo mật');
   await expect(page.getByRole('dialog')).toContainText('Quan sát lúc:');
-  await expect(page.getByRole('dialog')).toContainText('(Bangkok)');
+  await expect(page.getByRole('dialog')).toContainText('Giờ Việt Nam (UTC+7)');
   const health = fixture.calls.find(c => c.route === '/health');
   expect(health.method).toBe('GET'); expect(health.headers['cache-control']).toBe('no-cache');
   await page.clock.fastForward(30_001);
@@ -94,7 +94,7 @@ test('Owner planned, emergency and disable submit exact versioned DTOs and show 
   await expect(page.getByText('3 trận', { exact: true })).toBeVisible();
   await expect(page.getByText(/Chưa xác nhận tất cả kết nối đã đóng/)).toBeVisible();
   await edit(page); await fillMaintenance(page);
-  await page.getByLabel('Kết thúc dự kiến (Bangkok)').fill('2026-10-04T16:30');
+  await page.getByLabel('Kết thúc dự kiến · Giờ Việt Nam (UTC+7)').fill('2026-10-04T16:30');
   await review(page); await save(page);
   await expect(page.getByRole('dialog')).toHaveCount(0);
   const first = fixture.calls.find(c => c.method === 'POST' && c.route === maintenancePath);

@@ -13,6 +13,7 @@ const holidays = {
   christmas: ['Giáng sinh (24–25/12)', 'Christmas (December 24–25)', '12-24', '12-26'],
 };
 const utcInput = value => new Date(value).toISOString().slice(0, 23).replace(/:00\.000$/, '').replace(/\.000$/, '');
+const timezoneLabel = zone => ['Asia/Bangkok', 'Asia/Ho_Chi_Minh'].includes(zone) ? 'Giờ Việt Nam (UTC+7)' : zone;
 const policy = 'Mỗi loại thưởng lấy hệ số cao nhất riêng biệt; không cộng dồn hay nhân các sự kiện (không ×4).';
 const exclusions = 'Chỉ trận trực tuyến đấu thường / đấu hạng đủ điều kiện. Rời trận có chủ đích nhận 0. Không áp dụng Gem, Elo, giải đấu, ngoại tuyến, nhiệm vụ, điểm danh, thành tích hoặc quà admin. Quà admin là chiến dịch riêng.';
 
@@ -40,7 +41,8 @@ export function openRewardEvents(ui) {
     } parent.append(summary);
   }
   function date(value, zone) {
-    return new Intl.DateTimeFormat('vi-VN', { timeZone: zone, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', fractionalSecondDigits: 3, hourCycle: 'h23' }).format(value) + ` (${zone})`;
+    const label = timezoneLabel(zone);
+    return new Intl.DateTimeFormat('vi-VN', { timeZone: zone, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', fractionalSecondDigits: 3, hourCycle: 'h23' }).format(value) + (label === zone ? ` (${zone})` : ` · ${label}`);
   }
   function definition(parent, draft) {
     const languages = node('div', null, { class: 'event-languages' });
@@ -48,7 +50,7 @@ export function openRewardEvents(ui) {
       languages.append(append(node('section', null, { lang, class: 'event-message stack', 'aria-label': language }), node('p', language, { class: 'muted' }), node('h3', name), node('p', content, { class: 'event-body' })));
     }
     parent.append(languages); factors(parent, draft);
-    facts(parent, [['Bắt đầu (bao gồm)', date(draft.startsAtEpochMillis, draft.timezone)], ['Kết thúc (không bao gồm)', date(draft.endsAtEpochMillis, draft.timezone)], ['Bắt đầu UTC', new Date(draft.startsAtEpochMillis).toISOString()], ['Kết thúc UTC', new Date(draft.endsAtEpochMillis).toISOString()], ['Chế độ', draft.matchTypes.map(mode => modes[mode]).join(' · ')], ['Múi giờ hiển thị', draft.timezone]]);
+    facts(parent, [['Bắt đầu (bao gồm)', date(draft.startsAtEpochMillis, draft.timezone)], ['Kết thúc (không bao gồm)', date(draft.endsAtEpochMillis, draft.timezone)], ['Bắt đầu UTC', new Date(draft.startsAtEpochMillis).toISOString()], ['Kết thúc UTC', new Date(draft.endsAtEpochMillis).toISOString()], ['Chế độ', draft.matchTypes.map(mode => modes[mode]).join(' · ')], ['Múi giờ hiển thị', timezoneLabel(draft.timezone)]]);
     append(parent, node('p', policy, { class: 'muted' }), node('p', exclusions, { class: 'muted' }));
   }
   function eventModal(title, opener) {

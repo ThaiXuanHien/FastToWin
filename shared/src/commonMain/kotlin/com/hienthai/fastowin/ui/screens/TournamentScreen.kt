@@ -1,7 +1,6 @@
 package com.hienthai.fastowin.ui.screens
 
 import com.hienthai.fastowin.ui.components.ReportableText
-import com.hienthai.fastowin.ui.components.UgcReportButton
 import com.hienthai.fastowin.ui.components.UgcSafetyButton
 import com.hienthai.fastowin.ui.components.UgcTarget
 import com.hienthai.fastowin.protocol.UgcTargetType
@@ -31,7 +30,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.EmojiEvents
 import androidx.compose.material.icons.rounded.GroupAdd
 import androidx.compose.material.icons.rounded.PlayArrow
-import androidx.compose.material.icons.rounded.Schedule
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material3.Switch
 import androidx.compose.material.icons.filled.MonetizationOn
@@ -76,13 +74,10 @@ import com.hienthai.fastowin.protocol.TournamentMatchSnapshot
 import com.hienthai.fastowin.protocol.TournamentPhase
 import com.hienthai.fastowin.protocol.TournamentSnapshot
 import com.hienthai.fastowin.protocol.TournamentScheduleRequest
-import com.hienthai.fastowin.protocol.TournamentScheduleSnapshot
 import com.hienthai.fastowin.state.TournamentScheduleStage
 import com.hienthai.fastowin.state.parseTournamentSchedule
 import com.hienthai.fastowin.state.stageAt
 import com.hienthai.fastowin.state.toScheduleSnapshot
-import com.hienthai.fastowin.state.tournamentCountdown
-import com.hienthai.fastowin.state.tournamentLocalDateTime
 import com.hienthai.fastowin.platform.epochMillis
 import kotlinx.coroutines.delay
 import kotlinx.datetime.TimeZone

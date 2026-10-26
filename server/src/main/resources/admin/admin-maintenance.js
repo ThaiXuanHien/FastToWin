@@ -4,7 +4,7 @@ const states = { ACTIVE: 'Đang mở', ANNOUNCING: 'Đang báo trước', DRAINI
 const modes = { PLANNED: 'Theo kế hoạch', EMERGENCY: 'Khẩn cấp' };
 const causes = { UPDATE: 'Cập nhật', INCIDENT: 'Sự cố', SECURITY: 'Bảo mật', OVERLOAD: 'Quá tải', OTHER: 'Khác' };
 const sources = { DATABASE: 'Cơ sở dữ liệu', ENVIRONMENT: 'Biến môi trường', UNAVAILABLE: 'Chưa có quan sát' };
-const date = value => value == null ? 'Chưa có' : new Intl.DateTimeFormat('vi-VN', { timeZone: 'Asia/Bangkok', dateStyle: 'short', timeStyle: 'medium' }).format(value) + ' (Bangkok)';
+const date = value => value == null ? 'Chưa có' : new Intl.DateTimeFormat('vi-VN', { timeZone: 'Asia/Bangkok', dateStyle: 'short', timeStyle: 'medium' }).format(value) + ' · Giờ Việt Nam (UTC+7)';
 const localDate = value => value == null ? '' : new Date(value + 7 * 3600000).toISOString().slice(0, 23);
 
 // Reuse the admin shell's session, channel, network policy and native modal.
@@ -72,7 +72,7 @@ export function openMaintenance(ui) {
     const warning = field(pair, 'Báo trước (phút)', 'maintenance-warning', 'number', { required: '', min: '0', max: '60', step: '1', ...(enabled ? { readonly: '' } : {}) }); warning.value = saved.warningMinutes;
     const drain = field(pair, 'Chờ trận kết thúc (phút)', 'maintenance-drain', 'number', { required: '', min: '1', max: '60', step: '1', ...(enabled ? { readonly: '' } : {}) }); drain.value = saved.drainMinutes;
     editor.append(node('p', enabled ? 'Lịch hiện tại được giữ nguyên. Muốn đặt lịch mới hoặc đổi khẩn cấp về kế hoạch, hãy tắt rồi bật lại. Có thể nâng kế hoạch thành khẩn cấp.' : 'Kế hoạch: báo trước 0–60 phút, chờ trận 1–60 phút. Khẩn cấp: đóng ngay, không chờ lịch.', { class: 'muted' }));
-    const end = field(editor, 'Kết thúc dự kiến (Bangkok)', 'maintenance-end', 'datetime-local', { step: '0.001', max: '9999-12-31T23:59' }); end.value = localDate(saved.expectedEndEpochMillis);
+    const end = field(editor, 'Kết thúc dự kiến · Giờ Việt Nam (UTC+7)', 'maintenance-end', 'datetime-local', { step: '0.001', max: '9999-12-31T23:59' }); end.value = localDate(saved.expectedEndEpochMillis);
     editor.append(node('p', 'Chỉ để thông báo, không tự mở lại dịch vụ.', { class: 'muted' }));
     const reason = field(editor, 'Lý do nội bộ', 'maintenance-reason', 'textarea', { required: '', maxlength: '500' }); reason.value = saved.reason || '';
     const errors = feedback(editor), next = node('button', 'Xem lại thay đổi', { type: 'submit', class: 'primary' });

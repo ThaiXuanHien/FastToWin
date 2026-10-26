@@ -3,7 +3,7 @@ package com.hienthai.fastowin.ui.components
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.Flag
+import androidx.compose.material.icons.rounded.Report
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -105,9 +105,35 @@ fun UgcReportButton(type: UgcTargetType, id: String?, label: String, modifier: M
     TooltipBox(positionProvider = TooltipDefaults.rememberTooltipPositionProvider(TooltipAnchorPosition.Above),
         tooltip = { PlainTooltip { Text(description) } }, state = rememberTooltipState()) {
         IconButton({ actions.report(UgcTarget(type, id, label)) }, modifier.size(48.dp).testTag("report:${type.name}:$id")) {
-            Icon(Icons.Rounded.Flag, contentDescription = description)
+            Icon(Icons.Rounded.Report, contentDescription = description)
         }
     }
+}
+
+/** Shares target guards and lifecycle with the standalone report control. */
+@Composable
+fun UgcReportMenuItem(type: UgcTargetType, id: String?, label: String, onDismissMenu: () -> Unit) {
+    val actions = LocalUgcActions.current ?: return
+    if (!canReportUgcTarget(type, id)) return
+    DropdownMenuItem(
+        text = { Text(localized(TextKey.UgcReportPlayer)) },
+        leadingIcon = { Icon(Icons.Rounded.Report, contentDescription = null) },
+        onClick = { onDismissMenu(); actions.report(UgcTarget(type, id, label)) },
+        modifier = Modifier.heightIn(min = 48.dp).testTag("report:${type.name}:$id")
+    )
+}
+
+@Composable
+fun UgcClanReportAction(id: String, label: String, modifier: Modifier = Modifier) {
+    val actions = LocalUgcActions.current ?: return
+    if (!canReportUgcTarget(UgcTargetType.CLAN, id)) return
+    ArcadeActionButton(
+        label = localized(TextKey.UgcReportClan),
+        onClick = { actions.report(UgcTarget(UgcTargetType.CLAN, id, label)) },
+        icon = Icons.Rounded.Report,
+        style = ArcadeActionStyle.OUTLINE,
+        modifier = modifier.testTag("report:CLAN:$id")
+    )
 }
 
 /** Keeps an explicit report action next to untrusted content without making the text itself an action. */
@@ -136,7 +162,7 @@ fun UgcSafetyButton(targets: List<UgcTarget>) {
     var expanded by remember { mutableStateOf(false) }
     Box {
         IconButton({ expanded = true }, Modifier.size(48.dp).testTag("ugc_safety_menu")) {
-            Icon(Icons.Rounded.Flag, localized(TextKey.UgcSafetyActions))
+            Icon(Icons.Rounded.Report, localized(TextKey.UgcSafetyActions))
         }
         DropdownMenu(expanded, { expanded = false }) {
             available.forEach { target -> DropdownMenuItem(
@@ -190,7 +216,25 @@ fun UgcReportDialog(draft: UgcReportDraft,
     val frozen = draft.request != null || draft.pending || draft.receipt != null
     var reasonsExpanded by remember { mutableStateOf(false) }
     ArcadeDialog(localized(TextKey.UgcReportTitle), onDismiss,
-        subtitle = draft.targetLabel, scrollableContent = true, modifier = Modifier.testTag("ugc_report_dialog")) {
+        subtitle = draft.targetLabel, showCloseButton = true, scrollableContent = true,
+        modifier = Modifier.testTag("ugc_report_dialog"), fixedActions = {
+            if (draft.receipt == null) {
+                ArcadeActionButton(localized(when {
+                    draft.pending -> TextKey.UgcReportSending
+                    draft.request != null -> TextKey.UgcReportRetry
+                    else -> TextKey.UgcReportSend
+                }), onSubmit, enabled = !draft.pending,
+                    modifier = Modifier.fillMaxWidth().testTag("ugc_report_submit"), style = ArcadeActionStyle.GOLD)
+            }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                onBlock?.let {
+                    TextButton(it, Modifier.weight(1f).heightIn(min = 48.dp)) { Text(localized(TextKey.Block)) }
+                }
+                TextButton(onDismiss, Modifier.weight(1f).heightIn(min = 48.dp)) {
+                    Text(localized(if (draft.receipt != null) TextKey.Close else TextKey.Cancel))
+                }
+            }
+        }) {
         if (draft.receipt != null) {
             Text(localized(TextKey.UgcReportReceived), Modifier.semantics { liveRegion = LiveRegionMode.Polite })
             Text(localized(TextKey.UgcReportReceipt, "id" to draft.receipt.reportId), style = MaterialTheme.typography.bodySmall)
@@ -200,7 +244,8 @@ fun UgcReportDialog(draft: UgcReportDraft,
                 labels = listOf(localized(TextKey.UgcPlayerProfile), localized(TextKey.UgcPlayerAvatar)),
                 selectedIndex = if (draft.targetType == UgcTargetType.PLAYER_AVATAR) 1 else 0,
                 onSelected = { onEdit(draft.reason, draft.note, if (it == 1) UgcTargetType.PLAYER_AVATAR else UgcTargetType.PLAYER_PROFILE) },
-                enabled = { !frozen }, modifier = Modifier.fillMaxWidth())
+                enabled = { !frozen }, modifier = Modifier.fillMaxWidth(),
+                itemTestTag = { if (it == 1) "ugc_report_avatar" else "ugc_report_nickname" })
             else Text(localized(draft.targetType.labelKey()), fontWeight = FontWeight.Bold)
             Text(localized(TextKey.UgcReportReason), style = MaterialTheme.typography.labelLarge)
             Box {
@@ -227,16 +272,6 @@ fun UgcReportDialog(draft: UgcReportDraft,
                 }), Modifier.semantics { liveRegion = LiveRegionMode.Polite }, color = MaterialTheme.colorScheme.error)
                 Text(localized(TextKey.UgcReportFrozen), style = MaterialTheme.typography.bodySmall)
             }
-            ArcadeActionButton(localized(when {
-                draft.pending -> TextKey.UgcReportSending
-                draft.request != null -> TextKey.UgcReportRetry
-                else -> TextKey.UgcReportSend
-            }), onSubmit, enabled = !draft.pending,
-                modifier = Modifier.fillMaxWidth().testTag("ugc_report_submit"), style = ArcadeActionStyle.GOLD)
-        }
-        onBlock?.let { TextButton(it, Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text(localized(TextKey.Block)) } }
-        TextButton(onDismiss, Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
-            Text(localized(if (draft.receipt != null) TextKey.Close else TextKey.Cancel))
         }
     }
 }

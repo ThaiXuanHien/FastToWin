@@ -81,7 +81,7 @@ test('Owner dashboard loads exact summary and comparison with default request', 
   await expect(page.locator('.analytics-summary')).toContainText('70%');
   await expect(page.getByRole('table')).toHaveCount(1);
   expect(Object.fromEntries(lastQuery(fixture))).toEqual({ metric: 'REGISTRATIONS', preset: '30', bucket: 'DAY' });
-  await expect(page.locator('.analytics-range')).toContainText('Bangkok');
+  await expect(page.locator('.analytics-range')).toContainText('Giờ Việt Nam (UTC+7)');
 });
 for (const role of ['OPERATOR', 'SUPPORT']) test(`${role} only sees permitted analytics`, async ({ page, fixture }) => {
   fixture.role = role; analytics(fixture); await login(page, fixture);
@@ -94,7 +94,7 @@ test('presets, buckets and exclusive Bangkok custom dates drive actual query', a
   await page.getByLabel('Phân nhóm').selectOption('WEEK'); await expect.poll(() => lastQuery(fixture)?.get('bucket')).toBe('WEEK');
   await page.getByLabel('Phân nhóm').selectOption('MONTH');
   await page.getByLabel('Khoảng thời gian').selectOption('custom');
-  await page.getByLabel('Từ ngày (Bangkok)').fill('2026-09-01'); await page.getByLabel('Đến ngày, không gồm (Bangkok)').fill('2026-10-01');
+  await page.getByLabel('Từ ngày · Giờ Việt Nam (UTC+7)').fill('2026-09-01'); await page.getByLabel('Đến ngày, không gồm · Giờ Việt Nam (UTC+7)').fill('2026-10-01');
   await page.getByRole('button', { name: 'Áp dụng', exact: true }).click();
   await expect.poll(() => lastQuery(fixture)?.get('from')).toBe(String(Date.parse('2026-09-01T00:00:00+07:00')));
   expect(lastQuery(fixture).get('until')).toBe(String(Date.parse('2026-10-01T00:00:00+07:00'))); expect(lastQuery(fixture).has('preset')).toBe(false);
@@ -109,7 +109,7 @@ test('context filters reset across metrics and validate range', async ({ page, f
   await page.getByLabel('Chỉ số', { exact: true }).selectOption('ITEM_SPEND'); await expect.poll(() => lastQuery(fixture)?.get('metric')).toBe('ITEM_SPEND'); expect(lastQuery(fixture).has('store')).toBe(false);
   await page.getByRole('button', { name: 'Bộ lọc', exact: true }).click(); await page.getByLabel('Đơn vị game').selectOption('GEMS'); await page.getByLabel('Mã vật phẩm').fill('hat'); await page.getByRole('button', { name: 'Áp dụng', exact: true }).click();
   await expect.poll(() => lastQuery(fixture)?.get('item')).toBe('hat');
-  await page.getByLabel('Khoảng thời gian').selectOption('custom'); await page.getByLabel('Từ ngày (Bangkok)').fill('2020-01-01'); await page.getByLabel('Đến ngày, không gồm (Bangkok)').fill('2026-10-01'); const count = fixture.calls.length;
+  await page.getByLabel('Khoảng thời gian').selectOption('custom'); await page.getByLabel('Từ ngày · Giờ Việt Nam (UTC+7)').fill('2020-01-01'); await page.getByLabel('Đến ngày, không gồm · Giờ Việt Nam (UTC+7)').fill('2026-10-01'); const count = fixture.calls.length;
   await page.getByRole('button', { name: 'Áp dụng', exact: true }).click(); await expect(page.getByRole('alert').filter({ hasText: '24 tháng' })).toBeVisible(); expect(fixture.calls.length).toBe(count);
 });
 test('money scale and sign stay exact above 2^53 and currencies stay separate', async ({ page, fixture }) => {

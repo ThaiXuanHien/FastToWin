@@ -30,7 +30,7 @@ Hạn nhận là **7 ngày từ khi thực sự sẵn sàng**, lấy thời gian
 
 Player Bearer routes: `/api/clan-race`, `/standings`, `/contributions`, `/history`. Contributions chỉ trả bang hiện tại của người gọi. Mailbox giữ `/api/gifts/mailbox` và prefix cũ `/gifts/mailbox`; claim và claim-all không có đường cộng ví riêng. Admin root `/admin/api/clan-race` gồm list/detail/create/draft/clone/preview/publish/archive. Lỗi storage trả 503 `STORAGE_UNAVAILABLE`, không giả dữ liệu rỗng; responses no-store.
 
-App: Bang hội → Đua top tuần (`/clan/race`), giữ năm tab. Quà tuần này dùng cấu hình server đang chạy, điểm hiển thị chuỗi chính xác, tách đóng góp mission/donation/tenure hiện tại và cũ. Tải lỗi có retry; đổi tài khoản/bang/token/view hoặc request mới fence kết quả cũ. Có loading/inactive/empty/closed/settled/history và thời gian cập nhật. TextKey mới có đủ 12 ngôn ngữ; lựa chọn ngôn ngữ của app giữ phạm vi cũ.
+App: Bang hội → Đua top tuần (`/clan/race`), giữ năm tab. Quà tuần này dùng cấu hình server đang chạy, điểm hiển thị chuỗi chính xác, tách đóng góp mission/donation/tenure hiện tại và cũ. Tải lỗi có retry; đổi tài khoản/bang/token/view hoặc request mới fence kết quả cũ. Có loading/inactive/empty/closed/settled/history và thời gian cập nhật. TextKey có bản dịch Tiếng Việt và English; source chỉ đóng gói hai catalog này. Nhãn giờ hiển thị là Giờ Việt Nam (UTC+7), còn mã IANA và mốc chốt của server giữ nguyên.
 
 ## Nghiệm thu local có kiểm soát
 

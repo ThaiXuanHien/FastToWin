@@ -5,7 +5,7 @@ const audiences = { ALL_REGISTERED: 'Tất cả tài khoản đã đăng ký', S
 const DAY = 86400000, BANGKOK = 7 * 3600000;
 const localDate = value => new Date(value + BANGKOK).toISOString().slice(0, 23).replace(/:00\.000$/, '').replace(/\.000$/, '');
 const epoch = value => Date.parse(value + '+07:00');
-const date = value => value == null ? 'Chưa có dữ liệu' : new Intl.DateTimeFormat('vi-VN', { timeZone: 'Asia/Bangkok', dateStyle: 'short', timeStyle: 'short' }).format(value) + ' (Bangkok)';
+const date = value => value == null ? 'Chưa có dữ liệu' : new Intl.DateTimeFormat('vi-VN', { timeZone: 'Asia/Bangkok', dateStyle: 'short', timeStyle: 'short' }).format(value) + ' · Giờ Việt Nam (UTC+7)';
 
 // One explicit adapter owns auth, session fencing, network policy and shared UI.
 // Campaign state exists only in this view's closures; view/session changes remove it.
@@ -167,10 +167,10 @@ export function openGiftCampaigns(ui) {
     const ids = field(idsGroup, 'ID người chơi', 'gift-ids', 'textarea', { 'aria-describedby': 'gift-ids-help' });
     idsGroup.append(node('p', 'Nhập từ 1 đến 10.000 UUID nội bộ, mỗi ID một dòng hoặc phân cách bằng dấu phẩy. Không cần đủ 10.000. Để dùng mã game hoặc email, chọn “Một người chơi”. ID trùng được gộp khi xem trước.', { class: 'muted gift-help', id: 'gift-ids-help' }));
     const bounds = node('div', null, { class: 'stack' }); form.append(bounds);
-    const from = field(bounds, 'Đăng ký từ (Bangkok, bao gồm)', 'gift-from', 'datetime-local', { step: '0.001' });
-    const until = field(bounds, 'Đăng ký đến (Bangkok, không bao gồm)', 'gift-until', 'datetime-local', { step: '0.001' });
-    const available = field(form, 'Thời gian phát (Bangkok)', 'gift-available', 'datetime-local', { required: '', step: '0.001' });
-    const expires = field(form, 'Hết hạn (Bangkok)', 'gift-expires', 'datetime-local', { required: '', step: '0.001' });
+    const from = field(bounds, 'Đăng ký từ (bao gồm) · Giờ Việt Nam (UTC+7)', 'gift-from', 'datetime-local', { step: '0.001' });
+    const until = field(bounds, 'Đăng ký đến (không bao gồm) · Giờ Việt Nam (UTC+7)', 'gift-until', 'datetime-local', { step: '0.001' });
+    const available = field(form, 'Thời gian phát · Giờ Việt Nam (UTC+7)', 'gift-available', 'datetime-local', { required: '', step: '0.001' });
+    const expires = field(form, 'Hết hạn · Giờ Việt Nam (UTC+7)', 'gift-expires', 'datetime-local', { required: '', step: '0.001' });
     form.append(node('p', 'Mặc định hết hạn sau 30 ngày từ thời gian phát. Có thể chỉnh mốc này; phát chậm không gia hạn.', { class: 'muted gift-help' }));
     const reason = field(form, 'Lý do chiến dịch', 'gift-reason', 'textarea', { required: '', maxlength: '500' });
     const values = { titleVi, titleEn, bodyVi, bodyEn, gold, xp, gems, reason, audience };
@@ -205,7 +205,7 @@ export function openGiftCampaigns(ui) {
       body.registeredUntilEpochMillis = body.audience === 'REGISTERED_BETWEEN' ? epoch(until.value) : null;
       if (body.audience === 'REGISTERED_BETWEEN' && !(body.registeredFromEpochMillis >= 0 && body.registeredUntilEpochMillis > body.registeredFromEpochMillis)) throw new Error('Khoảng đăng ký cần có mốc kết thúc sau mốc bắt đầu.');
       body.availableAtEpochMillis = epoch(available.value); body.expiresAtEpochMillis = epoch(expires.value);
-      if (!(body.availableAtEpochMillis >= 0 && body.expiresAtEpochMillis > body.availableAtEpochMillis && body.expiresAtEpochMillis <= 253402300799999)) throw new Error('Hết hạn cần sau thời gian phát; kiểm tra lại các mốc Bangkok.');
+      if (!(body.availableAtEpochMillis >= 0 && body.expiresAtEpochMillis > body.availableAtEpochMillis && body.expiresAtEpochMillis <= 253402300799999)) throw new Error('Hết hạn cần sau thời gian phát; kiểm tra lại các mốc theo Giờ Việt Nam (UTC+7).');
       if (campaign) body.expectedVersion = campaign.version; return body;
     }, result => { surface.finish(); detail(result.campaign.id, 'Đã lưu bản nháp.'); }, campaign ? 'PUT' : 'POST', () => { surface.finish(); detail(campaign.id, '', 'Bản nháp đã thay đổi. Kiểm tra dữ liệu mới trước khi sửa lại.'); });
     surface.show(titleVi);

@@ -34,8 +34,26 @@ internal actual fun NativeDialogInputScope(content: @Composable () -> Unit) {
     }
     val container = remember(root) { WebInteropContainer(InteropViewGroup(root)) }
     DisposableEffect(root) {
+        // During keyboard resize, Compose can hide an editor for one frame
+        // before BringIntoView scrolls it back. visibility:hidden blurs DOM
+        // inputs, closing the keyboard. Keep focus while clipping that frame
+        // completely; do not refocus after an intentional blur or dismissal.
+        val focusStyle = document.createElement("style").apply {
+            textContent = """
+                [data-fasttowin-dialog-inputs] > div:has(> [data-fasttowin-native-input]:focus) {
+                    visibility: visible !important;
+                }
+                [data-fasttowin-dialog-inputs] > div[style*="visibility: hidden"]:has(> [data-fasttowin-native-input]:focus) {
+                    clip-path: inset(100%) !important;
+                }
+            """.trimIndent()
+        }
+        document.head!!.appendChild(focusStyle)
         document.body!!.appendChild(root)
-        onDispose { root.parentNode?.removeChild(root) }
+        onDispose {
+            root.parentNode?.removeChild(root)
+            focusStyle.parentNode?.removeChild(focusStyle)
+        }
     }
     CompositionLocalProvider(LocalInteropContainer provides container) {
         container.TrackInteropPlacementContainer(content)

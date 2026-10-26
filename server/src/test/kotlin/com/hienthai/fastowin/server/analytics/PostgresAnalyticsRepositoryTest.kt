@@ -18,7 +18,6 @@ import kotlinx.serialization.json.Json
 import org.flywaydb.core.Flyway
 import org.junit.jupiter.api.Assumptions.assumeTrue
 import java.time.Instant
-import java.sql.Connection
 import java.util.UUID
 import kotlin.test.*
 

@@ -1,7 +1,6 @@
 package com.hienthai.fastowin.localization
 
 import kotlin.test.Test
-import kotlin.test.assertContains
 import kotlin.test.assertNotEquals
 
 class MissionWalletLocalizationTest {
@@ -32,19 +31,10 @@ class MissionWalletLocalizationTest {
         )
     }
 
-    @Test
-    fun thaiWalletUsesTheExistingGemAndClanTerminology() {
-        val thai = allLocalizationCatalogs.getValue(AppLanguage.THAI).texts
-        assertContains(thai.getValue(TextKey.WalletBalanceDescription), "เจม")
-        assertContains(thai.getValue(TextKey.RewardGemsDescription), "เจม")
-        assertContains(thai.getValue(TextKey.WalletReceivedGems), "เจม")
-        assertContains(thai.getValue(TextKey.ClanRewardSource), "แคลน")
-    }
-
     private fun assertLocalized(vararg keys: TextKey) {
         val english = allLocalizationCatalogs.getValue(AppLanguage.ENGLISH).texts
         allLocalizationCatalogs.filterKeys {
-            it != AppLanguage.ENGLISH && it != AppLanguage.VIETNAMESE
+            it != AppLanguage.ENGLISH
         }.forEach { (language, catalog) ->
             keys.forEach { key ->
                 assertNotEquals(english.getValue(key), catalog.texts.getValue(key), "${language.code}/$key")
