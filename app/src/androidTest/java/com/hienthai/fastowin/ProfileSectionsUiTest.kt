@@ -7,6 +7,9 @@ import androidx.compose.ui.test.ForcedSize
 import androidx.compose.ui.test.then
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.hasAnyAncestor
+import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithTag
@@ -34,6 +37,12 @@ import com.hienthai.fastowin.protocol.MatchDetailSnapshot
 import com.hienthai.fastowin.protocol.MatchEventSnapshot
 import com.hienthai.fastowin.protocol.MatchType
 import com.hienthai.fastowin.protocol.MissionDifficulty
+import com.hienthai.fastowin.protocol.MissionAction
+import com.hienthai.fastowin.protocol.MissionCadence
+import com.hienthai.fastowin.protocol.MissionClaimState
+import com.hienthai.fastowin.protocol.MissionInstanceView
+import com.hienthai.fastowin.protocol.MissionReward
+import com.hienthai.fastowin.protocol.MissionScope
 import com.hienthai.fastowin.protocol.MissionSnapshot
 import com.hienthai.fastowin.protocol.PlayerProfileSnapshot
 import com.hienthai.fastowin.protocol.PlayerProgressionSnapshot
@@ -41,6 +50,7 @@ import com.hienthai.fastowin.protocol.PlayerStatisticsSnapshot
 import com.hienthai.fastowin.protocol.ProtocolGameMode
 import com.hienthai.fastowin.protocol.WalletTransactionSnapshot
 import com.hienthai.fastowin.state.GameState
+import com.hienthai.fastowin.state.MissionState
 import com.hienthai.fastowin.ui.screens.ProfileScreen
 import com.hienthai.fastowin.ui.screens.ProfileSection
 import com.hienthai.fastowin.ui.screens.ProfileSectionScreen
@@ -317,9 +327,18 @@ class ProfileSectionsUiTest {
 
     @Test
     fun missions_smallPhoneAndLargeText_remainsScrollableAndClaimsReward() {
-        var claimedCode: String? = null
+        var claimedInstance: String? = null
+        var legacyClaims = 0
         var wentBack = false
         val profile = profileFixture()
+        val daily = managedMissionFixture()
+        val weekly = daily.copy(
+            instanceId = "managed-weekly", code = "ADMIN_WEEKLY_CORRECT", action = MissionAction.CORRECT,
+            period = MissionCadence.WEEKLY, difficulty = MissionDifficulty.ELITE,
+            periodEndExclusive = "2026-11-02", target = 100, progress = 42,
+            state = MissionClaimState.IN_PROGRESS, reward = MissionReward(xp = 75, gold = 400, gems = 2),
+            titleKey = "MissionActionCORRECT", titleArguments = mapOf("target" to "100")
+        )
 
         setAdaptiveContent(320.dp, 568.dp, fontScale = 1.6f) {
             ProfileSectionScreen(
@@ -333,18 +352,26 @@ class ProfileSectionsUiTest {
                 onOpenMatchDetail = {},
                 onCloseMatchDetail = {},
                 onEquipCosmetics = { _, _ -> },
-                onClaimMissionReward = { claimedCode = it },
+                onClaimMissionReward = { legacyClaims++ },
                 onSave = { _, _ -> },
-                onOpenNotifications = {}
+                onOpenNotifications = {},
+                missionState = MissionState(items = listOf(daily, weekly)),
+                onClaimMissionInstance = { claimedInstance = it }
             )
         }
 
         composeRule.onNodeWithTag("profile_section_screen:MISSIONS").assertIsDisplayed()
-        composeRule.onNodeWithText("Nhiệm vụ").assertIsDisplayed()
-        composeRule.onNodeWithTag("mission_difficulty_normal").performScrollTo().assertIsDisplayed()
-        composeRule.onNodeWithTag("mission_difficulty_elite").performScrollTo().assertIsDisplayed()
-        composeRule.onNodeWithTag("claim_mission:DAILY_WIN_1").performScrollTo().assertIsDisplayed().performClick()
-        composeRule.runOnIdle { assertEquals("DAILY_WIN_1", claimedCode) }
+        composeRule.onNode(hasText("Nhiệm vụ") and hasAnyAncestor(hasTestTag("app_header"))).assertIsDisplayed()
+        composeRule.onNodeWithTag("mission_instance:${daily.instanceId}").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithTag("mission_instance:${weekly.instanceId}").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("42/100").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithTag("claim_mission_instance:${daily.instanceId}")
+            .performScrollTo().assertIsDisplayed().performClick()
+        composeRule.runOnIdle {
+            assertEquals(daily.instanceId, claimedInstance)
+            assertEquals(0, legacyClaims)
+        }
+        composeRule.onNodeWithTag("claim_mission:DAILY_WIN_1").assertDoesNotExist()
 
         assertTrue(composeRule.onAllNodesWithText("Trang chủ").fetchSemanticsNodes().isEmpty())
         assertTrue(composeRule.onAllNodesWithContentDescription("Cài đặt").fetchSemanticsNodes().isEmpty())
@@ -354,11 +381,10 @@ class ProfileSectionsUiTest {
 
     @Test
     fun missions_claimedRewardBecomesDisabledClaimedButton() {
-        val baseProfile = profileFixture()
-        val claimedMission = baseProfile.progression.dailyMissions.single().copy(rewardClaimed = true)
-        val profile = baseProfile.copy(
-            progression = baseProfile.progression.copy(dailyMissions = listOf(claimedMission))
-        )
+        val profile = profileFixture()
+        val mission = mutableStateOf(managedMissionFixture())
+        var claims = 0
+        var legacyClaims = 0
 
         setAdaptiveContent(430.dp, 932.dp) {
             ProfileSectionScreen(
@@ -372,17 +398,26 @@ class ProfileSectionsUiTest {
                 onOpenMatchDetail = {},
                 onCloseMatchDetail = {},
                 onEquipCosmetics = { _, _ -> },
-                onClaimMissionReward = {},
+                onClaimMissionReward = { legacyClaims++ },
                 onSave = { _, _ -> },
-                onOpenNotifications = {}
+                onOpenNotifications = {},
+                missionState = MissionState(items = listOf(mission.value)),
+                onClaimMissionInstance = { id ->
+                    assertEquals(mission.value.instanceId, id)
+                    claims++
+                    mission.value = mission.value.copy(state = MissionClaimState.CLAIMED)
+                }
             )
         }
 
-        composeRule.onNodeWithTag("claim_mission:${claimedMission.code}")
-            .performScrollTo()
-            .assertIsDisplayed()
-            .assertIsNotEnabled()
-        composeRule.onNodeWithText("Đã nhận").assertIsDisplayed()
+        composeRule.onNodeWithTag("claim_mission_instance:${mission.value.instanceId}")
+            .performScrollTo().assertIsDisplayed().performClick()
+        composeRule.onNodeWithText("Đã nhận").performScrollTo().assertIsDisplayed().assertIsNotEnabled()
+        composeRule.onNodeWithTag("claim_mission_instance:${mission.value.instanceId}").assertDoesNotExist()
+        composeRule.runOnIdle {
+            assertEquals(1, claims)
+            assertEquals(0, legacyClaims)
+        }
         assertTrue(composeRule.onAllNodesWithContentDescription("Đã nhận thưởng").fetchSemanticsNodes().isEmpty())
     }
 
@@ -677,6 +712,14 @@ class ProfileSectionsUiTest {
         composeRule.onNodeWithText("ĐÓNG").assertIsDisplayed().performClick()
         composeRule.runOnIdle { assertEquals(1, closes) }
     }
+
+    private fun managedMissionFixture() = MissionInstanceView(
+        instanceId = "managed-daily", code = "ADMIN_DAILY_WIN", scope = MissionScope.PERSONAL,
+        action = MissionAction.WIN, period = MissionCadence.DAILY, difficulty = MissionDifficulty.NORMAL,
+        periodStart = "2026-10-26", periodEndExclusive = "2026-10-27", target = 1, progress = 1,
+        personalContribution = 0, reward = MissionReward(xp = 25, gold = 150),
+        state = MissionClaimState.CLAIMABLE, titleKey = "MissionActionWIN", titleArguments = mapOf("target" to "1")
+    )
 
     private fun setAdaptiveContent(
         width: Dp,

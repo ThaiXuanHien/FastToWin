@@ -61,14 +61,15 @@ class UgcSafetyUiTest {
         composeRule.onNodeWithTag("ugc_report_note").performScrollTo().performTextInput("Samsung QA details")
         closeSoftKeyboard()
         capture("report-draft")
-        composeRule.onNodeWithTag("ugc_report_submit").performScrollTo().performClick()
+        // Submit stays in the fixed footer, outside the dialog body's scroll container.
+        composeRule.onNodeWithTag("ugc_report_submit").assertIsDisplayed().assertIsEnabled().performClick()
         composeRule.waitUntil(5_000) { sent.size == 1 }
         composeRule.onNodeWithTag("ugc_report_submit").assertIsNotEnabled()
         composeRule.onNodeWithText("Receipt:", substring = true).assertDoesNotExist()
         composeRule.runOnIdle { controller.disconnected() }
         composeRule.onNodeWithTag("ugc_report_note").performScrollTo()
             .assertTextContains("Samsung QA details").assertIsNotEnabled()
-        composeRule.onNodeWithTag("ugc_report_submit").performScrollTo().performClick()
+        composeRule.onNodeWithTag("ugc_report_submit").assertIsDisplayed().assertIsEnabled().performClick()
         composeRule.waitUntil(5_000) { sent.size == 2 }
         composeRule.runOnIdle {
             assertEquals("Samsung QA details", sent[0].request.note)
