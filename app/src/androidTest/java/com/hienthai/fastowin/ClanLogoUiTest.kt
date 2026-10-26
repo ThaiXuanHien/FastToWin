@@ -46,7 +46,6 @@ class ClanLogoUiTest {
             }
         }
         composeRule.onNodeWithTag("clan_logo_crown").performScrollTo().assertIsSelected().assertIsNotEnabled()
-        composeRule.onNodeWithTag("clan_logo_current_crown", useUnmergedTree = true).assertIsDisplayed()
         composeRule.onNodeWithTag("close_clan_logo_dialog").assertIsDisplayed().performClick()
         composeRule.runOnIdle {
             assertEquals(0, selections)

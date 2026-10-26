@@ -34,8 +34,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.EmojiEvents
-import androidx.compose.material.icons.rounded.CheckCircle
-import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.PersonRemove
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Shield
@@ -888,13 +886,13 @@ private fun ClanStats(clan: ClanSnapshot) {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 ClanStatCard("${clan.members.size}", localized(TextKey.ClanMembers), Modifier.fillMaxWidth())
                 ClanStatCard(formatNumber(clan.trophies), localized(TextKey.ClanTrophies), Modifier.fillMaxWidth())
-                ClanStatCard(formatNumber(clan.members.sumOf { it.trophies }), localized(TextKey.MemberTrophies), Modifier.fillMaxWidth())
+                ClanStatCard(formatNumber(clan.members.sumOf { it.trophies }), localized(TextKey.TotalMemberElo), Modifier.fillMaxWidth())
             }
         } else {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 ClanStatCard("${clan.members.size}", localized(TextKey.ClanMembers), Modifier.weight(1f))
                 ClanStatCard(formatNumber(clan.trophies), localized(TextKey.ClanTrophies), Modifier.weight(1f))
-                ClanStatCard(formatNumber(clan.members.sumOf { it.trophies }), localized(TextKey.TotalTrophies), Modifier.weight(1f))
+                ClanStatCard(formatNumber(clan.members.sumOf { it.trophies }), localized(TextKey.TotalMemberElo), Modifier.weight(1f))
             }
         }
     }
@@ -911,7 +909,7 @@ private fun ClanStatCard(value: String, label: String, modifier: Modifier = Modi
         Column(
             modifier = Modifier.padding(horizontal = 10.dp, vertical = 12.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
+            verticalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterVertically)
         ) {
             Text(
                 value,
@@ -925,6 +923,7 @@ private fun ClanStatCard(value: String, label: String, modifier: Modifier = Modi
                 label,
                 style = MaterialTheme.typography.labelSmall,
                 color = ArcadePalette.Blue100,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                 maxLines = 2
             )
         }
@@ -1120,7 +1119,7 @@ private fun ClanLogoChoice(
         onClick = onSelect,
         enabled = enabled && isUnlocked && !isSelected,
         modifier = modifier
-            .heightIn(min = 136.dp)
+            .heightIn(min = 116.dp)
             .testTag("clan_logo_$id")
             .semantics {
                 selected = isSelected
@@ -1136,30 +1135,14 @@ private fun ClanLogoChoice(
         )
     ) {
         Column(
-            modifier = Modifier.fillMaxWidth().padding(12.dp),
+            modifier = Modifier.fillMaxWidth().padding(12.dp).alpha(if (isUnlocked || isSelected) 1f else 0.38f),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
-            ClanLogoMark(id, Modifier.size(48.dp).alpha(if (isUnlocked || isSelected) 1f else 0.55f))
+            ClanLogoMark(id, Modifier.size(48.dp))
             Text(id.clanLogoLabel(), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-            Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
-                if (!isUnlocked || isSelected) {
-                    Icon(
-                        if (!isUnlocked) Icons.Rounded.Lock else Icons.Rounded.CheckCircle,
-                        contentDescription = null,
-                        tint = if (isSelected) ArcadePalette.Gold100 else ArcadePalette.Blue100,
-                        modifier = Modifier.size(16.dp)
-                    )
-                }
-                Text(
-                    status,
-                    modifier = Modifier.then(if (isSelected) Modifier.testTag("clan_logo_current_$id") else Modifier),
-                    style = MaterialTheme.typography.labelMedium,
-                    color = if (isSelected) ArcadePalette.Gold100 else ArcadePalette.Blue100
-                )
-            }
             Text(
-                requirement,
+                localized(TextKey.ClanLogoRequiredLevel, "level" to requiredLevel),
                 modifier = Modifier.testTag("clan_logo_requirement_$id"),
                 style = MaterialTheme.typography.bodySmall,
                 color = ArcadePalette.Blue100,

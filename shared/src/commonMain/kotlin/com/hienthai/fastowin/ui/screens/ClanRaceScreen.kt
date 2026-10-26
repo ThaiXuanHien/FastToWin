@@ -76,14 +76,19 @@ fun ClanRaceScreen(
                     } }
                     // Only the server's current frozen configuration supplies prizes.
                     current.config?.takeIf { current.state != ClanRaceState.INACTIVE }?.let { config ->
-                        item("prizes") { RacePanel {
+                        item("prizes") { Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                             RaceHeading(localized(TextKey.ClanRacePrizes))
                             Text(localized(TextKey.ClanRacePerMember), fontWeight = FontWeight.Bold)
                             config.rewards.forEachIndexed { index, reward ->
-                                Column(Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                    Text((index + 1).toString(), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black,
-                                        color = ArcadePalette.Gold500)
-                                    RaceReward(reward)
+                                ArcadePanel(Modifier.fillMaxWidth().testTag("race_prize_${index + 1}"),
+                                    accent = if (index == 0) ArcadePalette.Gold500 else ArcadePalette.Blue300) {
+                                    Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                                        Text(localized(TextKey.ClanRaceTopRank, "rank" to index + 1),
+                                            modifier = Modifier.align(Alignment.CenterHorizontally).semantics { heading() },
+                                            style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black,
+                                            color = ArcadePalette.Gold500)
+                                        RaceReward(reward)
+                                    }
                                 }
                             }
                             Text(localized(TextKey.ClanRaceEligibility), style = MaterialTheme.typography.bodyMedium)

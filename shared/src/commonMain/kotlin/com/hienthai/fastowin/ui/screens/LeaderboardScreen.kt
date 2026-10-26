@@ -1,8 +1,5 @@
 package com.hienthai.fastowin.ui.screens
 
-import com.hienthai.fastowin.ui.components.ReportableText
-import com.hienthai.fastowin.protocol.UgcTargetType
-
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -408,8 +405,8 @@ private fun CurrentPlayerPanel(
                     fontWeight = FontWeight.Black,
                     color = ArcadePalette.Gold500
                 )
-                ReportableText(
-                    "#${entry.rank} · ${entry.displayName}", UgcTargetType.PLAYER_PROFILE, entry.userId,
+                Text(
+                    "#${entry.rank} · ${entry.displayName}",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Black,
                     maxLines = 2,
@@ -545,7 +542,7 @@ private fun CurrentClanPanel(
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     LeaderboardClanEmblem(entry.logoId, entry.clanName,
                         Modifier.size(36.dp).testTag("leaderboard_current_clan_logo_${entry.clanId}"))
-                    ReportableText(entry.clanName, UgcTargetType.CLAN, entry.clanId,
+                    Text(entry.clanName,
                         modifier = Modifier.weight(1f), style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Black, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 }
@@ -597,8 +594,8 @@ private fun ClanLeaderboardCard(
             LeaderboardClanEmblem(entry.logoId, entry.clanName,
                 Modifier.size(40.dp).testTag("leaderboard_clan_logo_${entry.clanId}"))
             Column(modifier = Modifier.weight(1f)) {
-                ReportableText(
-                    entry.clanName + if (highlighted) localized(TextKey.YouSuffix) else "", UgcTargetType.CLAN, entry.clanId,
+                Text(
+                    entry.clanName + if (highlighted) localized(TextKey.YouSuffix) else "",
                     fontWeight = FontWeight.Black,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis
@@ -625,11 +622,21 @@ private fun LeaderboardCard(
         LeaderboardEntryLayout(
             supporting = { PlayerClanIdentity(entry, "leaderboard_player_clan_${entry.playerCode}") },
             metrics = {
-                Column(horizontalAlignment = Alignment.End) {
-                    Text(formatArcadeNumber(playerMetricValue(entry, metric)), fontWeight = FontWeight.Black,
-                        color = if (highlighted) ArcadePalette.Gold500 else MaterialTheme.colorScheme.primary)
-                    Text(playerMetricLabel(metric), style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (metric == PlayerLeaderboardMetric.ELO) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.testTag("leaderboard_elo_${entry.playerCode}")) {
+                        Text(formatArcadeNumber(playerMetricValue(entry, metric)), fontWeight = FontWeight.Black,
+                            color = if (highlighted) ArcadePalette.Gold500 else MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.alignByBaseline())
+                        Text(playerMetricLabel(metric), style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.alignByBaseline())
+                    }
+                } else {
+                    Column(horizontalAlignment = Alignment.End) {
+                        Text(formatArcadeNumber(playerMetricValue(entry, metric)), fontWeight = FontWeight.Black,
+                            color = if (highlighted) ArcadePalette.Gold500 else MaterialTheme.colorScheme.primary)
+                        Text(playerMetricLabel(metric), style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
                 }
             }
         ) {
@@ -642,8 +649,8 @@ private fun LeaderboardCard(
                 size = 44.dp
             )
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                ReportableText(
-                    entry.displayName + if (highlighted) localized(TextKey.YouSuffix) else "", UgcTargetType.PLAYER_PROFILE, entry.userId,
+                Text(
+                    entry.displayName + if (highlighted) localized(TextKey.YouSuffix) else "",
                     fontWeight = FontWeight.Black,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis
@@ -708,7 +715,7 @@ private fun PlayerClanIdentity(entry: LeaderboardEntrySnapshot, testTag: String)
     ) {
         // The visible name carries the meaning here; the small emblem is decorative.
         ClanLogoMark(entry.clanLogoId, Modifier.size(24.dp))
-        ReportableText(clanName, UgcTargetType.CLAN, entry.clanId,
+        Text(clanName,
             modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
     }

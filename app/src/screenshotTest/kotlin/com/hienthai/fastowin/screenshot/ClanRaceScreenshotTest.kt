@@ -42,6 +42,17 @@ private fun raceFixture() = ClanRaceUiState(raceCurrent,
         }
     }
 }
+@PreviewTest
+@Preview(name = "prizes_vi_phone", widthDp = 375, heightDp = 1100)
+@Preview(name = "prizes_vi_desktop", widthDp = 1024, heightDp = 1000)
+@Composable
+fun racePrizeCardsPreview() = RaceFrame {
+    // Visual fixture only; rewards remain entirely admin-configured at runtime.
+    val current = raceCurrent.copy(config = ClanRaceConfig("0.001", "1", listOf(
+        ClanRaceReward(30, 300, 3), ClanRaceReward(20, 200, 2), ClanRaceReward(10, 100, 1)
+    )))
+    ClanRaceScreen(ClanRaceUiState(current = current), {}, {})
+}
 @PreviewTest @Preview(name = "race_vi_phone_375", widthDp = 375, heightDp = 1700) @Composable
 fun racePhone() = RaceFrame { ClanRaceScreen(raceFixture(), {}, {}) }
 @PreviewTest @Preview(name = "entry_vi_phone_375", widthDp = 375, heightDp = 900) @Composable
