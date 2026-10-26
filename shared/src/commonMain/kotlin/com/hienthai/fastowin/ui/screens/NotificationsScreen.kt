@@ -34,6 +34,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -42,6 +43,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.material3.CircularProgressIndicator
+import kotlinx.coroutines.delay
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -82,7 +88,10 @@ fun NotificationsScreen(
     announcementState: com.hienthai.fastowin.state.AnnouncementState? = null,
     onAnnouncementMore: () -> Unit = {},
     onAnnouncementRetry: () -> Unit = {},
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    hasLoadedNotifications: Boolean = true,
+    notificationsError: String? = null,
+    onNotificationsRetry: () -> Unit = {}
 ) {
     SystemBackHandler(onBack = onBack)
 
@@ -90,6 +99,15 @@ fun NotificationsScreen(
     var pendingDelete by remember { mutableStateOf<AppNotification?>(null) }
     var visibleNotificationCount by remember { mutableStateOf(DEFAULT_ARCADE_PAGE_SIZE) }
     val visibleNotifications = notifications.take(visibleNotificationCount)
+    val presentation = notificationInboxPresentation(notifications.size, announcementState, hasLoadedNotifications, notificationsError)
+    var showLoading by remember { mutableStateOf(false) }
+    LaunchedEffect(presentation) {
+        showLoading = false
+        if (presentation == NotificationInboxPresentation.LOADING) {
+            delay(200)
+            showLoading = true
+        }
+    }
     if (confirmClear) {
         ArcadeDialog(
             onDismissRequest = { confirmClear = false },
@@ -163,14 +181,30 @@ fun NotificationsScreen(
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
             announcementState?.let { announcement ->
-                Text(localized(TextKey.AnnouncementHistory, "count" to announcement.total), fontWeight = FontWeight.Bold)
-                if (announcement.loading && announcement.items.isEmpty()) Text(localized(TextKey.AnnouncementLoading))
-                if (announcement.error != null) {
+                if (announcement.hasLoadedInbox && announcement.total != "0") {
+                    Text(localized(TextKey.AnnouncementHistory, "count" to announcement.total), fontWeight = FontWeight.Bold)
+                }
+                if (announcement.error != null && presentation == NotificationInboxPresentation.CONTENT) {
                     Text(localized(TextKey.AnnouncementError))
                     AnnouncementActionButton(localized(TextKey.AnnouncementRetry), onAnnouncementRetry, enabled = !announcement.loading && !announcement.pending)
                 }
             }
-            if (notifications.isEmpty()) {
+            if (presentation == NotificationInboxPresentation.LOADING) {
+                val label = localized(TextKey.Loading)
+                Box(Modifier.fillMaxSize().testTag("notifications_initial_loading").semantics { stateDescription = label }, contentAlignment = Alignment.Center) {
+                    if (showLoading) CircularProgressIndicator(Modifier.size(32.dp), color = ArcadePalette.Blue300)
+                }
+            } else if (presentation == NotificationInboxPresentation.ERROR) {
+                Column(Modifier.fillMaxSize().testTag("notifications_load_error"),
+                    verticalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterVertically),
+                    horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(localized(TextKey.AnnouncementError), style = MaterialTheme.typography.bodyMedium)
+                    ArcadeActionButton(localized(TextKey.Retry), onClick = {
+                        onNotificationsRetry()
+                        onAnnouncementRetry()
+                    }, modifier = Modifier.testTag("notifications_retry"))
+                }
+            } else if (presentation == NotificationInboxPresentation.EMPTY) {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     ArcadeEmptyState(
                         illustration = Res.drawable.arcade_notifications_inbox,

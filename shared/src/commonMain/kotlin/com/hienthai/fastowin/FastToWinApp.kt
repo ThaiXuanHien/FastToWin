@@ -1487,6 +1487,9 @@ private fun GameContent(
                     onClearAll = { controller.clearNotifications(); announcementScope.launch { announcementController?.dismiss() } },
                     announcementState = if (isGuest) null else announcementState,
                     onAnnouncementMore = { announcementScope.launch { announcementController?.more() } },
+                    hasLoadedNotifications = isGuest || state.hasLoadedNotifications,
+                    notificationsError = state.notificationsError,
+                    onNotificationsRetry = controller::openNotifications,
                     onAnnouncementRetry = { announcementScope.launch { announcementController?.refresh() } }
                 )
 

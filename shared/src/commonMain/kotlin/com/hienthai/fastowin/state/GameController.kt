@@ -107,6 +107,9 @@ class GameController private constructor(
     val guestContentConsent = ContentEntryConsent(termsApi::fetch)
     private val hasStoredGuestSession = resumeTokenStore.load(serverUrl) != null
     private suspend fun sendMessage(message: ClientMessage) {
+        if (message == ClientMessage.GetNotifications) {
+            _uiState.update { it.copy(isNotificationsLoading = true, notificationsError = null) }
+        }
         if (message.publishesUserContent()) ugc.publish(message) else socket.sendMessage(message)
     }
     fun dismissContentTerms() {
@@ -308,6 +311,9 @@ class GameController private constructor(
             state.copy(
                 connectionStatus = status,
                 isClanSocialReady = state.isClanSocialReady && status == ConnectionStatus.CONNECTED,
+                isNotificationsLoading = state.isNotificationsLoading && status == ConnectionStatus.CONNECTED,
+                notificationsError = if (state.isNotificationsLoading && status != ConnectionStatus.CONNECTED)
+                    messageMapper.text(TextKey.ConnectionDisconnected) else state.notificationsError,
                 isFriendsLoading = state.isFriendsLoading && status == ConnectionStatus.CONNECTED,
                 currentClan = if (status == ConnectionStatus.CONNECTED) state.currentClan else state.currentClan?.let { clan ->
                     clan.copy(members = clan.members.map { it.copy(presence = FriendPresence.OFFLINE) })
@@ -1211,6 +1217,8 @@ class GameController private constructor(
                 }
                 if (playerId != null && playerId != message.playerId) {
                     ugc.clearSession()
+                    _uiState.update { it.copy(notifications = emptyList(), hasLoadedNotifications = false,
+                        isNotificationsLoading = false, notificationsError = null, dismissedNotificationIds = emptySet()) }
                     _uiState.update { it.copy(suppressedAvatarIds = emptySet(), invalidatedAvatarIds = emptySet()) }
                 }
                 sendMessage(ClientMessage.GetContentTerms)
@@ -1541,6 +1549,9 @@ class GameController private constructor(
                 _uiState.update { state ->
                     state.copy(
                         notifications = message.notifications.map { it.toAppNotification(localization) },
+                        hasLoadedNotifications = true,
+                        isNotificationsLoading = false,
+                        notificationsError = null,
                         dismissedNotificationIds = emptySet()
                     )
                 }
@@ -1902,6 +1913,13 @@ class GameController private constructor(
             return
         }
         val localizedError = messageMapper.message(error)
+        if (error.code in setOf("NOTIFICATIONS_UNAVAILABLE", "NOT_NOTIFICATIONS_UNAVAILABLE")) {
+            _uiState.update { it.copy(isNotificationsLoading = false, notificationsError = localizedError) }
+            return
+        }
+        if (error.code in setOf("CONNECTION_NOT_READY", "CONNECTION_FAILED", "SEND_FAILED") && _uiState.value.isNotificationsLoading) {
+            _uiState.update { it.copy(isNotificationsLoading = false, notificationsError = localizedError) }
+        }
         val profileError = error.code in setOf(
             "UPLOAD_FAILED", "RATE_LIMITED", "INVALID_DISPLAY_NAME", "INVALID_AVATAR", "AVATAR_LOCKED",
             "PROFILE_UPDATE_UNAVAILABLE", "PUSH_PREFERENCES_UNAVAILABLE", "COSMETIC_LOCKED",
