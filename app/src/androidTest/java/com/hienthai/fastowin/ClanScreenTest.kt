@@ -232,7 +232,8 @@ class ClanScreenTest {
             ownerId = "owner",
             members = listOf(ClanMemberSnapshot("owner", "Bang chủ", ClanRole.LEADER, trophies = 100)),
             trophies = 100,
-            logoId = "shield"
+            logoId = "shield",
+            level = 3
         )
 
         composeRule.setContent {

@@ -10,6 +10,16 @@ import com.hienthai.fastowin.localization.economyProgressionTexts
 internal val vietnameseCatalog = LocalizationCatalog(
     language = AppLanguage.VIETNAMESE,
     texts = mapOf(
+        TextKey.ClanLogoLion to "Sư tử",
+        TextKey.ClanLogoPhoenix to "Phượng hoàng",
+        TextKey.ClanLogoKirin to "Kỳ lân",
+        TextKey.ClanLogoUnlockAtLevel to "Mở ở cấp bang {level}",
+        TextKey.ClanLogoCurrent to "Đang dùng",
+        TextKey.ClanLogoUnlocked to "Đã mở khóa",
+        TextKey.ClanLogoUnlockDescription to "Bang cấp {current} · Chọn biểu tượng đã mở khóa. Biểu tượng đang dùng được giữ nguyên.",
+        TextKey.ClanLogoForClan to "Biểu tượng bang: {clan}",
+        TextKey.ServerClanLogoLocked to "Bang cần đạt cấp {level} để dùng biểu tượng này.",
+        TextKey.ServerInvalidClanLogo to "Biểu tượng bang này không khả dụng.",
         TextKey.ClanMemberProfileTitle to "Thành viên bang",
         TextKey.ViewClanMemberProfile to "Xem hồ sơ của {player}",
         TextKey.ClanMemberRole to "Vai trò trong bang",

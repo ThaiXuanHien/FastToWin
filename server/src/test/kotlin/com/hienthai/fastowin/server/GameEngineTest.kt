@@ -1576,7 +1576,7 @@ class GameEngineTest {
                 ClanSummarySnapshot(clanId, "Speed", members.size, 50, 1_000)
             )
             override suspend fun kickMember(clanId: String, currentUserId: String, targetUserId: String) = false
-            override suspend fun updateLogoId(clanId: String, logoId: String) = false
+            override suspend fun updateLogoId(clanId: String, ownerId: String, logoId: String) = ClanLogoUpdateStatus.FAILED
             override suspend fun addClanTrophies(clanId: String, amount: Int) = false
             override suspend fun addQuestProgress(clanId: String, userId: String, amount: Int) = false
             override suspend fun claimQuestReward(clanId: String, userId: String) = false

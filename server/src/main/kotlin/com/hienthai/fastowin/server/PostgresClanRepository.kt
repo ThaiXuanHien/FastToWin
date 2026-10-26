@@ -6,6 +6,7 @@ import com.hienthai.fastowin.protocol.ClanDonationStatus
 import com.hienthai.fastowin.protocol.CLAN_CREATION_GEM_COST
 import com.hienthai.fastowin.protocol.CLAN_CREATION_GOLD_COST
 import com.hienthai.fastowin.protocol.CLAN_CREATION_MIN_LEVEL
+import com.hienthai.fastowin.protocol.clanLogoRequiredLevel
 import com.hienthai.fastowin.protocol.ClanJoinRequestSnapshot
 import com.hienthai.fastowin.protocol.ClanRole
 import com.hienthai.fastowin.protocol.ClanQuestSnapshot
@@ -588,14 +589,51 @@ class PostgresClanRepository(
             update("DELETE FROM clan_members WHERE clan_id=? AND user_id=?",uuid(clanId),uuid(targetUserId))>0
         }
     } catch (_: Exception) { false }
-    override suspend fun updateLogoId(clanId: String, logoId: String): Boolean = withContext(Dispatchers.IO) {
+    override suspend fun updateLogoId(clanId: String, ownerId: String, logoId: String): ClanLogoUpdateStatus = withContext(Dispatchers.IO) {
+        val requiredLevel = clanLogoRequiredLevel(logoId)
+            ?: return@withContext ClanLogoUpdateStatus.INVALID_LOGO
         dataSource.connection.use { connection ->
-            connection.prepareStatement("UPDATE clans SET logo_id = ? WHERE id = ?").use { statement ->
-                statement.setString(1, logoId)
-                statement.setObject(2, UUID.fromString(clanId))
-                statement.executeUpdate() > 0
+            connection.autoCommit = false
+            try {
+                // Clan UPDATE triggers take the race gate. Take it before the row
+                // lock, matching donations and departures, to avoid lock inversion.
+                JdbcClanRaceStore(connection).apply { lock(); setTime(nowMillis()) }
+                val clanUuid = UUID.fromString(clanId)
+                val ownerUuid = UUID.fromString(ownerId)
+                val clan = connection.prepareStatement(
+                    "SELECT owner_id, logo_id, experience_points FROM clans WHERE id = ? FOR UPDATE"
+                ).use { statement ->
+                    statement.setObject(1, clanUuid)
+                    statement.executeQuery().use { result ->
+                        if (result.next()) Triple(
+                            result.getObject("owner_id", UUID::class.java),
+                            result.getString("logo_id"),
+                            result.getLong("experience_points")
+                        ) else null
+                    }
+                }
+                val status = when {
+                    clan == null -> ClanLogoUpdateStatus.CLAN_NOT_FOUND
+                    clan.first != ownerUuid -> ClanLogoUpdateStatus.NOT_OWNER
+                    clan.second == logoId -> ClanLogoUpdateStatus.UPDATED
+                    ClanProgression.levelForExperience(clan.third) < requiredLevel -> ClanLogoUpdateStatus.LOCKED
+                    else -> ClanLogoUpdateStatus.UPDATED
+                }
+                if (status == ClanLogoUpdateStatus.UPDATED && clan?.second != logoId) {
+                    connection.prepareStatement("UPDATE clans SET logo_id = ? WHERE id = ?").use { statement ->
+                        statement.setString(1, logoId)
+                        statement.setObject(2, clanUuid)
+                        check(statement.executeUpdate() == 1)
+                    }
+                }
+                connection.commit()
+                status
+            } catch (_: Exception) {
+                connection.rollback()
+                ClanLogoUpdateStatus.FAILED
             }
-        }    }
+        }
+    }
 
     override suspend fun addClanTrophies(clanId: String, amount: Int): Boolean = withContext(Dispatchers.IO) {
         dataSource.connection.use { connection ->

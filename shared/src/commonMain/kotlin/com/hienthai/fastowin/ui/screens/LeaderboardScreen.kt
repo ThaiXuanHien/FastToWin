@@ -6,9 +6,11 @@ import com.hienthai.fastowin.protocol.UgcTargetType
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
@@ -32,6 +34,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
@@ -390,10 +394,11 @@ private fun CurrentPlayerPanel(
     metric: PlayerLeaderboardMetric
 ) {
     ArcadePanel(modifier = Modifier.fillMaxWidth(), accent = ArcadePalette.Gold500) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        LeaderboardEntryLayout(
+            supporting = { PlayerClanIdentity(entry, "leaderboard_current_player_clan_${entry.playerCode}") },
+            metrics = {
+                Text(playerMetricText(entry, metric), fontWeight = FontWeight.Black, color = ArcadePalette.Gold500)
+            }
         ) {
             ArcadeRankBadge(entry.rank)
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
@@ -407,15 +412,10 @@ private fun CurrentPlayerPanel(
                     "#${entry.rank} · ${entry.displayName}", UgcTargetType.PLAYER_PROFILE, entry.userId,
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Black,
-                    maxLines = 1,
+                    maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )
             }
-            Text(
-                playerMetricText(entry, metric),
-                fontWeight = FontWeight.Black,
-                color = ArcadePalette.Gold500
-            )
         }
     }
 }
@@ -525,10 +525,14 @@ private fun CurrentClanPanel(
     metric: ClanLeaderboardMetric
 ) {
     ArcadePanel(modifier = Modifier.fillMaxWidth(), accent = ArcadePalette.Gold500) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        LeaderboardEntryLayout(
+            metrics = {
+                Column(horizontalAlignment = Alignment.End) {
+                    Text(clanMetricPrimaryText(entry, metric), fontWeight = FontWeight.Black, color = ArcadePalette.Gold500)
+                    Text(clanMetricSupportingText(entry, metric), style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
         ) {
             ArcadeRankBadge(entry.rank)
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
@@ -538,13 +542,14 @@ private fun CurrentClanPanel(
                     fontWeight = FontWeight.Black,
                     color = ArcadePalette.Gold500
                 )
-                ReportableText(entry.clanName, UgcTargetType.CLAN, entry.clanId, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black)
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    LeaderboardClanEmblem(entry.logoId, entry.clanName,
+                        Modifier.size(36.dp).testTag("leaderboard_current_clan_logo_${entry.clanId}"))
+                    ReportableText(entry.clanName, UgcTargetType.CLAN, entry.clanId,
+                        modifier = Modifier.weight(1f), style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Black, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                }
             }
-            Text(
-                clanMetricText(entry, metric),
-                fontWeight = FontWeight.Black,
-                color = ArcadePalette.Gold500
-            )
         }
     }
 }
@@ -579,34 +584,28 @@ private fun ClanLeaderboardCard(
     highlighted: Boolean
 ) {
     LeaderboardSurface(highlighted = highlighted) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(14.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        LeaderboardEntryLayout(
+            metrics = {
+                Column(horizontalAlignment = Alignment.End) {
+                    Text(clanMetricPrimaryText(entry, metric), fontWeight = FontWeight.Black, color = ArcadePalette.Gold500)
+                    Text(clanMetricSupportingText(entry, metric), style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
         ) {
             ArcadeRankBadge(entry.rank)
+            LeaderboardClanEmblem(entry.logoId, entry.clanName,
+                Modifier.size(40.dp).testTag("leaderboard_clan_logo_${entry.clanId}"))
             Column(modifier = Modifier.weight(1f)) {
                 ReportableText(
                     entry.clanName + if (highlighted) localized(TextKey.YouSuffix) else "", UgcTargetType.CLAN, entry.clanId,
                     fontWeight = FontWeight.Black,
-                    maxLines = 1,
+                    maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )
                 Text(
                     localizedQuantity(QuantityKey.Members, entry.memberCount),
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-            Column(horizontalAlignment = Alignment.End) {
-                Text(
-                    clanMetricPrimaryText(entry, metric),
-                    fontWeight = FontWeight.Black,
-                    color = ArcadePalette.Gold500
-                )
-                Text(
-                    clanMetricSupportingText(entry, metric),
-                    style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
@@ -623,10 +622,16 @@ private fun LeaderboardCard(
 ) {
     val winRate = if (entry.totalMatches == 0) 0 else entry.wins * 100 / entry.totalMatches
     LeaderboardSurface(highlighted = highlighted, onClick = onClick) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(14.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        LeaderboardEntryLayout(
+            supporting = { PlayerClanIdentity(entry, "leaderboard_player_clan_${entry.playerCode}") },
+            metrics = {
+                Column(horizontalAlignment = Alignment.End) {
+                    Text(formatArcadeNumber(playerMetricValue(entry, metric)), fontWeight = FontWeight.Black,
+                        color = if (highlighted) ArcadePalette.Gold500 else MaterialTheme.colorScheme.primary)
+                    Text(playerMetricLabel(metric), style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
         ) {
             ArcadeRankBadge(entry.rank)
             PlayerAvatar(
@@ -640,7 +645,7 @@ private fun LeaderboardCard(
                 ReportableText(
                     entry.displayName + if (highlighted) localized(TextKey.YouSuffix) else "", UgcTargetType.PLAYER_PROFILE, entry.userId,
                     fontWeight = FontWeight.Black,
-                    maxLines = 1,
+                    maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )
                 Text(
@@ -656,19 +661,56 @@ private fun LeaderboardCard(
                     overflow = TextOverflow.Ellipsis
                 )
             }
-            Column(horizontalAlignment = Alignment.End) {
-                Text(
-                    formatArcadeNumber(playerMetricValue(entry, metric)),
-                    fontWeight = FontWeight.Black,
-                    color = if (highlighted) ArcadePalette.Gold500 else MaterialTheme.colorScheme.primary
-                )
-                Text(
-                    playerMetricLabel(metric),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+        }
+    }
+}
+
+/** Move metrics below identity when space or text scaling would squeeze names and scores. */
+@Composable
+private fun LeaderboardEntryLayout(
+    supporting: (@Composable () -> Unit)? = null,
+    metrics: @Composable () -> Unit,
+    identity: @Composable RowScope.() -> Unit
+) {
+    BoxWithConstraints(Modifier.fillMaxWidth().padding(14.dp)) {
+        val stacked = maxWidth < 360.dp || LocalDensity.current.fontScale >= 1.3f
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                identity()
+                if (!stacked) metrics()
+            }
+            supporting?.invoke()
+            if (stacked) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) { metrics() }
             }
         }
+    }
+}
+
+@Composable
+private fun LeaderboardClanEmblem(logoId: String?, clanName: String, modifier: Modifier = Modifier) {
+    val description = localized(TextKey.ClanLogoForClan, "clan" to clanName)
+    ClanLogoMark(logoId, modifier.semantics { contentDescription = description })
+}
+
+@Composable
+private fun PlayerClanIdentity(entry: LeaderboardEntrySnapshot, testTag: String) {
+    if (entry.clanId.isNullOrBlank()) return
+    val clanName = entry.clanName?.takeIf { it.isNotBlank() } ?: localized(TextKey.Clan)
+    Row(
+        modifier = Modifier.fillMaxWidth().testTag(testTag),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        // The visible name carries the meaning here; the small emblem is decorative.
+        ClanLogoMark(entry.clanLogoId, Modifier.size(24.dp))
+        ReportableText(clanName, UgcTargetType.CLAN, entry.clanId,
+            modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
     }
 }
 
@@ -741,14 +783,6 @@ private fun clanMetricSupportingText(entry: ClanLeaderboardEntrySnapshot, metric
         ClanLeaderboardMetric.LEVEL -> "${formatArcadeNumber(entry.experiencePoints)} XP"
         ClanLeaderboardMetric.GOLD -> localized(TextKey.Gold)
         ClanLeaderboardMetric.GEMS -> localized(TextKey.Gems)
-    }
-
-@Composable
-private fun clanMetricText(entry: ClanLeaderboardEntrySnapshot, metric: ClanLeaderboardMetric): String =
-    when (metric) {
-        ClanLeaderboardMetric.LEVEL -> "${localized(TextKey.Level, "level" to entry.level)} · ${formatArcadeNumber(entry.experiencePoints)} XP"
-        ClanLeaderboardMetric.GOLD -> "${formatArcadeNumber(entry.donatedGold)} ${localized(TextKey.Gold)}"
-        ClanLeaderboardMetric.GEMS -> "${formatArcadeNumber(entry.donatedGems)} ${localized(TextKey.Gems)}"
     }
 
 private fun formatArcadeNumber(value: Int): String = value

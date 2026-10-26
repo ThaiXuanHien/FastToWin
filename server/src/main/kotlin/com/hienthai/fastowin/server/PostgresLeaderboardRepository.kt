@@ -28,6 +28,7 @@ class PostgresLeaderboardRepository(
             var levelClanLeaderboard = RankedClans()
             var goldClanLeaderboard = RankedClans()
             var gemClanLeaderboard = RankedClans()
+            var playerClans = emptyMap<String, PlayerClan>()
             val safeLimit = limit.coerceIn(1, MAX_LEADERBOARD_SIZE)
 
             dataSource.connection.use { connection ->
@@ -180,22 +181,31 @@ class PostgresLeaderboardRepository(
                         }
                     }
                 }
+                // Hydrate only the players already selected by each ranking. A
+                // single membership read also covers archived-season entries and
+                // the current player outside a top-list cutoff.
+                val rankedPlayerIds = (topPlayers + seasonTopPlayers + previousSeasonTopPlayers +
+                    goldLeaderboard.top + gemLeaderboard.top + listOfNotNull(
+                        currentPlayer, seasonCurrentPlayer, previousSeasonCurrentPlayer,
+                        goldLeaderboard.current, gemLeaderboard.current
+                    )).mapNotNull { it.userId }.toSet()
+                playerClans = connection.loadPlayerClans(rankedPlayerIds)
             }
             LeaderboardSnapshot(
-                topPlayers = topPlayers,
-                currentPlayer = currentPlayer,
+                topPlayers = topPlayers.map { it.withClan(playerClans) },
+                currentPlayer = currentPlayer?.withClan(playerClans),
                 seasonName = seasonName,
-                seasonTopPlayers = seasonTopPlayers,
-                seasonCurrentPlayer = seasonCurrentPlayer,
+                seasonTopPlayers = seasonTopPlayers.map { it.withClan(playerClans) },
+                seasonCurrentPlayer = seasonCurrentPlayer?.withClan(playerClans),
                 previousSeasonName = previousSeasonName,
-                previousSeasonTopPlayers = previousSeasonTopPlayers,
-                previousSeasonCurrentPlayer = previousSeasonCurrentPlayer,
+                previousSeasonTopPlayers = previousSeasonTopPlayers.map { it.withClan(playerClans) },
+                previousSeasonCurrentPlayer = previousSeasonCurrentPlayer?.withClan(playerClans),
                 topClans = levelClanLeaderboard.top,
                 currentClan = levelClanLeaderboard.current,
-                topGoldPlayers = goldLeaderboard.top,
-                currentGoldPlayer = goldLeaderboard.current,
-                topGemPlayers = gemLeaderboard.top,
-                currentGemPlayer = gemLeaderboard.current,
+                topGoldPlayers = goldLeaderboard.top.map { it.withClan(playerClans) },
+                currentGoldPlayer = goldLeaderboard.current?.withClan(playerClans),
+                topGemPlayers = gemLeaderboard.top.map { it.withClan(playerClans) },
+                currentGemPlayer = gemLeaderboard.current?.withClan(playerClans),
                 topLevelClans = levelClanLeaderboard.top,
                 currentLevelClan = levelClanLeaderboard.current,
                 topGoldClans = goldClanLeaderboard.top,
@@ -204,6 +214,43 @@ class PostgresLeaderboardRepository(
                 currentGemClan = gemClanLeaderboard.current
             )
         }
+
+    private fun Connection.loadPlayerClans(playerIds: Set<String>): Map<String, PlayerClan> {
+        if (playerIds.isEmpty()) return emptyMap()
+        val ids = createArrayOf("uuid", playerIds.map(UUID::fromString).toTypedArray())
+        try {
+            return prepareStatement(
+                """
+                SELECT m.user_id, c.id, c.name, c.logo_id
+                FROM clan_members m
+                JOIN clans c ON c.id = m.clan_id
+                WHERE m.user_id = ANY (?)
+                """.trimIndent()
+            ).use { statement ->
+                statement.setArray(1, ids)
+                statement.executeQuery().use { result ->
+                    buildMap {
+                        while (result.next()) {
+                            put(result.getObject("user_id", UUID::class.java).toString(), PlayerClan(
+                                id = result.getObject("id", UUID::class.java).toString(),
+                                name = result.getString("name"),
+                                logoId = result.getString("logo_id")
+                            ))
+                        }
+                    }
+                }
+            }
+        } finally {
+            ids.free()
+        }
+    }
+
+    private fun LeaderboardEntrySnapshot.withClan(clans: Map<String, PlayerClan>): LeaderboardEntrySnapshot {
+        val clan = userId?.let(clans::get)
+        return copy(clanId = clan?.id, clanName = clan?.name, clanLogoId = clan?.logoId)
+    }
+
+    private data class PlayerClan(val id: String, val name: String, val logoId: String?)
 
     private fun Connection.loadAssetLeaderboard(
         currentPlayerId: UUID,
@@ -270,7 +317,7 @@ class PostgresLeaderboardRepository(
         prepareStatement(
             """
             WITH clan_stats AS (
-                SELECT c.id, c.name, c.level, c.experience_points,
+                SELECT c.id, c.name, c.logo_id, c.level, c.experience_points,
                        c.donated_gold, c.donated_gems, c.level_reached_at,
                        COUNT(m.user_id) AS member_count,
                        COALESCE(SUM(ps.elo_rating), 0) AS total_elo
@@ -302,7 +349,8 @@ class PostgresLeaderboardRepository(
                         level = result.getInt("level"),
                         experiencePoints = result.getLong("experience_points"),
                         donatedGold = result.getLong("donated_gold"),
-                        donatedGems = result.getLong("donated_gems")
+                        donatedGems = result.getLong("donated_gems"),
+                        logoId = result.getString("logo_id")
                     )
                     if (clanUuid == currentClanId) current = entry
                     if (entry.rank <= limit) entries += entry

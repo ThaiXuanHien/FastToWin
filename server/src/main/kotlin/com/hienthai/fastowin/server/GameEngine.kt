@@ -8,6 +8,7 @@ import com.hienthai.fastowin.protocol.MaintenanceState
 import com.hienthai.fastowin.protocol.ClientMessage
 import com.hienthai.fastowin.protocol.ClanDonationStatus
 import com.hienthai.fastowin.protocol.ClanSnapshot
+import com.hienthai.fastowin.protocol.clanLogoRequiredLevel
 import com.hienthai.fastowin.localization.protocolTextKeyForCode
 import com.hienthai.fastowin.localization.TextKey
 import com.hienthai.fastowin.localization.LocalizationService
@@ -4924,16 +4925,25 @@ class GameEngine(
         return emptyList()
     }
     private suspend fun updateClanLogo(playerId: String, clanId: String, logoId: String): List<Delivery> {
-        val clan = clanRepository.getClanById(clanId)
-            ?: return listOf(error(playerId, "CLAN_NOT_FOUND", legacyFallback("Không tìm thấy bang hội.")))
-        if (clan.ownerId != playerId) {
-            return listOf(error(playerId, "NOT_CLAN_OWNER", legacyFallback("Chỉ đội trưởng mới có thể đổi logo.")))
+        return when (clanRepository.updateLogoId(clanId, playerId, logoId)) {
+            ClanLogoUpdateStatus.UPDATED -> getClanInfo(playerId, clanId)
+            ClanLogoUpdateStatus.LOCKED -> listOf(error(
+                playerId, "CLAN_LOGO_LOCKED", legacyFallback("Logo chưa được mở khóa."),
+                messageArgs = mapOf("level" to clanLogoRequiredLevel(logoId).toString())
+            ))
+            ClanLogoUpdateStatus.INVALID_LOGO -> listOf(error(
+                playerId, "INVALID_CLAN_LOGO", legacyFallback("Logo bang hội không hợp lệ.")
+            ))
+            ClanLogoUpdateStatus.NOT_OWNER -> listOf(error(
+                playerId, "NOT_CLAN_OWNER", legacyFallback("Chỉ đội trưởng mới có thể đổi logo.")
+            ))
+            ClanLogoUpdateStatus.CLAN_NOT_FOUND -> listOf(error(
+                playerId, "CLAN_NOT_FOUND", legacyFallback("Không tìm thấy bang hội.")
+            ))
+            ClanLogoUpdateStatus.FAILED -> listOf(error(
+                playerId, "UPLOAD_FAILED", legacyFallback("Không thể cập nhật logo.")
+            ))
         }
-        val success = clanRepository.updateLogoId(clanId, logoId)
-        if (success) {
-            return getClanInfo(playerId, clanId)
-        }
-        return listOf(error(playerId, "UPLOAD_FAILED", legacyFallback("Không thể cập nhật logo.")))
     }
 
     private suspend fun claimClanQuestReward(playerId: String, clanId: String): List<Delivery> {

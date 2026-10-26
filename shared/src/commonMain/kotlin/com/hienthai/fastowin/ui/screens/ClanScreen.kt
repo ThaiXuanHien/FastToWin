@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -28,17 +29,13 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.EmojiEvents
-import androidx.compose.material.icons.rounded.Flag
-import androidx.compose.material.icons.rounded.Flight
-import androidx.compose.material.icons.rounded.Pets
+import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.PersonRemove
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Shield
@@ -61,6 +58,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
@@ -70,10 +68,13 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.hienthai.fastowin.protocol.CLAN_AVATAR_IDS
+import com.hienthai.fastowin.protocol.CLAN_LOGOS
+import com.hienthai.fastowin.protocol.clanLogoRequiredLevel
+import com.hienthai.fastowin.protocol.isClanLogoUnlocked
 import com.hienthai.fastowin.protocol.CLAN_CREATION_GEM_COST
 import com.hienthai.fastowin.protocol.CLAN_CREATION_GOLD_COST
 import com.hienthai.fastowin.protocol.CLAN_CREATION_MIN_LEVEL
@@ -99,7 +100,8 @@ import com.hienthai.fastowin.ui.components.ArcadeIconHero
 import com.hienthai.fastowin.ui.components.ArcadeLoadMoreButton
 import com.hienthai.fastowin.ui.components.ArcadePanel
 import com.hienthai.fastowin.ui.components.ArcadeSegmentedControl
-import com.hienthai.fastowin.ui.components.CrossedSwordsIcon
+import com.hienthai.fastowin.ui.components.ClanEmblemAccents
+import com.hienthai.fastowin.ui.components.clanEmblemImageVector
 import com.hienthai.fastowin.ui.components.DEFAULT_ARCADE_PAGE_SIZE
 import com.hienthai.fastowin.ui.components.FastToWinHeader
 import com.hienthai.fastowin.ui.components.SystemBackHandler
@@ -557,7 +559,7 @@ fun ClanDetailView(
                 kicker = localized(TextKey.Clan),
                 title = clan.name,
                 subtitle = clan.description.ifBlank { localized(TextKey.DefaultClanDescription) },
-                icon = clanLogoIcon(clan.logoId),
+                icon = clanEmblemImageVector(clan.logoId),
                 accent = ArcadePalette.Violet600,
                 onIconClick = if (isOwner) ({ showLogoDialog = true }) else null,
                 iconContentDescription = localized(if (isOwner) TextKey.SelectClanLogo else TextKey.ClanLogo)
@@ -727,6 +729,7 @@ fun ClanDetailView(
     if (showLogoDialog && isOwner) {
         ClanLogoDialog(
             selectedLogoId = clan.logoId,
+            clanLevel = clan.level,
             onSelect = { id ->
                 onUpdateLogo(id)
                 showLogoDialog = false
@@ -1020,53 +1023,149 @@ private fun ClanMemberCard(
 }
 
 @Composable
-private fun ClanLogoDialog(
+fun ClanLogoDialog(
     selectedLogoId: String?,
+    clanLevel: Int,
     onSelect: (String) -> Unit,
     onDismiss: () -> Unit
 ) {
+    val currentLogoId = selectedLogoId?.lowercase() ?: "shield"
+    var submitted by remember(selectedLogoId, clanLevel) { mutableStateOf(false) }
     ArcadeDialog(
         title = localized(TextKey.ChooseClanLogo),
         subtitle = localized(TextKey.ChooseClanLogoDescription),
         onDismissRequest = onDismiss,
-        modifier = Modifier.testTag("clan_logo_dialog")
+        modifier = Modifier.testTag("clan_logo_dialog"),
+        fixedActions = {
+            ArcadeActionButton(
+                label = localized(TextKey.Close),
+                onClick = onDismiss,
+                style = ArcadeActionStyle.OUTLINE,
+                modifier = Modifier.fillMaxWidth().testTag("close_clan_logo_dialog")
+            )
+        }
     ) {
-        LazyVerticalGrid(
-            columns = GridCells.Adaptive(64.dp),
-            modifier = Modifier.fillMaxWidth().heightIn(max = 280.dp),
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
-            contentPadding = PaddingValues(2.dp)
+        Text(
+            localized(TextKey.ClanLogoUnlockDescription, "current" to clanLevel),
+            style = MaterialTheme.typography.bodyMedium,
+            color = ArcadePalette.Blue100
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            items(CLAN_AVATAR_IDS, key = { it }) { id ->
-                val isSelected = selectedLogoId == id
-                val logoDescription = localized(TextKey.ClanLogoNamed, "logo" to id.clanLogoLabel())
-                Surface(
-                    onClick = { onSelect(id) },
-                    modifier = Modifier
-                        .size(60.dp)
-                        .semantics {
-                            selected = isSelected
-                            role = Role.Button
-                            contentDescription = logoDescription
-                        },
-                    shape = RoundedCornerShape(18.dp),
-                    color = if (isSelected) ArcadePalette.Blue700 else ArcadePalette.Navy900,
-                    border = BorderStroke(
-                        if (isSelected) 3.dp else 1.dp,
-                        if (isSelected) ArcadePalette.Gold500 else ArcadePalette.OutlineDark
+            ClanLogoMark(currentLogoId, Modifier.size(48.dp))
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(
+                    "${localized(TextKey.ClanLogoCurrent)} · ${currentLogoId.clanLogoLabel()}",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = ArcadePalette.Gold100
+                )
+                clanLogoRequiredLevel(currentLogoId)?.takeIf { it > clanLevel }?.let { level ->
+                    Text(
+                        localized(TextKey.ClanLogoUnlockAtLevel, "level" to level),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = ArcadePalette.Blue100
                     )
-                ) {
-                    ClanLogoMark(logoId = id, modifier = Modifier.padding(8.dp))
                 }
             }
         }
-        ArcadeActionButton(
-            label = localized(TextKey.Close),
-            onClick = onDismiss,
-            style = ArcadeActionStyle.OUTLINE,
-            modifier = Modifier.fillMaxWidth()
+        val minimumCardWidth = if (LocalDensity.current.fontScale >= 1.4f) 148.dp else 116.dp
+        // ArcadeDialog owns the single scroll container and keeps Close outside it.
+        BoxWithConstraints(Modifier.fillMaxWidth()) {
+            val columns = ((maxWidth + 8.dp) / (minimumCardWidth + 8.dp)).toInt().coerceIn(1, 3)
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                CLAN_LOGOS.chunked(columns).forEach { logos ->
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        logos.forEach { logo ->
+                            ClanLogoChoice(
+                                id = logo.id,
+                                requiredLevel = logo.requiredLevel,
+                                isSelected = currentLogoId == logo.id,
+                                isUnlocked = isClanLogoUnlocked(logo.id, clanLevel),
+                                enabled = !submitted,
+                                onSelect = {
+                                    if (!submitted) {
+                                        submitted = true
+                                        onSelect(logo.id)
+                                    }
+                                },
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+                        repeat(columns - logos.size) { Spacer(Modifier.weight(1f)) }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ClanLogoChoice(
+    id: String,
+    requiredLevel: Int,
+    isSelected: Boolean,
+    isUnlocked: Boolean,
+    enabled: Boolean,
+    onSelect: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val logoDescription = localized(TextKey.ClanLogoNamed, "logo" to id.clanLogoLabel())
+    val requirement = localized(TextKey.ClanLogoUnlockAtLevel, "level" to requiredLevel)
+    val status = localized(if (isSelected) TextKey.ClanLogoCurrent else if (isUnlocked) TextKey.ClanLogoUnlocked else TextKey.Locked)
+    Surface(
+        onClick = onSelect,
+        enabled = enabled && isUnlocked && !isSelected,
+        modifier = modifier
+            .heightIn(min = 136.dp)
+            .testTag("clan_logo_$id")
+            .semantics {
+                selected = isSelected
+                role = Role.Button
+                contentDescription = logoDescription
+                stateDescription = "$status. $requirement"
+            },
+        shape = RoundedCornerShape(16.dp),
+        color = if (isSelected) ArcadePalette.Blue900 else ArcadePalette.Navy900,
+        border = BorderStroke(
+            if (isSelected) 2.dp else 1.dp,
+            if (isSelected) ArcadePalette.Gold500 else ArcadePalette.OutlineDark
         )
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(12.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            ClanLogoMark(id, Modifier.size(48.dp).alpha(if (isUnlocked || isSelected) 1f else 0.55f))
+            Text(id.clanLogoLabel(), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+                if (!isUnlocked || isSelected) {
+                    Icon(
+                        if (!isUnlocked) Icons.Rounded.Lock else Icons.Rounded.CheckCircle,
+                        contentDescription = null,
+                        tint = if (isSelected) ArcadePalette.Gold100 else ArcadePalette.Blue100,
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
+                Text(
+                    status,
+                    modifier = Modifier.then(if (isSelected) Modifier.testTag("clan_logo_current_$id") else Modifier),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = if (isSelected) ArcadePalette.Gold100 else ArcadePalette.Blue100
+                )
+            }
+            Text(
+                requirement,
+                modifier = Modifier.testTag("clan_logo_requirement_$id"),
+                style = MaterialTheme.typography.bodySmall,
+                color = ArcadePalette.Blue100,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+            )
+        }
     }
 }
 
@@ -1080,6 +1179,9 @@ internal fun ClanLogoMark(logoId: String?, modifier: Modifier = Modifier) {
         "wolf" -> Color(0xFFC8D4EA)
         "eagle" -> ArcadePalette.Gold500
         "crown" -> Color(0xFFFFE28B)
+        "lion" -> ClanEmblemAccents.LionGold
+        "phoenix" -> ClanEmblemAccents.PhoenixCoral
+        "kirin" -> ClanEmblemAccents.KirinMint
         else -> ArcadePalette.Mint400
     }
     Box(
@@ -1092,23 +1194,12 @@ internal fun ClanLogoMark(logoId: String?, modifier: Modifier = Modifier) {
         contentAlignment = Alignment.Center
     ) {
         Icon(
-            clanLogoIcon(normalized),
+            clanEmblemImageVector(normalized),
             contentDescription = null,
             tint = accent,
-            modifier = Modifier.fillMaxSize().padding(9.dp)
+            modifier = Modifier.fillMaxSize(0.64f)
         )
     }
-}
-
-private fun clanLogoIcon(logoId: String?): androidx.compose.ui.graphics.vector.ImageVector = when (
-    logoId.orEmpty().lowercase()
-) {
-    "sword" -> CrossedSwordsIcon
-    "flag" -> Icons.Rounded.Flag
-    "dragon", "wolf" -> Icons.Rounded.Pets
-    "eagle" -> Icons.Rounded.Flight
-    "crown" -> Icons.Rounded.EmojiEvents
-    else -> Icons.Rounded.Shield
 }
 
 @Composable
@@ -1161,6 +1252,9 @@ private fun String.clanLogoLabel(): String {
         "wolf" -> TextKey.ClanLogoWolf
         "eagle" -> TextKey.ClanLogoEagle
         "crown" -> TextKey.ClanLogoCrown
+        "lion" -> TextKey.ClanLogoLion
+        "phoenix" -> TextKey.ClanLogoPhoenix
+        "kirin" -> TextKey.ClanLogoKirin
         else -> return this
     }
     return localized(key)
