@@ -46,8 +46,8 @@ async function fillScheduleField(page, id, label, value) {
 }
 
 for (const viewport of [
-  { name: 'phone', width: 375, height: 812, timeZone: 'Asia/Bangkok' },
-  { name: 'desktop', width: 1024, height: 768, timeZone: 'UTC' },
+  { name: 'phone', width: 375, height: 812, timeZone: 'Asia/Bangkok', timeZoneLabel: 'Giờ Việt Nam (UTC+7)' },
+  { name: 'desktop', width: 1024, height: 768, timeZone: 'UTC', timeZoneLabel: 'UTC' },
 ]) {
   test(`scheduled tournament creation and check-in persist after reload on ${viewport.name}`, async ({ actors }, testInfo) => {
     const host = await actors(`Schedule${viewport.name}`);
@@ -123,7 +123,7 @@ for (const viewport of [
     await click(page, tag(page, 'tournament_check_in'), { allowDisabled: true });
     expect(commands.filter(message => message.type === 'check_in_tournament')).toHaveLength(1);
     await expect(tag(page, 'tournament_check_in_count')).toContainText('1/4');
-    await expect(page.getByText(viewport.timeZone, { exact: true })).toBeAttached();
+    await expect(page.getByText(viewport.timeZoneLabel, { exact: true })).toBeAttached();
     // Host cancellation uses the same visible lobby action; the test account
     // and tournament are disposable and teardown owns their cleanup.
     await click(page, tag(page, 'leave_tournament'));

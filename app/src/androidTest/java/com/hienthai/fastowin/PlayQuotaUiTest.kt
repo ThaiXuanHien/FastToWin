@@ -132,7 +132,8 @@ class PlayQuotaUiTest {
             .boundsInRoot
         assertTrue("Quota dialog must have a positive size", dialogBounds.width > 0f && dialogBounds.height > 0f)
 
-        composeRule.onNodeWithTag("play_quota_close").performScrollTo().assertIsDisplayed()
+        // Close is pinned below the scroll body, so it has no scrollable ancestor.
+        composeRule.onNodeWithTag("play_quota_close").assertIsDisplayed().assertIsEnabled()
         composeRule.onNodeWithTag("watch_rewarded_ad").performScrollTo().assertIsDisplayed().assertIsEnabled()
     }
 

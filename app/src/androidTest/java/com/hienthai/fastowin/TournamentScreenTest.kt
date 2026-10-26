@@ -89,7 +89,7 @@ class TournamentScreenTest {
                 onRespond = { if (it) accepted++ }, onDefer = {}, nowEpochMillis = now
             )
         } }
-        composeRule.onNodeWithText("Asia/Bangkok").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("Giờ Việt Nam (UTC+7)").performScrollTo().assertIsDisplayed()
         composeRule.onNodeWithText("Bắt đầu: 2026-10-15 12:00").performScrollTo().assertIsDisplayed()
         composeRule.onNodeWithTag("accept_tournament_invitation").performScrollTo().performClick()
         composeRule.runOnIdle { assertEquals(1, accepted); now = opensAt }
@@ -131,15 +131,23 @@ class TournamentScreenTest {
             composeRule.onNodeWithTag("tournament_schedule_toggle")
                 .performScrollTo().assertFullyVisibleAboveIme().performClick().assertIsOn()
             composeRule.onNodeWithTag("tournament_schedule_local_start").performScrollTo().performTextInput("bad")
-            composeRule.onNodeWithTag("tournament_schedule_error").performScrollTo().assertIsDisplayed()
+            // Finish editing before inspecting validation elsewhere in the form: the native
+            // focused field otherwise brings itself back into view after a semantics scroll.
+            ime.hide()
+            composeRule.waitUntil { ime.isSettled(visible = false) }
+            composeRule.onNodeWithTag("tournament_schedule_error").performScrollTo().assertFullyVisibleAboveIme()
             composeRule.onNodeWithTag("create_tournament").performScrollTo().assertIsNotEnabled()
+            composeRule.runOnIdle { assertNull(created) }
             composeRule.onNodeWithTag("tournament_schedule_local_start").performScrollTo().performTextReplacement("2026-10-15 12:00")
             composeRule.onNodeWithTag("tournament_schedule_time_zone").performScrollTo().performTextReplacement("Asia/Bangkok")
+            ime.hide()
+            composeRule.waitUntil { ime.isSettled(visible = false) }
+            composeRule.onNodeWithText("Đăng ký đóng: 2026-10-15 11:45").performScrollTo().assertIsDisplayed()
+            composeRule.onNodeWithText("Check-in mở: 2026-10-15 11:45").performScrollTo().assertIsDisplayed()
+            composeRule.onNodeWithTag("tournament_schedule_time_zone").performScrollTo().performClick()
             ime.show()
             composeRule.waitUntil { ime.isSettled(visible = true) }
             composeRule.waitForIdle()
-            composeRule.onNodeWithText("Đăng ký đóng: 2026-10-15 11:45").performScrollTo().assertIsDisplayed()
-            composeRule.onNodeWithText("Check-in mở: 2026-10-15 11:45").performScrollTo().assertIsDisplayed()
             composeRule.onNodeWithTag("create_tournament").performScrollTo().assertFullyVisibleAboveIme().assertIsEnabled().performClick()
             composeRule.runOnIdle { assertEquals(TournamentScheduleRequest(1_792_040_400_000, "Asia/Bangkok"), created) }
         }
