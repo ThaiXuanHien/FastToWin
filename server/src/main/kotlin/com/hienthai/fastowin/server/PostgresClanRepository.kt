@@ -5,6 +5,7 @@ import com.hienthai.fastowin.protocol.ClanDonationCurrency
 import com.hienthai.fastowin.protocol.ClanDonationStatus
 import com.hienthai.fastowin.protocol.CLAN_CREATION_GEM_COST
 import com.hienthai.fastowin.protocol.CLAN_CREATION_GOLD_COST
+import com.hienthai.fastowin.protocol.CLAN_CREATION_MIN_LEVEL
 import com.hienthai.fastowin.protocol.ClanJoinRequestSnapshot
 import com.hienthai.fastowin.protocol.ClanRole
 import com.hienthai.fastowin.protocol.ClanQuestSnapshot
@@ -60,13 +61,17 @@ class PostgresClanRepository(
                     it.executeUpdate()
                 }
                 val wallet = connection.prepareStatement(
-                    "SELECT gold, gems FROM player_stats WHERE user_id = ? FOR UPDATE"
+                    "SELECT gold, gems, experience_points FROM player_stats WHERE user_id = ? FOR UPDATE"
                 ).use {
                     it.setObject(1, ownerUuid)
                     it.executeQuery().use { result ->
                         check(result.next())
-                        result.getInt("gold") to result.getInt("gems")
+                        Triple(result.getInt("gold"), result.getInt("gems"), result.getInt("experience_points"))
                     }
+                }
+                if (PlayerProgression.levelForExperience(wallet.third) < CLAN_CREATION_MIN_LEVEL) {
+                    connection.rollback()
+                    return@withContext ClanCreationResult(ClanCreationStatus.LEVEL_TOO_LOW)
                 }
                 if (wallet.first < CLAN_CREATION_GOLD_COST || wallet.second < CLAN_CREATION_GEM_COST) {
                     connection.rollback()

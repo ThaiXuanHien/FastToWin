@@ -41,9 +41,9 @@ class PostgresClanRepositoryTest {
                 dataSource.connection.use { connection ->
                     connection.prepareStatement(
                         """
-                        INSERT INTO player_stats (user_id, gold, gems, updated_at)
-                        VALUES (?, 5000, 50, CURRENT_TIMESTAMP)
-                        ON CONFLICT (user_id) DO UPDATE SET gold = 5000, gems = 50
+                        INSERT INTO player_stats (user_id, gold, gems, experience_points, updated_at)
+                        VALUES (?, 10000, 100, 1260, CURRENT_TIMESTAMP)
+                        ON CONFLICT (user_id) DO UPDATE SET gold = 10000, gems = 100, experience_points = 1260
                         """.trimIndent()
                     ).use { statement ->
                         listOf(firstOwner.userId, secondOwner.userId).forEach { id ->

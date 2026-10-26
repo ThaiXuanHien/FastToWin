@@ -1765,6 +1765,7 @@ private fun GameContent(
                     },
                     gold = state.profile?.progression?.gold ?: 0,
                     gems = state.profile?.progression?.gems ?: 0,
+                    playerLevel = state.profile?.progression?.level ?: 1,
                     unreadNotifications = state.unreadNotificationCount,
                     onOpenNotifications = openNotifications,
                     showBackButton = !showTopLevelNavigation,

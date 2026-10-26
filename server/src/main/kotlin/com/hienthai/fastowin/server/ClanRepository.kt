@@ -31,6 +31,7 @@ data class ClanDonationResult(
 
 enum class ClanCreationStatus {
     CREATED,
+    LEVEL_TOO_LOW,
     INSUFFICIENT_FUNDS,
     ALREADY_MEMBER,
     PLAYER_NOT_FOUND,

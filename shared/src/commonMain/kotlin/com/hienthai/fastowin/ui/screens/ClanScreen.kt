@@ -75,6 +75,7 @@ import androidx.compose.ui.unit.dp
 import com.hienthai.fastowin.protocol.CLAN_AVATAR_IDS
 import com.hienthai.fastowin.protocol.CLAN_CREATION_GEM_COST
 import com.hienthai.fastowin.protocol.CLAN_CREATION_GOLD_COST
+import com.hienthai.fastowin.protocol.CLAN_CREATION_MIN_LEVEL
 import com.hienthai.fastowin.protocol.ClanDonationCurrency
 import com.hienthai.fastowin.protocol.ClanJoinRequestSnapshot
 import com.hienthai.fastowin.protocol.ClanMemberSnapshot
@@ -136,7 +137,8 @@ fun ClanScreen(
     missionState: MissionState? = null,
     onRefreshMissions: () -> Unit = {},
     onClaimMissionInstance: (String) -> Unit = {},
-    onOpenRace: (() -> Unit)? = null
+    onOpenRace: (() -> Unit)? = null,
+    playerLevel: Int = 1
 ) {
     SystemBackHandler(enabled = showBackButton, onBack = onBack)
 
@@ -180,6 +182,7 @@ fun ClanScreen(
                             onSearch = onSearch,
                             gold = gold,
                             gems = gems,
+                            playerLevel = playerLevel,
                             modifier = Modifier.fillMaxSize()
                         )
 
@@ -226,6 +229,7 @@ private fun ClanDiscoveryView(
     onSearch: (String?) -> Unit,
     gold: Int,
     gems: Int,
+    playerLevel: Int,
     modifier: Modifier = Modifier
 ) {
     var showCreateDialog by remember { mutableStateOf(false) }
@@ -328,6 +332,7 @@ private fun ClanDiscoveryView(
         CreateClanDialog(
             gold = gold,
             gems = gems,
+            playerLevel = playerLevel,
             onDismiss = { showCreateDialog = false },
             onCreate = { name, description ->
                 onCreateClan(name, description)
@@ -402,11 +407,12 @@ private fun ClanJoinButton(isPending: Boolean, onJoin: () -> Unit, modifier: Mod
 }
 
 @Composable
-private fun CreateClanDialog(
+fun CreateClanDialog(
     gold: Int,
     gems: Int,
     onDismiss: () -> Unit,
-    onCreate: (String, String) -> Unit
+    onCreate: (String, String) -> Unit,
+    playerLevel: Int = 1
 ) {
     var name by remember { mutableStateOf("") }
     var description by remember { mutableStateOf("") }
@@ -435,6 +441,13 @@ private fun CreateClanDialog(
             modifier = Modifier.fillMaxWidth().testTag("create_clan_description")
         )
         Text(
+            localized(TextKey.ClanCreationLevelRequirement,
+                "level" to CLAN_CREATION_MIN_LEVEL, "current" to playerLevel),
+            modifier = Modifier.testTag("create_clan_level_requirement"),
+            color = if (playerLevel >= CLAN_CREATION_MIN_LEVEL) ArcadePalette.Mint400 else ArcadePalette.Coral400,
+            style = MaterialTheme.typography.bodyMedium
+        )
+        Text(
             "${formatNumber(CLAN_CREATION_GOLD_COST)} ${localized(TextKey.Gold)} • " +
                 "${formatNumber(CLAN_CREATION_GEM_COST)} ${localized(TextKey.Gems)}",
             modifier = Modifier.testTag("create_clan_cost"),
@@ -454,10 +467,11 @@ private fun CreateClanDialog(
                 label = localized(TextKey.CreateAction),
                 onClick = { onCreate(name.trim(), description.trim()) },
                 enabled = name.isNotBlank() &&
+                    playerLevel >= CLAN_CREATION_MIN_LEVEL &&
                     gold >= CLAN_CREATION_GOLD_COST &&
                     gems >= CLAN_CREATION_GEM_COST,
                 style = ArcadeActionStyle.GOLD,
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.fillMaxWidth().testTag("create_clan_submit")
             )
             ArcadeActionButton(
                 label = localized(TextKey.Cancel),

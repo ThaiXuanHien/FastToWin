@@ -1381,8 +1381,9 @@ sealed class ServerMessage {
 @Serializable
 enum class ClanRole { LEADER, CO_LEADER, MEMBER }
 
-const val CLAN_CREATION_GOLD_COST = 2_000
-const val CLAN_CREATION_GEM_COST = 20
+const val CLAN_CREATION_GOLD_COST = 10_000
+const val CLAN_CREATION_GEM_COST = 100
+const val CLAN_CREATION_MIN_LEVEL = 10
 
 @Serializable
 enum class ClanDonationCurrency { GOLD, GEMS }

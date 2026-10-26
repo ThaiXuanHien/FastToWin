@@ -4551,11 +4551,18 @@ class GameEngine(
                 "create_clan",
                 TextKey.ClanCreatedNotice.name
             ), setOf(playerId)))
+            ClanCreationStatus.LEVEL_TOO_LOW -> listOf(
+                error(
+                    playerId,
+                    "CLAN_CREATION_LEVEL_TOO_LOW",
+                    legacyFallback("Cần đạt cấp 10 để tạo bang.")
+                )
+            )
             ClanCreationStatus.INSUFFICIENT_FUNDS -> listOf(
                 error(
                     playerId,
                     "CLAN_CREATION_INSUFFICIENT_FUNDS",
-                    legacyFallback("Cần 2.000 vàng và 20 Gem để tạo bang.")
+                    legacyFallback("Cần 10.000 vàng và 100 Gem để tạo bang.")
                 )
             )
             ClanCreationStatus.ALREADY_MEMBER ->
