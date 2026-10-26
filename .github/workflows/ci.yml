@@ -196,7 +196,9 @@ jobs:
     name: Web E2E (responsive + multi-browser)
     needs: build-and-test
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    # Dependency downloads can consume 15+ minutes before the measured
+    # ~21-minute browser suite, JS fallback and durable-wallet phases start.
+    timeout-minutes: 60
     services:
       postgres:
         image: postgres:17-alpine
@@ -231,6 +233,19 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: 22
+
+      - name: Use Ubuntu primary package archive
+        # Avoid the intermittent slow Azure mirror. Keep the runner's suites,
+        # components and Ubuntu signing keys; only replace the archive URL.
+        run: |
+          if [ -f /etc/apt/apt-mirrors.txt ]; then
+            sudo sed -i '\|://azure\.archive\.ubuntu\.com/ubuntu|d' /etc/apt/apt-mirrors.txt
+          fi
+          for apt_source_file in /etc/apt/sources.list /etc/apt/sources.list.d/ubuntu.sources; do
+            if [ -f "$apt_source_file" ]; then
+              sudo sed -i 's|https\?://azure\.archive\.ubuntu\.com/ubuntu|https://archive.ubuntu.com/ubuntu|g' "$apt_source_file"
+            fi
+          done
 
       - name: Install E2E dependencies
         working-directory: e2e
