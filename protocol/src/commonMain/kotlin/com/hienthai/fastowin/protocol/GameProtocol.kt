@@ -1339,7 +1339,10 @@ sealed class ServerMessage {
 
     @Serializable
     @SerialName("clan_info_data")
-    data class ClanInfoData(val clan: ClanSnapshot) : ServerMessage()
+    data class ClanInfoData(
+        val clan: ClanSnapshot,
+        val isPresenceRefresh: Boolean = false
+    ) : ServerMessage()
 
     @Serializable
     @SerialName("clan_list_data")
@@ -1409,7 +1412,11 @@ data class ClanMemberSnapshot(
     val questContribution: Int = 0,
     val questRewardClaimed: Boolean = false,
     val donatedGold: Long = 0,
-    val donatedGems: Long = 0
+    val donatedGems: Long = 0,
+    val playerCode: String = "",
+    val avatarId: String? = null,
+    val frameId: String = "frame_default",
+    val presence: FriendPresence = FriendPresence.OFFLINE
 )
 
 @Serializable

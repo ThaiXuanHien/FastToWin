@@ -13,6 +13,7 @@ import com.hienthai.fastowin.platform.AVATAR_UPLOAD_MAX_BYTES
 import com.hienthai.fastowin.platform.epochMillis
 import com.hienthai.fastowin.platform.RewardedAdReceipt
 import com.hienthai.fastowin.protocol.ClientMessage
+import com.hienthai.fastowin.protocol.FriendPresence
 import com.hienthai.fastowin.protocol.ClanDonationCurrency
 import com.hienthai.fastowin.protocol.ClanDonationStatus
 import com.hienthai.fastowin.protocol.CosmeticType
@@ -114,6 +115,7 @@ class GameController private constructor(
         _uiState.update { it.copy(isSearching = false, isTournamentLoading = false) }
     }
     private var playerId: String? = null
+    private var requestedClanId: String? = null
     private data class PendingRewardedAdClaim(val receipt: RewardedAdReceipt, val playerId: String?)
     // HTTP GRANTED is already committed. Keep its idempotent handoff until the socket acknowledges it.
     private var pendingRewardedAdClaim: PendingRewardedAdClaim? = null
@@ -305,6 +307,11 @@ class GameController private constructor(
             }
             state.copy(
                 connectionStatus = status,
+                isClanSocialReady = state.isClanSocialReady && status == ConnectionStatus.CONNECTED,
+                isFriendsLoading = state.isFriendsLoading && status == ConnectionStatus.CONNECTED,
+                currentClan = if (status == ConnectionStatus.CONNECTED) state.currentClan else state.currentClan?.let { clan ->
+                    clan.copy(members = clan.members.map { it.copy(presence = FriendPresence.OFFLINE) })
+                },
                 isPublicTournamentsLoading = state.isPublicTournamentsLoading &&
                     status != ConnectionStatus.RECONNECTING &&
                     status != ConnectionStatus.DISCONNECTED &&
@@ -1227,6 +1234,9 @@ class GameController private constructor(
                         sendMessage(ClientMessage.GetLeaderboard)
                         sendMessage(ClientMessage.GetTournamentHub)
                         sendMessage(ClientMessage.GetPlayQuota)
+                        if (_uiState.value.isClanOpen) {
+                            _uiState.value.currentClan?.id?.let { sendMessage(ClientMessage.GetClanInfo(it)) }
+                        }
                         _uiState.value.viewedFriendUserId?.let { friendUserId ->
                             sendMessage(ClientMessage.GetFriendProfile(friendUserId))
                         }
@@ -1314,6 +1324,9 @@ class GameController private constructor(
                     }
                     state.copy(
                         profile = message.profile,
+                        currentClan = state.currentClan?.takeUnless {
+                            previousClanId != message.profile.clanId && it.id == previousClanId
+                        },
                         avatarRevision = state.avatarRevision + 1,
                         player = state.player.copy(
                             name = message.profile.displayName,
@@ -1349,6 +1362,7 @@ class GameController private constructor(
                 // Auto-load clan details when clanId changes while clan screen is open
                 val newClanId = message.profile.clanId
                 if (newClanId != null && newClanId != previousClanId && _uiState.value.isClanOpen) {
+                    requestedClanId = newClanId
                     sendMessage(ClientMessage.GetClanInfo(newClanId))
                 }
                 if (avatarCompleted) {
@@ -1473,6 +1487,7 @@ class GameController private constructor(
                     state.copy(
                         social = message.social,
                         isFriendsLoading = false,
+                        isClanSocialReady = true,
                         notifications = if (accountDisplayName == null) mergeNotifications(
                             state.notifications,
                             friendRequestNotifications(message.social.incomingRequests, epochMillis(), localization),
@@ -1647,7 +1662,23 @@ class GameController private constructor(
             }
             
             is ServerMessage.ClanInfoData -> {
-                _uiState.update { it.copy(currentClan = message.clan) }
+                _uiState.update { state ->
+                    when {
+                        message.isPresenceRefresh -> {
+                            val current = state.currentClan
+                            if (current?.id != message.clan.id) state else {
+                                val presences = message.clan.members.associate { it.userId to it.presence }
+                                state.copy(currentClan = current.copy(members = current.members.map { member ->
+                                    member.copy(presence = presences[member.userId] ?: FriendPresence.OFFLINE)
+                                }))
+                            }
+                        }
+                        state.currentClan != null && state.currentClan.id != message.clan.id &&
+                            requestedClanId != message.clan.id -> state
+                        else -> state.copy(currentClan = message.clan)
+                    }
+                }
+                if (!message.isPresenceRefresh && requestedClanId == message.clan.id) requestedClanId = null
             }
             is ServerMessage.ClanListData -> {
                 _uiState.update {
@@ -2149,6 +2180,11 @@ class GameController private constructor(
         repeat(2) { append(Random.nextLong().toULong().toString(16).padStart(16, '0')) }
     }
 
+    fun refreshClanSocial() {
+        _uiState.update { it.copy(isClanSocialReady = false, isFriendsLoading = true, socialNotice = null, error = null) }
+        scope.launch { sendMessage(ClientMessage.GetFriends) }
+    }
+
     fun openClan() {
         _uiState.update {
             it.copy(
@@ -2164,6 +2200,7 @@ class GameController private constructor(
                 error = null
             )
         }
+        refreshClanSocial()
         scope.launch { sendMessage(ClientMessage.GetClanList()) }
     }
 
@@ -2193,6 +2230,7 @@ class GameController private constructor(
     }
 
     fun viewClan(clanId: String) {
+        requestedClanId = clanId
         scope.launch { sendMessage(ClientMessage.GetClanInfo(clanId)) }
     }
 

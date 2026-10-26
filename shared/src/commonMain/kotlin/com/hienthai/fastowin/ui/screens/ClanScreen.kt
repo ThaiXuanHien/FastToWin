@@ -11,6 +11,7 @@ import com.hienthai.fastowin.protocol.UgcTargetType
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -82,6 +83,7 @@ import com.hienthai.fastowin.protocol.ClanMemberSnapshot
 import com.hienthai.fastowin.protocol.ClanRole
 import com.hienthai.fastowin.protocol.ClanSnapshot
 import com.hienthai.fastowin.protocol.ClanSummarySnapshot
+import com.hienthai.fastowin.protocol.FriendsSnapshot
 import com.hienthai.fastowin.localization.QuantityKey
 import com.hienthai.fastowin.localization.TextKey
 import com.hienthai.fastowin.localization.localized
@@ -102,6 +104,8 @@ import com.hienthai.fastowin.ui.components.DEFAULT_ARCADE_PAGE_SIZE
 import com.hienthai.fastowin.ui.components.FastToWinHeader
 import com.hienthai.fastowin.ui.components.SystemBackHandler
 import com.hienthai.fastowin.ui.components.nextArcadePageItemCount
+import com.hienthai.fastowin.ui.components.PlayerAvatar
+import com.hienthai.fastowin.ui.components.FriendPresenceIndicator
 import com.hienthai.fastowin.ui.layout.ResponsiveScreen
 import com.hienthai.fastowin.ui.theme.ArcadePalette
 
@@ -138,7 +142,15 @@ fun ClanScreen(
     onRefreshMissions: () -> Unit = {},
     onClaimMissionInstance: (String) -> Unit = {},
     onOpenRace: (() -> Unit)? = null,
-    playerLevel: Int = 1
+    playerLevel: Int = 1,
+    social: FriendsSnapshot = FriendsSnapshot(),
+    isSocialLoading: Boolean = false,
+    socialNotice: String? = null,
+    socialError: String? = null,
+    onSendFriendRequest: (String) -> Unit = {},
+    onRespondFriendRequest: (String, Boolean) -> Unit = { _, _ -> },
+    isSocialReady: Boolean = true,
+    onRefreshSocial: () -> Unit = {}
 ) {
     SystemBackHandler(enabled = showBackButton, onBack = onBack)
 
@@ -203,6 +215,14 @@ fun ClanScreen(
                             gems = gems,
                             isDonationPending = isDonationPending,
                             onDonate = { currency, amount -> onDonate(currentClan.id, currency, amount) },
+                            social = social,
+                            isSocialLoading = isSocialLoading,
+                            socialNotice = socialNotice,
+                            socialError = socialError,
+                            onSendFriendRequest = onSendFriendRequest,
+                            onRespondFriendRequest = onRespondFriendRequest,
+                            isSocialReady = isSocialReady,
+                            onRefreshSocial = onRefreshSocial,
                             modifier = Modifier.fillMaxSize()
                         )
 
@@ -502,12 +522,25 @@ fun ClanDetailView(
     modifier: Modifier = Modifier,
     missionState: MissionState? = null,
     onRefreshMissions: () -> Unit = {},
-    onClaimMissionInstance: (String) -> Unit = {}
+    onClaimMissionInstance: (String) -> Unit = {},
+    social: FriendsSnapshot = FriendsSnapshot(),
+    isSocialLoading: Boolean = false,
+    socialNotice: String? = null,
+    socialError: String? = null,
+    onSendFriendRequest: (String) -> Unit = {},
+    onRespondFriendRequest: (String, Boolean) -> Unit = { _, _ -> },
+    isSocialReady: Boolean = true,
+    onRefreshSocial: () -> Unit = {}
 ) {
     var showLogoDialog by remember { mutableStateOf(false) }
     var showLeaveConfirmation by remember { mutableStateOf(false) }
     var showDonationDialog by remember { mutableStateOf(false) }
     var kickTarget by remember { mutableStateOf<ClanMemberSnapshot?>(null) }
+    var selectedMemberId by remember(clan.id) { mutableStateOf<String?>(null) }
+    val selectedMember = clan.members.firstOrNull { it.userId == selectedMemberId }
+    LaunchedEffect(selectedMember?.userId) {
+        if (selectedMember == null) selectedMemberId = null
+    }
     var visibleMemberCount by remember(clan.id) { mutableStateOf(DEFAULT_ARCADE_PAGE_SIZE) }
     val isOwner = clan.ownerId == currentUserId
     val currentMember = clan.members.firstOrNull { it.userId == currentUserId }
@@ -577,7 +610,8 @@ fun ClanDetailView(
                 member = member,
                 isOwner = isOwner,
                 canRemove = clan.ownerId != member.userId,
-                onRemove = { kickTarget = member }
+                onRemove = { kickTarget = member },
+                onViewProfile = { selectedMemberId = member.userId }
             )
         }
 
@@ -605,6 +639,22 @@ fun ClanDetailView(
                 UgcClanReportAction(clan.id, clan.name, Modifier.fillMaxWidth())
             }
         }
+    }
+
+    selectedMember?.let { member ->
+        ClanMemberProfileDialog(
+            member = member,
+            currentUserId = currentUserId,
+            social = social,
+            isSocialLoading = isSocialLoading,
+            socialNotice = socialNotice,
+            socialError = socialError,
+            onSendFriendRequest = onSendFriendRequest,
+            onRespondFriendRequest = onRespondFriendRequest,
+            onDismiss = { selectedMemberId = null },
+            isSocialReady = isSocialReady,
+            onRefreshSocial = onRefreshSocial
+        )
     }
 
     if (showLeaveConfirmation) {
@@ -929,27 +979,32 @@ private fun ClanMemberCard(
     member: ClanMemberSnapshot,
     isOwner: Boolean,
     canRemove: Boolean,
-    onRemove: () -> Unit
+    onRemove: () -> Unit,
+    onViewProfile: () -> Unit
 ) {
     ArcadePanel(modifier = Modifier.fillMaxWidth(), accent = ArcadePalette.Blue500) {
         Row(
-            modifier = Modifier.fillMaxWidth().padding(start = 14.dp, top = 12.dp, bottom = 12.dp, end = 8.dp),
+            modifier = Modifier.fillMaxWidth()
+                .clickable(role = Role.Button, onClickLabel = localized(TextKey.ViewClanMemberProfile, "player" to member.displayName), onClick = onViewProfile)
+                .testTag("clan_member:${member.userId}")
+                .padding(start = 14.dp, top = 12.dp, bottom = 12.dp, end = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            ClanLogoMark(logoId = member.displayName, modifier = Modifier.size(46.dp))
+            PlayerAvatar(member.displayName, member.avatarId, member.userId, member.frameId)
             Column(modifier = Modifier.weight(1f)) {
-                ReportableText(member.displayName, UgcTargetType.PLAYER_PROFILE, member.userId, fontWeight = FontWeight.Black, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(member.displayName, fontWeight = FontWeight.Black, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 Text(
                     localized(TextKey.ClanMemberSummary, "role" to member.role.localizedName(), "trophies" to formatNumber(member.trophies)),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
+            FriendPresenceIndicator(member.presence)
             if (isOwner && canRemove) {
                 IconButton(
                     onClick = onRemove,
-                    modifier = Modifier.size(48.dp)
+                    modifier = Modifier.size(48.dp).testTag("clan_kick:${member.userId}")
                 ) {
                     Icon(
                         Icons.Rounded.PersonRemove,
@@ -1090,7 +1145,7 @@ private fun ClanNotice(message: String) {
 }
 
 @Composable
-private fun ClanRole.localizedName(): String = localized(when (this) {
+internal fun ClanRole.localizedName(): String = localized(when (this) {
     ClanRole.LEADER -> TextKey.ClanRoleLeader
     ClanRole.CO_LEADER -> TextKey.ClanRoleCoLeader
     ClanRole.MEMBER -> TextKey.ClanRoleMember

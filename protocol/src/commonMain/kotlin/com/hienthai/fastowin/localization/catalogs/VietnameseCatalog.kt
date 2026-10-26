@@ -10,6 +10,12 @@ import com.hienthai.fastowin.localization.economyProgressionTexts
 internal val vietnameseCatalog = LocalizationCatalog(
     language = AppLanguage.VIETNAMESE,
     texts = mapOf(
+        TextKey.ClanMemberProfileTitle to "Thành viên bang",
+        TextKey.ViewClanMemberProfile to "Xem hồ sơ của {player}",
+        TextKey.ClanMemberRole to "Vai trò trong bang",
+        TextKey.ClanQuestContribution to "Đóng góp nhiệm vụ",
+        TextKey.ClanDonatedGold to "Vàng đã quyên góp",
+        TextKey.ClanDonatedGems to "Kim cương đã quyên góp",
         TextKey.SettingsTitle to "Cài đặt",
         TextKey.LanguageTitle to "Ngôn ngữ",
         TextKey.ChooseLanguageTitle to "Chọn ngôn ngữ",

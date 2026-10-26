@@ -229,6 +229,8 @@ ClanRaceTitle, ClanRacePrizes, ClanRacePerMember, ClanRaceEligibility, ClanRaceW
     ClanSummary, PendingApproval, RequestToJoin, CreateClanTitle, CreateClanDescription,
     ClanName, ClanDescription, DefaultClanDescription, SelectClanLogo, ClanLogo,
     JoinRequestsCount, ClanMembers, LeaveClan, LeaveClanTitle, LeaveClanDescription,
+    ClanMemberProfileTitle, ViewClanMemberProfile, ClanMemberRole, ClanQuestContribution,
+    ClanDonatedGold, ClanDonatedGems,
     RemoveClanMemberTitle, RemoveClanMemberDescription, RemoveClanMemberAction,
     ClanTrophies, MemberTrophies, TotalTrophies, WeeklyClanQuest, WinClanMatches,
     Approve, ClanMemberSummary, RemoveClanMemberNamed, ChooseClanLogo,

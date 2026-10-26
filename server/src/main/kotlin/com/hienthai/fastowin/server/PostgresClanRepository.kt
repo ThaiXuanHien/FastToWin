@@ -483,7 +483,9 @@ class PostgresClanRepository(
                 connection.prepareStatement(
                     "SELECT cm.user_id, cm.role, cm.quest_contribution, cm.quest_reward_claimed, " +
                     "cm.donated_gold, cm.donated_gems, " +
-                    "p.display_name, COALESCE(s.elo_rating, 1000) AS trophies " +
+                    "p.display_name, p.player_code, p.avatar_url, " +
+                    "COALESCE(s.equipped_frame_id, 'frame_default') AS frame_id, " +
+                    "COALESCE(s.elo_rating, 1000) AS trophies " +
                     "FROM clan_members cm JOIN profiles p ON cm.user_id = p.user_id " +
                     "LEFT JOIN player_stats s ON cm.user_id = s.user_id " +
                     "WHERE cm.clan_id = ?"
@@ -500,7 +502,10 @@ class PostgresClanRepository(
                                     questContribution = rs.getInt("quest_contribution"),
                                     questRewardClaimed = rs.getBoolean("quest_reward_claimed"),
                                     donatedGold = rs.getLong("donated_gold"),
-                                    donatedGems = rs.getLong("donated_gems")
+                                    donatedGems = rs.getLong("donated_gems"),
+                                    playerCode = rs.getString("player_code"),
+                                    avatarId = rs.getString("avatar_url"),
+                                    frameId = rs.getString("frame_id")
                                 )
                             )
                         }

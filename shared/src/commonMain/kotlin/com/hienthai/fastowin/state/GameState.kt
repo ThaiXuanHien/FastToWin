@@ -208,6 +208,7 @@ data class GameState(
     val leaderboard: LeaderboardSnapshot? = null,
     val isFriendsOpen: Boolean = false,
     val isFriendsLoading: Boolean = false,
+    val isClanSocialReady: Boolean = false,
     val social: FriendsSnapshot = FriendsSnapshot(),
     val roomInvitations: List<ServerMessage.RoomInvitation> = emptyList(),
     val sendingRoomInviteFriendIds: Set<String> = emptySet(),

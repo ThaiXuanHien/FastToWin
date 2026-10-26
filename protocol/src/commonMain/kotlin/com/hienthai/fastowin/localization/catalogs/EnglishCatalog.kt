@@ -10,6 +10,12 @@ import com.hienthai.fastowin.localization.economyProgressionTexts
 internal val englishCatalog = LocalizationCatalog(
     language = AppLanguage.ENGLISH,
     texts = mapOf(
+        TextKey.ClanMemberProfileTitle to "Clan member",
+        TextKey.ViewClanMemberProfile to "View {player}'s profile",
+        TextKey.ClanMemberRole to "Clan role",
+        TextKey.ClanQuestContribution to "Quest contribution",
+        TextKey.ClanDonatedGold to "Gold donated",
+        TextKey.ClanDonatedGems to "Gems donated",
         TextKey.SettingsTitle to "Settings",
         TextKey.LanguageTitle to "Language",
         TextKey.ChooseLanguageTitle to "Choose language",

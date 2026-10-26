@@ -22,6 +22,7 @@ internal fun ServerMessage.authoritativeAvatars(): List<Pair<String, String?>> {
     return when (this) {
         is ServerMessage.ProfileData -> listOf(profile.userId to profile.avatarId)
         is ServerMessage.FriendProfileData -> listOf(profile.userId to profile.avatarId)
+        is ServerMessage.ClanInfoData -> if (isPresenceRefresh) emptyList() else clan.members.map { it.userId to it.avatarId }
         is ServerMessage.FriendsData -> social.run { friends.map { it.userId to it.avatarId } +
             incomingRequests.map { it.userId to it.avatarId } + outgoingRequests.map { it.userId to it.avatarId } +
             blockedPlayers.map { it.userId to it.avatarId } + recentPlayers.map { it.userId to it.avatarId } }

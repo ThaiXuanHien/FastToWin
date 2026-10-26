@@ -85,6 +85,30 @@ class PostgresClanRepositoryTest {
                     clans.respondJoinRequest(secondClanId, secondOwner.userId, applicant.userId, accept = true)
                 )
                 assertEquals(secondClanId, clans.getClanByUserId(applicant.userId)?.id)
+                dataSource.connection.use { connection ->
+                    connection.prepareStatement("UPDATE profiles SET avatar_url = 'avatar_rocket' WHERE user_id = ?").use {
+                        it.setObject(1, UUID.fromString(applicant.userId))
+                        it.executeUpdate()
+                    }
+                    connection.prepareStatement(
+                        """
+                        INSERT INTO player_stats (user_id, equipped_frame_id, updated_at)
+                        VALUES (?, 'frame_gold', CURRENT_TIMESTAMP)
+                        ON CONFLICT (user_id) DO UPDATE SET equipped_frame_id = 'frame_gold'
+                        """.trimIndent()
+                    ).use {
+                        it.setObject(1, UUID.fromString(applicant.userId))
+                        it.executeUpdate()
+                    }
+                }
+                val publicProfile = requireNotNull(PostgresPlayerProfileRepository(dataSource).findByPlayerId(applicant.userId))
+                val roster = requireNotNull(clans.getClanById(secondClanId)).members
+                val rosterMember = roster.single { it.userId == applicant.userId }
+                assertEquals(publicProfile.playerCode, rosterMember.playerCode)
+                assertEquals("Applicant", rosterMember.displayName)
+                assertEquals("avatar_rocket", rosterMember.avatarId)
+                assertEquals("frame_gold", rosterMember.frameId)
+                assertEquals("frame_default", roster.single { it.userId == secondOwner.userId }.frameId)
                 assertTrue(clans.getPendingJoinClanIds(applicant.userId).isEmpty())
                 assertEquals(
                     ClanJoinResponseResult.REQUEST_NOT_FOUND,
