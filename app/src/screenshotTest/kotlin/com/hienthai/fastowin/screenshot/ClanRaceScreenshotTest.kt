@@ -45,6 +45,7 @@ private fun raceFixture() = ClanRaceUiState(raceCurrent,
 @PreviewTest
 @Preview(name = "prizes_vi_phone", widthDp = 375, heightDp = 1100)
 @Preview(name = "prizes_vi_desktop", widthDp = 1024, heightDp = 1000)
+@Preview(name = "prizes_vi_large_text", widthDp = 320, heightDp = 1300, fontScale = 1.6f)
 @Composable
 fun racePrizeCardsPreview() = RaceFrame {
     // Visual fixture only; rewards remain entirely admin-configured at runtime.

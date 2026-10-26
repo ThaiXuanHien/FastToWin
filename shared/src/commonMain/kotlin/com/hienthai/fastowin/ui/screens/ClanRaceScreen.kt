@@ -80,14 +80,19 @@ fun ClanRaceScreen(
                             RaceHeading(localized(TextKey.ClanRacePrizes))
                             Text(localized(TextKey.ClanRacePerMember), fontWeight = FontWeight.Bold)
                             config.rewards.forEachIndexed { index, reward ->
+                                val rankColor = when (index) {
+                                    0 -> ArcadePalette.Gold500
+                                    1 -> ArcadePalette.Silver400
+                                    else -> ArcadePalette.Bronze400
+                                }
                                 ArcadePanel(Modifier.fillMaxWidth().testTag("race_prize_${index + 1}"),
-                                    accent = if (index == 0) ArcadePalette.Gold500 else ArcadePalette.Blue300) {
+                                    accent = rankColor) {
                                     Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                                         Text(localized(TextKey.ClanRaceTopRank, "rank" to index + 1),
                                             modifier = Modifier.align(Alignment.CenterHorizontally).semantics { heading() },
                                             style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black,
-                                            color = ArcadePalette.Gold500)
-                                        RaceReward(reward)
+                                            color = rankColor)
+                                        RaceReward(reward, centered = true)
                                     }
                                 }
                             }
@@ -190,8 +195,10 @@ fun ClanRaceScreen(
     }
 }
 
-@Composable internal fun RaceReward(reward: ClanRaceReward) {
-    FlowRow(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+@Composable internal fun RaceReward(reward: ClanRaceReward, centered: Boolean = false) {
+    FlowRow(modifier = if (centered) Modifier.fillMaxWidth() else Modifier,
+        horizontalArrangement = if (centered) Arrangement.spacedBy(16.dp, Alignment.CenterHorizontally) else Arrangement.spacedBy(16.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Text(localized(TextKey.GiftGoldReward, "count" to reward.gold), color = ArcadePalette.Gold500)
         Text(localized(TextKey.GiftXpReward, "count" to reward.xp))
         Text(localized(TextKey.RewardGemsDescription, "count" to reward.gems), color = ArcadePalette.Mint400)

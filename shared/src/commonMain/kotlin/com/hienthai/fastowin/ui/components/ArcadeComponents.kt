@@ -776,8 +776,8 @@ fun ArcadeEmptyState(
 fun ArcadeRankBadge(rank: Int, modifier: Modifier = Modifier) {
     val color = when (rank) {
         1 -> ArcadePalette.Gold400
-        2 -> Color(0xFFC8D4EA)
-        3 -> Color(0xFFE59655)
+        2 -> ArcadePalette.Silver400
+        3 -> ArcadePalette.Bronze400
         else -> MaterialTheme.colorScheme.primaryContainer
     }
     val contentColor = if (rank in 1..3) ArcadePalette.Navy950 else MaterialTheme.colorScheme.onPrimaryContainer
