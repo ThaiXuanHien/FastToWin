@@ -1141,7 +1141,9 @@ private fun walletSourceIcon(sourceType: String): ImageVector = when (sourceType
 }
 
 @Composable
-private fun walletSourceLabel(sourceType: String): String = localized(when (sourceType) {
+private fun walletSourceLabel(sourceType: String): String = localized(walletSourceTextKey(sourceType))
+
+internal fun walletSourceTextKey(sourceType: String): TextKey = when (sourceType) {
     "DAILY_CHECK_IN" -> TextKey.DailyCheckInSource
     "MISSION" -> TextKey.MissionRewardSource
     "MATCH" -> TextKey.MatchRewardSource
@@ -1152,8 +1154,17 @@ private fun walletSourceLabel(sourceType: String): String = localized(when (sour
     "TOURNAMENT_PRIZE" -> TextKey.TournamentPrizeSource
     "SEASON_REWARD" -> TextKey.SeasonRewardSource
     "STORE_PURCHASE" -> TextKey.GemTopUpSource
+    "CLAN_DONATION" -> TextKey.ClanDonationSource
+    "CLAN_CREATION" -> TextKey.ClanCreationSource
+    "ADMIN_GIFT" -> TextKey.AdminGiftSource
+    "COMPENSATION" -> TextKey.CompensationSource
+    "GOLD_EXCHANGE" -> TextKey.GoldExchangeSource
+    "ACHIEVEMENT" -> TextKey.AchievementRewardSource
+    "TOURNAMENT_ENTRY_REFUND" -> TextKey.TournamentEntryRefundSource
+    "TOURNAMENT_ENTRY_REVERSED" -> TextKey.TournamentEntryReversedSource
+    "TOURNAMENT_MAINTENANCE_REFUND" -> TextKey.TournamentMaintenanceRefundSource
     else -> TextKey.WalletAdjustmentSource
-})
+}
 
 @Composable
 private fun walletRelativeTime(createdAtEpochMillis: Long, nowMillis: Long = epochMillis()): String {

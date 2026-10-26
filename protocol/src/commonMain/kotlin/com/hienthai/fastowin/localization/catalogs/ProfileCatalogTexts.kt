@@ -159,7 +159,13 @@ internal val englishProfileTexts = mapOf(
     TextKey.AchievementCheckInDescription to "Check in for 7 consecutive days", TextKey.MissionsTitle to "Missions",
     TextKey.ClanMissionSource to "Clan mission", TextKey.CosmeticPurchaseSource to "Item purchase",
     TextKey.TournamentEntrySource to "Tournament entry fee", TextKey.TournamentPrizeSource to "Tournament champion prize",
-    TextKey.SeasonRewardSource to "Season reward", TextKey.GemTopUpSource to "Gem top-up", TextKey.WalletAdjustmentSource to "Resource adjustment"
+    TextKey.SeasonRewardSource to "Season reward", TextKey.GemTopUpSource to "Gem top-up", TextKey.WalletAdjustmentSource to "Resource adjustment",
+    TextKey.ClanDonationSource to "Clan donation", TextKey.ClanCreationSource to "Clan creation",
+    TextKey.AdminGiftSource to "Admin gift", TextKey.CompensationSource to "Compensation gift",
+    TextKey.GoldExchangeSource to "Exchange Gems for Gold", TextKey.AchievementRewardSource to "Achievement reward",
+    TextKey.TournamentEntryRefundSource to "Tournament entry fee refund",
+    TextKey.TournamentEntryReversedSource to "Refunded tournament entry fee",
+    TextKey.TournamentMaintenanceRefundSource to "Cancelled tournament refund"
 )
 
 internal val vietnameseProfileTexts = englishProfileTexts + mapOf(
@@ -285,5 +291,11 @@ internal val vietnameseProfileTexts = englishProfileTexts + mapOf(
     TextKey.AchievementCheckInDescription to "Điểm danh 7 ngày liên tiếp", TextKey.MissionsTitle to "Nhiệm vụ",
     TextKey.ClanMissionSource to "Nhiệm vụ bang hội", TextKey.CosmeticPurchaseSource to "Mua vật phẩm",
     TextKey.TournamentEntrySource to "Phí tham gia giải đấu", TextKey.TournamentPrizeSource to "Giải thưởng vô địch",
-    TextKey.SeasonRewardSource to "Thưởng mùa giải", TextKey.GemTopUpSource to "Nạp Gem", TextKey.WalletAdjustmentSource to "Điều chỉnh tài sản"
+    TextKey.SeasonRewardSource to "Thưởng mùa giải", TextKey.GemTopUpSource to "Nạp Gem", TextKey.WalletAdjustmentSource to "Điều chỉnh tài sản",
+    TextKey.ClanDonationSource to "Quyên góp bang hội", TextKey.ClanCreationSource to "Tạo bang hội",
+    TextKey.AdminGiftSource to "Quà từ quản trị viên", TextKey.CompensationSource to "Quà đền bù",
+    TextKey.GoldExchangeSource to "Đổi Gem sang Vàng", TextKey.AchievementRewardSource to "Thưởng thành tích",
+    TextKey.TournamentEntryRefundSource to "Hoàn phí tham gia giải đấu",
+    TextKey.TournamentEntryReversedSource to "Phí tham gia giải đấu đã hoàn",
+    TextKey.TournamentMaintenanceRefundSource to "Hoàn phí khi hủy giải đấu"
 )

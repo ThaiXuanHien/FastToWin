@@ -28,6 +28,11 @@ class MissionWalletLocalizationTest {
             TextKey.WalletReceivedGems, TextKey.WalletUsedGems,
             TextKey.NoWalletActivity, TextKey.WalletRewardsAppear,
             TextKey.WalletNoActivityInFilter,
+            TextKey.ClanDonationSource, TextKey.ClanCreationSource,
+            TextKey.AdminGiftSource, TextKey.CompensationSource,
+            TextKey.GoldExchangeSource, TextKey.AchievementRewardSource,
+            TextKey.TournamentEntryRefundSource, TextKey.TournamentEntryReversedSource,
+            TextKey.TournamentMaintenanceRefundSource,
         )
     }
 

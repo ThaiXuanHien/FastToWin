@@ -216,6 +216,9 @@ ClanRaceTitle, ClanRacePrizes, ClanRacePerMember, ClanRaceEligibility, ClanRaceW
     AchievementCheckInTitle, AchievementCheckInDescription, MissionsTitle,
     ClanMissionSource, CosmeticPurchaseSource, TournamentEntrySource,
     TournamentPrizeSource, SeasonRewardSource, GemTopUpSource, WalletAdjustmentSource,
+    ClanDonationSource, ClanCreationSource, AdminGiftSource, CompensationSource,
+    GoldExchangeSource, AchievementRewardSource, TournamentEntryRefundSource,
+    TournamentEntryReversedSource, TournamentMaintenanceRefundSource,
 
     RemoveFriendTitle, RemoveFriendDescription, RemoveFriendAction, GoBack,
     BlockFriendDescription, YourSquad, YourSquadDescription, RoomInvitations,
