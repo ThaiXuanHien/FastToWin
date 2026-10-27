@@ -48,6 +48,7 @@ fun main() {
         val passwordHash = PasswordHasher().hash(password)
         dataSource.connection.use { connection ->
             connection.autoCommit = false
+            com.hienthai.fastowin.server.clanrace.JdbcClanRaceStore(connection).lock()
             try {
                 val userId = seedFullDevelopmentAccount(connection, email, passwordHash, displayName)
                 connection.commit()

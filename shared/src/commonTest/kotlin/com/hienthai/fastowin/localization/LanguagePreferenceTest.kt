@@ -1,6 +1,8 @@
 package com.hienthai.fastowin.localization
 
 import com.hienthai.fastowin.data.preferences.AppPreferences
+import com.hienthai.fastowin.data.preferences.AppFontScale
+import com.hienthai.fastowin.data.preferences.BoardStyle
 import com.hienthai.fastowin.protocol.ProtocolJson
 import kotlinx.serialization.decodeFromString
 import kotlin.test.Test
@@ -38,5 +40,24 @@ class LanguagePreferenceTest {
         assertEquals("en", normalizeAppLanguageSelection("future-code"))
         assertEquals("system", normalizeAppLanguageSelection("system"))
         assertEquals("vi", normalizeAppLanguageSelection("VI"))
+    }
+
+    @Test
+    fun removedLanguagePreferencesUseEnglishAndPreserveOtherSavedSettings() {
+        listOf("zh-Hans", "ja", "ko", "es", "pt-BR", "fr", "de", "id", "th", "ru").forEach { code ->
+            val preferences = ProtocolJson.decodeFromString<AppPreferences>(
+                """{"languageCode":"$code","soundEnabled":false,"vibrationEnabled":false,"visualEffectsEnabled":false,"boardStyle":"OCEAN","fontScale":"LARGE","hasCompletedTutorial":true}"""
+            )
+
+            assertEquals(AppLanguage.ENGLISH, resolveSavedLanguage(preferences.languageCode, listOf("vi-VN")), code)
+            assertEquals("en", normalizeAppLanguageSelection(preferences.languageCode), code)
+            assertEquals(code, preferences.languageCode)
+            assertEquals(false, preferences.soundEnabled)
+            assertEquals(false, preferences.vibrationEnabled)
+            assertEquals(false, preferences.visualEffectsEnabled)
+            assertEquals(BoardStyle.OCEAN, preferences.boardStyle)
+            assertEquals(AppFontScale.LARGE, preferences.fontScale)
+            assertEquals(true, preferences.hasCompletedTutorial)
+        }
     }
 }

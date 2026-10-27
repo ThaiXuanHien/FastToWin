@@ -17,6 +17,8 @@ fun Route.adminAssets() {
         "/admin/admin-gifts.js" to ("admin-gifts.js" to "application/javascript"),
         "/admin/admin-maintenance.js" to ("admin-maintenance.js" to "application/javascript"),
         "/admin/admin-analytics.js" to ("admin-analytics.js" to "application/javascript"),
+        "/admin/admin-missions.js" to ("admin-missions.js" to "application/javascript"),
+        "/admin/admin-clan-race.js" to ("admin-clan-race.js" to "application/javascript"),
         "/admin/admin-events.js" to ("admin-events.js" to "application/javascript"),
         "/admin/admin-compensation.js" to ("admin-compensation.js" to "application/javascript"),
         "/admin/admin-announcements.js" to ("admin-announcements.js" to "application/javascript"),

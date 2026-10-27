@@ -5,6 +5,13 @@ import com.hienthai.fastowin.ui.components.resolvePlayerAvatarImageUrl
 import kotlin.test.*
 
 class UgcLiveContentTest {
+    @Test fun `normal clan roster supplies moderated avatar truth but presence refresh does not`() {
+        val clan = ClanSnapshot("clan", "Clan", "", "owner", listOf(
+            ClanMemberSnapshot("target", "Target", ClanRole.MEMBER, 0, avatarId = MODERATED_AVATAR_ID)
+        ), 0)
+        assertEquals(listOf("target" to MODERATED_AVATAR_ID), ServerMessage.ClanInfoData(clan).authoritativeAvatars())
+        assertTrue(ServerMessage.ClanInfoData(clan, isPresenceRefresh = true).authoritativeAvatars().isEmpty())
+    }
     @Test fun `avatar removal immediately blocks only the exact target in this account state`() {
         val owner = GameState().withContentModerationChange(UgcTargetType.PLAYER_AVATAR, "target")
         assertEquals("", resolvePlayerAvatarImageUrl(null, "target", "https://cached.example/old", "https://game.example", 4,

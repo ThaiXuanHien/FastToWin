@@ -56,12 +56,12 @@ export default defineConfig({
     },
     {
       name: 'chromium-native-input',
-      testMatch: /(?:native-input|clan-keyboard)\.spec\.mjs/,
+      testMatch: /(?:native-input|clan-keyboard|clan-creation|ugc-report-keyboard)\.spec\.mjs/,
       use: { browserName: 'chromium', viewport: { width: 390, height: 844 }, hasTouch: true },
     },
     {
       name: 'webkit-native-input',
-      testMatch: /(?:native-input|clan-keyboard)\.spec\.mjs/,
+      testMatch: /(?:native-input|clan-keyboard|clan-creation|ugc-report-keyboard)\.spec\.mjs/,
       use: { browserName: 'webkit', viewport: { width: 390, height: 844 }, hasTouch: true },
     },
     {

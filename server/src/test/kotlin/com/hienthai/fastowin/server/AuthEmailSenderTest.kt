@@ -1,6 +1,7 @@
 package com.hienthai.fastowin.server
 
 import com.hienthai.fastowin.localization.AppLanguage
+import com.hienthai.fastowin.localization.resolveAppLanguage
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
@@ -9,22 +10,23 @@ import kotlin.test.assertNull
 
 class AuthEmailSenderTest {
     @Test
-    fun `password reset email renders Japanese content and language`() {
-        val content = passwordResetEmailContent(AppLanguage.JAPANESE, "reset-token")
+    fun `password reset email for a removed saved language renders English`() {
+        val language = resolveAppLanguage("ja", listOf("vi-VN"))
+        val content = passwordResetEmailContent(language, "reset-token")
 
-        assertEquals("パスワードを再設定 • Fast To Win", content.subject)
-        assertContains(content.html, "<html lang=\"ja\">")
-        assertContains(content.html, "以下のコードを使ってパスワードを再設定してください。コードは15分間有効です。")
+        assertEquals("Reset password • Fast To Win", content.subject)
+        assertContains(content.html, "<html lang=\"en\">")
+        assertContains(content.html, "Use the code below to reset your password. The code is valid for 15 minutes.")
         assertContains(content.html, "reset-token")
     }
 
     @Test
-    fun `verification email renders Simplified Chinese content`() {
-        val content = emailVerificationContent(AppLanguage.SIMPLIFIED_CHINESE, "123456")
+    fun `verification email renders Vietnamese content`() {
+        val content = emailVerificationContent(AppLanguage.VIETNAMESE, "123456")
 
-        assertEquals("验证邮箱 • Fast To Win", content.subject)
-        assertContains(content.html, "<html lang=\"zh-Hans\">")
-        assertContains(content.html, "在应用中输入下面的 6 位验证码。验证码有效期为 15 分钟。")
+        assertEquals("Xác minh email • Fast To Win", content.subject)
+        assertContains(content.html, "<html lang=\"vi\">")
+        assertContains(content.html, "Nhập mã 6 số bên dưới trong ứng dụng. Mã có hiệu lực trong 15 phút.")
         assertContains(content.html, "123456")
     }
 

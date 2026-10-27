@@ -26,6 +26,9 @@ fun protocolTextKeyForCode(code: String): TextKey? = when (code) {
     "FRIEND_ALREADY_JOINED_TOURNAMENT" -> TextKey.ServerFriendAlreadyJoinedTournament
     "TOURNAMENT_SAVE_FAILED" -> TextKey.ServerTournamentSaveFailed
     "CLAN_CREATION_INSUFFICIENT_FUNDS" -> TextKey.ServerClanCreationInsufficientFunds
+    "CLAN_CREATION_LEVEL_TOO_LOW" -> TextKey.ServerClanCreationLevelTooLow
+    "CLAN_LOGO_LOCKED" -> TextKey.ServerClanLogoLocked
+    "INVALID_CLAN_LOGO" -> TextKey.ServerInvalidClanLogo
     "TOURNAMENT_ACTIVE" -> TextKey.ServerTournamentActive
     "PLAYER_BUSY" -> TextKey.ServerPlayerActivityConflict
     "ALREADY_IN_ROOM" -> TextKey.ServerAlreadyInRoom

@@ -2,37 +2,17 @@ package com.hienthai.fastowin.localization
 
 enum class AppLanguage(val code: String, val languageTag: String, val nativeName: String) {
     VIETNAMESE("vi", "vi", "Tiếng Việt"),
-    ENGLISH("en", "en", "English"),
-    SIMPLIFIED_CHINESE("zh-Hans", "zh-Hans", "中文简体"),
-    JAPANESE("ja", "ja", "日本語"),
-    KOREAN("ko", "ko", "한국어"),
-    SPANISH("es", "es", "Español"),
-    BRAZILIAN_PORTUGUESE("pt-BR", "pt-BR", "Português (Brasil)"),
-    FRENCH("fr", "fr", "Français"),
-    GERMAN("de", "de", "Deutsch"),
-    INDONESIAN("id", "id", "Bahasa Indonesia"),
-    THAI("th", "th", "ไทย"),
-    RUSSIAN("ru", "ru", "Русский");
+    ENGLISH("en", "en", "English");
 
     /** Deliberately English secondary labels help users recover from an unfamiliar language. */
     val englishName: String get() = when (this) {
         VIETNAMESE -> "Vietnamese"
         ENGLISH -> "English"
-        SIMPLIFIED_CHINESE -> "Simplified Chinese"
-        JAPANESE -> "Japanese"
-        KOREAN -> "Korean"
-        SPANISH -> "Spanish"
-        BRAZILIAN_PORTUGUESE -> "Portuguese (Brazil)"
-        FRENCH -> "French"
-        GERMAN -> "German"
-        INDONESIAN -> "Indonesian"
-        THAI -> "Thai"
-        RUSSIAN -> "Russian"
     }
 }
 
-/** Languages currently exposed by FastToWin. Legacy catalogs remain decodable for compatibility. */
-val selectableAppLanguages: List<AppLanguage> = listOf(AppLanguage.VIETNAMESE, AppLanguage.ENGLISH)
+/** Languages shipped and exposed by FastToWin. */
+val selectableAppLanguages: List<AppLanguage> = AppLanguage.entries
 
 /** Normalizes the persisted selector without treating an unsupported legacy code as System. */
 fun normalizeAppLanguageSelection(savedCode: String): String {

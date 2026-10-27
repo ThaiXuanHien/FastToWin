@@ -34,7 +34,7 @@ val PROFILE_AVATAR_IDS = (
     STANDARD_PROFILE_AVATAR_IDS + DAILY_CHECK_IN_AVATAR_ID +
         DEFAULT_MALE_AVATAR_ID + DEFAULT_FEMALE_AVATAR_ID
 ).toSet()
-val CLAN_AVATAR_IDS = listOf("shield", "sword", "flag", "dragon", "wolf", "eagle", "crown")
+val CLAN_AVATAR_IDS: List<String> = CLAN_LOGOS.map { it.id }
 
 val ProtocolJson = Json {
     classDiscriminator = "type"
@@ -588,7 +588,10 @@ data class LeaderboardEntrySnapshot(
     val avatarId: String? = null,
     val frameId: String = "frame_default",
     val lifetimeEarnedGold: Long = 0,
-    val lifetimeEarnedGems: Long = 0
+    val lifetimeEarnedGems: Long = 0,
+    val clanId: String? = null,
+    val clanName: String? = null,
+    val clanLogoId: String? = null
 )
 
 @Serializable
@@ -601,7 +604,8 @@ data class ClanLeaderboardEntrySnapshot(
     val level: Int = 1,
     val experiencePoints: Long = 0,
     val donatedGold: Long = 0,
-    val donatedGems: Long = 0
+    val donatedGems: Long = 0,
+    val logoId: String? = null
 )
 
 @Serializable
@@ -1339,7 +1343,10 @@ sealed class ServerMessage {
 
     @Serializable
     @SerialName("clan_info_data")
-    data class ClanInfoData(val clan: ClanSnapshot) : ServerMessage()
+    data class ClanInfoData(
+        val clan: ClanSnapshot,
+        val isPresenceRefresh: Boolean = false
+    ) : ServerMessage()
 
     @Serializable
     @SerialName("clan_list_data")
@@ -1381,8 +1388,9 @@ sealed class ServerMessage {
 @Serializable
 enum class ClanRole { LEADER, CO_LEADER, MEMBER }
 
-const val CLAN_CREATION_GOLD_COST = 2_000
-const val CLAN_CREATION_GEM_COST = 20
+const val CLAN_CREATION_GOLD_COST = 10_000
+const val CLAN_CREATION_GEM_COST = 100
+const val CLAN_CREATION_MIN_LEVEL = 10
 
 @Serializable
 enum class ClanDonationCurrency { GOLD, GEMS }
@@ -1408,7 +1416,11 @@ data class ClanMemberSnapshot(
     val questContribution: Int = 0,
     val questRewardClaimed: Boolean = false,
     val donatedGold: Long = 0,
-    val donatedGems: Long = 0
+    val donatedGems: Long = 0,
+    val playerCode: String = "",
+    val avatarId: String? = null,
+    val frameId: String = "frame_default",
+    val presence: FriendPresence = FriendPresence.OFFLINE
 )
 
 @Serializable

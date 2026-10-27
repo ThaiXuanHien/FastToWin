@@ -10,7 +10,7 @@ class FriendManagementLocalizationTest {
             TextKey.RemoveFriendDescription, TextKey.RemoveFriendAction,
             TextKey.GoBack, TextKey.BlockFriendDescription,
             TextKey.NewCount, TextKey.PlayerCodeLabel, TextKey.PlayerCodeShort,
-            TextKey.BlockPlayerNamed, TextKey.ActiveFriends,
+            TextKey.BlockPlayerNamed,
             TextKey.PendingReplies, TextKey.SentFriendInvitation,
             TextKey.BlockedPlayers, TextKey.Unblock, TextKey.PlayerActions,
             TextKey.InviteSent, TextKey.SendingInvitation,
@@ -19,7 +19,7 @@ class FriendManagementLocalizationTest {
         val english = allLocalizationCatalogs.getValue(AppLanguage.ENGLISH).texts
 
         allLocalizationCatalogs.filterKeys {
-            it != AppLanguage.ENGLISH && it != AppLanguage.VIETNAMESE
+            it != AppLanguage.ENGLISH
         }.forEach { (language, catalog) ->
             keys.forEach { key ->
                 assertNotEquals(english.getValue(key), catalog.texts.getValue(key), "${language.code}/$key")

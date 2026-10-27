@@ -113,7 +113,7 @@ fun GiftMailboxScreen(
                                 modifier = Modifier.size(32.dp)
                             )
                             Text(
-                                localized(TextKey.GiftMailboxSubtitle),
+                                localized(if (state.items.any { it.clanRace != null }) TextKey.ClanRaceMailboxIntro else TextKey.GiftMailboxSubtitle),
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurface
                             )
@@ -201,17 +201,29 @@ private fun GiftCard(gift: MailboxGift, errorCode: String?, isPending: Boolean, 
                     modifier = Modifier.testTag("gift_compensation_${gift.campaignId}")
                 )
             }
+            val race = gift.clanRace
             Text(
-                if (isVietnamese) gift.titleVi else gift.titleEn,
+                if (race != null) localized(TextKey.ClanRaceGift, "week" to race.weekStart, "clan" to race.clanName, "rank" to race.finalRank)
+                else if (isVietnamese) gift.titleVi else gift.titleEn,
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onSurface
             )
-            GiftRewardAmounts(gift.gold, gift.xp, gift.gems)
-            Text(if (isVietnamese) gift.bodyVi else gift.bodyEn, color = MaterialTheme.colorScheme.onSurface)
+            if (race != null) {
+                RaceReward(race.reward)
+                Text(localized(TextKey.ClanRaceRankPoints, "rank" to race.finalRank, "points" to race.points))
+                Text(localized(TextKey.ClanRaceCutoff, "time" to raceTime(race.cutoffEpochMillis)))
+                Text(localized(TextKey.ClanRaceGiftExpires, "time" to raceTime(race.expiresAtEpochMillis)),
+                    modifier = Modifier.testTag("gift_race_deadline_${gift.campaignId}"))
+                Text(localized(TextKey.ClanRaceGiftReason))
+                Text(localized(TextKey.ClanRaceWalletSource), color = MaterialTheme.colorScheme.onSurfaceVariant)
+            } else {
+                GiftRewardAmounts(gift.gold, gift.xp, gift.gems)
+                Text(if (isVietnamese) gift.bodyVi else gift.bodyEn, color = MaterialTheme.colorScheme.onSurface)
+            }
             val status = when (gift.state) {
                 GiftState.AVAILABLE -> {
-                    val hours = ((gift.expiresAtEpochMillis - nowMillis).coerceAtLeast(0) + 3_599_999) / 3_600_000
+                    val hours = (((race?.expiresAtEpochMillis ?: gift.expiresAtEpochMillis) - nowMillis).coerceAtLeast(0) + 3_599_999) / 3_600_000
                     if (hours > 48) localized(TextKey.GiftExpiresInDays, "count" to ((hours + 23) / 24))
                     else localized(TextKey.GiftExpiresInHours, "count" to hours)
                 }

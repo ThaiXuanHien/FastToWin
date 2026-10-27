@@ -69,8 +69,8 @@ export function openAnalytics(ui) {
   const filterButton = button('Bộ lọc', filterDialog); filterButton.hidden = true;
   const refresh = iconButton('Làm mới thống kê', load, 'refresh'); controls.append(filterButton, refresh); main.append(controls);
   const dates = node('form', null, { class: 'analytics-dates', hidden: '' });
-  const from = field(dates, 'Từ ngày (Bangkok)', 'analytics-from', 'date', { required: '' });
-  const until = field(dates, 'Đến ngày, không gồm (Bangkok)', 'analytics-until', 'date', { required: '' });
+  const from = field(dates, 'Từ ngày · Giờ Việt Nam (UTC+7)', 'analytics-from', 'date', { required: '' });
+  const until = field(dates, 'Đến ngày, không gồm · Giờ Việt Nam (UTC+7)', 'analytics-until', 'date', { required: '' });
   dates.append(node('button', 'Áp dụng', { type: 'submit', class: 'primary' }));
   main.append(dates);
   const filterText = node('p', '', { class: 'muted analytics-filter-text' }); main.append(filterText);
@@ -137,7 +137,7 @@ export function openAnalytics(ui) {
     return panel;
   }
   function render(data) {
-    results.append(append(node('div', null, { class: 'analytics-range' }), node('p', 'Kỳ hiện tại: ' + rangeLabel(data.range)), node('p', 'Kỳ trước: ' + rangeLabel(data.comparisonRange)), node('p', `Bangkok UTC+7 · Tuần bắt đầu thứ Hai · Snapshot: ${date(data.snapshotAt)}`, { class: 'muted' })));
+    results.append(append(node('div', null, { class: 'analytics-range' }), node('p', 'Kỳ hiện tại: ' + rangeLabel(data.range)), node('p', 'Kỳ trước: ' + rangeLabel(data.comparisonRange)), node('p', `Giờ Việt Nam (UTC+7) · Tuần bắt đầu thứ Hai · Snapshot: ${date(data.snapshotAt)}`, { class: 'muted' })));
     if (!data.metrics.some(result => result.metric === 'ACTIVE_PLAYERS')) results.append(node('p', 'Dữ liệu nhập muộn có thể cập nhật kỳ lịch sử. “Một phần” chỉ phản ánh dữ liệu đã ghi nhận; chưa có dữ liệu không có nghĩa là 0.', { class: 'muted analytics-note' }));
     for (const metricData of data.metrics) {
       results.append(coveragePanel(metricData.coverage));
@@ -371,7 +371,7 @@ export function openAnalytics(ui) {
     }
     inspect();
 
-    table(parent, 'Số liệu theo thời gian · Bangkok · mốc đến không gồm', ['Khoảng thời gian', 'Giá trị', ...(activity ? ['Trạng thái dữ liệu'] : [])], points.map(point => [bucketLabel(point), valueLabel(point.value, group), ...(activity ? [point.value == null ? 'Chưa có dữ liệu' : 'Đã ghi nhận'] : [])]));
+    table(parent, 'Số liệu theo thời gian · Giờ Việt Nam (UTC+7) · mốc đến không gồm', ['Khoảng thời gian', 'Giá trị', ...(activity ? ['Trạng thái dữ liệu'] : [])], points.map(point => [bucketLabel(point), valueLabel(point.value, group), ...(activity ? [point.value == null ? 'Chưa có dữ liệu' : 'Đã ghi nhận'] : [])]));
   }
   function topView(parent, group) {
     if (!group.top.length) { parent.append(node('p', 'Chưa có vật phẩm được ghi nhận trong kỳ.')); return; }

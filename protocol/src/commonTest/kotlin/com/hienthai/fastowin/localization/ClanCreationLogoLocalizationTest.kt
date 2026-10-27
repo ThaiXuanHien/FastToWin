@@ -14,13 +14,13 @@ class ClanCreationLogoLocalizationTest {
             TextKey.ClanLogoShield, TextKey.ClanLogoSwords,
             TextKey.ClanLogoFlag, TextKey.ClanLogoDragon,
             TextKey.ClanLogoWolf, TextKey.ClanLogoEagle,
-            TextKey.ClanLogoCrown, TextKey.ClanLogoNamed,
+            TextKey.ClanLogoCrown,
             TextKey.Individual, TextKey.YouSuffix,
         )
         val english = allLocalizationCatalogs.getValue(AppLanguage.ENGLISH).texts
 
         allLocalizationCatalogs.filterKeys {
-            it != AppLanguage.ENGLISH && it != AppLanguage.VIETNAMESE
+            it != AppLanguage.ENGLISH
         }.forEach { (language, catalog) ->
             keys.forEach { key ->
                 assertNotEquals(english.getValue(key), catalog.texts.getValue(key), "${language.code}/$key")

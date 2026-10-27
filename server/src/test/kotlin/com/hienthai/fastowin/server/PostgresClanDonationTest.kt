@@ -37,11 +37,12 @@ class PostgresClanDonationTest {
                 dataSource.connection.use { connection ->
                     connection.prepareStatement(
                         """
-                        INSERT INTO player_stats (user_id, gold, gems, updated_at)
-                        VALUES (?, 20000, 30, CURRENT_TIMESTAMP)
+                        INSERT INTO player_stats (user_id, gold, gems, experience_points, updated_at)
+                        VALUES (?, 28000, 110, 1260, CURRENT_TIMESTAMP)
                         ON CONFLICT (user_id) DO UPDATE SET
                             gold = EXCLUDED.gold,
                             gems = EXCLUDED.gems,
+                            experience_points = EXCLUDED.experience_points,
                             updated_at = EXCLUDED.updated_at
                         """.trimIndent()
                     ).use { statement ->

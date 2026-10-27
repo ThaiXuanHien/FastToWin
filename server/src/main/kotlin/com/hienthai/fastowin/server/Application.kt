@@ -1,4 +1,6 @@
 package com.hienthai.fastowin.server
+import com.hienthai.fastowin.server.missions.*
+import com.hienthai.fastowin.server.clanrace.*
 import com.hienthai.fastowin.server.ads.adMobRoutes
 
 import com.hienthai.fastowin.server.moderation.*
@@ -60,7 +62,6 @@ import io.ktor.server.request.header
 import io.ktor.server.response.header
 import io.ktor.server.response.respond
 import io.ktor.server.response.respondText
-import io.ktor.server.response.respondBytes
 import io.ktor.server.routing.post
 import io.ktor.server.routing.get
 import io.ktor.server.routing.routing
@@ -115,6 +116,10 @@ fun Application.gameModule(
     analyticsService: com.hienthai.fastowin.server.analytics.AnalyticsService? = adminService?.let {
         com.hienthai.fastowin.server.analytics.AnalyticsService(com.hienthai.fastowin.server.analytics.UnavailableAnalyticsRepository, it)
     },
+    missionService: MissionService = MissionService(null, adminService),
+    clanRaceService: ClanRaceService = ClanRaceService(null, adminService),
+    clanRaceSettlement: ClanRaceSettlement? = null,
+    clanRaceDelivery: ClanRaceDelivery? = null,
     rewardEventService: RewardEventService = RewardEventService(UnavailableRewardEventRepository, adminService),
     compensationIncidentService: CompensationIncidentService? = adminService?.let { CompensationIncidentService(giftService.repository, it) },
     compensationRoundService: CompensationRoundService? = adminService?.let { CompensationRoundService(giftService.repository, it) }
@@ -211,10 +216,12 @@ fun Application.gameModule(
     routing { giftRoutes(giftService, authService, adminService != null) }
     if (adminService != null) compensationIncidentService?.let { service -> routing { compensationIncidentRoutes(service) } }
     if (adminService != null) compensationRoundService?.let { service -> routing { compensationRoundRoutes(service) } }
+    routing { missionRoutes(missionService, authService, adminService != null); clanRaceRoutes(clanRaceService,authService,adminService != null) }
     routing { rewardEventRoutes(rewardEventService, adminService != null) }
     routing { announcementRoutes(announcementService, authService, adminService != null) }
     if (adminService != null) maintenanceService?.let { service -> routing { maintenanceRoutes(service) } }
     if (giftDeliveryEnabled) startGiftDelivery(giftService)
+    if (giftDeliveryEnabled && clanRaceSettlement != null && clanRaceDelivery != null) startClanRaceDelivery(clanRaceSettlement,clanRaceDelivery)
 
     announcementPushDelivery?.let { startAnnouncementDelivery(announcementService, it) }
 

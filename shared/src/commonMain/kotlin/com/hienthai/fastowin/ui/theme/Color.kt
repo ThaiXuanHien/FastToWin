@@ -26,6 +26,8 @@ object ArcadePalette {
     val Gold400 = Color(0xFFFFD84D)
     val Gold500 = Color(0xFFFFC928)
     val Gold800 = Color(0xFF704B00)
+    val Silver400 = Color(0xFFC8D4EA)
+    val Bronze400 = Color(0xFFE59655)
 
     val Mint100 = Color(0xFFD5FAEF)
     val Mint400 = Color(0xFF39DDB0)

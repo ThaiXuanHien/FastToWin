@@ -2,6 +2,8 @@ package com.hienthai.fastowin.ui.components
 
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -17,10 +19,12 @@ import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextFieldColors
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.VisualTransformation
@@ -67,6 +71,11 @@ fun AppOutlinedTextField(
     }
     val interactionSource = remember { MutableInteractionSource() }
     val focused by interactionSource.collectIsFocusedAsState()
+    val bringIntoView = remember { BringIntoViewRequester() }
+    val windowSize = LocalWindowInfo.current.containerSize
+    LaunchedEffect(focused, windowSize) {
+        if (focused) bringIntoView.bringIntoView()
+    }
     val textColor = when {
         !enabled -> colors.disabledTextColor
         isError -> colors.errorTextColor
@@ -79,7 +88,7 @@ fun AppOutlinedTextField(
             override fun defaultKeyboardAction(imeAction: ImeAction) = Unit
         }
     }
-    Box(modifier.padding(top = if (label != null) 8.dp else 0.dp)
+    Box(modifier.bringIntoViewRequester(bringIntoView).padding(top = if (label != null) 8.dp else 0.dp)
         .defaultMinSize(minWidth = OutlinedTextFieldDefaults.MinWidth,
             minHeight = OutlinedTextFieldDefaults.MinHeight)) {
         OutlinedTextFieldDefaults.DecorationBox(

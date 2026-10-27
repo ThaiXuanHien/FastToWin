@@ -2,23 +2,13 @@
 
 Fast To Win dùng catalog Kotlin chung cho Android, iOS và Web. Runtime hiện chỉ
 cho phép chọn `vi`, `en` hoặc `system`; `system` phân giải sang Tiếng Việt hoặc
-English. Mười catalog cũ còn lại chỉ được giữ để tương thích dữ liệu/source cũ và
-không xuất hiện trong giao diện chọn ngôn ngữ.
+English. Source chỉ đóng gói hai catalog này; mã ngôn ngữ cũ vẫn được đọc và
+fallback về English mà không cần giữ catalog cũ.
 
 | Mã | Ngôn ngữ |
 | --- | --- |
 | `vi` | Tiếng Việt |
 | `en` | English |
-| `zh-Hans` | 中文简体 |
-| `ja` | 日本語 |
-| `ko` | 한국어 |
-| `es` | Español |
-| `pt-BR` | Português (Brasil) |
-| `fr` | Français |
-| `de` | Deutsch |
-| `id` | Bahasa Indonesia |
-| `th` | ไทย |
-| `ru` | Русский |
 
 ## Quy tắc runtime
 
@@ -48,16 +38,17 @@ trị được render một lần nên dấu ngoặc hoặc ký tự `$` trong n
 được giữ nguyên. Không bao giờ truyền mật khẩu, token, email nhạy cảm, secret hay
 session ID làm đối số localization hoặc ghi chúng vào log.
 
-Nội dung phụ thuộc số lượng dùng `QuantityKey` và các dạng `ONE`, `FEW`, `MANY`,
-`OTHER`; không tự viết `if (count == 1)` ở UI. Luôn có `OTHER`. Bộ render tự thêm
+Nội dung phụ thuộc số lượng dùng `QuantityKey` và các dạng `ONE`, `OTHER`;
+không tự viết `if (count == 1)` ở UI. Tiếng Anh dùng `ONE` khi số lượng bằng 1;
+Tiếng Việt luôn dùng `OTHER`. Luôn có `OTHER`. Bộ render tự thêm
 placeholder `{count}` và áp dụng quy tắc số nhiều của ngôn ngữ đang chọn trước khi
 fallback sang tiếng Anh.
 
 ## Thêm hoặc sửa ngôn ngữ
 
 1. Với câu mới, thêm một `TextKey` hoặc `QuantityKey` và bản dịch thực cho `vi`
-   và `en`. English là hợp đồng canonical và fallback an toàn ở runtime. Chỉ cập
-   nhật catalog legacy khi thay đổi đó phục vụ tương thích dữ liệu cũ.
+   và `en`. English là hợp đồng canonical và fallback an toàn ở runtime. Không
+   khôi phục catalog legacy chỉ để đọc mã ngôn ngữ đã lưu.
 2. Điền khóa vào các map catalog dùng chung. Giữ đúng placeholder và không dịch
    ID, mã lỗi, route, test tag hoặc nội dung người dùng.
 3. Muốn mở lại hoặc thêm một ngôn ngữ phải có quyết định sản phẩm: cập nhật

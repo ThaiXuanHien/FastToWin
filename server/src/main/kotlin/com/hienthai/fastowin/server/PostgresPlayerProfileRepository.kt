@@ -1,6 +1,7 @@
 package com.hienthai.fastowin.server
 
 import com.hienthai.fastowin.server.analytics.AnalyticsFacts
+import com.hienthai.fastowin.server.missions.*
 
 import com.hienthai.fastowin.protocol.MatchHistoryOutcome
 import com.hienthai.fastowin.protocol.MatchHistorySnapshot
@@ -320,8 +321,17 @@ class PostgresPlayerProfileRepository(
                 }
             }
             val today = currentCheckInDate()
-            val activeDailyMissions = MissionRotation.forPeriod(MissionPeriod.DAILY, today)
-            val activeWeeklyMissions = MissionRotation.forPeriod(MissionPeriod.WEEKLY, today)
+            // Use this connection: nesting a repository connection can starve a busy pool during profile reads.
+            connection.autoCommit = false
+            val activeMissions = try {
+                val missions = JdbcMissionStore(connection)
+                missions.lock()
+                missions.legacyDefinitions(playerId, today).also { connection.commit() }
+            } catch (error: Throwable) {
+                connection.rollback(); throw error
+            } finally { connection.autoCommit = true }
+            val activeDailyMissions = activeMissions.filter { it.period == MissionPeriod.DAILY }
+            val activeWeeklyMissions = activeMissions.filter { it.period == MissionPeriod.WEEKLY }
             val recentCheckInDates = connection.prepareStatement(
                 """
                 SELECT check_in_date
@@ -350,10 +360,7 @@ class PostgresPlayerProfileRepository(
             ).use { statement ->
                 statement.setObject(1, userId)
                 statement.setDate(2, Date.valueOf(today))
-                statement.setDate(3, Date.valueOf(missionPeriodStart(
-                    activeWeeklyMissions.first(),
-                    today
-                )))
+                statement.setDate(3, Date.valueOf(today.with(java.time.temporal.TemporalAdjusters.previousOrSame(java.time.DayOfWeek.MONDAY))))
                 statement.executeQuery().use { result ->
                     buildMap {
                         while (result.next()) {
@@ -399,9 +406,9 @@ class PostgresPlayerProfileRepository(
                     progress = progress,
                     target = definition.target,
                     completed = progress >= definition.target,
-                    rewardXp = stored?.rewardXp?.takeIf { it > 0 } ?: definition.rewardXp,
-                    rewardGold = stored?.rewardGold?.takeIf { it > 0 } ?: definition.rewardGold,
-                    rewardGems = stored?.rewardGems?.takeIf { it > 0 } ?: definition.rewardGems,
+                    rewardXp = stored?.rewardXp ?: definition.rewardXp,
+                    rewardGold = stored?.rewardGold ?: definition.rewardGold,
+                    rewardGems = stored?.rewardGems ?: definition.rewardGems,
                     rewardClaimed = stored?.rewardClaimed == true,
                     difficulty = definition.difficulty,
                     titleKey = definition.titleKey.name
@@ -981,6 +988,7 @@ class PostgresPlayerProfileRepository(
         withContext(Dispatchers.IO) {
             dataSource.connection.use { connection ->
                 connection.autoCommit = false
+                JdbcMissionStore(connection).lock()
                 try {
                     val userId = UUID.fromString(playerId)
                     connection.prepareStatement(
@@ -1060,34 +1068,7 @@ class PostgresPlayerProfileRepository(
                             gems = decision.rewardGems,
                             xp = decision.rewardXp
                         )
-                        MissionRotation.forPeriod(MissionPeriod.DAILY, today)
-                            .firstOrNull { it.code == "DAILY_CHECK_IN" }
-                            ?.let { definition ->
-                                connection.prepareStatement(
-                                    """
-                                    INSERT INTO user_missions (
-                                        user_id, mission_code, period_start, progress, target,
-                                        reward_xp, reward_gold, reward_gems, completed_at
-                                    ) VALUES (?, ?, ?, 1, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-                                    ON CONFLICT (user_id, mission_code, period_start) DO UPDATE SET
-                                        progress = GREATEST(user_missions.progress, 1),
-                                        target = EXCLUDED.target,
-                                        reward_xp = EXCLUDED.reward_xp,
-                                        reward_gold = EXCLUDED.reward_gold,
-                                        reward_gems = EXCLUDED.reward_gems,
-                                        completed_at = COALESCE(user_missions.completed_at, CURRENT_TIMESTAMP)
-                                    """.trimIndent()
-                                ).use { statement ->
-                                    statement.setObject(1, userId)
-                                    statement.setString(2, definition.code)
-                                    statement.setDate(3, Date.valueOf(today))
-                                    statement.setInt(4, definition.target)
-                                    statement.setInt(5, definition.rewardXp)
-                                    statement.setInt(6, definition.rewardGold)
-                                    statement.setInt(7, definition.rewardGems)
-                                    statement.executeUpdate()
-                                }
-                            }
+                        JdbcMissionStore(connection).record(MissionProgressEvent("check-in:$today",playerId,clock.millis(),checkIn=true))
                         val occurredAt = clock.instant()
                         grantNewAchievements(
                             connection = connection,
@@ -1124,113 +1105,8 @@ class PostgresPlayerProfileRepository(
             }
         }
 
-    override suspend fun claimMissionReward(
-        playerId: String,
-        missionCode: String
-    ): MissionRewardClaimResult? = withContext(Dispatchers.IO) {
-        val definition = missionDefinition(missionCode)
-            ?: return@withContext MissionRewardClaimResult(MissionRewardClaimStatus.INVALID_MISSION)
-        dataSource.connection.use { connection ->
-            connection.autoCommit = false
-            try {
-                val userId = UUID.fromString(playerId)
-                val periodStart = Date.valueOf(missionPeriodStart(definition, currentCheckInDate()))
-                val stored = connection.prepareStatement(
-                    """
-                    SELECT progress, target, reward_xp, reward_gold, reward_gems, claimed_at
-                    FROM user_missions
-                    WHERE user_id = ? AND mission_code = ? AND period_start = ?
-                    FOR UPDATE
-                    """.trimIndent()
-                ).use { statement ->
-                    statement.setObject(1, userId)
-                    statement.setString(2, definition.code)
-                    statement.setDate(3, periodStart)
-                    statement.executeQuery().use { result ->
-                        if (!result.next()) null else StoredMission(
-                            progress = result.getInt("progress"),
-                            target = result.getInt("target"),
-                            rewardXp = result.getInt("reward_xp"),
-                            rewardGold = result.getInt("reward_gold"),
-                            rewardGems = result.getInt("reward_gems"),
-                            rewardClaimed = result.getTimestamp("claimed_at") != null
-                        )
-                    }
-                }
-                val outcome = when {
-                    stored == null || stored.progress < stored.target ->
-                        MissionRewardClaimResult(MissionRewardClaimStatus.NOT_COMPLETED)
-                    stored.rewardClaimed ->
-                        MissionRewardClaimResult(MissionRewardClaimStatus.ALREADY_CLAIMED)
-                    else -> {
-                        val rewardXp = stored.rewardXp.takeIf { it > 0 } ?: definition.rewardXp
-                        val rewardGold = stored.rewardGold.takeIf { it > 0 } ?: definition.rewardGold
-                        val rewardGems = stored.rewardGems.takeIf { it > 0 } ?: definition.rewardGems
-                        connection.prepareStatement(
-                            """
-                            UPDATE user_missions
-                            SET claimed_at = CURRENT_TIMESTAMP
-                            WHERE user_id = ? AND mission_code = ? AND period_start = ?
-                              AND claimed_at IS NULL AND progress >= target
-                            """.trimIndent()
-                        ).use { statement ->
-                            statement.setObject(1, userId)
-                            statement.setString(2, definition.code)
-                            statement.setDate(3, periodStart)
-                            check(statement.executeUpdate() == 1)
-                        }
-                        connection.prepareStatement(
-                            """
-                            UPDATE player_stats
-                            SET experience_points = experience_points + ?,
-                                gold = gold + ?,
-                                gems = gems + ?,
-                                updated_at = CURRENT_TIMESTAMP
-                            WHERE user_id = ?
-                            """.trimIndent()
-                        ).use { statement ->
-                            statement.setInt(1, rewardXp)
-                            statement.setInt(2, rewardGold)
-                            statement.setInt(3, rewardGems)
-                            statement.setObject(4, userId)
-                            check(statement.executeUpdate() == 1)
-                        }
-                        insertWalletTransaction(
-                            connection = connection,
-                            userId = userId,
-                            sourceType = "MISSION",
-                            sourceId = "${definition.code}:$periodStart",
-                            gold = rewardGold,
-                            gems = rewardGems,
-                            xp = rewardXp
-                        )
-                        grantNewAchievements(
-                            connection = connection,
-                            userId = userId,
-                            candidates = completedAchievementCodes(
-                                achievementProgress(connection, userId),
-                                setOf("PLAYER_LEVEL_30")
-                            ),
-                            occurredAt = clock.instant(),
-                            matchId = null
-                        )
-                        MissionRewardClaimResult(
-                            MissionRewardClaimStatus.CLAIMED,
-                            rewardXp,
-                            rewardGold,
-                            rewardGems
-                        )
-                    }
-                }
-                connection.commit()
-                outcome
-            } catch (error: Throwable) {
-                connection.rollback()
-                throw error
-            }
-        }
-    }
-
+    override suspend fun claimMissionReward(playerId: String, missionCode: String): MissionRewardClaimResult? =
+        PostgresMissionRepository(dataSource).transaction { claimLegacyPersonal(playerId, missionCode, currentCheckInDate()) }
     override suspend fun updateFcmToken(
         playerId: String,
         token: String,

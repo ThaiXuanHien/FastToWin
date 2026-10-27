@@ -6,6 +6,7 @@ import androidx.compose.ui.test.FontScale
 import androidx.compose.ui.test.ForcedSize
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.junit4.v2.createComposeRule
@@ -13,6 +14,8 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performSemanticsAction
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.test.assertIsSelected
@@ -23,6 +26,7 @@ import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.then
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
+import androidx.test.espresso.Espresso.closeSoftKeyboard
 import com.hienthai.fastowin.navigation.GameMode
 import com.hienthai.fastowin.protocol.ProtocolGameMode
 import com.hienthai.fastowin.protocol.PublicTournamentSummary
@@ -89,7 +93,7 @@ class TournamentScreenTest {
                 onRespond = { if (it) accepted++ }, onDefer = {}, nowEpochMillis = now
             )
         } }
-        composeRule.onNodeWithText("Asia/Bangkok").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("Giờ Việt Nam (UTC+7)").performScrollTo().assertIsDisplayed()
         composeRule.onNodeWithText("Bắt đầu: 2026-10-15 12:00").performScrollTo().assertIsDisplayed()
         composeRule.onNodeWithTag("accept_tournament_invitation").performScrollTo().performClick()
         composeRule.runOnIdle { assertEquals(1, accepted); now = opensAt }
@@ -123,6 +127,7 @@ class TournamentScreenTest {
         composeRule.onNodeWithTag("open_create_tournament").performScrollTo().performClick()
         withDialogIme("schedule-tournament", composeRule.onNodeWithTag("tournament_name"),
             composeRule.onNodeWithTag("tournament_schedule_toggle"),
+            composeRule.onNodeWithTag("tournament_schedule_time_zone"),
             composeRule.onNodeWithTag("create_tournament")) { ime ->
             composeRule.onNodeWithTag("tournament_name").performScrollTo().performTextInput("Scheduled Cup")
             ime.show()
@@ -131,15 +136,28 @@ class TournamentScreenTest {
             composeRule.onNodeWithTag("tournament_schedule_toggle")
                 .performScrollTo().assertFullyVisibleAboveIme().performClick().assertIsOn()
             composeRule.onNodeWithTag("tournament_schedule_local_start").performScrollTo().performTextInput("bad")
-            composeRule.onNodeWithTag("tournament_schedule_error").performScrollTo().assertIsDisplayed()
+            // Finish editing before inspecting validation elsewhere in the form: the native
+            // focused field otherwise brings itself back into view after a semantics scroll.
+            // Espresso waits for the input method's hide acknowledgement before returning.
+            closeSoftKeyboard()
+            composeRule.waitUntil { ime.isSettled(visible = false) }
+            composeRule.onNodeWithTag("tournament_schedule_error").performScrollTo().assertFullyVisibleAboveIme()
             composeRule.onNodeWithTag("create_tournament").performScrollTo().assertIsNotEnabled()
+            composeRule.runOnIdle { assertNull(created) }
             composeRule.onNodeWithTag("tournament_schedule_local_start").performScrollTo().performTextReplacement("2026-10-15 12:00")
             composeRule.onNodeWithTag("tournament_schedule_time_zone").performScrollTo().performTextReplacement("Asia/Bangkok")
+            closeSoftKeyboard()
+            composeRule.waitUntil { ime.isSettled(visible = false) }
+            composeRule.onNodeWithText("Đăng ký đóng: 2026-10-15 11:45").performScrollTo().assertIsDisplayed()
+            composeRule.onNodeWithText("Check-in mở: 2026-10-15 11:45").performScrollTo().assertIsDisplayed()
+            // Establish the intended input focus before asking the native IME to reopen.
+            // A coordinate click can race the previous field's bring-into-view scroll.
+            composeRule.onNodeWithTag("tournament_schedule_time_zone").performScrollTo()
+                .performSemanticsAction(SemanticsActions.RequestFocus).assertIsFocused()
+            composeRule.waitForIdle()
             ime.show()
             composeRule.waitUntil { ime.isSettled(visible = true) }
             composeRule.waitForIdle()
-            composeRule.onNodeWithText("Đăng ký đóng: 2026-10-15 11:45").performScrollTo().assertIsDisplayed()
-            composeRule.onNodeWithText("Check-in mở: 2026-10-15 11:45").performScrollTo().assertIsDisplayed()
             composeRule.onNodeWithTag("create_tournament").performScrollTo().assertFullyVisibleAboveIme().assertIsEnabled().performClick()
             composeRule.runOnIdle { assertEquals(TournamentScheduleRequest(1_792_040_400_000, "Asia/Bangkok"), created) }
         }

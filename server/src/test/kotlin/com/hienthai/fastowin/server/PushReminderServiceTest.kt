@@ -29,7 +29,7 @@ class PushReminderServiceTest {
         assertEquals(1, service.sendDueReminders())
         assertEquals(0, service.sendDueReminders())
         assertEquals(listOf("/account/check-in"), sent.map(RecordedPush::destination))
-        assertEquals(listOf(AppLanguage.JAPANESE), sent.map(RecordedPush::language))
+        assertEquals(listOf(AppLanguage.ENGLISH), sent.map(RecordedPush::language))
         assertEquals(TextKey.PushDailyCheckInTitle, sent.single().titleKey)
         assertEquals(TextKey.PushDailyCheckInMessage, sent.single().bodyKey)
         assertEquals(setOf("daily-check-in:2026-09-02"), deliveredKeys)
@@ -99,7 +99,7 @@ class PushReminderServiceTest {
         ): List<PushReminderTarget> = if ("daily-check-in:$reminderDate" in deliveredKeys) {
             emptyList()
         } else {
-            listOf(PushReminderTarget("player-1", "token-1", AppLanguage.JAPANESE))
+            listOf(PushReminderTarget("player-1", "token-1", AppLanguage.ENGLISH))
         }
 
         override suspend fun markPushReminderDelivered(

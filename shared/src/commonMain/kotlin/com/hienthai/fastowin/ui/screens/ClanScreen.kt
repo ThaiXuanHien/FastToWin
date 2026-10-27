@@ -1,21 +1,24 @@
 package com.hienthai.fastowin.ui.screens
 
+import com.hienthai.fastowin.state.MissionState
+import com.hienthai.fastowin.ui.components.ServerMissionList
+
 import com.hienthai.fastowin.ui.components.canReportUgcTarget
 import com.hienthai.fastowin.ui.components.ReportableText
-import com.hienthai.fastowin.ui.components.UgcReportButton
-import com.hienthai.fastowin.ui.components.UgcSafetyButton
-import com.hienthai.fastowin.ui.components.UgcTarget
+import com.hienthai.fastowin.ui.components.UgcClanReportAction
 import com.hienthai.fastowin.protocol.UgcTargetType
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -26,17 +29,11 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.EmojiEvents
-import androidx.compose.material.icons.rounded.Flag
-import androidx.compose.material.icons.rounded.Flight
-import androidx.compose.material.icons.rounded.Pets
 import androidx.compose.material.icons.rounded.PersonRemove
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Shield
@@ -59,6 +56,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
@@ -68,19 +66,23 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.hienthai.fastowin.protocol.CLAN_AVATAR_IDS
+import com.hienthai.fastowin.protocol.CLAN_LOGOS
+import com.hienthai.fastowin.protocol.clanLogoRequiredLevel
+import com.hienthai.fastowin.protocol.isClanLogoUnlocked
 import com.hienthai.fastowin.protocol.CLAN_CREATION_GEM_COST
 import com.hienthai.fastowin.protocol.CLAN_CREATION_GOLD_COST
+import com.hienthai.fastowin.protocol.CLAN_CREATION_MIN_LEVEL
 import com.hienthai.fastowin.protocol.ClanDonationCurrency
 import com.hienthai.fastowin.protocol.ClanJoinRequestSnapshot
 import com.hienthai.fastowin.protocol.ClanMemberSnapshot
-import com.hienthai.fastowin.protocol.ClanQuestSnapshot
 import com.hienthai.fastowin.protocol.ClanRole
 import com.hienthai.fastowin.protocol.ClanSnapshot
 import com.hienthai.fastowin.protocol.ClanSummarySnapshot
+import com.hienthai.fastowin.protocol.FriendsSnapshot
 import com.hienthai.fastowin.localization.QuantityKey
 import com.hienthai.fastowin.localization.TextKey
 import com.hienthai.fastowin.localization.localized
@@ -96,12 +98,14 @@ import com.hienthai.fastowin.ui.components.ArcadeIconHero
 import com.hienthai.fastowin.ui.components.ArcadeLoadMoreButton
 import com.hienthai.fastowin.ui.components.ArcadePanel
 import com.hienthai.fastowin.ui.components.ArcadeSegmentedControl
-import com.hienthai.fastowin.ui.components.CrossedSwordsIcon
+import com.hienthai.fastowin.ui.components.ClanEmblemAccents
+import com.hienthai.fastowin.ui.components.clanEmblemImageVector
 import com.hienthai.fastowin.ui.components.DEFAULT_ARCADE_PAGE_SIZE
 import com.hienthai.fastowin.ui.components.FastToWinHeader
-import com.hienthai.fastowin.ui.components.RewardAmounts
 import com.hienthai.fastowin.ui.components.SystemBackHandler
 import com.hienthai.fastowin.ui.components.nextArcadePageItemCount
+import com.hienthai.fastowin.ui.components.PlayerAvatar
+import com.hienthai.fastowin.ui.components.FriendPresenceIndicator
 import com.hienthai.fastowin.ui.layout.ResponsiveScreen
 import com.hienthai.fastowin.ui.theme.ArcadePalette
 
@@ -134,6 +138,19 @@ fun ClanScreen(
     onOpenNotifications: () -> Unit = {},
     showBackButton: Boolean = true,
     modifier: Modifier = Modifier,
+    missionState: MissionState? = null,
+    onRefreshMissions: () -> Unit = {},
+    onClaimMissionInstance: (String) -> Unit = {},
+    onOpenRace: (() -> Unit)? = null,
+    playerLevel: Int = 1,
+    social: FriendsSnapshot = FriendsSnapshot(),
+    isSocialLoading: Boolean = false,
+    socialNotice: String? = null,
+    socialError: String? = null,
+    onSendFriendRequest: (String) -> Unit = {},
+    onRespondFriendRequest: (String, Boolean) -> Unit = { _, _ -> },
+    isSocialReady: Boolean = true,
+    onRefreshSocial: () -> Unit = {}
 ) {
     SystemBackHandler(enabled = showBackButton, onBack = onBack)
 
@@ -159,41 +176,63 @@ fun ClanScreen(
             maxContentWidth = 920.dp,
             applySafeDrawingInsets = false
         ) { contentModifier ->
-            when {
-                myClanId == null -> ClanDiscoveryView(
-                    clanList = clanList,
-                    pendingJoinClanIds = pendingJoinClanIds,
-                    notice = notice,
-                    onCreateClan = onCreateClan,
-                    onJoinClan = onJoinClan,
-                    onSearch = onSearch,
-                    gold = gold,
-                    gems = gems,
-                    modifier = contentModifier
-                )
-
-                currentClan != null -> ClanDetailView(
-                    serverUrl = serverUrl,
-                    currentUserId = currentUserId,
-                    clan = currentClan,
-                    notice = notice,
-                    onLeave = onLeaveClan,
-                    onKickMember = onKickMember,
-                    onRespondJoinRequest = onRespondJoinRequest,
-                    onUpdateLogo = { logoId -> onUpdateLogo(currentClan.id, logoId) },
-                    onClaimQuest = { onClaimQuest(currentClan.id) },
-                    gold = gold,
-                    gems = gems,
-                    isDonationPending = isDonationPending,
-                    onDonate = { currency, amount -> onDonate(currentClan.id, currency, amount) },
-                    modifier = contentModifier
-                )
-
-                else -> {
-                    Box(contentModifier, contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator(color = ArcadePalette.Gold500)
+            Column(contentModifier) {
+                onOpenRace?.let { open ->
+                    androidx.compose.material3.OutlinedButton(open,
+                        modifier = Modifier.fillMaxWidth().padding(top = 12.dp).heightIn(min = 48.dp).testTag("clan_weekly_race_entry")) {
+                        Text(localized(TextKey.ClanRaceTitle), fontWeight = FontWeight.Bold)
                     }
-                    LaunchedEffect(myClanId) { onViewClan(myClanId) }
+                }
+                Box(Modifier.weight(1f)) {
+                    when {
+                        myClanId == null -> ClanDiscoveryView(
+                            clanList = clanList,
+                            pendingJoinClanIds = pendingJoinClanIds,
+                            notice = notice,
+                            onCreateClan = onCreateClan,
+                            onJoinClan = onJoinClan,
+                            onSearch = onSearch,
+                            gold = gold,
+                            gems = gems,
+                            playerLevel = playerLevel,
+                            modifier = Modifier.fillMaxSize()
+                        )
+
+                        currentClan != null -> ClanDetailView(
+                            serverUrl = serverUrl,
+                            currentUserId = currentUserId,
+                            clan = currentClan,
+                            notice = notice,
+                            onLeave = onLeaveClan,
+                            onKickMember = onKickMember,
+                            onRespondJoinRequest = onRespondJoinRequest,
+                            onUpdateLogo = { logoId -> onUpdateLogo(currentClan.id, logoId) },
+                            onClaimQuest = { onClaimQuest(currentClan.id) },
+                            missionState = missionState,
+                            onRefreshMissions = onRefreshMissions,
+                            onClaimMissionInstance = onClaimMissionInstance,
+                            gold = gold,
+                            gems = gems,
+                            isDonationPending = isDonationPending,
+                            onDonate = { currency, amount -> onDonate(currentClan.id, currency, amount) },
+                            social = social,
+                            isSocialLoading = isSocialLoading,
+                            socialNotice = socialNotice,
+                            socialError = socialError,
+                            onSendFriendRequest = onSendFriendRequest,
+                            onRespondFriendRequest = onRespondFriendRequest,
+                            isSocialReady = isSocialReady,
+                            onRefreshSocial = onRefreshSocial,
+                            modifier = Modifier.fillMaxSize()
+                        )
+
+                        else -> {
+                            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                CircularProgressIndicator(color = ArcadePalette.Gold500)
+                            }
+                            LaunchedEffect(myClanId) { onViewClan(myClanId) }
+                        }
+                    }
                 }
             }
         }
@@ -210,6 +249,7 @@ private fun ClanDiscoveryView(
     onSearch: (String?) -> Unit,
     gold: Int,
     gems: Int,
+    playerLevel: Int,
     modifier: Modifier = Modifier
 ) {
     var showCreateDialog by remember { mutableStateOf(false) }
@@ -312,6 +352,7 @@ private fun ClanDiscoveryView(
         CreateClanDialog(
             gold = gold,
             gems = gems,
+            playerLevel = playerLevel,
             onDismiss = { showCreateDialog = false },
             onCreate = { name, description ->
                 onCreateClan(name, description)
@@ -386,11 +427,12 @@ private fun ClanJoinButton(isPending: Boolean, onJoin: () -> Unit, modifier: Mod
 }
 
 @Composable
-private fun CreateClanDialog(
+fun CreateClanDialog(
     gold: Int,
     gems: Int,
     onDismiss: () -> Unit,
-    onCreate: (String, String) -> Unit
+    onCreate: (String, String) -> Unit,
+    playerLevel: Int = 1
 ) {
     var name by remember { mutableStateOf("") }
     var description by remember { mutableStateOf("") }
@@ -419,6 +461,13 @@ private fun CreateClanDialog(
             modifier = Modifier.fillMaxWidth().testTag("create_clan_description")
         )
         Text(
+            localized(TextKey.ClanCreationLevelRequirement,
+                "level" to CLAN_CREATION_MIN_LEVEL, "current" to playerLevel),
+            modifier = Modifier.testTag("create_clan_level_requirement"),
+            color = if (playerLevel >= CLAN_CREATION_MIN_LEVEL) ArcadePalette.Mint400 else ArcadePalette.Coral400,
+            style = MaterialTheme.typography.bodyMedium
+        )
+        Text(
             "${formatNumber(CLAN_CREATION_GOLD_COST)} ${localized(TextKey.Gold)} • " +
                 "${formatNumber(CLAN_CREATION_GEM_COST)} ${localized(TextKey.Gems)}",
             modifier = Modifier.testTag("create_clan_cost"),
@@ -438,10 +487,11 @@ private fun CreateClanDialog(
                 label = localized(TextKey.CreateAction),
                 onClick = { onCreate(name.trim(), description.trim()) },
                 enabled = name.isNotBlank() &&
+                    playerLevel >= CLAN_CREATION_MIN_LEVEL &&
                     gold >= CLAN_CREATION_GOLD_COST &&
                     gems >= CLAN_CREATION_GEM_COST,
                 style = ArcadeActionStyle.GOLD,
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.fillMaxWidth().testTag("create_clan_submit")
             )
             ArcadeActionButton(
                 label = localized(TextKey.Cancel),
@@ -469,12 +519,28 @@ fun ClanDetailView(
     gems: Int = 0,
     isDonationPending: Boolean = false,
     onDonate: (ClanDonationCurrency, Int) -> Unit = { _, _ -> },
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    missionState: MissionState? = null,
+    onRefreshMissions: () -> Unit = {},
+    onClaimMissionInstance: (String) -> Unit = {},
+    social: FriendsSnapshot = FriendsSnapshot(),
+    isSocialLoading: Boolean = false,
+    socialNotice: String? = null,
+    socialError: String? = null,
+    onSendFriendRequest: (String) -> Unit = {},
+    onRespondFriendRequest: (String, Boolean) -> Unit = { _, _ -> },
+    isSocialReady: Boolean = true,
+    onRefreshSocial: () -> Unit = {}
 ) {
     var showLogoDialog by remember { mutableStateOf(false) }
     var showLeaveConfirmation by remember { mutableStateOf(false) }
     var showDonationDialog by remember { mutableStateOf(false) }
     var kickTarget by remember { mutableStateOf<ClanMemberSnapshot?>(null) }
+    var selectedMemberId by remember(clan.id) { mutableStateOf<String?>(null) }
+    val selectedMember = clan.members.firstOrNull { it.userId == selectedMemberId }
+    LaunchedEffect(selectedMember?.userId) {
+        if (selectedMember == null) selectedMemberId = null
+    }
     var visibleMemberCount by remember(clan.id) { mutableStateOf(DEFAULT_ARCADE_PAGE_SIZE) }
     val isOwner = clan.ownerId == currentUserId
     val currentMember = clan.members.firstOrNull { it.userId == currentUserId }
@@ -491,16 +557,13 @@ fun ClanDetailView(
                 kicker = localized(TextKey.Clan),
                 title = clan.name,
                 subtitle = clan.description.ifBlank { localized(TextKey.DefaultClanDescription) },
-                icon = clanLogoIcon(clan.logoId),
+                icon = clanEmblemImageVector(clan.logoId),
                 accent = ArcadePalette.Violet600,
                 onIconClick = if (isOwner) ({ showLogoDialog = true }) else null,
                 iconContentDescription = localized(if (isOwner) TextKey.SelectClanLogo else TextKey.ClanLogo)
             )
         }
 
-        if (canReportClan) {
-            item(key = "clan_report") { UgcReportButton(UgcTargetType.CLAN, clan.id, clan.name) }
-        }
         notice?.let { item(key = "clan_detail_notice") { ClanNotice(it) } }
 
         item(key = "clan_stats") { ClanStats(clan) }
@@ -513,13 +576,9 @@ fun ClanDetailView(
             )
         }
 
-        clan.quest?.let { quest ->
-            item(key = "clan_quest") {
-                ClanQuestCard(
-                    quest = quest,
-                    alreadyClaimed = currentMember?.questRewardClaimed == true,
-                    onClaim = onClaimQuest
-                )
+        if (currentMember != null && missionState != null) {
+            item(key = "clan_missions") {
+                ServerMissionList(missionState, onRefreshMissions, onClaimMissionInstance)
             }
         }
 
@@ -551,7 +610,8 @@ fun ClanDetailView(
                 member = member,
                 isOwner = isOwner,
                 canRemove = clan.ownerId != member.userId,
-                onRemove = { kickTarget = member }
+                onRemove = { kickTarget = member },
+                onViewProfile = { selectedMemberId = member.userId }
             )
         }
 
@@ -574,6 +634,27 @@ fun ClanDetailView(
                 modifier = Modifier.fillMaxWidth().testTag("leave_clan")
             )
         }
+        if (canReportClan) {
+            item(key = "clan_report") {
+                UgcClanReportAction(clan.id, clan.name, Modifier.fillMaxWidth())
+            }
+        }
+    }
+
+    selectedMember?.let { member ->
+        ClanMemberProfileDialog(
+            member = member,
+            currentUserId = currentUserId,
+            social = social,
+            isSocialLoading = isSocialLoading,
+            socialNotice = socialNotice,
+            socialError = socialError,
+            onSendFriendRequest = onSendFriendRequest,
+            onRespondFriendRequest = onRespondFriendRequest,
+            onDismiss = { selectedMemberId = null },
+            isSocialReady = isSocialReady,
+            onRefreshSocial = onRefreshSocial
+        )
     }
 
     if (showLeaveConfirmation) {
@@ -646,6 +727,7 @@ fun ClanDetailView(
     if (showLogoDialog && isOwner) {
         ClanLogoDialog(
             selectedLogoId = clan.logoId,
+            clanLevel = clan.level,
             onSelect = { id ->
                 onUpdateLogo(id)
                 showLogoDialog = false
@@ -804,13 +886,13 @@ private fun ClanStats(clan: ClanSnapshot) {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 ClanStatCard("${clan.members.size}", localized(TextKey.ClanMembers), Modifier.fillMaxWidth())
                 ClanStatCard(formatNumber(clan.trophies), localized(TextKey.ClanTrophies), Modifier.fillMaxWidth())
-                ClanStatCard(formatNumber(clan.members.sumOf { it.trophies }), localized(TextKey.MemberTrophies), Modifier.fillMaxWidth())
+                ClanStatCard(formatNumber(clan.members.sumOf { it.trophies }), localized(TextKey.TotalMemberElo), Modifier.fillMaxWidth())
             }
         } else {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 ClanStatCard("${clan.members.size}", localized(TextKey.ClanMembers), Modifier.weight(1f))
                 ClanStatCard(formatNumber(clan.trophies), localized(TextKey.ClanTrophies), Modifier.weight(1f))
-                ClanStatCard(formatNumber(clan.members.sumOf { it.trophies }), localized(TextKey.TotalTrophies), Modifier.weight(1f))
+                ClanStatCard(formatNumber(clan.members.sumOf { it.trophies }), localized(TextKey.TotalMemberElo), Modifier.weight(1f))
             }
         }
     }
@@ -827,7 +909,7 @@ private fun ClanStatCard(value: String, label: String, modifier: Modifier = Modi
         Column(
             modifier = Modifier.padding(horizontal = 10.dp, vertical = 12.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
+            verticalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterVertically)
         ) {
             Text(
                 value,
@@ -841,64 +923,9 @@ private fun ClanStatCard(value: String, label: String, modifier: Modifier = Modi
                 label,
                 style = MaterialTheme.typography.labelSmall,
                 color = ArcadePalette.Blue100,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                 maxLines = 2
             )
-        }
-    }
-}
-
-@Composable
-private fun ClanQuestCard(
-    quest: ClanQuestSnapshot,
-    alreadyClaimed: Boolean,
-    onClaim: () -> Unit
-) {
-    val progress = (quest.progress.toFloat() / quest.target.coerceAtLeast(1)).coerceIn(0f, 1f)
-    ArcadePanel(modifier = Modifier.fillMaxWidth(), accent = ArcadePalette.Gold500) {
-        Column(
-            modifier = Modifier.fillMaxWidth().padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            Text(
-                localized(TextKey.WeeklyClanQuest),
-                style = MaterialTheme.typography.labelMedium,
-                color = ArcadePalette.Gold500,
-                fontWeight = FontWeight.Black
-            )
-            Text(
-                localized(TextKey.WinClanMatches, "count" to quest.target),
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Black
-            )
-            LinearProgressIndicator(
-                progress = { progress },
-                modifier = Modifier.fillMaxWidth().height(9.dp),
-                color = ArcadePalette.Gold500,
-                trackColor = ArcadePalette.Navy700
-            )
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Text("${quest.progress}/${quest.target}", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                RewardAmounts(gold = quest.rewardGold, xp = quest.rewardXp, gems = quest.rewardGems)
-            }
-            when {
-                alreadyClaimed -> ArcadeActionButton(
-                    label = localized(TextKey.Claimed),
-                    onClick = {},
-                    enabled = false,
-                    style = ArcadeActionStyle.OUTLINE,
-                    modifier = Modifier.fillMaxWidth()
-                )
-                quest.progress >= quest.target -> ArcadeActionButton(
-                    label = localized(TextKey.ClaimReward),
-                    onClick = onClaim,
-                    style = ArcadeActionStyle.GOLD,
-                    modifier = Modifier.fillMaxWidth()
-                )
-            }
         }
     }
 }
@@ -954,27 +981,32 @@ private fun ClanMemberCard(
     member: ClanMemberSnapshot,
     isOwner: Boolean,
     canRemove: Boolean,
-    onRemove: () -> Unit
+    onRemove: () -> Unit,
+    onViewProfile: () -> Unit
 ) {
     ArcadePanel(modifier = Modifier.fillMaxWidth(), accent = ArcadePalette.Blue500) {
         Row(
-            modifier = Modifier.fillMaxWidth().padding(start = 14.dp, top = 12.dp, bottom = 12.dp, end = 8.dp),
+            modifier = Modifier.fillMaxWidth()
+                .clickable(role = Role.Button, onClickLabel = localized(TextKey.ViewClanMemberProfile, "player" to member.displayName), onClick = onViewProfile)
+                .testTag("clan_member:${member.userId}")
+                .padding(start = 14.dp, top = 12.dp, bottom = 12.dp, end = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            ClanLogoMark(logoId = member.displayName, modifier = Modifier.size(46.dp))
+            PlayerAvatar(member.displayName, member.avatarId, member.userId, member.frameId)
             Column(modifier = Modifier.weight(1f)) {
-                ReportableText(member.displayName, UgcTargetType.PLAYER_PROFILE, member.userId, fontWeight = FontWeight.Black, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(member.displayName, fontWeight = FontWeight.Black, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 Text(
                     localized(TextKey.ClanMemberSummary, "role" to member.role.localizedName(), "trophies" to formatNumber(member.trophies)),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
+            FriendPresenceIndicator(member.presence)
             if (isOwner && canRemove) {
                 IconButton(
                     onClick = onRemove,
-                    modifier = Modifier.size(48.dp)
+                    modifier = Modifier.size(48.dp).testTag("clan_kick:${member.userId}")
                 ) {
                     Icon(
                         Icons.Rounded.PersonRemove,
@@ -990,58 +1022,138 @@ private fun ClanMemberCard(
 }
 
 @Composable
-private fun ClanLogoDialog(
+fun ClanLogoDialog(
     selectedLogoId: String?,
+    clanLevel: Int,
     onSelect: (String) -> Unit,
     onDismiss: () -> Unit
 ) {
+    val currentLogoId = selectedLogoId?.lowercase() ?: "shield"
+    var submitted by remember(selectedLogoId, clanLevel) { mutableStateOf(false) }
     ArcadeDialog(
         title = localized(TextKey.ChooseClanLogo),
         subtitle = localized(TextKey.ChooseClanLogoDescription),
         onDismissRequest = onDismiss,
-        modifier = Modifier.testTag("clan_logo_dialog")
+        modifier = Modifier.testTag("clan_logo_dialog"),
+        fixedActions = {
+            ArcadeActionButton(
+                label = localized(TextKey.Close),
+                onClick = onDismiss,
+                style = ArcadeActionStyle.OUTLINE,
+                modifier = Modifier.fillMaxWidth().testTag("close_clan_logo_dialog")
+            )
+        }
     ) {
-        LazyVerticalGrid(
-            columns = GridCells.Adaptive(64.dp),
-            modifier = Modifier.fillMaxWidth().heightIn(max = 280.dp),
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
-            contentPadding = PaddingValues(2.dp)
+        Text(
+            localized(TextKey.ClanLogoUnlockDescription, "current" to clanLevel),
+            style = MaterialTheme.typography.bodyMedium,
+            color = ArcadePalette.Blue100
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            items(CLAN_AVATAR_IDS, key = { it }) { id ->
-                val isSelected = selectedLogoId == id
-                val logoDescription = localized(TextKey.ClanLogoNamed, "logo" to id.clanLogoLabel())
-                Surface(
-                    onClick = { onSelect(id) },
-                    modifier = Modifier
-                        .size(60.dp)
-                        .semantics {
-                            selected = isSelected
-                            role = Role.Button
-                            contentDescription = logoDescription
-                        },
-                    shape = RoundedCornerShape(18.dp),
-                    color = if (isSelected) ArcadePalette.Blue700 else ArcadePalette.Navy900,
-                    border = BorderStroke(
-                        if (isSelected) 3.dp else 1.dp,
-                        if (isSelected) ArcadePalette.Gold500 else ArcadePalette.OutlineDark
+            ClanLogoMark(currentLogoId, Modifier.size(48.dp))
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(
+                    "${localized(TextKey.ClanLogoCurrent)} · ${currentLogoId.clanLogoLabel()}",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = ArcadePalette.Gold100
+                )
+                clanLogoRequiredLevel(currentLogoId)?.takeIf { it > clanLevel }?.let { level ->
+                    Text(
+                        localized(TextKey.ClanLogoUnlockAtLevel, "level" to level),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = ArcadePalette.Blue100
                     )
-                ) {
-                    ClanLogoMark(logoId = id, modifier = Modifier.padding(8.dp))
                 }
             }
         }
-        ArcadeActionButton(
-            label = localized(TextKey.Close),
-            onClick = onDismiss,
-            style = ArcadeActionStyle.OUTLINE,
-            modifier = Modifier.fillMaxWidth()
-        )
+        val minimumCardWidth = if (LocalDensity.current.fontScale >= 1.4f) 148.dp else 116.dp
+        // ArcadeDialog owns the single scroll container and keeps Close outside it.
+        BoxWithConstraints(Modifier.fillMaxWidth()) {
+            val columns = ((maxWidth + 8.dp) / (minimumCardWidth + 8.dp)).toInt().coerceIn(1, 3)
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                CLAN_LOGOS.chunked(columns).forEach { logos ->
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        logos.forEach { logo ->
+                            ClanLogoChoice(
+                                id = logo.id,
+                                requiredLevel = logo.requiredLevel,
+                                isSelected = currentLogoId == logo.id,
+                                isUnlocked = isClanLogoUnlocked(logo.id, clanLevel),
+                                enabled = !submitted,
+                                onSelect = {
+                                    if (!submitted) {
+                                        submitted = true
+                                        onSelect(logo.id)
+                                    }
+                                },
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+                        repeat(columns - logos.size) { Spacer(Modifier.weight(1f)) }
+                    }
+                }
+            }
+        }
     }
 }
 
 @Composable
-private fun ClanLogoMark(logoId: String?, modifier: Modifier = Modifier) {
+private fun ClanLogoChoice(
+    id: String,
+    requiredLevel: Int,
+    isSelected: Boolean,
+    isUnlocked: Boolean,
+    enabled: Boolean,
+    onSelect: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val logoDescription = localized(TextKey.ClanLogoNamed, "logo" to id.clanLogoLabel())
+    val requirement = localized(TextKey.ClanLogoUnlockAtLevel, "level" to requiredLevel)
+    val status = localized(if (isSelected) TextKey.ClanLogoCurrent else if (isUnlocked) TextKey.ClanLogoUnlocked else TextKey.Locked)
+    Surface(
+        onClick = onSelect,
+        enabled = enabled && isUnlocked && !isSelected,
+        modifier = modifier
+            .heightIn(min = 116.dp)
+            .testTag("clan_logo_$id")
+            .semantics {
+                selected = isSelected
+                role = Role.Button
+                contentDescription = logoDescription
+                stateDescription = "$status. $requirement"
+            },
+        shape = RoundedCornerShape(16.dp),
+        color = if (isSelected) ArcadePalette.Blue900 else ArcadePalette.Navy900,
+        border = BorderStroke(
+            if (isSelected) 2.dp else 1.dp,
+            if (isSelected) ArcadePalette.Gold500 else ArcadePalette.OutlineDark
+        )
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(12.dp).alpha(if (isUnlocked || isSelected) 1f else 0.38f),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            ClanLogoMark(id, Modifier.size(48.dp))
+            Text(id.clanLogoLabel(), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+            Text(
+                localized(TextKey.ClanLogoRequiredLevel, "level" to requiredLevel),
+                modifier = Modifier.testTag("clan_logo_requirement_$id"),
+                style = MaterialTheme.typography.bodySmall,
+                color = ArcadePalette.Blue100,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+            )
+        }
+    }
+}
+
+@Composable
+internal fun ClanLogoMark(logoId: String?, modifier: Modifier = Modifier) {
     val normalized = logoId.orEmpty().lowercase()
     val accent = when (normalized) {
         "sword" -> ArcadePalette.Coral400
@@ -1050,6 +1162,9 @@ private fun ClanLogoMark(logoId: String?, modifier: Modifier = Modifier) {
         "wolf" -> Color(0xFFC8D4EA)
         "eagle" -> ArcadePalette.Gold500
         "crown" -> Color(0xFFFFE28B)
+        "lion" -> ClanEmblemAccents.LionGold
+        "phoenix" -> ClanEmblemAccents.PhoenixCoral
+        "kirin" -> ClanEmblemAccents.KirinMint
         else -> ArcadePalette.Mint400
     }
     Box(
@@ -1062,23 +1177,12 @@ private fun ClanLogoMark(logoId: String?, modifier: Modifier = Modifier) {
         contentAlignment = Alignment.Center
     ) {
         Icon(
-            clanLogoIcon(normalized),
+            clanEmblemImageVector(normalized),
             contentDescription = null,
             tint = accent,
-            modifier = Modifier.fillMaxSize().padding(9.dp)
+            modifier = Modifier.fillMaxSize(0.64f)
         )
     }
-}
-
-private fun clanLogoIcon(logoId: String?): androidx.compose.ui.graphics.vector.ImageVector = when (
-    logoId.orEmpty().lowercase()
-) {
-    "sword" -> CrossedSwordsIcon
-    "flag" -> Icons.Rounded.Flag
-    "dragon", "wolf" -> Icons.Rounded.Pets
-    "eagle" -> Icons.Rounded.Flight
-    "crown" -> Icons.Rounded.EmojiEvents
-    else -> Icons.Rounded.Shield
 }
 
 @Composable
@@ -1115,7 +1219,7 @@ private fun ClanNotice(message: String) {
 }
 
 @Composable
-private fun ClanRole.localizedName(): String = localized(when (this) {
+internal fun ClanRole.localizedName(): String = localized(when (this) {
     ClanRole.LEADER -> TextKey.ClanRoleLeader
     ClanRole.CO_LEADER -> TextKey.ClanRoleCoLeader
     ClanRole.MEMBER -> TextKey.ClanRoleMember
@@ -1131,6 +1235,9 @@ private fun String.clanLogoLabel(): String {
         "wolf" -> TextKey.ClanLogoWolf
         "eagle" -> TextKey.ClanLogoEagle
         "crown" -> TextKey.ClanLogoCrown
+        "lion" -> TextKey.ClanLogoLion
+        "phoenix" -> TextKey.ClanLogoPhoenix
+        "kirin" -> TextKey.ClanLogoKirin
         else -> return this
     }
     return localized(key)

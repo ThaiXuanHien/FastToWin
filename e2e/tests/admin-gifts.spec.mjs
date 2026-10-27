@@ -202,7 +202,7 @@ test('draft Bangkok dates → bilingual preview → exact confirmation → repor
 test('draft editing uses PUT current version and new request identity; audience validation and explicit unavailable activity', async ({ page, fixture }) => {
   gifts(fixture); await open(page, fixture); await draft(page);
   await page.getByRole('button', { name: 'Sửa bản nháp', exact: true }).click();
-  await expect(page.getByLabel('Thời gian phát (Bangkok)', { exact: true })).toHaveValue('2026-10-02T12:00');
+  await expect(page.getByLabel('Thời gian phát · Giờ Việt Nam (UTC+7)', { exact: true })).toHaveValue('2026-10-02T12:00');
   await page.getByLabel('Người nhận', { exact: true }).selectOption('USER_IDS');
   await page.getByLabel('ID người chơi', { exact: true }).fill(`${player.id}\n${player.id}`);
   await expect(page.getByText(/Chưa có nguồn hoạt động gần nhất chính thức/)).toBeVisible();
@@ -266,10 +266,10 @@ test('zero rewards and invalid date bounds are rejected without mutation; regist
   await expect(page.getByRole('alert')).toContainText('ít nhất một phần thưởng');
   expect(fixture.calls.filter(c => c.route === '/admin/api/gift-campaigns' && c.method === 'POST')).toHaveLength(0);
   await page.getByLabel('Vàng mỗi người').fill('1'); await page.getByLabel('Người nhận', { exact: true }).selectOption('REGISTERED_BETWEEN');
-  await page.getByLabel('Đăng ký từ (Bangkok, bao gồm)', { exact: true }).fill('2026-09-01T12:00');
-  await page.getByLabel('Đăng ký đến (Bangkok, không bao gồm)', { exact: true }).fill('2026-08-01T12:00');
+  await page.getByLabel('Đăng ký từ (bao gồm) · Giờ Việt Nam (UTC+7)', { exact: true }).fill('2026-09-01T12:00');
+  await page.getByLabel('Đăng ký đến (không bao gồm) · Giờ Việt Nam (UTC+7)', { exact: true }).fill('2026-08-01T12:00');
   await page.getByRole('button', { name: 'Lưu bản nháp', exact: true }).click(); await expect(page.getByRole('alert')).toContainText('Khoảng đăng ký');
-  await page.getByLabel('Đăng ký đến (Bangkok, không bao gồm)', { exact: true }).fill('2026-10-01T12:00');
+  await page.getByLabel('Đăng ký đến (không bao gồm) · Giờ Việt Nam (UTC+7)', { exact: true }).fill('2026-10-01T12:00');
   await page.getByRole('button', { name: 'Lưu bản nháp', exact: true }).click(); await expect(page.getByRole('dialog')).toHaveCount(0);
   const body = fixture.calls.find(c => c.route === '/admin/api/gift-campaigns' && c.method === 'POST').body;
   expect(body.registeredFromEpochMillis).toBe(Date.parse('2026-09-01T12:00:00+07:00')); expect(body.registeredUntilEpochMillis).toBe(Date.parse('2026-10-01T12:00:00+07:00')); expect(body.userIds).toEqual([]);

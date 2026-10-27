@@ -3,11 +3,12 @@ package com.hienthai.fastowin.server
 import com.hienthai.fastowin.server.maintenance.*
 import com.hienthai.fastowin.server.moderation.*
 import com.hienthai.fastowin.protocol.UgcTargetType
-import com.hienthai.fastowin.protocol.CONTENT_TERMS_VERSION
 import com.hienthai.fastowin.protocol.MaintenanceState
 
 import com.hienthai.fastowin.protocol.ClientMessage
 import com.hienthai.fastowin.protocol.ClanDonationStatus
+import com.hienthai.fastowin.protocol.ClanSnapshot
+import com.hienthai.fastowin.protocol.clanLogoRequiredLevel
 import com.hienthai.fastowin.localization.protocolTextKeyForCode
 import com.hienthai.fastowin.localization.TextKey
 import com.hienthai.fastowin.localization.LocalizationService
@@ -517,7 +518,7 @@ class GameEngine(
                 persistRoom(start.roomId)
                 return quotaRejectedDeliveries(start.playerIds, consumption) + listOfNotNull(rejected)
             }
-            return persistenceMutex.withLock {
+            val deliveries = persistenceMutex.withLock {
                 if (start.candidate == null) {
                     var candidate: StoredActiveRoom? = null
                     repeat(20) {
@@ -570,6 +571,9 @@ class GameEngine(
                         quotaDataDeliveries(consumption.quotas)
                 }
             }
+            return deliveries + if (deliveries.any { it.message is ServerMessage.GameStarted }) {
+                start.playerIds.flatMap { presenceUpdates(it) }
+            } else emptyList()
         } catch (failure: Throwable) {
             var stopped = emptyList<Delivery>()
             if (start.candidate == null) withContext(NonCancellable) {
@@ -2040,8 +2044,46 @@ class GameEngine(
     suspend fun presenceUpdates(playerId: String): List<Delivery> {
         val isAccount = mutex.withLock { sessionsByPlayerId[playerId]?.resumeToken == null }
         if (!isAccount) return emptyList()
-        val stored = runCatching { friendRepository.load(playerId) }.getOrNull() ?: return emptyList()
-        return refreshSocialFor((stored.friends.map { it.userId } + playerId).toSet())
+        val friendUpdates = runCatching {
+            val stored = friendRepository.load(playerId)
+            refreshSocialFor((stored.friends.map { it.userId } + playerId).toSet())
+        }.getOrElse {
+            if (it is CancellationException) throw it
+            emptyList()
+        }
+        val clanUpdates = runCatching {
+            val clan = clanRepository.getClanByUserId(playerId)
+            if (clan == null) emptyList() else clanMemberUpdate(clan, isPresenceRefresh = true)
+        }.getOrElse {
+            if (it is CancellationException) throw it
+            emptyList()
+        }
+        return friendUpdates + clanUpdates
+    }
+
+    /** Engine mutex required. Presence never comes from persisted roster data. */
+    private fun ClanSnapshot.withSessionPresence(): ClanSnapshot = copy(
+        members = members.map { it.copy(presence = presenceOf(it.userId)) }
+    )
+
+    private suspend fun clanInfo(clan: ClanSnapshot): ServerMessage.ClanInfoData = mutex.withLock {
+        ServerMessage.ClanInfoData(clan.withSessionPresence())
+    }
+
+    private suspend fun clanMemberUpdate(clan: ClanSnapshot, isPresenceRefresh: Boolean = false): List<Delivery> = mutex.withLock {
+        val recipients = clan.members.mapNotNullTo(mutableSetOf()) { member ->
+            member.userId.takeIf { id ->
+                sessionsByPlayerId[id]?.let { it.isConnected && it.resumeToken == null } == true
+            }
+        }
+        if (recipients.isEmpty()) emptyList() else listOf(Delivery(
+            ServerMessage.ClanInfoData(clan.withSessionPresence(), isPresenceRefresh), recipients
+        ))
+    }
+
+    private suspend fun refreshClanMembers(clanId: String): List<Delivery> {
+        val clan = clanRepository.getClanById(clanId) ?: return emptyList()
+        return clanMemberUpdate(clan)
     }
 
     private suspend fun refreshSocialFor(userIds: Set<String>): List<Delivery> {
@@ -4552,11 +4594,18 @@ class GameEngine(
                 "create_clan",
                 TextKey.ClanCreatedNotice.name
             ), setOf(playerId)))
+            ClanCreationStatus.LEVEL_TOO_LOW -> listOf(
+                error(
+                    playerId,
+                    "CLAN_CREATION_LEVEL_TOO_LOW",
+                    legacyFallback("Cần đạt cấp 10 để tạo bang.")
+                )
+            )
             ClanCreationStatus.INSUFFICIENT_FUNDS -> listOf(
                 error(
                     playerId,
                     "CLAN_CREATION_INSUFFICIENT_FUNDS",
-                    legacyFallback("Cần 2.000 vàng và 20 Gem để tạo bang.")
+                    legacyFallback("Cần 10.000 vàng và 100 Gem để tạo bang.")
                 )
             )
             ClanCreationStatus.ALREADY_MEMBER ->
@@ -4605,7 +4654,7 @@ class GameEngine(
                         setOf(playerId)
                     ))
                     updatedClan?.let {
-                        add(Delivery(ServerMessage.ClanInfoData(it), setOf(clan.ownerId)))
+                        add(Delivery(clanInfo(it), setOf(clan.ownerId)))
                     }
                     add(Delivery(
                         ServerMessage.NotificationsData(notificationRepository.loadNotifications(clan.ownerId)),
@@ -4704,7 +4753,8 @@ class GameEngine(
                         setOf(command.userId)
                     ))
                     updatedClan?.let {
-                        add(Delivery(ServerMessage.ClanInfoData(it), setOf(playerId)))
+                        if (approved) addAll(clanMemberUpdate(it))
+                        else add(Delivery(clanInfo(it), setOf(playerId)))
                     }
                     add(Delivery(
                         ServerMessage.NotificationsData(notificationRepository.loadNotifications(command.userId)),
@@ -4725,6 +4775,7 @@ class GameEngine(
     }
 
     private suspend fun leaveClan(playerId: String): List<Delivery> {
+        val clanId = clanRepository.getClanByUserId(playerId)?.id
         val success = clanRepository.leaveClan(playerId)
         return if (success) {
             listOf(Delivery(ServerMessage.ClanActionResult(
@@ -4732,7 +4783,7 @@ class GameEngine(
                 legacyFallback("Đã rời clan"),
                 "leave_clan",
                 TextKey.ClanLeftNotice.name
-            ), setOf(playerId)))
+            ), setOf(playerId))) + clanId?.let { refreshClanMembers(it) }.orEmpty()
         } else {
             listOf(error(playerId, "LEAVE_CLAN_FAILED", legacyFallback("Rời clan thất bại.")))
         }
@@ -4741,7 +4792,7 @@ class GameEngine(
     private suspend fun getClanInfo(playerId: String, clanId: String): List<Delivery> {
         val clan = clanRepository.getClanById(clanId)
         return if (clan != null) {
-            listOf(Delivery(ServerMessage.ClanInfoData(clan), setOf(playerId)))
+            listOf(Delivery(clanInfo(clan), setOf(playerId)))
         } else {
             listOf(error(playerId, "CLAN_NOT_FOUND", legacyFallback("Không tìm thấy clan.")))
         }
@@ -4773,7 +4824,7 @@ class GameEngine(
             )
             if (result.status == ClanDonationStatus.APPLIED || result.status == ClanDonationStatus.DUPLICATE) {
                 clanRepository.getClanById(command.clanId)?.let { clan ->
-                    add(Delivery(ServerMessage.ClanInfoData(clan), setOf(playerId)))
+                    add(Delivery(clanInfo(clan), setOf(playerId)))
                 }
                 addAll(loadProfile(playerId))
             }
@@ -4794,7 +4845,7 @@ class GameEngine(
         }
         val success = clanRepository.kickMember(clanId, playerId, memberId)
         return if (success) {
-            getClanInfo(playerId, clanId)
+            refreshClanMembers(clanId) + loadProfile(memberId)
         } else {
             listOf(error(playerId, "KICK_FAILED", legacyFallback("Không thể mời thành viên này rời bang.")))
         }
@@ -4874,16 +4925,25 @@ class GameEngine(
         return emptyList()
     }
     private suspend fun updateClanLogo(playerId: String, clanId: String, logoId: String): List<Delivery> {
-        val clan = clanRepository.getClanById(clanId)
-            ?: return listOf(error(playerId, "CLAN_NOT_FOUND", legacyFallback("Không tìm thấy bang hội.")))
-        if (clan.ownerId != playerId) {
-            return listOf(error(playerId, "NOT_CLAN_OWNER", legacyFallback("Chỉ đội trưởng mới có thể đổi logo.")))
+        return when (clanRepository.updateLogoId(clanId, playerId, logoId)) {
+            ClanLogoUpdateStatus.UPDATED -> getClanInfo(playerId, clanId)
+            ClanLogoUpdateStatus.LOCKED -> listOf(error(
+                playerId, "CLAN_LOGO_LOCKED", legacyFallback("Logo chưa được mở khóa."),
+                messageArgs = mapOf("level" to clanLogoRequiredLevel(logoId).toString())
+            ))
+            ClanLogoUpdateStatus.INVALID_LOGO -> listOf(error(
+                playerId, "INVALID_CLAN_LOGO", legacyFallback("Logo bang hội không hợp lệ.")
+            ))
+            ClanLogoUpdateStatus.NOT_OWNER -> listOf(error(
+                playerId, "NOT_CLAN_OWNER", legacyFallback("Chỉ đội trưởng mới có thể đổi logo.")
+            ))
+            ClanLogoUpdateStatus.CLAN_NOT_FOUND -> listOf(error(
+                playerId, "CLAN_NOT_FOUND", legacyFallback("Không tìm thấy bang hội.")
+            ))
+            ClanLogoUpdateStatus.FAILED -> listOf(error(
+                playerId, "UPLOAD_FAILED", legacyFallback("Không thể cập nhật logo.")
+            ))
         }
-        val success = clanRepository.updateLogoId(clanId, logoId)
-        if (success) {
-            return getClanInfo(playerId, clanId)
-        }
-        return listOf(error(playerId, "UPLOAD_FAILED", legacyFallback("Không thể cập nhật logo.")))
     }
 
     private suspend fun claimClanQuestReward(playerId: String, clanId: String): List<Delivery> {

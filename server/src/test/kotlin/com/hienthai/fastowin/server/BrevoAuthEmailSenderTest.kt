@@ -1,6 +1,7 @@
 package com.hienthai.fastowin.server
 
 import com.hienthai.fastowin.localization.AppLanguage
+import com.hienthai.fastowin.localization.resolveAppLanguage
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.*
 import java.io.ByteArrayOutputStream
@@ -27,26 +28,26 @@ class BrevoAuthEmailSenderTest {
             assertEquals("sender@example.com", body.getValue("sender").jsonObject.getValue("email").jsonPrimitive.content)
             assertEquals("Fast To Win", body.getValue("sender").jsonObject.getValue("name").jsonPrimitive.content)
             assertEquals("player@example.com", body.getValue("to").jsonArray.single().jsonObject.getValue("email").jsonPrimitive.content)
-            assertEquals("パスワードを再設定 • Fast To Win", body.getValue("subject").jsonPrimitive.content)
+            assertEquals("Reset password • Fast To Win", body.getValue("subject").jsonPrimitive.content)
             assertContains(body.getValue("htmlContent").jsonPrimitive.content, "token-with-\"quotes\"")
-            assertContains(body.getValue("htmlContent").jsonPrimitive.content, "<html lang=\"ja\">")
+            assertContains(body.getValue("htmlContent").jsonPrimitive.content, "<html lang=\"en\">")
             201
         })
 
-        sender.sendPasswordReset("player@example.com", "token-with-\"quotes\"", AppLanguage.JAPANESE)
+        sender.sendPasswordReset("player@example.com", "token-with-\"quotes\"", resolveAppLanguage("ja", listOf("vi-VN")))
         assertEquals(1, requests)
     }
 
     @Test
-    fun `Brevo verification reuses Chinese email content`() = runTest {
+    fun `Brevo verification reuses Vietnamese email content`() = runTest {
         val sender = BrevoAuthEmailSender(settings(), EmailHttpTransport { request ->
             val body = Json.parseToJsonElement(bodyText(request)).jsonObject
-            assertEquals("验证邮箱 • Fast To Win", body.getValue("subject").jsonPrimitive.content)
+            assertEquals("Xác minh email • Fast To Win", body.getValue("subject").jsonPrimitive.content)
             assertContains(body.getValue("htmlContent").jsonPrimitive.content, "123456")
-            assertContains(body.getValue("htmlContent").jsonPrimitive.content, "<html lang=\"zh-Hans\">")
+            assertContains(body.getValue("htmlContent").jsonPrimitive.content, "<html lang=\"vi\">")
             201
         })
-        sender.sendEmailVerification("player@example.com", "123456", AppLanguage.SIMPLIFIED_CHINESE)
+        sender.sendEmailVerification("player@example.com", "123456", AppLanguage.VIETNAMESE)
     }
 
     @Test

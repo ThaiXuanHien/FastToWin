@@ -49,7 +49,7 @@ class MaintenanceScreenUiTest {
     }
 
     @Test
-    fun maintenance_usesVietnameseEnglishAndJapaneseCatalogs() {
+    fun maintenance_switchesBetweenVietnameseAndEnglishCatalogs() {
         val language = androidx.compose.runtime.mutableStateOf(AppLanguage.VIETNAMESE)
         composeRule.setContent {
             ProvideLocalization(language.value) {
@@ -62,7 +62,7 @@ class MaintenanceScreenUiTest {
         composeRule.onNodeWithText("MÁY CHỦ ĐANG\nNGHỈ GIỮA HIỆP").assertIsDisplayed()
         composeRule.runOnIdle { language.value = AppLanguage.ENGLISH }
         composeRule.onNodeWithText("SERVER TAKING\nA TIMEOUT").assertIsDisplayed()
-        composeRule.runOnIdle { language.value = AppLanguage.JAPANESE }
-        composeRule.onNodeWithText("サーバーは現在\nメンテナンス中").assertIsDisplayed()
+        composeRule.runOnIdle { language.value = AppLanguage.VIETNAMESE }
+        composeRule.onNodeWithText("MÁY CHỦ ĐANG\nNGHỈ GIỮA HIỆP").assertIsDisplayed()
     }
 }

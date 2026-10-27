@@ -59,9 +59,9 @@ class PostgresEconomyLeaderboardTest {
                 dataSource.connection.use { connection ->
                     connection.prepareStatement(
                         """
-                        INSERT INTO player_stats (user_id, gold, gems, updated_at)
-                        VALUES (?, 10000, 100, CURRENT_TIMESTAMP)
-                        ON CONFLICT (user_id) DO UPDATE SET gold = 10000, gems = 100
+                        INSERT INTO player_stats (user_id, gold, gems, experience_points, updated_at)
+                        VALUES (?, 10000, 100, 1260, CURRENT_TIMESTAMP)
+                        ON CONFLICT (user_id) DO UPDATE SET gold = 10000, gems = 100, experience_points = 1260
                         """.trimIndent()
                     ).use { statement ->
                         userIds.forEach { userId ->

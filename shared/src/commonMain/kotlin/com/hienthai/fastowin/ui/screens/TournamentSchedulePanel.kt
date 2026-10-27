@@ -11,7 +11,9 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.hienthai.fastowin.localization.TextKey
+import com.hienthai.fastowin.localization.LocalLocalization
 import com.hienthai.fastowin.localization.localized
+import com.hienthai.fastowin.localization.timeZoneDisplayLabel
 import com.hienthai.fastowin.protocol.TournamentScheduleSnapshot
 import com.hienthai.fastowin.state.*
 import com.hienthai.fastowin.ui.components.ArcadePanel
@@ -31,7 +33,7 @@ internal fun TournamentSchedulePanel(
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Icon(Icons.Rounded.Schedule, contentDescription = null, tint = ArcadePalette.Blue300, modifier = Modifier.size(24.dp))
-                Text(schedule.timeZoneId, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                Text(LocalLocalization.current.timeZoneDisplayLabel(schedule.timeZoneId), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
             }
             Text(localized(TextKey.TournamentStartDeadline, "time" to tournamentLocalDateTime(schedule.startsAtEpochMillis, schedule.timeZoneId)),
                 fontWeight = FontWeight.Bold)

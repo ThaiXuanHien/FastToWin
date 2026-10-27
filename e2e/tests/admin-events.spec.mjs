@@ -31,6 +31,21 @@ test('UTC entries remain exact with non-Bangkok display timezone and PUT current
   await expect(page.getByLabel('Bắt đầu (UTC, bao gồm)', { exact: true })).toHaveValue('2026-10-31T12:00'); await fillDraft(page); await page.getByRole('button', { name: 'Lưu bản nháp', exact: true }).click();
   await expect(page.getByRole('dialog')).toHaveCount(0); const call = fixture.calls.find(c => c.method === 'PUT'); expect(call.route).toMatch(/\/draft$/); expect(call.body.expectedVersion).toBe(3); expect(call.body.draft.startsAtEpochMillis).toBe(Date.parse('2026-10-31T12:00:00Z')); expect(call.body.draft.timezone).toBe('America/New_York'); expect(call.headers['x-admin-csrf']).toBe('fixture-csrf');
 });
+for (const timezone of ['Asia/Bangkok', 'Asia/Ho_Chi_Minh']) test(`Vietnam time display preserves saved IANA zone ${timezone}`, async ({ page, fixture }) => {
+  const initial = eventView(); initial.draft.timezone = timezone; events(fixture, initial);
+  const width = timezone === 'Asia/Bangkok' ? 375 : 1440; await page.setViewportSize({ width, height: 1000 });
+  await open(page, fixture); await expect(page.locator('.event-row')).toContainText('Giờ Việt Nam (UTC+7)'); await detail(page);
+  const facts = page.locator('main dl');
+  await expect(facts.locator('div').filter({ has: page.locator('dt', { hasText: 'Múi giờ hiển thị' }) }).locator('dd')).toHaveText('Giờ Việt Nam (UTC+7)');
+  await expect(facts.locator('div').filter({ has: page.locator('dt', { hasText: 'Bắt đầu (bao gồm)' }) }).locator('dd')).toHaveText('19:00:00,000 31/10/2026 · Giờ Việt Nam (UTC+7)');
+  await page.screenshot({ path: `.artifacts/report-pwa-cleanup-20261025/event-time-${width}.png`, fullPage: true });
+  await page.getByRole('button', { name: 'Sửa bản nháp', exact: true }).click();
+  await expect(page.getByLabel('Múi giờ hiển thị (IANA)', { exact: true })).toHaveValue(timezone);
+  await expect(page.getByLabel('Bắt đầu (UTC, bao gồm)', { exact: true })).toHaveValue('2026-10-31T12:00');
+  await page.getByLabel('Lý do thay đổi', { exact: true }).fill('Verify saved timezone');
+  await page.getByRole('button', { name: 'Lưu bản nháp', exact: true }).click(); await expect(page.getByRole('dialog')).toHaveCount(0);
+  const saved = fixture.calls.find(call => call.method === 'PUT'); expect(saved.body.draft).toEqual(initial.draft);
+});
 test('preview POST binds exact server token/version and schedule confirmation', async ({ page, fixture }) => {
   const state = events(fixture); await open(page, fixture); await detail(page); await page.getByRole('button', { name: 'Xem trước', exact: true }).click(); await expect(page.getByRole('dialog')).toContainText('Sự kiện giao nhau');
   const preview = fixture.calls.find(c => c.route.endsWith('/preview')); expect(preview.method).toBe('POST'); expect(preview.body).toEqual({}); expect(preview.headers['x-admin-csrf']).toBe('fixture-csrf');

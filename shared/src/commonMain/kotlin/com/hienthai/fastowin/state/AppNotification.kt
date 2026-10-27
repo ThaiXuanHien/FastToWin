@@ -1,5 +1,7 @@
 package com.hienthai.fastowin.state
 
+import com.hienthai.fastowin.localization.missionTitle
+
 import com.hienthai.fastowin.localization.LocalizationService
 import com.hienthai.fastowin.localization.TextKey
 import com.hienthai.fastowin.protocol.FriendRequestSnapshot
@@ -428,20 +430,7 @@ private fun MissionSnapshot.rewardSummary(localization: LocalizationService): St
     if (rewardGems > 0) add("$rewardGems ${localization.text(TextKey.Gems)}")
 }.joinToString(" + ")
 
-private fun MissionSnapshot.localizedTitle(localization: LocalizationService): String {
-    if (titleKey != null) {
-        return TextKey.entries.firstOrNull { it.name == titleKey }
-            ?.let { key -> runCatching { localization.text(key) }.getOrNull() }
-            ?: title
-    }
-    return when (code.uppercase()) {
-        "DAILY_PLAY_3" -> localization.text(TextKey.MissionPlayThree)
-        "DAILY_WIN_1" -> localization.text(TextKey.MissionWinOne)
-        "WEEKLY_CORRECT_100" -> localization.text(TextKey.MissionCorrectHundred)
-        "WEEKLY_PERFECT_1" -> localization.text(TextKey.MissionPerfectWin)
-        else -> title
-    }
-}
+private fun MissionSnapshot.localizedTitle(localization: LocalizationService): String = localization.missionTitle(this)
 
 private fun LocalizationService.achievementTitle(
     code: String,

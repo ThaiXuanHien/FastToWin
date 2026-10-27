@@ -253,11 +253,19 @@ export async function click(page, locator, { allowDisabled = false } = {}) {
     return box.width > 0 && box.height > 0 ? [node.id || node.getAttribute('role'), Math.round(box.x), Math.round(box.y)] : null;
   }).filter(Boolean)));
   const wheelPoint = async viewport => {
+    // A dialog may pin its header/footer. Scroll its body so a wheel gesture
+    // does not land on a fixed action row, where there is no scrolling parent.
+    const scrollBodies = await tag(page, 'arcade_dialog_body').evaluateAll(nodes => nodes.map(node => {
+      const box = node.getBoundingClientRect();
+      return { x: box.x, y: box.y, width: box.width, height: box.height };
+    }));
     const dialogs = await tag(page, 'arcade_dialog').evaluateAll(nodes => nodes.map(node => {
       const box = node.getBoundingClientRect();
       return { x: box.x, y: box.y, width: box.width, height: box.height };
     }));
-    const region = dialogs.findLast(box => box.width > 0 && box.height > 0 &&
+    const exposedRegion = box => box.width > 0 && box.height > 0 &&
+      box.y < viewport.height && box.y + box.height > 0;
+    const region = scrollBodies.findLast(exposedRegion) || dialogs.findLast(box => box.width > 0 && box.height > 0 &&
       box.y < viewport.height && box.y + box.height > 0)
       || { x: 0, y: 0, width: viewport.width, height: viewport.height };
     const inputs = await page.locator('input, textarea').evaluateAll(nodes => nodes.map(node => {

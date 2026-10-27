@@ -169,6 +169,22 @@ test('labeled tournament example appears only while focused and empty', async ({
 
 
 // Exercise the shared pointer helper independently of server/Compose timing.
+test('canvas click scrolls the dialog body instead of its fixed footer', async ({ page }) => {
+  await page.setContent(`
+    <div id="arcade_dialog" style="position:absolute;left:20px;top:80px;width:340px;height:600px">
+      <header style="height:180px">Fixed heading</header>
+      <div id="arcade_dialog_body" style="height:160px;overflow-y:auto">
+        <button id="scrolled-action" style="display:block;margin-top:340px;height:48px"
+          onclick="this.textContent='Action reached'">Reach action</button>
+      </div>
+      <footer style="height:260px">Fixed actions</footer>
+    </div>
+  `);
+  await click(page, tag(page, 'scrolled-action'));
+  await expect(tag(page, 'scrolled-action')).toHaveText('Action reached');
+  expect(await tag(page, 'arcade_dialog_body').evaluate(element => element.scrollTop)).toBeGreaterThan(0);
+});
+
 test('canvas click resamples a target that moves after stable bounds were sampled', async ({ page }) => {
   await page.setContent(`
     <style>

@@ -14,6 +14,59 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class GiftMailboxControllerTest {
+    @Test fun `race batch rejects an unconfirmed receipt and retries through the same mailbox endpoint`() = runTest {
+        val race = ClanRaceMailboxContext("entitlement", "2026-10-26", 1, 9, "clan", "Frozen clan", 2,
+            "1", "0.000001", true, 9, 10, 10000, ClanRaceReward(7, 8, 9), "CLAN_WEEKLY_RACE")
+        val available = gift("race").copy(clanRace = race)
+        var confirmed = false
+        var refreshes = 0
+        val batches = mutableListOf<List<String>>()
+        val gateway = object : GiftGateway {
+            override suspend fun page(page: Int, pageSize: Int) = GiftMailboxPage(listOf(available), page, pageSize, 1, 1)
+            override suspend fun claim(id: String) = error("single flow unused")
+            override suspend fun claimAll(ids: List<String>): GiftClaimAllResult {
+                batches += ids
+                val response = available.copy(state = if(confirmed) GiftState.CLAIMED else GiftState.AVAILABLE)
+                return GiftClaimAllResult(listOf(GiftClaimItem("race", GiftClaimResult(response, 8, 7, 99, 88, 9, 77))))
+            }
+        }
+        val controller = GiftMailboxController(gateway, { refreshes++ })
+        controller.open(); controller.claimAll()
+        assertEquals(0, refreshes)
+        assertEquals("NETWORK_ERROR", controller.state.value.itemErrors["race"])
+        confirmed = true; controller.claimAll()
+        assertEquals(listOf(listOf("race"), listOf("race")), batches)
+        assertEquals(1, refreshes)
+        assertEquals(GiftState.CLAIMED, controller.state.value.items.single().state)
+    }
+
+    @Test fun `race gift waits for matching claimed receipt and retains idempotent existing claim flow`() = runTest {
+        val race = ClanRaceMailboxContext("entitlement", "2026-10-26", 1, 9, "clan", "Frozen clan", 2,
+            "1", "0.000001", true, 9, 10, 10000, ClanRaceReward(7, 8, 9), "CLAN_WEEKLY_RACE")
+        val available = gift("race").copy(clanRace = race, gold = 8, xp = 7, gems = 9)
+        var valid = false
+        var claims = 0
+        var refreshes = 0
+        val gateway = object : GiftGateway {
+            override suspend fun page(page: Int, pageSize: Int) = GiftMailboxPage(listOf(available), page, pageSize, 1, 1)
+            override suspend fun claim(id: String): GiftClaimResult {
+                claims++
+                return GiftClaimResult(available.copy(state = if(valid) GiftState.CLAIMED else GiftState.AVAILABLE), 8, 7, 99, 88, 9, 77)
+            }
+            override suspend fun claimAll(ids: List<String>) = error("unused")
+        }
+        val controller = GiftMailboxController(gateway, { refreshes++ })
+        controller.open(); controller.claim("race")
+        assertEquals(0, refreshes, "an available receipt is not server-confirmed success")
+        assertEquals("NETWORK_ERROR", controller.state.value.itemErrors["race"])
+        valid = true
+        controller.claim("race"); controller.claim("race")
+        assertEquals(2, claims)
+        assertEquals(1, refreshes)
+        assertEquals(GiftState.CLAIMED, controller.state.value.items.single().state)
+        assertEquals(race, controller.state.value.items.single().clanRace)
+    }
+
     @Test fun `compensation uses existing claim receipt and profile refresh authority`() = runTest {
         val context = CompensationMailboxContext("incident", "INC-DEMO", 2, 0, 10, "Lý do", "Reason")
         val available = gift("round").copy(gold = 0, xp = Int.MAX_VALUE, compensation = context)

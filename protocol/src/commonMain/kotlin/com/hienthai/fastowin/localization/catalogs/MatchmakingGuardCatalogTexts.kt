@@ -10,39 +10,9 @@ internal val matchmakingGuardTexts: Map<AppLanguage, Map<TextKey, String>> = map
     AppLanguage.ENGLISH to mapOf(
         TextKey.ServerTournamentActive to "Leave or finish your active tournament before continuing."
     ),
-    AppLanguage.SIMPLIFIED_CHINESE to mapOf(
-        TextKey.ServerTournamentActive to "请先退出或完成当前锦标赛，再继续操作。"
-    ),
-    AppLanguage.JAPANESE to mapOf(
-        TextKey.ServerTournamentActive to "続行する前に、参加中の大会を退出するか完了してください。"
-    ),
-    AppLanguage.KOREAN to mapOf(
-        TextKey.ServerTournamentActive to "계속하기 전에 진행 중인 토너먼트를 나가거나 완료하세요."
-    ),
-    AppLanguage.SPANISH to mapOf(
-        TextKey.ServerTournamentActive to "Abandona o termina el torneo activo antes de continuar."
-    ),
-    AppLanguage.BRAZILIAN_PORTUGUESE to mapOf(
-        TextKey.ServerTournamentActive to "Saia ou conclua o torneio ativo antes de continuar."
-    ),
-    AppLanguage.FRENCH to mapOf(
-        TextKey.ServerTournamentActive to "Quittez ou terminez le tournoi en cours avant de continuer."
-    ),
-    AppLanguage.GERMAN to mapOf(
-        TextKey.ServerTournamentActive to "Verlasse oder beende dein aktives Turnier, bevor du fortfährst."
-    ),
-    AppLanguage.INDONESIAN to mapOf(
-        TextKey.ServerTournamentActive to "Keluar atau selesaikan turnamen aktif sebelum melanjutkan."
-    ),
-    AppLanguage.THAI to mapOf(
-        TextKey.ServerTournamentActive to "ออกจากหรือเล่นทัวร์นาเมนต์ปัจจุบันให้จบก่อนดำเนินการต่อ"
-    ),
-    AppLanguage.RUSSIAN to mapOf(
-        TextKey.ServerTournamentActive to "Покиньте или завершите активный турнир, прежде чем продолжить."
-    )
 )
 
-/** VI/EN are selectable; legacy catalogs keep clear English recovery copy. */
+/** Recovery copy for the supported languages. */
 internal val playFlowConflictTexts: Map<AppLanguage, Map<TextKey, String>> =
     AppLanguage.entries.associateWith { language ->
         when (language) {

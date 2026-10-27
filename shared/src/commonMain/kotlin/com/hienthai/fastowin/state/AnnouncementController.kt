@@ -16,6 +16,7 @@ data class AnnouncementState(
     val total: String = "0",
     val hasMore: Boolean = false,
     val loading: Boolean = false,
+    val hasLoadedInbox: Boolean = false,
     val pending: Boolean = false,
     val error: String? = null,
     val preferences: AnnouncementPreferenceView? = null,
@@ -106,7 +107,7 @@ class AnnouncementController(private val gateway: AnnouncementGateway,
             // New first-page rows can shift old rows beyond the loaded window; retain them.
             val items = (refreshed + mutable.value.items).distinctBy { it.announcement.id }
             nextPage = page.page + 1
-            mutable.value = mutable.value.copy(items = items, total = page.total,
+            mutable.value = mutable.value.copy(items = items, total = page.total, hasLoadedInbox = true,
                 hasMore = page.items.isNotEmpty() && decimalGreaterThan(page.total, items.size))
             tick()
         }
@@ -116,7 +117,7 @@ class AnnouncementController(private val gateway: AnnouncementGateway,
         if (current(fence)) {
             anchor(page.serverNowEpochMillis); nextPage = page.page + 1
             val items = (mutable.value.items + page.items).distinctBy { it.announcement.id }
-            mutable.value = mutable.value.copy(items = items, total = page.total,
+            mutable.value = mutable.value.copy(items = items, total = page.total, hasLoadedInbox = true,
                 hasMore = page.items.isNotEmpty() && decimalGreaterThan(page.total, items.size))
             tick()
         }

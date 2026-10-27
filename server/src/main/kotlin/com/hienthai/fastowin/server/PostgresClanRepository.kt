@@ -1,15 +1,19 @@
-﻿package com.hienthai.fastowin.server
+package com.hienthai.fastowin.server
 
 import com.hienthai.fastowin.protocol.ClanMemberSnapshot
 import com.hienthai.fastowin.protocol.ClanDonationCurrency
 import com.hienthai.fastowin.protocol.ClanDonationStatus
 import com.hienthai.fastowin.protocol.CLAN_CREATION_GEM_COST
 import com.hienthai.fastowin.protocol.CLAN_CREATION_GOLD_COST
+import com.hienthai.fastowin.protocol.CLAN_CREATION_MIN_LEVEL
+import com.hienthai.fastowin.protocol.clanLogoRequiredLevel
 import com.hienthai.fastowin.protocol.ClanJoinRequestSnapshot
 import com.hienthai.fastowin.protocol.ClanRole
 import com.hienthai.fastowin.protocol.ClanQuestSnapshot
 import com.hienthai.fastowin.protocol.ClanSnapshot
 import com.hienthai.fastowin.protocol.ClanSummarySnapshot
+import com.hienthai.fastowin.server.missions.*
+import com.hienthai.fastowin.server.clanrace.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.util.UUID
@@ -18,7 +22,8 @@ import javax.sql.DataSource
 private const val CLAN_MAX_MEMBERS = 50
 
 class PostgresClanRepository(
-    private val dataSource: DataSource
+    private val dataSource: DataSource,
+    private val nowMillis: () -> Long = System::currentTimeMillis
 ) : ClanRepository {
     override suspend fun createClan(ownerId: String, name: String, description: String): ClanCreationResult = withContext(Dispatchers.IO) {
         dataSource.connection.use { connection ->
@@ -27,6 +32,7 @@ class PostgresClanRepository(
 
             try {
                 connection.autoCommit = false
+                JdbcClanRaceStore(connection).apply { lock(); setTime(nowMillis()) }
                 connection.prepareStatement("SELECT 1 FROM users WHERE id = ? FOR UPDATE").use {
                     it.setObject(1, ownerUuid)
                     it.executeQuery().use { result ->
@@ -56,13 +62,17 @@ class PostgresClanRepository(
                     it.executeUpdate()
                 }
                 val wallet = connection.prepareStatement(
-                    "SELECT gold, gems FROM player_stats WHERE user_id = ? FOR UPDATE"
+                    "SELECT gold, gems, experience_points FROM player_stats WHERE user_id = ? FOR UPDATE"
                 ).use {
                     it.setObject(1, ownerUuid)
                     it.executeQuery().use { result ->
                         check(result.next())
-                        result.getInt("gold") to result.getInt("gems")
+                        Triple(result.getInt("gold"), result.getInt("gems"), result.getInt("experience_points"))
                     }
+                }
+                if (PlayerProgression.levelForExperience(wallet.third) < CLAN_CREATION_MIN_LEVEL) {
+                    connection.rollback()
+                    return@withContext ClanCreationResult(ClanCreationStatus.LEVEL_TOO_LOW)
                 }
                 if (wallet.first < CLAN_CREATION_GOLD_COST || wallet.second < CLAN_CREATION_GEM_COST) {
                     connection.rollback()
@@ -130,6 +140,7 @@ class PostgresClanRepository(
         dataSource.connection.use { connection ->
             try {
                 connection.autoCommit = false
+                JdbcClanRaceStore(connection).apply { lock(); setTime(nowMillis()) }
                 val userUuid = UUID.fromString(userId)
                 val clanUuid = UUID.fromString(clanId)
 
@@ -207,6 +218,7 @@ class PostgresClanRepository(
         dataSource.connection.use { connection ->
             try {
                 connection.autoCommit = false
+                JdbcClanRaceStore(connection).apply { lock(); setTime(nowMillis()) }
                 val clanUuid = UUID.fromString(clanId)
                 val ownerUuid = UUID.fromString(ownerId)
                 val userUuid = UUID.fromString(userId)
@@ -322,6 +334,7 @@ class PostgresClanRepository(
         dataSource.connection.use { connection ->
             try {
                 connection.autoCommit = false
+                JdbcClanRaceStore(connection).apply { lock(); setTime(nowMillis()) }
                 val userUuid = UUID.fromString(userId)
 
                 // Discover the clan first, then lock every departure in the same
@@ -433,7 +446,7 @@ class PostgresClanRepository(
         dataSource.connection.use { connection ->
             val clanUuid = UUID.fromString(clanId)
             var clan: ClanSnapshot? = null
-            connection.prepareStatement("SELECT * FROM clans WHERE id = ?").use {
+            connection.prepareStatement("SELECT c.*, EXISTS(SELECT 1 FROM mission_legacy_clans m WHERE m.clan_id=c.id) AS legacy_quest FROM clans c WHERE c.id = ?").use {
                 it.setObject(1, clanUuid)
                 it.executeQuery().use { rs ->
                     if (rs.next()) {
@@ -448,13 +461,13 @@ class PostgresClanRepository(
                             trophies = rs.getInt("trophies"),
                             logoId = rs.getString("logo_id"),
                             maxMembers = 50,
-                            quest = ClanQuestSnapshot(
+                            quest = if (rs.getBoolean("legacy_quest")) ClanQuestSnapshot(
                                 progress = rs.getInt("quest_progress"),
                                 target = rs.getInt("quest_target"),
                                 rewardGold = rs.getInt("quest_reward_gold"),
                                 rewardXp = rs.getInt("quest_reward_xp"),
                                 rewardGems = rs.getInt("quest_reward_gems")
-                            ),
+                            ) else null,
                             level = levelProgress.level,
                             experiencePoints = experiencePoints,
                             currentLevelExperience = levelProgress.currentExperience,
@@ -471,7 +484,9 @@ class PostgresClanRepository(
                 connection.prepareStatement(
                     "SELECT cm.user_id, cm.role, cm.quest_contribution, cm.quest_reward_claimed, " +
                     "cm.donated_gold, cm.donated_gems, " +
-                    "p.display_name, COALESCE(s.elo_rating, 1000) AS trophies " +
+                    "p.display_name, p.player_code, p.avatar_url, " +
+                    "COALESCE(s.equipped_frame_id, 'frame_default') AS frame_id, " +
+                    "COALESCE(s.elo_rating, 1000) AS trophies " +
                     "FROM clan_members cm JOIN profiles p ON cm.user_id = p.user_id " +
                     "LEFT JOIN player_stats s ON cm.user_id = s.user_id " +
                     "WHERE cm.clan_id = ?"
@@ -488,7 +503,10 @@ class PostgresClanRepository(
                                     questContribution = rs.getInt("quest_contribution"),
                                     questRewardClaimed = rs.getBoolean("quest_reward_claimed"),
                                     donatedGold = rs.getLong("donated_gold"),
-                                    donatedGems = rs.getLong("donated_gems")
+                                    donatedGems = rs.getLong("donated_gems"),
+                                    playerCode = rs.getString("player_code"),
+                                    avatarId = rs.getString("avatar_url"),
+                                    frameId = rs.getString("frame_id")
                                 )
                             )
                         }
@@ -565,28 +583,57 @@ class PostgresClanRepository(
         list
     }
 
-    override suspend fun kickMember(clanId: String, currentUserId: String, targetUserId: String): Boolean = withContext(Dispatchers.IO) {
+    override suspend fun kickMember(clanId: String, currentUserId: String, targetUserId: String): Boolean = try {
+        PostgresClanRaceRepository(dataSource).transaction {
+            setTime(nowMillis())
+            update("DELETE FROM clan_members WHERE clan_id=? AND user_id=?",uuid(clanId),uuid(targetUserId))>0
+        }
+    } catch (_: Exception) { false }
+    override suspend fun updateLogoId(clanId: String, ownerId: String, logoId: String): ClanLogoUpdateStatus = withContext(Dispatchers.IO) {
+        val requiredLevel = clanLogoRequiredLevel(logoId)
+            ?: return@withContext ClanLogoUpdateStatus.INVALID_LOGO
         dataSource.connection.use { connection ->
+            connection.autoCommit = false
             try {
-                connection.prepareStatement("DELETE FROM clan_members WHERE clan_id = ? AND user_id = ?").use {
-                    it.setObject(1, UUID.fromString(clanId))
-                    it.setObject(2, UUID.fromString(targetUserId))
-                    it.executeUpdate() > 0
+                // Clan UPDATE triggers take the race gate. Take it before the row
+                // lock, matching donations and departures, to avoid lock inversion.
+                JdbcClanRaceStore(connection).apply { lock(); setTime(nowMillis()) }
+                val clanUuid = UUID.fromString(clanId)
+                val ownerUuid = UUID.fromString(ownerId)
+                val clan = connection.prepareStatement(
+                    "SELECT owner_id, logo_id, experience_points FROM clans WHERE id = ? FOR UPDATE"
+                ).use { statement ->
+                    statement.setObject(1, clanUuid)
+                    statement.executeQuery().use { result ->
+                        if (result.next()) Triple(
+                            result.getObject("owner_id", UUID::class.java),
+                            result.getString("logo_id"),
+                            result.getLong("experience_points")
+                        ) else null
+                    }
                 }
-            } catch (e: Exception) {
-                false
+                val status = when {
+                    clan == null -> ClanLogoUpdateStatus.CLAN_NOT_FOUND
+                    clan.first != ownerUuid -> ClanLogoUpdateStatus.NOT_OWNER
+                    clan.second == logoId -> ClanLogoUpdateStatus.UPDATED
+                    ClanProgression.levelForExperience(clan.third) < requiredLevel -> ClanLogoUpdateStatus.LOCKED
+                    else -> ClanLogoUpdateStatus.UPDATED
+                }
+                if (status == ClanLogoUpdateStatus.UPDATED && clan?.second != logoId) {
+                    connection.prepareStatement("UPDATE clans SET logo_id = ? WHERE id = ?").use { statement ->
+                        statement.setString(1, logoId)
+                        statement.setObject(2, clanUuid)
+                        check(statement.executeUpdate() == 1)
+                    }
+                }
+                connection.commit()
+                status
+            } catch (_: Exception) {
+                connection.rollback()
+                ClanLogoUpdateStatus.FAILED
             }
         }
     }
-
-    override suspend fun updateLogoId(clanId: String, logoId: String): Boolean = withContext(Dispatchers.IO) {
-        dataSource.connection.use { connection ->
-            connection.prepareStatement("UPDATE clans SET logo_id = ? WHERE id = ?").use { statement ->
-                statement.setString(1, logoId)
-                statement.setObject(2, UUID.fromString(clanId))
-                statement.executeUpdate() > 0
-            }
-        }    }
 
     override suspend fun addClanTrophies(clanId: String, amount: Int): Boolean = withContext(Dispatchers.IO) {
         dataSource.connection.use { connection ->
@@ -598,120 +645,12 @@ class PostgresClanRepository(
         }
     }
 
-    override suspend fun addQuestProgress(clanId: String, userId: String, amount: Int): Boolean = withContext(Dispatchers.IO) {
-        dataSource.connection.use { connection ->
-            connection.autoCommit = false
-            try {
-                val clanUuid = UUID.fromString(clanId)
-                val userUuid = UUID.fromString(userId)
-                
-                connection.prepareStatement("UPDATE clans SET quest_progress = quest_progress + ? WHERE id = ?").use {
-                    it.setInt(1, amount)
-                    it.setObject(2, clanUuid)
-                    it.executeUpdate()
-                }
-
-                connection.prepareStatement("UPDATE clan_members SET quest_contribution = quest_contribution + ? WHERE clan_id = ? AND user_id = ?").use {
-                    it.setInt(1, amount)
-                    it.setObject(2, clanUuid)
-                    it.setObject(3, userUuid)
-                    it.executeUpdate()
-                }
-                
-                connection.commit()
-                true
-            } catch (e: Exception) {
-                connection.rollback()
-                false
-            } finally {
-                connection.autoCommit = true
-            }
-        }
-    }
-
-    override suspend fun claimQuestReward(clanId: String, userId: String): Boolean = withContext(Dispatchers.IO) {
-        dataSource.connection.use { connection ->
-            connection.autoCommit = false
-            try {
-                val clanUuid = UUID.fromString(clanId)
-                val userUuid = UUID.fromString(userId)
-                val reward = connection.prepareStatement(
-                    """
-                    SELECT c.quest_progress, c.quest_target, c.quest_reward_gold,
-                           c.quest_reward_xp, c.quest_reward_gems, cm.quest_reward_claimed
-                    FROM clans c
-                    JOIN clan_members cm ON cm.clan_id = c.id AND cm.user_id = ?
-                    WHERE c.id = ?
-                    FOR UPDATE OF c, cm
-                    """.trimIndent()
-                ).use { statement ->
-                    statement.setObject(1, userUuid)
-                    statement.setObject(2, clanUuid)
-                    statement.executeQuery().use { result ->
-                        if (!result.next() ||
-                            result.getBoolean("quest_reward_claimed") ||
-                            result.getInt("quest_progress") < result.getInt("quest_target")
-                        ) null else Triple(
-                            result.getInt("quest_reward_gold"),
-                            result.getInt("quest_reward_xp"),
-                            result.getInt("quest_reward_gems")
-                        )
-                    }
-                } ?: run {
-                    connection.rollback()
-                    return@withContext false
-                }
-                connection.prepareStatement(
-                    """
-                    INSERT INTO player_stats (
-                        user_id, gold, experience_points, gems, updated_at
-                    ) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
-                    ON CONFLICT (user_id) DO UPDATE SET
-                        gold = player_stats.gold + EXCLUDED.gold,
-                        experience_points = player_stats.experience_points + EXCLUDED.experience_points,
-                        gems = player_stats.gems + EXCLUDED.gems,
-                        updated_at = EXCLUDED.updated_at
-                    """.trimIndent()
-                ).use { statement ->
-                    statement.setObject(1, userUuid)
-                    statement.setInt(2, reward.first)
-                    statement.setInt(3, reward.second)
-                    statement.setInt(4, reward.third)
-                    check(statement.executeUpdate() == 1)
-                }
-                connection.prepareStatement(
-                    """
-                    INSERT INTO wallet_transactions (
-                        id, user_id, source_type, source_id, gold_delta, gems_delta, xp_delta
-                    ) VALUES (?, ?, 'CLAN_QUEST', ?, ?, ?, ?)
-                    """.trimIndent()
-                ).use { statement ->
-                    statement.setObject(1, UUID.randomUUID())
-                    statement.setObject(2, userUuid)
-                    statement.setString(3, clanId)
-                    statement.setInt(4, reward.first)
-                    statement.setInt(5, reward.third)
-                    statement.setInt(6, reward.second)
-                    statement.executeUpdate()
-                }
-                connection.prepareStatement(
-                    "UPDATE clan_members SET quest_reward_claimed = TRUE WHERE clan_id = ? AND user_id = ?"
-                ).use { statement ->
-                    statement.setObject(1, clanUuid)
-                    statement.setObject(2, userUuid)
-                    check(statement.executeUpdate() == 1)
-                }
-                connection.commit()
-                true
-            } catch (error: Throwable) {
-                connection.rollback()
-                false
-            } finally {
-                connection.autoCommit = true
-            }
-        }
-    }
-
+    override suspend fun addQuestProgress(clanId: String, userId: String, amount: Int): Boolean = try {
+        PostgresMissionRepository(dataSource).transaction { addLegacyQuestProgress(clanId,userId,amount) }
+    } catch (_: Exception) { false }
+    override suspend fun claimQuestReward(clanId: String, userId: String): Boolean = try {
+        PostgresMissionRepository(dataSource).transaction { claimLegacyClan(clanId,userId) }
+    } catch (_: Exception) { false }
     override suspend fun donateToClan(
         userId: String,
         clanId: String,
@@ -723,6 +662,9 @@ class PostgresClanRepository(
             ?: return@withContext ClanDonationResult(ClanDonationStatus.INVALID_AMOUNT)
         dataSource.connection.use { connection ->
             connection.autoCommit = false
+            JdbcMissionStore(connection).lock()
+            val donationNow=nowMillis()
+            JdbcClanRaceStore(connection).setTime(donationNow)
             try {
                 val userUuid = UUID.fromString(userId)
                 val clanUuid = UUID.fromString(clanId)
@@ -880,6 +822,9 @@ class PostgresClanRepository(
                     check(statement.executeUpdate() == 1)
                 }
 
+                JdbcClanRaceStore(connection).recordDonation(userId,clanId,requestId,currency,amount.toLong(),donationNow)
+                JdbcMissionStore(connection).record(MissionProgressEvent("donation:$requestId",userId,donationNow,
+                    donatedGold=goldSpent,donatedGems=gemsSpent))
                 connection.commit()
                 ClanDonationResult(
                     status = ClanDonationStatus.APPLIED,

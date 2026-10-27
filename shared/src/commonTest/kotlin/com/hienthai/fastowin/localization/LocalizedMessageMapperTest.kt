@@ -99,13 +99,21 @@ class LocalizedMessageMapperTest {
         )
 
         assertEquals(
-            "You need 2,000 Gold and 20 Gems to create a clan.",
+            "You need 10,000 Gold and 100 Gems to create a clan.",
             englishMapper.message(error)
         )
         assertEquals(
-            "Cần 2.000 Vàng và 20 Gem để tạo bang.",
+            "Cần 10.000 Vàng và 100 Gem để tạo bang.",
             LocalizedMessageMapper(LocalizationService(AppLanguage.VIETNAMESE)).message(error)
         )
+    }
+
+    @Test
+    fun clanCreationLevelRequirementUsesSelectedLanguageInsteadOfServerFallback() {
+        val error = ServerMessage.Error("CLAN_CREATION_LEVEL_TOO_LOW", "Cần đạt cấp 10 để tạo bang.")
+        assertEquals("Reach level 10 to create a clan.", englishMapper.message(error))
+        assertEquals("Cần đạt cấp 10 để tạo bang.",
+            LocalizedMessageMapper(LocalizationService(AppLanguage.VIETNAMESE)).message(error))
     }
 
     @Test

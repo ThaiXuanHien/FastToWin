@@ -41,9 +41,9 @@ class PostgresClanRepositoryTest {
                 dataSource.connection.use { connection ->
                     connection.prepareStatement(
                         """
-                        INSERT INTO player_stats (user_id, gold, gems, updated_at)
-                        VALUES (?, 5000, 50, CURRENT_TIMESTAMP)
-                        ON CONFLICT (user_id) DO UPDATE SET gold = 5000, gems = 50
+                        INSERT INTO player_stats (user_id, gold, gems, experience_points, updated_at)
+                        VALUES (?, 10000, 100, 1260, CURRENT_TIMESTAMP)
+                        ON CONFLICT (user_id) DO UPDATE SET gold = 10000, gems = 100, experience_points = 1260
                         """.trimIndent()
                     ).use { statement ->
                         listOf(firstOwner.userId, secondOwner.userId).forEach { id ->
@@ -56,6 +56,12 @@ class PostgresClanRepositoryTest {
                 val shortSuffix = suffix.take(8)
                 val firstClanId = requireNotNull(clans.createClan(firstOwner.userId, "Clan A $shortSuffix", "A").clanId)
                 val secondClanId = requireNotNull(clans.createClan(secondOwner.userId, "Clan B $shortSuffix", "B").clanId)
+                // This fixture represents a clan whose quest already existed before mission-catalog cutover.
+                dataSource.connection.use { connection ->
+                    connection.prepareStatement("INSERT INTO mission_legacy_clans(clan_id,target,reward_xp,reward_gold,reward_gems) SELECT id,quest_target,quest_reward_xp,quest_reward_gold,quest_reward_gems FROM clans WHERE id=?").use {
+                        it.setObject(1,UUID.fromString(secondClanId));it.executeUpdate()
+                    }
+                }
 
                 assertEquals(
                     ClanJoinRequestResult.OWN_CLAN,
@@ -79,6 +85,30 @@ class PostgresClanRepositoryTest {
                     clans.respondJoinRequest(secondClanId, secondOwner.userId, applicant.userId, accept = true)
                 )
                 assertEquals(secondClanId, clans.getClanByUserId(applicant.userId)?.id)
+                dataSource.connection.use { connection ->
+                    connection.prepareStatement("UPDATE profiles SET avatar_url = 'avatar_rocket' WHERE user_id = ?").use {
+                        it.setObject(1, UUID.fromString(applicant.userId))
+                        it.executeUpdate()
+                    }
+                    connection.prepareStatement(
+                        """
+                        INSERT INTO player_stats (user_id, equipped_frame_id, updated_at)
+                        VALUES (?, 'frame_gold', CURRENT_TIMESTAMP)
+                        ON CONFLICT (user_id) DO UPDATE SET equipped_frame_id = 'frame_gold'
+                        """.trimIndent()
+                    ).use {
+                        it.setObject(1, UUID.fromString(applicant.userId))
+                        it.executeUpdate()
+                    }
+                }
+                val publicProfile = requireNotNull(PostgresPlayerProfileRepository(dataSource).findByPlayerId(applicant.userId))
+                val roster = requireNotNull(clans.getClanById(secondClanId)).members
+                val rosterMember = roster.single { it.userId == applicant.userId }
+                assertEquals(publicProfile.playerCode, rosterMember.playerCode)
+                assertEquals("Applicant", rosterMember.displayName)
+                assertEquals("avatar_rocket", rosterMember.avatarId)
+                assertEquals("frame_gold", rosterMember.frameId)
+                assertEquals("frame_default", roster.single { it.userId == secondOwner.userId }.frameId)
                 assertTrue(clans.getPendingJoinClanIds(applicant.userId).isEmpty())
                 assertEquals(
                     ClanJoinResponseResult.REQUEST_NOT_FOUND,

@@ -2,7 +2,6 @@ package com.hienthai.fastowin.screenshot
 
 import com.hienthai.fastowin.navigation.GameMode
 import com.hienthai.fastowin.protocol.AchievementSnapshot
-import com.hienthai.fastowin.protocol.ClanLeaderboardEntrySnapshot
 import com.hienthai.fastowin.protocol.ClanMemberSnapshot
 import com.hienthai.fastowin.protocol.ClanQuestSnapshot
 import com.hienthai.fastowin.protocol.ClanRole

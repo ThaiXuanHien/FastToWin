@@ -24,8 +24,8 @@ class PostgresClanLifecycleTest {
         withDatabase { dataSource ->
             val rich = register(dataSource, "rich")
             val poor = register(dataSource, "poor")
-            fund(dataSource.connection, rich.userId, gold = 5_000, gems = 50)
-            fund(dataSource.connection, poor.userId, gold = 5_000, gems = 19)
+            fund(dataSource.connection, rich.userId, gold = 15_000, gems = 150)
+            fund(dataSource.connection, poor.userId, gold = 10_000, gems = 99)
             val repository = PostgresClanRepository(dataSource)
 
             val created = repository.createClan(rich.userId, uniqueName("Paid"), "")
@@ -44,8 +44,8 @@ class PostgresClanLifecycleTest {
                     statement.setObject(1, UUID.fromString(rich.userId))
                     statement.executeQuery().use { result ->
                         assertTrue(result.next())
-                        assertEquals(3_000, result.getInt("gold"))
-                        assertEquals(30, result.getInt("gems"))
+                        assertEquals(5_000, result.getInt("gold"))
+                        assertEquals(50, result.getInt("gems"))
                         assertEquals(1, result.getInt("charges"))
                     }
                 }
@@ -56,7 +56,7 @@ class PostgresClanLifecycleTest {
                 repository.createClan(poor.userId, uniqueName("Rejected"), "").status
             )
             assertNull(repository.getClanByUserId(poor.userId))
-            assertEquals(5_000 to 19, wallet(dataSource.connection, poor.userId))
+            assertEquals(10_000 to 99, wallet(dataSource.connection, poor.userId))
         }
     }
 
@@ -67,7 +67,7 @@ class PostgresClanLifecycleTest {
             val oldest = register(dataSource, "oldest")
             val newest = register(dataSource, "newest")
             val solo = register(dataSource, "solo")
-            listOf(leader, solo).forEach { fund(dataSource.connection, it.userId, 5_000, 50) }
+            listOf(leader, solo).forEach { fund(dataSource.connection, it.userId, 10_000, 100) }
             val repository = PostgresClanRepository(dataSource)
             val clanId = requireNotNull(repository.createClan(leader.userId, uniqueName("Transfer"), "").clanId)
             val soloClanId = requireNotNull(repository.createClan(solo.userId, uniqueName("Solo"), "").clanId)
@@ -108,7 +108,7 @@ class PostgresClanLifecycleTest {
             val leader = register(dataSource, "concurrent-leader")
             val successor = register(dataSource, "concurrent-successor")
             val remaining = register(dataSource, "concurrent-remaining")
-            fund(dataSource.connection, leader.userId, 5_000, 50)
+            fund(dataSource.connection, leader.userId, 10_000, 100)
             val repository = PostgresClanRepository(dataSource)
             val clanId = requireNotNull(
                 repository.createClan(leader.userId, uniqueName("Concurrent"), "").clanId
@@ -159,9 +159,10 @@ class PostgresClanLifecycleTest {
         connection.use {
             it.prepareStatement(
                 """
-                INSERT INTO player_stats (user_id, gold, gems, updated_at)
-                VALUES (?, ?, ?, CURRENT_TIMESTAMP)
-                ON CONFLICT (user_id) DO UPDATE SET gold = EXCLUDED.gold, gems = EXCLUDED.gems
+                INSERT INTO player_stats (user_id, gold, gems, experience_points, updated_at)
+                VALUES (?, ?, ?, 1260, CURRENT_TIMESTAMP)
+                ON CONFLICT (user_id) DO UPDATE SET gold = EXCLUDED.gold, gems = EXCLUDED.gems,
+                    experience_points = EXCLUDED.experience_points
                 """.trimIndent()
             ).use { statement ->
                 statement.setObject(1, UUID.fromString(userId))

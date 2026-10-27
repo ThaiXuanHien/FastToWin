@@ -274,6 +274,7 @@ fun ArcadeDialog(
     subtitle: String? = null,
     showCloseButton: Boolean = false,
     scrollableContent: Boolean = false,
+    fixedActions: (@Composable () -> Unit)? = null,
     content: @Composable () -> Unit
 ) {
     Dialog(
@@ -305,7 +306,7 @@ fun ArcadeDialog(
                             .background(
                                 Brush.verticalGradient(listOf(Color(0xFF123269), Color(0xFF091D43)))
                             )
-                            .then(if (scrollableContent) Modifier.verticalScroll(rememberScrollState()) else Modifier)
+                            .then(if (scrollableContent && fixedActions == null) Modifier.verticalScroll(rememberScrollState()) else Modifier)
                             .padding(18.dp),
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
@@ -338,7 +339,14 @@ fun ArcadeDialog(
                                 color = Color(0xFFA9BADC)
                             )
                         }
-                        content()
+                        if (fixedActions != null) {
+                            Column(
+                                Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState())
+                                    .testTag("arcade_dialog_body"),
+                                verticalArrangement = Arrangement.spacedBy(12.dp)
+                            ) { content() }
+                            fixedActions()
+                        } else content()
                     }
                 }
             }
@@ -768,8 +776,8 @@ fun ArcadeEmptyState(
 fun ArcadeRankBadge(rank: Int, modifier: Modifier = Modifier) {
     val color = when (rank) {
         1 -> ArcadePalette.Gold400
-        2 -> Color(0xFFC8D4EA)
-        3 -> Color(0xFFE59655)
+        2 -> ArcadePalette.Silver400
+        3 -> ArcadePalette.Bronze400
         else -> MaterialTheme.colorScheme.primaryContainer
     }
     val contentColor = if (rank in 1..3) ArcadePalette.Navy950 else MaterialTheme.colorScheme.onPrimaryContainer

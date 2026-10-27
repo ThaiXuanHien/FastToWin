@@ -32,7 +32,7 @@ class InMemoryGiftRepository(private val admins: InMemoryAdminRepository) : Gift
                 override fun campaign(id: String, lock: Boolean) = next.campaigns[id]
                 override fun putCampaign(campaign: GiftCampaign) { next.campaigns[campaign.id] = campaign }
                 override fun campaigns(page: PageRequest): AdminPage<GiftCampaign> {
-                    val all = next.campaigns.values.filter { it.compensation == null }.sortedByDescending { it.id }; return page.result(all.drop(page.offset).take(page.pageSize), all.size.toLong())
+                    val all = next.campaigns.values.filter { it.compensation == null && it.clanRace == null }.sortedByDescending { it.id }; return page.result(all.drop(page.offset).take(page.pageSize), all.size.toLong())
                 }
                 override fun registeredPlayers() = players.giftPlayers()
                 override fun activePlayer(id: String) = players.giftPlayers().any { it.id == id }

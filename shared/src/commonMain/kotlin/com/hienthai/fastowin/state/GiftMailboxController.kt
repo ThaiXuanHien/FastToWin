@@ -124,6 +124,8 @@ class GiftMailboxController(
         _state.value = current.copy(pendingIds = current.pendingIds + id, itemErrors = current.itemErrors - id)
         try {
             val receipt = gateway.claim(id)
+            val race = current.items.firstOrNull { it.campaignId == id }?.clanRace
+            if (race != null && !validRaceReceipt(id, race, receipt)) throw GiftApiException("NETWORK_ERROR", "")
             // A route reset fences the view; the accepted claim still changed this account.
             if (closed) return
             refreshProfile()
@@ -170,10 +172,15 @@ class GiftMailboxController(
                 try {
                     val results = gateway.claimAll(batch).items.associateBy { it.campaignId }
                     if (closed) return
-                    if (results.values.any { it.result != null }) refreshProfile()
+                    val accepted = batch.mapNotNull { id ->
+                        results[id]?.result?.takeIf { receipt ->
+                            all[id]?.clanRace?.let { validRaceReceipt(id, it, receipt) } ?: true
+                        }
+                    }.associateBy { it.gift.campaignId }
+                    if (accepted.isNotEmpty()) refreshProfile()
                     for (id in batch) {
                         val item = results[id]
-                        val receipt = item?.result
+                        val receipt = accepted[id]
                         if (receipt != null) applyReceipt(receipt, updateItems = fence == generation)
                         else if (fence == generation) markError(id, item?.error?.code ?: "NETWORK_ERROR")
                     }
@@ -233,6 +240,10 @@ class GiftMailboxController(
     private fun markError(id: String, code: String) {
         _state.value = _state.value.copy(itemErrors = _state.value.itemErrors + (id to code))
     }
+
+    private fun validRaceReceipt(id: String, context: ClanRaceMailboxContext, receipt: GiftClaimResult): Boolean =
+        receipt.gift.campaignId == id && receipt.gift.state == GiftState.CLAIMED &&
+            receipt.gift.clanRace?.entitlementId == context.entitlementId
 
     private fun Exception.code(): String = (this as? GiftApiException)?.code ?: "NETWORK_ERROR"
 }

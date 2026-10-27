@@ -47,7 +47,7 @@ private fun announcementFixture(state: AdminAnnouncementState = AdminAnnouncemen
     val admin = AppNotification(row.notification.id, AppNotificationKind.COSMETIC, if (en) row.announcement.titleEn else row.announcement.titleVi,
         if (en) row.announcement.bodyEn else row.announcement.bodyVi, row.notification.createdAtEpochMillis, destination = AppNotificationDestination.PROFILE, announcement = row.announcement)
     NotificationsScreen(if (empty) emptyList() else listOf(admin) + ArcadeScreenshotFixtures.notifications().take(1), {}, {}, {}, {}, {},
-        nowMillis = ArcadeScreenshotFixtures.NOW_MILLIS, announcementState = AnnouncementState(items = if (empty) emptyList() else listOf(row), total = if (empty) "0" else "9223372036854775807", hasMore = !empty))
+        nowMillis = ArcadeScreenshotFixtures.NOW_MILLIS, announcementState = AnnouncementState(items = if (empty) emptyList() else listOf(row), total = if (empty) "0" else "9223372036854775807", hasMore = !empty, hasLoadedInbox = true))
 }
 @Composable private fun Consent(error: String? = null, pending: Boolean = false) {
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)) {

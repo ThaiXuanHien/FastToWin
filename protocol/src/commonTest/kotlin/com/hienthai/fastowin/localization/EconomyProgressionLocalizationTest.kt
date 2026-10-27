@@ -26,20 +26,10 @@ class EconomyProgressionLocalizationTest {
     }
 
     @Test
-    fun `representative progression copy resolves in all twelve languages`() {
+    fun `representative progression copy resolves in Vietnamese and English`() {
         val expectedFrameNames = mapOf(
             AppLanguage.VIETNAMESE to "Tia Chớp",
             AppLanguage.ENGLISH to "Lightning",
-            AppLanguage.SIMPLIFIED_CHINESE to "闪电",
-            AppLanguage.JAPANESE to "稲妻",
-            AppLanguage.KOREAN to "번개",
-            AppLanguage.SPANISH to "Relámpago",
-            AppLanguage.BRAZILIAN_PORTUGUESE to "Relâmpago",
-            AppLanguage.FRENCH to "Éclair",
-            AppLanguage.GERMAN to "Blitz",
-            AppLanguage.INDONESIAN to "Kilat",
-            AppLanguage.THAI to "สายฟ้า",
-            AppLanguage.RUSSIAN to "Молния"
         )
         val key = TextKey.entries.singleOrNull { it.name == "FrameLightningName" }
         assertNotNull(key, "Missing TextKey.FrameLightningName")

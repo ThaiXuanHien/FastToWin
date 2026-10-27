@@ -75,8 +75,8 @@ Fast To Win hiện cho phép chọn **Tiếng Việt** hoặc **English**. Ngư�
 đổi ngôn ngữ ngay trong Cài đặt mà không mất màn hiện tại, dữ liệu form hoặc trạng
 thái trận. Nội dung do người chơi nhập luôn được giữ nguyên; mã ngôn ngữ cũ, nội
 dung chưa có bản dịch hoặc locale thiết bị không được hỗ trợ đều dùng tiếng Anh.
-Tùy chọn **Hệ thống** chỉ phân giải sang Tiếng Việt hoặc English. Các catalog cũ
-được giữ trong mã nguồn để đọc dữ liệu tương thích, nhưng không xuất hiện trong UI.
+Tùy chọn **Hệ thống** chỉ phân giải sang Tiếng Việt hoặc English. Mã nguồn chỉ
+đóng gói hai catalog này; mã ngôn ngữ cũ được đọc và fallback về English.
 
 ## 1. Chuẩn bị môi trường Windows/Android
 

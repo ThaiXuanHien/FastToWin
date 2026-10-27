@@ -127,6 +127,10 @@ fun main() {
                 compensationRoundService = adminService?.let { com.hienthai.fastowin.server.compensation.CompensationRoundService(
                     database?.giftRepository ?: com.hienthai.fastowin.server.gifts.UnavailableGiftRepository, it) },
                 giftDeliveryEnabled = database != null,
+                missionService = com.hienthai.fastowin.server.missions.MissionService(database?.missionRepository, adminService),
+                clanRaceService = com.hienthai.fastowin.server.clanrace.ClanRaceService(database?.clanRaceRepository, adminService),
+                clanRaceSettlement = database?.clanRaceRepository?.let { com.hienthai.fastowin.server.clanrace.ClanRaceSettlement(it) },
+                clanRaceDelivery = database?.clanRaceRepository?.let { com.hienthai.fastowin.server.clanrace.ClanRaceDelivery(it) },
                 rewardEventService = com.hienthai.fastowin.server.events.RewardEventService(
                     database?.rewardEventRepository ?: com.hienthai.fastowin.server.events.UnavailableRewardEventRepository, adminService),
                 adMobService = adMobConfiguration?.let { com.hienthai.fastowin.server.ads.AdMobService(it, adMobRepository,

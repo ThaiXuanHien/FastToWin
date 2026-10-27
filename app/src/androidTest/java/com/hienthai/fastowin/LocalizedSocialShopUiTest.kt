@@ -31,8 +31,8 @@ class LocalizedSocialShopUiTest {
     val composeRule = createComposeRule()
 
     @Test
-    fun chineseFriendsUsesLocalizedTitle() {
-        render(AppLanguage.SIMPLIFIED_CHINESE) {
+    fun vietnameseFriendsUsesLocalizedTitle() {
+        render(AppLanguage.VIETNAMESE) {
             FriendsScreen(
                 state = GameState(), onBack = {}, onRefresh = {}, onSendRequest = {},
                 onRespondRequest = { _, _ -> }, onCancelRequest = {}, onRemoveFriend = {},
@@ -40,13 +40,13 @@ class LocalizedSocialShopUiTest {
                 onRespondRoomInvitation = { _, _ -> }, onOpenFriendProfile = {}
             )
         }
-        composeRule.onNodeWithText("好友").assertIsDisplayed()
-        composeRule.onNodeWithText("你的队伍").assertIsDisplayed()
+        composeRule.onNodeWithText("Bạn bè").assertIsDisplayed()
+        composeRule.onNodeWithText("Biệt đội của bạn").assertIsDisplayed()
     }
 
     @Test
-    fun japaneseClanUsesLocalizedTitle() {
-        render(AppLanguage.JAPANESE) {
+    fun vietnameseClanUsesLocalizedTitle() {
+        render(AppLanguage.VIETNAMESE) {
             ClanScreen(
                 serverUrl = "ws://127.0.0.1:8080/game", currentUserId = null,
                 myClanId = null, clanList = emptyList(), pendingJoinClanIds = emptySet(),
@@ -56,41 +56,41 @@ class LocalizedSocialShopUiTest {
                 onUpdateLogo = { _, _ -> }, onClaimQuest = {}, onViewClan = {}, onBack = {}
             )
         }
-        composeRule.onNodeWithText("クラン").assertIsDisplayed()
-        composeRule.onNodeWithText("仲間と挑戦").assertIsDisplayed()
+        composeRule.onNodeWithText("Bang hội").assertIsDisplayed()
+        composeRule.onNodeWithText("Sát cánh tranh tài").assertIsDisplayed()
     }
 
     @Test
-    fun koreanLeaderboardUsesLocalizedTitle() {
-        render(AppLanguage.KOREAN) {
+    fun vietnameseLeaderboardUsesLocalizedTitle() {
+        render(AppLanguage.VIETNAMESE) {
             LeaderboardScreen(
                 state = GameState(), onBack = {}, onRefresh = {}, onOpenFriendProfile = {}
             )
         }
-        composeRule.onNodeWithText("랭킹").assertIsDisplayed()
-        composeRule.onNodeWithText("명예의 레이스").assertIsDisplayed()
+        composeRule.onNodeWithText("Xếp hạng").assertIsDisplayed()
+        composeRule.onNodeWithText("Đường đua danh vọng").assertIsDisplayed()
     }
 
     @Test
-    fun indonesianTournamentUsesLocalizedTitle() {
-        render(AppLanguage.INDONESIAN) {
+    fun vietnameseTournamentUsesLocalizedTitle() {
+        render(AppLanguage.VIETNAMESE) {
             TournamentScreen(
                 state = GameState(), onBack = {}, onCreate = { _, _, _, _, _ -> }, onInvite = {},
                 onRespondInvitation = { _, _ -> }, onStart = {}, onLeave = {},
                 onOpenFriendProfile = {}
             )
         }
-        composeRule.onNodeWithText("Turnamen").assertIsDisplayed()
-        composeRule.onNodeWithText("Arena eliminasi").assertIsDisplayed()
+        composeRule.onNodeWithText("Đấu giải").assertIsDisplayed()
+        composeRule.onNodeWithText("Đấu trường loại trực tiếp").assertIsDisplayed()
     }
 
     @Test
-    fun thaiNotificationsUsesLocalizedTitle() {
-        render(AppLanguage.THAI) {
+    fun vietnameseNotificationsUsesLocalizedTitle() {
+        render(AppLanguage.VIETNAMESE) {
             NotificationsScreen(
                 notifications = listOf(
                     AppNotification(
-                        id = "thai-localization",
+                        id = "vietnamese-localization",
                         kind = AppNotificationKind.MISSION,
                         title = "Test notification",
                         message = "Test message",
@@ -102,34 +102,34 @@ class LocalizedSocialShopUiTest {
                 onMarkAllRead = {}, onClearAll = {}
             )
         }
-        composeRule.onNodeWithText("การแจ้งเตือน").assertIsDisplayed()
-        composeRule.onNodeWithText("ข่าวสารสำหรับคุณ").assertIsDisplayed()
+        composeRule.onNodeWithText("Thông báo").assertIsDisplayed()
+        composeRule.onNodeWithText("Tin mới dành cho bạn").assertIsDisplayed()
     }
 
     @Test
-    fun frenchShopUsesLocalizedTitle() {
-        render(AppLanguage.FRENCH) {
+    fun vietnameseShopUsesLocalizedTitle() {
+        render(AppLanguage.VIETNAMESE) {
             ShopScreen(progression = null, onClose = {})
         }
-        composeRule.onNodeWithText("Boutique").assertIsDisplayed()
-        composeRule.onNodeWithText("Coffre de Gemmes").assertIsDisplayed()
+        composeRule.onNodeWithText("Cửa hàng").assertIsDisplayed()
+        composeRule.onNodeWithText("Kho Gem").assertIsDisplayed()
     }
 
     @Test
-    fun frenchGoldOffersUseLocalizedProgressionCopy() {
-        render(AppLanguage.FRENCH) {
+    fun vietnameseGoldOffersUseLocalizedProgressionCopy() {
+        render(AppLanguage.VIETNAMESE) {
             ShopScreen(
                 progression = PlayerProgressionSnapshot(gems = 100),
                 onClose = {}
             )
         }
 
-        composeRule.onNodeWithText("Or").performClick()
-        composeRule.onNodeWithText("Sac d'Or").assertIsDisplayed()
-        composeRule.onNodeWithText("Coffre d'Or").assertIsDisplayed()
+        composeRule.onNodeWithText("Vàng").performClick()
+        composeRule.onNodeWithText("Túi Vàng").assertIsDisplayed()
+        composeRule.onNodeWithText("Rương Vàng").assertIsDisplayed()
         composeRule.onNodeWithTag("gold_exchange_list")
-            .performScrollToNode(hasText("Trésor d'Or"))
-        composeRule.onNodeWithText("Trésor d'Or").assertIsDisplayed()
+            .performScrollToNode(hasText("Kho Báu Vàng"))
+        composeRule.onNodeWithText("Kho Báu Vàng").assertIsDisplayed()
     }
 
     @Test

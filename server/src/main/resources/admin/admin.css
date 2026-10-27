@@ -2349,3 +2349,42 @@ dd {
 /* Moderation reuses existing surfaces; only long evidence and current-avatar sizing differ. */
 .moderation-copy { overflow-wrap: anywhere; }
 .moderation-avatar img { object-fit: contain; max-width: 100%; border-radius: var(--radius, 12px); }
+
+/* Mission catalog uses the existing Material list and white modal surfaces. */
+.mission-groups { display: flex; flex-wrap: wrap; gap: 8px; }
+.mission-groups button[aria-pressed="true"] { color: var(--primary); background: var(--primary-subtle); border-color: var(--primary); }
+.mission-modal .field[hidden] { display: none; }
+.mission-modal .field > label { font-size: 0.875rem; }
+.mission-modal input[readonly] { background: var(--surface); }
+.mission-modal .mission-field-error { color: var(--error); margin: 8px 0 0; font-size: 0.875rem; }
+.mission-modal [aria-invalid="true"] { border-color: var(--error); }
+.mission-modal .alert a { color: inherit; text-decoration: underline; }
+.mission-modal .alert ul { padding-left: 20px; }
+.mission-row, .mission-modal { overflow-wrap: anywhere; }
+.mission-row .row-info { min-width: 0; }
+.mission-modal .modal-header h2 { min-width: 0; }
+.mission-modal .modal-header > button { flex-shrink: 0; }
+
+/* Weekly race keeps current frozen rewards separate from future configuration. */
+.race-current { padding: 24px; background: var(--surface); border-radius: var(--radius); }
+.race-current h2, .race-rewards h4 { margin-top: 0; }
+.race-rewards { display: grid; gap: 16px; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.race-rewards > section, .race-history { padding-block: 16px; border-bottom: 1px solid var(--line); }
+.race-rewards p { line-height: 1.6; }
+.race-lookup { display: flex; gap: 16px; align-items: end; flex-wrap: wrap; }
+.race-lookup .field { flex: 1 1 220px; }
+.race-lookup .field > label { position: static; display: block; margin-bottom: 8px; padding: 0; }
+.race-row, .race-modal, .race-current, .page-clanRace { overflow-wrap: anywhere; }
+.race-row .row-info, .race-modal .modal-header h2 { min-width: 0; }
+.race-modal .modal-header > button { flex-shrink: 0; }
+.race-modal input[readonly] { background: var(--surface); }
+.race-modal .race-field-error { color: var(--error); margin: 8px 0 0; }
+.race-modal [aria-invalid="true"] { border-color: var(--error); }
+.race-modal .alert a { color: inherit; text-decoration: underline; }
+.race-modal .alert ul { padding-left: 20px; }
+.race-modal fieldset { min-width: 0; }
+.race-reward-fields { display: grid; gap: 16px; }
+@media (max-width: 700px) {
+  .race-rewards { grid-template-columns: minmax(0, 1fr); gap: 0; }
+  .race-current { padding: 16px; }
+}

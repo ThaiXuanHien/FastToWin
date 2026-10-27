@@ -2,6 +2,8 @@ package com.hienthai.fastowin
 
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
@@ -20,6 +22,9 @@ import com.hienthai.fastowin.protocol.ClanRole
 import com.hienthai.fastowin.protocol.ClanSnapshot
 import com.hienthai.fastowin.protocol.ClanSummarySnapshot
 import com.hienthai.fastowin.ui.screens.ClanScreen
+import com.hienthai.fastowin.ui.screens.CreateClanDialog
+import com.hienthai.fastowin.localization.AppLanguage
+import com.hienthai.fastowin.localization.ProvideLocalization
 import com.hienthai.fastowin.ui.theme.FastToWinTheme
 import org.junit.Assert.assertEquals
 import org.junit.Rule
@@ -138,8 +143,9 @@ class ClanScreenTest {
                     pendingJoinClanIds = emptySet(),
                     currentClan = null,
                     notice = null,
-                    gold = 2_000,
-                    gems = 20,
+                    gold = 10_000,
+                    gems = 100,
+                    playerLevel = 10,
                     onCreateClan = { name, description -> createdClan = name to description },
                     onJoinClan = {},
                     onLeaveClan = {},
@@ -177,8 +183,9 @@ class ClanScreenTest {
                     pendingJoinClanIds = emptySet(),
                     currentClan = null,
                     notice = null,
-                    gold = 2_000,
-                    gems = 19,
+                    gold = 10_000,
+                    gems = 99,
+                    playerLevel = 10,
                     onCreateClan = { _, _ -> },
                     onJoinClan = {}, onLeaveClan = {}, onSearch = {},
                     onKickMember = { _, _ -> },
@@ -195,6 +202,27 @@ class ClanScreenTest {
     }
 
     @Test
+    fun richPlayerCannotCreateBeforeLevelTenAndCanCreateWhenProfileLevelUpdates() {
+        val level = mutableIntStateOf(9)
+        var created: Pair<String, String>? = null
+        composeRule.setContent {
+            ProvideLocalization(AppLanguage.VIETNAMESE) {
+                FastToWinTheme {
+                    CreateClanDialog(gold = 10_000, gems = 100, playerLevel = level.intValue,
+                        onDismiss = {}, onCreate = { name, description -> created = name to description })
+                }
+            }
+        }
+        composeRule.onNodeWithTag("create_clan_name").performTextInput("Bang cấp mười")
+        composeRule.onNodeWithTag("create_clan_level_requirement").performScrollTo()
+            .assertIsDisplayed()
+        composeRule.onNodeWithTag("create_clan_submit").performScrollTo().assertIsNotEnabled()
+        composeRule.runOnIdle { level.intValue = 10 }
+        composeRule.onNodeWithTag("create_clan_submit").performScrollTo().assertIsEnabled().performClick()
+        composeRule.runOnIdle { assertEquals("Bang cấp mười" to "", created) }
+    }
+
+    @Test
     fun clanOwnerCanSelectLogoByTappingHero() {
         var selectedLogo: String? = null
         val clan = ClanSnapshot(
@@ -204,7 +232,8 @@ class ClanScreenTest {
             ownerId = "owner",
             members = listOf(ClanMemberSnapshot("owner", "Bang chủ", ClanRole.LEADER, trophies = 100)),
             trophies = 100,
-            logoId = "shield"
+            logoId = "shield",
+            level = 3
         )
 
         composeRule.setContent {

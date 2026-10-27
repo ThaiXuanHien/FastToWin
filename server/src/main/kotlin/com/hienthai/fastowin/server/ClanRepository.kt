@@ -31,6 +31,7 @@ data class ClanDonationResult(
 
 enum class ClanCreationStatus {
     CREATED,
+    LEVEL_TOO_LOW,
     INSUFFICIENT_FUNDS,
     ALREADY_MEMBER,
     PLAYER_NOT_FOUND,
@@ -41,6 +42,15 @@ data class ClanCreationResult(
     val status: ClanCreationStatus,
     val clanId: String? = null
 )
+
+enum class ClanLogoUpdateStatus {
+    UPDATED,
+    LOCKED,
+    INVALID_LOGO,
+    NOT_OWNER,
+    CLAN_NOT_FOUND,
+    FAILED
+}
 
 interface ClanRepository {
     suspend fun createClan(ownerId: String, name: String, description: String): ClanCreationResult
@@ -57,7 +67,7 @@ interface ClanRepository {
     suspend fun getClanById(clanId: String): ClanSnapshot?
     suspend fun getClanList(limit: Int = 50, offset: Int = 0, query: String? = null): List<ClanSummarySnapshot>
     suspend fun kickMember(clanId: String, currentUserId: String, targetUserId: String): Boolean
-    suspend fun updateLogoId(clanId: String, logoId: String): Boolean
+    suspend fun updateLogoId(clanId: String, ownerId: String, logoId: String): ClanLogoUpdateStatus
     suspend fun addClanTrophies(clanId: String, amount: Int): Boolean
     suspend fun addQuestProgress(clanId: String, userId: String, amount: Int): Boolean
     suspend fun claimQuestReward(clanId: String, userId: String): Boolean
