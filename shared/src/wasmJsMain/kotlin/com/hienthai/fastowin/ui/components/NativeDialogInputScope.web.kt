@@ -40,6 +40,13 @@ internal actual fun NativeDialogInputScope(content: @Composable () -> Unit) {
         // completely; do not refocus after an intentional blur or dismissal.
         val focusStyle = document.createElement("style").apply {
             textContent = """
+                /* Main-scene editors and their pointer-intercepting wrappers
+                   must stay behind the modal, preserving the editor values. */
+                [data-fasttowin-native-input]:not([data-fasttowin-dialog-inputs] [data-fasttowin-native-input]),
+                div:has(> [data-fasttowin-native-input]):not([data-fasttowin-dialog-inputs] div) {
+                    visibility: hidden !important;
+                    pointer-events: none !important;
+                }
                 [data-fasttowin-dialog-inputs] > div:has(> [data-fasttowin-native-input]:focus) {
                     visibility: visible !important;
                 }

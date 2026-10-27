@@ -1,28 +1,54 @@
 import { test, expect, tag, click, login } from '../support/game.mjs';
 
+class ReportFixturePeer {
+  constructor(actor) {
+    this.actor = actor;
+    this.messages = [];
+    this.socket = new WebSocket(process.env.E2E_API_URL.replace('http:', 'ws:') + '/game');
+    this.socket.addEventListener('message', event => this.messages.push(JSON.parse(event.data)));
+    this.socket.addEventListener('error', () => {});
+  }
+  async connect() {
+    await new Promise((resolve, reject) => {
+      this.socket.addEventListener('open', resolve, { once: true });
+      this.socket.addEventListener('error', () => reject(new Error('Local report fixture socket unavailable')), { once: true });
+    });
+    this.send({ type: 'connect_account', accessToken: this.actor.accessToken, protocolVersion: 44 });
+    this.playerId = (await this.next('session_ready')).playerId;
+    return this;
+  }
+  send(message) { this.socket.send(JSON.stringify(message)); }
+  async next(type, predicate = () => true) {
+    const deadline = Date.now() + 15_000;
+    while (Date.now() < deadline) {
+      const index = this.messages.findIndex(message => message.type === type && predicate(message));
+      if (index >= 0) return this.messages.splice(index, 1)[0];
+      await new Promise(resolve => setTimeout(resolve, 30));
+    }
+    throw new Error(`Missing local report fixture event: ${type}`);
+  }
+  close() { this.socket.close(); }
+}
+
 test('report draft survives target tabs, keyboard resize and scrolling', async ({ actors }, testInfo) => {
   const peer = await actors('Reported player');
-  // Set up the report target through the real local protocol; room creation
-  // itself is covered separately and is not the behavior under test here.
-  const socket = new WebSocket(process.env.E2E_API_URL.replace('http:', 'ws:') + '/game');
-  const roomId = await new Promise((resolve, reject) => {
-    const fail = error => { socket.close(); reject(error); };
-    const timer = setTimeout(() => fail(new Error('Local report target room unavailable')), 15_000);
-    socket.addEventListener('error', () => { clearTimeout(timer); fail(new Error('Local report target socket failed')); });
-    socket.addEventListener('open', () => socket.send(JSON.stringify({
-      type: 'connect_account', accessToken: peer.accessToken, protocolVersion: 44,
-    })));
-    socket.addEventListener('message', event => {
-      const message = JSON.parse(event.data);
-      if (message.type === 'session_ready') socket.send(JSON.stringify({
-        type: 'create_room', roomName: 'Report UI fixture', password: '', gameMode: 'ORDER', matchType: 'CASUAL',
-      }));
-      if (message.type === 'room_created') { clearTimeout(timer); resolve(message.game.roomId); }
-      if (message.type === 'error') { clearTimeout(timer); fail(new Error(message.code)); }
-    });
-  });
+  const player = await actors('Reporter', { iosStandalone: true });
+  const host = new ReportFixturePeer(peer);
+  const reporter = new ReportFixturePeer(player);
+  let roomId;
   try {
-    const player = await actors('Reporter', { iosStandalone: true });
+    await Promise.all([host.connect(), reporter.connect()]);
+    // Establish an actual friendship through the isolated local protocol.
+    host.send({ type: 'get_profile' });
+    const playerCode = (await host.next('profile_data')).profile.playerCode;
+    reporter.send({ type: 'send_friend_request', playerCode });
+    const incoming = await host.next('friends_data', message => message.social.incomingRequests.some(request => request.userId === reporter.playerId));
+    const requestId = incoming.social.incomingRequests.find(request => request.userId === reporter.playerId).requestId;
+    host.send({ type: 'respond_friend_request', requestId, accept: true });
+    await reporter.next('friends_data', message => message.social.friends.some(friend => friend.userId === host.playerId));
+    reporter.close();
+    host.send({ type: 'create_room', roomName: 'Report UI fixture', password: '', gameMode: 'ORDER', matchType: 'CASUAL' });
+    roomId = (await host.next('room_created')).game.roomId;
     const { page } = player;
     await page.emulateMedia({ reducedMotion: 'reduce' });
     await page.addInitScript(() => {
@@ -40,10 +66,34 @@ test('report draft survives target tabs, keyboard resize and scrolling', async (
     await login(player);
     await player.navigate(() => page.goto(`/room/${roomId}`));
     await expect(page.getByText('Report UI fixture', { exact: true })).toBeAttached();
-    await click(page, tag(page, 'ugc_safety_menu'));
-    await click(page, page.getByRole('button', { name: `Biệt danh: ${peer.account.displayName}`, exact: true }));
+    await expect(tag(page, 'ugc_safety_menu')).not.toBeAttached();
+    await expect(page.locator('[id^="report:"]')).toHaveCount(0);
+    await page.screenshot({ path: testInfo.outputPath('room-without-report-phone.png') });
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await page.evaluate(() => window.__setReportKeyboardHeight(window.innerHeight));
+    await page.screenshot({ path: testInfo.outputPath('room-without-report-desktop.png') });
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.evaluate(() => window.__setReportKeyboardHeight(window.innerHeight));
+    // Room URLs join the fixture room. Leave through the real control before
+    // navigating: an admitted room intentionally owns the current game route.
+    await click(page, page.getByRole('button', { name: /^rời phòng$/i }));
+    await player.navigate(() => page.goto('/friends'));
+    await expect(tag(page, 'friends_screen')).toBeAttached();
+    const backgroundInput = page.locator('input[data-fasttowin-native-input][aria-label="Mã người chơi"]');
+    await backgroundInput.fill('FTWKEEP12');
+    await expect(tag(page, `report:PLAYER_PROFILE:${host.playerId}`)).not.toBeAttached();
+    const friendMenu = tag(page, `friend_more:${host.playerId}`);
+    for (let scroll = 0; scroll < 8 && await friendMenu.count() === 0; scroll++) {
+      await page.mouse.move(195, 420);
+      await page.mouse.wheel(0, 240);
+      await page.waitForTimeout(150);
+    }
+    await click(page, friendMenu);
+    await page.screenshot({ path: testInfo.outputPath('friend-report-menu-phone.png') });
+    await click(page, tag(page, `report:PLAYER_PROFILE:${host.playerId}`));
     await expect(tag(page, 'ugc_report_dialog')).toBeAttached();
     const note = page.locator('textarea[data-fasttowin-native-input]');
+    await expect(backgroundInput).not.toBeVisible();
     await click(page, tag(page, 'ugc_report_note'));
     await note.fill('Nội dung cần giữ khi đổi loại báo cáo');
     await click(page, tag(page, 'ugc_report_avatar'));
@@ -99,8 +149,14 @@ test('report draft survives target tabs, keyboard resize and scrolling', async (
     await click(page, page.getByRole('button', { name: /^hủy$/i }).last());
     await expect(tag(page, 'ugc_report_dialog')).not.toBeAttached();
     await expect(note).not.toBeAttached();
+    await expect(backgroundInput).toBeVisible();
+    await expect(backgroundInput).toHaveValue('FTWKEEP12');
+    await click(page, tag(page, `friend_more:${host.playerId}`));
+    await page.screenshot({ path: testInfo.outputPath('friend-report-menu-desktop.png') });
+    await expect(tag(page, `report:PLAYER_PROFILE:${host.playerId}`)).toBeAttached();
   } finally {
-    socket.send(JSON.stringify({ type: 'leave_room', roomId }));
-    socket.close();
+    if (roomId) host.send({ type: 'leave_room', roomId });
+    host.close();
+    reporter.close();
   }
 });

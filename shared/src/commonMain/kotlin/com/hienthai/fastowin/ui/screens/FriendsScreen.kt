@@ -1,7 +1,5 @@
 package com.hienthai.fastowin.ui.screens
 
-import com.hienthai.fastowin.ui.components.ReportableText
-import com.hienthai.fastowin.ui.components.UgcReportButton
 import com.hienthai.fastowin.ui.components.UgcReportMenuItem
 import com.hienthai.fastowin.protocol.UgcTargetType
 
@@ -242,9 +240,9 @@ fun FriendsScreen(
                                         modifier = Modifier.fillMaxWidth().padding(14.dp),
                                         verticalArrangement = Arrangement.spacedBy(10.dp)
                                     ) {
-                                        ReportableText(invitation.fromDisplayName, UgcTargetType.PLAYER_PROFILE, invitation.fromUserId, fontWeight = FontWeight.Black)
-                                        ReportableText(
-                                            localized(TextKey.RoomInvitationSummary, "room" to invitation.roomName), UgcTargetType.ROOM, invitation.roomId,
+                                        Text(invitation.fromDisplayName, fontWeight = FontWeight.Black)
+                                        Text(
+                                            localized(TextKey.RoomInvitationSummary, "room" to invitation.roomName),
                                             color = MaterialTheme.colorScheme.onSurfaceVariant
                                         )
                                         Column(
@@ -314,7 +312,7 @@ fun FriendsScreen(
                                                 frameId = request.frameId
                                             )
                                             Column(modifier = Modifier.weight(1f)) {
-                                                ReportableText(request.displayName, UgcTargetType.PLAYER_PROFILE, request.userId, fontWeight = FontWeight.Black)
+                                                Text(request.displayName, fontWeight = FontWeight.Black)
                                                 Text(
                                                     localized(TextKey.PlayerCodeShort, "code" to request.playerCode),
                                                     color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -445,7 +443,7 @@ fun FriendsScreen(
                                             frameId = request.frameId
                                         )
                                         Column(modifier = Modifier.weight(1f)) {
-                                            ReportableText(request.displayName, UgcTargetType.PLAYER_PROFILE, request.userId, fontWeight = FontWeight.Black)
+                                            Text(request.displayName, fontWeight = FontWeight.Black)
                                             Text(
                                                 localized(TextKey.SentFriendInvitation, "code" to request.playerCode),
                                                 color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -499,7 +497,7 @@ fun FriendsScreen(
                                             frameId = player.frameId
                                         )
                                         Column(modifier = Modifier.weight(1f)) {
-                                            ReportableText(player.displayName, UgcTargetType.PLAYER_PROFILE, player.userId, fontWeight = FontWeight.Black)
+                                            Text(player.displayName, fontWeight = FontWeight.Black)
                                             Text(
                                                 localized(TextKey.PlayerCodeShort, "code" to player.playerCode),
                                                 color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -792,7 +790,7 @@ fun FriendRequestDialog(
                 frameId = request.frameId
             )
             Column(modifier = Modifier.weight(1f)) {
-                ReportableText(request.displayName, UgcTargetType.PLAYER_PROFILE, request.userId, fontWeight = FontWeight.Black)
+                Text(request.displayName, fontWeight = FontWeight.Black)
                 Text(
                     localized(TextKey.PlayerCodeShort, "code" to request.playerCode),
                     color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -838,7 +836,7 @@ fun RoomInvitationDialog(
         subtitle = localized(TextKey.WaitingForYou, "player" to invitation.fromDisplayName),
         onDismissRequest = onDefer
     ) {
-        UgcReportButton(UgcTargetType.PLAYER_PROFILE, invitation.fromUserId, invitation.fromDisplayName)
+
         Surface(
             shape = RoundedCornerShape(16.dp),
             color = ArcadePalette.Navy900,
@@ -850,8 +848,8 @@ fun RoomInvitationDialog(
                 modifier = Modifier.padding(16.dp)
             ) {
                 Text(localized(TextKey.RoomLabel), style = MaterialTheme.typography.labelSmall, color = ArcadePalette.Blue100)
-                ReportableText(
-                    invitation.roomName, UgcTargetType.ROOM, invitation.roomId,
+                Text(
+                    invitation.roomName,
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                     color = ArcadePalette.White

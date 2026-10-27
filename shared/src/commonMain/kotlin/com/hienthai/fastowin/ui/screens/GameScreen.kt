@@ -1,9 +1,5 @@
 package com.hienthai.fastowin.ui.screens
 
-import com.hienthai.fastowin.ui.components.UgcSafetyButton
-import com.hienthai.fastowin.ui.components.UgcTarget
-import com.hienthai.fastowin.protocol.UgcTargetType
-
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -190,10 +186,7 @@ fun GameScreen(
                 backIcon = Icons.Rounded.Close,
                 showBalances = false,
                 showNotifications = false,
-                actions = { UgcSafetyButton(listOf(UgcTarget(UgcTargetType.ROOM, state.currentRoomId, state.currentRoomName.orEmpty())) +
-                    (listOf(state.player, state.opponent) + state.teammates + state.opponents).map {
-                        UgcTarget(UgcTargetType.PLAYER_PROFILE, it.id, it.name)
-                    }) }
+
             )
         }
     ) { paddingValues ->

@@ -4,7 +4,6 @@ import com.hienthai.fastowin.state.MissionState
 import com.hienthai.fastowin.ui.components.ServerMissionList
 
 import com.hienthai.fastowin.ui.components.canReportUgcTarget
-import com.hienthai.fastowin.ui.components.ReportableText
 import com.hienthai.fastowin.ui.components.UgcClanReportAction
 import com.hienthai.fastowin.protocol.UgcTargetType
 
@@ -399,8 +398,8 @@ private fun ClanSummaryIdentity(clan: ClanSummarySnapshot, modifier: Modifier = 
     ) {
         ClanLogoMark(logoId = clan.logoId, modifier = Modifier.size(56.dp))
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-            ReportableText(
-                clan.name, UgcTargetType.CLAN, clan.id,
+            Text(
+                clan.name,
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Black,
                 maxLines = 2,
@@ -947,7 +946,7 @@ private fun ClanJoinRequestCard(
             ) {
                 ClanLogoMark(logoId = "shield", modifier = Modifier.size(48.dp))
                 Column(modifier = Modifier.weight(1f)) {
-                    ReportableText(request.displayName, UgcTargetType.PLAYER_PROFILE, request.userId, fontWeight = FontWeight.Black)
+                    Text(request.displayName, fontWeight = FontWeight.Black)
                     Text(
                         localized(TextKey.PlayerCodeShort, "code" to request.playerCode),
                         style = MaterialTheme.typography.bodySmall,
