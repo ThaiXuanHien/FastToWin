@@ -1,9 +1,5 @@
 package com.hienthai.fastowin.ui.screens
 
-import com.hienthai.fastowin.ui.components.ReportableText
-import com.hienthai.fastowin.ui.components.UgcSafetyButton
-import com.hienthai.fastowin.ui.components.UgcTarget
-import com.hienthai.fastowin.protocol.UgcTargetType
 import com.hienthai.fastowin.ui.components.LocalNewOnlineIntentAllowed
 
 import androidx.compose.foundation.layout.Arrangement
@@ -98,8 +94,7 @@ import com.hienthai.fastowin.resources.Res
 import com.hienthai.fastowin.resources.arcade_tournament_trophy
 import com.hienthai.fastowin.ui.theme.ArcadePalette
 
-
-/** Shared with host previews so the report action and Invite compete for the real row's width. */
+/** Shared with host previews to verify long player names alongside presence and Invite. */
 @Composable
 fun TournamentFriendInviteRow(
     friend: com.hienthai.fastowin.protocol.FriendSnapshot,
@@ -122,7 +117,7 @@ fun TournamentFriendInviteRow(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                ReportableText(friend.displayName, UgcTargetType.PLAYER_PROFILE, friend.userId,
+                Text(friend.displayName,
                     modifier = Modifier.weight(1f), fontWeight = FontWeight.Medium,
                     maxLines = 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
                 FriendPresenceIndicator(friend.presence)
@@ -485,10 +480,9 @@ private fun TournamentFilterChip(label: String, selected: Boolean, tag: String, 
 private fun PublicTournamentCard(tournament: PublicTournamentSummary, enabled: Boolean, now: Long, onJoin: () -> Unit) {
     ArcadePanel(Modifier.fillMaxWidth().testTag("public_tournament_${tournament.tournamentId}"), accent = ArcadePalette.Gold500) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            ReportableText(tournament.name, UgcTargetType.TOURNAMENT, tournament.tournamentId, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Text(tournament.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             tournament.schedule?.let { TournamentSchedulePanel(it, now, tournament.maxPlayers, compact = true) }
-            ReportableText(localized(TextKey.PublicTournamentHost, "host" to tournament.hostDisplayName),
-                UgcTargetType.PLAYER_PROFILE, tournament.hostPlayerId, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(localized(TextKey.PublicTournamentHost, "host" to tournament.hostDisplayName), color = MaterialTheme.colorScheme.onSurfaceVariant)
             Text(localized(TextKey.PublicTournamentSummary, "mode" to tournament.gameMode.title(),
                 "current" to tournament.playerCount, "max" to tournament.maxPlayers, "prize" to tournament.prizePool))
             Text(
@@ -768,7 +762,7 @@ private fun CreateTournamentForm(
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.Bold
                 )
-                
+
                 BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
                     val columnCount = if (maxWidth < 280.dp) 2 else 3
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -887,7 +881,7 @@ private fun CreateTournamentForm(
                 style = ArcadeActionStyle.GOLD,
                 modifier = Modifier.fillMaxWidth().testTag("create_tournament")
             )
-            
+
             Surface(
                 color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.5f),
                 shape = RoundedCornerShape(12.dp)
@@ -1016,7 +1010,7 @@ private fun ActiveTournamentContent(
             }
         }
     }
-    
+
     ArcadePanel(modifier = Modifier.fillMaxWidth(), accent = ArcadePalette.Gold500) {
         Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Row(
@@ -1025,8 +1019,8 @@ private fun ActiveTournamentContent(
                 verticalAlignment = Alignment.Top
             ) {
                 Column(modifier = Modifier.weight(1f)) {
-                    ReportableText(
-                        tournament.name, UgcTargetType.TOURNAMENT, tournament.tournamentId,
+                    Text(
+                        tournament.name,
                         style = MaterialTheme.typography.headlineSmall,
                         fontWeight = FontWeight.Black
                     )
@@ -1048,7 +1042,7 @@ private fun ActiveTournamentContent(
                     )
                 }
             }
-            
+
             if (tournament.entryFee > 0) {
                 HorizontalDivider(color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.2f))
                 Row(
@@ -1085,7 +1079,7 @@ private fun ActiveTournamentContent(
         repeat(tournament.maxPlayers) { index ->
             val participant = tournament.players.getOrNull(index)
             val isMe = participant?.playerId == myId
-            
+
             Surface(
                 onClick = { participant?.playerId?.takeIf { it != myId }?.let(onOpenFriendProfile) },
                 modifier = Modifier.fillMaxWidth(),
@@ -1119,8 +1113,8 @@ private fun ActiveTournamentContent(
                             )
                         }
                         Column(modifier = Modifier.weight(1f)) {
-                            ReportableText(
-                                participant?.displayName ?: localized(TextKey.WaitingForPlayerEllipsis), UgcTargetType.PLAYER_PROFILE, participant?.playerId,
+                            Text(
+                                participant?.displayName ?: localized(TextKey.WaitingForPlayerEllipsis),
                                 fontWeight = if (participant != null) FontWeight.Bold else FontWeight.Normal,
                                 color = if (participant != null) MaterialTheme.colorScheme.onSurface
                                 else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
@@ -1140,7 +1134,7 @@ private fun ActiveTournamentContent(
                             }
                         }
                     }
-                    
+
                     if (participant != null) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
@@ -1187,9 +1181,9 @@ private fun ActiveTournamentContent(
                 }
             }
         }
-        
+
         Spacer(Modifier.height(8.dp))
-        
+
         if (schedule == null) ArcadeActionButton(
             label = localized(TextKey.StartTournament),
             onClick = onStart,
@@ -1369,7 +1363,7 @@ private fun TournamentMatchCard(
                 color = if (isPlaying) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant
             )
             TournamentPlayerLine(match.playerTwoId, match.winnerPlayerId, names, compact)
-            
+
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.Center,
@@ -1417,8 +1411,8 @@ private fun TournamentPlayerLine(
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        ReportableText(
-            playerId?.let { names[it] } ?: localized(TextKey.WaitingEllipsis), UgcTargetType.PLAYER_PROFILE, playerId,
+        Text(
+            playerId?.let { names[it] } ?: localized(TextKey.WaitingEllipsis),
             style = if (compact) MaterialTheme.typography.bodySmall else MaterialTheme.typography.bodyMedium,
             fontWeight = if (isWinner) FontWeight.Bold else FontWeight.Normal,
             maxLines = 1,
@@ -1476,8 +1470,7 @@ private fun InvitationCard(
 
 @Composable
 private fun InvitationDetails(invitation: TournamentInvitationSnapshot, now: Long) {
-    UgcSafetyButton(listOf(UgcTarget(UgcTargetType.TOURNAMENT, invitation.tournamentId, invitation.tournamentName),
-        UgcTarget(UgcTargetType.PLAYER_PROFILE, invitation.hostPlayerId, invitation.hostDisplayName)))
+
     Text(if (invitation.entryFee == 0) localized(TextKey.Free)
         else localized(TextKey.PublicTournamentEntryFee, "fee" to invitation.entryFee),
         fontWeight = FontWeight.Bold)
@@ -1504,7 +1497,7 @@ private fun TournamentHistoryCard(
         border = androidx.compose.foundation.BorderStroke(1.dp, ArcadePalette.Gold500.copy(alpha = 0.48f))
     ) {
         Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            ReportableText(tournament.name, UgcTargetType.TOURNAMENT, tournament.tournamentId, fontWeight = FontWeight.Bold)
+            Text(tournament.name, fontWeight = FontWeight.Bold)
             Text("${tournament.gameMode.title()} • ${tournament.phase.label()}")
             if (tournament.schedule != null && tournament.phase == TournamentPhase.CANCELLED) {
                 Text(localized(TextKey.TournamentCancelledRefund), color = ArcadePalette.Mint100)
@@ -1513,9 +1506,7 @@ private fun TournamentHistoryCard(
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             champion?.let { Text(localized(TextKey.ChampionCompact, "player" to it), color = ArcadePalette.Gold500, fontWeight = FontWeight.Bold) }
-            UgcSafetyButton((tournament.players + tournament.recordedPlayers).map {
-                UgcTarget(UgcTargetType.PLAYER_PROFILE, it.playerId, it.displayName)
-            })
+
             Text(
                 localized(if (expanded) TextKey.HideBracket else TextKey.ViewBracket),
                 style = MaterialTheme.typography.labelMedium,

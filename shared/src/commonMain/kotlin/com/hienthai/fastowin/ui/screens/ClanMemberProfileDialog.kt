@@ -1,24 +1,14 @@
 package com.hienthai.fastowin.ui.screens
 
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.MoreVert
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
@@ -31,16 +21,13 @@ import com.hienthai.fastowin.localization.TextKey
 import com.hienthai.fastowin.localization.localized
 import com.hienthai.fastowin.protocol.ClanMemberSnapshot
 import com.hienthai.fastowin.protocol.FriendsSnapshot
-import com.hienthai.fastowin.protocol.UgcTargetType
 import com.hienthai.fastowin.ui.components.ArcadeActionButton
 import com.hienthai.fastowin.ui.components.ArcadeActionStyle
 import com.hienthai.fastowin.ui.components.ArcadeDialog
 import com.hienthai.fastowin.ui.components.ArcadePanel
 import com.hienthai.fastowin.ui.components.FriendPresenceIndicator
 import com.hienthai.fastowin.ui.components.PlayerAvatar
-import com.hienthai.fastowin.ui.components.UgcReportMenuItem
 import com.hienthai.fastowin.ui.components.accessibilityLabel
-import com.hienthai.fastowin.ui.components.canReportUgcTarget
 import com.hienthai.fastowin.ui.theme.ArcadePalette
 
 internal enum class ClanMemberFriendActionType { SEND, ACCEPT, ALREADY_FRIENDS, REQUEST_SENT, BLOCKED }
@@ -90,7 +77,6 @@ fun ClanMemberProfileDialog(
     onRefreshSocial: () -> Unit = {}
 ) {
     val action = clanMemberFriendAction(member.userId, member.playerCode, currentUserId, social, isSocialLoading, isSocialReady)
-    var showActions by remember(member.userId) { mutableStateOf(false) }
     ArcadeDialog(
         title = localized(TextKey.ClanMemberProfileTitle),
         onDismissRequest = onDismiss,
@@ -149,16 +135,7 @@ fun ClanMemberProfileDialog(
                         color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
                 }
             }
-            if (canReportUgcTarget(UgcTargetType.PLAYER_PROFILE, member.userId)) {
-                Box {
-                    IconButton({ showActions = true }, Modifier.size(48.dp)) {
-                        Icon(Icons.Rounded.MoreVert, localized(TextKey.PlayerActions, "player" to member.displayName))
-                    }
-                    DropdownMenu(showActions, { showActions = false }) {
-                        UgcReportMenuItem(UgcTargetType.PLAYER_PROFILE, member.userId, member.displayName) { showActions = false }
-                    }
-                }
-            }
+
         }
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             FriendPresenceIndicator(member.presence)

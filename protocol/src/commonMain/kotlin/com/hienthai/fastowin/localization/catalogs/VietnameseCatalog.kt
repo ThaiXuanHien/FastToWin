@@ -26,7 +26,7 @@ internal val vietnameseCatalog = LocalizationCatalog(
         TextKey.ClanMemberRole to "Vai trò trong bang",
         TextKey.ClanQuestContribution to "Đóng góp nhiệm vụ",
         TextKey.ClanDonatedGold to "Vàng đã quyên góp",
-        TextKey.ClanDonatedGems to "Kim cương đã quyên góp",
+        TextKey.ClanDonatedGems to "Gem đã góp",
         TextKey.SettingsTitle to "Cài đặt",
         TextKey.LanguageTitle to "Ngôn ngữ",
         TextKey.ChooseLanguageTitle to "Chọn ngôn ngữ",

@@ -8,17 +8,13 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.hienthai.fastowin.localization.*
 import com.hienthai.fastowin.protocol.*
@@ -96,21 +92,7 @@ fun canReportUgcTarget(type: UgcTargetType, id: String?): Boolean {
     return !id.isNullOrBlank() && !(type in playerTypes && id == actions.selfId)
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun UgcReportButton(type: UgcTargetType, id: String?, label: String, modifier: Modifier = Modifier) {
-    val actions = LocalUgcActions.current ?: return
-    if (!canReportUgcTarget(type, id)) return
-    val description = localized(TextKey.UgcReportNamed, "content" to label)
-    TooltipBox(positionProvider = TooltipDefaults.rememberTooltipPositionProvider(TooltipAnchorPosition.Above),
-        tooltip = { PlainTooltip { Text(description) } }, state = rememberTooltipState()) {
-        IconButton({ actions.report(UgcTarget(type, id, label)) }, modifier.size(48.dp).testTag("report:${type.name}:$id")) {
-            Icon(Icons.Rounded.Report, contentDescription = description)
-        }
-    }
-}
-
-/** Shares target guards and lifecycle with the standalone report control. */
+/** Opens player reports from the friend actions menu with the shared target guards. */
 @Composable
 fun UgcReportMenuItem(type: UgcTargetType, id: String?, label: String, onDismissMenu: () -> Unit) {
     val actions = LocalUgcActions.current ?: return
@@ -134,42 +116,6 @@ fun UgcClanReportAction(id: String, label: String, modifier: Modifier = Modifier
         style = ArcadeActionStyle.OUTLINE,
         modifier = modifier.testTag("report:CLAN:$id")
     )
-}
-
-/** Keeps an explicit report action next to untrusted content without making the text itself an action. */
-@Composable
-fun ReportableText(text: String, targetType: UgcTargetType, targetId: String?,
-    modifier: Modifier = Modifier, color: Color = Color.Unspecified,
-    style: TextStyle = LocalTextStyle.current, fontWeight: FontWeight? = null,
-    maxLines: Int = Int.MAX_VALUE, overflow: TextOverflow = TextOverflow.Clip, textAlign: TextAlign? = null) {
-    val actions = LocalUgcActions.current
-    if (actions == null || targetId.isNullOrBlank() || (targetType in playerTypes && targetId == actions.selfId)) {
-        Text(text, modifier, color = color, style = style, fontWeight = fontWeight,
-            maxLines = maxLines, overflow = overflow, textAlign = textAlign)
-    } else Row(modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        Text(text, Modifier.weight(1f), color = color, style = style, fontWeight = fontWeight,
-            maxLines = maxLines, overflow = overflow, textAlign = textAlign)
-        UgcReportButton(targetType, targetId, text)
-    }
-}
-
-@Composable
-fun UgcSafetyButton(targets: List<UgcTarget>) {
-    val actions = LocalUgcActions.current ?: return
-    val available = targets.filter { !it.id.isNullOrBlank() && !(it.type in playerTypes && it.id == actions.selfId) }
-        .distinctBy { it.type to it.id }
-    if (available.isEmpty()) return
-    var expanded by remember { mutableStateOf(false) }
-    Box {
-        IconButton({ expanded = true }, Modifier.size(48.dp).testTag("ugc_safety_menu")) {
-            Icon(Icons.Rounded.Report, localized(TextKey.UgcSafetyActions))
-        }
-        DropdownMenu(expanded, { expanded = false }) {
-            available.forEach { target -> DropdownMenuItem(
-                text = { Text("${localized(target.type.labelKey())}: ${target.label}", maxLines = 2, overflow = TextOverflow.Ellipsis) },
-                onClick = { expanded = false; actions.report(target) }, modifier = Modifier.heightIn(min = 48.dp)) }
-        }
-    }
 }
 
 @Composable

@@ -1,10 +1,5 @@
 package com.hienthai.fastowin.ui.screens
 
-import com.hienthai.fastowin.ui.components.ReportableText
-import com.hienthai.fastowin.ui.components.UgcReportButton
-import com.hienthai.fastowin.ui.components.UgcSafetyButton
-import com.hienthai.fastowin.ui.components.UgcTarget
-import com.hienthai.fastowin.protocol.UgcTargetType
 import com.hienthai.fastowin.ui.components.LocalNewOnlineIntentAllowed
 
 import androidx.compose.foundation.clickable
@@ -965,8 +960,8 @@ private fun RoomCard(room: AvailableRoom, onClick: () -> Unit) {
                 }
             }
             Column(modifier = Modifier.weight(1f)) {
-                ReportableText(
-                    room.name, UgcTargetType.ROOM, room.id,
+                Text(
+                    room.name,
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.Black,
                     maxLines = 1,
@@ -985,7 +980,7 @@ private fun RoomCard(room: AvailableRoom, onClick: () -> Unit) {
                     overflow = TextOverflow.Ellipsis
                 )
             }
-            UgcReportButton(UgcTargetType.PLAYER_PROFILE, room.hostId, room.hostName)
+
             Surface(
                 shape = RoundedCornerShape(12.dp),
                 color = Color.Transparent,
@@ -1019,8 +1014,7 @@ private fun JoinRoomDialog(
         },
         onDismissRequest = onDismiss
     ) {
-        UgcSafetyButton(listOf(UgcTarget(UgcTargetType.ROOM, room.id, room.name),
-            UgcTarget(UgcTargetType.PLAYER_PROFILE, room.hostId, room.hostName)))
+
         if (room.requiresPassword) {
             OutlinedTextField(
                 value = password,
@@ -1104,10 +1098,6 @@ private fun RoomWaiting(
             )
         }
 
-        UgcSafetyButton(listOf(UgcTarget(UgcTargetType.ROOM, state.currentRoomId, state.currentRoomName.orEmpty())) +
-            (listOf(state.player, state.opponent) + state.teammates + state.opponents).map {
-                UgcTarget(UgcTargetType.PLAYER_PROFILE, it.id, it.name)
-            })
         if (state.gameMode == GameMode.TEAM_2V2) {
             val myTeamName = localized(if (state.player.teamId == "TEAM_A") TextKey.BlueTeam else TextKey.RedTeam)
             val opponentTeamName = localized(if (state.player.teamId == "TEAM_A") TextKey.RedTeam else TextKey.BlueTeam)
@@ -1280,7 +1270,7 @@ private fun RoomWaitingPlayerCard(
             )
             Column(modifier = Modifier.weight(1f)) {
                 Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                ReportableText(player.name, UgcTargetType.PLAYER_PROFILE, player.id, fontWeight = FontWeight.Bold)
+                Text(player.name, fontWeight = FontWeight.Bold)
             }
             Surface(
                 shape = RoundedCornerShape(10.dp),
@@ -1390,8 +1380,8 @@ private fun PlayerMatchedCard(
                 frameId = player.frameId,
                 size = 76.dp
             )
-            ReportableText(
-                player.name, UgcTargetType.PLAYER_PROFILE, player.id,
+            Text(
+                player.name,
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
                 maxLines = 1,

@@ -56,12 +56,12 @@ export default defineConfig({
     },
     {
       name: 'chromium-native-input',
-      testMatch: /(?:native-input|clan-keyboard|clan-creation|ugc-report-keyboard)\.spec\.mjs/,
+      testMatch: /(?:native-input|clan-keyboard|clan-creation)\.spec\.mjs/,
       use: { browserName: 'chromium', viewport: { width: 390, height: 844 }, hasTouch: true },
     },
     {
       name: 'webkit-native-input',
-      testMatch: /(?:native-input|clan-keyboard|clan-creation|ugc-report-keyboard)\.spec\.mjs/,
+      testMatch: /(?:native-input|clan-keyboard|clan-creation)\.spec\.mjs/,
       use: { browserName: 'webkit', viewport: { width: 390, height: 844 }, hasTouch: true },
     },
     {
@@ -74,6 +74,13 @@ export default defineConfig({
       testMatch: /(?:shop|avatar-picker)\.spec\.mjs/,
       use: { browserName: 'chromium' },
     },
+    // Friendship is durable server state; exercise the retained report menu
+    // against an owned PostgreSQL schema rather than the memory no-op repository.
+    ...(durable ? ['chromium', 'webkit'].map(browserName => ({
+      name: `${browserName}-report-postgres`,
+      testMatch: /ugc-report-keyboard\.spec\.mjs/,
+      use: { browserName, viewport: { width: 390, height: 844 }, hasTouch: true },
+    })) : []),
     {
       name: 'chromium-tournament',
       testMatch: /tournament-schedule\.spec\.mjs/,

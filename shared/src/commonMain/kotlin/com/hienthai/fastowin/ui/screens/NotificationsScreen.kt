@@ -55,9 +55,6 @@ import com.hienthai.fastowin.platform.epochMillis
 import com.hienthai.fastowin.localization.TextKey
 import com.hienthai.fastowin.localization.localized
 import com.hienthai.fastowin.state.AppNotification
-import com.hienthai.fastowin.state.reportReferences
-import com.hienthai.fastowin.ui.components.UgcSafetyButton
-import com.hienthai.fastowin.ui.components.UgcTarget
 import com.hienthai.fastowin.state.AppNotificationKind
 import com.hienthai.fastowin.ui.components.SystemBackHandler
 import com.hienthai.fastowin.ui.layout.ResponsiveScreen
@@ -351,7 +348,7 @@ private fun NotificationCard(
                     fontWeight = FontWeight.Bold
                 )
             }
-            UgcSafetyButton(notification.reportReferences().map { UgcTarget(it.type, it.id, it.label) })
+
             IconButton(onClick = onDismiss, enabled = !dismissed) {
                 Icon(
                     Icons.Default.Delete,

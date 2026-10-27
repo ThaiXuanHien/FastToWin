@@ -101,9 +101,10 @@ class UgcSafetyUiTest {
         render {
             ProvideUgcReportActions(playerId, { selected = it }) {
                 Column {
-                    UgcReportButton(UgcTargetType.PLAYER_PROFILE, playerId, "Self")
-                    UgcReportButton(UgcTargetType.PLAYER_AVATAR, null, "Missing")
-                    UgcReportButton(UgcTargetType.PLAYER_PROFILE, "other-player", "Other")
+                    UgcReportMenuItem(UgcTargetType.PLAYER_PROFILE, playerId, "Self", {})
+                    UgcReportMenuItem(UgcTargetType.PLAYER_AVATAR, null, "Missing", {})
+                    UgcReportMenuItem(UgcTargetType.PLAYER_PROFILE, "other-player", "Other", {})
+                    UgcClanReportAction("other-clan", "Clan")
                 }
             }
         }
@@ -111,6 +112,8 @@ class UgcSafetyUiTest {
         composeRule.onNodeWithTag("report:PLAYER_AVATAR:null").assertDoesNotExist()
         composeRule.onNodeWithTag("report:PLAYER_PROFILE:other-player").performClick()
         composeRule.runOnIdle { assertEquals(UgcTarget(UgcTargetType.PLAYER_PROFILE, "other-player", "Other"), selected) }
+        composeRule.onNodeWithTag("report:CLAN:other-clan").performClick()
+        composeRule.runOnIdle { assertEquals(UgcTarget(UgcTargetType.CLAN, "other-clan", "Clan"), selected) }
     }
 
     @Test fun friendReportLivesInActionsMenuAndDismissesItBeforeOpeningReport() {
