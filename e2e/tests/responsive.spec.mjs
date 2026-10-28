@@ -127,10 +127,32 @@ test('language change keeps the active route and route history', async ({ actors
   await expect(page.locator('html')).toHaveAttribute('lang', 'en');
   await expect(page).toHaveURL(/\/settings$/);
 
+  await page.evaluate(() => {
+    const pushState = history.pushState.bind(history);
+    window.__backHistoryWrites = [];
+    history.pushState = (state, unused, url) => {
+      window.__backHistoryWrites.push(String(url));
+      return pushState(state, unused, url);
+    };
+  });
+
   await player.navigate(() => page.goBack());
   await expect(page).toHaveURL(/\/account$/);
   await player.navigate(() => page.goBack());
   await expect(page).toHaveURL(/\/rooms$/);
+  await expect(tag(page, 'room_list')).toBeAttached();
+  expect(await page.evaluate(() => window.__backHistoryWrites),
+    'Applying Back must not push stale UI state into browser history').toEqual([]);
+
+  // Forward entries must survive replaying Back, including the language change.
+  await player.navigate(() => page.goForward());
+  await expect(page).toHaveURL(/\/account$/);
+  await expect(tag(page, 'profile_settings')).toBeAttached();
+  await player.navigate(() => page.goForward());
+  await expect(page).toHaveURL(/\/settings$/);
+  await expect(tag(page, 'settings_screen')).toBeAttached();
+  await expect(page.locator('html')).toHaveAttribute('lang', 'en');
+  expect(await page.evaluate(() => window.__backHistoryWrites)).toEqual([]);
 });
 
 test('browser Back followed by immediate app navigation publishes the new route', async ({ actors }) => {
@@ -192,4 +214,24 @@ test('invalid friend profile route is canonicalized without a stale address', as
 
   await expect(tag(page, 'friends_screen')).toBeAttached();
   await expect(page).toHaveURL(/\/friends$/);
+});
+
+test('browser route aliases and invalid links settle at their canonical screen', async ({ actors }) => {
+  const player = await actors('Canonical history');
+  const { page } = player;
+  await login(player);
+
+  for (const [requested, canonical, screen] of [
+    ['/account/WALLET', '/account/wallet', 'profile_section_screen:WALLET'],
+    ['/account/unknown', '/account', 'profile_settings'],
+    ['/challenge/invalid', '/', 'home_screen'],
+    ['/room/invalid!', '/rooms', 'room_list'],
+  ]) {
+    await page.evaluate(route => {
+      history.pushState({ ...(history.state || {}), fastToWinDepth: 1 }, '', route);
+      window.dispatchEvent(new PopStateEvent('popstate'));
+    }, requested);
+    await expect(page).toHaveURL(new RegExp(`${canonical.replaceAll('/', '\\/')}$`));
+    await expect(tag(page, screen)).toBeAttached();
+  }
 });

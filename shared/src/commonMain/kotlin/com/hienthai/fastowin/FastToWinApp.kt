@@ -130,6 +130,7 @@ import com.hienthai.fastowin.protocol.STORE_PRODUCT_CATALOG
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.distinctUntilChanged
 import com.hienthai.fastowin.navigation.ResultNavigationActions
+import com.hienthai.fastowin.navigation.AppRouteRequests
 import com.hienthai.fastowin.state.PracticeChallenge
 import com.hienthai.fastowin.state.createPracticeChallenge
 import com.hienthai.fastowin.state.parsePracticeChallenge
@@ -591,10 +592,17 @@ private fun GameContent(
     var challengeLinkError by rememberSaveable { mutableStateOf<String?>(null) }
     var shopInitialTab by rememberSaveable { mutableStateOf(ShopTab.GEMS) }
     val localization = LocalLocalization.current
+    val routeRequests = remember(navigationBridge) { AppRouteRequests() }
     var requestedAppRoute by remember(navigationBridge) {
         mutableStateOf(
-            navigationBridge.initialRoute?.takeUnless { normalizeAppRoute(it) == "/" }
+            navigationBridge.initialRoute?.let(::normalizeAppRoute)?.takeUnless { it == "/" }
+                ?.let(routeRequests::request)
         )
+    }
+    fun navigateToAppRoute(route: String, navigate: () -> Unit) {
+        routeRequests.supersede()
+        requestedAppRoute = null
+        navigateToRoute(navigationBridge, route, navigate)
     }
     var webUpdateAvailable by remember(updateBridge) {
         mutableStateOf(updateBridge.updateAvailable)
@@ -635,7 +643,7 @@ private fun GameContent(
         controller.closeClan()
     }
     val openShopTab: (ShopTab) -> Unit = { tab ->
-        navigateToRoute(navigationBridge, "/shop") {
+        navigateToAppRoute("/shop") {
             shopInitialTab = tab
             closeLocalScreens()
             controller.openHome()
@@ -651,7 +659,9 @@ private fun GameContent(
     }
 
     DisposableEffect(navigationBridge) {
-        val stopObserving = navigationBridge.observe { route -> requestedAppRoute = route }
+        val stopObserving = navigationBridge.observe { route ->
+            requestedAppRoute = routeRequests.request(normalizeAppRoute(route))
+        }
         onDispose { stopObserving() }
     }
 
@@ -808,7 +818,7 @@ private fun GameContent(
                 onDismiss = controller::dismissPlayFlowRejection,
                 onOpenTournament = {
                     controller.dismissPlayFlowRejection()
-                    navigateToRoute(navigationBridge, "/tournament", controller::openTournament)
+                    navigateToAppRoute("/tournament", controller::openTournament)
                 }
             )
         }
@@ -918,14 +928,14 @@ private fun GameContent(
 
     val showTopLevelNavigation = state.lobbyStage == com.hienthai.fastowin.state.LobbyStage.SELECT_MODE
     val openHome = {
-        navigateToRoute(navigationBridge, "/") {
+        navigateToAppRoute("/") {
             profileSection = null
             showSeasonHistory = false
             controller.openHome()
         }
     }
     val openLeaderboardTab = {
-        navigateToRoute(navigationBridge, "/leaderboard") {
+        navigateToAppRoute("/leaderboard") {
             profileSection = null
             showSeasonHistory = false
             controller.backToModeSelection()
@@ -933,7 +943,7 @@ private fun GameContent(
         }
     }
     val openRoomsTab = {
-        navigateToRoute(navigationBridge, "/rooms") {
+        navigateToAppRoute("/rooms") {
             profileSection = null
             showSeasonHistory = false
             controller.openRoomBrowser(state.profile?.displayName ?: state.player.name)
@@ -941,7 +951,7 @@ private fun GameContent(
     }
     val openFriendsTab = {
         if (isGuest) onUpgradeGuest() else {
-            navigateToRoute(navigationBridge, "/friends") {
+            navigateToAppRoute("/friends") {
                 profileSection = null
                 showSeasonHistory = false
                 controller.openFriends()
@@ -950,7 +960,7 @@ private fun GameContent(
     }
     val openAccountTab = {
         if (isGuest) onUpgradeGuest() else {
-            navigateToRoute(navigationBridge, "/account") {
+            navigateToAppRoute("/account") {
                 profileSection = null
                 showSeasonHistory = false
                 controller.backToModeSelection()
@@ -960,7 +970,7 @@ private fun GameContent(
     }
     val openClanTab = {
         if (isGuest) onUpgradeGuest() else {
-            navigateToRoute(navigationBridge, "/clan") {
+            navigateToAppRoute("/clan") {
                 profileSection = null
                 showSeasonHistory = false
                 controller.backToModeSelection()
@@ -969,10 +979,10 @@ private fun GameContent(
         }
     }
     val openNotifications = {
-        navigateToRoute(navigationBridge, "/notifications", controller::openNotifications)
+        navigateToAppRoute("/notifications", controller::openNotifications)
     }
     val openGiftMailbox = {
-        navigateToRoute(navigationBridge, "/gifts") {
+        navigateToAppRoute("/gifts") {
             closeLocalScreens()
             controller.openHome()
             showGiftMailbox = true
@@ -980,7 +990,7 @@ private fun GameContent(
     }
     val openAnnouncement: (String) -> Unit = { id ->
         if (!state.isMatchStarted && !state.isGameOver && !state.isMatchmaking && isAnnouncementUuid(id)) {
-            navigateToRoute(navigationBridge, "/announcements/$id") {
+            navigateToAppRoute("/announcements/$id") {
                 closeLocalScreens()
                 controller.openHome()
                 selectedAnnouncementId = id
@@ -988,14 +998,14 @@ private fun GameContent(
         }
     }
     val openRewardEvents = {
-        navigateToRoute(navigationBridge, "/events") {
+        navigateToAppRoute("/events") {
             closeLocalScreens()
             controller.openHome()
             showRewardEvents = true
         }
     }
     val openRewardEvent: (String) -> Unit = { id ->
-        if (!state.isMatchStarted) navigateToRoute(navigationBridge, "/events/$id") {
+        if (!state.isMatchStarted) navigateToAppRoute("/events/$id") {
             if (state.currentRoomId != null) controller.leaveRoom()
             controller.closeMatchDetail()
             closeLocalScreens()
@@ -1008,7 +1018,7 @@ private fun GameContent(
         override fun event(id: String) = openRewardEvent(id)
         override fun mailbox() = openGiftMailbox()
         override fun update() {
-            navigateToRoute(navigationBridge, "/announcements/update") {
+            navigateToAppRoute("/announcements/update") {
                 closeLocalScreens(); controller.openHome(); showAnnouncementUpdate = true
             }
         }
@@ -1029,30 +1039,30 @@ private fun GameContent(
     val announcementState by (announcementController?.state?.collectAsState() ?: remember { mutableStateOf(AnnouncementState()) })
     DisposableEffect(announcementController) { onDispose { announcementController?.close() } }
     val openSettingsTab = {
-        navigateToRoute(navigationBridge, "/settings") { showSettings = true }
+        navigateToAppRoute("/settings") { showSettings = true }
     }
     val openTutorial = {
-        navigateToRoute(navigationBridge, "/tutorial") { showTutorial = true }
+        navigateToAppRoute("/tutorial") { showTutorial = true }
     }
     val openTournament = {
-        navigateToRoute(navigationBridge, "/tournament", controller::openTournament)
+        navigateToAppRoute("/tournament", controller::openTournament)
     }
     val openShop = {
-        navigateToRoute(navigationBridge, "/shop", controller::openShop)
+        navigateToAppRoute("/shop", controller::openShop)
     }
     val openPractice = {
-        navigateToRoute(navigationBridge, "/practice") { showPracticeLauncher = true }
+        navigateToAppRoute("/practice") { showPracticeLauncher = true }
     }
     val openSeasonHistory = {
-        navigateToRoute(navigationBridge, "/season-history") { showSeasonHistory = true }
+        navigateToAppRoute("/season-history") { showSeasonHistory = true }
     }
     val openFriendProfile: (String) -> Unit = { userId ->
-        navigateToRoute(navigationBridge, "/friends/$userId") {
+        navigateToAppRoute("/friends/$userId") {
             controller.openFriendProfile(userId)
         }
     }
     val openOwnProfileSection: (ProfileSection) -> Unit = { section ->
-        navigateToRoute(navigationBridge, "/account/${profileSectionRoute(section)}") {
+        navigateToAppRoute("/account/${profileSectionRoute(section)}") {
             profileSectionExternal = false
             profileSection = section
             if (section == ProfileSection.WALLET) controller.refreshWalletHistory()
@@ -1060,7 +1070,7 @@ private fun GameContent(
     }
     val openExternalProfileSection: (ProfileSection) -> Unit = { section ->
         val userId = state.viewedFriendUserId.orEmpty()
-        navigateToRoute(navigationBridge, "/friends/$userId/${profileSectionRoute(section)}") {
+        navigateToAppRoute("/friends/$userId/${profileSectionRoute(section)}") {
             profileSectionExternal = true
             profileSection = section
         }
@@ -1075,6 +1085,8 @@ private fun GameContent(
         isTournamentMatch = state.isTournamentMatch
     )
     val finishTutorial = {
+        routeRequests.supersede()
+        requestedAppRoute = null
         onPreferencesChange(appPreferences.copy(hasCompletedTutorial = true))
         showTutorial = false
         navigationBridge.replace("/")
@@ -1094,7 +1106,35 @@ private fun GameContent(
         state.isGameOver
     ) {
         val requested = requestedAppRoute ?: return@LaunchedEffect
-        val route = normalizeAppRoute(requested)
+        if (!routeRequests.isCurrent(requested)) return@LaunchedEffect
+        val route = requested.route
+        fun finishRequest(): Boolean {
+            if (!routeRequests.clear(requested)) return false
+            requestedAppRoute = null
+            return true
+        }
+        fun redirectRequest(route: String, publish: (String) -> Unit = navigationBridge::replace) {
+            if (!routeRequests.isCurrent(requested)) return
+            requestedAppRoute = routeRequests.request(route)
+            publish(route)
+        }
+        // Browser history already owns this destination. Apply UI state without
+        // publishing another entry through the tap-action navigation helpers.
+        fun openRequestedAccount() {
+            if (isGuest) onUpgradeGuest() else {
+                profileSection = null
+                showSeasonHistory = false
+                controller.backToModeSelection()
+                controller.openProfile()
+            }
+        }
+        fun openRequestedFriends() {
+            if (isGuest) onUpgradeGuest() else {
+                profileSection = null
+                showSeasonHistory = false
+                controller.openFriends()
+            }
+        }
         if (route != "/clan/race") showClanRace = false
         if (route != "/events" && !route.startsWith("/events/")) {
             showRewardEvents = false
@@ -1110,8 +1150,8 @@ private fun GameContent(
         val activeRoomRoute = state.currentRoomId?.let { "/room/$it" }
 
         if (state.isMatchStarted && !state.isGameOver && route != activeRoomRoute) {
-            requestedAppRoute = null
-            activeRoomRoute?.let(navigationBridge::publish)
+            if (activeRoomRoute != null) redirectRequest(activeRoomRoute, navigationBridge::publish)
+            else finishRequest()
             return@LaunchedEffect
         }
 
@@ -1137,15 +1177,19 @@ private fun GameContent(
             }
             route == "/rooms" -> {
                 closeLocalScreens()
-                openRoomsTab()
+                controller.openRoomBrowser(state.profile?.displayName ?: state.player.name)
             }
             route == "/leaderboard" -> {
                 closeLocalScreens()
-                openLeaderboardTab()
+                controller.backToModeSelection()
+                controller.openLeaderboard()
             }
             route == "/clan" -> {
                 closeLocalScreens()
-                openClanTab()
+                if (isGuest) onUpgradeGuest() else {
+                    controller.backToModeSelection()
+                    controller.openClan()
+                }
             }
             route == "/clan/race" -> {
                 closeLocalScreens()
@@ -1154,19 +1198,23 @@ private fun GameContent(
             }
             route == "/account" -> {
                 closeLocalScreens()
-                openAccountTab()
+                openRequestedAccount()
             }
             route.startsWith("/account/") -> {
                 val section = profileSectionFromRoute(route.substringAfter("/account/"))
+                if (section != null && route != "/account/${profileSectionRoute(section)}") {
+                    redirectRequest("/account/${profileSectionRoute(section)}")
+                    return@LaunchedEffect
+                }
                 if (section == null) {
-                    openAccountTab()
+                    openRequestedAccount()
+                    redirectRequest("/account")
                 } else if (state.profile == null) {
                     if (state.isProfileOpen && !state.isProfileLoading) {
-                        requestedAppRoute = null
-                        navigationBridge.replace("/account")
+                        redirectRequest("/account")
                         return@LaunchedEffect
                     }
-                    openAccountTab()
+                    openRequestedAccount()
                     return@LaunchedEffect
                 } else {
                     showSettings = false
@@ -1177,7 +1225,7 @@ private fun GameContent(
             }
             route == "/friends" -> {
                 closeLocalScreens()
-                openFriendsTab()
+                openRequestedFriends()
             }
             route.startsWith("/friends/") -> {
                 val friendPath = route.substringAfter("/friends/")
@@ -1185,14 +1233,19 @@ private fun GameContent(
                 val section = friendPath.substringAfter('/', missingDelimiterValue = "")
                     .takeIf(String::isNotBlank)
                     ?.let(::profileSectionFromRoute)
+                val canonicalRoute = "/friends/$friendId" +
+                    (section?.let { "/${profileSectionRoute(it)}" } ?: "")
+                if (route != canonicalRoute) {
+                    redirectRequest(canonicalRoute)
+                    return@LaunchedEffect
+                }
                 val friend = state.social.friends.firstOrNull { it.userId == friendId }
                 if (friend == null) {
                     if (state.isFriendsOpen && !state.isFriendsLoading) {
-                        requestedAppRoute = null
-                        navigationBridge.replace("/friends")
+                        redirectRequest("/friends")
                         return@LaunchedEffect
                     }
-                    openFriendsTab()
+                    openRequestedFriends()
                     return@LaunchedEffect
                 }
                 showSettings = false
@@ -1206,8 +1259,7 @@ private fun GameContent(
                 if (section != null) {
                     if (state.friendProfile == null) {
                         if (!state.isFriendProfileLoading) {
-                            requestedAppRoute = null
-                            navigationBridge.replace("/friends/$friendId")
+                            redirectRequest("/friends/$friendId")
                         }
                         return@LaunchedEffect
                     }
@@ -1274,31 +1326,38 @@ private fun GameContent(
                 if (challenge == null) {
                     closeLocalScreens()
                     controller.openHome()
+                    redirectRequest("/")
                 } else {
                     closeLocalScreens()
                     controller.backToModeSelection()
                     controller.openHome()
                     savedPracticeRoute = challenge.code
+                    if (route != "/challenge/${challenge.code}") redirectRequest("/challenge/${challenge.code}")
                 }
             }
             route.startsWith("/room/") -> {
                 val roomId = route.substringAfter("/room/").substringBefore('/')
                 closeLocalScreens()
                 val validRoomId = parseRoomDeepLink("fasttowin://room/$roomId")?.roomId
+                if (validRoomId != null && route != "/room/$validRoomId") {
+                    redirectRequest("/room/$validRoomId")
+                    return@LaunchedEffect
+                }
                 if (validRoomId != null && state.currentRoomId != validRoomId) {
                     controller.openRoomLink(validRoomId)
                 } else if (validRoomId == null) {
-                    openRoomsTab()
+                    controller.openRoomBrowser(state.profile?.displayName ?: state.player.name)
+                    redirectRequest("/rooms")
                 }
             }
             else -> {
                 closeLocalScreens()
                 controller.backToModeSelection()
                 controller.openHome()
+                redirectRequest("/")
             }
         }
-        delay(32)
-        requestedAppRoute = null
+        // Acknowledge only after appRoute reflects the requested destination.
     }
 
     val screenStateKey = when {
@@ -1400,14 +1459,20 @@ private fun GameContent(
     DisposableEffect(rewardEventController, rewardEventView, language, selectedRewardEventId) {
         onDispose { rewardEventController.reset() }
     }
-    LaunchedEffect(appRoute, requestedAppRoute) {
-        if (requestedAppRoute == null) {
+    val routeRevision = routeRequests.revision
+    LaunchedEffect(appRoute, requestedAppRoute, routeRevision) {
+        val requested = requestedAppRoute
+        if (requested != null) {
+            if (routeRequests.acknowledge(requested, appRoute)) requestedAppRoute = null
+        } else {
             // Several top-level actions update related state fields in quick succession.
             // Publish only the settled route so browser Back does not stop on a transient screen.
             // A popstate callback can arrive while this coroutine is suspended, before Compose
             // has recomposed with the new request and cancelled this effect.
             delay(64)
-            if (requestedAppRoute == null) navigationBridge.publish(appRoute)
+            if (requestedAppRoute == null && routeRequests.canPublish(routeRevision)) {
+                navigationBridge.publish(appRoute)
+            }
         }
     }
 
@@ -1433,7 +1498,7 @@ private fun GameContent(
                         closeLocalScreens()
                         controller.backToModeSelection()
                         controller.openHome()
-                        navigateToRoute(navigationBridge, "/practice") {
+                        navigateToAppRoute("/practice") {
                             showPracticeLauncher = true
                         }
                     }
@@ -1443,7 +1508,7 @@ private fun GameContent(
                     state = rewardEventState,
                     onBack = { navigateBack { showRewardEvents = false; selectedRewardEventId = null; rewardEventController.reset() } },
                     onRefresh = { rewardEventScope.launch { selectedRewardEventId?.let { rewardEventController.select(it) } ?: rewardEventController.refresh() } },
-                    onSelect = { id -> navigateToRoute(navigationBridge, "/events/$id") { selectedRewardEventId = id } },
+                    onSelect = { id -> navigateToAppRoute("/events/$id") { selectedRewardEventId = id } },
                     onMore = { rewardEventScope.launch { rewardEventController.loadMore() } }
                 )
                 raceOpen -> com.hienthai.fastowin.ui.screens.ClanRaceScreen(
@@ -1784,7 +1849,7 @@ private fun GameContent(
                     missionState = if (clanMissionsOpen) clanMissionState else null,
                     onRefreshMissions = { missionScope.launch { clanMissions?.refresh() } },
                     onClaimMissionInstance = { id -> missionScope.launch { clanMissions?.claim(id) } },
-                    onOpenRace = { navigateToRoute(navigationBridge, "/clan/race") { showClanRace = true } }
+                    onOpenRace = { navigateToAppRoute("/clan/race") { showClanRace = true } }
                 ) }
 
                 state.isGameOver -> ResultScreen(
