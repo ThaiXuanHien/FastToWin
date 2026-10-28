@@ -16,6 +16,9 @@ import com.hienthai.fastowin.protocol.PlayerGender
 import com.hienthai.fastowin.platform.epochMillis
 import com.hienthai.fastowin.protocol.AuthSessionResponse
 import com.hienthai.fastowin.protocol.AccountSessionSnapshot
+import io.ktor.client.plugins.HttpRequestTimeoutException
+import io.ktor.client.network.sockets.ConnectTimeoutException
+import io.ktor.client.network.sockets.SocketTimeoutException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -55,8 +58,10 @@ class AuthController(
     private val initialGuestSession: Boolean = false,
     initialLanguage: AppLanguage = AppLanguage.VIETNAMESE,
     private val requestConfigurator: AuthRequestConfigurator = NoOpAuthRequestConfigurator,
-    private val api: AuthApiClient = AuthApiClient(serverUrl, requestConfigurator)
+    private val api: AuthApiClient = AuthApiClient(serverUrl, requestConfigurator),
+    diagnosticSink: AuthDiagnosticSink = NoOpAuthDiagnosticSink
 ) {
+    private val diagnostics = AuthDiagnosticRecorder(diagnosticSink)
     private val messageMapper = LocalizedMessageMapper(LocalizationService(initialLanguage))
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val initialSession = store.load(serverUrl).let { stored ->
@@ -83,6 +88,8 @@ class AuthController(
     private var refreshWork: RefreshWork? = null
     private val termsApi = com.hienthai.fastowin.data.network.ContentTermsApiClient(serverUrl)
     val contentEntryConsent = ContentEntryConsent(termsApi::fetch)
+
+    init { diagnostics.emit(AuthDiagnosticPhase.CONTROLLER_CREATED) }
 
     fun updateLanguage(language: AppLanguage) {
         if (messageMapper.language == language) return
@@ -173,19 +180,44 @@ class AuthController(
         return refresh.await()
     }
 
-    private suspend fun refreshSession(session: StoredAuthSession): String? =
-        runCatching { api.refresh(session.refreshToken) }
+    private suspend fun refreshSession(session: StoredAuthSession): String? {
+        val attempt = diagnostics.beginRefresh()
+        return runCatching {
+            api.refresh(session.refreshToken) { status, requestId ->
+                diagnostics.emit(AuthDiagnosticPhase.HTTP_RESPONSE, attempt, status, requestId)
+            }
+        }
             .mapCatching { response ->
                 if (_state.value.session?.refreshToken != session.refreshToken ||
                     _state.value.session?.userId != session.userId ||
-                    store.load(serverUrl)?.refreshToken != session.refreshToken) return@mapCatching null
+                    store.load(serverUrl)?.refreshToken != session.refreshToken) {
+                    diagnostics.emit(AuthDiagnosticPhase.STALE_RESPONSE, attempt)
+                    return@mapCatching null
+                }
                 val refreshed = session.withTokens(response)
                 store.save(serverUrl, refreshed)
                 _state.update { it.copy(session = refreshed, isLoading = false, error = null) }
+                diagnostics.credentialsStored(AuthDiagnosticPhase.REFRESH_STORED, attempt)
                 refreshed.accessToken
             }
             .getOrElse { error ->
-                if (error is CancellationException) throw error
+                if (error is CancellationException) {
+                    diagnostics.emit(AuthDiagnosticPhase.REFRESH_CANCELLED, attempt)
+                    throw error
+                }
+                diagnostics.emit(AuthDiagnosticPhase.REFRESH_FAILED, attempt, failure = when (error) {
+                    is HttpRequestTimeoutException, is ConnectTimeoutException, is SocketTimeoutException -> AuthDiagnosticFailure.TIMEOUT
+                    is AuthApiException -> AuthDiagnosticFailure.HTTP
+                    is AuthSessionStoreException -> AuthDiagnosticFailure.STORAGE
+                    else -> AuthDiagnosticFailure.TRANSPORT
+                }, rejection = (error as? AuthApiException)?.let {
+                    when (it.code) {
+                        "INVALID_REFRESH_TOKEN" -> AuthDiagnosticRejection.INVALID_REFRESH_TOKEN
+                        "ACCOUNT_BLOCKED" -> AuthDiagnosticRejection.ACCOUNT_BLOCKED
+                        "SESSION_EXPIRED" -> AuthDiagnosticRejection.SESSION_EXPIRED
+                        else -> AuthDiagnosticRejection.OTHER
+                    }
+                })
                 if (_state.value.session?.refreshToken != session.refreshToken ||
                     _state.value.session?.userId != session.userId) return@getOrElse null
                 val rejected = error is AuthApiException && when (error.httpStatus ?: 0) {
@@ -205,14 +237,16 @@ class AuthController(
                         fallback = messageMapper.text(TextKey.ServerSessionExpired)
                     )
                 }
-                expireSession(message)
+                expireSession(message, if (error is AuthSessionStoreException) AuthExpirySource.SESSION_STORAGE else AuthExpirySource.REFRESH_REJECTED)
                 null
             }
+    }
 
     fun logout() {
         val session = _state.value.session
         store.clear(serverUrl)
         _state.value = AuthState(stage = AuthStage.LOGIN)
+        diagnostics.emit(AuthDiagnosticPhase.LOGGED_OUT)
         scope.launch {
             if (session != null) runCatching { api.logout(session.refreshToken) }
         }
@@ -392,7 +426,8 @@ class AuthController(
             keyName = null,
             arguments = emptyMap(),
             fallback = messageMapper.text(TextKey.ServerSessionExpired)
-        )
+        ),
+        source: AuthExpirySource = AuthExpirySource.EXTERNAL
     ) {
         val expiredSession = _state.value.session
         val storedSession = store.load(serverUrl)
@@ -400,6 +435,7 @@ class AuthController(
             store.clear(serverUrl)
         }
         _state.value = AuthState(stage = AuthStage.LOGIN, error = message)
+        diagnostics.emit(AuthDiagnosticPhase.SESSION_EXPIRED, source = source)
     }
 
     fun updateStoredDisplayName(displayName: String) {
@@ -413,6 +449,7 @@ class AuthController(
     fun clearFeedback() = _state.update { it.copy(error = null, notice = null) }
 
     fun close() {
+        diagnostics.emit(AuthDiagnosticPhase.CONTROLLER_CLOSED)
         contentEntryConsent.dismiss()
         termsApi.close()
         api.close()
@@ -435,6 +472,7 @@ class AuthController(
             stage = if (stored.emailVerified) AuthStage.PLAYING else AuthStage.VERIFY_EMAIL,
             session = stored
         )
+        diagnostics.credentialsStored(AuthDiagnosticPhase.SIGNED_IN)
     }
 
     private fun showError(error: Throwable) {

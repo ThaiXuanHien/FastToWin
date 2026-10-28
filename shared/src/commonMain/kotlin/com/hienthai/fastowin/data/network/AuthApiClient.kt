@@ -79,8 +79,10 @@ class AuthApiClient(
         UpgradeGuestRequest(resumeToken, email, password, devicePlatform, acceptedContentTermsVersion)
     )
 
-    suspend fun refresh(refreshToken: String): AuthSessionResponse =
-        execute("$baseUrl/auth/refresh", RefreshTokenRequest(refreshToken))
+    suspend fun refresh(
+        refreshToken: String,
+        onResponse: (status: Int, requestId: String?) -> Unit = { _, _ -> }
+    ): AuthSessionResponse = execute("$baseUrl/auth/refresh", RefreshTokenRequest(refreshToken), onResponse)
 
     suspend fun logout(refreshToken: String) {
         val response = client.post("$baseUrl/auth/logout") {
@@ -155,12 +157,18 @@ class AuthApiClient(
 
     fun close() = client.close()
 
-    private suspend inline fun <reified T : Any> execute(url: String, request: T): AuthSessionResponse {
+    private suspend inline fun <reified T : Any> execute(
+        url: String,
+        request: T,
+        onResponse: (status: Int, requestId: String?) -> Unit = { _, _ -> }
+    ): AuthSessionResponse {
         val response = client.post(url) {
             requestConfigurator.configure(this)
             contentType(ContentType.Application.Json)
             setBody(request)
         }
+        // Only scalar response metadata; never expose the request, body, token or headers wholesale.
+        runCatching { onResponse(response.status.value, response.headers["x-railway-request-id"]) }
         if (!response.status.isSuccess()) throw response.toAuthException()
         return response.body()
     }

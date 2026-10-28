@@ -23,6 +23,19 @@ còn route và mã HTTP được định nghĩa trong
 - Refresh do `AuthController` sở hữu và chia sẻ cho các bên đang chờ cùng phiên.
   Hủy tác vụ của một màn hình không hủy giao dịch xoay token đang chạy; phản hồi
   chỉ được lưu nếu phiên sở hữu vẫn còn khớp. Đóng controller hủy refresh của nó.
+- Android có dấu vết auth **chỉ khi build bật rõ**
+  `-PFASTTOWIN_AUTH_DIAGNOSTICS=qa`; mặc định `off`. Có thể kiểm tra build bằng
+  `:app:compileProdReleaseKotlin` với cờ trên. Không tự bật cho bản production.
+  Dấu vết ghi cục bộ vào Logcat, tag `FTWAuthQA`, không tải lên máy chủ. Có thể đọc
+  bằng `adb logcat -s FTWAuthQA:I '*:S'` trong ca nghiệm thu QA được chọn.
+  Chỉ có thời điểm, nonce ngẫu nhiên của controller (không phải ID tài khoản/phiên),
+  số lần thử/generation cục bộ, giai đoạn nhận phản hồi/lưu thành công/timeout/hủy,
+  mã HTTP, mã `x-railway-request-id` hợp lệ và nguồn hết phiên. Generation tăng
+  sau lưu credential đăng nhập hoặc refresh; không dùng nó làm định danh token.
+  Không ghi email, tên người chơi, mật khẩu, access/refresh token, nội dung
+  request/response, message của exception hoặc cookie. Lỗi ghi dấu vết không được
+  làm thay đổi kết quả auth. Đây là quan sát, chưa phải cơ chế phục hồi phản hồi
+  refresh bị mất sau commit; quy tắc refresh, timeout và thu hồi phiên vẫn giữ nguyên.
 - Mật khẩu dài từ 8 đến 128 ký tự. Biệt danh dài từ 1 đến 32 ký tự.
 - Đăng nhập thành công trên thiết bị mới thu hồi mọi phiên cũ của cùng tài khoản.
   Thiết bị cũ bị đóng WebSocket với lý do `Account signed in elsewhere` và trở về

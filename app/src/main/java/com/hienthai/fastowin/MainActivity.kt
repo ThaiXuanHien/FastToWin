@@ -14,6 +14,7 @@ import com.hienthai.fastowin.data.network.AndroidResumeTokenStore
 import com.hienthai.fastowin.data.network.AndroidAuthSessionStore
 import com.hienthai.fastowin.data.preferences.AndroidAppPreferencesStore
 import com.hienthai.fastowin.platform.AppDeepLinkRouter
+import com.hienthai.fastowin.state.localAuthDiagnosticSink
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -25,6 +26,9 @@ class MainActivity : ComponentActivity() {
         val tokenStore = AndroidResumeTokenStore(applicationContext)
         val authSessionStore = AndroidAuthSessionStore(applicationContext)
         val preferencesStore = AndroidAppPreferencesStore(applicationContext)
+        val authDiagnostics = localAuthDiagnosticSink(BuildConfig.AUTH_DIAGNOSTICS_ENABLED) {
+            android.util.Log.i("FTWAuthQA", it)
+        }
         intent?.dataString?.let(AppDeepLinkRouter::openUri)
         val adMode = BuildConfig.ADMOB_MODE.takeIf { it.isNotEmpty() }
             ?.let { value -> RewardedAdMode.entries.firstOrNull { it.name.equals(value, ignoreCase = true) } }
@@ -39,6 +43,7 @@ class MainActivity : ComponentActivity() {
                 authSessionStore = authSessionStore,
                 preferencesStore = preferencesStore,
                 devicePlatform = "android",
+                authDiagnosticSink = authDiagnostics,
                 fcmToken = applicationContext.getSharedPreferences("fcm", android.content.Context.MODE_PRIVATE).getString("fcm_token", null)
             )
             }
