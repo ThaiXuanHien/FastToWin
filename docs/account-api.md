@@ -15,6 +15,11 @@ còn route và mã HTTP được định nghĩa trong
   trả `204 No Content` khi thành công.
 - `accessToken` hết hạn sau 15 phút; `refreshToken` hết hạn sau 30 ngày và được xoay
   vòng sau mỗi lần refresh.
+- Khi WebSocket của tài khoản nhận `INVALID_ACCESS_TOKEN`, client thử refresh và
+  kết nối lại một lần trước khi yêu cầu đăng nhập. Một phiên kết nối thành công
+  cho phép xử lý lần hết hạn tiếp theo; các lệnh nhận thưởng/mua hàng không tự gửi lại.
+- Lỗi mạng, timeout, HTTP 408/429/5xx khi refresh giữ phiên đã lưu để thử lại.
+  Refresh bị từ chối, tài khoản bị khóa hoặc phiên bị thay thế vẫn yêu cầu đăng nhập lại.
 - Mật khẩu dài từ 8 đến 128 ký tự. Biệt danh dài từ 1 đến 32 ký tự.
 - Đăng nhập thành công trên thiết bị mới thu hồi mọi phiên cũ của cùng tài khoản.
   Thiết bị cũ bị đóng WebSocket với lý do `Account signed in elsewhere` và trở về

@@ -171,6 +171,13 @@ class AuthController(
                 if (error is CancellationException) throw error
                 if (_state.value.session?.refreshToken != session.refreshToken ||
                     _state.value.session?.userId != session.userId) return@getOrElse null
+                val rejected = error is AuthApiException && when (error.httpStatus ?: 0) {
+                    408, 429, in 500..599 -> false
+                    401 -> true
+                    else -> error.code in setOf("INVALID_REFRESH_TOKEN", "ACCOUNT_BLOCKED", "SESSION_EXPIRED")
+                }
+                // A temporary outage must reach the socket's retry loop without destroying credentials.
+                if (error !is AuthSessionStoreException && !rejected) throw error
                 val message = if (error is AuthSessionStoreException) {
                     messageMapper.message(error.code, null, emptyMap(), error.message.orEmpty())
                 } else {
@@ -233,7 +240,7 @@ class AuthController(
         if (_state.value.isLoading || _state.value.session == null) return
         _state.update { it.copy(isLoading = true, error = null, notice = null) }
         scope.launch {
-            val accessToken = validAccessToken() ?: return@launch
+            val accessToken = actionAccessToken(::showError) ?: return@launch
             runCatching {
                 api.requestEmailVerification(accessToken, messageMapper.language.languageTag)
             }
@@ -259,7 +266,7 @@ class AuthController(
         if (_state.value.isLoading || _state.value.session == null) return
         _state.update { it.copy(isLoading = true, error = null, notice = null) }
         scope.launch {
-            val accessToken = validAccessToken() ?: return@launch
+            val accessToken = actionAccessToken(::showError) ?: return@launch
             runCatching { api.confirmEmailVerification(accessToken, verificationCode) }
                 .onSuccess { response ->
                     completeEmailVerification(messageMapper.message(response))
@@ -273,7 +280,7 @@ class AuthController(
         if (_state.value.session == null) return
         _state.update { it.copy(isLoading = true, error = null, notice = null) }
         scope.launch {
-            val accessToken = validAccessToken() ?: return@launch
+            val accessToken = actionAccessToken(::showError) ?: return@launch
             runCatching { api.changePassword(accessToken, currentPassword, newPassword) }
                 .onSuccess { response ->
                     store.clear(serverUrl)
@@ -288,7 +295,7 @@ class AuthController(
         if (_state.value.session == null) return
         _state.update { it.copy(isLoading = true, error = null, notice = null) }
         scope.launch {
-            val accessToken = validAccessToken() ?: return@launch
+            val accessToken = actionAccessToken(::showError) ?: return@launch
             runCatching { api.deleteAccount(accessToken, password) }
                 .onSuccess { response ->
                     store.clear(serverUrl)
@@ -303,7 +310,7 @@ class AuthController(
         if (_state.value.session == null || _state.value.areSessionsLoading) return
         _state.update { it.copy(areSessionsLoading = true, error = null) }
         scope.launch {
-            val accessToken = validAccessToken() ?: return@launch
+            val accessToken = actionAccessToken(::showSessionsError) ?: return@launch
             runCatching { api.listSessions(accessToken) }
                 .onSuccess { response ->
                     _state.update {
@@ -323,7 +330,7 @@ class AuthController(
         if (_state.value.areSessionsLoading) return
         _state.update { it.copy(areSessionsLoading = true, error = null, notice = null) }
         scope.launch {
-            val accessToken = validAccessToken() ?: return@launch
+            val accessToken = actionAccessToken(::showSessionsError) ?: return@launch
             runCatching { api.revokeSession(accessToken, sessionId) }
                 .onSuccess { response ->
                     if (target.isCurrent) {
@@ -344,7 +351,7 @@ class AuthController(
         if (_state.value.session == null || _state.value.areSessionsLoading) return
         _state.update { it.copy(areSessionsLoading = true, error = null, notice = null) }
         scope.launch {
-            val accessToken = validAccessToken() ?: return@launch
+            val accessToken = actionAccessToken(::showSessionsError) ?: return@launch
             runCatching { api.revokeAllSessions(accessToken) }
                 .onSuccess { response ->
                     store.clear(serverUrl)
@@ -352,6 +359,15 @@ class AuthController(
                 }
                 .onFailure(::showSessionsError)
         }
+    }
+
+    private suspend fun actionAccessToken(onFailure: (Throwable) -> Unit): String? = try {
+        validAccessToken()
+    } catch (cancelled: CancellationException) {
+        throw cancelled
+    } catch (failure: Exception) {
+        onFailure(failure)
+        null
     }
 
     fun expireSession(

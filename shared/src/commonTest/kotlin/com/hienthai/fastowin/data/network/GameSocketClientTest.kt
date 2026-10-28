@@ -365,11 +365,128 @@ class GameSocketClientTest {
         assertEquals(emptyList(), f.sleeper.delays)
     }
 
-    @Test fun `invalid access token terminal no retry`() = runTest { terminalError("INVALID_ACCESS_TOKEN") }
-    @Test fun `session expired terminal no retry`() = runTest { terminalError("SESSION_EXPIRED") }
+    @Test fun `expired access refreshes account without expiring or replaying commands`() = runTest {
+        val calls = mutableListOf<Boolean>()
+        val f = Fixture(this, account = true, provider = { force -> calls += force; if (force) "fresh" else "old" })
+        f.start()
+        val old = f.transport.sessions.single()
+        old.server(ServerMessage.SessionReady("p1"))
+        runCurrent()
+        f.client.sendMessage(ClientMessage.ClaimDailyCheckIn)
+        runCurrent()
+        old.server(ServerMessage.Error("INVALID_ACCESS_TOKEN", "Expired"))
+        runCurrent()
+        assertEquals(listOf(false, true), calls)
+        assertEquals(2, f.transport.sessions.size)
+        assertEquals(listOf<ClientMessage>(ClientMessage.ConnectAccount("fresh")), f.transport.sessions.last().sent)
+        f.transport.sessions.last().server(ServerMessage.SessionReady("p1"))
+        runCurrent()
+        assertEquals(SocketConnectionState.CONNECTED, f.client.connectionState.value)
+        assertEquals(emptyList(), f.expired)
+        assertEquals(emptyList(), f.errors)
+        assertTrue(old.closed)
+    }
 
-    private suspend fun TestScope.terminalError(code: String) {
-        val f = Fixture(this, account = true)
+    @Test fun `rejected refreshed access stops after one refresh before session ready`() = runTest {
+        val calls = mutableListOf<Boolean>()
+        val f = Fixture(this, account = true, provider = { force -> calls += force; "access" })
+        f.start()
+        repeat(2) {
+            f.transport.sessions.last().server(ServerMessage.Error("INVALID_ACCESS_TOKEN", "Rejected"))
+            runCurrent()
+            assertEquals(2, f.transport.sessions.size)
+        }
+        repeat(3) { f.client.retryNow() }
+        runCurrent()
+        assertEquals(listOf(false, true), calls)
+        assertEquals(2, f.transport.sessions.size)
+        assertEquals(SocketConnectionState.TERMINAL, f.client.connectionState.value)
+        assertEquals(listOf("INVALID_ACCESS_TOKEN"), f.expired)
+    }
+
+    @Test fun `successful session allows one refresh for a later expiry`() = runTest {
+        val calls = mutableListOf<Boolean>()
+        val f = Fixture(this, account = true, provider = { force -> calls += force; "access" })
+        f.start()
+        repeat(2) {
+            f.transport.sessions.last().server(ServerMessage.SessionReady("p1"))
+            runCurrent()
+            f.transport.sessions.last().server(ServerMessage.Error("INVALID_ACCESS_TOKEN", "Expired"))
+            runCurrent()
+            assertEquals(it + 2, f.transport.sessions.size)
+        }
+        assertEquals(listOf(false, true, true), calls)
+        assertEquals(3, f.transport.sessions.size)
+        assertEquals(emptyList(), f.expired)
+    }
+
+    @Test fun `temporary forced refresh failure retries with refresh still required`() = runTest {
+        val calls = mutableListOf<Boolean>()
+        val f = Fixture(this, account = true, provider = { force ->
+            calls += force
+            if (calls.size == 2) error("Temporary refresh outage")
+            if (force) "fresh" else "old"
+        })
+        f.start()
+        f.transport.sessions.single().server(ServerMessage.Error("INVALID_ACCESS_TOKEN", "Expired"))
+        runCurrent()
+        assertEquals(1, f.sleeper.delays.size)
+        assertTrue(f.sleeper.delays.single() > 0)
+        assertEquals(emptyList(), f.expired)
+        f.sleeper.release.send(Unit)
+        runCurrent()
+        assertEquals(listOf(false, true, true), calls)
+        assertEquals(ClientMessage.ConnectAccount("fresh"), f.transport.sessions.last().sent.single())
+    }
+
+    @Test fun `revoked refresh ends session instead of another account hello`() = runTest {
+        val calls = mutableListOf<Boolean>()
+        val f = Fixture(this, account = true, provider = { force -> calls += force; if (force) null else "old" })
+        f.start()
+        f.transport.sessions.single().server(ServerMessage.Error("INVALID_ACCESS_TOKEN", "Expired"))
+        runCurrent()
+        assertEquals(listOf(false, true), calls)
+        assertEquals(SocketConnectionState.TERMINAL, f.client.connectionState.value)
+        assertEquals(listOf("SESSION_EXPIRED"), f.expired)
+        assertEquals(emptyList(), f.transport.sessions.last().sent)
+    }
+
+    @Test fun `late forced refresh cannot authenticate a replacement connection`() = runTest {
+        val entered = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        val f = Fixture(this, account = true, provider = { force ->
+            if (force) { entered.complete(Unit); withContext(NonCancellable) { release.await() }; "late-access" }
+            else "current-access"
+        })
+        f.start()
+        f.transport.sessions.single().server(ServerMessage.Error("INVALID_ACCESS_TOKEN", "Expired"))
+        runCurrent()
+        assertTrue(entered.isCompleted)
+        val stopping = launch { f.client.disconnect() }
+        runCurrent()
+        advanceTimeBy(SHUTDOWN_BOUND_MILLIS + 1)
+        runCurrent()
+        assertTrue(stopping.isCompleted)
+        val replacement = backgroundScope.launch { f.client.connect("Replacement") }
+        runCurrent()
+        val current = f.transport.sessions.last()
+        assertEquals(listOf<ClientMessage>(ClientMessage.ConnectAccount("current-access")), current.sent)
+        release.complete(Unit)
+        runCurrent()
+        f.client.sendMessage(ClientMessage.GetProfile)
+        runCurrent()
+        assertEquals(listOf<ClientMessage>(ClientMessage.ConnectAccount("current-access"), ClientMessage.GetProfile), current.sent)
+        assertTrue(f.transport.sessions.dropLast(1).all { it.sent.none { hello -> hello == ClientMessage.ConnectAccount("late-access") } })
+        assertEquals(emptyList(), f.expired)
+        replacement.cancelAndJoin()
+    }
+
+    @Test fun `guest invalid access remains terminal`() = runTest { terminalError("INVALID_ACCESS_TOKEN", account = false) }
+    @Test fun `session expired terminal no retry`() = runTest { terminalError("SESSION_EXPIRED") }
+    @Test fun `blocked account terminal no retry`() = runTest { terminalError("ACCOUNT_BLOCKED") }
+
+    private suspend fun TestScope.terminalError(code: String, account: Boolean = true) {
+        val f = Fixture(this, account = account)
         f.start()
         f.transport.sessions.single().server(ServerMessage.Error(code, "Rejected"))
         runCurrent()

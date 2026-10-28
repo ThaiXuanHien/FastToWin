@@ -104,7 +104,6 @@ internal class GameSocketClient(
     private val lifecycleMutex = Mutex()
     private var currentMailbox: AttemptMailbox? = null
     private var resumeToken: String? = tokenStore.load(serverUrl)
-    private var forceAccessTokenRefresh = false
     var acceptedContentTermsVersion: String? = null
     private var hasConnected = false
     private var resumeRejected = false
@@ -162,7 +161,7 @@ internal class GameSocketClient(
                     _connectionState.value = SocketConnectionState.CONNECTING
                 }
                 AttemptResult.ImmediateRetry -> {
-                    // This is the one auth-only retry after INVALID_RESUME_TOKEN.
+                    // Bounded auth-only repair for a stale resume or access token.
                     // Advance state without introducing a backoff.
                     machine.reduce(ReconnectEvent.AttemptFailed)
                     _connectionState.value = SocketConnectionState.CONNECTING
@@ -352,11 +351,11 @@ internal class GameSocketClient(
             return@coroutineScope AuthResult.Ready(ClientMessage.ConnectGuest(displayName, resumeToken, acceptedContentTermsVersion = acceptedContentTermsVersion))
         }
 
-        val forceRefresh = forceAccessTokenRefresh
+        val forceRefresh = run.forceAccessTokenRefresh
         val access = async { accessTokenProvider.invoke(forceRefresh) }
         val result = select<AuthResult> {
             access.onAwait { token ->
-                forceAccessTokenRefresh = false
+                run.forceAccessTokenRefresh = false
                 if (token == null) {
                     terminal(run, mailbox, "SESSION_EXPIRED", "Your session has expired. Please sign in again.")
                     AuthResult.Stop
@@ -399,6 +398,7 @@ internal class GameSocketClient(
                 }
                 resumeRejected = false
                 resumeRetryUsed = false
+                run.accessRefreshUsed = false
                 hasConnected = true
                 run.machine.reduce(ReconnectEvent.Authenticated)
                 _connectionState.value = SocketConnectionState.CONNECTED
@@ -418,10 +418,17 @@ internal class GameSocketClient(
                     }
                 }
                 "INVALID_ACCESS_TOKEN" -> {
-                    terminal(run, mailbox, message.code, message.message)
-                    result = AttemptResult.Stop
+                    if (accessTokenProvider != null && !run.accessRefreshUsed) {
+                        run.accessRefreshUsed = true
+                        run.forceAccessTokenRefresh = true
+                        result = AttemptResult.ImmediateRetry
+                        closeAttempt(mailbox, attempt, run)
+                    } else {
+                        terminal(run, mailbox, message.code, message.message)
+                        result = AttemptResult.Stop
+                    }
                 }
-                "SESSION_EXPIRED" -> {
+                "SESSION_EXPIRED", "ACCOUNT_BLOCKED" -> {
                     terminal(run, mailbox, message.code, message.message)
                     result = AttemptResult.Stop
                 }
@@ -539,6 +546,8 @@ internal class GameSocketClient(
     }
 
     private class ConnectRun {
+        var forceAccessTokenRefresh = false
+        var accessRefreshUsed = false
         val machine = ReconnectStateMachine()
         val retryRequests = Channel<Unit>(Channel.CONFLATED)
         val stopSignal = CompletableDeferred<Unit>()
