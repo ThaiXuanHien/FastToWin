@@ -194,7 +194,8 @@ class AuthApiClient(
             code = error?.code ?: "NETWORK_ERROR",
             message = error?.message ?: "The server could not process the authentication request.",
             messageKey = error?.messageKey,
-            messageArgs = error?.messageArgs.orEmpty()
+            messageArgs = error?.messageArgs.orEmpty(),
+            httpStatus = status.value
         )
     }
 
@@ -207,5 +208,6 @@ class AuthApiException(
     val code: String,
     override val message: String,
     val messageKey: String? = null,
-    val messageArgs: Map<String, String> = emptyMap()
+    val messageArgs: Map<String, String> = emptyMap(),
+    val httpStatus: Int? = null
 ) : Exception(message)

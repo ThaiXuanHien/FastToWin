@@ -136,7 +136,7 @@ export default defineConfig({
     {
       name: 'webkit-history',
       testMatch: /responsive\.spec\.mjs/,
-      grep: /top-level history is published before Compose paints/,
+      grep: /language change|browser Back|top-level history|invalid friend|browser route aliases/,
       use: { browserName: 'webkit', viewport: { width: 390, height: 844 }, hasTouch: true },
     },
     {
