@@ -20,6 +20,9 @@ còn route và mã HTTP được định nghĩa trong
   cho phép xử lý lần hết hạn tiếp theo; các lệnh nhận thưởng/mua hàng không tự gửi lại.
 - Lỗi mạng, timeout, HTTP 408/429/5xx khi refresh giữ phiên đã lưu để thử lại.
   Refresh bị từ chối, tài khoản bị khóa hoặc phiên bị thay thế vẫn yêu cầu đăng nhập lại.
+- Refresh do `AuthController` sở hữu và chia sẻ cho các bên đang chờ cùng phiên.
+  Hủy tác vụ của một màn hình không hủy giao dịch xoay token đang chạy; phản hồi
+  chỉ được lưu nếu phiên sở hữu vẫn còn khớp. Đóng controller hủy refresh của nó.
 - Mật khẩu dài từ 8 đến 128 ký tự. Biệt danh dài từ 1 đến 32 ký tự.
 - Đăng nhập thành công trên thiết bị mới thu hồi mọi phiên cũ của cùng tài khoản.
   Thiết bị cũ bị đóng WebSocket với lý do `Account signed in elsewhere` và trở về

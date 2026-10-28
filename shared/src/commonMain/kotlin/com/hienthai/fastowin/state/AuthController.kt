@@ -20,8 +20,10 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -77,6 +79,8 @@ class AuthController(
     )
     val state: StateFlow<AuthState> = _state.asStateFlow()
     private val refreshMutex = Mutex()
+    private class RefreshWork(val session: StoredAuthSession, val result: Deferred<String?>)
+    private var refreshWork: RefreshWork? = null
     private val termsApi = com.hienthai.fastowin.data.network.ContentTermsApiClient(serverUrl)
     val contentEntryConsent = ContentEntryConsent(termsApi::fetch)
 
@@ -152,11 +156,24 @@ class AuthController(
         } }
     }
 
-    suspend fun validAccessToken(forceRefresh: Boolean = false): String? = refreshMutex.withLock {
-        val session = _state.value.session ?: return@withLock null
-        if (!forceRefresh && session.accessExpiresAtEpochMillis > epochMillis() + REFRESH_EARLY_MILLIS) {
-            return@withLock session.accessToken
+    suspend fun validAccessToken(forceRefresh: Boolean = false): String? {
+        val refresh = refreshMutex.withLock {
+            val session = _state.value.session ?: return null
+            refreshWork?.takeIf {
+                !it.result.isCompleted && it.session.userId == session.userId &&
+                    it.session.refreshToken == session.refreshToken
+            }?.let { return@withLock it.result }
+            if (!forceRefresh && session.accessExpiresAtEpochMillis > epochMillis() + REFRESH_EARLY_MILLIS) {
+                return session.accessToken
+            }
+            // Refresh rotates a single-use credential. A screen may stop waiting after
+            // the server commits, but the controller must still persist the response.
+            scope.async { refreshSession(session) }.also { refreshWork = RefreshWork(session, it) }
         }
+        return refresh.await()
+    }
+
+    private suspend fun refreshSession(session: StoredAuthSession): String? =
         runCatching { api.refresh(session.refreshToken) }
             .mapCatching { response ->
                 if (_state.value.session?.refreshToken != session.refreshToken ||
@@ -191,7 +208,6 @@ class AuthController(
                 expireSession(message)
                 null
             }
-    }
 
     fun logout() {
         val session = _state.value.session
