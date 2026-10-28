@@ -2,7 +2,9 @@
 
 ## Phạm vi hiện tại
 
-Module `webApp` là điểm khởi chạy trình duyệt, còn `shared` tiếp tục là nguồn UI và logic chung cho Android, iOS và web. `protocol`, `shared` và `webApp` có cả target `wasmJs` và `js`; gói compatibility ưu tiên Wasm và tự dùng JavaScript fallback khi trình duyệt không đáp ứng.
+Module `webApp` là điểm khởi chạy trình duyệt, còn `shared` tiếp tục là nguồn UI và logic chung cho Android, iOS và web. `protocol`, `shared` và `webApp` có cả target `wasmJs` và `js`. Gói compatibility ưu tiên JavaScript trên iPhone/iPad, gồm iPad ở chế độ trình duyệt desktop: có thiết bị xác nhận Wasm được tải và tạo canvas nhưng vẫn trắng, trong khi JavaScript hiển thị được. Android và desktop tiếp tục ưu tiên Wasm nếu qua kiểm tra tính năng; các trình duyệt còn lại dùng JavaScript fallback.
+
+Selector tại `webApp/src/compatibility/runtime-loader.js` được cài vào đầu ra của chính task `composeCompatibilityBrowserDistribution`, không sửa payload runtime hay bundle phát triển. Task theo dõi file selector làm input và kiểm tra cả hai runtime có mặt. Kiểm thử hành vi chạy bằng `pnpm test:runtime-loader` trong thư mục `e2e`; đặt `FASTTOWIN_LOADER_UNDER_TEST` tới `fast-to-win.js` trong gói compatibility để chạy cùng bộ ca trên file phát hành thực tế.
 
 ## Đã sẵn sàng
 
