@@ -244,8 +244,8 @@ class SocialScreenLocalizationTest {
     @Test
     fun `clan member management resolves explicitly in Vietnamese and English`() {
         val expected = mapOf(
-            AppLanguage.ENGLISH to listOf("Join requests ({count})", "Approve", "{role} · {trophies} trophies", "Remove {player} from clan", "Choose Logo", "Leader", "Co-leader", "Member"),
-            AppLanguage.VIETNAMESE to listOf("Yêu cầu tham gia ({count})", "Duyệt", "{role} · {trophies} cúp", "Mời {player} rời bang", "Chọn Logo", "Bang chủ", "Phó bang", "Thành viên"),
+            AppLanguage.ENGLISH to listOf("Join requests ({count})", "Approve", "{role} · {trophies} Elo", "Remove {player} from clan", "Choose Logo", "Leader", "Co-leader", "Member"),
+            AppLanguage.VIETNAMESE to listOf("Yêu cầu tham gia ({count})", "Duyệt", "{role} · {trophies} Elo", "Mời {player} rời bang", "Chọn Logo", "Bang chủ", "Phó bang", "Thành viên"),
         )
         val keys = listOf(
             TextKey.JoinRequestsCount,

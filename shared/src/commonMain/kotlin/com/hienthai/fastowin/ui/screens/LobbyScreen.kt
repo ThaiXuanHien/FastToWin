@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
@@ -162,7 +163,8 @@ fun LobbyScreen(
             LobbyStage.MATCHMAKING -> onCancelMatchmaking()
         }
     }
-    Column(modifier = modifier.fillMaxSize().testTag("lobby_screen")) {
+    // Consume the keyboard once for the list and bottom bar; sibling inset padding adds twice.
+    Column(modifier = modifier.fillMaxSize().imePadding().testTag("lobby_screen")) {
         FastToWinHeader(
             title = when (state.lobbyStage) {
                 LobbyStage.SELECT_MODE -> localized(TextKey.GreetingPlayer, "player" to displayName)
@@ -205,8 +207,7 @@ fun LobbyScreen(
                     )
                 ),
             maxContentWidth = 760.dp,
-            applySafeDrawingInsets = false,
-            avoidKeyboard = true
+            applySafeDrawingInsets = false
         ) { contentModifier ->
             Box(
                 modifier = contentModifier.then(
