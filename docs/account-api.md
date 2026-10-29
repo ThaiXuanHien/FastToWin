@@ -14,7 +14,7 @@ còn route và mã HTTP được định nghĩa trong
 - Request và response dùng `Content-Type: application/json`, trừ `POST /auth/logout`
   trả `204 No Content` khi thành công.
 - `accessToken` hết hạn sau 15 phút; `refreshToken` hết hạn sau 30 ngày và được xoay
-  vòng sau mỗi lần refresh.
+  vòng sau mỗi lần refresh mới. Retry khôi phục hợp lệ trả lại kết quả cũ, không xoay thêm.
 - Khi WebSocket của tài khoản nhận `INVALID_ACCESS_TOKEN`, client thử refresh và
   kết nối lại một lần trước khi yêu cầu đăng nhập. Một phiên kết nối thành công
   cho phép xử lý lần hết hạn tiếp theo; các lệnh nhận thưởng/mua hàng không tự gửi lại.
@@ -32,7 +32,8 @@ còn route và mã HTTP được định nghĩa trong
   số lần thử/generation cục bộ, giai đoạn nhận phản hồi/lưu thành công/timeout/hủy,
   mã HTTP, mã `x-railway-request-id` hợp lệ và nguồn hết phiên. Generation tăng
   sau lưu credential đăng nhập hoặc refresh; không dùng nó làm định danh token.
-  Không ghi email, tên người chơi, mật khẩu, access/refresh token, nội dung
+  Không ghi email, tên người chơi, mật khẩu, access/refresh token, attempt secret,
+  hash của các credential này, nội dung
   request/response, message của exception hoặc cookie. Lỗi ghi dấu vết không được
   làm thay đổi kết quả auth. Đây là quan sát, chưa phải cơ chế phục hồi phản hồi
   refresh bị mất sau commit; quy tắc refresh, timeout và thu hồi phiên vẫn giữ nguyên.
@@ -153,7 +154,40 @@ Response lỗi dùng chung:
 
 - Thành công: `200 OK` với response phiên đăng nhập mới; refresh token cũ mất hiệu
   lực ngay.
-- Lỗi chính: `401 INVALID_REFRESH_TOKEN`.
+- Lỗi chính: `401 INVALID_REFRESH_TOKEN`; `400 INVALID_REFRESH_ATTEMPT_SECRET`
+  khi trường secret tùy chọn sai định dạng.
+
+#### Khôi phục phản hồi bị mất (Android mới)
+
+Trường `refreshAttemptSecret: String? = null` là tùy chọn. Thiếu trường hoặc `null`
+giữ hành vi legacy cho Internal 1.0.7 (8), iOS và Web cookie. Android mới tạo secret
+ngẫu nhiên mật mã **32 bytes**, mã hóa base64url không padding (43 ký tự), lưu bền
+vững cùng token cũ trong bản ghi phiên mã hóa **trước khi gửi HTTP**. Secret là
+credential, không phải request-id; không đưa vào URL, log, trace hoặc telemetry.
+
+Nếu mất phản hồi, Android gửi lại đúng token cũ và secret đã lưu. Backend lưu token
+rotation và biên nhận mã hóa trong cùng transaction; trong **5 phút** đúng cặp này
+nhận lại **chính response đã cấp**, kể cả backend khởi động lại. Retry không gia hạn
+access token, refresh token hay cửa sổ khôi phục. Khi lưu được credential mới,
+Android xóa pending secret cùng một lần ghi nguyên tử. Hỏng/lỗi storage trước bước
+chuẩn bị không được gửi HTTP có thể xoay token.
+
+Sai định dạng/kích thước secret trả HTTP 400 trước khi xoay token. Cặp không khớp,
+biên nhận hỏng, hết 5 phút, tài khoản/phiên bị thu hồi hoặc successor không còn là
+generation hiện tại đều bị từ chối; không dùng biên nhận để cấp một generation mới.
+Đăng nhập thay thế, khóa tài khoản và các thao tác thu hồi vẫn có hiệu lực.
+
+Biên nhận dùng HKDF-SHA256 và AES-256-GCM; DB chỉ lưu hash, ciphertext và metadata,
+không lưu token/secret/response rõ hoặc key mã hóa dài hạn. Mỗi session tối đa một
+biên nhận. Sau 5 phút worker dọn ciphertext; hash ánh xạ predecessor/attempt tới
+successor chỉ giữ đến hết hạn session để hỗ trợ logout pending. Rotation tiếp theo
+thay/xóa ánh xạ này; xóa session/account cascade.
+
+Đây là contract của bản source mới, **chưa đồng nghĩa đã rollout**. Triển khai
+schema/backend mới trên toàn bộ instance trước khi phân phối Android bật recovery.
+Client cũ tiếp tục hoạt động; không dùng việc server cũ bỏ qua trường lạ làm dấu
+hiệu hỗ trợ. Sau khi client mới đã tạo biên nhận, không tự rollback backend về bản
+không hiểu contract này. Không tự gửi lại lệnh mua/nhận thưởng/quyên góp/trận đấu.
 
 ### 5. Đăng xuất
 
@@ -167,6 +201,13 @@ Response lỗi dùng chung:
 ```
 
 - Thành công: `204 No Content`. Phiên hiện tại bị thu hồi.
+
+Android mới đang pending gửi thêm `refreshAttemptSecret` đã lưu cùng `refreshToken`
+cũ. Đúng cặp này thu hồi successor còn hiện hành dù response refresh bị mất, kể cả
+sau 5 phút hoặc sau khi ciphertext đã được dọn. Cặp cũ không thể thu hồi generation
+mới hơn hoặc session của lần đăng nhập thay thế. UI logout không đợi refresh hoàn
+tất; phản hồi trễ không được khôi phục đăng nhập. Thiếu secret giữ hành vi legacy.
+Web tiếp tục lấy token từ cookie và không bật recovery trong giai đoạn này.
 
 ### 6. Liệt kê thiết bị đăng nhập
 
@@ -379,6 +420,8 @@ Khi vượt giới hạn, server trả `429 Too Many Requests`, lỗi `RATE_LIMI
 `Retry-After`. Rate limiter hiện nằm trong bộ nhớ của từng backend instance; cần
 Redis hoặc kho dùng chung trước khi scale ngang.
 
-Token gốc không được lưu trong PostgreSQL; backend chỉ lưu SHA-256 hash. Mật khẩu
-được dẫn xuất bằng PBKDF2-HMAC-SHA256 với salt riêng. Không ghi email, mật khẩu,
-token, session ID hoặc secret của nhà cung cấp email vào log production.
+Token gốc không được lưu rõ trong PostgreSQL. Bảng phiên lưu SHA-256 hash; biên
+nhận recovery lưu response bằng AES-256-GCM như mô tả trên. Mật khẩu được dẫn xuất
+bằng PBKDF2-HMAC-SHA256 với salt riêng. Không ghi email, mật khẩu, token, attempt
+secret, hash credential, ciphertext, session ID hoặc secret của nhà cung cấp email
+vào log production.
