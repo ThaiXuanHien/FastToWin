@@ -277,14 +277,14 @@ class AuthenticationService(
         }
         if (!isValidTokenShape(refreshToken)) return invalidRefreshToken()
         val now = nowMillis()
-        val placeholderUserId = UUID.randomUUID()
-        val replacement = issueTokens(placeholderUserId, "", now)
         val response = if (refreshAttemptSecret == null) {
+            val replacement = issueTokens(UUID.randomUUID(), "", now)
             val userId = repository.rotateSession(hashToken(refreshToken), replacement.record) ?: return invalidRefreshToken()
             replacement.response.copy(userId = userId.toString())
         } else {
-            repository.rotateRecoverableSession(RefreshRotation(refreshToken, refreshAttemptSecret, replacement.record, replacement.response))
-                ?: return invalidRefreshToken()
+            repository.rotateRecoverableSession(RefreshRotation(refreshToken, refreshAttemptSecret, nowMillis) { userId, issuedAt ->
+                issueTokens(userId, "", issuedAt).let { it.record to it.response }
+            }) ?: return invalidRefreshToken()
         }
         val userId = UUID.fromString(response.userId)
         if (moderationService?.isBlocked(userId.toString()) == true) {

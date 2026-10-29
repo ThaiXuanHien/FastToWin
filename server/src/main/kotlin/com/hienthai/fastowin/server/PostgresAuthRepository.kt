@@ -139,12 +139,13 @@ class PostgresAuthRepository(private val dataSource: DataSource) : AuthRepositor
 
     override suspend fun rotateRecoverableSession(rotation: RefreshRotation): AuthSessionResponse? = authTransaction { connection ->
         val current = lockRefreshSession(connection, rotation.predecessorHash) ?: return@authTransaction null
-        val now = rotation.replacement.nowMillis
-        if (!current.active(now)) return@authTransaction null
         if (current.refreshHash == rotation.predecessorHash) {
-            val response = rotation.response.copy(userId = current.userId.toString())
-            val receipt = rotation.receipt(current.sessionId, response)
-            updateSessionTokens(connection, current.sessionId, rotation.replacement)
+            // Issue only after all connection/user/session waits, using one instant for every expiry.
+            val now = rotation.nowMillis()
+            if (!current.active(now)) return@authTransaction null
+            val (replacement, response) = rotation.issue(current.userId, now)
+            val receipt = rotation.receipt(current.sessionId, replacement, response)
+            updateSessionTokens(connection, current.sessionId, replacement)
             connection.prepareStatement("""
                 INSERT INTO auth_refresh_recoveries(session_id, predecessor_hash, attempt_hash,
                     successor_refresh_hash, successor_access_hash, codec_version, nonce, ciphertext,
@@ -163,7 +164,10 @@ class PostgresAuthRepository(private val dataSource: DataSource) : AuthRepositor
             response
         } else {
             val receipt = readRecovery(connection, current.sessionId) ?: return@authTransaction null
-            if (!receipt.matches(current, rotation.predecessorHash, rotation.attemptHash, now) || receipt.recoveryExpiresAtMillis <= now) return@authTransaction null
+            // Read time adjacent to decryption; request-start time cannot authorize an expired replay.
+            val now = rotation.nowMillis()
+            if (!current.active(now) || !receipt.matches(current, rotation.predecessorHash, rotation.attemptHash, now) ||
+                receipt.recoveryExpiresAtMillis <= now) return@authTransaction null
             RefreshRecoveryCodec.open(receipt, rotation.predecessorToken, rotation.attemptSecret)
         }
     }

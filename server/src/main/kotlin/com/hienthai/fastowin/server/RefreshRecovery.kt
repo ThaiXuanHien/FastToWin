@@ -36,15 +36,15 @@ internal fun validRefreshAttemptSecret(secret: String): Boolean {
 }
 
 /** Credentials are transient; only authenticated ciphertext and hashes reach persistence. */
-class RefreshRotation(
+class RefreshRotation internal constructor(
     internal val predecessorToken: String,
     internal val attemptSecret: String,
-    internal val replacement: NewAuthSession,
-    internal val response: AuthSessionResponse
+    internal val nowMillis: () -> Long,
+    internal val issue: (UUID, Long) -> Pair<NewAuthSession, AuthSessionResponse>
 ) {
     internal val predecessorHash = hashToken(predecessorToken)
     internal val attemptHash = hashToken(attemptSecret)
-    internal fun receipt(sessionId: UUID, result: AuthSessionResponse): RefreshRecovery = RefreshRecoveryCodec.seal(
+    internal fun receipt(sessionId: UUID, replacement: NewAuthSession, result: AuthSessionResponse): RefreshRecovery = RefreshRecoveryCodec.seal(
         RefreshRecovery(sessionId, predecessorHash, attemptHash, replacement.refreshTokenHash,
             replacement.accessTokenHash, replacement.nowMillis, replacement.nowMillis + REFRESH_RECOVERY_TTL_MILLIS,
             replacement.refreshExpiresAtMillis), predecessorToken, attemptSecret, result)

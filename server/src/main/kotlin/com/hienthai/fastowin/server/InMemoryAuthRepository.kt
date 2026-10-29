@@ -61,21 +61,21 @@ class InMemoryAuthRepository : AuthRepository {
     }
 
     override suspend fun rotateRecoverableSession(rotation: RefreshRotation): AuthSessionResponse? = mutex.withLock {
-        val now = rotation.replacement.nowMillis
         val receipt = recoveries.values.firstOrNull { it.predecessorHash == rotation.predecessorHash && it.attemptHash == rotation.attemptHash }
         if (receipt != null) {
             val current = sessions[receipt.successorRefreshHash] ?: return@withLock null
+            val now = rotation.nowMillis()
             if (current.sessionId != receipt.sessionId || current.revoked || current.expiresAtMillis <= now ||
                 sessionsByAccessToken[receipt.successorAccessHash]?.sessionId != current.sessionId ||
                 accounts.values.none { it.userId == current.userId } || receipt.recoveryExpiresAtMillis <= now) return@withLock null
             return@withLock RefreshRecoveryCodec.open(receipt, rotation.predecessorToken, rotation.attemptSecret)
         }
         val current = sessions[rotation.predecessorHash] ?: return@withLock null
+        val now = rotation.nowMillis()
         if (current.revoked || current.expiresAtMillis <= now || accounts.values.none { it.userId == current.userId }) return@withLock null
-        val response = rotation.response.copy(userId = current.userId.toString())
+        val (replacement, response) = rotation.issue(current.userId, now)
         // Authenticate and encode before changing any state, so codec failure leaves the old generation intact.
-        val created = rotation.receipt(current.sessionId, response)
-        val replacement = rotation.replacement
+        val created = rotation.receipt(current.sessionId, replacement, response)
         val rotated = current.copy(accessExpiresAtMillis = replacement.accessExpiresAtMillis,
             expiresAtMillis = replacement.refreshExpiresAtMillis, lastSeenAtMillis = now)
         sessions.remove(rotation.predecessorHash)

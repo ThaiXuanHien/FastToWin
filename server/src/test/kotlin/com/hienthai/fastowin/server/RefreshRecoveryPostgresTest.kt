@@ -7,6 +7,7 @@ import org.flywaydb.core.Flyway
 import org.junit.jupiter.api.Assumptions.assumeTrue
 import java.util.Base64
 import java.util.UUID
+import java.util.concurrent.atomic.AtomicLong
 import kotlin.test.*
 
 class RefreshRecoveryPostgresTest {
@@ -18,6 +19,58 @@ class RefreshRecoveryPostgresTest {
     private fun failure(result: AuthResult): AuthResult.Failure {
         assertTrue(result is AuthResult.Failure, "Expected generic auth failure")
         return result
+    }
+    @Test fun `replay waiting on a user lock rejects at and after fixed expiry`() = runBlocking<Unit> {
+        database { source ->
+            val issuedAt = 1_800_000_000_000L
+            val clock = AtomicLong(issuedAt)
+            val auth = AuthenticationService(PostgresAuthRepository(source), PasswordHasher(1), clock::get)
+            val initial = success(auth.register("wait-replay@example.com", "password123", "Wait", "android")).session
+            val first = success(auth.refresh(initial.refreshToken, secret)).session
+            for (afterExpiry in listOf(0L, 1L)) {
+                clock.set(issuedAt + 299_999)
+                val result = refreshAfterUserLockWait(source, auth, initial.userId, initial.refreshToken, clock, issuedAt + 300_000 + afterExpiry)
+                assertEquals("INVALID_REFRESH_TOKEN", failure(result).code)
+                assertNotNull(auth.authenticateAccessToken(first.accessToken))
+            }
+        }
+    }
+    @Test fun `fresh rotation waiting on a user lock receives full token and recovery lifetimes`() = runBlocking<Unit> {
+        database { source ->
+            val startedAt = 1_800_000_000_000L
+            val issuedAt = startedAt + 120_000
+            val clock = AtomicLong(startedAt)
+            val auth = AuthenticationService(PostgresAuthRepository(source), PasswordHasher(1), clock::get)
+            val initial = success(auth.register("wait-fresh@example.com", "password123", "Wait", "android")).session
+            val first = success(refreshAfterUserLockWait(source, auth, initial.userId, initial.refreshToken, clock, issuedAt)).session
+            assertEquals(issuedAt + 900_000, first.accessExpiresAtEpochMillis)
+            assertEquals(issuedAt + 2_592_000_000, first.refreshExpiresAtEpochMillis)
+            source.connection.use { connection ->
+                connection.createStatement().use { statement ->
+                    statement.executeQuery("SELECT issued_at, recovery_expires_at, metadata_expires_at FROM auth_refresh_recoveries").use {
+                        assertTrue(it.next())
+                        assertEquals(issuedAt, it.getTimestamp(1).time)
+                        assertEquals(issuedAt + 300_000, it.getTimestamp(2).time)
+                        assertEquals(first.refreshExpiresAtEpochMillis, it.getTimestamp(3).time)
+                    }
+                }
+            }
+            clock.set(issuedAt + 299_999)
+            assertEquals(first, success(auth.refresh(initial.refreshToken, secret)).session)
+            clock.incrementAndGet()
+            failure(auth.refresh(initial.refreshToken, secret))
+        }
+    }
+    @Test fun `source session waiting on a user lock cannot rotate after session expiry`() = runBlocking<Unit> {
+        database { source ->
+            val clock = AtomicLong(1_800_000_000_000L)
+            val auth = AuthenticationService(PostgresAuthRepository(source), PasswordHasher(1), clock::get)
+            val initial = success(auth.register("wait-source@example.com", "password123", "Wait", "android")).session
+            clock.set(initial.refreshExpiresAtEpochMillis - 1)
+            val result = refreshAfterUserLockWait(source, auth, initial.userId, initial.refreshToken, clock, initial.refreshExpiresAtEpochMillis)
+            assertEquals("INVALID_REFRESH_TOKEN", failure(result).code)
+            assertEquals(0, count(source, "SELECT count(*) FROM auth_refresh_recoveries"))
+        }
     }
     @Test fun `durable duplicate rotation uses the real session and survives repository restart`() = runBlocking<Unit> {
         database { source ->
@@ -132,6 +185,30 @@ class RefreshRecoveryPostgresTest {
         }
     }
     private fun sql(source: HikariDataSource, sql: String) = source.connection.use { it.createStatement().use { s -> s.execute(sql) } }
+    private suspend fun refreshAfterUserLockWait(
+        source: HikariDataSource, auth: AuthenticationService, userId: String, token: String,
+        clock: AtomicLong, releaseAtMillis: Long
+    ): AuthResult = coroutineScope {
+        source.connection.use { blocker ->
+            blocker.autoCommit = false
+            val blockerPid = blocker.createStatement().use { statement ->
+                statement.executeQuery("SELECT pg_backend_pid()").use { assertTrue(it.next()); it.getInt(1) }
+            }
+            blocker.prepareStatement("SELECT id FROM users WHERE id = ? FOR UPDATE").use {
+                it.setObject(1, UUID.fromString(userId)); it.executeQuery().use { rows -> assertTrue(rows.next()) }
+            }
+            val pending = async(Dispatchers.Default) { auth.refresh(token, secret) }
+            try {
+                // Observe the actual PostgreSQL lock wait before advancing time; no timing sleep substitutes for the barrier.
+                withTimeout(5_000) {
+                    while (count(source, "SELECT count(*) FROM pg_stat_activity WHERE $blockerPid = ANY(pg_blocking_pids(pid))") == 0) delay(10)
+                }
+                clock.set(releaseAtMillis)
+                blocker.commit()
+                pending.await()
+            } finally { blocker.rollback() }
+        }
+    }
     private fun count(source: HikariDataSource, sql: String): Int = source.connection.use {
         it.createStatement().use { s -> s.executeQuery(sql).use { rows -> assertTrue(rows.next()); rows.getInt(1) } }
     }
