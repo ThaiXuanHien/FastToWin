@@ -388,15 +388,137 @@ class AuthRefreshRecoveryTest {
         } finally { controller.close(); Dispatchers.resetMain() }
     }
 
+    @Test fun persistentPreparationAndClearFailureStillSignsOutWithoutHttp() = runTest {
+        val store = RecoveryStore().apply { failPrepare = true; failClear = true }
+        var requests = 0
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        val controller = controller(store, api { requests++; success() })
+        try {
+            val result = runCatching { controller.validAccessToken(true) }
+            assertNull(controller.state.value.session)
+            assertEquals(AuthStage.LOGIN, controller.state.value.stage)
+            assertNull(result.exceptionOrNull())
+            assertNull(result.getOrNull())
+            assertEquals(0, requests)
+        } finally { controller.close(); Dispatchers.resetMain() }
+    }
+
+    @Test fun persistentCompletionAndClearFailureStillSignsOut() = runTest {
+        val store = RecoveryStore().apply { failComplete = true; failClear = true }
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        val controller = controller(store, api { success() })
+        try {
+            val result = runCatching { controller.validAccessToken(true) }
+            assertNull(controller.state.value.session)
+            assertEquals(AuthStage.LOGIN, controller.state.value.stage)
+            assertNull(result.exceptionOrNull())
+            assertNull(result.getOrNull())
+        } finally { controller.close(); Dispatchers.resetMain() }
+    }
+
+    @Test fun finalRejectionWithPersistentClearFailureStillSignsOut() = runTest {
+        val store = RecoveryStore().apply { failClear = true }
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        val controller = controller(store, api { respond("""{"code":"INVALID_REFRESH_TOKEN","message":"Revoked"}""", HttpStatusCode.Unauthorized, JSON) })
+        try {
+            val result = runCatching { controller.validAccessToken(true) }
+            assertNull(controller.state.value.session)
+            assertEquals(AuthStage.LOGIN, controller.state.value.stage)
+            assertNull(result.exceptionOrNull())
+        } finally { controller.close(); Dispatchers.resetMain() }
+    }
+
+    @Test fun throwingLogoutLoadStillSignsOutAndRevokesAvailablePreparedPair() = runTest {
+        val store = RecoveryStore()
+        val entered = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        val loggedOut = CompletableDeferred<LogoutRequest>()
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        val controller = controller(store, api { request ->
+            if (request.url.encodedPath == "/auth/logout") {
+                loggedOut.complete(request.decode<LogoutRequest>())
+                respond("", HttpStatusCode.NoContent)
+            } else { entered.complete(Unit); release.await(); success() }
+        })
+        try {
+            val refresh = async { controller.validAccessToken(true) }
+            entered.await()
+            val pending = assertNotNull(store.load(URL))
+            store.failLoad = true
+            val failure = runCatching { controller.logout() }.exceptionOrNull()
+            assertNull(controller.state.value.session)
+            assertEquals(AuthStage.LOGIN, controller.state.value.stage)
+            assertNull(failure)
+            assertEquals(pending.refreshAttemptSecret, loggedOut.await().refreshAttemptSecret)
+            release.complete(Unit)
+            assertNull(refresh.await())
+        } finally { controller.close(); Dispatchers.resetMain() }
+    }
+
+    @Test fun expiredInitialSessionWithClearFailureStartsSignedOut() = runTest {
+        val store = RecoveryStore().apply { session = INITIAL.copy(refreshExpiresAtEpochMillis = 0L); failClear = true }
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        val initialized = runCatching { controller(store, api { success() }) }
+        try {
+            assertNull(initialized.exceptionOrNull())
+            val controller = assertNotNull(initialized.getOrNull())
+            assertNull(controller.state.value.session)
+            assertEquals(AuthStage.LOGIN, controller.state.value.stage)
+        } finally { initialized.getOrNull()?.close(); Dispatchers.resetMain() }
+    }
+
+    @Test fun delayedVerificationAfterOrdinaryRefreshUpdatesTheSameLogin() = runTest {
+        val store = RecoveryStore().apply { session = INITIAL.copy(accessExpiresAtEpochMillis = Long.MAX_VALUE, emailVerified = false) }
+        val entered = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        val controller = controller(store, api { request ->
+            if (request.url.encodedPath == "/auth/refresh") success()
+            else { entered.complete(Unit); release.await(); respond("""{"message":"Verified","emailVerified":true}""", headers = JSON) }
+        })
+        try {
+            controller.requestEmailVerification()
+            entered.await()
+            assertEquals("fresh-access", controller.validAccessToken(true))
+            release.complete(Unit)
+            advanceUntilIdle()
+            assertTrue(store.load(URL)?.emailVerified == true)
+            assertEquals(AuthStage.PLAYING, controller.state.value.stage)
+        } finally { controller.close(); Dispatchers.resetMain() }
+    }
+
+    @Test fun delayedRevocationAfterOrdinaryRefreshClearsTheSameLogin() = runTest {
+        val store = RecoveryStore().apply { session = INITIAL.copy(accessExpiresAtEpochMillis = Long.MAX_VALUE) }
+        val entered = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        val controller = controller(store, api { request ->
+            if (request.url.encodedPath == "/auth/refresh") success()
+            else { entered.complete(Unit); release.await(); respond("""{"message":"Revoked"}""", headers = JSON) }
+        })
+        try {
+            controller.revokeAllSessions()
+            entered.await()
+            assertEquals("fresh-access", controller.validAccessToken(true))
+            release.complete(Unit)
+            advanceUntilIdle()
+            assertNull(controller.state.value.session)
+            assertNull(store.load(URL))
+        } finally { controller.close(); Dispatchers.resetMain() }
+    }
+
     private class DroppedResponse : Exception("Synthetic response loss")
 
     private class RecoveryStore : RecoverableAuthSessionStore {
         var session: StoredAuthSession? = INITIAL
         var failPrepare = false
         var failClear = false
+        var failLoad = false
+        var failComplete = false
         var prepares = 0
         var onLoad: (() -> Unit)? = null
         override fun load(serverUrl: String): StoredAuthSession? {
+            if (failLoad) throw AuthSessionStoreException("TEST_STORAGE_FAILED", "Synthetic load failure")
             val current = session
             val action = onLoad
             onLoad = null
@@ -413,6 +535,7 @@ class AuthRefreshRecoveryTest {
             return current.copy(refreshAttemptSecret = current.refreshAttemptSecret ?: "deterministic-test-attempt").also { session = it }
         }
         override fun completeRefresh(serverUrl: String, expected: StoredAuthSession, refreshed: StoredAuthSession): Boolean {
+            if (failComplete) throw AuthSessionStoreException("TEST_STORAGE_FAILED", "Synthetic completion failure")
             val current = session ?: return false
             if (current.refreshToken != expected.refreshToken || current.refreshAttemptSecret != expected.refreshAttemptSecret) return false
             session = current.copy(accessToken = refreshed.accessToken, refreshToken = refreshed.refreshToken,
@@ -440,7 +563,10 @@ class AuthRefreshRecoveryTest {
         private fun controller(store: AuthSessionStore, api: AuthApiClient) =
             AuthController(URL, store, InMemoryResumeTokenStore(), "test", api = api)
         private fun api(handler: suspend MockRequestHandleScope.(io.ktor.client.request.HttpRequestData) -> io.ktor.client.request.HttpResponseData) =
-            AuthApiClient(URL, client = HttpClient(MockEngine(handler)) { install(ContentNegotiation) { json(ProtocolJson) } })
+            AuthApiClient(URL, client = HttpClient(MockEngine(MockEngineConfig().apply {
+                dispatcher = Dispatchers.Main
+                addHandler(handler)
+            })) { install(ContentNegotiation) { json(ProtocolJson) } })
         private inline fun <reified T> io.ktor.client.request.HttpRequestData.decode(): T =
             ProtocolJson.decodeFromString((body as OutgoingContent.ByteArrayContent).bytes().decodeToString())
         private fun MockRequestHandleScope.success(accessToken: String = "fresh-access", refreshToken: String = "fresh-refresh") = respond(
