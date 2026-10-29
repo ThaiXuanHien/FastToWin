@@ -82,13 +82,21 @@ class AuthApiClient(
     suspend fun refresh(
         refreshToken: String,
         onResponse: (status: Int, requestId: String?) -> Unit = { _, _ -> }
-    ): AuthSessionResponse = execute("$baseUrl/auth/refresh", RefreshTokenRequest(refreshToken), onResponse)
+    ): AuthSessionResponse = refresh(refreshToken, refreshAttemptSecret = null, onResponse = onResponse)
 
-    suspend fun logout(refreshToken: String) {
+    suspend fun refresh(
+        refreshToken: String,
+        refreshAttemptSecret: String?,
+        onResponse: (status: Int, requestId: String?) -> Unit = { _, _ -> }
+    ): AuthSessionResponse = execute(
+        "$baseUrl/auth/refresh", RefreshTokenRequest(refreshToken, refreshAttemptSecret), onResponse
+    )
+
+    suspend fun logout(refreshToken: String, refreshAttemptSecret: String? = null) {
         val response = client.post("$baseUrl/auth/logout") {
             requestConfigurator.configure(this)
             contentType(ContentType.Application.Json)
-            setBody(LogoutRequest(refreshToken))
+            setBody(LogoutRequest(refreshToken, refreshAttemptSecret))
         }
         if (!response.status.isSuccess()) throw response.toAuthException()
     }
