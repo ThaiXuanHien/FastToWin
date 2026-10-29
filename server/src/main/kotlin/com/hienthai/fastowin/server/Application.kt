@@ -294,6 +294,9 @@ fun Application.gameModule(
                 } catch (cancelled: CancellationException) { throw cancelled }
                 catch (_: Exception) { this@gameModule.environment.log.warn("Could not check restricted game sessions") }
             }
+            try { authService.cleanupRefreshRecoveries() }
+            catch (cancelled: CancellationException) { throw cancelled }
+            catch (_: Exception) { this@gameModule.environment.log.warn("Refresh recovery cleanup failed") }
             deliver(engine.cleanupExpiredSessions())
         }
     }
@@ -435,7 +438,7 @@ fun Application.gameModule(
             } else {
                 request.refreshToken
             }
-            val result = authService.refresh(refreshToken)
+            val result = authService.refresh(refreshToken, request.refreshAttemptSecret.takeUnless { webSession })
             call.respondAuthResult(
                 result,
                 webSession = webSession,
@@ -452,7 +455,7 @@ fun Application.gameModule(
             } else {
                 request.refreshToken
             }
-            authService.logout(refreshToken)
+            authService.logout(refreshToken, request.refreshAttemptSecret.takeUnless { webSession })
             if (webSession) call.clearWebSessionCookie(webSessionCookies)
             call.respond(HttpStatusCode.NoContent)
         }
