@@ -229,13 +229,10 @@ class PostgresAuthRepository(private val dataSource: DataSource) : AuthRepositor
         fun active(now: Long) = accountActive && !revoked && expiresAtMillis > now
     }
 
-    /** Locate without locks, then lock parent before child and re-read current generation.
-     * The lookup includes receipts so a duplicate can find the row after the predecessor hash changed. */
+    /** Locate both indexed candidates in one snapshot, then lock parent before child and re-read generation.
+     * Including receipts lets a duplicate find the row after the predecessor hash changed. */
     private fun lockRefreshSession(connection: Connection, predecessorHash: String): LockedRefreshSession? {
-        val identity = connection.prepareStatement("""
-            SELECT s.id, s.user_id FROM sessions s LEFT JOIN auth_refresh_recoveries r ON r.session_id = s.id
-            WHERE s.refresh_token_hash = ? OR r.predecessor_hash = ?
-        """.trimIndent()).use {
+        val identity = connection.prepareStatement(REFRESH_SESSION_LOOKUP_SQL).use {
             it.setString(1, predecessorHash); it.setString(2, predecessorHash)
             it.executeQuery().use { r -> if (r.next()) CurrentSession(r.getObject("id", UUID::class.java), r.getObject("user_id", UUID::class.java)) else null }
         } ?: return null
@@ -823,3 +820,10 @@ class PostgresAuthRepository(private val dataSource: DataSource) : AuthRepositor
 }
 
 private fun Long.toTimestamp(): Timestamp = Timestamp.from(Instant.ofEpochMilli(this))
+
+internal val REFRESH_SESSION_LOOKUP_SQL = """
+    SELECT s.id, s.user_id FROM sessions s WHERE s.refresh_token_hash = ?::CHAR(64)
+    UNION ALL
+    SELECT s.id, s.user_id FROM auth_refresh_recoveries r
+    JOIN sessions s ON s.id = r.session_id WHERE r.predecessor_hash = ?
+""".trimIndent()

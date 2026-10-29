@@ -3,6 +3,7 @@ package com.hienthai.fastowin.server
 import com.zaxxer.hikari.HikariConfig
 import com.zaxxer.hikari.HikariDataSource
 import kotlinx.coroutines.*
+import kotlinx.serialization.json.*
 import org.flywaydb.core.Flyway
 import org.junit.jupiter.api.Assumptions.assumeTrue
 import java.util.Base64
@@ -20,6 +21,103 @@ class RefreshRecoveryPostgresTest {
         assertTrue(result is AuthResult.Failure, "Expected generic auth failure")
         return result
     }
+    @Test fun `JDBC discovery of current predecessor and unknown tokens uses bounded index probes`() = runBlocking<Unit> {
+        database { source ->
+            val now = 1_800_000_000_000L
+            val auth = AuthenticationService(PostgresAuthRepository(source), PasswordHasher(1), { now })
+            val initial = success(auth.register("lookup@example.com", "password123", "Lookup", "android")).session
+            val sessionId = assertNotNull(auth.authenticateAccessToken(initial.accessToken)?.sessionId)
+            val successor = success(auth.refresh(initial.refreshToken, secret)).session
+            source.connection.use { connection ->
+                connection.autoCommit = false
+                try {
+                    connection.prepareStatement("""
+                        INSERT INTO sessions(id, user_id, access_token_hash, refresh_token_hash, created_at,
+                            last_seen_at, access_expires_at, expires_at)
+                        SELECT gen_random_uuid(), ?, md5('lookup-access-' || n) || md5('lookup-access-' || n),
+                            md5('lookup-refresh-' || n) || md5('lookup-refresh-' || n), NOW(), NOW(),
+                            NOW() + INTERVAL '15 minutes', NOW() + INTERVAL '30 days'
+                        FROM generate_series(1, 10000) n
+                    """.trimIndent()).use { it.setObject(1, UUID.fromString(initial.userId)); it.executeUpdate() }
+                    connection.createStatement().use { statement ->
+                        statement.executeUpdate("""
+                            INSERT INTO auth_refresh_recoveries(session_id, predecessor_hash, attempt_hash,
+                                successor_refresh_hash, successor_access_hash, codec_version, issued_at,
+                                recovery_expires_at, metadata_expires_at)
+                            SELECT id, md5('lookup-old-' || id) || md5('lookup-old-' || id), repeat('a', 64),
+                                refresh_token_hash, access_token_hash, 1, created_at,
+                                created_at + INTERVAL '5 minutes', expires_at FROM sessions WHERE id <> '$sessionId'
+                        """.trimIndent())
+                        statement.execute("ANALYZE sessions")
+                        statement.execute("ANALYZE auth_refresh_recoveries")
+                    }
+                    val probes = listOf("current" to hashToken(successor.refreshToken), "predecessor" to hashToken(initial.refreshToken),
+                        "unknown" to hashToken("unknown-valid-shaped-lookup-token"))
+                    for ((kind, hash) in probes) {
+                        for (mode in listOf("force_custom_plan", "force_generic_plan")) {
+                            connection.createStatement().use { it.execute("SET LOCAL plan_cache_mode = $mode") }
+                            connection.prepareStatement(REFRESH_SESSION_LOOKUP_SQL).use { lookup ->
+                                // Same runtime SELECT and JDBC binding, with a named server-prepared SELECT.
+                                // Driver is runtimeOnly; use reflection rather than adding a compile dependency.
+                                val pgStatement = Class.forName("org.postgresql.PGStatement")
+                                pgStatement.getMethod("setPrepareThreshold", Int::class.javaPrimitiveType).invoke(lookup.unwrap(pgStatement), 1)
+                                lookup.setString(1, hash); lookup.setString(2, hash)
+                                lookup.executeQuery().use { rows ->
+                                    assertEquals(kind != "unknown", rows.next(), "Discovery existence for $kind/$mode")
+                                    if (kind != "unknown") {
+                                        assertEquals(sessionId, rows.getObject("id", UUID::class.java))
+                                        assertEquals(UUID.fromString(initial.userId), rows.getObject("user_id", UUID::class.java))
+                                        assertFalse(rows.next(), "Discovery must identify one session")
+                                    }
+                                }
+                                val preparedName = connection.createStatement().use { statement ->
+                                    statement.executeQuery("""
+                                        SELECT name FROM pg_prepared_statements
+                                        WHERE statement LIKE 'SELECT s.id, s.user_id FROM sessions s%'
+                                        ORDER BY prepare_time DESC LIMIT 1
+                                    """.trimIndent()).use { rows -> assertTrue(rows.next()); rows.getString(1) }
+                                }
+                                // EXECUTE's arguments are SQL expressions. Only validated synthetic hashes/names are interpolated.
+                                require(preparedName.matches(Regex("[A-Za-z0-9_]+")) && hash.matches(Regex("[0-9a-f]{64}")))
+                                val plan = connection.createStatement().use { statement ->
+                                    statement.executeQuery("EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) EXECUTE \"$preparedName\" ('$hash', '$hash')").use { rows ->
+                                        assertTrue(rows.next())
+                                        Json.parseToJsonElement(rows.getString(1)).jsonArray.single().jsonObject.getValue("Plan").jsonObject
+                                    }
+                                }
+                                connection.prepareStatement("SELECT generic_plans, custom_plans FROM pg_prepared_statements WHERE name = ?").use {
+                                    it.setString(1, preparedName)
+                                    it.executeQuery().use { rows ->
+                                        assertTrue(rows.next())
+                                        assertTrue(rows.getLong(if (mode == "force_generic_plan") "generic_plans" else "custom_plans") > 0,
+                                            "SELECT must use the requested cached planning mode")
+                                    }
+                                }
+                                val nodes = planNodes(plan)
+                                val scanTypes = nodes.mapNotNull { it["Node Type"]?.jsonPrimitive?.content }
+                                val buffers = plan.getValue("Shared Hit Blocks").jsonPrimitive.int + plan.getValue("Shared Read Blocks").jsonPrimitive.int
+                                // Do not print EXPLAIN expressions: PostgreSQL may include bound credential hashes there.
+                                println("Refresh discovery plan: kind=$kind mode=$mode cachedSelectVerified=true buffers=$buffers scanTypes=${scanTypes.joinToString()}")
+                                assertFalse(nodes.any { it["Node Type"]?.jsonPrimitive?.content == "Seq Scan" }, "No table scan for $kind/$mode")
+                                assertTrue(nodes.any { it["Relation Name"]?.jsonPrimitive?.content == "sessions" &&
+                                    it["Index Cond"]?.jsonPrimitive?.content?.contains("refresh_token_hash") == true }, "Current token must probe the hash index")
+                                assertTrue(nodes.any { it["Relation Name"]?.jsonPrimitive?.content == "auth_refresh_recoveries" &&
+                                    it["Index Cond"]?.jsonPrimitive?.content?.contains("predecessor_hash") == true }, "Predecessor must probe the receipt index")
+                                assertTrue(buffers <= 64, "Discovery must remain bounded for $kind/$mode")
+                            }
+                        }
+                    }
+                } finally { connection.rollback() }
+            }
+            assertEquals(successor, success(auth.refresh(initial.refreshToken, secret)).session)
+            auth.logout("x".repeat(43))
+            assertNotNull(auth.authenticateAccessToken(successor.accessToken))
+            auth.logout(initial.refreshToken, secret)
+            assertNull(auth.authenticateAccessToken(successor.accessToken))
+        }
+    }
+    private fun planNodes(node: JsonObject): List<JsonObject> = listOf(node) +
+        node["Plans"]?.jsonArray.orEmpty().flatMap { planNodes(it.jsonObject) }
     @Test fun `replay waiting on a user lock rejects at and after fixed expiry`() = runBlocking<Unit> {
         database { source ->
             val issuedAt = 1_800_000_000_000L
