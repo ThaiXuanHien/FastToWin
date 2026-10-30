@@ -6,6 +6,7 @@ import com.hienthai.fastowin.platform.AppNavigationBridge
 
 internal class WebAppNavigationBridge : AppNavigationBridge {
     override val initialRoute: String = currentBrowserRoute()
+    override val currentRoute: String get() = currentBrowserRoute()
 
     init {
         prepareBrowserHistory()

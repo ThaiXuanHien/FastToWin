@@ -7,6 +7,9 @@ package com.hienthai.fastowin.platform
 interface AppNavigationBridge {
     val initialRoute: String?
 
+    /** Latest host destination, including history changes while the game UI is unmounted. */
+    val currentRoute: String? get() = initialRoute
+
     fun observe(onRouteRequested: (String) -> Unit): () -> Unit
 
     fun publish(route: String)
