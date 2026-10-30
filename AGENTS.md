@@ -2,8 +2,8 @@
 
 ### CI
 
-Khi được yêu cầu chạy hoặc chạy lại CI, khởi chạy một lần và trả link; để CI tự chạy. Chỉ theo dõi trạng thái hoặc đọc log khi người dùng yêu cầu kiểm tra hoặc báo lỗi, để tiết kiệm credit.
-Job máy ảo Android chỉ bật khi người dùng chọn rõ trong yêu cầu chạy đó.
+Khi được yêu cầu chạy hoặc chạy lại CI, mặc định chạy tất cả các job, gồm máy ảo Android; chỉ giới hạn job khi người dùng chỉ định. Với workflow hiện tại, dùng `workflow_dispatch` và `run_android_ui=true` để bật đủ job.
+Khởi chạy một lần, trả link rồi để CI tự chạy. Chỉ kiểm tra trạng thái hoặc đọc log khi người dùng yêu cầu; người dùng sẽ báo khi hoàn tất hoặc có lỗi. Không tự polling, watch hay tạo theo dõi định kỳ, để tiết kiệm credit.
 
 ### Issue tracker
 
