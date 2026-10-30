@@ -340,3 +340,55 @@ No production database migration, moderation action, enforcement enablement,
 public store submission or paid infrastructure change was performed here.
 `FASTTOWIN_CONTENT_TERMS_ENFORCED` remains false by default. Follow
 [the rollout guide](ugc-moderation-rollout.md) before considering production.
+
+## PWA consent acceptance and guest cancellation — 2026-10-30
+
+Browser acceptance used the built Web compatibility bundle, an actual local Ktor
+backend and a fresh UUID PostgreSQL schema containing only synthetic accounts.
+Email/provider delivery was disabled. Terms enforcement was enabled only on that
+loopback backend; no production or staging configuration was changed.
+
+- Signup: unchecked consent blocks Continue; cancellation preserves the draft and
+  creates no account; reopening resets the checkbox. Accepting creates the account
+  with server version `2026-10-20` and advances to local email verification.
+- Guest upgrade: the browser completed upgrade against PostgreSQL, preserving user
+  ID/player code and accepted version. Reload and explicit logout/login retained
+  the upgraded identity. The preliminary in-memory backend's unsupported upgrade
+  response was excluded from successful acceptance evidence.
+- Existing user: a synthetic account without a consent record could still reopen
+  its account. Nickname publication stayed pending, and cancellation retained the draft
+  without changing the database. Server-confirmed acceptance then saved the draft
+  and the required version.
+- VI/EN consent and public legal pages were inspected. Vietnamese consent was
+  visually checked at desktop and 390x844 phone sizes. These were browser viewport
+  checks, not installed iOS PWA or physical-device acceptance.
+
+This audit exposed a separate guest cancellation loop: after opening `/account`,
+logging out and choosing Play as guest, Back from upgrade reopened upgrade. The
+fix reads the current host route when GameContent remounts and replaces an
+account/friends/clan destination with Home before cancelling upgrade. A newer
+guest-accessible browser Back destination, such as Rooms, is preserved. No new
+history entry is added; native hosts with no navigation bridge keep their
+existing cancellation behavior. Signup/consent/token rules are unchanged.
+
+Executed regression evidence for the fix:
+
+- Before the fix, the new account-cancellation browser regression failed because
+  the URL remained `/account`, reproducing the reported loop.
+- **21 focused host tests passed**, covering guest cancellation, route request
+  ownership, navigation ordering, AuthController and entry consent.
+- Both Wasm and JavaScript development Web bundles built successfully.
+- **9 new browser cases passed**: the three cancellation/history journeys on
+  Chromium Wasm, WebKit Wasm and Chromium JavaScript fallback. Four existing
+  Chromium/WebKit history cases and four existing JavaScript smoke cases also
+  passed. Two initial test assertions were corrected to the actual Vietnamese CTA
+  and the intended Room List outcome before rerunning all nine new cases.
+- Independent review reported no Critical/Important/Minor findings. Phone and
+  desktop result screenshots were inspected. Owned local backends/schemas and
+  temporary credentials were cleaned up; production backups were untouched.
+
+Detailed local evidence is retained under
+`.artifacts/ugc-consent-20261030/` and
+`.artifacts/guest-upgrade-back-20261030/`. These local checks do not enable mandatory
+terms, close #53, update a deployed client, or authorize a Play rollout. Samsung
+testing remains cancelled by the owner; cancellation is not a physical test pass.

@@ -45,10 +45,15 @@ export default defineConfig({
   projects: jsFallback ? [
     {
       name: 'chromium-js-fallback',
-      testMatch: /browser-smoke\.spec\.mjs/,
+      testMatch: /(?:browser-smoke|guest-upgrade-back)\.spec\.mjs/,
       use: { browserName: 'chromium', viewport: { width: 390, height: 844 } },
     },
   ] : [
+    ...['chromium', 'webkit'].map(browserName => ({
+      name: `${browserName}-guest-upgrade`,
+      testMatch: /guest-upgrade-back\.spec\.mjs/,
+      use: { browserName, viewport: { width: 390, height: 844 }, hasTouch: true },
+    })),
     {
       name: 'webkit-number-grid',
       testMatch: /number-grid\.spec\.mjs/,

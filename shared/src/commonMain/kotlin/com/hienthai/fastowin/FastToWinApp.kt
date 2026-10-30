@@ -324,7 +324,7 @@ fun FastToWinApp(
                     onRequestEmailVerification = authController::requestEmailVerification,
                     onConfirmEmailVerification = authController::confirmEmailVerification,
                     onBack = authController::backToWelcome,
-                    onCancelUpgrade = authController::cancelGuestUpgrade,
+                    onCancelUpgrade = { cancelGuestUpgradeNavigation(navigationBridge, authController::cancelGuestUpgrade) },
                     onCancelEmailVerification = authController::logout
                 )
             } else {
@@ -600,7 +600,7 @@ private fun GameContent(
     val routeRequests = remember(navigationBridge) { AppRouteRequests() }
     var requestedAppRoute by remember(navigationBridge) {
         mutableStateOf(
-            navigationBridge.initialRoute?.let(::normalizeAppRoute)?.takeUnless { it == "/" }
+            navigationBridge.currentRoute?.let(::normalizeAppRoute)?.takeUnless { it == "/" }
                 ?.let(routeRequests::request)
         )
     }
@@ -1956,6 +1956,18 @@ private fun GameContent(
             }
         }
     }
+}
+
+internal fun cancelGuestUpgradeNavigation(navigationBridge: AppNavigationBridge, cancel: () -> Unit) {
+    val route = navigationBridge.currentRoute?.let(::normalizeAppRoute)
+    if (route != null && listOf("/account", "/friends", "/clan").any {
+            route == it || route.startsWith("$it/")
+        }) {
+        // Replace the gated destination before remounting GameContent so it
+        // cannot request upgrade again. Keep a newer guest-accessible Back route.
+        navigationBridge.replace("/")
+    }
+    cancel()
 }
 
 internal fun navigateToRoute(
