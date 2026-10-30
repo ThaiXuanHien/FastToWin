@@ -8,6 +8,9 @@ import com.hienthai.fastowin.data.network.AuthRequestConfigurator
 import com.hienthai.fastowin.data.network.NoOpAuthRequestConfigurator
 import com.hienthai.fastowin.data.network.StoredAuthSession
 import com.hienthai.fastowin.data.network.ResumeTokenStore
+import com.hienthai.fastowin.data.network.RecoverableAuthSessionStore
+import com.hienthai.fastowin.data.network.sameGeneration
+import com.hienthai.fastowin.data.network.sameRefreshOwner
 import com.hienthai.fastowin.localization.AppLanguage
 import com.hienthai.fastowin.localization.LocalizationService
 import com.hienthai.fastowin.localization.LocalizedMessageMapper
@@ -16,6 +19,9 @@ import com.hienthai.fastowin.protocol.PlayerGender
 import com.hienthai.fastowin.platform.epochMillis
 import com.hienthai.fastowin.protocol.AuthSessionResponse
 import com.hienthai.fastowin.protocol.AccountSessionSnapshot
+import io.ktor.client.plugins.HttpRequestTimeoutException
+import io.ktor.client.network.sockets.ConnectTimeoutException
+import io.ktor.client.network.sockets.SocketTimeoutException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -55,20 +61,30 @@ class AuthController(
     private val initialGuestSession: Boolean = false,
     initialLanguage: AppLanguage = AppLanguage.VIETNAMESE,
     private val requestConfigurator: AuthRequestConfigurator = NoOpAuthRequestConfigurator,
-    private val api: AuthApiClient = AuthApiClient(serverUrl, requestConfigurator)
+    private val api: AuthApiClient = AuthApiClient(serverUrl, requestConfigurator),
+    diagnosticSink: AuthDiagnosticSink = NoOpAuthDiagnosticSink
 ) {
+    private val diagnostics = AuthDiagnosticRecorder(diagnosticSink)
     private val messageMapper = LocalizedMessageMapper(LocalizationService(initialLanguage))
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
-    private val initialSession = store.load(serverUrl).let { stored ->
-        if (stored != null && stored.refreshExpiresAtEpochMillis <= epochMillis()) {
-            store.clear(serverUrl)
-            null
-        } else {
-            stored
+    private var loginEpoch = 0L
+    private val initialSessionRead = runCatching {
+        store.load(serverUrl).let { stored ->
+            if (stored != null && stored.refreshExpiresAtEpochMillis <= epochMillis()) {
+                if (store is RecoverableAuthSessionStore) store.clearSession(serverUrl, stored)
+                else store.clear(serverUrl)
+                null
+            } else {
+                stored
+            }
         }
     }
+    private val initialSession = initialSessionRead.getOrNull()
     private val _state = MutableStateFlow(
         when {
+            initialSessionRead.isFailure -> AuthState(
+                stage = AuthStage.LOGIN, error = errorMessage(initialSessionRead.exceptionOrNull()!!)
+            )
             initialSession != null -> AuthState(
                 stage = if (initialSession.emailVerified) AuthStage.PLAYING else AuthStage.VERIFY_EMAIL,
                 session = initialSession
@@ -81,8 +97,11 @@ class AuthController(
     private val refreshMutex = Mutex()
     private class RefreshWork(val session: StoredAuthSession, val result: Deferred<String?>)
     private var refreshWork: RefreshWork? = null
+    private var closed = false
     private val termsApi = com.hienthai.fastowin.data.network.ContentTermsApiClient(serverUrl)
     val contentEntryConsent = ContentEntryConsent(termsApi::fetch)
+
+    init { diagnostics.emit(AuthDiagnosticPhase.CONTROLLER_CREATED) }
 
     fun updateLanguage(language: AppLanguage) {
         if (messageMapper.language == language) return
@@ -101,8 +120,8 @@ class AuthController(
             passwordResetEmail = null
         )
     }
-    fun backToWelcome() = _state.update { AuthState() }
-    fun playAsGuest() = _state.update { AuthState(stage = AuthStage.PLAYING, isGuest = true) }
+    fun backToWelcome() { loginEpoch++; _state.value = AuthState() }
+    fun playAsGuest() { loginEpoch++; _state.value = AuthState(stage = AuthStage.PLAYING, isGuest = true) }
     fun openGuestUpgrade() = _state.update {
         if (it.isGuest) it.copy(stage = AuthStage.UPGRADE_GUEST, error = null) else it
     }
@@ -168,26 +187,78 @@ class AuthController(
             }
             // Refresh rotates a single-use credential. A screen may stop waiting after
             // the server commits, but the controller must still persist the response.
-            scope.async { refreshSession(session) }.also { refreshWork = RefreshWork(session, it) }
+            val epoch = loginEpoch
+            scope.async { refreshSession(session, epoch) }.also { refreshWork = RefreshWork(session, it) }
         }
         return refresh.await()
     }
 
-    private suspend fun refreshSession(session: StoredAuthSession): String? =
-        runCatching { api.refresh(session.refreshToken) }
+    private suspend fun refreshSession(session: StoredAuthSession, epoch: Long): String? {
+        val attempt = diagnostics.beginRefresh()
+        var expected = session
+        return runCatching {
+            if (!ownsRefreshState(session, epoch)) return null
+            if (store is RecoverableAuthSessionStore) {
+                expected = store.prepareRefresh(serverUrl, session) ?: run {
+                    diagnostics.emit(AuthDiagnosticPhase.STALE_RESPONSE, attempt)
+                    return null
+                }
+                // Keep a usable snapshot for logout even if the next disk read fails.
+                _state.update { if (ownsRefreshState(expected, epoch)) it.copy(session = expected) else it }
+            }
+            api.refresh(expected.refreshToken,
+                refreshAttemptSecret = if (store is RecoverableAuthSessionStore) expected.refreshAttemptSecret else null
+            ) { status, requestId ->
+                diagnostics.emit(AuthDiagnosticPhase.HTTP_RESPONSE, attempt, status, requestId)
+            }
+        }
             .mapCatching { response ->
-                if (_state.value.session?.refreshToken != session.refreshToken ||
-                    _state.value.session?.userId != session.userId ||
-                    store.load(serverUrl)?.refreshToken != session.refreshToken) return@mapCatching null
-                val refreshed = session.withTokens(response)
-                store.save(serverUrl, refreshed)
-                _state.update { it.copy(session = refreshed, isLoading = false, error = null) }
-                refreshed.accessToken
+                if (!ownsRefreshState(expected, epoch) || !ownsStoredRefresh(expected)) {
+                    diagnostics.emit(AuthDiagnosticPhase.STALE_RESPONSE, attempt)
+                    return@mapCatching null
+                }
+                val current = store.load(serverUrl) ?: return@mapCatching null
+                val refreshed = current.withTokens(response).copy(refreshAttemptSecret = null)
+                if (store is RecoverableAuthSessionStore) {
+                    if (!store.completeRefresh(serverUrl, expected, refreshed)) {
+                        diagnostics.emit(AuthDiagnosticPhase.STALE_RESPONSE, attempt)
+                        return@mapCatching null
+                    }
+                } else store.save(serverUrl, refreshed)
+                // Legacy Web persistence deliberately strips bearer credentials. Keep
+                // the live response in memory, as before opt-in recovery was added.
+                val saved = if (store is RecoverableAuthSessionStore) {
+                    store.load(serverUrl)?.takeIf { refreshed.sameGeneration(it) } ?: return@mapCatching null
+                } else refreshed
+                _state.update { it.copy(session = saved, isLoading = false, error = null) }
+                diagnostics.credentialsStored(AuthDiagnosticPhase.REFRESH_STORED, attempt)
+                saved.accessToken
             }
             .getOrElse { error ->
-                if (error is CancellationException) throw error
-                if (_state.value.session?.refreshToken != session.refreshToken ||
-                    _state.value.session?.userId != session.userId) return@getOrElse null
+                if (error is CancellationException) {
+                    diagnostics.emit(AuthDiagnosticPhase.REFRESH_CANCELLED, attempt)
+                    throw error
+                }
+                diagnostics.emit(AuthDiagnosticPhase.REFRESH_FAILED, attempt, failure = when (error) {
+                    is HttpRequestTimeoutException, is ConnectTimeoutException, is SocketTimeoutException -> AuthDiagnosticFailure.TIMEOUT
+                    is AuthApiException -> AuthDiagnosticFailure.HTTP
+                    is AuthSessionStoreException -> AuthDiagnosticFailure.STORAGE
+                    else -> AuthDiagnosticFailure.TRANSPORT
+                }, rejection = (error as? AuthApiException)?.let {
+                    when (it.code) {
+                        "INVALID_REFRESH_TOKEN" -> AuthDiagnosticRejection.INVALID_REFRESH_TOKEN
+                        "ACCOUNT_BLOCKED" -> AuthDiagnosticRejection.ACCOUNT_BLOCKED
+                        "SESSION_EXPIRED" -> AuthDiagnosticRejection.SESSION_EXPIRED
+                        else -> AuthDiagnosticRejection.OTHER
+                    }
+                })
+                if (!ownsRefreshState(expected, epoch)) return@getOrElse null
+                val storedOwnership = runCatching { ownsStoredRefresh(expected) }
+                if (storedOwnership.isFailure) {
+                    expireSession(errorMessage(storedOwnership.exceptionOrNull()!!), AuthExpirySource.SESSION_STORAGE)
+                    return@getOrElse null
+                }
+                if (storedOwnership.getOrNull() != true) return@getOrElse null
                 val rejected = error is AuthApiException && when (error.httpStatus ?: 0) {
                     408, 429, in 500..599 -> false
                     401 -> true
@@ -205,16 +276,29 @@ class AuthController(
                         fallback = messageMapper.text(TextKey.ServerSessionExpired)
                     )
                 }
-                expireSession(message)
+                expireSession(message, if (error is AuthSessionStoreException) AuthExpirySource.SESSION_STORAGE else AuthExpirySource.REFRESH_REJECTED)
                 null
             }
+    }
 
     fun logout() {
-        val session = _state.value.session
-        store.clear(serverUrl)
+        val current = _state.value.session
+        loginEpoch++
         _state.value = AuthState(stage = AuthStage.LOGIN)
+        diagnostics.emit(AuthDiagnosticPhase.LOGGED_OUT)
+        val stored = runCatching { store.load(serverUrl) }.onFailure(::showError)
+        val session = if (stored.isFailure) current else stored.getOrNull()?.takeIf {
+            current != null && sameStoredGeneration(current, it)
+        }
+        runCatching {
+            if (session != null && store is RecoverableAuthSessionStore) store.clearSession(serverUrl, session)
+            else if (session != null) store.clear(serverUrl)
+        }.onFailure(::showError)
         scope.launch {
-            if (session != null) runCatching { api.logout(session.refreshToken) }
+            if (session != null) runCatching {
+                api.logout(session.refreshToken,
+                    if (store is RecoverableAuthSessionStore) session.refreshAttemptSecret else null)
+            }
         }
     }
 
@@ -246,6 +330,7 @@ class AuthController(
         scope.launch {
             runCatching { api.confirmPasswordReset(email, resetToken, newPassword) }
                 .onSuccess { response ->
+                    loginEpoch++
                     _state.value = AuthState(stage = AuthStage.LOGIN, notice = messageMapper.message(response))
                 }
                 .onFailure(::showError)
@@ -257,12 +342,13 @@ class AuthController(
         _state.update { it.copy(isLoading = true, error = null, notice = null) }
         scope.launch {
             val accessToken = actionAccessToken(::showError) ?: return@launch
+            val expected = sessionForAccessToken(accessToken) ?: return@launch
             runCatching {
                 api.requestEmailVerification(accessToken, messageMapper.language.languageTag)
             }
                 .onSuccess { response ->
                     if (response.emailVerified == true) {
-                        completeEmailVerification(messageMapper.message(response))
+                        completeEmailVerification(messageMapper.message(response), expected)
                     } else {
                         _state.update {
                             it.copy(
@@ -283,9 +369,10 @@ class AuthController(
         _state.update { it.copy(isLoading = true, error = null, notice = null) }
         scope.launch {
             val accessToken = actionAccessToken(::showError) ?: return@launch
+            val expected = sessionForAccessToken(accessToken) ?: return@launch
             runCatching { api.confirmEmailVerification(accessToken, verificationCode) }
                 .onSuccess { response ->
-                    completeEmailVerification(messageMapper.message(response))
+                    completeEmailVerification(messageMapper.message(response), expected)
                 }
                 .onFailure(::showError)
         }
@@ -297,9 +384,10 @@ class AuthController(
         _state.update { it.copy(isLoading = true, error = null, notice = null) }
         scope.launch {
             val accessToken = actionAccessToken(::showError) ?: return@launch
+            val expected = sessionForAccessToken(accessToken) ?: return@launch
             runCatching { api.changePassword(accessToken, currentPassword, newPassword) }
                 .onSuccess { response ->
-                    store.clear(serverUrl)
+                    if (!clearOwnedSession(expected)) return@onSuccess
                     _state.value = AuthState(stage = AuthStage.LOGIN, notice = messageMapper.message(response))
                 }
                 .onFailure(::showError)
@@ -312,9 +400,10 @@ class AuthController(
         _state.update { it.copy(isLoading = true, error = null, notice = null) }
         scope.launch {
             val accessToken = actionAccessToken(::showError) ?: return@launch
+            val expected = sessionForAccessToken(accessToken) ?: return@launch
             runCatching { api.deleteAccount(accessToken, password) }
                 .onSuccess { response ->
-                    store.clear(serverUrl)
+                    if (!clearOwnedSession(expected)) return@onSuccess
                     resumeTokenStore.clear(serverUrl)
                     _state.value = AuthState(notice = messageMapper.message(response))
                 }
@@ -347,10 +436,11 @@ class AuthController(
         _state.update { it.copy(areSessionsLoading = true, error = null, notice = null) }
         scope.launch {
             val accessToken = actionAccessToken(::showSessionsError) ?: return@launch
+            val expected = sessionForAccessToken(accessToken) ?: return@launch
             runCatching { api.revokeSession(accessToken, sessionId) }
                 .onSuccess { response ->
                     if (target.isCurrent) {
-                        store.clear(serverUrl)
+                        if (!clearOwnedSession(expected)) return@onSuccess
                         _state.value = AuthState(stage = AuthStage.LOGIN, notice = messageMapper.message(response))
                     } else {
                         _state.update {
@@ -368,9 +458,10 @@ class AuthController(
         _state.update { it.copy(areSessionsLoading = true, error = null, notice = null) }
         scope.launch {
             val accessToken = actionAccessToken(::showSessionsError) ?: return@launch
+            val expected = sessionForAccessToken(accessToken) ?: return@launch
             runCatching { api.revokeAllSessions(accessToken) }
                 .onSuccess { response ->
-                    store.clear(serverUrl)
+                    if (!clearOwnedSession(expected)) return@onSuccess
                     _state.value = AuthState(stage = AuthStage.LOGIN, notice = messageMapper.message(response))
                 }
                 .onFailure(::showSessionsError)
@@ -392,27 +483,33 @@ class AuthController(
             keyName = null,
             arguments = emptyMap(),
             fallback = messageMapper.text(TextKey.ServerSessionExpired)
-        )
+        ),
+        source: AuthExpirySource = AuthExpirySource.EXTERNAL
     ) {
         val expiredSession = _state.value.session
-        val storedSession = store.load(serverUrl)
-        if (expiredSession == null || storedSession?.refreshToken == expiredSession.refreshToken) {
-            store.clear(serverUrl)
-        }
+        loginEpoch++
         _state.value = AuthState(stage = AuthStage.LOGIN, error = message)
+        diagnostics.emit(AuthDiagnosticPhase.SESSION_EXPIRED, source = source)
+        runCatching {
+            val storedSession = store.load(serverUrl)
+            if (expiredSession != null && sameStoredGeneration(expiredSession, storedSession)) {
+                if (store is RecoverableAuthSessionStore) store.clearSession(serverUrl, storedSession!!)
+                else store.clear(serverUrl)
+            }
+        }.onFailure(::showError)
     }
 
     fun updateStoredDisplayName(displayName: String) {
-        val current = _state.value.session ?: return
-        if (current.displayName == displayName) return
-        val updated = current.copy(displayName = displayName)
-        store.save(serverUrl, updated)
+        val updated = updateSessionMetadata { it.copy(displayName = displayName) } ?: return
         _state.update { it.copy(session = updated) }
     }
 
     fun clearFeedback() = _state.update { it.copy(error = null, notice = null) }
 
     fun close() {
+        loginEpoch++
+        closed = true
+        diagnostics.emit(AuthDiagnosticPhase.CONTROLLER_CLOSED)
         contentEntryConsent.dismiss()
         termsApi.close()
         api.close()
@@ -431,29 +528,33 @@ class AuthController(
             emailVerified = response.emailVerified
         )
         store.save(serverUrl, stored)
+        loginEpoch++
         _state.value = AuthState(
             stage = if (stored.emailVerified) AuthStage.PLAYING else AuthStage.VERIFY_EMAIL,
             session = stored
         )
+        diagnostics.credentialsStored(AuthDiagnosticPhase.SIGNED_IN)
     }
 
     private fun showError(error: Throwable) {
         _state.update {
             it.copy(
                 isLoading = false,
-                error = when (error) {
-                    is AuthApiException -> messageMapper.message(
-                        error.code, error.messageKey, error.messageArgs, error.message
-                    )
-                    is AuthSessionStoreException -> messageMapper.message(
-                        error.code, null, emptyMap(), error.message.orEmpty()
-                    )
-                    else -> messageMapper.message(
-                        "NETWORK_ERROR", null, emptyMap(), "Could not connect to the server. Please try again."
-                    )
-                }
+                error = errorMessage(error)
             )
         }
+    }
+
+    private fun errorMessage(error: Throwable): String = when (error) {
+        is AuthApiException -> messageMapper.message(
+            error.code, error.messageKey, error.messageArgs, error.message
+        )
+        is AuthSessionStoreException -> messageMapper.message(
+            error.code, null, emptyMap(), error.message.orEmpty()
+        )
+        else -> messageMapper.message(
+            "NETWORK_ERROR", null, emptyMap(), "Could not connect to the server. Please try again."
+        )
     }
 
     private fun showSessionsError(error: Throwable) {
@@ -467,15 +568,65 @@ class AuthController(
         }
     }
 
-    private fun completeEmailVerification(message: String) {
-        val current = _state.value.session ?: return
-        val verified = current.copy(emailVerified = true)
-        store.save(serverUrl, verified)
+    private fun completeEmailVerification(message: String, expected: LoginOwnership) {
+        val verified = updateSessionMetadata(expected) { it.copy(emailVerified = true) } ?: return
         _state.value = AuthState(
             stage = AuthStage.PLAYING,
             session = verified,
             notice = message
         )
+    }
+
+    private fun ownsRefreshState(expected: StoredAuthSession, epoch: Long): Boolean =
+        !closed && epoch == loginEpoch && expected.sameGeneration(_state.value.session)
+
+    private fun ownsStoredRefresh(expected: StoredAuthSession): Boolean {
+        val stored = store.load(serverUrl)
+        return if (store is RecoverableAuthSessionStore) expected.sameRefreshOwner(stored)
+        else sameStoredGeneration(expected, stored)
+    }
+
+    private fun sameStoredGeneration(expected: StoredAuthSession, stored: StoredAuthSession?): Boolean =
+        if (store is RecoverableAuthSessionStore) expected.sameGeneration(stored)
+        else stored != null && expected.userId == stored.userId && expected.refreshToken == stored.refreshToken
+
+    private data class LoginOwnership(val epoch: Long, val userId: String)
+
+    private fun currentOwnership(): LoginOwnership? =
+        _state.value.session?.let { LoginOwnership(loginEpoch, it.userId) }
+
+    private fun ownsLogin(expected: LoginOwnership): Boolean =
+        !closed && expected.epoch == loginEpoch && expected.userId == _state.value.session?.userId
+
+    private fun sessionForAccessToken(accessToken: String): LoginOwnership? =
+        _state.value.session?.takeIf { it.accessToken == accessToken }?.let { LoginOwnership(loginEpoch, it.userId) }
+
+    private fun clearOwnedSession(expected: LoginOwnership): Boolean {
+        if (!ownsLogin(expected)) return false
+        val current = _state.value.session ?: return false
+        val stored = runCatching { store.load(serverUrl) }
+        if (stored.isSuccess && !sameStoredGeneration(current, stored.getOrNull())) return false
+        loginEpoch++
+        _state.value = AuthState(stage = AuthStage.LOGIN)
+        if (stored.isFailure) { showError(stored.exceptionOrNull()!!); return true }
+        return runCatching {
+            if (store is RecoverableAuthSessionStore) store.clearSession(serverUrl, stored.getOrNull()!!)
+            else { store.clear(serverUrl); true }
+        }.onFailure(::showError).getOrDefault(true)
+    }
+
+    private fun updateSessionMetadata(
+        expected: LoginOwnership? = currentOwnership(),
+        update: (StoredAuthSession) -> StoredAuthSession
+    ): StoredAuthSession? {
+        if (expected == null || !ownsLogin(expected)) return null
+        val current = _state.value.session ?: return null
+        val stored = store.load(serverUrl)?.takeIf { sameStoredGeneration(current, it) } ?: return null
+        val updated = update(if (store is RecoverableAuthSessionStore) stored else current)
+        if (store is RecoverableAuthSessionStore) {
+            if (!store.updateSession(serverUrl, stored, updated)) return null
+        } else store.save(serverUrl, updated)
+        return updated
     }
 
     private fun StoredAuthSession.withTokens(response: AuthSessionResponse) = copy(

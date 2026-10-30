@@ -56,6 +56,9 @@ import com.hienthai.fastowin.ui.screens.AnnouncementDetailScreen
 import com.hienthai.fastowin.ui.screens.AnnouncementUpdateScreen
 import com.hienthai.fastowin.state.AuthController
 import com.hienthai.fastowin.state.AuthStage
+import com.hienthai.fastowin.state.AuthDiagnosticSink
+import com.hienthai.fastowin.state.AuthExpirySource
+import com.hienthai.fastowin.state.NoOpAuthDiagnosticSink
 import com.hienthai.fastowin.data.network.AuthSessionStore
 import com.hienthai.fastowin.data.network.ResumeTokenStore
 import com.hienthai.fastowin.data.network.ServiceStatusClient
@@ -161,7 +164,8 @@ fun FastToWinApp(
     navigationBridge: AppNavigationBridge = NoOpAppNavigationBridge,
     updateBridge: AppUpdateBridge = NoOpAppUpdateBridge,
     installBridge: AppInstallBridge = NoOpAppInstallBridge,
-    pushBridge: AppPushBridge = NoOpAppPushBridge
+    pushBridge: AppPushBridge = NoOpAppPushBridge,
+    authDiagnosticSink: AuthDiagnosticSink = NoOpAuthDiagnosticSink
 ) {
     var restoreGuestSession by rememberSaveable { mutableStateOf(false) }
     val serviceStatusClient = remember(serverUrl) { ServiceStatusClient(serverUrl) }
@@ -177,7 +181,8 @@ fun FastToWinApp(
             resumeTokenStore = resumeTokenStore,
             devicePlatform = devicePlatform,
             requestConfigurator = authRequestConfigurator,
-            initialGuestSession = restoreGuestSession
+            initialGuestSession = restoreGuestSession,
+            diagnosticSink = authDiagnosticSink
         )
     }
     val authState by authController.state.collectAsState()
@@ -353,7 +358,7 @@ fun FastToWinApp(
                     onRevokeSession = authController::revokeSession,
                     onRevokeAllSessions = authController::revokeAllSessions,
                     authState = authState,
-                    onSessionExpired = authController::expireSession,
+                    onSessionExpired = { message -> authController.expireSession(message, AuthExpirySource.GAME_CONNECTION) },
                     onProfileDisplayNameChanged = authController::updateStoredDisplayName,
                     appPreferences = appPreferences,
                     onPreferencesChange = updatePreferences,

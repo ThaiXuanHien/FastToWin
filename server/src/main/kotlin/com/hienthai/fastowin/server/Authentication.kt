@@ -92,6 +92,9 @@ interface AuthRepository {
     suspend fun findActiveAccountById(userId: UUID): AccountCredentials?
     suspend fun replaceSessions(userId: UUID, devicePlatform: String?, session: NewAuthSession)
     suspend fun rotateSession(refreshTokenHash: String, replacement: NewAuthSession): UUID?
+    suspend fun rotateRecoverableSession(rotation: RefreshRotation): AuthSessionResponse?
+    suspend fun revokePendingSession(predecessorHash: String, attemptHash: String, nowMillis: Long): Boolean
+    suspend fun cleanupRefreshRecoveries(nowMillis: Long, batchSize: Int = 100): Int
     suspend fun revokeSession(refreshTokenHash: String, nowMillis: Long): Boolean
     suspend fun findActiveSession(accessTokenHash: String, nowMillis: Long): AuthenticatedAccount?
     suspend fun listActiveSessions(userId: UUID, nowMillis: Long): List<StoredAccountSession>
@@ -268,23 +271,38 @@ class AuthenticationService(
         }
     }
 
-    suspend fun refresh(refreshToken: String): AuthResult {
+    suspend fun refresh(refreshToken: String, refreshAttemptSecret: String? = null): AuthResult {
+        if (refreshAttemptSecret != null && !validRefreshAttemptSecret(refreshAttemptSecret)) {
+            return AuthResult.Failure("INVALID_REFRESH_ATTEMPT_SECRET", "INVALID_REFRESH_ATTEMPT_SECRET")
+        }
         if (!isValidTokenShape(refreshToken)) return invalidRefreshToken()
         val now = nowMillis()
-        val placeholderUserId = UUID.randomUUID()
-        val replacement = issueTokens(placeholderUserId, "", now)
-        val userId = repository.rotateSession(hashToken(refreshToken), replacement.record)
-            ?: return invalidRefreshToken()
+        val response = if (refreshAttemptSecret == null) {
+            val replacement = issueTokens(UUID.randomUUID(), "", now)
+            val userId = repository.rotateSession(hashToken(refreshToken), replacement.record) ?: return invalidRefreshToken()
+            replacement.response.copy(userId = userId.toString())
+        } else {
+            repository.rotateRecoverableSession(RefreshRotation(refreshToken, refreshAttemptSecret, nowMillis) { userId, issuedAt ->
+                issueTokens(userId, "", issuedAt).let { it.record to it.response }
+            }) ?: return invalidRefreshToken()
+        }
+        val userId = UUID.fromString(response.userId)
         if (moderationService?.isBlocked(userId.toString()) == true) {
             repository.revokeAllSessions(userId, now)
             return AuthResult.Failure("ACCOUNT_BLOCKED", "ACCOUNT_BLOCKED")
         }
-        return AuthResult.Success(replacement.response.copy(userId = userId.toString()))
+        return AuthResult.Success(response)
     }
 
-    suspend fun logout(refreshToken: String) {
-        if (isValidTokenShape(refreshToken)) repository.revokeSession(hashToken(refreshToken), nowMillis())
+    suspend fun logout(refreshToken: String, refreshAttemptSecret: String? = null) {
+        if (!isValidTokenShape(refreshToken)) return
+        if (refreshAttemptSecret != null && !validRefreshAttemptSecret(refreshAttemptSecret)) return
+        val now = nowMillis()
+        if (refreshAttemptSecret == null) repository.revokeSession(hashToken(refreshToken), now)
+        else repository.revokePendingSession(hashToken(refreshToken), hashToken(refreshAttemptSecret), now)
     }
+
+    suspend fun cleanupRefreshRecoveries(): Int = repository.cleanupRefreshRecoveries(nowMillis())
 
     suspend fun authenticateAccessToken(accessToken: String): AuthenticatedAccount? {
         if (!isValidTokenShape(accessToken)) return null

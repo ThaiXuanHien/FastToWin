@@ -79,14 +79,24 @@ class AuthApiClient(
         UpgradeGuestRequest(resumeToken, email, password, devicePlatform, acceptedContentTermsVersion)
     )
 
-    suspend fun refresh(refreshToken: String): AuthSessionResponse =
-        execute("$baseUrl/auth/refresh", RefreshTokenRequest(refreshToken))
+    suspend fun refresh(
+        refreshToken: String,
+        onResponse: (status: Int, requestId: String?) -> Unit = { _, _ -> }
+    ): AuthSessionResponse = refresh(refreshToken, refreshAttemptSecret = null, onResponse = onResponse)
 
-    suspend fun logout(refreshToken: String) {
+    suspend fun refresh(
+        refreshToken: String,
+        refreshAttemptSecret: String?,
+        onResponse: (status: Int, requestId: String?) -> Unit = { _, _ -> }
+    ): AuthSessionResponse = execute(
+        "$baseUrl/auth/refresh", RefreshTokenRequest(refreshToken, refreshAttemptSecret), onResponse
+    )
+
+    suspend fun logout(refreshToken: String, refreshAttemptSecret: String? = null) {
         val response = client.post("$baseUrl/auth/logout") {
             requestConfigurator.configure(this)
             contentType(ContentType.Application.Json)
-            setBody(LogoutRequest(refreshToken))
+            setBody(LogoutRequest(refreshToken, refreshAttemptSecret))
         }
         if (!response.status.isSuccess()) throw response.toAuthException()
     }
@@ -155,12 +165,18 @@ class AuthApiClient(
 
     fun close() = client.close()
 
-    private suspend inline fun <reified T : Any> execute(url: String, request: T): AuthSessionResponse {
+    private suspend inline fun <reified T : Any> execute(
+        url: String,
+        request: T,
+        onResponse: (status: Int, requestId: String?) -> Unit = { _, _ -> }
+    ): AuthSessionResponse {
         val response = client.post(url) {
             requestConfigurator.configure(this)
             contentType(ContentType.Application.Json)
             setBody(request)
         }
+        // Only scalar response metadata; never expose the request, body, token or headers wholesale.
+        runCatching { onResponse(response.status.value, response.headers["x-railway-request-id"]) }
         if (!response.status.isSuccess()) throw response.toAuthException()
         return response.body()
     }

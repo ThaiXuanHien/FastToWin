@@ -7,6 +7,9 @@ plugins {
 
 // Public identifiers only; no signing/private configuration is consumed here.
 val adMobMode = providers.gradleProperty("FASTTOWIN_ADMOB_MODE").orElse("").get().lowercase()
+// Explicit local QA build only. Normal release builds do not record auth diagnostics.
+val authDiagnosticsMode = providers.gradleProperty("FASTTOWIN_AUTH_DIAGNOSTICS").orElse("off").get()
+require(authDiagnosticsMode in setOf("off", "qa")) { "FASTTOWIN_AUTH_DIAGNOSTICS must be off or qa" }
 require(adMobMode in setOf("", "disabled", "demo", "test", "live")) { "FASTTOWIN_ADMOB_MODE must be disabled, demo, test or live" }
 val adMobAppId = if (adMobMode == "demo") "ca-app-pub-3940256099942544~3347511713"
     else providers.gradleProperty("FASTTOWIN_ADMOB_APP_ID").orElse("").get()
@@ -32,8 +35,9 @@ android {
         applicationId = "com.hienthai.fastowin"
         minSdk = 29
         targetSdk = 37
-        versionCode = 4
-        versionName = "1.0.3"
+        versionCode = 8
+        versionName = "1.0.7"
+        buildConfigField("boolean", "AUTH_DIAGNOSTICS_ENABLED", (authDiagnosticsMode == "qa").toString())
         buildConfigField("String", "ADMOB_MODE", "\"$adMobMode\"")
         buildConfigField("String", "ADMOB_APP_ID", "\"$adMobAppId\"")
         buildConfigField("String", "ADMOB_AD_UNIT_ID", "\"$adMobUnitId\"")

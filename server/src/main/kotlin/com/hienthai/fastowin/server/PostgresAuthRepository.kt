@@ -7,6 +7,7 @@ import com.hienthai.fastowin.protocol.DEFAULT_MALE_AVATAR_ID
 import com.hienthai.fastowin.protocol.PlayerGender
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import com.hienthai.fastowin.protocol.AuthSessionResponse
 import java.sql.Connection
 import java.sql.SQLException
 import java.sql.Timestamp
@@ -128,89 +129,151 @@ class PostgresAuthRepository(private val dataSource: DataSource) : AuthRepositor
             }
         }
 
-    override suspend fun rotateSession(
-        refreshTokenHash: String,
-        replacement: NewAuthSession
-    ): UUID? = withContext(Dispatchers.IO) {
-        dataSource.connection.use { connection ->
-            connection.autoCommit = false
-            try {
-                val current = connection.prepareStatement(
-                    """
-                    SELECT s.id, s.user_id
-                    FROM sessions s
-                    JOIN users u ON u.id = s.user_id
-                    WHERE s.refresh_token_hash = ?
-                      AND s.revoked_at IS NULL
-                      AND s.expires_at > ?
-                      AND u.status = 'ACTIVE'
-                    FOR UPDATE
-                    """.trimIndent()
-                ).use { statement ->
-                    statement.setString(1, refreshTokenHash)
-                    statement.setTimestamp(2, replacement.nowMillis.toTimestamp())
-                    statement.executeQuery().use { result ->
-                        if (!result.next()) null else CurrentSession(
-                            result.getObject("id", UUID::class.java),
-                            result.getObject("user_id", UUID::class.java)
-                        )
-                    }
-                }
-                if (current == null) {
-                    connection.rollback()
-                    return@withContext null
-                }
+    override suspend fun rotateSession(refreshTokenHash: String, replacement: NewAuthSession): UUID? =
+        authTransaction { connection ->
+            val current = lockRefreshSession(connection, refreshTokenHash) ?: return@authTransaction null
+            if (!current.active(replacement.nowMillis) || current.refreshHash != refreshTokenHash) return@authTransaction null
+            updateSessionTokens(connection, current.sessionId, replacement)
+            current.userId
+        }
 
-                connection.prepareStatement(
-                    """
-                    UPDATE sessions
-                    SET access_token_hash = ?, refresh_token_hash = ?, access_expires_at = ?,
-                        expires_at = ?, refreshed_at = ?, last_seen_at = ?
-                    WHERE id = ?
-                    """.trimIndent()
-                ).use { statement ->
-                    statement.setString(1, replacement.accessTokenHash)
-                    statement.setString(2, replacement.refreshTokenHash)
-                    statement.setTimestamp(3, replacement.accessExpiresAtMillis.toTimestamp())
-                    statement.setTimestamp(4, replacement.refreshExpiresAtMillis.toTimestamp())
-                    statement.setTimestamp(5, replacement.nowMillis.toTimestamp())
-                    statement.setTimestamp(6, replacement.nowMillis.toTimestamp())
-                    statement.setObject(7, current.sessionId)
-                    statement.executeUpdate()
-                }
-                connection.commit()
-                current.userId
-            } catch (error: Throwable) {
-                connection.rollback()
-                throw error
+    override suspend fun rotateRecoverableSession(rotation: RefreshRotation): AuthSessionResponse? = authTransaction { connection ->
+        val current = lockRefreshSession(connection, rotation.predecessorHash) ?: return@authTransaction null
+        if (current.refreshHash == rotation.predecessorHash) {
+            // Issue only after all connection/user/session waits, using one instant for every expiry.
+            val now = rotation.nowMillis()
+            if (!current.active(now)) return@authTransaction null
+            val (replacement, response) = rotation.issue(current.userId, now)
+            val receipt = rotation.receipt(current.sessionId, replacement, response)
+            updateSessionTokens(connection, current.sessionId, replacement)
+            connection.prepareStatement("""
+                INSERT INTO auth_refresh_recoveries(session_id, predecessor_hash, attempt_hash,
+                    successor_refresh_hash, successor_access_hash, codec_version, nonce, ciphertext,
+                    issued_at, recovery_expires_at, metadata_expires_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """.trimIndent()).use { statement ->
+                statement.setObject(1, receipt.sessionId)
+                statement.setString(2, receipt.predecessorHash); statement.setString(3, receipt.attemptHash)
+                statement.setString(4, receipt.successorRefreshHash); statement.setString(5, receipt.successorAccessHash)
+                statement.setInt(6, receipt.codecVersion); statement.setBytes(7, receipt.nonce); statement.setBytes(8, receipt.ciphertext)
+                statement.setTimestamp(9, receipt.issuedAtMillis.toTimestamp())
+                statement.setTimestamp(10, receipt.recoveryExpiresAtMillis.toTimestamp())
+                statement.setTimestamp(11, receipt.metadataExpiresAtMillis.toTimestamp())
+                statement.executeUpdate()
             }
+            response
+        } else {
+            val receipt = readRecovery(connection, current.sessionId) ?: return@authTransaction null
+            // Read time adjacent to decryption; request-start time cannot authorize an expired replay.
+            val now = rotation.nowMillis()
+            if (!current.active(now) || !receipt.matches(current, rotation.predecessorHash, rotation.attemptHash, now) ||
+                receipt.recoveryExpiresAtMillis <= now) return@authTransaction null
+            RefreshRecoveryCodec.open(receipt, rotation.predecessorToken, rotation.attemptSecret)
         }
     }
 
     override suspend fun revokeSession(refreshTokenHash: String, nowMillis: Long): Boolean =
-        withContext(Dispatchers.IO) {
-            dataSource.connection.use { connection ->
-                connection.prepareStatement(
-                    """
-                    WITH revoked AS (
-                        UPDATE sessions
-                        SET revoked_at = ?, last_seen_at = ?
-                        WHERE refresh_token_hash = ? AND revoked_at IS NULL
-                        RETURNING user_id
-                    )
-                    UPDATE users
-                    SET fcm_token = NULL
-                    WHERE id IN (SELECT user_id FROM revoked)
-                    RETURNING id
-                    """.trimIndent()
-                ).use { statement ->
-                    statement.setTimestamp(1, nowMillis.toTimestamp())
-                    statement.setTimestamp(2, nowMillis.toTimestamp())
-                    statement.setString(3, refreshTokenHash)
-                    statement.executeQuery().use { it.next() }
-                }
-            }
+        revokeRefreshSession(refreshTokenHash, null, nowMillis)
+
+    override suspend fun revokePendingSession(predecessorHash: String, attemptHash: String, nowMillis: Long): Boolean =
+        revokeRefreshSession(predecessorHash, attemptHash, nowMillis)
+
+    private suspend fun revokeRefreshSession(predecessorHash: String, attemptHash: String?, nowMillis: Long): Boolean = authTransaction { connection ->
+        val current = lockRefreshSession(connection, predecessorHash) ?: return@authTransaction false
+        if (current.revoked) return@authTransaction false
+        if (current.refreshHash != predecessorHash) {
+            if (attemptHash == null) return@authTransaction false
+            val receipt = readRecovery(connection, current.sessionId) ?: return@authTransaction false
+            if (!receipt.matches(current, predecessorHash, attemptHash, nowMillis)) return@authTransaction false
         }
+        connection.prepareStatement("UPDATE sessions SET revoked_at = ?, last_seen_at = ? WHERE id = ?").use {
+            it.setTimestamp(1, nowMillis.toTimestamp()); it.setTimestamp(2, nowMillis.toTimestamp()); it.setObject(3, current.sessionId)
+            it.executeUpdate()
+        }
+        connection.prepareStatement("UPDATE users SET fcm_token = NULL WHERE id = ?").use {
+            it.setObject(1, current.userId); it.executeUpdate()
+        }
+        true
+    }
+
+    override suspend fun cleanupRefreshRecoveries(nowMillis: Long, batchSize: Int): Int = authTransaction { connection ->
+        require(batchSize in 1..1000)
+        val deleted = connection.prepareStatement("""
+            WITH expired AS (SELECT session_id FROM auth_refresh_recoveries WHERE metadata_expires_at <= ?
+                ORDER BY metadata_expires_at LIMIT ? FOR UPDATE SKIP LOCKED)
+            DELETE FROM auth_refresh_recoveries r USING expired e WHERE r.session_id = e.session_id
+        """.trimIndent()).use {
+            it.setTimestamp(1, nowMillis.toTimestamp()); it.setInt(2, batchSize); it.executeUpdate()
+        }
+        val remaining = batchSize - deleted
+        val cleared = if (remaining == 0) 0 else connection.prepareStatement("""
+            WITH expired AS (SELECT session_id FROM auth_refresh_recoveries WHERE recovery_expires_at <= ? AND ciphertext IS NOT NULL
+                ORDER BY recovery_expires_at LIMIT ? FOR UPDATE SKIP LOCKED)
+            UPDATE auth_refresh_recoveries r SET nonce = NULL, ciphertext = NULL FROM expired e WHERE r.session_id = e.session_id
+        """.trimIndent()).use {
+            it.setTimestamp(1, nowMillis.toTimestamp()); it.setInt(2, remaining); it.executeUpdate()
+        }
+        deleted + cleared
+    }
+
+    private suspend fun <T> authTransaction(block: (Connection) -> T): T = withContext(Dispatchers.IO) {
+        dataSource.connection.use { connection ->
+            connection.autoCommit = false
+            try { block(connection).also { connection.commit() } }
+            catch (error: Throwable) { connection.rollback(); throw error }
+        }
+    }
+
+    private data class LockedRefreshSession(val sessionId: UUID, val userId: UUID, val refreshHash: String?,
+        val accessHash: String?, val expiresAtMillis: Long, val revoked: Boolean, val accountActive: Boolean) {
+        fun active(now: Long) = accountActive && !revoked && expiresAtMillis > now
+    }
+
+    /** Locate both indexed candidates in one snapshot, then lock parent before child and re-read generation.
+     * Including receipts lets a duplicate find the row after the predecessor hash changed. */
+    private fun lockRefreshSession(connection: Connection, predecessorHash: String): LockedRefreshSession? {
+        val identity = connection.prepareStatement(REFRESH_SESSION_LOOKUP_SQL).use {
+            it.setString(1, predecessorHash); it.setString(2, predecessorHash)
+            it.executeQuery().use { r -> if (r.next()) CurrentSession(r.getObject("id", UUID::class.java), r.getObject("user_id", UUID::class.java)) else null }
+        } ?: return null
+        val active = lockUser(connection, identity.userId) ?: return null
+        return connection.prepareStatement("SELECT id, user_id, refresh_token_hash, access_token_hash, expires_at, revoked_at FROM sessions WHERE id = ? FOR UPDATE").use {
+            it.setObject(1, identity.sessionId)
+            it.executeQuery().use { r -> if (!r.next()) null else LockedRefreshSession(identity.sessionId, identity.userId,
+                r.getString("refresh_token_hash"), r.getString("access_token_hash"), r.getTimestamp("expires_at").time,
+                r.getTimestamp("revoked_at") != null, active) }
+        }
+    }
+
+    private fun lockUser(connection: Connection, userId: UUID): Boolean? =
+        connection.prepareStatement("SELECT status FROM users WHERE id = ? FOR UPDATE").use {
+            it.setObject(1, userId); it.executeQuery().use { r -> if (r.next()) r.getString("status") == "ACTIVE" else null }
+        }
+
+    private fun RefreshRecovery.matches(current: LockedRefreshSession, predecessor: String, attempt: String, now: Long): Boolean =
+        sessionId == current.sessionId && predecessorHash == predecessor && attemptHash == attempt &&
+            successorRefreshHash == current.refreshHash && successorAccessHash == current.accessHash && metadataExpiresAtMillis > now
+
+    private fun readRecovery(connection: Connection, sessionId: UUID): RefreshRecovery? =
+        connection.prepareStatement("SELECT * FROM auth_refresh_recoveries WHERE session_id = ?").use {
+            it.setObject(1, sessionId)
+            it.executeQuery().use { r -> if (!r.next()) null else RefreshRecovery(sessionId,
+                r.getString("predecessor_hash"), r.getString("attempt_hash"), r.getString("successor_refresh_hash"), r.getString("successor_access_hash"),
+                r.getTimestamp("issued_at").time, r.getTimestamp("recovery_expires_at").time, r.getTimestamp("metadata_expires_at").time,
+                r.getInt("codec_version"), r.getBytes("nonce"), r.getBytes("ciphertext")) }
+        }
+
+    private fun updateSessionTokens(connection: Connection, sessionId: UUID, replacement: NewAuthSession) {
+        connection.prepareStatement("""
+            UPDATE sessions SET access_token_hash = ?, refresh_token_hash = ?, access_expires_at = ?,
+                expires_at = ?, refreshed_at = ?, last_seen_at = ? WHERE id = ?
+        """.trimIndent()).use {
+            it.setString(1, replacement.accessTokenHash); it.setString(2, replacement.refreshTokenHash)
+            it.setTimestamp(3, replacement.accessExpiresAtMillis.toTimestamp()); it.setTimestamp(4, replacement.refreshExpiresAtMillis.toTimestamp())
+            it.setTimestamp(5, replacement.nowMillis.toTimestamp()); it.setTimestamp(6, replacement.nowMillis.toTimestamp()); it.setObject(7, sessionId)
+            it.executeUpdate()
+        }
+    }
 
     override suspend fun findActiveSession(
         accessTokenHash: String,
@@ -280,49 +343,20 @@ class PostgresAuthRepository(private val dataSource: DataSource) : AuthRepositor
         }
     }
 
-    override suspend fun revokeSessionById(
-        userId: UUID,
-        sessionId: UUID,
-        nowMillis: Long
-    ): Boolean = withContext(Dispatchers.IO) {
-        dataSource.connection.use { connection ->
-            connection.prepareStatement(
-                """
-                UPDATE sessions
-                SET revoked_at = ?, last_seen_at = ?
-                WHERE id = ? AND user_id = ?
-                  AND access_token_hash IS NOT NULL
-                  AND revoked_at IS NULL
-                """.trimIndent()
-            ).use { statement ->
-                statement.setTimestamp(1, nowMillis.toTimestamp())
-                statement.setTimestamp(2, nowMillis.toTimestamp())
-                statement.setObject(3, sessionId)
-                statement.setObject(4, userId)
-                statement.executeUpdate() == 1
-            }
+    override suspend fun revokeSessionById(userId: UUID, sessionId: UUID, nowMillis: Long): Boolean = authTransaction { connection ->
+        if (lockUser(connection, userId) == null) return@authTransaction false
+        connection.prepareStatement("UPDATE sessions SET revoked_at = ?, last_seen_at = ? WHERE id = ? AND user_id = ? AND access_token_hash IS NOT NULL AND revoked_at IS NULL").use {
+            it.setTimestamp(1, nowMillis.toTimestamp()); it.setTimestamp(2, nowMillis.toTimestamp())
+            it.setObject(3, sessionId); it.setObject(4, userId); it.executeUpdate() == 1
         }
     }
 
-    override suspend fun revokeAllSessions(userId: UUID, nowMillis: Long): Int =
-        withContext(Dispatchers.IO) {
-            dataSource.connection.use { connection ->
-                connection.prepareStatement(
-                    """
-                    UPDATE sessions
-                    SET revoked_at = ?, last_seen_at = ?
-                    WHERE user_id = ?
-                      AND access_token_hash IS NOT NULL
-                      AND revoked_at IS NULL
-                    """.trimIndent()
-                ).use { statement ->
-                    statement.setTimestamp(1, nowMillis.toTimestamp())
-                    statement.setTimestamp(2, nowMillis.toTimestamp())
-                    statement.setObject(3, userId)
-                    statement.executeUpdate()
-                }
-            }
+    override suspend fun revokeAllSessions(userId: UUID, nowMillis: Long): Int = authTransaction { connection ->
+        if (lockUser(connection, userId) == null) return@authTransaction 0
+        connection.prepareStatement("UPDATE sessions SET revoked_at = ?, last_seen_at = ? WHERE user_id = ? AND access_token_hash IS NOT NULL AND revoked_at IS NULL").use {
+            it.setTimestamp(1, nowMillis.toTimestamp()); it.setTimestamp(2, nowMillis.toTimestamp()); it.setObject(3, userId); it.executeUpdate()
         }
+    }
 
     override suspend fun upgradeGuest(upgrade: GuestUpgrade): GuestUpgradeResult =
         withContext(Dispatchers.IO) {
@@ -474,6 +508,11 @@ class PostgresAuthRepository(private val dataSource: DataSource) : AuthRepositor
         dataSource.connection.use { connection ->
             connection.autoCommit = false
             try {
+                val userId = connection.prepareStatement("SELECT id FROM users WHERE email_normalized = ? AND account_type = 'REGISTERED' AND status = 'ACTIVE' FOR UPDATE").use {
+                    it.setString(1, emailNormalized)
+                    it.executeQuery().use { r -> if (r.next()) r.getObject(1, UUID::class.java) else null }
+                }
+                if (userId == null) { connection.rollback(); return@withContext false }
                 val reset = connection.prepareStatement(
                     """
                     SELECT pr.id, pr.user_id
@@ -482,7 +521,7 @@ class PostgresAuthRepository(private val dataSource: DataSource) : AuthRepositor
                     WHERE u.email_normalized = ? AND pr.token_hash = ?
                       AND pr.used_at IS NULL AND pr.expires_at > ?
                       AND u.account_type = 'REGISTERED' AND u.status = 'ACTIVE'
-                    FOR UPDATE OF pr, u
+                    FOR UPDATE OF pr
                     """.trimIndent()
                 ).use { statement ->
                     statement.setString(1, emailNormalized)
@@ -781,3 +820,10 @@ class PostgresAuthRepository(private val dataSource: DataSource) : AuthRepositor
 }
 
 private fun Long.toTimestamp(): Timestamp = Timestamp.from(Instant.ofEpochMilli(this))
+
+internal val REFRESH_SESSION_LOOKUP_SQL = """
+    SELECT s.id, s.user_id FROM sessions s WHERE s.refresh_token_hash = ?::CHAR(64)
+    UNION ALL
+    SELECT s.id, s.user_id FROM auth_refresh_recoveries r
+    JOIN sessions s ON s.id = r.session_id WHERE r.predecessor_hash = ?
+""".trimIndent()

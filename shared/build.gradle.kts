@@ -95,6 +95,15 @@ kotlin {
             implementation(libs.kotlinx.coroutines.test)
             implementation(libs.ktor.client.mock)
         }
+
+        getByName("androidHostTest").dependencies {
+            implementation(project(":server"))
+            implementation(libs.ktor.server.test.host)
+            implementation(libs.hikari)
+            implementation(libs.flyway.core)
+            implementation(libs.flyway.database.postgresql)
+            implementation(libs.postgresql)
+        }
     }
 }
 

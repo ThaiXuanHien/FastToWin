@@ -1,11 +1,13 @@
 package com.hienthai.fastowin.server
 
+import com.hienthai.fastowin.protocol.AuthSessionResponse
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.util.UUID
 
 class InMemoryAuthRepository : AuthRepository {
     private val mutex = Mutex()
+    private val recoveries = mutableMapOf<UUID, RefreshRecovery>()
     private val accounts = mutableMapOf<String, AccountCredentials>()
     private val sessions = mutableMapOf<String, StoredSession>()
     private val sessionsByAccessToken = mutableMapOf<String, StoredSession>()
@@ -42,8 +44,10 @@ class InMemoryAuthRepository : AuthRepository {
     }
 
     override suspend fun rotateSession(refreshTokenHash: String, replacement: NewAuthSession): UUID? = mutex.withLock {
-        val current = sessions.remove(refreshTokenHash) ?: return@withLock null
+        val current = sessions[refreshTokenHash] ?: return@withLock null
         if (current.revoked || current.expiresAtMillis <= replacement.nowMillis) return@withLock null
+        sessions.remove(refreshTokenHash)
+        recoveries.remove(current.sessionId)
         sessionsByAccessToken.entries.removeAll { it.value.sessionId == current.sessionId }
         val rotated = current.copy(
             accessExpiresAtMillis = replacement.accessExpiresAtMillis,
@@ -56,8 +60,61 @@ class InMemoryAuthRepository : AuthRepository {
         current.userId
     }
 
+    override suspend fun rotateRecoverableSession(rotation: RefreshRotation): AuthSessionResponse? = mutex.withLock {
+        val receipt = recoveries.values.firstOrNull { it.predecessorHash == rotation.predecessorHash && it.attemptHash == rotation.attemptHash }
+        if (receipt != null) {
+            val current = sessions[receipt.successorRefreshHash] ?: return@withLock null
+            val now = rotation.nowMillis()
+            if (current.sessionId != receipt.sessionId || current.revoked || current.expiresAtMillis <= now ||
+                sessionsByAccessToken[receipt.successorAccessHash]?.sessionId != current.sessionId ||
+                accounts.values.none { it.userId == current.userId } || receipt.recoveryExpiresAtMillis <= now) return@withLock null
+            return@withLock RefreshRecoveryCodec.open(receipt, rotation.predecessorToken, rotation.attemptSecret)
+        }
+        val current = sessions[rotation.predecessorHash] ?: return@withLock null
+        val now = rotation.nowMillis()
+        if (current.revoked || current.expiresAtMillis <= now || accounts.values.none { it.userId == current.userId }) return@withLock null
+        val (replacement, response) = rotation.issue(current.userId, now)
+        // Authenticate and encode before changing any state, so codec failure leaves the old generation intact.
+        val created = rotation.receipt(current.sessionId, replacement, response)
+        val rotated = current.copy(accessExpiresAtMillis = replacement.accessExpiresAtMillis,
+            expiresAtMillis = replacement.refreshExpiresAtMillis, lastSeenAtMillis = now)
+        sessions.remove(rotation.predecessorHash)
+        sessionsByAccessToken.entries.removeAll { it.value.sessionId == current.sessionId }
+        sessions[replacement.refreshTokenHash] = rotated
+        sessionsByAccessToken[replacement.accessTokenHash] = rotated
+        recoveries[current.sessionId] = created
+        response
+    }
+
+    override suspend fun revokePendingSession(predecessorHash: String, attemptHash: String, nowMillis: Long): Boolean = mutex.withLock {
+        val receipt = recoveries.values.firstOrNull { it.predecessorHash == predecessorHash && it.attemptHash == attemptHash }
+        val token = if (sessions.containsKey(predecessorHash)) predecessorHash else {
+            if (receipt == null || receipt.metadataExpiresAtMillis <= nowMillis) return@withLock false
+            val candidate = sessions[receipt.successorRefreshHash] ?: return@withLock false
+            if (candidate.sessionId != receipt.sessionId || sessionsByAccessToken[receipt.successorAccessHash]?.sessionId != candidate.sessionId) return@withLock false
+            receipt.successorRefreshHash
+        }
+        val current = sessions[token] ?: return@withLock false
+        sessions[token] = current.copy(revoked = true)
+        sessionsByAccessToken.entries.filter { it.value.sessionId == current.sessionId }.forEach { it.setValue(current.copy(revoked = true)) }
+        recoveries.remove(current.sessionId)
+        true
+    }
+
+    override suspend fun cleanupRefreshRecoveries(nowMillis: Long, batchSize: Int): Int = mutex.withLock {
+        require(batchSize in 1..1000)
+        val expired = recoveries.values.filter { it.metadataExpiresAtMillis <= nowMillis ||
+            (it.recoveryExpiresAtMillis <= nowMillis && it.ciphertext != null) }.take(batchSize)
+        expired.forEach {
+            if (it.metadataExpiresAtMillis <= nowMillis) recoveries.remove(it.sessionId)
+            else recoveries[it.sessionId] = it.copy(nonce = null, ciphertext = null)
+        }
+        expired.size
+    }
+
     override suspend fun revokeSession(refreshTokenHash: String, nowMillis: Long): Boolean = mutex.withLock {
         val current = sessions[refreshTokenHash] ?: return@withLock false
+        recoveries.remove(current.sessionId)
         sessions[refreshTokenHash] = current.copy(revoked = true)
         sessionsByAccessToken.entries.firstOrNull { it.value.sessionId == current.sessionId }
             ?.setValue(current.copy(revoked = true))
@@ -105,6 +162,7 @@ class InMemoryAuthRepository : AuthRepository {
             session.userId == userId && session.sessionId == sessionId && !session.revoked
         }
         if (matching.isEmpty()) return@withLock false
+        recoveries.remove(sessionId)
         matching.forEach { (token, session) -> sessions[token] = session.copy(revoked = true, lastSeenAtMillis = nowMillis) }
         sessionsByAccessToken.entries.forEach { entry ->
             if (entry.value.userId == userId && entry.value.sessionId == sessionId) {
@@ -128,6 +186,7 @@ class InMemoryAuthRepository : AuthRepository {
                 entry.setValue(entry.value.copy(revoked = true, lastSeenAtMillis = nowMillis))
             }
         }
+        activeSessionIds.forEach(recoveries::remove)
         activeSessionIds.size
     }
 
@@ -217,6 +276,7 @@ class InMemoryAuthRepository : AuthRepository {
     }
 
     private fun revokeUserSessions(userId: UUID) {
+        sessions.values.filter { it.userId == userId }.forEach { recoveries.remove(it.sessionId) }
         sessions.entries.removeAll { it.value.userId == userId }
         sessionsByAccessToken.entries.removeAll { it.value.userId == userId }
     }
