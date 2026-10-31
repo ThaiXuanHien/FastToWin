@@ -35,8 +35,8 @@ android {
         applicationId = "com.hienthai.fastowin"
         minSdk = 29
         targetSdk = 37
-        versionCode = 8
-        versionName = "1.0.7"
+        versionCode = 10
+        versionName = "1.0.9"
         buildConfigField("boolean", "AUTH_DIAGNOSTICS_ENABLED", (authDiagnosticsMode == "qa").toString())
         buildConfigField("String", "ADMOB_MODE", "\"$adMobMode\"")
         buildConfigField("String", "ADMOB_APP_ID", "\"$adMobAppId\"")
@@ -69,6 +69,17 @@ android {
                 "\"${providers.gradleProperty("FASTTOWIN_PROD_WS_URL").orElse("wss://fasttowin.up.railway.app/game").get()}\""
             )
             resValue("string", "app_name", "Fast To Win")
+        }
+    }
+
+    if (adMobMode.isEmpty() || adMobMode == "disabled") {
+        // Build-type priority removes SDK permissions while retaining the
+        // dev/prod flavor manifests and their different cleartext policies.
+        for (buildType in listOf("debug", "release")) {
+            check(!file("src/$buildType/AndroidManifest.xml").exists()) {
+                "Merge $buildType manifest entries into the ads-disabled overlay before adding a build-type manifest"
+            }
+            sourceSets.getByName(buildType).manifest.srcFile("src/adsDisabled/AndroidManifest.xml")
         }
     }
 
