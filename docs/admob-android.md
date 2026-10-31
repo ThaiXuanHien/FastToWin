@@ -112,6 +112,37 @@ Device/local cleanup completed for this acceptance: the Dev QA package was remov
 
 ## Primary references
 
+### Ads-disabled packaging — 31 October 2026
+
+An omitted or `disabled` `FASTTOWIN_ADMOB_MODE` now applies
+`app/src/adsDisabled/AndroidManifest.xml` at debug/release build-type priority.
+It removes only `com.google.android.gms.permission.AD_ID` and
+`android.permission.READ_BASIC_PHONE_STATE` supplied by the ad SDK. The existing
+dev/prod flavor manifests retain their cleartext transport settings. Demo, test
+and live modes use the existing manifests and keep their SDK permissions.
+
+The build checks that no separate `src/debug/AndroidManifest.xml` or
+`src/release/AndroidManifest.xml` is silently replaced. If a build-type manifest
+is added later, reconcile its entries with the ads-disabled overlay first.
+
+Actual local manifest merging passed seven cases: prodRelease omitted/disabled/
+demo/test/live and devDebug omitted/disabled. Checks preserved all other baseline
+permissions, package identity, environment transport policy and release
+non-debuggability. The pre-fix disabled manifest failed the permission assertion.
+This is packaging coverage; no SDK requests, device or provider test ran.
+
+Verify a freshly generated manifest with:
+
+```shell
+python scripts/verify_android_ad_manifest.py app/build/intermediates/merged_manifest/prodRelease/processProdReleaseMainManifest/AndroidManifest.xml --mode disabled --environment prod --build-type release
+```
+
+The earlier 1.0.2 (3) binary inventory above remains historical evidence. This
+packaging change does not disable Firebase/FCM, remove their data disclosures,
+settle all SDK collection, enable ads, update Play declarations or deploy Privacy
+pages. Privacy VI/EN wording is now version-neutral in source; publication is a
+separate step. Local evidence: `.artifacts/closed-testing-v10-ads-off-20261031/`.
+
 - https://developers.google.com/admob/android/next-gen/quick-start
 - https://developers.google.com/admob/android/next-gen/rewarded
 - https://developers.google.com/admob/android/next-gen/privacy

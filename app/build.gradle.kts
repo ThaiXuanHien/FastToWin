@@ -72,6 +72,17 @@ android {
         }
     }
 
+    if (adMobMode.isEmpty() || adMobMode == "disabled") {
+        // Build-type priority removes SDK permissions while retaining the
+        // dev/prod flavor manifests and their different cleartext policies.
+        for (buildType in listOf("debug", "release")) {
+            check(!file("src/$buildType/AndroidManifest.xml").exists()) {
+                "Merge $buildType manifest entries into the ads-disabled overlay before adding a build-type manifest"
+            }
+            sourceSets.getByName(buildType).manifest.srcFile("src/adsDisabled/AndroidManifest.xml")
+        }
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
