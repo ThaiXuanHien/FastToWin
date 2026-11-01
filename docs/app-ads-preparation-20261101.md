@@ -1,6 +1,6 @@
 # app-ads.txt — chuẩn bị local ngày01/11/2026
 
-Trạng thái: **đã thêm source, kiểm tra HTTP local và xác minh gói Web; chưa triển khai, chưa khai báo website trên Store, chưa xác minh AdMob**. Phạm vi tiếp tục trong lúc Owner tuyển Closed testers. Không mua domain, tạo hạ tầng, thêm network, sửa Store, yêu cầu crawl, deploy hoặc bật quảng cáo.
+Trạng thái: **đã triển khai gói Web và xác minh HTTP production; chưa khai báo website trên Store, chưa xác minh AdMob**. Phạm vi tiếp tục trong lúc Owner tuyển Closed testers. Chỉ triển khai Web đã được duyệt; không mua domain, tạo hạ tầng, thêm network, sửa Store, yêu cầu crawl hoặc bật quảng cáo.
 
 ## Quan sát và file đã chuẩn bị
 
@@ -16,7 +16,7 @@ File ASCII/UTF-8 không BOM, một dòng kết thúc LF: `.artifacts/app-ads-pre
 
 ## Host đề xuất
 
-Đề xuất dùng website hiện có `https://fasttowin.up.railway.app/`, với file tại `https://fasttowin.up.railway.app/app-ads.txt`; đây **chưa phải lựa chọn domain đã lưu hoặc file đã public**. Phương án tận dụng Web hiện tại, không thêm chi phí mua domain/hạ tầng. Domain riêng sau này là lựa chọn khác cần Owner chốt, không phải điều kiện bắt buộc của bản chuẩn bị này.
+Website đề xuất cho Store là `https://fasttowin.up.railway.app/`. File hiện đã public tại `https://fasttowin.up.railway.app/app-ads.txt`; **chưa lưu Developer website trên Store hoặc chứng minh AdMob đã nhận domain**. Phương án tận dụng Web hiện tại, không thêm chi phí mua domain/hạ tầng. Domain riêng sau này là lựa chọn khác cần Owner chốt, không phải điều kiện bắt buộc của bản chuẩn bị này.
 
 [Public Suffix List](https://publicsuffix.org/list/public_suffix_list.dat), bản31/10/2026đọc ngày01/11, liệt kê `up.railway.app`. Điều này hỗ trợ việc coi hostname tenant FastToWin là một miền tách biệt theo PSL; **chưa chứng minh AdMob đã crawl/chấp nhận hostname này**. Phải đối chiếu URL crawler thực tế sau khi Store/AdMob nhận cấu hình, không tự trỏ vào miền của tenant khác hoặc root do Railway quản lý.
 
@@ -37,7 +37,7 @@ Source Caddy trước thay đổi dùng `try_files {path} /index.html` ở catch
 - Thêm resource đúng snippet, UTF-8 không BOM, LF, 59 byte; `.gitattributes` giữ LF qua checkout Windows.
 - Cả hai Caddyfile có handler riêng `/app-ads.txt`, không dùng SPA fallback. Chạy `scripts/tests/CaddyRouting.Tests.ps1` bằng Caddy 2.11.4 thật: ban đầu thất bại đúng vì thiếu file trả 200; sau sửa, cả hai cấu hình đạt 200/đúng nội dung/`text/plain; charset=utf-8`, query string không đổi nội dung, thiếu file trả 404.
 - Các kiểm thử routing hiện có cùng đạt: SPA, 12 URL legal khi chưa đăng nhập, admin bật/tắt, hai mailbox API, auth/body/query/CSP/cache và chặn internal.
-- Review phần thay đổi không phát hiện lỗi cụ thể. Kiểm thử routing đã chạy lại trên cây source chuẩn bị tích hợp và cùng đạt. Chưa push, chạy CI, thay cấu hình Store hoặc triển khai.
+- Review phần thay đổi không phát hiện lỗi cụ thể. Kiểm thử routing đã chạy lại trên cây source chuẩn bị tích hợp và cùng đạt. Sau đó đã commit và fast-forward master local đến `4f2385d`; kiểm thử trực tiếp trên master cùng đạt. Chưa push hoặc chạy CI.
 - Build offline `:webApp:composeCompatibilityBrowserDistribution` thành công trong 14 phút 54 giây: 91 task, 18 thực thi. Đối chiếu source và ba đầu ra JS/Wasm/compatibility: cùng 59 byte và SHA-256 `4ac7f90a0961b65faa5f6b0dd926e970920e7f032708780d95467014581304c0`. Bằng chứng tổng hợp: `.artifacts/app-ads-preparation-20261101/result.json`.
 - Build ban đầu lỗi Java Unix-domain loopback trước khi xử lý project. Sau khi đặt riêng `jdk.net.unixdomain.tmpdir` vào `.artifacts/jtmp` cho tiến trình build, build chạy được; không sửa JDK, firewall hay cấu hình máy. Cảnh báo Compose plugin/runtime không đồng bộ phiên bản và kích thước bundle/dynamic dependency vẫn còn, nằm ngoài thay đổi file tĩnh này.
 
@@ -47,13 +47,22 @@ Source Caddy trước thay đổi dùng `try_files {path} /index.html` ở catch
 - SHA-256: `a433135d0a1b9f6237b542e786ec4e06f6c761a11d667f6860c4f67180bd7ef5`.
 - Kích thước: 68.081.677 byte; 68 file. `manifest.json` cùng thư mục lưu checksum từng file; đã đọc lại toàn bộ entry ZIP và đối chiếu đủ nội dung/kích thước/checksum.
 - Phạm vi: gói compatibility đã build, `config.production.js` same-origin và ba template Web Railway (`Caddyfile`, `Dockerfile`, `railway.json`). Không có backend/DB, tài liệu Privacy dự thảo hoặc dữ liệu tài khoản QA trong gói.
-- Đây là gói local, chưa upload. Trước triển khai cần duyệt đúng gói/phạm vi; sau triển khai mới kiểm tra public `/app-ads.txt`, robots/redirect và URL crawler. Không suy ra AdMob Verified từ kiểm thử local.
+- Đây là đúng gói đã upload trong bước production bên dưới. Không suy ra AdMob Verified từ kết quả local hoặc HTTP public.
 
-## Các bước ngoài local — chưa thực hiện
+## Triển khai Web production đã hoàn tất
 
-- Sau khi code/gói được duyệt: xin phạm vi deploy Web chính xác, kiểm tra public file và khả năng crawler truy cập/robots/redirect. Không tự sửa CSP/quyền hay mở endpoint backend.
+Owner chọn merge local rồi trả lời “ok” cho bước duyệt/triển khai gói đã chuẩn bị. Upload một lần vào project `8daf3d1f-df4c-4f39-a07b-61becae674fa`, environment production `351ee85f-7760-4b57-9649-9693fdcdbfea`, service Web `3c5d76ab-734e-4ccc-a4c0-4116b5d58d27`.
+
+- Deployment `800d8bc5-51fb-4ca7-82e9-63b26e71a065` đạt SUCCESS. Base Web trước upload là `1e588a3d-12f9-446c-a2eb-e7d94813b3c2`; đã kiểm tra base và checksum toàn bộ ZIP/context trước upload.
+- Chín kiểm tra HTTP sau triển khai đạt: `/app-ads.txt` và URL có query cùng đúng 59 byte, `text/plain; charset=utf-8`, không redirect hoặc `X-Robots-Tag`; homepage, runtime loader, config, Privacy VI/EN khớp gói; `/health` OK và `/status` ACTIVE, không bảo trì.
+- Backend vẫn là deployment `86f53b3f-7af5-4a76-8b8d-6a1e4d8f32d7`. Không đổi backend/DB, staging, Play, Store, AdMob, feature flags, tester, thiết bị hoặc CI.
+- `/robots.txt` hiện trả HTML của SPA (HTTP 200), không phải file robots chuyên biệt. Đây là quan sát HTTP; chưa chứng minh Google crawler đã chấp nhận, chưa yêu cầu crawl hoặc sửa robots.
+- Bằng chứng: `.artifacts/app-ads-release-20261101-230154/production-preflight.json`, `deployment-intent.json`, `deployment-upload.json`, `deployment-status.json` và `production-verification.json`.
+
+## Các bước ngoài Web deployment — chưa thực hiện
+
 - Đọc lại rồi xin lưu Developer website của đúng FastToWin trên Store, giữ PrivacyURL và các khai báo khác. Chờ website xuất hiện trên listing thực tế.
 - Khi app Store được AdMob tìm thấy và Owner cho phép liên kết/xác minh, đọc lại hostname/URL crawl và kết quả Verified. Google lưu ý cần thời gian đồng bộ/crawl; không tự polling hoặc tạo lịch theo dõi.
 - Giữ AdMobOFF, consentDRAFT, chưa có callback production. app-ads.txt không cấp lượt chơi, không phát hành Play và không thay nhóm Closed tester.
 
-Bước kế tiếp: tích hợp thay đổi và chuẩn bị gói/phạm vi triển khai Web cụ thể để Owner duyệt, rồi mới kiểm tra URL public và xử lý Developer website/AdMob ở các bước riêng. Không tự khởi chạy CI hoặc triển khai từ kết quả local này.
+Bước kế tiếp: đọc trường Developer website trên Console và chuẩn bị lưu website đề xuất để Owner duyệt. Khi AdMob tìm được app Store và có quyền liên kết/xác minh, đối chiếu URL crawl và kết quả thực tế. Không tự khởi chạy CI, đổi website Store hoặc yêu cầu crawl từ kết quả HTTP này.
