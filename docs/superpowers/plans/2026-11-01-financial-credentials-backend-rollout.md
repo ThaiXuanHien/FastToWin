@@ -92,12 +92,12 @@ Both results must match the frozen hashes above. Do not rebuild or rerun the pac
 **Consumes:** candidate manifest, exact target identities, deployment approval and any separately approved data-access scope.
 **Produces:** explicit go/no-go before maintenance or upload.
 
-- [ ] Obtain approval for this exact backend candidate, a planned maintenance/restart window, and bounded post-deploy checks. Expected interruption is 5–10 minutes after warning/drain, subject to successful preflight/build/health.
+- [x] Obtain approval for this exact backend candidate, a planned maintenance/restart window, and bounded post-deploy checks. Expected interruption is 5–10 minutes after warning/drain, subject to successful preflight/build/health.
 - [x] Read service/deployment metadata and confirm the expected active IDs, one backend replica, Dockerfile builder and `/health` check. Keep Web running and its image unchanged.
 - [x] Check only the named nonsecret switches: financial collection disabled, AdMob disabled, mandatory UGC acceptance disabled. Do not export a full environment/secret inventory or copy credential values into receipts.
-- [ ] Confirm the running backend's schema evidence remains V69 and that the candidate has zero pending migrations. Prefer existing authorized deployment/Flyway logs; direct private schema inspection requires its own granted access scope. Unknown version is a stop condition.
-- [ ] Satisfy the repository's backup-before-update requirement in `docs/production-deployment.md`: record a current verified backup/recovery receipt before changing the backend. This local preparation did not create one. The historical V68 archive is not presented as a current V69 backup. If a fresh full-database backup/restore check is needed, obtain explicit authorization for that private-data access, destination, retention and temporary access before performing it; do not open or overwrite the existing V63/V68 archives.
-- [ ] Confirm a usable Owner maintenance session without reading password files. If absent, request direct sign-in. Record the current maintenance version and ACTIVE state.
+- [x] Confirm the running backend's schema evidence remains V69 and that the candidate has zero pending migrations. Prefer existing authorized deployment/Flyway logs; direct private schema inspection requires its own granted access scope. Unknown version is a stop condition.
+- [x] Satisfy the repository's backup-before-update requirement in `docs/production-deployment.md`: record a current verified backup/recovery receipt before changing the backend. This local preparation did not create one. The historical V68 archive is not presented as a current V69 backup. If a fresh full-database backup/restore check is needed, obtain explicit authorization for that private-data access, destination, retention and temporary access before performing it; do not open or overwrite the existing V63/V68 archives.
+- [x] Confirm a usable Owner maintenance session without reading password files. If absent, request direct sign-in. Record the current maintenance version and ACTIVE state.
 
 Stop before maintenance if any check is unknown, failed, outside granted access, or shows unexpected state. Do not trigger a database read/backup merely because this document describes the dependency.
 
@@ -116,11 +116,11 @@ Evidence: `.artifacts/financial-source-20261101/production-preflight.json`, `pro
 **Consumes:** successful Task 2 and explicit deployment approval.
 **Produces:** the candidate backend running under maintenance, with Web unchanged.
 
-- [ ] Use the existing protected maintenance UI/API as Owner: planned update, reason `Deploy financial credential resolver 6eb2d2f`, warning 5 minutes, drain up to 15 minutes. Messages: VI `Hệ thống sắp bảo trì để cập nhật máy chủ. Vui lòng hoàn tất trận đang chơi.`; EN `Server maintenance will start shortly. Please finish your current match.`
-- [ ] Record the fresh expectedVersion and a unique requestId; never blindly repeat a mutation after an ambiguous response. Read the current state to reconcile it first.
-- [ ] Wait for persisted/effective/runtime versions to agree and the runtime to report zero active matches. Never terminate an occupied match to force this routine update; retain the current backend and stop/replan if zero is not reached safely.
-- [ ] Confirm MAINTENANCE at the public status endpoint. Stop the old backend deployment before starting the replacement, preserving the single-instance constraint. Do not stop Web or Postgres.
-- [ ] Revalidate every frozen context hash. Upload the exact context once to the explicit target IDs. The following is the previously established CLI shape; confirm local `up --help` before execution, without starting an upload:
+- [x] Use the existing protected maintenance UI/API as Owner: planned update, reason `Deploy financial credential resolver 6eb2d2f`, warning 5 minutes, drain up to 15 minutes. Messages: VI `Hệ thống sắp bảo trì để cập nhật máy chủ. Vui lòng hoàn tất trận đang chơi.`; EN `Server maintenance will start shortly. Please finish your current match.`
+- [x] Record the fresh expectedVersion and a unique requestId; never blindly repeat a mutation after an ambiguous response. Read the current state to reconcile it first.
+- [x] Wait for persisted/effective/runtime versions to agree and the runtime to report zero active matches. Never terminate an occupied match to force this routine update; retain the current backend and stop/replan if zero is not reached safely.
+- [x] Confirm MAINTENANCE at the public status endpoint. Stop the old backend deployment before starting the replacement, preserving the single-instance constraint. Do not stop Web or Postgres.
+- [x] Revalidate every frozen context hash. Upload the exact context once to the explicit target IDs. The following is the previously established CLI shape; confirm local `up --help` before execution, without starting an upload:
 
 ```powershell
 railway up .artifacts/financial-source-20261101/backend-release-6eb2d2f/server `
@@ -131,8 +131,8 @@ railway up .artifacts/financial-source-20261101/backend-release-6eb2d2f/server `
   --message 'FastToWin backend financial credentials 6eb2d2f'
 ```
 
-- [ ] Retain the returned deployment identity. If the upload response is ambiguous, reconcile deployment inventory by time/message/target before deciding whether anything must be retried; do not upload a duplicate automatically.
-- [ ] Check this exact deployment to completion with bounded operational checks. This permission would cover deployment health, not GitHub CI monitoring. If the image fails, retain maintenance and diagnose the deployment without changing provider flags.
+- [x] Retain the returned deployment identity. If the upload response is ambiguous, reconcile deployment inventory by time/message/target before deciding whether anything must be retried; do not upload a duplicate automatically.
+- [x] Check this exact deployment to completion with bounded operational checks. This permission would cover deployment health, not GitHub CI monitoring. If the image fails, retain maintenance and diagnose the deployment without changing provider flags.
 
 The upload root must be the named `server/` directory, never the repository, artifact root, ZIP's parent or any private-data directory. `railway.json` is packaged metadata; actual service settings remain authoritative.
 
@@ -143,13 +143,13 @@ The upload root must be the named `server/` directory, never the repository, art
 **Consumes:** new deployment ID and successful maintenance/runtime observations.
 **Produces:** a verified ACTIVE backend, or an explicit maintenance-held failure report.
 
-- [ ] Confirm exactly one successful backend deployment at the new ID, expected Web deployment unchanged, and no unexpected service/variable mutation.
-- [ ] Check startup logs: production/PostgreSQL mode, Flyway validation successful with no newly applied migrations, no credential/startup failures. Do not dump environment values or raw request/response bodies.
-- [ ] Confirm the three feature gates still match preflight and financial collection remains disabled. Do not send an Orders request to prove a feature that has not been activated.
-- [ ] Check public `/health` returns HTTP 200 and body `OK`; `/status` must still report maintenance until Owner reopening. Confirm the public homepage and `/privacy/` remain served by the unchanged Web.
-- [ ] Reopen through the protected maintenance control using the current version and a fresh requestId only after the above checks succeed. Confirm persisted/effective/runtime state agrees with public ACTIVE.
-- [ ] Perform a bounded follow-up health/status check after 60 seconds and inspect the relevant startup/error window once. Stop repeated checking once this gate passes. Do not claim a long stability/load test.
-- [ ] Save commit, candidate SHA, old/new deployment IDs, no-new-migration evidence, health/status observations and unchanged flags. Do not call this LIVE revenue acceptance or close #24.
+- [x] Confirm exactly one successful backend deployment at the new ID, expected Web deployment unchanged, and no unexpected service/variable mutation.
+- [x] Check startup logs: production/PostgreSQL mode, Flyway validation successful with no newly applied migrations, no credential/startup failures. Do not dump environment values or raw request/response bodies.
+- [x] Confirm the three feature gates still match preflight and financial collection remains disabled. Do not send an Orders request to prove a feature that has not been activated.
+- [x] Check public `/health` returns HTTP 200 and body `OK`; `/status` must still report maintenance until Owner reopening. Confirm the public homepage and `/privacy/` remain served by the unchanged Web.
+- [x] Reopen through the protected maintenance control using the current version and a fresh requestId only after the above checks succeed. Confirm persisted/effective/runtime state agrees with public ACTIVE.
+- [x] Perform a bounded follow-up health/status check after 60 seconds and inspect the relevant startup/error window once. Stop repeated checking once this gate passes. Do not claim a long stability/load test.
+- [x] Save commit, candidate SHA, old/new deployment IDs, no-new-migration evidence, health/status observations and unchanged flags. Do not call this LIVE revenue acceptance or close #24.
 
 If startup, migration validation, identity, data-access or health checks fail, keep maintenance and report the precise finding. Do not restore a database, repair Flyway, activate a provider or redeploy the old backend automatically. A rollback proposal must identify the exact prior image and reconfirm schema compatibility before owner approval.
 
@@ -163,3 +163,23 @@ After this deployment, a later scope must authorize the collector configuration,
 - No new source changes, migrations, secrets, provider calls or production reads were made during preparation.
 - Build success and cached test reuse are distinguished; Android UI failure/waiver remains explicit.
 - Public candidate is frozen and hash-addressed. Deployment approval and current recovery readiness remain outstanding checkpoints.
+
+
+## Approved rollout completed — 1 November 2026
+
+Owner approved the combined temporary access, encrypted full V69 backup/isolated restore and exact backend-only deployment scope. The owner signed in directly to the existing Admin account; no password file, token or cookie was read/exported. Five offline access/restore fault cases and six deployment guard cases passed. Independent read-only review found no concrete blocker in the backup/access/restore and replacement helpers; Python and Java checks passed. Helpers are local operational artifacts, not part of the upload.
+
+- New encrypted V69 backup: `.artifacts/financial-source-20261101/production-private/production-v69.dump.dpapi`, 443,430 encrypted bytes, DPAPI CurrentUser. Created `2026-11-01T13:47:35.805754+00:00`; retain until `2026-11-15T13:47:35.805754+00:00` (20:47:35 Vietnam). Retention is recorded; no recurring automation/deletion task was created. Old V63/V68 archives were not opened or changed.
+- Isolated PostgreSQL18 restore passed: 96 original application tables, Flyway V69 validation with zero migrations, original rows and migration history unchanged, expected recovery indexes/checks/trigger present. No application/provider workers started. Owned local cluster and restore password were removed and loopback port closed.
+- Maintenance: warning began20:50:47 Vietnam, maintenance reached20:55:48 with0active matches, policy/runtime version20. Old backend stopped only after the fresh Owner observation and independent public/schema/gate checks. The stop-intent to saved reopen interval was220.9seconds; the five-minute warning was separate.
+- New backend deployment: `86f53b3f-7af5-4a76-8b8d-6a1e4d8f32d7`, SUCCESS, exact candidate source6eb2d2f. Uploaded once. All170runtime files match the frozen manifest. Schema remains69 with unchanged Flyway history, no new migration. One bounded startup-log inspection found26entries,0errors/0warnings, successful validation and no migration necessary.
+- Web deployment remains `1e588a3d-12f9-446c-a2eb-e7d94813b3c2`; public homepage/config/Privacy VI/EN/Terms hashes unchanged. Web and Postgres were not stopped. No Railway plan, provider variable, domain/networking, replica, staging or Play changes.
+- Owner reopened at21:00:07 Vietnam. Persisted/effective/runtime/public all observed ACTIVE version21. Final health/status/metadata follow-up at `2026-11-01T14:02:09.613678+00:00` passed,95.7seconds after the initial public reopen check. This is a bounded postflight, not a long stability/load test.
+- The owned SSH key was revoked and authoritative inventory confirmed absence; both local key files were deleted. New encrypted backup was hash-verified and retained. The user-owned existing Admin session was not copied into operational storage. Agent-created Admin tab was closed; Railway ACTIVE proof tab retained.
+- LIVE revenue, AdMob and mandatory UGC terms remain disabled. No provider Orders acceptance, real purchase/refund, Samsung test, CI read/run, production restore or old-backend rollback occurred. Issue24 remains open for real-data acceptance.
+
+Final receipts: `.artifacts/financial-source-20261101/production-operations/deployment-result.json`, `postflight-before-reopen.json`, `startup-log-summary.json`, `live-restore-rehearsal.json`, `live-restore-cleanup.json`, `temporary-key-revoked.json`, `outage-window.json`, `railway-deployed-active.png`.
+
+The IDs in the earlier guard table describe this completed transition. For future deployments, the backend baseline is now `86f53b3f-7af5-4a76-8b8d-6a1e4d8f32d7`; Web remains1e588a3d. Do not rerun this completed runbook or its recorded mutation intents.
+
+Next separate work: prepare the minimum authoritative Google Orders access/collection-boundary and real-data acceptance scope for #24. Do not activate LIVE automatically or count SANDBOX purchases as revenue.
