@@ -4,6 +4,14 @@ Issue: #51. Rewarded ads are opt-in and grant exactly **2 online matches** after
 
 ## Delivery status
 
+**Current readiness checkpoint — 1 November 2026:** the read-only
+[AdMob/consent audit](admob-readiness-20261101.md) confirms account approval but
+app Requires review, no store link, no authored GDPR/US messages observed,
+app-ads.txt unverified and SSV URL empty. Existing automatic/fallback messaging
+is not device-form acceptance. Internal1.0.9(10) and backend remain ads OFF;
+enabling requires separate consent/provider/device, declaration and production
+configuration gates. The older release/binary observations below are historical.
+
 Backend session/SSV/SQL code and Android integration are integrated with reviewed UGC, legal pages and the master Billing fix for internal version **1.0.2 (3)**. Release builds default to ads disabled. The AdMob account is approved; the app itself currently **Requires review**, with empty store details and SSV unset (controller verification, 2026-10-23). Account approval does not satisfy app readiness. Do not interpret an SDK earned callback, a Console probe, or a demo ad as a committed player reward.
 
 Owned unpublished Android app: `ca-app-pub-1914037185148012~8507808229`. Rewarded unit: `ca-app-pub-1914037185148012/7821587525`, saved reward `2 online_matches`. These public IDs were supplied by the owner and the unit/reward verified in AdMob Console on 2026-10-20. A supported public store listing, app status **Ready** and the existing consent/provider/device gates remain required before live activation. No Console or callback configuration changes are part of source integration.
