@@ -10,17 +10,32 @@ verification as well as authoritative monetary amounts.
 
 ## Configuration
 
-Use the existing deployment secret-file convention. Set these server-only values
+Use the existing Billing credential configuration. Set these server-only values
 when authorized to enable collection:
 
 | Setting | Purpose |
 | --- | --- |
 | `FINANCIAL_GOOGLE_ENABLED=true` | Explicit opt-in; omitted/false makes no financial provider requests |
-| `GOOGLE_APPLICATION_CREDENTIALS` | Legacy mounted service-account JSON file used by this collector; do not replace a Firebase identity without reviewing its dependencies |
+| `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON` | Dedicated Billing service-account JSON; highest priority, shared with purchase verification |
+| `GOOGLE_PLAY_CREDENTIALS_FILE` | Dedicated Billing service-account file when inline JSON is absent/blank |
+| `GOOGLE_APPLICATION_CREDENTIALS` | Legacy credential-file fallback only when both dedicated settings are absent/blank; do not replace the Firebase identity to configure Billing |
 | `GOOGLE_PLAY_PACKAGE_NAME` | Exact application package used by both purchase verification and Orders requests |
 | `FINANCIAL_COLLECTION_START` | Required UTC RFC3339 instant, no later than now; earliest supported payment time |
 
-The purchase verifier additionally supports dedicated Billing JSON/file credentials and an explicit Google-verified QA allowlist; see [store-billing.md](store-billing.md). These verifier-only settings do not enable this collector or change its credential source. Captured test orders remain SANDBOX; default LIVE totals exclude them.
+The collector uses the same credential resolver as purchase verification:
+dedicated inline JSON → dedicated Billing file → legacy credential file. A malformed
+or unreadable selected credential does not fall back to a lower-priority identity;
+financial collection stays unavailable with no credential details in errors/logs.
+No Firebase setting is changed. When collection is disabled, credentials are not
+loaded and no financial provider requests are made. Configuration alone does not
+refresh OAuth tokens or fetch orders; those requests occur only during enabled
+collection of due known orders.
+
+The explicit Google-verified QA allowlist is still verifier-only; see
+[store-billing.md](store-billing.md). Neither Billing credentials nor that allowlist
+enable this collector: `FINANCIAL_GOOGLE_ENABLED=true` and the valid collection
+boundary/package are still required. Captured test orders remain SANDBOX; default
+LIVE totals exclude them.
 
 The service account needs access to the configured app and the Android Publisher
 scope. Missing/malformed credentials or configuration keep financial collection
@@ -84,6 +99,10 @@ one-way bindings, not receipts. No browser import or financial mutation route ex
 
 ## Local validation and reference bounds
 
+`FinancialSourceConfigurationTest` checks credential priority, dedicated-only and
+legacy configuration, no fallback from invalid dedicated credentials, and no
+credential reads when collection is disabled or its boundary/package is invalid.
+Its signed OAuth and Orders requests use loopback servers and ephemeral test keys.
 `GoogleOrdersFinancialSourceTest` runs actual loopback HTTP for Orders and OAuth,
 with an ephemeral RSA service-account key and signature/scope validation at the
 fake token endpoint. `PostgresFinancialSyncTest` migrates isolated UUID schemas and

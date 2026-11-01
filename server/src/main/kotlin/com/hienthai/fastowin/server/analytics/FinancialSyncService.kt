@@ -1,8 +1,7 @@
 package com.hienthai.fastowin.server.analytics
 
 import java.time.Instant
-import com.google.auth.oauth2.ServiceAccountCredentials
-import java.io.FileInputStream
+import com.hienthai.fastowin.server.googlePlayBillingCredentials
 import java.net.URI
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -34,9 +33,7 @@ internal fun configuredFinancialSource(values: Map<String, String> = System.gete
         require(start <= Instant.now())
         val packageName = values.getValue("GOOGLE_PLAY_PACKAGE_NAME")
         require(packageName.matches(Regex("[A-Za-z0-9_]+(\\.[A-Za-z0-9_]+)+")))
-        val credentials = FileInputStream(values.getValue("GOOGLE_APPLICATION_CREDENTIALS")).use {
-            ServiceAccountCredentials.fromStream(it).createScoped("https://www.googleapis.com/auth/androidpublisher")
-        }
+        val credentials = googlePlayBillingCredentials(values) ?: return null
         GoogleOrdersFinancialSource(packageName, credentials, endpoint = endpoint) to start
     } catch (_: Exception) { null }
 }
