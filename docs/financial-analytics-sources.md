@@ -99,6 +99,11 @@ one-way bindings, not receipts. No browser import or financial mutation route ex
 
 ## Local validation and reference bounds
 
+The [Google Play financial acceptance checklist](superpowers/plans/2026-11-01-google-play-financial-acceptance-checklist.md)
+records the 1 November 2026 API cross-check, access/collection-boundary gates and
+pending LIVE/refund/dashboard cases. The owner has no real-money order available
+for acceptance yet; the checklist neither enables collection nor authorizes a purchase.
+
 `FinancialSourceConfigurationTest` checks credential priority, dedicated-only and
 legacy configuration, no fallback from invalid dedicated credentials, and no
 credential reads when collection is disabled or its boundary/package is invalid.
