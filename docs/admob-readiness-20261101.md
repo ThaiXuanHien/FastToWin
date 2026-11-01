@@ -56,11 +56,22 @@ Earlier #51 text referring to an unmerged Draft PR, Internal1.0.2(3), twelve lan
 The [local consent configuration proposal](admob-consent-proposal-20261101.md)
 now supplies exact draft values. Google's supported-language list does not include
 Vietnamese for GDPR/US messages; it proposes English (US) forms with existing
-VI/EN app Settings and Privacy pages. No Console draft has been created.
+VI/EN app Settings and Privacy pages. After the owner's separate approval,
+both Console drafts and the exact app Privacy URL were saved on1November;
+each draft was reopened to check its settings, and both publish switches remain OFF.
+Evidence: `.artifacts/admob-consent-drafts-20261101/`.
 
-1. **Prepare a concrete consent configuration for owner review.** Scope the existing Android app, VI/EN presentation, applicable regions and Privacy URL; inspect provider/vendor choices and the current automatic fallback setting before proposing values. Preserve the owner's178-region/PC distribution choice. Preparing a proposal does not authorize saving/publishing messages.
-2. **Confirm usable store availability, then link the correct app deliberately.** Google's [app readiness guide](https://support.google.com/admob/answer/10564477) requires a published app in a supported store and a matching link for review. Linking can initiate review; do not do it under this read-only scope or assume a draft/Closed submission is a public listing.
-3. **Establish app-ads.txt ownership/verification.** Select the developer website/domain from the actual store listing and verify the exact authorized publisher file. No domain choice, hosting change or file deployment is authorized by this audit; empty Console data is not a successful crawl.
+The subsequent [partner/Privacy baseline review](admob-consent-policy-sources-20261101.md)
+read EU commonly-used198, US active345, own purposes0 and the existing defaults;
+only the AdMob(default) mediation group was visible. No settings changed.
+EU preview210 versus selected198 and precise-location vendor feature handling
+still require reconciliation; this is not complete vendor-by-vendor acceptance.
+The next local deliverable is a concrete VI/EN advertising-policy draft,
+without deploying it or changing the currently accurate ads-OFF policy.
+
+1. **Review partners/purposes and Privacy before consent publication.** The approved EU/US drafts and English Privacy URL are now saved. EU targets EEA/UK/Switzerland with refusal and close-as-refusal enabled; US targets all current/future supported states. Existing account settings were left unchanged. The EU preview mentions210partners and precise geolocation; this is a template observation, not acceptance that every listed vendor/purpose is needed. Inspect the actual inventory and policy before proposing exact account changes or Publish. Preserve the owner's178-region/PC distribution choice.
+2. **Confirm usable store availability, then link the correct app deliberately.** The subsequent [Play/AdMob readback](play-admob-link-readiness-20261101.md) confirms submission1's16changes, including Closed1.0.9(10), are Published on1November. The exact Store page opens in the signed-in browser, but anonymous/public download eligibility is not established. AdMob still Requires review with no store link; one exact-URL search returned no matching app, and the wizard was cancelled. Google's [app readiness guide](https://support.google.com/admob/answer/10564477) requires availability in a supported store and a matching link for review. Linking can initiate review; none was performed. Do not infer AdMobReady or production release from Closed publication.
+3. **Establish app-ads.txt ownership/verification.** Subsequent [local preparation](app-ads-preparation-20261101.md) captured the exact AdMob snippet and added the one-line resource and dedicated plain-text routes after Owner approval. Both production Caddy configurations passed local HTTP routing tests, including missing-file404. The offline compatibility distribution build passed; the source and all three JS/Wasm/compatibility outputs contain the identical59-byte file (SHA-256 recorded in the handoff). Published Store App support showed email/Privacy but no Developer website link; Console website field was not inspected. Existing Railway hostname remains proposed. No website/store/host configuration, deployment, crawl request or verified result exists from this preparation; empty Console data is not a successful crawl.
 4. **Plan regional and provider TEST acceptance separately.** Explicitly review the build/backend target and supported consent-test setup, then test accept/refuse, required privacy options, age bands, no-fill, early dismiss, cancel/reopen, signed SSV+2 and duplicate safety. Only use the real device when the owner requests it. Existing20October owned TEST SSV+2 evidence remains historical and is not acceptance of the final new binary.
 5. **Prepare production activation only after readiness and acceptance.** Review the exact production SSV URL and unit, explicit client LIVE build, backend flag, Privacy and Play ads/Advertising ID/Data safety answers against that binary. Get the exact changes approved before saving or enabling anything. Client mode and backend gate are separate; toggling one alone is not a release.
 
@@ -71,3 +82,7 @@ Google's [SSV guide](https://developers.google.com/admob/android/ssv) describes 
 - Read-only Console readiness/consent/unit inspection and source/documentation review completed.
 - No ads enabled, message/store link/callback changed, Console form saved, callback probe sent, permission expanded, issue posted, build/deploy performed, CI inspected/dispatched or Samsung test resumed.
 - #51 remains OPEN for the concrete setup and provider/device acceptance gates above.
+
+Subsequent scoped action: Owner approved saving exactly two DRAFT messages and
+the app Privacy URL. That work is complete; no publication, store linking,
+account-level vendor/purpose change, SSV setup or ads activation occurred.

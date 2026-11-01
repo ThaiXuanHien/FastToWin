@@ -35,7 +35,7 @@ function Send-Request([string]$Path, [string]$Method = 'GET', [string]$Body = ''
     try {
         $response = $http.SendAsync($request).GetAwaiter().GetResult()
         $content = $response.Content.ReadAsStringAsync().GetAwaiter().GetResult()
-        return @{ Status = [int]$response.StatusCode; Content = $content; Headers = $response.Headers }
+        return @{ Status = [int]$response.StatusCode; Content = $content; Headers = $response.Headers; ContentType = [string]$response.Content.Headers.ContentType }
     } finally { $request.Dispose() }
 }
 try {
@@ -69,6 +69,18 @@ try {
                 } catch { Start-Sleep -Milliseconds 100 }
             }
             if (-not $ready) { throw "Caddy did not become ready for $relativeConfig" }
+            # A missing seller declaration must not be disguised as a successful SPA response.
+            $response = Send-Request -Path '/app-ads.txt'
+            if ($response.Status -ne 404) { throw "$relativeConfig missing /app-ads.txt must return 404, got $($response.Status)" }
+            $appAdsFixture = Join-Path $fixtureDir 'app-ads.txt'
+            Copy-Item -LiteralPath (Join-Path $projectDir 'webApp/src/wasmJsMain/resources/app-ads.txt') -Destination $appAdsFixture
+            try {
+                foreach ($path in @('/app-ads.txt', '/app-ads.txt?crawler=1')) {
+                    $response = Send-Request -Path $path
+                    if ($response.Status -ne 200 -or $response.Content -cne "google.com, pub-1914037185148012, DIRECT, f08c47fec0942fa0`n") { throw "$relativeConfig $path must serve the exact publisher declaration" }
+                    if ($response.ContentType -ne 'text/plain; charset=utf-8') { throw "$relativeConfig $path returned unexpected content type: $($response.ContentType)" }
+                }
+            } finally { Remove-Item -LiteralPath $appAdsFixture }
             foreach ($path in @('/', '/rooms', '/gifts', '/gifts/history', '/gifts/mailboxish')) {
                 $response = Invoke-WebRequest "http://127.0.0.1:$Port$path" -UseBasicParsing -TimeoutSec 3
                 if ($response.StatusCode -ne 200 -or $response.Content -ne 'alpha-static-fixture') { throw "Static fallback failed for $relativeConfig $path" }
@@ -121,7 +133,7 @@ try {
                 }
                 if ($status -ne 404) { throw "$relativeConfig $path must return 404 before SPA fallback, got $status" }
             }
-            Write-Host "PASS: $relativeConfig forwards both mailbox APIs/admin enabled+disabled, retains JSON/auth/body/CSP/no-store, blocks internal paths and preserves /gifts SPA; serves 12 logged-out legal URLs without SPA fallback."
+            Write-Host "PASS: $relativeConfig serves app-ads.txt as exact plain text (404 when missing); forwards both mailbox APIs/admin enabled+disabled, retains JSON/auth/body/CSP/no-store, blocks internal paths and preserves /gifts SPA; serves 12 logged-out legal URLs without SPA fallback."
         } finally {
             if (-not $process.HasExited) { Stop-Process -Id $process.Id; $process.WaitForExit() }
         }
