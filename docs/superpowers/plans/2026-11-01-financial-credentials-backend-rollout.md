@@ -93,13 +93,21 @@ Both results must match the frozen hashes above. Do not rebuild or rerun the pac
 **Produces:** explicit go/no-go before maintenance or upload.
 
 - [ ] Obtain approval for this exact backend candidate, a planned maintenance/restart window, and bounded post-deploy checks. Expected interruption is 5–10 minutes after warning/drain, subject to successful preflight/build/health.
-- [ ] Read service/deployment metadata and confirm the expected active IDs, one backend replica, Dockerfile builder and `/health` check. Keep Web running and its image unchanged.
-- [ ] Check only the named nonsecret switches: financial collection disabled, AdMob disabled, mandatory UGC acceptance disabled. Do not export a full environment/secret inventory or copy credential values into receipts.
+- [x] Read service/deployment metadata and confirm the expected active IDs, one backend replica, Dockerfile builder and `/health` check. Keep Web running and its image unchanged.
+- [x] Check only the named nonsecret switches: financial collection disabled, AdMob disabled, mandatory UGC acceptance disabled. Do not export a full environment/secret inventory or copy credential values into receipts.
 - [ ] Confirm the running backend's schema evidence remains V69 and that the candidate has zero pending migrations. Prefer existing authorized deployment/Flyway logs; direct private schema inspection requires its own granted access scope. Unknown version is a stop condition.
 - [ ] Satisfy the repository's backup-before-update requirement in `docs/production-deployment.md`: record a current verified backup/recovery receipt before changing the backend. This local preparation did not create one. The historical V68 archive is not presented as a current V69 backup. If a fresh full-database backup/restore check is needed, obtain explicit authorization for that private-data access, destination, retention and temporary access before performing it; do not open or overwrite the existing V63/V68 archives.
 - [ ] Confirm a usable Owner maintenance session without reading password files. If absent, request direct sign-in. Record the current maintenance version and ACTIVE state.
 
 Stop before maintenance if any check is unknown, failed, outside granted access, or shows unexpected state. Do not trigger a database read/backup merely because this document describes the dependency.
+
+### Read-only checkpoint — 1 November 2026
+
+Owner approved proceeding with the preflight. Railway UI confirms the expected backend and Web deployment IDs are ACTIVE, each with one replica. Backend uses Dockerfile `/Dockerfile`, `/health`, timeout120, restart On Failure/3, Serverless off and no public exposure. The named variable filter shows no `FINANCIAL_GOOGLE_ENABLED`; the two named AdMob/UGC switches are false. No credentials were revealed. Public health returned200/OK and status200/ACTIVE/maintenance false at `2026-11-01T13:36:02.713184+00:00`.
+
+Postgres Backups shows **No Backups** and says creating backups/schedules/PITR requires Pro. No plan upgrade, backup or restore was initiated. The existing encrypted local V68 archive still exists at429,862bytes; only file metadata and prior sanitized receipts were inspected. It predates migrationV69 and does not satisfy a fresh V69 backup checkpoint. No database rows or archive contents were read; private schema inspection and maintenance-session preflight remain pending.
+
+Evidence: `.artifacts/financial-source-20261101/production-preflight.json`, `production-public-preflight.json`, `railway-backup-preflight.png`. Next authorization should explicitly cover temporary access, reading the full current production DB for an encrypted V69 backup retained14days and an isolated restore check, then planned backend-only deployment of the frozen archive. Do not begin these operations under the read-only preflight approval.
 
 ## Task 3: Planned maintenance and backend replacement
 
