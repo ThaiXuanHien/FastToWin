@@ -1,6 +1,8 @@
 # Đề xuất cấu hình consent AdMob — 01/11/2026
 
-Trạng thái: **đề xuất local để Owner duyệt, chưa tạo/lưu/xuất bản trên AdMob**.
+Trạng thái: **Owner đã duyệt; đã lưu hai bản DRAFT và Privacy URL trên AdMob ngày 01/11/2026, chưa Publish**.
+
+Đã mở lại từng nháp để đối chiếu app, ngôn ngữ, vùng và lựa chọn. EU hiển thị `Tiếng Anh (en)` trong Console; US hiển thị `Tiếng Anh (en-US)`. Cả hai bảng đều ghi **Bản nháp**, `Publish message = 0`. Privacy URL của app đã đọc lại đúng `https://fasttowin.up.railway.app/privacy/en/`. Bằng chứng: `.artifacts/admob-consent-drafts-20261101/`. Các phần ghi “đề xuất” bên dưới giữ lại thiết kế đã duyệt; giới hạn chưa Publish và các cổng nghiệm thu vẫn áp dụng.
 Tham chiếu: [#51](https://github.com/ThaiXuanHien/FastToWin/issues/51), [kết quả rà soát](admob-readiness-20261101.md), [runbook AdMob](admob-android.md).
 
 ## Phạm vi và lựa chọn đề xuất
@@ -101,4 +103,4 @@ Không thêm lời nhắc mới vào app trong bước tài liệu/nháp này. T
 
 - Đã đối chiếu giới hạn ngôn ngữ, mặc định khi không khớp ngôn ngữ thiết bị, lựa chọn form/vùng và Privacy URL với tài liệu Google.
 - Đã đối chiếu App ID, tuổi và luồng UMP với source/kết quả rà soát hiện có; không đổi hành vi hoặc giao diện app.
-- Chỉ có tài liệu local và kiểm tra hai URL công khai; không mở wizard tạo thông báo, lưu cài đặt Console, bật quảng cáo, đọc DB/credential, chạy test/CI hoặc publish gì.
+- Lúc soạn đề xuất: chỉ có tài liệu local và kiểm tra hai URL công khai. Sau khi Owner duyệt riêng: đã tạo/lưu hai nháp và Privacy URL đúng phạm vi, mở lại đối chiếu; không bật quảng cáo, thay đổi cài đặt đối tác/mục đích cấp tài khoản, đọc DB/credential, chạy test/CI hoặc Publish.
