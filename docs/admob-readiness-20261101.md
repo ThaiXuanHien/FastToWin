@@ -53,6 +53,11 @@ Earlier #51 text referring to an unmerged Draft PR, Internal1.0.2(3), twelve lan
 
 ## Remaining work in order
 
+The [local consent configuration proposal](admob-consent-proposal-20261101.md)
+now supplies exact draft values. Google's supported-language list does not include
+Vietnamese for GDPR/US messages; it proposes English (US) forms with existing
+VI/EN app Settings and Privacy pages. No Console draft has been created.
+
 1. **Prepare a concrete consent configuration for owner review.** Scope the existing Android app, VI/EN presentation, applicable regions and Privacy URL; inspect provider/vendor choices and the current automatic fallback setting before proposing values. Preserve the owner's178-region/PC distribution choice. Preparing a proposal does not authorize saving/publishing messages.
 2. **Confirm usable store availability, then link the correct app deliberately.** Google's [app readiness guide](https://support.google.com/admob/answer/10564477) requires a published app in a supported store and a matching link for review. Linking can initiate review; do not do it under this read-only scope or assume a draft/Closed submission is a public listing.
 3. **Establish app-ads.txt ownership/verification.** Select the developer website/domain from the actual store listing and verify the exact authorized publisher file. No domain choice, hosting change or file deployment is authorized by this audit; empty Console data is not a successful crawl.
