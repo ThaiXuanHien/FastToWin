@@ -63,7 +63,7 @@ Mặc định server prod từ chối mọi giao dịch có `testPurchaseContext
 
 Giao dịch test phải được Google API xác minh, đúng sản phẩm/trạng thái, có `obfuscatedExternalAccountId` trùng SHA-256 UUID của QA và có order ID hợp lệ. Mất binding/order hoặc tài khoản ngoài danh sách đều bị từ chối. Token `dev:` vẫn bị chặn kể cả QA. Order được ghi `SANDBOX` cùng transaction cấp Gem; gửi lại không cấp thêm. Đơn thật vẫn là `LIVE` kể cả người mua là QA. Không suy ra doanh thu từ Gem hoặc giá hiển thị.
 
-Gỡ UUID QA khỏi cấu hình sau nghiệm thu và áp dụng cấu hình bằng lần deploy được duyệt. Luồng collector tiền thật vẫn opt-in riêng; xem [financial-analytics-sources.md](financial-analytics-sources.md). Thay đổi hiện tại chưa bật verifier hoặc collector trên production.
+Gỡ UUID QA khỏi cấu hình sau nghiệm thu và áp dụng cấu hình bằng lần deploy được duyệt. Bộ đồng bộ doanh thu dùng chung thứ tự chọn credential ở trên, nhưng vẫn opt-in riêng bằng `FINANCIAL_GOOGLE_ENABLED=true` và cần mốc `FINANCIAL_COLLECTION_START` hợp lệ; cấu hình Billing không tự bật thu thập. Credential riêng sai khiến collector không khả dụng, không tự dùng credential khác. Xem [financial-analytics-sources.md](financial-analytics-sources.md). Thay đổi cấu hình nguồn này chưa được deploy hoặc bật collector trên production.
 
 ## iOS
 
