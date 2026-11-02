@@ -2,7 +2,7 @@
 
 Issue: [#12](https://github.com/ThaiXuanHien/FastToWin/issues/12). Ngày: 02/11/2026.
 
-Trạng thái: **đề xuất để Owner duyệt trước khi lập kế hoạch/triển khai**. Owner đã chọn “Rate limit trước”; presence và nhiều backend production nằm ngoài giai đoạn này.
+Trạng thái: **Owner đã duyệt “Duyệt, triển khai local” ngày 02/11/2026**. Owner đã chọn “Rate limit trước”; presence và nhiều backend production nằm ngoài giai đoạn này.
 
 ## Mục tiêu và hiện trạng
 
