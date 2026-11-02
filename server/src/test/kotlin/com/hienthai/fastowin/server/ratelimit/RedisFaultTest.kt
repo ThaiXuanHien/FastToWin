@@ -64,6 +64,11 @@ class RedisFaultTest {
                 } }.awaitAll()
                 assertTrue(results.contains(RateLimitFailure.OVERLOADED))
                 assertTrue(results.contains(RateLimitFailure.TIMEOUT))
+                val secondWave = assertFailsWith<RateLimitUnavailableException> { runtime.consume("login-ip", "second-wave", policy) }
+                assertEquals(RateLimitFailure.OVERLOADED, secondWave.reason)
+                assertFalse(secondWave.toString().contains("Internal stack size"))
+                assertNull(secondWave.cause)
+                assertFalse(runtime.renderMetrics().contains("Internal stack size"))
                 assertTrue(runtime.consume("websocket-message-player", "game", policy).allowed)
                 proxy.release()
                 openRateLimitRuntime(settings(url, ns)).use { direct -> assertFalse(direct.consume("login-ip", "cancel", policy).allowed) }

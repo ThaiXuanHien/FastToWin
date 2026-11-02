@@ -21,6 +21,10 @@ import java.util.concurrent.TimeUnit
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
+private class RedactedRedisURI(original: RedisURI) : RedisURI(original) {
+    override fun toString(): String = "[redacted Redis URI]"
+}
+
 internal class RedisRateLimiter(private val config: RedisConfiguration) : RateLimiter, AutoCloseable {
     private val resources: DefaultClientResources
     private val client: RedisClient
@@ -35,7 +39,8 @@ internal class RedisRateLimiter(private val config: RedisConfiguration) : RateLi
         var openedClient: RedisClient? = null
         var openedConnection: StatefulRedisConnection<String, String>? = null
         try {
-            val uri = RedisURI.create(config.url).apply { timeout = Duration.ofSeconds(2) }
+            RedisLogProtection.install()
+            val uri = RedactedRedisURI(RedisURI.create(config.url)).apply { timeout = Duration.ofSeconds(2) }
             require(uri.isVerifyPeer)
             val resource = DefaultClientResources.builder().ioThreadPoolSize(2).computationThreadPoolSize(2).build()
             openedResources = resource
@@ -99,7 +104,12 @@ internal class RedisRateLimiter(private val config: RedisConfiguration) : RateLi
         } catch (e: CancellationException) { throw e
         } catch (e: RateLimitUnavailableException) { throw e
         } catch (e: Exception) {
-            if (e is io.lettuce.core.RedisCommandTimeoutException || e.cause is io.lettuce.core.RedisCommandTimeoutException) throw RateLimitUnavailableException(RateLimitFailure.TIMEOUT)
+            val causes = generateSequence<Throwable>(e) { it.cause }.toList()
+            if (causes.any { it is io.lettuce.core.RedisCommandTimeoutException }) throw RateLimitUnavailableException(RateLimitFailure.TIMEOUT)
+            // Lettuce 7.9 rejects writes to its full physical response stack with this error.
+            if (causes.any { it is io.lettuce.core.RedisException && it.message?.startsWith("Internal stack size exceeded:") == true }) {
+                throw RateLimitUnavailableException(RateLimitFailure.OVERLOADED)
+            }
             throw RateLimitUnavailableException(if (!connection.isOpen) RateLimitFailure.DISCONNECTED else RateLimitFailure.OTHER)
         }
     }
