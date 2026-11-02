@@ -1,6 +1,6 @@
 # Redis production preparation: backup access packet; cutover blocked
 
-Status: **preparation only; no production access is authorized**. The next reviewable approval is limited to temporary access, one read-only database backup and an isolated local PostgreSQL 18 restore. Maintenance and backend replacement require a later, separate approval after their blockers are resolved.
+Status: **the separately approved one-operation backup and isolated PG18 restore completed on 02 November 2026; full cutover remains blocked**. The access proposal below records the scope approved for that completed operation, not a standing authorization. See [execution checkpoint](redis-db-backup-checkpoint-2026-11-02.md). Maintenance and backend replacement require a later, separate approval after their blockers are resolved.
 
 ## Proposed access and backup approval
 
@@ -24,7 +24,7 @@ The concrete local packet is `.artifacts/redis-production-rollout-20261102/task4
 
 Focused offline tests cover missing/wrong/expired grants, archive overwrite/encryption failure, ambiguous mutation without retry, exact owned-key cleanup, database binding, three-variable payload boundaries, changed evidence/checksums, stale/draining maintenance observations and full-cutover disabling. Parent-owned `synthetic-pg18-receipt.json` proves cached PG18 dump/DPAPI/list/isolated restore and cleanup using synthetic data only. It is not a production backup or production restore receipt. The earlier PG17 fixture is not matching-major evidence; its possible anonymous Docker volume cleanup is not claimed.
 
-Independent backup-scope review and its focused re-review are complete: the one Important finding, premature cleanup confirmation after ambiguous key creation, was fixed. Parent verification passed all 25 focused tests; the matching-major synthetic PG18 restore and owned cleanup also passed. Reports are retained in the plan workspace as `task-4-backup-review.md` and `task-4-backup-rereview.md`. This supports requesting the explicit backup-only Owner grant; production backup and SSH remain unattempted. Disabled full-cutover scaffolding is not a completed deployment implementation.
+Independent backup-scope review and its focused re-review are complete: the one Important finding, premature cleanup confirmation after ambiguous key creation, was fixed. Parent verification passed all 25 focused tests; the matching-major synthetic PG18 restore and owned cleanup also passed. Reports are retained in the plan workspace as `task-4-backup-review.md` and `task-4-backup-rereview.md`. This supported the subsequent explicit backup-only Owner grant and execution recorded in the checkpoint. Disabled full-cutover scaffolding is not a completed deployment implementation.
 
 ## Full cutover blockers
 
