@@ -4,6 +4,7 @@ import com.hienthai.fastowin.server.PasswordHasher
 import com.hienthai.fastowin.server.RateLimiter
 import com.hienthai.fastowin.server.InMemoryRateLimiter
 import com.hienthai.fastowin.server.RateLimitPolicy
+import com.hienthai.fastowin.server.RateLimitUnavailableException
 import com.hienthai.fastowin.server.hashToken
 import com.hienthai.fastowin.server.legacyFallback
 import kotlinx.coroutines.Dispatchers
@@ -30,8 +31,13 @@ class AdminService(
         requireOrigin(origin)
         val normalized = normalizeEmail(email)
         validatePassword(password, provision = false)
-        if (!rateLimiter.consume("admin-login-ip", hashToken(address), RateLimitPolicy(20, 60_000)).allowed ||
-            !rateLimiter.consume("admin-login-account", hashToken(normalized), RateLimitPolicy(8, 300_000)).allowed) {
+        val allowed = try {
+            rateLimiter.consume("admin-login-ip", hashToken(address), RateLimitPolicy(20, 60_000)).allowed &&
+                rateLimiter.consume("admin-login-account", hashToken(normalized), RateLimitPolicy(8, 300_000)).allowed
+        } catch (_: RateLimitUnavailableException) {
+            throw AdminException(503, "RATE_LIMIT_UNAVAILABLE", legacyFallback("Dịch vụ tạm thời không khả dụng."))
+        }
+        if (!allowed) {
             throw AdminException(429, "RATE_LIMITED", legacyFallback("Vui lòng thử lại sau."))
         }
         val candidate = repository.transaction { accountByEmail(normalized) }

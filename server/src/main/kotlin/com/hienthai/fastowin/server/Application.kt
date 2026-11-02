@@ -349,7 +349,7 @@ fun Application.gameModule(
         get("/internal/metrics") {
             call.response.header(HttpHeaders.CacheControl, "no-store")
             call.respondText(
-                metrics.render(),
+                metrics.render() + ((rateLimiter as? com.hienthai.fastowin.server.ratelimit.RateLimitRuntime)?.renderMetrics() ?: ""),
                 ContentType.parse("text/plain; version=0.0.4; charset=utf-8")
             )
         }
@@ -689,11 +689,13 @@ fun Application.gameModule(
                             continue
                         }
 
-                        val connectLimit = rateLimiter.consume(
-                            RateLimitBuckets.WEBSOCKET_CONNECT_IP,
-                            clientRateLimitKey,
-                            rateLimitPolicies.websocketConnectPerIp
-                        )
+                        val connectLimit = try {
+                            rateLimiter.consume(RateLimitBuckets.WEBSOCKET_CONNECT_IP, clientRateLimitKey, rateLimitPolicies.websocketConnectPerIp)
+                        } catch (_: RateLimitUnavailableException) {
+                            sendRateLimitUnavailable()
+                            close(CloseReason(CloseReason.Codes.TRY_AGAIN_LATER, "Service temporarily unavailable"))
+                            break
+                        }
                         if (!connectLimit.allowed) {
                             sendRateLimited(connectLimit)
                             close(CloseReason(CloseReason.Codes.VIOLATED_POLICY, "Connection rate limit exceeded"))
@@ -782,12 +784,12 @@ fun Application.gameModule(
                         close(CloseReason(CloseReason.Codes.VIOLATED_POLICY, "Player rate limit exceeded"))
                         break
                     }
-                    val actionLimit = rateLimiter.consumeActionLimit(
-                        clientRateLimitKey,
-                        activePlayerRateLimitKey,
-                        message,
-                        rateLimitPolicies
-                    )
+                    val actionLimit = try {
+                        rateLimiter.consumeActionLimit(clientRateLimitKey, activePlayerRateLimitKey, message, rateLimitPolicies)
+                    } catch (_: RateLimitUnavailableException) {
+                        sendRateLimitUnavailable()
+                        continue
+                    }
                     if (actionLimit != null) {
                         metrics.webSocketRateLimited()
                         if (message is ClientMessage.ReportContent) {
@@ -845,7 +847,13 @@ private suspend fun ApplicationCall.consumeHttpRateLimit(
     key: String,
     policy: RateLimitPolicy
 ): Boolean {
-    val result = rateLimiter.consume(bucket, key, policy)
+    val result = try { rateLimiter.consume(bucket, key, policy) } catch (_: RateLimitUnavailableException) {
+        respond(HttpStatusCode.ServiceUnavailable, AuthErrorResponse(
+            code = "RATE_LIMIT_UNAVAILABLE", message = legacyFallback("Dịch vụ tạm thời không khả dụng."),
+            messageKey = TextKey.ServerUnavailable.name
+        ))
+        return false
+    }
     if (result.allowed) return true
     val retryAfterSeconds = result.retryAfterSeconds()
     response.header(HttpHeaders.RetryAfter, retryAfterSeconds.toString())
@@ -923,6 +931,13 @@ private suspend fun RateLimiter.consumeActionLimit(
 
         else -> null
     }
+}
+
+private suspend fun DefaultWebSocketServerSession.sendRateLimitUnavailable() {
+    send(ProtocolJson.encodeToString<ServerMessage>(ServerMessage.Error(
+        code = "RATE_LIMIT_UNAVAILABLE", message = legacyFallback("Dịch vụ tạm thời không khả dụng."),
+        messageKey = TextKey.ServerUnavailable.name
+    )))
 }
 
 private suspend fun DefaultWebSocketServerSession.sendRateLimited(

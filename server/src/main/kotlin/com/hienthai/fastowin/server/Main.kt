@@ -29,81 +29,84 @@ fun main() {
     val database = databaseSettings?.let(DatabaseRuntime::open)
     val avatarObjects = try { avatarConfiguration.r2?.let(S3AvatarObjectStore::open) }
         catch (failure: Throwable) { database?.close(); throw failure }
-    val (adminService, moderationService) = createModerationRuntime(database, adminConfiguration)
-    val authService = AuthenticationService(database?.authRepository ?: InMemoryAuthRepository(), moderationService = moderationService)
-    val authEmailSender = configuredAuthEmailSender()
-    val identityRepository = database?.identityRepository ?: InMemoryGuestIdentityRepository()
-    val matchResultRepository = database?.matchResultRepository ?: NoOpMatchResultRepository
-    val playerProfileRepository = database?.playerProfileRepository ?: NoOpPlayerProfileRepository
-    val avatarService = AvatarService(database?.avatarRepository ?: ProfileAvatarRepository(playerProfileRepository),
-        avatarObjects, objectWrites = avatarConfiguration.mode == AvatarStorageMode.R2,
-        publicationAllowed = { moderationService.requireContentTerms(it) },
-        contentSuppressed = { id, revision -> moderationService.isSuppressed(com.hienthai.fastowin.protocol.UgcTargetType.PLAYER_AVATAR, id, revision) })
-    val leaderboardRepository = database?.leaderboardRepository ?: NoOpLeaderboardRepository
-    val friendRepository = database?.friendRepository ?: NoOpFriendRepository
-    val notificationRepository = database?.notificationRepository ?: NoOpNotificationRepository
-    val activeRoomRepository = database?.activeRoomRepository ?: NoOpActiveRoomRepository
-    val tournamentRepository = database?.tournamentRepository ?: InMemoryTournamentRepository()
-    val clanRepository = database?.clanRepository ?: NoOpClanRepository
-    val seasonLifecycleRepository = database?.seasonLifecycleRepository ?: NoOpSeasonLifecycleRepository
-    val storage = if (database == null) "memory" else "postgresql"
-    val storePurchaseVerifier = configuredStorePurchaseVerifier(environment)
-    val playQuotaRepository = database?.playQuotaRepository ?: InMemoryPlayQuotaRepository()
-    val adMobRepository = database?.adMobRepository ?: com.hienthai.fastowin.server.ads.InMemoryAdMobRepository(playQuotaRepository)
-    val rewardedAdVerifier = configuredRewardedAdVerifier(environment, adMobConfiguration?.let { com.hienthai.fastowin.server.ads.AdMobRewardedAdVerifier(adMobRepository) })
-    val rewardedAdAvailability = configuredRewardedAdAvailability(environment, adMobConfiguration != null)
-    val pushNotificationService = FirebasePushNotificationService()
-    val pushReminderService = if (database == null) {
-        NoOpPushReminderService
-    } else {
-        DailyPushReminderService(playerProfileRepository, pushNotificationService)
-    }
-    val storePurchaseService = StorePurchaseService(playerProfileRepository, storePurchaseVerifier)
-    val financialSync = database?.let {
-        val configured = com.hienthai.fastowin.server.analytics.configuredFinancialSource()
-        com.hienthai.fastowin.server.analytics.FinancialSyncService(it.financialSyncRepository,
-            configured?.first, configured?.second)
-    }
-    val engine = GameEngine(
-        identityRepository,
-        matchResultRepository,
-        playerProfileRepository,
-        leaderboardRepository,
-        friendRepository,
-        activeRoomRepository,
-        notificationRepository,
-        tournamentRepository,
-        clanRepository,
-        pushNotificationService,
-        storePurchaseService = storePurchaseService,
-        avatarService = avatarService,
-        moderationService = moderationService,
-        playQuotaRepository = playQuotaRepository,
-        rewardedAdVerifier = rewardedAdVerifier,
-        rewardedAdAvailability = rewardedAdAvailability,
-        storeSandboxEnabled = environment == "dev",
-        eventRewardSource = database?.rewardEventRepository ?: com.hienthai.fastowin.server.events.NoRewardEventSource
-    )
-    runBlocking {
-        seasonLifecycleRepository.maintain()
-        engine.restoreActiveRooms()
-    }
-    val environmentStatus = serviceStatusFromEnvironment()
-    val maintenanceService = MaintenanceService(database?.maintenanceRepository ?: UnavailableMaintenanceRepository,
-        adminService, environmentOverride = environmentStatus.maintenance,
-        environmentMessageVi = environmentStatus.message, environmentMessageEn = environmentStatus.message)
-    // Memory/dev operation still uses environment policy; durable admin controls explicitly return 503.
-    val maintenanceRuntime = MaintenanceRuntime(engine, maintenanceService.takeIf { database != null }, ::serviceStatusFromEnvironment)
-
-    val emailDelivery = if (authEmailSender.isConfigured) configuredAuthEmailProvider().name.lowercase() else "disabled"
-    println(
-        "Starting Fast To Win server: environment=$environment, host=$host, port=$port, " +
-            "storage=$storage, email=$emailDelivery"
-    )
+    val rateLimitRuntime = try { com.hienthai.fastowin.server.ratelimit.openRateLimitRuntime() }
+        catch (failure: Throwable) { avatarObjects?.close(); database?.close(); throw failure }
     try {
+        val (adminService, moderationService) = createModerationRuntime(database, adminConfiguration, rateLimitRuntime)
+        val authService = AuthenticationService(database?.authRepository ?: InMemoryAuthRepository(), moderationService = moderationService)
+        val authEmailSender = configuredAuthEmailSender()
+        val identityRepository = database?.identityRepository ?: InMemoryGuestIdentityRepository()
+        val matchResultRepository = database?.matchResultRepository ?: NoOpMatchResultRepository
+        val playerProfileRepository = database?.playerProfileRepository ?: NoOpPlayerProfileRepository
+        val avatarService = AvatarService(database?.avatarRepository ?: ProfileAvatarRepository(playerProfileRepository),
+            avatarObjects, objectWrites = avatarConfiguration.mode == AvatarStorageMode.R2,
+            publicationAllowed = { moderationService.requireContentTerms(it) },
+            contentSuppressed = { id, revision -> moderationService.isSuppressed(com.hienthai.fastowin.protocol.UgcTargetType.PLAYER_AVATAR, id, revision) })
+        val leaderboardRepository = database?.leaderboardRepository ?: NoOpLeaderboardRepository
+        val friendRepository = database?.friendRepository ?: NoOpFriendRepository
+        val notificationRepository = database?.notificationRepository ?: NoOpNotificationRepository
+        val activeRoomRepository = database?.activeRoomRepository ?: NoOpActiveRoomRepository
+        val tournamentRepository = database?.tournamentRepository ?: InMemoryTournamentRepository()
+        val clanRepository = database?.clanRepository ?: NoOpClanRepository
+        val seasonLifecycleRepository = database?.seasonLifecycleRepository ?: NoOpSeasonLifecycleRepository
+        val storage = if (database == null) "memory" else "postgresql"
+        val storePurchaseVerifier = configuredStorePurchaseVerifier(environment)
+        val playQuotaRepository = database?.playQuotaRepository ?: InMemoryPlayQuotaRepository()
+        val adMobRepository = database?.adMobRepository ?: com.hienthai.fastowin.server.ads.InMemoryAdMobRepository(playQuotaRepository)
+        val rewardedAdVerifier = configuredRewardedAdVerifier(environment, adMobConfiguration?.let { com.hienthai.fastowin.server.ads.AdMobRewardedAdVerifier(adMobRepository) })
+        val rewardedAdAvailability = configuredRewardedAdAvailability(environment, adMobConfiguration != null)
+        val pushNotificationService = FirebasePushNotificationService()
+        val pushReminderService = if (database == null) {
+            NoOpPushReminderService
+        } else {
+            DailyPushReminderService(playerProfileRepository, pushNotificationService)
+        }
+        val storePurchaseService = StorePurchaseService(playerProfileRepository, storePurchaseVerifier)
+        val financialSync = database?.let {
+            val configured = com.hienthai.fastowin.server.analytics.configuredFinancialSource()
+            com.hienthai.fastowin.server.analytics.FinancialSyncService(it.financialSyncRepository,
+                configured?.first, configured?.second)
+        }
+        val engine = GameEngine(
+            identityRepository,
+            matchResultRepository,
+            playerProfileRepository,
+            leaderboardRepository,
+            friendRepository,
+            activeRoomRepository,
+            notificationRepository,
+            tournamentRepository,
+            clanRepository,
+            pushNotificationService,
+            storePurchaseService = storePurchaseService,
+            avatarService = avatarService,
+            moderationService = moderationService,
+            playQuotaRepository = playQuotaRepository,
+            rewardedAdVerifier = rewardedAdVerifier,
+            rewardedAdAvailability = rewardedAdAvailability,
+            storeSandboxEnabled = environment == "dev",
+            eventRewardSource = database?.rewardEventRepository ?: com.hienthai.fastowin.server.events.NoRewardEventSource
+        )
+        runBlocking {
+            seasonLifecycleRepository.maintain()
+            engine.restoreActiveRooms()
+        }
+        val environmentStatus = serviceStatusFromEnvironment()
+        val maintenanceService = MaintenanceService(database?.maintenanceRepository ?: UnavailableMaintenanceRepository,
+            adminService, environmentOverride = environmentStatus.maintenance,
+            environmentMessageVi = environmentStatus.message, environmentMessageEn = environmentStatus.message)
+        // Memory/dev operation still uses environment policy; durable admin controls explicitly return 503.
+        val maintenanceRuntime = MaintenanceRuntime(engine, maintenanceService.takeIf { database != null }, ::serviceStatusFromEnvironment)
+
+        val emailDelivery = if (authEmailSender.isConfigured) configuredAuthEmailProvider().name.lowercase() else "disabled"
+        println(
+            "Starting Fast To Win server: environment=$environment, host=$host, port=$port, " +
+                "storage=$storage, email=$emailDelivery"
+        )
         embeddedServer(Netty, host = host, port = port) {
             gameModule(
                 engine = engine,
+                rateLimiter = rateLimitRuntime,
                 authService = authService,
                 authEmailSender = authEmailSender,
                 environment = environment,
@@ -141,19 +144,21 @@ fun main() {
             )
         }.start(wait = true)
     } finally {
-        avatarObjects?.close()
-        database?.close()
+        try { rateLimitRuntime.close() } finally {
+            try { avatarObjects?.close() } finally { database?.close() }
+        }
     }
 }
 
 /** Shared startup assembly for admin and moderation services. */
 internal fun createModerationRuntime(
     database: DatabaseRuntime?,
-    adminConfiguration: AdminConfiguration?
+    adminConfiguration: AdminConfiguration?,
+    rateLimiter: RateLimiter = InMemoryRateLimiter()
 ): Pair<AdminService?, com.hienthai.fastowin.server.moderation.ModerationService> {
     val memoryAdmins = if (database == null) InMemoryAdminRepository() else null
     val adminService = adminConfiguration?.let { configuration ->
-        AdminService(database?.adminRepository ?: checkNotNull(memoryAdmins), configuration)
+        AdminService(database?.adminRepository ?: checkNotNull(memoryAdmins), configuration, rateLimiter = rateLimiter)
     }
     val moderationService = com.hienthai.fastowin.server.moderation.ModerationService(
         database?.moderationRepository ?: com.hienthai.fastowin.server.moderation.InMemoryModerationRepository(checkNotNull(memoryAdmins)),
