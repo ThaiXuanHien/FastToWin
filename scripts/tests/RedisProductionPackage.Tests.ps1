@@ -18,6 +18,14 @@ try {
   Check ((D @('inspect','--format','{{.State.Running}}',$crlfCid)) -eq 'true') 'CRLF fixture builds and boots'
   $crlfTag=[guid]::NewGuid().ToString('N');$crlfOut=D @('exec',$crlfCid,'sh','/usr/local/bin/ftw-redis-backup.sh',$crlfTag)
   Check (($crlfOut -join '') -match '"backup":1') 'CRLF fixture backup executes'
+  Remove-Owned $crlfCid; $crlfCid=$null; D @('image','rm',$crlfImage)|Out-Null
+  $bootPath=Join-Path $crlfDir 'boot.sh'; $boot=[IO.File]::ReadAllText($bootPath); $widened=$boot.Replace(':rl:v1:*',':*')
+  if($widened -eq $boot){throw 'ACL mutation did not apply'}
+  [IO.File]::WriteAllText($bootPath,$widened,[Text.Encoding]::ASCII)
+  D @('build','-q','--label',"fasttowin.owner=$label",'-t',$crlfImage,$crlfDir)|Out-Null
+  $crlfCid=D @('run','-d','--label',"fasttowin.owner=$label",'--env-file',"$dir/valid.env",$crlfImage); Start-Sleep -Seconds 2
+  $widenedResult=D @('exec',$crlfCid,'sh','-c','export REDISCLI_AUTH="$FASTTOWIN_REDIS_APP_PASSWORD"; redis-cli --user ftw_app --raw HSET ftw:prod_main:ops:backup-fence f x')
+  Check (($widenedResult -join '') -eq '1') 'Mutation exposes widened app fence access'
  } finally {
   if($crlfCid){Remove-Owned $crlfCid}
   $crlfOwner=& docker image inspect --format '{{index .Config.Labels "fasttowin.owner"}}' $crlfImage 2>$null
@@ -35,7 +43,7 @@ try {
  foreach($role in @('app','monitor','backup')){Check ((RedisCommand $role 'PING') -eq 'PONG') "$role authentication"}
  Check ((RedisCommand wrong 'PING') -match 'AUTH failed|NOAUTH|WRONGPASS') 'Wrong password denied'
  Check (((D @('exec',$cid,'redis-cli','PING')) -join '') -match 'NOAUTH') 'Default user denied'
- foreach($command in @('FLUSHDB','FLUSHALL','CONFIG GET *','ACL USERS','SET ftw:prod_main:ops:backup-fence x','HSET ftw:other:rl:v1:x field x')){Check ((RedisCommand app $command) -match 'NOPERM') "App denied $command"}
+ foreach($command in @('FLUSHDB','FLUSHALL','CONFIG GET *','ACL USERS','HSET ftw:prod_main:ops:backup-fence f x','HSET ftw:other:rl:v1:x field x')){Check ((RedisCommand app $command) -match 'NOPERM') "App denied $command"}
  Check ((RedisCommand monitor 'GET ftw:prod_main:rl:v1:x') -match 'NOPERM') 'Monitor key access denied'
  Check ((RedisCommand backup 'SET ftw:prod_main:rl:v1:x x') -match 'NOPERM') 'Backup key scope enforced'
  $bundle=Join-Path $root '.artifacts/redis-cloud-acceptance-20261102/runner'; $revision=(Get-Content "$bundle/REVISION" -Raw).Trim(); $delta=& git diff --name-only $revision -- server/src/main protocol
@@ -94,6 +102,56 @@ public class RedisProbe {
  Check ($badexit -ne 0) 'Backup rejects symlink'
  D @('exec',$cid,'rm','/data/appendonlydir/unexpected')|Out-Null
  Check ((RedisCommand app 'HSET ftw:prod_main:rl:v1:after-failure f x') -eq '1') 'Writes unpaused after failed backup'
+ # Test-only command wrappers affect only this disposable container. They leave
+ # Redis authentication, the fence, WAITAOF and pause on the real server.
+ $faultDir=Join-Path $dir 'faults'; New-Item -ItemType Directory $faultDir | Out-Null
+ $wrappers=@{
+  'cp' = @'
+#!/bin/sh
+/bin/cp "$@" || exit $?
+/bin/sed -i '1s/$/ /' /data/appendonlydir/appendonly.aof.manifest || exit 1
+printf hit > /tmp/ftw-source-hit
+'@
+  'cut' = @'
+#!/bin/sh
+if [ "$1" = '-d.' ] && [ "$2" = '-f1' ] && [ "$3" = '/proc/uptime' ]; then
+ value=$(/usr/bin/cut "$@") || exit 1
+ if [ -e /tmp/ftw-clock-hit ]; then printf hit > /tmp/ftw-clock-expired; echo $((value + 20)); else printf hit > /tmp/ftw-clock-hit; echo "$value"; fi
+else
+ exec /usr/bin/cut "$@"
+fi
+'@
+  'sync' = @'
+#!/bin/sh
+printf hit > /tmp/ftw-sync-hit
+exit 1
+'@
+ }
+ foreach($name in $wrappers.Keys){[IO.File]::WriteAllText((Join-Path $faultDir $name),$wrappers[$name].Replace("`r`n","`n")+"`n",[Text.Encoding]::ASCII)}
+ $script=[IO.File]::ReadAllText((Resolve-Path 'deploy/railway/redis/backup.sh')).Replace("`r`n","`n")
+ $mutants=@{
+  source=$script.Replace('cmp -s "$tmp/SHA256SUMS" "$tmp/after" || fail',': # source comparison deliberately disabled')
+  clock=$script.Replace('[ $(( $(cut -d. -f1 /proc/uptime) - started )) -lt 7 ] || fail','cut -d. -f1 /proc/uptime >/dev/null # elapsed guard deliberately disabled')
+  sync=$script.Replace('sync -f "$archive" && sync -f /tmp || fail','sync -f "$archive" && sync -f /tmp || : # fsync guard deliberately disabled')
+ }
+ foreach($name in $mutants.Keys){if($mutants[$name] -eq $script){throw "Mutation did not apply: $name"};[IO.File]::WriteAllText((Join-Path $faultDir "$name-mutant.sh"),$mutants[$name],[Text.Encoding]::ASCII)}
+ D @('exec',$cid,'mkdir','-p','/tmp/ftw-faults/source','/tmp/ftw-faults/clock','/tmp/ftw-faults/sync')|Out-Null
+ foreach($pair in @(@('cp','source'),@('cut','clock'),@('sync','sync'))){D @('cp',"$faultDir/$($pair[0])", "${cid}:/tmp/ftw-faults/$($pair[1])/$($pair[0])")|Out-Null}
+ foreach($name in $mutants.Keys){D @('cp',"$faultDir/$name-mutant.sh","${cid}:/tmp/ftw-faults/$name-mutant.sh")|Out-Null}
+ D @('exec',$cid,'sh','-c','chmod +x /tmp/ftw-faults/*/*; cp /data/appendonlydir/appendonly.aof.manifest /tmp/ftw-original-manifest')|Out-Null
+ foreach($kind in @('source','clock','sync')) {
+  foreach($mutant in @($true,$false)) {
+   D @('exec',$cid,'sh','-c',"rm -f /tmp/ftw-$kind-hit; cp /tmp/ftw-original-manifest /data/appendonlydir/appendonly.aof.manifest")|Out-Null
+   $faultTag=[guid]::NewGuid().ToString('N'); $target=if($mutant){"/tmp/ftw-faults/$kind-mutant.sh"}else{'/usr/local/bin/ftw-redis-backup.sh'}
+   $faultOut=& docker exec $cid sh -c "PATH=/tmp/ftw-faults/$kind`:`$PATH; export PATH; exec sh $target $faultTag" 2>&1; $faultExit=$LASTEXITCODE
+   D @('exec',$cid,'test','-f',"/tmp/ftw-$kind-hit")|Out-Null
+   if($kind -eq 'clock'){D @('exec',$cid,'test','-f','/tmp/ftw-clock-expired')|Out-Null; D @('exec',$cid,'rm','-f','/tmp/ftw-clock-expired')|Out-Null}
+   if($mutant){Check ($faultExit -eq 0 -and ($faultOut -join '') -match '"backup":1') "Mutation exposes missing $kind guard"}
+   else {Check ($faultExit -ne 0) "Backup rejects injected $kind failure"; D @('exec',$cid,'test','!','-e',"/tmp/ftw-backup-$faultTag.tar.gz")|Out-Null}
+   D @('exec',$cid,'sh','-c',"cp /tmp/ftw-original-manifest /data/appendonlydir/appendonly.aof.manifest; rm -f /tmp/ftw-backup-$faultTag.tar.gz")|Out-Null
+   Check ((RedisCommand app "HSET ftw:prod_main:rl:v1:after-$kind f x") -match '^[01]$') "Writes unpaused after $kind case"
+  }
+ }
  Remove-Owned $cid; $cid=$null
  @("FASTTOWIN_REDIS_APP_PASSWORD=$previous","FASTTOWIN_REDIS_APP_PREVIOUS_PASSWORD=$app","FASTTOWIN_REDIS_MONITOR_PASSWORD=$monitor","FASTTOWIN_REDIS_BACKUP_PASSWORD=$backup",'FASTTOWIN_RATE_LIMIT_NAMESPACE=prod_main') | Set-Content -Encoding ascii "$dir/rotate.env"
  $cid=D @('run','-d','--label',"fasttowin.owner=$label",'--env-file',"$dir/rotate.env",'--mount',"type=volume,src=$volume,dst=/data",$image); Start-Sleep -Seconds 2
