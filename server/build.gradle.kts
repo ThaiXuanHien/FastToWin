@@ -1,3 +1,5 @@
+import java.security.MessageDigest
+
 plugins {
     alias(libs.plugins.kover)
     alias(libs.plugins.kotlin.jvm)
@@ -100,4 +102,33 @@ tasks.register("clanRaceAcceptanceClasspath") {
     val output = layout.buildDirectory.file("clan-race-acceptance-classpath.txt")
     outputs.file(output)
     doLast { output.get().asFile.writeText(acceptanceClasspath.asPath) }
+}
+
+// Isolated, test-only acceptance distribution. Runtime never invokes Gradle.
+val redisAcceptanceTestsJar by tasks.registering(Jar::class) {
+    archiveFileName.set("redis-acceptance-tests.jar")
+    from(sourceSets.test.get().output)
+}
+
+tasks.register("redisAcceptanceBundle") {
+    group = "verification"
+    dependsOn(redisAcceptanceTestsJar, tasks.named("jar"), tasks.testClasses)
+    doLast {
+        val target = rootProject.layout.projectDirectory.dir(".artifacts/redis-cloud-acceptance-20261102/runner").asFile
+        val libraries = target.resolve("lib")
+        target.deleteRecursively()
+        libraries.mkdirs()
+        val jars = sourceSets.test.get().runtimeClasspath.files.filter { it.isFile && it.extension == "jar" } +
+            listOf(tasks.named<Jar>("jar").get().archiveFile.get().asFile, redisAcceptanceTestsJar.get().archiveFile.get().asFile)
+        require(jars.map { it.name }.distinct().size == jars.size) { "Duplicate runtime jar names" }
+        jars.forEach { it.copyTo(libraries.resolve(it.name)) }
+        val process = ProcessBuilder("git", "rev-parse", "HEAD").directory(rootProject.projectDir).start()
+        val revision = process.inputStream.bufferedReader().readText().trim()
+        check(process.waitFor() == 0 && revision.matches(Regex("[0-9a-f]{40}")))
+        target.resolve("REVISION").writeText("$revision\n")
+        val files = target.walkTopDown().filter { it.isFile }.sortedBy { it.relativeTo(target).invariantSeparatorsPath }.toList()
+        fun digest(file: File) = MessageDigest.getInstance("SHA-256").digest(file.readBytes()).joinToString("") { "%02x".format(it) }
+        target.resolve("SHA256SUMS").writeText(files.joinToString("\n", postfix = "\n") { "${digest(it)}  ${it.relativeTo(target).invariantSeparatorsPath}" })
+        println("Redis acceptance bundle: ${target.absolutePath}")
+    }
 }

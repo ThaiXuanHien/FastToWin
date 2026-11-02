@@ -59,7 +59,7 @@ class RedisNettyAcceptanceTest {
             loginPerIp = RateLimitPolicy(1, 60_000), websocketConnectPerIp = RateLimitPolicy(1, 60_000))
         openRateLimitRuntime(settings(url, ns)).use { first -> openRateLimitRuntime(settings(url, ns)).use { second ->
             openRateLimitRuntime(settings(url, namespace())).use { isolated ->
-                val a = app(first, policies); val b = app(second, policies); val c = app(isolated, policies)
+                val a = app(first, policies); val b = app(second, policies)
                 val client = client()
                 try {
                     suspend fun login(port: Int) = client.post("http://127.0.0.1:$port/auth/login") {
@@ -68,7 +68,9 @@ class RedisNettyAcceptanceTest {
                     assertEquals(HttpStatusCode.Unauthorized, login(port(a)).status)
                     val denied = login(port(b)); assertEquals(HttpStatusCode.TooManyRequests, denied.status)
                     assertNotNull(denied.headers[HttpHeaders.RetryAfter])
-                    assertEquals(HttpStatusCode.Unauthorized, login(port(c)).status)
+                    assertTrue(first.consume("login-ip", "namespace-isolation", policies.loginPerIp).allowed)
+                    assertFalse(first.consume("login-ip", "namespace-isolation", policies.loginPerIp).allowed)
+                    assertTrue(isolated.consume("login-ip", "namespace-isolation", policies.loginPerIp).allowed)
                     val x = client.webSocketSession("ws://127.0.0.1:${port(a)}/game")
                     val y = client.webSocketSession("ws://127.0.0.1:${port(b)}/game")
                     try {
@@ -78,7 +80,7 @@ class RedisNettyAcceptanceTest {
                     val metrics = client.get("http://127.0.0.1:${port(b)}/internal/metrics").bodyAsText()
                     assertContains(metrics, "fasttowin_rate_limit_shared_decisions_total")
                     assertFalse(metrics.contains("quota@example.com")); assertFalse(metrics.contains(ns)); assertFalse(metrics.contains(url))
-                } finally { client.close(); a.stop(); b.stop(); c.stop() }
+                } finally { client.close(); a.stop(); b.stop() }
             }
         } }
     }
