@@ -12,7 +12,7 @@
 
 ## Global Constraints
 
-- Owner đã duyệt provider Railway một node, private WireGuard và dự trù Redis tăng thêm $5/tháng. Phạm vi hiện tại là chuẩn bị runbook; chưa tạo tài nguyên, bật staging, cấp SSH key hoặc deploy.
+- Owner đã duyệt provider Railway một node, private WireGuard và dự trù Redis tăng thêm $5/tháng; sau đó đồng ý chuẩn bị và kiểm thử runner có xác thực trên local. Chưa cho tạo tài nguyên, bật staging, cấp SSH key hoặc deploy.
 - Private WireGuard là mã hóa lớp mạng; đợt này không được ghi TLS `rediss://` đã đạt. Không mở public Redis/TCP proxy, public runner hoặc endpoint metrics.
 - Production vẫn một backend, cấu hình rate-limit hiện tại giữ nguyên; không đọc DB/credential người chơi hoặc sao chép secret production.
 - Chỉ 18 bucket entry đã duyệt dùng Redis; frame/chọn số vẫn RAM. Giữ 200 ms/lệnh, 2 giây startup, 128 pending; không replay hoặc fallback sau lỗi Redis.
@@ -46,18 +46,20 @@ Không bật bốn service cũ `staging-server`, `staging-web`, `staging-postgre
 
 **Consumes:** API `openRateLimitRuntime`, `RateLimitRuntime.consume/renderMetrics/close` đã nghiệm thu; fixture Redis riêng có auth; private URL qua secret environment.
 
-**Produces:** Một gói runner JVM không cần Gradle/Android SDK khi chạy cloud, manifest SHA-256 toàn bộ file và báo cáo JSON hữu hạn. Gói chưa tồn tại ở thời điểm viết runbook; không được deploy bằng cách giả định `server:installDist` chứa test classes.
+**Produces:** Một gói runner JVM không cần Gradle/Android SDK khi chạy cloud, manifest SHA-256 toàn bộ file và báo cáo JSON hữu hạn. Gói local đã được chuẩn bị tại revision `67d11901bae53b1df3fb8f0497e561360a2956cf`; không dùng `server:installDist` thay cho test distribution.
 
-- [ ] Tạo regression local cho fixture Redis có password/ACL: hai runtime và proxy sự cố đều kết nối đúng; sai password bị từ chối, URI/password không vào exception/report.
-- [ ] Sửa test transport để chuyển tiếp auth và database của target. Hiện `RedisFaultProxy.proxyUrl` cố định loopback không có userinfo và `/0`, nên chưa đủ dùng cho Redis cloud có password. Không bỏ auth ở service thật để tránh sửa test.
-- [ ] Runner không dùng logging test có quyền tạo ACL làm credential ứng dụng thường. Dành credential quản lý test riêng cho thao tác ACL/CONFIG/backup nếu thực sự cần; không đưa nó cho runtime application.
-- [ ] Không dùng nguyên logging test hiện tại qua cloud: nó tự tạo ACL user toàn quyền. Chỉ chạy trong fixture riêng đã duyệt và xóa user sau test; credential wrong-password kiểm riêng cũng phải không lộ secret.
-- [ ] Xuất test runtime classpath thành gói JVM riêng, có một entrypoint và danh sách case rõ ràng; không upload toàn repo/cache, không fetch dependencies khi container bắt đầu. Production distribution không thay đổi.
-- [ ] Chạy artifact đóng gói qua Docker network local với Redis auth ở container khác, hai Ktor listener chỉ loopback trong runner; kiểm không skip, mã thoát khác 0 nếu thiếu URL hoặc case thiếu.
-- [ ] Báo cáo có revision, artifact checksum, số case pass/fail, p50/p95/p99, tổng consume, max pending và outcome/reason cố định. Chỉ ghi service/deployment IDs vào evidence riêng; không URL, IP/email/user ID/key hay secret vào log/metrics.
-- [ ] Kiểm tra image chạy non-root, không cần Docker socket và không có credential production. SHA-256 artifact phải khớp bản local đã chạy.
+- [x] Tạo regression local cho fixture Redis có password/ACL: hai runtime và proxy sự cố đều kết nối đúng; sai password bị từ chối, URI/password không vào exception/report.
+- [x] Sửa test transport để chuyển tiếp auth và database của target. Proxy hiện giữ auth/database và từ chối TLS chưa hỗ trợ; không bỏ auth ở service thật để tránh sửa test.
+- [x] Runner không dùng logging test có quyền tạo ACL làm credential ứng dụng thường. Dành credential quản lý test riêng cho thao tác ACL/CONFIG/backup nếu thực sự cần; không đưa nó cho runtime application.
+- [x] Không dùng nguyên logging test hiện tại qua cloud: nó tự tạo ACL user toàn quyền. Chỉ chạy trong fixture riêng đã duyệt và xóa user sau test; credential wrong-password kiểm riêng cũng phải không lộ secret.
+- [x] Xuất test runtime classpath thành gói JVM riêng, có một entrypoint và danh sách case rõ ràng; không upload toàn repo/cache, không fetch dependencies khi container bắt đầu. Production distribution không thay đổi.
+- [x] Chạy artifact đóng gói qua Docker network local với Redis auth ở container khác, hai Ktor listener chỉ loopback trong runner; kiểm không skip, mã thoát khác 0 nếu thiếu URL hoặc case thiếu.
+- [x] Báo cáo có revision, artifact checksum, số case pass/fail, p50/p95/p99, tổng consume, max pending và outcome/reason cố định. Pending 128 là cấu hình; không báo thành occupancy SDK đo được. Chỉ ghi service/deployment IDs vào evidence riêng; không URL, IP/email/user ID/key hay secret vào log/metrics.
+- [x] Kiểm tra image chạy non-root, không cần Docker socket và không có credential production. SHA-256 artifact phải khớp bản local đã chạy.
 
-Đây là prerequisite phải thực hiện và review trước tạo service. Runbook không tuyên bố runner đã build hoặc đã nghiệm thu auth.
+Prerequisite local đã hoàn tất và qua task/final/scoped review. [Cách dùng runner](../../redis-cloud-runner.md). Manifest `SHA256SUMS` gồm 203 file, SHA-256 `305c199a3568aa43513ecbad713f266194f178c230ce9dddae7c86ff63cf118d`. Image đã kiểm tra: `ftw-redis-acceptance:6868cace6b6141c0905a06846f304ba9`, ID `sha256:e93ca01c58d66b286e57ed5bcbf31db5a3481f3f7d779bb1496fbb76861e845e`.
+
+Kết quả Docker local: 13 case thật và 10 consume đạt; thiếu URL/sai auth/checksum bị sửa đều thoát lỗi và không lộ sentinel secret. Inspector riêng xác nhận app credential bị từ chối FLUSHDB/FLUSHALL/CONFIG/ACL. Đã dọn fixture/network và credential; image cuối được giữ, image thử trung gian đã dọn. Startup 8 ms là phép đo warmed, không phải cold; p99 1.391 µs chỉ là mẫu local ngắn. Chưa chạy cloud, AOF/OOM/backup/restore; không coi Task 1 đạt là production đã nghiệm thu.
 
 ### Task 2: Kiểm tra sẵn sàng thực thi
 
