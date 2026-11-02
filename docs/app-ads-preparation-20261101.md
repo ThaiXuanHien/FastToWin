@@ -1,6 +1,6 @@
 # app-ads.txt — chuẩn bị local ngày01/11/2026
 
-Trạng thái: **đã triển khai gói Web và xác minh HTTP production; chưa khai báo website trên Store, chưa xác minh AdMob**. Phạm vi tiếp tục trong lúc Owner tuyển Closed testers. Chỉ triển khai Web đã được duyệt; không mua domain, tạo hạ tầng, thêm network, sửa Store, yêu cầu crawl hoặc bật quảng cáo.
+Trạng thái cập nhật ngày 02/11/2026: **đã triển khai gói Web, xác minh HTTP production và xác nhận Developer website đã lưu/hiển thị trên Store; chưa xác minh AdMob**. Phạm vi tiếp tục trong lúc Owner tuyển Closed testers. Không mua domain, tạo hạ tầng, thêm network, yêu cầu crawl hoặc bật quảng cáo.
 
 ## Quan sát và file đã chuẩn bị
 
@@ -16,7 +16,7 @@ File ASCII/UTF-8 không BOM, một dòng kết thúc LF: `.artifacts/app-ads-pre
 
 ## Host đề xuất
 
-Website đề xuất cho Store là `https://fasttowin.up.railway.app/`. File hiện đã public tại `https://fasttowin.up.railway.app/app-ads.txt`; **chưa lưu Developer website trên Store hoặc chứng minh AdMob đã nhận domain**. Phương án tận dụng Web hiện tại, không thêm chi phí mua domain/hạ tầng. Domain riêng sau này là lựa chọn khác cần Owner chốt, không phải điều kiện bắt buộc của bản chuẩn bị này.
+Developer website đã lưu trên Store là `https://fasttowin.up.railway.app/`. File đã public tại `https://fasttowin.up.railway.app/app-ads.txt`; **chưa chứng minh AdMob đã nhận domain**. Phương án tận dụng Web hiện tại, không thêm chi phí mua domain/hạ tầng. Domain riêng sau này là lựa chọn khác cần Owner chốt, không phải điều kiện bắt buộc của bản chuẩn bị này.
 
 [Public Suffix List](https://publicsuffix.org/list/public_suffix_list.dat), bản31/10/2026đọc ngày01/11, liệt kê `up.railway.app`. Điều này hỗ trợ việc coi hostname tenant FastToWin là một miền tách biệt theo PSL; **chưa chứng minh AdMob đã crawl/chấp nhận hostname này**. Phải đối chiếu URL crawler thực tế sau khi Store/AdMob nhận cấu hình, không tự trỏ vào miền của tenant khác hoặc root do Railway quản lý.
 
@@ -59,10 +59,15 @@ Owner chọn merge local rồi trả lời “ok” cho bước duyệt/triển 
 - `/robots.txt` hiện trả HTML của SPA (HTTP 200), không phải file robots chuyên biệt. Đây là quan sát HTTP; chưa chứng minh Google crawler đã chấp nhận, chưa yêu cầu crawl hoặc sửa robots.
 - Bằng chứng: `.artifacts/app-ads-release-20261101-230154/production-preflight.json`, `deployment-intent.json`, `deployment-upload.json`, `deployment-status.json` và `production-verification.json`.
 
-## Các bước ngoài Web deployment — chưa thực hiện
+## Developer website đã xác nhận ngày 02/11/2026
 
-- Đọc lại rồi xin lưu Developer website của đúng FastToWin trên Store, giữ PrivacyURL và các khai báo khác. Chờ website xuất hiện trên listing thực tế.
+Owner duyệt “Cho phép lưu và xuất bản website”, sau đó báo đã tự lưu/xuất bản. Kiểm tra chỉ đọc xác nhận trường Trang web trong Console đúng `https://fasttowin.up.railway.app/`; trang Google Play đúng package, trong phiên Google hiện có, đã hiện liên kết “Trang web” trỏ đúng URL này. Liên kết Privacy vẫn là `/privacy`. Agent không bấm lưu lại hoặc đổi trường khác. Bằng chứng: `.artifacts/developer-website-20261102/verification.json`. Không lưu địa chỉ cá nhân từ mục thông tin nhà phát triển.
+
+Đây là xác nhận liên kết trên trang Store đã đăng nhập, không phải bằng chứng app tải được bởi người ẩn danh/ngoài nhóm tester, hoặc Google AdMob crawler đã đọc file.
+
+## Các bước tiếp theo — chưa thực hiện
+
 - Khi app Store được AdMob tìm thấy và Owner cho phép liên kết/xác minh, đọc lại hostname/URL crawl và kết quả Verified. Google lưu ý cần thời gian đồng bộ/crawl; không tự polling hoặc tạo lịch theo dõi.
 - Giữ AdMobOFF, consentDRAFT, chưa có callback production. app-ads.txt không cấp lượt chơi, không phát hành Play và không thay nhóm Closed tester.
 
-Bước kế tiếp: đọc trường Developer website trên Console và chuẩn bị lưu website đề xuất để Owner duyệt. Khi AdMob tìm được app Store và có quyền liên kết/xác minh, đối chiếu URL crawl và kết quả thực tế. Không tự khởi chạy CI, đổi website Store hoặc yêu cầu crawl từ kết quả HTTP này.
+Bước kế tiếp: khi Owner yêu cầu, kiểm tra lại khả năng tìm app Store trong AdMob một lần. Nếu tìm được đúng app, đối chiếu điều kiện và chuẩn bị phạm vi liên kết/xác minh để duyệt. Không tự khởi chạy CI, đổi website Store hoặc yêu cầu crawl từ kết quả HTTP này.
