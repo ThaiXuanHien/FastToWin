@@ -148,6 +148,12 @@ Independent backup-scope review found no findings. Sanitized evidence is under i
 
 ## Task 4: Planned cutover of the single backend
 
+### Preparation checkpoint — 02 November 2026
+
+The reviewed next-action packet is now limited to temporary SSH access, one read-only full application-DB custom dump, DPAPI CurrentUser retention up to 14 days and an isolated local PG18 restore/cleanup. Exact scope, key fingerprint, destination and execution limits are in [backup preparation](../../redis-production-cutover-preparation-2026-11-02.md). Parent verification passed 25 focused tests and a synthetic PG18 dump/encryption/inventory/restore/cleanup. One Important key-registration ambiguity finding was fixed and its scoped re-review approved. No actual grant, registration, DB export, maintenance mutation or backend replacement has occurred.
+
+Full cutover remains disabled. Source inspection found that the existing maintenance drain deadline can fully close with active work and consequently abort unfinished matches; that does not meet this plan's no-forced-abort promise without a reviewed attended cancellation/deadline procedure. Actual rollback image availability also remains unverified. Resolve those gates before seeking maintenance or replacement approval; the backup-only grant must not be expanded implicitly.
+
 **Consumes:** Passing actual-resource preflight, backed-up Redis, approved maintenance window and frozen backend artifact. **Produces:** One backend running Redis mode, matching production Redis/namespace, plus observed recovery checks.
 
 - [ ] Verify the separately authorized current DB backup/checksum/format receipt is complete, plus an isolated restore receipt if included in the approved scope, before any backend replacement; if absent, remain on the existing backend even when Redis preflight passes.
