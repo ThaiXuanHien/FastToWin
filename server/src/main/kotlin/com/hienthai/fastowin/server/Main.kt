@@ -30,7 +30,11 @@ fun main() {
     val avatarObjects = try { avatarConfiguration.r2?.let(S3AvatarObjectStore::open) }
         catch (failure: Throwable) { database?.close(); throw failure }
     val rateLimitRuntime = try { com.hienthai.fastowin.server.ratelimit.openRateLimitRuntime() }
-        catch (failure: Throwable) { avatarObjects?.close(); database?.close(); throw failure }
+        catch (failure: Throwable) {
+            try { avatarObjects?.close() } catch (_: Throwable) { /* Preserve the startup failure. */ }
+            finally { try { database?.close() } catch (_: Throwable) { /* Preserve the startup failure. */ } }
+            throw failure
+        }
     try {
         val (adminService, moderationService) = createModerationRuntime(database, adminConfiguration, rateLimitRuntime)
         val authService = AuthenticationService(database?.authRepository ?: InMemoryAuthRepository(), moderationService = moderationService)
