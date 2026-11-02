@@ -70,4 +70,6 @@ Owner duyệt “Cho phép lưu và xuất bản website”, sau đó báo đã 
 - Khi app Store được AdMob tìm thấy và Owner cho phép liên kết/xác minh, đọc lại hostname/URL crawl và kết quả Verified. Google lưu ý cần thời gian đồng bộ/crawl; không tự polling hoặc tạo lịch theo dõi.
 - Giữ AdMobOFF, consentDRAFT, chưa có callback production. app-ads.txt không cấp lượt chơi, không phát hành Play và không thay nhóm Closed tester.
 
-Bước kế tiếp: khi Owner yêu cầu, kiểm tra lại khả năng tìm app Store trong AdMob một lần. Nếu tìm được đúng app, đối chiếu điều kiện và chuẩn bị phạm vi liên kết/xác minh để duyệt. Không tự khởi chạy CI, đổi website Store hoặc yêu cầu crawl từ kết quả HTTP này.
+Đã kiểm tra lại theo yêu cầu Owner ngày 02/11: tìm đúng URL Google Play một lần trong luồng Thêm cửa hàng của app AdMob hiện có, chưa có kết quả app để chọn. Chi tiết và bằng chứng trong [bàn giao liên kết Store](play-admob-link-readiness-20261101.md). Chưa thực hiện liên kết hoặc yêu cầu crawl.
+
+Bước kế tiếp: khi Owner yêu cầu kiểm tra lại và tìm được đúng app, đối chiếu điều kiện rồi chuẩn bị phạm vi liên kết/xác minh để duyệt. Không tự polling, khởi chạy CI, đổi website Store hoặc yêu cầu crawl từ kết quả HTTP này.

@@ -32,3 +32,11 @@ Trang Store được đọc trong tài khoản Google hiện có, vì vậy chư
 3. Giữ adsOFF, hai consentDRAFT và Privacy hiện tại. Chờ câu trả lời về198/210 từ [yêu cầu hỗ trợ đã gửi](admob-support-request-20261101.md). Không tự polling Play/AdMob/email/CI hoặc tạo theo dõi định kỳ.
 
 Bằng chứng local: `.artifacts/play-admob-link-readiness-20261101/` gồm submission-activity, published-submission-details, trang Store đã đăng nhập, trạng thái app AdMob, kết quả tìm Store và `result.json`. Không sửa GitHub Issues/Console/DB/runtime trong bước này.
+
+## Kiểm tra lại ngày 02/11/2026
+
+Sau khi Developer website đã lưu và hiện trên trang Google Play, Owner đồng ý kiểm tra lại khả năng liên kết. Mở luồng Thêm cửa hàng của đúng app AdMob `ca-app-pub-1914037185148012~8507808229`, tìm đúng URL `https://play.google.com/store/apps/details?id=com.hienthai.fastowin` một lần. Bảng kết quả chỉ hiện “Bạn không tìm thấy ứng dụng của mình? Hãy kiểm tra kỹ trang chi tiết của bạn trong cửa hàng ứng dụng, rồi thử lại.”; chưa có hàng app để chọn.
+
+Chưa liên kết Store, đổi tên gói, thêm app trùng, chọn cửa hàng khác, gửi review/crawl hoặc bật quảng cáo. Trạng thái app vẫn Yêu cầu xem xét, phân phát bị hạn chế và chưa có cửa hàng. Không kết luận nguyên nhân duy nhất là độ trễ đồng bộ; trang Play quan sát trong phiên đã đăng nhập vẫn chưa chứng minh khả năng tải công khai ngoài nhóm tester.
+
+Bằng chứng: `.artifacts/play-admob-link-readiness-20261102/search-result.txt`, `search-result.png`, `result.json`. Đã đóng tab kiểm tra tạm. Bước kế tiếp là kiểm tra lại khi Owner yêu cầu; không tự polling hoặc tạo lịch. Khi có đúng kết quả app mới chuẩn bị phạm vi liên kết/xác minh cụ thể.
