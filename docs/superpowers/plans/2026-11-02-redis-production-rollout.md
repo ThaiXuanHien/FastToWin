@@ -12,7 +12,7 @@
 
 ## Global Constraints
 
-- **Owner subsequently approved Task 1 local implementation and independent review using sub-agents.** Local master is `d0385f7797175af98c140b343702ea987c522fda`; server tests 995/995 and coverage passed after local merge. Tasks 2–5, push, cloud provisioning, production access via new credentials, cutover and backup access remain outside this local approval.
+- **Owner approved Task 1 local preparation and then Task 2 release/baseline/approval-package preparation.** Local master is `d0385f7797175af98c140b343702ea987c522fda`; server tests 995/995 and coverage passed after local merge. Task 2 permits read-only deployment/resource metadata and local packaging; Tasks 3–5, push/CI, cloud provisioning, new production credentials/SSH, cutover and production backup/data access remain outside this approval.
 - Owner previously selected Railway single node/private WireGuard and proposed Redis usage increase of $5/month, with review before $10/month. This is neither permission to provision production nor a workspace hard spending cap. Keep Hobby; no automatic Pro upgrade for managed backups.
 - Only the 18 entry buckets listed in `RateLimitRuntime.kt` move to Redis. Keep 200-ms command, 2-second startup/connect and 128 pending limits; errors reject new work, never replay or silently fall back to RAM. No global IPv6 JVM preference.
 - Cloud cold-start qualification passed only for a 2-vCPU test runner. It does not establish the actual backend's resource requirement or authorize resizing it. Validate current backend limits and image; stop if its startup gate fails.
@@ -52,6 +52,7 @@ The 24-hour interval is a proposed operating requirement, **not an existing back
 | `deploy/railway/redis/backup.sh` | Create in Task 1: bounded, fsynced, same-connection AOF snapshot; archive must exclude credentials/config |
 | `scripts/tests/RedisProductionPackage.Tests.ps1` | Create in Task 1: owned-container negative/positive, ACL, restart and backup verification |
 | `docs/redis-production-operations.md` | Create in Task 1: backup, incident, credential rotation and explicit restore procedure |
+| `docs/redis-production-release-preparation-2026-11-02.md` | Create in Task 2: reviewable source/artifact/baseline/approval summary; no secret values |
 | `server/src/main/kotlin/com/hienthai/fastowin/server/ratelimit/` | Existing runtime contract; no behavior changes planned |
 | `.artifacts/redis-production-rollout-20261102/` | Ignored release contexts, checksums and sanitized approval/evidence; `private/` for authorized encrypted backups only |
 
