@@ -27,6 +27,7 @@ dependencies {
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.aws.s3)
     implementation(libs.aws.url.connection)
+    implementation(libs.lettuce)
     implementation(libs.hikari)
     implementation(libs.flyway.core)
     implementation(libs.flyway.database.postgresql)
