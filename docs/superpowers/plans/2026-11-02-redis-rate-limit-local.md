@@ -1,6 +1,6 @@
 # Redis Rate Limit Local Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Share selected entry-point token buckets across two local backends with real Redis and explicit failure handling, without changing production.
 
@@ -64,7 +64,7 @@ internal class RateLimitUnavailableException(val reason: RateLimitFailure) :
 
 **Produces:** Exact runtime/failure interface above, default-memory compatibility, selected Redis behavior and bounded metrics.
 
-- [ ] Write the initial failing configuration/default behavior tests and watch red. An example that catches accidental opt-in:
+- [x] Write the initial failing configuration/default behavior tests and watch red. An example that catches accidental opt-in:
 
 ```kotlin
 @Test fun `memory default does not read a Redis credential`() = runTest {
@@ -76,8 +76,8 @@ internal class RateLimitUnavailableException(val reason: RateLimitFailure) :
 }
 ```
 
-- [ ] Implement strict parsing/default memory and safe errors, then run `:server:test --tests '*RateLimitConfigurationTest' --tests '*RateLimitRuntimeTest'`. Explicit Redis startup must fail on missing/invalid credentials/namespace and refuse credential leakage through `toString`, message or cause.
-- [ ] Add the real-Redis failing shared-capacity test before implementing the Lua/client. Two independently opened runtimes consume the same key concurrently; with capacity 3 and a very long refill window, exactly 3 succeed total:
+- [x] Implement strict parsing/default memory and safe errors, then run `:server:test --tests '*RateLimitConfigurationTest' --tests '*RateLimitRuntimeTest'`. Explicit Redis startup must fail on missing/invalid credentials/namespace and refuse credential leakage through `toString`, message or cause.
+- [x] Add the real-Redis failing shared-capacity test before implementing the Lua/client. Two independently opened runtimes consume the same key concurrently; with capacity 3 and a very long refill window, exactly 3 succeed total:
 
 ```kotlin
 val policy = RateLimitPolicy(3, 86_400_000)
@@ -89,10 +89,10 @@ val results = coroutineScope {
 assertEquals(3, results.count { it })
 ```
 
-- [ ] Implement the single-key EVAL script and pinned client; inspect `:server:dependencyInsight --dependency netty --configuration runtimeClasspath` and dependency resolution before retaining it. Do not force unrelated versions. Use Redis TIME, preserve token/refill semantics, validate policy/state before mutation and set TTL. Missing/corrupt state must follow the exact spec rules.
-- [ ] Add and observe red, then implement: independent namespaces/keys; continuous refill and retry; TTL; policy mismatch; malformed state/reply; connection loss; dropped response after write; finite timeout/in-flight cap; cancellation; startup/shutdown lifecycle; no replay; secret-safe counters. Local game-message buckets must continue when Redis fails, while a selected entry bucket refuses.
-- [ ] Run the focused contract suite with the real fixture, record exact counts and red/green evidence. Fixture-related test helpers may use a loopback TCP proxy to drop/hold responses, not a fake grant/deny implementation. Record Redis reset semantics honestly.
-- [ ] Self-review and commit only Task 1 files. Write the task report with command/output, dependency graph evidence and limitations.
+- [x] Implement the single-key EVAL script and pinned client; inspect `:server:dependencyInsight --dependency netty --configuration runtimeClasspath` and dependency resolution before retaining it. Do not force unrelated versions. Use Redis TIME, preserve token/refill semantics, validate policy/state before mutation and set TTL. Missing/corrupt state must follow the exact spec rules.
+- [x] Add and observe red, then implement: independent namespaces/keys; continuous refill and retry; TTL; policy mismatch; malformed state/reply; connection loss; dropped response after write; finite timeout/in-flight cap; cancellation; startup/shutdown lifecycle; no replay; secret-safe counters. Local game-message buckets must continue when Redis fails, while a selected entry bucket refuses.
+- [x] Run the focused contract suite with the real fixture, record exact counts and red/green evidence. Fixture-related test helpers may use a loopback TCP proxy to drop/hold responses, not a fake grant/deny implementation. Record Redis reset semantics honestly.
+- [x] Self-review and commit only Task 1 files. Write the task report with command/output, dependency graph evidence and limitations.
 
 ### Task 2: Wire runtime into real HTTP/WebSocket/admin flows and complete local acceptance
 
@@ -102,7 +102,7 @@ assertEquals(3, results.count { it })
 
 **Produces:** Optional runtime injection shared with AdminService, safe 503/WS error mapping and real two-application local evidence.
 
-- [ ] Add a failing endpoint test using a limiter that throws the safe unavailable exception. It must expose the current missing mapping, not merely assert that a test stub was called. HTTP outcome example:
+- [x] Add a failing endpoint test using a limiter that throws the safe unavailable exception. It must expose the current missing mapping, not merely assert that a test stub was called. HTTP outcome example:
 
 ```kotlin
 val response = client.post("/auth/login") {
@@ -113,10 +113,18 @@ assertEquals(HttpStatusCode.ServiceUnavailable, response.status)
 assertContains(response.bodyAsText(), "RATE_LIMIT_UNAVAILABLE")
 ```
 
-- [ ] Pass one runtime from startup to gameModule and AdminService; dispose it on shutdown and startup errors. Keep default memory construction for existing tests. Wire the runtime's safe metric text into the existing private endpoint, preserving its current access boundary.
-- [ ] Map real denial to unchanged 429/Retry-After, unavailable to HTTP/admin 503. WS connect unavailable refuses a new game identity with a temporary close; Create/Join unavailable sends the structured error and keeps the authenticated socket alive. Catch only the safe failure type; propagate application cancellation. Do not catch broad engine errors or re-run an operation.
-- [ ] Add two application instances using independent Redis runtimes: shared player/admin login quotas, create/join/connection entry quotas, namespace separation and missing-Redis fail-safe. Keep room ownership isolated and do not claim a multi-instance game engine.
-- [ ] Add a real Redis outage acceptance test: ongoing match selections still work through local guards; create/join on the same authenticated connection reports temporary failure without losing the connection; recovering Redis allows a subsequent new attempt. Add metrics output checks with no raw identifier/secret.
-- [ ] Run focused application/auth/admin/WebSocket tests during edits. Then run full `:server:test` once with available PostgreSQL fixtures; run required localization/coverage checks if the changed paths affect their gates. No Android/Web bundle rebuild is needed for server-only changes with unchanged wire/localization data.
-- [ ] Document opt-in environment fields, fixed shared/local scopes, 200 ms/2 s/128 bounds, 64 MB noeviction fixture, cancellation and unknown-write behavior, Redis reset/persistence caveat, safe cleanup of only this run's container/namespace, and remaining #12/#15 work. Keep production instructions marked not approved.
-- [ ] Self-review, commit Task 2 files and report verified results. Request the final whole-branch review after both tasks are accepted; do not merge/push/deploy automatically.
+- [x] Pass one runtime from startup to gameModule and AdminService; dispose it on shutdown and startup errors. Keep default memory construction for existing tests. Wire the runtime's safe metric text into the existing private endpoint, preserving its current access boundary.
+- [x] Map real denial to unchanged 429/Retry-After, unavailable to HTTP/admin 503. WS connect unavailable refuses a new game identity with a temporary close; Create/Join unavailable sends the structured error and keeps the authenticated socket alive. Catch only the safe failure type; propagate application cancellation. Do not catch broad engine errors or re-run an operation.
+- [x] Add two application instances using independent Redis runtimes: shared player/admin login quotas, create/join/connection entry quotas, namespace separation and missing-Redis fail-safe. Keep room ownership isolated and do not claim a multi-instance game engine.
+- [x] Add a real Redis outage acceptance test: ongoing match selections still work through local guards; create/join on the same authenticated connection reports temporary failure without losing the connection; recovering Redis allows a subsequent new attempt. Add metrics output checks with no raw identifier/secret.
+- [x] Run focused application/auth/admin/WebSocket tests during edits. Then run full `:server:test` once with available PostgreSQL fixtures; run required localization/coverage checks if the changed paths affect their gates. No Android/Web bundle rebuild is needed for server-only changes with unchanged wire/localization data.
+- [x] Document opt-in environment fields, fixed shared/local scopes, 200 ms/2 s/128 bounds, 64 MB noeviction fixture, cancellation and unknown-write behavior, Redis reset/persistence caveat, safe cleanup of only this run's container/namespace, and remaining #12/#15 work. Keep production instructions marked not approved.
+- [x] Self-review, commit Task 2 files and report verified results. Request the final whole-branch review after both tasks are accepted; do not merge/push/deploy automatically.
+
+## Local execution result — 02/11/2026
+
+Implementation and scoped/final reviews complete through `fba4d65`; no Critical/Important findings remain. Redis runtime18 focused cases passed; real-Netty/routes17-case fixture runner passed end-to-end including removal of its own temporary container; final startup/integration-focused checks passed7/7. Coverage and localization gates passed during integration.
+
+The complete server invocation ran990 tests with27 failures from existing PostgreSQL URL guards. After supplying a compatible isolated database alias/name, all five affected classes passed30/30. These are separate runs, not a claim of a clean single990-case invocation. Reports preserve the initial XML and subsequent evidence.
+
+Temporary proxy and owned Redis/PostgreSQL containers/volumes were removed after verifying identity. Existing user containers/images were preserved. Non-secret reports are in `.artifacts/redis-rate-limit-20261102/`. No push, CI, merge or deployment was performed. Production use, TLS acceptance, persistence/HA, presence and distributed room ownership remain outside this stage.
