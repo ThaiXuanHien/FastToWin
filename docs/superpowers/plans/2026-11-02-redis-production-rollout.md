@@ -112,7 +112,7 @@ See [operations contract](../../redis-production-operations.md). Task 2 release/
 
 ### Local package result — 02 November 2026
 
-Local build and offline image inspections are complete; independent review is pending. The backend ZIP and all 178 context files match their frozen manifest, and all 176 in-image distribution files match the context. Backend inspection runs as UID 100 on Java 17; no app or database was initialized. Redis image scripts match the reviewed Task 1 context; its running privilege-drop proof remains the Task 1 evidence, not the Task 2 shell override. Owned inspection containers are absent. Local image IDs and exact checksums are recorded in [the release preparation summary](../../redis-production-release-preparation-2026-11-02.md) and the ignored Task 2 manifest.
+Local build and offline image inspections are complete. Independent task review, its scoped re-review and the final integration review found no remaining Critical/Important defect in Tasks 1–2 local preparation. The backend ZIP and all 178 context files match their frozen manifest, and all 176 in-image distribution files match the context. Backend inspection runs as UID 100 on Java 17; no app or database was initialized. Redis image scripts match the reviewed Task 1 context; its running privilege-drop proof remains the Task 1 evidence, not the Task 2 shell override. Owned inspection containers are absent. Local image IDs and exact checksums are recorded in [the release preparation summary](../../redis-production-release-preparation-2026-11-02.md) and the ignored Task 2 manifest.
 
 Current production metadata and masked variable names were observed read-only; no value map or production database was read. The package remains blocked for provisioning/cutover until separate authorization and the proposed preflight/backup/rollback gates are met. No cloud upload, service creation, SSH key, production data backup, push, merge or CI action occurred. The current backend custom Firebase start command must be preserved. Tasks 3–5 below remain unexecuted.
 
@@ -151,9 +151,11 @@ Current production metadata and masked variable names were observed read-only; n
 - [ ] At success record deployment/image IDs, namespace (not URL/password), actual resource limits/cold timings, relevant counter snapshots, backup hash/location/retention/due time/operator and remaining cost responsibility. Verify original Web/DB/staging and one backend replica are unchanged; record SSH key revocation and absence of temporary preflight resources.
 - [ ] Update `docs/redis-rate-limit.md` and create a dated production handoff only after real cutover evidence exists. Keep #12 open for presence/remaining local limits and #15 open for distributed ownership. Do not post issue updates or close issues without authorization to publish them.
 
-## Preparation self-review
+## Original planning-time self-review (historical)
 
 - Runtime/provider/cloud constraints map to Tasks 1, 3 and 4; backup/restore limitations and owner permissions map to Tasks 1, 2 and 5.
 - All future files have an owning task; current snapshot/source and future effective deployment metadata are distinguished. Local master integration is complete; push/CI/provisioning/cutover are separate gates.
-- Production assets are not yet implemented; the plan does not treat the expiring test bootstrap, test-only inspector or managed Hobby backup as production-ready.
-- No production change, cloud lookup, SSH registration, CI dispatch/inspection or scheduler was performed while writing this plan. The next reviewable scope is **Task 1 local preparation only**; authorization for the actual release comes after exact artifacts and the Task 2 package exist.
+- At the time this plan was written, production assets were not yet implemented; the plan does not treat the expiring test bootstrap, test-only inspector or managed Hobby backup as production-ready.
+- No production change, cloud lookup, SSH registration, CI dispatch/inspection or scheduler was performed while writing this plan. At that time, the next reviewable scope was **Task 1 local preparation only**; authorization for the actual release comes after exact artifacts and the Task 2 package exist.
+
+Current status: Tasks 1–2 local preparation and their reviews are complete. The historical planning-time bullets above do not override their recorded results. Tasks 3–5 remain unexecuted; production resources, backup access and cutover still require their explicit grants and execution gates.
