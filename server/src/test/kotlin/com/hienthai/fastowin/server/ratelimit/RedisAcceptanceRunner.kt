@@ -61,6 +61,7 @@ object RedisAcceptanceRunner {
         var revision = "unknown"; var checksum = "unknown"; var passed = 0; var failed = 0
         var startupMs = 0L; val latencies = mutableListOf<Long>(); var reason = "ok"
         var allowed = 0; var limited = 0; var unavailable = 0; var failureReason = "none"
+        val observedLoadConcurrency = java.util.concurrent.atomic.AtomicInteger(0)
         val executor = Executors.newSingleThreadExecutor { runnable -> Thread(runnable, "acceptance-case").apply { isDaemon = true } }
         fun phase(seconds: Long, action: () -> Unit) {
             val future = executor.submit(action)
@@ -110,6 +111,7 @@ object RedisAcceptanceRunner {
                             if (before >= deadline) break
                             next = before + interval
                             try {
+                                observedLoadConcurrency.set(1)
                                 val result = runBlocking { (if (i % 2 == 0) first else second).consume("login-ip", "load", RateLimitPolicy(1_000_000, 60_000)) }
                                 if (result.allowed) allowed++ else limited++
                             } catch (e: com.hienthai.fastowin.server.RateLimitUnavailableException) {
@@ -126,7 +128,7 @@ object RedisAcceptanceRunner {
         val sorted = latencies.sorted()
         fun percentile(p: Int) = if (sorted.isEmpty()) 0 else sorted[((sorted.size * p + 99) / 100 - 1).coerceIn(0, sorted.lastIndex)]
         val status = if (reason == "ok" && passed == 13 && failed == 0) "pass" else "fail"
-        println("""{"status":"$status","reason":"$reason","revision":"$revision","manifest_sha256":"$checksum","cases_passed":$passed,"cases_failed":$failed,"startup_ms":$startupMs,"consume_total":${sorted.size},"consume_allowed":$allowed,"consume_limited":$limited,"consume_unavailable":$unavailable,"consume_failure_reason":"$failureReason","consume_p50_us":${percentile(50)},"consume_p95_us":${percentile(95)},"consume_p99_us":${percentile(99)},"pending_configured_limit":128,"load_max_issued_concurrently":1}""")
+        println("""{"status":"$status","reason":"$reason","revision":"$revision","manifest_sha256":"$checksum","cases_passed":$passed,"cases_failed":$failed,"startup_ms":$startupMs,"consume_total":${sorted.size},"consume_allowed":$allowed,"consume_limited":$limited,"consume_unavailable":$unavailable,"consume_failure_reason":"$failureReason","consume_p50_us":${percentile(50)},"consume_p95_us":${percentile(95)},"consume_p99_us":${percentile(99)},"pending_configured_limit":128,"load_max_issued_concurrently":${observedLoadConcurrency.get()}}""")
         exitProcess(if (status == "pass") 0 else 1)
     }
 }
