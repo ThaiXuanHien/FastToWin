@@ -1,6 +1,6 @@
 # Local Redis acceptance runner
 
-This test-only distribution runs existing real-Redis acceptance cases in a one-shot JVM. It is separate from the production application distribution. It has not been deployed or accepted on cloud. It does not test TLS, AOF, backup, restore or platform configuration. The byte fault proxy accepts plain `redis://` only; for the proposed deployment the transport protection is the private WireGuard network, not TLS hostname verification.
+This test-only distribution runs existing real-Redis acceptance cases in a one-shot JVM. It is separate from the production application distribution. The application bundle passed the isolated [Railway cloud rehearsal](redis-cloud-acceptance-2026-11-02.md). Separate reviewed operations helpers exercised platform configuration, OOM, AOF restart and manual backup/restore; those checks are not part of this application entry point. Cold startup qualified only at a 2-vCPU runner limit. TLS, managed backups, fresh-volume restore and HA remain unqualified. The byte fault proxy accepts plain `redis://` only; for the proposed deployment the transport protection is the private WireGuard network, not TLS hostname verification.
 
 Build from a committed revision with the project's existing Gradle dependencies available. On Windows use JBR 17 and the task-local temporary directory; run from the repository root:
 

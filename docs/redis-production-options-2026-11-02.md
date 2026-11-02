@@ -7,13 +7,13 @@ vùng với backend; dự trù usage Redis tăng thêm **$5/tháng**, mức cầ
 
 **Quyết định owner ngày 02/11/2026:** đã đồng ý Railway một node, mạng private
 WireGuard và dự trù Redis tăng thêm $5/tháng để chuẩn bị đợt nghiệm thu cloud.
-Chưa cho phép tạo dịch vụ, bật staging hoặc đổi production. Xem
+Sau đó owner duyệt riêng đợt hai service test staging và key tạm cho AOF backup/restore; đợt đã hoàn tất và tài nguyên test đã được yêu cầu dọn. Redis production chưa được tạo/bật. Xem [kết quả cloud có điều kiện](redis-cloud-acceptance-2026-11-02.md) và
 [runbook đợt nghiệm thu](superpowers/plans/2026-11-02-redis-cloud-acceptance.md).
 
 Ưu tiên này theo yêu cầu free/chi phí thấp nhất đáp ứng nhu cầu trong
 [lựa chọn hạ tầng trước](infrastructure-options-2026-10-12.md). Tài liệu cũ ghi
 Hobby đã trả phí và staging project riêng, thường tắt; đó là lịch sử, chưa xác
-minh tài khoản hiện tại. Chưa biết vùng backend, usage thực hay ngân sách owner.
+minh tài khoản tại thời điểm viết bản đề xuất đầu. Đợt cloud sau đó xác nhận Hobby active, production và staging SFO; kết quả và ngân sách được duyệt được ghi riêng trong báo cáo.
 Giá dưới đây là USD đối chiếu nguồn chính thức ngày 02/11/2026, chưa thuế/phí;
 phép tính minh họa, không phải báo giá hay số đo sức chứa FastToWin.
 
@@ -47,7 +47,7 @@ HA tối thiểu gồm ba data node có Sentinel và proxy; failover tự độn
 uptime SLA công bố. Chi phí bảng dưới chỉ cho một node.
 [Redis HA](https://docs.railway.com/databases/redis-ha).
 
-Railway quản lý platform/image patches; owner bật backup/HA và quản lý dữ liệu.
+Railway quản lý platform/image patches; owner chịu trách nhiệm backup/HA và dữ liệu. API thực tế ngày 02/11/2026 từ chối managed manual/scheduled backup trên Hobby vì cần Pro. Không giả định tính năng này có trong ngân sách Hobby; đợt test dùng manual AOF backup/restore được owner duyệt, chưa nâng gói.
 Đổi image/start command/biến template hoặc sửa config trong container có thể đưa
 database ra ngoài phạm vi hỗ trợ template. Vì vậy cấu hình tùy chỉnh cho
 `noeviction`/AOF phải có người chịu trách nhiệm vận hành, không gắn nhãn
@@ -109,7 +109,7 @@ billing. RAM/CPU là **trung bình đo được giả định**, không phải g
 | RAM 0,25 GB; CPU 0,02 vCPU; volume dùng 1 GB; backup tăng thêm 1 GB | 0,25×10 + 0,02×20 + 2×0,15 | $3,20 |
 | RAM 0,50 GB; CPU 0,05 vCPU; volume dùng 2 GB; backup tăng thêm 2 GB | 0,50×10 + 0,05×20 + 4×0,15 | $6,60 |
 
-Các giả định volume là **dung lượng tính phí**, cần chọn capacity đủ lớn hơn để
+Phần backup trong bảng là giả định storage minh họa, không khẳng định Hobby có managed backup; Pro-only backup cần xét riêng chi phí gói. Các giả định volume là **dung lượng tính phí**, cần chọn capacity đủ lớn hơn để
 chừa chỗ rewrite/backup. Railway tính volume theo phần dùng và backup theo phần
 incremental; backup có giới hạn, phải đo thực tế.
 [Volumes](https://docs.railway.com/volumes/reference),
@@ -184,7 +184,7 @@ Backup/restore phải thử trên database cách ly vì restore xóa dữ liệu
 
 ## 5. Nghiệm thu trước production và bước cần duyệt
 
-Checklist này chưa chạy trên cloud, không được đánh dấu đạt nhờ fixture local:
+Checklist ban đầu dưới đây là cổng production, không tự đánh dấu toàn bộ đạt theo fixture local. Đợt cloud đã chạy quota/fault/OOM/AOF/manual restore và dọn tài nguyên; chỉ runner 2 vCPU đạt cold startup. Xem báo cáo liên kết ở đầu tài liệu. Production rollout, TLS, HA và managed backup chưa nghiệm thu:
 
 - [ ] Sau owner duyệt, kiểm tra đúng vùng/backend và chốt provider gần nhất;
   staging project riêng, bật theo đợt, database/namespace/secret riêng.
@@ -215,5 +215,4 @@ Checklist này chưa chạy trên cloud, không được đánh dấu đạt nh�
 TLS bắt buộc, cho phép một đợt staging cách ly có giới hạn tải/chi phí. Sau đó
 mới kiểm tra vùng/cấu hình thực, lập thay đổi triển khai để duyệt và chạy nghiệm
 thu. Nếu chọn Upstash thay thế, chốt PAYG/Fixed, mức budget và consistency trước.
-Chưa provision, mua gói, đổi billing/cloud config, deploy hoặc chạy/đọc CI trong
-phạm vi tài liệu này.
+Hai service test cloud đã được provision theo duyệt riêng và xóa sau đợt; volume pending deletion được ghi trong báo cáo. Không mua/nâng gói, đổi production hoặc đọc CI trong đợt này. Provision/rollout Redis production vẫn cần duyệt riêng.
