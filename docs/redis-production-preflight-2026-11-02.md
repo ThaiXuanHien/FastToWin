@@ -1,0 +1,11 @@
+# Production Redis preflight — 2026-11-02
+
+**Outcome: no-go; provisioning not started.** The required effective runtime configuration verification cannot be completed with the authorized, frozen production ACL and the checked inspection probe. No production Redis or temporary preflight service was created. The existing game backend was not changed, and no database or player keys were accessed.
+
+A read-only Railway query confirmed project `8daf3d1f-df4c-4f39-a07b-61becae674fa`, production environment `351ee85f-7760-4b57-9649-9693fdcdbfea`, and one server replica on active and latest deployment `86f53b3f-7af5-4a76-8b8d-6a1e4d8f32d7`. No service named `rate-limit-redis` existed in that result. The typed region was null; Task 2's same-deployment archived metadata and UI observation identified SFO/US West. This partial check is not a fresh complete creation gate.
+
+The frozen bootstrap configures `appendonly yes`, `appendfsync everysec`, `maxmemory 64mb`, and `maxmemory-policy noeviction`, but configuration text alone does not establish effective runtime state. Its `ftw_monitor` ACL grants only `PING` and `INFO`; the checked inspection probe requires `CONFIG GET` to verify those settings. The app and backup ACLs also do not grant that command. In particular, the authorized inspection path does not establish the effective `appendfsync` setting. The previously checked fixture inspector had additional privileges and cannot be substituted for the production role. Resolving this needs an explicitly authorized inspection method compatible with the frozen runtime, or separately reviewed changes and authorization.
+
+The existing fixture probe's seed/verify operations also rely on inspector key commands and a fixed long-lived bucket; the acceptance runner exercises different namespaces. Neither can be run wholesale against the production ACL. A production-safe, UUID-scoped, bounded-TTL probe still needs preparation and local verification before upload.
+
+No cold-open timing, synthetic quota/TTL or latency result exists for production. Health is not a substitute for those gates. Backup and restore remain deferred pending separate access authorization. Therefore this is not approval for cutover. No CI, push, merge, SSH, backup, or production backend deployment was performed.
