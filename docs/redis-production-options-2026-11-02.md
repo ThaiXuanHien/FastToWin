@@ -5,6 +5,11 @@ vùng với backend; dự trù usage Redis tăng thêm **$5/tháng**, mức cầ
 **$10/tháng**. Đây là ngân sách đề xuất để owner duyệt, chưa tạo tài nguyên hay
 đổi cấu hình production. Chỉ chuyển production sau đợt nghiệm thu riêng.
 
+**Quyết định owner ngày 02/11/2026:** đã đồng ý Railway một node, mạng private
+WireGuard và dự trù Redis tăng thêm $5/tháng để chuẩn bị đợt nghiệm thu cloud.
+Chưa cho phép tạo dịch vụ, bật staging hoặc đổi production. Xem
+[runbook đợt nghiệm thu](superpowers/plans/2026-11-02-redis-cloud-acceptance.md).
+
 Ưu tiên này theo yêu cầu free/chi phí thấp nhất đáp ứng nhu cầu trong
 [lựa chọn hạ tầng trước](infrastructure-options-2026-10-12.md). Tài liệu cũ ghi
 Hobby đã trả phí và staging project riêng, thường tắt; đó là lịch sử, chưa xác
