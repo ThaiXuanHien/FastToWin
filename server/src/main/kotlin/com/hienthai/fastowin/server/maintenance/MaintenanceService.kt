@@ -103,7 +103,12 @@ class MaintenanceService(
                     putSnapshot(value.version,next); audit(null,"MAINTENANCE_TRANSITION",value,next); value=next
                 }
                 if (value.state==MaintenanceState.ANNOUNCING && now>=value.transitionAtEpochMillis!!) advance(MaintenanceState.DRAINING)
-                if (value.state==MaintenanceState.DRAINING && ((allowEmptyDrain && activeMatches==0) || now>=value.drainDeadlineEpochMillis!!)) advance(MaintenanceState.MAINTENANCE)
+                if (value.state==MaintenanceState.DRAINING) {
+                    val emptyDrain=allowEmptyDrain && activeMatches==0
+                    // Planned maintenance waits for admitted work, even after its drain target.
+                    val forcedDeadline=value.mode!=MaintenanceMode.PLANNED && now>=value.drainDeadlineEpochMillis!!
+                    if (emptyDrain || forcedDeadline) advance(MaintenanceState.MAINTENANCE)
+                }
                 value
             }
             observations.publish(MaintenanceObservation(snapshot.policy(),MaintenanceRuntimeObservation(snapshot.version,validNow(),activeMatches,true)))

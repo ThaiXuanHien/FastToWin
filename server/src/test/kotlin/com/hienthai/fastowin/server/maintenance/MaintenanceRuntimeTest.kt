@@ -21,7 +21,7 @@ class MaintenanceRuntimeTest {
         fail = true; runtime.refresh()
         assertFalse(engine.newIntentAllowed()); error(503) { runtime.publicStatus() }
     }
-    @Test fun policyCommittedBetweenReadsCannotTreatActiveEngineZeroAsEmptyDrain() = runTest {
+    @Test fun overduePolicyCommittedBetweenReadsCannotTreatActiveEngineZeroAsEmptyDrain() = runTest {
         val f = MaintenanceFixture(); f.initialize()
         val engine = GameEngine()
         val host = engine.connectAccount(AuthenticatedAccount(UUID.randomUUID(), "host"))
@@ -37,6 +37,7 @@ class MaintenanceRuntimeTest {
                     engine.handle(host.playerId, ClientMessage.SetReady(room, true))
                     engine.handle(guest.playerId, ClientMessage.SetReady(room, true))
                     f.service.update(f.owner, f.request().copy(warningMinutes = 0))
+                    f.now += 16 * 60_000
                 }
                 return f.repository.transaction(block)
             }
@@ -45,6 +46,52 @@ class MaintenanceRuntimeTest {
         MaintenanceRuntime(engine, service).refresh()
         assertEquals(MaintenanceState.DRAINING, service.effectivePolicy().state)
         assertEquals(1, engine.activeMaintenanceMatchCount())
+    }
+    @Test fun overduePlannedDrainWaitsForLiveMatchAndItsFailedSettlement() = runTest {
+        val f = MaintenanceFixture(); f.initialize()
+        var failSettlement = true
+        val results = mutableListOf<CompletedMatch>()
+        val rooms = InMemoryActiveRoomRepository()
+        val engine = GameEngine(activeRoomRepository = rooms, matchResultRepository = MatchResultRepository {
+            if (failSettlement) throw java.sql.SQLException("synthetic settlement failure")
+            results += it
+        })
+        val runtime = MaintenanceRuntime(engine, f.service)
+        runtime.refresh()
+        val host = engine.connectAccount(AuthenticatedAccount(UUID.randomUUID(), "host"))
+        val guest = engine.connectAccount(AuthenticatedAccount(UUID.randomUUID(), "guest"))
+        val room = engine.handle(host.playerId, ClientMessage.CreateRoom("drain", "", ProtocolGameMode.ORDER))
+            .map { it.message }.filterIsInstance<ServerMessage.RoomCreated>().single().game.roomId
+        engine.handle(guest.playerId, ClientMessage.JoinRoom(room, ""))
+        engine.handle(host.playerId, ClientMessage.SetReady(room, true))
+        engine.handle(guest.playerId, ClientMessage.SetReady(room, true))
+        f.service.update(f.owner, f.request().copy(warningMinutes = 0, drainMinutes = 1))
+        f.now += 120_000
+        assertFalse(runtime.refresh().closeSockets)
+        assertEquals(MaintenanceState.DRAINING, runtime.publicStatus().state)
+        assertFalse(engine.newIntentAllowed())
+        assertEquals(1, engine.activeMaintenanceMatchCount())
+        assertFalse(rooms.loadAll().single().maintenanceAborted)
+        assertFailsWith<MaintenanceAdmissionException> {
+            engine.connectAccount(AuthenticatedAccount(UUID.randomUUID(), "new player"))
+        }
+        for (number in 1..GAME_NUMBER_COUNT) {
+            engine.handle(host.playerId, ClientMessage.SelectNumber(room, number, "n$number"))
+        }
+        assertNotNull(rooms.loadAll().single().pendingCompletedMatch)
+        assertFalse(runtime.refresh().closeSockets)
+        assertEquals(MaintenanceState.DRAINING, runtime.publicStatus().state)
+        assertEquals(1, engine.activeMaintenanceMatchCount())
+        failSettlement = false
+        runtime.refresh() // Retry the admitted result before observing empty drain.
+        assertEquals(1, results.size)
+        assertEquals(host.playerId, results.single().winnerPlayerId)
+        assertEquals(0, engine.activeMaintenanceMatchCount())
+        assertTrue(runtime.refresh().closeSockets)
+        assertEquals(MaintenanceState.MAINTENANCE, runtime.publicStatus().state)
+        runtime.refresh()
+        assertEquals(1, results.size)
+        assertFalse(rooms.loadAll().single().maintenanceAborted)
     }
     @Test fun refreshAppliesBlockBeforeEmptyDrainAndKeepsClosureOnReadFailure() = runTest {
         val f = MaintenanceFixture(); f.initialize()
