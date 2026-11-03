@@ -1,4 +1,4 @@
-param([ValidateSet('Shipping','UI')][string]$Mode='Shipping')
+param([ValidateSet('Shipping','UI','WALDiagnostic')][string]$Mode='Shipping')
 $ErrorActionPreference='Stop'
 $repo=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 $runId=[guid]::NewGuid().ToString('N')

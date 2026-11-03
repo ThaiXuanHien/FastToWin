@@ -24,7 +24,7 @@ export function certificates(dir,repo=path.resolve('.')){
 }
 const delay=ms=>new Promise(r=>setTimeout(r,ms));
 const write=(file,value)=>fs.writeFileSync(file,typeof value==='string'?value:JSON.stringify(value,null,2)+'\n');
-async function shipping(repo,id){
+async function shipping(repo,id,{diagnostic=false}={}){
   const artifact=ownedPath(repo,id);assert.ok(fs.existsSync(artifact));
   const env={...process.env};for(const k of Object.keys(env))if(/^(DOCKER_|BUILDX_|BUILDKIT_)/.test(k))delete env[k];
   env.DOCKER_HOST='npipe:////./pipe/docker_engine';env.DOCKER_CONFIG=path.join(artifact,'docker-config');
@@ -32,10 +32,12 @@ async function shipping(repo,id){
   const executable=cp.spawnSync('where.exe',['docker'],{encoding:'utf8',windowsHide:true}).stdout.trim().split(/\r?\n/)[0];assert.ok(path.isAbsolute(executable));
   fs.mkdirSync(env.DOCKER_CONFIG);write(path.join(env.DOCKER_CONFIG,'config.json'),dockerConfig(executable));
   const compose=['compose','-f',path.join(repo,'deploy/monitoring/redis-monitor-cloud/compose.local.yaml')];
-  const commands=[];let stage='prepare';
+  const commands=[];let stage='prepare',runtimeDeadline=Infinity;
   const receipt={id,artifact,startedAt:new Date().toISOString(),gates:{},limitations:['Local fixture receipt is not Grafana Cloud acceptance.','Named Docker volume has no portable hard 1-GB quota; physical disk durability is untested.']};
   function save(){write(path.join(artifact,'acceptance.json'),receipt);write(path.join(artifact,'commands.json'),commands);}
   function docker(args,seconds=90){
+    if(Date.now()>=runtimeDeadline)throw new Error('diagnostic_runtime_deadline');
+    seconds=Math.min(seconds,(runtimeDeadline-Date.now())/1000);
     commands.push({at:Date.now(),args});save();
     const r=cp.spawnSync(executable,args,{env,encoding:'utf8',windowsHide:true,timeout:seconds*1000,maxBuffer:4*1024*1024});
     if(r.status!==0){write(path.join(artifact,'docker-failure.json'),{stage,status:r.status,code:r.error?.code,diagnostic:(r.stderr??'').replace(/[a-f0-9]{96}/g,'[synthetic-redacted]').slice(-2200)});throw new Error('owned_docker_command_failed');}
@@ -47,7 +49,7 @@ async function shipping(repo,id){
   const probe=(mode,arg)=>JSON.parse(docker(['exec',container('receiver'),'node','/fixture/probe.mjs',mode,...(arg?[arg]:[])]));
   const query=expr=>probe('query',expr).result;
   function gate(name,value){receipt.gates[name]={at:new Date().toISOString(),...value};save();console.log('Local acceptance gate: '+name);}
-  async function until(fn,seconds=45){const end=Date.now()+seconds*1000;while(Date.now()<end){try{const value=fn();if(value)return value;}catch{}await delay(1000);}throw new Error('gate_deadline_'+stage);}
+  async function until(fn,seconds=45){const end=Math.min(runtimeDeadline,Date.now()+seconds*1000);while(Date.now()<end){try{const value=fn();if(value)return value;}catch{}await delay(1000);}throw new Error('gate_deadline_'+stage);}
   const receiverMode=value=>write(path.join(artifact,'receiver/receiver-mode'),value);
   const receiverReceipts=()=>fs.existsSync(path.join(artifact,'receiver/receipts.jsonl'))?fs.readFileSync(path.join(artifact,'receiver/receipts.jsonl'),'utf8').trim().split('\n').filter(Boolean).map(JSON.parse):[];
   try{
@@ -64,6 +66,11 @@ async function shipping(repo,id){
     write(path.join(artifact,'sender/config.alloy'),localAlloy());receiverMode('accept');
     fs.copyFileSync(path.join(repo,'scripts/tests/redis-cloud-receiver.mjs'),path.join(artifact,'receiver/receiver.mjs'));
     fs.copyFileSync(path.join(repo,'scripts/tests/redis-cloud-probe.mjs'),path.join(artifact,'receiver/probe.mjs'));
+    if(diagnostic){
+      const bootstrap=path.join(repo,'.artifacts/redis-cloud-local-20261103/decoder-bootstrap');
+      fs.copyFileSync(path.join(bootstrap,'decoder.exe'),path.join(artifact,'decoder.exe'));
+      fs.copyFileSync(path.join(bootstrap,'decoder-linux'),path.join(artifact,'receiver/diagnostic-decoder'));
+    }
     stage='compose-security';const config=JSON.parse(docker([...compose,'config','--format','json']));
     // Sanitized policy receipt; compose config itself contains synthetic env secrets.
     assert.equal(Object.keys(config.services).length,5);assert.equal(config.networks.fixture.internal,true);
@@ -72,10 +79,18 @@ async function shipping(repo,id){
     gate('ownership-and-isolation',{localDaemon:true,emptyAuthConfig:true,internalNetwork:true,noHostPorts:true,syntheticCredentials:true});
     stage='build';docker([...compose,'build','--builder','default'],240);
     stage='startup';docker([...compose,'up','-d','--no-build']);
+    if(diagnostic)runtimeDeadline=Date.now()+240000;
     const networkName=Object.keys(inspect('container',container('collector')).NetworkSettings.Networks)[0],network=inspect('network',networkName);
     assert.ok(owns(network));assert.equal(network.Internal,true);assert.equal(network.EnableIPv6,true);
     const containers=Object.fromEntries(['redis','collector','sender','receiver','prometheus'].map(s=>[s,container(s)]));
     receipt.resources={containers,network:network.Id,images:Object.fromEntries(Object.entries(containers).map(([s,cid])=>[s,inspect('container',cid).Image]))};save();
+    if(diagnostic){
+      stage='wal-diagnostic';
+      const {runWalDiagnostic}=await import('./redis-cloud-wal-diagnostic.mjs');
+      const evidence=await runWalDiagnostic({artifact,docker,containers,query,until,delay:async ms=>{if(Date.now()+ms>runtimeDeadline)throw new Error('diagnostic_runtime_deadline');await delay(ms);},inspect,receiverMode,receiverReceipts,write,deadlineAt:runtimeDeadline});
+      receipt.diagnosticConfirmed=evidence.diagnosticConfirmed;receipt.replayAcceptancePassed=false;save();
+      throw new Error(evidence.diagnosticConfirmed?'wal_restart_cutoff_diagnostic_confirmed_acceptance_failed':'wal_diagnostic_inconclusive');
+    }
     stage='healthy-reception';const healthy=await until(()=>{const result=query('{job="fasttowin-redis-monitor",instance="redis-primary"}');return result.length===22&&result.some(s=>s.metric.__name__==='fasttowin_redis_monitor_up'&&s.value[1]==='1')?result:false;},75);
     const reasons=new Set(['connect','timeout','auth','protocol','oversized','missing','invalid']);
     for(const s of healthy){assert.ok(metricNames.includes(s.metric.__name__));assert.equal(s.metric.job,'fasttowin-redis-monitor');assert.equal(s.metric.instance,'redis-primary');assert.ok(Object.keys(s.metric).every(k=>['__name__','job','instance','reason'].includes(k)));if(s.metric.__name__==='fasttowin_redis_monitor_collection_errors_total')assert.ok(reasons.has(s.metric.reason));else assert.equal(s.metric.reason,undefined);}
@@ -150,6 +165,7 @@ async function shipping(repo,id){
     if(!receipt.gatesPassed)throw new Error('local_acceptance_gates_failed');
   }catch(error){receipt.completed=false;receipt.failedStage=stage;receipt.error=error.message;save();throw error;}
   finally{
+    runtimeDeadline=Infinity;
     const actions=[],checks=[];
     // Enumerate only this run; every action is independent so one failure cannot
     // skip later resources or secrets. Checks include partially built images.
@@ -169,11 +185,14 @@ async function shipping(repo,id){
       actions.push({name:'secret:'+relative,run:()=>{if(fs.existsSync(file))fs.unlinkSync(file);}});
       checks.push({name:'secret:'+relative,empty:()=>!fs.existsSync(file)});
     }
+    const walCopy=path.join(artifact,'wal-copy');
+    actions.push({name:'diagnostic-wal-copy',run:()=>{if(fs.existsSync(walCopy))fs.rmSync(walCopy,{recursive:true});}});
+    checks.push({name:'diagnostic-wal-copy',empty:()=>!fs.existsSync(walCopy)});
     finalizeCleanup(receipt,{actions,checks,persistCleanup:value=>write(path.join(artifact,'cleanup.json'),value),persistAcceptance:save});
   }
 }
 if(process.argv[1]&&path.resolve(process.argv[1])===fileURLToPath(import.meta.url)){
   const [mode,repo,id]=process.argv.slice(2);
-  try{if(mode==='shipping')await shipping(path.resolve(repo),id);else if(mode==='ui'){const {nativeCloudUI}=await import('./redis-cloud-ui.mjs');await nativeCloudUI(path.resolve(repo),ownedPath(repo,id));}else throw new Error('unknown_fixture_mode');}
+  try{if(mode==='shipping'||mode==='waldiagnostic')await shipping(path.resolve(repo),id,{diagnostic:mode==='waldiagnostic'});else if(mode==='ui'){const {nativeCloudUI}=await import('./redis-cloud-ui.mjs');await nativeCloudUI(path.resolve(repo),ownedPath(repo,id));}else throw new Error('unknown_fixture_mode');}
   catch(error){console.error('local_cloud_fixture_failed: '+error.message);process.exitCode=1;}
 }

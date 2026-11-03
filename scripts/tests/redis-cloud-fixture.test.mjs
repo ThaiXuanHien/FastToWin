@@ -38,7 +38,7 @@ test('real HTTPS receiver enforces TLS, path, credentials, redirect and unchange
     upstream=http.createServer((req,res)=>{const chunks=[];req.on('data',c=>chunks.push(c));req.on('end',()=>{received.push(Buffer.concat(chunks));res.writeHead(204).end();});});
     await new Promise(r=>upstream.listen(0,'127.0.0.1',r));
     let mode='accept';const counts=[];
-    server=await receiver.startReceiver({key:fs.readFileSync(path.join(dir,'key.pem')),cert:fs.readFileSync(path.join(dir,'ca.pem')),token:'synthetic-only',host:'127.0.0.1',port:0,upstream:`http://127.0.0.1:${upstream.address().port}/api/v1/write`,mode:()=>mode,receipt:r=>counts.push(r)});
+    server=await receiver.startReceiver({key:fs.readFileSync(path.join(dir,'key.pem')),cert:fs.readFileSync(path.join(dir,'ca.pem')),token:'synthetic-only',host:'127.0.0.1',port:0,upstream:`http://127.0.0.1:${upstream.address().port}/api/v1/write`,mode:()=>mode,receipt:r=>counts.push(r),inspectBody:input=>{assert.deepEqual(input,body);return {memoryTimes:[12345],privateValue:'must-not-log'};}});
     const send=({ca=fs.readFileSync(path.join(dir,'ca.pem')),servername='localhost',token='synthetic-only',route='/api/v1/write'}={})=>new Promise((resolve,reject)=>{
       const req=https.request({host:'127.0.0.1',port:server.address().port,path:route,method:'POST',ca,servername,headers:{authorization:'Basic '+Buffer.from('12345:'+token).toString('base64'),'content-encoding':'snappy','content-type':'application/x-protobuf'}},res=>{res.resume();res.on('end',()=>resolve(res.statusCode));});req.on('error',reject);req.end(body);
     });
@@ -47,7 +47,9 @@ test('real HTTPS receiver enforces TLS, path, credentials, redirect and unchange
     await assert.rejects(send({ca:undefined,servername:'wrong.invalid'}));
     await assert.rejects(send({ca:Buffer.from(''),servername:'localhost'}));
     mode='redirect';assert.equal(await send(),307);assert.equal(received.length,1);
-    assert.ok(counts.every(r=>Object.keys(r).every(k=>['status','bytes','sha256','at'].includes(k))));
+    mode='unavailable';assert.equal(await send(),503);assert.equal(received.length,1);
+    assert.deepEqual(counts.at(-1).memoryTimes,[12345]);
+    assert.ok(counts.every(r=>Object.keys(r).every(k=>['status','bytes','sha256','at','memoryTimes'].includes(k))));
     assert.ok(!JSON.stringify(counts).includes('synthetic-only'));
   }finally{if(server)await new Promise(r=>server.close(r));if(upstream)await new Promise(r=>upstream.close(r));fs.rmSync(dir,{recursive:true,force:true});}
 });
