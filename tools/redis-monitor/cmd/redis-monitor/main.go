@@ -7,6 +7,7 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/ThaiXuanHien/FastToWin/tools/redis-monitor/internal/eventlog"
 	"github.com/ThaiXuanHien/FastToWin/tools/redis-monitor/internal/monitor"
 )
 
@@ -18,6 +19,9 @@ func main() {
 }
 
 func execute(ctx context.Context, getenv func(string) string, out io.Writer) int {
+	output, closeLog := eventlog.Acquire(out)
+	defer closeLog()
+	out = output
 	cfg, err := monitor.LoadConfig(getenv)
 	if err != nil {
 		_, _ = io.WriteString(out, "configuration_failed\n")

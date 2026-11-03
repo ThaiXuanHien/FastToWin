@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestInvalidConfigurationExitsWithSafeMessage(t *testing.T) {
@@ -30,6 +31,88 @@ func TestInvalidConfigurationExitsWithSafeMessage(t *testing.T) {
 	out, err := cmd.CombinedOutput()
 	if err == nil || string(out) != "configuration_failed\n" {
 		t.Fatalf("exit=%v, output=%q", err, out)
+	}
+}
+
+type stalledLogWriter struct{ entered, release chan struct{} }
+
+func (w stalledLogWriter) Write(p []byte) (int, error) {
+	close(w.entered)
+	<-w.release
+	return len(p), nil
+}
+
+func TestExecuteInvalidConfigurationWithBlockedOutput(t *testing.T) {
+	out := stalledLogWriter{make(chan struct{}), make(chan struct{})}
+	done := make(chan int, 1)
+	exited := make(chan struct{})
+	go func() {
+		defer close(exited)
+		done <- execute(context.Background(), func(string) string { return "" }, out)
+	}()
+	defer func() {
+		close(out.release)
+		select {
+		case <-exited:
+		case <-time.After(time.Second):
+			t.Error("execute did not finish after release")
+		}
+	}()
+	select {
+	case <-out.entered:
+	case <-time.After(time.Second):
+		t.Fatal("error output not reached")
+	}
+	select {
+	case code := <-done:
+		if code != 1 {
+			t.Fatal(code)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("fallback output blocked executable return")
+	}
+}
+
+func TestExecuteServiceFailureWithBlockedOutput(t *testing.T) {
+	// A test-owned occupied listener forces Run to fail before startup, exercising
+	// execute's service_failed fallback without Redis or any outbound connection.
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+	secret := filepath.Join(t.TempDir(), "synthetic-secret")
+	if err := os.WriteFile(secret, []byte(strings.Repeat("a", 96)), 0600); err != nil {
+		t.Fatal(err)
+	}
+	env := map[string]string{"FASTTOWIN_REDIS_MONITOR_ADDRESS": ln.Addr().String(), "FASTTOWIN_REDIS_MONITOR_LISTEN": ln.Addr().String(), "FASTTOWIN_REDIS_MONITOR_PASSWORD_FILE": secret}
+	out := stalledLogWriter{make(chan struct{}), make(chan struct{})}
+	done := make(chan int, 1)
+	exited := make(chan struct{})
+	go func() {
+		defer close(exited)
+		done <- execute(context.Background(), func(k string) string { return env[k] }, out)
+	}()
+	defer func() {
+		close(out.release)
+		select {
+		case <-exited:
+		case <-time.After(time.Second):
+			t.Error("execute did not finish after release")
+		}
+	}()
+	select {
+	case <-out.entered:
+	case <-time.After(time.Second):
+		t.Fatal("service fallback not reached")
+	}
+	select {
+	case code := <-done:
+		if code != 1 {
+			t.Fatal(code)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("service failure logging blocked return")
 	}
 }
 

@@ -3,20 +3,17 @@ package monitor
 import (
 	"context"
 	"io"
-	"sync"
 	"time"
 )
 
 const pollInterval = 15 * time.Second
 
 type eventLog struct {
-	mu  sync.Mutex
+	// runService supplies the bounded eventlog.Writer; tests may capture inline.
 	out io.Writer
 }
 
 func (l *eventLog) write(event string) {
-	l.mu.Lock()
-	defer l.mu.Unlock()
 	_, _ = io.WriteString(l.out, event+"\n")
 }
 

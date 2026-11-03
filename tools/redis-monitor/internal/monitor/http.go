@@ -9,6 +9,8 @@ import (
 	"net/http"
 	"sync"
 	"time"
+
+	"github.com/ThaiXuanHien/FastToWin/tools/redis-monitor/internal/eventlog"
 )
 
 const maxHTTPConnections = 16
@@ -118,10 +120,9 @@ func runService(parent context.Context, reader Reader, store *Store, ln net.List
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
 	defer ln.Close()
-	if out == nil {
-		out = io.Discard
-	}
-	events := &eventLog{out: out}
+	output, closeLog := eventlog.Acquire(out)
+	defer closeLog()
+	events := &eventLog{out: output}
 	server := newHTTPServer(store)
 	listener := &cappedListener{Listener: ln, slots: make(chan struct{}, maxHTTPConnections)}
 	pollDone := make(chan struct{})
@@ -139,7 +140,8 @@ func runService(parent context.Context, reader Reader, store *Store, ln net.List
 		}
 	}
 	cancel()
-	shutdown, stop := context.WithTimeout(context.Background(), 5*time.Second)
+	// Reserve the bounded logger flush within the five-second stop budget.
+	shutdown, stop := context.WithTimeout(context.Background(), 4900*time.Millisecond)
 	defer stop()
 	if err := server.Shutdown(shutdown); err != nil {
 		_ = server.Close()

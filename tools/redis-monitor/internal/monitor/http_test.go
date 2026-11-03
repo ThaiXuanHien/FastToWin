@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -343,5 +344,66 @@ func TestHTTPStalledWriteDeadline(t *testing.T) {
 	}
 	if time.Since(start) < 1800*time.Millisecond || time.Since(start) > 3*time.Second {
 		t.Fatal("wrong write deadline", time.Since(start))
+	}
+}
+
+type blockedEventWriter struct {
+	event   string
+	entered chan struct{}
+	release chan struct{}
+	once    sync.Once
+}
+
+func (w *blockedEventWriter) Write(p []byte) (int, error) {
+	if string(p) == w.event {
+		w.once.Do(func() { close(w.entered) })
+		<-w.release
+	}
+	return len(p), nil
+}
+
+func TestRunShutdownWithBlockedEventWriter(t *testing.T) {
+	for _, event := range []string{"started\n", "collection_succeeded\n"} {
+		t.Run(strings.TrimSpace(event), func(t *testing.T) {
+			ln, err := net.Listen("tcp", "127.0.0.1:0")
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer ln.Close()
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			out := &blockedEventWriter{event: event, entered: make(chan struct{}), release: make(chan struct{})}
+			done := make(chan error, 1)
+			clock := realClock()
+			go func() {
+				done <- runService(ctx, readerFunc(func(context.Context) (Sample, error) { return validSample(), nil }), NewStore(clock), ln, clock, out)
+			}()
+			defer func() {
+				close(out.release)
+				select {
+				case <-done:
+				case <-time.After(6 * time.Second):
+					t.Error("service remained blocked after writer release")
+				}
+			}()
+			select {
+			case <-out.entered:
+			case <-time.After(time.Second):
+				t.Fatal("log write not reached")
+			}
+			cancel()
+			select {
+			case err := <-done:
+				done <- err // cleanup also joins the service on the failing implementation.
+				if err != nil {
+					t.Fatal(err)
+				}
+			case <-time.After(time.Second):
+				t.Fatal("log backpressure blocked shutdown")
+			}
+			if _, err := ln.Accept(); !errors.Is(err, net.ErrClosed) {
+				t.Fatal("listener not released", err)
+			}
+		})
 	}
 }
