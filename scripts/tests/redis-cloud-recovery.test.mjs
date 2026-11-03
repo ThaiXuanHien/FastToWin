@@ -1,7 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {provisionDecoders} from './redis-cloud-fixture.mjs';
-import {preservedWalEvidence,manualRecoveryEvidence,classifyRecoveryLogs} from './redis-cloud-recovery.mjs';
+import {preservedWalEvidence,manualRecoveryEvidence,classifyRecoveryLogs,forceStopHeldSender,forcedStopEvidence} from './redis-cloud-recovery.mjs';
+
+test('forced stop requires observed exit137, stopped state and no OOM; command targets exact sender',()=>{
+  const observed={exitCode:137,oomKilled:false,running:false};
+  assert.equal(forcedStopEvidence(observed).passed,true);
+  for(const change of [{exitCode:0},{oomKilled:true},{running:true}])assert.equal(forcedStopEvidence({...observed,...change}).passed,false);
+  const calls=[];forceStopHeldSender((...args)=>calls.push(args),'owned-sender');
+  assert.deepEqual(calls,[[['kill','--signal','KILL','owned-sender'],10]]);
+});
 
 test('all shipping/storage/recovery modes provision both decoder consumers; UI stays independent',()=>{
   for(const mode of ['shipping','waldiagnostic','storage','fullonly','fullrecovery']){
@@ -23,7 +31,7 @@ test('startup repair is a stop condition while ordinary replay is not a repair c
 });
 
 test('manual recovery requires preserved buffer, fresh original receipt, same config/caps and no repair',()=>{
-  const input={preserved:true,restart:60000,now:90000,receivedTimes:[65000],configUnchanged:true,repairOrDiscard:false,memoryCap:268435456,nanoCPUs:100000000,oomKilled:false};
+  const input={stopQualified:true,preserved:true,restart:60000,now:90000,receivedTimes:[65000],configUnchanged:true,repairOrDiscard:false,memoryCap:268435456,nanoCPUs:100000000,oomKilled:false};
   assert.equal(manualRecoveryEvidence(input).passed,true);
-  for(const change of [{preserved:false},{receivedTimes:[]},{receivedTimes:[20000]},{receivedTimes:[100000]},{repairOrDiscard:true},{configUnchanged:false},{oomKilled:true},{memoryCap:536870912}])assert.equal(manualRecoveryEvidence({...input,...change}).passed,false);
+  for(const change of [{stopQualified:false},{preserved:false},{receivedTimes:[]},{receivedTimes:[20000]},{receivedTimes:[100000]},{repairOrDiscard:true},{configUnchanged:false},{oomKilled:true},{memoryCap:536870912}])assert.equal(manualRecoveryEvidence({...input,...change}).passed,false);
 });

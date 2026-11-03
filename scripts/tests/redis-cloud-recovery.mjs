@@ -14,10 +14,15 @@ export function preservedWalEvidence({before,after}){
   return {passed,scope:'same held named tmpfs and byte-identical nonempty WAL before restart'};
 }
 
-export function manualRecoveryEvidence({preserved,restart,now,receivedTimes,configUnchanged,repairOrDiscard,memoryCap,nanoCPUs,oomKilled}){
+export function forcedStopEvidence({exitCode,oomKilled,running}){
+  return {passed:exitCode===137&&oomKilled===false&&running===false,protocol:'explicit SIGKILL of paused owned sender'};
+}
+export function forceStopHeldSender(docker,full){docker(['kill','--signal','KILL',full],10);}
+
+export function manualRecoveryEvidence({stopQualified,preserved,restart,now,receivedTimes,configUnchanged,repairOrDiscard,memoryCap,nanoCPUs,oomKilled}){
   const freshOriginalSampleTimes=receivedTimes.filter(t=>Number.isSafeInteger(t)&&t>=restart&&t<=now&&now-t<=60000);
-  return {passed:preserved===true&&configUnchanged===true&&repairOrDiscard===false&&freshOriginalSampleTimes.length>0&&memoryCap===268435456&&nanoCPUs===100000000&&oomKilled===false,
-    freshOriginalSampleTimes,recoveryMethod:'one manual zero-grace stop/restart request for exact sender with held existing WAL',durableBackfillPromised:false};
+  return {passed:stopQualified===true&&preserved===true&&configUnchanged===true&&repairOrDiscard===false&&freshOriginalSampleTimes.length>0&&memoryCap===268435456&&nanoCPUs===100000000&&oomKilled===false,
+    freshOriginalSampleTimes,recoveryMethod:'one manual qualified SIGKILL/restart for exact sender with held existing WAL',durableBackfillPromised:false};
 }
 
 export async function recoverHeldSender({artifact,full,holder,volume,docker,inspect,owns,query,until,write,deadlineAt}){
@@ -41,16 +46,21 @@ export async function recoverHeldSender({artifact,full,holder,volume,docker,insp
   receipt.selectedCounters=JSON.parse(docker(['exec',full,'node','--input-type=module','-e','const t=await(await fetch("http://127.0.0.1:12345/metrics",{signal:AbortSignal.timeout(2000)})).text();console.log(JSON.stringify(t.split("\\n").filter(l=>/^(prometheus_remote_write_wal_|prometheus_wal_watcher_|prometheus_remote_storage_(samples_(pending|total|failed_total|retried_total|dropped_total)))/.test(l))));']));
   receipt.configBefore=hashConfig();receipt.preStopFaults=classifyRecoveryLogs(docker(['logs','--since','70s',full]));save();
   docker(['pause',full],10);receipt.before=snapshot('before-stop');save();
-  docker(['stop','-t','0',full],10);
-  const stopped=inspect('container',full);receipt.stop={exitCode:stopped.State.ExitCode,oomKilled:stopped.State.OOMKilled,zeroGraceRequested:true};
+  forceStopHeldSender(docker,full);
+  const stopped=inspect('container',full);receipt.stop={exitCode:stopped.State.ExitCode,oomKilled:stopped.State.OOMKilled,running:stopped.State.Running,signalRequested:'KILL'};
+  receipt.stopQualification=forcedStopEvidence(receipt.stop);save();
+  if(!receipt.stopQualification.passed)throw new Error('forced_stop_protocol_inconclusive');
   receipt.afterStop=snapshot('after-stop');receipt.preservation=preservedWalEvidence({before:receipt.before,after:receipt.afterStop});save();
   if(!receipt.preservation.passed)throw new Error('held_wal_preservation_inconclusive');
   receipt.restart=Date.now();docker(['start',full],10);
-  const startupResult=await until(()=>{const logs=classifyRecoveryLogs(docker(['logs','--since',new Date(receipt.restart).toISOString(),full]));if(logs.repairOrDiscard)return {repair:logs};const values=query('fasttowin_redis_monitor_memory_used_bytes{job="fasttowin-redis-monitor",instance="redis-primary"}[4m]')[0]?.values??[];return values.some(([t])=>t*1000>=receipt.restart)?{fresh:true}:false;},45);
+  const startupLogs=()=>{try{return {...classifyRecoveryLogs(docker(['logs','--since',new Date(receipt.restart).toISOString(),full])),readable:true};}catch{return {readable:false};}};
+  let startupResult;
+  try{startupResult=await until(()=>{receipt.startup=startupLogs();save();if(!receipt.startup.readable)return {unreadable:true};if(receipt.startup.repairOrDiscard)return {repair:receipt.startup};const values=query('fasttowin_redis_monitor_memory_used_bytes{job="fasttowin-redis-monitor",instance="redis-primary"}[4m]')[0]?.values??[];return values.some(([t])=>t*1000>=receipt.restart)?{fresh:true}:false;},45);}catch(error){receipt.startup=startupLogs();receipt.passed=false;receipt.freshControlFailed=true;save();throw error;}
+  if(startupResult.unreadable){receipt.passed=false;save();throw new Error('startup_logs_unreadable');}
   if(startupResult.repair){receipt.startup=startupResult.repair;receipt.passed=false;save();throw new Error('startup_repair_or_discard');}
-  receipt.startup=classifyRecoveryLogs(docker(['logs','--since',new Date(receipt.restart).toISOString(),full]));
+  receipt.startup=startupLogs();if(!receipt.startup.readable){receipt.passed=false;save();throw new Error('startup_logs_unreadable');}
   const s=inspect('container',full),times=(query('fasttowin_redis_monitor_memory_used_bytes{job="fasttowin-redis-monitor",instance="redis-primary"}[4m]')[0]?.values??[]).map(([t])=>t*1000);
-  receipt.configAfter=hashConfig();Object.assign(receipt,manualRecoveryEvidence({preserved:receipt.preservation.passed&&s.Mounts.some(m=>m.Destination==='/var/lib/alloy'&&m.Name===volume),restart:receipt.restart,now:Date.now(),receivedTimes:times,configUnchanged:receipt.configBefore===receipt.configAfter,repairOrDiscard:receipt.startup.repairOrDiscard,memoryCap:s.HostConfig.Memory,nanoCPUs:s.HostConfig.NanoCpus,oomKilled:s.State.OOMKilled}));save();return receipt;
+  receipt.configAfter=hashConfig();Object.assign(receipt,manualRecoveryEvidence({stopQualified:receipt.stopQualification.passed,preserved:receipt.preservation.passed&&s.Mounts.some(m=>m.Destination==='/var/lib/alloy'&&m.Name===volume),restart:receipt.restart,now:Date.now(),receivedTimes:times,configUnchanged:receipt.configBefore===receipt.configAfter,repairOrDiscard:receipt.startup.repairOrDiscard,memoryCap:s.HostConfig.Memory,nanoCPUs:s.HostConfig.NanoCpus,oomKilled:s.State.OOMKilled}));save();return receipt;
 }
 
 export function classifyRecoveryLogs(logs){
