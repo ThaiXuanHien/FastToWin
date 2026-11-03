@@ -1,7 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import cp from 'node:child_process';
-import {retentionEvidence,filesystemEvidence,finalizeCleanup,restartGapEvidence,diskRetentionEvidence} from './redis-cloud-evidence.mjs';
+import {retentionEvidence,filesystemEvidence,finalizeCleanup,restartGapEvidence,diskRetentionEvidence,allocationEvidence} from './redis-cloud-evidence.mjs';
+
+test('full allocation precondition requires the exact tmpfs, zero free space and actual filler bytes',()=>{
+  const input={fill:{code:'ENOSPC',bytes:66000000},snapshot:{mount:{target:'/var/lib/alloy',filesystem:'tmpfs'},filesystem:{type:0x01021994,totalBytes:67108864,freeBytes:0,availableBytes:0},filler:{bytes:66000000,allocatedBytes:66002944}}};
+  assert.equal(allocationEvidence(input).passed,true);
+  for(const snapshot of [undefined,{...input.snapshot,mount:{target:'/wrong',filesystem:'tmpfs'}},{...input.snapshot,filesystem:{...input.snapshot.filesystem,availableBytes:4096}},{...input.snapshot,filesystem:{...input.snapshot.filesystem,freeBytes:4096}},{...input.snapshot,filler:{bytes:1,allocatedBytes:4096}}])assert.equal(allocationEvidence({...input,snapshot}).passed,false);
+  assert.equal(allocationEvidence({...input,fill:{code:'limit-not-hit',bytes:66000000}}).passed,false);
+});
 
 test('disk expiry requires old on complete before snapshot, absent after and recent positive control',()=>{
   const input={beforeTimes:[20000,35000],afterTimes:[80000],older:[10000,40000],newer:[70000,90000],beforeComplete:true,afterComplete:true};

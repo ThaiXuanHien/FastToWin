@@ -1,4 +1,12 @@
 // Pure local acceptance decisions. Missing positive evidence never means pass.
+export function allocationEvidence({fill,snapshot}) {
+  const mount=snapshot?.mount,filesystem=snapshot?.filesystem,filler=snapshot?.filler;
+  const passed=mount?.target==='/var/lib/alloy'&&mount?.filesystem==='tmpfs'&&filesystem?.type===0x01021994&&
+    filesystem.totalBytes===67108864&&filesystem.freeBytes===0&&filesystem.availableBytes===0&&
+    fill?.code==='ENOSPC'&&Number.isSafeInteger(fill.bytes)&&fill.bytes>0&&filler?.bytes===fill.bytes&&filler.allocatedBytes>=fill.bytes;
+  return {passed:!!passed,scope:'same64MiB tmpfs allocation precondition; not yet an Alloy failure'};
+}
+
 export function restartGapEvidence({restart,now,receivedTimes}) {
   const freshOriginalSampleTimes=receivedTimes.filter(t=>Number.isSafeInteger(t)&&t>=restart&&t<=now&&now-t<=60000);
   return {passed:freshOriginalSampleTimes.length>0,freshOriginalSampleTimes,

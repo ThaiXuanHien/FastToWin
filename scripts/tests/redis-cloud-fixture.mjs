@@ -24,7 +24,7 @@ export function certificates(dir,repo=path.resolve('.')){
 }
 const delay=ms=>new Promise(r=>setTimeout(r,ms));
 const write=(file,value)=>fs.writeFileSync(file,typeof value==='string'?value:JSON.stringify(value,null,2)+'\n');
-async function shipping(repo,id,{diagnostic=false,storage=false}={}){
+async function shipping(repo,id,{diagnostic=false,storage=false,fullOnly=false}={}){
   const artifact=ownedPath(repo,id);assert.ok(fs.existsSync(artifact));
   const env={...process.env};for(const k of Object.keys(env))if(/^(DOCKER_|BUILDX_|BUILDKIT_)/.test(k))delete env[k];
   env.DOCKER_HOST='npipe:////./pipe/docker_engine';env.DOCKER_CONFIG=path.join(artifact,'docker-config');
@@ -79,7 +79,7 @@ async function shipping(repo,id,{diagnostic=false,storage=false}={}){
     gate('ownership-and-isolation',{localDaemon:true,emptyAuthConfig:true,internalNetwork:true,noHostPorts:true,syntheticCredentials:true});
     stage='build';docker([...compose,'build','--builder','default'],240);
     stage='startup';docker([...compose,'up','-d','--no-build']);
-    if(diagnostic||storage)runtimeDeadline=Date.now()+(storage?480000:240000);
+    if(diagnostic||storage)runtimeDeadline=Date.now()+(!fullOnly&&storage?480000:240000);
     const networkName=Object.keys(inspect('container',container('collector')).NetworkSettings.Networks)[0],network=inspect('network',networkName);
     assert.ok(owns(network));assert.equal(network.Internal,true);assert.equal(network.EnableIPv6,true);
     const containers=Object.fromEntries(['redis','collector','sender','receiver','prometheus'].map(s=>[s,container(s)]));
@@ -95,9 +95,9 @@ async function shipping(repo,id,{diagnostic=false,storage=false}={}){
       stage='storage-readiness';
       await until(()=>query('{job="fasttowin-redis-monitor",instance="redis-primary"}').length===22,65);
       const {runStoragePhases}=await import('./redis-cloud-storage.mjs');
-      await runStoragePhases({artifact,id,docker,containers,query,until,delay:async ms=>{if(Date.now()+ms>runtimeDeadline)throw new Error('storage_runtime_deadline');await delay(ms);},inspect,owns,receiverMode,receiverReceipts,write,localAlloy,network,config,gate,setStage:value=>{stage=value;}});
+      await runStoragePhases({artifact,id,docker,containers,query,until,delay:async ms=>{if(Date.now()+ms>runtimeDeadline)throw new Error('storage_runtime_deadline');await delay(ms);},inspect,owns,receiverMode,receiverReceipts,write,localAlloy,network,config,gate,setStage:value=>{stage=value;},fullOnly});
       receipt.failedGates=Object.entries(receipt.gates).filter(([,value])=>value.passed===false).map(([name])=>name);
-      receipt.gatesPassed=receipt.failedGates.length===0;receipt.completed=false;receipt.scope='remaining storage only';save();
+      receipt.gatesPassed=receipt.failedGates.length===0;receipt.completed=false;receipt.scope=fullOnly?'filesystem only':'remaining storage only';save();
       if(!receipt.gatesPassed)throw new Error('remaining_storage_gates_failed');
       return;
     }
@@ -176,6 +176,6 @@ async function shipping(repo,id,{diagnostic=false,storage=false}={}){
 }
 if(process.argv[1]&&path.resolve(process.argv[1])===fileURLToPath(import.meta.url)){
   const [mode,repo,id]=process.argv.slice(2);
-  try{if(['shipping','waldiagnostic','storage'].includes(mode))await shipping(path.resolve(repo),id,{diagnostic:mode==='waldiagnostic',storage:mode==='storage'});else if(mode==='ui'){const {nativeCloudUI}=await import('./redis-cloud-ui.mjs');await nativeCloudUI(path.resolve(repo),ownedPath(repo,id));}else throw new Error('unknown_fixture_mode');}
+  try{if(['shipping','waldiagnostic','storage','fullonly'].includes(mode))await shipping(path.resolve(repo),id,{diagnostic:mode==='waldiagnostic',storage:['storage','fullonly'].includes(mode),fullOnly:mode==='fullonly'});else if(mode==='ui'){const {nativeCloudUI}=await import('./redis-cloud-ui.mjs');await nativeCloudUI(path.resolve(repo),ownedPath(repo,id));}else throw new Error('unknown_fixture_mode');}
   catch(error){console.error('local_cloud_fixture_failed: '+error.message);process.exitCode=1;}
 }
