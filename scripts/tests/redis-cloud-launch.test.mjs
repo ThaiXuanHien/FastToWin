@@ -8,7 +8,7 @@ import {dockerConfig} from './redis-monitor-docker-config.mjs';
 const root=path.resolve('deploy/monitoring/redis-monitor-cloud');
 const artifact=path.resolve('.artifacts/redis-cloud-local-20261103','task1-launch-'+randomUUID());
 const monitor='a'.repeat(96), token='synthetic_write_token_123456789';
-const good={GRAFANA_CLOUD_REMOTE_WRITE_URL:'https://prometheus-fixture.grafana.net/api/prom/push',GRAFANA_CLOUD_EXPECTED_HOST:'prometheus-fixture.grafana.net',GRAFANA_CLOUD_TENANT_ID:'123456',FASTTOWIN_REDIS_MONITOR_SCRAPE_ADDRESS:'collector:19121'};
+const good={GRAFANA_CLOUD_REMOTE_WRITE_URL:'https://prometheus-fixture.grafana.net/api/prom/push',GRAFANA_CLOUD_EXPECTED_HOST:'prometheus-fixture.grafana.net',GRAFANA_CLOUD_TENANT_ID:'123456',FASTTOWIN_REDIS_MONITOR_SCRAPE_ADDRESS:'redis-monitor.railway.internal:19121'};
 const image='node@sha256:c86ecead9e55a5210ac1727de38a4ca840bf03dcaf34dc9749addbf383b1920c';
 const docker=process.env.FTW_TEST_DOCKER||'C:/Users/Hien Hue/AppData/Local/Programs/DockerDesktop/resources/bin/docker.exe';
 let ready=false;

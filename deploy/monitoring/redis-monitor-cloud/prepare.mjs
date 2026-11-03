@@ -49,8 +49,9 @@ function privateTarget(address) {
   }
   if (isIP(host) === 6) return host === '::1' || /^f[cd]/i.test(host);
   if (host.includes(':') || /^[0-9.]+$/.test(host)) return false;
-  return /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/.test(host) ||
-    /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.railway\.internal$/.test(host);
+  // A single-label name can resolve through public DNS or a search suffix.
+  // Production DNS targets must use Railway's explicit private namespace.
+  return /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.railway\.internal$/.test(host);
 }
 
 export function renderAlloy(input) {

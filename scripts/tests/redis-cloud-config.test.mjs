@@ -33,7 +33,13 @@ test('renderer rejects URI, public, malformed and missing collector targets with
  const {renderAlloy}=await api();
  for(const collectorAddress of [undefined,'','https://MARKER:19121','MARKER:0','MARKER:65536','MARKER:1/path','public.example.com:19121','8.8.8.8:19121','collector:19121\nMARKER','user@collector:19121','[2001:4860:4860::8888]:19121'])
   assert.throws(()=>renderAlloy({...input,collectorAddress}),e=>e.message==='Invalid collector target');
- for(const collectorAddress of ['redis-monitor.railway.internal:19121','collector:19121','127.0.0.1:19121','10.0.0.2:19121','[::1]:19121','[fd00::1]:19121']) assert.match(renderAlloy({...input,collectorAddress}),new RegExp('prometheus.scrape'));
+ for(const collectorAddress of ['redis-monitor.railway.internal:19121','127.0.0.1:19121','10.0.0.2:19121','172.16.0.2:19121','172.31.255.254:19121','192.168.1.2:19121','[::1]:19121','[fc00::1]:19121','[fd00::1]:19121']) assert.match(renderAlloy({...input,collectorAddress}),new RegExp('prometheus.scrape'));
+});
+test('renderer rejects single-label/public DNS and private-namespace near misses without echoing the target', async()=>{
+ const {renderAlloy}=await api();
+ for(const collectorAddress of ['ai:19121','collector:19121','marker:19121','marker.com:19121','marker.railway.internal.example.com:19121','marker.railway-internal:19121','marker.internal:19121','marker.railway.internal.:19121','railway.internal:19121','172.15.255.255:19121','172.32.0.1:19121','192.169.1.2:19121']) {
+  assert.throws(()=>renderAlloy({...input,collectorAddress}),e=>e.message==='Invalid collector target'&&!e.message.includes('marker'),collectorAddress);
+ }
 });
 test('renderer produces the fixed bounded allowlist pipeline and no credentials', async()=>{
  const {renderAlloy,metricNames}=await api(); const config=renderAlloy(input);
