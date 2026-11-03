@@ -1,0 +1,809 @@
+{
+  "uid": "fasttowin-redis-cloud",
+  "title": "Fast To Win · Redis Cloud",
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": false,
+  "tags": [
+    "fasttowin",
+    "redis",
+    "cloud"
+  ],
+  "timezone": "browser",
+  "refresh": "15s",
+  "time": {
+    "from": "now-30m",
+    "to": "now"
+  },
+  "annotations": {
+    "list": []
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Collector · current freshness",
+      "type": "stat",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 0,
+        "y": 0
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "noValue": "Unavailable",
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": {
+                  "text": "Unavailable",
+                  "color": "red"
+                },
+                "1": {
+                  "text": "Fresh",
+                  "color": "green"
+                }
+              }
+            }
+          ],
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "last"
+          ],
+          "fields": "",
+          "values": false
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "fasttowin_redis_monitor_up{job=\"fasttowin-redis-monitor\",instance=\"redis-primary\"} and on(job,instance) (up{job=\"fasttowin-redis-monitor\",instance=\"redis-primary\"} == 1) and on(job,instance) (fasttowin_redis_monitor_up{job=\"fasttowin-redis-monitor\",instance=\"redis-primary\"} == 1) and on(job,instance) (time() - timestamp(up{job=\"fasttowin-redis-monitor\",instance=\"redis-primary\"}) >= 0) and on(job,instance) (time() - timestamp(up{job=\"fasttowin-redis-monitor\",instance=\"redis-primary\"}) <= 60)",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "description": "Unavailable means missing or unsuccessful collection, scrape failure, or a scrape sample outside the inclusive 0–60 second query-time age window. History retains original sample time and gaps."
+    },
+    {
+      "id": 2,
+      "title": "AOF · enabled",
+      "type": "stat",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 6,
+        "y": 0
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "noValue": "Unavailable",
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": {
+                  "text": "Disabled",
+                  "color": "red"
+                },
+                "1": {
+                  "text": "Enabled",
+                  "color": "green"
+                }
+              }
+            }
+          ],
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "last"
+          ],
+          "fields": "",
+          "values": false
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "fasttowin_redis_monitor_aof_enabled{job=\"fasttowin-redis-monitor\",instance=\"redis-primary\"} and on(job,instance) (fasttowin_redis_monitor_up{job=\"fasttowin-redis-monitor\",instance=\"redis-primary\"} == 1) and on(job,instance) (up{job=\"fasttowin-redis-monitor\",instance=\"redis-primary\"} == 1) and on(job,instance) (time() - timestamp(up{job=\"fasttowin-redis-monitor\",instance=\"redis-primary\"}) >= 0) and on(job,instance) (time() - timestamp(up{job=\"fasttowin-redis-monitor\",instance=\"redis-primary\"}) <= 60)",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "description": "Unavailable means missing or unsuccessful collection, scrape failure, or a scrape sample outside the inclusive 0–60 second query-time age window. History retains original sample time and gaps."
+    },
+    {
+      "id": 3,
+      "title": "AOF · last write",
+      "type": "stat",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 12,
+        "y": 0
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "noValue": "Unavailable",
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": {
+                  "text": "Fault",
+                  "color": "red"
+                },
+                "1": {
+                  "text": "OK",
+                  "color": "green"
+                }
+              }
+            }
+          ],
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "last"
+          ],
+          "fields": "",
+          "values": false
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "fasttowin_redis_monitor_aof_last_write_ok{job=\"fasttowin-redis-monitor\",instance=\"redis-primary\"} and on(job,instance) (fasttowin_redis_monitor_up{job=\"fasttowin-redis-monitor\",instance=\"redis-primary\"} == 1) and on(job,instance) (up{job=\"fasttowin-redis-monitor\",instance=\"redis-primary\"} == 1) and on(job,instance) (time() - timestamp(up{job=\"fasttowin-redis-monitor\",instance=\"redis-primary\"}) >= 0) and on(job,instance) (time() - timestamp(up{job=\"fasttowin-redis-monitor\",instance=\"redis-primary\"}) <= 60)",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "description": "Unavailable means missing or unsuccessful collection, scrape failure, or a scrape sample outside the inclusive 0–60 second query-time age window. History retains original sample time and gaps."
+    },
+    {
+      "id": 4,
+      "title": "AOF · last rewrite",
+      "type": "stat",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 18,
+        "y": 0
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "noValue": "Unavailable",
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": {
+                  "text": "Fault",
+                  "color": "red"
+                },
+                "1": {
+                  "text": "OK",
+                  "color": "green"
+                }
+              }
+            }
+          ],
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "last"
+          ],
+          "fields": "",
+          "values": false
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "fasttowin_redis_monitor_aof_last_rewrite_ok{job=\"fasttowin-redis-monitor\",instance=\"redis-primary\"} and on(job,instance) (fasttowin_redis_monitor_up{job=\"fasttowin-redis-monitor\",instance=\"redis-primary\"} == 1) and on(job,instance) (up{job=\"fasttowin-redis-monitor\",instance=\"redis-primary\"} == 1) and on(job,instance) (time() - timestamp(up{job=\"fasttowin-redis-monitor\",instance=\"redis-primary\"}) >= 0) and on(job,instance) (time() - timestamp(up{job=\"fasttowin-redis-monitor\",instance=\"redis-primary\"}) <= 60)",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "description": "Unavailable means missing or unsuccessful collection, scrape failure, or a scrape sample outside the inclusive 0–60 second query-time age window. History retains original sample time and gaps."
+    },
+    {
+      "id": 5,
+      "title": "Memory · used now",
+      "type": "stat",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 0,
+        "y": 5
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "noValue": "Unavailable",
+          "mappings": [],
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "last"
+          ],
+          "fields": "",
+          "values": false
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "fasttowin_redis_monitor_memory_used_bytes{job=\"fasttowin-redis-monitor\",instance=\"redis-primary\"} and on(job,instance) (fasttowin_redis_monitor_up{job=\"fasttowin-redis-monitor\",instance=\"redis-primary\"} == 1) and on(job,instance) (up{job=\"fasttowin-redis-monitor\",instance=\"redis-primary\"} == 1) and on(job,instance) (time() - timestamp(up{job=\"fasttowin-redis-monitor\",instance=\"redis-primary\"}) >= 0) and on(job,instance) (time() - timestamp(up{job=\"fasttowin-redis-monitor\",instance=\"redis-primary\"}) <= 60)",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "description": "Unavailable means missing or unsuccessful collection, scrape failure, or a scrape sample outside the inclusive 0–60 second query-time age window. History retains original sample time and gaps."
+    },
+    {
+      "id": 6,
+      "title": "Memory · configured limit",
+      "type": "stat",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 6,
+        "y": 5
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "noValue": "Unavailable",
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": {
+                  "text": "Unlimited",
+                  "color": "orange"
+                }
+              }
+            }
+          ],
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "last"
+          ],
+          "fields": "",
+          "values": false
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "fasttowin_redis_monitor_memory_max_bytes{job=\"fasttowin-redis-monitor\",instance=\"redis-primary\"} and on(job,instance) (fasttowin_redis_monitor_up{job=\"fasttowin-redis-monitor\",instance=\"redis-primary\"} == 1) and on(job,instance) (up{job=\"fasttowin-redis-monitor\",instance=\"redis-primary\"} == 1) and on(job,instance) (time() - timestamp(up{job=\"fasttowin-redis-monitor\",instance=\"redis-primary\"}) >= 0) and on(job,instance) (time() - timestamp(up{job=\"fasttowin-redis-monitor\",instance=\"redis-primary\"}) <= 60)",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "description": "Unavailable means missing or unsuccessful collection, scrape failure, or a scrape sample outside the inclusive 0–60 second query-time age window. History retains original sample time and gaps."
+    },
+    {
+      "id": 7,
+      "title": "AOF · current size",
+      "type": "stat",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 12,
+        "y": 5
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "noValue": "Unavailable",
+          "mappings": [],
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "last"
+          ],
+          "fields": "",
+          "values": false
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "fasttowin_redis_monitor_aof_current_size_bytes{job=\"fasttowin-redis-monitor\",instance=\"redis-primary\"} and on(job,instance) (fasttowin_redis_monitor_up{job=\"fasttowin-redis-monitor\",instance=\"redis-primary\"} == 1) and on(job,instance) (up{job=\"fasttowin-redis-monitor\",instance=\"redis-primary\"} == 1) and on(job,instance) (time() - timestamp(up{job=\"fasttowin-redis-monitor\",instance=\"redis-primary\"}) >= 0) and on(job,instance) (time() - timestamp(up{job=\"fasttowin-redis-monitor\",instance=\"redis-primary\"}) <= 60)",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "description": "Unavailable means missing or unsuccessful collection, scrape failure, or a scrape sample outside the inclusive 0–60 second query-time age window. History retains original sample time and gaps."
+    },
+    {
+      "id": 8,
+      "title": "AOF · base size",
+      "type": "stat",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 18,
+        "y": 5
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "noValue": "Unavailable",
+          "mappings": [],
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "last"
+          ],
+          "fields": "",
+          "values": false
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "fasttowin_redis_monitor_aof_base_size_bytes{job=\"fasttowin-redis-monitor\",instance=\"redis-primary\"} and on(job,instance) (fasttowin_redis_monitor_up{job=\"fasttowin-redis-monitor\",instance=\"redis-primary\"} == 1) and on(job,instance) (up{job=\"fasttowin-redis-monitor\",instance=\"redis-primary\"} == 1) and on(job,instance) (time() - timestamp(up{job=\"fasttowin-redis-monitor\",instance=\"redis-primary\"}) >= 0) and on(job,instance) (time() - timestamp(up{job=\"fasttowin-redis-monitor\",instance=\"redis-primary\"}) <= 60)",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "description": "Unavailable means missing or unsuccessful collection, scrape failure, or a scrape sample outside the inclusive 0–60 second query-time age window. History retains original sample time and gaps."
+    },
+    {
+      "id": 9,
+      "title": "Memory history · gaps mean unavailable",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 10
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "noValue": "Unavailable",
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "fillOpacity": 8,
+            "spanNulls": false
+          },
+          "color": {
+            "mode": "palette-classic"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "fasttowin_redis_monitor_memory_used_bytes{job=\"fasttowin-redis-monitor\",instance=\"redis-primary\"} and on(job,instance) (fasttowin_redis_monitor_up{job=\"fasttowin-redis-monitor\",instance=\"redis-primary\"} == 1) and on(job,instance) (up{job=\"fasttowin-redis-monitor\",instance=\"redis-primary\"} == 1) and on(job,instance) (time() - timestamp(up{job=\"fasttowin-redis-monitor\",instance=\"redis-primary\"}) >= 0) and on(job,instance) (time() - timestamp(up{job=\"fasttowin-redis-monitor\",instance=\"redis-primary\"}) <= 60)",
+          "legendFormat": "Used",
+          "range": true,
+          "instant": false
+        },
+        {
+          "refId": "B",
+          "expr": "fasttowin_redis_monitor_memory_max_bytes{job=\"fasttowin-redis-monitor\",instance=\"redis-primary\"} and on(job,instance) (fasttowin_redis_monitor_up{job=\"fasttowin-redis-monitor\",instance=\"redis-primary\"} == 1) and on(job,instance) (up{job=\"fasttowin-redis-monitor\",instance=\"redis-primary\"} == 1) and on(job,instance) (time() - timestamp(up{job=\"fasttowin-redis-monitor\",instance=\"redis-primary\"}) >= 0) and on(job,instance) (time() - timestamp(up{job=\"fasttowin-redis-monitor\",instance=\"redis-primary\"}) <= 60)",
+          "legendFormat": "Limit (0 = unlimited)",
+          "range": true,
+          "instant": false
+        }
+      ],
+      "description": "Unavailable means missing or unsuccessful collection, scrape failure, or a scrape sample outside the inclusive 0–60 second query-time age window. History retains original sample time and gaps."
+    },
+    {
+      "id": 10,
+      "title": "AOF history · logical file size",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 10
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "noValue": "Unavailable",
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "fillOpacity": 8,
+            "spanNulls": false
+          },
+          "color": {
+            "mode": "palette-classic"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "fasttowin_redis_monitor_aof_current_size_bytes{job=\"fasttowin-redis-monitor\",instance=\"redis-primary\"} and on(job,instance) (fasttowin_redis_monitor_up{job=\"fasttowin-redis-monitor\",instance=\"redis-primary\"} == 1) and on(job,instance) (up{job=\"fasttowin-redis-monitor\",instance=\"redis-primary\"} == 1) and on(job,instance) (time() - timestamp(up{job=\"fasttowin-redis-monitor\",instance=\"redis-primary\"}) >= 0) and on(job,instance) (time() - timestamp(up{job=\"fasttowin-redis-monitor\",instance=\"redis-primary\"}) <= 60)",
+          "legendFormat": "Current",
+          "range": true,
+          "instant": false
+        },
+        {
+          "refId": "B",
+          "expr": "fasttowin_redis_monitor_aof_base_size_bytes{job=\"fasttowin-redis-monitor\",instance=\"redis-primary\"} and on(job,instance) (fasttowin_redis_monitor_up{job=\"fasttowin-redis-monitor\",instance=\"redis-primary\"} == 1) and on(job,instance) (up{job=\"fasttowin-redis-monitor\",instance=\"redis-primary\"} == 1) and on(job,instance) (time() - timestamp(up{job=\"fasttowin-redis-monitor\",instance=\"redis-primary\"}) >= 0) and on(job,instance) (time() - timestamp(up{job=\"fasttowin-redis-monitor\",instance=\"redis-primary\"}) <= 60)",
+          "legendFormat": "Base",
+          "range": true,
+          "instant": false
+        }
+      ],
+      "description": "Unavailable means missing or unsuccessful collection, scrape failure, or a scrape sample outside the inclusive 0–60 second query-time age window. History retains original sample time and gaps."
+    },
+    {
+      "id": 11,
+      "title": "Evictions · increase over 5 minutes",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 18
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "noValue": "Unavailable",
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "fillOpacity": 8,
+            "spanNulls": false
+          },
+          "color": {
+            "mode": "palette-classic"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "increase(fasttowin_redis_monitor_evicted_keys_total{job=\"fasttowin-redis-monitor\",instance=\"redis-primary\"}[5m]) and on(job,instance) (fasttowin_redis_monitor_up{job=\"fasttowin-redis-monitor\",instance=\"redis-primary\"} == 1) and on(job,instance) (up{job=\"fasttowin-redis-monitor\",instance=\"redis-primary\"} == 1) and on(job,instance) (time() - timestamp(up{job=\"fasttowin-redis-monitor\",instance=\"redis-primary\"}) >= 0) and on(job,instance) (time() - timestamp(up{job=\"fasttowin-redis-monitor\",instance=\"redis-primary\"}) <= 60)",
+          "legendFormat": "Evicted keys",
+          "range": true,
+          "instant": false
+        }
+      ],
+      "description": "Unavailable means missing or unsuccessful collection, scrape failure, or a scrape sample outside the inclusive 0–60 second query-time age window. History retains original sample time and gaps."
+    },
+    {
+      "id": 12,
+      "title": "AOF fsync · pending / delayed increase",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 18
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "noValue": "Unavailable",
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "fillOpacity": 8,
+            "spanNulls": false
+          },
+          "color": {
+            "mode": "palette-classic"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "fasttowin_redis_monitor_aof_pending_fsync{job=\"fasttowin-redis-monitor\",instance=\"redis-primary\"} and on(job,instance) (fasttowin_redis_monitor_up{job=\"fasttowin-redis-monitor\",instance=\"redis-primary\"} == 1) and on(job,instance) (up{job=\"fasttowin-redis-monitor\",instance=\"redis-primary\"} == 1) and on(job,instance) (time() - timestamp(up{job=\"fasttowin-redis-monitor\",instance=\"redis-primary\"}) >= 0) and on(job,instance) (time() - timestamp(up{job=\"fasttowin-redis-monitor\",instance=\"redis-primary\"}) <= 60)",
+          "legendFormat": "Pending",
+          "range": true,
+          "instant": false
+        },
+        {
+          "refId": "B",
+          "expr": "increase(fasttowin_redis_monitor_aof_delayed_fsync_total{job=\"fasttowin-redis-monitor\",instance=\"redis-primary\"}[5m]) and on(job,instance) (fasttowin_redis_monitor_up{job=\"fasttowin-redis-monitor\",instance=\"redis-primary\"} == 1) and on(job,instance) (up{job=\"fasttowin-redis-monitor\",instance=\"redis-primary\"} == 1) and on(job,instance) (time() - timestamp(up{job=\"fasttowin-redis-monitor\",instance=\"redis-primary\"}) >= 0) and on(job,instance) (time() - timestamp(up{job=\"fasttowin-redis-monitor\",instance=\"redis-primary\"}) <= 60)",
+          "legendFormat": "Delayed / 5m",
+          "range": true,
+          "instant": false
+        }
+      ],
+      "description": "Unavailable means missing or unsuccessful collection, scrape failure, or a scrape sample outside the inclusive 0–60 second query-time age window. History retains original sample time and gaps."
+    }
+  ],
+  "description": "Current values require successful collection, scrape up, and scrape sample age 0–60 seconds at query time. Missing, old or future samples are Unavailable. History preserves gaps and original WAL timestamps. Instance: redis-primary. AOF size is not disk free space. No alert destination is configured.",
+  "__inputs": [
+    {
+      "name": "DS_PROMETHEUS",
+      "label": "Prometheus",
+      "description": "Select the private Cloud metrics datasource",
+      "type": "datasource",
+      "pluginId": "prometheus",
+      "pluginName": "Prometheus"
+    }
+  ]
+}

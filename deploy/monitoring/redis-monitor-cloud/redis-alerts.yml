@@ -1,0 +1,51 @@
+# Standalone Cloud variant. Query-time scrape age is inclusive 0..60 seconds.
+# Keep WAL timestamps; last-success wall time is diagnostic only.
+groups:
+  - name: fasttowin-redis-cloud
+    rules:
+      - alert: FastToWinRedisCollectorMissing
+        expr: absent(up{job="fasttowin-redis-monitor",instance="redis-primary"}) or (up{job="fasttowin-redis-monitor",instance="redis-primary"} != 1) or (time() - timestamp(up{job="fasttowin-redis-monitor",instance="redis-primary"}) < 0) or (time() - timestamp(up{job="fasttowin-redis-monitor",instance="redis-primary"}) > 60)
+        for: 1m
+        labels: {severity: critical}
+        annotations:
+          summary: Redis collector unavailable
+          description: Check the private collector process and scrape path; no automatic repair.
+      - alert: FastToWinRedisCollectionFailed
+        expr: ((up{job="fasttowin-redis-monitor",instance="redis-primary"} == 1) and on(job,instance) (time() - timestamp(up{job="fasttowin-redis-monitor",instance="redis-primary"}) >= 0) and on(job,instance) (time() - timestamp(up{job="fasttowin-redis-monitor",instance="redis-primary"}) <= 60)) unless on(job,instance) (fasttowin_redis_monitor_up{job="fasttowin-redis-monitor",instance="redis-primary"} == 1)
+        for: 1m
+        labels: {severity: critical}
+        annotations:
+          summary: Redis collection failed or stale
+          description: Current Redis values are unavailable; last-success time is diagnostic only.
+      - alert: FastToWinRedisAofDisabled
+        expr: (fasttowin_redis_monitor_aof_enabled{job="fasttowin-redis-monitor",instance="redis-primary"} != 1) and on(job,instance) (fasttowin_redis_monitor_up{job="fasttowin-redis-monitor",instance="redis-primary"} == 1) and on(job,instance) (up{job="fasttowin-redis-monitor",instance="redis-primary"} == 1) and on(job,instance) (time() - timestamp(up{job="fasttowin-redis-monitor",instance="redis-primary"}) >= 0) and on(job,instance) (time() - timestamp(up{job="fasttowin-redis-monitor",instance="redis-primary"}) <= 60)
+        for: 1m
+        labels: {severity: critical}
+        annotations:
+          summary: Redis AOF disabled
+          description: Inspect persistence configuration; missing AOF details are not successful writes.
+      - alert: FastToWinRedisAofWriteFailed
+        expr: (fasttowin_redis_monitor_aof_last_write_ok{job="fasttowin-redis-monitor",instance="redis-primary"} == 0) and on(job,instance) (fasttowin_redis_monitor_up{job="fasttowin-redis-monitor",instance="redis-primary"} == 1) and on(job,instance) (up{job="fasttowin-redis-monitor",instance="redis-primary"} == 1) and on(job,instance) (time() - timestamp(up{job="fasttowin-redis-monitor",instance="redis-primary"}) >= 0) and on(job,instance) (time() - timestamp(up{job="fasttowin-redis-monitor",instance="redis-primary"}) <= 60)
+        for: 1m
+        labels: {severity: critical}
+        annotations: {summary: Redis AOF write failed, description: Inspect storage and persistence without automatic rewrite or reset.}
+      - alert: FastToWinRedisAofRewriteFailed
+        expr: (fasttowin_redis_monitor_aof_last_rewrite_ok{job="fasttowin-redis-monitor",instance="redis-primary"} == 0) and on(job,instance) (fasttowin_redis_monitor_up{job="fasttowin-redis-monitor",instance="redis-primary"} == 1) and on(job,instance) (up{job="fasttowin-redis-monitor",instance="redis-primary"} == 1) and on(job,instance) (time() - timestamp(up{job="fasttowin-redis-monitor",instance="redis-primary"}) >= 0) and on(job,instance) (time() - timestamp(up{job="fasttowin-redis-monitor",instance="redis-primary"}) <= 60)
+        for: 1m
+        labels: {severity: critical}
+        annotations: {summary: Redis AOF rewrite failed, description: Inspect storage and persistence without automatic rewrite or reset.}
+      - alert: FastToWinRedisUnexpectedEviction
+        expr: (increase(fasttowin_redis_monitor_evicted_keys_total{job="fasttowin-redis-monitor",instance="redis-primary"}[5m]) > 0) and on(job,instance) (fasttowin_redis_monitor_up{job="fasttowin-redis-monitor",instance="redis-primary"} == 1) and on(job,instance) (up{job="fasttowin-redis-monitor",instance="redis-primary"} == 1) and on(job,instance) (time() - timestamp(up{job="fasttowin-redis-monitor",instance="redis-primary"}) >= 0) and on(job,instance) (time() - timestamp(up{job="fasttowin-redis-monitor",instance="redis-primary"}) <= 60)
+        for: 1m
+        labels: {severity: critical}
+        annotations: {summary: Redis evicted keys, description: Check memory policy; do not reset or change namespace automatically.}
+      - alert: FastToWinRedisHighMemory
+        expr: ((fasttowin_redis_monitor_memory_used_bytes{job="fasttowin-redis-monitor",instance="redis-primary"} / fasttowin_redis_monitor_memory_max_bytes{job="fasttowin-redis-monitor",instance="redis-primary"}) > 0.8) and on(job,instance) (fasttowin_redis_monitor_memory_max_bytes{job="fasttowin-redis-monitor",instance="redis-primary"} > 0) and on(job,instance) (fasttowin_redis_monitor_up{job="fasttowin-redis-monitor",instance="redis-primary"} == 1) and on(job,instance) (up{job="fasttowin-redis-monitor",instance="redis-primary"} == 1) and on(job,instance) (time() - timestamp(up{job="fasttowin-redis-monitor",instance="redis-primary"}) >= 0) and on(job,instance) (time() - timestamp(up{job="fasttowin-redis-monitor",instance="redis-primary"}) <= 60)
+        for: 5m
+        labels: {severity: warning}
+        annotations: {summary: Redis memory above 80 percent, description: Diagnostic pressure only; write availability also depends on policy and allocation.}
+      - alert: FastToWinRedisMemoryUnlimited
+        expr: (fasttowin_redis_monitor_memory_max_bytes{job="fasttowin-redis-monitor",instance="redis-primary"} == 0) and on(job,instance) (fasttowin_redis_monitor_up{job="fasttowin-redis-monitor",instance="redis-primary"} == 1) and on(job,instance) (up{job="fasttowin-redis-monitor",instance="redis-primary"} == 1) and on(job,instance) (time() - timestamp(up{job="fasttowin-redis-monitor",instance="redis-primary"}) >= 0) and on(job,instance) (time() - timestamp(up{job="fasttowin-redis-monitor",instance="redis-primary"}) <= 60)
+        for: 1m
+        labels: {severity: warning}
+        annotations: {summary: Redis memory limit absent, description: Review the intended limit; zero is unlimited and is never used as a ratio divisor.}
