@@ -1,0 +1,19 @@
+# EXAMPLE ONLY. No deployment command is supplied/run. Select this file explicitly.
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "deploy/monitoring/redis-monitor-cloud/Dockerfile.sender"
+
+[deploy]
+numReplicas = 1
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 3
+# Operator gate: no public domain/proxy, no platform healthcheck requiring public UI.
+# Approved exact production values must be set explicitly; there are no fallbacks:
+# GRAFANA_CLOUD_REMOTE_WRITE_URL=https://<exact-metrics-host>.grafana.net/api/prom/push
+# GRAFANA_CLOUD_EXPECTED_HOST=<exact-metrics-host>.grafana.net
+# GRAFANA_CLOUD_TENANT_ID=<decimal tenant>
+# GRAFANA_CLOUD_WRITE_TOKEN=<stack-scoped metrics:write token; no Redis secrets>
+# FASTTOWIN_REDIS_MONITOR_SCRAPE_ADDRESS=redis-monitor.railway.internal:19121
+# Mount dedicated 1-GB volume at /var/lib/alloy, owned by UID/GID 65532.
+# Proposed limits (must be configured/verified): CPU 0.1, RAM 256 MiB.
+# Retention 5m/5m/2h is not a disk cap. Resource fit remains an acceptance gate.

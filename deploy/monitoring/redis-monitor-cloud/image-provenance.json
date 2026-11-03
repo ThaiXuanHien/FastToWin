@@ -1,0 +1,35 @@
+{
+  "resolvedAt": "2026-11-03T09:06:02.524Z",
+  "method": "Anonymous official Docker Hub registry manifests before image execution",
+  "images": [
+    {
+      "image": "grafana/alloy:v1.18.0",
+      "digest": "sha256:491b0578c04983fd54fe99b587b6fab4404dc46d0dc16677bd6b00cc1140b308",
+      "source": "https://registry-1.docker.io/v2/grafana/alloy/manifests/v1.18.0",
+      "amd64": "sha256:eb21f4c0858edffcdd1b385910ddeef26f692fc2c282f61baa724fc09d274a17"
+    },
+    {
+      "image": "library/node:24-bookworm-slim",
+      "digest": "sha256:c86ecead9e55a5210ac1727de38a4ca840bf03dcaf34dc9749addbf383b1920c",
+      "source": "https://registry-1.docker.io/v2/library/node/manifests/24-bookworm-slim",
+      "amd64": "sha256:a43f7fc3e52e87d12a905f46eea0275def84ca8f2981a5b53fed44d7fb398ee0",
+      "observedVersion": "v24.22.2"
+    },
+    {
+      "image": "gcr.io/distroless/static-debian13:nonroot",
+      "digest": "sha256:25ac8f0c3b2334a9eb05452266bd4697864a8c8ef0ef71e5e6480d7f92868329",
+      "source": "https://gcr.io/v2/distroless/static-debian13/manifests/nonroot",
+      "amd64": "sha256:336e53e9941facdb69b755e6fd2c63f5400abd3b1ba47bb17ebafc2b1547cebd",
+      "caBundle": {
+        "path": "/etc/ssl/certs/ca-certificates.crt",
+        "sha256": "e9c7b63ee2623386e9b0a3ee32f499d01a8ea23dc83b8383ddff9f8e749543b7",
+        "certificateCount": 148
+      }
+    }
+  ],
+  "collectorInput": {
+    "path": ".artifacts/redis-monitor-local-20261103/redis-monitor-linux-amd64",
+    "sha256": "e7d282cca53b9c2bdf21f9837c2d3fdc8a3fd6fd3d5db0176cf18d17c8d809b6",
+    "note": "Existing frozen binary copied unchanged; no collector source edit or compile in this task."
+  }
+}

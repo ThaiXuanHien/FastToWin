@@ -1,0 +1,17 @@
+# EXAMPLE ONLY. No deployment command is supplied/run. Select this file explicitly.
+# Source context must include the frozen redis-monitor binary; never a Redis app binary.
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "deploy/monitoring/redis-monitor-cloud/Dockerfile.collector"
+
+[deploy]
+numReplicas = 1
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 3
+# Operator gate: no public domain/proxy; same private region/environment as Redis.
+# Set approved Redis private host:port, TLS bool and monitor-only secret separately:
+# FASTTOWIN_REDIS_MONITOR_ADDRESS
+# FASTTOWIN_REDIS_MONITOR_TLS
+# FASTTOWIN_REDIS_MONITOR_PASSWORD (96 lowercase hex; runtime file, never argument)
+# Fixed listener is [::]:19121. No Railway PORT/public listener.
+# Proposed limits (must be configured/verified before deployment): CPU 0.1, RAM 64 MiB.
