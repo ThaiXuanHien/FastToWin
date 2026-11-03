@@ -31,10 +31,11 @@ if(process.argv[1]===fileURLToPath(import.meta.url)){
   // An explicitly fixture-only adversarial HTTP relay. Production Alloy bytes
   // and real collector stay unchanged. Prove sanitation at the actual receiver.
   http.createServer((req,res)=>{
-    fs.appendFileSync(root+'/scrapes.jsonl',JSON.stringify({at:Date.now()})+'\n');
+    const scrapeAt=Date.now();
     const upstream=http.get('http://collector:19121/metrics',{timeout:5000},response=>{
       let body='';response.setEncoding('utf8');response.on('data',c=>{body+=c;if(body.length>131072)upstream.destroy();});
       response.on('end',()=>{
+        fs.appendFileSync(root+'/scrapes.jsonl',JSON.stringify({at:scrapeAt,status:response.statusCode})+'\n');
         body=body.split('\n').map(line=>{if(!line||line.startsWith('#'))return line;const i=line.indexOf(' ');const name=line.slice(0,i),value=line.slice(i);return (name.includes('{')?name.replace('{','{private_host="should-drop",'):name+'{private_host="should-drop",reason="connect"}')+value;}).join('\n');
         res.writeHead(response.statusCode,{'content-type':'text/plain'}).end(body+'\nfasttowin_redis_monitor_unapproved{private_host="should-drop"} 99\nfasttowin_redis_monitor_collection_errors_total{reason="not-approved",private_host="should-drop"} 99\n');
       });
