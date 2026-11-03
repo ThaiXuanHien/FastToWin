@@ -19,6 +19,8 @@ try{
   $env:GOOS='linux'
   & $tool.executable build -trimpath -o (Join-Path $ownedRoot 'redis-monitor-linux-amd64') ./cmd/redis-monitor
   if($LASTEXITCODE -ne 0){throw 'Static Linux collector build failed'}
+  & $tool.executable build -trimpath -o (Join-Path $ownedRoot 'redis-monitor-runtime-probe') (Join-Path $PSScriptRoot 'redis-monitor-runtime-probe.go')
+  if($LASTEXITCODE -ne 0){throw 'Static acceptance-only probe build failed'}
 }finally{Pop-Location}
 if($Mode -eq 'Native'){
   Write-Output "Owned fixture: $artifact"
