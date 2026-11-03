@@ -6,5 +6,6 @@ COPY --from=ca /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates
 COPY --chmod=0444 deploy/monitoring/redis-monitor-cloud/prepare.mjs deploy/monitoring/redis-monitor-cloud/prepare-runtime.mjs /opt/redis-monitor-cloud/
 COPY --chmod=0555 deploy/monitoring/redis-monitor-cloud/sender-entrypoint.sh /opt/redis-monitor-cloud/sender-entrypoint.sh
 RUN test -s /etc/ssl/certs/ca-certificates.crt && chmod 0555 /opt/redis-monitor-cloud && mkdir -p /var/lib/alloy && chown 65532:65532 /run /var/lib/alloy && chmod 0700 /run /var/lib/alloy
+COPY --chmod=0444 deploy/monitoring/redis-monitor-cloud/runtime-directory.mjs /opt/redis-monitor-cloud/runtime-directory.mjs
 USER 65532:65532
 ENTRYPOINT ["/bin/sh", "/opt/redis-monitor-cloud/sender-entrypoint.sh"]

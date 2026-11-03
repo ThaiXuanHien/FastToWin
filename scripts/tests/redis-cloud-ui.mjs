@@ -7,6 +7,38 @@ import net from 'node:net';
 import cp from 'node:child_process';
 import {randomBytes} from 'node:crypto';
 const delay=ms=>new Promise(r=>setTimeout(r,ms));
+export async function waitForUIReady(urls,{deadline,attempts=60,request=fetch,pause=delay}={}){
+  for(let i=0;i<attempts;i++){
+    let ready=true;
+    for(const url of urls){
+      const remaining=deadline-Date.now();
+      if(remaining<=0)throw new Error('ui_readiness_deadline');
+      const controller=new AbortController();
+      const timer=setTimeout(()=>controller.abort(),Math.min(1000,remaining));
+      try{if(!(await request(url,{signal:controller.signal})).ok)ready=false;}catch{ready=false;}finally{clearTimeout(timer);}
+    }
+    if(ready&&Date.now()<deadline)return;
+    if(Date.now()>=deadline)throw new Error('ui_readiness_deadline');
+    await pause(Math.min(1000,deadline-Date.now()));
+  }
+  throw new Error('ui_readiness_exhausted');
+}
+export async function cleanupUI({children,closeListener,closeLogs=[],removeSecrets=[],save,waitChild=async child=>{
+  if(child.exitCode!==null||child.signalCode!==null)return;
+  await new Promise(resolve=>{const done=()=>{clearTimeout(timer);child.removeListener('exit',done);resolve();};const timer=setTimeout(done,5000);child.once('exit',done);});
+}}){
+  const actions=[];
+  async function attempt(name,action){try{await action();actions.push({name,ok:true});}catch{actions.push({name,ok:false});}}
+  for(const {name,child} of children)await attempt('kill:'+name,()=>{if(child.exitCode===null&&child.signalCode===null)child.kill();});
+  for(const {name,child} of children)await attempt('wait:'+name,()=>waitChild(child));
+  await attempt('listener',closeListener);
+  for(const [i,action] of closeLogs.entries())await attempt('log:'+i,action);
+  for(const [i,action] of removeSecrets.entries())await attempt('secret:'+i,action);
+  const states=children.map(({name,child})=>({name,pid:child.pid,exited:child.exitCode!==null||child.signalCode!==null}));
+  const complete=actions.every(x=>x.ok)&&states.every(x=>x.exited);
+  await save({children:states,actions,syntheticSecretsRemoved:actions.filter(x=>x.name.startsWith('secret:')).every(x=>x.ok),listenerClosed:actions.find(x=>x.name==='listener').ok,complete});
+  if(!complete)throw new Error('ui_cleanup_incomplete');
+}
 async function freePort(){const s=net.createServer();await new Promise(r=>s.listen(0,'127.0.0.1',r));const p=s.address().port;await new Promise(r=>s.close(r));return p;}
 const write=(file,value)=>fs.writeFileSync(file,typeof value==='string'?value:JSON.stringify(value,null,2)+'\n');
 export async function nativeCloudUI(repo,artifact){
@@ -36,14 +68,15 @@ export async function nativeCloudUI(repo,artifact){
     launch('prometheus',prometheus,['--config.file='+path.join(artifact,'prometheus.yml'),'--storage.tsdb.path='+path.join(artifact,'tsdb'),'--storage.tsdb.retention.time=2h','--web.listen-address=127.0.0.1:'+promPort]);
     launch('grafana',grafana,['server','--homepath',path.dirname(path.dirname(grafana)),'--config',path.join(artifact,'grafana.ini')]);
     const endpoint={artifact,prometheus:'http://127.0.0.1:'+promPort,grafana:'http://127.0.0.1:'+grafPort,dashboard:'http://127.0.0.1:'+grafPort+'/d/fasttowin-redis-cloud?orgId=1&from=now-5m&to=now&refresh=5s&kiosk',synthetic:true,deadlineMinutes:12};
-    for(let i=0;i<60;i++){try{if((await fetch(endpoint.grafana+'/api/health')).ok&&(await fetch(endpoint.prometheus+'/-/ready')).ok)break;}catch{}await delay(1000);}
+    await waitForUIReady([endpoint.grafana+'/api/health',endpoint.prometheus+'/-/ready'],{deadline:started+12*60*1000});
     write(path.join(artifact,'endpoints.json'),endpoint);console.log(JSON.stringify(endpoint));
     while(!fs.existsSync(path.join(artifact,'stop'))&&Date.now()-started<12*60*1000){if(children.some(x=>x.child.exitCode!==null||x.child.signalCode!==null))throw new Error('ui_child_exited');await delay(500);}
   }finally{
-    for(const {child} of children)if(child.exitCode===null&&child.signalCode===null)child.kill();
-    await Promise.all(children.map(({child})=>new Promise(r=>{if(child.exitCode!==null||child.signalCode!==null)return r();const timer=setTimeout(r,5000);child.once('exit',()=>{clearTimeout(timer);r();});})));
-    if(server)await new Promise(r=>server.close(r));for(const fd of logs)fs.closeSync(fd);
-    for(const relative of ['grafana-secret','grafana-data/grafana.db','grafana-data/grafana.db-shm','grafana-data/grafana.db-wal']){const file=path.join(artifact,relative);if(fs.existsSync(file))fs.unlinkSync(file);}
-    write(path.join(artifact,'cleanup.json'),{children:children.map(({name,child})=>({name,pid:child.pid,exited:child.exitCode!==null||child.signalCode!==null})),syntheticSecretsRemoved:true,listenerClosed:true});
+    await cleanupUI({children,
+      closeListener:async()=>{if(server)await new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(new Error('listener_close_timeout')),5000);server.close(error=>{clearTimeout(timer);error?reject(error):resolve();});server.closeAllConnections();});},
+      closeLogs:logs.map(fd=>()=>fs.closeSync(fd)),
+      removeSecrets:['grafana-secret','grafana-data/grafana.db','grafana-data/grafana.db-shm','grafana-data/grafana.db-wal'].map(relative=>()=>{const file=path.join(artifact,relative);if(fs.existsSync(file))fs.unlinkSync(file);}),
+      save:receipt=>write(path.join(artifact,'cleanup.json'),receipt)
+    });
   }
 }

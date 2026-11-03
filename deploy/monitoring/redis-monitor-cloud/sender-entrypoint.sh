@@ -5,13 +5,14 @@ set -eu
 umask 077
 fail() { printf '%s\n' 'Invalid sender launch configuration' >&2; exit 1; }
 [ "$#" -eq 0 ] || fail
+env -i PATH=/usr/local/bin:/usr/bin:/bin /usr/local/bin/node /opt/redis-monitor-cloud/runtime-directory.mjs sender start || fail
+cleanup() { env -i PATH=/usr/local/bin:/usr/bin:/bin /usr/local/bin/node /opt/redis-monitor-cloud/runtime-directory.mjs sender cleanup || exit 1; }
+trap cleanup EXIT
+trap 'exit 1' HUP INT TERM
 secret=${GRAFANA_CLOUD_WRITE_TOKEN-}
 [ "${#secret}" -ge 16 ] && [ "${#secret}" -le 4096 ] || fail
 case "$secret" in *[!a-zA-Z0-9_+=/.-]*) fail ;; esac
-mkdir -m 700 /run/secrets 2>/dev/null || fail
-cleanup() { rm -f /run/secrets/grafana-write /run/secrets/config.alloy; rmdir /run/secrets 2>/dev/null || :; }
-trap cleanup EXIT
-trap 'exit 1' HUP INT TERM
+
 printf '%s' "$secret" > /run/secrets/grafana-write || fail
 chmod 600 /run/secrets/grafana-write || fail
 unset secret GRAFANA_CLOUD_WRITE_TOKEN FASTTOWIN_REDIS_MONITOR_PASSWORD
