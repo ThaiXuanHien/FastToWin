@@ -1,6 +1,6 @@
-# Redis rate limits: local opt-in
+# Redis rate limits
 
-This is a local-only acceptance stage. Production configuration and rollout are **not approved**.
+The Owner-authorized production backend cutover was performed on 03 November 2026 with store `redis` and namespace `prod_main`. See the [dated execution handoff](redis-production-handoff-2026-11-03.md) for acceptance, observation/cleanup status, retained resources and manual backup responsibility. This is not standing permission for another deployment or recovery operation.
 Memory remains the default. To opt in, set `FASTTOWIN_RATE_LIMIT_STORE=redis`, `FASTTOWIN_RATE_LIMIT_REDIS_URL` (or `FASTTOWIN_RATE_LIMIT_REDIS_URL_FILE`, never both), and `FASTTOWIN_RATE_LIMIT_NAMESPACE`. The namespace must match `[a-z0-9][a-z0-9_-]{0,47}`. Explicit empty or unknown stores and missing Redis settings fail startup. Both `redis://` and `rediss://` are supported; the local test uses loopback. Keep credentials out of command history and logs. Startup connects and pings Redis; there is no automatic memory fallback.
 
 The fixed shared buckets are player login, password reset and email verification request/confirm (IP and account); WebSocket connect (IP); room create (player and IP); room join (player, IP and IP/room); and admin login (IP and account). Message frames, selections, avatar, reporting, billing and ads remain local to each backend. Rooms and matches remain owned by one backend: shared quotas do not make the engine distributed.
@@ -11,4 +11,4 @@ For isolated local acceptance, `scripts/tests/redis-local-acceptance.ps1` starts
 
 Redis reset without persistence resets its buckets and can grant a fresh burst. Local acceptance does not establish persistence, HA, TLS provider selection or production capacity. Never clear a shared Redis database for cleanup; remove only the isolated container or keys under the unique namespace belonging to the current run. The private metrics endpoint retains its existing deployment access boundary; its bounded outcome/reason labels contain no identifiers or secrets. Lettuce SDK logging is suppressed after Redis activation to protect credentials, so use those counters for diagnostics.
 
-Issue #12 remains open for presence, remaining local limits and production decisions. Issue #15 remains open: ownership, reconnect and settlement have not been accepted for multiple game-engine instances.
+Issue #12 remains open for presence and remaining local limits. Issue #15 remains open: ownership, reconnect and settlement have not been accepted for multiple game-engine instances.

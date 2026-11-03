@@ -1,0 +1,86 @@
+name: ftw-monitor-${FTW_MONITOR_RUN_ID:?unique run id required}
+x-owned: &owned
+  labels:
+    fasttowin.monitor-run: ${FTW_MONITOR_RUN_ID}
+services:
+  redis:
+    <<: *owned
+    build:
+      context: ../../railway/redis
+      labels:
+        fasttowin.monitor-run: ${FTW_MONITOR_RUN_ID}
+    env_file: ${FTW_MONITOR_ARTIFACT:?owned artifact directory required}/redis.env
+    volumes:
+      - redis-data:/data
+    networks: [fixture]
+    ports: ['127.0.0.1::6379']
+  collector:
+    <<: *owned
+    build:
+      context: ${FTW_MONITOR_CONTEXT:?binary-only image context required}
+      labels:
+        fasttowin.monitor-run: ${FTW_MONITOR_RUN_ID}
+    user: '65532:65532'
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ['no-new-privileges:true']
+    cpus: 0.1
+    mem_limit: 64m
+    environment:
+      FASTTOWIN_REDIS_MONITOR_ADDRESS: redis:6379
+      FASTTOWIN_REDIS_MONITOR_PASSWORD_FILE: /run/secrets/monitor
+      FASTTOWIN_REDIS_MONITOR_LISTEN: 0.0.0.0:19121
+    volumes:
+      - ${FTW_MONITOR_ARTIFACT}/monitor:/run/secrets/monitor:ro
+    ports: ['127.0.0.1::19121']
+    networks: [fixture]
+  prometheus:
+    <<: *owned
+    image: prom/prometheus@sha256:e4254400b85610324913f0dc4acf92603d9984e7519414c5a12811aa6146acc3
+    command: ['--config.file=/etc/prometheus/prometheus.yml', '--storage.tsdb.retention.time=2h']
+    volumes:
+      - ./prometheus.local.yml:/etc/prometheus/prometheus.yml:ro
+      - ./redis-alerts.yml:/etc/prometheus/redis-alerts.yml:ro
+      - prometheus-data:/prometheus
+    ports: ['127.0.0.1::9090']
+    networks: [fixture]
+  alertmanager:
+    <<: *owned
+    image: prom/alertmanager@sha256:51a825c2a40acc3e338fdd00d622e01ec090f72be2b3ea46be0839cd47a4d286
+    volumes:
+      - ../alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - alertmanager-data:/alertmanager
+    ports: ['127.0.0.1::9093']
+    networks: [fixture]
+  grafana:
+    <<: *owned
+    image: grafana/grafana@sha256:3fd54ae1214669f8355f065ec9f6445d5279a3d77095ab048ca045685272429b
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD__FILE: /run/secrets/grafana
+      GF_USERS_ALLOW_SIGN_UP: 'false'
+    volumes:
+      - ${FTW_MONITOR_ARTIFACT}/grafana:/run/secrets/grafana:ro
+      - grafana-data:/var/lib/grafana
+      - ./grafana-datasources.yml:/etc/grafana/provisioning/datasources/local.yml:ro
+      - ../grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ../grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports: ['127.0.0.1::3000']
+    networks: [fixture]
+networks:
+  fixture:
+    internal: true
+    labels:
+      fasttowin.monitor-run: ${FTW_MONITOR_RUN_ID}
+volumes:
+  redis-data:
+    labels:
+      fasttowin.monitor-run: ${FTW_MONITOR_RUN_ID}
+  prometheus-data:
+    labels:
+      fasttowin.monitor-run: ${FTW_MONITOR_RUN_ID}
+  alertmanager-data:
+    labels:
+      fasttowin.monitor-run: ${FTW_MONITOR_RUN_ID}
+  grafana-data:
+    labels:
+      fasttowin.monitor-run: ${FTW_MONITOR_RUN_ID}

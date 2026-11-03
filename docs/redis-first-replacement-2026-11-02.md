@@ -20,7 +20,8 @@ For this old-backend replacement only, propose **5 minutes warning, a 15-minute 
 
 Use server-persisted timestamps, not an estimated local countdown:
 
-- Read the saved `startedAtEpochMillis`, warning transition and `drainDeadlineEpochMillis`; verify they match the approved 5/60 configuration and current policy version.
+- Read the saved `startedAtEpochMillis`, `warningMinutes`, `drainMinutes` and `drainDeadlineEpochMillis`; verify the approved 5/60 configuration and current policy version. Derive the warning-to-drain transition as `startedAtEpochMillis + 5 minutes`, and require the persisted drain deadline to equal that value plus 60 minutes.
+- Do not use the UI's generic `transitionAtEpochMillis` as the warning-to-drain timestamp after announcement: DRAINING changes that field to the hard drain deadline, and MAINTENANCE clears it. The saved start/settings and separate drain deadline remain the timing evidence.
 - The operational cutoff is the warning transition plus 15 minutes. It is normally 45 minutes before the old backend's hard drain deadline.
 - Stop waiting and begin cancellation immediately if trusted observations become unavailable/stale, the saved/effective versions diverge, or unexpected configuration appears. Do not wait until the operational cutoff to respond to an error.
 - While the operation is attended, make bounded explicit status observations. This is deployment supervision, not a background monitor; do not create an automation or unattended loop.

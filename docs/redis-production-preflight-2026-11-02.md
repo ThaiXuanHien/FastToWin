@@ -1,5 +1,7 @@
 # Production Redis preflight — 2026-11-02
 
+> Historical checkpoint: the operator/backup statements below describe this preflight handoff. The Owner subsequently accepted daily on-request backups and a separately approved DB backup completed. Consult the [current rollout checkpoints](superpowers/plans/2026-11-02-redis-production-rollout.md#task-4-planned-cutover-of-the-single-backend) for those later decisions; game-backend cutover remains unfinished and requires separate approval.
+
 **Synthetic preflight passed; cutover remains no-go.** The private production Redis and its volume are retained. The temporary preflight service was deleted after the measurements. The game backend remains on its existing deployment and was not changed by this work.
 
 The retained service is `rate-limit-redis` (`a0d91efb-205d-4250-80f4-4b6d218afc6d`), deployment `e9b49229-5e77-4f87-95aa-6aec62ff353c`, in production project `8daf3d1f-df4c-4f39-a07b-61becae674fa` and environment `351ee85f-7760-4b57-9649-9693fdcdbfea`. Railway reported one SFO replica, 0.25 vCPU, 250,000,000-byte memory limit, sleep disabled, and no public domains or TCP proxies. Volume `3d5db918-8ffa-47ba-8677-3d81f3dc6a99`, instance `bb1e8878-1f9b-451c-8da2-df5fddc09ff0`, was READY in SFO, mounted at `/data`, and reported 5,000 MB. Startup logs showed the volume mount and Redis ready. Three independent role secrets were generated and supplied privately; the local retained copy is protected by Windows DPAPI CurrentUser.

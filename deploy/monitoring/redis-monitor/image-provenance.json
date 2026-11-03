@@ -1,0 +1,32 @@
+{
+  "resolvedAt": "2026-11-03",
+  "method": "Anonymous public registry manifests, Docker-Content-Digest; no image executed or pulled for this gate.",
+  "images": [
+    {
+      "image": "redis",
+      "digest": "sha256:be7c1cada5a6eb1656adfa2635b99296af725881301b21f84f35a71fac072c7f",
+      "source": "https://registry-1.docker.io/v2/library/redis/manifests/sha256:be7c1cada5a6eb1656adfa2635b99296af725881301b21f84f35a71fac072c7f",
+      "note": "Existing project bootstrap base; official manifest digest verified anonymously."
+    },
+    {
+      "digest": "sha256:e4254400b85610324913f0dc4acf92603d9984e7519414c5a12811aa6146acc3",
+      "source": "https://registry-1.docker.io/v2/prom/prometheus/manifests/v3.11.3",
+      "image": "prom/prometheus:v3.11.3"
+    },
+    {
+      "digest": "sha256:51a825c2a40acc3e338fdd00d622e01ec090f72be2b3ea46be0839cd47a4d286",
+      "source": "https://registry-1.docker.io/v2/prom/alertmanager/manifests/v0.32.1",
+      "image": "prom/alertmanager:v0.32.1"
+    },
+    {
+      "digest": "sha256:3fd54ae1214669f8355f065ec9f6445d5279a3d77095ab048ca045685272429b",
+      "source": "https://registry-1.docker.io/v2/grafana/grafana/manifests/13.2.0",
+      "image": "grafana/grafana:13.2.0"
+    },
+    {
+      "digest": "sha256:25ac8f0c3b2334a9eb05452266bd4697864a8c8ef0ef71e5e6480d7f92868329",
+      "source": "https://gcr.io/v2/distroless/static-debian13/manifests/nonroot",
+      "image": "gcr.io/distroless/static-debian13:nonroot"
+    }
+  ]
+}
