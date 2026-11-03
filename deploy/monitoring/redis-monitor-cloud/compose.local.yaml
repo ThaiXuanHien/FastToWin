@@ -1,0 +1,85 @@
+# Opt-in synthetic fixture. No host ports, Docker socket, external network or
+# production mounts. Invoke through scripts/tests/redis-cloud-local.ps1.
+name: ftw-redis-cloud-${FTW_CLOUD_RUN_ID:?unique run required}
+x-owned: &owned
+  labels:
+    fasttowin.redis-cloud-run: ${FTW_CLOUD_RUN_ID}
+  networks: [fixture]
+  cap_drop: [ALL]
+  security_opt: ['no-new-privileges:true']
+services:
+  redis:
+    <<: *owned
+    image: ftw-redis-cloud-redis:${FTW_CLOUD_RUN_ID}
+    build:
+      context: ../../railway/redis
+      labels: {fasttowin.redis-cloud-run: '${FTW_CLOUD_RUN_ID}'}
+    cap_drop: []
+    env_file: ${FTW_CLOUD_ARTIFACT}/redis.env
+    volumes: [redis-data:/data]
+  collector:
+    <<: *owned
+    image: ftw-redis-cloud-collector:${FTW_CLOUD_RUN_ID}
+    build:
+      context: ${FTW_CLOUD_ARTIFACT}/image
+      dockerfile: deploy/monitoring/redis-monitor-cloud/Dockerfile.collector
+      labels: {fasttowin.redis-cloud-run: '${FTW_CLOUD_RUN_ID}'}
+    env_file: ${FTW_CLOUD_ARTIFACT}/collector.env
+    read_only: true
+    tmpfs: ['/run:uid=65532,gid=65532,mode=0700,size=1m']
+    cpus: 0.1
+    mem_limit: 64m
+    pids_limit: 32
+  sender:
+    <<: *owned
+    image: ftw-redis-cloud-sender:${FTW_CLOUD_RUN_ID}
+    build:
+      context: ${FTW_CLOUD_ARTIFACT}/image
+      dockerfile: deploy/monitoring/redis-monitor-cloud/Dockerfile.sender
+      labels: {fasttowin.redis-cloud-run: '${FTW_CLOUD_RUN_ID}'}
+    entrypoint: [/bin/alloy]
+    command: [run, '--disable-reporting', '--server.http.listen-addr=127.0.0.1:12345', '--storage.path=/var/lib/alloy', /fixture/config.alloy]
+    user: '65532:65532'
+    read_only: true
+    volumes:
+      - ${FTW_CLOUD_ARTIFACT}/sender:/fixture:ro
+      - ${FTW_CLOUD_ARTIFACT}/sender/token:/run/secrets/grafana-write:ro
+      - sender-wal:/var/lib/alloy
+    cpus: 0.1
+    mem_limit: 256m
+    pids_limit: 64
+  receiver:
+    <<: *owned
+    image: node@sha256:c86ecead9e55a5210ac1727de38a4ca840bf03dcaf34dc9749addbf383b1920c
+    entrypoint: [node, /fixture/receiver.mjs]
+    user: '65532:65532'
+    read_only: true
+    volumes: ['${FTW_CLOUD_ARTIFACT}/receiver:/fixture']
+    networks:
+      fixture:
+        aliases: [redis-monitor.railway.internal]
+    mem_limit: 128m
+    pids_limit: 32
+  prometheus:
+    <<: *owned
+    image: prom/prometheus@sha256:e4254400b85610324913f0dc4acf92603d9984e7519414c5a12811aa6146acc3
+    command: ['--config.file=/etc/prometheus/local.yml', '--web.enable-remote-write-receiver', '--storage.tsdb.retention.time=2h']
+    volumes:
+      - ./prometheus.local.yml:/etc/prometheus/local.yml:ro
+      - prometheus-data:/prometheus
+    mem_limit: 256m
+networks:
+  fixture:
+    internal: true
+    enable_ipv6: true
+    labels: {fasttowin.redis-cloud-run: '${FTW_CLOUD_RUN_ID}'}
+    ipam:
+      config:
+        - subnet: ${FTW_CLOUD_IPV6_SUBNET:?unique ULA subnet required}
+volumes:
+  redis-data:
+    labels: {fasttowin.redis-cloud-run: '${FTW_CLOUD_RUN_ID}'}
+  sender-wal:
+    labels: {fasttowin.redis-cloud-run: '${FTW_CLOUD_RUN_ID}'}
+  prometheus-data:
+    labels: {fasttowin.redis-cloud-run: '${FTW_CLOUD_RUN_ID}'}
