@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import {fileURLToPath} from 'node:url';
 import {renderAlloy,metricNames} from '../../deploy/monitoring/redis-monitor-cloud/prepare.mjs';
 import {dockerConfig} from './redis-monitor-docker-config.mjs';
-import {retentionEvidence,filesystemEvidence,finalizeCleanup} from './redis-cloud-evidence.mjs';
+import {restartGapEvidence,finalizeCleanup} from './redis-cloud-evidence.mjs';
 export function ownedPath(repo,id){
   if(!/^[a-f0-9]{32}$/.test(id))throw new Error('invalid fixture identity');
   return path.join(path.resolve(repo),'.artifacts/redis-cloud-local-20261103','run-'+id);
@@ -24,7 +24,7 @@ export function certificates(dir,repo=path.resolve('.')){
 }
 const delay=ms=>new Promise(r=>setTimeout(r,ms));
 const write=(file,value)=>fs.writeFileSync(file,typeof value==='string'?value:JSON.stringify(value,null,2)+'\n');
-async function shipping(repo,id,{diagnostic=false}={}){
+async function shipping(repo,id,{diagnostic=false,storage=false}={}){
   const artifact=ownedPath(repo,id);assert.ok(fs.existsSync(artifact));
   const env={...process.env};for(const k of Object.keys(env))if(/^(DOCKER_|BUILDX_|BUILDKIT_)/.test(k))delete env[k];
   env.DOCKER_HOST='npipe:////./pipe/docker_engine';env.DOCKER_CONFIG=path.join(artifact,'docker-config');
@@ -66,7 +66,7 @@ async function shipping(repo,id,{diagnostic=false}={}){
     write(path.join(artifact,'sender/config.alloy'),localAlloy());receiverMode('accept');
     fs.copyFileSync(path.join(repo,'scripts/tests/redis-cloud-receiver.mjs'),path.join(artifact,'receiver/receiver.mjs'));
     fs.copyFileSync(path.join(repo,'scripts/tests/redis-cloud-probe.mjs'),path.join(artifact,'receiver/probe.mjs'));
-    if(diagnostic){
+    if(diagnostic||storage){
       const bootstrap=path.join(repo,'.artifacts/redis-cloud-local-20261103/decoder-bootstrap');
       fs.copyFileSync(path.join(bootstrap,'decoder.exe'),path.join(artifact,'decoder.exe'));
       fs.copyFileSync(path.join(bootstrap,'decoder-linux'),path.join(artifact,'receiver/diagnostic-decoder'));
@@ -79,7 +79,7 @@ async function shipping(repo,id,{diagnostic=false}={}){
     gate('ownership-and-isolation',{localDaemon:true,emptyAuthConfig:true,internalNetwork:true,noHostPorts:true,syntheticCredentials:true});
     stage='build';docker([...compose,'build','--builder','default'],240);
     stage='startup';docker([...compose,'up','-d','--no-build']);
-    if(diagnostic)runtimeDeadline=Date.now()+240000;
+    if(diagnostic||storage)runtimeDeadline=Date.now()+(storage?480000:240000);
     const networkName=Object.keys(inspect('container',container('collector')).NetworkSettings.Networks)[0],network=inspect('network',networkName);
     assert.ok(owns(network));assert.equal(network.Internal,true);assert.equal(network.EnableIPv6,true);
     const containers=Object.fromEntries(['redis','collector','sender','receiver','prometheus'].map(s=>[s,container(s)]));
@@ -90,6 +90,16 @@ async function shipping(repo,id,{diagnostic=false}={}){
       const evidence=await runWalDiagnostic({artifact,docker,containers,query,until,delay:async ms=>{if(Date.now()+ms>runtimeDeadline)throw new Error('diagnostic_runtime_deadline');await delay(ms);},inspect,receiverMode,receiverReceipts,write,deadlineAt:runtimeDeadline});
       receipt.diagnosticConfirmed=evidence.diagnosticConfirmed;receipt.replayAcceptancePassed=false;save();
       throw new Error(evidence.diagnosticConfirmed?'wal_restart_cutoff_diagnostic_confirmed_acceptance_failed':'wal_diagnostic_inconclusive');
+    }
+    if(storage){
+      stage='storage-readiness';
+      await until(()=>query('{job="fasttowin-redis-monitor",instance="redis-primary"}').length===22,65);
+      const {runStoragePhases}=await import('./redis-cloud-storage.mjs');
+      await runStoragePhases({artifact,id,docker,containers,query,until,delay:async ms=>{if(Date.now()+ms>runtimeDeadline)throw new Error('storage_runtime_deadline');await delay(ms);},inspect,owns,receiverMode,receiverReceipts,write,localAlloy,network,config,gate,setStage:value=>{stage=value;}});
+      receipt.failedGates=Object.entries(receipt.gates).filter(([,value])=>value.passed===false).map(([name])=>name);
+      receipt.gatesPassed=receipt.failedGates.length===0;receipt.completed=false;receipt.scope='remaining storage only';save();
+      if(!receipt.gatesPassed)throw new Error('remaining_storage_gates_failed');
+      return;
     }
     stage='healthy-reception';const healthy=await until(()=>{const result=query('{job="fasttowin-redis-monitor",instance="redis-primary"}');return result.length===22&&result.some(s=>s.metric.__name__==='fasttowin_redis_monitor_up'&&s.value[1]==='1')?result:false;},75);
     const reasons=new Set(['connect','timeout','auth','protocol','oversized','missing','invalid']);
@@ -120,10 +130,8 @@ async function shipping(repo,id,{diagnostic=false}={}){
     stage='redirect';const redirectStart=Date.now();receiverMode('redirect');await until(()=>receiverReceipts().some(r=>r.at>=redirectStart&&r.status===307),30);await delay(2000);assert.ok(!receiverReceipts().some(r=>r.at>=redirectStart&&r.status===404));receiverMode('accept');gate('sender-redirect-rejection',{received307:true,followedRedirect:false});
     stage='replay';receiverMode('unavailable');const outage=Date.now();await delay(46000);
     docker(['stop','-t','10',containers.sender]);const recoveredAt=Date.now();receiverMode('accept');docker(['start',containers.sender]);
-    let replay=[],replayPassed=true;
-    try{replay=await until(()=>{const series=query('fasttowin_redis_monitor_memory_used_bytes{job="fasttowin-redis-monitor",instance="redis-primary"}[4m]');const values=series[0]?.values??[];write(path.join(artifact,'replay-observed.json'),{outage,recoveredAt,values});return values.some(([t])=>t*1000>=outage&&t*1000<recoveredAt-10000)?values:false;},60);}catch{replayPassed=false;}
-    const replayTimes=replay.map(([t])=>t*1000).filter(t=>t>=outage&&t<recoveredAt);replayPassed=replayPassed&&replayTimes.length>=2;
-    gate('persistent-wal-restart-backfill',{passed:replayPassed,outageStart:outage,recoveredAt,preservedOriginalSampleTimes:replayTimes,senderContainerUnchanged:true});
+    const restartedSamples=await until(()=>{const values=query('fasttowin_redis_monitor_memory_used_bytes{job="fasttowin-redis-monitor",instance="redis-primary"}[4m]')[0]?.values??[];return values.some(([t])=>t*1000>=recoveredAt)?values:false;},60);
+    gate('sender-restart-gap-contract',{...restartGapEvidence({restart:recoveredAt,now:Date.now(),receivedTimes:restartedSamples.map(([t])=>t*1000)}),outageStart:outage,senderContainerUnchanged:true});
     stage='sender-death-freshness';docker(['stop','-t','10',containers.sender]);await delay(65000);
     const raw=query('fasttowin_redis_monitor_memory_used_bytes{job="fasttowin-redis-monitor",instance="redis-primary"}');assert.equal(raw.length,1);
     const current=query('(fasttowin_redis_monitor_memory_used_bytes{job="fasttowin-redis-monitor",instance="redis-primary"}) and on(job,instance) ((time() - timestamp(up{job="fasttowin-redis-monitor",instance="redis-primary"})) >= 0 and (time() - timestamp(up{job="fasttowin-redis-monitor",instance="redis-primary"})) <= 60)');assert.equal(current.length,0);
@@ -134,33 +142,8 @@ async function shipping(repo,id,{diagnostic=false}={}){
     const wal=JSON.parse(docker(['exec',containers.sender,'node','--input-type=module','-e','import fs from "node:fs";let bytes=0,files=0;function walk(p){for(const d of fs.readdirSync(p,{withFileTypes:true})){const f=p+"/"+d.name;if(d.isDirectory())walk(f);else{files++;bytes+=fs.statSync(f).size;}}}walk("/var/lib/alloy");console.log(JSON.stringify({bytes,files}));']));
     const accepted=receiverReceipts().filter(r=>r.status===204),duration=(accepted.at(-1).at-accepted[0].at)/1000,compressedBytes=accepted.reduce((n,r)=>n+r.bytes,0);
     gate('resource-observation',{stats,states,wal,compressedAcceptedBytes:compressedBytes,observedSeconds:duration,compressedGiBPer30Days:compressedBytes/duration*2592000/1073741824,series:22,pointsPerMinute:88,billingProjectionEstablished:false});
-    // Accelerated retention is a separate fixture configuration, never production.
-    stage='accelerated-retention';docker(['stop','-t','10',containers.sender]);write(path.join(artifact,'sender/config.alloy'),localAlloy({accelerated:true}));receiverMode('unavailable');docker(['start',containers.sender]);
-    // Unsupported/missing queue instrumentation makes this gate inconclusive.
-    const pending=()=>Number(docker(['exec',containers.sender,'node','--input-type=module','-e','const t=await(await fetch("http://127.0.0.1:12345/metrics")).text();const m=[...t.matchAll(/^prometheus_remote_storage_samples_pending(?:\\{[^\\n]*\\})? ([0-9.e+]+)$/gm)];console.log(m.length?m.reduce((s,x)=>s+Number(x[1]),0):"NaN");']));
-    const expiryStart=Date.now(),pendingStart=pending();
-    await delay(45000);const olderEnd=Date.now(),pendingOlder=pending();
-    await delay(40000);const expiryRecovery=Date.now(),pendingNewer=pending();receiverMode('accept');
-    let expirySamples=[];
-    try{await until(()=>{expirySamples=query('fasttowin_redis_monitor_memory_used_bytes{job="fasttowin-redis-monitor",instance="redis-primary"}[4m]')[0]?.values??[];return expirySamples.some(([t])=>t*1000>=expiryRecovery-25000&&t*1000<expiryRecovery);},40);}catch{}
-    const older=[expiryStart+15000,olderEnd-5000],newer=[expiryRecovery-25000,expiryRecovery];
-    const sampled=window=>fs.readFileSync(path.join(artifact,'receiver/scrapes.jsonl'),'utf8').trim().split('\n').map(JSON.parse).some(s=>s.status===200&&s.at>=window[0]&&s.at<window[1]);
-    const expiry=retentionEvidence({samples:expirySamples,older,newer,queuedOlder:sampled(older)&&Number.isFinite(pendingStart)&&pendingOlder>pendingStart,queuedNewer:sampled(newer)&&Number.isFinite(pendingOlder)&&pendingNewer>pendingOlder});
-    gate('accelerated-retention-expiry',{...expiry,pendingStart,pendingOlder,pendingNewer,truncate:'10s',minimum:'10s',maximum:'30s',outageMs:expiryRecovery-expiryStart,productionUnchanged:'5m/5m/2h',twoHourWallClockTest:false});
-    // Bounded writable tmpfs models full filesystem behavior, not physical durability.
-    stage='full-filesystem';docker(['stop','-t','10',containers.sender]);
-    const fullName='ftw-cloud-full-'+id;
-    const full=docker(['create','--name',fullName,'--label','fasttowin.redis-cloud-run='+id,'--network',network.Id,'--user','65532:65532','--cpus','0.1','--memory','256m','--pids-limit','64','--cap-drop','ALL','--security-opt','no-new-privileges:true','--read-only','--tmpfs','/var/lib/alloy:uid=65532,gid=65532,mode=0700,size=192m','--mount',`type=bind,source=${path.join(artifact,'sender')},target=/fixture,readonly`,'--mount',`type=bind,source=${path.join(artifact,'sender/token')},target=/run/secrets/grafana-write,readonly`,'--entrypoint','/bin/alloy',config.services.sender.image,'run','--disable-reporting','--server.http.listen-addr=127.0.0.1:12345','--storage.path=/var/lib/alloy','/fixture/config.alloy']);
-    assert.ok(owns(inspect('container',full).Config));docker(['start',full]);await delay(16000);
-    const fullAt=Date.now(),observations=[];
-    const fill=JSON.parse(docker(['exec',full,'node','--input-type=module','-e','import fs from "node:fs";const f=fs.openSync("/var/lib/alloy/fixture-full","w");let bytes=0,code="limit-not-hit";try{for(let i=0;i<193;i++){fs.writeSync(f,Buffer.alloc(1048576));bytes+=1048576;}}catch(e){code=e.code;}finally{fs.closeSync(f);}console.log(JSON.stringify({bytes,code}));']));assert.equal(fill.code,'ENOSPC');
-    for(let i=0;i<9;i++){await delay(5000);const values=query('fasttowin_redis_monitor_memory_used_bytes{job="fasttowin-redis-monitor",instance="redis-primary"}[4m]')[0]?.values??[];observations.push({at:Date.now(),latest:values.length?values.at(-1)[0]*1000:null});}
-    const fullLogs=docker(['logs','--since','60s',full]);const diskFailureObserved=/no space left|ENOSPC|failed.*(append|write)|error.*(append|write)/i.test(fullLogs);
-    docker(['exec',full,'node','-e','require("fs").unlinkSync("/var/lib/alloy/fixture-full")']);const freeAt=Date.now();let recoveredSamples=[];
-    try{await until(()=>{recoveredSamples=query('fasttowin_redis_monitor_memory_used_bytes{job="fasttowin-redis-monitor",instance="redis-primary"}[4m]')[0]?.values??[];return recoveredSamples.some(([t])=>t*1000>=freeAt);},45);}catch{}
-    const filesystem=filesystemEvidence({fullAt,freeAt,checkedAt:Date.now(),observations,recoveredSamples,diskFailureObserved,fill});
-    gate('constrained-filesystem-full-and-recovery',{...filesystem,tmpfsMiB:192,fill,diskFailureObserved,physicalDurability:false});
-    docker(['stop','-t','10',full]);write(path.join(artifact,'sender/config.alloy'),localAlloy());docker(['start',containers.sender]);
+    const {runStoragePhases}=await import('./redis-cloud-storage.mjs');
+    await runStoragePhases({artifact,id,docker,containers,query,until,delay,inspect,owns,receiverMode,receiverReceipts,write,localAlloy,network,config,gate,setStage:value=>{stage=value;}});
     receipt.failedGates=Object.entries(receipt.gates).filter(([,value])=>value.passed===false).map(([name])=>name);receipt.gatesPassed=receipt.failedGates.length===0;receipt.completed=false;receipt.finishedAt=new Date().toISOString();save();
     if(!receipt.gatesPassed)throw new Error('local_acceptance_gates_failed');
   }catch(error){receipt.completed=false;receipt.failedStage=stage;receipt.error=error.message;save();throw error;}
@@ -193,6 +176,6 @@ async function shipping(repo,id,{diagnostic=false}={}){
 }
 if(process.argv[1]&&path.resolve(process.argv[1])===fileURLToPath(import.meta.url)){
   const [mode,repo,id]=process.argv.slice(2);
-  try{if(mode==='shipping'||mode==='waldiagnostic')await shipping(path.resolve(repo),id,{diagnostic:mode==='waldiagnostic'});else if(mode==='ui'){const {nativeCloudUI}=await import('./redis-cloud-ui.mjs');await nativeCloudUI(path.resolve(repo),ownedPath(repo,id));}else throw new Error('unknown_fixture_mode');}
+  try{if(['shipping','waldiagnostic','storage'].includes(mode))await shipping(path.resolve(repo),id,{diagnostic:mode==='waldiagnostic',storage:mode==='storage'});else if(mode==='ui'){const {nativeCloudUI}=await import('./redis-cloud-ui.mjs');await nativeCloudUI(path.resolve(repo),ownedPath(repo,id));}else throw new Error('unknown_fixture_mode');}
   catch(error){console.error('local_cloud_fixture_failed: '+error.message);process.exitCode=1;}
 }

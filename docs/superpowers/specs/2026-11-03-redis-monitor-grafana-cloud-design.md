@@ -2,6 +2,10 @@
 
 Date: 3 November 2026. Status: Owner approved this concrete design and local preparation in chat. No account, real token, managed resource, production data transfer or deployment is authorized by that approval.
 
+Revision, 3 November 2026: Owner explicitly chose “Chấp nhận khoảng trống khi restart (đề xuất)”. Historical backfill across sender restart is no longer guaranteed. Require fresh original post-restart timestamps, unavailable current state during missing/stale samples, preserved gaps and no retimestamping/fabricated history. Correctly timestamped older samples are allowed if received; loss itself is not required. The two original failed backfill receipts remain failures against the former requirement. Still-running sender buffering remains separate. No pin, queue policy, topology, cap or deployment grant changes.
+
+Controller clarification, same date: WAL retention means expiry from disk WAL including checkpoints, not a wire-age TTL for samples already queued in RAM. Accept local accelerated expiry only with complete before/after timestamp snapshots proving old samples were present and then removed while recent samples remain. Record any older wire delivery separately; do not add `sample_age_limit` or infer expiry from absent replay. Retention/full-filesystem gates are not waived by accepting restart gaps.
+
 ## Intended result
 
 Provide an authenticated Grafana Cloud dashboard showing real FastToWin production Redis memory, persistence status, eviction and collection freshness. Reuse the read-only collector and dashboard accepted locally in [the monitoring handoff](../../redis-monitoring.md). Do not move Redis, modify game behavior, or put its credential in Grafana Cloud.

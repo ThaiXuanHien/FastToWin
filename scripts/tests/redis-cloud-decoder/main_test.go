@@ -8,8 +8,40 @@ import (
 	"github.com/prometheus/prometheus/tsdb/record"
 	"github.com/prometheus/prometheus/tsdb/wlog"
 	"github.com/prometheus/prometheus/util/compression"
+	"os"
+	"path/filepath"
 	"testing"
 )
+
+func TestWALIncludesCheckpointAndActiveRecords(t *testing.T) {
+	dir := t.TempDir()
+	checkpoint := filepath.Join(dir, "checkpoint.00000002")
+	if e := os.Mkdir(checkpoint, 0700); e != nil {
+		t.Fatal(e)
+	}
+	w, e := wlog.New(nil, nil, checkpoint, compression.None)
+	if e != nil {
+		t.Fatal(e)
+	}
+	var enc record.Encoder
+	if e = w.Log(enc.Series([]record.RefSeries{{Ref: 1, Labels: labels.FromStrings("__name__", metric, "job", "fasttowin-redis-monitor", "instance", "redis-primary")}}, nil)); e != nil {
+		t.Fatal(e)
+	}
+	if e = w.Log(enc.Samples([]record.RefSample{{Ref: 1, T: 1000}}, nil)); e != nil {
+		t.Fatal(e)
+	}
+	w.Close()
+	active, e := wlog.New(nil, nil, dir, compression.None)
+	if e != nil {
+		t.Fatal(e)
+	}
+	active.Log(enc.Samples([]record.RefSample{{Ref: 1, T: 5000}}, nil))
+	active.Close()
+	times, e := wal(dir)
+	if e != nil || len(times) != 2 || times[0] != 1000 || times[1] != 5000 {
+		t.Fatalf("checkpoint/active evidence missing: %v %v", times, e)
+	}
+}
 
 func TestRemoteSanitizes(t *testing.T) {
 	good := []prompb.Label{{Name: "__name__", Value: metric}, {Name: "job", Value: "fasttowin-redis-monitor"}, {Name: "instance", Value: "redis-primary"}}

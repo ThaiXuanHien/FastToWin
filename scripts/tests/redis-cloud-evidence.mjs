@@ -1,4 +1,19 @@
 // Pure local acceptance decisions. Missing positive evidence never means pass.
+export function restartGapEvidence({restart,now,receivedTimes}) {
+  const freshOriginalSampleTimes=receivedTimes.filter(t=>Number.isSafeInteger(t)&&t>=restart&&t<=now&&now-t<=60000);
+  return {passed:freshOriginalSampleTimes.length>0,freshOriginalSampleTimes,
+    historicalGapAllowed:true,durableReplayPromised:false,contractRevision:'Owner 2026-11-03: accept restart gap'};
+}
+
+export function diskRetentionEvidence({beforeTimes,afterTimes,older,newer,beforeComplete,afterComplete}) {
+  const oldBefore=beforeTimes.filter(t=>t>=older[0]&&t<older[1]);
+  const oldAfter=afterTimes.filter(t=>t>=older[0]&&t<older[1]);
+  const recentAfter=afterTimes.filter(t=>t>=newer[0]&&t<newer[1]);
+  return {passed:beforeComplete&&afterComplete&&oldBefore.length>0&&oldAfter.length===0&&recentAfter.length>0,
+    beforeComplete,afterComplete,older,newer,oldBefore,oldAfter,recentAfter,
+    scope:'disk WAL including all checkpoints; not wire TTL or memory-queue expiry'};
+}
+
 export function retentionEvidence({samples,older,newer,queuedOlder,queuedNewer}) {
   const times=samples.map(([t])=>t*1000);
   const olderTimes=times.filter(t=>t>=older[0]&&t<older[1]);

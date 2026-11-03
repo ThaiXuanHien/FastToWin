@@ -8,7 +8,10 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"path/filepath"
+	"regexp"
 	"sort"
+	"strings"
 
 	"github.com/golang/snappy"
 	"github.com/prometheus/prometheus/model/labels"
@@ -52,39 +55,62 @@ func remote(body []byte) ([]int64, error) {
 }
 
 func wal(dir string) ([]int64, error) {
-	reader, err := wlog.NewSegmentsReader(dir)
+	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return nil, err
 	}
-	defer reader.Close()
-	r := wlog.NewReader(reader)
-	dec := record.NewDecoder(labels.NewSymbolTable(), slog.New(slog.NewTextHandler(io.Discard, nil)))
+	sources := []string{}
+	for _, entry := range entries {
+		if entry.IsDir() && strings.HasPrefix(entry.Name(), "checkpoint.") {
+			if !regexp.MustCompile(`^checkpoint\.[0-9]+$`).MatchString(entry.Name()) {
+				return nil, fmt.Errorf("incomplete checkpoint")
+			}
+			sources = append(sources, filepath.Join(dir, entry.Name()))
+		}
+	}
+	sort.Strings(sources)
+	sources = append(sources, dir)
 	refs := map[uint64]bool{}
 	times := []int64{}
-	for r.Next() {
-		raw := r.Record()
-		switch dec.Type(raw) {
-		case record.Series:
-			series, e := dec.Series(raw, nil)
-			if e != nil {
-				return nil, e
-			}
-			for _, s := range series {
-				refs[uint64(s.Ref)] = allowed(s.Labels.Get, s.Labels.Len())
-			}
-		case record.Samples, record.SamplesV2:
-			samples, e := dec.Samples(raw, nil)
-			if e != nil {
-				return nil, e
-			}
-			for _, s := range samples {
-				if refs[uint64(s.Ref)] {
-					times = append(times, s.T)
+	for _, source := range sources {
+		reader, err := wlog.NewSegmentsReader(source)
+		if err != nil {
+			return nil, err
+		}
+		defer reader.Close()
+		r := wlog.NewReader(reader)
+		dec := record.NewDecoder(labels.NewSymbolTable(), slog.New(slog.NewTextHandler(io.Discard, nil)))
+		for r.Next() {
+			raw := r.Record()
+			switch dec.Type(raw) {
+			case record.Series:
+				series, e := dec.Series(raw, nil)
+				if e != nil {
+					return nil, e
+				}
+				for _, s := range series {
+					refs[uint64(s.Ref)] = allowed(s.Labels.Get, s.Labels.Len())
+				}
+			case record.Samples, record.SamplesV2:
+				samples, e := dec.Samples(raw, nil)
+				if e != nil {
+					return nil, e
+				}
+				for _, s := range samples {
+					if _, known := refs[uint64(s.Ref)]; !known {
+						return nil, fmt.Errorf("unknown sample reference")
+					}
+					if refs[uint64(s.Ref)] {
+						times = append(times, s.T)
+					}
 				}
 			}
 		}
+		if r.Err() != nil {
+			return nil, r.Err()
+		}
 	}
-	return times, r.Err()
+	return times, nil
 }
 
 func main() {
