@@ -2,7 +2,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import cp from 'node:child_process';
-import net from 'node:net';
+import {command} from './redis-monitor-probe.mjs';
 import {randomBytes,randomUUID} from 'node:crypto';
 import assert from 'node:assert/strict';
 const [artifactArg,repoArg,id]=process.argv.slice(2);
@@ -25,17 +25,6 @@ const container=s=>{const x=docker([...compose,'ps','-aq',s]);assert.match(x,/^[
 const port=(s,p)=>{const v=docker(['port',container(s),String(p)]);assert.match(v,/^127\.0\.0\.1:\d+$/);return Number(v.split(':')[1]);};
 const delay=ms=>new Promise(r=>setTimeout(r,ms));
 async function waitFor(fn){for(let i=0;i<90;i++){try{if(await fn())return;}catch{}await delay(500);}throw new Error('fixture_deadline');}
-const frame=a=>'*'+a.length+'\r\n'+a.map(x=>'$'+Buffer.byteLength(x)+'\r\n'+x+'\r\n').join('');
-async function command(p,user,password,args){
-  const socket=net.connect(p,'127.0.0.1');socket.setTimeout(3000,()=>socket.destroy());let b='',step=0;
-  return await new Promise((resolve,reject)=>{
-    socket.on('error',()=>reject(new Error('probe_connection_failed')));socket.on('connect',()=>socket.write(frame(['AUTH',user,password])));
-    socket.on('data',chunk=>{b+=chunk;if(b.length>1048576){socket.destroy();reject(new Error('probe_oversized'));return;}
-      if(step===0){if(!b.startsWith('+OK\r\n')){socket.destroy();reject(new Error('probe_auth_failed'));return;}b=b.slice(5);step=1;socket.write(frame(args));}
-      if(step===1&&b.includes('\r\n')){if(b.startsWith('$')){const n=Number(b.slice(1,b.indexOf('\r\n')));if(b.length<b.indexOf('\r\n')+2+n+2)return;}socket.end();resolve(b);}
-    });socket.on('close',()=>{if(!b)reject(new Error('probe_closed'));});
-  });
-}
 let started=false;const evidence={realRedis:false,acl:false,aof:false,restart:false,resourceCap:false,physicalDiskFailure:false};
 try{
   fs.writeFileSync(path.join(artifact,'redis.env'),`FASTTOWIN_RATE_LIMIT_NAMESPACE=${namespace}\nFASTTOWIN_REDIS_APP_PASSWORD=${app}\nFASTTOWIN_REDIS_MONITOR_PASSWORD=${monitor}\nFASTTOWIN_REDIS_BACKUP_PASSWORD=${backup}\n`);

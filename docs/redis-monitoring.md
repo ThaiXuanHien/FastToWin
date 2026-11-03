@@ -55,7 +55,7 @@ Collector HTTP defaults to `127.0.0.1:19121`; only the container example explici
 Redis rules are loaded only by the opt-in configuration and scoped to `job="fasttowin-redis-monitor"`. Collector missing/down and failed/stale collection hold for one minute. AOF disabled/write/rewrite faults, unexpected eviction increase over five minutes and unlimited memory hold for one minute. Memory pressure above 80% holds for five minutes and requires a positive configured limit. All domain rules require both own-up and a reachable scrape; retained samples after scrape-down cannot trigger domain faults. The unit fixture covers absent collector/own-up, scrape-down, stale suppression, AOF disabled/absent detail, faults/recovery, eviction reset/recovery and memory holds/unlimited.
 
 ```powershell
-node --test scripts/tests/redis-monitor-package.test.mjs scripts/tests/redis-monitor-peer.test.mjs
+node --test scripts/tests/redis-monitor-package.test.mjs scripts/tests/redis-monitor-peer.test.mjs scripts/tests/redis-monitor-probe.test.mjs
 $promtool = '.artifacts/redis-monitor-local-20261103/tools/prometheus-windows/promtool.exe'
 & $promtool check config deploy/monitoring/redis-monitor/prometheus.local.yml
 & $promtool check rules deploy/monitoring/redis-monitor/redis-alerts.yml
