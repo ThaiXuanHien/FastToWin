@@ -1,0 +1,21 @@
+# Opt-in replacement example. Mount alerts.yml and redis-alerts.yml beside this file.
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+rule_files: [alerts.yml, redis-alerts.yml]
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ['alertmanager:9093']
+scrape_configs:
+  - job_name: fasttowin-server
+    metrics_path: /internal/metrics
+    static_configs:
+      - targets: ['server:8080']
+  - job_name: prometheus
+    static_configs:
+      - targets: ['localhost:9090']
+  - job_name: fasttowin-redis-monitor
+    scrape_timeout: 5s
+    static_configs:
+      - targets: ['collector:19121']

@@ -1,0 +1,573 @@
+{
+  "rule_files": [
+    "redis-alerts.yml"
+  ],
+  "evaluation_interval": "1m",
+  "tests": [
+    {
+      "name": "no collector series",
+      "interval": "1m",
+      "input_series": [],
+      "alert_rule_test": [
+        {
+          "eval_time": "0m",
+          "alertname": "FastToWinRedisCollectorMissing",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "1m",
+          "alertname": "FastToWinRedisCollectorMissing",
+          "exp_alerts": [
+            {
+              "exp_labels": {
+                "severity": "critical",
+                "job": "fasttowin-redis-monitor"
+              },
+              "exp_annotations": {
+                "summary": "Redis collector unavailable",
+                "description": "Check the private collector process and scrape path; no automatic repair."
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "scrape down",
+      "interval": "1m",
+      "input_series": [
+        {
+          "series": "up{job=\"fasttowin-redis-monitor\",instance=\"fixture:19121\"}",
+          "values": "0x10"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "1m",
+          "alertname": "FastToWinRedisCollectorMissing",
+          "exp_alerts": [
+            {
+              "exp_labels": {
+                "severity": "critical",
+                "job": "fasttowin-redis-monitor",
+                "instance": "fixture:19121"
+              },
+              "exp_annotations": {
+                "summary": "Redis collector unavailable",
+                "description": "Check the private collector process and scrape path; no automatic repair."
+              }
+            }
+          ]
+        },
+        {
+          "eval_time": "2m",
+          "alertname": "FastToWinRedisCollectionFailed",
+          "exp_alerts": []
+        }
+      ]
+    },
+    {
+      "name": "missing own up",
+      "interval": "1m",
+      "input_series": [
+        {
+          "series": "up{job=\"fasttowin-redis-monitor\",instance=\"fixture:19121\"}",
+          "values": "1x10"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "1m",
+          "alertname": "FastToWinRedisCollectionFailed",
+          "exp_alerts": [
+            {
+              "exp_labels": {
+                "severity": "critical",
+                "job": "fasttowin-redis-monitor",
+                "instance": "fixture:19121"
+              },
+              "exp_annotations": {
+                "summary": "Redis collection failed or stale",
+                "description": "Current Redis values are unavailable; last-success time is diagnostic only."
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "own up zero, stale retained values suppressed",
+      "interval": "1m",
+      "input_series": [
+        {
+          "series": "up{job=\"fasttowin-redis-monitor\",instance=\"fixture:19121\"}",
+          "values": "1x10"
+        },
+        {
+          "series": "fasttowin_redis_monitor_up{job=\"fasttowin-redis-monitor\",instance=\"fixture:19121\"}",
+          "values": "0x10"
+        },
+        {
+          "series": "fasttowin_redis_monitor_aof_enabled{job=\"fasttowin-redis-monitor\",instance=\"fixture:19121\"}",
+          "values": "0x10"
+        },
+        {
+          "series": "fasttowin_redis_monitor_aof_last_write_ok{job=\"fasttowin-redis-monitor\",instance=\"fixture:19121\"}",
+          "values": "0x10"
+        },
+        {
+          "series": "fasttowin_redis_monitor_memory_max_bytes{job=\"fasttowin-redis-monitor\",instance=\"fixture:19121\"}",
+          "values": "0x10"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "1m",
+          "alertname": "FastToWinRedisCollectionFailed",
+          "exp_alerts": [
+            {
+              "exp_labels": {
+                "severity": "critical",
+                "job": "fasttowin-redis-monitor",
+                "instance": "fixture:19121"
+              },
+              "exp_annotations": {
+                "summary": "Redis collection failed or stale",
+                "description": "Current Redis values are unavailable; last-success time is diagnostic only."
+              }
+            }
+          ]
+        },
+        {
+          "eval_time": "2m",
+          "alertname": "FastToWinRedisAofDisabled",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "2m",
+          "alertname": "FastToWinRedisAofWriteFailed",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "2m",
+          "alertname": "FastToWinRedisMemoryUnlimited",
+          "exp_alerts": []
+        }
+      ]
+    },
+    {
+      "name": "AOF off with absent details",
+      "interval": "1m",
+      "input_series": [
+        {
+          "series": "up{job=\"fasttowin-redis-monitor\",instance=\"fixture:19121\"}",
+          "values": "1x10"
+        },
+        {
+          "series": "fasttowin_redis_monitor_up{job=\"fasttowin-redis-monitor\",instance=\"fixture:19121\"}",
+          "values": "1x10"
+        },
+        {
+          "series": "fasttowin_redis_monitor_aof_enabled{job=\"fasttowin-redis-monitor\",instance=\"fixture:19121\"}",
+          "values": "0x10"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "0m",
+          "alertname": "FastToWinRedisAofDisabled",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "1m",
+          "alertname": "FastToWinRedisAofDisabled",
+          "exp_alerts": [
+            {
+              "exp_labels": {
+                "severity": "critical",
+                "job": "fasttowin-redis-monitor",
+                "instance": "fixture:19121"
+              },
+              "exp_annotations": {
+                "summary": "Redis AOF disabled",
+                "description": "Inspect persistence configuration; missing AOF details are not successful writes."
+              }
+            }
+          ]
+        },
+        {
+          "eval_time": "2m",
+          "alertname": "FastToWinRedisAofWriteFailed",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "2m",
+          "alertname": "FastToWinRedisAofRewriteFailed",
+          "exp_alerts": []
+        }
+      ]
+    },
+    {
+      "name": "AofWriteFailed hold and recovery",
+      "interval": "1m",
+      "input_series": [
+        {
+          "series": "up{job=\"fasttowin-redis-monitor\",instance=\"fixture:19121\"}",
+          "values": "1x10"
+        },
+        {
+          "series": "fasttowin_redis_monitor_up{job=\"fasttowin-redis-monitor\",instance=\"fixture:19121\"}",
+          "values": "1x10"
+        },
+        {
+          "series": "fasttowin_redis_monitor_aof_last_write_ok{job=\"fasttowin-redis-monitor\",instance=\"fixture:19121\"}",
+          "values": "0 0 1x8"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "0m",
+          "alertname": "FastToWinRedisAofWriteFailed",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "1m",
+          "alertname": "FastToWinRedisAofWriteFailed",
+          "exp_alerts": [
+            {
+              "exp_labels": {
+                "severity": "critical",
+                "job": "fasttowin-redis-monitor",
+                "instance": "fixture:19121"
+              },
+              "exp_annotations": {
+                "summary": "Redis AOF write failed",
+                "description": "Inspect storage and persistence without automatic rewrite or reset."
+              }
+            }
+          ]
+        },
+        {
+          "eval_time": "2m",
+          "alertname": "FastToWinRedisAofWriteFailed",
+          "exp_alerts": []
+        }
+      ]
+    },
+    {
+      "name": "AofRewriteFailed hold and recovery",
+      "interval": "1m",
+      "input_series": [
+        {
+          "series": "up{job=\"fasttowin-redis-monitor\",instance=\"fixture:19121\"}",
+          "values": "1x10"
+        },
+        {
+          "series": "fasttowin_redis_monitor_up{job=\"fasttowin-redis-monitor\",instance=\"fixture:19121\"}",
+          "values": "1x10"
+        },
+        {
+          "series": "fasttowin_redis_monitor_aof_last_rewrite_ok{job=\"fasttowin-redis-monitor\",instance=\"fixture:19121\"}",
+          "values": "0 0 1x8"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "0m",
+          "alertname": "FastToWinRedisAofRewriteFailed",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "1m",
+          "alertname": "FastToWinRedisAofRewriteFailed",
+          "exp_alerts": [
+            {
+              "exp_labels": {
+                "severity": "critical",
+                "job": "fasttowin-redis-monitor",
+                "instance": "fixture:19121"
+              },
+              "exp_annotations": {
+                "summary": "Redis AOF rewrite failed",
+                "description": "Inspect storage and persistence without automatic rewrite or reset."
+              }
+            }
+          ]
+        },
+        {
+          "eval_time": "2m",
+          "alertname": "FastToWinRedisAofRewriteFailed",
+          "exp_alerts": []
+        }
+      ]
+    },
+    {
+      "name": "eviction increase and recovery",
+      "interval": "1m",
+      "input_series": [
+        {
+          "series": "up{job=\"fasttowin-redis-monitor\",instance=\"fixture:19121\"}",
+          "values": "1x10"
+        },
+        {
+          "series": "fasttowin_redis_monitor_up{job=\"fasttowin-redis-monitor\",instance=\"fixture:19121\"}",
+          "values": "1x10"
+        },
+        {
+          "series": "fasttowin_redis_monitor_evicted_keys_total{job=\"fasttowin-redis-monitor\",instance=\"fixture:19121\"}",
+          "values": "0 1 2 2 2 2 2 2 2 2 2"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "1m",
+          "alertname": "FastToWinRedisUnexpectedEviction",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "2m",
+          "alertname": "FastToWinRedisUnexpectedEviction",
+          "exp_alerts": [
+            {
+              "exp_labels": {
+                "severity": "critical",
+                "job": "fasttowin-redis-monitor",
+                "instance": "fixture:19121"
+              },
+              "exp_annotations": {
+                "summary": "Redis evicted keys",
+                "description": "Check memory policy; do not reset or change namespace automatically."
+              }
+            }
+          ]
+        },
+        {
+          "eval_time": "8m",
+          "alertname": "FastToWinRedisUnexpectedEviction",
+          "exp_alerts": []
+        }
+      ]
+    },
+    {
+      "name": "reset is not eviction",
+      "interval": "1m",
+      "input_series": [
+        {
+          "series": "up{job=\"fasttowin-redis-monitor\",instance=\"fixture:19121\"}",
+          "values": "1x10"
+        },
+        {
+          "series": "fasttowin_redis_monitor_up{job=\"fasttowin-redis-monitor\",instance=\"fixture:19121\"}",
+          "values": "1x10"
+        },
+        {
+          "series": "fasttowin_redis_monitor_evicted_keys_total{job=\"fasttowin-redis-monitor\",instance=\"fixture:19121\"}",
+          "values": "10 10 0 0 0 0 0 0 0 0 0"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "4m",
+          "alertname": "FastToWinRedisUnexpectedEviction",
+          "exp_alerts": []
+        }
+      ]
+    },
+    {
+      "name": "high memory five minute hold and recovery",
+      "interval": "1m",
+      "input_series": [
+        {
+          "series": "up{job=\"fasttowin-redis-monitor\",instance=\"fixture:19121\"}",
+          "values": "1x10"
+        },
+        {
+          "series": "fasttowin_redis_monitor_up{job=\"fasttowin-redis-monitor\",instance=\"fixture:19121\"}",
+          "values": "1x10"
+        },
+        {
+          "series": "fasttowin_redis_monitor_memory_used_bytes{job=\"fasttowin-redis-monitor\",instance=\"fixture:19121\"}",
+          "values": "81 81 81 81 81 81 70x4"
+        },
+        {
+          "series": "fasttowin_redis_monitor_memory_max_bytes{job=\"fasttowin-redis-monitor\",instance=\"fixture:19121\"}",
+          "values": "100x10"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "4m",
+          "alertname": "FastToWinRedisHighMemory",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "5m",
+          "alertname": "FastToWinRedisHighMemory",
+          "exp_alerts": [
+            {
+              "exp_labels": {
+                "severity": "warning",
+                "job": "fasttowin-redis-monitor",
+                "instance": "fixture:19121"
+              },
+              "exp_annotations": {
+                "summary": "Redis memory above 80 percent",
+                "description": "Diagnostic pressure only; write availability also depends on policy and allocation."
+              }
+            }
+          ]
+        },
+        {
+          "eval_time": "6m",
+          "alertname": "FastToWinRedisHighMemory",
+          "exp_alerts": []
+        }
+      ]
+    },
+    {
+      "name": "unlimited does not divide",
+      "interval": "1m",
+      "input_series": [
+        {
+          "series": "up{job=\"fasttowin-redis-monitor\",instance=\"fixture:19121\"}",
+          "values": "1x10"
+        },
+        {
+          "series": "fasttowin_redis_monitor_up{job=\"fasttowin-redis-monitor\",instance=\"fixture:19121\"}",
+          "values": "1x10"
+        },
+        {
+          "series": "fasttowin_redis_monitor_memory_used_bytes{job=\"fasttowin-redis-monitor\",instance=\"fixture:19121\"}",
+          "values": "100x10"
+        },
+        {
+          "series": "fasttowin_redis_monitor_memory_max_bytes{job=\"fasttowin-redis-monitor\",instance=\"fixture:19121\"}",
+          "values": "0x10"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "1m",
+          "alertname": "FastToWinRedisMemoryUnlimited",
+          "exp_alerts": [
+            {
+              "exp_labels": {
+                "severity": "warning",
+                "job": "fasttowin-redis-monitor",
+                "instance": "fixture:19121"
+              },
+              "exp_annotations": {
+                "summary": "Redis memory limit absent",
+                "description": "Review the intended limit; zero is unlimited and is never used as a ratio divisor."
+              }
+            }
+          ]
+        },
+        {
+          "eval_time": "6m",
+          "alertname": "FastToWinRedisHighMemory",
+          "exp_alerts": []
+        }
+      ]
+    },
+    {
+      "name": "missing own-up after healthy sample",
+      "interval": "1m",
+      "input_series": [
+        {
+          "series": "up{job=\"fasttowin-redis-monitor\",instance=\"fixture:19121\"}",
+          "values": "1x10"
+        },
+        {
+          "series": "fasttowin_redis_monitor_up{job=\"fasttowin-redis-monitor\",instance=\"fixture:19121\"}",
+          "values": "1 stale _ _ _ _ _ _ _ _ _"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "0m",
+          "alertname": "FastToWinRedisCollectionFailed",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "2m",
+          "alertname": "FastToWinRedisCollectionFailed",
+          "exp_alerts": [
+            {
+              "exp_labels": {
+                "severity": "critical",
+                "job": "fasttowin-redis-monitor",
+                "instance": "fixture:19121"
+              },
+              "exp_annotations": {
+                "summary": "Redis collection failed or stale",
+                "description": "Current Redis values are unavailable; last-success time is diagnostic only."
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "scrape-down suppresses retained fresh-looking domain series",
+      "interval": "1m",
+      "input_series": [
+        {
+          "series": "up{job=\"fasttowin-redis-monitor\",instance=\"fixture:19121\"}",
+          "values": "0x10"
+        },
+        {
+          "series": "fasttowin_redis_monitor_up{job=\"fasttowin-redis-monitor\",instance=\"fixture:19121\"}",
+          "values": "1x10"
+        },
+        {
+          "series": "fasttowin_redis_monitor_aof_enabled{job=\"fasttowin-redis-monitor\",instance=\"fixture:19121\"}",
+          "values": "0x10"
+        },
+        {
+          "series": "fasttowin_redis_monitor_aof_last_write_ok{job=\"fasttowin-redis-monitor\",instance=\"fixture:19121\"}",
+          "values": "0x10"
+        },
+        {
+          "series": "fasttowin_redis_monitor_aof_last_rewrite_ok{job=\"fasttowin-redis-monitor\",instance=\"fixture:19121\"}",
+          "values": "0x10"
+        },
+        {
+          "series": "fasttowin_redis_monitor_memory_max_bytes{job=\"fasttowin-redis-monitor\",instance=\"fixture:19121\"}",
+          "values": "0x10"
+        },
+        {
+          "series": "fasttowin_redis_monitor_evicted_keys_total{job=\"fasttowin-redis-monitor\",instance=\"fixture:19121\"}",
+          "values": "0+1x10"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "6m",
+          "alertname": "FastToWinRedisAofDisabled",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "6m",
+          "alertname": "FastToWinRedisAofWriteFailed",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "6m",
+          "alertname": "FastToWinRedisAofRewriteFailed",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "6m",
+          "alertname": "FastToWinRedisMemoryUnlimited",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "6m",
+          "alertname": "FastToWinRedisUnexpectedEviction",
+          "exp_alerts": []
+        }
+      ]
+    }
+  ]
+}
