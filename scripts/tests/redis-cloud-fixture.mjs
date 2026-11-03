@@ -12,6 +12,12 @@ export function ownedPath(repo,id){
   if(!/^[a-f0-9]{32}$/.test(id))throw new Error('invalid fixture identity');
   return path.join(path.resolve(repo),'.artifacts/redis-cloud-local-20261103','run-'+id);
 }
+export function stageImageContext(repo,artifact,collectorBinary=path.join(repo,'.artifacts/redis-monitor-local-20261103/redis-monitor-linux-amd64')){
+  const source=path.join(repo,'deploy/monitoring/redis-monitor-cloud'),target=path.join(artifact,'image/deploy/monitoring/redis-monitor-cloud');
+  fs.mkdirSync(target,{recursive:true});
+  for(const f of ['Dockerfile.collector','Dockerfile.sender','prepare.mjs','prepare-runtime.mjs','runtime-directory.mjs','collector-entrypoint.sh','sender-entrypoint.sh'])fs.copyFileSync(path.join(source,f),path.join(target,f));
+  fs.copyFileSync(collectorBinary,path.join(artifact,'image/redis-monitor'));
+}
 export function provisionDecoders({repo,artifact,mode,copyFile=fs.copyFileSync}){
   if(mode==='ui')return;
   if(!['shipping','waldiagnostic','storage','fullonly','fullrecovery','fullreset'].includes(mode))throw new Error('unknown_fixture_mode');
@@ -65,9 +71,7 @@ async function shipping(repo,id,{diagnostic=false,storage=false,fullOnly=false,m
   const receiverReceipts=()=>fs.existsSync(path.join(artifact,'receiver/receipts.jsonl'))?fs.readFileSync(path.join(artifact,'receiver/receipts.jsonl'),'utf8').trim().split('\n').filter(Boolean).map(JSON.parse):[];
   try{
     for(const dir of ['image/deploy/monitoring/redis-monitor-cloud','sender','receiver'])fs.mkdirSync(path.join(artifact,dir),{recursive:true});
-    const source=path.join(repo,'deploy/monitoring/redis-monitor-cloud'),target=path.join(artifact,'image/deploy/monitoring/redis-monitor-cloud');
-    for(const f of ['Dockerfile.collector','Dockerfile.sender','prepare.mjs','prepare-runtime.mjs','collector-entrypoint.sh','sender-entrypoint.sh'])fs.copyFileSync(path.join(source,f),path.join(target,f));
-    fs.copyFileSync(path.join(repo,'.artifacts/redis-monitor-local-20261103/redis-monitor-linux-amd64'),path.join(artifact,'image/redis-monitor'));
+    stageImageContext(repo,artifact);
     certificates(path.join(artifact,'receiver'),repo);
     fs.copyFileSync(path.join(artifact,'receiver/ca.pem'),path.join(artifact,'sender/ca.pem'));
     const secret=()=>randomBytes(48).toString('hex'),monitor=secret(),token=secret();
