@@ -1,5 +1,7 @@
 # Redis production — lựa chọn và dự trù, 02/11/2026
 
+> Mốc lịch sử: tài liệu này giữ nguyên quyết định tại thời điểm viết. Redis production sau đó đã được tạo/nghiệm thu riêng và Owner đã nhận trách nhiệm yêu cầu backup thủ công; backend game chưa chuyển sang Redis. Xem [kế hoạch và checkpoint cập nhật](superpowers/plans/2026-11-02-redis-production-rollout.md#task-4-planned-cutover-of-the-single-backend) trước khi dùng các câu trạng thái bên dưới để quyết định triển khai.
+
 **Đề xuất:** chuẩn bị Redis một node trên Railway, cùng project/environment và
 vùng với backend; dự trù usage Redis tăng thêm **$5/tháng**, mức cần xem xét lại
 **$10/tháng**. Đây là ngân sách đề xuất để owner duyệt, chưa tạo tài nguyên hay
