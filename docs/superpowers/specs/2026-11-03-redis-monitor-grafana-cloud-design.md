@@ -1,6 +1,6 @@
 # Redis monitoring with Grafana Cloud Free and Railway
 
-Date: 3 November 2026. Status: concrete design for Owner review. The Owner selected this option to prepare a design only; no account, token, resource, data transfer or deployment is authorized by that selection.
+Date: 3 November 2026. Status: Owner approved this concrete design and local preparation in chat. No account, real token, managed resource, production data transfer or deployment is authorized by that approval.
 
 ## Intended result
 
@@ -109,4 +109,4 @@ Production acceptance must show the real target's numeric samples in the private
 
 ## Review state
 
-Self-check: the topology, secrets, namespace safety and measurement gates agree; local preparation never implies real shipping. Sender failure/backfill has an explicit freshness gate. The USD1–3 figure remains an estimate with assumptions, not a limit. Account/stack/token/resource values are deliberately supplied only under a later grant, not missing implementation defaults. Cloud rules/free limits, Alloy sizing, private IPv6 and production receipt are required gates, not assumed accomplishments. Owner review of this concrete design is pending.
+Self-check: the topology, secrets, namespace safety and measurement gates agree; local preparation never implies real shipping. Sender failure/backfill has an explicit freshness gate. The USD1–3 figure remains an estimate with assumptions, not a limit. Account/stack/token/resource values are deliberately supplied only under a later grant, not missing implementation defaults. Cloud rules/free limits, Alloy sizing, private IPv6 and production receipt are required gates, not assumed accomplishments. Owner approved this concrete design for planning and local implementation; real Cloud/Railway access remains outside that grant.
