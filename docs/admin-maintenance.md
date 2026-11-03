@@ -124,6 +124,18 @@ admin actor/reason and record audit action `MAINTENANCE_TRANSITION` with null
 audit actor. Admin changes use `MAINTENANCE_UPDATE`; reads use `MAINTENANCE_READ`.
 Audit summaries contain only state/mode/version, not bilingual message text.
 
+For PLANNED maintenance, the drain deadline is a target, not permission to abort
+admitted work. When that time passes with active matches or pending settlement/
+prepared work, remain DRAINING and keep new intent blocked. Advance to
+MAINTENANCE only after a trusted zero-work sample with `allowEmptyDrain=true`:
+the caller must already have fenced admission. A zero sampled before fencing
+cannot close the service, even after the target time. Waiting does not increment
+the policy version or add transition audits. Restart retains the same target and
+waiting state; it never turns an overdue planned drain into forced closure.
+The Owner may explicitly disable maintenance or escalate to EMERGENCY. Emergency
+enable and the environment override still close immediately; there is no
+automatic escalation or reopening when the planned target is missed.
+
 Enabled-to-enabled edits preserve current stage, start time and deadlines.
 Message/cause/internal reason/advisory end edits are allowed with a new version.
 Changing warning/drain values while enabled is 409; disable then enable to
@@ -135,9 +147,11 @@ No edit or advisory timestamp implicitly opens service.
 
 Call `refresh` before admitting any game at startup, then within 5 seconds of
 committed policy changes. Failures must not allow normal startup admission.
-`refresh` atomically reads/advances due warning and drain states and empty drain;
+`refresh` atomically reads/advances due warning and eligible empty-drain states;
 each automatic stage increments version conditionally against the locked row.
-An overdue warning+drain may advance both stages in one atomic transaction.
+An overdue warning may advance to DRAINING, but planned closure still requires
+an admission-fenced zero-work sample. An elapsed drain target alone cannot
+advance PLANNED to MAINTENANCE.
 Deadline calculation uses saved absolute UTC times, so restart never restarts a
 timer. `activeMatches` must be nonnegative and come from the trusted runtime.
 
@@ -486,7 +500,7 @@ intermediary proxies must preserve that policy.
 
 Local acceptance uses the owned loopback preview and disposable players/admins:
 planned announcement, drain with an admitted match continuing/new room rejected,
-deadline closure, reopening, emergency old socket closure, role reads/mutation
+overdue planned drain until work completes, reopening, emergency old socket closure, role reads/mutation
 denial, revocation and audit entries. Preview is restored ACTIVE. Separate real
 Netty/PostgreSQL isolated-schema acceptance covers environment override and one
 durable paid receipt grant/replay with an injected trusted verifier; it is not

@@ -57,11 +57,34 @@ class MaintenanceServiceTest {
         f.service=MaintenanceService(f.repository,f.admin,{ f.now })
         f.now+=60_000; assertEquals(MaintenanceState.DRAINING,f.service.refresh(1).state)
         assertEquals(180_000L+MaintenanceFixture.START,f.service.publicStatus().transitionAtEpochMillis)
-        f.now+=120_000; assertEquals(MaintenanceState.MAINTENANCE,f.service.refresh(1).state)
+        f.now+=120_000; assertEquals(MaintenanceState.DRAINING,f.service.refresh(1).state)
+        assertTrue(f.service.effectivePolicy().blocksNewIntent)
+        assertTrue(f.service.effectivePolicy().allowsExistingMatch)
+        f.service=MaintenanceService(f.repository,f.admin,{ f.now })
+        f.now+=60_000; assertEquals(MaintenanceState.DRAINING,f.service.refresh(1).state)
+        assertEquals(2,f.service.read(f.owner).persisted.version)
+        // An overdue deadline cannot bypass the runtime's admission boundary.
+        assertEquals(MaintenanceState.DRAINING,f.service.refresh(0,allowEmptyDrain=false).state)
+        assertEquals(MaintenanceState.MAINTENANCE,f.service.refresh(0).state)
         f.now+=1_000_000; assertEquals(MaintenanceState.MAINTENANCE,f.service.refresh(0).state)
         assertTrue(f.service.publicStatus().maintenance)
         val snapshot=f.service.read(f.owner).persisted
         assertEquals(3,snapshot.version); assertNotNull(snapshot.actorId)
+    }
+    @Test fun overduePlannedDrainCanBeCancelledOrExplicitlyEscalated() = runTest {
+        val f=MaintenanceFixture(); f.initialize()
+        f.service.update(f.owner,f.request().copy(warningMinutes=0,drainMinutes=1))
+        f.now+=120_000
+        assertEquals(MaintenanceState.DRAINING,f.service.refresh(1).state)
+        val disabled=f.service.update(f.owner,f.request().copy(expectedVersion=1,enabled=false))
+        assertEquals(MaintenanceState.ACTIVE,disabled.persisted.state)
+        f.service.update(f.owner,f.request().copy(expectedVersion=2,warningMinutes=0,drainMinutes=1))
+        f.now+=120_000
+        assertEquals(MaintenanceState.DRAINING,f.service.refresh(1).state)
+        val emergency=f.service.update(f.owner,f.request().copy(expectedVersion=3,mode=MaintenanceMode.EMERGENCY,
+            warningMinutes=0,drainMinutes=1))
+        assertEquals(MaintenanceState.MAINTENANCE,emergency.persisted.state)
+        assertFalse(f.service.refresh(1).allowsExistingMatch)
     }
     @Test fun zeroWarningEmptyDrainAndEmergencyClose() = runTest {
         val f=MaintenanceFixture(); f.initialize()

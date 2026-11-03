@@ -12,13 +12,19 @@ import kotlin.concurrent.thread
 /** A byte transport only: all decisions and writes still execute on the isolated Redis fixture. */
 internal class RedisFaultProxy(url: String) : AutoCloseable {
     enum class Mode { PASS, HOLD, DROP, MALFORMED }
-    private val target = URI(url)
+    private val target = URI(url).also { require(it.scheme == "redis") { "Only plain Redis transport is supported" } }
     private val server = ServerSocket(0, 32, InetAddress.getByName("127.0.0.1"))
     private val sockets = CopyOnWriteArrayList<Socket>()
     @Volatile var mode = Mode.PASS
     @Volatile var observed = CountDownLatch(1)
     @Volatile private var released = CountDownLatch(1)
-    val proxyUrl get() = "redis://127.0.0.1:${server.localPort}/0"
+    val proxyUrl get() = buildString {
+        append("redis://")
+        target.rawUserInfo?.let { append(it).append('@') }
+        append("127.0.0.1:").append(server.localPort)
+        append(target.rawPath.orEmpty())
+        target.rawQuery?.let { append('?').append(it) }
+    }
     private val acceptor = thread(isDaemon = true) {
         try {
             while (!server.isClosed) {

@@ -50,7 +50,12 @@ class PostgresMaintenanceRepositoryTest {
         val request=request(); val result=service.update(owner,request)
         service=MaintenanceService(PostgresMaintenanceRepository(source),admin,{ now })
         assertEquals(result,service.update(owner,request)); assertEquals(1,count("runtime_maintenance_requests"))
-        now+=60_000; assertEquals(MaintenanceState.MAINTENANCE,service.refresh(1).state)
+        now+=60_000; assertEquals(MaintenanceState.DRAINING,service.refresh(1).state)
+        assertEquals(1,service.read(owner).persisted.version)
+        assertEquals(0,count("admin_audit WHERE action='MAINTENANCE_TRANSITION'"))
+        service=MaintenanceService(PostgresMaintenanceRepository(source),admin,{ now })
+        assertEquals(MaintenanceState.DRAINING,service.refresh(0,allowEmptyDrain=false).state)
+        assertEquals(MaintenanceState.MAINTENANCE,service.refresh(0).state)
         val persisted=service.read(owner).persisted
         assertEquals(2,persisted.version); assertEquals(result.persisted.actorId,persisted.actorId)
         assertEquals(1,count("runtime_maintenance"))
@@ -75,7 +80,7 @@ class PostgresMaintenanceRepositoryTest {
                     source.connection.use { auditBarrier ->
                         auditBarrier.autoCommit = false
                         auditBarrier.createStatement().use { it.execute("SELECT pg_advisory_xact_lock(918273647)") }
-                        val transition = async(Dispatchers.IO) { service.refresh(1) }
+                        val transition = async(Dispatchers.IO) { service.refresh(0) }
                         try {
                             awaitLock("INSERT INTO admin_audit")
                             assertFalse(transition.isCompleted)
@@ -108,7 +113,7 @@ class PostgresMaintenanceRepositoryTest {
         assertEquals(0,service.read(owner).persisted.version)
         assertEquals(1,service.update(owner,request).persisted.version)
         now+=60_000; sql("ALTER TABLE admin_audit RENAME TO missing_admin_audit")
-        error(503) { service.refresh(1) }
+        error(503) { service.refresh(0) }
         sql("ALTER TABLE missing_admin_audit RENAME TO admin_audit")
         assertEquals(MaintenanceState.DRAINING,service.read(owner).persisted.state)
         assertTrue(count("admin_audit")>before)
@@ -117,7 +122,7 @@ class PostgresMaintenanceRepositoryTest {
         service.update(owner,request()); now+=60_000
         val disable=request().copy(expectedVersion=1,enabled=false)
         val results=coroutineScope {
-            val refresh=async(Dispatchers.IO) { service.refresh(1) }
+            val refresh=async(Dispatchers.IO) { service.refresh(0) }
             val update=async(Dispatchers.IO) { runCatching { service.update(owner,disable) } }
             refresh.await(); update.await()
         }
