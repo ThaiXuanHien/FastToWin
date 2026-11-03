@@ -12,7 +12,7 @@ const walFiles=[];function walk(p,prefix=''){if(!fs.existsSync(p))return;for(con
 walk(root+'/prometheus.remote_write.grafana/wal');
 console.log(JSON.stringify({mount,filesystem:{type:stat.type,totalBytes:stat.blocks*stat.bsize,freeBytes:stat.bfree*stat.bsize,availableBytes:stat.bavail*stat.bsize},filler:fs.existsSync(root+'/fixture-full')?file(root+'/fixture-full'):null,walFiles}));`;
 
-export async function runStoragePhases({artifact,id,docker,containers,query,until,delay,inspect,owns,receiverMode,receiverReceipts,write,localAlloy,network,config,gate,setStage,fullOnly=false}){
+export async function runStoragePhases({artifact,id,docker,containers,query,until,delay,inspect,owns,receiverMode,receiverReceipts,write,localAlloy,network,config,gate,setStage,fullOnly=false,manualRecovery=false,deadlineAt=Infinity}){
     // Controller ruling2026-11-03: disk WAL/checkpoint expiry is not a wire TTL.
     if(!fullOnly){setStage('accelerated-retention');
     try{docker(['stop','-t','10',containers.sender]);write(path.join(artifact,'sender/config.alloy'),localAlloy({accelerated:true}));receiverMode('unavailable');docker(['start',containers.sender]);
@@ -42,8 +42,18 @@ export async function runStoragePhases({artifact,id,docker,containers,query,unti
     setStage('full-filesystem');
     try{
     write(path.join(artifact,'sender/config.alloy'),localAlloy({accelerated:true}));docker(['stop','-t','10',containers.sender]);
+    let holder,volume,storageMount=['--tmpfs','/var/lib/alloy:uid=65532,gid=65532,mode=0700,size=64m'];
+    if(manualRecovery){
+      volume='ftw-cloud-held-'+id;
+      docker(['volume','create','--driver','local','--label','fasttowin.redis-cloud-run='+id,'--opt','type=tmpfs','--opt','device=tmpfs','--opt','o=size=64m,uid=65532,gid=65532,mode=0700',volume],15);
+      const v=inspect('volume',volume);assert.ok(owns(v));assert.equal(v.Driver,'local');assert.equal(v.Options.type,'tmpfs');assert.equal(v.Options.device,'tmpfs');assert.equal(v.Options.o,'size=64m,uid=65532,gid=65532,mode=0700');
+      holder=docker(['create','--name','ftw-cloud-holder-'+id,'--label','fasttowin.redis-cloud-run='+id,'--network','none','--user','65532:65532','--read-only','--cpus','0.01','--memory','16m','--pids-limit','4','--cap-drop','ALL','--security-opt','no-new-privileges:true','--mount','type=volume,source='+volume+',target=/var/lib/alloy,readonly,volume-nocopy','--entrypoint','/bin/sh',config.services.receiver.image,'-c','sleep 300']);
+      assert.ok(owns(inspect('container',holder).Config));docker(['start',holder]);assert.equal(inspect('container',holder).State.Running,true);
+      storageMount=['--mount','type=volume,source='+volume+',target=/var/lib/alloy,volume-nocopy'];
+      gate('held-tmpfs-ownership',{passed:true,volume,holder,driver:'local',type:'tmpfs',sizeMiB:64,holderReadOnly:true,holderNetwork:'none'});
+    }
     const fullName='ftw-cloud-full-'+id;
-    const full=docker(['create','--name',fullName,'--label','fasttowin.redis-cloud-run='+id,'--network',network.Id,'--user','65532:65532','--cpus','0.1','--memory','256m','--pids-limit','64','--cap-drop','ALL','--security-opt','no-new-privileges:true','--read-only','--tmpfs','/var/lib/alloy:uid=65532,gid=65532,mode=0700,size=64m','--mount',`type=bind,source=${path.join(artifact,'sender')},target=/fixture,readonly`,'--mount',`type=bind,source=${path.join(artifact,'sender/token')},target=/run/secrets/grafana-write,readonly`,'--entrypoint','/bin/alloy',config.services.sender.image,'run','--disable-reporting','--server.http.listen-addr=127.0.0.1:12345','--storage.path=/var/lib/alloy','/fixture/config.alloy']);
+    const full=docker(['create','--name',fullName,'--label','fasttowin.redis-cloud-run='+id,'--network',network.Id,'--user','65532:65532','--cpus','0.1','--memory','256m','--pids-limit','64','--cap-drop','ALL','--security-opt','no-new-privileges:true','--read-only',...storageMount,'--mount',`type=bind,source=${path.join(artifact,'sender')},target=/fixture,readonly`,'--mount',`type=bind,source=${path.join(artifact,'sender/token')},target=/run/secrets/grafana-write,readonly`,'--entrypoint','/bin/alloy',config.services.sender.image,'run','--disable-reporting','--server.http.listen-addr=127.0.0.1:12345','--storage.path=/var/lib/alloy','/fixture/config.alloy']);
     assert.ok(owns(inspect('container',full).Config));const fullStartedAt=Date.now();docker(['start',full]);
     await until(()=>{const values=query('fasttowin_redis_monitor_memory_used_bytes{job="fasttowin-redis-monitor",instance="redis-primary"}[4m]')[0]?.values??[];return values.some(([t])=>t*1000>=fullStartedAt);},45);
     const allocation=()=>JSON.parse(docker(['exec',full,'node','--input-type=module','-e',allocationProbe]));
@@ -57,10 +67,17 @@ export async function runStoragePhases({artifact,id,docker,containers,query,unti
     const fullLogs=docker(['logs','--since','60s',full]);const diskFailureObserved=/no space left|ENOSPC|failed.*(append|write)|error.*(append|write)/i.test(fullLogs);
     write(path.join(artifact,'filesystem-fault-classification.json'),{diskFailureObserved,events:fullLogs.split('\n').filter(l=>/no space left|ENOSPC|failed.*(append|write)|error.*(append|write)/i.test(l)).map(l=>({enospc:/no space left|ENOSPC/i.test(l),walPath:/wal|append|segment|checkpoint/i.test(l)}))});
     docker(['exec',full,'node','-e','require("fs").unlinkSync("/var/lib/alloy/fixture-full")']);const freeAt=Date.now();let recoveredSamples=[];
-    try{await until(()=>{recoveredSamples=query('fasttowin_redis_monitor_memory_used_bytes{job="fasttowin-redis-monitor",instance="redis-primary"}[4m]')[0]?.values??[];return recoveredSamples.some(([t])=>t*1000>=freeAt);},45);}catch{}
+    try{await until(()=>{recoveredSamples=query('fasttowin_redis_monitor_memory_used_bytes{job="fasttowin-redis-monitor",instance="redis-primary"}[4m]')[0]?.values??[];return recoveredSamples.some(([t])=>t*1000>=freeAt);},manualRecovery?10:45);}catch{}
     write(path.join(artifact,'filesystem-after-free.json'),allocation());
     const filesystem=filesystemEvidence({fullAt,freeAt,checkedAt:Date.now(),observations,recoveredSamples,diskFailureObserved,fill});
-    gate('constrained-filesystem-full-and-recovery',{...filesystem,tmpfsMiB:64,fill,diskFailureObserved,physicalDurability:false});
+    let outcome=filesystem;
+    if(manualRecovery){
+      write(path.join(artifact,'filesystem-automatic-post-free.json'),{...filesystem,observationDeadlineSeconds:10});
+      const {recoverHeldSender}=await import('./redis-cloud-recovery.mjs');
+      const manual=await recoverHeldSender({artifact,full,holder,volume,docker,inspect,owns,query,until,write,deadlineAt});
+      outcome={...filesystem,passed:diskFailureObserved&&filesystem.gapObserved&&manual.passed,automaticPostFree:filesystem,manual};
+    }
+    gate('constrained-filesystem-full-and-recovery',{...outcome,tmpfsMiB:64,fill,diskFailureObserved,physicalDurability:false});
     const state=inspect('container',full);
     gate('filesystem-resource-state',{passed:state.HostConfig.Memory===268435456&&state.HostConfig.NanoCpus===100000000&&!state.State.OOMKilled,memoryCap:state.HostConfig.Memory,nanoCPUs:state.HostConfig.NanoCpus,oomKilled:state.State.OOMKilled});
     docker(['stop','-t','10',full]);
