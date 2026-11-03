@@ -25,9 +25,9 @@ export function manualRecoveryEvidence({stopQualified,preserved,restart,now,rece
     freshOriginalSampleTimes,recoveryMethod:'one manual qualified SIGKILL/restart for exact sender with held existing WAL',durableBackfillPromised:false};
 }
 
-export async function recoverHeldSender({artifact,full,holder,volume,docker,inspect,owns,query,until,write,deadlineAt}){
+export async function recoverHeldSender({artifact,full,holder,volume,docker,inspect,owns,query,until,write,deadlineAt,resetWal=false,resetContext}){
   const receipt={automaticRecovery:'see separate post-free observation',explicitWalDiscard:false};
-  const save=()=>write(path.join(artifact,'manual-filesystem-recovery.json'),receipt);
+  const save=()=>write(path.join(artifact,resetWal?'manual-filesystem-reset.json':'manual-filesystem-recovery.json'),receipt);
   const hashConfig=()=>createHash('sha256').update(fs.readFileSync(path.join(artifact,'sender/config.alloy'))).digest('hex');
   const snapshot=label=>{
     const copy=path.join(artifact,'wal-copy');
@@ -52,15 +52,17 @@ export async function recoverHeldSender({artifact,full,holder,volume,docker,insp
   if(!receipt.stopQualification.passed)throw new Error('forced_stop_protocol_inconclusive');
   receipt.afterStop=snapshot('after-stop');receipt.preservation=preservedWalEvidence({before:receipt.before,after:receipt.afterStop});save();
   if(!receipt.preservation.passed)throw new Error('held_wal_preservation_inconclusive');
+  if(resetWal){const {resetHeldWal}=await import('./redis-cloud-reset.mjs');receipt.reset=await resetHeldWal({...resetContext,artifact,full,holder,volume,docker,inspect,before:receipt.afterStop,write});receipt.explicitWalDiscard=true;receipt.ack=receipt.reset.ack;save();}
   receipt.restart=Date.now();docker(['start',full],10);
   const startupLogs=()=>{try{return {...classifyRecoveryLogs(docker(['logs','--since',new Date(receipt.restart).toISOString(),full])),readable:true};}catch{return {readable:false};}};
   let startupResult;
-  try{startupResult=await until(()=>{receipt.startup=startupLogs();save();if(!receipt.startup.readable)return {unreadable:true};if(receipt.startup.repairOrDiscard)return {repair:receipt.startup};const values=query('fasttowin_redis_monitor_memory_used_bytes{job="fasttowin-redis-monitor",instance="redis-primary"}[4m]')[0]?.values??[];return values.some(([t])=>t*1000>=receipt.restart)?{fresh:true}:false;},45);}catch(error){receipt.startup=startupLogs();receipt.passed=false;receipt.freshControlFailed=true;save();throw error;}
+  try{startupResult=await until(()=>{receipt.startup=startupLogs();save();if(!receipt.startup.readable)return {unreadable:true};if(receipt.startup.repairOrDiscard)return {repair:receipt.startup};const values=query('fasttowin_redis_monitor_memory_used_bytes{job="fasttowin-redis-monitor",instance="redis-primary"}[4m]')[0]?.values??[];return new Set(values.filter(([t])=>t*1000>=receipt.restart).map(([t])=>t)).size>=(resetWal?2:1)?{fresh:true}:false;},45);}catch(error){receipt.startup=startupLogs();receipt.passed=false;receipt.freshControlFailed=true;save();throw error;}
   if(startupResult.unreadable){receipt.passed=false;save();throw new Error('startup_logs_unreadable');}
   if(startupResult.repair){receipt.startup=startupResult.repair;receipt.passed=false;save();throw new Error('startup_repair_or_discard');}
   receipt.startup=startupLogs();if(!receipt.startup.readable){receipt.passed=false;save();throw new Error('startup_logs_unreadable');}
   const s=inspect('container',full),times=(query('fasttowin_redis_monitor_memory_used_bytes{job="fasttowin-redis-monitor",instance="redis-primary"}[4m]')[0]?.values??[]).map(([t])=>t*1000);
-  receipt.configAfter=hashConfig();Object.assign(receipt,manualRecoveryEvidence({stopQualified:receipt.stopQualification.passed,preserved:receipt.preservation.passed&&s.Mounts.some(m=>m.Destination==='/var/lib/alloy'&&m.Name===volume),restart:receipt.restart,now:Date.now(),receivedTimes:times,configUnchanged:receipt.configBefore===receipt.configAfter,repairOrDiscard:receipt.startup.repairOrDiscard,memoryCap:s.HostConfig.Memory,nanoCPUs:s.HostConfig.NanoCpus,oomKilled:s.State.OOMKilled}));save();return receipt;
+  receipt.configAfter=hashConfig();const evidence={stopQualified:receipt.stopQualification.passed,preserved:receipt.preservation.passed&&s.Mounts.some(m=>m.Destination==='/var/lib/alloy'&&m.Name===volume),restart:receipt.restart,now:Date.now(),receivedTimes:times,configUnchanged:receipt.configBefore===receipt.configAfter,repairOrDiscard:receipt.startup.repairOrDiscard,memoryCap:s.HostConfig.Memory,nanoCPUs:s.HostConfig.NanoCpus,oomKilled:s.State.OOMKilled};
+  if(resetWal){const {resetFreshEvidence}=await import('./redis-cloud-reset.mjs');Object.assign(receipt,resetFreshEvidence({...evidence,ack:receipt.ack,emptyVerified:receipt.reset.emptyVerified,times,gapObserved:resetContext.fault.gapObserved,sameVolume:evidence.preserved}));}else Object.assign(receipt,manualRecoveryEvidence(evidence));save();return receipt;
 }
 
 export function classifyRecoveryLogs(logs){

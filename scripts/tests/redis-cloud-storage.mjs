@@ -12,7 +12,7 @@ const walFiles=[];function walk(p,prefix=''){if(!fs.existsSync(p))return;for(con
 walk(root+'/prometheus.remote_write.grafana/wal');
 console.log(JSON.stringify({mount,filesystem:{type:stat.type,totalBytes:stat.blocks*stat.bsize,freeBytes:stat.bfree*stat.bsize,availableBytes:stat.bavail*stat.bsize},filler:fs.existsSync(root+'/fixture-full')?file(root+'/fixture-full'):null,walFiles}));`;
 
-export async function runStoragePhases({artifact,id,docker,containers,query,until,delay,inspect,owns,receiverMode,receiverReceipts,write,localAlloy,network,config,gate,setStage,fullOnly=false,manualRecovery=false,deadlineAt=Infinity}){
+export async function runStoragePhases({artifact,id,docker,containers,query,until,delay,inspect,owns,receiverMode,receiverReceipts,write,localAlloy,network,config,gate,setStage,fullOnly=false,manualRecovery=false,resetWal=false,deadlineAt=Infinity}){
     // Controller ruling2026-11-03: disk WAL/checkpoint expiry is not a wire TTL.
     if(!fullOnly){setStage('accelerated-retention');
     try{docker(['stop','-t','10',containers.sender]);write(path.join(artifact,'sender/config.alloy'),localAlloy({accelerated:true}));receiverMode('unavailable');docker(['start',containers.sender]);
@@ -68,13 +68,13 @@ export async function runStoragePhases({artifact,id,docker,containers,query,unti
     write(path.join(artifact,'filesystem-fault-classification.json'),{diskFailureObserved,events:fullLogs.split('\n').filter(l=>/no space left|ENOSPC|failed.*(append|write)|error.*(append|write)/i.test(l)).map(l=>({enospc:/no space left|ENOSPC/i.test(l),walPath:/wal|append|segment|checkpoint/i.test(l)}))});
     docker(['exec',full,'node','-e','require("fs").unlinkSync("/var/lib/alloy/fixture-full")']);const freeAt=Date.now();let recoveredSamples=[];
     try{await until(()=>{recoveredSamples=query('fasttowin_redis_monitor_memory_used_bytes{job="fasttowin-redis-monitor",instance="redis-primary"}[4m]')[0]?.values??[];return recoveredSamples.some(([t])=>t*1000>=freeAt);},manualRecovery?10:45);}catch{}
-    write(path.join(artifact,'filesystem-after-free.json'),allocation());
+    const afterFree=allocation();write(path.join(artifact,'filesystem-after-free.json'),afterFree);
     const filesystem=filesystemEvidence({fullAt,freeAt,checkedAt:Date.now(),observations,recoveredSamples,diskFailureObserved,fill});
     let outcome=filesystem;
     if(manualRecovery){
       write(path.join(artifact,'filesystem-automatic-post-free.json'),{...filesystem,observationDeadlineSeconds:10});
       const {recoverHeldSender}=await import('./redis-cloud-recovery.mjs');
-      const manual=await recoverHeldSender({artifact,full,holder,volume,docker,inspect,owns,query,until,write,deadlineAt});
+      const manual=await recoverHeldSender({artifact,full,holder,volume,docker,inspect,owns,query,until,write,deadlineAt,resetWal,resetContext:{id,image:config.services.receiver.image,fault:{diskFailureObserved,gapObserved:filesystem.gapObserved,availableBytes:afterFree.filesystem.availableBytes}}});
       outcome={...filesystem,passed:diskFailureObserved&&filesystem.gapObserved&&manual.passed,automaticPostFree:filesystem,manual};
     }
     gate('constrained-filesystem-full-and-recovery',{...outcome,tmpfsMiB:64,fill,diskFailureObserved,physicalDurability:false});

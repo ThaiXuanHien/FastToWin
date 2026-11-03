@@ -14,7 +14,7 @@ export function ownedPath(repo,id){
 }
 export function provisionDecoders({repo,artifact,mode,copyFile=fs.copyFileSync}){
   if(mode==='ui')return;
-  if(!['shipping','waldiagnostic','storage','fullonly','fullrecovery'].includes(mode))throw new Error('unknown_fixture_mode');
+  if(!['shipping','waldiagnostic','storage','fullonly','fullrecovery','fullreset'].includes(mode))throw new Error('unknown_fixture_mode');
   const bootstrap=path.join(repo,'.artifacts/redis-cloud-local-20261103/decoder-bootstrap');
   copyFile(path.join(bootstrap,'decoder.exe'),path.join(artifact,'decoder.exe'));
   copyFile(path.join(bootstrap,'decoder-linux'),path.join(artifact,'receiver/diagnostic-decoder'));
@@ -31,7 +31,11 @@ export function certificates(dir,repo=path.resolve('.')){
 }
 const delay=ms=>new Promise(r=>setTimeout(r,ms));
 const write=(file,value)=>fs.writeFileSync(file,typeof value==='string'?value:JSON.stringify(value,null,2)+'\n');
-async function shipping(repo,id,{diagnostic=false,storage=false,fullOnly=false,manualRecovery=false}={}){
+export function fixtureModeOptions(mode){
+  if(!['shipping','waldiagnostic','storage','fullonly','fullrecovery','fullreset'].includes(mode))throw new Error('unknown_fixture_mode');
+  return {diagnostic:mode==='waldiagnostic',storage:['storage','fullonly','fullrecovery','fullreset'].includes(mode),fullOnly:['fullonly','fullrecovery','fullreset'].includes(mode),manualRecovery:['fullrecovery','fullreset'].includes(mode),resetWal:mode==='fullreset'};
+}
+async function shipping(repo,id,{diagnostic=false,storage=false,fullOnly=false,manualRecovery=false,resetWal=false}={}){
   const artifact=ownedPath(repo,id);assert.ok(fs.existsSync(artifact));
   const env={...process.env};for(const k of Object.keys(env))if(/^(DOCKER_|BUILDX_|BUILDKIT_)/.test(k))delete env[k];
   env.DOCKER_HOST='npipe:////./pipe/docker_engine';env.DOCKER_CONFIG=path.join(artifact,'docker-config');
@@ -73,7 +77,7 @@ async function shipping(repo,id,{diagnostic=false,storage=false,fullOnly=false,m
     write(path.join(artifact,'sender/config.alloy'),localAlloy());receiverMode('accept');
     fs.copyFileSync(path.join(repo,'scripts/tests/redis-cloud-receiver.mjs'),path.join(artifact,'receiver/receiver.mjs'));
     fs.copyFileSync(path.join(repo,'scripts/tests/redis-cloud-probe.mjs'),path.join(artifact,'receiver/probe.mjs'));
-    provisionDecoders({repo,artifact,mode:manualRecovery?'fullrecovery':diagnostic?'waldiagnostic':storage?'storage':'shipping'});
+    provisionDecoders({repo,artifact,mode:resetWal?'fullreset':manualRecovery?'fullrecovery':diagnostic?'waldiagnostic':storage?'storage':'shipping'});
     stage='compose-security';const config=JSON.parse(docker([...compose,'config','--format','json']));
     // Sanitized policy receipt; compose config itself contains synthetic env secrets.
     assert.equal(Object.keys(config.services).length,5);assert.equal(config.networks.fixture.internal,true);
@@ -98,9 +102,9 @@ async function shipping(repo,id,{diagnostic=false,storage=false,fullOnly=false,m
       stage='storage-readiness';
       await until(()=>query('{job="fasttowin-redis-monitor",instance="redis-primary"}').length===22,65);
       const {runStoragePhases}=await import('./redis-cloud-storage.mjs');
-      await runStoragePhases({artifact,id,docker,containers,query,until,delay:async ms=>{if(Date.now()+ms>runtimeDeadline)throw new Error('storage_runtime_deadline');await delay(ms);},inspect,owns,receiverMode,receiverReceipts,write,localAlloy,network,config,gate,setStage:value=>{stage=value;},fullOnly,manualRecovery,deadlineAt:runtimeDeadline});
+      await runStoragePhases({artifact,id,docker,containers,query,until,delay:async ms=>{if(Date.now()+ms>runtimeDeadline)throw new Error('storage_runtime_deadline');await delay(ms);},inspect,owns,receiverMode,receiverReceipts,write,localAlloy,network,config,gate,setStage:value=>{stage=value;},fullOnly,manualRecovery,resetWal,deadlineAt:runtimeDeadline});
       receipt.failedGates=Object.entries(receipt.gates).filter(([,value])=>value.passed===false).map(([name])=>name);
-      receipt.gatesPassed=receipt.failedGates.length===0;receipt.completed=false;receipt.scope=manualRecovery?'manual filesystem recovery':fullOnly?'filesystem only':'remaining storage only';save();
+      receipt.gatesPassed=receipt.failedGates.length===0;receipt.completed=false;receipt.scope=resetWal?'local manual monitoring-WAL reset':manualRecovery?'manual filesystem recovery':fullOnly?'filesystem only':'remaining storage only';save();
       if(!receipt.gatesPassed)throw new Error('remaining_storage_gates_failed');
       return;
     }
@@ -179,6 +183,6 @@ async function shipping(repo,id,{diagnostic=false,storage=false,fullOnly=false,m
 }
 if(process.argv[1]&&path.resolve(process.argv[1])===fileURLToPath(import.meta.url)){
   const [mode,repo,id]=process.argv.slice(2);
-  try{if(['shipping','waldiagnostic','storage','fullonly','fullrecovery'].includes(mode))await shipping(path.resolve(repo),id,{diagnostic:mode==='waldiagnostic',storage:['storage','fullonly','fullrecovery'].includes(mode),fullOnly:['fullonly','fullrecovery'].includes(mode),manualRecovery:mode==='fullrecovery'});else if(mode==='ui'){const {nativeCloudUI}=await import('./redis-cloud-ui.mjs');await nativeCloudUI(path.resolve(repo),ownedPath(repo,id));}else throw new Error('unknown_fixture_mode');}
+  try{if(mode==='ui'){const {nativeCloudUI}=await import('./redis-cloud-ui.mjs');await nativeCloudUI(path.resolve(repo),ownedPath(repo,id));}else await shipping(path.resolve(repo),id,fixtureModeOptions(mode));}
   catch(error){console.error('local_cloud_fixture_failed: '+error.message);process.exitCode=1;}
 }
