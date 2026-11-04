@@ -36,6 +36,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -293,6 +294,7 @@ class GameController private constructor(
         if (status == ConnectionStatus.RECONNECTING || status == ConnectionStatus.DISCONNECTED ||
             status == ConnectionStatus.TERMINAL
         ) {
+            pendingPresenceRequest = null
             if (editorProfileSave != null) ugc.dismissTerms()
             ugc.disconnected()
             interruptEditorProfileSave()
@@ -1202,6 +1204,7 @@ class GameController private constructor(
                 }
             }
             is ServerMessage.SessionReady -> {
+                pendingPresenceRequest = null
                 val wasRecoveringRoom = _uiState.value.currentRoomId != null
                 if (editorProfileSave != null) ugc.dismissTerms()
                 interruptEditorProfileSave()
@@ -1503,6 +1506,13 @@ class GameController private constructor(
                         ) else state.notifications,
                         error = null
                     )
+                }
+            }
+            is ServerMessage.PresenceData -> {
+                val request = pendingPresenceRequest
+                if (request?.requestId == message.requestId && request.clanId == message.clanId) {
+                    pendingPresenceRequest = null
+                    _uiState.update { it.withPresenceRefresh(request, message) }
                 }
             }
 
@@ -2196,6 +2206,25 @@ class GameController private constructor(
 
     private fun randomId(): String = buildString {
         repeat(2) { append(Random.nextLong().toULong().toString(16).padStart(16, '0')) }
+    }
+
+    private var presenceRequestSequence = 0L
+    private var pendingPresenceRequest: ClientMessage.GetPresence? = null
+
+    internal suspend fun refreshVisiblePresence(clanId: String?) {
+        var issued: ClientMessage.GetPresence? = null
+        try {
+            while (currentCoroutineContext().isActive) {
+                delay(15_000)
+                if (_uiState.value.connectionStatus != ConnectionStatus.CONNECTED) continue
+                val request = ClientMessage.GetPresence((++presenceRequestSequence).toString(), clanId)
+                issued = request
+                pendingPresenceRequest = request
+                if (!socket.trySendPresence(request) && pendingPresenceRequest === request) pendingPresenceRequest = null
+            }
+        } finally {
+            if (pendingPresenceRequest === issued) pendingPresenceRequest = null
+        }
     }
 
     fun refreshClanSocial() {

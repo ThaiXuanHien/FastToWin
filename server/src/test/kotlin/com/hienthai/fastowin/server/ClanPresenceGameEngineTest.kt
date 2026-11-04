@@ -10,14 +10,51 @@ import com.hienthai.fastowin.protocol.FriendSnapshot
 import com.hienthai.fastowin.protocol.ProtocolGameMode
 import com.hienthai.fastowin.protocol.PlayerProfileSnapshot
 import com.hienthai.fastowin.protocol.ServerMessage
+import com.hienthai.fastowin.server.presence.PresenceStore
 import kotlinx.coroutines.test.runTest
 import java.util.UUID
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class ClanPresenceGameEngineTest {
+    @Test
+    fun `authorized friend and clan snapshots read remote presence and fall back only on initial load`() = runTest {
+        val owner = UUID.randomUUID().toString()
+        val member = UUID.randomUUID().toString()
+        val clans = MemoryClans(owner, member)
+        val friends = object : FriendRepository by NoOpFriendRepository {
+            override suspend fun load(userId: String) = StoredFriends(friends = listOf(FriendSnapshot(member, "Friend", "FRIEND1")))
+        }
+        var available = true
+        val store = object : PresenceStore {
+            override suspend fun renew(playerId: String, connectionId: UUID, presence: FriendPresence) = true
+            override suspend fun revoke(playerId: String, connectionId: UUID) = true
+            override suspend fun read(playerIds: Collection<String>) = if (available) {
+                playerIds.associateWith { if (it == member) FriendPresence.PLAYING else FriendPresence.ONLINE }
+            } else null
+            override fun close() = Unit
+        }
+        val engine = GameEngine(clanRepository = clans, friendRepository = friends, presenceStore = store)
+        engine.connectAccount(account(owner))
+        fun List<Delivery>.friendPresence() = map(Delivery::message)
+            .filterIsInstance<ServerMessage.FriendsData>().single().social.friends.single().presence
+
+        assertEquals(FriendPresence.PLAYING, engine.handle(owner, ClientMessage.GetFriends).friendPresence())
+        val clan = engine.handle(owner, ClientMessage.GetClanInfo(clans.snapshot.id)).map(Delivery::message)
+            .filterIsInstance<ServerMessage.ClanInfoData>().single().clan
+        assertEquals(FriendPresence.PLAYING, clan.members.single { it.userId == member }.presence)
+        assertEquals(mapOf(member to FriendPresence.PLAYING),
+            engine.presenceSnapshot(owner, ClientMessage.GetPresence("friends"))?.states)
+        assertNull(engine.presenceSnapshot(owner, ClientMessage.GetPresence("forged", "another-clan")))
+        available = false
+        assertNull(engine.presenceSnapshot(owner, ClientMessage.GetPresence("outage", clans.snapshot.id)))
+        assertEquals(FriendPresence.OFFLINE, engine.handle(owner, ClientMessage.GetFriends).friendPresence())
+        assertTrue(engine.presenceUpdates(owner).isEmpty())
+    }
+
     @Test
     fun `clan info derives member presence from sessions and preserves public appearance`() = runTest {
         val owner = UUID.randomUUID().toString()

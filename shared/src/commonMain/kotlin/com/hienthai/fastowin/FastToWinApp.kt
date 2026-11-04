@@ -1390,6 +1390,12 @@ private fun GameContent(
         activePracticeStateKey != null -> activePracticeStateKey
         else -> "lobby"
     }
+    val presenceClanId = state.currentClan?.id?.takeIf { it == state.profile?.clanId }
+    LaunchedEffect(controller, screenStateKey, presenceClanId, state.connectionStatus) {
+        if (screenStateKey == "friends" || (screenStateKey == "clan" && presenceClanId != null)) {
+            controller.refreshVisiblePresence(presenceClanId.takeIf { screenStateKey == "clan" })
+        }
+    }
     // The account/controller owns the draft even while OfflineScreen replaces the profile.
     val profileEditor = rememberProfileEditorState(controller, state.profileNotice, screenStateKey == "profile")
     val appRoute = when {

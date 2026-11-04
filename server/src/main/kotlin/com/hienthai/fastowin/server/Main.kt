@@ -7,6 +7,9 @@ import com.hienthai.fastowin.server.admin.InMemoryAdminRepository
 import com.hienthai.fastowin.server.announcements.AnnouncementService
 import com.hienthai.fastowin.server.announcements.AnnouncementPushDelivery
 import com.hienthai.fastowin.server.maintenance.*
+import com.hienthai.fastowin.server.presence.PresenceStore
+import com.hienthai.fastowin.server.presence.RedisPresenceStore
+import com.hienthai.fastowin.server.presence.presenceConfiguration
 import io.ktor.server.engine.embeddedServer
 import io.ktor.server.netty.Netty
 import kotlinx.coroutines.runBlocking
@@ -35,7 +38,10 @@ fun main() {
             finally { try { database?.close() } catch (_: Throwable) { /* Preserve the startup failure. */ } }
             throw failure
         }
+    var presenceStore: PresenceStore? = null
     try {
+        presenceStore = presenceConfiguration(System.getenv()) { java.nio.file.Files.readString(java.nio.file.Path.of(it)) }
+            ?.let { RedisPresenceStore(it) }
         val (adminService, moderationService) = createModerationRuntime(database, adminConfiguration, rateLimitRuntime)
         val authService = AuthenticationService(database?.authRepository ?: InMemoryAuthRepository(), moderationService = moderationService)
         val authEmailSender = configuredAuthEmailSender()
@@ -89,7 +95,8 @@ fun main() {
             rewardedAdVerifier = rewardedAdVerifier,
             rewardedAdAvailability = rewardedAdAvailability,
             storeSandboxEnabled = environment == "dev",
-            eventRewardSource = database?.rewardEventRepository ?: com.hienthai.fastowin.server.events.NoRewardEventSource
+            eventRewardSource = database?.rewardEventRepository ?: com.hienthai.fastowin.server.events.NoRewardEventSource,
+            presenceStore = presenceStore
         )
         runBlocking {
             seasonLifecycleRepository.maintain()
@@ -148,8 +155,10 @@ fun main() {
             )
         }.start(wait = true)
     } finally {
-        try { rateLimitRuntime.close() } finally {
-            try { avatarObjects?.close() } finally { database?.close() }
+        try { presenceStore?.close() } finally {
+            try { rateLimitRuntime.close() } finally {
+                try { avatarObjects?.close() } finally { database?.close() }
+            }
         }
     }
 }
