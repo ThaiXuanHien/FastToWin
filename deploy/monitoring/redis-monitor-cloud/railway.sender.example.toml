@@ -1,4 +1,5 @@
-# EXAMPLE ONLY. No deployment command is supplied/run. Select this file explicitly.
+# LEGACY EXAMPLE ONLY. New Railway services cannot opt into Config as Code.
+# Apply reviewed settings manually; no deployment is authorized by this file.
 [build]
 builder = "DOCKERFILE"
 dockerfilePath = "deploy/monitoring/redis-monitor-cloud/Dockerfile.sender"
@@ -14,6 +15,8 @@ restartPolicyMaxRetries = 3
 # GRAFANA_CLOUD_TENANT_ID=<decimal tenant>
 # GRAFANA_CLOUD_WRITE_TOKEN=<stack-scoped metrics:write token; no Redis secrets>
 # FASTTOWIN_REDIS_MONITOR_SCRAPE_ADDRESS=redis-monitor.railway.internal:19121
-# Mount dedicated 1-GB volume at /var/lib/alloy, owned by UID/GID 65532.
-# Proposed limits (must be configured/verified): CPU 0.1, RAM 256 MiB.
+# Revised proposal: dedicated Hobby 5-GB volume at /var/lib/alloy.
+# Initialize separately WITHOUT secrets; normal sender always UID/GID 65532.
+# See docs/redis-monitor-volume-initialization.md. Never run Alloy as root.
+# Revised limits for later production approval: CPU 0.25, RAM 0.25 GB.
 # Retention 5m/5m/2h is not a disk cap. Resource fit remains an acceptance gate.
