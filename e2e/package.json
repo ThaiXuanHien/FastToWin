@@ -5,7 +5,8 @@
   "packageManager": "pnpm@11.19.0",
   "engines": { "node": ">=22" },
   "scripts": {
-    "test": "pnpm test:navigation-errors && pnpm test:runtime-loader && playwright test",
+    "test": "pnpm test:navigation-errors && pnpm test:runtime-loader && pnpm test:canvas-click && playwright test",
+    "test:canvas-click": "node --test support/canvas-click.test.mjs",
     "test:runtime-loader": "node --test support/runtime-loader.test.mjs",
     "test:navigation-errors": "node --test support/navigation-errors.test.mjs support/pwa-navigation.test.mjs",
     "test:chromium": "playwright test --project=chromium",

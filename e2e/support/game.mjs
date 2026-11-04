@@ -248,6 +248,11 @@ export const tag = (page, id) => page.getByTestId(id);
 export async function click(page, locator, { allowDisabled = false } = {}) {
   await expect(locator).toBeAttached();
   let searchDirection = 1;
+  const readBounds = () => locator.evaluateAll(nodes => {
+    if (nodes.length > 1) throw new Error('Canvas click requires exactly one matching element.');
+    const box = nodes[0]?.getBoundingClientRect();
+    return box ? { x: box.x, y: box.y, width: box.width, height: box.height } : null;
+  });
   const visiblePositions = () => page.locator('[id], [role]').evaluateAll(nodes => JSON.stringify(nodes.map(node => {
     const box = node.getBoundingClientRect();
     return box.width > 0 && box.height > 0 ? [node.id || node.getAttribute('role'), Math.round(box.x), Math.round(box.y)] : null;
@@ -285,11 +290,10 @@ export async function click(page, locator, { allowDisabled = false } = {}) {
   for (let attempt = 0; attempt < 20; attempt++) {
     // Attachment alone can precede session readiness and a moving error row.
     if (!allowDisabled) await expect(locator).toBeEnabled();
-    // Compose rebuilds its transparent semantics nodes while a LazyColumn is
-    // settling. Resolve a short-lived handle for each attempt so a detached
-    // WebKit node is retried instead of consuming the locator's full timeout.
-    const handle = await locator.elementHandle({ timeout: 500 }).catch(() => null);
-    const bounds = handle ? await handle.boundingBox().catch(() => null) : null;
+    // Read the current semantics and geometry in one browser call. A separate
+    // handle lookup with a 500 ms deadline can time out on a busy CI renderer
+    // even when the element stays attached and visible throughout.
+    const bounds = await readBounds();
     const viewport = page.viewportSize();
     let blockedDirection = null;
     if (bounds && bounds.width > 0 && bounds.height > 0) {
@@ -300,8 +304,7 @@ export async function click(page, locator, { allowDisabled = false } = {}) {
         // a wheel event. Check every click, not only previously scrolled items:
         // a transient position can otherwise target unrelated canvas content.
         await page.waitForTimeout(150);
-        const stableHandle = await locator.elementHandle({ timeout: 500 }).catch(() => null);
-        const stableBounds = stableHandle ? await stableHandle.boundingBox().catch(() => null) : null;
+        const stableBounds = await readBounds();
         const isStable = stableBounds &&
           stableBounds.width > 0 && stableBounds.height > 0 &&
           Math.abs(stableBounds.x - bounds.x) <= 1 &&
@@ -318,7 +321,10 @@ export async function click(page, locator, { allowDisabled = false } = {}) {
             const box = node.getBoundingClientRect();
             return { id: node.id, x: box.x, y: box.y, width: box.width, height: box.height };
           }));
-        const exposure = await stableHandle.evaluate((node, { viewport, dialog, chrome, stableBounds }) => {
+        const exposure = await locator.evaluateAll((nodes, { viewport, dialog, chrome, stableBounds }) => {
+          if (nodes.length > 1) throw new Error('Canvas click requires exactly one matching element.');
+          const node = nodes[0];
+          if (!node) return null;
           const box = node.getBoundingClientRect();
           const x = box.x + box.width / 2;
           const y = box.y + box.height / 2;
@@ -362,7 +368,7 @@ export async function click(page, locator, { allowDisabled = false } = {}) {
         }, { viewport, dialog, chrome, stableBounds });
         // The final exposure read may observe a layout change after both
         // protocol samples. Resample instead of clicking discarded coordinates.
-        if (exposure.moved || (!allowDisabled && !exposure.enabled)) continue;
+        if (!exposure || exposure.moved || (!allowDisabled && !exposure.enabled)) continue;
         if (!exposure.exposed) {
           blockedDirection = exposure.direction;
         } else {
