@@ -15,7 +15,7 @@ export function ownedPath(repo,id){
 export function stageImageContext(repo,artifact,collectorBinary=path.join(repo,'.artifacts/redis-monitor-local-20261103/redis-monitor-linux-amd64')){
   const source=path.join(repo,'deploy/monitoring/redis-monitor-cloud'),target=path.join(artifact,'image/deploy/monitoring/redis-monitor-cloud');
   fs.mkdirSync(target,{recursive:true});
-  for(const f of ['Dockerfile.collector','Dockerfile.sender','prepare.mjs','prepare-runtime.mjs','runtime-directory.mjs','collector-entrypoint.sh','sender-entrypoint.sh'])fs.copyFileSync(path.join(source,f),path.join(target,f));
+  for(const f of ['Dockerfile.collector','Dockerfile.sender','prepare.mjs','prepare-runtime.mjs','runtime-directory.mjs','initialize-sender-volume.mjs','collector-entrypoint.sh','sender-entrypoint.sh'])fs.copyFileSync(path.join(source,f),path.join(target,f));
   fs.copyFileSync(collectorBinary,path.join(artifact,'image/redis-monitor'));
 }
 export function provisionDecoders({repo,artifact,mode,copyFile=fs.copyFileSync}){

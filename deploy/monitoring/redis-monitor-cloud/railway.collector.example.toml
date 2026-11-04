@@ -1,4 +1,5 @@
-# EXAMPLE ONLY. No deployment command is supplied/run. Select this file explicitly.
+# LEGACY EXAMPLE ONLY. New Railway services cannot opt into Config as Code.
+# Apply reviewed settings manually; no deployment is authorized by this file.
 # Source context must include the frozen redis-monitor binary; never a Redis app binary.
 [build]
 builder = "DOCKERFILE"
@@ -14,4 +15,4 @@ restartPolicyMaxRetries = 3
 # FASTTOWIN_REDIS_MONITOR_TLS
 # FASTTOWIN_REDIS_MONITOR_PASSWORD (96 lowercase hex; runtime file, never argument)
 # Fixed listener is [::]:19121. No Railway PORT/public listener.
-# Proposed limits (must be configured/verified before deployment): CPU 0.1, RAM 64 MiB.
+# Revised limits for later production approval: CPU 0.25, RAM 0.25 GB.
