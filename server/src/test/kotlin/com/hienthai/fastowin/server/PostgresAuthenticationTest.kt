@@ -11,6 +11,7 @@ import java.time.Instant
 import java.util.UUID
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
@@ -269,9 +270,9 @@ class PostgresAuthenticationTest {
                 assertEquals("Postgres player", login.displayName)
                 assertIs<AuthResult.Failure>(service.refresh(registration.refreshToken))
                 assertEquals(null, service.authenticateAccessToken(registration.accessToken))
-                val authenticated = service.authenticateAccessToken(login.accessToken)
-                assertEquals(login.userId, authenticated?.userId.toString())
-                assertEquals("Postgres player", authenticated?.displayName)
+                val authenticated = requireNotNull(service.authenticateAccessToken(login.accessToken))
+                assertEquals(login.userId, authenticated.userId.toString())
+                assertEquals("Postgres player", authenticated.displayName)
 
                 val sessions = assertIs<AccountSessionsResult.Success>(
                     service.listSessions(login.accessToken)
@@ -286,11 +287,13 @@ class PostgresAuthenticationTest {
                 assertEquals(login.userId, refreshed.userId)
                 assertNotEquals(login.refreshToken, refreshed.refreshToken)
                 assertIs<AuthResult.Failure>(service.refresh(login.refreshToken))
+                assertTrue(service.isSocketSessionActive(authenticated, login.accessToken))
 
                 assertIs<AccountActionResult.Success>(
                     service.revokeAllSessions(refreshed.accessToken)
                 )
                 assertIs<AuthResult.Failure>(service.refresh(refreshed.refreshToken))
+                assertFalse(service.isSocketSessionActive(authenticated, login.accessToken))
             } finally {
                 dataSource.connection.use { connection ->
                     connection.prepareStatement("DELETE FROM users WHERE email_normalized = ?").use { statement ->

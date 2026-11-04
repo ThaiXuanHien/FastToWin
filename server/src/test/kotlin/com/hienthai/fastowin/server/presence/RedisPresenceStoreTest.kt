@@ -26,6 +26,23 @@ class RedisPresenceStoreTest {
     }
 
     @Test
+    fun `unreachable Redis at startup degrades and recovers without rebuilding the store`() = runBlocking {
+        RedisFaultProxy(fixture()).use { proxy ->
+            proxy.mode = RedisFaultProxy.Mode.DROP
+            RedisPresenceStore(PresenceConfiguration(proxy.proxyUrl, namespace())).use { store ->
+                val player = UUID.randomUUID().toString()
+                val socket = UUID.randomUUID()
+                assertNull(store.read(listOf(player)))
+                proxy.release()
+                withTimeout(8_000) {
+                    while (!store.renew(player, socket, FriendPresence.ONLINE)) delay(50)
+                }
+                assertEquals(FriendPresence.ONLINE, store.read(listOf(player))?.get(player))
+            }
+        }
+    }
+
+    @Test
     fun `two stores merge sockets and revoke only their own leases`() = runBlocking {
         val namespace = namespace()
         val player = UUID.randomUUID().toString()

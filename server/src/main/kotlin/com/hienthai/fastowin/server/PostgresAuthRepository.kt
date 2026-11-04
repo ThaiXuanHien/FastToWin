@@ -307,6 +307,26 @@ class PostgresAuthRepository(private val dataSource: DataSource) : AuthRepositor
         }
     }
 
+    override suspend fun isActiveSessionById(userId: UUID, sessionId: UUID, nowMillis: Long): Boolean =
+        withContext(Dispatchers.IO) {
+            dataSource.connection.use { connection ->
+                connection.prepareStatement(
+                    """
+                    SELECT 1
+                    FROM sessions s JOIN users u ON u.id = s.user_id
+                    WHERE s.id = ? AND s.user_id = ? AND s.revoked_at IS NULL AND s.expires_at > ?
+                      AND s.refresh_token_hash IS NOT NULL AND s.access_token_hash IS NOT NULL
+                      AND u.account_type = 'REGISTERED' AND u.status = 'ACTIVE'
+                    """.trimIndent()
+                ).use { statement ->
+                    statement.setObject(1, sessionId)
+                    statement.setObject(2, userId)
+                    statement.setTimestamp(3, nowMillis.toTimestamp())
+                    statement.executeQuery().use { it.next() }
+                }
+            }
+        }
+
     override suspend fun listActiveSessions(
         userId: UUID,
         nowMillis: Long

@@ -6,7 +6,7 @@ Phạm vi là trạng thái hiển thị trong Bạn bè và Thành viên bang, 
 
 Giữ bốn giá trị hiện có `OFFLINE`, `ONLINE`, `IN_ROOM` và `PLAYING`. Mỗi WebSocket tài khoản đã xác thực nhận một ID kết nối riêng do server sinh. Kết nối khách không tạo bản ghi. Engine lấy trạng thái từ kết nối và phòng tại backend sở hữu chúng. Nếu một người có nhiều kết nối hợp lệ, ưu tiên `PLAYING` rồi `IN_ROOM` rồi `ONLINE`. Chỉ trả `OFFLINE` từ Redis khi đọc thành công và không còn kết nối hợp lệ.
 
-Ghi ngay khi xác thực hoặc đổi trạng thái. Gia hạn mỗi 20 giây khi WebSocket còn sống, thời hạn 60 giây tính theo giờ Redis. Khi ngắt, thu hồi đúng ID kết nối. Xử lý ghi và xóa tuần tự cho cùng một kết nối. Khi socket bị thay thế, ngừng phát cập nhật từ socket cũ. Mỗi lượt gia hạn chỉ thử một lần trong ngân sách thời gian của thao tác. Lượt kế tiếp lấy trạng thái mới nhất của socket đang sống, không phát lại tác vụ cũ đã timeout. Khi backend chết, các bản ghi của nó tự hết hạn kể cả khi backend khác vẫn hoạt động.
+Ghi ngay khi xác thực. Khi đổi trạng thái, đưa ID người chơi vào hàng đợi có giới hạn và gộp những cập nhật đang chờ của cùng người chơi. Sự kiện trận gửi theo luồng riêng, còn hàng đợi lấy trạng thái mới nhất khi xử lý. Gia hạn mỗi 20 giây khi WebSocket còn sống và phiên tài khoản còn hiệu lực, thời hạn 60 giây tính theo giờ Redis. Kiểm tra ID phiên ổn định qua lần xoay token. Khi ngắt, thu hồi đúng ID kết nối. Xử lý ghi và xóa tuần tự cho cùng một kết nối. Khi socket bị thay thế, ngừng phát cập nhật từ socket cũ. Mỗi lượt gia hạn chỉ thử một lần trong ngân sách thời gian của thao tác. Lượt kế tiếp lấy trạng thái mới nhất của socket đang sống, không phát lại tác vụ cũ đã timeout. Khi backend chết, các bản ghi của nó tự hết hạn kể cả khi backend khác vẫn hoạt động.
 
 ## Lưu và đọc theo lô
 
@@ -14,7 +14,7 @@ Dùng namespace `ftw:<namespace>:presence:v1:*` và tài khoản Redis riêng c�
 
 Mỗi người chơi có tối đa ba sorted set, tương ứng ba trạng thái online. Thành viên của set là ID kết nối và score là thời điểm hết hạn. Dùng một thao tác nguyên tử khi đổi trạng thái để chuyển đúng ID sang set mới. Khi gia hạn, dọn phần tử hết hạn và đặt TTL cho khóa. Khi đọc, chỉ tính phần tử có score lớn hơn thời gian hiện tại, kể cả khi khóa vẫn còn vì một kết nối khác hoạt động. Ưu tiên trạng thái cao nhất có kết nối hợp lệ. Gom ID đã loại trùng theo từng lô tối đa 50 và giới hạn thời gian xử lý, không quét toàn bộ keyspace. Redis I/O diễn ra ngoài mutex của `GameEngine`.
 
-Redis lỗi hoặc hết thời gian thì lần làm mới bỏ qua kết quả và giữ ảnh chụp gần nhất trên client. Khi tải lần đầu mà Redis lỗi, trả trạng thái tốt nhất từ backend đang phục vụ với bốn giá trị giao thức hiện có. Kết quả cục bộ chỉ phản ánh các kết nối mà backend đó biết. Khôi phục bằng nhịp gia hạn và làm mới kế tiếp. Ghi đếm lỗi theo nhóm cố định và tránh ghi token hoặc ID kết nối vào log.
+Redis lỗi hoặc hết thời gian thì lần làm mới bỏ qua kết quả và giữ ảnh chụp gần nhất trên client. Khi tải lần đầu mà Redis lỗi, trả trạng thái tốt nhất từ backend đang phục vụ với bốn giá trị giao thức hiện có. Kết quả cục bộ chỉ phản ánh các kết nối mà backend đó biết. Backend có thể khởi động khi Redis hiện diện chưa kết nối được. Lần đọc hoặc gia hạn sau sẽ dùng chung một tác vụ kết nối lại. Ghi đếm lỗi theo nhóm cố định và tránh ghi token hoặc ID kết nối vào log.
 
 ## Làm mới Bạn bè và Thành viên bang
 

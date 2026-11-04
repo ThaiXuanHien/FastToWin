@@ -294,6 +294,8 @@ class ClanPresenceGameEngineTest {
 
         override suspend fun getClanById(clanId: String) = snapshot.takeIf { it.id == clanId }
         override suspend fun getClanByUserId(userId: String) = snapshot.takeIf { clan -> clan.members.any { it.userId == userId } }
+        override suspend fun presenceMemberIds(userId: String, clanId: String) =
+            super<ClanRepository>.presenceMemberIds(userId, clanId)
         override suspend fun kickMember(clanId: String, currentUserId: String, targetUserId: String): Boolean {
             if (clanId != snapshot.id || currentUserId != snapshot.ownerId) return false
             return leaveClan(targetUserId)

@@ -429,16 +429,30 @@ class PostgresClanRepository(
     }
 
     override suspend fun getClanByUserId(userId: String): ClanSnapshot? = withContext(Dispatchers.IO) {
+        val clanId = dataSource.connection.use { connection ->
+            connection.prepareStatement("SELECT clan_id FROM clan_members WHERE user_id = ?").use { statement ->
+                statement.setObject(1, UUID.fromString(userId))
+                statement.executeQuery().use { result -> if (result.next()) result.getString("clan_id") else null }
+            }
+        }
+        clanId?.let { getClanById(it) }
+    }
+
+    override suspend fun presenceMemberIds(userId: String, clanId: String): List<String>? = withContext(Dispatchers.IO) {
         dataSource.connection.use { connection ->
-            val userUuid = UUID.fromString(userId)
-            var clanId: String? = null
-            connection.prepareStatement("SELECT clan_id FROM clan_members WHERE user_id = ?").use {
-                it.setObject(1, userUuid)
-                it.executeQuery().use { rs ->
-                    if (rs.next()) clanId = rs.getString("clan_id")
+            connection.prepareStatement(
+                """
+                SELECT member.user_id
+                FROM clan_members viewer JOIN clan_members member ON member.clan_id = viewer.clan_id
+                WHERE viewer.user_id = ? AND viewer.clan_id = ?
+                """.trimIndent()
+            ).use { statement ->
+                statement.setObject(1, UUID.fromString(userId))
+                statement.setObject(2, UUID.fromString(clanId))
+                statement.executeQuery().use { result ->
+                    buildList { while (result.next()) add(result.getString("user_id")) }.takeIf { it.isNotEmpty() }
                 }
             }
-            if (clanId != null) getClanById(clanId!!) else null
         }
     }
 

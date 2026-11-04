@@ -31,6 +31,7 @@ import io.ktor.websocket.Frame
 import io.ktor.websocket.close
 import io.ktor.websocket.readText
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withTimeoutOrNull
@@ -49,6 +50,87 @@ import kotlin.test.assertTrue
 import kotlin.time.TimeSource
 
 class RedisPresenceNettyTest {
+    @Test
+    fun `a stalled presence write cannot delay GameStarted`(): Unit = runBlocking {
+        val writes = MemoryPresenceStore()
+        val started = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        val store = object : PresenceStore by writes {
+            override suspend fun renew(playerId: String, connectionId: UUID, presence: FriendPresence): Boolean {
+                if (presence == FriendPresence.PLAYING) {
+                    started.complete(Unit)
+                    release.await()
+                }
+                return writes.renew(playerId, connectionId, presence)
+            }
+        }
+        val auth = AuthenticationService(InMemoryAuthRepository())
+        val host = auth.verifiedPresenceAccount("timed-host")
+        val guest = auth.verifiedPresenceAccount("timed-guest")
+        val server = embeddedServer(Netty, host = "127.0.0.1", port = 0) {
+            gameModule(engine = GameEngine(presenceStore = store), authService = auth)
+        }.start()
+        try {
+            HttpClient(OkHttp) { install(WebSockets) }.use { client ->
+                val url = "ws://127.0.0.1:${server.engine.resolvedConnectors().single().port}/game"
+                val first = client.webSocketSession(url)
+                val second = client.webSocketSession(url)
+                try {
+                    first.sendMessage(ClientMessage.ConnectAccount(host.accessToken))
+                    first.receiveMessage<ServerMessage.SessionReady>()
+                    second.sendMessage(ClientMessage.ConnectAccount(guest.accessToken))
+                    second.receiveMessage<ServerMessage.SessionReady>()
+                    first.sendMessage(ClientMessage.CreateRoom("Timed room", "", ProtocolGameMode.ORDER))
+                    val roomId = first.receiveMessage<ServerMessage.RoomCreated>().game.roomId
+                    second.sendMessage(ClientMessage.JoinRoom(roomId, ""))
+                    second.receiveMessage<ServerMessage.RoomUpdated>()
+                    first.sendMessage(ClientMessage.SetReady(roomId, true))
+                    second.sendMessage(ClientMessage.SetReady(roomId, true))
+                    withTimeout(5_000) { started.await() }
+                    first.receiveMessage<ServerMessage.GameStarted>()
+                    second.receiveMessage<ServerMessage.GameStarted>()
+                } finally {
+                    release.complete(Unit)
+                    first.close()
+                    second.close()
+                }
+            }
+        } finally {
+            server.stop()
+        }
+    }
+
+    @Test
+    fun `idle presence survives token rotation and is revoked after logout`() = runBlocking {
+        val store = MemoryPresenceStore()
+        val auth = AuthenticationService(InMemoryAuthRepository())
+        val account = auth.verifiedPresenceAccount("idle-account")
+        val server = embeddedServer(Netty, host = "127.0.0.1", port = 0) {
+            gameModule(engine = GameEngine(presenceStore = store), authService = auth)
+        }.start()
+        try {
+            HttpClient(OkHttp) { install(WebSockets) }.use { client ->
+                val socket = client.webSocketSession("ws://127.0.0.1:${server.engine.resolvedConnectors().single().port}/game")
+                try {
+                    socket.sendMessage(ClientMessage.ConnectAccount(account.accessToken))
+                    socket.receiveMessage<ServerMessage.SessionReady>()
+                    val rotated = assertIs<AuthResult.Success>(auth.refresh(account.refreshToken)).session
+                    assertNull(withTimeoutOrNull(21_000) { socket.closeReason.await() })
+                    assertEquals(FriendPresence.ONLINE, store.read(listOf(account.userId))[account.userId])
+                    auth.logout(rotated.refreshToken)
+                    assertEquals("Account session revoked", withTimeout(22_000) { socket.closeReason.await() }?.message)
+                    withTimeout(5_000) {
+                        while (store.read(listOf(account.userId))[account.userId] != FriendPresence.OFFLINE) delay(20)
+                    }
+                } finally {
+                    socket.close()
+                }
+            }
+        } finally {
+            server.stop()
+        }
+    }
+
     @Test
     fun `surviving backend updates clan presence after force killing a peer process`() = runBlocking {
         assumeTrue(System.getenv("FASTTOWIN_TEST_PRESENCE_FULL_TTL") == "true", "Opt-in crash fixture required")
@@ -102,6 +184,8 @@ class RedisPresenceNettyTest {
             )
             val clans = object : ClanRepository by NoOpClanRepository {
                 override suspend fun getClanByUserId(userId: String) = clan.takeIf { userId == alice.userId }
+                override suspend fun presenceMemberIds(userId: String, clanId: String) =
+                    super<ClanRepository>.presenceMemberIds(userId, clanId)
             }
             val server = embeddedServer(Netty, host = "127.0.0.1", port = 0) {
                 gameModule(engine = GameEngine(clanRepository = clans, presenceStore = survivor), authService = auth)
@@ -172,6 +256,8 @@ class RedisPresenceNettyTest {
         val clans = object : ClanRepository by NoOpClanRepository {
             override suspend fun getClanById(clanId: String) = clan.takeIf { it.id == clanId }
             override suspend fun getClanByUserId(userId: String) = clan.takeIf { it.members.any { member -> member.userId == userId } }
+            override suspend fun presenceMemberIds(userId: String, clanId: String) =
+                super<ClanRepository>.presenceMemberIds(userId, clanId)
         }
         val friends = object : FriendRepository by NoOpFriendRepository {
             override suspend fun load(userId: String) = StoredFriends(friends = listOf(

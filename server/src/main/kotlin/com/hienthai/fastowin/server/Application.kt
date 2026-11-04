@@ -78,12 +78,16 @@ import io.ktor.websocket.readText
 import io.ktor.websocket.send
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import java.util.concurrent.ConcurrentHashMap
@@ -242,9 +246,6 @@ fun Application.gameModule(
         }
     }
 
-    if (presenceStore != null) {
-        engine.onPresenceChanged = { id -> connections[id]?.let { publishPresence(id, it) } }
-    }
     launch {
         while (isActive) {
             try { engine.moderationService.cleanup() }
@@ -272,7 +273,32 @@ fun Application.gameModule(
                 try {
                     connection.send(message)
                 } catch (_: Exception) {
+                    currentCoroutineContext().ensureActive()
                     // The connection cleanup path will remove stale sockets.
+                }
+            }
+        }
+    }
+
+    if (presenceStore != null) {
+        // Coalesce pending updates and read current state when processed. Heartbeats and roster
+        // polling repair presence if the bounded notification queue is saturated.
+        val queue = Channel<String>(256)
+        val pending = ConcurrentHashMap.newKeySet<String>()
+        engine.enqueuePresenceUpdate = { id ->
+            if (pending.add(id) && queue.trySend(id).isFailure) pending.remove(id)
+        }
+        launch {
+            for (id in queue) {
+                pending.remove(id)
+                try {
+                    connections[id]?.let { publishPresence(id, it) }
+                    val deliveries = engine.presenceDeliveries(id)
+                    withTimeoutOrNull(1_000) { deliver(deliveries) }
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (_: Exception) {
+                    this@gameModule.environment.log.warn("Presence notification failed")
                 }
             }
         }
@@ -659,6 +685,7 @@ fun Application.gameModule(
             var playerId: String? = null
             var playerRateLimitKey: String? = null
             var accountAccessToken: String? = null
+            var socketAccount: AuthenticatedAccount? = null
             var moderationAware = false
             var activityConnectionId: java.util.UUID? = null
             var registeredConnection: SocketConnection? = null
@@ -733,8 +760,10 @@ fun Application.gameModule(
                                     val account = authService.authenticateAccessToken(message.accessToken)
                                         ?: throw InvalidAccessTokenException()
                                     if (!account.emailVerified) throw UnverifiedEmailException()
-                                    accountAccessToken = message.accessToken
-                                    engine.connectAccount(account, message.resumeToken, message.protocolVersion)
+                                    engine.connectAccount(account, message.resumeToken, message.protocolVersion).also {
+                                        accountAccessToken = message.accessToken
+                                        socketAccount = account
+                                    }
                                 }
                             }
                         }.getOrElse { error ->
@@ -779,9 +808,24 @@ fun Application.gameModule(
                         connections.put(connected.playerId, connection)?.closeForReplacement()
                         if (connection.presenceId != null) {
                             publishPresence(connected.playerId, connection)
+                            val account = checkNotNull(socketAccount)
+                            val accessToken = checkNotNull(accountAccessToken)
                             presenceHeartbeat = launch {
-                                while (isActive && connections[connected.playerId] === connection) {
+                                while (isActive) {
                                     delay(20_000)
+                                    if (connections[connected.playerId] !== connection) break
+                                    val active = try {
+                                        authService.isSocketSessionActive(account, accessToken)
+                                    } catch (cancelled: CancellationException) {
+                                        throw cancelled
+                                    } catch (_: Exception) {
+                                        // A transient auth storage error cannot authorize another lease.
+                                        continue
+                                    }
+                                    if (!active) {
+                                        connection.session.close(CloseReason(CloseReason.Codes.NORMAL, "Account session revoked"))
+                                        break
+                                    }
                                     publishPresence(connected.playerId, connection, heartbeat = true)
                                 }
                             }

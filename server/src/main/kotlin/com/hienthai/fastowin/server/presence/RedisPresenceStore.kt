@@ -17,6 +17,7 @@ import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withTimeoutOrNull
 import java.time.Duration
 import java.util.UUID
+import java.util.concurrent.CompletableFuture
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicLong
 import kotlin.coroutines.resume
@@ -28,7 +29,10 @@ internal class RedisPresenceStore(
 ) : PresenceStore {
     private val resources: DefaultClientResources
     private val client: RedisClient
-    private val connection: StatefulRedisConnection<String, String>
+    private val uri: RedisURI
+    private var opening: CompletableFuture<StatefulRedisConnection<String, String>>? = null
+    private var lastConnectAttempt: Long? = null
+    private var closed = false
     private val updateScript = requireNotNull(javaClass.getResource("/redis/presence_update.lua")).readText()
     private val readScript = requireNotNull(javaClass.getResource("/redis/presence_read.lua")).readText()
     private val readFailures = AtomicLong()
@@ -40,7 +44,7 @@ internal class RedisPresenceStore(
         resources = DefaultClientResources.builder().ioThreadPoolSize(2).computationThreadPoolSize(2).build()
         var openedClient: RedisClient? = null
         try {
-            val uri = object : RedisURI(RedisURI.create(config.url)) {
+            uri = object : RedisURI(RedisURI.create(config.url)) {
                 override fun toString() = "[redacted presence Redis URI]"
             }.apply { timeout = Duration.ofSeconds(2) }
             require(uri.isVerifyPeer)
@@ -53,18 +57,24 @@ internal class RedisPresenceStore(
                 .socketOptions(SocketOptions.builder().connectTimeout(Duration.ofSeconds(2)).build())
                 .timeoutOptions(TimeoutOptions.enabled(Duration.ofMillis(200)))
                 .build()
-            val opening = client.connectAsync(StringCodec.UTF8, uri)
-            connection = try {
-                opening.get(2, TimeUnit.SECONDS)
-            } catch (e: Exception) {
-                opening.cancel(true)
-                throw e
-            }
         } catch (_: Exception) {
             runCatching { openedClient?.shutdown(Duration.ZERO, Duration.ofMillis(200)) }
             resources.shutdown(0, 200, TimeUnit.MILLISECONDS)
             throw IllegalArgumentException("Redis presence service unavailable.")
         }
+        openConnection()
+    }
+
+    // One shared handshake. Individual operation timeouts must not cancel it for other callers.
+    @Synchronized
+    private fun openConnection(): CompletableFuture<StatefulRedisConnection<String, String>>? {
+        if (closed) return null
+        opening?.takeUnless { it.isCompletedExceptionally }?.let { return it }
+        val now = System.nanoTime()
+        if (lastConnectAttempt?.let { now - it < TimeUnit.SECONDS.toNanos(1) } == true) return null
+        lastConnectAttempt = now
+        return runCatching { client.connectAsync(StringCodec.UTF8, uri).toCompletableFuture() }
+            .getOrNull().also { opening = it }
     }
 
     override suspend fun renew(playerId: String, connectionId: UUID, presence: FriendPresence): Boolean {
@@ -117,11 +127,8 @@ internal class RedisPresenceStore(
     private suspend fun <T> evaluate(script: String, type: ScriptOutputType, keys: Array<String>, vararg args: String): T? =
         try {
             withTimeoutOrNull(200) {
-                suspendCancellableCoroutine { continuation ->
-                    connection.async().eval<T>(script, type, keys, *args).whenComplete { value, error ->
-                        if (error == null) continuation.resume(value) else continuation.resumeWithException(error)
-                    }
-                }
+                val connection = openConnection()?.await() ?: return@withTimeoutOrNull null
+                connection.async().eval<T>(script, type, keys, *args).toCompletableFuture().await()
             }
         } catch (e: CancellationException) {
             throw e
@@ -129,15 +136,21 @@ internal class RedisPresenceStore(
             null
         }
 
+    private suspend fun <T> CompletableFuture<T>.await(): T = suspendCancellableCoroutine { continuation ->
+        whenComplete { value, error ->
+            if (error == null) continuation.resume(value) else continuation.resumeWithException(error)
+        }
+    }
+
     override fun close() {
+        synchronized(this) {
+            if (closed) return
+            closed = true
+        }
         try {
-            connection.close()
+            client.shutdown(Duration.ZERO, Duration.ofMillis(200))
         } finally {
-            try {
-                client.shutdown(Duration.ZERO, Duration.ofMillis(200))
-            } finally {
-                resources.shutdown(0, 200, TimeUnit.MILLISECONDS).await(200, TimeUnit.MILLISECONDS)
-            }
+            resources.shutdown(0, 200, TimeUnit.MILLISECONDS).await(200, TimeUnit.MILLISECONDS)
         }
     }
 }

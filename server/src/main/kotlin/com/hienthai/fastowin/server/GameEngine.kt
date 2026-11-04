@@ -2043,12 +2043,20 @@ class GameEngine(
             refreshNotificationsFor(setOf(playerId))
     }
 
-    internal var onPresenceChanged: suspend (String) -> Unit = {}
+    internal var enqueuePresenceUpdate: ((String) -> Unit)? = null
 
     suspend fun presenceUpdates(playerId: String): List<Delivery> {
-        val isAccount = mutex.withLock { sessionsByPlayerId[playerId]?.resumeToken == null }
-        if (!isAccount) return emptyList()
-        onPresenceChanged(playerId)
+        // An account can still need an offline notification after its engine session is removed.
+        val isGuest = mutex.withLock { sessionsByPlayerId[playerId]?.resumeToken != null }
+        if (isGuest) return emptyList()
+        enqueuePresenceUpdate?.let {
+            it(playerId)
+            return emptyList()
+        }
+        return presenceDeliveries(playerId)
+    }
+
+    internal suspend fun presenceDeliveries(playerId: String): List<Delivery> {
         val friendUpdates = runCatching {
             val stored = friendRepository.load(playerId)
             refreshSocialFor((stored.friends.map { it.userId } + playerId).toSet(), isPresenceRefresh = true)
@@ -2077,14 +2085,14 @@ class GameEngine(
     internal suspend fun presenceSnapshot(playerId: String, request: ClientMessage.GetPresence): ServerMessage.PresenceData? {
         val store = presenceStore ?: return null
         if (!isAccountSession(playerId)) return null
-        val ids = if (request.clanId == null) {
+        val clanId = request.clanId
+        val ids = if (clanId == null) {
             friendRepository.load(playerId).friends.map { it.userId }
         } else {
-            val clan = clanRepository.getClanByUserId(playerId)?.takeIf { it.id == request.clanId } ?: return null
-            clan.members.map { it.userId }
+            clanRepository.presenceMemberIds(playerId, clanId) ?: return null
         }
         val presence = store.read(ids) ?: return null
-        return ServerMessage.PresenceData(request.requestId, request.clanId, presence)
+        return ServerMessage.PresenceData(request.requestId, clanId, presence)
     }
 
     private suspend fun clanInfo(clan: ClanSnapshot): ServerMessage.ClanInfoData =

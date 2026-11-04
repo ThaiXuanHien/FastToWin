@@ -64,6 +64,8 @@ interface ClanRepository {
     suspend fun getPendingJoinClanIds(userId: String): List<String>
     suspend fun leaveClan(userId: String): Boolean
     suspend fun getClanByUserId(userId: String): ClanSnapshot?
+    suspend fun presenceMemberIds(userId: String, clanId: String): List<String>? =
+        getClanByUserId(userId)?.takeIf { it.id == clanId }?.members?.map { it.userId }
     suspend fun getClanById(clanId: String): ClanSnapshot?
     suspend fun getClanList(limit: Int = 50, offset: Int = 0, query: String? = null): List<ClanSummarySnapshot>
     suspend fun kickMember(clanId: String, currentUserId: String, targetUserId: String): Boolean
