@@ -7,6 +7,7 @@ import com.hienthai.fastowin.protocol.ClanSnapshot
 import com.hienthai.fastowin.protocol.ClientMessage
 import com.hienthai.fastowin.protocol.FriendPresence
 import com.hienthai.fastowin.protocol.FriendSnapshot
+import com.hienthai.fastowin.protocol.LoginRequest
 import com.hienthai.fastowin.protocol.ProtocolGameMode
 import com.hienthai.fastowin.protocol.ProtocolJson
 import com.hienthai.fastowin.protocol.ServerMessage
@@ -18,6 +19,12 @@ import io.ktor.client.engine.okhttp.OkHttp
 import io.ktor.client.plugins.websocket.DefaultClientWebSocketSession
 import io.ktor.client.plugins.websocket.WebSockets
 import io.ktor.client.plugins.websocket.webSocketSession
+import io.ktor.client.request.post
+import io.ktor.client.request.setBody
+import io.ktor.client.statement.bodyAsText
+import io.ktor.http.ContentType
+import io.ktor.http.HttpStatusCode
+import io.ktor.http.contentType
 import io.ktor.server.engine.embeddedServer
 import io.ktor.server.netty.Netty
 import io.ktor.websocket.Frame
@@ -28,15 +35,114 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withTimeoutOrNull
 import org.junit.jupiter.api.Assumptions.assumeTrue
+import java.nio.file.Files
+import java.nio.file.Path
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlin.time.TimeSource
 
 class RedisPresenceNettyTest {
+    @Test
+    fun `surviving backend updates clan presence after force killing a peer process`() = runBlocking {
+        assumeTrue(System.getenv("FASTTOWIN_TEST_PRESENCE_FULL_TTL") == "true", "Opt-in crash fixture required")
+        val classpathFile = Path.of(checkNotNull(System.getenv("FASTTOWIN_TEST_PRESENCE_CLASSPATH_FILE")))
+        val namespace = "t" + UUID.randomUUID().toString().replace("-", "")
+        val config = PresenceConfiguration(checkNotNull(System.getenv("FASTTOWIN_TEST_PRESENCE_REDIS_URL")), namespace)
+        val launcher = Path.of(System.getProperty("java.home"), "bin", if (System.getProperty("os.name").startsWith("Windows")) "java.exe" else "java")
+        val args = Files.createTempFile("ftw-presence-crash-", ".args")
+        try {
+            val classpath = Files.readString(classpathFile).replace('\\', '/')
+            Files.writeString(args, "-cp\n\"$classpath\"\n${RedisPresenceCrashFixture::class.java.name}\n$namespace\n")
+            val child = ProcessBuilder(launcher.toString(), "@$args").redirectErrorStream(true).start()
+            try {
+                val output = child.inputStream.bufferedReader()
+                val port = withTimeout(15_000) {
+                    var readyPort: Int? = null
+                    while (readyPort == null) {
+                        check(child.isAlive) { "Crash fixture exited before becoming ready" }
+                        if (output.ready()) readyPort = output.readLine()?.takeIf { it.startsWith("PRESENCE_CRASH_PORT=") }
+                            ?.substringAfter('=')?.toIntOrNull()
+                        else delay(25)
+                    }
+                    readyPort
+                }
+                RedisPresenceStore(config).use { survivor -> verifyHardStop(child, port, survivor) }
+            } finally {
+                child.destroyForcibly()
+                check(child.waitFor(5, TimeUnit.SECONDS)) { "Crash fixture process cleanup timed out" }
+                child.inputStream.close()
+            }
+        } finally {
+            Files.deleteIfExists(args)
+        }
+        Unit
+    }
+
+    private suspend fun verifyHardStop(child: Process, port: Int, survivor: PresenceStore) {
+        HttpClient(OkHttp) { install(WebSockets) }.use { client ->
+            val login = client.post("http://127.0.0.1:$port/auth/login") {
+                contentType(ContentType.Application.Json)
+                setBody(ProtocolJson.encodeToString(LoginRequest("crash-peer@example.com", "valid-test-password", "android")))
+            }
+            assertEquals(HttpStatusCode.OK, login.status)
+            val bob = ProtocolJson.decodeFromString<AuthSessionResponse>(login.bodyAsText())
+            val auth = AuthenticationService(InMemoryAuthRepository())
+            val alice = auth.verifiedPresenceAccount("survivor")
+            val clan = ClanSnapshot(
+                id = UUID.randomUUID().toString(), name = "Crash fixture", description = "", ownerId = alice.userId,
+                members = listOf(alice, bob).map { ClanMemberSnapshot(it.userId, "Member", ClanRole.MEMBER, 1_000) },
+                trophies = 0
+            )
+            val clans = object : ClanRepository by NoOpClanRepository {
+                override suspend fun getClanByUserId(userId: String) = clan.takeIf { userId == alice.userId }
+            }
+            val server = embeddedServer(Netty, host = "127.0.0.1", port = 0) {
+                gameModule(engine = GameEngine(clanRepository = clans, presenceStore = survivor), authService = auth)
+            }.start()
+            try {
+                val observing = client.webSocketSession("ws://127.0.0.1:${server.engine.resolvedConnectors().single().port}/game")
+                val crashing = client.webSocketSession("ws://127.0.0.1:$port/game")
+                try {
+                    observing.sendMessage(ClientMessage.ConnectAccount(alice.accessToken))
+                    observing.receiveMessage<ServerMessage.SessionReady>()
+                    crashing.sendMessage(ClientMessage.ConnectAccount(bob.accessToken))
+                    crashing.receiveMessage<ServerMessage.SessionReady>()
+                    child.destroyForcibly()
+                    check(child.waitFor(5, TimeUnit.SECONDS)) { "Crash fixture did not terminate" }
+                    val killedAt = TimeSource.Monotonic.markNow()
+                    var firstOffline: Long? = null
+                    for (sample in 0..5) {
+                        delay((sample * 15_000L - killedAt.elapsedNow().inWholeMilliseconds).coerceAtLeast(0))
+                        val request = ClientMessage.GetPresence("crash-$sample", clan.id)
+                        observing.sendMessage(request)
+                        val states = observing.receiveMessage<ServerMessage.PresenceData> { it.requestId == request.requestId }.states
+                        assertEquals(FriendPresence.ONLINE, states[alice.userId])
+                        if (states[bob.userId] == FriendPresence.OFFLINE) {
+                            firstOffline = killedAt.elapsedNow().inWholeMilliseconds
+                            break
+                        }
+                        assertEquals(FriendPresence.ONLINE, states[bob.userId])
+                    }
+                    checkNotNull(firstOffline) { "Peer did not go offline after the lease expired" }
+                    assertTrue(firstOffline in 55_000..77_000, "Unexpected WebSocket expiry window: $firstOffline ms")
+                    println("PRESENCE_CRASH offlineAfterMs=$firstOffline survivor=ONLINE refreshMs=15000")
+                } finally {
+                    crashing.close()
+                    observing.close()
+                }
+            } finally {
+                server.stop()
+            }
+        }
+    }
+
     @Test
     fun `socket lifecycle publishes and revokes across two servers`() = runBlocking {
         val store = MemoryPresenceStore()
@@ -55,9 +161,9 @@ class RedisPresenceNettyTest {
 
     private suspend fun verifyTwoServers(first: PresenceStore, second: PresenceStore) {
         val auth = AuthenticationService(InMemoryAuthRepository())
-        val alice = auth.verifiedAccount("alice")
-        val bob = auth.verifiedAccount("bob")
-        val charlie = auth.verifiedAccount("charlie")
+        val alice = auth.verifiedPresenceAccount("alice")
+        val bob = auth.verifiedPresenceAccount("bob")
+        val charlie = auth.verifiedPresenceAccount("charlie")
         val clan = ClanSnapshot(
             id = UUID.randomUUID().toString(), name = "Presence clan", description = "", ownerId = alice.userId,
             members = listOf(alice, bob).map { ClanMemberSnapshot(it.userId, "Member", ClanRole.MEMBER, 1_000) },
@@ -141,13 +247,6 @@ class RedisPresenceNettyTest {
         }
     }
 
-    private suspend fun AuthenticationService.verifiedAccount(name: String): AuthSessionResponse {
-        val session = assertIs<AuthResult.Success>(register("$name@example.com", "valid-test-password", name, "android")).session
-        val verification = assertIs<AccountActionResult.Success>(requestEmailVerification(session.accessToken))
-        assertIs<AccountActionResult.Success>(confirmEmailVerification(session.accessToken, requireNotNull(verification.emailVerificationCode)))
-        return session
-    }
-
     private suspend fun DefaultClientWebSocketSession.sendMessage(message: ClientMessage) =
         send(Frame.Text(ProtocolJson.encodeToString(message)))
 
@@ -176,5 +275,33 @@ class RedisPresenceNettyTest {
             sockets.entries.filter { it.key.first == id }.maxOfOrNull { it.value } ?: FriendPresence.OFFLINE
         }
         override fun close() = Unit
+    }
+}
+
+private suspend fun AuthenticationService.verifiedPresenceAccount(name: String): AuthSessionResponse {
+    val session = assertIs<AuthResult.Success>(register("$name@example.com", "valid-test-password", name, "android")).session
+    val verification = assertIs<AccountActionResult.Success>(requestEmailVerification(session.accessToken))
+    assertIs<AccountActionResult.Success>(confirmEmailVerification(session.accessToken, requireNotNull(verification.emailVerificationCode)))
+    return session
+}
+
+object RedisPresenceCrashFixture {
+    @JvmStatic
+    fun main(args: Array<String>) = runBlocking {
+        val namespace = args.single()
+        val url = checkNotNull(System.getenv("FASTTOWIN_TEST_PRESENCE_REDIS_URL"))
+        val auth = AuthenticationService(InMemoryAuthRepository())
+        auth.verifiedPresenceAccount("crash-peer")
+        RedisPresenceStore(PresenceConfiguration(url, namespace)).use { store ->
+            val server = embeddedServer(Netty, host = "127.0.0.1", port = 0) {
+                gameModule(engine = GameEngine(presenceStore = store), authService = auth)
+            }.start()
+            try {
+                println("PRESENCE_CRASH_PORT=${server.engine.resolvedConnectors().single().port}")
+                CountDownLatch(1).await()
+            } finally {
+                server.stop()
+            }
+        }
     }
 }

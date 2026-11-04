@@ -19,9 +19,11 @@
 
 ## Local checkpoint
 
-The branch `codex/redis-presence` contains the Redis store, socket lifecycle and negotiated client refresh. On 04 November 2026, Docker started after its stale runtime sockets were isolated. The local fixture runner at `.artifacts/redis-presence-local-20261104/run-fixture.ps1` passed 11 tests with real Redis, including two Netty backends, Friends and Clan snapshots, reconnect, ACL isolation, a lost reply, and rate limit regression. `-Lease` measured expiration after 60,046 ms when the first Redis client closed without revocation. The second client's 20-second renewals kept its session online. A forced stop of an entire backend process remains a separate acceptance case.
+The branch `codex/redis-presence` contains the Redis store, socket lifecycle and negotiated client refresh. On 04 November 2026, Docker started after its stale runtime sockets were isolated. The local fixture runner at `.artifacts/redis-presence-local-20261104/run-fixture.ps1` passed the real Redis cases for two Netty backends, Friends and Clan snapshots, reconnect, ACL isolation and a lost reply. `-Lease` measured expiration after 60,046 ms when the first Redis client closed without revocation. It also force-killed a child Netty process while its WebSocket was still connected. The surviving backend reported the peer's clan member offline after 60,004 ms at the 15-second refresh interval. The member connected to the surviving backend stayed online throughout.
 
 `-Load` passed three 64-second phases with 0, 100 and 500 simulated connections, each with 650 rate limit requests. At 500 connections Redis reached 2,018,912 bytes used, AOF increased by 935,025 bytes, and the six measured 50-player reads had p95 of 1.599 ms. The baseline AOF increase was 280,173 bytes. All three phases recorded zero evictions and zero new Redis error replies. This measures the Redis workload with two readers refreshing every 15 seconds. More concurrent viewers and longer AOF observation are useful inputs for sizing a deployment.
+
+During the process crash run, an existing rate limit test failed to open its Redis client. All four rate limit acceptance tests passed on a fresh fixture in the isolated rerun. The crash and presence cases passed in the original run.
 
 ## Task 1 — Lease store and Redis fixture
 
