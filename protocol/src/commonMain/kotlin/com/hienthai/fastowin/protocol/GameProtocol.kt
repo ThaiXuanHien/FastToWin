@@ -860,6 +860,9 @@ sealed class ClientMessage {
     @SerialName("get_friends")
     data object GetFriends : ClientMessage()
 
+    @Serializable @SerialName("get_presence")
+    data class GetPresence(val requestId: String, val clanId: String? = null) : ClientMessage()
+
     @Serializable
     @SerialName("send_friend_request")
     data class SendFriendRequest(val playerCode: String) : ClientMessage()
@@ -1118,7 +1121,8 @@ sealed class ServerMessage {
         val playerId: String,
         val resumeToken: String? = null,
         val currentGame: GameSnapshot? = null,
-        val protocolVersion: Int = PROTOCOL_VERSION
+        val protocolVersion: Int = PROTOCOL_VERSION,
+        val presenceRefreshSupported: Boolean = false
     ) : ServerMessage()
 
     @Serializable
@@ -1216,6 +1220,13 @@ sealed class ServerMessage {
     @Serializable
     @SerialName("friends_data")
     data class FriendsData(val social: FriendsSnapshot) : ServerMessage()
+
+    @Serializable @SerialName("presence_data")
+    data class PresenceData(
+        val requestId: String,
+        val clanId: String?,
+        val states: Map<String, FriendPresence>
+    ) : ServerMessage()
 
     @Serializable
     @SerialName("room_invitation")

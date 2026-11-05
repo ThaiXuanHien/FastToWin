@@ -98,6 +98,8 @@ interface AuthRepository {
     suspend fun revokeSession(refreshTokenHash: String, nowMillis: Long): Boolean
     suspend fun findActiveSession(accessTokenHash: String, nowMillis: Long): AuthenticatedAccount?
     suspend fun listActiveSessions(userId: UUID, nowMillis: Long): List<StoredAccountSession>
+    suspend fun isActiveSessionById(userId: UUID, sessionId: UUID, nowMillis: Long): Boolean =
+        listActiveSessions(userId, nowMillis).any { it.sessionId == sessionId }
     suspend fun revokeSessionById(userId: UUID, sessionId: UUID, nowMillis: Long): Boolean
     suspend fun revokeAllSessions(userId: UUID, nowMillis: Long): Int
     suspend fun upgradeGuest(upgrade: GuestUpgrade): GuestUpgradeResult
@@ -312,6 +314,11 @@ class AuthenticationService(
             return null
         }
         return identity
+    }
+
+    internal suspend fun isSocketSessionActive(account: AuthenticatedAccount, accessToken: String): Boolean {
+        val sessionId = account.sessionId ?: return authenticateAccessToken(accessToken) != null
+        return repository.isActiveSessionById(account.userId, sessionId, nowMillis())
     }
 
     suspend fun listSessions(accessToken: String): AccountSessionsResult {

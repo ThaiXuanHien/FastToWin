@@ -199,6 +199,11 @@ internal class GameSocketClient(
         }
     }
 
+    internal suspend fun trySendPresence(message: ClientMessage.GetPresence): Boolean = lifecycleMutex.withLock {
+        val mailbox = currentMailbox ?: return@withLock false
+        mailbox.presenceRefreshSupported && mailbox.outgoing.trySend(message).isSuccess
+    }
+
     suspend fun disconnect() {
         val run = currentRun.value ?: return
         run.requestStop()
@@ -392,6 +397,7 @@ internal class GameSocketClient(
         var result: AttemptResult? = null
         when (message) {
             is ServerMessage.SessionReady -> {
+                lifecycleMutex.withLock { mailbox.presenceRefreshSupported = message.presenceRefreshSupported }
                 message.resumeToken?.let {
                     resumeToken = it
                     tokenStore.save(serverUrl, it)
@@ -537,6 +543,7 @@ internal class GameSocketClient(
 
     private class AttemptMailbox {
         val outgoing = Channel<ClientMessage>(Channel.UNLIMITED)
+        var presenceRefreshSupported = false
         private val active = MutableStateFlow(true)
         val isActive get() = active.value
 

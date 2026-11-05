@@ -1,5 +1,7 @@
 package com.hienthai.fastowin.server
 
+import com.hienthai.fastowin.server.presence.PresenceStore
+
 import com.hienthai.fastowin.server.maintenance.*
 import com.hienthai.fastowin.server.moderation.*
 import com.hienthai.fastowin.protocol.UgcTargetType
@@ -108,7 +110,8 @@ class GameEngine(
         com.hienthai.fastowin.server.avatars.AvatarService(
             com.hienthai.fastowin.server.avatars.ProfileAvatarRepository(playerProfileRepository),
             publicationAllowed = { moderationService.requireContentTerms(it) },
-            contentSuppressed = { id, revision -> moderationService.isSuppressed(UgcTargetType.PLAYER_AVATAR, id, revision) })
+            contentSuppressed = { id, revision -> moderationService.isSuppressed(UgcTargetType.PLAYER_AVATAR, id, revision) }),
+    internal val presenceStore: PresenceStore? = null
 ) {
     constructor(nowMillis: () -> Long) : this(nowMillis = nowMillis, eventRewardSource = com.hienthai.fastowin.server.events.NoRewardEventSource)
 
@@ -825,6 +828,7 @@ class GameEngine(
                 is ClientMessage.EquipCosmetics -> HandleResult(emptyList())
                 ClientMessage.GetLeaderboard -> HandleResult(emptyList())
                 ClientMessage.GetFriends -> HandleResult(emptyList())
+                is ClientMessage.GetPresence -> HandleResult(emptyList())
                 ClientMessage.GetRoomInvitations -> HandleResult(emptyList())
                 ClientMessage.GetNotifications -> HandleResult(emptyList())
                 ClientMessage.GetTournamentHub -> HandleResult(emptyList())
@@ -1549,14 +1553,12 @@ class GameEngine(
         return deliveries + loadTournamentHub(playerId)
     }
 
-    private suspend fun loadFriends(playerId: String): List<Delivery> {
+    private suspend fun loadFriends(playerId: String, isPresenceRefresh: Boolean = false): List<Delivery> {
         if (!isAccountSession(playerId)) return listOf(accountRequired(playerId))
         val stored = runCatching { friendRepository.load(playerId) }.getOrElse {
             return listOf(error(playerId, "FRIENDS_UNAVAILABLE", legacyFallback("Chưa tải được danh sách bạn bè.")))
         }
-        val presence = mutex.withLock {
-            stored.friends.associate { friend -> friend.userId to presenceOf(friend.userId) }
-        }
+        val presence = rosterPresence(stored.friends.map { it.userId }, isPresenceRefresh) ?: return emptyList()
         return listOf(Delivery(
             ServerMessage.FriendsData(FriendsSnapshot(
                 friends = stored.friends.map { it.copy(presence = presence[it.userId] ?: FriendPresence.OFFLINE) },
@@ -2041,12 +2043,23 @@ class GameEngine(
             refreshNotificationsFor(setOf(playerId))
     }
 
+    internal var enqueuePresenceUpdate: ((String) -> Unit)? = null
+
     suspend fun presenceUpdates(playerId: String): List<Delivery> {
-        val isAccount = mutex.withLock { sessionsByPlayerId[playerId]?.resumeToken == null }
-        if (!isAccount) return emptyList()
+        // An account can still need an offline notification after its engine session is removed.
+        val isGuest = mutex.withLock { sessionsByPlayerId[playerId]?.resumeToken != null }
+        if (isGuest) return emptyList()
+        enqueuePresenceUpdate?.let {
+            it(playerId)
+            return emptyList()
+        }
+        return presenceDeliveries(playerId)
+    }
+
+    internal suspend fun presenceDeliveries(playerId: String): List<Delivery> {
         val friendUpdates = runCatching {
             val stored = friendRepository.load(playerId)
-            refreshSocialFor((stored.friends.map { it.userId } + playerId).toSet())
+            refreshSocialFor((stored.friends.map { it.userId } + playerId).toSet(), isPresenceRefresh = true)
         }.getOrElse {
             if (it is CancellationException) throw it
             emptyList()
@@ -2061,24 +2074,48 @@ class GameEngine(
         return friendUpdates + clanUpdates
     }
 
-    /** Engine mutex required. Presence never comes from persisted roster data. */
-    private fun ClanSnapshot.withSessionPresence(): ClanSnapshot = copy(
-        members = members.map { it.copy(presence = presenceOf(it.userId)) }
-    )
-
-    private suspend fun clanInfo(clan: ClanSnapshot): ServerMessage.ClanInfoData = mutex.withLock {
-        ServerMessage.ClanInfoData(clan.withSessionPresence())
+    private suspend fun rosterPresence(ids: List<String>, isPresenceRefresh: Boolean): Map<String, FriendPresence>? {
+        if (presenceStore != null) {
+            val shared = presenceStore.read(ids)
+            if (shared != null || isPresenceRefresh) return shared
+        }
+        return mutex.withLock { ids.associateWith(::presenceOf) }
     }
 
-    private suspend fun clanMemberUpdate(clan: ClanSnapshot, isPresenceRefresh: Boolean = false): List<Delivery> = mutex.withLock {
-        val recipients = clan.members.mapNotNullTo(mutableSetOf()) { member ->
-            member.userId.takeIf { id ->
-                sessionsByPlayerId[id]?.let { it.isConnected && it.resumeToken == null } == true
+    internal suspend fun presenceSnapshot(playerId: String, request: ClientMessage.GetPresence): ServerMessage.PresenceData? {
+        val store = presenceStore ?: return null
+        if (!isAccountSession(playerId)) return null
+        val clanId = request.clanId
+        val ids = if (clanId == null) {
+            friendRepository.load(playerId).friends.map { it.userId }
+        } else {
+            clanRepository.presenceMemberIds(playerId, clanId) ?: return null
+        }
+        val presence = store.read(ids) ?: return null
+        return ServerMessage.PresenceData(request.requestId, clanId, presence)
+    }
+
+    private suspend fun clanInfo(clan: ClanSnapshot): ServerMessage.ClanInfoData =
+        requireNotNull(clanPresenceMessage(clan, isPresenceRefresh = false))
+
+    private suspend fun clanPresenceMessage(clan: ClanSnapshot, isPresenceRefresh: Boolean): ServerMessage.ClanInfoData? {
+        val presence = rosterPresence(clan.members.map { it.userId }, isPresenceRefresh) ?: return null
+        return ServerMessage.ClanInfoData(clan.copy(members = clan.members.map {
+            it.copy(presence = presence[it.userId] ?: FriendPresence.OFFLINE)
+        }), isPresenceRefresh)
+    }
+
+    private suspend fun clanMemberUpdate(clan: ClanSnapshot, isPresenceRefresh: Boolean = false): List<Delivery> {
+        val recipients = mutex.withLock {
+            clan.members.mapNotNullTo(mutableSetOf()) { member ->
+                member.userId.takeIf { id ->
+                    sessionsByPlayerId[id]?.let { it.isConnected && it.resumeToken == null } == true
+                }
             }
         }
-        if (recipients.isEmpty()) emptyList() else listOf(Delivery(
-            ServerMessage.ClanInfoData(clan.withSessionPresence(), isPresenceRefresh), recipients
-        ))
+        if (recipients.isEmpty()) return emptyList()
+        val message = clanPresenceMessage(clan, isPresenceRefresh) ?: return emptyList()
+        return listOf(Delivery(message, recipients))
     }
 
     private suspend fun refreshClanMembers(clanId: String): List<Delivery> {
@@ -2086,11 +2123,11 @@ class GameEngine(
         return clanMemberUpdate(clan)
     }
 
-    private suspend fun refreshSocialFor(userIds: Set<String>): List<Delivery> {
+    private suspend fun refreshSocialFor(userIds: Set<String>, isPresenceRefresh: Boolean = false): List<Delivery> {
         val connectedAccounts = mutex.withLock {
             userIds.filter { sessionsByPlayerId[it]?.let { session -> session.isConnected && session.resumeToken == null } == true }
         }
-        return connectedAccounts.flatMap { loadFriends(it) }
+        return connectedAccounts.flatMap { loadFriends(it, isPresenceRefresh) }
     }
 
     private suspend fun refreshRoomInvitationsFor(userIds: Set<String>): List<Delivery> {
@@ -2118,6 +2155,8 @@ class GameEngine(
             null
         }
     }
+
+    internal suspend fun localPresence(playerId: String): FriendPresence = mutex.withLock { presenceOf(playerId) }
 
     private fun presenceOf(playerId: String): FriendPresence {
         val session = sessionsByPlayerId[playerId]

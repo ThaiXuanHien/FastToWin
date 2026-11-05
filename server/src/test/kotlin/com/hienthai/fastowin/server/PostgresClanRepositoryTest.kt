@@ -8,6 +8,7 @@ import java.util.UUID
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class PostgresClanRepositoryTest {
@@ -19,6 +20,7 @@ class PostgresClanRepositoryTest {
             username = System.getenv("TEST_DATABASE_USER") ?: "fasttowin"
             password = System.getenv("TEST_DATABASE_PASSWORD") ?: "fasttowin"
             maximumPoolSize = 2
+            connectionTimeout = 1_000
         }).use { dataSource ->
             Flyway.configure().dataSource(dataSource).locations("classpath:db/migration").load().migrate()
             val auth = AuthenticationService(
@@ -84,7 +86,16 @@ class PostgresClanRepositoryTest {
                     ClanJoinResponseResult.APPROVED,
                     clans.respondJoinRequest(secondClanId, secondOwner.userId, applicant.userId, accept = true)
                 )
-                assertEquals(secondClanId, clans.getClanByUserId(applicant.userId)?.id)
+                // With one connection already in use, this read must finish on the other.
+                dataSource.connection.use {
+                    assertEquals(secondClanId, clans.getClanByUserId(applicant.userId)?.id)
+                    assertEquals(
+                        setOf(secondOwner.userId, applicant.userId),
+                        clans.presenceMemberIds(applicant.userId, secondClanId)?.toSet()
+                    )
+                    assertNull(clans.presenceMemberIds(applicant.userId, firstClanId))
+                    assertNull(clans.presenceMemberIds(firstOwner.userId, secondClanId))
+                }
                 dataSource.connection.use { connection ->
                     connection.prepareStatement("UPDATE profiles SET avatar_url = 'avatar_rocket' WHERE user_id = ?").use {
                         it.setObject(1, UUID.fromString(applicant.userId))
