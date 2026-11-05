@@ -29,7 +29,8 @@ class MainActivity : ComponentActivity() {
         val authDiagnostics = localAuthDiagnosticSink(BuildConfig.AUTH_DIAGNOSTICS_ENABLED) {
             android.util.Log.i("FTWAuthQA", it)
         }
-        intent?.dataString?.let(AppDeepLinkRouter::openUri)
+        val pushBridge = AndroidPushBridge(this)
+        intent?.let(::handleLaunchIntent)
         val adMode = BuildConfig.ADMOB_MODE.takeIf { it.isNotEmpty() }
             ?.let { value -> RewardedAdMode.entries.firstOrNull { it.name.equals(value, ignoreCase = true) } }
             ?: if (BuildConfig.DEBUG && BuildConfig.APP_ENV == "dev") RewardedAdMode.SIMULATED else RewardedAdMode.DISABLED
@@ -44,7 +45,7 @@ class MainActivity : ComponentActivity() {
                 preferencesStore = preferencesStore,
                 devicePlatform = "android",
                 authDiagnosticSink = authDiagnostics,
-                fcmToken = applicationContext.getSharedPreferences("fcm", android.content.Context.MODE_PRIVATE).getString("fcm_token", null)
+                pushBridge = pushBridge
             )
             }
         }
@@ -53,6 +54,16 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        intent.dataString?.let(AppDeepLinkRouter::openUri)
+        handleLaunchIntent(intent)
+    }
+
+    private fun handleLaunchIntent(intent: Intent) {
+        val destination = intent.getStringExtra(PUSH_DESTINATION)
+        if (destination != null) intent.removeExtra(PUSH_DESTINATION)
+        if (destination == PUSH_INBOX_PATH) {
+            AppDeepLinkRouter.openUri("fasttowin://notifications")
+        } else {
+            intent.dataString?.let(AppDeepLinkRouter::openUri)
+        }
     }
 }

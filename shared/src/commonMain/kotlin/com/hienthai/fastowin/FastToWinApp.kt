@@ -117,6 +117,7 @@ import com.hienthai.fastowin.localization.platformLanguageTags
 import com.hienthai.fastowin.localization.resolveSavedLanguage
 import com.hienthai.fastowin.platform.epochMillis
 import com.hienthai.fastowin.platform.RoomDeepLink
+import com.hienthai.fastowin.platform.AppDeepLinkRouter
 import com.hienthai.fastowin.platform.RoomDeepLinkRouter
 import com.hienthai.fastowin.platform.buildRoomDeepLink
 import com.hienthai.fastowin.platform.buildRoomShareText
@@ -985,6 +986,17 @@ private fun GameContent(
     }
     val openNotifications = {
         navigateToAppRoute("/notifications", controller::openNotifications)
+    }
+    val notificationInboxRequested by AppDeepLinkRouter.notificationInboxRequested.collectAsState()
+    val canOpenPushInbox = !isGuest && serviceReachable != false &&
+        state.connectionStatus == com.hienthai.fastowin.state.ConnectionStatus.CONNECTED &&
+        state.currentRoomId == null && !state.isMatchStarted && !state.isGameOver &&
+        !state.isMatchmaking && practiceMode == null
+    LaunchedEffect(notificationInboxRequested, canOpenPushInbox) {
+        if (notificationInboxRequested && canOpenPushInbox && AppDeepLinkRouter.consumeNotificationInboxRequest()) {
+            closeLocalScreens()
+            openNotifications()
+        }
     }
     val openGiftMailbox = {
         navigateToAppRoute("/gifts") {
