@@ -103,6 +103,11 @@ screenshotTests {
 }
 
 dependencies {
+    constraints {
+        implementation(libs.androidx.fragment) {
+            because("Replace the obsolete Fragment version requested by transitive Android SDKs (Play Console warning)")
+        }
+    }
     implementation(project(":shared"))
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.core.ktx)
