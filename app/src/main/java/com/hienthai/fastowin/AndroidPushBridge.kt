@@ -23,7 +23,11 @@ internal class AndroidPushBridge(private val activity: ComponentActivity) : AppP
     private val notificationManager = NotificationManagerCompat.from(activity)
     private var requesting = false
     private var statusObserver: ((AppPushStatus) -> Unit)? = null
-    private val requestPermission = activity.registerForActivityResult(ActivityResultContracts.RequestPermission()) {
+    private val requestPermission = activity.activityResultRegistry.register(
+        "fasttowin.notification-permission",
+        activity,
+        ActivityResultContracts.RequestPermission()
+    ) {
         requesting = false
         statusObserver?.invoke(status)
     }
