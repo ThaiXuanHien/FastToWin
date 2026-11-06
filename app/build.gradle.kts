@@ -95,6 +95,13 @@ android {
     }
 }
 
+screenshotTests {
+    // Permit 0.00005% differing pixels: one pixel in a 984 x 2132 phone image.
+    // Linux renders have alternated by one color level at one antialiased edge;
+    // two differing pixels at this size and visible UI changes still fail.
+    imageDifferenceThreshold = 0.0000005f
+}
+
 dependencies {
     implementation(project(":shared"))
     implementation(libs.androidx.activity.compose)
