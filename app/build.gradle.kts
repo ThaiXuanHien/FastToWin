@@ -35,8 +35,8 @@ android {
         applicationId = "com.hienthai.fastowin"
         minSdk = 29
         targetSdk = 37
-        versionCode = 10
-        versionName = "1.0.9"
+        versionCode = 11
+        versionName = "1.0.10"
         buildConfigField("boolean", "AUTH_DIAGNOSTICS_ENABLED", (authDiagnosticsMode == "qa").toString())
         buildConfigField("String", "ADMOB_MODE", "\"$adMobMode\"")
         buildConfigField("String", "ADMOB_APP_ID", "\"$adMobAppId\"")
@@ -95,7 +95,19 @@ android {
     }
 }
 
+screenshotTests {
+    // Permit 0.00005% differing pixels: one pixel in a 984 x 2132 phone image.
+    // Linux renders have alternated by one color level at one antialiased edge;
+    // two differing pixels at this size and visible UI changes still fail.
+    imageDifferenceThreshold = 0.0000005f
+}
+
 dependencies {
+    constraints {
+        implementation(libs.androidx.fragment) {
+            because("Replace the obsolete Fragment version requested by transitive Android SDKs (Play Console warning)")
+        }
+    }
     implementation(project(":shared"))
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.core.ktx)
