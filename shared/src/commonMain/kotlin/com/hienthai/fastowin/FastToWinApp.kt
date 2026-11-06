@@ -41,6 +41,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import com.hienthai.fastowin.state.GameController
+import com.hienthai.fastowin.state.canOpenPushInbox
 import com.hienthai.fastowin.state.GiftMailboxController
 import com.hienthai.fastowin.state.GiftMailboxState
 import androidx.compose.runtime.rememberUpdatedState
@@ -989,9 +990,7 @@ private fun GameContent(
     }
     val notificationInboxRequested by AppDeepLinkRouter.notificationInboxRequested.collectAsState()
     val canOpenPushInbox = !isGuest && serviceReachable != false &&
-        state.connectionStatus == com.hienthai.fastowin.state.ConnectionStatus.CONNECTED &&
-        state.currentRoomId == null && !state.isMatchStarted && !state.isGameOver &&
-        !state.isMatchmaking && practiceMode == null
+        state.canOpenPushInbox && practiceMode == null
     LaunchedEffect(notificationInboxRequested, canOpenPushInbox) {
         if (notificationInboxRequested && canOpenPushInbox && AppDeepLinkRouter.consumeNotificationInboxRequest()) {
             closeLocalScreens()

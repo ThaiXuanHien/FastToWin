@@ -312,6 +312,7 @@ class GameController private constructor(
             }
             state.copy(
                 connectionStatus = status,
+                isSessionRestored = state.isSessionRestored && status == ConnectionStatus.CONNECTED,
                 isClanSocialReady = state.isClanSocialReady && status == ConnectionStatus.CONNECTED,
                 isNotificationsLoading = state.isNotificationsLoading && status == ConnectionStatus.CONNECTED,
                 notificationsError = if (state.isNotificationsLoading && status != ConnectionStatus.CONNECTED)
@@ -1268,6 +1269,10 @@ class GameController private constructor(
                     }
                 } else if (wasRecoveringRoom) {
                     returnToRoomBrowser(messageMapper.text(TextKey.RoomDisconnectedTooLongNotice))
+                }
+                // A connected socket can be observed before the restored room is applied.
+                if (socket.connectionState.value == SocketConnectionState.CONNECTED) {
+                    _uiState.update { it.copy(isSessionRestored = true) }
                 }
             }
 
