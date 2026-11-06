@@ -132,6 +132,7 @@ data class GameState(
     val matchmakingRatingRange: Int = 100,
     val playFlowRejection: PlayFlowRejection? = null,
     val connectionStatus: ConnectionStatus = ConnectionStatus.DISCONNECTED,
+    internal val isSessionRestored: Boolean = false,
     val availableRooms: List<AvailableRoom> = emptyList(),
     val roomListVersion: Long = 0,
     val pendingRoomLinkId: String? = null,
@@ -255,6 +256,10 @@ data class GameState(
             }
         }
 }
+
+internal val GameState.canOpenPushInbox: Boolean
+    get() = isSessionRestored && connectionStatus == ConnectionStatus.CONNECTED && currentRoomId == null &&
+        !isMatchStarted && !isGameOver && !isMatchmaking
 
 internal fun GameState.prepareForMatchStart(): GameState = copy(
     isProfileOpen = false,

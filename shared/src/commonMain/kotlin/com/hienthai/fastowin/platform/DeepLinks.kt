@@ -12,8 +12,20 @@ import kotlinx.coroutines.flow.asStateFlow
 data class RoomDeepLink(val roomId: String)
 
 object AppDeepLinkRouter {
+    private val mutableNotificationInboxRequested = MutableStateFlow(false)
+    internal val notificationInboxRequested = mutableNotificationInboxRequested.asStateFlow()
+
     fun openUri(uri: String): Boolean =
-        RoomDeepLinkRouter.openUri(uri) || ChallengeDeepLinkRouter.openUri(uri)
+        when (uri) {
+            "fasttowin://notifications" -> {
+                mutableNotificationInboxRequested.value = true
+                true
+            }
+            else -> RoomDeepLinkRouter.openUri(uri) || ChallengeDeepLinkRouter.openUri(uri)
+        }
+
+    internal fun consumeNotificationInboxRequest(): Boolean =
+        mutableNotificationInboxRequested.compareAndSet(expect = true, update = false)
 }
 
 object RoomDeepLinkRouter {

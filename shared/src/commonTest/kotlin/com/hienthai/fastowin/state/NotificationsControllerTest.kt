@@ -5,6 +5,7 @@ import com.hienthai.fastowin.protocol.*
 import io.ktor.websocket.Frame
 import io.ktor.websocket.readText
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.*
 import kotlin.test.*
 
@@ -54,11 +55,42 @@ class NotificationsControllerTest {
             assertFalse(f.controller.uiState.value.hasLoadedNotifications)
         } finally { f.controller.close() }
     }
-    private class Fixture(val test: TestScope) {
+    @Test fun `push inbox stays pending through session restoration and the resumed match`() = runTest {
+        val f = Fixture(this, ready = false)
+        val observed = mutableListOf<GameState>()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            f.controller.uiState.collect { observed += it }
+        }
+        try {
+            val game = GameSnapshot(
+                roomId = "resumed-room", roomName = "Resumed match", hostId = "owner",
+                gameMode = ProtocolGameMode.ORDER, phase = RoomPhase.PLAYING,
+                players = listOf(PlayerSnapshot(id = "owner", name = "Owner", score = 0))
+            )
+            f.server(ServerMessage.SessionReady("owner", currentGame = game))
+
+            assertTrue(observed.any { it.connectionStatus == ConnectionStatus.CONNECTED && it.currentRoomId == null })
+            assertFalse(observed.any { it.canOpenPushInbox })
+            assertEquals(game.roomId, f.controller.uiState.value.currentRoomId)
+            assertTrue(f.controller.uiState.value.isMatchStarted)
+
+            f.transport.session.incoming.close()
+            runCurrent()
+            f.controller.retryConnection()
+            runCurrent()
+            f.server(ServerMessage.SessionReady("owner"))
+            assertTrue(f.controller.uiState.value.canOpenPushInbox)
+        } finally { f.controller.close() }
+    }
+
+    private class Fixture(val test: TestScope, ready: Boolean = true) {
         val transport = Transport()
         val controller = GameController("ws://test", InMemoryResumeTokenStore(), transport,
             test.backgroundScope, "Owner", { "access" })
-        init { test.runCurrent(); server(ServerMessage.SessionReady("owner")) }
+        init {
+            test.runCurrent()
+            if (ready) server(ServerMessage.SessionReady("owner"))
+        }
         fun server(message: ServerMessage) { transport.session.server(message); test.runCurrent() }
     }
     private class Transport : SocketTransport {

@@ -5,36 +5,38 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
-import android.os.Build
 import androidx.core.app.NotificationCompat
+import androidx.core.app.NotificationManagerCompat
 import com.google.firebase.messaging.FirebaseMessagingService
 import com.google.firebase.messaging.RemoteMessage
+
+internal const val PUSH_DESTINATION = "destination"
+internal const val PUSH_INBOX_PATH = "/notifications"
 
 class MyFirebaseMessagingService : FirebaseMessagingService() {
     override fun onNewToken(token: String) {
         super.onNewToken(token)
-        // Store or broadcast token for GameController to pick up
-        getSharedPreferences("fcm", Context.MODE_PRIVATE).edit().putString("fcm_token", token).apply()
+        getSharedPreferences(FCM_PREFERENCES, Context.MODE_PRIVATE).edit().putString(FCM_TOKEN, token).apply()
     }
 
     override fun onMessageReceived(remoteMessage: RemoteMessage) {
         super.onMessageReceived(remoteMessage)
         val notification = remoteMessage.notification ?: return
         
+        if (!NotificationManagerCompat.from(this).areNotificationsEnabled()) return
+
         val channelId = "fast_to_win_channel"
         val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(channelId, "Fast To Win Notifications", NotificationManager.IMPORTANCE_DEFAULT)
-            notificationManager.createNotificationChannel(channel)
-        }
-        
+        val channel = NotificationChannel(channelId, "Fast To Win Notifications", NotificationManager.IMPORTANCE_DEFAULT)
+        notificationManager.createNotificationChannel(channel)
+
+        val opensInbox = remoteMessage.data[PUSH_DESTINATION] == PUSH_INBOX_PATH
         val intent = Intent(this, MainActivity::class.java).apply {
             addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
+            if (opensInbox) putExtra(PUSH_DESTINATION, PUSH_INBOX_PATH)
         }
         val pendingIntent = PendingIntent.getActivity(
-            this, 0, intent,
-            PendingIntent.FLAG_ONE_SHOT or PendingIntent.FLAG_IMMUTABLE
+            this, if (opensInbox) 1 else 0, intent, PendingIntent.FLAG_IMMUTABLE
         )
         
         val builder = NotificationCompat.Builder(this, channelId)

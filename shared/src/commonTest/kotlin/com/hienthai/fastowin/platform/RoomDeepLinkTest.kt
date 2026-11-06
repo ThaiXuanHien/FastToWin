@@ -2,6 +2,7 @@ package com.hienthai.fastowin.platform
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -33,5 +34,16 @@ class RoomDeepLinkTest {
         assertNull(parseRoomDeepLink("https://example.com/room/abc"))
         assertNull(parseRoomDeepLink("fasttowin://room/../../secret"))
         assertNull(parseRoomDeepLink("fasttowin://profile/player"))
+    }
+
+    @Test
+    fun appRouterAcceptsOnlyTheExactNotificationInboxLink() {
+        assertFalse(AppDeepLinkRouter.openUri("https://example.com/notifications"))
+        assertFalse(AppDeepLinkRouter.openUri("fasttowin://notifications/other"))
+        assertFalse(AppDeepLinkRouter.openUri("fasttowin://notifications?next=https://example.com"))
+        assertFalse(AppDeepLinkRouter.consumeNotificationInboxRequest())
+        assertTrue(AppDeepLinkRouter.openUri("fasttowin://notifications"))
+        assertTrue(AppDeepLinkRouter.consumeNotificationInboxRequest())
+        assertFalse(AppDeepLinkRouter.consumeNotificationInboxRequest())
     }
 }
