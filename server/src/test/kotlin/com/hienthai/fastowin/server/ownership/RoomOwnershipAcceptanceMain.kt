@@ -185,7 +185,11 @@ internal class RoomAcceptanceFixture(val settings: RoomAcceptanceSettings) : Aut
         val backend = index % backendCount
         val host = connect(users[index * 2], backend)
         val guest = connect(users[index * 2 + 1], (backend + 1) % backendCount)
-        var createdRoomId: String? = null
+        // SessionReady carries an existing room when a previous recycle attempt
+        // failed after admission. Keep that id so the cleanup path can release
+        // the pair before the next retry; otherwise CreateRoom is rejected while
+        // the stale membership remains in the fixture.
+        var createdRoomId: String? = host.ready.currentGame?.roomId ?: guest.ready.currentGame?.roomId
         try {
             host.send(ClientMessage.CreateRoom("Acceptance $index", "PrivateAcceptance123!", ProtocolGameMode.ORDER))
             val created = host.await(timeoutMillis = 25_000) { it is ServerMessage.RoomCreated } as ServerMessage.RoomCreated
