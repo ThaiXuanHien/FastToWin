@@ -185,10 +185,12 @@ internal class RoomAcceptanceFixture(val settings: RoomAcceptanceSettings) : Aut
         val backend = index % backendCount
         val host = connect(users[index * 2], backend)
         val guest = connect(users[index * 2 + 1], (backend + 1) % backendCount)
+        var createdRoomId: String? = null
         try {
             host.send(ClientMessage.CreateRoom("Acceptance $index", "PrivateAcceptance123!", ProtocolGameMode.ORDER))
             val created = host.await(timeoutMillis = 25_000) { it is ServerMessage.RoomCreated } as ServerMessage.RoomCreated
             val id = created.game.roomId
+            createdRoomId = id
             guest.send(ClientMessage.JoinRoom(id, "PrivateAcceptance123!"))
             host.await(timeoutMillis = 25_000) { it is ServerMessage.RoomUpdated && it.game.players.size == 2 }
             guest.await(timeoutMillis = 25_000) { it is ServerMessage.RoomUpdated && it.game.players.size == 2 }
@@ -203,6 +205,10 @@ internal class RoomAcceptanceFixture(val settings: RoomAcceptanceSettings) : Aut
             check(started.game == other.game)
             return AcceptanceMatch(this, listOf(users[index * 2], users[index * 2 + 1]), mutableListOf(host, guest), started.game, backend)
         } catch (failure: Throwable) {
+            createdRoomId?.let { roomId ->
+                runCatching { host.send(ClientMessage.LeaveRoom(roomId)) }
+                runCatching { guest.send(ClientMessage.LeaveRoom(roomId)) }
+            }
             host.close(); guest.close()
             throw failure
         }
