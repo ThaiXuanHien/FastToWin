@@ -118,6 +118,7 @@ internal class RoomAcceptanceFixture(val settings: RoomAcceptanceSettings) : Aut
     }
     private var cachedAccounts: List<AcceptanceAccount>? = null
     private val ownerNodes = ConcurrentHashMap<UUID, Int>()
+    private val recycleMutex = Mutex()
     @Volatile var intentionallyUnavailableBackend: Int? = null
 
     suspend fun verifyFixture() = withContext(Dispatchers.IO) {
@@ -166,25 +167,26 @@ internal class RoomAcceptanceFixture(val settings: RoomAcceptanceSettings) : Aut
     suspend fun createWaitingMatch(index: Int) = createMatch(index, start = false)
 
     suspend fun createMatchWithRetry(index: Int): AcceptanceMatch {
-        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(25)
-        var last: Throwable? = null
-        while (System.nanoTime() < deadline) {
-            try { return createMatch(index) }
-            catch (failure: Exception) {
-                currentCoroutineContext().ensureActive()
-                last = failure
-                delay(100)
+        return recycleMutex.withLock {
+            val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(25)
+            var last: Throwable? = null
+            while (System.nanoTime() < deadline) {
+                try { return@withLock createMatch(index) }
+                catch (failure: Exception) {
+                    currentCoroutineContext().ensureActive()
+                    last = failure
+                    delay(100)
+                }
             }
+            throw IllegalStateException("Fixture room creation did not recover in 25 seconds", last)
         }
-        throw IllegalStateException("Fixture room creation did not recover in 25 seconds", last)
     }
 
     suspend fun createMatch(index: Int, start: Boolean = true): AcceptanceMatch {
         val users = accounts()
         require(index * 2 + 1 < users.size)
         val backend = index % backendCount
-        val host = connect(users[index * 2], backend)
-        val guest = connect(users[index * 2 + 1], (backend + 1) % backendCount)
+        val (host, guest) = connectPair(users[index * 2], backend, users[index * 2 + 1], (backend + 1) % backendCount)
         // SessionReady carries an existing room when a previous recycle attempt
         // failed after admission. Keep that id so the cleanup path can release
         // the pair before the next retry; otherwise CreateRoom is rejected while
@@ -192,22 +194,22 @@ internal class RoomAcceptanceFixture(val settings: RoomAcceptanceSettings) : Aut
         var createdRoomId: String? = host.ready.currentGame?.roomId ?: guest.ready.currentGame?.roomId
         try {
             host.send(ClientMessage.CreateRoom("Acceptance $index", "PrivateAcceptance123!", ProtocolGameMode.ORDER))
-            val created = host.await(timeoutMillis = 25_000) { it is ServerMessage.RoomCreated } as ServerMessage.RoomCreated
+            val created = host.await(25_000, "host RoomCreated") { it is ServerMessage.RoomCreated } as ServerMessage.RoomCreated
             val id = created.game.roomId
             createdRoomId = id
             guest.send(ClientMessage.JoinRoom(id, "PrivateAcceptance123!"))
-            host.await(timeoutMillis = 25_000) { it is ServerMessage.RoomUpdated && it.game.players.size == 2 }
-            guest.await(timeoutMillis = 25_000) { it is ServerMessage.RoomUpdated && it.game.players.size == 2 }
+            host.await(25_000, "host join update") { it is ServerMessage.RoomUpdated && it.game.players.size == 2 }
+            guest.await(25_000, "guest join update") { it is ServerMessage.RoomUpdated && it.game.players.size == 2 }
             host.send(ClientMessage.SetReady(id, true))
-            val waiting = host.await(timeoutMillis = 25_000) { it is ServerMessage.RoomUpdated } as ServerMessage.RoomUpdated
-            guest.await(timeoutMillis = 25_000) { it is ServerMessage.RoomUpdated }
-            ownerNodes[snapshot(id).instanceId] = backend
-            if (!start) return AcceptanceMatch(this, listOf(users[index * 2], users[index * 2 + 1]), mutableListOf(host, guest), waiting.game, backend)
+            val waiting = host.await(25_000, "host ready update") { it is ServerMessage.RoomUpdated } as ServerMessage.RoomUpdated
+            guest.await(25_000, "guest ready update") { it is ServerMessage.RoomUpdated }
+            ownerNodes[snapshot(id).instanceId] = host.backend
+            if (!start) return AcceptanceMatch(this, listOf(users[index * 2], users[index * 2 + 1]), mutableListOf(host, guest), waiting.game, host.backend)
             guest.send(ClientMessage.SetReady(id, true))
-            val started = host.await(timeoutMillis = 25_000) { it is ServerMessage.GameStarted } as ServerMessage.GameStarted
-            val other = guest.await(timeoutMillis = 25_000) { it is ServerMessage.GameStarted } as ServerMessage.GameStarted
+            val started = host.await(25_000, "host GameStarted") { it is ServerMessage.GameStarted } as ServerMessage.GameStarted
+            val other = guest.await(25_000, "guest GameStarted") { it is ServerMessage.GameStarted } as ServerMessage.GameStarted
             check(started.game == other.game)
-            return AcceptanceMatch(this, listOf(users[index * 2], users[index * 2 + 1]), mutableListOf(host, guest), started.game, backend)
+            return AcceptanceMatch(this, listOf(users[index * 2], users[index * 2 + 1]), mutableListOf(host, guest), started.game, host.backend)
         } catch (failure: Throwable) {
             createdRoomId?.let { roomId ->
                 runCatching { host.send(ClientMessage.LeaveRoom(roomId)) }
@@ -219,7 +221,7 @@ internal class RoomAcceptanceFixture(val settings: RoomAcceptanceSettings) : Aut
             runCatching {
                 awaitMembershipsCleared(listOf(users[index * 2].userId, users[index * 2 + 1].userId))
             }
-            host.close(); guest.close()
+            host.closeGracefully(); guest.closeGracefully()
             throw failure
         }
     }
@@ -242,6 +244,16 @@ internal class RoomAcceptanceFixture(val settings: RoomAcceptanceSettings) : Aut
         }
     }
 
+    suspend fun connectPair(host: AcceptanceAccount, hostBackend: Int, guest: AcceptanceAccount, guestBackend: Int): List<AcceptanceSocket> {
+        val first = connect(host, hostBackend)
+        try {
+            return listOf(first, connect(guest, guestBackend))
+        } catch (failure: Throwable) {
+            first.close()
+            throw failure
+        }
+    }
+
     suspend fun connect(account: AcceptanceAccount, preferred: Int): AcceptanceSocket {
         val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(25)
         var last: Exception? = null
@@ -252,9 +264,9 @@ internal class RoomAcceptanceFixture(val settings: RoomAcceptanceSettings) : Aut
                     val socket = AcceptanceSocket(client.webSocketSession(settings.urls[node].replace("http:", "ws:") + "/game"), node)
                     try {
                         socket.send(ClientMessage.ConnectAccount(account.accessToken))
-                        socket.ready = socket.await(timeoutMillis = 25_000) { it is ServerMessage.SessionReady } as ServerMessage.SessionReady
+                        socket.ready = socket.await(25_000, "SessionReady") { it is ServerMessage.SessionReady } as ServerMessage.SessionReady
                         return socket
-                    } catch (failure: Throwable) { socket.close(); throw failure }
+                    } catch (failure: Throwable) { socket.closeGracefully(); throw failure }
                 } catch (failure: Exception) {
                     currentCoroutineContext().ensureActive()
                     if (failure is AcceptanceRejected && failure.code !in RETRYABLE_CODES) throw failure
@@ -344,24 +356,38 @@ internal class RoomAcceptanceFixture(val settings: RoomAcceptanceSettings) : Aut
         metric(it, "fasttowin_room_ownership_pool_active_connections") / metric(it, "fasttowin_room_ownership_pool_max_connections")
     }
 
-    suspend fun faultOwner(match: AcceptanceMatch, hardKill: Boolean = true, matchLocked: Boolean = false): Long {
+    suspend fun faultOwner(match: AcceptanceMatch): Long = faultOwners(listOf(match), hardKill = true)
+
+    suspend fun faultOwners(matches: List<AcceptanceMatch>, hardKill: Boolean): Long {
+        require(matches.isNotEmpty())
         requireBothReady()
-        val before = snapshot(match.roomId)
-        val owner = ownerFor(before)
+        val before = matches.associateWith { snapshot(it.roomId) }
+        val owner = ownerFor(before.values.first())
+        check(before.values.all { ownerFor(it) == owner }) { "Fault batch must share one owner process" }
         intentionallyUnavailableBackend = owner
         val started = System.nanoTime()
         var primaryFailure: Throwable? = null
         try {
             docker(if (hardKill) "kill" else "pause", nodeName(owner))
-            if (matchLocked) match.reconnectInternalWithRetry() else match.reconnect()
+            // Measure reconnect from the outage, including the peer worker's lease takeover.
+            coroutineScope {
+                matches.map { match ->
+                    async { match.reconnect() }
+                }.awaitAll()
+            }
+            val after = matches.associateWith { match ->
+                awaitStored(match.roomId) { it.epoch > checkNotNull(before[match]).epoch }
+            }
+            after.forEach { (match, receipt) ->
+                val previous = checkNotNull(before[match])
+                ownerNodes[receipt.instanceId] = 1 - owner
+                check(receipt.snapshot.selectedNumbers == previous.snapshot.selectedNumbers) { "A committed board changed during failover" }
+                check(receipt.snapshot.matchId == previous.snapshot.matchId && receipt.snapshot.numbers == previous.snapshot.numbers &&
+                    receipt.snapshot.scores == previous.snapshot.scores && receipt.snapshot.sequence >= previous.snapshot.sequence)
+                match.ownerBackend = 1 - owner
+            }
             val elapsed = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started)
-            val after = awaitStored(match.roomId) { it.epoch > before.epoch }
-            ownerNodes[after.instanceId] = 1 - owner
-            check(after.snapshot.selectedNumbers == before.snapshot.selectedNumbers) { "A committed board changed during failover" }
-            check(after.snapshot.matchId == before.snapshot.matchId && after.snapshot.numbers == before.snapshot.numbers &&
-                after.snapshot.scores == before.snapshot.scores && after.snapshot.sequence >= before.snapshot.sequence)
-            check(elapsed <= 25_000)
-            match.ownerBackend = 1 - owner
+            check(elapsed <= 25_000) { "Owner recovery took ${elapsed}ms (limit 25000ms)" }
             return elapsed
         } catch (failure: Throwable) {
             primaryFailure = failure
@@ -378,19 +404,6 @@ internal class RoomAcceptanceFixture(val settings: RoomAcceptanceSettings) : Aut
                 if (primaryFailure != null) primaryFailure.addSuppressed(restartFailure) else throw restartFailure
             } finally { intentionallyUnavailableBackend = null }
         }
-    }
-
-    suspend fun recoverAfterPartialFault(match: AcceptanceMatch, before: StoredRoomReceipt): Long? {
-        val after = runCatching { snapshot(match.roomId) }.getOrNull() ?: return null
-        if (after.epoch <= before.epoch) return null
-        val currentOwner = ownerFor(after)
-        match.ownerBackend = currentOwner
-        return runCatching {
-            val started = System.nanoTime()
-            match.reconnect()
-            check(after.snapshot.matchId == match.matchId)
-            TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started)
-        }.getOrNull()
     }
 
     fun ownerFor(receipt: StoredRoomReceipt): Int = checkNotNull(ownerNodes[receipt.instanceId]) { "Unknown fixture owner process" }
@@ -433,7 +446,7 @@ internal data class StoredRoomReceipt(val epoch: Long, val revision: Long, val s
 internal class AcceptanceSocket(val session: DefaultClientWebSocketSession, val backend: Int) {
     lateinit var ready: ServerMessage.SessionReady
     suspend fun send(message: ClientMessage) = session.send(ProtocolJson.encodeToString<ClientMessage>(message))
-    suspend fun await(timeoutMillis: Long = 8_000, predicate: (ServerMessage) -> Boolean): ServerMessage = try {
+    suspend fun await(timeoutMillis: Long = 8_000, expected: String = "protocol response", predicate: (ServerMessage) -> Boolean): ServerMessage = try {
         withTimeout(timeoutMillis) {
             for (frame in session.incoming) if (frame is Frame.Text) {
                 val message = ProtocolJson.decodeFromString<ServerMessage>(frame.readText())
@@ -443,7 +456,13 @@ internal class AcceptanceSocket(val session: DefaultClientWebSocketSession, val 
             error("Fixture websocket closed")
         }
     } catch (timeout: kotlinx.coroutines.TimeoutCancellationException) {
-        throw IllegalStateException("Fixture websocket await timed out after ${timeoutMillis}ms on backend $backend", timeout)
+        throw IllegalStateException("Fixture timed out waiting for $expected after ${timeoutMillis}ms on backend $backend", timeout)
+    }
+    suspend fun closeGracefully() {
+        runCatching {
+            withTimeout(1_000) { session.close(CloseReason(CloseReason.Codes.NORMAL, "fixture recycle")) }
+        }
+        session.cancel()
     }
     fun close() { session.cancel() }
 }
@@ -517,7 +536,6 @@ internal class AcceptanceMatch(
         throw IllegalStateException("Fixture socket reconnect failed", last)
     }
 
-    internal suspend fun <T> withFaultLock(block: suspend () -> T): T = mutex.withLock { block() }
     suspend fun reconnect(preserveOldSockets: Boolean = false): Long = mutex.withLock {
         val start = System.nanoTime()
         var last: Throwable? = null
@@ -535,9 +553,27 @@ internal class AcceptanceMatch(
     }
 
     private suspend fun reconnectInternal(preserveOldSockets: Boolean = false) {
-        if (!preserveOldSockets) sockets.forEach { it.close() }
-        val newSockets = accounts.map { fixture.connect(it, if (fixture.intentionallyUnavailableBackend == ownerBackend) 1 - ownerBackend else ownerBackend) }
+        if (!preserveOldSockets) {
+            for (socket in sockets) socket.closeGracefully()
+        }
+        val backend = if (fixture.intentionallyUnavailableBackend == ownerBackend) 1 - ownerBackend else ownerBackend
+        val newSockets = fixture.connectPair(accounts[0], backend, accounts[1], backend)
+        val snapshots = try {
+            verifyReconnectSnapshots(newSockets)
+        } catch (failure: Throwable) {
+            newSockets.forEach { it.close() }
+            throw failure
+        }
         sockets.clear(); sockets.addAll(newSockets)
+        lastSnapshot = snapshots.last()
+        if (lastSnapshot.phase != RoomPhase.WAITING) {
+            stableMatchId = lastSnapshot.matchId
+            stableBoard = lastSnapshot.numbers
+        }
+        nextNumber = lastSnapshot.currentTarget
+    }
+
+    private fun verifyReconnectSnapshots(newSockets: List<AcceptanceSocket>): List<GameSnapshot> {
         val snapshots = newSockets.map { checkNotNull(it.ready.currentGame) { "Match membership was lost during recovery" } }
         check(snapshots.all { it.roomId == roomId && it.matchId == snapshots[0].matchId && it.selectedNumbers == snapshots[0].selectedNumbers })
         for (snapshot in snapshots) {
@@ -550,12 +586,7 @@ internal class AcceptanceMatch(
                 check(current.score >= player.score && current.correctSelections >= player.correctSelections) { "Recovery lost points" }
             }
         }
-        lastSnapshot = snapshots.last()
-        if (lastSnapshot.phase != RoomPhase.WAITING) {
-            stableMatchId = lastSnapshot.matchId
-            stableBoard = lastSnapshot.numbers
-        }
-        nextNumber = lastSnapshot.currentTarget
+        return snapshots
     }
 
     suspend fun verifyEconomy() = withContext(Dispatchers.IO) {
@@ -606,7 +637,7 @@ internal class AcceptanceMatch(
                 socket.send(ClientMessage.LeaveRoom(roomId))
                 socket.await { it is ServerMessage.RoomClosed || it is ServerMessage.GameFinished }
             } catch (failure: Exception) { currentCoroutineContext().ensureActive() }
-            socket.close()
+            socket.closeGracefully()
         }
     }
 }

@@ -8,8 +8,6 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.currentCoroutineContext
-import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -128,33 +126,11 @@ internal suspend fun runRoomOwnershipLoad(fixture: RoomAcceptanceFixture): LoadR
                     if (offset >= fixture.durationSeconds) break
                     delayUntil(started + offset * NANOS_PER_SECOND)
                     val selected = slots[Math.floorMod(fixture.seed + faultIndex, slots.size)]
-                    selected.mutex.withLock {
-                        var elapsed: Long? = null
-                        var lastFailure: Throwable? = null
-                        repeat(3) {
-                            if (elapsed != null) return@repeat
-                                val before = fixture.snapshot(checkNotNull(selected.match).roomId)
-                            try {
-                                val match = checkNotNull(selected.match)
-                                elapsed = match.withFaultLock {
-                                    fixture.faultOwner(match, hardKill = false, matchLocked = true)
-                                }
-                            }
-                            catch (failure: Exception) {
-                                currentCoroutineContext().ensureActive()
-                                    elapsed = fixture.recoverAfterPartialFault(checkNotNull(selected.match), before)
-                                    if (elapsed != null) return@repeat
-                                lastFailure = failure
-                                delay(100)
-                            }
-                        }
-                        check(elapsed != null) { "Owner-stop fault did not reconnect after retries: ${lastFailure?.javaClass?.simpleName}" }
-                        val recovery = checkNotNull(elapsed)
-                        check(recovery in 0..RECOVERY_LIMIT_MILLIS) {
-                            "Independent owner stop ${faultIndex + 1} exceeded 25 seconds: ${recovery}ms"
-                        }
-                        recoveries += recovery
+                    val recovery = stopSlotOwner(fixture, slots, selected)
+                    check(recovery in 0..RECOVERY_LIMIT_MILLIS) {
+                        "Independent owner stop ${faultIndex + 1} exceeded 25 seconds: ${recovery}ms"
                     }
+                    recoveries += recovery
                 }
             }
         }
@@ -216,7 +192,7 @@ internal suspend fun runRoomOwnershipLoad(fixture: RoomAcceptanceFixture): LoadR
                                 slot.matchOrdinal++
                                 // Keep twenty live slots until all scheduled selections are offered.
                                 if (due + SELECTION_INTERVAL_NANOS < deadline) {
-                                slot.attach(fixture.createMatchWithRetry(slot.index))
+                                    slot.attach(fixture.createMatchWithRetry(slot.index))
                                     slot.nextNumber = 1
                                     slot.lastSequence = -1
                                     slot.correctSelections.fill(0)
@@ -360,6 +336,30 @@ private suspend fun delayUntil(deadlineNanos: Long) {
         val remaining = deadlineNanos - System.nanoTime()
         if (remaining <= 0) return
         delay((remaining / 1_000_000).coerceAtLeast(1))
+    }
+}
+
+private suspend fun stopSlotOwner(fixture: RoomAcceptanceFixture, slots: List<LoadRoomSlot>, selected: LoadRoomSlot): Long {
+    val locked = mutableListOf<LoadRoomSlot>()
+    try {
+        // A slot replaces its match while holding its mutex. Take a consistent
+        // set of matches, then let slots on the other owner keep playing.
+        for (slot in slots) {
+            slot.mutex.lock()
+            locked.add(slot)
+        }
+        val owner = checkNotNull(selected.match).ownerBackend
+        val iterator = locked.iterator()
+        while (iterator.hasNext()) {
+            val slot = iterator.next()
+            if (slot.match?.ownerBackend != owner) {
+                slot.mutex.unlock()
+                iterator.remove()
+            }
+        }
+        return fixture.faultOwners(locked.map { checkNotNull(it.match) }, hardKill = false)
+    } finally {
+        locked.asReversed().forEach { it.mutex.unlock() }
     }
 }
 

@@ -380,7 +380,10 @@ internal suspend fun runRoomOwnershipFaults(fixture: RoomAcceptanceFixture): Roo
             fixture.docker("stop", "postgres")
             postgresStopped = true
             match.sendWithoutReading(ClientMessage.SelectNumber(match.roomId, number, request))
-            val errors = noAcceptedSelection(match.socket(0), number, 6_000)
+            val observationStarted = System.nanoTime()
+            val observation = noAcceptedSelection(match.socket(0), number, 25_000, request)
+            val observationMillis = elapsedMillis(observationStarted)
+            check(observation.endedBy != "deadline") { "The outage request was still pending when observation ended" }
             fixture.docker("start", "postgres")
             postgresStopped = false
             fixture.awaitReady(0); fixture.awaitReady(1)
@@ -392,8 +395,9 @@ internal suspend fun runRoomOwnershipFaults(fixture: RoomAcceptanceFixture): Roo
             val after = requireSelection(fixture, match, request, number)
             match.verifyEconomy()
             receipt("postgres-stop-no-optimistic-ack", match, before, after, null,
-                "outageAcceptedAck" to "false", "outageObservationMillis" to "6000",
-                "outageErrorCodes" to errors.sorted().joinToString(","),
+                "outageAcceptedAck" to "false", "outageObservationMillis" to observationMillis.toString(),
+                "outageRequestEndedBy" to observation.endedBy,
+                "outageErrorCodes" to observation.errorCodes.sorted().joinToString(","),
                 "requestAbsentBeforeRecoveryRetry" to "true", "requestCountAfterRecovery" to "1")
         } finally {
             if (postgresStopped) fixture.docker("start", "postgres")
@@ -455,16 +459,27 @@ private suspend fun requireSettlement(fixture: RoomAcceptanceFixture, matchId: S
 }
 
 /** Reads every text frame; an optimistic state containing the selection fails even without a formal ACK. */
-private suspend fun noAcceptedSelection(socket: AcceptanceSocket, number: Int, durationMillis: Long): Set<String> {
+private data class NoAckObservation(val endedBy: String, val errorCodes: Set<String>)
+
+private suspend fun noAcceptedSelection(
+    socket: AcceptanceSocket, number: Int, durationMillis: Long, requestId: String? = null
+): NoAckObservation {
     val errors = mutableSetOf<String>()
     val deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(durationMillis)
     while (true) {
         val remaining = TimeUnit.NANOSECONDS.toMillis(deadline - System.nanoTime())
-        if (remaining <= 0) return errors
-        val frame = withTimeoutOrNull(remaining.coerceAtLeast(1)) { socket.session.incoming.receiveCatching().getOrNull() } ?: return errors
+        if (remaining <= 0) return NoAckObservation("deadline", errors)
+        val received = withTimeoutOrNull(remaining.coerceAtLeast(1)) { socket.session.incoming.receiveCatching() }
+            ?: return NoAckObservation("deadline", errors)
+        val frame = received.getOrNull() ?: return NoAckObservation("socket-closed", errors)
         if (frame is Frame.Text) {
             when (val message = ProtocolJson.decodeFromString<ServerMessage>(frame.readText())) {
-                is ServerMessage.Error -> errors += message.code
+                is ServerMessage.Error -> {
+                    errors += message.code
+                    if (requestId != null && message.requestId == requestId && message.code == "ROOM_RECOVERING") {
+                        return NoAckObservation("request-rejected", errors)
+                    }
+                }
                 is ServerMessage.GameStateUpdated -> {
                     check(!message.selectionAccepted || message.acceptedNumber != number) {
                         "An unavailable dependency produced an accepted selection ACK"
