@@ -29,7 +29,7 @@ Paths below use `S = server/src/main/kotlin/com/hienthai/fastowin/server` and `T
 | Task | Files to create or modify | Responsibility |
 | --- | --- | --- |
 | 1 | `server/src/main/resources/db/migration/V70__room_ownership_pilot.sql`, `S/ownership/RoomOwnership.kt`, `S/ownership/PostgresRoomOwnershipRepository.kt`, `T/ownership/PostgresRoomOwnershipRepositoryTest.kt` | Authority, session fence, membership, event log and commit contract. `V70` follows current `V69`. |
-| 2 | `S/ownership/OwnedMatchEconomy.kt`, `S/PostgresPlayQuotaRepository.kt`, `S/PostgresMatchResultRepository.kt`, `T/ownership/PostgresOwnedMatchEconomyTest.kt` | Reuse quota and result SQL on the fenced room transaction. |
+| 2 | `server/src/main/resources/db/migration/V71__room_ownership_pilot_settlements.sql`, `S/ownership/OwnedMatchEconomy.kt`, `S/PostgresPlayQuotaRepository.kt`, `S/PostgresMatchResultRepository.kt`, `T/ownership/PostgresOwnedMatchEconomyTest.kt` | Reuse quota and result SQL on the fenced room transaction and keep a durable settlement digest. |
 | 3 | `S/ownership/OwnedRoomEngine.kt`, `S/GameEngine.kt`, `S/ActiveRoomRepository.kt`, `T/ownership/OwnedRoomEngineTest.kt` | Private classic room commands, durable replay and owner recovery. |
 | 4 | `S/ownership/RoomOwnershipPilot.kt`, `S/ownership/OwnerCommandRoutes.kt`, `S/ownership/RoomEventDelivery.kt`, `S/Application.kt`, `S/Main.kt`, `server/build.gradle.kts`, `T/ownership/RoomOwnershipNettyTest.kt` | Wire the normal WebSocket path, private routing and authorized delivery. Add an existing version-catalog Ktor client dependency only if needed for private HTTP. |
 | 5 | `S/ownership/RoomOwnershipMetrics.kt`, `S/ServerMetrics.kt`, `S/ownership/RoomOwnershipPilot.kt`, `deploy/room-ownership/compose.local.yaml`, `deploy/room-ownership/Caddyfile`, `T/ownership/RoomOwnershipReadinessTest.kt` | Readiness, drain and an isolated two-process configuration with a test proxy. |
@@ -70,7 +70,7 @@ Task 1 verification on 07/11/2026 used an isolated PostgreSQL 18.6 instance, sep
 
 **Interfaces:** Consume `withFencedRoom` from Task 1. Add connection-scoped helpers to the existing repositories, `reserveAndFinalizeMatch(connection, userIds, matchId, nowMillis): PlayQuotaConsumption` and `saveMatch(connection, completed): MatchWriteOutcome`, with `INSERTED`, `ALREADY_SAVED` and `CONFLICT`. `OwnedMatchEconomy` calls these helpers inside the room transaction for start and settlement. Provide `start(fence, revision, socket, candidate): FencedResult` and `settle(fence, revision): FencedResult`.
 
-- [ ] Add cases for repeated start, a committed settlement whose response was lost, settlement attempted by a stale owner, and a second payload for the same match ID. Assert actual `matches`, quota, player-stat and reward ledger deltas. Use two real JDBC transactions and reconcile a lost response by reading the committed room and result.
+- [x] Add cases for repeated start, a committed settlement whose response was lost, settlement attempted by a stale owner, and a second payload for the same match ID. Assert actual `matches`, quota, player-stat and reward ledger deltas. Use two real JDBC transactions and reconcile a lost response by reading the committed room and result.
 
   ```kotlin
   fixture.startAndDropReply(ownerA, matchId)
@@ -82,9 +82,11 @@ Task 1 verification on 07/11/2026 used an isolated PostgreSQL 18.6 instance, sep
   assertEquals(fixture.expectedRewardOnce, fixture.rewardDelta(hostId))
   ```
 
-- [ ] Run `./gradlew.bat :server:test --tests '*PostgresOwnedMatchEconomyTest'` and observe the expected failures.
-- [ ] Extract connection-scoped SQL from the existing start and result helpers. Keep their existing wrappers for single-backend callers. For pilot start, reserve and finalize the existing quota on the same connection that records the stable `matchId` and playing snapshot. For settlement, lock the room first and use the pending completion stored in its committed snapshot as the input. Compare an existing result using a canonical digest of the accepted completion payload recorded by the pilot transaction. A mismatched digest returns `CONFLICT` before rewards and increments the integrity metric. Retry preserves the digest, receipt and `matchId`. Commit the settlement marker and cleared pending completion with the match result and reward side effects. Keep the legacy global `recoverPreparedMatches` sweep out of the pilot runtime.
-- [ ] Rerun `./gradlew.bat :server:test --tests '*PostgresOwnedMatchEconomyTest' --tests '*PostgresPlayQuotaRepositoryTest' --tests '*PostgresMatchResultRepositoryTest' --tests '*PostgresMatchRewardTest'`. Verify transaction rollback leaves no partial debit or reward. Commit `feat(server): fence match quota and settlement`.
+- [x] Run `./gradlew.bat :server:test --tests '*PostgresOwnedMatchEconomyTest'` and observe the expected failures.
+- [x] Extract connection-scoped SQL from the existing start and result helpers. Keep their existing wrappers for single-backend callers. For pilot start, reserve and finalize the existing quota on the same connection that records the stable `matchId` and playing snapshot. For settlement, lock the room first and use the pending completion stored in its committed snapshot as the input. Compare an existing result using a canonical digest of the accepted completion payload recorded by the pilot transaction. A mismatched digest returns `CONFLICT` before rewards and increments the integrity counter. Retry preserves the digest, receipt and `matchId`. Commit the settlement marker and cleared pending completion with the match result and reward side effects. Keep the legacy global `recoverPreparedMatches` sweep out of the pilot runtime.
+- [x] Rerun `./gradlew.bat :server:test --tests '*PostgresOwnedMatchEconomyTest' --tests '*PostgresPlayQuotaRepositoryTest' --tests '*PostgresMatchResultRepositoryTest' --tests '*PostgresMatchRewardTest'`. Verify transaction rollback leaves no partial debit or reward. Commit `feat(server): fence match quota and settlement`.
+
+Task 2 verification on 07/11/2026 used isolated PostgreSQL 18 and two separate pools. All 16 tests passed without skips, including the ownership and legacy snapshot suites. The economy suite verifies takeover, replay of an identical result, rejection of conflicting results and rollback after the economy writes. The playing snapshot clears both ready flags as in the existing game. The pilot engine will call these transactions starting in Task 3.
 
 ## Task 3 — Apply room commands to durable snapshots
 

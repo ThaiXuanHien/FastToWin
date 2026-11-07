@@ -50,10 +50,12 @@ internal sealed interface RoomMutation {
 
     data class Replay(val message: ServerMessage) : RoomMutation
     data class Reject(val reason: String) : RoomMutation
+    data object Unchanged : RoomMutation
 }
 
 internal sealed interface FencedResult {
     data class Committed(val state: OwnedRoomState) : FencedResult
+    data class Unchanged(val state: OwnedRoomState) : FencedResult
     data class Replay(val message: ServerMessage) : FencedResult
     data class Rejected(val reason: String) : FencedResult
     data object Stale : FencedResult

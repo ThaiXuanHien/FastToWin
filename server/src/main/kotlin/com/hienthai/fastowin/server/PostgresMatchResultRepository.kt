@@ -6,12 +6,16 @@ import kotlinx.coroutines.withContext
 import com.hienthai.fastowin.protocol.MatchType
 import com.hienthai.fastowin.protocol.ProtocolJson
 import kotlinx.serialization.encodeToString
+import java.security.MessageDigest
 import java.sql.Connection
 import java.sql.Timestamp
 import java.time.Instant
+import java.util.HexFormat
 import java.util.UUID
 import javax.sql.DataSource
 import kotlin.math.pow
+
+internal enum class MatchWriteOutcome { INSERTED, ALREADY_SAVED, CONFLICT }
 
 class PostgresMatchResultRepository(
     private val dataSource: DataSource
@@ -19,23 +23,65 @@ class PostgresMatchResultRepository(
     override suspend fun save(match: CompletedMatch): Unit = withContext(Dispatchers.IO) {
         dataSource.connection.use { connection ->
             connection.autoCommit = false
-            JdbcMissionStore(connection).lock()
             try {
-                if (insertMatch(connection, match)) {
-                    insertPlayers(connection, match)
-                    insertEvents(connection, match)
-                    if (match.matchType == MatchType.RANKED) updateEloRatings(connection, match)
-                    updateStats(connection, match)
-                    unlockAchievements(connection, match)
-                    updateMissions(connection, match)
-                    if (match.matchType == MatchType.RANKED) updateClanTrophies(connection, match)
-                }
+                insertAndApplyMatch(connection, match)
                 connection.commit()
             } catch (error: Throwable) {
                 connection.rollback()
                 throw error
             }
         }
+    }
+
+    internal fun saveMatch(connection: Connection, match: CompletedMatch): MatchWriteOutcome {
+        check(!connection.autoCommit) { "Owned match settlement requires a transaction" }
+        val matchId = UUID.fromString(match.matchId)
+        val roomId = UUID.fromString(requireNotNull(match.roomId))
+        val canonical = match.copy(players = match.players.sortedBy { it.playerId })
+        val digest = HexFormat.of().formatHex(
+            MessageDigest.getInstance("SHA-256").digest(ProtocolJson.encodeToString(canonical).encodeToByteArray())
+        )
+        if (insertAndApplyMatch(connection, match)) {
+            connection.prepareStatement(
+                "INSERT INTO room_ownership_pilot_settlements (match_id, room_id, completion_sha256) VALUES (?, ?, ?)"
+            ).use {
+                it.setObject(1, matchId)
+                it.setObject(2, roomId)
+                it.setString(3, digest)
+                it.executeUpdate()
+            }
+            return MatchWriteOutcome.INSERTED
+        }
+        return if (ownedSettlementDigest(connection, roomId, matchId) == digest) {
+            MatchWriteOutcome.ALREADY_SAVED
+        } else {
+            MatchWriteOutcome.CONFLICT
+        }
+    }
+
+    internal fun hasOwnedSettlement(connection: Connection, roomId: UUID, matchId: UUID): Boolean =
+        ownedSettlementDigest(connection, roomId, matchId) != null
+
+    private fun ownedSettlementDigest(connection: Connection, roomId: UUID, matchId: UUID): String? =
+        connection.prepareStatement(
+            "SELECT completion_sha256 FROM room_ownership_pilot_settlements WHERE match_id = ? AND room_id = ?"
+        ).use {
+            it.setObject(1, matchId)
+            it.setObject(2, roomId)
+            it.executeQuery().use { row -> if (row.next()) row.getString(1) else null }
+        }
+
+    private fun insertAndApplyMatch(connection: Connection, match: CompletedMatch): Boolean {
+        JdbcMissionStore(connection).lock()
+        if (!insertMatch(connection, match)) return false
+        insertPlayers(connection, match)
+        insertEvents(connection, match)
+        if (match.matchType == MatchType.RANKED) updateEloRatings(connection, match)
+        updateStats(connection, match)
+        unlockAchievements(connection, match)
+        updateMissions(connection, match)
+        if (match.matchType == MatchType.RANKED) updateClanTrophies(connection, match)
+        return true
     }
 
     private fun insertMatch(connection: Connection, match: CompletedMatch): Boolean =

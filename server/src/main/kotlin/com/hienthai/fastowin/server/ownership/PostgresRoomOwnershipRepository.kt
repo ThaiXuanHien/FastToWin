@@ -118,6 +118,7 @@ internal class PostgresRoomOwnershipRepository(private val dataSource: DataSourc
         when (val mutation = change(this, state)) {
             is RoomMutation.Reject -> FencedResult.Rejected(mutation.reason)
             is RoomMutation.Replay -> FencedResult.Replay(mutation.message)
+            RoomMutation.Unchanged -> FencedResult.Unchanged(state)
             is RoomMutation.Change -> applyChange(state, mutation)
         }
     }

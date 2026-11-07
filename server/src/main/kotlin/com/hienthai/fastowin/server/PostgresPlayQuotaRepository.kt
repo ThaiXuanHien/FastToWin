@@ -45,65 +45,18 @@ class PostgresPlayQuotaRepository(
     override suspend fun prepareMatch(userIds: Set<String>, matchId: String, nowMillis: Long): PlayQuotaConsumption =
         consume(userIds, matchId, nowMillis, true)
 
-    private suspend fun consume(userIds: Set<String>, matchId: String, nowMillis: Long, reserved: Boolean): PlayQuotaConsumption = withContext(Dispatchers.IO) {
-        val parsedUserIds = parseUserIds(userIds)
-        val parsedMatchId = UUID.fromString(matchId)
-        val quotaDate = PlayQuotaRules.quotaDate(nowMillis)
+    private suspend fun consume(
+        userIds: Set<String>,
+        matchId: String,
+        nowMillis: Long,
+        reserved: Boolean
+    ): PlayQuotaConsumption = withContext(Dispatchers.IO) {
         dataSource.connection.use { connection ->
             connection.autoCommit = false
             try {
-                lockMatch(connection, matchId)
-                val existingParticipants = connection.prepareStatement("SELECT user_id::text FROM play_quota_match_consumptions WHERE match_id=?").use { s ->
-                    s.setObject(1, parsedMatchId)
-                    s.executeQuery().use { r -> buildSet { while (r.next()) add(r.getString(1)) } }
-                }
-                check(existingParticipants.isEmpty() || existingParticipants == userIds) { "Quota match participants changed" }
-                ensureDailyRows(connection, parsedUserIds, quotaDate)
-                val quotas = loadSnapshots(connection, parsedUserIds, nowMillis, lockRows = true)
-                val existingReceipts = existingMatchReceiptCount(
-                    connection = connection,
-                    userIds = parsedUserIds,
-                    matchId = parsedMatchId
-                )
-                if (existingReceipts == parsedUserIds.size) {
-                    connection.commit()
-                    return@withContext PlayQuotaConsumption(
-                        status = PlayQuotaConsumptionStatus.ALREADY_CONSUMED,
-                        quotas = quotas
-                    )
-                }
-                check(existingReceipts == 0) {
-                    "Partial quota consumption detected for match $matchId."
-                }
-
-                val exhaustedUserIds = quotas.filterValues { it.remainingMatches <= 0 }.keys
-                if (exhaustedUserIds.isNotEmpty()) {
-                    connection.rollback()
-                    return@withContext PlayQuotaConsumption(
-                        status = PlayQuotaConsumptionStatus.EXHAUSTED,
-                        quotas = quotas,
-                        exhaustedUserIds = exhaustedUserIds
-                    )
-                }
-
-                insertMatchReceipts(connection, parsedUserIds, parsedMatchId, quotaDate)
-                if (reserved) connection.prepareStatement("UPDATE play_quota_match_consumptions SET reservation_state='RESERVED' WHERE match_id=?").use {
-                    it.setObject(1, parsedMatchId); it.executeUpdate()
-                }
-                incrementConsumedMatches(connection, parsedUserIds, quotaDate)
-                connection.commit()
-                PlayQuotaConsumption(
-                    status = PlayQuotaConsumptionStatus.CONSUMED,
-                    quotas = quotas.mapValues { (_, quota) ->
-                        quota.copy(
-                            matchesConsumed = quota.matchesConsumed + 1,
-                            remainingMatches = PlayQuotaRules.remaining(
-                                matchesConsumed = quota.matchesConsumed + 1,
-                                bonusMatchesGranted = quota.bonusMatchesGranted
-                            )
-                        )
-                    }
-                )
+                val result = consumeOnConnection(connection, userIds, matchId, nowMillis, reserved)
+                if (result.status == PlayQuotaConsumptionStatus.EXHAUSTED) connection.rollback() else connection.commit()
+                result
             } catch (error: Throwable) {
                 connection.rollback()
                 throw error
@@ -111,6 +64,80 @@ class PostgresPlayQuotaRepository(
                 connection.autoCommit = true
             }
         }
+    }
+
+    /** The owning room transaction commits or rolls back the debit together with the start snapshot. */
+    internal fun reserveAndFinalizeMatch(
+        connection: Connection,
+        userIds: Set<String>,
+        matchId: String,
+        nowMillis: Long
+    ): PlayQuotaConsumption {
+        check(!connection.autoCommit) { "A room transaction is required" }
+        val result = consumeOnConnection(connection, userIds, matchId, nowMillis, reserved = false)
+        if (result.status == PlayQuotaConsumptionStatus.ALREADY_CONSUMED) {
+            connection.prepareStatement(
+                "UPDATE play_quota_match_consumptions SET reservation_state='FINALIZED' WHERE match_id=? AND reservation_state='RESERVED'"
+            ).use {
+                it.setObject(1, UUID.fromString(matchId))
+                it.executeUpdate()
+            }
+        }
+        return result
+    }
+
+    private fun consumeOnConnection(
+        connection: Connection,
+        userIds: Set<String>,
+        matchId: String,
+        nowMillis: Long,
+        reserved: Boolean
+    ): PlayQuotaConsumption {
+        val parsedUserIds = parseUserIds(userIds)
+        val parsedMatchId = UUID.fromString(matchId)
+        val quotaDate = PlayQuotaRules.quotaDate(nowMillis)
+        lockMatch(connection, matchId)
+        val existingParticipants = connection.prepareStatement(
+            "SELECT user_id::text FROM play_quota_match_consumptions WHERE match_id=?"
+        ).use { statement ->
+            statement.setObject(1, parsedMatchId)
+            statement.executeQuery().use { rows -> buildSet { while (rows.next()) add(rows.getString(1)) } }
+        }
+        check(existingParticipants.isEmpty() || existingParticipants == userIds) { "Quota match participants changed" }
+        ensureDailyRows(connection, parsedUserIds, quotaDate)
+        val quotas = loadSnapshots(connection, parsedUserIds, nowMillis, lockRows = true)
+        if (existingParticipants.isNotEmpty()) {
+            return PlayQuotaConsumption(status = PlayQuotaConsumptionStatus.ALREADY_CONSUMED, quotas = quotas)
+        }
+        val exhaustedUserIds = quotas.filterValues { it.remainingMatches <= 0 }.keys
+        if (exhaustedUserIds.isNotEmpty()) {
+            return PlayQuotaConsumption(
+                status = PlayQuotaConsumptionStatus.EXHAUSTED,
+                quotas = quotas,
+                exhaustedUserIds = exhaustedUserIds
+            )
+        }
+
+        insertMatchReceipts(connection, parsedUserIds, parsedMatchId, quotaDate)
+        if (reserved) {
+            connection.prepareStatement("UPDATE play_quota_match_consumptions SET reservation_state='RESERVED' WHERE match_id=?").use {
+                it.setObject(1, parsedMatchId)
+                it.executeUpdate()
+            }
+        }
+        incrementConsumedMatches(connection, parsedUserIds, quotaDate)
+        return PlayQuotaConsumption(
+            status = PlayQuotaConsumptionStatus.CONSUMED,
+            quotas = quotas.mapValues { (_, quota) ->
+                quota.copy(
+                    matchesConsumed = quota.matchesConsumed + 1,
+                    remainingMatches = PlayQuotaRules.remaining(
+                        matchesConsumed = quota.matchesConsumed + 1,
+                        bonusMatchesGranted = quota.bonusMatchesGranted
+                    )
+                )
+            }
+        )
     }
 
     private fun lockMatch(connection: Connection, matchId: String) {
@@ -324,28 +351,6 @@ class PostgresPlayQuotaRepository(
                 ),
                 nextResetAtEpochMillis = PlayQuotaRules.nextResetAtEpochMillis(nowMillis)
             )
-        }
-    }
-
-    private fun existingMatchReceiptCount(
-        connection: Connection,
-        userIds: List<UUID>,
-        matchId: UUID
-    ): Int {
-        val placeholders = userIds.joinToString(",") { "?" }
-        return connection.prepareStatement(
-            """
-            SELECT COUNT(*)
-            FROM play_quota_match_consumptions
-            WHERE match_id = ? AND user_id IN ($placeholders)
-            """.trimIndent()
-        ).use { statement ->
-            statement.setObject(1, matchId)
-            userIds.forEachIndexed { index, userId -> statement.setObject(index + 2, userId) }
-            statement.executeQuery().use { result ->
-                check(result.next())
-                result.getInt(1)
-            }
         }
     }
 
