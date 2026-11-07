@@ -65,11 +65,8 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
-import java.security.MessageDigest
 import java.security.SecureRandom
 import java.util.UUID
-import javax.crypto.SecretKeyFactory
-import javax.crypto.spec.PBEKeySpec
 
 data class Delivery(
     val message: ServerMessage,
@@ -4207,39 +4204,9 @@ class GameEngine(
         )
     }
 
-    private fun Room.selectionMetrics(): Map<String, SelectionMetrics> {
-        val metrics = playerIds().associateWith { SelectionMetrics() }.toMutableMap()
-        val startedAt = startedAtEpochMillis ?: return metrics
-        val targetAvailableAtMillis = playerIds().associateWith { startedAt }.toMutableMap()
-        selectionEvents.sortedBy(MatchSelectionEvent::sequence).forEach { event ->
-            val current = metrics.getOrPut(event.playerId) { SelectionMetrics() }
-            when (event.result) {
-                SelectionResult.REJECTED -> current.wrong++
-                SelectionResult.ACCEPTED -> {
-                    current.correct++
-                    val rawReactionMillis =
-                        (event.occurredAtMillis - (targetAvailableAtMillis[event.playerId] ?: startedAt))
-                            .coerceAtLeast(0L)
-                    val reactionMillis = if (
-                        current.reactionSamples == 0 && rawReactionMillis >= MATCH_COUNTDOWN_MILLIS
-                    ) {
-                        rawReactionMillis - MATCH_COUNTDOWN_MILLIS
-                    } else {
-                        rawReactionMillis
-                    }
-                    current.reactionTimeTotalMillis += reactionMillis
-                    current.reactionTimes += reactionMillis
-                    current.reactionSamples++
-                    if (gameMode == ProtocolGameMode.TIME_BONUS) {
-                        targetAvailableAtMillis[event.playerId] = event.occurredAtMillis
-                    } else {
-                        playerIds().forEach { targetAvailableAtMillis[it] = event.occurredAtMillis }
-                    }
-                }
-            }
-        }
-        return metrics
-    }
+    private fun Room.selectionMetrics() = roomSelectionMetrics(
+        playerIds(), startedAtEpochMillis, selectionEvents, gameMode == ProtocolGameMode.TIME_BONUS
+    )
 
     private fun Room.finishIfTimedOut(): Boolean {
         if (phase != RoomPhase.PLAYING || gameMode !in TIMED_GAME_MODES) return false
@@ -4607,22 +4574,6 @@ class GameEngine(
         val eloRating: Int,
         val joinedAtMillis: Long
     )
-
-    private data class PasswordHash(val salt: ByteArray, val value: ByteArray) {
-        fun matches(password: String): Boolean = MessageDigest.isEqual(value, derive(password, salt))
-
-        companion object {
-            fun create(password: String): PasswordHash {
-                val salt = ByteArray(16).also(secureRandom::nextBytes)
-                return PasswordHash(salt, derive(password, salt))
-            }
-
-            private fun derive(password: String, salt: ByteArray): ByteArray {
-                val spec = PBEKeySpec(password.toCharArray(), salt, 120_000, 256)
-                return SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256").generateSecret(spec).encoded
-            }
-        }
-    }
 
     private suspend fun createClan(playerId: String, name: String, description: String): List<Delivery> {
         if (name.isBlank() || name.length > 32) return listOf(error(playerId, "INVALID_CLAN_NAME", legacyFallback("Tên clan không hợp lệ.")))
@@ -5034,8 +4985,6 @@ class GameEngine(
         const val SPEED_UP_MIN_MILLIS = 1_500L
         const val SPEED_UP_DECREMENT_MILLIS = 70L
         const val SURVIVAL_STARTING_LIVES = 3
-        const val REACTION_SEGMENT_SIZE = 10
-        const val MATCH_COUNTDOWN_MILLIS = 3_000L
         const val DEFAULT_REMATCH_TIMEOUT_MILLIS = 30_000L
         const val ROOM_RECONNECT_GRACE_MILLIS = 30_000L
         const val IDLE_SESSION_TTL_MILLIS = 5 * 60_000L
@@ -5117,31 +5066,4 @@ class GameEngine(
             messageArgs.all { (key, value) -> key.length <= 64 && value.length <= 300 }
     }
 
-    private data class SelectionMetrics(
-        var correct: Int = 0,
-        var wrong: Int = 0,
-        var reactionTimeTotalMillis: Long = 0,
-        var reactionSamples: Int = 0,
-        val reactionTimes: MutableList<Long> = mutableListOf()
-    ) {
-        val averageReactionMillis: Long
-            get() = if (reactionSamples == 0) 0L else reactionTimeTotalMillis / reactionSamples
-
-        private val segments: List<ReactionSegment>
-            get() = reactionTimes.chunked(REACTION_SEGMENT_SIZE).mapIndexed { index, values ->
-                ReactionSegment(
-                    start = index * REACTION_SEGMENT_SIZE + 1,
-                    end = index * REACTION_SEGMENT_SIZE + values.size,
-                    averageMillis = values.average().toLong()
-                )
-            }
-
-        val fastestSegment: ReactionSegment?
-            get() = segments.minByOrNull(ReactionSegment::averageMillis)
-
-        val slowestSegment: ReactionSegment?
-            get() = segments.maxByOrNull(ReactionSegment::averageMillis)
-    }
-
-    private data class ReactionSegment(val start: Int, val end: Int, val averageMillis: Long)
 }

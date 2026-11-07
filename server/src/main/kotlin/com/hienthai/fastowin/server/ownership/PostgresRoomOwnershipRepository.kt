@@ -27,14 +27,27 @@ internal class PostgresRoomOwnershipRepository(private val dataSource: DataSourc
             SET instance_id = ?, owner_epoch = owner_epoch + 1,
                 lease_until = clock_timestamp() + interval '12 seconds',
                 recovery_deadline = CASE WHEN ? THEN
-                    CASE WHEN recovery_deadline > clock_timestamp() THEN recovery_deadline
-                         ELSE clock_timestamp() + interval '30 seconds' END
+                    COALESCE(recovery_deadline, clock_timestamp() + interval '30 seconds')
                     ELSE NULL END
             WHERE room_id = ?
-            RETURNING *
+            RETURNING *, clock_timestamp() AS observed_at
             """,
             instanceId, recoveryNeeded, roomId
         ) { rows -> check(rows.next()); rows.state() }
+    }
+
+    override suspend fun expiredRooms(limit: Int): List<UUID> {
+        require(limit in 1..MAX_EVENT_REVISIONS)
+        return transaction {
+            query(
+                """
+                SELECT room_id FROM room_ownership_pilot_rooms
+                WHERE closed_at IS NULL AND lease_until <= statement_timestamp()
+                ORDER BY lease_until, room_id LIMIT ?
+                """,
+                limit
+            ) { rows -> buildList { while (rows.next()) add(rows.getObject(1, UUID::class.java)) } }
+        }
     }
 
     override suspend fun renew(fence: OwnerFence): Boolean = updateLease(fence, release = false)
@@ -54,7 +67,9 @@ internal class PostgresRoomOwnershipRepository(private val dataSource: DataSourc
         ) == 1
     }
 
-    override suspend fun read(roomId: UUID): OwnedRoomState? = transaction { load(roomId)?.state }
+    override suspend fun read(roomId: UUID): OwnedRoomState? = transaction {
+        load(roomId)?.state?.let { it.copy(sessionGenerations = generations(it.snapshot)) }
+    }
 
     override suspend fun lookupRoom(playerId: UUID): UUID? = transaction {
         query("SELECT room_id FROM room_ownership_pilot_memberships WHERE player_id = ?", playerId) { rows ->
@@ -97,7 +112,7 @@ internal class PostgresRoomOwnershipRepository(private val dataSource: DataSourc
             if (!addMembership(socket.playerId, roomId)) {
                 return@fencedTransaction FencedResult.Rejected("ALREADY_IN_ROOM")
             }
-            val state = OwnedRoomState(OwnerFence(roomId, instanceId, 1), 1, initialSnapshot, null)
+            val state = OwnedRoomState(OwnerFence(roomId, instanceId, 1), 1, initialSnapshot, null, observedAt = databaseTime())
             saveEvents(state, events)
             FencedResult.Committed(state)
         }
@@ -111,15 +126,17 @@ internal class PostgresRoomOwnershipRepository(private val dataSource: DataSourc
     ): FencedResult = fencedTransaction {
         if (socket != null && !isCurrent(socket)) return@fencedTransaction FencedResult.Stale
         val room = load(fence.roomId, lock = true) ?: return@fencedTransaction FencedResult.Stale
-        val state = room.state
-        if (room.state.closed || state.fence != fence || state.revision != expectedRevision ||
-            room.leaseUntil <= databaseTime()
+        val state = room.state.copy(observedAt = databaseTime())
+        if (state.closed || state.fence != fence || state.revision != expectedRevision ||
+            room.leaseUntil <= state.observedAt
         ) return@fencedTransaction FencedResult.Stale
-        when (val mutation = change(this, state)) {
+        // Observe other generations without locking them after the room row.
+        val observed = state.copy(sessionGenerations = generations(state.snapshot))
+        when (val mutation = change(this, observed)) {
             is RoomMutation.Reject -> FencedResult.Rejected(mutation.reason)
-            is RoomMutation.Replay -> FencedResult.Replay(mutation.message)
-            RoomMutation.Unchanged -> FencedResult.Unchanged(state)
-            is RoomMutation.Change -> applyChange(state, mutation)
+            is RoomMutation.Replay -> FencedResult.Replay(observed, mutation.message)
+            RoomMutation.Unchanged -> FencedResult.Unchanged(observed)
+            is RoomMutation.Change -> applyChange(observed, mutation)
         }
     }
 
@@ -142,15 +159,22 @@ internal class PostgresRoomOwnershipRepository(private val dataSource: DataSourc
             """
             UPDATE room_ownership_pilot_rooms
             SET revision = revision + 1, snapshot = CAST(? AS jsonb),
-                closed_at = CASE WHEN ? THEN clock_timestamp() ELSE NULL END
+                closed_at = CASE WHEN ? THEN clock_timestamp() ELSE NULL END,
+                recovery_deadline = CASE WHEN ? THEN NULL ELSE recovery_deadline END
             WHERE room_id = ? AND lease_until > clock_timestamp()
             """,
-            ProtocolJson.encodeToString(snapshot), mutation.close, roomId
+            ProtocolJson.encodeToString(snapshot), mutation.close,
+            mutation.close || mutation.clearRecoveryDeadline, roomId
         )
         if (updated != 1) return FencedResult.Stale
-        val committed = state.copy(revision = state.revision + 1, snapshot = snapshot, closed = mutation.close)
+        val committed = state.copy(
+            revision = state.revision + 1,
+            snapshot = snapshot,
+            closed = mutation.close,
+            recoveryDeadline = state.recoveryDeadline.takeUnless { mutation.close || mutation.clearRecoveryDeadline }
+        )
         saveEvents(committed, mutation.events)
-        return FencedResult.Committed(committed)
+        return FencedResult.Committed(committed, mutation.reply)
     }
 
     override suspend fun purgeExpiredClosedRooms(limit: Int): Int {
@@ -240,9 +264,18 @@ internal class PostgresRoomOwnershipRepository(private val dataSource: DataSourc
         "SELECT generation FROM room_ownership_pilot_sessions WHERE player_id = ? FOR UPDATE", socket.playerId
     ) { rows -> rows.next() && rows.getLong("generation") == socket.generation }
 
+    private fun Connection.generations(snapshot: StoredActiveRoom): Map<String, Long> {
+        val host = UUID.fromString(snapshot.host.playerId)
+        val guest = snapshot.guest?.playerId?.let(UUID::fromString) ?: host
+        return query(
+            "SELECT player_id, generation FROM room_ownership_pilot_sessions WHERE player_id IN (?, ?)",
+            host, guest
+        ) { rows -> buildMap { while (rows.next()) put(rows.getString(1), rows.getLong(2)) } }
+    }
+
     private fun Connection.load(roomId: UUID, lock: Boolean = false): RoomRow? {
         val lockingClause = if (lock) " FOR UPDATE" else ""
-        return query("SELECT * FROM room_ownership_pilot_rooms WHERE room_id = ?$lockingClause", roomId) { rows ->
+        return query("SELECT *, clock_timestamp() AS observed_at FROM room_ownership_pilot_rooms WHERE room_id = ?$lockingClause", roomId) { rows ->
             if (rows.next()) RoomRow(
                 rows.state(), rows.getTimestamp("lease_until").toInstant()
             ) else null
@@ -254,7 +287,8 @@ internal class PostgresRoomOwnershipRepository(private val dataSource: DataSourc
         revision = getLong("revision"),
         snapshot = ProtocolJson.decodeFromString(getString("snapshot")),
         recoveryDeadline = getTimestamp("recovery_deadline")?.toInstant(),
-        closed = getTimestamp("closed_at") != null
+        closed = getTimestamp("closed_at") != null,
+        observedAt = getTimestamp("observed_at").toInstant()
     )
 
     private fun Connection.databaseTime(): Instant = query("SELECT clock_timestamp()") { rows ->
@@ -305,7 +339,7 @@ internal class PostgresRoomOwnershipRepository(private val dataSource: DataSourc
             guest?.playerId != host.playerId
 
     private fun StoredActiveRoom.memberIds(): Set<UUID> =
-        listOfNotNull(host.playerId, guest?.playerId).map(UUID::fromString).toSet()
+        (setOfNotNull(host.playerId, guest?.playerId) - departedPlayerIds).map(UUID::fromString).toSet()
 
     private data class RoomRow(val state: OwnedRoomState, val leaseUntil: Instant)
 

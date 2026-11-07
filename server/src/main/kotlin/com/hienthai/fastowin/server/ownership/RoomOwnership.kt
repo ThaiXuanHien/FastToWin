@@ -16,8 +16,15 @@ internal data class OwnedRoomState(
     val revision: Long,
     val snapshot: StoredActiveRoom,
     val recoveryDeadline: Instant?,
-    val closed: Boolean = false
+    val closed: Boolean = false,
+    val observedAt: Instant = Instant.EPOCH,
+    val sessionGenerations: Map<String, Long> = emptyMap()
 )
+
+internal fun OwnedRoomState.attachedGenerations(): Map<String, Long> =
+    if (snapshot.pilotConnectionEpoch == fence.epoch) {
+        snapshot.pilotSocketGenerations.filter { (id, generation) -> sessionGenerations[id] == generation }
+    } else emptyMap()
 
 @Serializable
 internal data class RoomOwnershipEvent(
@@ -45,7 +52,9 @@ internal sealed interface RoomMutation {
     data class Change(
         val snapshot: StoredActiveRoom,
         val events: List<RoomOwnershipEvent> = emptyList(),
-        val close: Boolean = false
+        val close: Boolean = false,
+        val clearRecoveryDeadline: Boolean = false,
+        val reply: ServerMessage? = null
     ) : RoomMutation
 
     data class Replay(val message: ServerMessage) : RoomMutation
@@ -54,9 +63,9 @@ internal sealed interface RoomMutation {
 }
 
 internal sealed interface FencedResult {
-    data class Committed(val state: OwnedRoomState) : FencedResult
+    data class Committed(val state: OwnedRoomState, val reply: ServerMessage? = null) : FencedResult
     data class Unchanged(val state: OwnedRoomState) : FencedResult
-    data class Replay(val message: ServerMessage) : FencedResult
+    data class Replay(val state: OwnedRoomState, val message: ServerMessage) : FencedResult
     data class Rejected(val reason: String) : FencedResult
     data object Stale : FencedResult
     data object TemporaryFailure : FencedResult
@@ -64,6 +73,7 @@ internal sealed interface FencedResult {
 
 internal interface RoomOwnershipRepository {
     suspend fun claim(roomId: UUID, instanceId: UUID): OwnedRoomState?
+    suspend fun expiredRooms(limit: Int): List<UUID>
     suspend fun renew(fence: OwnerFence): Boolean
     suspend fun release(fence: OwnerFence): Boolean
     suspend fun lookupRoom(playerId: UUID): UUID?

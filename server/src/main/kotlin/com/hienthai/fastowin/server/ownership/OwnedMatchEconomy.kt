@@ -22,7 +22,8 @@ internal class OwnedMatchEconomy(
         revision: Long,
         socket: SocketFence,
         candidate: StoredActiveRoom,
-        events: List<RoomOwnershipEvent> = emptyList()
+        events: List<RoomOwnershipEvent> = emptyList(),
+        requireAttachedPlayers: Boolean = false
     ): FencedResult = ownership.withFencedRoom(fence, revision, socket) { connection, state ->
         val room = state.snapshot
         val participants = room.accountParticipants()
@@ -42,6 +43,9 @@ internal class OwnedMatchEconomy(
         if (room.phase != RoomPhase.WAITING || room.startedAtEpochMillis != null ||
             (participants - socket.playerId.toString()).any { it !in room.readyPlayerIds }
         ) return@withFencedRoom RoomMutation.Reject("INVALID_MATCH_START")
+        if (requireAttachedPlayers && !state.attachedGenerations().keys.containsAll(participants)) {
+            return@withFencedRoom RoomMutation.Reject("ROOM_RECOVERING")
+        }
 
         val consumed = quota.reserveAndFinalizeMatch(connection, participants, room.matchId, startedAt)
         if (consumed.status == PlayQuotaConsumptionStatus.EXHAUSTED) {
