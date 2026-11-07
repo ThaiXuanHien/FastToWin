@@ -9,6 +9,7 @@ import com.hienthai.fastowin.server.compensation.*
 import com.hienthai.fastowin.server.events.*
 import com.hienthai.fastowin.server.maintenance.*
 import com.hienthai.fastowin.server.ownership.OwnedRoomReply
+import com.hienthai.fastowin.server.ownership.AdmittedPilotConnection
 import com.hienthai.fastowin.server.ownership.RoomOwnershipPilot
 import com.hienthai.fastowin.server.ownership.SocketFence
 import com.hienthai.fastowin.server.ownership.gameSnapshot
@@ -56,6 +57,7 @@ import io.ktor.http.ContentType
 import com.hienthai.fastowin.server.avatars.avatarRoutes
 import io.ktor.server.application.ApplicationCall
 import io.ktor.server.application.Application
+import io.ktor.server.application.ApplicationStopPreparing
 import io.ktor.server.application.call
 import io.ktor.server.application.install
 import io.ktor.server.plugins.contentnegotiation.ContentNegotiation
@@ -236,6 +238,16 @@ internal fun Application.gameModule(
     roomOwnershipPilot?.let { pilot ->
         routing { pilot.installRoutes(this) }
         launch { pilot.delivery.run() }
+        launch { pilot.runWorker() }
+        monitor.subscribe(ApplicationStopPreparing) {
+            val drained = runBlocking {
+                withTimeoutOrNull(15_000) {
+                    while (!pilot.beginDrain()) delay(100)
+                    true
+                }
+            } == true
+            if (!drained) this@gameModule.environment.log.warn("Room ownership drain did not finish before shutdown")
+        }
     }
     if (giftDeliveryEnabled) startGiftDelivery(giftService)
     if (giftDeliveryEnabled && clanRaceSettlement != null && clanRaceDelivery != null) startClanRaceDelivery(clanRaceSettlement,clanRaceDelivery)
@@ -403,11 +415,20 @@ internal fun Application.gameModule(
 
         get("/health") { call.respondText("OK") }
 
+        roomOwnershipPilot?.let { pilot ->
+            get("/ready") {
+                call.response.header(HttpHeaders.CacheControl, "no-store")
+                val ready = pilot.isReady()
+                call.respondText(if (ready) "READY" else "UNAVAILABLE",
+                    status = if (ready) HttpStatusCode.OK else HttpStatusCode.ServiceUnavailable)
+            }
+        }
+
         get("/internal/metrics") {
             call.response.header(HttpHeaders.CacheControl, "no-store")
             call.respondText(
                 metrics.render() + ((rateLimiter as? com.hienthai.fastowin.server.ratelimit.RateLimitRuntime)?.renderMetrics() ?: "") +
-                    presenceStore?.renderMetrics().orEmpty(),
+                    presenceStore?.renderMetrics().orEmpty() + roomOwnershipPilot?.renderMetrics().orEmpty(),
                 ContentType.parse("text/plain; version=0.0.4; charset=utf-8")
             )
         }
@@ -688,6 +709,11 @@ internal fun Application.gameModule(
 
         webSocket("/game") {
             metrics.webSocketOpened()
+            if (roomOwnershipPilot?.isAccepting() == false) {
+                close(CloseReason(CloseReason.Codes.GOING_AWAY, "Room owner draining"))
+                metrics.webSocketClosed()
+                return@webSocket
+            }
             if (engine.gameConnectionsClosed()) {
                 close(CloseReason(CloseReason.Codes.GOING_AWAY, "Server maintenance"))
                 metrics.webSocketClosed()
@@ -698,6 +724,7 @@ internal fun Application.gameModule(
             var playerRateLimitKey: String? = null
             var accountAccessToken: String? = null
             var socketAccount: AuthenticatedAccount? = null
+            var pilotAdmission: AdmittedPilotConnection? = null
             var pilotSocket: SocketFence? = null
             var pilotInitial: OwnedRoomReply? = null
             var moderationAware = false
@@ -781,9 +808,10 @@ internal fun Application.gameModule(
                                     val resume = message.resumeToken.takeIf { roomOwnershipPilot == null }
                                     engine.connectAccount(account, resume, message.protocolVersion).also {
                                         if (roomOwnershipPilot != null) {
-                                            val socket = roomOwnershipPilot.onConnected(account)
-                                            pilotSocket = socket
-                                            pilotInitial = roomOwnershipPilot.reconnect(socket)
+                                            val admitted = roomOwnershipPilot.onConnected(account) ?: throw PilotDrainingException()
+                                            pilotAdmission = admitted
+                                            pilotSocket = admitted.socket
+                                            pilotInitial = admitted.initialReply
                                         }
                                         accountAccessToken = message.accessToken
                                         socketAccount = account
@@ -791,6 +819,10 @@ internal fun Application.gameModule(
                                 }
                             }
                         }.getOrElse { error ->
+                            if (error is PilotDrainingException) {
+                                close(CloseReason(CloseReason.Codes.GOING_AWAY, "Room owner draining"))
+                                break
+                            }
                             if (roomOwnershipPilot != null && error.isPilotStorageUnavailable()) throw error
                             send(ProtocolJson.encodeToString<ServerMessage>(
                                 when (error) {
@@ -897,7 +929,10 @@ internal fun Application.gameModule(
                             val socket = checkNotNull(pilotSocket)
                             val account = checkNotNull(socketAccount)
                             val accessToken = checkNotNull(accountAccessToken)
-                            roomOwnershipPilot.delivery.register(socket, initialApplied?.takeIf { pilotGame != null }) { outgoing ->
+                            roomOwnershipPilot.delivery.register(
+                                socket, initialApplied?.takeIf { pilotGame != null },
+                                onDrain = { connection.session.close(CloseReason(CloseReason.Codes.GOING_AWAY, "Room owner draining")) }
+                            ) { outgoing ->
                                 if (connections[connected.playerId] === connection) {
                                     if (authService.isSocketSessionActive(account, accessToken) &&
                                         !engine.moderationService.isBlocked(connected.playerId)
@@ -909,6 +944,8 @@ internal fun Application.gameModule(
                                 }
                             }
                             (initialApplied?.publicMessage as? ServerMessage.RoomClosed)?.let { connection.send(it) }
+                            pilotAdmission?.close()
+                            pilotAdmission = null
                         }
                         if (roomOwnershipPilot == null) deliver(listOf(Delivery(engine.roomList())))
                         else connection.send(sanitizeContent(roomOwnershipPilot.roomList(), engine.suppressionsForProjection()))
@@ -1012,6 +1049,7 @@ internal fun Application.gameModule(
                 if (roomOwnershipPilot == null || !failure.isPilotStorageUnavailable()) throw failure
                 close(CloseReason(CloseReason.Codes.TRY_AGAIN_LATER, "Service temporarily unavailable"))
             } finally {
+                pilotAdmission?.close()
                 metrics.webSocketClosed()
                 kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) {
                     presenceHeartbeat?.cancelAndJoin()
@@ -1298,7 +1336,7 @@ private val DEV_WEB_ORIGINS = listOf(
     AllowedWebOrigin("127.0.0.1:8081", "http"),
     AllowedWebOrigin("127.0.0.1:8082", "http")
 )
-private val QUIET_LOG_PATHS = setOf("/health", "/internal/metrics")
+private val QUIET_LOG_PATHS = setOf("/health", "/ready", "/internal/metrics")
 
 private suspend fun ApplicationCall.respondAccountAction(
     result: AccountActionResult,
@@ -1363,6 +1401,7 @@ private class SocketConnection(
 
 private const val SESSION_CLEANUP_INTERVAL_MILLIS = 5_000L
 private class PilotAccountRequiredException : RuntimeException()
+private class PilotDrainingException : RuntimeException()
 private val PRESENCE_REQUEST_ID = Regex("[A-Za-z0-9_-]{1,64}")
 private const val GAME_TIMER_INTERVAL_MILLIS = 250L
 private const val MATCHMAKING_INTERVAL_MILLIS = 1_000L

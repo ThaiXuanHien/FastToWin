@@ -12,7 +12,8 @@ import java.util.concurrent.atomic.AtomicLong
 internal class OwnedMatchEconomy(
     private val ownership: RoomOwnershipRepository,
     private val quota: PostgresPlayQuotaRepository,
-    private val matches: PostgresMatchResultRepository
+    private val matches: PostgresMatchResultRepository,
+    private val metrics: RoomOwnershipMetrics? = null
 ) {
     private val conflicts = AtomicLong()
     val integrityConflicts: Long get() = conflicts.get()
@@ -81,6 +82,8 @@ internal class OwnedMatchEconomy(
                 MatchWriteOutcome.INSERTED, MatchWriteOutcome.ALREADY_SAVED ->
                     RoomMutation.Change(room.copy(pendingCompletedMatch = null))
             }
+        }.also {
+            if (it == FencedResult.TemporaryFailure || it is FencedResult.Rejected) metrics?.settlementFailed()
         }
 
     private fun StoredActiveRoom.accountParticipants(): Set<String> =

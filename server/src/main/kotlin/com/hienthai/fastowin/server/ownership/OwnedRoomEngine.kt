@@ -122,7 +122,7 @@ internal class OwnedRoomEngine(
         }
     }
 
-    suspend fun renewalTick() {
+    suspend fun renewalTick(): Boolean {
         for (fence in leases.values.toList()) {
             try {
                 if (rooms.renew(fence)) rooms.read(fence.roomId)?.let { recover(it) }
@@ -140,8 +140,10 @@ internal class OwnedRoomEngine(
                 }
             }
             rooms.purgeExpiredClosedRooms(EXPIRED_ROOM_BATCH)
+            return true
         } catch (_: SQLException) {
             // The next tick retries the scan after PostgreSQL returns.
+            return false
         }
     }
 

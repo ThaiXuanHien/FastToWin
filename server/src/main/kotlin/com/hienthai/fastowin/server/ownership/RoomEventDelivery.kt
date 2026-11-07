@@ -17,14 +17,25 @@ import kotlinx.coroutines.sync.withLock
 import java.sql.SQLException
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
+import kotlinx.serialization.Serializable
 
 internal data class RoomDeliveryPosition(val roomId: UUID, val epoch: Long)
+
+@Serializable
+internal data class RoomQueuePosition(
+    val roomId: String,
+    val playerId: String,
+    val generation: Long,
+    val revision: Long,
+    val nextEventIndex: Int
+)
 
 internal class RoomEventDelivery(
     private val rooms: RoomOwnershipRepository,
     private val wakeups: Flow<UUID> = emptyFlow(),
     private val reconciliationIntervalMillis: Long = 1_000,
-    private val reattach: suspend (SocketFence) -> OwnedRoomReply = { OwnedRoomReply.NoRoom }
+    private val reattach: suspend (SocketFence) -> OwnedRoomReply = { OwnedRoomReply.NoRoom },
+    private val metrics: RoomOwnershipMetrics? = null
 ) {
     private val subscriptions = ConcurrentHashMap<SocketFence, Subscription>()
 
@@ -35,15 +46,32 @@ internal class RoomEventDelivery(
     suspend fun register(
         socket: SocketFence,
         initial: OwnedRoomReply.Applied?,
+        onDrain: suspend () -> Unit = {},
         send: suspend (ServerMessage) -> Unit
     ) {
         val cursor = initial?.let { Cursor(it.roomId, it.epoch, it.revision, it.publicMessage is ServerMessage.RoomClosed) }
-        subscriptions[socket] = Subscription(socket, send, cursor)
+        subscriptions[socket] = Subscription(socket, send, onDrain, cursor)
     }
 
     suspend fun unregister(socket: SocketFence) {
         subscriptions.remove(socket)
     }
+
+    suspend fun closeForDrain(): Unit = coroutineScope {
+        subscriptions.values.toList().forEach { subscription ->
+            if (subscriptions.remove(subscription.socket, subscription)) launch {
+                try {
+                    subscription.onDrain()
+                } catch (cancelled: CancellationException) {
+                    currentCoroutineContext().ensureActive()
+                } catch (_: Exception) {
+                    // The socket may already be closed.
+                }
+            }
+        }
+    }
+
+    fun queuedPositions(): List<RoomQueuePosition> = subscriptions.values.mapNotNull { it.queuePosition }
 
     suspend fun onCommand(
         socket: SocketFence,
@@ -199,9 +227,11 @@ internal class RoomEventDelivery(
                     } else if (isMember && !emit(subscription, message)) return
                 }
                 cursor.nextEventIndex = index + 1
+                subscription.publishCursor()
             }
             cursor.revision = revision.revision
             cursor.nextEventIndex = 0
+            subscription.publishCursor()
         }
         if (!isMember && cursor.revision >= state.revision) terminate(subscription, cursor)
     }
@@ -230,6 +260,8 @@ internal class RoomEventDelivery(
             cursor.revision = current.revision
             cursor.nextEventIndex = 0
             cursor.pendingSnapshot = false
+            subscription.publishCursor()
+            metrics?.resynced()
         }
     }
 
@@ -246,7 +278,10 @@ internal class RoomEventDelivery(
         message: ServerMessage.RoomClosed = ServerMessage.RoomClosed(cursor.roomId.toString(),
             legacyFallback("Phòng không còn khả dụng."), TextKey.ServerRoomNotFound.name, code = "ROOM_NOT_FOUND")
     ) {
-        if (emit(subscription, message)) cursor.terminated = true
+        if (emit(subscription, message)) {
+            cursor.terminated = true
+            subscription.publishCursor()
+        }
     }
 
     private suspend fun emit(subscription: Subscription, message: ServerMessage): Boolean {
@@ -281,10 +316,24 @@ internal class RoomEventDelivery(
     private class Subscription(
         val socket: SocketFence,
         val send: suspend (ServerMessage) -> Unit,
-        var cursor: Cursor?
+        val onDrain: suspend () -> Unit,
+        cursor: Cursor?
     ) {
         val mutex = Mutex()
         var discoverAfterUncertainCommand = false
+        var cursor: Cursor? = cursor
+            set(value) {
+                field = value
+                publishCursor()
+            }
+        @Volatile var queuePosition: RoomQueuePosition? = position(cursor)
+            private set
+
+        fun publishCursor() { queuePosition = position(cursor) }
+
+        private fun position(cursor: Cursor?): RoomQueuePosition? = cursor?.takeUnless { it.terminated }?.let {
+            RoomQueuePosition(it.roomId.toString(), socket.playerId.toString(), socket.generation, it.revision, it.nextEventIndex)
+        }
     }
 
     private companion object {

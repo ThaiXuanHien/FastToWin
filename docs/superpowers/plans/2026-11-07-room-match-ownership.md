@@ -132,7 +132,7 @@ Task 4 verification on 07/11/2026 ran 61 targeted tests without skips on local P
 
 ## Task 5 — Configure local routing, readiness and drain
 
-- [ ] Add readiness tests for invalid schema or pilot configuration, PostgreSQL failure, recovery and planned drain. Exercise a racing create while drain is starting. Assert the shared gate closes new room admission and reports unavailable readiness, already admitted transactions resolve, and room leases are released only after their final snapshot is committed. Liveness stays `OK` while the process is available.
+- [x] Add readiness tests for invalid schema or pilot configuration, PostgreSQL failure, recovery and planned drain. Exercise a racing create while drain is starting. Assert the shared gate closes new room admission and reports unavailable readiness, already admitted transactions resolve, and room leases are released only after their final snapshot is committed. Liveness stays `OK` while the process is available.
 
   ```kotlin
   fixture.beginDrain(backendA)
@@ -142,10 +142,16 @@ Task 4 verification on 07/11/2026 ran 61 targeted tests without skips on local P
   assertEquals(fixture.lastCommittedSnapshot(roomId), fixture.claimOnB(roomId).snapshot)
   ```
 
-- [ ] Run `./gradlew.bat :server:test --tests '*RoomOwnershipReadinessTest'` and observe failure on the readiness/drain behavior.
-- [ ] Add readiness that checks PostgreSQL and an available pilot worker. Use one shared admission gate to reject new room work during drain. Finish or roll back admitted transactions, release each room with its fence, then close the corresponding sockets to allow reconnect. On process death the lease expires naturally. Export counters for takeovers, rejected fences, routing, resync and settlement failures, and a gauge/histogram for queued event age and recovery latency. Count outcomes at the point they occur and use fixed labels without IDs.
-- [ ] Add an isolated Compose topology for two Ktor processes, PostgreSQL 18, Redis and a Caddy test proxy. Health-check `/ready` on each private upstream. Keep only the game proxy and explicitly selected fixture ports on loopback. Verify public `/internal/*` is denied and direct private `/ready` is reachable only inside the fixture. Preserve the current production Caddy configuration by putting pilot routing in `deploy/room-ownership/Caddyfile`.
-- [ ] Rerun the targeted test and `docker compose -f deploy/room-ownership/compose.local.yaml config --quiet`. Commit `feat(server): add pilot readiness and local routing`.
+- [x] Run `./gradlew.bat :server:test --tests '*RoomOwnershipReadinessTest'` and observe failure on the readiness/drain behavior.
+- [x] Add readiness that checks PostgreSQL and an available pilot worker. Use one shared admission gate to reject new room work during drain. Finish or roll back admitted transactions, release each room with its fence, then close the corresponding sockets to allow reconnect. On process death the lease expires naturally. Export counters for takeovers, rejected fences, routing, resync and settlement failures, and a gauge/histogram for queued event age and recovery latency. Count outcomes at the point they occur and use fixed labels without IDs.
+- [x] Add an isolated Compose topology for two Ktor processes, PostgreSQL 18, Redis and a Caddy test proxy. Health-check `/ready` on each private upstream. Keep only the game proxy and explicitly selected fixture ports on loopback. Verify public `/internal/*` is denied and direct private `/ready` is reachable only inside the fixture. Preserve the current production Caddy configuration by putting pilot routing in `deploy/room-ownership/Caddyfile`.
+- [x] Rerun the targeted test and `docker compose -f deploy/room-ownership/compose.local.yaml config --quiet`. Commit `feat(server): add pilot readiness and local routing`.
+
+Task 5 verification on 07/11/2026 ran 33 tests without skips, including five readiness/drain tests and three fixture seeding tests against isolated PostgreSQL 18. The localization check and installDist passed. The network-deadline case disabled the server statement timeout and confirmed the JDBC read stopped before a seven-second query completed. Drain retries fence release while the database resolves the timed-out transaction.
+
+An isolated Docker Compose project then passed real readiness and proxy checks. Public `/health` returned 200 and `/ready`, `/internal`, and `/internal/metrics` returned 404. Both private readiness probes succeeded. Two synthetic accounts started a match and committed selection 1. A planned Docker stop of the owner released the room, and both accounts reconnected with the same match and selected number in 2,445 ms. The new epoch and two finalized quota receipts were verified in PostgreSQL. The surviving backend recorded takeover, resync and recovery histogram samples. Containers, networks, project images and volumes were removed after the smoke run.
+
+Queued-event age covers persisted events for known current socket cursor positions. An uncertain first create/join appears after discovery resolves its room, so that narrow case can temporarily under-report. Task 6 expands this rehearsal to process kills, network partitions and sustained load.
 
 ## Task 6 — Prove recovery across independent processes
 

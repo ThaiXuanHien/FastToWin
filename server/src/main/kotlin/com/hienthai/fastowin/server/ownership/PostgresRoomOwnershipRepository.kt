@@ -17,7 +17,10 @@ import java.time.Instant
 import java.util.UUID
 import javax.sql.DataSource
 
-internal class PostgresRoomOwnershipRepository(private val dataSource: DataSource) : RoomOwnershipRepository {
+internal class PostgresRoomOwnershipRepository(
+    private val dataSource: DataSource,
+    private val metrics: RoomOwnershipMetrics? = null
+) : RoomOwnershipRepository {
     override suspend fun claim(roomId: UUID, instanceId: UUID): OwnedRoomState? = transaction {
         val room = load(roomId, lock = true) ?: return@transaction null
         if (room.state.closed || room.leaseUntil > databaseTime()) return@transaction null
@@ -35,6 +38,81 @@ internal class PostgresRoomOwnershipRepository(private val dataSource: DataSourc
             """,
             instanceId, recoveryNeeded, roomId
         ) { rows -> check(rows.next()); rows.state() }
+    }.also { if (it != null) metrics?.takeover() }
+
+    suspend fun fixtureReady(fixtureId: UUID): Boolean = try {
+        transaction {
+            // Resolve every column needed by the pilot without reading application rows.
+            query(
+                """
+                SELECT r.room_id, r.instance_id, r.owner_epoch, r.revision, r.lease_until,
+                       r.recovery_deadline, r.closed_at, r.snapshot,
+                       m.player_id, m.room_id, s.player_id, s.generation,
+                       e.room_id, e.revision, e.owner_epoch, e.created_at, e.events,
+                       t.match_id, t.room_id, t.completion_sha256, f.singleton, f.fixture_id
+                FROM room_ownership_pilot_rooms r, room_ownership_pilot_memberships m,
+                     room_ownership_pilot_sessions s, room_ownership_pilot_events e,
+                     room_ownership_pilot_settlements t, room_ownership_pilot_fixture f
+                WHERE FALSE
+                """
+            ) { true }
+            val keysReady = query(
+            """
+            SELECT count(*) = 6
+            FROM pg_constraint c JOIN pg_class t ON t.oid = c.conrelid
+            JOIN pg_namespace n ON n.oid = t.relnamespace
+            WHERE n.nspname = current_schema() AND c.contype = 'p'
+              AND (t.relname, pg_get_constraintdef(c.oid)) IN (
+                  ('room_ownership_pilot_rooms', 'PRIMARY KEY (room_id)'),
+                  ('room_ownership_pilot_memberships', 'PRIMARY KEY (player_id)'),
+                  ('room_ownership_pilot_sessions', 'PRIMARY KEY (player_id)'),
+                  ('room_ownership_pilot_events', 'PRIMARY KEY (room_id, revision)'),
+                  ('room_ownership_pilot_settlements', 'PRIMARY KEY (match_id)'),
+                  ('room_ownership_pilot_fixture', 'PRIMARY KEY (singleton)')
+              )
+            """
+            ) { rows -> rows.next() && rows.getBoolean(1) }
+            keysReady && query("SELECT 1 FROM room_ownership_pilot_fixture WHERE singleton AND fixture_id = ?", fixtureId) { it.next() }
+        }
+    } catch (failure: SQLException) {
+        if (failure.sqlState?.startsWith("42") == true) false else throw failure
+    }
+
+    suspend fun ownedFences(instanceId: UUID): List<OwnerFence> = transaction {
+        query(
+            """
+            SELECT room_id, owner_epoch FROM room_ownership_pilot_rooms
+            WHERE instance_id = ? AND closed_at IS NULL AND lease_until > statement_timestamp()
+            ORDER BY room_id
+            """,
+            instanceId
+        ) { rows ->
+            buildList {
+                while (rows.next()) add(OwnerFence(rows.getObject(1, UUID::class.java), instanceId, rows.getLong(2)))
+            }
+        }
+    }
+
+    suspend fun oldestQueuedEventAgeSeconds(positions: List<RoomQueuePosition>): Double {
+        if (positions.isEmpty()) return 0.0
+        return transaction {
+            query(
+                """
+                SELECT COALESCE(EXTRACT(EPOCH FROM statement_timestamp() - min(e.created_at)), 0)
+                FROM jsonb_to_recordset(CAST(? AS jsonb)) AS p(
+                    "roomId" uuid, "playerId" uuid, generation bigint, revision bigint, "nextEventIndex" integer
+                )
+                JOIN room_ownership_pilot_sessions s ON s.player_id = p."playerId" AND s.generation = p.generation
+                JOIN room_ownership_pilot_events e ON e.room_id = p."roomId" AND e.revision > p.revision
+                WHERE EXISTS (
+                    SELECT 1 FROM jsonb_array_elements(e.events) WITH ORDINALITY AS v(item, event_index)
+                    WHERE jsonb_exists(v.item->'recipientIds', p."playerId"::text)
+                      AND (e.revision > p.revision + 1 OR v.event_index > p."nextEventIndex")
+                )
+                """,
+                ProtocolJson.encodeToString(positions)
+            ) { rows -> check(rows.next()); rows.getDouble(1).coerceAtLeast(0.0) }
+        }
     }
 
     override suspend fun expiredRooms(limit: Int): List<UUID> {
@@ -204,7 +282,10 @@ internal class PostgresRoomOwnershipRepository(private val dataSource: DataSourc
             recoveryDeadline = state.recoveryDeadline.takeUnless { mutation.close || mutation.clearRecoveryDeadline }
         )
         saveEvents(committed, mutation.events)
-        return FencedResult.Committed(committed, mutation.reply)
+        val recoveredAfter = state.recoveryDeadline
+            ?.takeIf { mutation.clearRecoveryDeadline && !mutation.close && snapshot.phase == RoomPhase.PLAYING }
+            ?.let { state.observedAt.toEpochMilli() - it.minusSeconds(30).toEpochMilli() }
+        return FencedResult.Committed(committed, mutation.reply, recoveredAfter)
     }
 
     override suspend fun purgeExpiredClosedRooms(limit: Int): Int {
@@ -328,7 +409,10 @@ internal class PostgresRoomOwnershipRepository(private val dataSource: DataSourc
     }
 
     private suspend fun fencedTransaction(block: Connection.() -> FencedResult): FencedResult = try {
-        transaction(commit = { it is FencedResult.Committed }, block = block)
+        transaction(commit = { it is FencedResult.Committed }, block = block).also { result ->
+            if (result == FencedResult.Stale) metrics?.fenceRejected()
+            if (result is FencedResult.Committed) result.recoveryDurationMillis?.let { metrics?.recoveryCompleted(it) }
+        }
     } catch (_: SQLException) {
         FencedResult.TemporaryFailure
     }
@@ -336,6 +420,8 @@ internal class PostgresRoomOwnershipRepository(private val dataSource: DataSourc
     private suspend fun <T> transaction(commit: (T) -> Boolean = { true }, block: Connection.() -> T): T =
         withContext(Dispatchers.IO) {
             dataSource.connection.use { connection ->
+                val previousNetworkTimeout = connection.networkTimeout
+                connection.setNetworkTimeout(Runnable::run, 2_500)
                 connection.autoCommit = false
                 try {
                     connection.createStatement().use { statement ->
@@ -348,6 +434,8 @@ internal class PostgresRoomOwnershipRepository(private val dataSource: DataSourc
                 } catch (error: Throwable) {
                     runCatching { connection.rollback() }.exceptionOrNull()?.let(error::addSuppressed)
                     throw error
+                } finally {
+                    if (!connection.isClosed) runCatching { connection.setNetworkTimeout(Runnable::run, previousNetworkTimeout) }
                 }
             }
         }

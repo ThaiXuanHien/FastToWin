@@ -13,11 +13,26 @@ import com.hienthai.fastowin.server.events.NoRewardEventSource
 import com.hienthai.fastowin.server.legacyFallback
 import io.ktor.server.routing.Route
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.sql.SQLException
 import java.util.UUID
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicLong
 import javax.sql.DataSource
+
+internal class AdmittedPilotConnection(
+    val socket: SocketFence,
+    val initialReply: OwnedRoomReply,
+    private val permit: AutoCloseable
+) : AutoCloseable {
+    override fun close() = permit.close()
+}
 
 internal class RoomOwnershipPilot private constructor(
     private val config: RoomOwnershipPilotConfig,
@@ -26,15 +41,78 @@ internal class RoomOwnershipPilot private constructor(
     private val engine: OwnedRoomEngine,
     private val transport: OwnerPeerTransport,
     private val newIntentAllowed: () -> Boolean,
+    private val metrics: RoomOwnershipMetrics,
     wakeups: Flow<UUID>
 ) {
-    val delivery = RoomEventDelivery(rooms, wakeups, reattach = ::reconnect)
+    val delivery = RoomEventDelivery(rooms, wakeups, reattach = ::reconnect, metrics = metrics)
+    private val admission = RoomAdmissionGate()
+    private val lastHealthyTick = AtomicLong()
+    private val drainMutex = Mutex()
+    private var drained = false
 
     fun allows(account: AuthenticatedAccount): Boolean = account.emailVerified && account.userId in config.allowedAccounts
 
-    suspend fun onConnected(account: AuthenticatedAccount): SocketFence {
+    fun isAccepting(): Boolean = admission.accepting
+
+    suspend fun isReady(): Boolean {
+        if (!isAccepting() || !workerHealthy()) return false
+        return try {
+            rooms.fixtureReady(config.fixtureId) && isAccepting() && workerHealthy()
+        } catch (_: SQLException) {
+            false
+        }
+    }
+
+    private fun workerHealthy(): Boolean {
+        val lastTick = lastHealthyTick.get()
+        return lastTick != 0L && System.nanoTime() - lastTick < TimeUnit.SECONDS.toNanos(8)
+    }
+
+    suspend fun runWorker() {
+        try {
+            while (currentCoroutineContext().isActive) {
+                val healthy = admission.admit { engine.renewalTick() } ?: return
+                lastHealthyTick.set(if (healthy) System.nanoTime() else 0L)
+                delay(3_000)
+            }
+        } finally {
+            lastHealthyTick.set(0)
+        }
+    }
+
+    suspend fun beginDrain(): Boolean = drainMutex.withLock {
+        if (drained) return true
+        admission.beginDrain().await()
+        try {
+            // Look up durable ownership rather than only the engine cache, including a create with an uncertain reply.
+            rooms.ownedFences(instanceId).forEach { rooms.release(it) }
+        } catch (_: SQLException) {
+            return false
+        }
+        delivery.closeForDrain()
+        drained = true
+        true
+    }
+
+    suspend fun renderMetrics(): String {
+        val queuedAge = try {
+            rooms.oldestQueuedEventAgeSeconds(delivery.queuedPositions())
+        } catch (_: SQLException) {
+            Double.NaN
+        }
+        return metrics.render(queuedAge)
+    }
+
+    suspend fun onConnected(account: AuthenticatedAccount): AdmittedPilotConnection? {
         require(allows(account))
-        return rooms.bindSocket(account.userId)
+        val permit = admission.acquire() ?: return null
+        try {
+            val socket = rooms.bindSocket(account.userId)
+            return AdmittedPilotConnection(socket, reconnectRoom(socket), permit)
+        } catch (failure: Throwable) {
+            permit.close()
+            throw failure
+        }
     }
 
     suspend fun isCurrent(socket: SocketFence): Boolean = rooms.isCurrentSocket(socket)
@@ -51,13 +129,21 @@ internal class RoomOwnershipPilot private constructor(
         socket: SocketFence,
         command: ClientMessage,
         synchronizedRoom: RoomDeliveryPosition? = null
+    ): OwnedRoomReply = admission.admit { handleMessage(socket, command, synchronizedRoom) } ?: draining(command)
+
+    private suspend fun handleMessage(
+        socket: SocketFence,
+        command: ClientMessage,
+        synchronizedRoom: RoomDeliveryPosition?
     ): OwnedRoomReply = try {
         when {
             socket.playerId !in config.allowedAccounts -> denied()
             command.needsPilotAdmission() && !newIntentAllowed() -> maintenance()
             command is ClientMessage.CreateRoom -> {
                 val existing = rooms.lookupRoom(socket.playerId)
-                if (existing == null) engine.handle(socket, command)
+                if (existing == null) {
+                    engine.handle(socket, command).also { recordRoute(it, peer = false) }
+                }
                 else route(existing, socket, OwnerOperation.RECONNECT, synchronizedRoom = synchronizedRoom)
             }
             else -> {
@@ -71,21 +157,29 @@ internal class RoomOwnershipPilot private constructor(
             }
         }
     } catch (_: SQLException) {
+        metrics.routeFailed()
         unavailable(command)
     }
 
-    suspend fun reconnect(socket: SocketFence): OwnedRoomReply = try {
+    suspend fun reconnect(socket: SocketFence): OwnedRoomReply = admission.admit { reconnectRoom(socket) } ?: draining()
+
+    private suspend fun reconnectRoom(socket: SocketFence): OwnedRoomReply = try {
         val id = rooms.lookupRoom(socket.playerId)
         if (id == null) OwnedRoomReply.NoRoom else route(id, socket, OwnerOperation.RECONNECT)
     } catch (_: SQLException) {
+        metrics.routeFailed()
         unavailable()
     }
 
     suspend fun onDisconnected(socket: SocketFence) {
-        try {
-            rooms.lookupRoom(socket.playerId)?.let { route(it, socket, OwnerOperation.DISCONNECT) }
-        } catch (_: SQLException) {
-            // Socket replacement still invalidates the generation in PostgreSQL.
+        admission.admit {
+            try {
+                rooms.lookupRoom(socket.playerId)?.let { route(it, socket, OwnerOperation.DISCONNECT) }
+            } catch (_: SQLException) {
+                metrics.routeFailed()
+                // Socket replacement still invalidates the generation in PostgreSQL.
+            }
+            Unit
         }
     }
 
@@ -98,17 +192,35 @@ internal class RoomOwnershipPilot private constructor(
     ): OwnedRoomReply {
         val state = rooms.read(roomId)?.takeUnless { it.closed } ?: return missing()
         val fence = state.fence
-        if (synchronizedRoom?.roomId == roomId && synchronizedRoom.epoch != fence.epoch) return unavailable(command)
-        if (fence.instanceId == instanceId) return dispatch(fence, socket, operation, command)
-        return transport.forward(
+        if (synchronizedRoom?.roomId == roomId && synchronizedRoom.epoch != fence.epoch) {
+            metrics.routeFailed()
+            return unavailable(command)
+        }
+        if (fence.instanceId == instanceId) {
+            return dispatch(fence, socket, operation, command).also { recordRoute(it, peer = false) }
+        }
+        val result = transport.forward(
             OwnerCommandRequest(
                 roomId.toString(), fence.epoch, socket.playerId.toString(), socket.generation, operation, command,
                 ownerInstanceId = fence.instanceId.toString()
             )
-        ) ?: unavailable(command)
+        )
+        if (result == null) metrics.routeFailed() else recordRoute(result, peer = true)
+        return result ?: unavailable(command)
     }
 
-    private suspend fun onPeerRequest(request: OwnerCommandRequest): OwnedRoomReply = try {
+    private fun recordRoute(result: OwnedRoomReply, peer: Boolean) {
+        when {
+            result is OwnedRoomReply.Retryable -> metrics.routeFailed()
+            peer -> metrics.peerRoute()
+            else -> metrics.localRoute()
+        }
+    }
+
+    private suspend fun onPeerRequest(request: OwnerCommandRequest): OwnedRoomReply =
+        admission.admit { handlePeerRequest(request) } ?: draining(request.command)
+
+    private suspend fun handlePeerRequest(request: OwnerCommandRequest): OwnedRoomReply = try {
         val playerId = parsePilotUuid(request.playerId)
         val roomId = parsePilotUuid(request.roomId)
         val command = request.command
@@ -152,27 +264,24 @@ internal class RoomOwnershipPilot private constructor(
             wakeups: Flow<UUID>? = null,
             newIntentAllowed: () -> Boolean = { true }
         ): RoomOwnershipPilot {
-            verifyFixture(dataSource, config)
             val instanceId = UUID.randomUUID()
-            val repository = PostgresRoomOwnershipRepository(dataSource)
-            val economy = OwnedMatchEconomy(repository, PostgresPlayQuotaRepository(dataSource), PostgresMatchResultRepository(dataSource))
+            val metrics = RoomOwnershipMetrics()
+            val repository = PostgresRoomOwnershipRepository(dataSource, metrics)
+            require(repository.fixtureReady(config.fixtureId)) { "Room ownership fixture schema or marker is invalid" }
+            verifyFixtureAccounts(dataSource, config)
+            val economy = OwnedMatchEconomy(
+                repository, PostgresPlayQuotaRepository(dataSource), PostgresMatchResultRepository(dataSource), metrics
+            )
             val engine = OwnedRoomEngine(instanceId, repository, economy, accountPlayer, eventRewards)
             return RoomOwnershipPilot(
                 config, instanceId, repository, engine,
                 OwnerPeerTransport(config.nodeId, config.peerId, config.peerUri, config.peerSecret),
-                newIntentAllowed, wakeups ?: postgresRoomEventWakeups(dataSource)
+                newIntentAllowed, metrics, wakeups ?: postgresRoomEventWakeups(dataSource)
             )
         }
 
-        private suspend fun verifyFixture(source: DataSource, config: RoomOwnershipPilotConfig) = withContext(Dispatchers.IO) {
+        private suspend fun verifyFixtureAccounts(source: DataSource, config: RoomOwnershipPilotConfig) = withContext(Dispatchers.IO) {
             source.connection.use { connection ->
-                connection.prepareStatement("SELECT fixture_id FROM room_ownership_pilot_fixture WHERE singleton").use { query ->
-                    query.executeQuery().use { rows ->
-                        require(rows.next() && rows.getObject(1, UUID::class.java) == config.fixtureId) {
-                            "Room ownership fixture marker is absent or mismatched"
-                        }
-                    }
-                }
                 connection.prepareStatement("""
                     SELECT id FROM users
                     WHERE id = ANY (?) AND account_type = 'REGISTERED' AND status = 'ACTIVE' AND email_verified_at IS NOT NULL
@@ -232,6 +341,10 @@ private fun denied() = OwnedRoomReply.Rejected(ServerMessage.Error("PILOT_ACCOUN
 private fun unsupported() = OwnedRoomReply.Rejected(ServerMessage.Error("UNSUPPORTED_PILOT_COMMAND", "This action is outside the room pilot."))
 private fun missing() = OwnedRoomReply.Rejected(ServerMessage.Error("ROOM_NOT_FOUND", legacyFallback("Phòng không còn tồn tại.")))
 private fun maintenance() = OwnedRoomReply.Retryable(ServerMessage.Error("MAINTENANCE", legacyFallback("Máy chủ đang bảo trì.")))
+private fun draining(command: ClientMessage? = null) = OwnedRoomReply.Retryable(ServerMessage.Error(
+    "ROOM_DRAINING", legacyFallback("Máy chủ đang bàn giao phòng. Vui lòng kết nối lại."),
+    (command as? ClientMessage.SelectNumber)?.requestId
+))
 private fun unavailable(command: ClientMessage? = null) = OwnedRoomReply.Retryable(ServerMessage.Error(
     "ROOM_RECOVERING", legacyFallback("Phòng đang đồng bộ. Vui lòng thử lại."),
     (command as? ClientMessage.SelectNumber)?.requestId

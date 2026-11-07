@@ -1,0 +1,24 @@
+{
+	admin off
+}
+
+:8080 {
+	@private path /internal /internal/* /ready /ready/*
+	handle @private {
+		respond 404
+	}
+
+	@public path /game /auth/* /api/* /status /health
+	handle @public {
+		reverse_proxy backend-a:8080 backend-b:8080 {
+			lb_policy round_robin
+			health_uri /ready
+			health_interval 1s
+			health_timeout 2s
+		}
+	}
+
+	handle {
+		respond 404
+	}
+}

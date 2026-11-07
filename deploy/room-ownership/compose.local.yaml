@@ -1,0 +1,137 @@
+x-build: &server-build
+  context: ../..
+  dockerfile: deploy/server.Dockerfile
+
+x-fixture-env: &fixture-env
+  FASTTOWIN_ENV: dev
+  DATABASE_URL: jdbc:postgresql://postgres:5432/fasttowin_room_pilot
+  DATABASE_USER: fasttowin_room_pilot
+  DATABASE_PASSWORD: ${FASTTOWIN_ROOM_OWNERSHIP_DATABASE_PASSWORD:?Set a synthetic fixture database password}
+  FASTTOWIN_ROOM_OWNERSHIP_FIXTURE_ID: ${FASTTOWIN_ROOM_OWNERSHIP_FIXTURE_ID:?Set a fixture UUID}
+  FASTTOWIN_ROOM_OWNERSHIP_ACCOUNTS: ${FASTTOWIN_ROOM_OWNERSHIP_ACCOUNTS:?Set a comma-separated list of fixture account UUIDs}
+
+x-backend-env: &backend-env
+  <<: *fixture-env
+  SERVER_HOST: 0.0.0.0
+  PORT: 8080
+  FASTTOWIN_ROOM_OWNERSHIP_MODE: pilot
+  FASTTOWIN_ROOM_OWNERSHIP_PEER_SECRET: ${FASTTOWIN_ROOM_OWNERSHIP_PEER_SECRET:?Set a dedicated Base64-encoded 32-byte fixture secret}
+  FASTTOWIN_RATE_LIMIT_STORE: redis
+  FASTTOWIN_RATE_LIMIT_REDIS_URL: redis://redis:6379
+  FASTTOWIN_RATE_LIMIT_NAMESPACE: room-pilot-rate-limit
+  FASTTOWIN_PRESENCE_STORE: redis
+  FASTTOWIN_PRESENCE_REDIS_URL: redis://redis:6379
+  FASTTOWIN_PRESENCE_NAMESPACE: room-pilot-presence
+
+x-backend: &backend
+  build: *server-build
+  depends_on:
+    postgres:
+      condition: service_healthy
+    redis:
+      condition: service_healthy
+    seed:
+      condition: service_completed_successfully
+  healthcheck:
+    test: [CMD, wget, -qO, /dev/null, http://127.0.0.1:8080/ready]
+    interval: 2s
+    timeout: 3s
+    retries: 5
+    start_period: 30s
+  stop_grace_period: 30s
+
+services:
+  postgres:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_DB: fasttowin_room_pilot
+      POSTGRES_USER: fasttowin_room_pilot
+      POSTGRES_PASSWORD: ${FASTTOWIN_ROOM_OWNERSHIP_DATABASE_PASSWORD:?Set a synthetic fixture database password}
+    healthcheck:
+      test: [CMD, pg_isready, -h, 127.0.0.1, -U, fasttowin_room_pilot, -d, fasttowin_room_pilot]
+      interval: 2s
+      timeout: 2s
+      retries: 15
+      start_period: 10s
+    volumes:
+      - postgres-data:/var/lib/postgresql
+    networks: [fixture]
+
+  redis:
+    image: redis:8-alpine
+    command: [redis-server, --appendonly, "yes"]
+    healthcheck:
+      test: [CMD, redis-cli, ping]
+      interval: 2s
+      timeout: 2s
+      retries: 15
+    volumes:
+      - redis-data:/data
+    networks: [fixture]
+
+  seed:
+    build: *server-build
+    entrypoint: [java, -cp, '/opt/fasttowin/lib/*', com.hienthai.fastowin.server.ownership.RoomOwnershipFixtureSeedKt]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      <<: *fixture-env
+      FASTTOWIN_ROOM_OWNERSHIP_FIXTURE_PASSWORD: ${FASTTOWIN_ROOM_OWNERSHIP_FIXTURE_PASSWORD:?Set a synthetic fixture account password}
+    networks: [fixture]
+
+  backend-a:
+    <<: *backend
+    environment:
+      <<: *backend-env
+      FASTTOWIN_ROOM_OWNERSHIP_NODE_ID: 00000000-0000-4000-8000-00000000000a
+      FASTTOWIN_ROOM_OWNERSHIP_PEER_ID: 00000000-0000-4000-8000-00000000000b
+      FASTTOWIN_ROOM_OWNERSHIP_PEER_URL: http://${FASTTOWIN_ROOM_OWNERSHIP_SUBNET_PREFIX:-172.31.231}.11:8080
+    networks:
+      fixture:
+        ipv4_address: ${FASTTOWIN_ROOM_OWNERSHIP_SUBNET_PREFIX:-172.31.231}.10
+
+  backend-b:
+    <<: *backend
+    environment:
+      <<: *backend-env
+      FASTTOWIN_ROOM_OWNERSHIP_NODE_ID: 00000000-0000-4000-8000-00000000000b
+      FASTTOWIN_ROOM_OWNERSHIP_PEER_ID: 00000000-0000-4000-8000-00000000000a
+      FASTTOWIN_ROOM_OWNERSHIP_PEER_URL: http://${FASTTOWIN_ROOM_OWNERSHIP_SUBNET_PREFIX:-172.31.231}.10:8080
+    networks:
+      fixture:
+        ipv4_address: ${FASTTOWIN_ROOM_OWNERSHIP_SUBNET_PREFIX:-172.31.231}.11
+
+  caddy:
+    image: caddy:2.11.4-alpine
+    depends_on:
+      backend-a:
+        condition: service_healthy
+      backend-b:
+        condition: service_healthy
+    healthcheck:
+      test: [CMD, wget, -qO, /dev/null, http://127.0.0.1:8080/health]
+      interval: 2s
+      timeout: 3s
+      retries: 5
+    ports:
+      - "127.0.0.1:${FASTTOWIN_ROOM_OWNERSHIP_PORT:-}:8080"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+    networks: [edge, fixture]
+
+networks:
+  edge: {}
+  fixture:
+    internal: true
+    driver: bridge
+    driver_opts:
+      com.docker.network.bridge.gateway_mode_ipv4: isolated
+    ipam:
+      config:
+        - subnet: ${FASTTOWIN_ROOM_OWNERSHIP_SUBNET_PREFIX:-172.31.231}.0/24
+          ip_range: ${FASTTOWIN_ROOM_OWNERSHIP_SUBNET_PREFIX:-172.31.231}.128/25
+
+volumes:
+  postgres-data:
+  redis-data:
