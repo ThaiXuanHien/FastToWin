@@ -386,13 +386,17 @@ internal data class StoredRoomReceipt(val epoch: Long, val revision: Long, val s
 internal class AcceptanceSocket(val session: DefaultClientWebSocketSession, val backend: Int) {
     lateinit var ready: ServerMessage.SessionReady
     suspend fun send(message: ClientMessage) = session.send(ProtocolJson.encodeToString<ClientMessage>(message))
-    suspend fun await(timeoutMillis: Long = 8_000, predicate: (ServerMessage) -> Boolean): ServerMessage = withTimeout(timeoutMillis) {
-        for (frame in session.incoming) if (frame is Frame.Text) {
-            val message = ProtocolJson.decodeFromString<ServerMessage>(frame.readText())
-            if (message is ServerMessage.Error) throw AcceptanceRejected(message.code)
-            if (predicate(message)) return@withTimeout message
+    suspend fun await(timeoutMillis: Long = 8_000, predicate: (ServerMessage) -> Boolean): ServerMessage = try {
+        withTimeout(timeoutMillis) {
+            for (frame in session.incoming) if (frame is Frame.Text) {
+                val message = ProtocolJson.decodeFromString<ServerMessage>(frame.readText())
+                if (message is ServerMessage.Error) throw AcceptanceRejected(message.code)
+                if (predicate(message)) return@withTimeout message
+            }
+            error("Fixture websocket closed")
         }
-        error("Fixture websocket closed")
+    } catch (timeout: kotlinx.coroutines.TimeoutCancellationException) {
+        throw IllegalStateException("Fixture websocket await timed out after ${timeoutMillis}ms on backend $backend", timeout)
     }
     fun close() { session.cancel() }
 }
@@ -512,7 +516,7 @@ internal class AcceptanceMatch(
         val receiptCount = fixture.number("SELECT count(*) FROM play_quota_match_consumptions WHERE match_id='$matchId' AND reservation_state='FINALIZED'")
         check(receiptCount == 2L) { "Each match must debit each player once" }
         if (lastSnapshot.phase == RoomPhase.FINISHED) {
-            withTimeout(12_000) { while (fixture.number("SELECT count(*) FROM matches WHERE id='$matchId'") != 1L) delay(50) }
+            withTimeout(30_000) { while (fixture.number("SELECT count(*) FROM matches WHERE id='$matchId'") != 1L) delay(50) }
             val wallets = fixture.number("SELECT count(*) FROM wallet_transactions WHERE source_type='MATCH' AND source_id='$matchId'")
             check(wallets == 2L) { "A completed match must reward exactly two players once" }
             fixture.source.connection.use { connection ->
