@@ -380,6 +380,19 @@ internal class RoomAcceptanceFixture(val settings: RoomAcceptanceSettings) : Aut
         }
     }
 
+    suspend fun recoverAfterPartialFault(match: AcceptanceMatch, before: StoredRoomReceipt): Long? {
+        val after = runCatching { snapshot(match.roomId) }.getOrNull() ?: return null
+        if (after.epoch <= before.epoch) return null
+        val currentOwner = ownerFor(after)
+        match.ownerBackend = currentOwner
+        return runCatching {
+            val started = System.nanoTime()
+            match.reconnect()
+            check(after.snapshot.matchId == match.matchId)
+            TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started)
+        }.getOrNull()
+    }
+
     fun ownerFor(receipt: StoredRoomReceipt): Int = checkNotNull(ownerNodes[receipt.instanceId]) { "Unknown fixture owner process" }
 
     suspend fun proxy(node: Int, blocked: Boolean) {

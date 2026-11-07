@@ -133,6 +133,7 @@ internal suspend fun runRoomOwnershipLoad(fixture: RoomAcceptanceFixture): LoadR
                         var lastFailure: Throwable? = null
                         repeat(3) {
                             if (elapsed != null) return@repeat
+                                val before = fixture.snapshot(checkNotNull(selected.match).roomId)
                             try {
                                 val match = checkNotNull(selected.match)
                                 elapsed = match.withFaultLock {
@@ -141,6 +142,8 @@ internal suspend fun runRoomOwnershipLoad(fixture: RoomAcceptanceFixture): LoadR
                             }
                             catch (failure: Exception) {
                                 currentCoroutineContext().ensureActive()
+                                    elapsed = fixture.recoverAfterPartialFault(checkNotNull(selected.match), before)
+                                    if (elapsed != null) return@repeat
                                 lastFailure = failure
                                 delay(100)
                             }
