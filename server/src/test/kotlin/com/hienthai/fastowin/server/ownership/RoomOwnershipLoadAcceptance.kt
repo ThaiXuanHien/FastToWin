@@ -213,7 +213,7 @@ internal suspend fun runRoomOwnershipLoad(fixture: RoomAcceptanceFixture): LoadR
                                 slot.matchOrdinal++
                                 // Keep twenty live slots until all scheduled selections are offered.
                                 if (due + SELECTION_INTERVAL_NANOS < deadline) {
-                                    slot.attach(fixture.createMatch(slot.index))
+                                slot.attach(fixture.createMatchWithRetry(slot.index))
                                     slot.nextNumber = 1
                                     slot.lastSequence = -1
                                     slot.correctSelections.fill(0)
@@ -286,7 +286,7 @@ internal suspend fun runRoomOwnershipLoad(fixture: RoomAcceptanceFixture): LoadR
         )
     } catch (failure: Throwable) {
         primaryFailure = failure
-        fixture.captureDiagnostics()
+        fixture.captureDiagnostics(failure)
         throw failure
     } finally {
         withContext(NonCancellable) {

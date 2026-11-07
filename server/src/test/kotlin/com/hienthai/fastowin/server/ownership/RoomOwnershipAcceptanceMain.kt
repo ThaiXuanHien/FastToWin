@@ -85,7 +85,7 @@ fun main() = runBlocking {
                 Files.writeString(settings.receipts.resolve("load.json"), ProtocolJson.encodeToString(receipt))
             }
         } } catch (failure: Throwable) {
-            fixture.captureDiagnostics()
+            fixture.captureDiagnostics(failure)
             throw failure
         }
         println("Room ownership ${settings.suite} accepted")
@@ -164,6 +164,20 @@ internal class RoomAcceptanceFixture(val settings: RoomAcceptanceSettings) : Aut
     }
 
     suspend fun createWaitingMatch(index: Int) = createMatch(index, start = false)
+
+    suspend fun createMatchWithRetry(index: Int): AcceptanceMatch {
+        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(25)
+        var last: Throwable? = null
+        while (System.nanoTime() < deadline) {
+            try { return createMatch(index) }
+            catch (failure: Exception) {
+                currentCoroutineContext().ensureActive()
+                last = failure
+                delay(100)
+            }
+        }
+        throw IllegalStateException("Fixture room creation did not recover in 25 seconds", last)
+    }
 
     suspend fun createMatch(index: Int, start: Boolean = true): AcceptanceMatch {
         val users = accounts()
@@ -342,8 +356,9 @@ internal class RoomAcceptanceFixture(val settings: RoomAcceptanceSettings) : Aut
         check(response.status == HttpStatusCode.OK)
     }
 
-    suspend fun captureDiagnostics() = withContext(NonCancellable) {
+    suspend fun captureDiagnostics(failure: Throwable? = null) = withContext(NonCancellable) {
         if (Files.exists(settings.receipts.resolve("failure-backend-a.log"))) return@withContext
+        failure?.let { Files.writeString(settings.receipts.resolve("failure-stack.txt"), it.stackTraceToString()) }
         for (node in 0 until backendCount) {
             val raw = runCatching { docker("logs", "--tail", "40", nodeName(node)) }.getOrDefault("Fixture logs unavailable")
             var safe = raw.replace(settings.databasePassword, "[redacted]").replace(settings.accountPassword, "[redacted]")
