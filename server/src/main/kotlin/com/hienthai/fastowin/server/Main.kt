@@ -123,6 +123,7 @@ fun main() {
             gameModule(
                 engine = engine,
                 rateLimiter = rateLimitRuntime,
+                rateLimitPolicies = ownershipConfig?.rateLimitPolicies() ?: ServerRateLimitPolicies(),
                 authService = authService,
                 authEmailSender = authEmailSender,
                 environment = environment,

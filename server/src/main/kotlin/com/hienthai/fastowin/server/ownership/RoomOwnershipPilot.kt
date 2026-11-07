@@ -25,6 +25,7 @@ import java.util.UUID
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicLong
 import javax.sql.DataSource
+import com.zaxxer.hikari.HikariDataSource
 
 internal class AdmittedPilotConnection(
     val socket: SocketFence,
@@ -42,6 +43,7 @@ internal class RoomOwnershipPilot private constructor(
     private val transport: OwnerPeerTransport,
     private val newIntentAllowed: () -> Boolean,
     private val metrics: RoomOwnershipMetrics,
+    private val pool: HikariDataSource?,
     wakeups: Flow<UUID>
 ) {
     val delivery = RoomEventDelivery(rooms, wakeups, reattach = ::reconnect, metrics = metrics)
@@ -100,7 +102,7 @@ internal class RoomOwnershipPilot private constructor(
         } catch (_: SQLException) {
             Double.NaN
         }
-        return metrics.render(queuedAge)
+        return metrics.render(queuedAge, pool?.hikariPoolMXBean?.activeConnections, pool?.maximumPoolSize)
     }
 
     suspend fun onConnected(account: AuthenticatedAccount): AdmittedPilotConnection? {
@@ -276,7 +278,7 @@ internal class RoomOwnershipPilot private constructor(
             return RoomOwnershipPilot(
                 config, instanceId, repository, engine,
                 OwnerPeerTransport(config.nodeId, config.peerId, config.peerUri, config.peerSecret),
-                newIntentAllowed, metrics, wakeups ?: postgresRoomEventWakeups(dataSource)
+                newIntentAllowed, metrics, dataSource as? HikariDataSource, wakeups ?: postgresRoomEventWakeups(dataSource)
             )
         }
 

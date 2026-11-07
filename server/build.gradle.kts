@@ -83,6 +83,17 @@ tasks.register<JavaExec>("bootstrapAdminOwner") {
 }
 
 // Export only the test launcher classpath; production distributions contain main sources only.
+tasks.register("roomOwnershipAcceptanceClasspath") {
+    group = "verification"
+    dependsOn(tasks.testClasses)
+    val acceptanceClasspath = sourceSets.test.get().runtimeClasspath
+    inputs.property("acceptanceClasspath", acceptanceClasspath.asPath)
+    val output = layout.buildDirectory.file("room-ownership-acceptance-classpath.txt")
+    outputs.file(output)
+    doLast { output.get().asFile.writeText(acceptanceClasspath.asPath) }
+}
+
+// Export only the test launcher classpath; production distributions contain main sources only.
 tasks.register("missionAcceptanceClasspath") {
     group = "verification"
     dependsOn(tasks.testClasses)

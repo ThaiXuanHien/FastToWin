@@ -72,6 +72,23 @@ class PostgresMatchResultRepository(
         }
 
     private fun insertAndApplyMatch(connection: Connection, match: CompletedMatch): Boolean {
+        // Activity checkpoints lock registered identities in ascending UUID order. Acquire the
+        // same locks before any mission/admission lock or FK check so settlement cannot hold one
+        // player row while waiting for another in the opposite order under concurrent load.
+        val playerIds = match.players.map { UUID.fromString(it.playerId) }.distinct()
+        val playerArray = connection.createArrayOf("uuid", playerIds.toTypedArray())
+        try {
+            connection.prepareStatement(
+                "SELECT id FROM users WHERE id = ANY (?) AND status <> 'DELETED' ORDER BY id FOR UPDATE"
+            ).use { statement ->
+                statement.setArray(1, playerArray)
+                statement.executeQuery().use { rows ->
+                    var locked = 0
+                    while (rows.next()) locked++
+                    check(locked == playerIds.size) { "Match player identity is missing" }
+                }
+            }
+        } finally { playerArray.free() }
         JdbcMissionStore(connection).lock()
         if (!insertMatch(connection, match)) return false
         insertPlayers(connection, match)

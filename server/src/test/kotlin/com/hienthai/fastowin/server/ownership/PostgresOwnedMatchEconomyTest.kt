@@ -14,6 +14,10 @@ import com.hienthai.fastowin.server.StoredActiveRoom
 import com.zaxxer.hikari.HikariConfig
 import com.zaxxer.hikari.HikariDataSource
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 import org.flywaydb.core.Flyway
 import org.junit.jupiter.api.Assumptions.assumeTrue
 import java.util.UUID
@@ -23,8 +27,45 @@ import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlin.test.assertFailsWith
 
 class PostgresOwnedMatchEconomyTest {
+    @Test
+    fun `settlement prelocks match users in UUID order before foreign keys`() = runBlocking {
+        fixture { f ->
+            val started = f.start()
+            val pending = f.finish(f.repoA, started)
+            val match = assertNotNull(pending.snapshot.pendingCompletedMatch)
+            val ordered = f.playerIds().sorted()
+            f.a.connection.use { activity ->
+                activity.autoCommit = false
+                activity.prepareStatement("SELECT id FROM users WHERE id=? FOR UPDATE").use { statement ->
+                    statement.setObject(1, UUID.fromString(ordered[0]))
+                    statement.executeQuery().use { rows -> assertTrue(rows.next()) }
+                }
+                f.b.connection.use { settlement ->
+                    settlement.autoCommit = false
+                    settlement.createStatement().use { it.execute("SET lock_timeout='5s'") }
+                    val save = async(Dispatchers.IO) {
+                        PostgresMatchResultRepository(f.b).saveMatch(settlement, match)
+                    }
+                    // The old order reaches the winner FK (the higher UUID) while the activity
+                    // transaction owns the lower UUID. The fixed order remains blocked on lower.
+                    activity.createStatement().use { it.execute("SET lock_timeout='300ms'") }
+                    // Both rows must remain available to the activity checkpoint. If settlement
+                    // took the higher row first this statement times out: that is the regression.
+                    activity.prepareStatement("SELECT id FROM users WHERE id=? FOR UPDATE").use { statement ->
+                        statement.setObject(1, UUID.fromString(ordered[1]))
+                        statement.executeQuery().use { rows -> assertTrue(rows.next()) }
+                    }
+                    activity.rollback()
+                    save.await()
+                    settlement.rollback()
+                }
+            }
+        }
+    }
+
     @Test
     fun `takeover after start and settlement preserves one debit and one reward`() = runBlocking {
         fixture { f ->
@@ -158,8 +199,8 @@ class PostgresOwnedMatchEconomyTest {
     }
 
     private class Fixture(
-        private val a: HikariDataSource,
-        b: HikariDataSource,
+        val a: HikariDataSource,
+        val b: HikariDataSource,
         private val host: String,
         private val guest: String
     ) {
@@ -211,7 +252,7 @@ class PostgresOwnedMatchEconomyTest {
                 players = listOf(
                     CompletedMatchPlayer(host, "Pilot host", 50, MatchOutcome.WIN),
                     CompletedMatchPlayer(guest, "Pilot guest", 20, MatchOutcome.LOSS)
-                )
+                ).sortedByDescending { it.playerId }
             )
             return assertIs<FencedResult.Committed>(
                 repo.withFencedRoom(state.fence, state.revision, null) { _, room ->
@@ -242,6 +283,20 @@ class PostgresOwnedMatchEconomyTest {
         fun quotaCounts() = ints("SELECT matches_consumed FROM daily_play_quotas ORDER BY user_id")
         fun matchCount(matchId: String) = ints("SELECT count(*) FROM matches WHERE id = ?", UUID.fromString(matchId)).single()
         fun hostMatches() = ints("SELECT COALESCE(max(total_matches), 0) FROM player_stats WHERE user_id = ?", UUID.fromString(host)).single()
+        fun playerIds() = listOf(host, guest)
+
+        fun hasGrantedUserTupleLock(pid: Int): Boolean = a.connection.use { c ->
+            c.prepareStatement("""
+                SELECT EXISTS (
+                    SELECT 1 FROM pg_locks l
+                    JOIN pg_class r ON r.oid = l.relation
+                    WHERE l.pid = ? AND l.locktype = 'tuple' AND l.granted AND r.relname = 'users'
+                )
+            """.trimIndent()).use { statement ->
+                statement.setInt(1, pid)
+                statement.executeQuery().use { rows -> check(rows.next()); rows.getBoolean(1) }
+            }
+        }
 
         fun hostReward(matchId: String) = ints(
             """

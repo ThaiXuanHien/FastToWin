@@ -1,0 +1,84 @@
+# Only the local acceptance runner loads this override. The base fixture remains private.
+x-acceptance-labels: &acceptance-labels
+  io.fasttowin.room-ownership-acceptance: ${FTW_ACCEPTANCE_PROJECT:?Use scripts/room-ownership-local.ps1}
+
+x-acceptance-build: &acceptance-build
+  labels: *acceptance-labels
+
+services:
+  postgres:
+    labels: *acceptance-labels
+    ports: ["127.0.0.1:${FTW_ACCEPTANCE_POSTGRES_PORT:?Use the acceptance runner}:5432"]
+    networks: [fixture, acceptance]
+
+  redis:
+    labels: *acceptance-labels
+
+  seed:
+    labels: *acceptance-labels
+    build: *acceptance-build
+
+  backend-a:
+    labels: *acceptance-labels
+    build: *acceptance-build
+    environment:
+      DATABASE_URL: jdbc:postgresql://postgres-a:15432/fasttowin_room_pilot
+      FASTTOWIN_ROOM_OWNERSHIP_ACCEPTANCE: "true"
+    ports: ["127.0.0.1:${FTW_ACCEPTANCE_A_PORT:?Use the acceptance runner}:8080"]
+    depends_on:
+      postgres-a:
+        condition: service_started
+    networks:
+      acceptance: {}
+
+  backend-b:
+    labels: *acceptance-labels
+    build: *acceptance-build
+    environment:
+      DATABASE_URL: jdbc:postgresql://postgres-b:15432/fasttowin_room_pilot
+      FASTTOWIN_ROOM_OWNERSHIP_ACCEPTANCE: "true"
+    ports: ["127.0.0.1:${FTW_ACCEPTANCE_B_PORT:?Use the acceptance runner}:8080"]
+    depends_on:
+      postgres-b:
+        condition: service_started
+    networks:
+      acceptance: {}
+
+  postgres-a:
+    image: ghcr.io/shopify/toxiproxy:2.12.0
+    command: ["-host=0.0.0.0", "-config=/config/proxies.json"]
+    labels: *acceptance-labels
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports: ["127.0.0.1:${FTW_ACCEPTANCE_PROXY_A_PORT:?Use the acceptance runner}:8474"]
+    volumes: ["./toxiproxy-a.json:/config/proxies.json:ro"]
+    networks: [fixture, acceptance]
+
+  postgres-b:
+    image: ghcr.io/shopify/toxiproxy:2.12.0
+    command: ["-host=0.0.0.0", "-config=/config/proxies.json"]
+    labels: *acceptance-labels
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports: ["127.0.0.1:${FTW_ACCEPTANCE_PROXY_B_PORT:?Use the acceptance runner}:8474"]
+    volumes: ["./toxiproxy-b.json:/config/proxies.json:ro"]
+    networks: [fixture, acceptance]
+
+  caddy:
+    labels: *acceptance-labels
+
+networks:
+  edge:
+    labels: *acceptance-labels
+  fixture:
+    labels: *acceptance-labels
+  acceptance:
+    labels: *acceptance-labels
+
+volumes:
+  postgres-data:
+    labels: *acceptance-labels
+  redis-data:
+    labels: *acceptance-labels

@@ -33,7 +33,7 @@ internal class RoomOwnershipMetrics {
         }
     }
 
-    fun render(oldestQueuedSeconds: Double): String = buildString {
+    fun render(oldestQueuedSeconds: Double, poolActive: Int? = null, poolMaximum: Int? = null): String = buildString {
         counter("takeovers_total", takeovers)
         counter("fence_rejections_total", rejectedFences)
         appendLine("# TYPE fasttowin_room_ownership_routes_total counter")
@@ -44,6 +44,10 @@ internal class RoomOwnershipMetrics {
         counter("settlement_failures_total", settlementFailures)
         appendLine("# TYPE fasttowin_room_ownership_oldest_queued_event_seconds gauge")
         appendLine("fasttowin_room_ownership_oldest_queued_event_seconds $oldestQueuedSeconds")
+        appendLine("# TYPE fasttowin_room_ownership_pool_active_connections gauge")
+        appendLine("fasttowin_room_ownership_pool_active_connections ${poolActive?.toString() ?: "NaN"}")
+        appendLine("# TYPE fasttowin_room_ownership_pool_max_connections gauge")
+        appendLine("fasttowin_room_ownership_pool_max_connections ${poolMaximum?.toString() ?: "NaN"}")
         synchronized(this@RoomOwnershipMetrics) {
             val name = "fasttowin_room_ownership_recovery_seconds"
             appendLine("# TYPE $name histogram")
