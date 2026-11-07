@@ -213,8 +213,32 @@ internal class RoomAcceptanceFixture(val settings: RoomAcceptanceSettings) : Aut
                 runCatching { host.send(ClientMessage.LeaveRoom(roomId)) }
                 runCatching { guest.send(ClientMessage.LeaveRoom(roomId)) }
             }
+            // LeaveRoom is persisted by the owner asynchronously. Do not let
+            // the next retry race the membership row that is still being
+            // removed, especially after a paused owner has just recovered.
+            runCatching {
+                awaitMembershipsCleared(listOf(users[index * 2].userId, users[index * 2 + 1].userId))
+            }
             host.close(); guest.close()
             throw failure
+        }
+    }
+
+    private suspend fun awaitMembershipsCleared(playerIds: List<String>) = withTimeoutOrNull(20_000) {
+        while (true) {
+            val remaining = withContext(Dispatchers.IO) {
+                source.connection.use { connection ->
+                    connection.prepareStatement(
+                        "SELECT count(*) FROM room_ownership_pilot_memberships WHERE player_id IN (?, ?)"
+                    ).use { statement ->
+                        statement.setObject(1, UUID.fromString(playerIds[0]))
+                        statement.setObject(2, UUID.fromString(playerIds[1]))
+                        statement.executeQuery().use { rows -> check(rows.next()); rows.getLong(1) }
+                    }
+                }
+            }
+            if (remaining == 0L) return@withTimeoutOrNull
+            delay(50)
         }
     }
 
