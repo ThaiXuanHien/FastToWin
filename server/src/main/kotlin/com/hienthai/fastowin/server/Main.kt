@@ -7,6 +7,7 @@ import com.hienthai.fastowin.server.admin.InMemoryAdminRepository
 import com.hienthai.fastowin.server.announcements.AnnouncementService
 import com.hienthai.fastowin.server.announcements.AnnouncementPushDelivery
 import com.hienthai.fastowin.server.maintenance.*
+import com.hienthai.fastowin.server.ownership.RoomOwnershipPilotConfig
 import com.hienthai.fastowin.server.presence.PresenceStore
 import com.hienthai.fastowin.server.presence.RedisPresenceStore
 import com.hienthai.fastowin.server.presence.presenceConfiguration
@@ -19,6 +20,7 @@ fun main() {
     require(environment in setOf("dev", "prod")) {
         "FASTTOWIN_ENV must be either 'dev' or 'prod'."
     }
+    val ownershipConfig = RoomOwnershipPilotConfig.fromEnvironment(environment)
     if (environment == "prod") validateProductionEnvironment()
     val host = System.getenv("SERVER_HOST") ?: "0.0.0.0"
     val port = System.getenv("PORT")?.toIntOrNull() ?: 8080
@@ -27,6 +29,7 @@ fun main() {
     val adminConfiguration = AdminConfiguration.fromEnvironment(environment)
     val avatarConfiguration = AvatarStorageConfiguration.fromEnvironment()
     val databaseSettings = DatabaseSettings.fromEnvironment(environment)
+    require(ownershipConfig == null || databaseSettings != null) { "Room ownership pilot requires PostgreSQL" }
     avatarConfiguration.validateDatabase(databaseSettings != null)
     val adMobConfiguration = com.hienthai.fastowin.server.ads.AdMobConfiguration.fromEnvironment(environment, databaseSettings != null)
     val database = databaseSettings?.let(DatabaseRuntime::open)
@@ -98,9 +101,11 @@ fun main() {
             eventRewardSource = database?.rewardEventRepository ?: com.hienthai.fastowin.server.events.NoRewardEventSource,
             presenceStore = presenceStore
         )
-        runBlocking {
+        val ownershipPilot = runBlocking {
+            val pilot = ownershipConfig?.let { checkNotNull(database).openRoomOwnershipPilot(it, engine::newIntentAllowed) }
             seasonLifecycleRepository.maintain()
             engine.restoreActiveRooms()
+            pilot
         }
         val environmentStatus = serviceStatusFromEnvironment()
         val maintenanceService = MaintenanceService(database?.maintenanceRepository ?: UnavailableMaintenanceRepository,
@@ -151,7 +156,8 @@ fun main() {
                     playQuotaRepository, newIntentAllowed = engine::newIntentAllowed,
                     rewardedAdAvailability = rewardedAdAvailability) },
                 maintenanceService = maintenanceService,
-                maintenanceRuntime = maintenanceRuntime
+                maintenanceRuntime = maintenanceRuntime,
+                roomOwnershipPilot = ownershipPilot
             )
         }.start(wait = true)
     } finally {

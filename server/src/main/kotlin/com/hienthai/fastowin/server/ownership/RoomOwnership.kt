@@ -79,6 +79,7 @@ internal interface RoomOwnershipRepository {
     suspend fun lookupRoom(playerId: UUID): UUID?
     suspend fun read(roomId: UUID): OwnedRoomState?
     suspend fun bindSocket(playerId: UUID): SocketFence
+    suspend fun isCurrentSocket(socket: SocketFence): Boolean
     suspend fun purgeExpiredClosedRooms(limit: Int): Int
     suspend fun readEvents(roomId: UUID, afterRevision: Long, limit: Int): RoomEventBatch
 

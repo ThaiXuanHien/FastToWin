@@ -45,15 +45,15 @@ internal class OwnedRoomEngine(
 ) {
     private val leases = ConcurrentHashMap<UUID, OwnerFence>()
 
-    suspend fun handle(socket: SocketFence, message: ClientMessage): OwnedRoomReply = try {
+    suspend fun handle(socket: SocketFence, message: ClientMessage, expectedOwner: OwnerFence? = null): OwnedRoomReply = try {
         when (message) {
-            is ClientMessage.CreateRoom -> create(socket, message)
-            is ClientMessage.JoinRoom -> command(message.roomId) { state -> join(socket, state, message) }
-            is ClientMessage.SetReady -> command(message.roomId) { state -> ready(socket, state, message.ready) }
-            is ClientMessage.SelectNumber -> command(message.roomId, message.requestId) { state ->
+            is ClientMessage.CreateRoom -> if (expectedOwner == null) create(socket, message) else retry()
+            is ClientMessage.JoinRoom -> command(message.roomId, expectedOwner = expectedOwner) { state -> join(socket, state, message) }
+            is ClientMessage.SetReady -> command(message.roomId, expectedOwner = expectedOwner) { state -> ready(socket, state, message.ready) }
+            is ClientMessage.SelectNumber -> command(message.roomId, message.requestId, expectedOwner) { state ->
                 reply(mutate(state, socket, checkExpiry = false) { locked -> select(socket, locked, message) }, message.requestId)
             }
-            is ClientMessage.LeaveRoom -> command(message.roomId) { state ->
+            is ClientMessage.LeaveRoom -> command(message.roomId, expectedOwner = expectedOwner) { state ->
                 reply(mutate(state, socket) { locked -> leave(socket, locked) })
             }
             else -> reject("UNSUPPORTED_PILOT_COMMAND")
@@ -62,9 +62,9 @@ internal class OwnedRoomEngine(
         retry((message as? ClientMessage.SelectNumber)?.requestId)
     }
 
-    suspend fun reconnect(socket: SocketFence): OwnedRoomReply = try {
+    suspend fun reconnect(socket: SocketFence, expectedOwner: OwnerFence? = null): OwnedRoomReply = try {
         val id = rooms.lookupRoom(socket.playerId)
-        if (id == null) OwnedRoomReply.NoRoom else command(id.toString()) { state ->
+        if (id == null) OwnedRoomReply.NoRoom else command(id.toString(), expectedOwner = expectedOwner) { state ->
             reply(mutate(state, socket, checkExpiry = false) { locked ->
                 val room = locked.snapshot
                 val actor = socket.playerId.toString()
@@ -81,7 +81,8 @@ internal class OwnedRoomEngine(
                 val reply = attached.publicState()
                 if (expiry == null && attached == room && !fullyRecovered) RoomMutation.Replay(reply)
                 else RoomMutation.Change(
-                    attached, events = expiry?.events.orEmpty(),
+                    attached,
+                    events = expiry?.events?.takeIf { it.isNotEmpty() } ?: listOf(event(reply, setOf(actor))),
                     clearRecoveryDeadline = fullyRecovered || expiry?.clearRecoveryDeadline == true,
                     reply = reply
                 )
@@ -91,11 +92,11 @@ internal class OwnedRoomEngine(
         retry()
     }
 
-    suspend fun disconnect(socket: SocketFence) {
+    suspend fun disconnect(socket: SocketFence, expectedOwner: OwnerFence? = null) {
         repeat(DISCONNECT_ATTEMPTS) {
             try {
                 val id = rooms.lookupRoom(socket.playerId) ?: return
-                val state = localRoom(id) ?: return
+                val state = localRoom(id)?.takeIf { expectedOwner == null || it.fence == expectedOwner } ?: return
                 val result = rooms.withFencedRoom(state.fence, state.revision, socket) { _, locked ->
                     val room = locked.snapshot
                     val actor = socket.playerId.toString()
@@ -172,7 +173,7 @@ internal class OwnedRoomEngine(
     ): OwnedRoomReply {
         if (message.asSpectator) return reject("INVALID_PILOT_ROOM")
         val actor = socket.playerId.toString()
-        if (actor in state.snapshot.activePlayers()) return reconnect(socket)
+        if (actor in state.snapshot.activePlayers()) return reconnect(socket, state.fence)
         val player = player(socket) ?: return reject("ACCOUNT_REQUIRED")
         val room = state.snapshot
         val password = PasswordHash(checkNotNull(room.passwordSalt), checkNotNull(room.passwordHash))
@@ -348,10 +349,12 @@ internal class OwnedRoomEngine(
         }
         if (room.phase == RoomPhase.FINISHED) {
             val updated = room.copy(sequence = room.sequence + 1).departResults(expired)
+            val notice = disconnectedNotice(room)
             return RoomMutation.Change(
                 updated,
+                events = if (expired.isEmpty()) emptyList() else listOf(event(notice, expired)),
                 close = updated.activePlayers().isEmpty() && updated.pendingCompletedMatch == null,
-                reply = disconnectedNotice(room).takeIf { requester in expired }
+                reply = notice.takeIf { requester in expired }
             )
         }
         return change(room.copy(sequence = room.sequence + 1), disconnectedNotice(room), close = true)
@@ -372,11 +375,12 @@ internal class OwnedRoomEngine(
     private suspend fun command(
         roomId: String,
         requestId: String? = null,
+        expectedOwner: OwnerFence? = null,
         execute: suspend (OwnedRoomState) -> OwnedRoomReply
     ): OwnedRoomReply {
         val id = runCatching { UUID.fromString(roomId) }.getOrNull() ?: return reject("ROOM_NOT_FOUND", requestId)
         val state = rooms.read(id)?.takeUnless { it.closed } ?: return reject("ROOM_NOT_FOUND", requestId)
-        if (state.fence.instanceId != instanceId) return retry(requestId)
+        if (state.fence.instanceId != instanceId || (expectedOwner != null && state.fence != expectedOwner)) return retry(requestId)
         remember(state)
         return execute(state)
     }

@@ -8,6 +8,13 @@ import com.hienthai.fastowin.server.gifts.*
 import com.hienthai.fastowin.server.compensation.*
 import com.hienthai.fastowin.server.events.*
 import com.hienthai.fastowin.server.maintenance.*
+import com.hienthai.fastowin.server.ownership.OwnedRoomReply
+import com.hienthai.fastowin.server.ownership.RoomOwnershipPilot
+import com.hienthai.fastowin.server.ownership.SocketFence
+import com.hienthai.fastowin.server.ownership.gameSnapshot
+import com.hienthai.fastowin.server.ownership.isOwnedRoomCommand
+import com.hienthai.fastowin.server.ownership.isPilotStorageUnavailable
+import com.hienthai.fastowin.server.ownership.isUnsupportedPilotGameCommand
 import com.hienthai.fastowin.server.admin.AdminService
 import com.hienthai.fastowin.server.admin.adminRoutes
 import com.hienthai.fastowin.server.admin.adminAssets
@@ -94,7 +101,7 @@ import java.util.concurrent.ConcurrentHashMap
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 
-fun Application.gameModule(
+internal fun Application.gameModule(
     engine: GameEngine = GameEngine(),
     authService: AuthenticationService = AuthenticationService(InMemoryAuthRepository()),
     environment: String = "dev",
@@ -127,7 +134,8 @@ fun Application.gameModule(
     clanRaceDelivery: ClanRaceDelivery? = null,
     rewardEventService: RewardEventService = RewardEventService(UnavailableRewardEventRepository, adminService),
     compensationIncidentService: CompensationIncidentService? = adminService?.let { CompensationIncidentService(giftService.repository, it) },
-    compensationRoundService: CompensationRoundService? = adminService?.let { CompensationRoundService(giftService.repository, it) }
+    compensationRoundService: CompensationRoundService? = adminService?.let { CompensationRoundService(giftService.repository, it) },
+    roomOwnershipPilot: RoomOwnershipPilot? = null
 ) {
     authService.useModerationService(engine.moderationService)
     // The first policy and restored aborts must be applied before any handler/timer can serve game.
@@ -225,6 +233,10 @@ fun Application.gameModule(
     routing { rewardEventRoutes(rewardEventService, adminService != null) }
     routing { announcementRoutes(announcementService, authService, adminService != null) }
     if (adminService != null) maintenanceService?.let { service -> routing { maintenanceRoutes(service) } }
+    roomOwnershipPilot?.let { pilot ->
+        routing { pilot.installRoutes(this) }
+        launch { pilot.delivery.run() }
+    }
     if (giftDeliveryEnabled) startGiftDelivery(giftService)
     if (giftDeliveryEnabled && clanRaceSettlement != null && clanRaceDelivery != null) startClanRaceDelivery(clanRaceSettlement,clanRaceDelivery)
 
@@ -686,6 +698,8 @@ fun Application.gameModule(
             var playerRateLimitKey: String? = null
             var accountAccessToken: String? = null
             var socketAccount: AuthenticatedAccount? = null
+            var pilotSocket: SocketFence? = null
+            var pilotInitial: OwnedRoomReply? = null
             var moderationAware = false
             var activityConnectionId: java.util.UUID? = null
             var registeredConnection: SocketConnection? = null
@@ -754,22 +768,36 @@ fun Application.gameModule(
 
                         val connected = runCatching {
                             when (message) {
-                                is ClientMessage.ConnectGuest ->
+                                is ClientMessage.ConnectGuest -> {
+                                    if (roomOwnershipPilot != null) throw PilotAccountRequiredException()
                                     engine.connectGuest(message.displayName, message.resumeToken, message.acceptedContentTermsVersion)
+                                }
                                 is ClientMessage.ConnectAccount -> {
                                     val account = authService.authenticateAccessToken(message.accessToken)
                                         ?: throw InvalidAccessTokenException()
                                     if (!account.emailVerified) throw UnverifiedEmailException()
-                                    engine.connectAccount(account, message.resumeToken, message.protocolVersion).also {
+                                    if (roomOwnershipPilot != null && !roomOwnershipPilot.allows(account)) throw PilotAccountRequiredException()
+                                    // The pilot uses account authentication and a durable socket generation across backends.
+                                    val resume = message.resumeToken.takeIf { roomOwnershipPilot == null }
+                                    engine.connectAccount(account, resume, message.protocolVersion).also {
+                                        if (roomOwnershipPilot != null) {
+                                            val socket = roomOwnershipPilot.onConnected(account)
+                                            pilotSocket = socket
+                                            pilotInitial = roomOwnershipPilot.reconnect(socket)
+                                        }
                                         accountAccessToken = message.accessToken
                                         socketAccount = account
                                     }
                                 }
                             }
                         }.getOrElse { error ->
+                            if (roomOwnershipPilot != null && error.isPilotStorageUnavailable()) throw error
                             send(ProtocolJson.encodeToString<ServerMessage>(
                                 when (error) {
                                     is CancellationException -> throw error
+                                    is PilotAccountRequiredException -> ServerMessage.Error(
+                                        "PILOT_ACCOUNT_REQUIRED", "A pilot account is required."
+                                    )
                                     is ModerationException -> ServerMessage.Error(error.code, publicModerationMessage(error.code))
                                     is MaintenanceAdmissionException -> ServerMessage.Error("MAINTENANCE",
                                         com.hienthai.fastowin.localization.LocalizationService(com.hienthai.fastowin.localization.AppLanguage.VIETNAMESE).text(TextKey.MaintenanceDefaultMessage),
@@ -803,9 +831,24 @@ fun Application.gameModule(
                         metrics.sessionAuthenticated()
                         playerRateLimitKey = stableRateLimitKey(connected.playerId)
                         val connection = SocketConnection(this, moderationAware,
-                            presenceId = activityConnectionId.takeIf { presenceStore != null })
+                            presenceId = activityConnectionId.takeIf { presenceStore != null },
+                            pilotGeneration = pilotSocket?.generation)
                         registeredConnection = connection
-                        connections.put(connected.playerId, connection)?.closeForReplacement()
+                        var replaced: SocketConnection? = null
+                        val installed = connections.compute(connected.playerId) { _, previous ->
+                            if (previous?.pilotGeneration != null && connection.pilotGeneration != null &&
+                                previous.pilotGeneration >= connection.pilotGeneration
+                            ) previous
+                            else {
+                                replaced = previous
+                                connection
+                            }
+                        }
+                        if (installed !== connection) {
+                            connection.closeForReplacement()
+                            break
+                        }
+                        replaced?.closeForReplacement()
                         if (connection.presenceId != null) {
                             publishPresence(connected.playerId, connection)
                             val account = checkNotNull(socketAccount)
@@ -830,15 +873,45 @@ fun Application.gameModule(
                                 }
                             }
                         }
+                        val initialApplied = pilotInitial as? OwnedRoomReply.Applied
+                        val pilotGame = initialApplied?.gameSnapshot()
+                        if (roomOwnershipPilot != null) {
+                            if (pilotInitial is OwnedRoomReply.Retryable) {
+                                close(CloseReason(CloseReason.Codes.TRY_AGAIN_LATER, "Room recovery in progress"))
+                                break
+                            }
+                            if (!roomOwnershipPilot.isCurrent(checkNotNull(pilotSocket))) {
+                                close(CloseReason(CloseReason.Codes.NORMAL, SESSION_REPLACED_CLOSE_REASON))
+                                break
+                            }
+                        }
                         connection.send(
                             sanitizeContent(ServerMessage.SessionReady(
                                 playerId = connected.playerId,
                                 resumeToken = connected.resumeToken,
-                                currentGame = connected.currentGame,
+                                currentGame = if (roomOwnershipPilot != null) pilotGame else connected.currentGame,
                                 presenceRefreshSupported = connection.presenceId != null
                             ), engine.suppressionsForProjection())
                         )
-                        deliver(listOf(Delivery(engine.roomList())))
+                        if (roomOwnershipPilot != null) {
+                            val socket = checkNotNull(pilotSocket)
+                            val account = checkNotNull(socketAccount)
+                            val accessToken = checkNotNull(accountAccessToken)
+                            roomOwnershipPilot.delivery.register(socket, initialApplied?.takeIf { pilotGame != null }) { outgoing ->
+                                if (connections[connected.playerId] === connection) {
+                                    if (authService.isSocketSessionActive(account, accessToken) &&
+                                        !engine.moderationService.isBlocked(connected.playerId)
+                                    ) {
+                                        val sanitized = sanitizeContent(outgoing, engine.suppressionsForProjection())
+                                        if (roomOwnershipPilot.isCurrent(socket)) connection.send(sanitized)
+                                        else connection.closeForReplacement()
+                                    } else connection.session.close(CloseReason(CloseReason.Codes.NORMAL, "Account session revoked"))
+                                }
+                            }
+                            (initialApplied?.publicMessage as? ServerMessage.RoomClosed)?.let { connection.send(it) }
+                        }
+                        if (roomOwnershipPilot == null) deliver(listOf(Delivery(engine.roomList())))
+                        else connection.send(sanitizeContent(roomOwnershipPilot.roomList(), engine.suppressionsForProjection()))
                         deliver(engine.presenceUpdates(connected.playerId))
                         continue
                     }
@@ -887,9 +960,9 @@ fun Application.gameModule(
                     }
 
                     val currentAccountToken = accountAccessToken
-                    if (currentAccountToken != null &&
-                        authService.authenticateAccessToken(currentAccountToken) == null
-                    ) {
+                    val sessionActive = currentAccountToken == null ||
+                        authService.authenticateAccessToken(currentAccountToken) != null
+                    if (!sessionActive) {
                         send(ProtocolJson.encodeToString<ServerMessage>(
                             structuredServerError(
                                 "INVALID_ACCESS_TOKEN",
@@ -898,6 +971,23 @@ fun Application.gameModule(
                         ))
                         close(CloseReason(CloseReason.Codes.NORMAL, "Account session revoked"))
                         break
+                    }
+                    if (roomOwnershipPilot != null) {
+                        val socket = checkNotNull(pilotSocket)
+                        if (!roomOwnershipPilot.isCurrent(socket)) {
+                            close(CloseReason(CloseReason.Codes.NORMAL, SESSION_REPLACED_CLOSE_REASON))
+                            break
+                        }
+                        if (message == ClientMessage.ListRooms) {
+                            registeredConnection?.send(sanitizeContent(roomOwnershipPilot.roomList(), engine.suppressionsForProjection()))
+                            continue
+                        }
+                        if (message.isOwnedRoomCommand() || message.isUnsupportedPilotGameCommand()) {
+                            roomOwnershipPilot.delivery.onCommand(socket, (message as? ClientMessage.SelectNumber)?.requestId) { position ->
+                                roomOwnershipPilot.onMessage(socket, message, position)
+                            }
+                            continue
+                        }
                     }
                     if (message is ClientMessage.GetPresence) {
                         val connection = registeredConnection ?: continue
@@ -918,10 +1008,17 @@ fun Application.gameModule(
                     }
                     deliver(engine.handle(activePlayerId, message))
                 }
+            } catch (failure: Exception) {
+                if (roomOwnershipPilot == null || !failure.isPilotStorageUnavailable()) throw failure
+                close(CloseReason(CloseReason.Codes.TRY_AGAIN_LATER, "Service temporarily unavailable"))
             } finally {
                 metrics.webSocketClosed()
                 kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) {
                     presenceHeartbeat?.cancelAndJoin()
+                    if (roomOwnershipPilot != null) pilotSocket?.let { socket ->
+                        roomOwnershipPilot.delivery.unregister(socket)
+                        roomOwnershipPilot.onDisconnected(socket)
+                    }
                     val connection = registeredConnection
                     val socketId = connection?.presenceId
                     val id = playerId
@@ -1247,7 +1344,8 @@ private suspend fun ApplicationCall.respondAccountSessions(result: AccountSessio
 private class SocketConnection(
     val session: io.ktor.server.websocket.DefaultWebSocketServerSession,
     @Volatile var moderationAware: Boolean = false,
-    val presenceId: java.util.UUID? = null
+    val presenceId: java.util.UUID? = null,
+    val pilotGeneration: Long? = null
 ) {
     private val sendMutex = Mutex()
     val presenceMutex = Mutex()
@@ -1264,6 +1362,7 @@ private class SocketConnection(
 }
 
 private const val SESSION_CLEANUP_INTERVAL_MILLIS = 5_000L
+private class PilotAccountRequiredException : RuntimeException()
 private val PRESENCE_REQUEST_ID = Regex("[A-Za-z0-9_-]{1,64}")
 private const val GAME_TIMER_INTERVAL_MILLIS = 250L
 private const val MATCHMAKING_INTERVAL_MILLIS = 1_000L

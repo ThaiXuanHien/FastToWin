@@ -36,13 +36,13 @@ dependencies {
     implementation(libs.angus.mail)
     implementation(libs.logback.classic)
     implementation("com.google.firebase:firebase-admin:9.2.0")
-    runtimeOnly(libs.postgresql)
+    implementation(libs.postgresql)
+    implementation(libs.ktor.client.okhttp)
 
     testImplementation(kotlin("test"))
     testImplementation(libs.ktor.server.test.host)
     testImplementation(libs.ktor.client.content.negotiation)
     testImplementation(libs.ktor.client.websockets)
-    testImplementation(libs.ktor.client.okhttp)
     testImplementation(libs.kotlinx.coroutines.test)
 }
 

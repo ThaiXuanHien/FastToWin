@@ -4,6 +4,7 @@ import com.hienthai.fastowin.protocol.MatchType
 import com.hienthai.fastowin.protocol.ProtocolGameMode
 import com.hienthai.fastowin.protocol.ProtocolJson
 import com.hienthai.fastowin.protocol.RoomPhase
+import com.hienthai.fastowin.protocol.RoomSummary
 import com.hienthai.fastowin.server.StoredActiveRoom
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -77,6 +78,31 @@ internal class PostgresRoomOwnershipRepository(private val dataSource: DataSourc
         }
     }
 
+    suspend fun listJoinableRooms(): List<RoomSummary> = transaction {
+        query(
+            """
+            SELECT r.room_id, r.snapshot->>'roomName' AS room_name,
+                   r.snapshot#>>'{host,displayName}' AS host_name, s.player_id AS host_id
+            FROM room_ownership_pilot_rooms r
+            JOIN room_ownership_pilot_sessions s ON s.player_id::text = r.snapshot#>>'{host,playerId}'
+            WHERE r.closed_at IS NULL AND r.lease_until > statement_timestamp()
+              AND r.snapshot->>'phase' = 'WAITING' AND r.snapshot->>'guest' IS NULL
+              AND r.snapshot->>'pilotConnectionEpoch' = r.owner_epoch::text
+              AND r.snapshot->'pilotSocketGenerations'->>s.player_id::text = s.generation::text
+            ORDER BY lower(r.snapshot->>'roomName'), r.room_id
+            LIMIT ?
+            """,
+            MAX_EVENT_REVISIONS
+        ) { rows ->
+            buildList {
+                while (rows.next()) add(RoomSummary(
+                    rows.getString("room_id"), rows.getString("room_name"), rows.getString("host_name"),
+                    ProtocolGameMode.ORDER, requiresPassword = true, hostId = rows.getString("host_id")
+                ))
+            }
+        }
+    }
+
     override suspend fun bindSocket(playerId: UUID): SocketFence = transaction {
         query(
             """
@@ -86,6 +112,10 @@ internal class PostgresRoomOwnershipRepository(private val dataSource: DataSourc
             """,
             playerId
         ) { rows -> check(rows.next()); SocketFence(playerId, rows.getLong("generation")) }
+    }
+
+    override suspend fun isCurrentSocket(socket: SocketFence): Boolean = transaction {
+        isCurrent(socket, lock = false)
     }
 
     override suspend fun createRoom(
@@ -260,8 +290,9 @@ internal class PostgresRoomOwnershipRepository(private val dataSource: DataSourc
         playerId, roomId
     ) == 1
 
-    private fun Connection.isCurrent(socket: SocketFence): Boolean = query(
-        "SELECT generation FROM room_ownership_pilot_sessions WHERE player_id = ? FOR UPDATE", socket.playerId
+    private fun Connection.isCurrent(socket: SocketFence, lock: Boolean = true): Boolean = query(
+        "SELECT generation FROM room_ownership_pilot_sessions WHERE player_id = ?" + if (lock) " FOR UPDATE" else "",
+        socket.playerId
     ) { rows -> rows.next() && rows.getLong("generation") == socket.generation }
 
     private fun Connection.generations(snapshot: StoredActiveRoom): Map<String, Long> {

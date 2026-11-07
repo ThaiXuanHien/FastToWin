@@ -1,9 +1,14 @@
 package com.hienthai.fastowin.server
 
 import com.hienthai.fastowin.server.admin.PostgresAdminRepository
+import com.hienthai.fastowin.server.ownership.RoomOwnershipPilot
+import com.hienthai.fastowin.server.ownership.RoomOwnershipPilotConfig
 import com.zaxxer.hikari.HikariConfig
 import com.zaxxer.hikari.HikariDataSource
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import org.flywaydb.core.Flyway
+import java.util.UUID
 
 data class DatabaseSettings(
     val url: String,
@@ -64,6 +69,30 @@ class DatabaseRuntime private constructor(
     private val dataSource: HikariDataSource
 ) : AutoCloseable {
     override fun close() = dataSource.close()
+
+    internal suspend fun openRoomOwnershipPilot(
+        config: RoomOwnershipPilotConfig,
+        newIntentAllowed: () -> Boolean
+    ): RoomOwnershipPilot = RoomOwnershipPilot.open(
+        config, dataSource, ::pilotPlayer, rewardEventRepository, newIntentAllowed = newIntentAllowed
+    )
+
+    private suspend fun pilotPlayer(id: UUID): StoredActivePlayer? = withContext(Dispatchers.IO) {
+        dataSource.connection.use { connection ->
+            connection.prepareStatement("""
+                SELECT p.display_name, p.avatar_url, COALESCE(s.equipped_frame_id, 'frame_default')
+                FROM profiles p JOIN users u ON u.id = p.user_id
+                LEFT JOIN player_stats s ON s.user_id = p.user_id
+                WHERE u.id = ? AND u.account_type = 'REGISTERED' AND u.status = 'ACTIVE' AND u.email_verified_at IS NOT NULL
+            """.trimIndent()).use { statement ->
+                statement.setObject(1, id)
+                statement.executeQuery().use { rows ->
+                    if (rows.next()) StoredActivePlayer(id.toString(), rows.getString(1), true, rows.getString(2), rows.getString(3))
+                    else null
+                }
+            }
+        }
+    }
 
     companion object {
         fun open(settings: DatabaseSettings): DatabaseRuntime {
