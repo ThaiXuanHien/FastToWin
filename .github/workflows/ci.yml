@@ -74,6 +74,7 @@ jobs:
           :app:compileDevDebugAndroidTestKotlin
           :app:assembleDevDebug
           :app:assembleProdDebug
+          :app:bundleProdRelease
           :webApp:compileKotlinWasmJs
           --no-daemon
           --no-configuration-cache
@@ -142,6 +143,13 @@ jobs:
         with:
           name: fast-to-win-prod-qa-apk
           path: app/build/outputs/apk/prod/debug/app-prod-debug.apk
+          if-no-files-found: error
+
+      - name: Upload production release AAB
+        uses: actions/upload-artifact@v7
+        with:
+          name: fast-to-win-prod-release-aab
+          path: app/build/outputs/bundle/prodRelease/app-prod-release.aab
           if-no-files-found: error
 
       - name: Upload test reports
