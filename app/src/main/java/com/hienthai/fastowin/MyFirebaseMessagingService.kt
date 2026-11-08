@@ -9,6 +9,7 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import com.google.firebase.messaging.FirebaseMessagingService
 import com.google.firebase.messaging.RemoteMessage
+import com.hienthai.fastowin.platform.normalizePushToken
 
 internal const val PUSH_DESTINATION = "destination"
 internal const val PUSH_INBOX_PATH = "/notifications"
@@ -16,7 +17,10 @@ internal const val PUSH_INBOX_PATH = "/notifications"
 class MyFirebaseMessagingService : FirebaseMessagingService() {
     override fun onNewToken(token: String) {
         super.onNewToken(token)
-        getSharedPreferences(FCM_PREFERENCES, Context.MODE_PRIVATE).edit().putString(FCM_TOKEN, token).apply()
+        normalizePushToken(token)?.let { freshToken ->
+            getSharedPreferences(FCM_PREFERENCES, Context.MODE_PRIVATE)
+                .edit().putString(FCM_TOKEN, freshToken).apply()
+        }
     }
 
     override fun onMessageReceived(remoteMessage: RemoteMessage) {

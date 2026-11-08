@@ -13,6 +13,8 @@ import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import com.hienthai.fastowin.platform.AppPushBridge
 import com.hienthai.fastowin.platform.AppPushStatus
+import com.hienthai.fastowin.platform.normalizePushToken
+import com.google.firebase.messaging.FirebaseMessaging
 
 internal const val FCM_PREFERENCES = "fcm"
 internal const val FCM_TOKEN = "fcm_token"
@@ -48,6 +50,7 @@ internal class AndroidPushBridge(private val activity: ComponentActivity) : AppP
         val lifecycleObserver = object : DefaultLifecycleObserver {
             override fun onResume(owner: LifecycleOwner) {
                 onStatusChanged(status)
+                refreshCurrentToken(onTokenChanged)
             }
         }
         val tokenListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
@@ -57,10 +60,21 @@ internal class AndroidPushBridge(private val activity: ComponentActivity) : AppP
         activity.lifecycle.addObserver(lifecycleObserver)
         onStatusChanged(status)
         preferences.getString(FCM_TOKEN, null)?.let(onTokenChanged)
+        refreshCurrentToken(onTokenChanged)
         return {
             statusObserver = null
             preferences.unregisterOnSharedPreferenceChangeListener(tokenListener)
             activity.lifecycle.removeObserver(lifecycleObserver)
+        }
+    }
+
+    private fun refreshCurrentToken(onTokenChanged: (String) -> Unit) {
+        val tokenTask = runCatching { FirebaseMessaging.getInstance().token }.getOrNull() ?: return
+        tokenTask.addOnSuccessListener { token ->
+            normalizePushToken(token)?.let { freshToken ->
+                preferences.edit().putString(FCM_TOKEN, freshToken).apply()
+                onTokenChanged(freshToken)
+            }
         }
     }
 
