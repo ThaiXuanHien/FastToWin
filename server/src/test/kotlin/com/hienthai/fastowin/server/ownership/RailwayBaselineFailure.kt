@@ -40,7 +40,13 @@ private val metricNames = setOf(
     "fasttowin_room_ownership_resyncs_total", "fasttowin_room_ownership_settlement_failures_total",
     "fasttowin_room_ownership_oldest_queued_event_seconds",
     "fasttowin_room_ownership_pool_active_connections", "fasttowin_room_ownership_pool_max_connections"
-)
+) + RoomOwnershipDatabaseTimings.metricNames + "fasttowin_room_ownership_available_processors"
+
+internal fun baselineSafeMetrics(text: String): Map<String, Double> = text.lineSequence().mapNotNull { line ->
+    val parts = line.trim().split(Regex("\\s+"))
+    if (parts.size != 2 || parts[0] !in metricNames) null
+    else parts[1].toDoubleOrNull()?.takeIf { it.isFinite() && it >= 0 }?.let { parts[0] to it }
+}.toMap()
 
 /** Never serialize exception text, stack traces, dynamic labels or unknown file keys. */
 internal fun baselineFailureReceipt(phase: String, failure: Throwable, receipts: Path, progress: BaselineLoadProgress?): BaselineFailureReceipt {
@@ -66,11 +72,7 @@ internal fun baselineFailureReceipt(phase: String, failure: Throwable, receipts:
                 if (key !in countNames) null else value.jsonPrimitive.content.toLongOrNull()?.takeIf { it >= 0 }?.let { key to it }
             }?.toMap().orEmpty()
     }.getOrDefault(emptyMap())
-    val metrics = boundedFile("failure-metrics-0.prom", 65_536)?.lineSequence()?.mapNotNull { line ->
-        val parts = line.trim().split(Regex("\\s+"))
-        if (parts.size != 2 || parts[0] !in metricNames) null
-        else parts[1].toDoubleOrNull()?.takeIf { it.isFinite() && it >= 0 }?.let { parts[0] to it }
-    }?.toMap().orEmpty()
+    val metrics = boundedFile("failure-metrics-0.prom", 65_536)?.let(::baselineSafeMetrics).orEmpty()
     val safeProgress = progress?.takeIf { it.elapsedSeconds.isFinite() && it.elapsedSeconds >= 0 &&
         it.selectionsByRoomSlot.size <= 100 && it.selectionsByRoomSlot.all { n -> n >= 0 } &&
         it.completedMatches >= 0 && it.commandAttempts >= 0 }

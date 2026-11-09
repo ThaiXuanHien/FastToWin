@@ -31,3 +31,38 @@ foreach ($case in $cases) {
     if ($accepted -and (Get-FileHash -LiteralPath $outputPath).Hash.ToLowerInvariant() -ne $hash) { throw 'Export bytes changed' }
 }
 Write-Output 'PASS: seven failure-export cases preserve bytes and reject missing, corrupt, mixed or conflicting chunks.'
+
+$stats = @{count=12;meanMillis=1.5;maxMillis=2.0;p95Millis=2.0;failures=0}
+$latency = @{
+    scope='preflight-fixture-probes-and-workload-timings';expectedIterations=12;complete=$true
+    poolAcquire=$stats;selectRoundTrip=$stats;markerUpdateRoundTrip=$stats;commitRoundTrip=$stats;readinessRoundTrip=$stats
+    backendBeforeLoadMetrics=@{fasttowin_room_ownership_available_processors=3}
+    fixtureDatabaseMetrics=@{fasttowin_room_ownership_db_pool_acquire_seconds_count=5}
+}
+$valid = $latency | ConvertTo-Json -Depth 6 -Compress
+$latencyCases = @(
+    @{name='latency-valid';accepted=$true;json=$valid},
+    @{name='latency-root-secret';accepted=$false;json=($valid.Substring(0,$valid.Length-1)+',"rawSql":"secret"}')},
+    @{name='latency-metric-secret';accepted=$false;json=$valid.Replace('fasttowin_room_ownership_available_processors','player_secret')},
+    @{name='latency-non-numeric';accepted=$false;json=$valid.Replace('"meanMillis":1.5','"meanMillis":"secret"')},
+    @{name='latency-invalid-scope';accepted=$false;json=$valid.Replace('preflight-fixture-probes-and-workload-timings','secret-scope')},
+    @{name='latency-incomplete-as-complete';accepted=$false;json=$valid.Replace('"count":12','"count":11')}
+)
+foreach ($case in $latencyCases) {
+    $payload = [Text.Encoding]::UTF8.GetBytes($case.json)
+    $digest = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($payload)).ToLowerInvariant()
+    $encoded = [Convert]::ToBase64String($payload)
+    $total = [int][Math]::Ceiling($encoded.Length/2048)
+    $lines = @(for ($index=0; $index -lt $total; $index++) {
+        'FTW_BASELINE_LATENCY '+($index+1)+'/'+$total+' '+$digest+' '+$encoded.Substring($index*2048,[Math]::Min(2048,$encoded.Length-$index*2048))
+    })
+    $inputPath = Join-Path $fixture ($case.name+'.log')
+    $outputPath = Join-Path $fixture ($case.name+'.json')
+    $lines | Set-Content -LiteralPath $inputPath -Encoding utf8NoBOM
+    $accepted=$false
+    try { & $reader -Latency -LogPath $inputPath -OutputPath $outputPath | Out-Null; $accepted=$true }
+    catch { if ($case.accepted) { throw } }
+    if ($accepted -ne $case.accepted) { throw "Wrong latency reader result: $($case.name)" }
+    if ($accepted -and (Get-FileHash -LiteralPath $outputPath).Hash.ToLowerInvariant() -ne $digest) { throw 'Latency export bytes changed' }
+}
+Write-Output 'PASS: six latency-export cases validate numeric fields, fixed labels and probe completeness.'

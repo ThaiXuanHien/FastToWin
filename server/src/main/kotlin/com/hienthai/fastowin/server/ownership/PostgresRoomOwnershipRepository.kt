@@ -465,20 +465,23 @@ internal class PostgresRoomOwnershipRepository(
 
     private suspend fun <T> transaction(commit: (T) -> Boolean = { true }, block: Connection.() -> T): T =
         withContext(Dispatchers.IO) {
-            dataSource.connection.use { connection ->
+            measured(OwnershipDatabaseStage.POOL_ACQUIRE) { dataSource.connection }.use { connection ->
                 val previousNetworkTimeout = connection.networkTimeout
                 connection.setNetworkTimeout(Runnable::run, 2_500)
                 connection.autoCommit = false
                 try {
-                    connection.createStatement().use { statement ->
-                        statement.execute("SET LOCAL lock_timeout = '1s'")
-                        statement.execute("SET LOCAL statement_timeout = '2s'")
+                    measured(OwnershipDatabaseStage.SETUP) {
+                        connection.createStatement().use { statement ->
+                            statement.execute("SET LOCAL lock_timeout = '1s'")
+                            statement.execute("SET LOCAL statement_timeout = '2s'")
+                        }
                     }
-                    val result = connection.block()
-                    if (commit(result)) connection.commit() else connection.rollback()
+                    val result = measured(OwnershipDatabaseStage.BODY) { connection.block() }
+                    if (commit(result)) measured(OwnershipDatabaseStage.COMMIT) { connection.commit() }
+                    else measured(OwnershipDatabaseStage.ROLLBACK) { connection.rollback() }
                     result
                 } catch (error: Throwable) {
-                    runCatching { connection.rollback() }.exceptionOrNull()?.let(error::addSuppressed)
+                    runCatching { measured(OwnershipDatabaseStage.ROLLBACK) { connection.rollback() } }.exceptionOrNull()?.let(error::addSuppressed)
                     throw error
                 } finally {
                     if (!connection.isClosed) runCatching { connection.setNetworkTimeout(Runnable::run, previousNetworkTimeout) }
@@ -488,14 +491,19 @@ internal class PostgresRoomOwnershipRepository(
 
     private fun Connection.update(sql: String, vararg args: Any): Int = prepareStatement(sql).use { statement ->
         args.forEachIndexed { index, value -> statement.setObject(index + 1, value) }
-        statement.executeUpdate()
+        measured(OwnershipDatabaseStage.EXECUTE) { statement.executeUpdate() }
     }
 
     private fun <T> Connection.query(sql: String, vararg args: Any, read: (ResultSet) -> T): T =
         prepareStatement(sql).use { statement ->
             args.forEachIndexed { index, value -> statement.setObject(index + 1, value) }
-            statement.executeQuery().use(read)
+            measured(OwnershipDatabaseStage.EXECUTE) { statement.executeQuery() }.use { rows ->
+                measured(OwnershipDatabaseStage.DECODE) { read(rows) }
+            }
         }
+
+    private fun <T> measured(stage: OwnershipDatabaseStage, operation: () -> T): T =
+        if (metrics == null) operation() else metrics.databaseMeasured(stage, operation)
 
     private fun StoredActiveRoom.isPilotRoom(): Boolean =
         matchType == MatchType.CASUAL && gameMode == ProtocolGameMode.ORDER &&

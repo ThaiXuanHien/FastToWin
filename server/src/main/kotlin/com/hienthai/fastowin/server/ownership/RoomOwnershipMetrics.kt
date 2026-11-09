@@ -3,6 +3,7 @@ package com.hienthai.fastowin.server.ownership
 import java.util.concurrent.atomic.AtomicLong
 
 internal class RoomOwnershipMetrics {
+    private val databaseTimings = RoomOwnershipDatabaseTimings()
     private val takeovers = AtomicLong()
     private val rejectedFences = AtomicLong()
     private val localRoutes = AtomicLong()
@@ -22,6 +23,7 @@ internal class RoomOwnershipMetrics {
     fun routeFailed() { failedRoutes.incrementAndGet() }
     fun resynced() { resyncs.incrementAndGet() }
     fun settlementFailed() { settlementFailures.incrementAndGet() }
+    fun <T> databaseMeasured(stage: OwnershipDatabaseStage, operation: () -> T): T = databaseTimings.measure(stage, operation)
 
     @Synchronized
     fun recoveryCompleted(elapsedMillis: Long) {
@@ -34,6 +36,8 @@ internal class RoomOwnershipMetrics {
     }
 
     fun render(oldestQueuedSeconds: Double, poolActive: Int? = null, poolMaximum: Int? = null): String = buildString {
+        appendLine("fasttowin_room_ownership_available_processors ${Runtime.getRuntime().availableProcessors()}")
+        append(databaseTimings.render())
         counter("takeovers_total", takeovers)
         counter("fence_rejections_total", rejectedFences)
         appendLine("# TYPE fasttowin_room_ownership_routes_total counter")

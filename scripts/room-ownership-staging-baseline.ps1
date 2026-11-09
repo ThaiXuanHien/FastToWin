@@ -117,7 +117,7 @@ try {
     })
     [ordered]@{ sourceRevision = ((& git rev-parse HEAD) -join ''); backendManifestSha256 = $BackendManifestSha256; files = $files } |
         ConvertTo-Json -Depth 6 | Set-Content -LiteralPath (Join-Path $out 'runner-manifest.json') -Encoding utf8NoBOM
-    & git diff --binary HEAD -- server/src/test/kotlin/com/hienthai/fastowin/server/ownership deploy/room-ownership scripts > (Join-Path $out 'tested.patch')
+    & git diff --binary HEAD -- server/src/main/kotlin/com/hienthai/fastowin/server/ownership server/src/test/kotlin/com/hienthai/fastowin/server/ownership deploy/room-ownership scripts > (Join-Path $out 'tested.patch')
     $summary.runnerManifestSha256 = (Get-FileHash (Join-Path $out 'runner-manifest.json')).Hash.ToLowerInvariant()
     $sourceFiles = @(
         'scripts/room-ownership-staging-baseline.ps1', 'scripts/read-room-baseline-receipt.ps1',
@@ -128,6 +128,13 @@ try {
         'server/src/test/kotlin/com/hienthai/fastowin/server/ownership/RailwayRoomBaseline.kt',
         'server/src/test/kotlin/com/hienthai/fastowin/server/ownership/RailwayBaselineFailure.kt',
         'server/src/test/kotlin/com/hienthai/fastowin/server/ownership/RailwayBaselineFailureTest.kt',
+        'server/src/test/kotlin/com/hienthai/fastowin/server/ownership/RailwayBaselineLatency.kt',
+        'server/src/test/kotlin/com/hienthai/fastowin/server/ownership/RailwayBaselineLatencyTest.kt',
+        'server/src/test/kotlin/com/hienthai/fastowin/server/ownership/RoomOwnershipDatabaseTimingsTest.kt',
+        'server/src/test/kotlin/com/hienthai/fastowin/server/ownership/PostgresRoomOwnershipRepositoryTest.kt',
+        'server/src/main/kotlin/com/hienthai/fastowin/server/ownership/PostgresRoomOwnershipRepository.kt',
+        'server/src/main/kotlin/com/hienthai/fastowin/server/ownership/RoomOwnershipMetrics.kt',
+        'server/src/main/kotlin/com/hienthai/fastowin/server/ownership/RoomOwnershipDatabaseTimings.kt',
         'server/src/test/kotlin/com/hienthai/fastowin/server/ownership/RoomOwnershipLoadAcceptance.kt',
         'server/src/test/kotlin/com/hienthai/fastowin/server/ownership/RailwayRoomSmokeSettingsTest.kt'
     )
@@ -232,6 +239,10 @@ services:
     $runnerCollected = $true
     D @('cp', "${project}-runner:/opt/runner/receipts/.", $out) | Out-Null
     Save-Profile
+    & (Join-Path $PSScriptRoot 'read-room-baseline-receipt.ps1') -Latency -LogPath $log -OutputPath (Join-Path $out 'exported-latency.json') | Out-Null
+    if ((Get-FileHash (Join-Path $out 'baseline-latency.json')).Hash -ne (Get-FileHash (Join-Path $out 'exported-latency.json')).Hash) { throw 'Latency export differs from runner file' }
+    $summary.latencyExportVerified = $true
+    $summary.latencyProbeComplete = (Get-Content -Raw (Join-Path $out 'exported-latency.json') | ConvertFrom-Json).complete
     if ($runnerExit -ne 0) {
         & (Join-Path $PSScriptRoot 'read-room-baseline-receipt.ps1') -Failure -LogPath $log -OutputPath (Join-Path $out 'exported-failure.json') | Out-Null
         if ((Get-FileHash (Join-Path $out 'baseline-failure.json')).Hash -ne (Get-FileHash (Join-Path $out 'exported-failure.json')).Hash) { throw 'Failure export differs from runner file' }

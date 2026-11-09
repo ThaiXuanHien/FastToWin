@@ -98,6 +98,7 @@ internal data class SelectionReceipt(val durationMillis: Double, val snapshot: G
 internal class AcceptanceRejected(val code: String) : IllegalStateException("Fixture command rejected with $code")
 
 internal class RoomAcceptanceFixture(val settings: RoomAcceptanceSettings) : AutoCloseable {
+    private var databaseTimings = RoomOwnershipDatabaseTimings()
     val backendCount get() = settings.backendCount
     val durationSeconds get() = settings.durationSeconds
     val roomCount get() = settings.roomCount
@@ -123,7 +124,7 @@ internal class RoomAcceptanceFixture(val settings: RoomAcceptanceSettings) : Aut
     @Volatile var intentionallyUnavailableBackend: Int? = null
 
     suspend fun verifyFixture() = withContext(Dispatchers.IO) {
-        source.connection.use { connection ->
+        withFixtureDatabase { connection ->
             connection.prepareStatement("SELECT fixture_id FROM room_ownership_pilot_fixture WHERE singleton").use {
                 it.executeQuery().use { rows -> check(rows.next() && rows.getObject(1, UUID::class.java) == settings.fixtureId) }
             }
@@ -135,6 +136,16 @@ internal class RoomAcceptanceFixture(val settings: RoomAcceptanceSettings) : Aut
             }
         }
     }
+
+    fun resetDatabaseTimings() { databaseTimings = RoomOwnershipDatabaseTimings() }
+    fun databaseTimingMetrics(): Map<String, Double> = baselineSafeMetrics(databaseTimings.render()).filterKeys {
+        it.startsWith("fasttowin_room_ownership_db_pool_acquire_") || it.startsWith("fasttowin_room_ownership_db_transaction_body_")
+    }
+
+    fun <T> withFixtureDatabase(operation: (Connection) -> T): T =
+        databaseTimings.measure(OwnershipDatabaseStage.POOL_ACQUIRE) { source.connection }.use { connection ->
+            databaseTimings.measure(OwnershipDatabaseStage.BODY) { operation(connection) }
+        }
 
     suspend fun fundQuota() {
         verifyFixture()
@@ -230,7 +241,7 @@ internal class RoomAcceptanceFixture(val settings: RoomAcceptanceSettings) : Aut
     private suspend fun awaitMembershipsCleared(playerIds: List<String>) = withTimeoutOrNull(20_000) {
         while (true) {
             val remaining = withContext(Dispatchers.IO) {
-                source.connection.use { connection ->
+                withFixtureDatabase { connection ->
                     connection.prepareStatement(
                         "SELECT count(*) FROM room_ownership_pilot_memberships WHERE player_id IN (?, ?)"
                     ).use { statement ->
@@ -280,7 +291,7 @@ internal class RoomAcceptanceFixture(val settings: RoomAcceptanceSettings) : Aut
     }
 
     suspend fun snapshot(roomId: String): StoredRoomReceipt = withContext(Dispatchers.IO) {
-        source.connection.use { connection ->
+        withFixtureDatabase { connection ->
             connection.prepareStatement("SELECT owner_epoch, revision, snapshot::text, instance_id FROM room_ownership_pilot_rooms WHERE room_id=?").use {
                 it.setObject(1, UUID.fromString(roomId))
                 it.executeQuery().use { rows ->
@@ -303,11 +314,11 @@ internal class RoomAcceptanceFixture(val settings: RoomAcceptanceSettings) : Aut
         }
 
     suspend fun sql(query: String) = withContext(Dispatchers.IO) {
-        source.connection.use { it.createStatement().use { statement -> statement.execute(query) } }
+        withFixtureDatabase { it.createStatement().use { statement -> statement.execute(query) } }
     }
 
     suspend fun number(query: String): Long = withContext(Dispatchers.IO) {
-        source.connection.use { it.createStatement().use { statement ->
+        withFixtureDatabase { it.createStatement().use { statement ->
             statement.executeQuery(query).use { rows -> check(rows.next()); rows.getLong(1) }
         } }
     }
@@ -599,7 +610,7 @@ internal class AcceptanceMatch(
             withTimeout(30_000) { while (fixture.number("SELECT count(*) FROM matches WHERE id='$matchId'") != 1L) delay(50) }
             val wallets = fixture.number("SELECT count(*) FROM wallet_transactions WHERE source_type='MATCH' AND source_id='$matchId'")
             check(wallets == 2L) { "A completed match must reward exactly two players once" }
-            fixture.source.connection.use { connection ->
+            fixture.withFixtureDatabase { connection ->
                 connection.prepareStatement("SELECT user_id,gold_delta,xp_delta,gems_delta FROM wallet_transactions WHERE source_type='MATCH' AND source_id=?").use { statement ->
                     statement.setString(1, matchId)
                     statement.executeQuery().use { rows ->

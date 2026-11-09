@@ -210,6 +210,20 @@ class PostgresRoomOwnershipRepositoryTest {
         }
     }
 
+    @Test
+    fun `a missing room records pool SQL decode and commit timings once`() = runBlocking {
+        fixture { f ->
+            val metrics = RoomOwnershipMetrics()
+            val repository = PostgresRoomOwnershipRepository(f.dataSource, metrics)
+            assertEquals(null, repository.read(UUID.randomUUID()))
+            val text = metrics.render(0.0)
+            for (stage in listOf("pool_acquire", "transaction_setup", "transaction_body", "statement_execute", "row_decode", "commit")) {
+                assertTrue(text.lineSequence().any { it == "fasttowin_room_ownership_db_${stage}_seconds_count 1" }, stage)
+            }
+            assertTrue(text.contains("fasttowin_room_ownership_db_rollback_seconds_count 0"))
+        }
+    }
+
     private suspend fun fixture(block: suspend (Fixture) -> Unit) {
         val url = System.getenv("TEST_DATABASE_URL")
         if (System.getenv("FASTTOWIN_TEST_ROOM_OWNERSHIP") == "true") requireNotNull(url)
@@ -244,7 +258,7 @@ class PostgresRoomOwnershipRepositoryTest {
     }
 
     private class Fixture(
-        private val dataSource: HikariDataSource,
+        val dataSource: HikariDataSource,
         val a: PostgresRoomOwnershipRepository,
         val b: PostgresRoomOwnershipRepository
     ) {

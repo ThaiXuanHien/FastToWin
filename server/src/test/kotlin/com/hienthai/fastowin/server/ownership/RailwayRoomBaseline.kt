@@ -14,6 +14,8 @@ internal fun runRailwayRoomBaseline(settings: RailwayRoomSmokeSettings) {
     var phase = "private-dns"
     var progress: BaselineLoadProgress? = null
     var receipts = Path.of("receipts")
+    val latency = BaselineLatencyRecorder()
+    var measuredFixture: RoomAcceptanceFixture? = null
     try {
         val acceptance = settings.acceptanceSettings()
         receipts = acceptance.receipts
@@ -21,10 +23,13 @@ internal fun runRailwayRoomBaseline(settings: RailwayRoomSmokeSettings) {
         val receipt = runBlocking {
             withTimeout(900_000) {
                 RoomAcceptanceFixture(acceptance).use { fixture ->
+                    measuredFixture = fixture
                     phase = "fixture-marker-and-readiness"
                     fixture.verifyFixture()
                     fixture.awaitReady(0)
                     fixture.fundQuota()
+                    withTimeout(45_000) { fixture.measureBaselineLatency(latency) }
+                    fixture.resetDatabaseTimings()
                     phase = "load"
                     runRoomOwnershipLoad(fixture) { progress = it }
                 }
@@ -53,5 +58,11 @@ internal fun runRailwayRoomBaseline(settings: RailwayRoomSmokeSettings) {
         // JDBC/client exceptions can contain fixture identifiers or connection
         // strings. Keep those outside provider logs and the exported receipt.
         throw IllegalStateException("Baseline failed during $phase")
+    } finally {
+        val bytes = ProtocolJson.encodeToString(latency.receipt(measuredFixture?.databaseTimingMetrics().orEmpty())).toByteArray(Charsets.UTF_8)
+        runCatching { Files.createDirectories(receipts); Files.write(receipts.resolve("baseline-latency.json"), bytes) }
+        val hash = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
+        val chunks = Base64.getEncoder().encodeToString(bytes).chunked(2_048)
+        chunks.forEachIndexed { index, chunk -> println("FTW_BASELINE_LATENCY ${index + 1}/${chunks.size} $hash $chunk") }
     }
 }
