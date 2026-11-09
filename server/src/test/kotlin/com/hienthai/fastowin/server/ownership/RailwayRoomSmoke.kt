@@ -33,6 +33,7 @@ internal class RailwayRoomSmokeSettings private constructor(
     val runName: String,
     val fixtureId: UUID,
     val accountIds: List<UUID>,
+    val baseline: Boolean,
     private val databasePassword: String,
     private val accountPassword: String,
     databaseHostOverride: String,
@@ -65,12 +66,12 @@ internal class RailwayRoomSmokeSettings private constructor(
         seedRoomOwnershipFixture(dataSource, fixtureId, accountIds, accountPassword)
     }
 
-    fun acceptanceSettings(): RoomAcceptanceSettings {
+    fun acceptanceSettings(resolve: (String) -> List<InetAddress> = ::resolve): RoomAcceptanceSettings {
         // Resolve and validate the marked fixture before connecting, then keep
         // the private DNS names for the actual clients. Railway may rotate a
         // service address while the smoke run is starting; resolving once and
         // pinning that address can send a peer hop to a stale task.
-        verifiedEndpointHosts(::resolve)
+        verifiedEndpointHosts(resolve)
         return RoomAcceptanceSettings(
             project = runName,
             composeFiles = null,
@@ -78,10 +79,10 @@ internal class RailwayRoomSmokeSettings private constructor(
             urls = backendHosts.map { "http://$it:8080" },
             proxyUrls = emptyList(),
             postgresPort = 5432,
-            suite = "Smoke",
-            backendCount = 2,
-            durationSeconds = 0,
-            roomCount = 1,
+            suite = if (baseline) "Load" else "Smoke",
+            backendCount = if (baseline) 1 else 2,
+            durationSeconds = if (baseline) 600 else 0,
+            roomCount = if (baseline) 20 else 1,
             seed = 73,
             fixtureId = fixtureId,
             accountIds = accountIds,
@@ -93,6 +94,12 @@ internal class RailwayRoomSmokeSettings private constructor(
 
     companion object {
         fun fromEnvironment(values: Map<String, String>, now: Instant = Instant.now(), requireBackendHosts: Boolean = true): RailwayRoomSmokeSettings {
+            val suite = values["FTW_PILOT_SUITE"] ?: "smoke"
+            require(suite in setOf("smoke", "baseline")) { "Unsupported staging suite" }
+            val baseline = suite == "baseline"
+            require(values.keys.none { it in setOf("RAILWAY_TOKEN", "RAILWAY_API_TOKEN") }) {
+                "Runner must not receive Railway management credentials"
+            }
             require(values["RAILWAY_PROJECT_ID"] == STAGING_PROJECT &&
                 values["RAILWAY_ENVIRONMENT_ID"] == STAGING_ENVIRONMENT &&
                 values["RAILWAY_ENVIRONMENT_NAME"] == "staging"
@@ -106,30 +113,35 @@ internal class RailwayRoomSmokeSettings private constructor(
             val runName = "room-pilot-" + fixtureId.toString().replace("-", "").take(12)
             require(values["RAILWAY_SERVICE_NAME"] == "$runName-runner") { "Unexpected staging runner service" }
             val deadline = runCatching { Instant.parse(values["FTW_PILOT_DEADLINE_UTC"]) }.getOrNull()
-            require(deadline != null && !deadline.isBefore(now.plusSeconds(SMOKE_TIMEOUT_SECONDS)) &&
+            require(deadline != null && !deadline.isBefore(now.plusSeconds(if (baseline) 900 else SMOKE_TIMEOUT_SECONDS)) &&
                 !deadline.isAfter(now.plusSeconds(7_200))
             ) { "An unexpired staging window of at most two hours is required" }
             val accountIds = values["FASTTOWIN_ROOM_OWNERSHIP_ACCOUNTS"].orEmpty().split(',').map {
                 requireNotNull(parsePilotUuid(it)) { "Invalid fixture account ID" }
             }
-            require(accountIds.size == 2 && accountIds.distinct().size == 2) { "Expected two distinct fixture accounts" }
+            val accountCount = if (baseline) 40 else 2
+            require(accountIds.size == accountCount && accountIds.distinct().size == accountCount) {
+                "Unexpected fixture account count or duplicate account"
+            }
             val databasePassword = values["FASTTOWIN_ROOM_OWNERSHIP_DATABASE_PASSWORD"].orEmpty()
             val accountPassword = values["FASTTOWIN_ROOM_OWNERSHIP_FIXTURE_PASSWORD"].orEmpty()
             val databaseHost = values["FTW_PILOT_DATABASE_HOST"]?.trim().orEmpty()
-            val backendHosts = listOf("FTW_PILOT_BACKEND_A_HOST", "FTW_PILOT_BACKEND_B_HOST").map { values[it]?.trim().orEmpty() }
+            val configuredHosts = listOf("FTW_PILOT_BACKEND_A_HOST", "FTW_PILOT_BACKEND_B_HOST").map { values[it]?.trim().orEmpty() }
+            require(!baseline || configuredHosts[1].isEmpty()) { "Baseline requires only backend A" }
+            val backendHosts = configuredHosts.filter(String::isNotEmpty)
             val expectedHosts = listOf(
                 "$runName-a.railway.internal",
                 "$runName-b.railway.internal"
-            )
+            ).take(if (baseline) 1 else 2)
             require(databaseHost == "$runName-pg.railway.internal" &&
-                if (requireBackendHosts) backendHosts == expectedHosts else backendHosts.all(String::isEmpty)
+                if (requireBackendHosts) configuredHosts.take(expectedHosts.size) == expectedHosts else backendHosts.isEmpty()
             ) {
                 "Runner endpoints must match its marked staging fixture services"
             }
             require(databasePassword.matches(Regex("[a-f0-9]{64}")) &&
                 accountPassword.matches(Regex("Pilot1![a-f0-9]{64}"))
             ) { "Expected generated fixture passwords" }
-            return RailwayRoomSmokeSettings(runName, fixtureId, accountIds, databasePassword, accountPassword, databaseHost, backendHosts)
+            return RailwayRoomSmokeSettings(runName, fixtureId, accountIds, baseline, databasePassword, accountPassword, databaseHost, backendHosts)
         }
     }
 }
@@ -162,6 +174,11 @@ fun main(args: Array<String>) {
             phase = "seed"
             settings.seed()
             println("""{"fixtureSeeded":true}""")
+            return
+        }
+        if (settings.baseline) {
+            phase = "baseline"
+            runRailwayRoomBaseline(settings)
             return
         }
         phase = "private-dns"

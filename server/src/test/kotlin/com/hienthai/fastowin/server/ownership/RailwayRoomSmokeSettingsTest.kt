@@ -80,6 +80,59 @@ class RailwayRoomSmokeSettingsTest {
         }
     }
 
+    @Test
+    fun `baseline accepts forty accounts and only its own backend A`() {
+        val settings = RailwayRoomSmokeSettings.fromEnvironment(baselineValues(), now)
+        assertEquals(40, settings.accountIds.size)
+        assertEquals(listOf("room-pilot-0123456789ab-a.railway.internal"), settings.backendHosts)
+        settings.verifyPrivateAddresses { host ->
+            listOf(InetAddress.getByName(if (host == settings.databaseHost) "fd00::2" else "fd00::1"))
+        }
+        val acceptance = settings.acceptanceSettings { host ->
+            listOf(InetAddress.getByName(if (host == settings.databaseHost) "fd00::2" else "fd00::1"))
+        }
+        assertEquals(listOf("http://room-pilot-0123456789ab-a.railway.internal:8080"), acceptance.urls)
+        assertEquals(1, acceptance.backendCount)
+        assertEquals(20, acceptance.roomCount)
+        assertEquals(600, acceptance.durationSeconds)
+        assertEquals("Load", acceptance.suite)
+        assertEquals(null, acceptance.composeFiles)
+    }
+
+    @Test
+    fun `baseline rejects incomplete accounts extra targets and a short run window`() {
+        val values = baselineValues()
+        val accounts = values.getValue("FASTTOWIN_ROOM_OWNERSHIP_ACCOUNTS").split(',')
+        for ((key, value) in listOf(
+            "FASTTOWIN_ROOM_OWNERSHIP_ACCOUNTS" to accounts.dropLast(1).joinToString(","),
+            "FASTTOWIN_ROOM_OWNERSHIP_ACCOUNTS" to (accounts + UUID.randomUUID()).joinToString(","),
+            "FASTTOWIN_ROOM_OWNERSHIP_ACCOUNTS" to (accounts.dropLast(1) + accounts.first()).joinToString(","),
+            "FTW_PILOT_BACKEND_B_HOST" to "room-pilot-0123456789ab-b.railway.internal",
+            "FTW_PILOT_DEADLINE_UTC" to now.plusSeconds(899).toString(),
+            "FTW_PILOT_SUITE" to "unknown",
+            "RAILWAY_TOKEN" to "management-credential",
+            "RAILWAY_API_TOKEN" to "management-credential"
+        )) {
+            assertFailsWith<IllegalArgumentException>(key) {
+                RailwayRoomSmokeSettings.fromEnvironment(values + (key to value), now)
+            }
+        }
+    }
+
+    @Test
+    fun `baseline seed has no backend targets`() {
+        val values = baselineValues() - "FTW_PILOT_BACKEND_A_HOST"
+        val settings = RailwayRoomSmokeSettings.fromEnvironment(values, now, requireBackendHosts = false)
+        assertEquals(emptyList(), settings.backendHosts)
+        assertEquals(40, settings.accountIds.size)
+    }
+
+    private fun baselineValues() = values() - "FTW_PILOT_BACKEND_B_HOST" + mapOf(
+        "FTW_PILOT_SUITE" to "baseline",
+        "FTW_PILOT_DEADLINE_UTC" to now.plusSeconds(900).toString(),
+        "FASTTOWIN_ROOM_OWNERSHIP_ACCOUNTS" to (1L..40L).joinToString(",") { UUID(0, it).toString() }
+    )
+
     private fun values() = mapOf(
         "RAILWAY_PROJECT_ID" to "b5c5db71-2df8-46da-84fb-d9b9df6d7951",
         "RAILWAY_ENVIRONMENT_ID" to "8bcf4119-3a6b-49b3-b4ff-8ea20080f3b9",
