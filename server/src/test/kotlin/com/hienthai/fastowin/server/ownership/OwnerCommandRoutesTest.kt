@@ -18,6 +18,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import java.io.ByteArrayInputStream
 import java.net.URI
+import java.net.InetAddress
 import java.net.http.HttpClient
 import java.net.http.HttpRequest
 import java.net.http.HttpResponse
@@ -170,6 +171,19 @@ class OwnerCommandRoutesTest {
         assertFailsWith<IllegalArgumentException> {
             OwnerPeerTransport(ingress, owner, URI("http://8.8.8.8:8090"), key, clock)
         }
+    }
+
+    @Test fun `private egress source is accepted after peer identity is authenticated`() {
+        assertTrue(InetAddress.getByName("10.44.1.3").isAllowedPeerSource(emptyList()))
+        assertTrue(InetAddress.getByName("fd12:3456:789a::3").isAllowedPeerSource(emptyList()))
+        assertTrue(!InetAddress.getByName("8.8.8.8").isAllowedPeerSource(emptyList()))
+    }
+
+    @Test fun socket_address_parser_accepts_ktor_host_and_port_forms() {
+        assertEquals("10.44.1.3", "10.44.1.3:8080".asSocketAddress()!!.hostAddress)
+        assertEquals("fd12:3456:789a:0:0:0:0:3", "[fd12:3456:789a::3]:8080".asSocketAddress()!!.hostAddress)
+        assertEquals("fd12:3456:789a:0:0:0:0:3", "fd12:3456:789a:0:0:0:0:3:8080".asSocketAddress()!!.hostAddress)
+        assertEquals("10.44.1.3", "10.44.1.3".asSocketAddress()!!.hostAddress)
     }
 
     private fun withOwner(

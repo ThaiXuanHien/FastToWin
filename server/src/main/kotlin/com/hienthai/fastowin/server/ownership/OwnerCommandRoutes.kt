@@ -133,7 +133,8 @@ internal class OwnerPeerTransport(
 
     internal suspend fun receive(call: ApplicationCall, dispatch: suspend (OwnerCommandRequest) -> OwnedRoomReply) {
         // The local connection point is the actual socket even when ForwardedHeaders is installed.
-        if (call.request.local.remoteAddress.asSocketAddress() !in peerAddresses) {
+        val source = call.request.local.remoteAddress.asSocketAddress()
+        if (source == null || !source.isAllowedPeerSource(peerAddresses)) {
             return call.respond(HttpStatusCode.Unauthorized)
         }
         val auth = PeerAuth.read(call.request.headers::getAll)
@@ -262,10 +263,33 @@ private fun resolvePrivatePeer(host: String): List<InetAddress> {
     return addresses
 }
 
-private val IPV4_LITERAL = Regex("[0-9]{1,3}(\\.[0-9]{1,3}){3}")
+/**
+ * Railway private networking can route a request through a private egress
+ * address that differs from the peer hostname's current DNS answer. Keep the
+ * exact-address check for loopback/local tests, but accept private non-loopback
+ * sources only after the HMAC sender/target check below.
+ */
+internal fun InetAddress.isAllowedPeerSource(expected: List<InetAddress>): Boolean =
+    this in expected || (!isLoopbackAddress && isPrivatePeerAddress())
 
-private fun String.asSocketAddress(): InetAddress? {
-    val host = substringBefore('%')
+private fun InetAddress.isPrivatePeerAddress(): Boolean = when (this) {
+    is Inet4Address -> isSiteLocalAddress
+    is Inet6Address -> (address[0].toInt() and 0xfe) == 0xfc
+    else -> false
+}
+
+private val IPV4_LITERAL = Regex("[0-9]{1,3}(\\.[0-9]{1,3}){3}")
+private val IPV4_WITH_PORT = Regex("[0-9]{1,3}(\\.[0-9]{1,3}){3}:[0-9]{1,5}")
+
+internal fun String.asSocketAddress(): InetAddress? {
+    val value = trim().removePrefix("/")
+    val host = when {
+        value.startsWith("[") -> value.substringAfter('[', "").substringBefore(']')
+        IPV4_WITH_PORT.matches(value) -> value.substringBeforeLast(':')
+        value.count { it == ':' } >= 8 && value.substringAfterLast(':').toIntOrNull()?.let { it in 1..65535 } == true ->
+            value.substringBeforeLast(':')
+        else -> value.substringBefore('%')
+    }
     if (':' !in host && !IPV4_LITERAL.matches(host)) return null
     return try {
         InetAddress.getByName(host)

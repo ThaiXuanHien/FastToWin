@@ -24,6 +24,12 @@ import kotlin.test.assertTrue
 
 class PostgresRoomOwnershipRepositoryTest {
     @Test
+    fun `event pruning waits until the retention window is exceeded`() {
+        assertFalse(shouldPruneRoomEvents(ROOM_OWNERSHIP_MAX_EVENT_REVISIONS.toLong()))
+        assertTrue(shouldPruneRoomEvents(ROOM_OWNERSHIP_MAX_EVENT_REVISIONS.toLong() + 1L))
+    }
+
+    @Test
     fun `two backends can only claim an expired room once`() = runBlocking {
         fixture { f ->
             val initial = f.createRoom()
@@ -47,6 +53,25 @@ class PostgresRoomOwnershipRepositoryTest {
             assertIs<FencedResult.Stale>(f.a.withFencedRoom(initial.fence, initial.revision, null) { _, _ ->
                 error("A stale owner must not reach the mutation")
             })
+        }
+    }
+
+    @Test
+    fun `owner lookup follows takeover and hides closed rooms`() = runBlocking {
+        fixture { f ->
+            val initial = f.createRoom()
+            assertEquals(initial.fence, f.b.findOwner(initial.fence.roomId))
+            assertEquals(null, f.b.findOwner(UUID.randomUUID()))
+
+            f.expire(initial.fence.roomId)
+            val claimed = assertNotNull(f.b.claim(initial.fence.roomId, f.instanceB))
+            assertEquals(claimed.fence, f.a.findOwner(initial.fence.roomId))
+            assertIs<FencedResult.Committed>(
+                f.b.withFencedRoom(claimed.fence, claimed.revision, null) { _, room ->
+                    RoomMutation.Change(room.snapshot, close = true)
+                }
+            )
+            assertEquals(null, f.a.findOwner(initial.fence.roomId))
         }
     }
 
@@ -104,6 +129,28 @@ class PostgresRoomOwnershipRepositoryTest {
             assertEquals(setOf(f.host), batch.revisions.single().events.single().recipients)
             f.ageEvents(initial.fence.roomId)
             assertIs<RoomEventBatch.Gap>(f.b.readEvents(initial.fence.roomId, initial.revision, 16))
+        }
+    }
+
+    @Test
+    fun `delivery reads preserve public state and socket generations without loading replay replies`() = runBlocking {
+        fixture { f ->
+            val socket = f.a.bindSocket(f.host)
+            val initial = assertIs<FencedResult.Committed>(f.a.createRoom(f.instanceA, socket, f.snapshot())).state
+            val replay = ServerMessage.Error("WRONG_NUMBER", "Wrong number", requestId = "old-selection")
+            val committed = assertIs<FencedResult.Committed>(
+                f.a.withFencedRoom(initial.fence, initial.revision, socket) { _, room ->
+                    RoomMutation.Change(room.snapshot.copy(processedRequests = mapOf("old-selection" to replay)))
+                }
+            ).state
+
+            val delivery = assertNotNull(f.b.readForDelivery(initial.fence.roomId))
+            assertEquals(committed.fence, delivery.fence)
+            assertEquals(committed.revision, delivery.revision)
+            assertEquals(committed.snapshot.publicState(), delivery.snapshot.publicState())
+            assertEquals(mapOf(f.host.toString() to socket.generation), delivery.sessionGenerations)
+            assertTrue(delivery.snapshot.processedRequests.isEmpty())
+            assertEquals(replay, f.b.read(initial.fence.roomId)?.snapshot?.processedRequests?.get("old-selection"))
         }
     }
 

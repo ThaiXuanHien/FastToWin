@@ -172,7 +172,7 @@ internal class RoomEventDelivery(
             drain(subscription, cursor)
             if (cursor.terminated || cursor.pendingSnapshot || cursor.epoch != reply.epoch) return
         }
-        val state = rooms.read(reply.roomId)
+        val state = rooms.readForDelivery(reply.roomId)
         if (state == null || state.fence.epoch != reply.epoch || !state.includes(subscription.socket) ||
             !isCurrent(subscription)
         ) return
@@ -195,7 +195,7 @@ internal class RoomEventDelivery(
         if (reply.publicMessage is ServerMessage.RoomClosed) drain(subscription, cursor)
         else {
             cursor.pendingSnapshot = true
-            synchronize(subscription, cursor, rooms.read(cursor.roomId))
+            synchronize(subscription, cursor, rooms.readForDelivery(cursor.roomId))
         }
         return cursor.terminated || !cursor.pendingSnapshot
     }
@@ -203,7 +203,7 @@ internal class RoomEventDelivery(
     private suspend fun drain(subscription: Subscription, cursor: Cursor) {
         val batch = rooms.readEvents(cursor.roomId, cursor.revision, EVENT_BATCH_SIZE)
         // Read the authoritative head after the outbox so authorization accounts for any later removal.
-        val state = rooms.read(cursor.roomId)
+        val state = rooms.readForDelivery(cursor.roomId)
         if (!isCurrent(subscription)) return
         if (cursor.pendingSnapshot || state == null || state.fence.epoch != cursor.epoch ||
             batch !is RoomEventBatch.Contiguous || batch.revisions.any { it.ownerEpoch != cursor.epoch }
@@ -250,7 +250,7 @@ internal class RoomEventDelivery(
                 }
                 cursor.reattachedEpoch = epoch
             }
-            current = rooms.read(cursor.roomId)
+            current = rooms.readForDelivery(cursor.roomId)
             if (current != null && current.fence.epoch != epoch) return
         }
         if (!isCurrent(subscription)) return

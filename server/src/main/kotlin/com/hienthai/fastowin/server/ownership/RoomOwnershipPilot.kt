@@ -192,8 +192,7 @@ internal class RoomOwnershipPilot private constructor(
         command: ClientMessage? = null,
         synchronizedRoom: RoomDeliveryPosition? = null
     ): OwnedRoomReply {
-        val state = rooms.read(roomId)?.takeUnless { it.closed } ?: return missing()
-        val fence = state.fence
+        val fence = rooms.findOwner(roomId) ?: return missing()
         if (synchronizedRoom?.roomId == roomId && synchronizedRoom.epoch != fence.epoch) {
             metrics.routeFailed()
             return unavailable(command)

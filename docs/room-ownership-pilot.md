@@ -53,6 +53,43 @@ With the client cleanup and concurrent room reconnects, the four-room diagnostic
 
 The focused guard and economy suites passed after the settlement lock-order change. A full `:server:test` run on an isolated PostgreSQL 18 `admin_test` database executed 1,062 tests with zero failures and zero errors. Twenty-seven tests were skipped because they require Redis fixtures, so Redis-specific coverage remains in the separate Redis acceptance suites.
 
+## Private Railway smoke from 09/11/2026
+
+The isolated staging smoke passed after the private peer source parser was corrected. Both backends were ready; presence was visible from each backend; login rate limiting was shared; a committed selection was identical on both clients; and two quota receipts finalized. The exact receipt is .artifacts/room-ownership-staging-20261108-5e195bfa/cloud-room-pilot-4ef52dfe2ff3-dns-fix-2a7e4c42/receipt.json. Five temporary services (PostgreSQL, Redis, two backends and the runner) were stopped with no cleanup errors and no permanent volumes. This is bounded smoke evidence only; the fault matrix, full load profile and production rollout remain open.
+
+## Acceptance recheck before the performance fixes on 09/11/2026
+
+The full Fault suite passed all eight cases in `.artifacts/room-ownership-local/a50fc6dcf635447c9a2702db63bf4891/fault`. Planned drain passed `RoomOwnershipReadinessTest`. The 20-room/600-second Load profiles were attempted with the existing thresholds and all fixtures cleaned up, but neither produced a full-profile pass on this host. The one-backend profile reached 51,622, 51,346 and 51,194 selections across three attempts before the 630-second bound. The two-backend profile reached 139 matches, completed ten takeovers under five seconds and then hit a 25-second room creation retry. WebSocket request durations reached 45 seconds, including the socket lifetime, so those log lines do not measure handshake latency. These results keep the staging smoke accepted while leaving the load gate and production rollout open.
+
+A 20-room/60-second diagnostic measured 87 selections/s and PostgreSQL pool saturation at 1.0. A fixture-only pool increase did not improve throughput and was reverted. The repository now avoids the event-pruning DELETE until the 256-event retention window is exceeded, covered by a focused regression test. The full load gate remains open.
+
+## Performance fixes and full load revalidation on 09/11/2026
+
+The repeated baseline in `0d7c7597e7f646e0a3f1bbe6088684ab/load-1` confirmed 87.20 selections/s. The separate JFR diagnostic found `StoredActiveRoom` deserialization in 2,338 of 3,789 execution samples. Room snapshots reached 147,363 bytes because they retained earlier command replies. Routing now reads only the owner fence. Event delivery reads the room without `processedRequests`, retaining membership, epoch, revision, public state and current socket generations. Command execution and retry replay continue to load the complete stored replies. The PostgreSQL regression test first failed when delivery still loaded those replies, then passed with the projection.
+
+The acceptance runner also serialized all room recycling behind one mutex, including connection attempts and retry waits. Each load producer already holds its own slot lock and owns a distinct account pair, and the fault controller locks the slots before pausing an owner. Recycling now proceeds independently for those pairs. Per-slot ordering, exact offered selection counts, economy assertions, the 630-second bound and 25-second recovery limit are preserved.
+
+Both full profiles passed in `.artifacts/room-ownership-local/9a63f71b5f904e878777b4920de49e57/` with the default 20-room, 600-second workload.
+
+| Measurement | One backend | Two backends |
+| --- | --- | --- |
+| Acknowledged selections | 60,000 | 60,000 |
+| Completed matches | 1,200 | 1,200 |
+| Elapsed seconds | 603.438 | 603.314 |
+| Selections per second | 99.430 | 99.451 |
+| Command p95 | 203.373 ms | 91.881 ms |
+| Scheduled-to-ACK p95 | 4.944 s | 12.873 s |
+| Selection retries | 0 | 0 |
+| Maximum event queue age | 1.025 s | 0.993 s |
+| Pool saturation p95 | 1.0 | 0.8 |
+| Owner recovery | No injected stop | 15.792 / 13.597 / 13.539 s |
+
+Both receipts record `fullAcceptanceProfile=true`. Each slot acknowledged all 3,000 selections and every completed match passed quota, reward and player-stat reconciliation. Both cleanup receipts report zero remaining owned containers, networks, volumes and images. Both build receipts identify server JAR SHA-256 `61ee97f7293ec5b09881e9a2e1d5753a6cdf06579ff6378eebd8d2d1f3ff5065` from parent revision `d7bb902` plus the saved source diff. The 61 focused ownership tests passed on isolated PostgreSQL 18 with zero failures, errors or skips, including planned drain. Scoped independent source review found no blocker.
+
+The subsequent full Fault suite also passed all eight cases in `.artifacts/room-ownership-local/a3c43b16feaa4c75acf3c713a9d33baa/fault/faults.json`, using the same server JAR hash. Recovery samples were 12.161–15.498 seconds. Redis admission failed closed, PostgreSQL outage emitted no optimistic ACK, and start/settlement response-loss probes preserved their exact-once effects. Its cleanup receipt reports zero owned containers, networks, volumes and images.
+
+These results close the local full-load throughput gate. One-backend command p95 and pool saturation remain measured capacity constraints when choosing staging limits. A complete cloud fault/load rehearsal and the production rollout decision remain subsequent gates.
+
 ## Staging rehearsal procedure
 
 1. Obtain approval for a concrete staging package and resources. Use an isolated marked database, synthetic accounts, dedicated Redis namespaces and two backends on the exact reviewed build. Record image/JAR hashes and resource limits. Do not point the acceptance seeder at an existing application database.

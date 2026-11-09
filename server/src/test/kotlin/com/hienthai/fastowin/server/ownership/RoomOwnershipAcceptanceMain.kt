@@ -28,10 +28,11 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.ConcurrentHashMap
 
 internal data class RoomAcceptanceSettings(
-    val project: String, val composeBase: Path, val composeOverride: Path, val receipts: Path,
+    val project: String, val composeFiles: Pair<Path, Path>?, val receipts: Path,
     val urls: List<String>, val proxyUrls: List<String>, val postgresPort: Int,
     val suite: String, val backendCount: Int, val durationSeconds: Int, val roomCount: Int, val seed: Int,
-    val fixtureId: UUID, val accountIds: List<UUID>, val databasePassword: String, val accountPassword: String
+    val fixtureId: UUID, val accountIds: List<UUID>, val databasePassword: String, val accountPassword: String,
+    val databaseHost: String = "127.0.0.1"
 ) {
     companion object {
         fun fromEnvironment(values: Map<String, String>): RoomAcceptanceSettings {
@@ -59,7 +60,7 @@ internal data class RoomAcceptanceSettings(
             require(count in 1..2 && duration in 1..3600 && rooms in 1..100 && port in 1..65535 && suite in setOf("Fault", "Load"))
             val ids = required("FASTTOWIN_ROOM_OWNERSHIP_ACCOUNTS").split(',').map { UUID.fromString(it) }
             require(ids.size in 2..256 && ids.distinct().size == ids.size)
-            return RoomAcceptanceSettings(project, base, override, receipts,
+            return RoomAcceptanceSettings(project, base to override, receipts,
                 listOf(localUrl("FTW_ACCEPTANCE_A"), localUrl("FTW_ACCEPTANCE_B")),
                 listOf(localUrl("FTW_ACCEPTANCE_PROXY_A"), localUrl("FTW_ACCEPTANCE_PROXY_B")), port,
                 suite, count, duration, rooms, (values["FTW_ACCEPTANCE_SEED"] ?: "73").toInt(),
@@ -104,7 +105,7 @@ internal class RoomAcceptanceFixture(val settings: RoomAcceptanceSettings) : Aut
     val loadRateLimitsDescription = "Synthetic pilot acceptance caps: loginIP512/min; wsConnectIP5000/min; wsIP5000/s; " +
         "createPlayer1000/min/createIP5000/min; joinPlayer1000/min/joinIP5000/min; selectIP5000/s; selectPlayer20/s; quotaBonus1000."
     val source = HikariDataSource(HikariConfig().apply {
-        jdbcUrl = "jdbc:postgresql://127.0.0.1:${settings.postgresPort}/fasttowin_room_pilot"
+        jdbcUrl = "jdbc:postgresql://${settings.databaseHost}:${settings.postgresPort}/fasttowin_room_pilot"
         username = "fasttowin_room_pilot"
         password = settings.databasePassword
         maximumPoolSize = 4
@@ -113,12 +114,12 @@ internal class RoomAcceptanceFixture(val settings: RoomAcceptanceSettings) : Aut
         poolName = "room-acceptance-controller"
     })
     val client = HttpClient(OkHttp) {
+        followRedirects = false
         install(WebSockets)
         install(HttpTimeout) { requestTimeoutMillis = 5_000; connectTimeoutMillis = 2_000 }
     }
     private var cachedAccounts: List<AcceptanceAccount>? = null
     private val ownerNodes = ConcurrentHashMap<UUID, Int>()
-    private val recycleMutex = Mutex()
     @Volatile var intentionallyUnavailableBackend: Int? = null
 
     suspend fun verifyFixture() = withContext(Dispatchers.IO) {
@@ -167,19 +168,19 @@ internal class RoomAcceptanceFixture(val settings: RoomAcceptanceSettings) : Aut
     suspend fun createWaitingMatch(index: Int) = createMatch(index, start = false)
 
     suspend fun createMatchWithRetry(index: Int): AcceptanceMatch {
-        return recycleMutex.withLock {
-            val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(25)
-            var last: Throwable? = null
-            while (System.nanoTime() < deadline) {
-                try { return@withLock createMatch(index) }
-                catch (failure: Exception) {
-                    currentCoroutineContext().ensureActive()
-                    last = failure
-                    delay(100)
-                }
+        // The producer holds its slot mutex and owns a distinct account pair.
+        // Other slots must keep recycling while this pair waits for recovery.
+        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(25)
+        var last: Throwable? = null
+        while (System.nanoTime() < deadline) {
+            try { return createMatch(index) }
+            catch (failure: Exception) {
+                currentCoroutineContext().ensureActive()
+                last = failure
+                delay(100)
             }
-            throw IllegalStateException("Fixture room creation did not recover in 25 seconds", last)
         }
+        throw IllegalStateException("Fixture room creation did not recover in 25 seconds", last)
     }
 
     suspend fun createMatch(index: Int, start: Boolean = true): AcceptanceMatch {
@@ -312,10 +313,11 @@ internal class RoomAcceptanceFixture(val settings: RoomAcceptanceSettings) : Aut
     }
 
     suspend fun docker(vararg args: String): String = withContext(Dispatchers.IO) {
+        val (base, override) = checkNotNull(settings.composeFiles) { "Docker commands require the local Compose fixture" }
         require(args.firstOrNull() in setOf("kill", "start", "stop", "pause", "unpause", "ps", "logs"))
         require(args.drop(1).all { it in setOf("backend-a", "backend-b", "postgres", "redis", "--no-deps", "--tail", "40") })
-        val command = listOf("docker", "compose", "-p", settings.project, "-f", settings.composeBase.toString(),
-            "-f", settings.composeOverride.toString()) + args
+        val command = listOf("docker", "compose", "-p", settings.project, "-f", base.toString(),
+            "-f", override.toString()) + args
         val process = ProcessBuilder(command).redirectErrorStream(true).start()
         val output = async { process.inputStream.bufferedReader().readText() }
         if (!process.waitFor(90, TimeUnit.SECONDS)) { process.destroyForcibly(); error("Fixture Docker action timed out") }

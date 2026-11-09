@@ -17,6 +17,10 @@ import java.time.Instant
 import java.util.UUID
 import javax.sql.DataSource
 
+internal const val ROOM_OWNERSHIP_MAX_EVENT_REVISIONS = 256
+
+internal fun shouldPruneRoomEvents(revision: Long): Boolean = revision > ROOM_OWNERSHIP_MAX_EVENT_REVISIONS
+
 internal class PostgresRoomOwnershipRepository(
     private val dataSource: DataSource,
     private val metrics: RoomOwnershipMetrics? = null
@@ -150,6 +154,30 @@ internal class PostgresRoomOwnershipRepository(
         load(roomId)?.state?.let { it.copy(sessionGenerations = generations(it.snapshot)) }
     }
 
+    override suspend fun readForDelivery(roomId: UUID): OwnedRoomState? = transaction {
+        // Retry replies grow with every selection. Public snapshots and delivery
+        // authorization use the room fields, while command replay uses read/load.
+        query(
+            """
+            SELECT room_id, instance_id, owner_epoch, revision, recovery_deadline, closed_at,
+                   snapshot - 'processedRequests' AS snapshot, clock_timestamp() AS observed_at
+            FROM room_ownership_pilot_rooms WHERE room_id = ?
+            """,
+            roomId
+        ) { rows -> if (rows.next()) rows.state() else null }
+            ?.let { it.copy(sessionGenerations = generations(it.snapshot)) }
+    }
+
+    suspend fun findOwner(roomId: UUID): OwnerFence? = transaction {
+        query(
+            "SELECT instance_id, owner_epoch FROM room_ownership_pilot_rooms WHERE room_id = ? AND closed_at IS NULL",
+            roomId
+        ) { rows ->
+            if (rows.next()) OwnerFence(roomId, rows.getObject("instance_id", UUID::class.java), rows.getLong("owner_epoch"))
+            else null
+        }
+    }
+
     override suspend fun lookupRoom(playerId: UUID): UUID? = transaction {
         query("SELECT room_id FROM room_ownership_pilot_memberships WHERE player_id = ?", playerId) { rows ->
             if (rows.next()) rows.getObject("room_id", UUID::class.java) else null
@@ -232,8 +260,11 @@ internal class PostgresRoomOwnershipRepository(
         socket: SocketFence?,
         change: (Connection, OwnedRoomState) -> RoomMutation
     ): FencedResult = fencedTransaction {
-        if (socket != null && !isCurrent(socket)) return@fencedTransaction FencedResult.Stale
-        val room = load(fence.roomId, lock = true) ?: return@fencedTransaction FencedResult.Stale
+        val room = if (socket == null) {
+            load(fence.roomId, lock = true)
+        } else {
+            loadForSocket(fence.roomId, socket)
+        } ?: return@fencedTransaction FencedResult.Stale
         val state = room.state.copy(observedAt = databaseTime())
         if (state.closed || state.fence != fence || state.revision != expectedRevision ||
             room.leaseUntil <= state.observedAt
@@ -350,13 +381,15 @@ internal class PostgresRoomOwnershipRepository(
             """,
             state.fence.roomId, state.revision, state.fence.epoch, ProtocolJson.encodeToString(events)
         )
-        update(
-            """
-            DELETE FROM room_ownership_pilot_events
-            WHERE room_id = ? AND (revision <= ? OR created_at <= clock_timestamp() - interval '2 minutes')
-            """,
-            state.fence.roomId, state.revision - MAX_EVENT_REVISIONS
-        )
+        if (shouldPruneRoomEvents(state.revision)) {
+            update(
+                """
+                DELETE FROM room_ownership_pilot_events
+                WHERE room_id = ? AND (revision <= ? OR created_at <= clock_timestamp() - interval '2 minutes')
+                """,
+                state.fence.roomId, state.revision - MAX_EVENT_REVISIONS
+            )
+        }
         query(
             "SELECT pg_notify('room_ownership_pilot', ?)",
             "${state.fence.roomId}:${state.revision}"
@@ -392,6 +425,19 @@ internal class PostgresRoomOwnershipRepository(
                 rows.state(), rows.getTimestamp("lease_until").toInstant()
             ) else null
         }
+    }
+
+    private fun Connection.loadForSocket(roomId: UUID, socket: SocketFence): RoomRow? = query(
+        """
+        SELECT r.*, clock_timestamp() AS observed_at
+        FROM room_ownership_pilot_rooms r
+        JOIN room_ownership_pilot_sessions s ON s.player_id = ? AND s.generation = ?
+        WHERE r.room_id = ?
+        FOR UPDATE OF r, s
+        """.trimIndent(),
+        socket.playerId, socket.generation, roomId
+    ) { rows ->
+        if (rows.next()) RoomRow(rows.state(), rows.getTimestamp("lease_until").toInstant()) else null
     }
 
     private fun ResultSet.state() = OwnedRoomState(
@@ -463,6 +509,6 @@ internal class PostgresRoomOwnershipRepository(
     private data class RoomRow(val state: OwnedRoomState, val leaseUntil: Instant)
 
     private companion object {
-        const val MAX_EVENT_REVISIONS = 256
+        const val MAX_EVENT_REVISIONS = ROOM_OWNERSHIP_MAX_EVENT_REVISIONS
     }
 }

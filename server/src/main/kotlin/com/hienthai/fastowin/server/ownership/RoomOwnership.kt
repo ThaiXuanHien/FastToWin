@@ -82,6 +82,8 @@ internal interface RoomOwnershipRepository {
     suspend fun release(fence: OwnerFence): Boolean
     suspend fun lookupRoom(playerId: UUID): UUID?
     suspend fun read(roomId: UUID): OwnedRoomState?
+    // Delivery projects public state and never replays a command's stored response.
+    suspend fun readForDelivery(roomId: UUID): OwnedRoomState? = read(roomId)
     suspend fun bindSocket(playerId: UUID): SocketFence
     suspend fun isCurrentSocket(socket: SocketFence): Boolean
     suspend fun purgeExpiredClosedRooms(limit: Int): Int
