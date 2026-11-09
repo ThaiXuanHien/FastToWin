@@ -25,7 +25,7 @@ Build and test the test-only runner with the repository JDK/Gradle setup. Supply
   -BackendManifestSha256 'b68e22087967dd3658532b6d48f49d6bdf85c0d905d89e4f47bd5737979489cc'
 ```
 
-The script validates the frozen backend, verifies that the runner uses the identical server JAR, snapshots all seven implementation sources including untracked files, and records every runner file hash. Docker calls explicitly pin the validated local named pipe or Unix socket. The fixture uses pinned JRE/PostgreSQL/Redis digests and a private IPv6-only Docker network with the Railway DNS names, without host ports. Both backends start so their configured peer DNS resolves; B stops before baseline traffic. Cleanup removes only this generated project's containers, networks, volumes and labelled images, and independently verifies their absence.
+The script validates the frozen backend, verifies that the runner uses the identical server JAR, snapshots the baseline implementation and verification sources including untracked files, and records every runner file hash. Docker calls explicitly pin the validated local named pipe or Unix socket. The fixture uses pinned JRE/PostgreSQL/Redis digests and a private IPv6-only Docker network with the Railway DNS names, without host ports. Both backends start so their configured peer DNS resolves; B stops before baseline traffic. Cleanup removes only this generated project's containers, networks, volumes and labelled images, and independently verifies their absence.
 
 This local run validates the package and private DNS path. It does not apply Railway's CPU/memory limits or establish cloud capacity.
 
@@ -82,6 +82,8 @@ The runner performs twelve bounded probes after verifying the exact fixture mark
 `baseline-latency.json` and indexed `FTW_BASELINE_LATENCY` chunks contain probe counts/failures and exact small-sample mean/max/p95 milliseconds, plus numeric backend metrics before load and the fixture's own workload connection-acquisition/body timing aggregates. Fixture body includes its SQL and verification/decoding work; it is distinct from the backend transaction timings. Read with `read-room-baseline-receipt.ps1 -Latency`. Partial probes are marked incomplete; a successful load does not become a latency-probe pass automatically. The host verifies both file/log checksums and field/metric allowlists.
 
 Backend metrics are process-lifetime counters. Use before/after count and sum differences only if counters remain monotonic; flag a process restart rather than calculating a misleading delta. Maxima and percentile bucket gauges are not subtractable. Existing full-load counts, deadlines and correctness gates are unchanged. This build needs fresh frozen backend/runner contexts and local verification before another separately approved cloud run.
+
+The timing build at `39965f3` has now passed the capped local 3/2-CPU full rehearsal: 60,000 selections in 601.488 seconds (99.753/s), 1,200 matches and zero retries. All twelve probes per stage completed without errors; both file/log exports matched and all owned Docker resources were removed. Evidence is `.artifacts/room-ownership-staging-baseline/room-pilot-6a235121b3a8/diagnostic-summary.json`; exact build/receipt checksums and timing interpretation are recorded in the handoff. This verifies the diagnostic package locally. No new cloud run was performed, and the older cloud controller/scope predates the latency export and new metric allowlist.
 
 ## Prepared 3/2-CPU Railway scope
 

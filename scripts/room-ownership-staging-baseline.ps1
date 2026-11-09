@@ -135,6 +135,7 @@ try {
         'server/src/main/kotlin/com/hienthai/fastowin/server/ownership/PostgresRoomOwnershipRepository.kt',
         'server/src/main/kotlin/com/hienthai/fastowin/server/ownership/RoomOwnershipMetrics.kt',
         'server/src/main/kotlin/com/hienthai/fastowin/server/ownership/RoomOwnershipDatabaseTimings.kt',
+        'server/src/test/kotlin/com/hienthai/fastowin/server/ownership/RoomOwnershipAcceptanceMain.kt',
         'server/src/test/kotlin/com/hienthai/fastowin/server/ownership/RoomOwnershipLoadAcceptance.kt',
         'server/src/test/kotlin/com/hienthai/fastowin/server/ownership/RailwayRoomSmokeSettingsTest.kt'
     )
