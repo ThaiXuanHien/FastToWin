@@ -2,19 +2,21 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)][string]$LogPath,
-    [Parameter(Mandatory)][string]$OutputPath
+    [Parameter(Mandatory)][string]$OutputPath,
+    [switch]$Failure
 )
 $ErrorActionPreference = 'Stop'
 $parts = @{}
 $digest = $null
 $total = 0
+$prefix = if ($Failure) { 'FTW_BASELINE_FAILURE' } else { 'FTW_BASELINE_RECEIPT' }
 foreach ($line in Get-Content -LiteralPath $LogPath) {
     # Handles Docker text and Railway JSON log exports without evaluating input.
     $message = $line
     if ($line.TrimStart().StartsWith('{')) {
         try { $row = $line | ConvertFrom-Json; if ($row.message) { $message = $row.message } } catch { continue }
     }
-    if ($message -notmatch '\AFTW_BASELINE_RECEIPT ([0-9]+)/([0-9]+) ([a-f0-9]{64}) ([A-Za-z0-9+/=]{1,2048})\z') { continue }
+    if ($message -notmatch ("\A$prefix " + '([0-9]+)/([0-9]+) ([a-f0-9]{64}) ([A-Za-z0-9+/=]{1,2048})\z')) { continue }
     $index = [int]$Matches[1]
     $count = [int]$Matches[2]
     $hash = $Matches[3]
@@ -32,11 +34,16 @@ if ($bytes.Length -gt 262144 -or [Convert]::ToHexString([Security.Cryptography.S
     throw 'Baseline receipt checksum mismatch'
 }
 $receipt = [Text.Encoding]::UTF8.GetString($bytes) | ConvertFrom-Json
-if ($receipt.backendCount -ne 1 -or $receipt.concurrentRooms -ne 20 -or $receipt.configuredDurationSeconds -ne 600 -or
+if ($Failure) {
+    if ($receipt.phase -notin @('private-dns','fixture-marker-and-readiness','load','receipt','unknown') -or
+        $receipt.category -notin @('timeout','database-connection','database-error','network','protocol-rejected','configuration','assertion','other')) {
+        throw 'Invalid baseline failure classification'
+    }
+} elseif ($receipt.backendCount -ne 1 -or $receipt.concurrentRooms -ne 20 -or $receipt.configuredDurationSeconds -ne 600 -or
     $receipt.selectionCount -ne 60000 -or $receipt.fullAcceptanceProfile -ne $true -or
     @($receipt.selectionsByRoomSlot).Count -ne 20 -or @($receipt.selectionsByRoomSlot | Where-Object { $_ -ne 3000 }).Count -ne 0 -or
     $receipt.actualSelectionsPerSecond -lt 95 -or $receipt.elapsedSeconds -gt 631) {
     throw 'Receipt does not satisfy the full one-backend baseline'
 }
 [IO.File]::WriteAllBytes([IO.Path]::GetFullPath($OutputPath), $bytes)
-Write-Output "Verified full baseline receipt SHA-256 $digest"
+Write-Output "Verified baseline export SHA-256 $digest"

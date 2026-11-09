@@ -62,7 +62,10 @@ internal data class LoadResourceSample(val elapsedSeconds: Double, val queuedEve
  * The monotonic schedule catches up after stalls rather than silently reducing offered load.
  * The fixture owns process/HTTP/JDBC resources; this module owns room/socket lifecycles.
  */
-internal suspend fun runRoomOwnershipLoad(fixture: RoomAcceptanceFixture): LoadReceipt = coroutineScope {
+internal suspend fun runRoomOwnershipLoad(
+    fixture: RoomAcceptanceFixture,
+    onProgress: (BaselineLoadProgress) -> Unit = {}
+): LoadReceipt = coroutineScope {
     require(fixture.backendCount in 1..2)
     require(fixture.roomCount > 0 && fixture.durationSeconds > 0)
     val accounts = fixture.accounts()
@@ -85,6 +88,11 @@ internal suspend fun runRoomOwnershipLoad(fixture: RoomAcceptanceFixture): LoadR
     var measurementStarted = 0L
     val resourceSamples = mutableListOf<LoadResourceSample>()
 
+    fun reportProgress() {
+        val elapsed = if (measurementStarted == 0L) 0.0 else (System.nanoTime() - measurementStarted).toDouble() / NANOS_PER_SECOND
+        onProgress(BaselineLoadProgress(elapsed, slots.map { it.selections }, completedMatches.get(), slots.sumOf { it.attempts }))
+    }
+
     suspend fun sampleResources() {
         val backlog = fixture.sampleBacklog()
         val saturation = fixture.poolSaturation()
@@ -95,6 +103,7 @@ internal suspend fun runRoomOwnershipLoad(fixture: RoomAcceptanceFixture): LoadR
         sampleCount++
         val elapsed = if (measurementStarted == 0L) 0.0 else (System.nanoTime() - measurementStarted).toDouble() / NANOS_PER_SECOND
         resourceSamples += LoadResourceSample(elapsed, backlog, saturation)
+        reportProgress()
         if (sampleCount % 60 == 0) println("Load progress: ${fixture.backendCount} backend(s), ${elapsed.toInt()}s, ${slots.sumOf { it.selections }} selections, ${recoveries.size} recoveries")
     }
 
@@ -265,6 +274,7 @@ internal suspend fun runRoomOwnershipLoad(fixture: RoomAcceptanceFixture): LoadR
         )
     } catch (failure: Throwable) {
         primaryFailure = failure
+        reportProgress()
         fixture.captureDiagnostics(failure)
         throw failure
     } finally {

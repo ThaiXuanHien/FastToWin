@@ -1,0 +1,22 @@
+# Decimal bytes match Railway's limits API, rather than Docker's binary suffixes.
+services:
+  postgres:
+    cpus: 0.5
+    mem_limit: 512000000
+    memswap_limit: 512000000
+  redis:
+    cpus: 0.25
+    mem_limit: 250000000
+    memswap_limit: 250000000
+  backend-a:
+    cpus: 1
+    mem_limit: 1000000000
+    memswap_limit: 1000000000
+  backend-b:
+    cpus: 1
+    mem_limit: 1000000000
+    memswap_limit: 1000000000
+  runner:
+    cpus: 0.5
+    mem_limit: 500000000
+    memswap_limit: 500000000

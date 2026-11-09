@@ -12,6 +12,8 @@ The baseline reuses `runRoomOwnershipLoad` without changing its gates: one backe
 
 The runner writes `receipts/load.json` and exports the same bytes as indexed `FTW_BASELINE_RECEIPT` log chunks with a SHA-256 checksum. `scripts/read-room-baseline-receipt.ps1` reads plain logs or Railway JSON log lines, tolerates identical duplicate/reordered chunks, rejects missing/conflicting/corrupt chunks, validates the full baseline, and writes the verified receipt. The export contains numeric samples and fixed-label metrics rather than fixture accounts, credentials or raw game payloads. Collect the entire chunk set, using bounded log pagination if needed; the older smoke controller's last-60-lines query is insufficient for the maximum receipt size. A summary line alone does not satisfy the baseline gate.
 
+Failures now write `receipts/baseline-failure.json` and emit `FTW_BASELINE_FAILURE` chunks using the same checksum/index scheme. Read them with `scripts/read-room-baseline-receipt.ps1 -Failure`. This is diagnostic evidence, never an acceptance pass. It includes a fixed phase/category, final measured room counts/attempts, four allowed database counts and selected numeric gauges/counters. Exception text, stack traces, SQL, dynamic labels, unknown keys, non-finite metric values and oversized diagnostic files are excluded. The local private stack can still be inspected separately during profiling; it is not included in the log export.
+
 ## Reproduce the private DNS rehearsal
 
 Build and test the test-only runner with the repository JDK/Gradle setup. Supply the reviewed backend context and its expected manifest checksum to:
@@ -26,6 +28,12 @@ Build and test the test-only runner with the repository JDK/Gradle setup. Supply
 The script validates the frozen backend, verifies that the runner uses the identical server JAR, snapshots all seven implementation sources including untracked files, and records every runner file hash. Docker calls explicitly pin the validated local named pipe or Unix socket. The fixture uses pinned JRE/PostgreSQL/Redis digests and a private IPv6-only Docker network with the Railway DNS names, without host ports. Both backends start so their configured peer DNS resolves; B stops before baseline traffic. Cleanup removes only this generated project's containers, networks, volumes and labelled images, and independently verifies their absence.
 
 This local run validates the package and private DNS path. It does not apply Railway's CPU/memory limits or establish cloud capacity.
+
+To reproduce the cloud resource envelope locally, add `-RailwayLimits`. The override uses the exact decimal-byte memory limits and disables swap. Add `-Profile` to collect Docker resource samples, numeric PostgreSQL statistics/query costs and a backend JFR. The profile retains the frozen JVM heap and OOM flags, disables initial environment/system-property/JVM-command-line recording, and uses the same JRE's profile settings. Keep raw recordings private, retain only bounded numeric/class-name summaries after analysis and remove the raw files. Sampling and final collection are best effort; available runner diagnostics are copied before cleanup even if telemetry fails.
+
+For local controls only, `-Profile -PostgresCpu 2` changes PostgreSQL from 0.5 to 2 CPU; `-Profile -PostgresCpu 2 -BackendCpu 2` then changes backend A from 1 to 2 CPU. `-BackendCpu 3` provides the next backend-only control. These retain the original RAM limits, rate caps, application JAR and full load gates. The summary records the altered envelope as `local-cpu-control`; these switches do not grant a new cloud run or change the approved cloud scope. A run without `-RailwayLimits` is explicitly labelled `uncapped-local` and does not claim applied CPU ceilings. Verify each comparison's actual runtime ceilings. Avoid oversubscribing the Docker host while comparing controls.
+
+On Windows, a long temporary path can make JDK 25's AF_UNIX selector initialization fail before Gradle runs. Use a short process-local `TEMP`/`TMP` directory inside the workspace if that specific error occurs; no machine-wide Java or networking setting needs changing.
 
 ## Concrete Railway launch package
 
@@ -58,3 +66,9 @@ The concrete scope was approved and executed. After correcting the bootstrap hea
 PostgreSQL memory reached 0.507465728 GB against its confirmed 0.512 GB ceiling. This is an observed capacity signal; the exact bottleneck is not isolated. The existing exception sanitizer preserved only the failed phase, and the runner's local detailed diagnostics were not recovered. A follow-up should export bounded numeric failure counts/metrics and a safe error category, then profile at the cloud resource ceilings locally before requesting another cloud run.
 
 All five temporary services were deleted. Independent inventory verification found the nine prior staging services unchanged and without active compute. See `docs/room-ownership-staging-handoff.md` for the evidence paths and limitations.
+
+## Local capacity follow-up
+
+Safe failure export and four capped local profiles followed, without another cloud run. The original 1-CPU backend / 0.5-CPU PostgreSQL envelope reproduced low throughput and a room-recreation timeout. PostgreSQL 2 CPU alone reached only 28,743 ACKs by the 630-second timeout. Backend 2 CPU / PostgreSQL 2 CPU reached 59,957 ACKs; it still failed because all 60,000 scheduled selections are mandatory.
+
+Backend 3 CPU / PostgreSQL 2 CPU passed the full profile: 60,000 ACKs in 604.321 seconds at 99.285/s, 1,200 matches and zero selection retries. All RAM limits stayed unchanged. CPU throttling and the response to the controls identify backend CPU headroom as a demonstrated local constraint. Cache-inclusive PostgreSQL memory readings do not isolate a RAM bottleneck. The full comparison, profiling limitations and cleanup evidence are recorded in the handoff. A future Railway run with higher ceilings requires a fresh scope and approval; the old 1/0.5-CPU cloud scope is unchanged.

@@ -5,14 +5,18 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.encodeToString
 import java.nio.file.Files
+import java.nio.file.Path
 import java.security.MessageDigest
 import java.util.Base64
 
 /** One-backend staging baseline uses the same load and acceptance gates as Docker local. */
 internal fun runRailwayRoomBaseline(settings: RailwayRoomSmokeSettings) {
     var phase = "private-dns"
+    var progress: BaselineLoadProgress? = null
+    var receipts = Path.of("receipts")
     try {
         val acceptance = settings.acceptanceSettings()
+        receipts = acceptance.receipts
         Files.createDirectories(acceptance.receipts)
         val receipt = runBlocking {
             withTimeout(900_000) {
@@ -22,7 +26,7 @@ internal fun runRailwayRoomBaseline(settings: RailwayRoomSmokeSettings) {
                     fixture.awaitReady(0)
                     fixture.fundQuota()
                     phase = "load"
-                    runRoomOwnershipLoad(fixture)
+                    runRoomOwnershipLoad(fixture) { progress = it }
                 }
             }
         }
@@ -38,7 +42,14 @@ internal fun runRailwayRoomBaseline(settings: RailwayRoomSmokeSettings) {
             println("FTW_BASELINE_RECEIPT ${index + 1}/${chunks.size} $sha256 $chunk")
         }
         println("""{"baselineAccepted":true,"backendCount":1,"concurrentRooms":20,"configuredDurationSeconds":600,"selectionCount":${receipt.selectionCount},"actualSelectionsPerSecond":${receipt.actualSelectionsPerSecond},"fullAcceptanceProfile":${receipt.fullAcceptanceProfile},"receiptSha256":"$sha256"}""")
-    } catch (_: Exception) {
+    } catch (failure: Exception) {
+        val diagnostic = baselineFailureReceipt(phase, failure, receipts, progress)
+        val bytes = ProtocolJson.encodeToString(diagnostic).toByteArray(Charsets.UTF_8)
+        // A failed run must remain diagnosable even if its container disappears.
+        runCatching { Files.createDirectories(receipts); Files.write(receipts.resolve("baseline-failure.json"), bytes) }
+        val hash = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
+        val chunks = Base64.getEncoder().encodeToString(bytes).chunked(2_048)
+        chunks.forEachIndexed { index, chunk -> println("FTW_BASELINE_FAILURE ${index + 1}/${chunks.size} $hash $chunk") }
         // JDBC/client exceptions can contain fixture identifiers or connection
         // strings. Keep those outside provider logs and the exported receipt.
         throw IllegalStateException("Baseline failed during $phase")
