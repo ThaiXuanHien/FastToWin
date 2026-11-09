@@ -45,6 +45,16 @@ Use one replica per service, no public domains/TCP proxies, no permanent volumes
 
 Before upload, recheck all context hashes, project/environment identity, existing staging inventory and available deadline. Create only the five named services, record their returned IDs, set limits/restart policy/private settings, and verify their identities before each mutation. Generate all accounts, passwords and peer secrets fresh on the host. Seed the empty dedicated database with the runner, deploy both backends, prove readiness, then stop B and verify its deployment is stopped before launching baseline with only A configured. Do not pass a workspace token to the runner.
 
+During backend bootstrap use the provider healthcheck `/health`. The `/ready` route is registered only when pilot ownership is enabled, so switch the provider probe to `/ready` for the pilot deployments. A `REMOVING` state is pending, not stopped. Railway can retain a `SUCCESS` deployment in `activeDeployments` after setting `deploymentStopped=true`; inspect that flag on each retained record and on the latest deployment rather than interpreting the collection name as proof of running compute.
+
 Collect and reconstruct the complete receipt, record deployment IDs/status, limits and context checksums, and scan the export against generated fixture IDs/passwords. Cleanup runs on success or failure: stop all new deployments, clear their generated variables, delete only the five newly created service IDs after project/name checks, and verify they are absent. Existing staging services remain untouched. The read-only inventory on 09/11/2026 found all nine existing staging services without active deployments.
 
 Cloud fault injection and the two-backend load profile remain later steps. This baseline package does not close those gates or authorize production rollout.
+
+## Execution result from 09/11/2026
+
+The concrete scope was approved and executed. After correcting the bootstrap healthcheck before any load, both pilot backends passed readiness and B stopped before the single full baseline attempt. That attempt failed during load; the last progress sample was 20,949 selections at 588 seconds, approximately 35.63/s against the 95/s gate. No accepted full load receipt was produced and no second full attempt was started.
+
+PostgreSQL memory reached 0.507465728 GB against its confirmed 0.512 GB ceiling. This is an observed capacity signal; the exact bottleneck is not isolated. The existing exception sanitizer preserved only the failed phase, and the runner's local detailed diagnostics were not recovered. A follow-up should export bounded numeric failure counts/metrics and a safe error category, then profile at the cloud resource ceilings locally before requesting another cloud run.
+
+All five temporary services were deleted. Independent inventory verification found the nine prior staging services unchanged and without active compute. See `docs/room-ownership-staging-handoff.md` for the evidence paths and limitations.
