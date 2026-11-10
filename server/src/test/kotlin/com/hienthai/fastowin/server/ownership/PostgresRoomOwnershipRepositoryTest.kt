@@ -29,6 +29,22 @@ import kotlin.test.assertTrue
 
 class PostgresRoomOwnershipRepositoryTest {
     @Test
+    fun `locked observations combine current generations and database time in one query`() = runBlocking {
+        fixture { f ->
+            val initial = f.createRoom()
+            val current = f.b.bindSocket(f.host)
+            val calls = JdbcCallRecorder(f.dataSource)
+            val repo = PostgresRoomOwnershipRepository(calls)
+            assertIs<FencedResult.Unchanged>(repo.withFencedRoom(initial.fence, initial.revision, null) { _, observed ->
+                assertEquals(current.generation, observed.sessionGenerations[f.host.toString()])
+                assertTrue(observed.observedAt >= initial.observedAt)
+                RoomMutation.Unchanged
+            })
+            assertEquals(3, calls.serverCalls.get(), "Locked read, observations and rollback")
+        }
+    }
+
+    @Test
     fun `metadata read completes in one JDBC server call`() = runBlocking {
         fixture { f ->
             val calls = JdbcCallRecorder(f.dataSource)

@@ -279,12 +279,10 @@ internal class PostgresRoomOwnershipRepository(
         } else {
             loadForSocket(fence.roomId, socket)
         } ?: return@fencedTransaction FencedResult.Stale
-        val state = room.state.copy(observedAt = databaseTime())
-        if (state.closed || state.fence != fence || state.revision != expectedRevision ||
-            room.leaseUntil <= state.observedAt
+        val observed = observeLocked(room.state)
+        if (observed.closed || observed.fence != fence || observed.revision != expectedRevision ||
+            room.leaseUntil <= observed.observedAt
         ) return@fencedTransaction FencedResult.Stale
-        // Observe other generations without locking them after the room row.
-        val observed = state.copy(sessionGenerations = generations(state.snapshot))
         when (val mutation = change(this, observed)) {
             is RoomMutation.Reject -> FencedResult.Rejected(mutation.reason)
             is RoomMutation.Replay -> FencedResult.Replay(observed, mutation.message)
@@ -423,13 +421,31 @@ internal class PostgresRoomOwnershipRepository(
         socket.playerId
     ) { rows -> rows.next() && rows.getLong("generation") == socket.generation }
 
-    private fun Connection.generations(snapshot: StoredActiveRoom): Map<String, Long> {
-        val host = UUID.fromString(snapshot.host.playerId)
-        val guest = snapshot.guest?.playerId?.let(UUID::fromString) ?: host
+    private fun Connection.observeLocked(state: OwnedRoomState): OwnedRoomState {
+        val host = UUID.fromString(state.snapshot.host.playerId)
+        val guest = state.snapshot.guest?.playerId?.let(UUID::fromString) ?: host
+        // A separate statement after acquiring the room/socket locks observes
+        // current generations and time together, without locking the other session.
         return query(
-            "SELECT player_id, generation FROM room_ownership_pilot_sessions WHERE player_id IN (?, ?)",
+            """
+            SELECT clock_timestamp() AS observed_at,
+                   h.generation AS host_generation, g.generation AS guest_generation
+            FROM (VALUES (1)) anchor(value)
+            LEFT JOIN room_ownership_pilot_sessions h ON h.player_id = ?
+            LEFT JOIN room_ownership_pilot_sessions g ON g.player_id = ?
+            """,
             host, guest
-        ) { rows -> buildMap { while (rows.next()) put(rows.getString(1), rows.getLong(2)) } }
+        ) { rows ->
+            check(rows.next())
+            val hostGeneration = rows.getLong("host_generation")
+            val hostPresent = !rows.wasNull()
+            val guestGeneration = rows.getLong("guest_generation")
+            val guestPresent = !rows.wasNull()
+            state.copy(observedAt = rows.getTimestamp("observed_at").toInstant(), sessionGenerations = buildMap {
+                if (hostPresent) put(host.toString(), hostGeneration)
+                if (guestPresent) put(guest.toString(), guestGeneration)
+            })
+        }
     }
 
     private fun Connection.load(roomId: UUID, lock: Boolean = false): RoomRow? {

@@ -24,6 +24,31 @@ import kotlin.test.assertTrue
 
 class OwnedRoomEngineTest {
     @Test
+    fun `selection precheck omits replay history while locked reads preserve exact replay`() = runBlocking {
+        fixture { f ->
+            val id = f.createPlaying()
+            val selection = ClientMessage.SelectNumber(id.toString(), 1, "committed-selection")
+            val committed = f.a.handle(f.host, selection).applied()
+            var projectedReads = 0
+            val projected = object : RoomOwnershipRepository by f.repo {
+                override suspend fun read(roomId: UUID): OwnedRoomState? = error("Precheck must not decode replay history")
+                override suspend fun readForDelivery(roomId: UUID): OwnedRoomState? {
+                    projectedReads++
+                    return f.repo.readForDelivery(roomId).also { assertTrue(it?.snapshot?.processedRequests.orEmpty().isEmpty()) }
+                }
+            }
+            val engine = f.engine(projected, f.state(id).fence.instanceId)
+            val replay = engine.handle(f.host, selection).applied()
+            assertTrue(replay.replayed)
+            assertEquals(committed.publicMessage, replay.publicMessage)
+            assertEquals(committed.revision, replay.revision)
+            engine.handle(f.host, selection.copy(number = 2, requestId = "next-selection")).applied()
+            assertEquals(listOf(1, 2), f.state(id).snapshot.selectedNumbers)
+            assertEquals(2, projectedReads)
+        }
+    }
+
+    @Test
     fun `private classic lifecycle checks admission and replays only matching selections`() = runBlocking {
         fixture { f ->
             val created = f.create()
@@ -237,6 +262,11 @@ class OwnedRoomEngineTest {
     ) {
         val repo = PostgresRoomOwnershipRepository(aData)
         val repoB = PostgresRoomOwnershipRepository(bData)
+        fun engine(repository: RoomOwnershipRepository, instanceId: UUID) = OwnedRoomEngine(
+            instanceId, repository,
+            OwnedMatchEconomy(repository, PostgresPlayQuotaRepository(aData), PostgresMatchResultRepository(aData)),
+            { players[it] }
+        )
         val a = OwnedRoomEngine(
             UUID.randomUUID(), repo, OwnedMatchEconomy(repo, PostgresPlayQuotaRepository(aData), PostgresMatchResultRepository(aData)),
             { players[it] }

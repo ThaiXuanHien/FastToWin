@@ -50,7 +50,8 @@ internal class OwnedRoomEngine(
             is ClientMessage.CreateRoom -> if (expectedOwner == null) create(socket, message) else retry()
             is ClientMessage.JoinRoom -> command(message.roomId, expectedOwner = expectedOwner) { state -> join(socket, state, message) }
             is ClientMessage.SetReady -> command(message.roomId, expectedOwner = expectedOwner) { state -> ready(socket, state, message.ready) }
-            is ClientMessage.SelectNumber -> command(message.roomId, message.requestId, expectedOwner) { state ->
+            // Replay is read again under the mutation lock; precheck needs only the projected state.
+            is ClientMessage.SelectNumber -> command(message.roomId, message.requestId, expectedOwner, loadState = rooms::readForDelivery) { state ->
                 reply(mutate(state, socket, checkExpiry = false) { locked -> select(socket, locked, message) }, message.requestId)
             }
             is ClientMessage.LeaveRoom -> command(message.roomId, expectedOwner = expectedOwner) { state ->
@@ -378,10 +379,11 @@ internal class OwnedRoomEngine(
         roomId: String,
         requestId: String? = null,
         expectedOwner: OwnerFence? = null,
+        loadState: suspend (UUID) -> OwnedRoomState? = rooms::read,
         execute: suspend (OwnedRoomState) -> OwnedRoomReply
     ): OwnedRoomReply {
         val id = runCatching { UUID.fromString(roomId) }.getOrNull() ?: return reject("ROOM_NOT_FOUND", requestId)
-        val state = rooms.read(id)?.takeUnless { it.closed } ?: return reject("ROOM_NOT_FOUND", requestId)
+        val state = loadState(id)?.takeUnless { it.closed } ?: return reject("ROOM_NOT_FOUND", requestId)
         if (state.fence.instanceId != instanceId || (expectedOwner != null && state.fence != expectedOwner)) return retry(requestId)
         remember(state)
         return execute(state)
