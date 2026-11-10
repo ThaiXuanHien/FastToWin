@@ -14,6 +14,7 @@ import kotlinx.coroutines.runBlocking
 import org.flywaydb.core.Flyway
 import org.junit.jupiter.api.Assumptions.assumeTrue
 import java.sql.SQLException
+import java.sql.Connection
 import java.util.UUID
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -23,6 +24,73 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 class PostgresRoomOwnershipRepositoryTest {
+    @Test
+    fun `metadata read has at most three JDBC server calls`() = runBlocking {
+        fixture { f ->
+            val calls = JdbcCallRecorder(f.dataSource)
+            assertEquals(null, PostgresRoomOwnershipRepository(calls).findOwner(UUID.randomUUID()))
+            assertTrue(calls.serverCalls.get() in 1..3, "Metadata read used ${calls.serverCalls.get()} JDBC calls")
+        }
+    }
+
+    @Test
+    fun `delivery reads current host and guest generations within three JDBC calls`() = runBlocking {
+        fixture { f ->
+            val host = f.a.bindSocket(f.host)
+            val guestId = UUID.randomUUID()
+            f.b.bindSocket(guestId)
+            val initial = f.createRoom()
+            val committed = assertIs<FencedResult.Committed>(
+                f.a.withFencedRoom(initial.fence, initial.revision, null) { _, room ->
+                    RoomMutation.Change(room.snapshot.copy(guest = StoredActivePlayer(guestId.toString(), "Guest", isAccount = true)))
+                }
+            ).state
+            val currentHost = f.b.bindSocket(host.playerId)
+            val currentGuest = f.a.bindSocket(guestId)
+            val calls = JdbcCallRecorder(f.dataSource)
+            val state = assertNotNull(PostgresRoomOwnershipRepository(calls).readForDelivery(initial.fence.roomId))
+            assertEquals(committed.snapshot.publicState(), state.snapshot.publicState())
+            assertEquals(mapOf(f.host.toString() to currentHost.generation, guestId.toString() to currentGuest.generation), state.sessionGenerations)
+            assertTrue(calls.serverCalls.get() in 1..3, "Delivery read used ${calls.serverCalls.get()} JDBC calls")
+        }
+    }
+
+    @Test
+    fun `transaction timeouts apply locally and restore after commit and rollback`() = runBlocking {
+        fixture { f ->
+            val initial = f.createRoom()
+            f.dataSource.connection.use { connection ->
+                connection.createStatement().use { it.execute("SET lock_timeout = '9s'; SET statement_timeout = '8s'") }
+                val networkTimeout = connection.networkTimeout
+                val repo = PostgresRoomOwnershipRepository(JdbcCallRecorder(f.dataSource, connection))
+                val committed = assertIs<FencedResult.Committed>(repo.withFencedRoom(initial.fence, initial.revision, null) { c, state ->
+                    assertEquals(listOf("1s", "2s"), timeoutSettings(c))
+                    RoomMutation.Change(state.snapshot.copy(roomName = "Committed"))
+                }).state
+                connection.autoCommit = true
+                assertEquals(listOf("9s", "8s"), timeoutSettings(connection))
+                assertEquals(networkTimeout, connection.networkTimeout)
+                assertIs<FencedResult.TemporaryFailure>(repo.withFencedRoom(committed.fence, committed.revision, null) { c, _ ->
+                    assertEquals(listOf("1s", "2s"), timeoutSettings(c))
+                    c.createStatement().use { it.executeUpdate("INSERT INTO fixture_probe VALUES (1)") }
+                    throw SQLException("Simulated transaction failure", "40001")
+                })
+                connection.autoCommit = true
+                assertEquals(listOf("9s", "8s"), timeoutSettings(connection))
+                assertEquals(networkTimeout, connection.networkTimeout)
+                connection.createStatement().use { statement ->
+                    statement.executeQuery("SELECT count(*) FROM fixture_probe").use { rows -> check(rows.next()); assertEquals(0, rows.getInt(1)) }
+                }
+            }
+        }
+    }
+
+    private fun timeoutSettings(connection: Connection): List<String> = connection.createStatement().use { statement ->
+        statement.executeQuery("SELECT current_setting('lock_timeout'), current_setting('statement_timeout')").use { rows ->
+            check(rows.next()); listOf(rows.getString(1), rows.getString(2))
+        }
+    }
+
     @Test
     fun `event pruning waits until the retention window is exceeded`() {
         assertFalse(shouldPruneRoomEvents(ROOM_OWNERSHIP_MAX_EVENT_REVISIONS.toLong()))

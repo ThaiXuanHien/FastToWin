@@ -10,14 +10,14 @@ import java.security.MessageDigest
 import java.util.Base64
 
 /** One-backend staging baseline uses the same load and acceptance gates as Docker local. */
-internal fun runRailwayRoomBaseline(settings: RailwayRoomSmokeSettings) {
+internal fun runRailwayRoomBaseline(settings: RailwayRoomSmokeSettings, localDiagnostic: Boolean = false) {
     var phase = "private-dns"
     var progress: BaselineLoadProgress? = null
     var receipts = Path.of("receipts")
     val latency = BaselineLatencyRecorder()
     var measuredFixture: RoomAcceptanceFixture? = null
     try {
-        val acceptance = settings.acceptanceSettings()
+        val acceptance = settings.acceptanceSettings().let { if (localDiagnostic) it.copy(durationSeconds = 60) else it }
         receipts = acceptance.receipts
         Files.createDirectories(acceptance.receipts)
         val receipt = runBlocking {
@@ -46,7 +46,7 @@ internal fun runRailwayRoomBaseline(settings: RailwayRoomSmokeSettings) {
         chunks.forEachIndexed { index, chunk ->
             println("FTW_BASELINE_RECEIPT ${index + 1}/${chunks.size} $sha256 $chunk")
         }
-        println("""{"baselineAccepted":true,"backendCount":1,"concurrentRooms":20,"configuredDurationSeconds":600,"selectionCount":${receipt.selectionCount},"actualSelectionsPerSecond":${receipt.actualSelectionsPerSecond},"fullAcceptanceProfile":${receipt.fullAcceptanceProfile},"receiptSha256":"$sha256"}""")
+        println("""{"baselineAccepted":${!localDiagnostic},"localDiagnostic":$localDiagnostic,"backendCount":1,"concurrentRooms":20,"configuredDurationSeconds":${receipt.configuredDurationSeconds},"selectionCount":${receipt.selectionCount},"actualSelectionsPerSecond":${receipt.actualSelectionsPerSecond},"fullAcceptanceProfile":${receipt.fullAcceptanceProfile},"receiptSha256":"$sha256"}""")
     } catch (failure: Exception) {
         val diagnostic = baselineFailureReceipt(phase, failure, receipts, progress)
         val bytes = ProtocolJson.encodeToString(diagnostic).toByteArray(Charsets.UTF_8)

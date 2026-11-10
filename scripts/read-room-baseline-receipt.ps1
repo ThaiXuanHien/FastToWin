@@ -4,10 +4,11 @@ param(
     [Parameter(Mandatory)][string]$LogPath,
     [Parameter(Mandatory)][string]$OutputPath,
     [switch]$Failure,
-    [switch]$Latency
+    [switch]$Latency,
+    [switch]$Diagnostic
 )
 $ErrorActionPreference = 'Stop'
-if ($Failure -and $Latency) { throw 'Select one export type' }
+if (([int]$Failure.IsPresent + [int]$Latency.IsPresent + [int]$Diagnostic.IsPresent) -gt 1) { throw 'Select one export type' }
 $parts = @{}
 $digest = $null
 $total = 0
@@ -80,6 +81,14 @@ if ($Latency) {
     if ($receipt.phase -notin @('private-dns','fixture-marker-and-readiness','load','receipt','unknown') -or
         $receipt.category -notin @('timeout','database-connection','database-error','network','protocol-rejected','configuration','assertion','other')) {
         throw 'Invalid baseline failure classification'
+    }
+} elseif ($Diagnostic) {
+    if ($receipt.backendCount -ne 1 -or $receipt.concurrentRooms -ne 20 -or $receipt.configuredDurationSeconds -ne 60 -or
+        $receipt.fullAcceptanceProfile -isnot [bool] -or $receipt.fullAcceptanceProfile -or $receipt.selectionCount -ne 6000 -or
+        @($receipt.selectionsByRoomSlot).Count -ne 20 -or @($receipt.selectionsByRoomSlot | Where-Object { $_ -ne 300 }).Count -or
+        -not [double]::IsFinite([double]$receipt.elapsedSeconds) -or $receipt.elapsedSeconds -le 0 -or
+        -not [double]::IsFinite([double]$receipt.actualSelectionsPerSecond) -or $receipt.actualSelectionsPerSecond -le 0) {
+        throw 'Invalid short local diagnostic; never a full baseline pass'
     }
 } elseif ($receipt.backendCount -ne 1 -or $receipt.concurrentRooms -ne 20 -or $receipt.configuredDurationSeconds -ne 600 -or
     $receipt.selectionCount -ne 60000 -or $receipt.fullAcceptanceProfile -ne $true -or

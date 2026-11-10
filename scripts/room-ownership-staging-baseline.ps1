@@ -6,6 +6,8 @@ param(
     [Parameter(Mandatory)][ValidatePattern('^[a-f0-9]{64}$')][string]$BackendManifestSha256,
     [switch]$RailwayLimits,
     [switch]$Profile,
+    [switch]$CloudDatabaseLatency,
+    [switch]$DiagnosticOnly,
     [ValidateSet('0.5', '2')][string]$PostgresCpu = '0.5',
     [ValidateSet('1', '2', '3')][string]$BackendCpu = '1'
 )
@@ -48,11 +50,18 @@ $composeArguments = @('--file', $compose)
 if ($Profile -and -not $RailwayLimits) { throw 'Profiling requires the explicit Railway resource envelope' }
 if (($PostgresCpu -ne '0.5' -or $BackendCpu -ne '1') -and -not $Profile) { throw 'The CPU control requires local profiling' }
 if ($RailwayLimits) { $composeArguments += @('--file', (Join-Path $root 'deploy/room-ownership/compose.staging-limits.yaml')) }
+if ($CloudDatabaseLatency) {
+    if (-not $Profile) { throw 'DB latency reproduction requires local profiling and resource limits' }
+    $composeArguments += @('--file', (Join-Path $root 'deploy/room-ownership/compose.database-latency.yaml'))
+}
 $backendImage = "${project}-backend:local"
 $runnerImage = "${project}-runner:local"
 $summary = [ordered]@{ sourceRevision = $manifest.sourceRevision; backendManifestSha256 = $BackendManifestSha256; baselineAccepted = $false; cleanupVerified = $false }
 $summary.railwayLimits = $RailwayLimits.IsPresent
 $summary.profile = $Profile.IsPresent
+$summary.databaseLatencyProfile = if ($CloudDatabaseLatency) { 'backend-1ms-fixture-3ms-downstream' } else { 'none' }
+$summary.diagnosticOnly = $DiagnosticOnly.IsPresent
+$summary.configuredDurationSeconds = if ($DiagnosticOnly) { 60 } else { 600 }
 $summary.postgresCpu = if ($RailwayLimits) { [double]::Parse($PostgresCpu, [Globalization.CultureInfo]::InvariantCulture) } else { $null }
 $summary.backendCpu = if ($RailwayLimits) { [double]::Parse($BackendCpu, [Globalization.CultureInfo]::InvariantCulture) } else { $null }
 $summary.resourceEnvelope = if (-not $RailwayLimits) { 'uncapped-local' } elseif ($PostgresCpu -eq '0.5' -and $BackendCpu -eq '1') { 'railway' } else { 'local-cpu-control' }
@@ -124,6 +133,8 @@ try {
         'scripts/tests/RoomBaselineReceipt.Tests.ps1',
         'deploy/room-ownership/compose.staging-baseline.yaml', 'deploy/room-ownership/staging-runner.Dockerfile',
         'deploy/room-ownership/compose.staging-limits.yaml',
+        'deploy/room-ownership/compose.database-latency.yaml', 'deploy/room-ownership/toxiproxy-database-latency.json',
+        'scripts/tests/RoomDatabaseLatency.Tests.ps1',
         'server/src/test/kotlin/com/hienthai/fastowin/server/ownership/RailwayRoomSmoke.kt',
         'server/src/test/kotlin/com/hienthai/fastowin/server/ownership/RailwayRoomBaseline.kt',
         'server/src/test/kotlin/com/hienthai/fastowin/server/ownership/RailwayBaselineFailure.kt',
@@ -132,6 +143,8 @@ try {
         'server/src/test/kotlin/com/hienthai/fastowin/server/ownership/RailwayBaselineLatencyTest.kt',
         'server/src/test/kotlin/com/hienthai/fastowin/server/ownership/RoomOwnershipDatabaseTimingsTest.kt',
         'server/src/test/kotlin/com/hienthai/fastowin/server/ownership/PostgresRoomOwnershipRepositoryTest.kt',
+        'server/src/test/kotlin/com/hienthai/fastowin/server/ownership/JdbcCallRecorder.kt',
+        'server/src/test/kotlin/com/hienthai/fastowin/server/ownership/RoomOwnershipLocalDiagnostic.kt',
         'server/src/main/kotlin/com/hienthai/fastowin/server/ownership/PostgresRoomOwnershipRepository.kt',
         'server/src/main/kotlin/com/hienthai/fastowin/server/ownership/RoomOwnershipMetrics.kt',
         'server/src/main/kotlin/com/hienthai/fastowin/server/ownership/RoomOwnershipDatabaseTimings.kt',
@@ -192,6 +205,20 @@ services:
         $configuration.Save((Join-Path $out 'baseline.jfc'))
     }
     C @('up', '-d', '--wait', '--wait-timeout', '120', 'postgres', 'redis') | Out-Null
+    if ($CloudDatabaseLatency) {
+        C @('up', '-d', 'database-latency') | Out-Null
+        $proxyReady = $false
+        for ($attempt = 0; $attempt -lt 20; $attempt++) {
+            try { C @('exec', '-T', 'database-latency', '/toxiproxy-cli', 'inspect', 'backend') | Out-Null; $proxyReady = $true; break }
+            catch { Start-Sleep -Milliseconds 250 }
+        }
+        if (-not $proxyReady) { throw 'DB delay proxy did not become ready' }
+        foreach ($path in @(@('backend', '1'), @('fixture', '3'))) {
+            C @('exec', '-T', 'database-latency', '/toxiproxy-cli', 'toxic', 'add', '-t', 'latency', '-a', "latency=$($path[1])", '-a', 'jitter=0', $path[0]) | Out-Null
+            C @('exec', '-T', 'database-latency', '/toxiproxy-cli', 'inspect', $path[0]) |
+                Set-Content -LiteralPath (Join-Path $out "database-latency-$($path[0]).json") -Encoding utf8NoBOM
+        }
+    }
     C @('run', '--rm', '--no-deps', 'runner', '--seed') | Set-Content -LiteralPath (Join-Path $out 'seed.log')
     if ($Profile) { C @('exec', '-T', 'postgres', 'psql', '-U', 'fasttowin_room_pilot', '-d', 'fasttowin_room_pilot', '-c', 'CREATE EXTENSION pg_stat_statements;') | Out-Null }
     C @('up', '-d', '--wait', '--wait-timeout', '120', 'backend-a', 'backend-b') | Out-Null
@@ -201,6 +228,7 @@ services:
     if ('backend-b' -in $active -or 'backend-a' -notin $active) { throw 'Baseline requires exactly one active backend' }
     if ($RailwayLimits) {
         $expected = @{postgres=@(([long]($summary.postgresCpu * 1000000000)),512000000);redis=@(250000000,250000000);'backend-a'=@(([long]($summary.backendCpu * 1000000000)),1000000000)}
+        if ($CloudDatabaseLatency) { $expected['database-latency'] = @(1000000000,128000000) }
         foreach ($service in $expected.Keys) {
             $id = (C @('ps', '-q', $service)) -join ''
             $limits = (D @('inspect','--format','{{json .HostConfig}}',$id)) | ConvertFrom-Json
@@ -208,14 +236,18 @@ services:
         }
         $summary.resourceCeilingsVerified = $true
     }
-    Write-Output 'Running private-DNS baseline: one backend, twenty rooms, six hundred seconds'
+    Write-Output "Running private-DNS load: one backend, twenty rooms, $($summary.configuredDurationSeconds) seconds; diagnosticOnly=$DiagnosticOnly"
     $log = Join-Path $out 'runner.log'
     $start = [Diagnostics.ProcessStartInfo]::new('docker')
     $start.UseShellExecute = $false
     $start.CreateNoWindow = $true
     $start.RedirectStandardOutput = $true
     $start.RedirectStandardError = $true
-    foreach ($argument in (@('--host',$endpoint,'compose','--project-name',$project) + $composeArguments + @('run','--name',"$project-runner",'--no-deps','-e',"FTW_PILOT_BACKEND_A_HOST=$project-a.railway.internal",'runner'))) {
+    $runArguments = @('run','--name',"$project-runner",'--no-deps','-e',"FTW_PILOT_BACKEND_A_HOST=$project-a.railway.internal")
+    if ($DiagnosticOnly) { $runArguments += @('--entrypoint','timeout') }
+    $runArguments += 'runner'
+    if ($DiagnosticOnly) { $runArguments += @('900','java','-Xmx384m','-cp','classes:lib/*','com.hienthai.fastowin.server.ownership.RoomOwnershipLocalDiagnosticKt') }
+    foreach ($argument in (@('--host',$endpoint,'compose','--project-name',$project) + $composeArguments + $runArguments)) {
         $start.ArgumentList.Add($argument)
     }
     $runnerProcess = [Diagnostics.Process]::Start($start)
@@ -254,7 +286,7 @@ services:
         $summary.progress = $diagnostic.progress
         throw "Baseline runner failed. Private diagnostics are in $out"
     }
-    & (Join-Path $PSScriptRoot 'read-room-baseline-receipt.ps1') -LogPath $log -OutputPath (Join-Path $out 'exported-load.json') | Out-Null
+    & (Join-Path $PSScriptRoot 'read-room-baseline-receipt.ps1') -Diagnostic:$DiagnosticOnly -LogPath $log -OutputPath (Join-Path $out 'exported-load.json') | Out-Null
     if ((Get-FileHash (Join-Path $out 'load.json')).Hash -ne (Get-FileHash (Join-Path $out 'exported-load.json')).Hash) { throw 'Exported receipt differs from runner file' }
     $exported = Get-Content -Raw (Join-Path $out 'exported-load.json')
     $sensitive = @($fixtureId) + $env:FASTTOWIN_ROOM_OWNERSHIP_ACCOUNTS.Split(',') + @(
@@ -263,7 +295,8 @@ services:
     )
     if (@($sensitive | Where-Object { $exported.Contains($_) }).Count) { throw 'Receipt contains a fixture identifier or credential' }
     $receipt = Get-Content -Raw (Join-Path $out 'load.json') | ConvertFrom-Json
-    $summary.baselineAccepted = $true
+    $summary.baselineAccepted = -not $DiagnosticOnly
+    $summary.diagnosticCompleted = $DiagnosticOnly.IsPresent
     $summary.selectionCount = $receipt.selectionCount
     $summary.actualSelectionsPerSecond = $receipt.actualSelectionsPerSecond
     $summary.receiptSha256 = (Get-FileHash (Join-Path $out 'load.json')).Hash.ToLowerInvariant()
@@ -299,4 +332,4 @@ services:
     foreach ($entry in $saved.GetEnumerator()) { [Environment]::SetEnvironmentVariable($entry.Key, $entry.Value, 'Process') }
     if ($cleanupErrors.Count) { throw "Fixture cleanup needs attention. See $out" }
 }
-Write-Output "Baseline accepted and cleanup verified. Receipts: $out"
+Write-Output "Load receipt verified and cleanup complete; baselineAccepted=$($summary.baselineAccepted). Receipts: $out"

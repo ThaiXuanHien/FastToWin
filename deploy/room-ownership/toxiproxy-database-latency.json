@@ -1,0 +1,4 @@
+[
+  {"name":"backend","listen":"[::]:5433","upstream":"postgres:5432","enabled":true},
+  {"name":"fixture","listen":"[::]:5432","upstream":"postgres:5432","enabled":true}
+]

@@ -35,6 +35,14 @@ For local controls only, `-Profile -PostgresCpu 2` changes PostgreSQL from 0.5 t
 
 On Windows, a long temporary path can make JDK 25's AF_UNIX selector initialization fail before Gradle runs. Use a short process-local `TEMP`/`TMP` directory inside the workspace if that specific error occurs; no machine-wide Java or networking setting needs changing.
 
+### Local DB latency reproduction
+
+Add `-CloudDatabaseLatency` together with `-RailwayLimits -Profile -PostgresCpu 2 -BackendCpu 3` to reproduce the measured DB-path sensitivity. A digest-pinned Toxiproxy on the private IPv6 network adds fixed downstream delay of 1 ms for backend DB traffic and 3 ms for fixture DB traffic, with zero jitter. The override replaces PostgreSQL's direct fixture alias, assigns that strict hostname to the proxy, and uses separate internal ports for the two paths. No proxy or database port is published. The host records the active toxics and verifies the proxy's own 1-CPU / 128-MB ceiling alongside the original application/DB limits. See [Toxiproxy latency semantics](https://github.com/Shopify/toxiproxy#latency) and [Compose alias replacement semantics](https://docs.docker.com/reference/compose-file/merge/#replace-value).
+
+This is a reproducible latency stress model, not an exact Railway replica: proxy/timer scheduling and the local host can add overhead beyond the requested delay. Compare the measured preflight and workload timings, not just the configured milliseconds. Keep rate caps, account counts and resource limits fixed between source comparisons.
+
+For a shorter local screening loop, add `-DiagnosticOnly`. A separate test entry point runs the same workload for 60 seconds and emits `baselineAccepted=false`. The host records `diagnosticOnly=true`, requires exactly 6,000 ACKs / 300 per room for a completed diagnostic, and keeps `baselineAccepted=false` even when collection succeeds. Use the receipt reader's `-Diagnostic` mode for those files. A partial/timeout diagnostic remains failed; a completed diagnostic reports its observed rate without claiming the full-load gate. The normal reader and Railway entry point retain the strict 600-second / 60,000-ACK contract. Always verify the full profile after screening changes.
+
 ## Concrete Railway launch package
 
 The prepared scope is `.artifacts/room-ownership-staging-20261109/baseline-launch-scope.json`. It pins the frozen backend and runner manifests and names five new fixture services in project `b5c5db71-2df8-46da-84fb-d9b9df6d7951`, environment `8bcf4119-3a6b-49b3-b4ff-8ea20080f3b9`. Resource ceilings are:

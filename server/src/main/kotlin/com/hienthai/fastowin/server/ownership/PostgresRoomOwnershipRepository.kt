@@ -159,13 +159,24 @@ internal class PostgresRoomOwnershipRepository(
         // authorization use the room fields, while command replay uses read/load.
         query(
             """
-            SELECT room_id, instance_id, owner_epoch, revision, recovery_deadline, closed_at,
-                   snapshot - 'processedRequests' AS snapshot, clock_timestamp() AS observed_at
-            FROM room_ownership_pilot_rooms WHERE room_id = ?
+            SELECT r.room_id, r.instance_id, r.owner_epoch, r.revision, r.recovery_deadline, r.closed_at,
+                   r.snapshot - 'processedRequests' AS snapshot, clock_timestamp() AS observed_at,
+                   host_session.player_id::text AS host_session_player_id, host_session.generation AS host_generation,
+                   guest_session.player_id::text AS guest_session_player_id, guest_session.generation AS guest_generation
+            FROM room_ownership_pilot_rooms r
+            LEFT JOIN room_ownership_pilot_sessions host_session
+              ON host_session.player_id = CAST(r.snapshot#>>'{host,playerId}' AS uuid)
+            LEFT JOIN room_ownership_pilot_sessions guest_session
+              ON guest_session.player_id = CAST(r.snapshot#>>'{guest,playerId}' AS uuid)
+            WHERE r.room_id = ?
             """,
             roomId
-        ) { rows -> if (rows.next()) rows.state() else null }
-            ?.let { it.copy(sessionGenerations = generations(it.snapshot)) }
+        ) { rows ->
+            if (rows.next()) rows.state().copy(sessionGenerations = buildMap {
+                rows.getString("host_session_player_id")?.let { put(it, rows.getLong("host_generation")) }
+                rows.getString("guest_session_player_id")?.let { put(it, rows.getLong("guest_generation")) }
+            }) else null
+        }
     }
 
     suspend fun findOwner(roomId: UUID): OwnerFence? = transaction {
@@ -472,8 +483,8 @@ internal class PostgresRoomOwnershipRepository(
                 try {
                     measured(OwnershipDatabaseStage.SETUP) {
                         connection.createStatement().use { statement ->
-                            statement.execute("SET LOCAL lock_timeout = '1s'")
-                            statement.execute("SET LOCAL statement_timeout = '2s'")
+                            // true keeps both settings transaction-local, with one JDBC execution.
+                            statement.execute("SELECT set_config('lock_timeout', '1s', true), set_config('statement_timeout', '2s', true)")
                         }
                     }
                     val result = measured(OwnershipDatabaseStage.BODY) { connection.block() }

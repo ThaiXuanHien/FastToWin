@@ -66,3 +66,16 @@ foreach ($case in $latencyCases) {
     if ($accepted -and (Get-FileHash -LiteralPath $outputPath).Hash.ToLowerInvariant() -ne $digest) { throw 'Latency export bytes changed' }
 }
 Write-Output 'PASS: six latency-export cases validate numeric fields, fixed labels and probe completeness.'
+
+$short=@{backendCount=1;concurrentRooms=20;configuredDurationSeconds=60;selectionCount=6000;selectionsByRoomSlot=@(300)*20;fullAcceptanceProfile=$false;elapsedSeconds=61.0;actualSelectionsPerSecond=(6000.0/61)}
+foreach($case in @(@{name='short-diagnostic';diagnostic=$true;full=$false;accepted=$true},@{name='short-as-baseline';diagnostic=$false;full=$false;accepted=$false},@{name='short-as-full-profile';diagnostic=$true;full=$true;accepted=$false})){
+    $short.fullAcceptanceProfile=$case.full
+    $payload=[Text.Encoding]::UTF8.GetBytes(($short|ConvertTo-Json -Compress))
+    $digest=[Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($payload)).ToLowerInvariant()
+    $inputPath=Join-Path $fixture ($case.name+'.log');$outputPath=Join-Path $fixture ($case.name+'.json')
+    ('FTW_BASELINE_RECEIPT 1/1 '+$digest+' '+[Convert]::ToBase64String($payload))|Set-Content -LiteralPath $inputPath -Encoding utf8NoBOM
+    $accepted=$false
+    try{& $reader -Diagnostic:$case.diagnostic -LogPath $inputPath -OutputPath $outputPath|Out-Null;$accepted=$true}catch{if($case.accepted){throw}}
+    if($accepted -ne $case.accepted){throw 'Wrong short diagnostic reader result'}
+}
+Write-Output 'PASS: short diagnostic cannot satisfy the full baseline contract.'
