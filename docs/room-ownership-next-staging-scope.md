@@ -1,8 +1,8 @@
-# Next room-ownership staging baseline
+# Room-ownership staging baseline scope and result
 
-Status: prepared for review; **not authorized or launched**. Earlier one-attempt Railway scopes have been consumed. Preparing or running the read-only preflight does not approve this new paid execution.
+Status: **completed, accepted and independently cleaned up**. The user approved the exact scope with “Duyệt đúng phạm vi mới”. Its single execution started at `2026-11-10T04:20:57.273Z`; independent cleanup was verified at `2026-11-10T04:40:45.003Z`, before the maximum deadline `2026-11-10T06:20:57.273Z` (13:20, UTC+7). This one-attempt grant is now consumed. Approval is retained in `.artifacts/room-ownership-staging-next-20261110/explicit-approval.json`, bound to the scope/controller hashes below. The immutable scope JSON retains its original prepared-state description; the separate approval and execution receipt record the subsequent authorization and result.
 
-Run one baseline in FastToWin Staging, project `b5c5db71-2df8-46da-84fb-d9b9df6d7951`, environment `8bcf4119-3a6b-49b3-b4ff-8ea20080f3b9`. Fixture prefix: `room-pilot-94b8a75b3ef9`. Maximum lifetime is two hours from execution start, including cleanup; only one full attempt is allowed.
+The approved single baseline used FastToWin Staging, project `b5c5db71-2df8-46da-84fb-d9b9df6d7951`, environment `8bcf4119-3a6b-49b3-b4ff-8ea20080f3b9`. Fixture prefix: `room-pilot-94b8a75b3ef9`. Its maximum lifetime was two hours including cleanup; no repeat attempt is authorized by this scope.
 
 | Temporary service | CPU | RAM (GB) | Use |
 | --- | ---: | ---: | --- |
@@ -22,6 +22,12 @@ The concrete scope is `.artifacts/room-ownership-staging-next-20261110/baseline-
 
 Controller SHA-256: `4c2a90031fcb3f001178aa1c8cce07ffaa3b21943654543663f80507a5b41d91`. The latest local two-backend run also passed on the same JAR/pool: 60,000 ACKs, 1,200 matches, 601.240 seconds, zero retries and three successful owner-stop recoveries. That run uses the normal local acceptance fixture rather than a Railway-equivalent resource envelope.
 
-Offline receipt tests reject pool 10 and missing pool metrics after rebuilding valid receipt checksums, as well as missing/corrupt/mixed exports, sensitive fields and delayed-log cases. Read-only preflight has verified all frozen contexts, the unchanged nine-service staging inventory and stopped existing compute. A fresh preflight is required immediately before any separately approved launch. No launch approval is recorded in this package.
+Offline receipt tests reject pool 10 and missing pool metrics after rebuilding valid receipt checksums, as well as missing/corrupt/mixed exports, sensitive fields and delayed-log cases. Read-only preflight verified all frozen contexts, the unchanged nine-service staging inventory and stopped existing compute, and was refreshed immediately before the approved launch. All five service limits were verified, both pilot backends became ready, and B was stopped before measurement. Provider deployment manifests select one replica in `sfo` for A, PostgreSQL and runner. No fixture service was attached to persistent storage.
+
+The full cloud gate passed: **60,000 ACKs, 1,200 matches in 602.849 seconds, 99.527 ACK/s, zero retries**, `fullAcceptanceProfile=true`. Command p95 was 117.108 ms, scheduled-to-ACK p95 2.447 seconds, maximum queue age 655.403 ms and pool-saturation p95 0.95. Runtime Hikari maximum was 20 and the JVM reported three effective processors. All twelve probes per stage completed without errors; measured backend storage failures, takeovers, fence rejections, resyncs, settlement failures and rate-limit rejections were zero.
+
+Evidence folder: `.artifacts/room-ownership-staging-next-20261110/cloud-room-pilot-94b8a75b3ef9/`. The controller collected 41 load chunks and four latency chunks. Independent readers reassembled both chunk sets to bytes identical to the controller files. Load SHA-256: `52da48cc5b569ed32f9eaeec44eeb5e7057dd6645bfcf6664679c687cab0a1ff`; latency SHA-256: `254fed04331a85e032018aa5e5d9b093d03d67ce562edaa5e7adff364df5503b`.
+
+Controller cleanup had no errors. Independent provider queries confirmed zero owned services, all nine previous service identities unchanged with no active compute, and unchanged metadata/attachments for the October `staging-postgres-volume`. No persistent volume was created. Production was untouched. The next validation is cloud two-backend load and fault behavior, using a separately reviewed and approved scope; this baseline does not approve production rollout.
 
 Local evidence and remaining gates are recorded in [the staging handoff](room-ownership-staging-handoff.md). GitHub issue status could not be refreshed because the bundled GitHub CLI is not currently authenticated; no issue was changed or closed.
