@@ -32,6 +32,12 @@ func NewProcessDriver(ctx context.Context, role string, argv []string) (*Process
 	if !allowed(role, "pause") || len(argv) == 0 {
 		return nil, errTree
 	}
+	return newOwnedProcess(ctx, role, argv)
+}
+
+// Private fixed-workload entrypoint also serves the proxy lifecycle. Public
+// NewProcessDriver retains its process-role allowlist.
+func newOwnedProcess(ctx context.Context, role string, argv []string) (*ProcessDriver, error) {
 	self, err := os.FindProcess(os.Getpid())
 	if err != nil {
 		return nil, err

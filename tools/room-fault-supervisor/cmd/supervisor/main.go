@@ -35,6 +35,8 @@ func run() int {
 		argv = []string{"/usr/local/bin/docker-entrypoint.sh", "postgres"}
 	case "redis":
 		argv = []string{"/usr/local/bin/room-fixture-redis"}
+	case "proxy":
+		// Fixed child command and immutable endpoints live inside the driver.
 	default:
 		return 1
 	}
@@ -47,7 +49,12 @@ func run() int {
 	defer cancel()
 	ctx, stop := context.WithDeadline(life, deadline)
 	defer stop()
-	d, err := supervisor.NewProcessDriver(ctx, role, argv)
+	var d supervisor.Driver
+	if role == "proxy" {
+		d, err = supervisor.NewProxyDriver(ctx)
+	} else {
+		d, err = supervisor.NewProcessDriver(ctx, role, argv)
+	}
 	if err != nil {
 		return 1
 	}
