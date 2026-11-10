@@ -7,6 +7,7 @@ import (
 	"errors"
 	"math"
 	"net/http"
+	"sync/atomic"
 	"time"
 )
 
@@ -33,6 +34,9 @@ type Status struct {
 
 // Driver implementations must honor context cancellation, verify real effects,
 // and keep their immutable process/proxy targets private to the fixture.
+// Close must be idempotent and retryable after errors or cancellation: a nil
+// result means all owned resources were cleaned up, while an error permits the
+// service to call Close again to finish partially completed cleanup.
 type Driver interface {
 	Status(context.Context) (Status, error)
 	Apply(context.Context, string, uint64) (Status, error)
@@ -73,7 +77,11 @@ type Service struct {
 	active        string
 	leaseDeadline time.Time
 	needsRestore  bool
-	failure       string // Latched permanently; successful restoration never clears this.
+	failure       string      // Latched permanently; successful restoration never clears this.
+	failed        atomic.Bool // Publishes the failure flag to requests rejected before gate acquisition.
+	lifecycle     context.Context
+	shutdown      context.CancelFunc
+	driverClosed  bool
 	closed        bool
 	closeError    error
 }
@@ -88,6 +96,7 @@ func NewService(c Config, d Driver) (*Service, error) {
 		return nil, errors.New("invalid_config")
 	}
 	s := &Service{config: c, driver: d, authorization: sha256.Sum256([]byte("Bearer " + c.Token)), gate: make(chan struct{}, 1), requests: make(map[string]cachedRequest)}
+	s.lifecycle, s.shutdown = context.WithCancel(context.Background())
 	s.gate <- struct{}{}
 	return s, nil
 }
@@ -218,6 +227,7 @@ func (s *Service) reply(r Request, errorCode string) Response {
 func (s *Service) fail(code string) {
 	if s.failure == "" {
 		s.failure = code
+		s.failed.Store(true)
 	}
 }
 
@@ -237,6 +247,11 @@ func (s *Service) control(parent context.Context, r Request) (Response, int) {
 	if validIdentity(r.RequestID) {
 		blank.RequestID = r.RequestID
 	}
+	if s.lifecycle.Err() != nil {
+		blank.Failed = s.failed.Load()
+		blank.ErrorCode = "closed"
+		return blank, http.StatusServiceUnavailable
+	}
 	if r.FixtureID != s.config.FixtureID {
 		blank.ErrorCode = "fixture_mismatch"
 		return blank, http.StatusForbidden
@@ -253,12 +268,22 @@ func (s *Service) control(parent context.Context, r Request) (Response, int) {
 	}
 	waitCtx, cancel := context.WithTimeout(parent, deadline.Sub(s.config.Clock()))
 	defer cancel()
+	stopShutdown := context.AfterFunc(s.lifecycle, cancel)
+	defer stopShutdown()
+	if s.lifecycle.Err() != nil {
+		cancel()
+	}
 	if !s.acquire(waitCtx) {
+		if s.lifecycle.Err() != nil {
+			blank.Failed = s.failed.Load()
+			blank.ErrorCode = "closed"
+			return blank, http.StatusServiceUnavailable
+		}
 		blank.ErrorCode = "request_expired"
 		return blank, http.StatusRequestTimeout
 	}
 	defer s.release()
-	if s.closed {
+	if s.lifecycle.Err() != nil {
 		return s.reply(r, "closed"), http.StatusServiceUnavailable
 	}
 	s.expireLocked()
@@ -347,6 +372,14 @@ func (s *Service) executeLocked(parent context.Context, r Request, deadline time
 		return s.reply(r, s.failure), http.StatusServiceUnavailable
 	}
 	observed, err := s.driver.Status(applyCtx)
+	s.observeExpiryLocked()
+	if s.failure == "" && !deadline.After(s.config.Clock()) {
+		s.fail("request_expired")
+	}
+	if s.failure != "" {
+		s.restoreLocked()
+		return s.reply(r, s.failure), http.StatusServiceUnavailable
+	}
 	if err != nil || !s.validStatus(observed) || observed != after || applyCtx.Err() != nil {
 		s.fail("verification_failed")
 		s.restoreLocked()
@@ -374,11 +407,15 @@ func (s *Service) restoreLocked() {
 	// Independent of the expired/canceled request: restoration must still run.
 	ctx, cancel := context.WithTimeout(context.Background(), cleanupTimeout)
 	defer cancel()
-	if err := s.driver.Restore(ctx); err != nil || ctx.Err() != nil {
+	err := s.driver.Restore(ctx)
+	s.observeExpiryLocked()
+	if err != nil || ctx.Err() != nil {
 		s.fail("restore_failed")
 		return
 	}
 	status, err := s.driver.Status(ctx)
+	// Keep the fault/lease live through restoration acknowledgement and verification.
+	s.observeExpiryLocked()
 	if err != nil || !s.validStatus(status) || status.State != "running" || ctx.Err() != nil {
 		s.fail("restore_failed")
 		return
@@ -389,13 +426,17 @@ func (s *Service) restoreLocked() {
 	s.leaseDeadline = time.Time{}
 }
 
-func (s *Service) expireLocked() {
+func (s *Service) observeExpiryLocked() {
 	now := s.config.Clock()
 	if !now.Before(s.config.Deadline) {
 		s.fail("fixture_expired")
 	} else if s.needsRestore && !s.leaseDeadline.IsZero() && !now.Before(s.leaseDeadline) {
 		s.fail("lease_expired")
 	}
+}
+
+func (s *Service) expireLocked() {
+	s.observeExpiryLocked()
 	if s.failure != "" {
 		s.restoreLocked()
 	}
@@ -419,6 +460,9 @@ func (s *Service) Tick(parent context.Context) error {
 }
 
 func (s *Service) Close(context.Context) error {
+	// Cancel controls and reject new work before waiting behind any current driver call.
+	// CancelFunc and Context.Err are safe for concurrent Close/control callers.
+	s.shutdown()
 	// A canceled shutdown caller must not skip restoration. Every cleanup call is bounded.
 	ctx, cancel := context.WithTimeout(context.Background(), cleanupTimeout)
 	defer cancel()
@@ -429,17 +473,26 @@ func (s *Service) Close(context.Context) error {
 	if s.closed {
 		return s.closeError
 	}
+	s.closeError = nil
 	s.expireLocked()
 	if s.failure == "" {
 		s.restoreLocked()
 	}
-	closeCtx, closeCancel := context.WithTimeout(context.Background(), cleanupTimeout)
-	defer closeCancel()
-	err := s.driver.Close(closeCtx)
-	s.closed = true
-	if err != nil || closeCtx.Err() != nil {
-		s.closeError = errors.New("close_failed")
-	} else if s.needsRestore {
+	if !s.driverClosed {
+		closeCtx, closeCancel := context.WithTimeout(context.Background(), cleanupTimeout)
+		err := s.driver.Close(closeCtx)
+		if err != nil || closeCtx.Err() != nil {
+			s.closeError = errors.New("close_failed")
+		} else {
+			s.driverClosed = true
+		}
+		closeCancel()
+	}
+	s.closed = s.driverClosed && !s.needsRestore
+	if s.closeError != nil {
+		return s.closeError
+	}
+	if s.needsRestore {
 		s.closeError = errors.New("restore_failed")
 	} else if s.failure != "" {
 		s.closeError = errors.New(s.failure)

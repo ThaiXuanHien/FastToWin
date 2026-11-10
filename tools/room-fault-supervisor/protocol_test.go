@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"sync"
 	"testing"
@@ -495,5 +496,142 @@ func TestCloseAfterLeaseExpiryCannotEraseFailedCase(t *testing.T) {
 	r.RequestID = "after-expired-close"
 	if w := send(t, s, testToken, r); w.Code != 503 || !response(t, w).Failed {
 		t.Fatalf("closed expiry not sticky: %d %s", w.Code, w.Body)
+	}
+}
+
+func TestFinalStatusCannotAcknowledgeAfterRequestDeadline(t *testing.T) {
+	s, d, now := testService(t, "a")
+	r := validRequest()
+	r.DeadlineUnixMillis = now.Add(100 * time.Millisecond).UnixMilli()
+	d.onStatus = func(context.Context) {
+		if d.statusCalls == 2 {
+			*now = now.Add(100 * time.Millisecond)
+		}
+	}
+	w := send(t, s, testToken, r)
+	if w.Code != 503 || !response(t, w).Failed || response(t, w).ErrorCode != "request_expired" || d.calls != 1 || d.restores != 1 || d.status.State != "running" {
+		t.Fatalf("late acknowledgement: code=%d calls=%d restores=%d body=%s", w.Code, d.calls, d.restores, w.Body)
+	}
+}
+
+func TestCloseRestorationCannotCrossLeaseWithoutFailure(t *testing.T) {
+	for _, phase := range []string{"restore", "verification"} {
+		t.Run(phase, func(t *testing.T) {
+			s, d, now := testService(t, "a")
+			if send(t, s, testToken, validRequest()).Code != 200 {
+				t.Fatal("inject failed")
+			}
+			if phase == "restore" {
+				d.onRestore = func(context.Context) { *now = now.Add(time.Second) }
+			} else {
+				d.onStatus = func(context.Context) {
+					if d.statusCalls == 3 {
+						*now = now.Add(time.Second)
+					}
+				}
+			}
+			if err := s.Close(context.Background()); err == nil || err.Error() != "lease_expired" {
+				t.Fatalf("expiry during %s erased: %v", phase, err)
+			}
+			if d.restores != 1 || d.closes != 1 || d.status.State != "running" {
+				t.Fatal("close did not finish cleanup once")
+			}
+			r := validRequest()
+			r.RequestID = "after-restoring-close"
+			if w := send(t, s, testToken, r); w.Code != 503 || !response(t, w).Failed {
+				t.Fatalf("late restoration failure not permanent: %d %s", w.Code, w.Body)
+			}
+		})
+	}
+}
+
+func TestCloseCancelsInflightControlBeforeWaitingForGate(t *testing.T) {
+	s, d, _ := testService(t, "a")
+	entered := make(chan struct{})
+	canceled := make(chan struct{})
+	restoring := make(chan struct{})
+	releaseRestore := make(chan struct{})
+	d.onApply = func(ctx context.Context) { close(entered); <-ctx.Done(); close(canceled) }
+	d.onRestore = func(ctx context.Context) {
+		close(restoring)
+		select {
+		case <-releaseRestore:
+		case <-ctx.Done():
+		}
+	}
+	requestCtx, cancelRequest := context.WithCancel(context.Background())
+	defer cancelRequest()
+	r := validRequest()
+	r.LeaseMillis = 10000
+	requestDone := make(chan int, 1)
+	go func() { requestDone <- sendCanceled(t, s, requestCtx, r) }()
+	<-entered
+	closeDone := make(chan error, 1)
+	go func() { closeDone <- s.Close(context.Background()) }()
+	canceledByClose := false
+	select {
+	case <-canceled:
+		canceledByClose = true
+	case <-time.After(300 * time.Millisecond):
+		cancelRequest()
+	}
+	select {
+	case <-restoring:
+	case <-time.After(time.Second):
+		t.Fatal("canceled mutation never began restoration")
+	}
+	if canceledByClose {
+		next := validRequest()
+		next.RequestID = "during-shutdown"
+		rejected := make(chan *httptest.ResponseRecorder, 1)
+		go func() { rejected <- send(t, s, testToken, next) }()
+		select {
+		case w := <-rejected:
+			if w.Code != 503 || response(t, w).ErrorCode != "closed" {
+				t.Errorf("shutdown accepted new work: %d %s", w.Code, w.Body)
+			}
+		case <-time.After(300 * time.Millisecond):
+			t.Error("new request waited behind cleanup instead of rejecting shutdown")
+		}
+	}
+	close(releaseRestore)
+	select {
+	case <-requestDone:
+	case <-time.After(time.Second):
+		t.Fatal("canceled request did not finish")
+	}
+	select {
+	case err := <-closeDone:
+		if err != nil && err.Error() == "control_timeout" {
+			t.Error("Close timed out behind a cooperative driver")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("Close did not finish")
+	}
+	if !canceledByClose {
+		t.Fatal("Close did not cancel in-flight driver before waiting on the gate")
+	}
+	if d.calls != 1 || d.restores != 1 || d.closes != 1 {
+		t.Fatalf("shutdown calls=%d restores=%d closes=%d", d.calls, d.restores, d.closes)
+	}
+}
+
+func TestCloseRetriesIncompleteDriverCleanup(t *testing.T) {
+	s, d, _ := testService(t, "a")
+	d.closeError = errors.New("transient-private-cleanup-error")
+	if err := s.Close(context.Background()); err == nil || err.Error() != "close_failed" {
+		t.Fatalf("first Close=%v", err)
+	}
+	r := validRequest()
+	r.RequestID = "after-close-failure"
+	if w := send(t, s, testToken, r); w.Code != 503 || d.calls != 0 {
+		t.Fatalf("failed Close re-enabled controls: %d %s", w.Code, w.Body)
+	}
+	d.closeError = nil
+	if err := s.Close(context.Background()); err != nil || d.closes != 2 {
+		t.Fatalf("cleanup not retried: err=%v calls=%d", err, d.closes)
+	}
+	if err := s.Close(context.Background()); err != nil || d.closes != 2 {
+		t.Fatalf("successful cleanup not idempotent: err=%v calls=%d", err, d.closes)
 	}
 }
