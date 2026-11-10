@@ -147,6 +147,8 @@ try {
         'server/src/test/kotlin/com/hienthai/fastowin/server/ownership/RoomOwnershipLocalDiagnostic.kt',
         'server/src/main/kotlin/com/hienthai/fastowin/server/ownership/PostgresRoomOwnershipRepository.kt',
         'server/src/main/kotlin/com/hienthai/fastowin/server/ownership/OwnedRoomEngine.kt',
+        'server/src/main/kotlin/com/hienthai/fastowin/server/ownership/RoomEventDelivery.kt',
+        'server/src/test/kotlin/com/hienthai/fastowin/server/ownership/RoomEventDeliveryTest.kt',
         'server/src/test/kotlin/com/hienthai/fastowin/server/ownership/OwnedRoomEngineTest.kt',
         'server/src/main/kotlin/com/hienthai/fastowin/server/ownership/RoomOwnershipMetrics.kt',
         'server/src/main/kotlin/com/hienthai/fastowin/server/ownership/RoomOwnershipDatabaseTimings.kt',

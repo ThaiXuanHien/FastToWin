@@ -33,6 +33,76 @@ import kotlin.test.assertTrue
 @OptIn(ExperimentalCoroutinesApi::class)
 class RoomEventDeliveryTest {
     @Test
+    fun `a slow room wakeup does not block delivery to another room`() = runTest {
+        val slow = RoomFeed()
+        val fast = RoomFeed()
+        val entered = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        val repository = object : RoomOwnershipRepository by slow {
+            fun feed(id: UUID) = if (id == slow.state.fence.roomId) slow else fast.also { check(id == it.state.fence.roomId) }
+            override suspend fun read(roomId: UUID) = feed(roomId).read(roomId)
+            override suspend fun readForDelivery(roomId: UUID) = feed(roomId).readForDelivery(roomId)
+            override suspend fun isCurrentSocket(socket: SocketFence) = slow.isCurrentSocket(socket) || fast.isCurrentSocket(socket)
+            override suspend fun readEvents(roomId: UUID, afterRevision: Long, limit: Int): RoomEventBatch {
+                if (roomId == slow.state.fence.roomId) { entered.complete(Unit); release.await() }
+                return feed(roomId).readEvents(roomId, afterRevision, limit)
+            }
+        }
+        val wakeups = MutableSharedFlow<UUID>(extraBufferCapacity = 16)
+        val delivery = RoomEventDelivery(repository, wakeups)
+        val fastMessages = mutableListOf<ServerMessage>()
+        delivery.register(slow.host, slow.applied()) {}
+        delivery.register(fast.host, fast.applied()) { fastMessages.add(it) }
+        backgroundScope.launch { delivery.run() }
+        runCurrent()
+        slow.commit(RoomOwnershipEvent(listOf(slow.host.playerId), ServerMessage.Error("SLOW", "Slow")))
+        val expected = ServerMessage.Error("FAST", "Fast")
+        fast.commit(RoomOwnershipEvent(listOf(fast.host.playerId), expected))
+        wakeups.emit(slow.state.fence.roomId)
+        runCurrent()
+        assertTrue(entered.isCompleted)
+        wakeups.emit(fast.state.fence.roomId)
+        runCurrent()
+        assertEquals(listOf<ServerMessage>(expected), fastMessages) // No periodic reconciliation/time advance.
+        release.complete(Unit)
+    }
+
+    @Test
+    fun `wakeups coalesce during a blocked read without losing the later revision`() = runTest {
+        val feed = RoomFeed()
+        val release = CompletableDeferred<Unit>()
+        var reads = 0
+        val repository = object : RoomOwnershipRepository by feed {
+            override suspend fun readEvents(roomId: UUID, afterRevision: Long, limit: Int): RoomEventBatch {
+                reads++
+                val batch = feed.readEvents(roomId, afterRevision, limit)
+                if (reads == 1) release.await()
+                return batch
+            }
+        }
+        val wakeups = MutableSharedFlow<UUID>(extraBufferCapacity = 128)
+        val delivery = RoomEventDelivery(repository, wakeups)
+        val messages = mutableListOf<ServerMessage>()
+        delivery.register(feed.host, feed.applied()) { messages.add(it) }
+        backgroundScope.launch { delivery.run() }
+        runCurrent()
+        val first = ServerMessage.Error("FIRST", "First")
+        feed.commit(RoomOwnershipEvent(listOf(feed.host.playerId), first))
+        wakeups.emit(feed.state.fence.roomId)
+        runCurrent()
+        assertEquals(1, reads)
+        val second = ServerMessage.Error("SECOND", "Second")
+        feed.commit(RoomOwnershipEvent(listOf(feed.host.playerId), second))
+        repeat(100) { wakeups.emit(feed.state.fence.roomId) }
+        runCurrent()
+        assertEquals(1, reads)
+        release.complete(Unit)
+        runCurrent()
+        assertEquals(listOf<ServerMessage>(first, second), messages)
+        assertEquals(2, reads)
+    }
+
+    @Test
     fun `wrong selection sends its error only to the actor and drains a lost wakeup`() = runTest {
         val rooms = RoomFeed()
         val wakeups = MutableSharedFlow<UUID>()

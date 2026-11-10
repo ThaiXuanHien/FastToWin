@@ -17,6 +17,7 @@ import kotlinx.coroutines.sync.withLock
 import java.sql.SQLException
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.serialization.Serializable
 
 internal data class RoomDeliveryPosition(val roomId: UUID, val epoch: Long)
@@ -124,29 +125,53 @@ internal class RoomEventDelivery(
     }
 
     suspend fun run(): Unit = coroutineScope {
-        launch { wakeups.collect { roomId -> reconcile(roomId) } }
+        fun request(subscription: Subscription) {
+            subscription.reconciliationRequested.set(true)
+            if (!subscription.reconciling.compareAndSet(false, true)) return
+            launch {
+                try {
+                    do {
+                        subscription.reconciliationRequested.set(false)
+                        reconcile(subscription)
+                    } while (isActive && subscription.reconciliationRequested.get())
+                } finally {
+                    subscription.reconciling.set(false)
+                    if (isActive && subscription.reconciliationRequested.get() &&
+                        subscriptions[subscription.socket] === subscription
+                    ) request(subscription)
+                }
+            }
+        }
+        fun requestRoom(roomId: UUID? = null) {
+            val id = roomId?.toString()
+            subscriptions.values.forEach { subscription ->
+                // Published positions avoid reading the mutable cursor outside its mutex.
+                val position = subscription.queuePosition
+                if (id == null || position == null || position.roomId == id) request(subscription)
+            }
+        }
+        // Do not wait for one room's JDBC reads or socket sends in the wakeup collector.
+        // Each subscription has at most one active reconciliation and one coalesced request.
+        launch { wakeups.collect { roomId -> requestRoom(roomId) } }
         while (isActive) {
             delay(reconciliationIntervalMillis)
-            launch { reconcile() }
+            requestRoom()
         }
     }
 
-    private suspend fun reconcile(roomId: UUID? = null): Unit = coroutineScope {
-        subscriptions.values.forEach { subscription ->
-            launch {
-                if (!subscription.mutex.tryLock()) return@launch
-                try {
-                    val cursor = subscription.cursor
-                    if ((cursor == null || cursor.terminated) && subscription.discoverAfterUncertainCommand) discover(subscription)
-                    else if (cursor != null && !cursor.terminated && (roomId == null || roomId == cursor.roomId)) {
-                        drain(subscription, cursor)
-                    }
-                } catch (_: SQLException) {
-                    // Leave the cursor in place and try again on the next wake-up or reconciliation.
-                } finally {
-                    subscription.mutex.unlock()
-                }
+    private suspend fun reconcile(subscription: Subscription) {
+        if (!subscription.mutex.tryLock()) return
+        try {
+            if (subscriptions[subscription.socket] !== subscription) return
+            val cursor = subscription.cursor
+            if ((cursor == null || cursor.terminated) && subscription.discoverAfterUncertainCommand) discover(subscription)
+            else if (cursor != null && !cursor.terminated) {
+                drain(subscription, cursor)
             }
+        } catch (_: SQLException) {
+            // Leave the cursor in place and try again on the next wake-up or reconciliation.
+        } finally {
+            subscription.mutex.unlock()
         }
     }
 
@@ -320,6 +345,8 @@ internal class RoomEventDelivery(
         cursor: Cursor?
     ) {
         val mutex = Mutex()
+        val reconciliationRequested = AtomicBoolean()
+        val reconciling = AtomicBoolean()
         var discoverAfterUncertainCommand = false
         var cursor: Cursor? = cursor
             set(value) {
