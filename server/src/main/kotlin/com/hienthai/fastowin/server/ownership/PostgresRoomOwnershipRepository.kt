@@ -11,8 +11,10 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import java.sql.Connection
+import java.sql.PreparedStatement
 import java.sql.ResultSet
 import java.sql.SQLException
+import java.sql.Statement
 import java.time.Instant
 import java.util.UUID
 import javax.sql.DataSource
@@ -82,7 +84,7 @@ internal class PostgresRoomOwnershipRepository(
         if (failure.sqlState?.startsWith("42") == true) false else throw failure
     }
 
-    suspend fun ownedFences(instanceId: UUID): List<OwnerFence> = transaction {
+    suspend fun ownedFences(instanceId: UUID): List<OwnerFence> = transaction(singleRead = true) {
         query(
             """
             SELECT room_id, owner_epoch FROM room_ownership_pilot_rooms
@@ -99,7 +101,7 @@ internal class PostgresRoomOwnershipRepository(
 
     suspend fun oldestQueuedEventAgeSeconds(positions: List<RoomQueuePosition>): Double {
         if (positions.isEmpty()) return 0.0
-        return transaction {
+        return transaction(singleRead = true) {
             query(
                 """
                 SELECT COALESCE(EXTRACT(EPOCH FROM statement_timestamp() - min(e.created_at)), 0)
@@ -121,7 +123,7 @@ internal class PostgresRoomOwnershipRepository(
 
     override suspend fun expiredRooms(limit: Int): List<UUID> {
         require(limit in 1..MAX_EVENT_REVISIONS)
-        return transaction {
+        return transaction(singleRead = true) {
             query(
                 """
                 SELECT room_id FROM room_ownership_pilot_rooms
@@ -150,17 +152,18 @@ internal class PostgresRoomOwnershipRepository(
         ) == 1
     }
 
-    override suspend fun read(roomId: UUID): OwnedRoomState? = transaction {
-        load(roomId)?.state?.let { it.copy(sessionGenerations = generations(it.snapshot)) }
-    }
+    override suspend fun read(roomId: UUID): OwnedRoomState? = readState(roomId, delivery = false)
 
-    override suspend fun readForDelivery(roomId: UUID): OwnedRoomState? = transaction {
+    override suspend fun readForDelivery(roomId: UUID): OwnedRoomState? = readState(roomId, delivery = true)
+
+    private suspend fun readState(roomId: UUID, delivery: Boolean): OwnedRoomState? = transaction(singleRead = true) {
         // Retry replies grow with every selection. Public snapshots and delivery
         // authorization use the room fields, while command replay uses read/load.
+        val snapshotColumn = if (delivery) "r.snapshot - 'processedRequests'" else "r.snapshot"
         query(
             """
             SELECT r.room_id, r.instance_id, r.owner_epoch, r.revision, r.recovery_deadline, r.closed_at,
-                   r.snapshot - 'processedRequests' AS snapshot, clock_timestamp() AS observed_at,
+                   $snapshotColumn AS snapshot, clock_timestamp() AS observed_at,
                    host_session.player_id::text AS host_session_player_id, host_session.generation AS host_generation,
                    guest_session.player_id::text AS guest_session_player_id, guest_session.generation AS guest_generation
             FROM room_ownership_pilot_rooms r
@@ -179,7 +182,7 @@ internal class PostgresRoomOwnershipRepository(
         }
     }
 
-    suspend fun findOwner(roomId: UUID): OwnerFence? = transaction {
+    suspend fun findOwner(roomId: UUID): OwnerFence? = transaction(singleRead = true) {
         query(
             "SELECT instance_id, owner_epoch FROM room_ownership_pilot_rooms WHERE room_id = ? AND closed_at IS NULL",
             roomId
@@ -189,13 +192,13 @@ internal class PostgresRoomOwnershipRepository(
         }
     }
 
-    override suspend fun lookupRoom(playerId: UUID): UUID? = transaction {
+    override suspend fun lookupRoom(playerId: UUID): UUID? = transaction(singleRead = true) {
         query("SELECT room_id FROM room_ownership_pilot_memberships WHERE player_id = ?", playerId) { rows ->
             if (rows.next()) rows.getObject("room_id", UUID::class.java) else null
         }
     }
 
-    suspend fun listJoinableRooms(): List<RoomSummary> = transaction {
+    suspend fun listJoinableRooms(): List<RoomSummary> = transaction(singleRead = true) {
         query(
             """
             SELECT r.room_id, r.snapshot->>'roomName' AS room_name,
@@ -231,7 +234,7 @@ internal class PostgresRoomOwnershipRepository(
         ) { rows -> check(rows.next()); SocketFence(playerId, rows.getLong("generation")) }
     }
 
-    override suspend fun isCurrentSocket(socket: SocketFence): Boolean = transaction {
+    override suspend fun isCurrentSocket(socket: SocketFence): Boolean = transaction(singleRead = true) {
         isCurrent(socket, lock = false)
     }
 
@@ -349,7 +352,7 @@ internal class PostgresRoomOwnershipRepository(
     override suspend fun readEvents(roomId: UUID, afterRevision: Long, limit: Int): RoomEventBatch {
         require(afterRevision >= 0)
         require(limit in 1..MAX_EVENT_REVISIONS)
-        return transaction {
+        return transaction(singleRead = true) {
             // The room head and event range use the same statement snapshot.
             query(
                 """
@@ -474,21 +477,21 @@ internal class PostgresRoomOwnershipRepository(
         FencedResult.TemporaryFailure
     }
 
-    private suspend fun <T> transaction(commit: (T) -> Boolean = { true }, block: Connection.() -> T): T =
+    private suspend fun <T> transaction(
+        commit: (T) -> Boolean = { true },
+        singleRead: Boolean = false,
+        block: Connection.() -> T
+    ): T =
         withContext(Dispatchers.IO) {
             measured(OwnershipDatabaseStage.POOL_ACQUIRE) { dataSource.connection }.use { connection ->
                 val previousNetworkTimeout = connection.networkTimeout
                 connection.setNetworkTimeout(Runnable::run, 2_500)
                 connection.autoCommit = false
                 try {
-                    measured(OwnershipDatabaseStage.SETUP) {
-                        connection.createStatement().use { statement ->
-                            // true keeps both settings transaction-local, with one JDBC execution.
-                            statement.execute("SELECT set_config('lock_timeout', '1s', true), set_config('statement_timeout', '2s', true)")
-                        }
-                    }
-                    val result = measured(OwnershipDatabaseStage.BODY) { connection.block() }
-                    if (commit(result)) measured(OwnershipDatabaseStage.COMMIT) { connection.commit() }
+                    val transaction = TransactionConnection(connection, singleRead)
+                    val result = measured(OwnershipDatabaseStage.BODY) { transaction.block() }
+                    if (singleRead) check(transaction.initialized) // Its read-only batch already committed.
+                    else if (commit(result)) measured(OwnershipDatabaseStage.COMMIT) { connection.commit() }
                     else measured(OwnershipDatabaseStage.ROLLBACK) { connection.rollback() }
                     result
                 } catch (error: Throwable) {
@@ -500,18 +503,61 @@ internal class PostgresRoomOwnershipRepository(
             }
         }
 
-    private fun Connection.update(sql: String, vararg args: Any): Int = prepareStatement(sql).use { statement ->
-        args.forEachIndexed { index, value -> statement.setObject(index + 1, value) }
-        measured(OwnershipDatabaseStage.EXECUTE) { statement.executeUpdate() }
+    private class TransactionConnection(connection: Connection, val singleRead: Boolean) : Connection by connection {
+        var initialized = false
+    }
+
+    private fun Connection.update(sql: String, vararg args: Any): Int = withStatement(sql, args) { statement, first, singleRead ->
+        check(!singleRead)
+        measured(if (first) OwnershipDatabaseStage.FIRST_STATEMENT else OwnershipDatabaseStage.EXECUTE) {
+            if (first) {
+                check(!statement.executeFirst(singleRead = false))
+                statement.updateCount
+            } else statement.executeUpdate()
+        }
     }
 
     private fun <T> Connection.query(sql: String, vararg args: Any, read: (ResultSet) -> T): T =
-        prepareStatement(sql).use { statement ->
-            args.forEachIndexed { index, value -> statement.setObject(index + 1, value) }
-            measured(OwnershipDatabaseStage.EXECUTE) { statement.executeQuery() }.use { rows ->
+        withStatement(sql, args) { statement, first, singleRead ->
+            val stage = if (singleRead) OwnershipDatabaseStage.READ_TRANSACTION
+                else if (first) OwnershipDatabaseStage.FIRST_STATEMENT else OwnershipDatabaseStage.EXECUTE
+            measured(stage) {
+                if (first) {
+                    check(statement.executeFirst(singleRead))
+                    checkNotNull(statement.resultSet)
+                } else statement.executeQuery()
+            }.use { rows ->
                 measured(OwnershipDatabaseStage.DECODE) { read(rows) }
             }
         }
+
+    private fun <T> Connection.withStatement(
+        sql: String, args: Array<out Any>, operation: (PreparedStatement, Boolean, Boolean) -> T
+    ): T {
+        val transaction = this as TransactionConnection
+        val first = !transaction.initialized
+        check(!transaction.singleRead || first) { "Single-statement read cannot execute a second query" }
+        transaction.initialized = true
+        // pgjdbc sends the fixed setup and first parameterized statement together.
+        // Only explicitly selected, single-statement reads also include COMMIT;
+        // mutations retain their original commit/rollback decision after decoding/callbacks.
+        val prefix = if (first) (if (transaction.singleRead) "SET TRANSACTION READ ONLY; " else "") +
+            "SET LOCAL lock_timeout = '1s'; SET LOCAL statement_timeout = '2s'; " else ""
+        val suffix = if (transaction.singleRead) "; COMMIT" else ""
+        return prepareStatement(prefix + sql + suffix).use { statement ->
+            args.forEachIndexed { index, value -> statement.setObject(index + 1, value) }
+            operation(statement, first, transaction.singleRead)
+        }
+    }
+
+    private fun PreparedStatement.executeFirst(singleRead: Boolean): Boolean {
+        var hasRows = execute()
+        repeat(if (singleRead) 3 else 2) {
+            check(!hasRows) { "Unexpected setup result set" }
+            hasRows = getMoreResults(Statement.CLOSE_CURRENT_RESULT)
+        }
+        return hasRows
+    }
 
     private fun <T> measured(stage: OwnershipDatabaseStage, operation: () -> T): T =
         if (metrics == null) operation() else metrics.databaseMeasured(stage, operation)

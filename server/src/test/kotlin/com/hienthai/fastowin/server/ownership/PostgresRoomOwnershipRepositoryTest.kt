@@ -13,28 +13,32 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
 import org.flywaydb.core.Flyway
 import org.junit.jupiter.api.Assumptions.assumeTrue
+import org.postgresql.core.BaseConnection
+import org.postgresql.core.TransactionState
+import kotlinx.serialization.SerializationException
 import java.sql.SQLException
 import java.sql.Connection
 import java.util.UUID
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertFailsWith
 import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 class PostgresRoomOwnershipRepositoryTest {
     @Test
-    fun `metadata read has at most three JDBC server calls`() = runBlocking {
+    fun `metadata read completes in one JDBC server call`() = runBlocking {
         fixture { f ->
             val calls = JdbcCallRecorder(f.dataSource)
             assertEquals(null, PostgresRoomOwnershipRepository(calls).findOwner(UUID.randomUUID()))
-            assertTrue(calls.serverCalls.get() in 1..3, "Metadata read used ${calls.serverCalls.get()} JDBC calls")
+            assertEquals(1, calls.serverCalls.get(), "Metadata JDBC calls")
         }
     }
 
     @Test
-    fun `delivery reads current host and guest generations within three JDBC calls`() = runBlocking {
+    fun `delivery reads current host and guest generations in one JDBC call`() = runBlocking {
         fixture { f ->
             val host = f.a.bindSocket(f.host)
             val guestId = UUID.randomUUID()
@@ -51,7 +55,7 @@ class PostgresRoomOwnershipRepositoryTest {
             val state = assertNotNull(PostgresRoomOwnershipRepository(calls).readForDelivery(initial.fence.roomId))
             assertEquals(committed.snapshot.publicState(), state.snapshot.publicState())
             assertEquals(mapOf(f.host.toString() to currentHost.generation, guestId.toString() to currentGuest.generation), state.sessionGenerations)
-            assertTrue(calls.serverCalls.get() in 1..3, "Delivery read used ${calls.serverCalls.get()} JDBC calls")
+            assertEquals(1, calls.serverCalls.get(), "Delivery JDBC calls")
         }
     }
 
@@ -88,6 +92,67 @@ class PostgresRoomOwnershipRepositoryTest {
     private fun timeoutSettings(connection: Connection): List<String> = connection.createStatement().use { statement ->
         statement.executeQuery("SELECT current_setting('lock_timeout'), current_setting('statement_timeout')").use { rows ->
             check(rows.next()); listOf(rows.getString(1), rows.getString(2))
+        }
+    }
+
+    @Test
+    fun `first read still applies server lock timeout before accessing the table`() = runBlocking {
+        fixture { f ->
+            val room = f.createRoom()
+            f.dataSource.connection.use { lock ->
+                lock.autoCommit = false
+                lock.createStatement().use { it.execute("LOCK TABLE room_ownership_pilot_rooms IN ACCESS EXCLUSIVE MODE") }
+                try {
+                    val failure = assertFailsWith<SQLException> { f.a.findOwner(room.fence.roomId) }
+                    assertEquals("55P03", failure.sqlState)
+                } finally { lock.rollback() }
+            }
+            assertEquals(room.fence, f.a.findOwner(room.fence.roomId))
+        }
+    }
+
+    @Test
+    fun `first update retains statement timeout and rolls back the cancelled delete`() = runBlocking {
+        fixture { f ->
+            val initial = f.createRoom()
+            assertIs<FencedResult.Committed>(f.a.withFencedRoom(initial.fence, initial.revision, null) { _, room ->
+                RoomMutation.Change(room.snapshot, close = true)
+            })
+            f.ageClosedRoom(initial.fence.roomId)
+            f.dataSource.connection.use { connection -> connection.createStatement().use { it.execute("""
+                CREATE FUNCTION slow_delete() RETURNS trigger LANGUAGE plpgsql AS $$
+                BEGIN PERFORM pg_sleep(3); RETURN OLD; END; $$;
+                CREATE TRIGGER slow_delete BEFORE DELETE ON room_ownership_pilot_rooms
+                FOR EACH ROW EXECUTE FUNCTION slow_delete()
+            """.trimIndent()) } }
+            val failure = assertFailsWith<SQLException> { f.a.purgeExpiredClosedRooms(10) }
+            assertEquals("57014", failure.sqlState)
+            assertEquals(1, f.count("room_ownership_pilot_rooms"))
+        }
+    }
+
+    @Test
+    fun `read batch leaves connection idle and restores settings even when decoding fails`() = runBlocking {
+        fixture { f ->
+            val room = f.createRoom()
+            f.dataSource.connection.use { connection ->
+                connection.createStatement().use { it.execute("SET lock_timeout = '9s'; SET statement_timeout = '8s'") }
+                val timeout = connection.networkTimeout
+                val repo = PostgresRoomOwnershipRepository(JdbcCallRecorder(f.dataSource, connection))
+                assertNotNull(repo.read(room.fence.roomId))
+                assertEquals(TransactionState.IDLE, connection.unwrap(BaseConnection::class.java).transactionState)
+                connection.autoCommit = true
+                assertEquals(listOf("9s", "8s"), timeoutSettings(connection))
+                connection.prepareStatement("UPDATE room_ownership_pilot_rooms SET snapshot = '{}'::jsonb WHERE room_id = ?").use {
+                    it.setObject(1, room.fence.roomId); assertEquals(1, it.executeUpdate())
+                }
+                assertFailsWith<SerializationException> { repo.read(room.fence.roomId) }
+                assertEquals(TransactionState.IDLE, connection.unwrap(BaseConnection::class.java).transactionState)
+                assertEquals(timeout, connection.networkTimeout)
+                connection.autoCommit = true
+                assertEquals(listOf("9s", "8s"), timeoutSettings(connection))
+                assertEquals(room.fence, repo.findOwner(room.fence.roomId))
+            }
         }
     }
 
@@ -279,16 +344,19 @@ class PostgresRoomOwnershipRepositoryTest {
     }
 
     @Test
-    fun `a missing room records pool SQL decode and commit timings once`() = runBlocking {
+    fun `a missing room records one read transaction batch and decode`() = runBlocking {
         fixture { f ->
             val metrics = RoomOwnershipMetrics()
             val repository = PostgresRoomOwnershipRepository(f.dataSource, metrics)
             assertEquals(null, repository.read(UUID.randomUUID()))
             val text = metrics.render(0.0)
-            for (stage in listOf("pool_acquire", "transaction_setup", "transaction_body", "statement_execute", "row_decode", "commit")) {
+            for (stage in listOf("pool_acquire", "read_transaction", "transaction_body", "row_decode")) {
                 assertTrue(text.lineSequence().any { it == "fasttowin_room_ownership_db_${stage}_seconds_count 1" }, stage)
             }
             assertTrue(text.contains("fasttowin_room_ownership_db_rollback_seconds_count 0"))
+            assertTrue(text.contains("fasttowin_room_ownership_db_transaction_setup_seconds_count 0"))
+            assertTrue(text.contains("fasttowin_room_ownership_db_statement_execute_seconds_count 0"))
+            assertTrue(text.contains("fasttowin_room_ownership_db_commit_seconds_count 0"))
         }
     }
 

@@ -2,7 +2,8 @@ package com.hienthai.fastowin.server.ownership
 
 internal enum class OwnershipDatabaseStage(val key: String) {
     POOL_ACQUIRE("pool_acquire"), SETUP("transaction_setup"), BODY("transaction_body"),
-    EXECUTE("statement_execute"), DECODE("row_decode"), COMMIT("commit"), ROLLBACK("rollback");
+    EXECUTE("statement_execute"), DECODE("row_decode"), COMMIT("commit"), ROLLBACK("rollback"),
+    FIRST_STATEMENT("setup_and_first_statement"), READ_TRANSACTION("read_transaction");
 }
 
 /** Fixed-size aggregates only: no SQL, identifiers, arguments or exceptions. */

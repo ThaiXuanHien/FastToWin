@@ -36,7 +36,7 @@ $stats = @{count=12;meanMillis=1.5;maxMillis=2.0;p95Millis=2.0;failures=0}
 $latency = @{
     scope='preflight-fixture-probes-and-workload-timings';expectedIterations=12;complete=$true
     poolAcquire=$stats;selectRoundTrip=$stats;markerUpdateRoundTrip=$stats;commitRoundTrip=$stats;readinessRoundTrip=$stats
-    backendBeforeLoadMetrics=@{fasttowin_room_ownership_available_processors=3}
+    backendBeforeLoadMetrics=@{fasttowin_room_ownership_available_processors=3;fasttowin_room_ownership_db_read_transaction_seconds_count=4;fasttowin_room_ownership_db_setup_and_first_statement_seconds_count=2}
     fixtureDatabaseMetrics=@{fasttowin_room_ownership_db_pool_acquire_seconds_count=5}
 }
 $valid = $latency | ConvertTo-Json -Depth 6 -Compress

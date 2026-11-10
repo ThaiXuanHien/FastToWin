@@ -68,7 +68,7 @@ if ($Latency) {
         'fasttowin_room_ownership_resyncs_total','fasttowin_room_ownership_settlement_failures_total',
         'fasttowin_room_ownership_oldest_queued_event_seconds','fasttowin_room_ownership_pool_active_connections','fasttowin_room_ownership_pool_max_connections'
     )
-    foreach ($stage in @('pool_acquire','transaction_setup','transaction_body','statement_execute','row_decode','commit','rollback')) {
+    foreach ($stage in @('pool_acquire','transaction_setup','transaction_body','statement_execute','row_decode','commit','rollback','setup_and_first_statement','read_transaction')) {
         foreach ($suffix in @('count','sum','max','p95_upper_bound','failures_total')) { $allowedMetrics += "fasttowin_room_ownership_db_${stage}_seconds_$suffix" }
     }
     foreach ($map in @($receipt.backendBeforeLoadMetrics,$receipt.fixtureDatabaseMetrics)) {
