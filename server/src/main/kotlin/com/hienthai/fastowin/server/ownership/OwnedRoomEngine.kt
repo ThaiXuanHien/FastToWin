@@ -17,10 +17,13 @@ import com.hienthai.fastowin.server.events.EventRewardSource
 import com.hienthai.fastowin.server.events.NoRewardEventSource
 import com.hienthai.fastowin.server.legacyFallback
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.sql.SQLException
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.ConcurrentLinkedQueue
 
 internal sealed interface OwnedRoomReply {
     data class Applied(
@@ -124,7 +127,7 @@ internal class OwnedRoomEngine(
     }
 
     suspend fun renewalTick(): Boolean {
-        for (fence in leases.values.toList()) {
+        forRooms(leases.values.toList()) { fence ->
             try {
                 if (rooms.renew(fence)) rooms.read(fence.roomId)?.let { recover(it) }
                 else leases.remove(fence.roomId, fence)
@@ -133,7 +136,7 @@ internal class OwnedRoomEngine(
             }
         }
         try {
-            for (id in rooms.expiredRooms(EXPIRED_ROOM_BATCH)) {
+            forRooms(rooms.expiredRooms(EXPIRED_ROOM_BATCH)) { id ->
                 try {
                     rooms.claim(id, instanceId)?.let { remember(it); recover(it) }
                 } catch (_: SQLException) {
@@ -145,6 +148,16 @@ internal class OwnedRoomEngine(
         } catch (_: SQLException) {
             // The next tick retries the scan after PostgreSQL returns.
             return false
+        }
+    }
+
+    /** Bound work across independent rooms; each room retains its database fence and locks. */
+    private suspend fun <T : Any> forRooms(items: List<T>, action: suspend (T) -> Unit) = coroutineScope {
+        val pending = ConcurrentLinkedQueue(items)
+        repeat(minOf(ROOM_WORKERS, items.size)) {
+            launch {
+                while (true) action(pending.poll() ?: break)
+            }
         }
     }
 
@@ -494,5 +507,6 @@ internal class OwnedRoomEngine(
         const val RECONNECT_MILLIS = 30_000L
         const val DISCONNECT_ATTEMPTS = 3
         const val EXPIRED_ROOM_BATCH = 32
+        const val ROOM_WORKERS = 4
     }
 }
