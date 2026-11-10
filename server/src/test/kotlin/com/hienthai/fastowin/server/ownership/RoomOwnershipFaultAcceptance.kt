@@ -47,12 +47,13 @@ internal data class RoomOwnershipFaultCaseReceipt(
 )
 
 /** Real-process faults only. A failed or unexercised case fails the suite and leaves a partial receipt. */
-internal suspend fun runRoomOwnershipFaults(fixture: RoomAcceptanceFixture): RoomOwnershipFaultSuiteReceipt {
+internal suspend fun runRoomOwnershipFaults(fixture: RoomAcceptanceFixture,
+    onPassed: suspend (RoomOwnershipFaultCaseReceipt) -> Unit = {}): RoomOwnershipFaultSuiteReceipt {
     check(fixture.backendCount == 2) { "The fault suite requires two real backends" }
     val results = mutableListOf<RoomOwnershipFaultCaseReceipt>()
     suspend fun persist() {
         val receipt = RoomOwnershipFaultSuiteReceipt(accepted = results.size == 8 && results.all { it.passed }, cases = results.toList())
-        Files.writeString(fixture.settings.receipts.resolve("faults.json"), ProtocolJson.encodeToString(receipt))
+        if (!fixture.supervised) Files.writeString(fixture.settings.receipts.resolve("faults.json"), ProtocolJson.encodeToString(receipt))
     }
     suspend fun case(name: String, action: suspend () -> RoomOwnershipFaultCaseReceipt) {
         try {
@@ -60,6 +61,7 @@ internal suspend fun runRoomOwnershipFaults(fixture: RoomAcceptanceFixture): Roo
             fixture.resetRooms()
             val result = action()
             check(result.name == name && result.passed)
+            onPassed(result)
             results += result
             persist()
         } catch (failure: Exception) {
@@ -101,20 +103,19 @@ internal suspend fun runRoomOwnershipFaults(fixture: RoomAcceptanceFixture): Roo
         val number = match.nextNumber
         var proxyDisabled = false
         try {
-            fixture.proxy(oldOwner, blocked = true)
+            val timer = RecoveryTimer.inject { fixture.faults.partition(oldOwner, blocked = true) }
             proxyDisabled = true
             fixture.intentionallyUnavailableBackend = oldOwner
             match.sendWithoutReading(ClientMessage.SelectNumber(match.roomId, number, blockedRequest))
             noAcceptedSelection(oldSockets[0], number, 2_000)
             check(fixture.snapshot(match.roomId).snapshot.selectionEvents.none { it.requestId == blockedRequest })
-            val started = System.nanoTime()
             match.reconnect(preserveOldSockets = true)
             val after = fixture.awaitStored(match.roomId) { it.epoch > before.epoch }
-            val recoveryMillis = elapsedMillis(started)
+            val recoveryMillis = timer.elapsedMillis()
             check(recoveryMillis <= 25_000 && after.instanceId != before.instanceId)
             requireSameBoard(before, after)
             match.ownerBackend = survivor
-            fixture.proxy(oldOwner, blocked = false)
+            fixture.faults.partition(oldOwner, blocked = false)
             proxyDisabled = false
             fixture.awaitReady(oldOwner)
             fixture.intentionallyUnavailableBackend = null
@@ -168,7 +169,7 @@ internal suspend fun runRoomOwnershipFaults(fixture: RoomAcceptanceFixture): Roo
                 "staleRenewAndRelease" to "false", "staleSettlementResult" to "Stale; no settlement or wallet effects",
                 "staleRequestPersisted" to "false", "postTakeoverEpochRegressions" to "0")
         } finally {
-            if (proxyDisabled) fixture.proxy(oldOwner, blocked = false)
+            if (proxyDisabled) fixture.faults.partition(oldOwner, blocked = false)
             fixture.intentionallyUnavailableBackend = null
             oldSockets.forEach { it.close() }
             fixture.awaitReady(oldOwner)
@@ -212,15 +213,14 @@ internal suspend fun runRoomOwnershipFaults(fixture: RoomAcceptanceFixture): Roo
             check(locked.snapshot.selectionEvents.none { it.requestId == request })
             requireSameBoard(before, locked)
             fixture.intentionallyUnavailableBackend = owner
-            val started = System.nanoTime()
-            fixture.docker("kill", nodeName(owner))
+            val timer = RecoveryTimer.inject { fixture.faults.backend(owner, BackendAction.KILL) }
             ownerKilled = true
             withContext(Dispatchers.IO) { lockedConnection.rollback(); lockedConnection.close() }
             blocker = null
             match.reconnect()
             match.ownerBackend = 1 - owner
             val recovered = fixture.awaitStored(match.roomId) { it.epoch > before.epoch }
-            val recoveryMillis = elapsedMillis(started)
+            val recoveryMillis = timer.elapsedMillis()
             check(recoveryMillis <= 25_000)
             requireSameBoard(before, recovered)
             check(recovered.snapshot.selectionEvents.none { it.requestId == request })
@@ -232,7 +232,7 @@ internal suspend fun runRoomOwnershipFaults(fixture: RoomAcceptanceFixture): Roo
                 "ackWhileLocked" to "false", "requestAbsentAfterKill" to "true", "requestCountAfterRetry" to "1")
         } finally {
             withContext(Dispatchers.IO) { blocker?.let { it.rollback(); it.close() } }
-            if (ownerKilled) { fixture.docker("start", nodeName(owner)); fixture.awaitReady(owner) }
+            if (ownerKilled) { fixture.faults.backend(owner, BackendAction.START); fixture.awaitReady(owner) }
             fixture.intentionallyUnavailableBackend = null
             match.close()
         }
@@ -315,7 +315,8 @@ internal suspend fun runRoomOwnershipFaults(fixture: RoomAcceptanceFixture): Roo
         } finally { match.close() }
     }
 
-    case("redis-stop-fails-closed") {
+    val redisCase = if (fixture.supervised) "redis-process-pause-fails-closed" else "redis-stop-fails-closed"
+    case(redisCase) {
         val match = fixture.createMatch(0)
         val before = fixture.snapshot(match.roomId)
         val idleAccount = fixture.accounts()[2]
@@ -330,7 +331,7 @@ internal suspend fun runRoomOwnershipFaults(fixture: RoomAcceptanceFixture): Roo
         var redisStopped = false
         var recoveredSocket: AcceptanceSocket? = null
         try {
-            fixture.docker("stop", "redis")
+            val timer = RecoveryTimer.inject { fixture.faults.store(StoreRole.REDIS, true) }
             redisStopped = true
             val rejection = try {
                 fixture.connect(idleAccount, preferred = 0).also { it.close() }
@@ -345,7 +346,7 @@ internal suspend fun runRoomOwnershipFaults(fixture: RoomAcceptanceFixture): Roo
             match.select(number, request)
             requireSelection(fixture, match, request, number)
             match.verifyEconomy()
-            fixture.docker("start", "redis")
+            fixture.faults.store(StoreRole.REDIS, false)
             redisStopped = false
             fixture.awaitReady(0); fixture.awaitReady(1)
             val recovered = connectAfterRedisRecovery(fixture, idleAccount)
@@ -355,7 +356,7 @@ internal suspend fun runRoomOwnershipFaults(fixture: RoomAcceptanceFixture): Roo
             check(fixture.number("SELECT count(*) FROM play_quota_match_consumptions WHERE user_id='$idleId'") == 0L)
             val after = requireSelection(fixture, match, request, number)
             match.verifyEconomy()
-            receipt("redis-stop-fails-closed", match, before, after, null,
+            receipt(redisCase, match, before, after, timer.elapsedMillis().takeIf { fixture.supervised },
                 "protectedScope" to "new websocket connection; Redis-backed websocket-connect bucket",
                 "outageError" to "RATE_LIMIT_UNAVAILABLE", "newConnectionAdmittedDuringOutage" to "false",
                 "newRoomMembershipOrQuotaFromRejectedConnection" to "false",
@@ -364,27 +365,28 @@ internal suspend fun runRoomOwnershipFaults(fixture: RoomAcceptanceFixture): Roo
                 "existingMatchQuotaDebits" to "2")
         } finally {
             recoveredSocket?.close()
-            if (redisStopped) fixture.docker("start", "redis")
+            if (redisStopped) fixture.faults.store(StoreRole.REDIS, false)
             fixture.awaitReady(0); fixture.awaitReady(1)
             match.close()
         }
     }
 
-    case("postgres-stop-no-optimistic-ack") {
+    val postgresCase = if (fixture.supervised) "postgres-process-pause-no-optimistic-ack" else "postgres-stop-no-optimistic-ack"
+    case(postgresCase) {
         val match = fixture.createMatch(0)
         val before = fixture.snapshot(match.roomId)
         val request = requestId()
         val number = match.nextNumber
         var postgresStopped = false
         try {
-            fixture.docker("stop", "postgres")
+            val timer = RecoveryTimer.inject { fixture.faults.store(StoreRole.PG, true) }
             postgresStopped = true
             match.sendWithoutReading(ClientMessage.SelectNumber(match.roomId, number, request))
             val observationStarted = System.nanoTime()
             val observation = noAcceptedSelection(match.socket(0), number, 25_000, request)
             val observationMillis = elapsedMillis(observationStarted)
             check(observation.endedBy != "deadline") { "The outage request was still pending when observation ended" }
-            fixture.docker("start", "postgres")
+            fixture.faults.store(StoreRole.PG, false)
             postgresStopped = false
             fixture.awaitReady(0); fixture.awaitReady(1)
             val restored = fixture.snapshot(match.roomId)
@@ -394,13 +396,13 @@ internal suspend fun runRoomOwnershipFaults(fixture: RoomAcceptanceFixture): Roo
             match.select(number, request)
             val after = requireSelection(fixture, match, request, number)
             match.verifyEconomy()
-            receipt("postgres-stop-no-optimistic-ack", match, before, after, null,
+            receipt(postgresCase, match, before, after, timer.elapsedMillis().takeIf { fixture.supervised },
                 "outageAcceptedAck" to "false", "outageObservationMillis" to observationMillis.toString(),
                 "outageRequestEndedBy" to observation.endedBy,
                 "outageErrorCodes" to observation.errorCodes.sorted().joinToString(","),
                 "requestAbsentBeforeRecoveryRetry" to "true", "requestCountAfterRecovery" to "1")
         } finally {
-            if (postgresStopped) fixture.docker("start", "postgres")
+            if (postgresStopped) fixture.faults.store(StoreRole.PG, false)
             fixture.awaitReady(0); fixture.awaitReady(1)
             match.close()
         }

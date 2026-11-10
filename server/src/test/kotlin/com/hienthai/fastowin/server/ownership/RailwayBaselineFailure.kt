@@ -50,17 +50,7 @@ internal fun baselineSafeMetrics(text: String): Map<String, Double> = text.lineS
 
 /** Never serialize exception text, stack traces, dynamic labels or unknown file keys. */
 internal fun baselineFailureReceipt(phase: String, failure: Throwable, receipts: Path, progress: BaselineLoadProgress?): BaselineFailureReceipt {
-    val causes = generateSequence(failure) { it.cause }.take(8).toList()
-    val category = when {
-        causes.any { it is TimeoutCancellationException || it is SocketTimeoutException } -> "timeout"
-        causes.any { it is SQLException && it.sqlState?.startsWith("08") == true } -> "database-connection"
-        causes.any { it is SQLException } -> "database-error"
-        causes.any { it is ConnectException || it is UnknownHostException } -> "network"
-        causes.any { it is AcceptanceRejected } -> "protocol-rejected"
-        causes.any { it is IllegalArgumentException } -> "configuration"
-        causes.any { it is IllegalStateException || it is AssertionError } -> "assertion"
-        else -> "other"
-    }
+    val category = rehearsalFailureCategory(failure)
     fun boundedFile(name: String, maxBytes: Long): String? = runCatching {
         val path = receipts.resolve(name)
         if (!Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS) || Files.size(path) > maxBytes) null
@@ -77,4 +67,18 @@ internal fun baselineFailureReceipt(phase: String, failure: Throwable, receipts:
         it.selectionsByRoomSlot.size <= 100 && it.selectionsByRoomSlot.all { n -> n >= 0 } &&
         it.completedMatches >= 0 && it.commandAttempts >= 0 }
     return BaselineFailureReceipt(phase.takeIf { it in failurePhases } ?: "unknown", category, safeProgress, counts, metrics)
+}
+
+internal fun rehearsalFailureCategory(failure: Throwable): String {
+    val causes = generateSequence(failure) { it.cause }.take(8).toList()
+    return when {
+        causes.any { it is TimeoutCancellationException || it is SocketTimeoutException } -> "timeout"
+        causes.any { it is SQLException && it.sqlState?.startsWith("08") == true } -> "database-connection"
+        causes.any { it is SQLException } -> "database-error"
+        causes.any { it is ConnectException || it is UnknownHostException } -> "network"
+        causes.any { it is AcceptanceRejected } -> "protocol-rejected"
+        causes.any { it is IllegalArgumentException } -> "configuration"
+        causes.any { it is IllegalStateException || it is AssertionError } -> "assertion"
+        else -> "other"
+    }
 }

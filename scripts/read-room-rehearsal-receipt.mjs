@@ -1,0 +1,213 @@
+import { createHash } from 'node:crypto'
+import { readFileSync, statSync, mkdirSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { pathToFileURL } from 'node:url'
+
+const jar = '8fff8ae123902032d98a92190b0bff3df87e234f213b25a298f4768c7e40e818'
+const kinds = ['load','fault','failure','latency']
+const poolLabel = 'fasttowin_room_ownership_pool_max_connections'
+const metrics = new Set([
+    'fasttowin_uptime_seconds','fasttowin_websocket_connections','fasttowin_websocket_connections_total',
+    'fasttowin_websocket_messages_total','fasttowin_websocket_rate_limited_total','fasttowin_jvm_memory_used_bytes',
+    'fasttowin_jvm_memory_max_bytes','fasttowin_room_ownership_available_processors','fasttowin_room_ownership_takeovers_total',
+    'fasttowin_room_ownership_fence_rejections_total','fasttowin_room_ownership_resyncs_total',
+    'fasttowin_room_ownership_settlement_failures_total','fasttowin_room_ownership_oldest_queued_event_seconds',
+    'fasttowin_room_ownership_pool_active_connections',poolLabel
+])
+for (const stage of ['pool_acquire','transaction_setup','transaction_body','statement_execute','row_decode','commit','rollback','setup_and_first_statement','read_transaction'])
+    for (const suffix of ['count','sum','max','p95_upper_bound','failures_total'])
+        metrics.add(`fasttowin_room_ownership_db_${stage}_seconds_${suffix}`)
+
+function check(value) { if (!value) throw new Error('Invalid rehearsal receipt') }
+const isObject = value => value !== null && typeof value === 'object' && !Array.isArray(value)
+function keys(value, expected) {
+    check(isObject(value) && Object.keys(value).length === expected.length && expected.every(key => Object.hasOwn(value,key)))
+}
+const num = (v,min=0,max=Number.MAX_SAFE_INTEGER) => Number.isFinite(v) && v >= min && v <= max
+const integer = (v,min=0,max=Number.MAX_SAFE_INTEGER) => Number.isSafeInteger(v) && num(v,min,max)
+const list = (v,size) => Array.isArray(v) && v.length === size
+const pools = v => list(v,2) && v.every(x=>x===20)
+function checkedMetrics(obj) { check(isObject(obj) && Object.entries(obj).every(([k,v])=>metrics.has(k) && num(v))) }
+const sha = bytes => createHash('sha256').update(bytes).digest('hex')
+
+// No safe schema contains escaped strings. Scan structure before JSON.parse can collapse duplicate names.
+function strictJson(raw) {
+    check(!raw.includes('\\'))
+    const stack = []
+    for (const match of raw.matchAll(/"[^"\x00-\x1f]*"\s*:?|[{}\[\]]/g)) {
+        const token = match[0]
+        if (token === '{' || token === '[') { check(stack.length < 16); stack.push(new Set()) }
+        else if (token === '}' || token === ']') { check(stack.length>0); stack.pop() }
+        else if (token.endsWith(':')) {
+            const key = token.slice(1,token.lastIndexOf('"'))
+            const seen = stack.at(-1)
+            check(seen && !seen.has(key)); seen.add(key)
+        }
+    }
+    check(stack.length === 0)
+    try { return JSON.parse(raw) } catch { throw new Error('Malformed receipt JSON') }
+}
+
+function validateLoad(p) {
+    const counts = ['seed','backendCount','concurrentRooms','configuredDurationSeconds','configuredSelectionsPerRoomPerSecond',
+        'selectionCount','completedMatches','commandAttempts','commandRetries','minimumSelectionSpacingMillis','resourceSampleCount']
+    const numbers = ['roomSetupSeconds','elapsedSeconds','actualSelectionsPerSecond','commandP95Millis','commandMaxMillis',
+        'maxScheduledLatenessMillis','scheduledToAckP95Millis','recoveryP95Millis','maxQueuedEventSeconds',
+        'maxPostgresPoolSaturation','queuedEventP95Seconds','postgresPoolP95Saturation']
+    keys(p,[...counts,...numbers,'pools','selectionsByRoomSlot','recoveryMillis','resourceSamples','fullAcceptanceProfile','finalBackendMetrics'])
+    check(counts.every(k=>integer(p[k])) && numbers.every(k=>num(p[k])))
+    check(pools(p.pools) && p.seed===73 && p.backendCount===2 && p.concurrentRooms===20 && p.configuredDurationSeconds===600 &&
+        p.configuredSelectionsPerRoomPerSecond===5 && p.selectionCount===60000 && p.fullAcceptanceProfile===true &&
+        list(p.selectionsByRoomSlot,20) && p.selectionsByRoomSlot.every(n=>n===3000) &&
+        p.completedMatches===1200 && p.commandAttempts===60000+p.commandRetries && p.minimumSelectionSpacingMillis===55 &&
+        num(p.elapsedSeconds,599.8,631) && p.actualSelectionsPerSecond>=95 &&
+        Math.abs(p.actualSelectionsPerSecond - 60000/p.elapsedSeconds)<1e-6 &&
+        list(p.recoveryMillis,3) && p.recoveryMillis.every(n=>integer(n,1,25000)) &&
+        p.recoveryP95Millis===Math.max(...p.recoveryMillis) && p.commandP95Millis<=p.commandMaxMillis)
+    check(integer(p.resourceSampleCount,1,1000) && list(p.resourceSamples,p.resourceSampleCount))
+    let previous = 0
+    for (const s of p.resourceSamples) {
+        keys(s,['elapsedSeconds','queuedEventSeconds','postgresPoolSaturation'])
+        check(num(s.elapsedSeconds,previous,p.elapsedSeconds) && num(s.queuedEventSeconds) && num(s.postgresPoolSaturation,0,1))
+        previous = s.elapsedSeconds
+    }
+    for (const [sample,p95,max] of [
+        ['queuedEventSeconds','queuedEventP95Seconds','maxQueuedEventSeconds'],
+        ['postgresPoolSaturation','postgresPoolP95Saturation','maxPostgresPoolSaturation']
+    ]) {
+        const sorted = p.resourceSamples.map(s=>s[sample]).sort((a,b)=>a-b)
+        check(p[p95]===sorted[Math.ceil(sorted.length*0.95)-1] && p[max]===sorted.at(-1))
+    }
+    check(list(p.finalBackendMetrics,2))
+    for (const m of p.finalBackendMetrics) { checkedMetrics(m); check(m[poolLabel]===20) }
+}
+
+const cases = new Map([
+    ['kill-after-committed-selection',['backend-kill',{acknowledgedSelectionPreserved:true,quotaDebits:2}]],
+    ['selective-owner-postgres-partition',['proxy-partition',{staleRequestPersisted:false,postTakeoverEpochRegressions:0}]],
+    ['kill-before-selection-commit',['backend-kill',{controllerRowLockHeld:true,databaseBlockedSessions:n=>integer(n,1,1000),requestCountAfterRetry:1}]],
+    ['kill-after-commit-before-reading-ack',['backend-kill',{durableCommitObservedBeforeKill:true,requestCountAfterRetry:1}]],
+    ['start-response-loss',['backend-kill',{sameDurableMatchAndBoard:true,quotaDebitsAfterReadyRetry:2}]],
+    ['settlement-response-loss',['backend-kill',{selectionCount:50,quotaDebits:2,matchRows:1,settlementRows:1,walletRows:2}]],
+    ['redis-process-pause-fails-closed',['redis-process-pause',{newConnectionAdmittedDuringOutage:false,idleAccountConnectedAfterRecovery:true,existingMatchQuotaDebits:2}]],
+    ['postgres-process-pause-no-optimistic-ack',['postgres-process-pause',{outageAcceptedAck:false,requestAbsentBeforeRecoveryRetry:true,requestCountAfterRecovery:1,outageObservationMillis:n=>integer(n,0,25000)}]]
+])
+function validateFault(p) {
+    keys(p,['backendCount','pools','cases'])
+    check(p.backendCount===2 && pools(p.pools) && list(p.cases,8))
+    const seen = new Set()
+    for (const c of p.cases) {
+        keys(c,['name','passed','mechanism','beforeEpoch','afterEpoch','beforeRevision','afterRevision','recoveryMillis','proof'])
+        check(c.passed===true && cases.has(c.name) && !seen.has(c.name)); seen.add(c.name)
+        const [mechanism,proof] = cases.get(c.name)
+        check(c.mechanism===mechanism && integer(c.beforeEpoch,1) && integer(c.afterEpoch,c.beforeEpoch) &&
+            integer(c.beforeRevision) && integer(c.afterRevision,c.beforeRevision) && integer(c.recoveryMillis,1,25000))
+        if (mechanism==='backend-kill' || mechanism==='proxy-partition') check(c.afterEpoch>c.beforeEpoch)
+        keys(c.proof,Object.keys(proof))
+        for (const [key,expected] of Object.entries(proof)) {
+            check(typeof expected==='function' ? expected(c.proof[key]) : c.proof[key]===expected)
+        }
+    }
+}
+
+function validateLatency(p) {
+    keys(p,['nodes']); check(list(p.nodes,2))
+    const stages = ['poolAcquire','selectRoundTrip','markerUpdateRoundTrip','commitRoundTrip','readinessRoundTrip']
+    for (const n of p.nodes) {
+        keys(n,[...stages,'scope','complete','expectedIterations','backendBeforeLoadMetrics','fixtureDatabaseMetrics'])
+        check(n.scope==='preflight-fixture-probes-and-workload-timings' && n.expectedIterations===12 && typeof n.complete==='boolean')
+        for (const key of stages) {
+            const v = n[key]
+            keys(v,['count','meanMillis','maxMillis','p95Millis','failures'])
+            check(integer(v.count,0,12) && integer(v.failures,0,v.count) && num(v.maxMillis) && num(v.meanMillis,0,v.maxMillis))
+            if (v.count===0) check(v.p95Millis===null && v.meanMillis===0 && v.maxMillis===0)
+            else check(num(v.p95Millis,0,v.maxMillis))
+            if (n.complete) check(v.count===12 && v.failures===0)
+        }
+        checkedMetrics(n.fixtureDatabaseMetrics); checkedMetrics(n.backendBeforeLoadMetrics)
+        if (n.complete) check(n.backendBeforeLoadMetrics[poolLabel]===20)
+    }
+}
+function validateFailure(p) {
+    keys(p,['phase','category','completedCases','progress'])
+    check(['private-dns','fixture-marker-and-readiness','latency','load','fault','receipt'].includes(p.phase) &&
+        ['timeout','database-connection','database-error','network','protocol-rejected','configuration','assertion','other'].includes(p.category) &&
+        integer(p.completedCases,0,8))
+    if (p.progress!==null) {
+        const v=p.progress
+        keys(v,['elapsedSeconds','selectionsByRoomSlot','completedMatches','commandAttempts'])
+        check(num(v.elapsedSeconds) && list(v.selectionsByRoomSlot,20) && v.selectionsByRoomSlot.every(n=>integer(n,0,3000)) &&
+            integer(v.completedMatches,0,1200) && integer(v.commandAttempts))
+    }
+}
+
+function message(line) {
+    if (line.trimStart().startsWith('{')) {
+        try { const row=JSON.parse(line); if (typeof row.message==='string') return row.message } catch { /* ordinary log */ }
+    }
+    return line
+}
+export function readReceipt(lines, kind, profile, manifest) {
+    check(kinds.includes(kind) && ['fault','two-backend'].includes(profile) && /^[0-9a-f]{64}$/.test(manifest))
+    const prefix = 'FTW_REHEARSAL_'+kind.toUpperCase()+' '
+    const parts = new Map()
+    let digest, total
+    for (const line of lines) {
+        const value = message(line)
+        if (!value.startsWith(prefix)) continue
+        const match = /^([1-9][0-9]{0,2})\/([1-9][0-9]{0,2}) ([a-f0-9]{64}) ([A-Za-z0-9+/=]{1,2048})$/.exec(value.slice(prefix.length))
+        check(match)
+        const index=Number(match[1]), count=Number(match[2]), hash=match[3], part=match[4]
+        check(index<=count && count<=171 && (digest===undefined || (digest===hash && total===count)) &&
+            (!parts.has(index) || parts.get(index)===part))
+        digest=hash; total=count; parts.set(index,part)
+    }
+    check(total>0 && parts.size===total)
+    const encoded=Array.from({length:total},(_,i)=>parts.get(i+1)).join('')
+    const bytes=Buffer.from(encoded,'base64')
+    check(bytes.length<=262144 && bytes.toString('base64')===encoded && sha(bytes)===digest)
+    const receipt=strictJson(new TextDecoder('utf-8',{fatal:true}).decode(bytes))
+    keys(receipt,['schema','kind','profile','jarSha256','manifestSha256','payload'])
+    check(receipt.schema===1 && receipt.kind===kind && receipt.profile===profile && receipt.jarSha256===jar && receipt.manifestSha256===manifest)
+    if (kind==='load') { check(profile==='two-backend'); validateLoad(receipt.payload) }
+    if (kind==='fault') { check(profile==='fault'); validateFault(receipt.payload) }
+    if (kind==='latency') validateLatency(receipt.payload)
+    if (kind==='failure') validateFailure(receipt.payload)
+    return bytes
+}
+function logLines(path) {
+    check(statSync(path).size<=16*1024*1024)
+    return readFileSync(path,'utf8').split(/\r?\n/)
+}
+
+// Both profiles must come from this host run's independently frozen manifest.
+export function gate(manifest, faultLines, loadLines) {
+    const decoded = new Map()
+    for (const [profile, kind, lines] of [['fault','fault',faultLines],['two-backend','load',loadLines]]) {
+        const allowed = [kind,'latency'].map(k=>'FTW_REHEARSAL_'+k.toUpperCase()+' ')
+        check(lines.map(message).every(v=>!v.startsWith('FTW_REHEARSAL_') || allowed.some(prefix=>v.startsWith(prefix))))
+        decoded.set(kind,readReceipt(lines,kind,profile,manifest))
+        const latency=readReceipt(lines,'latency',profile,manifest)
+        check(JSON.parse(latency).payload.nodes.every(n=>n.complete))
+        decoded.set(profile+'-latency',latency)
+    }
+    return decoded
+}
+
+if (process.argv[1] && import.meta.url===pathToFileURL(process.argv[1]).href) {
+    try {
+        const [mode,...args]=process.argv.slice(2)
+        if (mode==='gate' && args.length===4) {
+            const [manifest,fault,load,out]=args
+            const receipts=gate(manifest,logLines(fault),logLines(load))
+            mkdirSync(out,{recursive:true})
+            for(const [kind,bytes] of receipts) writeFileSync(join(out,kind+'.json'),bytes)
+            console.log('Verified both rehearsal profiles and four checksums')
+        } else {
+            check(mode==='read' && args.length===5)
+            const [manifest,profile,kind,log,out]=args
+            writeFileSync(out,readReceipt(logLines(log),kind,profile,manifest))
+            console.log('Verified rehearsal export')
+        }
+    } catch { console.error('Invalid or incomplete rehearsal evidence'); process.exitCode=1 }
+}

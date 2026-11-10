@@ -97,7 +97,10 @@ internal data class AcceptanceAccount(val userId: String, val accessToken: Strin
 internal data class SelectionReceipt(val durationMillis: Double, val snapshot: GameSnapshot, val attempts: Int = 1)
 internal class AcceptanceRejected(val code: String) : IllegalStateException("Fixture command rejected with $code")
 
-internal class RoomAcceptanceFixture(val settings: RoomAcceptanceSettings) : AutoCloseable {
+internal class RoomAcceptanceFixture(val settings: RoomAcceptanceSettings, control: RoomFaultControl? = null) : AutoCloseable {
+    val faults: RoomFaultControl = control ?: DockerRoomFaultControl(
+        { operation, target -> docker(operation, target) }, ::toggleLocalProxy)
+    val supervised get() = faults.processPauseStores
     @Volatile var creationObserver: ((String, Double, Boolean) -> Unit)? = null
 
     private suspend fun <T> creationStep(name: String, operation: suspend () -> T): T {
@@ -343,7 +346,7 @@ internal class RoomAcceptanceFixture(val settings: RoomAcceptanceSettings) : Aut
         } }
     }
 
-    suspend fun docker(vararg args: String): String = withContext(Dispatchers.IO) {
+    private suspend fun docker(vararg args: String): String = withContext(Dispatchers.IO) {
         val (base, override) = checkNotNull(settings.composeFiles) { "Docker commands require the local Compose fixture" }
         require(args.firstOrNull() in setOf("kill", "start", "stop", "pause", "unpause", "ps", "logs"))
         require(args.drop(1).all { it in setOf("backend-a", "backend-b", "postgres", "redis", "--no-deps", "--tail", "40") })
@@ -398,10 +401,9 @@ internal class RoomAcceptanceFixture(val settings: RoomAcceptanceSettings) : Aut
         val owner = ownerFor(before.values.first())
         check(before.values.all { ownerFor(it) == owner }) { "Fault batch must share one owner process" }
         intentionallyUnavailableBackend = owner
-        val started = System.nanoTime()
         var primaryFailure: Throwable? = null
         try {
-            docker(if (hardKill) "kill" else "pause", nodeName(owner))
+            val timer = RecoveryTimer.inject { faults.backend(owner, if (hardKill) BackendAction.KILL else BackendAction.PAUSE) }
             // Measure reconnect from the outage, including the peer worker's lease takeover.
             coroutineScope {
                 matches.map { match ->
@@ -419,7 +421,7 @@ internal class RoomAcceptanceFixture(val settings: RoomAcceptanceSettings) : Aut
                     receipt.snapshot.scores == previous.snapshot.scores && receipt.snapshot.sequence >= previous.snapshot.sequence)
                 match.ownerBackend = 1 - owner
             }
-            val elapsed = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started)
+            val elapsed = timer.elapsedMillis()
             check(elapsed <= 25_000) { "Owner recovery took ${elapsed}ms (limit 25000ms)" }
             return elapsed
         } catch (failure: Throwable) {
@@ -427,10 +429,10 @@ internal class RoomAcceptanceFixture(val settings: RoomAcceptanceSettings) : Aut
             throw failure
         } finally {
             try {
-                docker(if (hardKill) "start" else "unpause", nodeName(owner))
+                faults.backend(owner, if (hardKill) BackendAction.START else BackendAction.RESUME)
                 awaitReady(owner)
             } catch (restartFailure: Throwable) {
-                for (node in 0..1) {
+                if (!supervised) for (node in 0..1) {
                     val logs = runCatching { docker("logs", "--tail", "40", nodeName(node)) }.getOrDefault("Fixture log unavailable")
                     Files.writeString(settings.receipts.resolve("restart-failure-${nodeName(node)}.log"), logs)
                 }
@@ -441,7 +443,7 @@ internal class RoomAcceptanceFixture(val settings: RoomAcceptanceSettings) : Aut
 
     fun ownerFor(receipt: StoredRoomReceipt): Int = checkNotNull(ownerNodes[receipt.instanceId]) { "Unknown fixture owner process" }
 
-    suspend fun proxy(node: Int, blocked: Boolean) {
+    private suspend fun toggleLocalProxy(node: Int, blocked: Boolean) {
         val response = client.post(settings.proxyUrls[node] + "/proxies/pg") {
             contentType(ContentType.Application.Json)
             setBody("""{"enabled":${!blocked}}""")
@@ -450,7 +452,7 @@ internal class RoomAcceptanceFixture(val settings: RoomAcceptanceSettings) : Aut
     }
 
     suspend fun captureDiagnostics(failure: Throwable? = null) = withContext(NonCancellable) {
-        if (Files.exists(settings.receipts.resolve("failure-backend-a.log"))) return@withContext
+        if (supervised || Files.exists(settings.receipts.resolve("failure-backend-a.log"))) return@withContext
         failure?.let { Files.writeString(settings.receipts.resolve("failure-stack.txt"), it.stackTraceToString()) }
         for (node in 0 until backendCount) {
             val raw = runCatching { docker("logs", "--tail", "40", nodeName(node)) }.getOrDefault("Fixture logs unavailable")
@@ -471,7 +473,7 @@ internal class RoomAcceptanceFixture(val settings: RoomAcceptanceSettings) : Aut
         }
     }
 
-    override fun close() { client.close(); source.close() }
+    override fun close() { faults.close(); client.close(); source.close() }
 }
 
 internal data class StoredRoomReceipt(val epoch: Long, val revision: Long, val snapshot: com.hienthai.fastowin.server.StoredActiveRoom, val instanceId: UUID)

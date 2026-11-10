@@ -24,8 +24,8 @@ import java.time.Instant
 import java.util.UUID
 import kotlin.system.exitProcess
 
-private const val STAGING_PROJECT = "b5c5db71-2df8-46da-84fb-d9b9df6d7951"
-private const val STAGING_ENVIRONMENT = "8bcf4119-3a6b-49b3-b4ff-8ea20080f3b9"
+internal const val STAGING_PROJECT = "b5c5db71-2df8-46da-84fb-d9b9df6d7951"
+internal const val STAGING_ENVIRONMENT = "8bcf4119-3a6b-49b3-b4ff-8ea20080f3b9"
 private const val FIXTURE_DATABASE = "fasttowin_room_pilot"
 private const val SMOKE_TIMEOUT_SECONDS = 120L
 
@@ -148,7 +148,7 @@ internal class RailwayRoomSmokeSettings private constructor(
 
 private fun resolve(host: String): List<InetAddress> = InetAddress.getAllByName(host).toList()
 
-private fun privateAddresses(host: String, resolve: (String) -> List<InetAddress>): Set<InetAddress> {
+internal fun privateAddresses(host: String, resolve: (String) -> List<InetAddress>): Set<InetAddress> {
     val addresses = resolve(host).toSet()
     require(addresses.isNotEmpty() && addresses.all {
         when (it) {
@@ -160,7 +160,7 @@ private fun privateAddresses(host: String, resolve: (String) -> List<InetAddress
     return addresses
 }
 
-private fun InetAddress.socketHost(): String = when (this) {
+internal fun InetAddress.socketHost(): String = when (this) {
     is Inet6Address -> "[" + hostAddress.substringBefore('%') + "]"
     else -> hostAddress
 }

@@ -94,14 +94,14 @@ internal fun measureBaselineDatabaseProbe(source: DataSource, fixtureId: UUID, r
     }
 }
 
-internal suspend fun RoomAcceptanceFixture.measureBaselineLatency(recorder: BaselineLatencyRecorder) {
+internal suspend fun RoomAcceptanceFixture.measureBaselineLatency(recorder: BaselineLatencyRecorder, node: Int = 0) {
     verifyFixture() // Exact marker and synthetic account allowlist before the write probe.
     repeat(12) {
         withContext(Dispatchers.IO) { measureBaselineDatabaseProbe(source, settings.fixtureId, recorder) }
         recorder.measureSuspending(BaselineProbeStage.READY) {
-            val response = client.get(settings.urls[0] + "/ready")
+            val response = client.get(settings.urls[node] + "/ready")
             check(response.status == HttpStatusCode.OK && response.bodyAsText() == "READY") { "Probe readiness unavailable" }
         }
     }
-    recorder.backendBeforeLoadMetrics = baselineSafeMetrics(metrics().single())
+    recorder.backendBeforeLoadMetrics = baselineSafeMetrics(metrics()[node])
 }
