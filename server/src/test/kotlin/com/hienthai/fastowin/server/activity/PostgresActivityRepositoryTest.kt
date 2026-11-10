@@ -17,6 +17,31 @@ import java.util.UUID
 import kotlin.test.*
 
 class PostgresActivityRepositoryTest {
+    @Test fun existingAnonymousObservationsDoNotWaitForUnrelatedIdentityWork() = runTest { database {
+        val a = account()
+        val observation = ActivityObservation(UUID.randomUUID(), UUID.randomUUID(), a, 1000, 1000)
+        val window = ActivityWindow(UUID.randomUUID(), 1000, 1000)
+        repository.checkpoint(ActivityCheckpoint(listOf(observation), window, 1000, false))
+        coroutineScope {
+            source.connection.use { locked ->
+                locked.autoCommit = false
+                locked.prepareStatement("SELECT id FROM users WHERE id=? FOR UPDATE").use { s ->
+                    s.setObject(1, UUID.fromString(a)); s.executeQuery().close()
+                }
+                val writer = async(Dispatchers.IO) {
+                    repository.checkpoint(ActivityCheckpoint(listOf(observation.copy(until = 2000)), window.copy(until = 2000), 2000, false))
+                }
+                val completed = try {
+                    kotlinx.coroutines.withContext(Dispatchers.Default) {
+                        kotlinx.coroutines.withTimeoutOrNull(1_000) { writer.await(); true } ?: false
+                    }
+                } finally { locked.rollback(); writer.await() }
+                assertTrue(completed, "Extending an anonymous observation waited for its live identity lock")
+            }
+        }
+        assertEquals(1, number("SELECT count(*) FROM activity_connection_observations WHERE observed_until=to_timestamp(2)"))
+    } }
+
     @Test fun existingFortySocketCheckpointUsesBoundedDatabaseCalls() = runTest { database {
         val observations = (1..40).map {
             ActivityObservation(UUID.randomUUID(), UUID.randomUUID(), account(), 1000, 1000)

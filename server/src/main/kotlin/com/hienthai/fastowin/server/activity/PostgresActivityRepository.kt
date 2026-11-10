@@ -16,13 +16,25 @@ class PostgresActivityRepository(private val dataSource: DataSource) : ActivityR
                 val cutoff = checkpoint.now - ACTIVITY_RETENTION_MILLIS
                 // Match analytics/deletion's identity lock before creating any anonymous links.
                 // Stable ordering prevents opposite socket iteration orders from deadlocking.
-                val users = connection.createArrayOf("uuid", checkpoint.observations.map { UUID.fromString(it.userId) }.distinct().toTypedArray())
+                // Existing anonymous rows only extend time; they need no live identity lock.
+                val users = connection.createArrayOf("uuid", checkpoint.observations.map { UUID.fromString(it.userId) }.toTypedArray())
+                val observationIds = connection.createArrayOf("uuid", checkpoint.observations.map { it.id }.toTypedArray())
                 val registered = try {
-                    connection.prepareStatement("SELECT id FROM users WHERE id = ANY (?) AND account_type = 'REGISTERED' AND status <> 'DELETED' ORDER BY id FOR UPDATE").use { s ->
-                        s.setArray(1, users)
+                    connection.prepareStatement("""
+                        SELECT id FROM users
+                        WHERE id IN (
+                            SELECT incoming.user_id FROM unnest(?::uuid[], ?::uuid[]) AS incoming(user_id, observation_id)
+                            WHERE NOT EXISTS (
+                                SELECT 1 FROM activity_connection_observations AS observation
+                                WHERE observation.observation_id = incoming.observation_id
+                            )
+                        ) AND account_type = 'REGISTERED' AND status <> 'DELETED'
+                        ORDER BY id FOR UPDATE
+                    """.trimIndent()).use { s ->
+                        s.setArray(1, users); s.setArray(2, observationIds)
                         s.executeQuery().use { result -> buildSet { while (result.next()) add(result.getObject(1, UUID::class.java).toString()) } }
                     }
-                } finally { users.free() }
+                } finally { users.free(); observationIds.free() }
                 // Update the whole healthy observation set in one round trip. The tracker still
                 // serializes checkpoints, preserving its shared coverage-window semantics.
                 val ids = connection.createArrayOf("uuid", checkpoint.observations.map { it.id }.toTypedArray())
