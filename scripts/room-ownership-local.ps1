@@ -4,7 +4,8 @@ param(
     [Parameter(Mandatory)][ValidateSet('Fault', 'Load')][string]$Suite,
     [ValidateRange(1, 3600)][int]$DurationSeconds = 600,
     [ValidateRange(1, 20)][int]$Rooms = 20,
-    [ValidateSet('All', 'One', 'Two')][string]$LoadProfiles = 'All'
+    [ValidateSet('All', 'One', 'Two')][string]$LoadProfiles = 'All',
+    [ValidateSet('10', '20')][string]$BackendPoolSize = '10'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -127,6 +128,7 @@ function Start-AcceptanceFixture([int]$Backends, [string]$FixtureName) {
     Set-FixtureEnvironment 'FTW_ACCEPTANCE_COMPOSE' ($script:composeBase + [IO.Path]::PathSeparator + $script:composeOverride)
     Set-FixtureEnvironment 'FTW_ACCEPTANCE_SUITE' $Suite
     Set-FixtureEnvironment 'FTW_ACCEPTANCE_BACKENDS' "$Backends"
+    Set-FixtureEnvironment 'FTW_ACCEPTANCE_BACKEND_POOL_SIZE' $BackendPoolSize
     Set-FixtureEnvironment 'FTW_ACCEPTANCE_RECEIPTS' $script:receipts
     Set-FixtureEnvironment 'FTW_ACCEPTANCE_DURATION_SECONDS' "$DurationSeconds"
     Set-FixtureEnvironment 'FTW_ACCEPTANCE_ROOMS' "$Rooms"
@@ -148,6 +150,7 @@ function Start-AcceptanceFixture([int]$Backends, [string]$FixtureName) {
     if ($LASTEXITCODE -ne 0 -or $revision -notmatch '^[a-f0-9]{40}$') { throw 'Cannot identify the acceptance build.' }
     Write-Receipt 'build.json' ([ordered]@{
         parentRevision = $revision
+        backendPoolSize = [int]$BackendPoolSize
         workingTreeHasChanges = [bool](& git status --porcelain)
         serverJarSha256 = (Get-FileHash -LiteralPath (Join-Path $script:repo 'server/build/install/server/lib/server.jar') -Algorithm SHA256).Hash.ToLowerInvariant()
         protocolJarSha256 = (Get-ChildItem -LiteralPath (Join-Path $script:repo 'server/build/install/server/lib') -Filter 'protocol-jvm*.jar' | Get-FileHash -Algorithm SHA256 | Select-Object -ExpandProperty Hash)
@@ -164,6 +167,10 @@ function Start-AcceptanceFixture([int]$Backends, [string]$FixtureName) {
         # Build images serially first so two JVM images do not compete for Docker memory.
         Invoke-FixtureCompose @('build') | Out-Null
         Invoke-FixtureCompose @('up', '--wait', '--wait-timeout', '180') | Out-Null
+        foreach ($service in @('backend-a','backend-b')) {
+            $actualPool = (Invoke-FixtureCompose @('exec','-T',$service,'printenv','DATABASE_POOL_SIZE')) -join ''
+            if ($actualPool.Trim() -cne $BackendPoolSize) { throw 'Backend pool configuration differs from local acceptance selection.' }
+        }
         Set-FixtureEnvironment 'FTW_ACCEPTANCE_A' "http://127.0.0.1:$(Get-FixturePort 'backend-a' 8080)"
         Set-FixtureEnvironment 'FTW_ACCEPTANCE_B' "http://127.0.0.1:$(Get-FixturePort 'backend-b' 8080)"
         Set-FixtureEnvironment 'FTW_ACCEPTANCE_POSTGRES_PORT' "$(Get-FixturePort 'postgres' 5432)"

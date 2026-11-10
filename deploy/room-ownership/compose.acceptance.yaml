@@ -24,6 +24,7 @@ services:
     environment:
       DATABASE_URL: jdbc:postgresql://postgres-a:15432/fasttowin_room_pilot
       FASTTOWIN_ROOM_OWNERSHIP_ACCEPTANCE: "true"
+      DATABASE_POOL_SIZE: ${FTW_ACCEPTANCE_BACKEND_POOL_SIZE:-10}
     ports: ["127.0.0.1:${FTW_ACCEPTANCE_A_PORT:?Use the acceptance runner}:8080"]
     depends_on:
       postgres-a:
@@ -37,6 +38,7 @@ services:
     environment:
       DATABASE_URL: jdbc:postgresql://postgres-b:15432/fasttowin_room_pilot
       FASTTOWIN_ROOM_OWNERSHIP_ACCEPTANCE: "true"
+      DATABASE_POOL_SIZE: ${FTW_ACCEPTANCE_BACKEND_POOL_SIZE:-10}
     ports: ["127.0.0.1:${FTW_ACCEPTANCE_B_PORT:?Use the acceptance runner}:8080"]
     depends_on:
       postgres-b:

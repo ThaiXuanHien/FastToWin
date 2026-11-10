@@ -12,6 +12,8 @@ pwsh -NoProfile -File scripts/room-ownership-local.ps1 -Suite Fault
 pwsh -NoProfile -File scripts/room-ownership-local.ps1 -Suite Load
 ```
 
+The local acceptance runner defaults to ten backend database connections. Add `-BackendPoolSize 20` to Fault or Load when revalidating the measured twenty-connection staging candidate. The option affects backend A/B only; the runner pool stays unchanged. The host checks the container environment before fault/load traffic, records the selected pool in `build.json`, and restores the caller environment after owned-fixture cleanup. This configuration check does not measure Hikari's observed active pool size. Validate the override with `pwsh -NoProfile -File scripts/tests/RoomLocalPool.Tests.ps1`.
+
 `Load` creates two fresh fixtures in sequence: physically one active backend, then two. Defaults are 20 concurrent rooms, 40 distinct accounts, seed 73, 600 seconds and five offered selections per room per second. Each slot must acknowledge exactly 3,000 scheduled selections, recycling a completed 50-number match. The two-backend load profile pauses a current owner at seconds 60, 180 and 360. Each recovery must finish within 25 seconds. Command timing includes reconnect/retries; scheduled-to-ACK p95 additionally includes the client queue. Catch-up spacing is at least 55 ms per slot. A full profile must finish within 5% + one second of its configured window and sustain at least 95% of the offered rate. Producers have a hard 30-second tail limit.
 
 `-LoadProfiles One` and `-LoadProfiles Two` are diagnostic selectors for rerunning one profile; the default `All` is the required pair.
