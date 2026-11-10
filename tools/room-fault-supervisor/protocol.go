@@ -38,6 +38,7 @@ type Status struct {
 // result means all owned resources were cleaned up, while an error permits the
 // service to call Close again to finish partially completed cleanup.
 // A successful Close is terminal: the service will never call any Driver method again.
+// Its nil result is authoritative even if context cancellation races with acknowledgement.
 type Driver interface {
 	Status(context.Context) (Status, error)
 	Apply(context.Context, string, uint64) (Status, error)
@@ -484,7 +485,8 @@ func (s *Service) Close(context.Context) error {
 		err := s.driver.Close(closeCtx)
 		if err != nil || closeCtx.Err() != nil {
 			s.closeError = errors.New("close_failed")
-		} else {
+		}
+		if err == nil {
 			s.driverClosed = true
 		}
 		closeCancel()

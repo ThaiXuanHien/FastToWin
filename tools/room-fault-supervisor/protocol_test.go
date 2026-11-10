@@ -667,3 +667,35 @@ func TestSuccessfulDriverCloseIsTerminalAfterFailedRestore(t *testing.T) {
 		t.Fatalf("driver called after terminal Close: status=%d->%d apply=%d->%d restore=%d->%d close=%d->%d", statusCalls, d.statusCalls, calls, d.calls, restores, d.restores, closes, d.closes)
 	}
 }
+
+func TestNilCloseAfterContextExpiryIsStillTerminal(t *testing.T) {
+	s, d, _ := testService(t, "a")
+	if send(t, s, testToken, validRequest()).Code != 200 {
+		t.Fatal("inject failed")
+	}
+	d.restoreError = errors.New("private-restore-failure")
+	// Teardown finishes successfully just after its bounded context expires.
+	// A nil result is authoritative even though acknowledgement arrived late.
+	d.onClose = func(ctx context.Context) { <-ctx.Done() }
+	if err := s.Close(context.Background()); err == nil || err.Error() != "close_failed" {
+		t.Fatalf("late acknowledgement error not reported: %v", err)
+	}
+	d.restoreError = nil
+	d.onClose = nil
+	statusCalls, calls, restores, closes := d.statusCalls, d.calls, d.restores, d.closes
+	if err := s.Tick(context.Background()); err == nil || err.Error() != "close_failed" {
+		t.Errorf("terminal Tick lost late-ack error: %v", err)
+	}
+	if err := s.Close(context.Background()); err == nil || err.Error() != "close_failed" {
+		t.Errorf("terminal Close lost late-ack error: %v", err)
+	}
+	r := validRequest()
+	r.RequestID = "after-late-close"
+	w := send(t, s, testToken, r)
+	if w.Code != 503 || !response(t, w).Failed || response(t, w).ErrorCode != "closed" {
+		t.Errorf("late terminal cleanup lost failure: %d %s", w.Code, w.Body)
+	}
+	if d.statusCalls != statusCalls || d.calls != calls || d.restores != restores || d.closes != closes {
+		t.Fatalf("driver called after nil late Close: status=%d->%d apply=%d->%d restore=%d->%d close=%d->%d", statusCalls, d.statusCalls, calls, d.calls, restores, d.restores, closes, d.closes)
+	}
+}
