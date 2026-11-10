@@ -8,6 +8,7 @@ param(
     [switch]$Profile,
     [switch]$CloudDatabaseLatency,
     [switch]$DiagnosticOnly,
+    [ValidateSet('1', '2')][string]$DatabaseLatencyCpu = '1',
     [ValidateSet('0.5', '2')][string]$PostgresCpu = '0.5',
     [ValidateSet('1', '2', '3')][string]$BackendCpu = '1'
 )
@@ -54,17 +55,20 @@ if ($CloudDatabaseLatency) {
     if (-not $Profile) { throw 'DB latency reproduction requires local profiling and resource limits' }
     $composeArguments += @('--file', (Join-Path $root 'deploy/room-ownership/compose.database-latency.yaml'))
 }
+if ($DatabaseLatencyCpu -ne '1' -and -not $CloudDatabaseLatency) { throw 'Proxy CPU control requires the local DB latency fixture' }
 $backendImage = "${project}-backend:local"
 $runnerImage = "${project}-runner:local"
 $summary = [ordered]@{ sourceRevision = $manifest.sourceRevision; backendManifestSha256 = $BackendManifestSha256; baselineAccepted = $false; cleanupVerified = $false }
 $summary.railwayLimits = $RailwayLimits.IsPresent
 $summary.profile = $Profile.IsPresent
 $summary.databaseLatencyProfile = if ($CloudDatabaseLatency) { 'backend-1ms-fixture-3ms-downstream' } else { 'none' }
+$summary.databaseLatencyCpu = if ($CloudDatabaseLatency) { [int]$DatabaseLatencyCpu } else { $null }
 $summary.diagnosticOnly = $DiagnosticOnly.IsPresent
 $summary.configuredDurationSeconds = if ($DiagnosticOnly) { 60 } else { 600 }
 $summary.postgresCpu = if ($RailwayLimits) { [double]::Parse($PostgresCpu, [Globalization.CultureInfo]::InvariantCulture) } else { $null }
 $summary.backendCpu = if ($RailwayLimits) { [double]::Parse($BackendCpu, [Globalization.CultureInfo]::InvariantCulture) } else { $null }
 $summary.resourceEnvelope = if (-not $RailwayLimits) { 'uncapped-local' } elseif ($PostgresCpu -eq '0.5' -and $BackendCpu -eq '1') { 'railway' } else { 'local-cpu-control' }
+if ($DatabaseLatencyCpu -ne '1') { $summary.resourceEnvelope = 'local-proxy-cpu-control' }
 $runnerProcess = $null
 $runnerCollected = $false
 $profileCollected = $false
@@ -169,6 +173,7 @@ try {
         ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $out 'tested-source/manifest.json') -Encoding utf8NoBOM
     $summary.sourceManifestSha256 = (Get-FileHash (Join-Path $out 'tested-source/manifest.json')).Hash.ToLowerInvariant()
     Set-E 'FTW_PILOT_NAME' $project
+    Set-E 'FTW_PILOT_DATABASE_LATENCY_CPU' $DatabaseLatencyCpu
     Set-E 'FTW_PILOT_BACKEND_IMAGE' $backendImage
     Set-E 'FTW_PILOT_RUNNER_IMAGE' $runnerImage
     Set-E 'FTW_PILOT_IPV6_SUBNET' ('fd' + (Hex).Substring(0, 2) + ':' + (Hex).Substring(0, 4) + ':' + (Hex).Substring(0, 4) + '::/64')
@@ -235,7 +240,7 @@ services:
     if ('backend-b' -in $active -or 'backend-a' -notin $active) { throw 'Baseline requires exactly one active backend' }
     if ($RailwayLimits) {
         $expected = @{postgres=@(([long]($summary.postgresCpu * 1000000000)),512000000);redis=@(250000000,250000000);'backend-a'=@(([long]($summary.backendCpu * 1000000000)),1000000000)}
-        if ($CloudDatabaseLatency) { $expected['database-latency'] = @(1000000000,128000000) }
+        if ($CloudDatabaseLatency) { $expected['database-latency'] = @((1000000000 * [int]$DatabaseLatencyCpu),128000000) }
         foreach ($service in $expected.Keys) {
             $id = (C @('ps', '-q', $service)) -join ''
             $limits = (D @('inspect','--format','{{json .HostConfig}}',$id)) | ConvertFrom-Json

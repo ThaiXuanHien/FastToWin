@@ -41,7 +41,11 @@ Add `-CloudDatabaseLatency` together with `-RailwayLimits -Profile -PostgresCpu 
 
 This is a reproducible latency stress model, not an exact Railway replica: proxy/timer scheduling and the local host can add overhead beyond the requested delay. Compare the measured preflight and workload timings, not just the configured milliseconds. Keep rate caps, account counts and resource limits fixed between source comparisons.
 
+If numeric CPU counters show the latency proxy itself is throttled, `-DatabaseLatencyCpu 2` provides a separate local proxy-capacity control. It requires `-CloudDatabaseLatency`; the default remains 1 CPU. Backend, PostgreSQL, Redis, runner, RAM and configured latency stay unchanged. The host verifies the selected proxy ceiling and labels the result `local-proxy-cpu-control`, recording `databaseLatencyCpu` explicitly. Compare this separately from application-source changes and retain the same full-load gates.
+
 For a shorter local screening loop, add `-DiagnosticOnly`. A separate test entry point runs the same workload for 60 seconds and emits `baselineAccepted=false`. The host records `diagnosticOnly=true`, requires exactly 6,000 ACKs / 300 per room for a completed diagnostic, and keeps `baselineAccepted=false` even when collection succeeds. Use the receipt reader's `-Diagnostic` mode for those files. A partial/timeout diagnostic remains failed; a completed diagnostic reports its observed rate without claiming the full-load gate. The normal reader and Railway entry point retain the strict 600-second / 60,000-ACK contract. Always verify the full profile after screening changes.
+
+`load-phase-summary.json` separates initial setup, command ACK, economy verification, room close and recreation. Recreation additionally reports connect-pair-to-SessionReady, create, join, ready and start timings. These are fixed numeric count/mean/max/p95/failure summaries; they contain no account, room, request or SQL values. Nested phase durations overlap and must not be added together. Interrupted phases count as failures and include time until cancellation. Room recycling requires a matching `RoomClosed` acknowledgement; a playing match is explicitly left again after its `GameFinished` transition.
 
 ## Concrete Railway launch package
 

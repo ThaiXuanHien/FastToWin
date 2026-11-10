@@ -7,6 +7,7 @@ $values=@{
     FASTTOWIN_ROOM_OWNERSHIP_DATABASE_PASSWORD='synthetic-only';FASTTOWIN_ROOM_OWNERSHIP_FIXTURE_PASSWORD='synthetic-only'
     FASTTOWIN_ROOM_OWNERSHIP_FIXTURE_ID='00000000-0000-4000-8000-000000000001';FASTTOWIN_ROOM_OWNERSHIP_ACCOUNTS='00000000-0000-4000-8000-000000000002'
     FASTTOWIN_ROOM_OWNERSHIP_PEER_SECRET='synthetic-only'
+    FTW_PILOT_DATABASE_LATENCY_CPU='1'
 }
 $saved=@{}
 try{
@@ -21,5 +22,14 @@ try{
     $proxies=Get-Content -Raw (Join-Path $root 'deploy/room-ownership/toxiproxy-database-latency.json')|ConvertFrom-Json
     if(@($proxies).Count -ne 2 -or @($proxies|Where-Object{$_.upstream -ne 'postgres:5432' -or -not $_.enabled}).Count){throw 'Unexpected proxy upstream'}
     if(($proxies|Where-Object name -eq 'backend').listen -ne '[::]:5433' -or ($proxies|Where-Object name -eq 'fixture').listen -ne '[::]:5432'){throw 'Wrong latency paths'}
+    if($config.services.'database-latency'.cpus -ne 1){throw 'Default proxy CPU ceiling changed'}
+    $env:FTW_PILOT_DATABASE_LATENCY_CPU='2'
+    $raw=& docker compose -f (Join-Path $root 'deploy/room-ownership/compose.staging-baseline.yaml') -f (Join-Path $root 'deploy/room-ownership/compose.database-latency.yaml') config --format json
+    if($LASTEXITCODE){throw 'Proxy CPU control config failed'}
+    $control=($raw -join "`n")|ConvertFrom-Json
+    if($control.services.'database-latency'.cpus -ne 2){throw 'Explicit proxy-only 2-CPU control was not applied'}
+    foreach($name in @('backend-a','backend-b','postgres','redis','runner')){
+        if(($control.services.$name|ConvertTo-Json -Depth 20 -Compress) -cne ($config.services.$name|ConvertTo-Json -Depth 20 -Compress)){throw 'Proxy CPU control altered an application or database service'}
+    }
     Write-Output 'PASS: private proxy DNS, separate DB paths, pinned image and no direct PostgreSQL alias.'
 }finally{foreach($key in $saved.Keys){[Environment]::SetEnvironmentVariable($key,$saved[$key],'Process')}}
