@@ -30,22 +30,28 @@ const pools = v => list(v,2) && v.every(x=>x===20)
 function checkedMetrics(obj) { check(isObject(obj) && Object.entries(obj).every(([k,v])=>metrics.has(k) && num(v))) }
 const sha = bytes => createHash('sha256').update(bytes).digest('hex')
 
-// No safe schema contains escaped strings. Scan structure before JSON.parse can collapse duplicate names.
-function strictJson(raw) {
-    check(!raw.includes('\\'))
+// Visit every object key before using the decoded object. JSON.parse alone keeps only the last duplicate.
+// Provider metadata may contain escaped strings; JSON-decode key tokens so escaped-equivalent names collide.
+function strictJson(raw, providerWrapper=false) {
+    if (!providerWrapper) check(!raw.includes('\\'))
+    let parsed
+    try { parsed = JSON.parse(raw) } catch { throw new Error('Malformed rehearsal JSON') }
     const stack = []
-    for (const match of raw.matchAll(/"[^"\x00-\x1f]*"\s*:?|[{}\[\]]/g)) {
-        const token = match[0]
-        if (token === '{' || token === '[') { check(stack.length < 16); stack.push(new Set()) }
-        else if (token === '}' || token === ']') { check(stack.length>0); stack.pop() }
-        else if (token.endsWith(':')) {
-            const key = token.slice(1,token.lastIndexOf('"'))
+    for (const match of raw.matchAll(/("(?:\\[\s\S]|[^"\\])*")\s*(:)?|([{}\[\]])/g)) {
+        const [,quotedKey,colon,delimiter] = match
+        if (delimiter === '{' || delimiter === '[') {
+            check(stack.length < (providerWrapper ? 64 : 16))
+            stack.push(new Set())
+        } else if (delimiter === '}' || delimiter === ']') {
+            stack.pop()
+        } else if (colon) {
+            const key = JSON.parse(quotedKey)
             const seen = stack.at(-1)
-            check(seen && !seen.has(key)); seen.add(key)
+            check(!seen.has(key))
+            seen.add(key)
         }
     }
-    check(stack.length === 0)
-    try { return JSON.parse(raw) } catch { throw new Error('Malformed receipt JSON') }
+    return parsed
 }
 
 function validateLoad(p) {
@@ -71,6 +77,10 @@ function validateLoad(p) {
         check(num(s.elapsedSeconds,previous,p.elapsedSeconds) && num(s.queuedEventSeconds) && num(s.postgresPoolSaturation,0,1))
         previous = s.elapsedSeconds
     }
+    // The fixture scrapes once before measurement (timestamp zero), then again after the final ACK.
+    // Five scheduled selections per second put the last offer within one 0.2-second interval of 600s.
+    // elapsedSeconds also includes subsequent economy checks; the scrape need not include those.
+    check(p.resourceSamples[0].elapsedSeconds === 0 && previous >= p.configuredDurationSeconds - 1/p.configuredSelectionsPerRoomPerSecond)
     for (const [sample,p95,max] of [
         ['queuedEventSeconds','queuedEventP95Seconds','maxQueuedEventSeconds'],
         ['postgresPoolSaturation','postgresPoolP95Saturation','maxPostgresPoolSaturation']
@@ -143,7 +153,11 @@ function validateFailure(p) {
 
 function message(line) {
     if (line.trimStart().startsWith('{')) {
-        try { const row=JSON.parse(line); if (typeof row.message==='string') return row.message } catch { /* ordinary log */ }
+        const row = strictJson(line,true)
+        if (Object.hasOwn(row,'message')) {
+            check(typeof row.message==='string')
+            return row.message
+        }
     }
     return line
 }

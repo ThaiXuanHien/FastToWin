@@ -20,7 +20,7 @@ const load = envelope('load','two-backend',{
     actualSelectionsPerSecond:100,completedMatches:1200,commandP95Millis:12,commandMaxMillis:300,
     commandAttempts:60001,commandRetries:1,minimumSelectionSpacingMillis:55,maxScheduledLatenessMillis:300,scheduledToAckP95Millis:50,
     recoveryMillis:[9000,9500,9800], recoveryP95Millis:9800,maxQueuedEventSeconds:1,maxPostgresPoolSaturation:0.8,
-    queuedEventP95Seconds:1,postgresPoolP95Saturation:0.8,resourceSamples:Array(70).fill({elapsedSeconds:0,queuedEventSeconds:1,postgresPoolSaturation:0.8}),
+    queuedEventP95Seconds:1,postgresPoolP95Saturation:0.8,resourceSamples:Array.from({length:70},(_,i)=>({elapsedSeconds:i*600/69,queuedEventSeconds:1,postgresPoolSaturation:0.8})),
     resourceSampleCount:70,fullAcceptanceProfile:true,finalBackendMetrics:[{fasttowin_room_ownership_pool_max_connections:20},{fasttowin_room_ownership_pool_max_connections:20}]
 })
 
@@ -94,4 +94,37 @@ test('combined gate binds both successes and both complete latency receipts to o
     assert.throws(()=>gate(manifest,faults,[...loads,...lines({...load,manifestSha256:'d'.repeat(64)})]))
     const incomplete=structuredClone(loadLatency); incomplete.payload.nodes[0].complete=false
     assert.throws(()=>gate(manifest,faults,[...lines(load),...lines(incomplete)]))
+})
+
+test('identical retransmission of any chunk preserves the exact receipt bytes',()=>{
+    const lines=chunks(JSON.stringify(load),'load')
+    assert.deepEqual(readReceipt([...lines, ...lines.slice().reverse()],'load','two-backend',manifest),Buffer.from(JSON.stringify(load)))
+})
+
+test('load resource samples cover the measured workload at its head and tail',()=>{
+    function sampled(times) {
+        const samples=times.map(elapsedSeconds=>({elapsedSeconds,queuedEventSeconds:1,postgresPoolSaturation:0.8}))
+        return {...load,payload:{...load.payload,resourceSamples:samples,resourceSampleCount:samples.length}}
+    }
+    assert.equal(read(sampled([0,599.8])).toString(), JSON.stringify(sampled([0,599.8])))
+    for (const times of [[0,0],[10,600],[0,300],[0,599.7]]) assert.throws(()=>read(sampled(times)))
+})
+for (const [description,key,stream] of [
+    ['plain duplicate hides failure','message','failure'],
+    ['escaped duplicate hides failure','mess\\u0061ge','failure'],
+    ['escaped duplicate hides corrupt chunk','\\u006dessage','corrupt']
+]) {
+    test(description,()=>{
+        const hidden = stream==='failure' ? chunks(JSON.stringify(failure),'failure')[0] : 'FTW_REHEARSAL_FAULT corrupt'
+        const duplicate = '{"message":'+JSON.stringify(hidden)+',"'+key+'":"ordinary text","meta":{"level":"info"}}'
+        const faults = [duplicate,...chunks(JSON.stringify(fault),'fault'),...chunks(JSON.stringify(latency),'latency')]
+        const loads = [...chunks(JSON.stringify(load),'load'),...chunks(JSON.stringify({...latency,profile:'two-backend'}),'latency')]
+        assert.throws(()=>gate(manifest,faults,loads))
+    })
+}
+test('unambiguous escaped provider message and nested metadata preserve exact bytes',()=>{
+    const lines=chunks(JSON.stringify(load),'load').map(message=>
+        JSON.stringify({meta:{message:'metadata',labels:['a"b','c\\d','}']}, message})
+            .replace('"message":"FTW_','"mess\\u0061ge":"\\u0046TW_'))
+    assert.deepEqual(readReceipt(lines,'load','two-backend',manifest),Buffer.from(JSON.stringify(load)))
 })

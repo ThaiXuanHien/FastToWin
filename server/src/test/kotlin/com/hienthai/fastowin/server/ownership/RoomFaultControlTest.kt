@@ -9,7 +9,7 @@ import kotlinx.serialization.json.*
 
 class RoomFaultControlTest {
     @Test fun deadlineBoundsEntireTrickledHttpAcknowledgement() = runBlocking {
-        val server = HttpServer.create(InetSocketAddress("127.0.0.1",8181),0)
+        val server = HttpServer.create(InetSocketAddress("127.0.0.1",0),0)
         val sent = AtomicInteger()
         server.createContext("/control") { exchange ->
             exchange.use {
@@ -28,7 +28,7 @@ class RoomFaultControlTest {
         }
         server.start()
         try {
-            PrivateControlTransport(mapOf("a" to "127.0.0.1")).use { transport ->
+            PrivateControlTransport.loopbackForTest(server.address.port).use { transport ->
                 assertFails { transport.post("a","Bearer local-test","{}",System.currentTimeMillis()+700L) }
             }
             assertTrue(sent.get() in 1..23)

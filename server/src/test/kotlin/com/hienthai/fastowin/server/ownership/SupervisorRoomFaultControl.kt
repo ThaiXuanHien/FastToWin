@@ -25,7 +25,18 @@ internal fun interface ControlTransport : AutoCloseable {
 }
 
 /** Addresses were resolved and pinned by the exact marked rehearsal profile. */
-internal class PrivateControlTransport(private val hosts: Map<String, String>): ControlTransport {
+internal class PrivateControlTransport private constructor(
+    private val hosts: Map<String, String>, private val port: Int
+) : ControlTransport {
+    constructor(hosts: Map<String, String>) : this(hosts, 8181)
+
+    companion object {
+        internal fun loopbackForTest(port: Int): PrivateControlTransport {
+            require(port in 1..65535)
+            return PrivateControlTransport(mapOf("a" to "127.0.0.1"), port)
+        }
+    }
+
     private val client = OkHttpClient.Builder()
         .proxy(Proxy.NO_PROXY)
         .followRedirects(false)
@@ -35,7 +46,7 @@ internal class PrivateControlTransport(private val hosts: Map<String, String>): 
         .build()
 
     override suspend fun post(role: String, authorization: String, body: String, deadline: Long): Pair<Int, String> {
-        val request = Request.Builder().url("http://${hosts.getValue(role)}:8181/control")
+        val request = Request.Builder().url("http://${hosts.getValue(role)}:$port/control")
             .header("Authorization", authorization)
             .post(body.toRequestBody("application/json".toMediaType())).build()
         val remaining = deadline - System.currentTimeMillis()
