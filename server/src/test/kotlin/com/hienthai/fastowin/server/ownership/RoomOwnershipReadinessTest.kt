@@ -15,11 +15,14 @@ import io.ktor.client.request.get
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.testing.testApplication
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
 import org.flywaydb.core.Flyway
 import org.junit.jupiter.api.Assumptions.assumeTrue
 import java.net.URI
@@ -37,6 +40,41 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 class RoomOwnershipReadinessTest {
+    @Test
+    fun `a committed completion wakes settlement before the next renewal tick and idle work cannot block drain`() = runBlocking {
+        fixture { f ->
+            val pilot = f.pilot()
+            val rooms = PostgresRoomOwnershipRepository(f.source)
+            val host = rooms.bindSocket(f.players.keys.first())
+            val guest = rooms.bindSocket(f.players.keys.last())
+            val created = assertIs<OwnedRoomReply.Applied>(pilot.onMessage(host, CREATE))
+            val id = created.roomId.toString()
+            assertIs<OwnedRoomReply.Applied>(pilot.onMessage(guest, ClientMessage.JoinRoom(id, "private fixture")))
+            assertIs<OwnedRoomReply.Applied>(pilot.onMessage(host, ClientMessage.SetReady(id, true)))
+            assertIs<OwnedRoomReply.Applied>(pilot.onMessage(guest, ClientMessage.SetReady(id, true)))
+            for (number in 1 until com.hienthai.fastowin.protocol.GAME_NUMBER_COUNT) {
+                assertIs<OwnedRoomReply.Applied>(pilot.onMessage(host, ClientMessage.SelectNumber(id, number, "move-$number")))
+            }
+            val worker = launch { pilot.runWorker() }
+            try {
+                withTimeout(8_000) { while (!pilot.isReady()) delay(10) }
+                // The first tick observed PLAYING and has just entered its three-second idle wait.
+                val last = pilot.onMessage(host, ClientMessage.SelectNumber(id,
+                    com.hienthai.fastowin.protocol.GAME_NUMBER_COUNT, "last-move"))
+                assertEquals(com.hienthai.fastowin.protocol.RoomPhase.FINISHED,
+                    assertIs<com.hienthai.fastowin.protocol.ServerMessage.GameStateUpdated>(assertIs<OwnedRoomReply.Applied>(last).publicMessage).game.phase)
+                val prompt = withTimeoutOrNull(1_000) {
+                    while (f.source.connection.use { c -> c.createStatement().use { s ->
+                        s.executeQuery("SELECT count(*) FROM room_ownership_pilot_settlements").use { r -> r.next(); r.getInt(1) }
+                    } } != 1) delay(10)
+                    true
+                } ?: false
+                assertTrue(prompt, "A committed completion waited for the renewal interval")
+                withTimeout(1_000) { assertTrue(pilot.beginDrain()) }
+            } finally { worker.cancelAndJoin() }
+        }
+    }
+
     @Test
     fun `readiness follows worker and PostgreSQL while liveness stays available`() = runBlocking {
         fixture { f ->

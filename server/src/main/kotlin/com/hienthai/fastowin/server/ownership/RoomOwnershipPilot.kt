@@ -14,7 +14,8 @@ import com.hienthai.fastowin.server.legacyFallback
 import io.ktor.server.routing.Route
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
-import kotlinx.coroutines.delay
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.sync.Mutex
@@ -40,6 +41,7 @@ internal class RoomOwnershipPilot private constructor(
     private val instanceId: UUID,
     private val rooms: PostgresRoomOwnershipRepository,
     private val engine: OwnedRoomEngine,
+    private val settlementWakeups: Channel<Unit>,
     private val transport: OwnerPeerTransport,
     private val newIntentAllowed: () -> Boolean,
     private val metrics: RoomOwnershipMetrics,
@@ -71,11 +73,18 @@ internal class RoomOwnershipPilot private constructor(
     }
 
     suspend fun runWorker() {
+        var nextRenewal = 0L
         try {
             while (currentCoroutineContext().isActive) {
-                val healthy = admission.admit { engine.renewalTick() } ?: return
-                lastHealthyTick.set(if (healthy) System.nanoTime() else 0L)
-                delay(3_000)
+                if (System.nanoTime() >= nextRenewal) {
+                    val healthy = admission.admit { engine.renewalTick() } ?: return
+                    lastHealthyTick.set(if (healthy) System.nanoTime() else 0L)
+                    nextRenewal = System.nanoTime() + TimeUnit.SECONDS.toNanos(3)
+                }
+                val remainingMillis = TimeUnit.NANOSECONDS.toMillis(nextRenewal - System.nanoTime()).coerceAtLeast(1)
+                // Waiting must not hold an admission permit, otherwise drain waits on idle work.
+                val notified = withTimeoutOrNull(remainingMillis) { settlementWakeups.receive(); true } ?: false
+                if (notified) admission.admit { engine.settlePending(); Unit } ?: return
             }
         } finally {
             lastHealthyTick.set(0)
@@ -273,9 +282,11 @@ internal class RoomOwnershipPilot private constructor(
             val economy = OwnedMatchEconomy(
                 repository, PostgresPlayQuotaRepository(dataSource), PostgresMatchResultRepository(dataSource), metrics
             )
-            val engine = OwnedRoomEngine(instanceId, repository, economy, accountPlayer, eventRewards)
+            val settlementWakeups = Channel<Unit>(Channel.CONFLATED)
+            val engine = OwnedRoomEngine(instanceId, repository, economy, accountPlayer, eventRewards,
+                onSettlementPending = { settlementWakeups.trySend(Unit) })
             return RoomOwnershipPilot(
-                config, instanceId, repository, engine,
+                config, instanceId, repository, engine, settlementWakeups,
                 OwnerPeerTransport(config.nodeId, config.peerId, config.peerUri, config.peerSecret),
                 newIntentAllowed, metrics, dataSource as? HikariDataSource, wakeups ?: postgresRoomEventWakeups(dataSource)
             )

@@ -41,9 +41,11 @@ internal class OwnedRoomEngine(
     private val rooms: RoomOwnershipRepository,
     private val economy: OwnedMatchEconomy,
     private val accountPlayer: suspend (UUID) -> StoredActivePlayer?,
-    private val eventRewards: EventRewardSource = NoRewardEventSource
+    private val eventRewards: EventRewardSource = NoRewardEventSource,
+    private val onSettlementPending: () -> Unit = {}
 ) {
     private val leases = ConcurrentHashMap<UUID, OwnerFence>()
+    private val pendingSettlements = ConcurrentHashMap.newKeySet<UUID>()
 
     suspend fun handle(socket: SocketFence, message: ClientMessage, expectedOwner: OwnerFence? = null): OwnedRoomReply = try {
         when (message) {
@@ -145,6 +147,18 @@ internal class OwnedRoomEngine(
         } catch (_: SQLException) {
             // The next tick retries the scan after PostgreSQL returns.
             return false
+        }
+    }
+
+    /** A hint only: the periodic recovery scan remains authoritative after any lost wakeup. */
+    suspend fun settlePending() {
+        for (id in pendingSettlements.toList()) {
+            if (!pendingSettlements.remove(id)) continue
+            try {
+                rooms.read(id)?.let { recover(it) }
+            } catch (_: SQLException) {
+                // The periodic tick retries durable pending completions after storage recovers.
+            }
         }
     }
 
@@ -463,6 +477,9 @@ internal class OwnedRoomEngine(
         else leases.compute(state.fence.roomId) { _, existing ->
             if (existing == null || existing.epoch <= state.fence.epoch) state.fence else existing
         }
+        if (!state.closed && state.fence.instanceId == instanceId && state.snapshot.pendingCompletedMatch != null) {
+            if (pendingSettlements.add(state.fence.roomId)) onSettlementPending()
+        } else pendingSettlements.remove(state.fence.roomId)
     }
 
     private fun OwnedRoomState.applied(message: ServerMessage, replayed: Boolean = false) =
