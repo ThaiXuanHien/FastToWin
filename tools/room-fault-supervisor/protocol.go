@@ -37,6 +37,7 @@ type Status struct {
 // Close must be idempotent and retryable after errors or cancellation: a nil
 // result means all owned resources were cleaned up, while an error permits the
 // service to call Close again to finish partially completed cleanup.
+// A successful Close is terminal: the service will never call any Driver method again.
 type Driver interface {
 	Status(context.Context) (Status, error)
 	Apply(context.Context, string, uint64) (Status, error)
@@ -488,7 +489,9 @@ func (s *Service) Close(context.Context) error {
 		}
 		closeCancel()
 	}
-	s.closed = s.driverClosed && !s.needsRestore
+	// Successful terminal cleanup must never be followed by restoration, which
+	// could restart already terminated resources. Keep any restoration failure.
+	s.closed = s.driverClosed
 	if s.closeError != nil {
 		return s.closeError
 	}

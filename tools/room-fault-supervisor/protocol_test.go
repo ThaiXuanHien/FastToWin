@@ -635,3 +635,35 @@ func TestCloseRetriesIncompleteDriverCleanup(t *testing.T) {
 		t.Fatalf("successful cleanup not idempotent: err=%v calls=%d", err, d.closes)
 	}
 }
+
+func TestSuccessfulDriverCloseIsTerminalAfterFailedRestore(t *testing.T) {
+	s, d, _ := testService(t, "a")
+	if send(t, s, testToken, validRequest()).Code != 200 {
+		t.Fatal("inject failed")
+	}
+	d.restoreError = errors.New("private-restore-error")
+	if err := s.Close(context.Background()); err == nil || err.Error() != "restore_failed" {
+		t.Fatalf("first Close lost restoration failure: %v", err)
+	}
+	if d.restores != 1 || d.closes != 1 {
+		t.Fatalf("first Close restores=%d closes=%d", d.restores, d.closes)
+	}
+	// A later successful Restore could restart resources already terminated by Close.
+	d.restoreError = nil
+	statusCalls, calls, restores, closes := d.statusCalls, d.calls, d.restores, d.closes
+	if err := s.Tick(context.Background()); err == nil || err.Error() != "restore_failed" {
+		t.Errorf("terminal Tick lost failure: %v", err)
+	}
+	if err := s.Close(context.Background()); err == nil || err.Error() != "restore_failed" {
+		t.Errorf("terminal Close lost failure: %v", err)
+	}
+	r := validRequest()
+	r.RequestID = "after-terminal-close"
+	w := send(t, s, testToken, r)
+	if w.Code != 503 || !response(t, w).Failed || response(t, w).ErrorCode != "closed" {
+		t.Errorf("terminal controls not failed/closed: %d %s", w.Code, w.Body)
+	}
+	if d.statusCalls != statusCalls || d.calls != calls || d.restores != restores || d.closes != closes {
+		t.Fatalf("driver called after terminal Close: status=%d->%d apply=%d->%d restore=%d->%d close=%d->%d", statusCalls, d.statusCalls, calls, d.calls, restores, d.restores, closes, d.closes)
+	}
+}
