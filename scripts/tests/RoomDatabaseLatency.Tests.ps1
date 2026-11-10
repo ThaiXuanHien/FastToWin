@@ -8,6 +8,7 @@ $values=@{
     FASTTOWIN_ROOM_OWNERSHIP_FIXTURE_ID='00000000-0000-4000-8000-000000000001';FASTTOWIN_ROOM_OWNERSHIP_ACCOUNTS='00000000-0000-4000-8000-000000000002'
     FASTTOWIN_ROOM_OWNERSHIP_PEER_SECRET='synthetic-only'
     FTW_PILOT_DATABASE_LATENCY_CPU='1'
+    FTW_PILOT_BACKEND_POOL_SIZE='10'
 }
 $saved=@{}
 try{
@@ -30,6 +31,18 @@ try{
     if($control.services.'database-latency'.cpus -ne 2){throw 'Explicit proxy-only 2-CPU control was not applied'}
     foreach($name in @('backend-a','backend-b','postgres','redis','runner')){
         if(($control.services.$name|ConvertTo-Json -Depth 20 -Compress) -cne ($config.services.$name|ConvertTo-Json -Depth 20 -Compress)){throw 'Proxy CPU control altered an application or database service'}
+    }
+    foreach($name in @('backend-a','backend-b')){if($control.services.$name.environment.DATABASE_POOL_SIZE -ne '10'){throw 'Default backend pool must remain ten'}}
+    $env:FTW_PILOT_BACKEND_POOL_SIZE='20'
+    $raw=& docker compose -f (Join-Path $root 'deploy/room-ownership/compose.staging-baseline.yaml') -f (Join-Path $root 'deploy/room-ownership/compose.database-latency.yaml') config --format json
+    if($LASTEXITCODE){throw 'Backend pool control config failed'}
+    $pool=($raw -join "`n")|ConvertFrom-Json
+    foreach($name in @('backend-a','backend-b')){
+        if($pool.services.$name.environment.DATABASE_POOL_SIZE -ne '20'){throw 'Backend pool control was not applied'}
+        $pool.services.$name.environment.DATABASE_POOL_SIZE='10'
+    }
+    foreach($name in @('backend-a','backend-b','postgres','redis','runner','database-latency')){
+        if(($pool.services.$name|ConvertTo-Json -Depth 20 -Compress) -cne ($control.services.$name|ConvertTo-Json -Depth 20 -Compress)){throw 'Backend pool control changed another setting'}
     }
     Write-Output 'PASS: private proxy DNS, separate DB paths, pinned image and no direct PostgreSQL alias.'
 }finally{foreach($key in $saved.Keys){[Environment]::SetEnvironmentVariable($key,$saved[$key],'Process')}}

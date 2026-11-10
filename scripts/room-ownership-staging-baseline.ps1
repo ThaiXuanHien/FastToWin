@@ -9,6 +9,7 @@ param(
     [switch]$CloudDatabaseLatency,
     [switch]$DiagnosticOnly,
     [ValidateSet('1', '2')][string]$DatabaseLatencyCpu = '1',
+    [ValidateSet('10', '20')][string]$BackendPoolSize = '10',
     [ValidateSet('0.5', '2')][string]$PostgresCpu = '0.5',
     [ValidateSet('1', '2', '3')][string]$BackendCpu = '1'
 )
@@ -56,6 +57,7 @@ if ($CloudDatabaseLatency) {
     $composeArguments += @('--file', (Join-Path $root 'deploy/room-ownership/compose.database-latency.yaml'))
 }
 if ($DatabaseLatencyCpu -ne '1' -and -not $CloudDatabaseLatency) { throw 'Proxy CPU control requires the local DB latency fixture' }
+if ($BackendPoolSize -ne '10' -and -not $Profile) { throw 'Backend pool control requires local profiling and resource limits' }
 $backendImage = "${project}-backend:local"
 $runnerImage = "${project}-runner:local"
 $summary = [ordered]@{ sourceRevision = $manifest.sourceRevision; backendManifestSha256 = $BackendManifestSha256; baselineAccepted = $false; cleanupVerified = $false }
@@ -63,12 +65,14 @@ $summary.railwayLimits = $RailwayLimits.IsPresent
 $summary.profile = $Profile.IsPresent
 $summary.databaseLatencyProfile = if ($CloudDatabaseLatency) { 'backend-1ms-fixture-3ms-downstream' } else { 'none' }
 $summary.databaseLatencyCpu = if ($CloudDatabaseLatency) { [int]$DatabaseLatencyCpu } else { $null }
+$summary.backendPoolSize = [int]$BackendPoolSize
 $summary.diagnosticOnly = $DiagnosticOnly.IsPresent
 $summary.configuredDurationSeconds = if ($DiagnosticOnly) { 60 } else { 600 }
 $summary.postgresCpu = if ($RailwayLimits) { [double]::Parse($PostgresCpu, [Globalization.CultureInfo]::InvariantCulture) } else { $null }
 $summary.backendCpu = if ($RailwayLimits) { [double]::Parse($BackendCpu, [Globalization.CultureInfo]::InvariantCulture) } else { $null }
 $summary.resourceEnvelope = if (-not $RailwayLimits) { 'uncapped-local' } elseif ($PostgresCpu -eq '0.5' -and $BackendCpu -eq '1') { 'railway' } else { 'local-cpu-control' }
 if ($DatabaseLatencyCpu -ne '1') { $summary.resourceEnvelope = 'local-proxy-cpu-control' }
+if ($BackendPoolSize -ne '10') { $summary.resourceEnvelope = 'local-backend-pool-control' }
 $runnerProcess = $null
 $runnerCollected = $false
 $profileCollected = $false
@@ -176,6 +180,7 @@ try {
     $summary.sourceManifestSha256 = (Get-FileHash (Join-Path $out 'tested-source/manifest.json')).Hash.ToLowerInvariant()
     Set-E 'FTW_PILOT_NAME' $project
     Set-E 'FTW_PILOT_DATABASE_LATENCY_CPU' $DatabaseLatencyCpu
+    Set-E 'FTW_PILOT_BACKEND_POOL_SIZE' $BackendPoolSize
     Set-E 'FTW_PILOT_BACKEND_IMAGE' $backendImage
     Set-E 'FTW_PILOT_RUNNER_IMAGE' $runnerImage
     Set-E 'FTW_PILOT_IPV6_SUBNET' ('fd' + (Hex).Substring(0, 2) + ':' + (Hex).Substring(0, 4) + ':' + (Hex).Substring(0, 4) + '::/64')
@@ -236,6 +241,11 @@ services:
     C @('run', '--rm', '--no-deps', 'runner', '--seed') | Set-Content -LiteralPath (Join-Path $out 'seed.log')
     if ($Profile) { C @('exec', '-T', 'postgres', 'psql', '-U', 'fasttowin_room_pilot', '-d', 'fasttowin_room_pilot', '-c', 'CREATE EXTENSION pg_stat_statements;') | Out-Null }
     C @('up', '-d', '--wait', '--wait-timeout', '120', 'backend-a', 'backend-b') | Out-Null
+    foreach ($service in @('backend-a','backend-b')) {
+        $actualPool = (C @('exec','-T',$service,'printenv','DATABASE_POOL_SIZE')) -join ''
+        if ($actualPool.Trim() -cne $BackendPoolSize) { throw 'Backend pool configuration differs from selected local control' }
+    }
+    $summary.backendPoolSizeVerified = $true
     # Both peers resolve at startup. B is stopped before baseline traffic begins.
     C @('stop', '--timeout', '30', 'backend-b') | Out-Null
     $active = @(C @('ps', '--services', '--status', 'running'))
