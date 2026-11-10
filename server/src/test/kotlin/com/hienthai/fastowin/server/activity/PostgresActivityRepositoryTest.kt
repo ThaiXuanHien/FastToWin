@@ -17,6 +17,20 @@ import java.util.UUID
 import kotlin.test.*
 
 class PostgresActivityRepositoryTest {
+    @Test fun existingFortySocketCheckpointUsesBoundedDatabaseCalls() = runTest { database {
+        val observations = (1..40).map {
+            ActivityObservation(UUID.randomUUID(), UUID.randomUUID(), account(), 1000, 1000)
+        }
+        val window = ActivityWindow(UUID.randomUUID(), 1000, 1000)
+        repository.checkpoint(ActivityCheckpoint(observations, window, 1000, false))
+        val calls = com.hienthai.fastowin.server.ownership.JdbcCallRecorder(source)
+        PostgresActivityRepository(calls).checkpoint(ActivityCheckpoint(
+            observations.map { it.copy(until = 2000) }, window.copy(until = 2000), 2000, false))
+        assertTrue(calls.serverCalls.get() <= 4, "40 sockets used ${calls.serverCalls.get()} JDBC calls")
+        assertEquals(40, number("SELECT count(*) FROM activity_connection_observations WHERE observed_until=to_timestamp(2)"))
+        read { assertEquals(40, activeSubjects(1000, 2000, 2000)) }
+    } }
+
     @Test fun noFabricatedHistoryAndHealthyEmptyWindowProvesZero() = runTest { database {
         read { assertEquals(CoverageStatus.UNAVAILABLE, coverage(1000, 2000, 3000).status)
             assertEquals("ACTIVITY_SOURCE_UNAVAILABLE", assertFailsWith<AdminException> { registeredRecipients(1000, 2000, 3000) }.code) }

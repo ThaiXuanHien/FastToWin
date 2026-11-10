@@ -16,17 +16,32 @@ class PostgresActivityRepository(private val dataSource: DataSource) : ActivityR
                 val cutoff = checkpoint.now - ACTIVITY_RETENTION_MILLIS
                 // Match analytics/deletion's identity lock before creating any anonymous links.
                 // Stable ordering prevents opposite socket iteration orders from deadlocking.
-                val registered = checkpoint.observations.map { it.userId }.distinct().sorted().filter { userId ->
-                    connection.prepareStatement("SELECT id FROM users WHERE id = ? AND account_type = 'REGISTERED' AND status <> 'DELETED' FOR UPDATE").use { s ->
-                        s.setObject(1, UUID.fromString(userId)); s.executeQuery().use { it.next() }
+                val users = connection.createArrayOf("uuid", checkpoint.observations.map { UUID.fromString(it.userId) }.distinct().toTypedArray())
+                val registered = try {
+                    connection.prepareStatement("SELECT id FROM users WHERE id = ANY (?) AND account_type = 'REGISTERED' AND status <> 'DELETED' ORDER BY id FOR UPDATE").use { s ->
+                        s.setArray(1, users)
+                        s.executeQuery().use { result -> buildSet { while (result.next()) add(result.getObject(1, UUID::class.java).toString()) } }
                     }
-                }.toSet()
+                } finally { users.free() }
+                // Update the whole healthy observation set in one round trip. The tracker still
+                // serializes checkpoints, preserving its shared coverage-window semantics.
+                val ids = connection.createArrayOf("uuid", checkpoint.observations.map { it.id }.toTypedArray())
+                val until = connection.createArrayOf("int8", checkpoint.observations.map { it.until }.toTypedArray())
+                val updated = try {
+                    connection.prepareStatement("""
+                        UPDATE activity_connection_observations AS observation
+                        SET observed_until = GREATEST(observation.observed_until, to_timestamp(incoming.until_millis / 1000.0))
+                        FROM unnest(?::uuid[], ?::bigint[]) AS incoming(id, until_millis)
+                        WHERE observation.observation_id = incoming.id
+                        RETURNING observation.observation_id
+                    """.trimIndent()).use { s ->
+                        s.setArray(1, ids); s.setArray(2, until)
+                        s.executeQuery().use { result -> buildSet { while (result.next()) add(result.getObject(1, UUID::class.java)) } }
+                    }
+                } finally { ids.free(); until.free() }
                 val subjects = mutableMapOf<String, UUID>()
                 checkpoint.observations.forEach { observation ->
-                    val updated = connection.prepareStatement("UPDATE activity_connection_observations SET observed_until = GREATEST(observed_until, ?) WHERE observation_id = ?").use { s ->
-                        s.setTimestamp(1, Timestamp(observation.until)); s.setObject(2, observation.id); s.executeUpdate()
-                    }
-                    if (updated == 0 && observation.userId in registered) {
+                    if (observation.id !in updated && observation.userId in registered) {
                         val subject = subjects.getOrPut(observation.userId) { AnalyticsFacts.subjectKey(connection, observation.userId) }
                         connection.prepareStatement("""
                             INSERT INTO activity_connection_observations(observation_id,connection_id,subject_key,started_at,observed_until)

@@ -98,6 +98,16 @@ internal data class SelectionReceipt(val durationMillis: Double, val snapshot: G
 internal class AcceptanceRejected(val code: String) : IllegalStateException("Fixture command rejected with $code")
 
 internal class RoomAcceptanceFixture(val settings: RoomAcceptanceSettings) : AutoCloseable {
+    @Volatile var creationObserver: ((String, Double, Boolean) -> Unit)? = null
+
+    private suspend fun <T> creationStep(name: String, operation: suspend () -> T): T {
+        val observer = creationObserver ?: return operation()
+        val started = System.nanoTime()
+        var failed = false
+        try { return operation() }
+        catch (failure: Throwable) { failed = true; throw failure }
+        finally { observer(name, (System.nanoTime() - started) / 1_000_000.0, failed) }
+    }
     private var databaseTimings = RoomOwnershipDatabaseTimings()
     val backendCount get() = settings.backendCount
     val durationSeconds get() = settings.durationSeconds
@@ -198,28 +208,38 @@ internal class RoomAcceptanceFixture(val settings: RoomAcceptanceSettings) : Aut
         val users = accounts()
         require(index * 2 + 1 < users.size)
         val backend = index % backendCount
-        val (host, guest) = connectPair(users[index * 2], backend, users[index * 2 + 1], (backend + 1) % backendCount)
+        val (host, guest) = creationStep("connect_pair") { connectPair(users[index * 2], backend, users[index * 2 + 1], (backend + 1) % backendCount) }
         // SessionReady carries an existing room when a previous recycle attempt
         // failed after admission. Keep that id so the cleanup path can release
         // the pair before the next retry; otherwise CreateRoom is rejected while
         // the stale membership remains in the fixture.
         var createdRoomId: String? = host.ready.currentGame?.roomId ?: guest.ready.currentGame?.roomId
         try {
-            host.send(ClientMessage.CreateRoom("Acceptance $index", "PrivateAcceptance123!", ProtocolGameMode.ORDER))
-            val created = host.await(25_000, "host RoomCreated") { it is ServerMessage.RoomCreated } as ServerMessage.RoomCreated
+            val created = creationStep("create_room") {
+                host.send(ClientMessage.CreateRoom("Acceptance $index", "PrivateAcceptance123!", ProtocolGameMode.ORDER))
+                host.await(25_000, "host RoomCreated") { it is ServerMessage.RoomCreated } as ServerMessage.RoomCreated
+            }
             val id = created.game.roomId
             createdRoomId = id
-            guest.send(ClientMessage.JoinRoom(id, "PrivateAcceptance123!"))
-            host.await(25_000, "host join update") { it is ServerMessage.RoomUpdated && it.game.players.size == 2 }
-            guest.await(25_000, "guest join update") { it is ServerMessage.RoomUpdated && it.game.players.size == 2 }
-            host.send(ClientMessage.SetReady(id, true))
-            val waiting = host.await(25_000, "host ready update") { it is ServerMessage.RoomUpdated } as ServerMessage.RoomUpdated
-            guest.await(25_000, "guest ready update") { it is ServerMessage.RoomUpdated }
+            creationStep("join_room") {
+                guest.send(ClientMessage.JoinRoom(id, "PrivateAcceptance123!"))
+                host.await(25_000, "host join update") { it is ServerMessage.RoomUpdated && it.game.players.size == 2 }
+                guest.await(25_000, "guest join update") { it is ServerMessage.RoomUpdated && it.game.players.size == 2 }
+            }
+            val waiting = creationStep("ready_host") {
+                host.send(ClientMessage.SetReady(id, true))
+                val reply = host.await(25_000, "host ready update") { it is ServerMessage.RoomUpdated } as ServerMessage.RoomUpdated
+                guest.await(25_000, "guest ready update") { it is ServerMessage.RoomUpdated }
+                reply
+            }
             ownerNodes[snapshot(id).instanceId] = host.backend
             if (!start) return AcceptanceMatch(this, listOf(users[index * 2], users[index * 2 + 1]), mutableListOf(host, guest), waiting.game, host.backend)
-            guest.send(ClientMessage.SetReady(id, true))
-            val started = host.await(25_000, "host GameStarted") { it is ServerMessage.GameStarted } as ServerMessage.GameStarted
-            val other = guest.await(25_000, "guest GameStarted") { it is ServerMessage.GameStarted } as ServerMessage.GameStarted
+            val (started, other) = creationStep("start_match") {
+                guest.send(ClientMessage.SetReady(id, true))
+                val first = host.await(25_000, "host GameStarted") { it is ServerMessage.GameStarted } as ServerMessage.GameStarted
+                val second = guest.await(25_000, "guest GameStarted") { it is ServerMessage.GameStarted } as ServerMessage.GameStarted
+                first to second
+            }
             check(started.game == other.game)
             return AcceptanceMatch(this, listOf(users[index * 2], users[index * 2 + 1]), mutableListOf(host, guest), started.game, host.backend)
         } catch (failure: Throwable) {
@@ -477,6 +497,19 @@ internal class AcceptanceSocket(val session: DefaultClientWebSocketSession, val 
         }
         session.cancel()
     }
+    suspend fun leaveRoom(roomId: String) {
+        send(ClientMessage.LeaveRoom(roomId))
+        while (true) {
+            val response = await {
+                (it is ServerMessage.RoomClosed && it.roomId == roomId) ||
+                    (it is ServerMessage.GameFinished && it.game.roomId == roomId)
+            }
+            if (response is ServerMessage.RoomClosed) return
+            // Leaving a playing game settles it first. A finished frame, including one
+            // already queued, never acknowledges removing membership from the room.
+            send(ClientMessage.LeaveRoom(roomId))
+        }
+    }
     fun close() { session.cancel() }
 }
 
@@ -647,8 +680,7 @@ internal class AcceptanceMatch(
     suspend fun close() = mutex.withLock {
         for (socket in sockets) {
             try {
-                socket.send(ClientMessage.LeaveRoom(roomId))
-                socket.await { it is ServerMessage.RoomClosed || it is ServerMessage.GameFinished }
+                socket.leaveRoom(roomId)
             } catch (failure: Exception) { currentCoroutineContext().ensureActive() }
             socket.closeGracefully()
         }

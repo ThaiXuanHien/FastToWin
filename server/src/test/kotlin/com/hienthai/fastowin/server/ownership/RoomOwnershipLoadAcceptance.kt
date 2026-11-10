@@ -3,6 +3,7 @@ package com.hienthai.fastowin.server.ownership
 import com.hienthai.fastowin.protocol.GAME_NUMBER_COUNT
 import com.hienthai.fastowin.protocol.GameSnapshot
 import com.hienthai.fastowin.protocol.RoomPhase
+import com.hienthai.fastowin.protocol.ProtocolJson
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -15,6 +16,8 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.encodeToString
+import java.nio.file.Files
 import java.util.Collections
 import java.util.concurrent.atomic.AtomicLong
 import kotlin.math.ceil
@@ -82,6 +85,21 @@ internal suspend fun runRoomOwnershipLoad(
     val scheduledToAckMillis = Collections.synchronizedList(mutableListOf<Double>())
     val recoveries = mutableListOf<Long>()
     val completedMatches = AtomicLong()
+    val phaseMillis = listOf("initial_create", "command", "economy", "close", "recreate",
+        "connect_pair", "create_room", "join_room", "ready_host", "start_match").associateWith {
+        Collections.synchronizedList(mutableListOf<Double>())
+    }
+    val phaseFailures = phaseMillis.keys.associateWith { AtomicLong() }
+    fixture.creationObserver = { phase, millis, failed ->
+        phaseMillis.getValue(phase).add(millis)
+        if (failed) phaseFailures.getValue(phase).incrementAndGet()
+    }
+    suspend fun <T> timed(phase: String, operation: suspend () -> T): T {
+        val started = System.nanoTime()
+        try { return operation() }
+        catch (failure: Throwable) { phaseFailures.getValue(phase).incrementAndGet(); throw failure }
+        finally { phaseMillis.getValue(phase).add((System.nanoTime() - started) / 1_000_000.0) }
+    }
     var maxBacklog = 0.0
     var maxSaturation = 0.0
     var sampleCount = 0
@@ -114,7 +132,7 @@ internal suspend fun runRoomOwnershipLoad(
         // Do not start the measurement until all twenty rooms are playing.
         val setupStarted = System.nanoTime()
         coroutineScope {
-            slots.map { slot -> async { slot.attach(fixture.createMatch(slot.index)) } }.awaitAll()
+            slots.map { slot -> async { slot.attach(timed("initial_create") { fixture.createMatch(slot.index) }) } }.awaitAll()
         }
         val roomIds = slots.map { checkNotNull(it.match).roomId }
         check(roomIds.distinct().size == slots.size) { "Room slots must be independent" }
@@ -165,7 +183,7 @@ internal suspend fun runRoomOwnershipLoad(
                         // The producer waits for the actor's committed ACK; peer snapshots are
                         // sampled every fifth command in the match harness to prevent one slow
                         // delivery stream from reducing the offered five-per-second load.
-                        val receipt = match.select(number, requestId, playerIndex, verifyPeer = number % 5 == 0)
+                        val receipt = timed("command") { match.select(number, requestId, playerIndex, verifyPeer = number % 5 == 0) }
                             check(receipt.durationMillis.isFinite() && receipt.durationMillis >= 0) {
                                 "Invalid command duration for slot ${slot.index}"
                             }
@@ -194,14 +212,14 @@ internal suspend fun runRoomOwnershipLoad(
                             slot.nextNumber++
                             slot.lastSequence = receipt.snapshot.sequence
                             if (number == GAME_NUMBER_COUNT) {
-                                match.verifyEconomy()
-                                match.close()
+                                timed("economy") { match.verifyEconomy() }
+                                timed("close") { match.close() }
                                 slot.match = null
                                 completedMatches.incrementAndGet()
                                 slot.matchOrdinal++
                                 // Keep twenty live slots until all scheduled selections are offered.
                                 if (due + SELECTION_INTERVAL_NANOS < deadline) {
-                                    slot.attach(fixture.createMatchWithRetry(slot.index))
+                                    slot.attach(timed("recreate") { fixture.createMatchWithRetry(slot.index) })
                                     slot.nextNumber = 1
                                     slot.lastSequence = -1
                                     slot.correctSelections.fill(0)
@@ -281,6 +299,15 @@ internal suspend fun runRoomOwnershipLoad(
         withContext(NonCancellable) {
             sampler?.cancelAndJoin()
             faultJob?.cancelAndJoin()
+            fixture.creationObserver = null
+            // Local numeric diagnostics only; exclude the final cleanup below.
+            val phases = phaseMillis.mapValues { (phase, values) ->
+                val sorted = synchronized(values) { values.toList().sorted() }
+                BaselineLatencySummary(sorted.size, if (sorted.isEmpty()) 0.0 else sorted.average(),
+                    sorted.lastOrNull() ?: 0.0, sorted.takeIf { it.isNotEmpty() }?.let(::percentile95),
+                    phaseFailures.getValue(phase).get().toInt())
+            }
+            runCatching { Files.writeString(fixture.settings.receipts.resolve("load-phase-summary.json"), ProtocolJson.encodeToString(phases)) }
             var cleanupFailure: Throwable? = null
             slots.mapNotNull { it.match }.forEach { match ->
                 try {

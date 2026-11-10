@@ -126,7 +126,7 @@ try {
     })
     [ordered]@{ sourceRevision = ((& git rev-parse HEAD) -join ''); backendManifestSha256 = $BackendManifestSha256; files = $files } |
         ConvertTo-Json -Depth 6 | Set-Content -LiteralPath (Join-Path $out 'runner-manifest.json') -Encoding utf8NoBOM
-    & git diff --binary HEAD -- server/src/main/kotlin/com/hienthai/fastowin/server/ownership server/src/test/kotlin/com/hienthai/fastowin/server/ownership deploy/room-ownership scripts > (Join-Path $out 'tested.patch')
+    & git diff --binary HEAD -- server/src/main/kotlin/com/hienthai/fastowin/server/ownership server/src/main/kotlin/com/hienthai/fastowin/server/activity server/src/test/kotlin/com/hienthai/fastowin/server/ownership server/src/test/kotlin/com/hienthai/fastowin/server/activity deploy/room-ownership scripts > (Join-Path $out 'tested.patch')
     $summary.runnerManifestSha256 = (Get-FileHash (Join-Path $out 'runner-manifest.json')).Hash.ToLowerInvariant()
     $sourceFiles = @(
         'scripts/room-ownership-staging-baseline.ps1', 'scripts/read-room-baseline-receipt.ps1',
@@ -145,6 +145,9 @@ try {
         'server/src/test/kotlin/com/hienthai/fastowin/server/ownership/PostgresRoomOwnershipRepositoryTest.kt',
         'server/src/test/kotlin/com/hienthai/fastowin/server/ownership/JdbcCallRecorder.kt',
         'server/src/test/kotlin/com/hienthai/fastowin/server/ownership/RoomOwnershipLocalDiagnostic.kt',
+        'server/src/main/kotlin/com/hienthai/fastowin/server/activity/PostgresActivityRepository.kt',
+        'server/src/test/kotlin/com/hienthai/fastowin/server/activity/PostgresActivityRepositoryTest.kt',
+        'server/src/test/kotlin/com/hienthai/fastowin/server/ownership/RoomOwnershipFixtureLifecycleTest.kt',
         'server/src/main/kotlin/com/hienthai/fastowin/server/ownership/PostgresRoomOwnershipRepository.kt',
         'server/src/main/kotlin/com/hienthai/fastowin/server/ownership/OwnedRoomEngine.kt',
         'server/src/main/kotlin/com/hienthai/fastowin/server/ownership/RoomEventDelivery.kt',
