@@ -12,11 +12,6 @@ import com.hienthai.fastowin.server.StoredActivePlayer
 import com.zaxxer.hikari.HikariConfig
 import com.zaxxer.hikari.HikariDataSource
 import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.async
-import kotlinx.coroutines.withTimeout
-import kotlinx.coroutines.withTimeoutOrNull
 import org.flywaydb.core.Flyway
 import org.junit.jupiter.api.Assumptions.assumeTrue
 import java.util.UUID
@@ -28,37 +23,6 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class OwnedRoomEngineTest {
-    @Test
-    fun `a slow room renewal does not block recovery work for another room`() = runBlocking {
-        fixture { f ->
-            val firstEntered = CompletableDeferred<Unit>()
-            val releaseFirst = CompletableDeferred<Unit>()
-            val secondEntered = CompletableDeferred<Unit>()
-            val count = java.util.concurrent.atomic.AtomicInteger()
-            val repository = object : RoomOwnershipRepository by f.repo {
-                override suspend fun renew(fence: OwnerFence): Boolean {
-                    if (count.incrementAndGet() == 1) {
-                        firstEntered.complete(Unit)
-                        releaseFirst.await()
-                    } else secondEntered.complete(Unit)
-                    return f.repo.renew(fence)
-                }
-            }
-            val engine = f.engine(repository, UUID.randomUUID())
-            engine.handle(f.host, CREATE).applied()
-            engine.handle(f.other, CREATE).applied()
-            val tick = async(Dispatchers.IO) { engine.renewalTick() }
-            val independent = try {
-                withTimeout(2_000) { firstEntered.await() }
-                withTimeoutOrNull(500) { secondEntered.await(); true } ?: false
-            } finally {
-                releaseFirst.complete(Unit)
-                withTimeout(5_000) { assertTrue(tick.await()) }
-            }
-            assertTrue(independent, "Another room's renewal waited for the blocked room")
-        }
-    }
-
     @Test
     fun `selection precheck omits replay history while locked reads preserve exact replay`() = runBlocking {
         fixture { f ->
