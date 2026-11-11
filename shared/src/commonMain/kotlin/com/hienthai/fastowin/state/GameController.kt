@@ -1343,6 +1343,7 @@ class GameController private constructor(
                         currentClan = state.currentClan?.takeUnless {
                             previousClanId != message.profile.clanId && it.id == previousClanId
                         },
+                        clanLoadError = state.clanLoadError.takeIf { previousClanId == message.profile.clanId },
                         avatarRevision = state.avatarRevision + 1,
                         player = state.player.copy(
                             name = message.profile.displayName,
@@ -1701,7 +1702,12 @@ class GameController private constructor(
                         }
                         state.currentClan != null && state.currentClan.id != message.clan.id &&
                             requestedClanId != message.clan.id -> state
-                        else -> state.copy(currentClan = message.clan)
+                        else -> state.copy(
+                            currentClan = message.clan,
+                            clanLoadError = state.clanLoadError.takeIf {
+                                requestedClanId != null && requestedClanId != message.clan.id
+                            }
+                        )
                     }
                 }
                 if (!message.isPresenceRefresh && requestedClanId == message.clan.id) requestedClanId = null
@@ -1910,6 +1916,26 @@ class GameController private constructor(
     }
 
     private fun handleServerError(error: ServerMessage.Error) {
+        val localizedError = messageMapper.message(error)
+        when (error.code) {
+            "FRIENDS_PRESENCE_UNAVAILABLE" -> {
+                _uiState.update { state ->
+                    if ((state.isFriendsOpen || state.isClanOpen) && state.isFriendsLoading) {
+                        state.copy(isFriendsLoading = false, error = localizedError)
+                    } else state
+                }
+                return
+            }
+            "CLAN_PRESENCE_UNAVAILABLE" -> {
+                _uiState.update { state ->
+                    val clanId = requestedClanId ?: state.currentClan?.id
+                    if (state.isClanOpen && clanId != null && error.requestId == clanId) {
+                        state.copy(clanLoadError = localizedError)
+                    } else state
+                }
+                return
+            }
+        }
         if (error.requestId == pendingRewardedAdClaim?.receipt?.requestId &&
             error.code !in setOf("CONNECTION_NOT_READY", "CONNECTION_FAILED", "SEND_FAILED")) {
             pendingRewardedAdClaim = null
@@ -1927,7 +1953,6 @@ class GameController private constructor(
             }
             return
         }
-        val localizedError = messageMapper.message(error)
         if (error.code in setOf("NOTIFICATIONS_UNAVAILABLE", "NOT_NOTIFICATIONS_UNAVAILABLE")) {
             _uiState.update { it.copy(isNotificationsLoading = false, notificationsError = localizedError) }
             return
@@ -2249,6 +2274,7 @@ class GameController private constructor(
                 isFriendsLoading = false,
                 isNotificationsOpen = false,
                 clanNotice = null,
+                clanLoadError = null,
                 error = null
             )
         }
@@ -2257,7 +2283,8 @@ class GameController private constructor(
     }
 
     fun closeClan() {
-        _uiState.update { it.copy(isClanOpen = false) }
+        requestedClanId = null
+        _uiState.update { it.copy(isClanOpen = false, clanLoadError = null) }
     }
 
     fun createClan(name: String, description: String) {
@@ -2278,11 +2305,13 @@ class GameController private constructor(
 
     fun leaveClan() {
         scope.launch { sendMessage(ClientMessage.LeaveClan) }
-        _uiState.update { it.copy(currentClan = null) }
+        requestedClanId = null
+        _uiState.update { it.copy(currentClan = null, clanLoadError = null) }
     }
 
     fun viewClan(clanId: String) {
         requestedClanId = clanId
+        _uiState.update { it.copy(clanLoadError = null) }
         scope.launch { sendMessage(ClientMessage.GetClanInfo(clanId)) }
     }
 

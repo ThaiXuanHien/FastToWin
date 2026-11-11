@@ -9,6 +9,9 @@ import io.ktor.client.statement.bodyAsText
 import io.ktor.http.HttpStatusCode
 import io.ktor.serialization.kotlinx.json.json
 import io.ktor.server.testing.testApplication
+import com.hienthai.fastowin.protocol.FriendPresence
+import com.hienthai.fastowin.server.presence.PresenceStore
+import java.util.UUID
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -26,6 +29,27 @@ class ServiceStatusTest {
         assertTrue(response.headers["Content-Type"].orEmpty().startsWith("text/plain"))
         assertTrue(body.contains("fasttowin_websocket_connections"))
         assertTrue(body.contains("fasttowin_jvm_memory_used_bytes"))
+    }
+
+    @Test
+    fun `internal metrics expose presence failure counters when presence is enabled`() = testApplication {
+        val store = object : PresenceStore {
+            override suspend fun renew(playerId: String, connectionId: UUID, presence: FriendPresence) = true
+            override suspend fun revoke(playerId: String, connectionId: UUID) = true
+            override suspend fun read(playerIds: Collection<String>) = emptyMap<String, FriendPresence>()
+            override fun renderMetrics() = """
+                # TYPE fasttowin_presence_redis_failures_total counter
+                fasttowin_presence_redis_failures_total{operation="read"} 0
+                fasttowin_presence_redis_failures_total{operation="write"} 0
+            """.trimIndent()
+            override fun close() = Unit
+        }
+        application { gameModule(engine = GameEngine(presenceStore = store)) }
+
+        val body = client.get("/internal/metrics").bodyAsText()
+
+        assertTrue(body.contains("fasttowin_presence_redis_failures_total{operation=\"read\"} 0"))
+        assertTrue(body.contains("fasttowin_presence_redis_failures_total{operation=\"write\"} 0"))
     }
 
     @Test

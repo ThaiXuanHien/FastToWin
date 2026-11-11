@@ -16,10 +16,45 @@ import java.util.UUID
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertIs
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class ClanPresenceGameEngineTest {
+    @Test
+    fun `production presence outage does not fabricate friend or clan online state`() = runTest {
+        val owner = UUID.randomUUID().toString()
+        val member = UUID.randomUUID().toString()
+        val clans = MemoryClans(owner, member)
+        val friends = object : FriendRepository by NoOpFriendRepository {
+            override suspend fun load(userId: String) = StoredFriends(
+                friends = listOf(FriendSnapshot(member, "Friend", "FRIEND1"))
+            )
+        }
+        val unavailable = object : PresenceStore {
+            override suspend fun renew(playerId: String, connectionId: UUID, presence: FriendPresence) = true
+            override suspend fun revoke(playerId: String, connectionId: UUID) = true
+            override suspend fun read(playerIds: Collection<String>): Map<String, FriendPresence>? = null
+            override fun close() = Unit
+        }
+        val engine = GameEngine(
+            clanRepository = clans,
+            friendRepository = friends,
+            presenceStore = unavailable,
+            productionPresenceFailClosed = true
+        )
+        engine.connectAccount(account(owner))
+
+        val friendsError = engine.handle(owner, ClientMessage.GetFriends).single()
+        assertEquals(setOf(owner), friendsError.recipients)
+        assertEquals("FRIENDS_PRESENCE_UNAVAILABLE", assertIs<ServerMessage.Error>(friendsError.message).code)
+        val clanError = engine.handle(owner, ClientMessage.GetClanInfo(clans.snapshot.id)).single()
+        assertEquals(setOf(owner), clanError.recipients)
+        assertEquals("CLAN_PRESENCE_UNAVAILABLE", assertIs<ServerMessage.Error>(clanError.message).code)
+        assertNull(engine.presenceSnapshot(owner, ClientMessage.GetPresence("refresh")))
+        assertTrue(engine.presenceUpdates(owner).isEmpty())
+    }
+
     @Test
     fun `authorized friend and clan snapshots read remote presence and fall back only on initial load`() = runTest {
         val owner = UUID.randomUUID().toString()

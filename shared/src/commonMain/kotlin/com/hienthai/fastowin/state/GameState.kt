@@ -186,6 +186,7 @@ data class GameState(
     val pendingClanJoinIds: Set<String> = emptySet(),
     val currentClan: com.hienthai.fastowin.protocol.ClanSnapshot? = null,
     val clanNotice: String? = null,
+    val clanLoadError: String? = null,
     val donatingClanRequestId: String? = null,
     val clanDonationResult: com.hienthai.fastowin.protocol.ServerMessage.ClanDonationResult? = null,
     val profileNotice: String? = null,
