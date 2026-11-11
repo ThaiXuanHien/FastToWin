@@ -108,15 +108,36 @@ fun main(args: Array<String>) {
     System.setOut(sink)
     System.setErr(sink)
     val code = try {
-        require(args.isEmpty() || args.contentEquals(arrayOf("--seed")))
-        val settings = RailwayRehearsalSettings.parse(System.getenv(), seed = args.isNotEmpty())
-        if (args.isNotEmpty()) {
+        val mode = args.singleOrNull()
+        require(args.isEmpty() || mode in setOf("--seed", "--capability"))
+        val settings = RailwayRehearsalSettings.parse(System.getenv(), seed = mode == "--seed")
+        if (mode == "--seed") {
             settings.seed()
             receiptsOut.println("""{"fixtureSeeded":true}""")
+        } else if (mode == "--capability") {
+            val endpoints = settings.endpoints()
+            val redisPassword = requireNotNull(System.getenv("FTW_FIXTURE_REDIS_PASSWORD"))
+            var stage = PrivateCapabilityStage.READY
+            try {
+                runBlocking {
+                    withTimeout(120_000) {
+                        RoomAcceptanceFixture(settings.acceptance(endpoints), settings.control(endpoints)).use { fixture ->
+                            fixture.verifyPrivateCapabilities(endpoints, redisPassword) { stage = it }
+                        }
+                    }
+                }
+            } catch (_: Exception) {
+                throw PrivateCapabilityFailure(stage)
+            }
+            receiptsOut.println("""{"privateCapabilityVerified":true,"manifestSha256":"${settings.manifestSha}","profile":"${settings.profile}"}""")
         } else runRehearsal(settings, receiptsOut)
         0
-    } catch (_: Throwable) {
-        diagnosticOut.println("Room rehearsal failed")
+    } catch (failure: Throwable) {
+        when {
+            failure is PrivateCapabilityFailure -> receiptsOut.println("Private capability failed: ${failure.stage.name}")
+            args.contentEquals(arrayOf("--capability")) -> receiptsOut.println("Private capability failed: READY")
+            else -> diagnosticOut.println("Room rehearsal failed")
+        }
         1
     } finally {
         System.setOut(receiptsOut)

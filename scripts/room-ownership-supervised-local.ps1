@@ -1,8 +1,9 @@
 #Requires -Version 7.0
 [CmdletBinding()]
-param([string]$Resume)
+param([string]$Resume, [switch]$CapabilityOnly)
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
+if ($Resume -and $CapabilityOnly) { throw 'Capability verification requires a fresh package' }
 $repo = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $artifactRoot = Join-Path $repo '.artifacts/room-supervised-local'
 $run = if ($Resume) { [IO.Path]::GetFullPath($Resume) } else { Join-Path $artifactRoot ('room-supervised-' + [guid]::NewGuid().ToString('N').Substring(0,12)) }
@@ -41,7 +42,9 @@ try {
         Copy-Item -LiteralPath 'deploy/room-ownership/staging-runner.Dockerfile' -Destination "$run/runner/Dockerfile"
     }
     Write-Output "Local supervised package $run"
-    & node scripts/room-ownership-supervised-local.mjs $run
+    $localArguments = @('scripts/room-ownership-supervised-local.mjs', $run)
+    if ($CapabilityOnly) { $localArguments += '--capability-only' }
+    & node @localArguments
     if ($LASTEXITCODE -ne 0) { throw "Local supervised verification failed. Evidence retained in $run" }
 } finally {
     $env:JAVA_HOME = $oldJava

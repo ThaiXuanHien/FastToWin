@@ -11,6 +11,8 @@ import {fixtureProbes,until} from './lib/room-supervised-probes.mjs';
 
 const root=fileURLToPath(new URL('../',import.meta.url));
 const output=ownedPath(path.join(root,'.artifacts/room-supervised-local'),process.argv[2]||'');
+const capabilityOnly = process.argv[3] === '--capability-only';
+assert(process.argv.length === (capabilityOnly ? 4 : 3), 'Unknown local rehearsal option');
 const packageName=path.basename(output);
 assert.match(packageName,/^room-supervised-[a-f0-9]{12}$/);
 const label='fasttowin.supervised='+packageName;
@@ -131,6 +133,7 @@ function readReceipt(manifest,profile,kind,log,out) {
 async function phase(profile,manifest,digest) {
   const dir=ownedPath(output,path.join(output,profile));fs.mkdirSync(dir,{recursive:true});
   if(fs.existsSync(path.join(dir,'verified.json'))) {
+    assert(!capabilityOnly, 'Capability verification requires a fresh fixture');
     const checkpoint=JSON.parse(fs.readFileSync(path.join(dir,'verified.json'),'utf8'));
     assert.equal(checkpoint.manifest,digest);
     for(const [file,sha] of Object.entries(checkpoint.files))assert.equal(hash(path.join(dir,file)),sha);
@@ -175,10 +178,30 @@ async function phase(profile,manifest,digest) {
     c(['up','-d','backend-a','backend-b']);
     for(const role of ['a','b'])containers[role]=c(['ps','-aq','backend-'+role]);
     const probes=fixtureProbes(docker,containers,env);
-    phaseWrite('capability.json',await probes.preflight());
-    console.log(profile+' capability preflight passed');
+    if (!capabilityOnly) {
+      phaseWrite('capability.json',await probes.preflight());
+      console.log(profile+' capability preflight passed');
+    }
     for(const role of ['a','b'])assert.equal(probes.inside(role,'sha256sum','/opt/fasttowin/lib/server.jar').split(' ')[0],expectedJar);
     const extra=['ROOM_FAULT_TOKEN','FTW_PILOT_BACKEND_A_HOST','FTW_PILOT_BACKEND_B_HOST','FTW_PILOT_REDIS_HOST','FTW_PILOT_PROXY_HOST'].flatMap(key=>['-e',key]);
+    if (capabilityOnly) {
+      let capability;
+      try {
+        capability = c(['run','--no-deps','--name',run+'-runner',...extra,
+          '-e','FTW_FIXTURE_REDIS_PASSWORD','runner','--capability']);
+      } catch (error) {
+        const safeStages = /^(Private capability failed: (READY|BACKEND_PAUSE|BACKEND_RESTART|POSTGRES_PAUSE|REDIS_PAUSE|PROXY(?:_EXISTING|_FRESH|_SURVIVOR_SQL|_SURVIVOR_BACKEND|_RESTORE)?|RESTORED)|Room rehearsal failed)$/;
+        try {
+          const lines = docker.run(['logs','--tail','10',run+'-runner']).split(/\r?\n/);
+          phaseWrite('private-capability-failure.json',{stages:lines.filter(line=>safeStages.test(line))});
+        } catch { /* Preserve the launch failure if no runner logs exist. */ }
+        throw error;
+      }
+      assert.deepEqual(JSON.parse(capability), {privateCapabilityVerified:true,manifestSha256:digest,profile});
+      phaseWrite('private-capability.json',JSON.parse(capability));
+      console.log('Runner-only private network capability passed');
+      return;
+    }
     c(['run','-d','--no-deps','--name',run+'-runner',...extra,'runner']);
     containers.runner=run+'-runner';
     const runtime={};
@@ -289,26 +312,31 @@ async function phase(profile,manifest,digest) {
 
 let baseline,owned=false,acceptedDigest;
 try {
-  baseline=inventory();write('before.json',baseline);emptyResources(inventory(true),true);
-  write('bridge-before.json',builtinBridge());
+  const initial = inventoryWithBridge();
+  baseline = initial.resources;
+  write('before.json',baseline);emptyResources(inventory(true),true);
+  write('bridge-before.json',initial.bridge);
   owned=true;
   const manifest=prepare(),digest=hash(path.join(output,'run-manifest.json'));
   write('run-identity.json',{manifestSha256:digest,head:execFileSync('git',['rev-parse','HEAD'],{cwd:root,encoding:'utf8'}).trim(),dirty:execFileSync('git',['status','--porcelain'],{cwd:root,encoding:'utf8'}).trim()});
   fs.writeFileSync(path.join(output,'tested.patch'),execFileSync('git',['diff','--binary','HEAD'],{cwd:root}));
-  for(const profile of ['fault','two-backend'])await phase(profile,manifest,digest);
-  fs.mkdirSync(path.join(output,'decoded'),{recursive:true});
-  execFileSync('node',[path.join(root,'scripts/read-room-rehearsal-receipt.mjs'),'gate',digest,path.join(output,'fault/runner.log'),path.join(output,'two-backend/runner.log'),path.join(output,'decoded')],{stdio:['ignore','pipe','pipe'],windowsHide:true});
+  for(const profile of capabilityOnly ? ['fault'] : ['fault','two-backend'])await phase(profile,manifest,digest);
+  if (!capabilityOnly) {
+    fs.mkdirSync(path.join(output,'decoded'),{recursive:true});
+    execFileSync('node',[path.join(root,'scripts/read-room-rehearsal-receipt.mjs'),'gate',digest,path.join(output,'fault/runner.log'),path.join(output,'two-backend/runner.log'),path.join(output,'decoded')],{stdio:['ignore','pipe','pipe'],windowsHide:true});
+  }
   assert.deepEqual(sourceManifest(),read('source-manifest.json'),'Source changed during run');
-  acceptedDigest=digest;
+  if (!capabilityOnly) acceptedDigest=digest;
 }catch(error){
   write('host-failure.json',{error:String(error.message),at:new Date().toISOString()});
   process.exitCode=1;
   console.error(error.message);
 }finally{
   if(owned)cleanup(true);
-  const after=inventory();write('after.json',after);
+  const final = inventoryWithBridge();
+  const after=final.resources;write('after.json',after);
   if(baseline) {
-    const previous=read('bridge-before.json'),current=builtinBridge();
+    const previous=read('bridge-before.json'),current=final.bridge;
     write('bridge-after.json',current);
     assert.deepEqual({...previous,id:null},{...current,id:null},'Builtin bridge metadata changed');
     for(const kind of ['containers','networks','volumes','images']) {
@@ -325,6 +353,15 @@ try {
     console.log('Local combined gate accepted '+acceptedDigest);
   }
   console.log('Owned containers, networks, volumes and all images zero; unrelated inventory checked');
+}
+
+function inventoryWithBridge() {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const bridge = builtinBridge();
+    const resources = inventory();
+    if (resources.networks.includes(bridge.id)) return {bridge, resources};
+  }
+  throw new Error('Docker default bridge changed during all inventory reads');
 }
 
 function builtinBridge() {
