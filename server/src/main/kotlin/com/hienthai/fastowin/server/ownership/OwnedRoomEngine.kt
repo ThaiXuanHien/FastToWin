@@ -162,6 +162,8 @@ internal class OwnedRoomEngine(
         }
     }
 
+    fun pendingSettlementCount(): Int = pendingSettlements.size
+
     private suspend fun create(socket: SocketFence, message: ClientMessage.CreateRoom): OwnedRoomReply {
         if (message.gameMode != ProtocolGameMode.ORDER || message.matchType != MatchType.CASUAL ||
             message.password.isBlank()

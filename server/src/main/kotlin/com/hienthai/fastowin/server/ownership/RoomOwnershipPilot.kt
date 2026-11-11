@@ -52,6 +52,7 @@ internal class RoomOwnershipPilot private constructor(
     private val admission = RoomAdmissionGate()
     private val lastHealthyTick = AtomicLong()
     private val drainMutex = Mutex()
+    private val rollbackGuard = RoomOwnershipRollbackGuard()
     private var drained = false
 
     fun allows(account: AuthenticatedAccount): Boolean = account.emailVerified && account.userId in config.allowedAccounts
@@ -95,8 +96,17 @@ internal class RoomOwnershipPilot private constructor(
         if (drained) return true
         admission.beginDrain().await()
         try {
+            engine.settlePending()
             // Look up durable ownership rather than only the engine cache, including a create with an uncertain reply.
-            rooms.ownedFences(instanceId).forEach { rooms.release(it) }
+            val owned = rooms.ownedFences(instanceId)
+            owned.forEach { rooms.release(it) }
+            val remaining = rooms.ownedFences(instanceId).size
+            val receipt = RoomOwnershipDrainReceipt(
+                drained = true,
+                remainingOwnedLeases = remaining,
+                pendingSettlements = engine.pendingSettlementCount()
+            )
+            if (!rollbackGuard.canRollback(receipt)) return false
         } catch (_: SQLException) {
             return false
         }
