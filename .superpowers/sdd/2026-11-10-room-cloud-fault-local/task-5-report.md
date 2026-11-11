@@ -16,7 +16,7 @@ Owned containers, networks, volumes and images were zero after both phases. Inde
 
 `.artifacts/task5-future-cloud-scope-20261111.json` is a concrete candidate only. It pins the accepted JAR, backend manifest, supervisor/runner/image digests, backend pool 20, both JDBC timeout values and PostgreSQL 64/1/32 settings; defines two private backend services plus PostgreSQL, Redis, proxy and runner with the tested 3/2 CPU and memory envelope; and specifies fresh phase identifiers, a two-hour hard deadline, bounded safe receipts and label-scoped cleanup. It contains no credentials, provider calls or execution approval. A separate explicit approval and fresh preflight are required before any cloud use.
 
-Implementation and local verification are in progress. This report does not claim full local acceptance yet. Base is `8da7d3f6c758c2ca6c565f434e485f8f396da20c`.
+Implementation and local verification are complete. Local acceptance is claimed for the fresh `room-supervised-cb7e69f5e44e` package described above. Base is `8da7d3f6c758c2ca6c565f434e485f8f396da20c`.
 
 ## Implemented fixture and startup binding
 
@@ -44,11 +44,11 @@ The controller approved a local fixture configuration correction. Both backend J
 
 This differs from the prior baseline's JDBC timeout configuration. The application JAR, pool size, resource envelope, no optimistic ACK, authoritative absence before retry, exactly-once retry and 25s recovery assertions remain part of the gate. The run manifest explicitly records both timeout values and runtime evidence checks the exact URLs. The production authentication read bound requires a separate follow-up. No production source or configuration was changed.
 
-## Remaining work
+## Historical failed attempts
 
 Package `room-supervised-73122acc53b3`, manifest `aab9111a533a2a04fb23ddb80225f54409f978f0b041fda553a32a498e9a2650`, passed all eight fault cases with measured pools 20/20 and recoveries of 283–13452ms. PostgreSQL recovered in 5668ms with the request absent before retry and one durable selection afterwards. Fault and latency exports matched the original bytes. The separate two-backend load failed at 223.065 measurement seconds with 423 completed matches and 21661 attempts. The receipt classifies an assertion without its source. Owned containers, networks, volumes and all images were gone, and before/after inventories preserved unrelated resources.
 
-A fresh package adds bounded local failure locations, per-operation fault milestones and numeric phase summaries to diagnose that assertion. Full load acceptance, overhead summary, final documentation and independent combined verification remain pending. Cloud two-backend, cloud fault and production approval remain false.
+A fresh package added bounded local failure locations, per-operation fault milestones and numeric phase summaries; the accepted result and independent verification are recorded in the final section above. Cloud two-backend, cloud fault and production approval remain false.
 
 ## Load failure diagnosis
 
