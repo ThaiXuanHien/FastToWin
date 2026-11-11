@@ -8,6 +8,10 @@ import com.hienthai.fastowin.server.announcements.AnnouncementService
 import com.hienthai.fastowin.server.announcements.AnnouncementPushDelivery
 import com.hienthai.fastowin.server.maintenance.*
 import com.hienthai.fastowin.server.ownership.RoomOwnershipRuntimeConfigLoader
+import com.hienthai.fastowin.server.ownership.RoomOwnershipRuntimeConfig
+import com.hienthai.fastowin.server.ownership.RoomOwnershipRuntimeRole
+import com.hienthai.fastowin.server.ownership.OwnedWorkerDatabaseRuntime
+import com.hienthai.fastowin.server.ownership.ownedWorkerModule
 import com.hienthai.fastowin.server.presence.PresenceStore
 import com.hienthai.fastowin.server.presence.RedisPresenceStore
 import com.hienthai.fastowin.server.presence.presenceConfiguration
@@ -16,12 +20,40 @@ import io.ktor.server.netty.Netty
 import kotlinx.coroutines.runBlocking
 
 fun main() {
-    val environment = System.getenv("FASTTOWIN_ENV")?.lowercase() ?: "dev"
+    startServer()
+}
+
+/** Select the process role before either branch opens resources or constructs application services. */
+internal fun startServer(
+    values: Map<String, String> = System.getenv(),
+    ingress: (String, RoomOwnershipRuntimeConfig?) -> Unit = ::startIngressServer,
+    ownedWorker: (RoomOwnershipRuntimeConfig, DatabaseSettings) -> Unit = ::startOwnedWorkerServer
+) {
+    val environment = values["FASTTOWIN_ENV"]?.lowercase() ?: "dev"
     require(environment in setOf("dev", "prod")) {
         "FASTTOWIN_ENV must be either 'dev' or 'prod'."
     }
-    val ownershipConfig = RoomOwnershipRuntimeConfigLoader.fromEnvironment(environment)
-    if (environment == "prod") validateProductionEnvironment()
+    val ownershipConfig = RoomOwnershipRuntimeConfigLoader.fromEnvironment(environment, values)
+    if (environment == "prod") validateProductionEnvironment(values)
+    when (RoomOwnershipRuntimeRole.fromEnvironment(values)) {
+        RoomOwnershipRuntimeRole.INGRESS -> ingress(environment, ownershipConfig)
+        RoomOwnershipRuntimeRole.OWNED_WORKER -> ownedWorker(
+            checkNotNull(ownershipConfig), checkNotNull(DatabaseSettings.fromEnvironment(environment, values))
+        )
+    }
+}
+
+private fun startOwnedWorkerServer(config: RoomOwnershipRuntimeConfig, settings: DatabaseSettings) {
+    val host = System.getenv("SERVER_HOST") ?: "0.0.0.0"
+    val port = System.getenv("PORT")?.toIntOrNull() ?: 8080
+    OwnedWorkerDatabaseRuntime.open(settings).use { database ->
+        val runtime = runBlocking { database.openRoomOwnershipPilot(config) }
+        println("Starting Fast To Win owned worker: host=$host, port=$port, storage=postgresql")
+        embeddedServer(Netty, host = host, port = port) { ownedWorkerModule(runtime) }.start(wait = true)
+    }
+}
+
+private fun startIngressServer(environment: String, ownershipConfig: RoomOwnershipRuntimeConfig?) {
     val host = System.getenv("SERVER_HOST") ?: "0.0.0.0"
     val port = System.getenv("PORT")?.toIntOrNull() ?: 8080
     val trustProxyHeaders = System.getenv("FASTTOWIN_TRUST_PROXY_HEADERS")

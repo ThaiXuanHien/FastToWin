@@ -16,8 +16,9 @@ internal interface RoomOwnershipRuntimeConfig {
 }
 
 internal object RoomOwnershipRuntimeConfigLoader {
-    fun fromEnvironment(environment: String, values: Map<String, String> = System.getenv()): RoomOwnershipRuntimeConfig? =
-        when (values["FASTTOWIN_ROOM_OWNERSHIP_MODE"]?.trim()) {
+    fun fromEnvironment(environment: String, values: Map<String, String> = System.getenv()): RoomOwnershipRuntimeConfig? {
+        RoomOwnershipRuntimeRole.fromEnvironment(values).validate(environment, values)
+        return when (values["FASTTOWIN_ROOM_OWNERSHIP_MODE"]?.trim()) {
             null, "", "legacy" -> null
             "pilot" -> RoomOwnershipPilotConfig.fromEnvironment(environment, values)
             "production" -> {
@@ -26,4 +27,5 @@ internal object RoomOwnershipRuntimeConfigLoader {
             }
             else -> error("Unknown room ownership mode")
         }
+    }
 }

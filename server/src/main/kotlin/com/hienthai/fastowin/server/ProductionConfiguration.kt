@@ -65,6 +65,12 @@ internal fun validateProductionEnvironment(
     values: Map<String, String> = System.getenv(),
     fileReader: (String) -> String = { Files.readString(Path.of(it)) }
 ) {
+    if (com.hienthai.fastowin.server.ownership.RoomOwnershipRuntimeRole.fromEnvironment(values) ==
+        com.hienthai.fastowin.server.ownership.RoomOwnershipRuntimeRole.OWNED_WORKER) {
+        com.hienthai.fastowin.server.ownership.RoomOwnershipRuntimeConfigLoader.fromEnvironment("prod", values)
+        validateProductionDatabase(values, fileReader)
+        return
+    }
     val publicUrl = values.required("FASTTOWIN_PUBLIC_URL")
     val publicUri = runCatching { URI(publicUrl) }
         .getOrElse { throw IllegalArgumentException("FASTTOWIN_PUBLIC_URL is invalid.", it) }
@@ -94,15 +100,7 @@ internal fun validateProductionEnvironment(
         "FASTTOWIN_WEB_ORIGINS must include FASTTOWIN_PUBLIC_URL."
     }
 
-    require(values.required("DATABASE_URL").startsWith("jdbc:postgresql://")) {
-        "DATABASE_URL must be a PostgreSQL JDBC URL in production."
-    }
-    val databasePassword = requireNotNull(readEnvironmentSecret("DATABASE_PASSWORD", values, fileReader)) {
-        "DATABASE_PASSWORD or DATABASE_PASSWORD_FILE is required in production."
-    }
-    require(databasePassword != "fasttowin" && databasePassword.length >= 12) {
-        "Use a non-default DATABASE_PASSWORD with at least 12 characters in production."
-    }
+    validateProductionDatabase(values, fileReader)
 
     if (configuredAuthEmailProvider(values) == AuthEmailProvider.BREVO) {
         val settings = BrevoEmailSettings.fromEnvironment(values, fileReader)
@@ -125,6 +123,18 @@ internal fun validateProductionEnvironment(
     val smtpStartTls = values.strictBoolean("FASTTOWIN_SMTP_STARTTLS", default = !smtpSsl)
     require(smtpSsl.xor(smtpStartTls)) {
         "Production SMTP must enable exactly one of STARTTLS or SSL."
+    }
+}
+
+private fun validateProductionDatabase(values: Map<String, String>, fileReader: (String) -> String) {
+    require(values.required("DATABASE_URL").startsWith("jdbc:postgresql://")) {
+        "DATABASE_URL must be a PostgreSQL JDBC URL in production."
+    }
+    val databasePassword = requireNotNull(readEnvironmentSecret("DATABASE_PASSWORD", values, fileReader)) {
+        "DATABASE_PASSWORD or DATABASE_PASSWORD_FILE is required in production."
+    }
+    require(databasePassword != "fasttowin" && databasePassword.length >= 12) {
+        "Use a non-default DATABASE_PASSWORD with at least 12 characters in production."
     }
 }
 
