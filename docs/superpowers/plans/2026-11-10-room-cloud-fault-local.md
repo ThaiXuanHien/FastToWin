@@ -67,11 +67,11 @@ Responses contain fixed fields `requestId`, `role`, `generation`, `state`, `veri
 
 **Consumes:** shared Driver interface above, fake drivers in tests. **Produces:** executable HTTP/state contract for real drivers and Kotlin clients.
 
-- [ ] Add the Go module and a failing HTTP test using `httptest.NewRecorder()` and a recording fake driver. Assert a bad token and wrong fixture never call `Apply`.
-- [ ] Run the pinned compiler container with the module mounted at `/src`, `GOTOOLCHAIN=local`, `--network none`, and `go test ./...`; confirm the test is red for missing validation.
-- [ ] Implement exact-field parsing, constant-time authentication, role allowlists, fixture/deadline/generation binding and serialized operations. Keep errors fixed and free of raw driver exception text.
-- [ ] Add behavioral tests for duplicate/conflicting requests, wrong generation, two active faults, request-table exhaustion, failed verification, HTTP size/extra-fields, lease expiry restoration and permanent failed status.
-- [ ] Run the complete protocol tests and independent task review; commit the tested contract.
+- [x] Add the Go module and a failing HTTP test using `httptest.NewRecorder()` and a recording fake driver. Assert a bad token and wrong fixture never call `Apply`.
+- [x] Run the pinned compiler container with the module mounted at `/src`, `GOTOOLCHAIN=local`, `--network none`, and `go test ./...`; confirm the test is red for missing validation.
+- [x] Implement exact-field parsing, constant-time authentication, role allowlists, fixture/deadline/generation binding and serialized operations. Keep errors fixed and free of raw driver exception text.
+- [x] Add behavioral tests for duplicate/conflicting requests, wrong generation, two active faults, request-table exhaustion, failed verification, HTTP size/extra-fields, lease expiry restoration and permanent failed status.
+- [x] Run the complete protocol tests and independent task review; commit the tested contract.
 
 Concrete regression signal:
 
@@ -89,13 +89,13 @@ if reply.Code != http.StatusUnauthorized || driver.calls != before {
 
 **Consumes:** Task 1 Driver/Service. **Produces:** verified process Driver and supervised fixture images, including actual unprivileged UID/GID evidence.
 
-- [ ] Add failing Linux tests with a subprocess tree whose grandchild calls `setsid`, keeps a live output stream and can fork during discovery. Pause must freeze all descendants; resume must restore the same live generation.
-- [ ] Add a pinned `golang.org/x/sys` dependency only if required for pidfd calls; retain `go.sum` and prove offline builds from a prefilled workspace cache. Never fall back to unsafe recycled numeric PID signalling.
-- [ ] Implement pidfd identities plus `/proc` start-time/ancestry checks, root-first stop and stable full-tree verification, orphan reaping, cancellation restoration and exact generation binding. No unrelated container process can become a target.
-- [ ] Add kill/start for backend roles only. Test a replayed kill cannot affect a later generation. Test parent exit, fault-lease expiry and overall deadline without a surviving managed process.
-- [ ] Build image variants under the original unprivileged role accounts. Preserve the backend distribution bytes and record all image/compiler digests. No runtime root or capability escalation.
-- [ ] Against pinned PostgreSQL 18, create a marker row and an already-open SQL connection. Begin a write during verified pause and require no completion; after resume require the same data and correct single write. Test new connections, worker exit/fork races and cancellation midway through pause. Redis key/connection checks prove equivalent pause preservation.
-- [ ] Run Linux unit/race tests, real image capability tests, zero-resource cleanup checks and independent review. Commit only after store feasibility is proven.
+- [x] Add failing Linux tests with a subprocess tree whose grandchild calls `setsid`, keeps a live output stream and can fork during discovery. Pause must freeze all descendants; resume must restore the same live generation.
+- [x] Add a pinned `golang.org/x/sys` dependency only if required for pidfd calls; retain `go.sum` and prove offline builds from a prefilled workspace cache. Never fall back to unsafe recycled numeric PID signalling.
+- [x] Implement pidfd identities plus `/proc` start-time/ancestry checks, root-first stop and stable full-tree verification, orphan reaping, cancellation restoration and exact generation binding. No unrelated container process can become a target.
+- [x] Add kill/start for backend roles only. Test a replayed kill cannot affect a later generation. Test parent exit, fault-lease expiry and overall deadline without a surviving managed process.
+- [x] Build image variants under the original unprivileged role accounts. Preserve the backend distribution bytes and record all image/compiler digests. No runtime root or capability escalation.
+- [x] Against pinned PostgreSQL 18, create a marker row and an already-open SQL connection. Begin a write during verified pause and require no completion; after resume require the same data and correct single write. Test new connections, worker exit/fork races and cancellation midway through pause. Redis key/connection checks prove equivalent pause preservation.
+- [x] Run Linux unit/race tests, real image capability tests, zero-resource cleanup checks and independent review. Commit only after store feasibility is proven.
 
 Behavioral capability assertion:
 
@@ -113,10 +113,10 @@ case <-time.After(250 * time.Millisecond):
 
 **Consumes:** Task 1 Service and Task 2 supervisor entrypoint. **Produces:** proxy Driver using loopback-only Toxiproxy API and exact backend-A/B listener names.
 
-- [ ] Write failing local listener tests: blocking A must stop A's existing/fresh traffic while B remains usable; no-op HTTP success cannot count as verification.
-- [ ] Implement only block-a/block-b/unblock-a/unblock-b against immutable loopback targets and expected upstreams; reject redirects, proxy creation and upstream changes.
-- [ ] Verify bounded fault lease automatically restores the listener and marks expiry failed if the runner disappears. No public configuration API is exposed.
-- [ ] Run unit/race and digest-pinned Toxiproxy integration tests, teardown checks and independent review; commit.
+- [x] Write failing local listener tests: blocking A must stop A's existing/fresh traffic while B remains usable; no-op HTTP success cannot count as verification.
+- [x] Implement only block-a/block-b/unblock-a/unblock-b against immutable loopback targets and expected upstreams; reject redirects, proxy creation and upstream changes.
+- [x] Verify bounded fault lease automatically restores the listener and marks expiry failed if the runner disappears. No public configuration API is exposed.
+- [x] Run unit/race and digest-pinned Toxiproxy integration tests, teardown checks and independent review; commit.
 
 ### Task 4: Kotlin control adapter and guarded staging profiles
 
@@ -124,12 +124,12 @@ case <-time.After(250 * time.Millisecond):
 
 **Consumes:** Tasks 1–3 HTTP contract. **Produces:** a test-only `RoomFaultControl` adapter seam; existing Docker behavior remains default.
 
-- [ ] Write failing contract tests proving the existing Docker case routing and supervisor operation mapping; unknown target, generation, expired/failed control response or unverified fault fails acceptance.
-- [ ] Extract lifecycle operations behind the adapter and route current fault helpers through it. The supervisor adapter obtains authenticated status, binds mutation generation/request IDs and checks proof; never pass management credentials or evaluate arbitrary commands.
-- [ ] Add a separate exact-project/fixture private-DNS `two-backend`/`fault` profile; retain strict single-backend baseline checks. Forty accounts, pool 20 on both backends and fixed A/B/PG/Redis/proxy addresses are mandatory.
-- [ ] Reuse all existing selection, epoch, replay, quota and economy assertions. Export the distinct cloud store-pause case names and injection mechanism while preserving the exact eight required cases.
-- [ ] Add checksum-bounded load/failure/latency/fault export tests. Sensitive IDs, tokens, raw SQL/errors and incomplete/mixed chunks fail the reader. Single-backend, short, missing-fault or wrong-pool receipts cannot pass the two-backend gate.
-- [ ] Run all activity/ownership tests and existing/new receipt-reader tests; verify the production server JAR hash is unchanged; review and commit.
+- [x] Write failing contract tests proving the existing Docker case routing and supervisor operation mapping; unknown target, generation, expired/failed control response or unverified fault fails acceptance.
+- [x] Extract lifecycle operations behind the adapter and route current fault helpers through it. The supervisor adapter obtains authenticated status, binds mutation generation/request IDs and checks proof; never pass management credentials or evaluate arbitrary commands.
+- [x] Add a separate exact-project/fixture private-DNS `two-backend`/`fault` profile; retain strict single-backend baseline checks. Forty accounts, pool 20 on both backends and fixed A/B/PG/Redis/proxy addresses are mandatory.
+- [x] Reuse all existing selection, epoch, replay, quota and economy assertions. Export the distinct cloud store-pause case names and injection mechanism while preserving the exact eight required cases.
+- [x] Add checksum-bounded load/failure/latency/fault export tests. Sensitive IDs, tokens, raw SQL/errors and incomplete/mixed chunks fail the reader. Single-backend, short, missing-fault or wrong-pool receipts cannot pass the two-backend gate.
+- [x] Run all activity/ownership tests and existing/new receipt-reader tests; verify the production server JAR hash is unchanged; review and commit.
 
 ### Task 5: End-to-end local verification and frozen review package
 
@@ -137,12 +137,12 @@ case <-time.After(250 * time.Millisecond):
 
 **Consumes:** Tasks 1–4 verified images and test entrypoint. **Produces:** exact manifests and accepted local supervised fault/full-load evidence; no cloud launch.
 
-- [ ] Add failing rendered-Compose tests for six private services, original unprivileged users, loopback/private-only controls, exact proxy paths and unchanged application JAR/pool/resource settings.
-- [ ] Implement host fixture ownership, strict local Docker endpoint, secret redaction, deadline/lease setup, image manifest checks and cleanup in `finally`. Record only bounded safe evidence.
-- [ ] Run capability checks before game traffic. Reject an unavailable capability instead of skipping or renaming a failed case into success.
-- [ ] Run all eight supervised fault cases. Independently verify receipt byte/hash equality, actual injection proof, all recovery samples and zero owned resources.
-- [ ] Run full supervised two-backend load: exactly 60,000 ACKs over the 600-second offer and three real owner pauses. Independently verify runtime pool 20 on both nodes, all economy assertions, recovery <=25 seconds, complete exports and cleanup.
-- [ ] Freeze all supervisor/wrapper/store/proxy/runner manifests, measure overhead and review the combined change. Record local acceptance and remaining cloud gates. Prepare a separate concrete cloud scope for later approval; do not create cloud resources.
+- [x] Add failing rendered-Compose tests for six private services, original unprivileged users, loopback/private-only controls, exact proxy paths and unchanged application JAR/pool/resource settings.
+- [x] Implement host fixture ownership, strict local Docker endpoint, secret redaction, deadline/lease setup, image manifest checks and cleanup in `finally`. Record only bounded safe evidence.
+- [x] Run capability checks before game traffic. Reject an unavailable capability instead of skipping or renaming a failed case into success.
+- [x] Run all eight supervised fault cases. Independently verify receipt byte/hash equality, actual injection proof, all recovery samples and zero owned resources.
+- [x] Run full supervised two-backend load: exactly 60,000 ACKs over the 600-second offer and three real owner pauses. Independently verify runtime pool 20 on both nodes, all economy assertions, recovery <=25 seconds, complete exports and cleanup.
+- [x] Freeze all supervisor/wrapper/store/proxy/runner manifests, measure overhead and review the combined change. Record local acceptance and remaining cloud gates. Prepare a separate concrete cloud scope for later approval; do not create cloud resources.
 
 ## Execution Tracking
 
