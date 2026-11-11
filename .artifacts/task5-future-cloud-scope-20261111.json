@@ -1,0 +1,31 @@
+{
+  "status": "candidate-only-not-executed",
+  "requiresSeparateApproval": true,
+  "acceptedSource": "d4b639e91dc08c95a0af3528024c3235f199860f",
+  "acceptedJarSha256": "8fff8ae123902032d98a92190b0bff3df87e234f213b25a298f4768c7e40e818",
+  "backendManifestSha256": "2a7236b02f37a321b3f4450111a89dd8c30a4765dc36d2b876cf9e56659f7506",
+  "backendPool": 20,
+  "jdbcTimeoutSeconds": {"connect": 3, "socket": 3},
+  "postgresFixtureSettingsMiB": {"sharedBuffers": 64, "workMem": 1, "maintenanceWorkMem": 32},
+  "services": ["backend-a", "backend-b", "postgres", "redis", "proxy", "runner"],
+  "resourceEnvelope": {
+    "backendCpu": 3,
+    "backendMemoryBytes": 1000000000,
+    "postgresCpu": 2,
+    "postgresMemoryBytes": 512000000,
+    "redisCpu": 0.25,
+    "redisMemoryBytes": 250000000,
+    "proxyCpu": 2,
+    "proxyMemoryBytes": 128000000,
+    "runnerCpu": 0.5,
+    "runnerMemoryBytes": 500000000,
+    "swapEqualsMemory": true
+  },
+  "gates": {"acknowledgements": 60000, "seconds": 600, "rooms": 20, "accounts": 40, "ownerPauses": 3, "recoverySecondsMax": 25, "faultCases": 8},
+  "phaseIds": {"fault": "fresh-uuid-required", "load": "fresh-uuid-required"},
+  "deadlineSecondsIncludingCleanup": 7200,
+  "cleanup": "label-scoped owned resources only; preserve unrelated inventories; verify image --all",
+  "cloudTwoBackendFullLoadAccepted": false,
+  "cloudFaultsAccepted": false,
+  "productionApproved": false
+}

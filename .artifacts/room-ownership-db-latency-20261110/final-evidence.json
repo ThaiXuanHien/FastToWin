@@ -1,0 +1,111 @@
+{
+  "backendSource": "d4b639e91dc08c95a0af3528024c3235f199860f",
+  "serverJarSha256": "8fff8ae123902032d98a92190b0bff3df87e234f213b25a298f4768c7e40e818",
+  "backendManifestSha256": "2a7236b02f37a321b3f4450111a89dd8c30a4765dc36d2b876cf9e56659f7506",
+  "runnerManifestSha256": "c494a0585ada59c28f6d857f24f20abe55f6201689c4240796a4a708a7d26367",
+  "backendPoolSize": 20,
+  "backendCpu": 3,
+  "postgresCpu": 2,
+  "localLatencyProxyCpu": 2,
+  "localLatencyProfile": "backend-1ms-fixture-3ms-downstream",
+  "fullLocalLoad": {
+    "accepted": true,
+    "acknowledged": 60000,
+    "elapsedSeconds": 604.435020718,
+    "acknowledgementsPerSecond": 99.26625351510378,
+    "completedMatches": 1200,
+    "commandP95Millis": 71.382133,
+    "retries": 0,
+    "receipt": ".artifacts/room-ownership-staging-baseline/room-pilot-1eb880e267cf/load.json",
+    "receiptSha256": "d32daf718c6308d3837b0cac6c925d92fe147f5c1ff57bfc9aa8e706bf7617a6"
+  },
+  "localFaults": {
+    "accepted": true,
+    "cases": 8,
+    "serverJarSha256": "8fff8ae123902032d98a92190b0bff3df87e234f213b25a298f4768c7e40e818",
+    "backendPoolSize": 20,
+    "receiptSha256": "859b7643e291b16f0a2010b2808d6c2ccf30e244dcd18c72f1337081aa7cf4b4",
+    "cleanup": {
+      "containers": 0,
+      "networks": 0,
+      "volumes": 0,
+      "images": 0
+    }
+  },
+  "integrationTests": {
+    "tests": 105,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "cloudAccepted": true,
+  "latestBuildTwoBackendFullLoadAccepted": true,
+  "productionApproved": false,
+  "localTwoBackendFullLoad": {
+    "accepted": true,
+    "serverJarSha256": "8fff8ae123902032d98a92190b0bff3df87e234f213b25a298f4768c7e40e818",
+    "backendPoolSize": 20,
+    "fixture": "local acceptance; not the staged latency/resource-control envelope",
+    "acknowledged": 60000,
+    "elapsedSeconds": 601.2398322,
+    "acknowledgementsPerSecond": 99.79378741500487,
+    "completedMatches": 1200,
+    "commandP95Millis": 39.9169,
+    "commandRetries": 0,
+    "recoveryMillis": [
+      15289,
+      13155,
+      15441
+    ],
+    "receiptSha256": "e0aed1d268d2e49dd44b39383f39a9f852025953a4a55aa101f7ddd706b1a660",
+    "cleanup": {
+      "containers": 0,
+      "networks": 0,
+      "volumes": 0,
+      "images": 0
+    }
+  },
+  "cloudBaseline": {
+    "accepted": true,
+    "scope": "room-pilot-94b8a75b3ef9",
+    "receipt": ".artifacts/room-ownership-staging-next-20261110/cloud-room-pilot-94b8a75b3ef9/load.json",
+    "acknowledged": 60000,
+    "elapsedSeconds": 602.84867619,
+    "acknowledgementsPerSecond": 99.52746413776612,
+    "backendPoolSize": 20,
+    "independentExportBytesMatch": true,
+    "cleanupVerified": true,
+    "loadSha256": "52da48cc5b569ed32f9eaeec44eeb5e7057dd6645bfcf6664679c687cab0a1ff",
+    "latencySha256": "254fed04331a85e032018aa5e5d9b093d03d67ce562edaa5e7adff364df5503b"
+  },
+  "cloudTwoBackendFullLoadAccepted": false,
+  "cloudFaultsAccepted": false,
+  "localSupervisedTask5": {
+    "accepted": true,
+    "package": "room-supervised-cb7e69f5e44e",
+    "manifestSha256": "d0328ec599189fcf8e45bca61c89d5d015d3033292331581a121d120e583d776",
+    "serverJarSha256": "8fff8ae123902032d98a92190b0bff3df87e234f213b25a298f4768c7e40e818",
+    "backendPoolSize": 20,
+    "acknowledged": 60000,
+    "elapsedSeconds": 601.153788142,
+    "completedMatches": 1200,
+    "commandRetries": 0,
+    "recoveryMillis": [
+      15110,
+      12846,
+      16995
+    ],
+    "faultCases": 8,
+    "receiptBytesMatch": true,
+    "oomKillCount": 0,
+    "postgresMemoryPeakBytes": 512049152,
+    "postgresMemoryLimitEvents": 15306,
+    "cleanup": {
+      "containers": 0,
+      "networks": 0,
+      "volumes": 0,
+      "images": 0
+    },
+    "evidence": ".artifacts/room-supervised-local/room-supervised-cb7e69f5e44e/independent.json"
+  }
+}
