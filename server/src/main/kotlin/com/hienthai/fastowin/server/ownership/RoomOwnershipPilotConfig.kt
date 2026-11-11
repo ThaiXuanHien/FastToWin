@@ -8,16 +8,16 @@ import java.util.Base64
 import java.util.UUID
 
 internal class RoomOwnershipPilotConfig(
-    val nodeId: UUID,
-    val peerId: UUID,
-    val peerUri: URI,
+    override val nodeId: UUID,
+    override val peerId: UUID,
+    override val peerUri: URI,
     peerSecret: ByteArray,
-    val fixtureId: UUID,
+    override val fixtureId: UUID,
     allowedAccounts: Set<UUID>,
-    val acceptanceTraffic: Boolean = false
-) {
-    val peerSecret = peerSecret.copyOf()
-    val allowedAccounts = allowedAccounts.toSet()
+    override val acceptanceTraffic: Boolean = false
+) : RoomOwnershipRuntimeConfig {
+    override val peerSecret = peerSecret.copyOf()
+    override val allowedAccounts = allowedAccounts.toSet()
 
     init {
         require(nodeId != peerId) { "Pilot node IDs must differ" }
@@ -29,7 +29,7 @@ internal class RoomOwnershipPilotConfig(
         require(this.allowedAccounts.isNotEmpty() && this.allowedAccounts.size <= 256) { "Invalid pilot account allowlist" }
     }
 
-    fun rateLimitPolicies(): ServerRateLimitPolicies {
+    override fun rateLimitPolicies(): ServerRateLimitPolicies {
         val defaults = ServerRateLimitPolicies()
         if (!acceptanceTraffic) return defaults
         return defaults.copy(
@@ -43,6 +43,8 @@ internal class RoomOwnershipPilotConfig(
             selectNumberPerIp = RateLimitPolicy(5_000, 1_000)
         )
     }
+
+    override fun supportsMode(mode: com.hienthai.fastowin.protocol.ProtocolGameMode): Boolean = true
 
     companion object {
         fun fromEnvironment(

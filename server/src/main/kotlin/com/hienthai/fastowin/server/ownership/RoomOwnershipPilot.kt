@@ -37,7 +37,7 @@ internal class AdmittedPilotConnection(
 }
 
 internal class RoomOwnershipPilot private constructor(
-    private val config: RoomOwnershipPilotConfig,
+    private val config: RoomOwnershipRuntimeConfig,
     private val instanceId: UUID,
     private val rooms: PostgresRoomOwnershipRepository,
     private val engine: OwnedRoomEngine,
@@ -61,7 +61,7 @@ internal class RoomOwnershipPilot private constructor(
     suspend fun isReady(): Boolean {
         if (!isAccepting() || !workerHealthy()) return false
         return try {
-            rooms.fixtureReady(config.fixtureId) && isAccepting() && workerHealthy()
+            (config.fixtureId?.let { rooms.fixtureReady(it) } ?: true) && isAccepting() && workerHealthy()
         } catch (_: SQLException) {
             false
         }
@@ -149,6 +149,7 @@ internal class RoomOwnershipPilot private constructor(
     ): OwnedRoomReply = try {
         when {
             socket.playerId !in config.allowedAccounts -> denied()
+            command is ClientMessage.CreateRoom && !config.supportsMode(command.gameMode) -> unsupported()
             command.needsPilotAdmission() && !newIntentAllowed() -> maintenance()
             command is ClientMessage.CreateRoom -> {
                 val existing = rooms.lookupRoom(socket.playerId)
@@ -267,7 +268,7 @@ internal class RoomOwnershipPilot private constructor(
 
     companion object {
         suspend fun open(
-            config: RoomOwnershipPilotConfig,
+            config: RoomOwnershipRuntimeConfig,
             dataSource: DataSource,
             accountPlayer: suspend (UUID) -> StoredActivePlayer?,
             eventRewards: EventRewardSource = NoRewardEventSource,
@@ -277,8 +278,10 @@ internal class RoomOwnershipPilot private constructor(
             val instanceId = UUID.randomUUID()
             val metrics = RoomOwnershipMetrics()
             val repository = PostgresRoomOwnershipRepository(dataSource, metrics)
-            require(repository.fixtureReady(config.fixtureId)) { "Room ownership fixture schema or marker is invalid" }
-            verifyFixtureAccounts(dataSource, config)
+            config.fixtureId?.let { fixtureId ->
+                require(repository.fixtureReady(fixtureId)) { "Room ownership fixture schema or marker is invalid" }
+            }
+            verifyAllowedAccounts(dataSource, config)
             val economy = OwnedMatchEconomy(
                 repository, PostgresPlayQuotaRepository(dataSource), PostgresMatchResultRepository(dataSource), metrics
             )
@@ -292,7 +295,7 @@ internal class RoomOwnershipPilot private constructor(
             )
         }
 
-        private suspend fun verifyFixtureAccounts(source: DataSource, config: RoomOwnershipPilotConfig) = withContext(Dispatchers.IO) {
+        private suspend fun verifyAllowedAccounts(source: DataSource, config: RoomOwnershipRuntimeConfig) = withContext(Dispatchers.IO) {
             source.connection.use { connection ->
                 connection.prepareStatement("""
                     SELECT id FROM users
@@ -303,7 +306,7 @@ internal class RoomOwnershipPilot private constructor(
                         query.setArray(1, ids)
                         query.executeQuery().use { rows ->
                             val verified = buildSet { while (rows.next()) add(rows.getObject(1, UUID::class.java)) }
-                            require(verified == config.allowedAccounts) { "Pilot accounts must be verified fixture accounts" }
+                            require(verified == config.allowedAccounts) { "Room ownership accounts must be active and verified" }
                         }
                     } finally {
                         ids.free()

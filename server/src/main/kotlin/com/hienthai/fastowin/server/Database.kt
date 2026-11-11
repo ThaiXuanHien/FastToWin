@@ -2,7 +2,7 @@ package com.hienthai.fastowin.server
 
 import com.hienthai.fastowin.server.admin.PostgresAdminRepository
 import com.hienthai.fastowin.server.ownership.RoomOwnershipPilot
-import com.hienthai.fastowin.server.ownership.RoomOwnershipPilotConfig
+import com.hienthai.fastowin.server.ownership.RoomOwnershipRuntimeConfig
 import com.zaxxer.hikari.HikariConfig
 import com.zaxxer.hikari.HikariDataSource
 import kotlinx.coroutines.Dispatchers
@@ -71,7 +71,7 @@ class DatabaseRuntime private constructor(
     override fun close() = dataSource.close()
 
     internal suspend fun openRoomOwnershipPilot(
-        config: RoomOwnershipPilotConfig,
+        config: RoomOwnershipRuntimeConfig,
         newIntentAllowed: () -> Boolean
     ): RoomOwnershipPilot = RoomOwnershipPilot.open(
         config, dataSource, ::pilotPlayer, rewardEventRepository, newIntentAllowed = newIntentAllowed

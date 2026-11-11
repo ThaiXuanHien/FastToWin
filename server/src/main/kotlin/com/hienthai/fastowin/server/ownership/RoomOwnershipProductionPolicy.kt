@@ -8,14 +8,16 @@ import java.util.Base64
 import java.util.UUID
 
 internal class RoomOwnershipProductionPolicy private constructor(
-    val nodeId: UUID,
-    val peerId: UUID,
-    val peerUri: URI,
+    override val nodeId: UUID,
+    override val peerId: UUID,
+    override val peerUri: URI,
     peerSecret: ByteArray,
     allowedAccounts: Set<UUID>
-) {
-    private val peerSecret = peerSecret.copyOf()
-    private val allowedAccounts = allowedAccounts.toSet()
+) : RoomOwnershipRuntimeConfig {
+    override val peerSecret = peerSecret.copyOf()
+    override val allowedAccounts = allowedAccounts.toSet()
+    override val fixtureId: UUID? = null
+    override val acceptanceTraffic: Boolean = false
 
     init {
         require(nodeId != peerId) { "Production node IDs must differ" }
@@ -37,6 +39,10 @@ internal class RoomOwnershipProductionPolicy private constructor(
         account.emailVerified && account.userId in allowedAccounts && mode == ProtocolGameMode.ORDER
 
     fun routeKey(accountId: UUID): String = accountId.toString()
+
+    override fun rateLimitPolicies() = com.hienthai.fastowin.server.ServerRateLimitPolicies()
+
+    override fun supportsMode(mode: ProtocolGameMode): Boolean = mode == ProtocolGameMode.ORDER
 
     companion object {
         fun fromEnvironment(values: Map<String, String>): RoomOwnershipProductionPolicy? {

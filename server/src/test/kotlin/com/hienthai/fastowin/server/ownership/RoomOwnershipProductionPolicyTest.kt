@@ -16,6 +16,10 @@ class RoomOwnershipProductionPolicyTest {
         val account = UUID.randomUUID()
         val values = values(account)
         val policy = RoomOwnershipProductionPolicy.fromEnvironment(values)
+        assertTrue(RoomOwnershipRuntimeConfigLoader.fromEnvironment("prod", values) is RoomOwnershipProductionPolicy)
+        assertFailsWith<IllegalArgumentException> {
+            RoomOwnershipRuntimeConfigLoader.fromEnvironment("dev", values)
+        }
 
         requireNotNull(policy)
         assertTrue(policy.allows(AuthenticatedAccount(account, "pilot"), ProtocolGameMode.ORDER))

@@ -7,7 +7,7 @@ import com.hienthai.fastowin.server.admin.InMemoryAdminRepository
 import com.hienthai.fastowin.server.announcements.AnnouncementService
 import com.hienthai.fastowin.server.announcements.AnnouncementPushDelivery
 import com.hienthai.fastowin.server.maintenance.*
-import com.hienthai.fastowin.server.ownership.RoomOwnershipPilotConfig
+import com.hienthai.fastowin.server.ownership.RoomOwnershipRuntimeConfigLoader
 import com.hienthai.fastowin.server.presence.PresenceStore
 import com.hienthai.fastowin.server.presence.RedisPresenceStore
 import com.hienthai.fastowin.server.presence.presenceConfiguration
@@ -20,7 +20,7 @@ fun main() {
     require(environment in setOf("dev", "prod")) {
         "FASTTOWIN_ENV must be either 'dev' or 'prod'."
     }
-    val ownershipConfig = RoomOwnershipPilotConfig.fromEnvironment(environment)
+    val ownershipConfig = RoomOwnershipRuntimeConfigLoader.fromEnvironment(environment)
     if (environment == "prod") validateProductionEnvironment()
     val host = System.getenv("SERVER_HOST") ?: "0.0.0.0"
     val port = System.getenv("PORT")?.toIntOrNull() ?: 8080
