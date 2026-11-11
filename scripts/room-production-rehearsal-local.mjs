@@ -101,11 +101,17 @@ const runnerEnv={
     FTW_REHEARSAL_BACKEND_A_HOST:host('a'),FTW_REHEARSAL_BACKEND_B_HOST:host('b'),FTW_REHEARSAL_REDIS_HOST:host('redis'),
     FTW_REHEARSAL_PROXY_HOST:host('proxy'),FTW_REHEARSAL_REDIS_PASSWORD:redisPassword,ROOM_FAULT_TOKEN:token,
     FASTTOWIN_ENV:'prod',FASTTOWIN_ROOM_OWNERSHIP_MODE:'production',FASTTOWIN_ROOM_OWNERSHIP_ACCOUNTS:accounts,
+    FASTTOWIN_ROOM_OWNERSHIP_ROLE:'ingress',
+    FASTTOWIN_ROOM_OWNERSHIP_NODE_ID:'00000000-0000-4000-8000-00000000000a',
+    FASTTOWIN_ROOM_OWNERSHIP_PEER_ID:'00000000-0000-4000-8000-00000000000b',
+    FASTTOWIN_ROOM_OWNERSHIP_PEER_URL:'http://'+host('b')+':8080',FASTTOWIN_ROOM_OWNERSHIP_PEER_SECRET:peerSecret,
     FASTTOWIN_ROOM_OWNERSHIP_REHEARSAL_PASSWORD:'Rehearsal1!'+hex(),
     DATABASE_URL:'jdbc:postgresql://'+host('pg')+':5432/'+db,DATABASE_USER:db,DATABASE_PASSWORD:dbPassword
 }
 const seed=JSON.parse(launch('runner',images.runner,runnerEnv,['--seed-production'],false))
 assert(seed.productionSeeded===true && seed.manifestSha256===manifest && seed.runId===runId)
+assert(Number.isSafeInteger(seed.admissionGeneration) && seed.admissionGeneration>0 &&
+    /^[a-f0-9]{64}$/.test(seed.topologySha256) && /^[a-f0-9]{64}$/.test(seed.policySha256))
 put('seed-receipt.json',seed)
 docker(['rm','-v',containers.runner])
 const redisUrl='redis://:'+redisPassword+'@'+host('redis')+':6379'
@@ -119,6 +125,7 @@ for(const role of ['a','b']) {
         DATABASE_URL:'jdbc:postgresql://'+host('proxy')+':'+(role==='a'?15432:25432)+'/'+db,
         DATABASE_USER:db,DATABASE_PASSWORD:dbPassword,DATABASE_POOL_SIZE:'20',
         FASTTOWIN_ROOM_OWNERSHIP_MODE:'production',FASTTOWIN_ROOM_OWNERSHIP_ACCOUNTS:accounts,
+        FASTTOWIN_ROOM_OWNERSHIP_ROLE:role==='a'?'ingress':'owned-worker',
         FASTTOWIN_ROOM_OWNERSHIP_NODE_ID:'00000000-0000-4000-8000-00000000000'+role,
         FASTTOWIN_ROOM_OWNERSHIP_PEER_ID:'00000000-0000-4000-8000-00000000000'+peer,
         FASTTOWIN_ROOM_OWNERSHIP_PEER_URL:'http://'+host(peer)+':8080',FASTTOWIN_ROOM_OWNERSHIP_PEER_SECRET:peerSecret,

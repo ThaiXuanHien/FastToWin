@@ -24,8 +24,10 @@ internal class OwnedMatchEconomy(
         socket: SocketFence,
         candidate: StoredActiveRoom,
         events: List<RoomOwnershipEvent> = emptyList(),
-        requireAttachedPlayers: Boolean = false
-    ): FencedResult = ownership.withFencedRoom(fence, revision, socket) { connection, state ->
+        requireAttachedPlayers: Boolean = false,
+        admissionPolicy: OwnedAdmissionPolicy? = null
+    ): FencedResult = ownership.withFencedRoom(fence, revision, socket,
+        admissionPolicy = admissionPolicy, newIntent = true) { connection, state ->
         val room = state.snapshot
         val participants = room.accountParticipants()
         val startedAt = candidate.startedAtEpochMillis

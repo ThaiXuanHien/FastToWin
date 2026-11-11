@@ -47,11 +47,12 @@ internal class OwnedRoomEngine(
     private val leases = ConcurrentHashMap<UUID, OwnerFence>()
     private val pendingSettlements = ConcurrentHashMap.newKeySet<UUID>()
 
-    suspend fun handle(socket: SocketFence, message: ClientMessage, expectedOwner: OwnerFence? = null): OwnedRoomReply = try {
+    suspend fun handle(socket: SocketFence, message: ClientMessage, expectedOwner: OwnerFence? = null,
+        admissionPolicy: OwnedAdmissionPolicy? = null): OwnedRoomReply = try {
         when (message) {
-            is ClientMessage.CreateRoom -> if (expectedOwner == null) create(socket, message) else retry()
-            is ClientMessage.JoinRoom -> command(message.roomId, expectedOwner = expectedOwner) { state -> join(socket, state, message) }
-            is ClientMessage.SetReady -> command(message.roomId, expectedOwner = expectedOwner) { state -> ready(socket, state, message.ready) }
+            is ClientMessage.CreateRoom -> if (expectedOwner == null) create(socket, message, admissionPolicy) else retry()
+            is ClientMessage.JoinRoom -> command(message.roomId, expectedOwner = expectedOwner) { state -> join(socket, state, message, admissionPolicy) }
+            is ClientMessage.SetReady -> command(message.roomId, expectedOwner = expectedOwner) { state -> ready(socket, state, message.ready, admissionPolicy) }
             // Replay is read again under the mutation lock; precheck needs only the projected state.
             is ClientMessage.SelectNumber -> command(message.roomId, message.requestId, expectedOwner, loadState = rooms::readForDelivery) { state ->
                 reply(mutate(state, socket, checkExpiry = false) { locked -> select(socket, locked, message) }, message.requestId)
@@ -167,7 +168,8 @@ internal class OwnedRoomEngine(
         }
     }
 
-    private suspend fun create(socket: SocketFence, message: ClientMessage.CreateRoom): OwnedRoomReply {
+    private suspend fun create(socket: SocketFence, message: ClientMessage.CreateRoom,
+        admissionPolicy: OwnedAdmissionPolicy?): OwnedRoomReply {
         if (message.gameMode != ProtocolGameMode.ORDER || message.matchType != MatchType.CASUAL ||
             message.password.isBlank()
         ) return reject("INVALID_PILOT_ROOM")
@@ -183,7 +185,7 @@ internal class OwnedRoomEngine(
             pilotConnectionEpoch = 1, pilotSocketGenerations = mapOf(player.playerId to socket.generation)
         )
         val created = ServerMessage.RoomCreated(room.classicSnapshot())
-        val result = rooms.createRoom(instanceId, socket, room, listOf(event(created, room.activePlayers())))
+        val result = rooms.createRoom(instanceId, socket, room, listOf(event(created, room.activePlayers())), admissionPolicy)
         return if (result is FencedResult.Rejected && result.reason == "ALREADY_IN_ROOM") reconnect(socket)
         else reply(result, defaultMessage = created)
     }
@@ -191,7 +193,8 @@ internal class OwnedRoomEngine(
     private suspend fun join(
         socket: SocketFence,
         state: OwnedRoomState,
-        message: ClientMessage.JoinRoom
+        message: ClientMessage.JoinRoom,
+        admissionPolicy: OwnedAdmissionPolicy?
     ): OwnedRoomReply {
         if (message.asSpectator) return reject("INVALID_PILOT_ROOM")
         val actor = socket.playerId.toString()
@@ -200,7 +203,7 @@ internal class OwnedRoomEngine(
         val room = state.snapshot
         val password = PasswordHash(checkNotNull(room.passwordSalt), checkNotNull(room.passwordHash))
         val validPassword = withContext(Dispatchers.Default) { password.matches(message.password) }
-        return reply(mutate(state, socket) { locked ->
+        return reply(mutate(state, socket, admissionPolicy = admissionPolicy, newIntent = true) { locked ->
             if (!validPassword) return@mutate RoomMutation.Reject("WRONG_PASSWORD")
             if (locked.snapshot.phase != RoomPhase.WAITING || locked.snapshot.guest != null) {
                 return@mutate RoomMutation.Reject("ROOM_FULL")
@@ -213,7 +216,8 @@ internal class OwnedRoomEngine(
         })
     }
 
-    private suspend fun ready(socket: SocketFence, state: OwnedRoomState, isReady: Boolean): OwnedRoomReply {
+    private suspend fun ready(socket: SocketFence, state: OwnedRoomState, isReady: Boolean,
+        admissionPolicy: OwnedAdmissionPolicy?): OwnedRoomReply {
         val room = state.snapshot
         val actor = socket.playerId.toString()
         val members = room.activePlayers()
@@ -235,11 +239,11 @@ internal class OwnedRoomEngine(
             val started = ServerMessage.GameStarted(candidate.classicSnapshot())
             return reply(
                 economy.start(state.fence, state.revision, socket, candidate, listOf(event(started, members)),
-                    requireAttachedPlayers = true),
+                    requireAttachedPlayers = true, admissionPolicy = admissionPolicy),
                 defaultMessage = started
             )
         }
-        return reply(mutate(state, socket) { locked ->
+        return reply(mutate(state, socket, admissionPolicy = admissionPolicy, newIntent = isReady) { locked ->
             val current = locked.snapshot
             if (actor !in current.activePlayers()) return@mutate RoomMutation.Reject("NOT_IN_ROOM")
             if (locked.attachedGenerations()[actor] != socket.generation) return@mutate RoomMutation.Reject("ROOM_RECOVERING")
@@ -386,8 +390,10 @@ internal class OwnedRoomEngine(
         state: OwnedRoomState,
         socket: SocketFence,
         checkExpiry: Boolean = true,
+        admissionPolicy: OwnedAdmissionPolicy? = null,
+        newIntent: Boolean = false,
         action: (OwnedRoomState) -> RoomMutation
-    ): FencedResult = rooms.withFencedRoom(state.fence, state.revision, socket) { _, locked ->
+    ): FencedResult = rooms.withFencedRoom(state.fence, state.revision, socket, admissionPolicy, newIntent) { _, locked ->
         // A nonmember cannot trigger cleanup and receive a private room's result.
         val actor = socket.playerId.toString()
         val expiry = if (checkExpiry && actor in locked.snapshot.activePlayers()) expire(locked, actor) else null

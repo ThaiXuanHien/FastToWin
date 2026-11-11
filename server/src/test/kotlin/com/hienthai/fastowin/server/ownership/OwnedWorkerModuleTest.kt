@@ -44,14 +44,18 @@ class OwnedWorkerModuleTest {
     }
 
     @Test
-    fun `worker runs ownership recovery while readiness stays closed pending durable admission policy`() = runBlocking {
+    fun `worker readiness observes explicit durable activation and STOP_NEW while liveness stays available`() = runBlocking {
         withOwnedWorkerFixture { f ->
             val runtime = f.pilot()
             testApplication {
                 application { ownedWorkerModule(runtime) }
                 client.get("/health")
+                assertEquals(HttpStatusCode.ServiceUnavailable, client.get("/ready").status)
+                f.activate()
                 withTimeout(8_000) { while (!runtime.isReady()) delay(25) }
                 assertTrue(runtime.isReady(), "Ownership worker was not started")
+                assertEquals(HttpStatusCode.OK, client.get("/ready").status)
+                f.stopNew()
                 assertEquals(HttpStatusCode.ServiceUnavailable, client.get("/ready").status)
                 assertEquals(HttpStatusCode.OK, client.get("/health").status)
                 runtime.beginDrain()

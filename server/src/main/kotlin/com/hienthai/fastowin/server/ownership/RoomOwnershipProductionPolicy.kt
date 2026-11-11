@@ -8,6 +8,7 @@ import java.util.Base64
 import java.util.UUID
 
 internal class RoomOwnershipProductionPolicy private constructor(
+    override val runtimeRole: RoomOwnershipRuntimeRole,
     override val nodeId: UUID,
     override val peerId: UUID,
     override val peerUri: URI,
@@ -86,6 +87,7 @@ internal class RoomOwnershipProductionPolicy private constructor(
                 ?: error("Invalid production room ownership peer URI")
 
             return RoomOwnershipProductionPolicy(
+                runtimeRole = RoomOwnershipRuntimeRole.fromEnvironment(values),
                 nodeId = uuid("NODE_ID"),
                 peerId = uuid("PEER_ID"),
                 peerUri = peerUri,

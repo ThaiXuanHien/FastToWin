@@ -4,6 +4,7 @@ import java.util.UUID
 import com.hienthai.fastowin.protocol.ProtocolGameMode
 
 internal interface RoomOwnershipRuntimeConfig {
+    val runtimeRole: RoomOwnershipRuntimeRole get() = RoomOwnershipRuntimeRole.INGRESS
     val nodeId: UUID
     val peerId: UUID
     val peerUri: java.net.URI

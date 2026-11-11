@@ -13,7 +13,9 @@ import kotlin.test.assertTrue
 class RoomOwnershipProductionSeedIntegrationTest {
     @Test
     fun seedsOnlyItsDedicatedDatabaseAndRefusesReplayWithoutChangingAccounts() = database { source, settings ->
-        seedRoomOwnershipProductionAccounts(source, settings)
+        val activated = seedRoomOwnershipProductionAccounts(source, settings)
+        assertTrue(activated.generation > 0)
+        assertTrue(activated.admits(settings.admissionBinding))
         source.connection.use { connection ->
             connection.createStatement().use { statement ->
                 statement.executeQuery("SELECT count(*) FROM users").use { rows ->
@@ -23,6 +25,11 @@ class RoomOwnershipProductionSeedIntegrationTest {
                 statement.executeQuery("SELECT count(*) FROM room_ownership_pilot_fixture").use { rows ->
                     check(rows.next())
                     assertEquals(0, rows.getInt(1))
+                }
+                statement.executeQuery("SELECT generation, state, topology_sha256, policy_sha256 FROM owned_admission_policy").use { rows ->
+                    check(rows.next())
+                    assertEquals(activated, rows.ownedAdmissionPolicy())
+                    assertFalse(rows.next())
                 }
             }
         }

@@ -27,7 +27,9 @@
 
 Task 1's isolated worker boundary is implemented and source-reviewed. Its integrated affected suite passed 187 tests with zero failures, errors or skips. Two strengthened real-Netty tests then passed through the actual worker database bootstrap: WAITING/PLAYING takeover, signed commands while new admission is closed, FINISHED outbox delivery, one settlement with pending completion cleared, shutdown lease release and rollback refusal while results remain open. Evidence: `.artifacts/worker-regression-counts-20261111.json`, `.artifacts/worker-netty-final-20261111.xml` and `.artifacts/owned-worker-review.md`; temporary database resources were cleaned.
 
-The worker defaults to readiness 503 and refuses new game admission until Task 1A supplies real durable policy authority. No worker deployment or final-topology load acceptance is claimed. The older candidate's eight faults and 600-second load remain tied to its own JAR. Task 1A and all later tasks are still pending implementation/acceptance.
+Task 1A now supplies real durable policy authority: migration V73 starts STOP_NEW, explicit trusted bootstrap/resume changes a database-allocated generation, and production create/join/start check the originating policy in the room-write transaction. Worker and ingress readiness observe that authority freshly; startup never activates it. Seeder activation commits atomically with synthetic accounts. Source review found no important issue. Regression verification covers 205 tests with no remaining failures, errors or skips: 199 passed in the broad run and six settings cases passed after a test-fixture-only repair. Evidence is `.artifacts/owned-admission-verified-counts-20261111.json`; cleanup retained zero owned resources and unchanged volumes.
+
+No worker deployment or final-topology load acceptance is claimed. The older candidate's eight faults and 600-second load remain tied to its own JAR. Task 2 and later tasks still require implementation/acceptance.
 
 ## Current names and proposed boundaries
 

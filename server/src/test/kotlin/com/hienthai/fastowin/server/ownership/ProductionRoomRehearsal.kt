@@ -11,15 +11,16 @@ internal fun runProductionSeed(
     args: Array<String>,
     values: Map<String, String>,
     out: PrintStream,
-    seed: (RoomOwnershipProductionSeedSettings) -> Unit = { settings ->
+    seed: (RoomOwnershipProductionSeedSettings) -> OwnedAdmissionPolicy = { settings ->
         seedRoomOwnershipProductionAccounts(settings.dataSource(), settings)
     }
 ): Int {
     return try {
         require(args.contentEquals(arrayOf("--seed-production")))
         val settings = RoomOwnershipProductionSeedSettings.fromEnvironment(values)
-        seed(settings)
-        out.println("""{"productionSeeded":true,"manifestSha256":"${settings.manifestSha256}","runId":"${settings.runId}"}""")
+        val policy = seed(settings)
+        require(policy.admits(settings.admissionBinding))
+        out.println("""{"productionSeeded":true,"manifestSha256":"${settings.manifestSha256}","runId":"${settings.runId}","admissionGeneration":${policy.generation},"topologySha256":"${policy.topologySha256}","policySha256":"${policy.policySha256}"}""")
         0
     } catch (_: Exception) {
         out.println("Production rehearsal seed failed")

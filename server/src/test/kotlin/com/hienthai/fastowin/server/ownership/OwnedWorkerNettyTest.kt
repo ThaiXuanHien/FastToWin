@@ -25,13 +25,43 @@ import kotlin.test.assertTrue
 
 class OwnedWorkerNettyTest {
     @Test
+    fun `signed peer new intent keeps its original generation across STOP_NEW and resume`() = runBlocking {
+        withOwnedWorkerFixture { f ->
+            val stale = f.activate()
+            val creator = f.pilot()
+            val host = f.rooms.bindSocket(f.players.keys.first())
+            val guest = f.rooms.bindSocket(f.players.keys.last())
+            val created = assertIs<OwnedRoomReply.Applied>(creator.onMessage(host,
+                ClientMessage.CreateRoom("Generation", "private worker", ProtocolGameMode.ORDER)))
+            assertTrue(creator.beginDrain())
+            f.stopNew()
+            withWorkerServer(f) { _, uri ->
+                val authority = PostgresOwnedAdmissionRepository(f.source)
+                val current = authority.resume(assertNotNull(authority.observe()).generation, OwnedAdmissionBinding.from(f.config))
+                val recovered = assertNotNull(f.rooms.read(created.roomId))
+                val peer = OwnerPeerTransport(f.config.peerId, f.config.nodeId, uri, f.config.peerSecret)
+                val request = OwnerCommandRequest(created.roomId.toString(), recovered.fence.epoch,
+                    guest.playerId.toString(), guest.generation, OwnerOperation.COMMAND,
+                    ClientMessage.JoinRoom(created.roomId.toString(), "private worker"), recovered.fence.instanceId.toString(),
+                    admissionPolicy = stale)
+                assertIs<OwnedRoomReply.Rejected>(peer.forward(request))
+                assertNull(f.rooms.lookupRoom(guest.playerId))
+                assertIs<OwnedRoomReply.Applied>(peer.forward(request.copy(admissionPolicy = current)))
+                assertEquals(created.roomId, f.rooms.lookupRoom(guest.playerId))
+            }
+        }
+    }
+
+    @Test
     fun `real worker recovers owned leases serves signed reconnect and refuses new match admission`() = runBlocking {
         withOwnedWorkerFixture { f ->
-            val creator = f.pilot { true }
+            f.activate()
+            val creator = f.pilot()
             val socket = f.rooms.bindSocket(f.players.keys.first())
             val created = assertIs<OwnedRoomReply.Applied>(creator.onMessage(socket,
                 ClientMessage.CreateRoom("Existing owned room", "private worker", ProtocolGameMode.ORDER)))
             assertTrue(creator.beginDrain())
+            f.stopNew()
             withWorkerServer(f) { _, uri ->
                 val http = HttpClient.newBuilder().version(HttpClient.Version.HTTP_1_1).build()
                 for (path in listOf("/game", "/auth/login", "/api/content-terms", "/admin/api/maintenance", "/gifts", "/status")) {
@@ -58,7 +88,8 @@ class OwnedWorkerNettyTest {
     @Test
     fun `actual worker continues acknowledged gameplay delivers outbox and settles an existing match`() = runBlocking {
         withOwnedWorkerFixture { f ->
-            val creator = f.pilot { true }
+            f.activate()
+            val creator = f.pilot()
             val host = f.rooms.bindSocket(f.players.keys.first())
             val guest = f.rooms.bindSocket(f.players.keys.last())
             val created = assertIs<OwnedRoomReply.Applied>(creator.onMessage(host,
@@ -69,6 +100,7 @@ class OwnedWorkerNettyTest {
             assertIs<OwnedRoomReply.Applied>(creator.onMessage(guest, ClientMessage.SetReady(roomId, true)))
             assertIs<OwnedRoomReply.Applied>(creator.onMessage(host, ClientMessage.SelectNumber(roomId, 1, "before-handoff")))
             assertTrue(creator.beginDrain())
+            f.stopNew()
 
             withWorkerServer(f) { worker, uri ->
                 val recovered = assertNotNull(f.rooms.read(created.roomId))
@@ -120,7 +152,10 @@ class OwnedWorkerNettyTest {
             val server = embeddedServer(Netty, host = "127.0.0.1", port = 0) { ownedWorkerModule(worker) }.start()
             try {
                 val port = server.engine.resolvedConnectors().first().port
-                withTimeout(8_000) { while (!worker.isReady()) delay(25) }
+                withTimeout(8_000) {
+                    while (fixture.rooms.durableSnapshot().remainingOwnedLeases == 0) delay(25)
+                }
+                assertFalse(worker.isReady(), "STOP_NEW cannot advertise admission readiness")
                 block(worker, URI("http://127.0.0.1:$port"))
             } finally { server.stop(0, 5_000) }
             assertFalse(worker.canRollback(), "Open owned rooms cannot authorize legacy rollback")

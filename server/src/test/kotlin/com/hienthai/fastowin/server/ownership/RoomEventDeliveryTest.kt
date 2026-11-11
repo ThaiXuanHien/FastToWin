@@ -390,10 +390,12 @@ class RoomEventDeliveryTest {
         override suspend fun bindSocket(playerId: UUID): SocketFence = error("Unexpected bind")
         override suspend fun purgeExpiredClosedRooms(limit: Int): Int = error("Unexpected purge")
         override suspend fun createRoom(
-            instanceId: UUID, socket: SocketFence, initialSnapshot: StoredActiveRoom, events: List<RoomOwnershipEvent>
+            instanceId: UUID, socket: SocketFence, initialSnapshot: StoredActiveRoom, events: List<RoomOwnershipEvent>,
+            admissionPolicy: OwnedAdmissionPolicy?
         ): FencedResult = error("Unexpected creation")
         override suspend fun withFencedRoom(
             fence: OwnerFence, expectedRevision: Long, socket: SocketFence?,
+            admissionPolicy: OwnedAdmissionPolicy?, newIntent: Boolean,
             change: (Connection, OwnedRoomState) -> RoomMutation
         ): FencedResult = error("Unexpected mutation")
     }

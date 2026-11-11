@@ -57,7 +57,10 @@ class RoomOwnershipReadinessTest {
     fun `production readiness checks PostgreSQL on every request after a healthy tick`() = runBlocking {
         fixture { f ->
             val source = SwitchableDataSource(f.source)
-            val pilot = f.pilot(source, f.productionConfig())
+            val config = f.productionConfig()
+            val authority = PostgresOwnedAdmissionRepository(f.source)
+            authority.bootstrap(assertNotNull(authority.observe()).generation, OwnedAdmissionBinding.from(config))
+            val pilot = f.pilot(source, config)
             val worker = launch { pilot.runWorker() }
             try {
                 withTimeout(8_000) { while (!pilot.isReady()) delay(10) }
@@ -346,11 +349,9 @@ class RoomOwnershipReadinessTest {
             UUID.randomUUID(), UUID.randomUUID(), URI("http://127.0.0.1:65534"), ByteArray(32) { 7 }, id, players.keys
         )
 
-        // Production parser validation is covered separately; runtime tests keep peer transport local.
-        fun productionConfig(): RoomOwnershipRuntimeConfig = object : RoomOwnershipRuntimeConfig by config() {
-            override val fixtureId: UUID? = null
-            override val acceptanceTraffic = false
-        }
+        fun productionConfig(): RoomOwnershipRuntimeConfig = admissionProductionConfig(
+            RoomOwnershipRuntimeRole.INGRESS, players.keys.toList(), UUID.randomUUID(), UUID.randomUUID()
+        )
 
         suspend fun pilot(
             dataSource: DataSource = source,

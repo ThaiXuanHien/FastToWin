@@ -44,6 +44,8 @@ internal class RoomOwnershipPilot private constructor(
     private val settlementWakeups: Channel<Unit>,
     private val transport: OwnerPeerTransport,
     private val newIntentAllowed: () -> Boolean,
+    private val admissionAuthority: PostgresOwnedAdmissionRepository?,
+    private val admissionBinding: OwnedAdmissionBinding?,
     private val metrics: RoomOwnershipMetrics,
     private val pool: HikariDataSource?,
     wakeups: Flow<UUID>
@@ -72,7 +74,9 @@ internal class RoomOwnershipPilot private constructor(
     suspend fun isReady(): Boolean {
         if (!isAccepting() || !workerHealthy()) return false
         return try {
-            (config.fixtureId?.let { rooms.fixtureReady(it) } ?: rooms.schemaReady()) && isAccepting() && workerHealthy()
+            (config.fixtureId?.let { rooms.fixtureReady(it) } ?: (rooms.schemaReady() &&
+                admissionAuthority?.observe()?.admits(checkNotNull(admissionBinding)) == true)) &&
+                isAccepting() && workerHealthy()
         } catch (_: SQLException) {
             false
         }
@@ -180,14 +184,18 @@ internal class RoomOwnershipPilot private constructor(
         command: ClientMessage,
         synchronizedRoom: RoomDeliveryPosition?
     ): OwnedRoomReply = try {
+        val expectedPolicy = if (command.needsPilotAdmission() && admissionAuthority != null) {
+            admissionAuthority.observe()?.takeIf { it.admits(checkNotNull(admissionBinding)) }
+        } else null
         when {
             socket.playerId !in config.allowedAccounts -> denied()
             command is ClientMessage.CreateRoom && !config.supportsMode(command.gameMode) -> unsupported()
+            command.needsPilotAdmission() && admissionAuthority != null && expectedPolicy == null -> maintenance()
             command.needsPilotAdmission() && !newIntentAllowed() -> maintenance()
             command is ClientMessage.CreateRoom -> {
                 val existing = rooms.lookupRoom(socket.playerId)
                 if (existing == null) {
-                    engine.handle(socket, command).also { recordRoute(it, peer = false) }
+                    engine.handle(socket, command, admissionPolicy = expectedPolicy).also { recordRoute(it, peer = false) }
                 }
                 else route(existing, socket, OwnerOperation.RECONNECT, synchronizedRoom = synchronizedRoom)
             }
@@ -197,7 +205,7 @@ internal class RoomOwnershipPilot private constructor(
                 when {
                     roomId == null -> unsupported()
                     id == null -> missing()
-                    else -> route(id, socket, OwnerOperation.COMMAND, command, synchronizedRoom)
+                    else -> route(id, socket, OwnerOperation.COMMAND, command, synchronizedRoom, expectedPolicy)
                 }
             }
         }
@@ -233,7 +241,8 @@ internal class RoomOwnershipPilot private constructor(
         socket: SocketFence,
         operation: OwnerOperation,
         command: ClientMessage? = null,
-        synchronizedRoom: RoomDeliveryPosition? = null
+        synchronizedRoom: RoomDeliveryPosition? = null,
+        admissionPolicy: OwnedAdmissionPolicy? = null
     ): OwnedRoomReply {
         val fence = rooms.findOwner(roomId) ?: return missing()
         if (synchronizedRoom?.roomId == roomId && synchronizedRoom.epoch != fence.epoch) {
@@ -241,12 +250,12 @@ internal class RoomOwnershipPilot private constructor(
             return unavailable(command)
         }
         if (fence.instanceId == instanceId) {
-            return dispatch(fence, socket, operation, command).also { recordRoute(it, peer = false) }
+            return dispatch(fence, socket, operation, command, admissionPolicy).also { recordRoute(it, peer = false) }
         }
         val result = transport.forward(
             OwnerCommandRequest(
                 roomId.toString(), fence.epoch, socket.playerId.toString(), socket.generation, operation, command,
-                ownerInstanceId = fence.instanceId.toString()
+                ownerInstanceId = fence.instanceId.toString(), admissionPolicy = admissionPolicy
             )
         )
         if (result == null) metrics.routeFailed() else recordRoute(result, peer = true)
@@ -275,7 +284,7 @@ internal class RoomOwnershipPilot private constructor(
             request.operation == OwnerOperation.COMMAND && command?.pilotRoomId()?.let(::parsePilotUuid) != roomId -> unsupported()
             request.operation != OwnerOperation.COMMAND && command != null -> unsupported()
             else -> dispatch(OwnerFence(roomId, instanceId, request.epoch),
-                SocketFence(playerId, request.generation), request.operation, command)
+                SocketFence(playerId, request.generation), request.operation, command, request.admissionPolicy)
         }
     } catch (_: SQLException) {
         unavailable(request.command)
@@ -285,12 +294,14 @@ internal class RoomOwnershipPilot private constructor(
         fence: OwnerFence,
         socket: SocketFence,
         operation: OwnerOperation,
-        command: ClientMessage?
+        command: ClientMessage?,
+        admissionPolicy: OwnedAdmissionPolicy? = null
     ): OwnedRoomReply = when (operation) {
         OwnerOperation.COMMAND -> {
             val incoming = checkNotNull(command)
-            if (incoming.needsPilotAdmission() && !newIntentAllowed()) maintenance()
-            else engine.handle(socket, incoming, fence)
+            if (incoming.needsPilotAdmission() && (!newIntentAllowed() ||
+                    (admissionBinding != null && admissionPolicy?.admits(admissionBinding) != true))) maintenance()
+            else engine.handle(socket, incoming, fence, admissionPolicy)
         }
         OwnerOperation.RECONNECT -> engine.reconnect(socket, fence)
         OwnerOperation.DISCONNECT -> {
@@ -310,7 +321,9 @@ internal class RoomOwnershipPilot private constructor(
         ): RoomOwnershipPilot {
             val instanceId = UUID.randomUUID()
             val metrics = RoomOwnershipMetrics()
-            val repository = PostgresRoomOwnershipRepository(dataSource, metrics)
+            val binding = if (config.fixtureId == null) OwnedAdmissionBinding.from(config) else null
+            val authority = binding?.let { PostgresOwnedAdmissionRepository(dataSource) }
+            val repository = PostgresRoomOwnershipRepository(dataSource, metrics, binding)
             config.fixtureId?.let { fixtureId ->
                 require(repository.fixtureReady(fixtureId)) { "Room ownership fixture schema or marker is invalid" }
             } ?: require(repository.schemaReady()) { "Room ownership schema is invalid" }
@@ -324,7 +337,7 @@ internal class RoomOwnershipPilot private constructor(
             return RoomOwnershipPilot(
                 config, instanceId, repository, engine, settlementWakeups,
                 OwnerPeerTransport(config.nodeId, config.peerId, config.peerUri, config.peerSecret),
-                newIntentAllowed, metrics, dataSource as? HikariDataSource, wakeups ?: postgresRoomEventWakeups(dataSource)
+                newIntentAllowed, authority, binding, metrics, dataSource as? HikariDataSource, wakeups ?: postgresRoomEventWakeups(dataSource)
             )
         }
 

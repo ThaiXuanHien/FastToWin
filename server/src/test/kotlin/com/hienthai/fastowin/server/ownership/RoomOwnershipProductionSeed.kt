@@ -17,7 +17,8 @@ internal class RoomOwnershipProductionSeedSettings private constructor(
     val accounts: List<UUID>,
     val password: String,
     val runId: UUID,
-    val manifestSha256: String
+    val manifestSha256: String,
+    val admissionBinding: OwnedAdmissionBinding
 ) {
     val scope = "room-ownership-production"
 
@@ -62,9 +63,11 @@ internal class RoomOwnershipProductionSeedSettings private constructor(
             require(accounts.size in 2..256 && accounts.toSet().size == accounts.size)
             val password = requireNotNull(values["FASTTOWIN_ROOM_OWNERSHIP_REHEARSAL_PASSWORD"])
             require(password.matches(Regex("Rehearsal1![a-f0-9]{64}")))
+            val policy = requireNotNull(RoomOwnershipProductionPolicy.fromEnvironment(values))
+            require(policy.runtimeRole == RoomOwnershipRuntimeRole.INGRESS) { "Seeder requires the manifest ingress topology" }
             return RoomOwnershipProductionSeedSettings(
                 requireNotNull(DatabaseSettings.fromEnvironment("prod", values)), database, host,
-                accounts, password, runId, manifest
+                accounts, password, runId, manifest, OwnedAdmissionBinding.from(policy)
             )
         }
     }
@@ -74,7 +77,7 @@ internal class RoomOwnershipProductionSeedSettings private constructor(
 internal fun seedRoomOwnershipProductionAccounts(
     dataSource: DataSource,
     settings: RoomOwnershipProductionSeedSettings
-) {
+): OwnedAdmissionPolicy {
     dataSource.connection.use { connection ->
         connection.autoCommit = false
         try {
@@ -131,7 +134,13 @@ internal fun seedRoomOwnershipProductionAccounts(
                 }
                 statement.executeBatch()
             }
+            // Accounts, profiles and ACTIVE binding commit atomically on this existing seed connection.
+            // Flyway has already committed the initial unbound STOP_NEW row; failure here leaves it stopped.
+            val authority = PostgresOwnedAdmissionRepository(dataSource)
+            val initial = requireNotNull(authority.observeOn(connection))
+            val active = authority.bootstrapOn(connection, initial.generation, settings.admissionBinding)
             connection.commit()
+            return active
         } catch (failure: Exception) {
             connection.rollback()
             throw failure

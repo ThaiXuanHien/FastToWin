@@ -51,19 +51,18 @@ internal class OwnedWorkerTestFixture(val source: HikariDataSource, val players:
     val databaseSettings get() = DatabaseSettings(
         "${source.jdbcUrl}?currentSchema=${source.schema}", source.username, source.password, 5
     )
-    val config = object : RoomOwnershipRuntimeConfig {
-        override val nodeId = UUID.randomUUID()
-        override val peerId = UUID.randomUUID()
-        override val peerUri = URI("http://127.0.0.1:65534")
-        override val peerSecret = ByteArray(32) { 17 }
-        override val allowedAccounts = players.keys
-        override val fixtureId: UUID? = null
-        override val acceptanceTraffic = false
-        override fun supportsMode(mode: ProtocolGameMode) = mode == ProtocolGameMode.ORDER
-        override fun rateLimitPolicies() = ServerRateLimitPolicies()
-    }
+    val config = admissionProductionConfig(RoomOwnershipRuntimeRole.OWNED_WORKER,
+        players.keys.toList(), UUID.randomUUID(), UUID.randomUUID())
     val rooms = PostgresRoomOwnershipRepository(source)
-    suspend fun pilot(newIntentAllowed: () -> Boolean = { false }) = RoomOwnershipPilot.open(
+    suspend fun activate(): OwnedAdmissionPolicy {
+        val authority = PostgresOwnedAdmissionRepository(source)
+        return authority.bootstrap(requireNotNull(authority.observe()).generation, OwnedAdmissionBinding.from(config))
+    }
+    suspend fun stopNew() {
+        val authority = PostgresOwnedAdmissionRepository(source)
+        authority.stopNew(requireNotNull(authority.observe()).generation)
+    }
+    suspend fun pilot(newIntentAllowed: () -> Boolean = { true }) = RoomOwnershipPilot.open(
         config, source, { players[it] }, wakeups = emptyFlow(), newIntentAllowed = newIntentAllowed
     )
 }

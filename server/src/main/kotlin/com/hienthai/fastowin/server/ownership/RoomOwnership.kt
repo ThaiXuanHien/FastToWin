@@ -93,13 +93,16 @@ internal interface RoomOwnershipRepository {
         instanceId: UUID,
         socket: SocketFence,
         initialSnapshot: StoredActiveRoom,
-        events: List<RoomOwnershipEvent> = emptyList()
+        events: List<RoomOwnershipEvent> = emptyList(),
+        admissionPolicy: OwnedAdmissionPolicy? = null
     ): FencedResult
 
     suspend fun withFencedRoom(
         fence: OwnerFence,
         expectedRevision: Long,
         socket: SocketFence?,
+        admissionPolicy: OwnedAdmissionPolicy? = null,
+        newIntent: Boolean = false,
         change: (Connection, OwnedRoomState) -> RoomMutation
     ): FencedResult
 }

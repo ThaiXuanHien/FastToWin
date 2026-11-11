@@ -18,11 +18,10 @@ import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * Private ownership process. No legacy engine, public routes, or application singleton jobs are assembled.
- * Task 1A supplies a fresh durable admission-generation observation; until then readiness stays closed.
+ * Readiness observes the committed production admission policy on every request.
  */
 internal fun Application.ownedWorkerModule(
-    runtime: RoomOwnershipPilot,
-    observeAdmission: suspend () -> Boolean = { false }
+    runtime: RoomOwnershipPilot
 ) {
     require(runtime.isProductionMode) { "An owned worker requires production room ownership" }
     launch { runtime.delivery.run() }
@@ -41,13 +40,7 @@ internal fun Application.ownedWorkerModule(
         get("/health") { call.respondText("OK") }
         get("/ready") {
             call.response.header(HttpHeaders.CacheControl, "no-store")
-            val ready = runtime.isReady() && try {
-                observeAdmission()
-            } catch (cancelled: CancellationException) {
-                throw cancelled
-            } catch (_: Exception) {
-                false
-            } && runtime.isReady()
+            val ready = runtime.isReady()
             call.respondText(if (ready) "READY" else "UNAVAILABLE",
                 status = if (ready) HttpStatusCode.OK else HttpStatusCode.ServiceUnavailable)
         }

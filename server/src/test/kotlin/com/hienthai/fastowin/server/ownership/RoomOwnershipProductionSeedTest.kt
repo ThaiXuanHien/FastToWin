@@ -15,11 +15,12 @@ class RoomOwnershipProductionSeedTest {
         var attempts = 0
         val success = runProductionSeed(arrayOf("--seed-production"), values, PrintStream(output)) {
             attempts++
+            OwnedAdmissionPolicy(41, OwnedAdmissionState.ACTIVE, it.admissionBinding.topologySha256, it.admissionBinding.policySha256)
         }
         assertEquals(0, success)
         assertEquals(1, attempts)
         val settings = RoomOwnershipProductionSeedSettings.fromEnvironment(values)
-        val expected = """{"productionSeeded":true,"manifestSha256":"${settings.manifestSha256}","runId":"${settings.runId}"}"""
+        val expected = """{"productionSeeded":true,"manifestSha256":"${settings.manifestSha256}","runId":"${settings.runId}","admissionGeneration":41,"topologySha256":"${settings.admissionBinding.topologySha256}","policySha256":"${settings.admissionBinding.policySha256}"}"""
         assertEquals(expected, output.toString().trim())
         output.reset()
         assertEquals(1, runProductionSeed(arrayOf("--seed-production"), values, PrintStream(output)) {
@@ -27,7 +28,7 @@ class RoomOwnershipProductionSeedTest {
         })
         assertEquals("Production rehearsal seed failed", output.toString().trim())
         output.reset()
-        assertEquals(1, runProductionSeed(emptyArray(), values, PrintStream(output)) { attempts++ })
+        assertEquals(1, runProductionSeed(emptyArray(), values, PrintStream(output)) { error("Seed must not run") })
         assertEquals(1, attempts)
     }
 
@@ -78,6 +79,11 @@ class RoomOwnershipProductionSeedTest {
                 "DATABASE_USER" to database,
                 "DATABASE_PASSWORD" to "a".repeat(64),
                 "FASTTOWIN_ROOM_OWNERSHIP_MODE" to "production",
+                "FASTTOWIN_ROOM_OWNERSHIP_ROLE" to "ingress",
+                "FASTTOWIN_ROOM_OWNERSHIP_NODE_ID" to ADMISSION_NODE_A.toString(),
+                "FASTTOWIN_ROOM_OWNERSHIP_PEER_ID" to ADMISSION_NODE_B.toString(),
+                "FASTTOWIN_ROOM_OWNERSHIP_PEER_URL" to "http://$run-b.railway.internal:8080",
+                "FASTTOWIN_ROOM_OWNERSHIP_PEER_SECRET" to java.util.Base64.getEncoder().encodeToString(ByteArray(32) { 19 }),
                 "FASTTOWIN_ROOM_OWNERSHIP_ACCOUNTS" to List(2) { UUID.randomUUID() }.joinToString(","),
                 "FASTTOWIN_ROOM_OWNERSHIP_REHEARSAL_PASSWORD" to "Rehearsal1!" + "c".repeat(64)
             )

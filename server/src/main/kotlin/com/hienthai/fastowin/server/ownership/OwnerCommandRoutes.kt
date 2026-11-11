@@ -55,13 +55,18 @@ internal data class OwnerCommandRequest(
     val generation: Long,
     val operation: OwnerOperation,
     val command: ClientMessage? = null,
-    val ownerInstanceId: String
+    val ownerInstanceId: String,
+    val admissionPolicy: OwnedAdmissionPolicy? = null
 ) {
     fun isSupported(): Boolean {
         val room = parsePilotUuid(roomId) ?: return false
         if (parsePilotUuid(playerId) == null || parsePilotUuid(ownerInstanceId) == null || epoch < 1 || generation < 1) {
             return false
         }
+        if (admissionPolicy != null && (admissionPolicy.generation <= 0 ||
+                admissionPolicy.state != OwnedAdmissionState.ACTIVE ||
+                admissionPolicy.topologySha256?.matches(Regex("[0-9a-f]{64}")) != true ||
+                admissionPolicy.policySha256?.matches(Regex("[0-9a-f]{64}")) != true)) return false
         if (operation != OwnerOperation.COMMAND) return command == null
         return command?.pilotRoomId()?.let(::parsePilotUuid) == room
     }

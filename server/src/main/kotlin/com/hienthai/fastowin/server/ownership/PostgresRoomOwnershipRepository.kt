@@ -25,7 +25,8 @@ internal fun shouldPruneRoomEvents(revision: Long): Boolean = revision > ROOM_OW
 
 internal class PostgresRoomOwnershipRepository(
     private val dataSource: DataSource,
-    private val metrics: RoomOwnershipMetrics? = null
+    private val metrics: RoomOwnershipMetrics? = null,
+    private val admission: OwnedAdmissionBinding? = null
 ) : RoomOwnershipRepository {
     override suspend fun claim(roomId: UUID, instanceId: UUID): OwnedRoomState? = transaction {
         val room = load(roomId, lock = true) ?: return@transaction null
@@ -283,13 +284,15 @@ internal class PostgresRoomOwnershipRepository(
         instanceId: UUID,
         socket: SocketFence,
         initialSnapshot: StoredActiveRoom,
-        events: List<RoomOwnershipEvent>
+        events: List<RoomOwnershipEvent>,
+        admissionPolicy: OwnedAdmissionPolicy?
     ): FencedResult {
         val roomId = UUID.fromString(initialSnapshot.roomId)
         if (!initialSnapshot.isPilotRoom() || initialSnapshot.phase != RoomPhase.WAITING ||
             initialSnapshot.guest != null || initialSnapshot.host.playerId != socket.playerId.toString()
         ) return FencedResult.Rejected("INVALID_PILOT_ROOM")
         return fencedTransaction {
+            if (!allowsNewIntent(admissionPolicy)) return@fencedTransaction FencedResult.Rejected("OWNED_ADMISSION_STOPPED")
             if (!isCurrent(socket)) return@fencedTransaction FencedResult.Stale
             val inserted = update(
                 """
@@ -313,13 +316,23 @@ internal class PostgresRoomOwnershipRepository(
         fence: OwnerFence,
         expectedRevision: Long,
         socket: SocketFence?,
+        admissionPolicy: OwnedAdmissionPolicy?,
+        newIntent: Boolean,
         change: (Connection, OwnedRoomState) -> RoomMutation
     ): FencedResult = fencedTransaction {
-        val room = if (socket == null) {
+        if ((newIntent || admissionPolicy != null) && !allowsNewIntent(admissionPolicy)) {
+            return@fencedTransaction FencedResult.Rejected("OWNED_ADMISSION_STOPPED")
+        }
+        val loaded = if (socket == null) {
+            load(fence.roomId, lock = true)
+        } else if (admission != null) {
+            // Production lock order is policy SHARE, actor session UPDATE, then room UPDATE.
+            if (!isCurrent(socket)) return@fencedTransaction FencedResult.Stale
             load(fence.roomId, lock = true)
         } else {
             loadForSocket(fence.roomId, socket)
-        } ?: return@fencedTransaction FencedResult.Stale
+        }
+        val room = loaded ?: return@fencedTransaction FencedResult.Stale
         val observed = observeLocked(room.state)
         if (observed.closed || observed.fence != fence || observed.revision != expectedRevision ||
             room.leaseUntil <= observed.observedAt
@@ -328,11 +341,13 @@ internal class PostgresRoomOwnershipRepository(
             is RoomMutation.Reject -> FencedResult.Rejected(mutation.reason)
             is RoomMutation.Replay -> FencedResult.Replay(observed, mutation.message)
             RoomMutation.Unchanged -> FencedResult.Unchanged(observed)
-            is RoomMutation.Change -> applyChange(observed, mutation)
+            is RoomMutation.Change -> applyChange(observed, mutation, admissionPolicy)
         }
     }
 
-    private fun Connection.applyChange(state: OwnedRoomState, mutation: RoomMutation.Change): FencedResult {
+    private fun Connection.applyChange(
+        state: OwnedRoomState, mutation: RoomMutation.Change, admissionPolicy: OwnedAdmissionPolicy?
+    ): FencedResult {
         val roomId = state.fence.roomId
         val snapshot = mutation.snapshot
         if (snapshot.roomId != roomId.toString() || !snapshot.isPilotRoom()) {
@@ -340,6 +355,11 @@ internal class PostgresRoomOwnershipRepository(
         }
         val previous = state.snapshot.memberIds()
         val current = if (mutation.close) emptySet() else snapshot.memberIds()
+        // Guard internal callers too: membership additions and the actual match start are admission writes.
+        if (((current - previous).isNotEmpty() ||
+                (state.snapshot.phase == RoomPhase.WAITING && snapshot.phase == RoomPhase.PLAYING)) &&
+            !allowsNewIntent(admissionPolicy)
+        ) return FencedResult.Rejected("OWNED_ADMISSION_STOPPED")
         for (player in (previous - current).sorted()) {
             update("DELETE FROM room_ownership_pilot_memberships WHERE player_id = ? AND room_id = ?", player, roomId)
         }
@@ -546,6 +566,12 @@ internal class PostgresRoomOwnershipRepository(
                 connection.autoCommit = false
                 try {
                     val transaction = TransactionConnection(connection, singleRead)
+                    if (admission != null && !singleRead) {
+                        transaction.lockedAdmission = transaction.query("""
+                            SELECT generation, state, topology_sha256, policy_sha256
+                            FROM owned_admission_policy WHERE singleton FOR SHARE
+                        """.trimIndent()) { rows -> if (rows.next()) rows.ownedAdmissionPolicy() else null }
+                    }
                     val result = measured(OwnershipDatabaseStage.BODY) { transaction.block() }
                     if (singleRead) check(transaction.initialized) // Its read-only batch already committed.
                     else if (commit(result)) measured(OwnershipDatabaseStage.COMMIT) { connection.commit() }
@@ -562,6 +588,16 @@ internal class PostgresRoomOwnershipRepository(
 
     private class TransactionConnection(connection: Connection, val singleRead: Boolean) : Connection by connection {
         var initialized = false
+        var lockedAdmission: OwnedAdmissionPolicy? = null
+    }
+
+    private fun Connection.allowsNewIntent(expected: OwnedAdmissionPolicy?): Boolean {
+        val binding = admission ?: return true
+        require(!autoCommit) { "Owned admission guard requires the caller's transaction" }
+        return try {
+            requireOwnedNewIntent((this as TransactionConnection).lockedAdmission, expected, binding)
+            true
+        } catch (_: OwnedAdmissionRejected) { false }
     }
 
     private fun Connection.update(sql: String, vararg args: Any): Int = withStatement(sql, args) { statement, first, singleRead ->

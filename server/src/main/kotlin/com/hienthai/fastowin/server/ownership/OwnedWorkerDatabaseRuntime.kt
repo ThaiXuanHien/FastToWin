@@ -14,9 +14,7 @@ import java.util.UUID
 internal class OwnedWorkerDatabaseRuntime private constructor(private val source: HikariDataSource) : AutoCloseable {
     internal suspend fun openRoomOwnershipPilot(config: RoomOwnershipRuntimeConfig): RoomOwnershipPilot {
         require(config.fixtureId == null) { "An owned worker requires production room ownership" }
-        return RoomOwnershipPilot.open(config, source, ::accountPlayer, PostgresRewardEventRepository(source),
-            // Task 1A must replace this with authoritative durable admission policy. Existing work continues.
-            newIntentAllowed = { false })
+        return RoomOwnershipPilot.open(config, source, ::accountPlayer, PostgresRewardEventRepository(source))
     }
 
     private suspend fun accountPlayer(id: UUID): StoredActivePlayer? = withContext(Dispatchers.IO) {

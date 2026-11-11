@@ -49,10 +49,10 @@ class RoomOwnershipProductionWebSocketTest {
     }
 
     @Test
-    fun `production owns only private casual order and reconnects across two backends`() = runBlocking {
+    fun `production owns only private casual order with both public sockets on ingress`() = runBlocking {
         fixture { f ->
             val host = f.connect(f.aPort, f.tokens[0])
-            val guest = f.connect(f.bPort, f.tokens[1])
+            val guest = f.connect(f.aPort, f.tokens[1])
             val outside = f.connect(f.aPort, f.tokens[2])
             try {
                 host.sendMessage(ClientMessage.CreateRoom("Owned", "private", ProtocolGameMode.ORDER))
@@ -65,7 +65,7 @@ class RoomOwnershipProductionWebSocketTest {
                 val joined = host.receiveMessage<ServerMessage.RoomUpdated>().game
                 host.sendMessage(ClientMessage.CreateRoom("No simultaneous legacy", "", ProtocolGameMode.RANDOM_TARGET))
                 assertEquals("ALREADY_IN_ROOM", host.receiveMessage<ServerMessage.Error>().code)
-                val resumed = f.connect(f.bPort, f.tokens[0], host.ready.resumeToken)
+                val resumed = f.connect(f.aPort, f.tokens[0], host.ready.resumeToken)
                 try {
                     assertEquals(joined.roomId, resumed.ready.currentGame?.roomId)
                     resumed.sendMessage(ClientMessage.SetReady(created.roomId, true))
@@ -101,7 +101,6 @@ class RoomOwnershipProductionWebSocketTest {
                 Flyway.configure().dataSource(control).schemas(schema).defaultSchema(schema).load().migrate()
                 pool(schema).use { a -> pool(schema).use { b ->
                     val authA = AuthenticationService(PostgresAuthRepository(a), passwordHasher = PasswordHasher(1000))
-                    val authB = AuthenticationService(PostgresAuthRepository(b), passwordHasher = PasswordHasher(1000))
                     val sessions = listOf("Host", "Guest", "Outside").map { name ->
                         assertIs<AuthResult.Success>(authA.register("$name@example.test", "Password123!", name, "test")).session
                     }
@@ -127,19 +126,18 @@ class RoomOwnershipProductionWebSocketTest {
                         val lookup: suspend (UUID) -> StoredActivePlayer? = { id ->
                             sessions.firstOrNull { it.userId == id.toString() }?.let { StoredActivePlayer(it.userId, it.displayName, true) }
                         }
-                        fun config(node: UUID, peer: UUID, port: Int) = object : RoomOwnershipRuntimeConfig {
-                            override val nodeId = node
-                            override val peerId = peer
+                        fun config(role: RoomOwnershipRuntimeRole, port: Int): RoomOwnershipRuntimeConfig {
+                            val validated = admissionProductionConfig(role, ids.take(2), aId, bId)
+                            return object : RoomOwnershipRuntimeConfig by validated {
                             override val peerUri = URI("http://127.0.0.1:$port")
-                            override val peerSecret = ByteArray(32) { 7 }
-                            override val allowedAccounts = ids.take(2).toSet()
-                            override val fixtureId: UUID? = null
-                            override val acceptanceTraffic = false
-                            override fun supportsMode(mode: ProtocolGameMode) = mode == ProtocolGameMode.ORDER
-                            override fun rateLimitPolicies() = ServerRateLimitPolicies()
+                            }
                         }
-                        val pa = RoomOwnershipPilot.open(config(aId, bId, br.localPort), a, lookup, wakeups = emptyFlow())
-                        val pb = RoomOwnershipPilot.open(config(bId, aId, ar.localPort), b, lookup, wakeups = emptyFlow())
+                        val ca = config(RoomOwnershipRuntimeRole.INGRESS, br.localPort)
+                        val cb = config(RoomOwnershipRuntimeRole.OWNED_WORKER, ar.localPort)
+                        val authority = PostgresOwnedAdmissionRepository(a)
+                        authority.bootstrap(assertNotNull(authority.observe()).generation, OwnedAdmissionBinding.from(ca))
+                        val pa = RoomOwnershipPilot.open(ca, a, lookup, wakeups = emptyFlow())
+                        val pb = RoomOwnershipPilot.open(cb, b, lookup, wakeups = emptyFlow())
                         val aPort = ar.localPort
                         val bPort = br.localPort
                         val sa = embeddedServer(Netty, host = "127.0.0.1", port = aPort) {
@@ -147,8 +145,7 @@ class RoomOwnershipProductionWebSocketTest {
                                 authService = authA, roomOwnershipPilot = pa)
                         }
                         val sb = embeddedServer(Netty, host = "127.0.0.1", port = bPort) {
-                            gameModule(engine = GameEngine(playerProfileRepository = PostgresPlayerProfileRepository(b)),
-                                authService = authB, roomOwnershipPilot = pb)
+                            ownedWorkerModule(pb)
                         }
                         try {
                             ar.close(); sa.start(wait = false)
