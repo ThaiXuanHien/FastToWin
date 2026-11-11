@@ -47,6 +47,24 @@ internal class OwnedRoomEngine(
     private val leases = ConcurrentHashMap<UUID, OwnerFence>()
     private val pendingSettlements = ConcurrentHashMap.newKeySet<UUID>()
 
+    /** Explicit descriptors never enter legacy create's reconnect shortcut or return live replies. */
+    suspend fun createOwned(request: OwnedCreateRequest, newIntentAllowed: () -> Boolean = { true }): OwnedCreateResult {
+        if (!request.isSupported()) return OwnedCreateResult.AttemptRejected("INVALID_CREATE")
+        val player = player(request.socket) ?: return OwnedCreateResult.AttemptRejected("ACCOUNT_REQUIRED")
+        val password = withContext(Dispatchers.Default) { PasswordHash.create(request.command.password) }
+        val room = StoredActiveRoom(request.roomId.toString(), roomName = request.command.roomName.trim().take(MAX_ROOM_NAME_LENGTH),
+            host = player, gameMode = request.command.gameMode, passwordSalt = password.salt, passwordHash = password.value,
+            phase = RoomPhase.WAITING, pilotConnectionEpoch = 1,
+            pilotSocketGenerations = mapOf(player.playerId to request.socket.generation))
+        val result = rooms.createOwned(instanceId, request, room,
+            listOf(event(ServerMessage.RoomCreated(room.classicSnapshot()), room.activePlayers())), newIntentAllowed)
+        if (result is OwnedCreateResult.Created && !result.replayed) {
+            // Historical proof never populates leases. Only freshly read current local state may do so.
+            rooms.read(request.roomId)?.takeIf { !it.closed && it.fence.instanceId == instanceId }?.let(::remember)
+        }
+        return result
+    }
+
     suspend fun handle(socket: SocketFence, message: ClientMessage, expectedOwner: OwnerFence? = null,
         admissionPolicy: OwnedAdmissionPolicy? = null): OwnedRoomReply = try {
         when (message) {

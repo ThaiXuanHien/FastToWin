@@ -118,6 +118,11 @@ ENTRYPOINT ["timeout","1800","java","-Xmx384m","-cp","classes:lib/*","com.hienth
         DATABASE_USER = $database
         DATABASE_PASSWORD = $env:POSTGRES_PASSWORD
         FASTTOWIN_ROOM_OWNERSHIP_MODE = 'production'
+        FASTTOWIN_ROOM_OWNERSHIP_ROLE = 'ingress'
+        FASTTOWIN_ROOM_OWNERSHIP_NODE_ID = '00000000-0000-4000-8000-00000000000a'
+        FASTTOWIN_ROOM_OWNERSHIP_PEER_ID = '00000000-0000-4000-8000-00000000000b'
+        FASTTOWIN_ROOM_OWNERSHIP_PEER_URL = "http://$name-b.railway.internal:8080"
+        FASTTOWIN_ROOM_OWNERSHIP_PEER_SECRET = [Convert]::ToBase64String([Security.Cryptography.RandomNumberGenerator]::GetBytes(32))
         FASTTOWIN_ROOM_OWNERSHIP_ACCOUNTS = (@(1..40 | ForEach-Object { [guid]::NewGuid().ToString() }) -join ',')
         FASTTOWIN_ROOM_OWNERSHIP_REHEARSAL_PASSWORD = 'Rehearsal1!' + [Convert]::ToHexString([Security.Cryptography.RandomNumberGenerator]::GetBytes(32)).ToLowerInvariant()
     }
@@ -134,10 +139,16 @@ ENTRYPOINT ["timeout","1800","java","-Xmx384m","-cp","classes:lib/*","com.hienth
     if ($receipt.productionSeeded -ne $true -or $receipt.manifestSha256 -cne $manifest -or $receipt.runId -cne $runId) {
         throw 'Production seed receipt does not match the package'
     }
+    if ($receipt.admissionGeneration -lt 1 -or $receipt.topologySha256 -cnotmatch '^[a-f0-9]{64}$' -or
+        $receipt.policySha256 -cnotmatch '^[a-f0-9]{64}$') { throw 'Production seed authority receipt is incomplete' }
     $receiptText | Set-Content "$output/seed-receipt.json" -Encoding utf8NoBOM
     $sql = 'SELECT (SELECT count(*) FROM users), (SELECT count(*) FROM profiles), (SELECT count(*) FROM room_ownership_pilot_fixture)'
     $rows = Docker @('exec', $pg, 'psql', '-X', '-At', '-U', $database, '-d', $database, '-c', $sql)
     if ($rows -cne '40|40|0') { throw 'Unexpected seeded account or fixture marker count' }
+    $authority = Docker @('exec', $pg, 'psql', '-X', '-At', '-U', $database, '-d', $database, '-c',
+        "SELECT generation, state, topology_sha256, policy_sha256 FROM owned_admission_policy WHERE singleton")
+    $expectedAuthority = "$($receipt.admissionGeneration)|ACTIVE|$($receipt.topologySha256)|$($receipt.policySha256)"
+    if ($authority -cne $expectedAuthority) { throw 'Committed seed authority differs from its receipt' }
     $beforeRetry = $rows
     $retry = & docker.exe --host $script:endpoint start --attach "$name-runner" 2>&1
     $retryExit = $LASTEXITCODE
@@ -148,8 +159,13 @@ ENTRYPOINT ["timeout","1800","java","-Xmx384m","-cp","classes:lib/*","com.hienth
     if ((Docker @('exec', $pg, 'psql', '-X', '-At', '-U', $database, '-d', $database, '-c', $sql)) -cne $beforeRetry) {
         throw 'Seeder replay changed existing accounts'
     }
+    if ((Docker @('exec', $pg, 'psql', '-X', '-At', '-U', $database, '-d', $database, '-c',
+        "SELECT generation, state, topology_sha256, policy_sha256 FROM owned_admission_policy WHERE singleton")) -cne $expectedAuthority) {
+        throw 'Seeder replay changed admission authority'
+    }
     [ordered]@{seedAccepted=$true; replayRefused=$true; accounts=40; profiles=40; fixtureMarkerRows=0
         runnerUser=$image.Config.User; image=$image.Id; serverJarSha256=$jar; runnerManifestSha256=$manifest; runId=$runId
+        admissionGeneration=$receipt.admissionGeneration; topologySha256=$receipt.topologySha256; policySha256=$receipt.policySha256
     } | ConvertTo-Json | Set-Content "$output/local-receipt.json" -Encoding utf8NoBOM
     Write-Output "Production seed verified with 40 synthetic accounts and zero marker rows. $output"
     }

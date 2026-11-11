@@ -129,6 +129,16 @@ class OwnerCommandRoutesTest {
         }
     }
 
+    @Test fun `signed command response still requires exact requested epoch`() {
+        val reply = """{"type":"applied","message":{"type":"room_list","rooms":[]},"roomId":"$room","epoch":4,"revision":1,"replayed":true}"""
+        withEndpoint({ post(PATH) {
+            val nonce = UUID.fromString(call.request.headers["X-FastToWin-Owner-Nonce"])
+            sign(reply, sender = owner, target = ingress, direction = "reply", nonce = nonce)
+                .forEach { (name, value) -> call.response.headers.append(name, value) }
+            call.respondText(reply, ContentType.Application.Json)
+        } }) { uri -> assertNull(OwnerPeerTransport(ingress, owner, uri, key, clock).forward(disconnect)) }
+    }
+
     @Test fun `peer redirects and retry responses never produce a second request`() {
         val requests = AtomicInteger()
         val redirects = AtomicInteger()

@@ -88,6 +88,15 @@ internal fun Route.ownerCommandRoutes(
     }
 }
 
+internal fun Route.ownerCreateRoutes(
+    transport: OwnerPeerTransport, dispatch: suspend (OwnedCreateRequest) -> OwnedCreateResult
+) {
+    post(OWNER_CREATE_PATH) {
+        val handled = withTimeoutOrNull(PEER_TIMEOUT_MILLIS) { transport.receiveCreate(call, dispatch); true }
+        if (handled == null && !call.response.isCommitted) call.respond(HttpStatusCode.RequestTimeout)
+    }
+}
+
 internal class OwnerPeerTransport(
     val instanceId: UUID,
     val peerId: UUID,
@@ -107,6 +116,7 @@ internal class OwnerPeerTransport(
 
     private val key = SecretKeySpec(secret, HMAC_ALGORITHM)
     private val endpoint = peerUri.resolve(OWNER_COMMAND_PATH).toString().toHttpUrl()
+    private val createEndpoint = peerUri.resolve(OWNER_CREATE_PATH).toString().toHttpUrl()
     private val peerAddresses = resolvePrivatePeer(endpoint.host)
     private val nonces = PeerNonces(clock)
     private val client = OkHttpClient.Builder()
@@ -136,25 +146,36 @@ internal class OwnerPeerTransport(
         decode<OwnerCommandResponse>(response.payload)?.toReply(request)
     }
 
+    suspend fun forwardCreate(request: OwnedCreateRequest): OwnedCreateResult = withTimeoutOrNull(PEER_TIMEOUT_MILLIS) {
+        if (!request.isSupported() || request.destinationNodeId != peerId) return@withTimeoutOrNull null
+        val payload = Json.encodeToString(OwnedCreateWireRequest.from(request)).encodeToByteArray()
+        if (payload.size > MAX_BODY_BYTES) return@withTimeoutOrNull null
+        val nonce = UUID.randomUUID()
+        val auth = sign(Direction.REQUEST, nonce, payload, CREATE_DOMAIN)
+        val httpRequest = Request.Builder().url(createEndpoint).post(OneShotBody(payload))
+        auth.headers().forEach { (name, value) -> httpRequest.header(name, value) }
+        val response = client.newCall(httpRequest.build()).readReply() ?: return@withTimeoutOrNull null
+        if (response.auth.nonce != nonce || !verify(Direction.REPLY, response.auth, response.payload, CREATE_DOMAIN)) {
+            return@withTimeoutOrNull null
+        }
+        decode<OwnedCreateWireResponse>(response.payload)?.toResult(request)
+    } ?: OwnedCreateResult.Unresolved("CREATE_PEER_UNAVAILABLE")
+
+    internal suspend fun receiveCreate(call: ApplicationCall, dispatch: suspend (OwnedCreateRequest) -> OwnedCreateResult) {
+        val received = authenticatedPayload(call, CREATE_DOMAIN) ?: return
+        val (auth, payload) = received
+        val request = decode<OwnedCreateWireRequest>(payload)?.toRequest()
+        if (request == null || request.destinationNodeId != instanceId) return call.respond(HttpStatusCode.BadRequest)
+        val reply = Json.encodeToString(OwnedCreateWireResponse.from(request, dispatch(request))).encodeToByteArray()
+        if (reply.size > MAX_BODY_BYTES) return call.respond(HttpStatusCode.ServiceUnavailable)
+        sign(Direction.REPLY, auth.nonce, reply, CREATE_DOMAIN).headers().forEach { (name, value) -> call.response.headers.append(name, value) }
+        call.response.headers.append(HttpHeaders.CacheControl, "no-store")
+        call.respondBytes(reply, ContentType.Application.Json)
+    }
+
     internal suspend fun receive(call: ApplicationCall, dispatch: suspend (OwnerCommandRequest) -> OwnedRoomReply) {
-        // The local connection point is the actual socket even when ForwardedHeaders is installed.
-        val source = call.request.local.remoteAddress.asSocketAddress()
-        if (source == null || !source.isAllowedPeerSource(peerAddresses)) {
-            return call.respond(HttpStatusCode.Unauthorized)
-        }
-        val auth = PeerAuth.read(call.request.headers::getAll)
-        if (auth == null || !accepts(auth)) return call.respond(HttpStatusCode.Unauthorized)
-        if (!call.request.contentType().match(ContentType.Application.Json)) {
-            return call.respond(HttpStatusCode.UnsupportedMediaType)
-        }
-        val contentLength = call.request.headers[HttpHeaders.ContentLength]?.toLongOrNull()
-        if (contentLength != null && contentLength > MAX_BODY_BYTES) {
-            return call.respond(HttpStatusCode.PayloadTooLarge)
-        }
-        val payload = call.readOwnerPayload() ?: return call.respond(HttpStatusCode.PayloadTooLarge)
-        if (!verify(Direction.REQUEST, auth, payload) || !nonces.remember(auth.nonce, auth.issuedAt)) {
-            return call.respond(HttpStatusCode.Unauthorized)
-        }
+        val received = authenticatedPayload(call, COMMAND_DOMAIN) ?: return
+        val (auth, payload) = received
         val request = decode<OwnerCommandRequest>(payload)
         if (request == null || !request.isSupported()) return call.respond(HttpStatusCode.BadRequest)
 
@@ -167,27 +188,53 @@ internal class OwnerPeerTransport(
         call.respondBytes(reply, ContentType.Application.Json)
     }
 
+    private suspend fun authenticatedPayload(call: ApplicationCall, domain: String): Pair<PeerAuth, ByteArray>? {
+        // The local connection point is the actual socket even when ForwardedHeaders is installed.
+        val source = call.request.local.remoteAddress.asSocketAddress()
+        if (source == null || !source.isAllowedPeerSource(peerAddresses)) {
+            call.respond(HttpStatusCode.Unauthorized); return null
+        }
+        val auth = PeerAuth.read(call.request.headers::getAll)
+        if (auth == null || !accepts(auth)) { call.respond(HttpStatusCode.Unauthorized); return null }
+        if (!call.request.contentType().match(ContentType.Application.Json)) {
+            call.respond(HttpStatusCode.UnsupportedMediaType); return null
+        }
+        val contentLength = call.request.headers[HttpHeaders.ContentLength]?.toLongOrNull()
+        if (contentLength != null && contentLength > MAX_BODY_BYTES) {
+            call.respond(HttpStatusCode.PayloadTooLarge); return null
+        }
+        val payload = call.readOwnerPayload()
+        if (payload == null) { call.respond(HttpStatusCode.PayloadTooLarge); return null }
+        if (!verify(Direction.REQUEST, auth, payload, domain) || !nonces.remember(auth.nonce, auth.issuedAt)) {
+            call.respond(HttpStatusCode.Unauthorized); return null
+        }
+        return auth to payload
+    }
+
     private fun accepts(auth: PeerAuth): Boolean =
         auth.sender == peerId && auth.target == instanceId && auth.issuedAt.isFreshAt(clock.millis())
 
-    private fun verify(direction: Direction, auth: PeerAuth, payload: ByteArray): Boolean =
-        accepts(auth) && MessageDigest.isEqual(auth.signature, signature(direction, auth, payload))
+    private fun verify(direction: Direction, auth: PeerAuth, payload: ByteArray, domain: String = COMMAND_DOMAIN): Boolean =
+        accepts(auth) && MessageDigest.isEqual(auth.signature, signature(direction, auth, payload, domain))
 
-    private fun sign(direction: Direction, nonce: UUID, payload: ByteArray): PeerAuth {
+    private fun sign(direction: Direction, nonce: UUID, payload: ByteArray, domain: String = COMMAND_DOMAIN): PeerAuth {
         val unsigned = PeerAuth(instanceId, peerId, clock.millis(), nonce, ByteArray(0))
-        return unsigned.copy(signature = signature(direction, unsigned, payload))
+        return unsigned.copy(signature = signature(direction, unsigned, payload, domain))
     }
 
-    private fun signature(direction: Direction, auth: PeerAuth, payload: ByteArray): ByteArray {
+    private fun signature(direction: Direction, auth: PeerAuth, payload: ByteArray, domain: String): ByteArray {
         val mac = Mac.getInstance(HMAC_ALGORITHM)
         mac.init(key)
-        val fields = "fasttowin/room-owner/v1\n${direction.wireValue}\n${auth.sender}\n${auth.target}\n${auth.issuedAt}\n${auth.nonce}\n"
+        val fields = "$domain\n${direction.wireValue}\n${auth.sender}\n${auth.target}\n${auth.issuedAt}\n${auth.nonce}\n"
         mac.update(fields.encodeToByteArray())
         return mac.doFinal(payload)
     }
 }
 
 private const val OWNER_COMMAND_PATH = "/internal/room-ownership/command"
+private const val OWNER_CREATE_PATH = "/internal/room-ownership/create"
+private const val COMMAND_DOMAIN = "fasttowin/room-owner/v1"
+private const val CREATE_DOMAIN = "fasttowin/room-create/v1"
 private const val PEER_TIMEOUT_MILLIS = 2_000L
 private const val MAX_BODY_BYTES = 64 * 1024
 private const val HMAC_ALGORITHM = "HmacSHA256"
@@ -355,6 +402,59 @@ private class OneShotBody(payload: ByteArray) : RequestBody() {
     override fun contentLength() = delegate.contentLength()
     override fun writeTo(sink: BufferedSink) = delegate.writeTo(sink)
     override fun isOneShot() = true
+}
+
+@Serializable
+private data class OwnedCreateWireResponse(
+    val operationId: String, val roomId: String, val destinationNodeId: String, val outcome: String,
+    val createdInstanceId: String? = null, val createdEpoch: Long? = null, val createdRevision: Long? = null,
+    val replayed: Boolean? = null, val closedEpoch: Long? = null, val closedRevision: Long? = null,
+    val reason: String? = null, val version: Int = 1
+) {
+    fun toResult(request: OwnedCreateRequest): OwnedCreateResult? {
+        if (version != 1 || canonicalCreateUuid(operationId) != request.operationId ||
+            canonicalCreateUuid(roomId) != request.roomId || canonicalCreateUuid(destinationNodeId) != request.destinationNodeId) return null
+        if (outcome == "attempt_rejected" || outcome == "unresolved") {
+            if (reason.isNullOrEmpty() || createdInstanceId != null || createdEpoch != null || createdRevision != null ||
+                replayed != null || closedEpoch != null || closedRevision != null) return null
+            return if (outcome == "attempt_rejected") OwnedCreateResult.AttemptRejected(reason) else OwnedCreateResult.Unresolved(reason)
+        }
+        val instance = createdInstanceId?.let(::canonicalCreateUuid) ?: return null
+        val epoch = createdEpoch?.takeIf { it > 0 } ?: return null
+        val revision = createdRevision?.takeIf { it > 0 } ?: return null
+        if (reason != null) return null
+        val proof = OwnedCreateProof(request.operationId, request.roomId, request.destinationNodeId, instance, epoch, revision)
+        return when (outcome) {
+            "created" -> if (replayed != null && closedEpoch == null && closedRevision == null) OwnedCreateResult.Created(proof, replayed) else null
+            "closed" -> if (replayed == null && closedEpoch != null && closedRevision != null &&
+                closedEpoch >= epoch && closedRevision > revision) OwnedCreateResult.Closed(proof, closedEpoch, closedRevision) else null
+            else -> null
+        }
+    }
+
+    companion object {
+        fun from(request: OwnedCreateRequest, result: OwnedCreateResult): OwnedCreateWireResponse {
+            val proof = when (result) {
+                is OwnedCreateResult.Created -> result.proof
+                is OwnedCreateResult.Closed -> result.proof
+                else -> null
+            }
+            return OwnedCreateWireResponse((proof?.operationId ?: request.operationId).toString(),
+                (proof?.roomId ?: request.roomId).toString(), (proof?.destinationNodeId ?: request.destinationNodeId).toString(),
+                when (result) {
+                    is OwnedCreateResult.Created -> "created"
+                    is OwnedCreateResult.Closed -> "closed"
+                    is OwnedCreateResult.AttemptRejected -> "attempt_rejected"
+                    is OwnedCreateResult.Unresolved -> "unresolved"
+                }, proof?.createdInstanceId?.toString(), proof?.createdEpoch, proof?.createdRevision,
+                (result as? OwnedCreateResult.Created)?.replayed, (result as? OwnedCreateResult.Closed)?.closedEpoch,
+                (result as? OwnedCreateResult.Closed)?.closedRevision, when (result) {
+                    is OwnedCreateResult.AttemptRejected -> result.reason
+                    is OwnedCreateResult.Unresolved -> result.reason
+                    else -> null
+                })
+        }
+    }
 }
 
 @Serializable

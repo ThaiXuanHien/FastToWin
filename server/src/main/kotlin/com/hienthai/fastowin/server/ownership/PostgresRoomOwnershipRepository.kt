@@ -6,6 +6,7 @@ import com.hienthai.fastowin.protocol.ProtocolJson
 import com.hienthai.fastowin.protocol.RoomPhase
 import com.hienthai.fastowin.protocol.RoomSummary
 import com.hienthai.fastowin.server.StoredActiveRoom
+import com.hienthai.fastowin.server.PasswordHash
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.decodeFromString
@@ -76,6 +77,23 @@ internal class PostgresRoomOwnershipRepository(
     }
 
     private fun Connection.ownershipSchemaReady(): Boolean {
+        if (admission != null) {
+            query("""
+                SELECT operation_id, room_id, player_id, socket_generation, destination_node_id,
+                    policy_generation, topology_sha256, policy_sha256, command_sha256, password_encoding,
+                    password_salt, password_hash, created_instance_id, created_epoch, created_revision,
+                    created_at, closed_epoch, closed_revision, closed_at
+                FROM owned_room_create_operations WHERE FALSE
+            """) { true }
+            val journalKeysReady = query("""
+                SELECT count(*) = 2 FROM pg_constraint c JOIN pg_class t ON t.oid=c.conrelid
+                JOIN pg_namespace n ON n.oid=t.relnamespace
+                WHERE n.nspname=current_schema() AND t.relname='owned_room_create_operations'
+                    AND (c.contype, pg_get_constraintdef(c.oid)) IN (
+                        ('p', 'PRIMARY KEY (operation_id)'), ('u', 'UNIQUE (room_id)'))
+            """) { rows -> rows.next() && rows.getBoolean(1) }
+            if (!journalKeysReady) return false
+        }
         // Resolve every runtime column without relying on a fixture table or application rows.
         query(
             """
@@ -280,6 +298,91 @@ internal class PostgresRoomOwnershipRepository(
         isCurrent(socket, lock = false)
     }
 
+    override suspend fun createOwned(
+        instanceId: UUID, request: OwnedCreateRequest, initialSnapshot: StoredActiveRoom,
+        events: List<RoomOwnershipEvent>, newIntentAllowed: () -> Boolean
+    ): OwnedCreateResult {
+        val binding = admission ?: return OwnedCreateResult.AttemptRejected("PRODUCTION_CREATE_REQUIRED")
+        if (!request.isSupported()) return OwnedCreateResult.AttemptRejected("INVALID_CREATE")
+        return try {
+            transaction(commit = { it is OwnedCreateResult.Created || it is OwnedCreateResult.Closed }) {
+                // This transaction already holds policy SHARE. STOP_NEW may still serve journal proof.
+                val actual = (this as TransactionConnection).lockedAdmission
+                if (actual == null || actual.topologySha256 != binding.topologySha256 || actual.policySha256 != binding.policySha256) {
+                    return@transaction OwnedCreateResult.Unresolved("ADMISSION_UNAVAILABLE")
+                }
+                if (!isCurrent(request.socket)) return@transaction OwnedCreateResult.AttemptRejected("STALE_SOCKET")
+                val existingRoom = load(request.roomId, lock = true)
+                val recorded = query("SELECT * FROM owned_room_create_operations WHERE operation_id = ? FOR UPDATE", request.operationId) {
+                    if (it.next()) it.createRecord() else null
+                }
+                if (recorded != null) {
+                    // Never acquire a second room lock after the operation lock, including collisions.
+                    if (recorded.playerId != request.socket.playerId || recorded.digest != request.nonsecretSha256() ||
+                        !recorded.proof.matches(request) || !recorded.password.matches(request.command.password)) {
+                        return@transaction OwnedCreateResult.AttemptRejected("OPERATION_REUSED")
+                    }
+                    if (recorded.closedEpoch != null && recorded.closedRevision != null) {
+                        return@transaction OwnedCreateResult.Closed(recorded.proof, recorded.closedEpoch, recorded.closedRevision)
+                    }
+                    if (existingRoom == null || existingRoom.state.closed) {
+                        return@transaction OwnedCreateResult.Unresolved("JOURNAL_ROOM_INCONSISTENT")
+                    }
+                    return@transaction OwnedCreateResult.Created(recorded.proof, replayed = true)
+                }
+                if (!newIntentAllowed() || !allowsNewIntent(request.policy)) {
+                    return@transaction OwnedCreateResult.AttemptRejected("OWNED_ADMISSION_STOPPED")
+                }
+                if (existingRoom != null) return@transaction OwnedCreateResult.AttemptRejected("ROOM_ALREADY_EXISTS")
+                if (!initialSnapshot.isPilotRoom() || initialSnapshot.phase != RoomPhase.WAITING ||
+                    initialSnapshot.guest != null || initialSnapshot.roomId != request.roomId.toString() ||
+                    initialSnapshot.host.playerId != request.socket.playerId.toString() ||
+                    initialSnapshot.gameMode != request.command.gameMode || initialSnapshot.matchType != request.command.matchType ||
+                    initialSnapshot.passwordSalt?.size != 16 || initialSnapshot.passwordHash?.size != 32 ||
+                    !PasswordHash(initialSnapshot.passwordSalt, initialSnapshot.passwordHash).matches(request.command.password)) {
+                    return@transaction OwnedCreateResult.AttemptRejected("INVALID_CREATE_ROOM")
+                }
+                val inserted = update("""
+                    INSERT INTO room_ownership_pilot_rooms(room_id, instance_id, owner_epoch, revision, lease_until, snapshot)
+                    VALUES (?, ?, 1, 1, clock_timestamp() + interval '12 seconds', CAST(? AS jsonb))
+                    ON CONFLICT (room_id) DO NOTHING
+                """, request.roomId, instanceId, ProtocolJson.encodeToString(initialSnapshot))
+                if (inserted != 1 || !addMembership(request.socket.playerId, request.roomId)) {
+                    return@transaction OwnedCreateResult.AttemptRejected("ALREADY_IN_ROOM")
+                }
+                val state = OwnedRoomState(OwnerFence(request.roomId, instanceId, 1), 1, initialSnapshot, null,
+                    observedAt = databaseTime())
+                saveEvents(state, events)
+                val saved = update("""
+                    INSERT INTO owned_room_create_operations(operation_id, room_id, player_id, socket_generation,
+                        destination_node_id, policy_generation, topology_sha256, policy_sha256, command_sha256,
+                        password_salt, password_hash, created_instance_id, created_epoch, created_revision)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 1) ON CONFLICT DO NOTHING
+                """, request.operationId, request.roomId, request.socket.playerId, request.socket.generation,
+                    request.destinationNodeId, request.policy.generation, requireNotNull(request.policy.topologySha256),
+                    requireNotNull(request.policy.policySha256), request.nonsecretSha256(), initialSnapshot.passwordSalt,
+                    initialSnapshot.passwordHash, instanceId)
+                if (saved != 1) return@transaction OwnedCreateResult.Unresolved("OPERATION_COLLISION")
+                OwnedCreateResult.Created(OwnedCreateProof(request.operationId, request.roomId,
+                    request.destinationNodeId, instanceId, 1, 1), replayed = false)
+            }
+        } catch (_: SQLException) {
+            OwnedCreateResult.Unresolved("CREATE_STORAGE_UNAVAILABLE")
+        }
+    }
+
+    private data class CreateRecord(
+        val playerId: UUID, val digest: String, val password: PasswordHash, val proof: OwnedCreateProof,
+        val closedEpoch: Long?, val closedRevision: Long?
+    )
+
+    private fun ResultSet.createRecord() = CreateRecord(getObject("player_id", UUID::class.java), getString("command_sha256"),
+        PasswordHash(getBytes("password_salt"), getBytes("password_hash")),
+        OwnedCreateProof(getObject("operation_id", UUID::class.java), getObject("room_id", UUID::class.java),
+            getObject("destination_node_id", UUID::class.java), getObject("created_instance_id", UUID::class.java),
+            getLong("created_epoch"), getLong("created_revision")),
+        getLong("closed_epoch").takeUnless { wasNull() }, getLong("closed_revision").takeUnless { wasNull() })
+
     override suspend fun createRoom(
         instanceId: UUID,
         socket: SocketFence,
@@ -386,6 +489,10 @@ internal class PostgresRoomOwnershipRepository(
             recoveryDeadline = state.recoveryDeadline.takeUnless { mutation.close || mutation.clearRecoveryDeadline }
         )
         saveEvents(committed, mutation.events)
+        if (mutation.close && admission != null) update("""
+            UPDATE owned_room_create_operations SET closed_epoch = ?, closed_revision = ?, closed_at = clock_timestamp()
+            WHERE room_id = ? AND closed_at IS NULL
+        """, committed.fence.epoch, committed.revision, roomId)
         val recoveredAfter = state.recoveryDeadline
             ?.takeIf { mutation.clearRecoveryDeadline && !mutation.close && snapshot.phase == RoomPhase.PLAYING }
             ?.let { state.observedAt.toEpochMilli() - it.minusSeconds(30).toEpochMilli() }

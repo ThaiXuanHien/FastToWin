@@ -171,7 +171,57 @@ internal class RoomOwnershipPilot private constructor(
         unavailable().publicMessage
     }
 
-    fun installRoutes(route: Route) = route.ownerCommandRoutes(transport, ::onPeerRequest)
+    fun installRoutes(route: Route) {
+        route.ownerCommandRoutes(transport, ::onPeerRequest)
+        if (isProductionMode) route.ownerCreateRoutes(transport, ::onPeerCreate)
+    }
+
+    /** Task 3 owns serialization and retention. This method prepares a new, never-sent descriptor only. */
+    suspend fun prepareOwnedCreate(socket: SocketFence, command: ClientMessage.CreateRoom): OwnedCreatePreparation = try {
+        if (!isProductionMode || config.runtimeRole != RoomOwnershipRuntimeRole.INGRESS ||
+            socket.playerId !in config.allowedAccounts || !rooms.isCurrentSocket(socket)) {
+            OwnedCreatePreparation.Rejected("CREATE_NOT_ALLOWED")
+        } else {
+            val existing = rooms.lookupRoom(socket.playerId)
+            if (existing != null) OwnedCreatePreparation.Existing(existing)
+            else {
+                val policy = admissionAuthority?.observe()?.takeIf { it.admits(checkNotNull(admissionBinding)) }
+                if (policy == null || !newIntentAllowed() || !isAccepting()) OwnedCreatePreparation.Rejected("OWNED_ADMISSION_STOPPED")
+                else {
+                    val key = socket.playerId.toString()
+                    val request = OwnedCreateRequest(UUID.randomUUID(), UUID.randomUUID(), socket, key,
+                        RoomOwnershipRouting(config).createNode(key), policy, command)
+                    if (request.isSupported()) OwnedCreatePreparation.Ready(request)
+                    else OwnedCreatePreparation.Rejected("INVALID_CREATE")
+                }
+            }
+        }
+    } catch (_: SQLException) { OwnedCreatePreparation.Rejected("CREATE_STORAGE_UNAVAILABLE") }
+
+    suspend fun createOwned(request: OwnedCreateRequest): OwnedCreateResult = admission.admit {
+        if (config.runtimeRole != RoomOwnershipRuntimeRole.INGRESS || !validCreate(request)) {
+            OwnedCreateResult.AttemptRejected("CREATE_NOT_ALLOWED")
+        } else if (request.destinationNodeId == config.nodeId) executeCreate(request)
+        else transport.forwardCreate(request)
+    } ?: OwnedCreateResult.Unresolved("PROCESS_DRAINING")
+
+    private fun validCreate(request: OwnedCreateRequest): Boolean = isProductionMode && request.isSupported() &&
+        request.socket.playerId in config.allowedAccounts &&
+        request.policy.topologySha256 == admissionBinding?.topologySha256 &&
+        request.policy.policySha256 == admissionBinding?.policySha256 &&
+        request.destinationNodeId == RoomOwnershipRouting(config).createNode(request.routeKey)
+
+    /** Only configured A can send a create to configured worker B; peer HMAC alone is insufficient. */
+    private suspend fun onPeerCreate(request: OwnedCreateRequest): OwnedCreateResult = admission.admit {
+        if (config.runtimeRole != RoomOwnershipRuntimeRole.OWNED_WORKER || !validCreate(request) ||
+            request.destinationNodeId != config.nodeId) OwnedCreateResult.AttemptRejected("CREATE_NOT_ALLOWED")
+        else executeCreate(request)
+    } ?: OwnedCreateResult.Unresolved("PROCESS_DRAINING")
+
+    private suspend fun executeCreate(request: OwnedCreateRequest): OwnedCreateResult = try {
+        // The repository applies this extra process/maintenance guard only after locked journal lookup.
+        engine.createOwned(request, newIntentAllowed)
+    } catch (_: SQLException) { OwnedCreateResult.Unresolved("CREATE_STORAGE_UNAVAILABLE") }
 
     suspend fun onMessage(
         socket: SocketFence,
