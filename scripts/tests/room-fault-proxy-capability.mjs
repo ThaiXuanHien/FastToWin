@@ -10,6 +10,13 @@ import {setTimeout as delay} from 'node:timers/promises';
 
 const root=fileURLToPath(new URL('../../',import.meta.url));
 const recipes=path.join(root,'deploy/room-ownership/supervised');
+const fixture=randomUUID(), run='room-pilot-'+fixture.replaceAll('-','').slice(0,12);
+const pgHost=run+'-pg.railway.internal';
+const endpoint='npipe:////./pipe/docker_engine';
+function localArgs(args){
+ if(process.env.DOCKER_HOST && !/^(npipe:\/\/\/\/\.\/pipe\/[a-zA-Z0-9_.-]+|unix:\/\/\/[a-zA-Z0-9_./-]+)$/.test(process.env.DOCKER_HOST))throw new Error('Remote Docker refused');
+ return ['--host',endpoint,...args];
+}
 const id='room-proxy-'+randomBytes(7).toString('hex'), label='fasttowin.fixture='+id;
 const name=role=>id+'-'+role, scratch=path.join(root,'.artifacts',id);
 const token=randomBytes(32).toString('hex'), password=randomBytes(32).toString('hex');
@@ -18,21 +25,21 @@ const pg='postgres@sha256:123b17998ccaf47e53b502e8c6a1e79afd8f579c6f3eec83c563da
 const toxi='ghcr.io/shopify/toxiproxy@sha256:9378ed52a28bc50edc1350f936f518f31fa95f0d15917d6eb40b8e376d1a214e';
 const receipt={sources:{},bases:{},images:{},checks:[]};
 function docker(args,options={}){
- try{return execFileSync('docker',args,{encoding:'utf8',stdio:['pipe','pipe','pipe'],timeout:120000,maxBuffer:4*1024*1024,...options}).trim();}
+ try{return execFileSync('docker',localArgs(args),{encoding:'utf8',stdio:['pipe','pipe','pipe'],timeout:120000,maxBuffer:4*1024*1024,...options}).trim();}
  catch(e){throw new Error('local docker '+args[0]+' failed (exit '+e.status+')'+(args[0]==='build'?'\n'+String(e.stderr).slice(-1800):''));}
 }
 const inside=(role,...args)=>docker(['exec',name(role),...args]);
 async function until(probe,description,ms=20000){const end=Date.now()+ms;while(Date.now()<end){try{if(await probe())return;}catch{}await delay(100);}throw new Error('timed out: '+description);}
 function build(role,context){docker(['build','--pull=false','--network','none','--label',label,'-t',name(role),'-f',path.join(recipes,role+'.Dockerfile'),context],{timeout:240000});receipt.images[role]=docker(['image','inspect','--format','{{.Id}}',name(role)]);console.log(role+' image '+receipt.images[role]);}
 function start(role,image,env={},extra=[],end=deadline){
- const settings={ROOM_FAULT_FIXTURE:id,ROOM_FAULT_TOKEN:token,ROOM_FAULT_DEADLINE_MS:String(end),...env};
+ const settings={ROOM_FAULT_FIXTURE:fixture,ROOM_FAULT_TOKEN:token,ROOM_FAULT_DEADLINE_MS:String(end),...env};
  docker(['run','-d','--pull','never','--cap-drop','ALL','--security-opt','no-new-privileges:true','--network',id,'--label',label,'--name',name(role),...extra,...Object.keys(settings).flatMap(k=>['-e',k]),image],{env:{...process.env,...settings}});
  const config=JSON.parse(docker(['inspect','--format','{{json .HostConfig}}',name(role)]));
  assert.equal(config.Privileged,false);assert.equal(config.PidMode,'');assert.equal(config.NetworkMode,id);assert.deepEqual(config.CapDrop,['ALL']);assert.equal(config.CapAdd,null);assert(config.SecurityOpt.includes('no-new-privileges:true'));assert.equal(Object.keys(config.PortBindings??{}).length,0);
 }
 class Lines {
  constructor(role,args){
-  this.proc=spawn('docker',['exec','-i',name(role),...args],{stdio:['pipe','pipe','ignore']});this.proc.stdin.on('error',()=>{});
+  this.proc=spawn('docker',localArgs(['exec','-i',name(role),...args]),{stdio:['pipe','pipe','ignore']});this.proc.stdin.on('error',()=>{});
   this.queue=[];this.waiters=[];this.closed=false;clients.add(this);
   const lines=createInterface({input:this.proc.stdout,crlfDelay:Infinity});
   lines.on('line',value=>{const cb=this.waiters.shift();if(cb)cb(value);else this.queue.push(value);});
@@ -47,7 +54,7 @@ class Lines {
  close(){this.proc.stdin.end();this.proc.kill();clients.delete(this);}
 }
 async function control(operation,leaseMillis=0,role='proxy',extra={}){
- const req={fixtureId:id,requestId:randomUUID(),generation:operation==='status'?0:1,operation,leaseMillis,deadlineUnixMillis:Math.min(deadline,Date.now()+10000),...extra};
+ const req={fixtureId:fixture,requestId:randomUUID(),generation:operation==='status'?0:1,operation,leaseMillis,deadlineUnixMillis:Math.min(deadline,Date.now()+10000),...extra};
  const body=JSON.stringify(req),http=new Lines(role,['nc','-w','12','127.0.0.1','8181']);
  try{
   http.send('POST /control HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\nAuthorization: Bearer '+token+'\r\nContent-Type: application/json\r\nContent-Length: '+Buffer.byteLength(body)+'\r\n\r\n'+body);
@@ -78,11 +85,11 @@ try{
  docker(['create','--network','none','--label',label,'--name',name('extract'),name('supervisor'),'/supervisor']);
  const context=path.join(scratch,'context');fs.mkdirSync(context);docker(['cp',name('extract')+':/supervisor',path.join(context,'supervisor')]);
  receipt.supervisorSha256=createHash('sha256').update(fs.readFileSync(path.join(context,'supervisor'))).digest('hex');
- fs.copyFileSync(path.join(recipes,'proxies.json'),path.join(context,'proxies.json'));build('proxy',context);
+ build('proxy',context);
  // Reuse the existing unprivileged PG image recipe; no backend JAR is built.
  build('postgres',context);docker(['network','create','--internal','--label',label,id]);
  const volume=name('pg-data');docker(['volume','create','--label',label,volume]);
- start('pg',name('postgres'),{ROOM_FAULT_ROLE:'pg',POSTGRES_PASSWORD:password,POSTGRES_USER:'fixture',POSTGRES_DB:'fixture',PGPASSWORD:password,PGCONNECT_TIMEOUT:'1'},['--network-alias','postgres','--mount','type=volume,source='+volume+',target=/var/lib/postgresql']);
+ start('pg',name('postgres'),{ROOM_FAULT_ROLE:'pg',POSTGRES_PASSWORD:password,POSTGRES_USER:'fixture',POSTGRES_DB:'fixture',PGPASSWORD:password,PGCONNECT_TIMEOUT:'1'},['--network-alias',pgHost,'--mount','type=volume,source='+volume+',target=/var/lib/postgresql']);
  await until(()=>inside('pg','pg_isready','-h','127.0.0.1','-U','fixture').includes('accepting connections'),'PostgreSQL');
  start('proxy',name('proxy'),{},['--network-alias','proxy']);
  let lastStatus;
@@ -96,6 +103,8 @@ try{
   for(const line of log.split('\n')){try{const item=JSON.parse(line);if(item.level==='error')console.log('Proxy diagnostic',JSON.stringify({level:item.level,message:item.message,error:item.error}));}catch{}}
   throw error;
  }
+ assert.throws(()=>inside('proxy','getent','hosts','postgres'));
+ receipt.markedUpstream=pgHost+':5432';receipt.noShortPostgresAlias=true;
  ownership();receipt.kernel=inside('proxy','uname','-r');
  assert.throws(()=>inside('pg','wget','-T','1','-qO','/dev/null','http://proxy:8474/proxies'));
  // Preserve B's connection identity and row across the partition of A.
@@ -120,7 +129,7 @@ try{
  // A second instance proves immutable configuration rejection before any fault.
  start('tamper',name('proxy'));
  await until(async()=>{const r=await control('status',0,'tamper');return r.code===200;},'tamper fixture');
- inside('tamper','wget','-qO','/dev/null','--post-data={"upstream":"postgres:5433"}','http://127.0.0.1:8474/proxies/pg-a');
+ inside('tamper','wget','-qO','/dev/null','--post-data='+JSON.stringify({upstream:pgHost+':5433'}),'http://127.0.0.1:8474/proxies/pg-a');
  const changed=await control('block-a',10000,'tamper');assert.equal(changed.code,503);assert.equal(changed.body.verified,false);
  const config=JSON.parse(inside('tamper','wget','-qO','-','http://127.0.0.1:8474/proxies'));assert.equal(config['pg-a'].enabled,true);assert.equal(config['pg-b'].enabled,true);
  receipt.checks.push({changedUpstreamRejected:true});
@@ -136,8 +145,8 @@ try{
  for(const c of owned(['ps','-aq','--filter','label='+label]))docker(['rm','-fv',c]);
  for(const v of owned(['volume','ls','-q','--filter','label='+label]))docker(['volume','rm',v]);
  for(const n of owned(['network','ls','-q','--filter','label='+label]))docker(['network','rm',n]);
- for(const i of owned(['image','ls','--format','{{.Repository}}:{{.Tag}}','--filter','label='+label]))docker(['image','rm',i]);
- for(const args of [['ps','-aq'],['volume','ls','-q'],['network','ls','-q'],['image','ls','-q']])assert.equal(docker([...args,'--filter','label='+label]),'');
+ for(const i of owned(['image','ls','--all','--format','{{.ID}}','--filter','label='+label]))docker(['image','rm',i]);
+ for(const args of [['ps','-aq'],['volume','ls','-q'],['network','ls','-q'],['image','ls','--all','-q']])assert.equal(docker([...args,'--filter','label='+label]),'');
  assert.equal(path.dirname(scratch),path.join(root,'.artifacts'));assert.match(path.basename(scratch),/^room-proxy-[a-f0-9]{14}$/);fs.rmSync(scratch,{recursive:true,force:true});
  receipt.remaining={containers:0,networks:0,volumes:0,images:0};const evidence=path.join(root,'.artifacts/room-fault-proxy-evidence');fs.mkdirSync(evidence,{recursive:true});
  const out=path.join(evidence,id+'.json');fs.writeFileSync(out,JSON.stringify(receipt,null,2)+'\n');console.log('Owned containers/networks/volumes/images=0. Technical receipt '+out);

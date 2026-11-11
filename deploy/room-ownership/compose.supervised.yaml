@@ -1,0 +1,141 @@
+# Six private services. The host adds the runner's control targets after seeding.
+x-labels: &labels
+  fasttowin.supervised: ${FTW_SUPERVISED_PACKAGE:?}
+x-private: &private
+  pull_policy: never
+  cap_drop: [ALL]
+  security_opt: ["no-new-privileges:true"]
+  labels: *labels
+  networks: [fixture]
+  restart: "no"
+  stop_grace_period: 15s
+x-control: &control
+  ROOM_FAULT_FIXTURE: ${ROOM_FAULT_FIXTURE:?}
+  ROOM_FAULT_TOKEN: ${ROOM_FAULT_TOKEN:?}
+  ROOM_FAULT_DEADLINE_MS: ${ROOM_FAULT_DEADLINE_MS:?}
+x-backend-env: &backend-env
+  <<: *control
+  FASTTOWIN_ENV: dev
+  SERVER_HOST: 0.0.0.0
+  PORT: "8080"
+  DATABASE_USER: fasttowin_room_pilot
+  DATABASE_POOL_SIZE: "20"
+  DATABASE_PASSWORD: ${FASTTOWIN_ROOM_OWNERSHIP_DATABASE_PASSWORD:?}
+  FASTTOWIN_ROOM_OWNERSHIP_FIXTURE_ID: ${FASTTOWIN_ROOM_OWNERSHIP_FIXTURE_ID:?}
+  FASTTOWIN_ROOM_OWNERSHIP_ACCOUNTS: ${FASTTOWIN_ROOM_OWNERSHIP_ACCOUNTS:?}
+  FASTTOWIN_ROOM_OWNERSHIP_MODE: pilot
+  FASTTOWIN_ROOM_OWNERSHIP_ACCEPTANCE: "true"
+  FASTTOWIN_ROOM_OWNERSHIP_PEER_SECRET: ${FASTTOWIN_ROOM_OWNERSHIP_PEER_SECRET:?}
+  FASTTOWIN_RATE_LIMIT_STORE: redis
+  FASTTOWIN_RATE_LIMIT_REDIS_URL: redis://:${FTW_FIXTURE_REDIS_PASSWORD:?}@${FTW_PILOT_NAME:?}-redis.railway.internal:6379
+  FASTTOWIN_RATE_LIMIT_NAMESPACE: ${FTW_PILOT_NAME:?}-limits
+  FASTTOWIN_PRESENCE_STORE: redis
+  FASTTOWIN_PRESENCE_REDIS_URL: redis://:${FTW_FIXTURE_REDIS_PASSWORD:?}@${FTW_PILOT_NAME:?}-redis.railway.internal:6379
+  FASTTOWIN_PRESENCE_NAMESPACE: ${FTW_PILOT_NAME:?}-presence
+x-backend: &backend
+  <<: *private
+  image: ${FTW_BACKEND_IMAGE:?}
+  user: fasttowin
+  cpus: 3
+  mem_limit: 1000000000
+  memswap_limit: 1000000000
+services:
+  pg:
+    <<: *private
+    image: ${FTW_PG_IMAGE:?}
+    user: postgres
+    cpus: 2
+    mem_limit: 512000000
+    memswap_limit: 512000000
+    environment:
+      <<: *control
+      POSTGRES_DB: fasttowin_room_pilot
+      POSTGRES_USER: fasttowin_room_pilot
+      POSTGRES_PASSWORD: ${FASTTOWIN_ROOM_OWNERSHIP_DATABASE_PASSWORD:?}
+      PGPASSWORD: ${FASTTOWIN_ROOM_OWNERSHIP_DATABASE_PASSWORD:?}
+      PGCONNECT_TIMEOUT: "2"
+      POSTGRES_INITDB_ARGS: "-c shared_buffers=64MB -c work_mem=1MB -c maintenance_work_mem=32MB"
+    volumes: [pg-data:/var/lib/postgresql]
+    networks:
+      fixture:
+        aliases: ["${FTW_PILOT_NAME:?}-pg.railway.internal"]
+  redis:
+    <<: *private
+    image: ${FTW_REDIS_IMAGE:?}
+    user: redis
+    cpus: 0.25
+    mem_limit: 250000000
+    memswap_limit: 250000000
+    environment:
+      <<: *control
+      FTW_FIXTURE_REDIS_PASSWORD: ${FTW_FIXTURE_REDIS_PASSWORD:?}
+    volumes: [redis-data:/data]
+    networks:
+      fixture:
+        aliases: ["${FTW_PILOT_NAME:?}-redis.railway.internal"]
+  proxy:
+    <<: *private
+    image: ${FTW_PROXY_IMAGE:?}
+    user: "10001:10001"
+    cpus: 2
+    mem_limit: 128000000
+    memswap_limit: 128000000
+    environment: *control
+    networks:
+      fixture:
+        aliases: ["${FTW_PILOT_NAME:?}-proxy.railway.internal"]
+  backend-a:
+    <<: *backend
+    environment:
+      <<: *backend-env
+      ROOM_FAULT_ROLE: a
+      DATABASE_URL: jdbc:postgresql://${FTW_PILOT_NAME:?}-proxy.railway.internal:15432/fasttowin_room_pilot?connectTimeout=3&socketTimeout=3
+      FASTTOWIN_ROOM_OWNERSHIP_NODE_ID: 00000000-0000-4000-8000-00000000000a
+      FASTTOWIN_ROOM_OWNERSHIP_PEER_ID: 00000000-0000-4000-8000-00000000000b
+      FASTTOWIN_ROOM_OWNERSHIP_PEER_URL: http://${FTW_PILOT_NAME:?}-b.railway.internal:8080
+    networks:
+      fixture:
+        aliases: ["${FTW_PILOT_NAME:?}-a.railway.internal"]
+  backend-b:
+    <<: *backend
+    environment:
+      <<: *backend-env
+      ROOM_FAULT_ROLE: b
+      DATABASE_URL: jdbc:postgresql://${FTW_PILOT_NAME:?}-proxy.railway.internal:25432/fasttowin_room_pilot?connectTimeout=3&socketTimeout=3
+      FASTTOWIN_ROOM_OWNERSHIP_NODE_ID: 00000000-0000-4000-8000-00000000000b
+      FASTTOWIN_ROOM_OWNERSHIP_PEER_ID: 00000000-0000-4000-8000-00000000000a
+      FASTTOWIN_ROOM_OWNERSHIP_PEER_URL: http://${FTW_PILOT_NAME:?}-a.railway.internal:8080
+    networks:
+      fixture:
+        aliases: ["${FTW_PILOT_NAME:?}-b.railway.internal"]
+  runner:
+    <<: *private
+    image: ${FTW_RUNNER_IMAGE:?}
+    user: runner
+    cpus: 0.5
+    mem_limit: 500000000
+    memswap_limit: 500000000
+    entrypoint: [timeout, "1800", java, -Xmx384m, -cp, "classes:lib/*", com.hienthai.fastowin.server.ownership.RailwayRoomRehearsalKt]
+    environment:
+      RAILWAY_PROJECT_ID: b5c5db71-2df8-46da-84fb-d9b9df6d7951
+      RAILWAY_ENVIRONMENT_ID: 8bcf4119-3a6b-49b3-b4ff-8ea20080f3b9
+      RAILWAY_ENVIRONMENT_NAME: staging
+      RAILWAY_SERVICE_NAME: ${FTW_PILOT_NAME:?}-runner
+      FTW_PILOT_SUITE: ${FTW_PILOT_SUITE:?}
+      FTW_PILOT_BACKEND_POOL_SIZE: "20"
+      FTW_PILOT_DEADLINE_UTC: ${FTW_PILOT_DEADLINE_UTC:?}
+      FTW_PILOT_DATABASE_HOST: ${FTW_PILOT_NAME:?}-pg.railway.internal
+      FTW_REHEARSAL_MANIFEST_SHA256: ${FTW_REHEARSAL_MANIFEST_SHA256:?}
+      FASTTOWIN_ROOM_OWNERSHIP_FIXTURE_ID: ${FASTTOWIN_ROOM_OWNERSHIP_FIXTURE_ID:?}
+      FASTTOWIN_ROOM_OWNERSHIP_ACCOUNTS: ${FASTTOWIN_ROOM_OWNERSHIP_ACCOUNTS:?}
+      FASTTOWIN_ROOM_OWNERSHIP_DATABASE_PASSWORD: ${FASTTOWIN_ROOM_OWNERSHIP_DATABASE_PASSWORD:?}
+      FASTTOWIN_ROOM_OWNERSHIP_FIXTURE_PASSWORD: ${FASTTOWIN_ROOM_OWNERSHIP_FIXTURE_PASSWORD:?}
+networks:
+  fixture:
+    internal: true
+    labels: *labels
+volumes:
+  pg-data:
+    labels: *labels
+  redis-data:
+    labels: *labels

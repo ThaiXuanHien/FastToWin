@@ -385,6 +385,8 @@ internal suspend fun runRoomOwnershipFaults(fixture: RoomAcceptanceFixture,
             val observationStarted = System.nanoTime()
             val observation = noAcceptedSelection(match.socket(0), number, 25_000, request)
             val observationMillis = elapsedMillis(observationStarted)
+            if (fixture.supervised) Files.writeString(fixture.settings.receipts.resolve("postgres-pause-diagnostic.json"),
+                postgresPauseDiagnostic("observation", observation.endedBy, observationMillis, observation.errorCodes))
             check(observation.endedBy != "deadline") { "The outage request was still pending when observation ended" }
             fixture.faults.store(StoreRole.PG, false)
             postgresStopped = false
@@ -396,6 +398,8 @@ internal suspend fun runRoomOwnershipFaults(fixture: RoomAcceptanceFixture,
             match.select(number, request)
             val after = requireSelection(fixture, match, request, number)
             match.verifyEconomy()
+            if (fixture.supervised) Files.writeString(fixture.settings.receipts.resolve("postgres-pause-diagnostic.json"),
+                postgresPauseDiagnostic("recovered", observation.endedBy, timer.elapsedMillis(), observation.errorCodes))
             receipt(postgresCase, match, before, after, timer.elapsedMillis().takeIf { fixture.supervised },
                 "outageAcceptedAck" to "false", "outageObservationMillis" to observationMillis.toString(),
                 "outageRequestEndedBy" to observation.endedBy,

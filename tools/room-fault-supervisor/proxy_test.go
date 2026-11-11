@@ -7,6 +7,8 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -28,8 +30,8 @@ type proxyFixture struct {
 func newProxyFixture(t *testing.T) (*proxyDriver, *proxyFixture) {
 	t.Helper()
 	f := &proxyFixture{entries: map[string]proxyConfig{
-		"pg-a": {Name: "pg-a", Listen: "[::]:15432", Upstream: "postgres:5432", Enabled: true},
-		"pg-b": {Name: "pg-b", Listen: "[::]:25432", Upstream: "postgres:5432", Enabled: true},
+		"pg-a": {Name: "pg-a", Listen: "[::]:15432", Upstream: "room-pilot-123456781234-pg.railway.internal:5432", Enabled: true},
+		"pg-b": {Name: "pg-b", Listen: "[::]:25432", Upstream: "room-pilot-123456781234-pg.railway.internal:5432", Enabled: true},
 	}}
 	var targets [2]string
 	for i := range targets {
@@ -114,7 +116,7 @@ func newProxyFixture(t *testing.T) (*proxyDriver, *proxyFixture) {
 			}
 		}
 	})
-	return &proxyDriver{client: proxyHTTPClient(), api: f.api.URL, targets: targets, state: "running"}, f
+	return &proxyDriver{client: proxyHTTPClient(), api: f.api.URL, targets: targets, upstream: "room-pilot-123456781234-pg.railway.internal:5432", state: "running"}, f
 }
 func (f *proxyFixture) serve(i int, l net.Listener) {
 	for {
@@ -329,12 +331,70 @@ func TestProxyCloseRetriesChildCleanupWithoutResurrection(t *testing.T) {
 func TestProxyPinnedToxiproxyReadbackShape(t *testing.T) {
 	d, _ := newProxyFixture(t)
 	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		io.WriteString(w, `{"pg-a":{"name":"pg-a","listen":"[::]:15432","upstream":"postgres:5432","enabled":true,"Logger":{},"toxics":[]},"pg-b":{"name":"pg-b","listen":"[::]:25432","upstream":"postgres:5432","enabled":true,"Logger":{},"toxics":[]}}`)
+		io.WriteString(w, `{"pg-a":{"name":"pg-a","listen":"[::]:15432","upstream":"room-pilot-123456781234-pg.railway.internal:5432","enabled":true,"Logger":{},"toxics":[]},"pg-b":{"name":"pg-b","listen":"[::]:25432","upstream":"room-pilot-123456781234-pg.railway.internal:5432","enabled":true,"Logger":{},"toxics":[]}}`)
 	}))
 	defer api.Close()
 	d.api = api.URL
 	st, err := d.Status(context.Background())
 	if err != nil || !st.Verified || st.State != "running" {
 		t.Fatalf("pinned API healthy paths rejected: %+v %v", st, err)
+	}
+}
+
+// A Docker-only alias must never hide a broken private DNS deployment.
+func TestProxyMarkedFixtureDNSReadback(t *testing.T) {
+	d, f := newProxyFixture(t)
+	for name, entry := range f.entries {
+		entry.Upstream = "room-pilot-123456781234-pg.railway.internal:5432"
+		f.entries[name] = entry
+	}
+	st, err := d.Status(context.Background())
+	if err != nil || !st.Verified {
+		t.Fatalf("marked PostgreSQL DNS rejected: %+v %v", st, err)
+	}
+}
+
+func TestProxyFixtureBindsExactConfigAndRejectsAliases(t *testing.T) {
+	upstream, err := proxyUpstream("12345678-1234-5678-9012-345678901234")
+	if err != nil || upstream != "room-pilot-123456781234-pg.railway.internal:5432" {
+		t.Fatal(upstream, err)
+	}
+	for _, bad := range []string{"", "proxy-test", "12345678123456789012345678901234", "12345678-1234-5678-9012-345678901234\n", "ABCDEF78-1234-5678-9012-345678901234", "http://postgres:5432"} {
+		if _, err := proxyUpstream(bad); err == nil {
+			t.Fatalf("accepted invalid fixture %q", bad)
+		}
+	}
+	file := filepath.Join(t.TempDir(), "proxies.json")
+	if err := writeProxyConfig(file, upstream); err != nil {
+		t.Fatal(err)
+	}
+	b, _ := os.ReadFile(file)
+	var entries []proxyConfig
+	if err := json.Unmarshal(b, &entries); err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 2 || entries[0].Name != "pg-a" || entries[0].Listen != "[::]:15432" || entries[1].Name != "pg-b" || entries[1].Listen != "[::]:25432" {
+		t.Fatal(entries)
+	}
+	for _, e := range entries {
+		if e.Upstream != upstream || !e.Enabled || len(e.Toxics) != 0 {
+			t.Fatal(e)
+		}
+	}
+	info, _ := os.Stat(file)
+	if info.Mode().Perm() != 0400 {
+		t.Fatal(info.Mode())
+	}
+	if err := writeProxyConfig(file, "evil:5432"); err == nil {
+		t.Fatal("rewrote startup configuration")
+	}
+	for _, bad := range []string{"postgres:5432", "room-pilot-abcdefabcdef-pg.railway.internal:5432", "room-pilot-123456781234-pg.railway.internal:5433"} {
+		d, f := newProxyFixture(t)
+		e := f.entries["pg-a"]
+		e.Upstream = bad
+		f.entries["pg-a"] = e
+		if st, err := d.Status(context.Background()); err == nil || st.Verified {
+			t.Fatalf("accepted %q", bad)
+		}
 	}
 }

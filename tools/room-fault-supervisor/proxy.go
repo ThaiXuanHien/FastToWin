@@ -8,11 +8,43 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"os"
+	"regexp"
+	"strings"
 	"syscall"
 	"time"
 )
 
 var errProxy = errors.New("unverified fixed proxy")
+
+var fixtureUUID = regexp.MustCompile(`^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$`)
+
+// Only the trusted startup fixture identity determines the upstream. No
+// environment URL, control request or raw proxy response can choose a target.
+func proxyUpstream(fixture string) (string, error) {
+	if !fixtureUUID.MatchString(fixture) {
+		return "", errProxy
+	}
+	return "room-pilot-" + strings.ReplaceAll(fixture, "-", "")[:12] + "-pg.railway.internal:5432", nil
+}
+
+func writeProxyConfig(path, upstream string) error {
+	entries := []proxyConfig{
+		{Name: "pg-a", Listen: "[::]:15432", Upstream: upstream, Enabled: true},
+		{Name: "pg-b", Listen: "[::]:25432", Upstream: upstream, Enabled: true},
+	}
+	b, err := json.Marshal(entries)
+	if err != nil {
+		return err
+	}
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0400)
+	if err != nil {
+		return err
+	}
+	_, writeErr := f.Write(b)
+	closeErr := f.Close()
+	return errors.Join(writeErr, closeErr)
+}
 
 type proxyConfig struct {
 	Name     string            `json:"name"`
@@ -31,6 +63,7 @@ type proxyDriver struct {
 	client          *http.Client
 	api             string
 	targets         [2]string
+	upstream        string
 	state           string
 	closing, closed bool
 }
@@ -83,7 +116,7 @@ func (d *proxyDriver) configuration(ctx context.Context) ([2]bool, error) {
 		if i == 1 {
 			listen = "[::]:25432"
 		}
-		if !ok || entry.Name != name || entry.Listen != listen || entry.Upstream != "postgres:5432" || len(entry.Toxics) != 0 {
+		if !ok || entry.Name != name || entry.Listen != listen || entry.Upstream != d.upstream || len(entry.Toxics) != 0 {
 			return enabled, errProxy
 		}
 		enabled[i] = entry.Enabled

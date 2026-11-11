@@ -400,10 +400,21 @@ internal class RoomAcceptanceFixture(val settings: RoomAcceptanceSettings, contr
         val before = matches.associateWith { snapshot(it.roomId) }
         val owner = ownerFor(before.values.first())
         check(before.values.all { ownerFor(it) == owner }) { "Fault batch must share one owner process" }
+        val observationStart = System.nanoTime()
+        fun observe(stage: String) {
+            if (supervised && !hardKill) {
+                val millis = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - observationStart)
+                Files.writeString(settings.receipts.resolve("load-outages.ndjson"),
+                    """{"stage":"$stage","owner":$owner,"rooms":${matches.size},"elapsedMillis":$millis}""" + "\n",
+                    java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.APPEND)
+            }
+        }
         intentionallyUnavailableBackend = owner
         var primaryFailure: Throwable? = null
         try {
+            observe("inject")
             val timer = RecoveryTimer.inject { faults.backend(owner, if (hardKill) BackendAction.KILL else BackendAction.PAUSE) }
+            observe("acknowledged")
             // Measure reconnect from the outage, including the peer worker's lease takeover.
             coroutineScope {
                 matches.map { match ->
@@ -422,6 +433,7 @@ internal class RoomAcceptanceFixture(val settings: RoomAcceptanceSettings, contr
                 match.ownerBackend = 1 - owner
             }
             val elapsed = timer.elapsedMillis()
+            observe("takeover")
             check(elapsed <= 25_000) { "Owner recovery took ${elapsed}ms (limit 25000ms)" }
             return elapsed
         } catch (failure: Throwable) {
@@ -430,7 +442,9 @@ internal class RoomAcceptanceFixture(val settings: RoomAcceptanceSettings, contr
         } finally {
             try {
                 faults.backend(owner, if (hardKill) BackendAction.START else BackendAction.RESUME)
+                observe("restored")
                 awaitReady(owner)
+                observe("ready")
             } catch (restartFailure: Throwable) {
                 if (!supervised) for (node in 0..1) {
                     val logs = runCatching { docker("logs", "--tail", "40", nodeName(node)) }.getOrDefault("Fixture log unavailable")
@@ -488,7 +502,8 @@ internal class AcceptanceSocket(val session: DefaultClientWebSocketSession, val 
                 if (message is ServerMessage.Error) throw AcceptanceRejected(message.code)
                 if (predicate(message)) return@withTimeout message
             }
-            error("Fixture websocket closed")
+            val close = withTimeoutOrNull(250) { session.closeReason.await() }
+            throw ObservedSocketClose(backend, close?.code?.toInt() ?: 0, close?.message)
         }
     } catch (timeout: kotlinx.coroutines.TimeoutCancellationException) {
         throw IllegalStateException("Fixture timed out waiting for $expected after ${timeoutMillis}ms on backend $backend", timeout)

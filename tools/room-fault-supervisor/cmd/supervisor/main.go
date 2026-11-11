@@ -51,7 +51,7 @@ func run() int {
 	defer stop()
 	var d supervisor.Driver
 	if role == "proxy" {
-		d, err = supervisor.NewProxyDriver(ctx)
+		d, err = supervisor.NewProxyDriver(ctx, os.Getenv("ROOM_FAULT_FIXTURE"))
 	} else {
 		d, err = supervisor.NewProcessDriver(ctx, role, argv)
 	}

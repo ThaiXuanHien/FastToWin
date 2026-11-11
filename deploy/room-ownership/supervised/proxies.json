@@ -1,4 +1,0 @@
-[
-  {"name":"pg-a","listen":"[::]:15432","upstream":"postgres:5432","enabled":true},
-  {"name":"pg-b","listen":"[::]:25432","upstream":"postgres:5432","enabled":true}
-]

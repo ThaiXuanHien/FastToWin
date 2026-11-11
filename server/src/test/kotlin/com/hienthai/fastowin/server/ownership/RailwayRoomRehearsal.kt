@@ -189,6 +189,7 @@ private fun runRehearsal(settings: RailwayRehearsalSettings, out: PrintStream) {
         phase = "receipt"
         export(kind, result)
     } catch (failure: Throwable) {
+        Files.writeString(path.resolve("failure-sites.json"), rehearsalFailureDiagnostic(failure))
         val category = rehearsalFailureCategory(failure)
         export("failure", buildJsonObject {
             put("phase",phase); put("category", category); put("completedCases",cases.size)

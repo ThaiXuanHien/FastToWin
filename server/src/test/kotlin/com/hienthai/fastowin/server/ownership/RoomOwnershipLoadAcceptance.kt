@@ -97,7 +97,13 @@ internal suspend fun runRoomOwnershipLoad(
     suspend fun <T> timed(phase: String, operation: suspend () -> T): T {
         val started = System.nanoTime()
         try { return operation() }
-        catch (failure: Throwable) { phaseFailures.getValue(phase).incrementAndGet(); throw failure }
+        catch (failure: Throwable) {
+            phaseFailures.getValue(phase).incrementAndGet()
+            if (fixture.supervised && failure is Exception && failure !is kotlinx.coroutines.CancellationException) {
+                throw LoadPhaseFailure(phase, failure)
+            }
+            throw failure
+        }
         finally { phaseMillis.getValue(phase).add((System.nanoTime() - started) / 1_000_000.0) }
     }
     var maxBacklog = 0.0
