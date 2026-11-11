@@ -100,6 +100,8 @@ Require an explicit production policy identifier, a signed or provider-managed o
 
 Expected: all policy tests pass and the existing fixture rejection tests remain green.
 
+Current checkpoint: the standalone `RoomOwnershipProductionPolicy` parser and focused tests are green. It is intentionally not wired into `Main` yet because `RoomOwnershipPilot` still requires fixture schema and fixture account verification.
+
 ---
 
 ### Task 3: Route only the approved production slice
