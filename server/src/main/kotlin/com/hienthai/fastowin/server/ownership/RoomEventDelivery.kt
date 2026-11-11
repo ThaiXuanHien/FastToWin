@@ -201,6 +201,15 @@ internal class RoomEventDelivery(
         if (state == null || state.fence.epoch != reply.epoch || !state.includes(subscription.socket) ||
             !isCurrent(subscription)
         ) return
+        if (reply.publicMessage is ServerMessage.RoomCreated && state.revision != reply.revision) {
+            // The initial acknowledgement was prepared from a live reconnect, but another
+            // participant may have advanced the room before it could be published.
+            val synchronized = cursor ?: Cursor(reply.roomId, state.fence.epoch, state.revision)
+            subscription.cursor = synchronized
+            subscription.discoverAfterUncertainCommand = false
+            synchronize(subscription, synchronized, state)
+            return
+        }
         if (cursor == null) {
             subscription.cursor = Cursor(reply.roomId, reply.epoch, reply.revision)
             subscription.discoverAfterUncertainCommand = false

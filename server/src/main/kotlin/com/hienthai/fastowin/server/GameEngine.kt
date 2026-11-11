@@ -140,6 +140,8 @@ class GameEngine(
     private val matchmakingEntries = mutableMapOf<String, MatchmakingEntry>()
     private val tournaments = mutableMapOf<String, Tournament>()
     private val tournamentInvitations = mutableMapOf<String, TournamentInvitationRecord>()
+    private val pendingRoomReleases = LegacyReleaseReservations()
+    private val pendingTournamentReleases = LegacyReleaseReservations()
     private var activeRoomsRestored = false
     @Volatile private var maintenancePolicy = MaintenancePolicy(MaintenanceState.ACTIVE)
     private val pendingMaintenanceRooms = mutableMapOf<String, StoredActiveRoom>()
@@ -232,7 +234,15 @@ class GameEngine(
                 runCatching { playQuotaRepository.releaseMatch(start.playerIds, start.matchId, emptySet()) }
             }
             for ((id, room) in pendingMaintenanceRooms.toMap()) {
-                activeRoomRepository.save(room); pendingMaintenanceRooms.remove(id)
+                val write = mutex.withLock {
+                    // A release can update or remove this room while an abort write is awaiting retry.
+                    val snapshot = rooms[id]?.let { latest ->
+                        if (latest.matchId == room.matchId && latest.sequence == room.sequence) room else latest.toStoredRoom()
+                    }
+                    captureRoomWrite(id, snapshot)
+                }
+                persistRoomWrite(write)
+                pendingMaintenanceRooms.remove(id)
                 val abandoned = mutex.withLock { preparedStarts.remove(id) }
                 if (abandoned != null) {
                     if (abandoned.candidate != null) playQuotaRepository.finalizeMatch(abandoned.playerIds, abandoned.matchId)
@@ -240,8 +250,12 @@ class GameEngine(
                 }
             }
             for ((id, tournament) in pendingMaintenanceTournaments.toMap()) {
+                val releases = mutex.withLock { pendingTournamentReleases.capture(id) }
                 tournamentRepository.cancelForMaintenance(tournament, playerProfileRepository)
-                mutex.withLock { tournaments[id] = tournament.toTournament() }
+                mutex.withLock {
+                    tournaments[id] = tournament.toTournament()
+                    pendingTournamentReleases.acknowledge(id, releases)
+                }
                 pendingMaintenanceTournaments.remove(id)
             }
             synchronized(maintenancePublicationLock) {
@@ -278,23 +292,15 @@ class GameEngine(
 
     suspend fun connectAccount(account: AuthenticatedAccount, resumeToken: String? = null, protocolVersion: Int = PROTOCOL_VERSION): ConnectedPlayer {
         restoreActiveRooms()
-        moderationService.registerIdentity(account.userId.toString())
-        if (moderationService.isBlocked(account.userId.toString())) throw ModerationException(403, "ACCOUNT_BLOCKED", "ACCOUNT_BLOCKED")
-        val legacyRestored = mutex.withLock {
-            val existing = sessionsByPlayerId[account.userId.toString()]
-            val expectedToken = existing?.accountResumeToken
-                ?: pendingAccountTokensByPlayerId[account.userId.toString()]?.token
-            val legacy = expectedToken == null && account.userId.toString() in legacyRestoredAccounts
-            if (resumeToken != null && expectedToken != resumeToken && !legacy) {
-                throw InvalidResumeTokenException()
-            }
-            legacy
-        }
+        val playerId = account.userId.toString()
+        moderationService.registerIdentity(playerId)
+        if (moderationService.isBlocked(playerId)) throw ModerationException(403, "ACCOUNT_BLOCKED", "ACCOUNT_BLOCKED")
+        val legacyRestored = mutex.withLock { validateAccountResumeLocked(playerId, resumeToken) }
         val appearance = runCatching {
-            playerProfileRepository.findAppearance(account.userId.toString())
+            playerProfileRepository.findAppearance(playerId)
         }.getOrNull()
         return connectIdentity(
-            identityPlayerId = account.userId.toString(),
+            identityPlayerId = playerId,
             identityDisplayName = account.displayName,
             resumeToken = null,
             accountResumeToken = if (legacyRestored) newAccountResumeToken() else resumeToken ?: newAccountResumeToken(),
@@ -302,6 +308,20 @@ class GameEngine(
             frameId = appearance?.frameId ?: "frame_default",
             protocolVersion = protocolVersion
         )
+    }
+
+    internal suspend fun validateAccountResume(account: AuthenticatedAccount, resumeToken: String?) {
+        if (resumeToken == null) return
+        restoreActiveRooms()
+        mutex.withLock { validateAccountResumeLocked(account.userId.toString(), resumeToken) }
+    }
+
+    private fun validateAccountResumeLocked(playerId: String, resumeToken: String?): Boolean {
+        val expectedToken = sessionsByPlayerId[playerId]?.accountResumeToken
+            ?: pendingAccountTokensByPlayerId[playerId]?.token
+        val legacyRestored = expectedToken == null && playerId in legacyRestoredAccounts
+        if (resumeToken != null && expectedToken != resumeToken && !legacyRestored) throw InvalidResumeTokenException()
+        return legacyRestored
     }
 
     private suspend fun connectIdentity(
@@ -313,6 +333,7 @@ class GameEngine(
         frameId: String = "frame_default",
         protocolVersion: Int = PROTOCOL_VERSION
     ): ConnectedPlayer {
+        lateinit var connectedSession: GuestSession
         val connected = mutex.withLock {
             if (maintenancePolicy.blocksNewIntent) {
                 val existing = sessionsByPlayerId[identityPlayerId]
@@ -339,6 +360,7 @@ class GameEngine(
             ).also { created ->
                 sessionsByPlayerId[created.playerId] = created
             }
+            connectedSession = session
             session.isConnected = true
             session.protocolVersion = protocolVersion
             legacyRestoredAccounts.remove(identityPlayerId)
@@ -353,7 +375,22 @@ class GameEngine(
                     }
             )
         }
-        connected.currentGame?.roomId?.let { persistRoom(it) }
+        try {
+            connected.currentGame?.roomId?.let { persistRoom(it) }
+        } catch (failure: Throwable) {
+            withContext(NonCancellable) {
+                mutex.withLock {
+                    if (sessionsByPlayerId[identityPlayerId] === connectedSession &&
+                        connectedSession.accountResumeToken == connected.resumeToken
+                    ) {
+                        connectedSession.isConnected = false
+                        connectedSession.disconnectedAtMillis = nowMillis()
+                    }
+                }
+                runCatching { identityRepository.markDisconnected(identityPlayerId, nowMillis()) }
+            }
+            throw failure
+        }
         return connected
     }
 
@@ -449,10 +486,10 @@ class GameEngine(
 
     private suspend fun persistRoom(roomId: String) {
         persistenceMutex.withLock {
-            // The lobby is deliberately still visible in memory while this exact candidate awaits durable retry.
-            if (mutex.withLock { preparedStarts[roomId]?.let { it.candidate != null || it.fromMatchmaking } == true }) return@withLock
             val removedInvitations = mutableListOf<RoomInvitationRecord>()
-            val snapshot = mutex.withLock {
+            val write = mutex.withLock {
+                // The lobby is deliberately still visible in memory while this exact candidate awaits durable retry.
+                if (preparedStarts[roomId]?.let { it.candidate != null || it.fromMatchmaking } == true) return
                 rooms[roomId]?.toStoredRoom().also { stored ->
                     if (stored == null) {
                         roomInvitations.entries.removeAll { entry ->
@@ -461,10 +498,10 @@ class GameEngine(
                             }
                         }
                     }
-                }
+                }.let { captureRoomWrite(roomId, it) }
             }
-            if (snapshot == null) {
-                activeRoomRepository.delete(roomId)
+            persistRoomWrite(write)
+            if (write.snapshot == null) {
                 notificationRepository.deleteRoomInvitationsForRoom(roomId)
                 removedInvitations.forEach { invitation ->
                     notificationRepository.dismissNotifications(
@@ -473,10 +510,20 @@ class GameEngine(
                         nowMillis()
                     )
                 }
-            } else {
-                activeRoomRepository.save(snapshot)
             }
         }
+    }
+
+    private data class RoomWrite(val roomId: String, val snapshot: StoredActiveRoom?, val releases: Map<String, Long>)
+
+    /** Requires the engine mutex so the snapshot and release versions are captured together. */
+    private fun captureRoomWrite(roomId: String, snapshot: StoredActiveRoom?): RoomWrite =
+        RoomWrite(roomId, snapshot, pendingRoomReleases.capture(roomId))
+
+    /** Requires persistenceMutex. A failed or cancelled write leaves the release versions reserved. */
+    private suspend fun persistRoomWrite(write: RoomWrite) {
+        if (write.snapshot == null) activeRoomRepository.delete(write.roomId) else activeRoomRepository.save(write.snapshot)
+        mutex.withLock { pendingRoomReleases.acknowledge(write.roomId, write.releases) }
     }
 
     private fun prepareStart(room: Room, matchId: String, requesterId: String, fromMatchmaking: Boolean = false): PreparedMatchStart =
@@ -554,9 +601,12 @@ class GameEngine(
                     }
                 }
                 val frozen = checkNotNull(start.candidate)
-                check(mutex.withLock { preparedStarts[start.roomId] === start }) { "Start was invalidated" }
+                val write = mutex.withLock {
+                    check(preparedStarts[start.roomId] === start) { "Start was invalidated" }
+                    captureRoomWrite(start.roomId, frozen)
+                }
                 // A write failure is ambiguous. Keep payload, reservation and fence for retry/recovery.
-                activeRoomRepository.save(frozen)
+                persistRoomWrite(write)
                 // Receipt cleanup failure cannot undo a durable start; recovery also checks snapshots/results.
                 runCatching { playQuotaRepository.finalizeMatch(start.playerIds, start.matchId) }
                 mutex.withLock {
@@ -604,6 +654,12 @@ class GameEngine(
         else ServerMessage.GameStateUpdated(game, acceptedNumber = 0, selectedByPlayerId = "", selectionAccepted = false)
     }
 
+    internal suspend fun acceptsLegacyRoomDelivery(playerId: String, roomId: String, terminal: Boolean): Boolean =
+        mutex.withLock {
+            val currentRooms = rooms.values.filter { playerId in it.participantIds() }
+            currentRooms.any { it.id == roomId } || terminal && currentRooms.isEmpty()
+        }
+
     suspend fun suppressionsForProjection(): List<ContentSuppression> = moderationService.suppressions().filter {
         it.targetType != UgcTargetType.PLAYER_AVATAR || avatarService.currentRevision(it.targetId) == it.revision
     }
@@ -645,7 +701,10 @@ class GameEngine(
     internal suspend fun hasActiveGameIntent(playerId: String): Boolean {
         restoreActiveRooms()
         return mutex.withLock {
-            roomFor(playerId) != null || playerId in matchmakingEntries || activeTournamentFor(playerId) != null
+            rooms.values.any { playerId in it.participantIds() } ||
+                playerId in matchmakingEntries || activeTournamentFor(playerId) != null ||
+                preparedStarts.values.any { playerId in it.playerIds } ||
+                playerId in pendingRoomReleases || playerId in pendingTournamentReleases
         }
     }
 
@@ -957,8 +1016,12 @@ class GameEngine(
 
     private suspend fun persistTournament(tournamentId: String) {
         persistenceMutex.withLock {
-            val latest = mutex.withLock { tournaments[tournamentId]?.snapshot() }
-            latest?.let { tournamentRepository.save(it) }
+            val (latest, releases) = mutex.withLock {
+                val snapshot = tournaments[tournamentId]?.snapshot() ?: return
+                snapshot to pendingTournamentReleases.capture(tournamentId)
+            }
+            tournamentRepository.save(latest)
+            mutex.withLock { pendingTournamentReleases.acknowledge(tournamentId, releases) }
         }
     }
 
@@ -1295,6 +1358,7 @@ class GameEngine(
                 )
             }
             val snapshot = checkNotNull(result.tournament)
+            pendingTournamentReleases.acknowledge(tournament.id, pendingTournamentReleases.capture(tournament.id))
             tournament.participants += TournamentParticipant(playerId, session.displayName)
             if (tournament.schedule != null && tournament.recordedPlayers.none { it.playerId == playerId }) {
                 tournament.recordedPlayers += TournamentPlayerSnapshot(playerId, session.displayName)
@@ -1524,6 +1588,7 @@ class GameEngine(
                 return@withLock listOf(error(playerId, "TOURNAMENT_ALREADY_STARTED", legacyFallback("Không thể rời giải sau khi đã bắt đầu.")))
             }
             if (tournament.hostId == playerId) {
+                pendingTournamentReleases.reserve(tournament.id, tournament.playerIds())
                 tournament.phase = TournamentPhase.CANCELLED
                 tournament.finishedAtMillis = nowMillis()
                 tournamentInvitations.entries.removeAll { it.value.tournamentId == tournament.id }
@@ -1538,6 +1603,7 @@ class GameEngine(
                     ), tournament.playerIds())
                 ) + if (tournament.visibility == TournamentVisibility.PUBLIC) listOf(publicTournamentsInvalidated()) else emptyList()
             } else {
+                pendingTournamentReleases.reserve(tournament.id, setOf(playerId))
                 tournament.participants.removeAll { it.playerId == playerId }
                 tournamentInvitations.entries.removeAll {
                     it.value.tournamentId == tournament.id && it.value.inviteeId == playerId
@@ -2536,13 +2602,17 @@ class GameEngine(
             persistenceMutex.withLock {
                 val remaining = mutex.withLock {
                     rooms.values.firstOrNull { it.matchId == completed.matchId }?.let {
-                        it.id to if (it.id in pendingRoomRemovals || it.activePlayerIds().isEmpty()) null else it.toStoredRoom().copy(pendingCompletedMatch = null)
+                        val snapshot = if (it.id in pendingRoomRemovals || it.activePlayerIds().isEmpty()) null
+                            else it.toStoredRoom().copy(pendingCompletedMatch = null)
+                        captureRoomWrite(it.id, snapshot)
                     }
                 }
-                remaining?.let { (id, snapshot) -> if (snapshot == null) activeRoomRepository.delete(id) else activeRoomRepository.save(snapshot) }
+                remaining?.let { persistRoomWrite(it) }
                 mutex.withLock {
-                    if (remaining != null && remaining.second == null) {
-                        rooms.remove(remaining.first); pendingRoomRemovals.remove(remaining.first)
+                    if (remaining != null && remaining.snapshot == null) {
+                        rooms.remove(remaining.roomId)
+                        pendingRoomRemovals.remove(remaining.roomId)
+                        pendingRoomReleases.acknowledgeDeletion(remaining.roomId)
                     }
                     pendingCompletedMatches.remove(completed.matchId)
                 }
@@ -3304,6 +3374,7 @@ class GameEngine(
             return HandleResult(listOf(error(player.playerId, "PLAYER_NOT_IN_ROOM", legacyFallback("Người chơi không còn trong phòng."))))
         }
         val kickedPlayerId = command.playerId
+        pendingRoomReleases.reserve(room.id, setOf(kickedPlayerId))
         if (room.guestId == kickedPlayerId) {
             room.guestId = null
         } else {
@@ -3335,6 +3406,7 @@ class GameEngine(
             return HandleResult(listOf(error(player.playerId, "NOT_IN_ROOM", legacyFallback("Bạn không ở trong phòng này."))))
         }
         if (player.playerId in room.spectatorIds) {
+            pendingRoomReleases.reserve(room.id, setOf(player.playerId))
             room.spectatorIds.remove(player.playerId)
             room.sequence++
             return HandleResult(
@@ -3369,6 +3441,7 @@ class GameEngine(
         }
 
         if (room.phase == RoomPhase.FINISHED) {
+            pendingRoomReleases.reserve(room.id, setOf(player.playerId))
             room.departedPlayerIds += player.playerId
             room.rematchRequestedPlayerIds.remove(player.playerId)
             room.sequence++
@@ -3438,6 +3511,7 @@ class GameEngine(
                 changedRoomId = room.id
             )
         } else {
+            pendingRoomReleases.reserve(room.id, setOf(player.playerId))
             if (room.guestId == player.playerId) {
                 room.guestId = null
             } else {
@@ -3837,6 +3911,7 @@ class GameEngine(
         completedRoomId?.let { roomId ->
             rooms.remove(roomId)?.let { pendingCompletedMatches.remove(it.matchId) }
             pendingRoomRemovals.remove(roomId)
+            pendingRoomReleases.acknowledgeDeletion(roomId)
         }
         generated.forEach { rooms[it.id] = it }
         return listOf(Delivery(ServerMessage.TournamentUpdated(snapshot.copy(serverTimeEpochMillis = nowMillis())), recipients)) +
@@ -3951,8 +4026,42 @@ class GameEngine(
     private fun roomFor(playerId: String): Room? = rooms.values.firstOrNull { playerId in it.activePlayerIds() }
 
     private fun removeRoomIfSettled(room: Room) {
-        if (room.matchId !in pendingCompletedMatches && room.matchId !in settlementsInFlight) rooms.remove(room.id)
-        else pendingRoomRemovals += room.id
+        if (room.matchId !in pendingCompletedMatches && room.matchId !in settlementsInFlight) {
+            pendingRoomReleases.reserve(room.id, room.participantIds())
+            rooms.remove(room.id)
+        } else {
+            pendingRoomRemovals += room.id
+        }
+    }
+
+    /** Accessed under the engine mutex. A write can acknowledge only the releases it captured. */
+    private class LegacyReleaseReservations {
+        private val versionsByResource = mutableMapOf<String, MutableMap<String, Long>>()
+        private var version = 0L
+
+        operator fun contains(playerId: String): Boolean =
+            versionsByResource.values.any { playerId in it }
+
+        fun reserve(resourceId: String, playerIds: Set<String>) {
+            if (playerIds.isEmpty()) return
+            val releases = versionsByResource.getOrPut(resourceId) { mutableMapOf() }
+            val nextVersion = ++version
+            playerIds.forEach { releases[it] = nextVersion }
+        }
+
+        fun capture(resourceId: String): Map<String, Long> =
+            versionsByResource[resourceId]?.toMap().orEmpty()
+
+        fun acknowledge(resourceId: String, acknowledged: Map<String, Long>) {
+            val releases = versionsByResource[resourceId] ?: return
+            releases.entries.removeAll { acknowledged[it.key] == it.value }
+            if (releases.isEmpty()) versionsByResource.remove(resourceId)
+        }
+
+        /** A terminal delete under persistenceMutex and the engine mutex cannot restore this room. */
+        fun acknowledgeDeletion(resourceId: String) {
+            versionsByResource.remove(resourceId)
+        }
     }
 
     private inline fun <reified T : ServerMessage> List<Delivery>.roomIdFrom(): String? {

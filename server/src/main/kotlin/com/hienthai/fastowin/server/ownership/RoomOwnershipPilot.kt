@@ -64,6 +64,16 @@ internal class RoomOwnershipPilot private constructor(
 
     suspend fun ownedRoom(playerId: UUID): UUID? = rooms.lookupRoom(playerId)
 
+    /** Every authenticated production connect uses this, including accounts outside the owned slice. */
+    suspend fun bindGameLane(playerId: UUID): OwnedLaneBinding {
+        check(isProductionMode && config.runtimeRole == RoomOwnershipRuntimeRole.INGRESS)
+        val socket = rooms.bindSocketForLane(playerId)
+        // This must be a new transaction after bindSocketForLane has acknowledged COMMIT.
+        val roomId = rooms.lookupRoom(playerId)
+        if (!rooms.isCurrentSocket(socket)) throw OwnedAdmissionRejected("Account generation was replaced during reconciliation")
+        return OwnedLaneBinding(socket, roomId)
+    }
+
     suspend fun ownsRoom(roomId: String): Boolean = parsePilotUuid(roomId)?.let { rooms.findOwner(it) != null } ?: false
 
     fun routesCreate(account: AuthenticatedAccount, command: ClientMessage.CreateRoom): Boolean =

@@ -283,8 +283,19 @@ internal class PostgresRoomOwnershipRepository(
         }
     }
 
-    override suspend fun bindSocket(playerId: UUID): SocketFence = transaction {
-        query(
+    override suspend fun bindSocket(playerId: UUID): SocketFence = transaction { bindSocketOn(playerId) }
+
+    /** Revocation is valid under STOP_NEW, but never under absent or differently bound authority. */
+    suspend fun bindSocketForLane(playerId: UUID): SocketFence = transaction {
+        val binding = admission ?: throw OwnedAdmissionRejected("Production lane binding requires admission authority")
+        val policy = (this as TransactionConnection).lockedAdmission
+        if (policy == null || policy.generation <= 0 || policy.topologySha256 != binding.topologySha256 ||
+            policy.policySha256 != binding.policySha256
+        ) throw OwnedAdmissionRejected("Production lane binding authority is unavailable or mismatched")
+        bindSocketOn(playerId)
+    }
+
+    private fun Connection.bindSocketOn(playerId: UUID): SocketFence = query(
             """
             INSERT INTO room_ownership_pilot_sessions (player_id, generation) VALUES (?, 1)
             ON CONFLICT (player_id) DO UPDATE SET generation = room_ownership_pilot_sessions.generation + 1
@@ -292,7 +303,6 @@ internal class PostgresRoomOwnershipRepository(
             """,
             playerId
         ) { rows -> check(rows.next()); SocketFence(playerId, rows.getLong("generation")) }
-    }
 
     override suspend fun isCurrentSocket(socket: SocketFence): Boolean = transaction(singleRead = true) {
         isCurrent(socket, lock = false)

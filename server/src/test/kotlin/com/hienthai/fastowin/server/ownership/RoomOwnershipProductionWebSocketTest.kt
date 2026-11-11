@@ -10,6 +10,10 @@ import io.ktor.client.plugins.websocket.*
 import io.ktor.server.engine.embeddedServer
 import io.ktor.server.netty.Netty
 import io.ktor.websocket.*
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
@@ -22,6 +26,123 @@ import java.util.UUID
 import kotlin.test.*
 
 class RoomOwnershipProductionWebSocketTest {
+    @Test
+    fun `old frame queued before dispatch cannot reserve a lane after replacement`() = runBlocking {
+        val gate = CreateGate()
+        fixture(gate) { f ->
+            val original = f.connect(f.aPort, f.tokens[0])
+            try {
+                original.sendMessage(ClientMessage.CreateRoom("Obsolete legacy intent", "", ProtocolGameMode.ORDER))
+                withTimeout(8_000) { gate.entered.await() }
+                val replacement = f.connect(f.aPort, f.tokens[0], original.ready.resumeToken)
+                try {
+                    gate.release.complete(Unit)
+                    assertEquals(SESSION_REPLACED_CLOSE_REASON, withTimeout(8_000) { original.socket.closeReason.await() }?.message)
+                    replacement.sendMessage(ClientMessage.CreateRoom("Current owned intent", "private", ProtocolGameMode.ORDER))
+                    val room = replacement.receiveMessage<ServerMessage.RoomCreated>().game
+                    assertEquals(UUID.fromString(room.roomId), f.rooms.lookupRoom(f.accounts[0]))
+                    assertTrue(f.engine.roomList().rooms.none { it.name == "Obsolete legacy intent" })
+                } finally { replacement.close() }
+            } finally {
+                gate.release.complete(Unit)
+                original.close()
+            }
+        }
+    }
+
+    @Test
+    fun `fresh ingress waits for the previous generation's held worker create before choosing a lane`() = runBlocking {
+        for (commit in listOf(true, false)) fixture { f ->
+            val host = f.accounts[0]
+            // The preceding ingress lifetime left a durable fence, with no public connection
+            // or pending descriptor in this instance's account coordinator.
+            val oldSocket = f.rooms.bindSocket(host)
+            val oldCreate = assertIs<OwnedCreatePreparation.Ready>(f.pilot.prepareOwnedCreate(
+                oldSocket, ClientMessage.CreateRoom("Previous ingress", "private", ProtocolGameMode.ORDER)
+            )).request
+            assertEquals(f.workerId, oldCreate.destinationNodeId)
+            f.source.connection.use { gate ->
+                gate.createStatement().use { statement ->
+                    val outcome = if (commit) "RETURN NEW;" else "RAISE EXCEPTION ''test rollback'';"
+                    statement.execute("""CREATE FUNCTION hold_previous_create() RETURNS trigger LANGUAGE plpgsql AS
+                        'BEGIN PERFORM pg_advisory_xact_lock(892765); $outcome END;'""")
+                    statement.execute("""CREATE TRIGGER hold_previous_create BEFORE INSERT ON room_ownership_pilot_rooms
+                        FOR EACH ROW EXECUTE FUNCTION hold_previous_create()""")
+                }
+                gate.autoCommit = false
+                val blocker = gate.createStatement().use { statement ->
+                    statement.execute("SELECT pg_advisory_xact_lock(892765)")
+                    statement.executeQuery("SELECT pg_backend_pid()").use { rows -> rows.next(); rows.getInt(1) }
+                }
+                val create = async(Dispatchers.IO) { f.pilot.createOwned(oldCreate) }
+                var replacement: kotlinx.coroutines.Deferred<Connection>? = null
+                try {
+                    val worker = f.awaitDatabaseWaiter(blocker)
+                    val connecting = async { f.connect(f.aPort, f.tokens[0]) }
+                    replacement = connecting
+                    f.awaitDatabaseWaiter(worker)
+                    assertFalse(connecting.isCompleted)
+                    gate.rollback()
+                    if (commit) assertIs<OwnedCreateResult.Created>(create.await())
+                    else assertIs<OwnedCreateResult.Unresolved>(create.await())
+                    val socket = connecting.await()
+                    try {
+                        assertFalse(f.rooms.isCurrentSocket(oldSocket))
+                        assertEquals(oldCreate.roomId.takeIf { commit }?.toString(), socket.ready.currentGame?.roomId)
+                        socket.sendMessage(ClientMessage.CreateRoom("Competing legacy intent", "", ProtocolGameMode.ORDER))
+                        if (commit) assertEquals("ALREADY_IN_ROOM", socket.receiveMessage<ServerMessage.Error>().code)
+                        else {
+                            val legacy = socket.receiveMessage<ServerMessage.RoomCreated>().game
+                            assertEquals("Competing legacy intent", legacy.roomName)
+                            assertNull(f.rooms.lookupRoom(host))
+                        }
+                    } finally { socket.close() }
+                } finally {
+                    gate.rollback()
+                    create.cancel()
+                    replacement?.cancel()
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `legacy account replacement advances the production fence`() = runBlocking {
+        fixture { f ->
+            val accountId = f.accounts[2]
+            val original = f.connect(f.aPort, f.tokens[2])
+            try {
+                val first = SocketFence(accountId, 1)
+                assertTrue(f.rooms.isCurrentSocket(first))
+                val replacement = f.connect(f.aPort, f.tokens[2], original.ready.resumeToken)
+                try {
+                    assertFalse(f.rooms.isCurrentSocket(first))
+                    assertTrue(f.rooms.isCurrentSocket(SocketFence(accountId, 2)))
+                    replacement.sendMessage(ClientMessage.CreateRoom("Still legacy", "", ProtocolGameMode.ORDER))
+                    val created = replacement.receiveMessage<ServerMessage.RoomCreated>()
+                    assertNull(f.rooms.read(UUID.fromString(created.game.roomId)))
+                } finally { replacement.close() }
+            } finally { original.close() }
+        }
+    }
+
+    @Test
+    fun `invalid legacy resume preserves the current socket and fence`() = runBlocking {
+        fixture { f ->
+            val original = f.connect(f.aPort, f.tokens[0])
+            try {
+                val invalid = f.client.webSocketSession("ws://127.0.0.1:${f.aPort}/game")
+                try {
+                    invalid.sendMessage(ClientMessage.ConnectAccount(f.tokens[0], resumeToken = "invalid"))
+                    assertEquals("INVALID_RESUME_TOKEN", invalid.receiveMessage<ServerMessage.Error>().code)
+                    assertTrue(f.rooms.isCurrentSocket(SocketFence(f.accounts[0], 1)))
+                    original.sendMessage(ClientMessage.CreateRoom("Still current", "", ProtocolGameMode.ORDER))
+                    assertEquals("Still current", original.receiveMessage<ServerMessage.RoomCreated>().game.roomName)
+                } finally { invalid.close() }
+            } finally { original.close() }
+        }
+    }
+
     @Test
     fun `production serves legacy users and unsupported opted in modes without a marker`() = runBlocking {
         fixture { f ->
@@ -58,6 +179,7 @@ class RoomOwnershipProductionWebSocketTest {
                 host.sendMessage(ClientMessage.CreateRoom("Owned", "private", ProtocolGameMode.ORDER))
                 val created = host.receiveMessage<ServerMessage.RoomCreated>().game
                 assertNotNull(f.rooms.read(UUID.fromString(created.roomId)))
+                assertEquals(f.workerId, f.createDestination(UUID.fromString(created.roomId)))
                 outside.sendMessage(ClientMessage.JoinRoom(created.roomId, "private"))
                 assertEquals("PILOT_ACCOUNT_REQUIRED", outside.receiveMessage<ServerMessage.Error>().code)
                 guest.sendMessage(ClientMessage.JoinRoom(created.roomId, "private"))
@@ -82,7 +204,7 @@ class RoomOwnershipProductionWebSocketTest {
         }
     }
 
-    private suspend fun fixture(block: suspend (Fixture) -> Unit) {
+    private suspend fun fixture(rateLimiter: RateLimiter = InMemoryRateLimiter(), block: suspend (Fixture) -> Unit) {
         val url = System.getenv("TEST_DATABASE_URL")
         if (System.getenv("FASTTOWIN_TEST_ROOM_OWNERSHIP") == "true") requireNotNull(url)
         assumeTrue(url != null, "Isolated PostgreSQL required")
@@ -121,8 +243,13 @@ class RoomOwnershipProductionWebSocketTest {
                     val ids = sessions.map { UUID.fromString(it.userId) }
                     val loopback = InetAddress.getByName("127.0.0.1")
                     ServerSocket(0, 1, loopback).use { ar -> ServerSocket(0, 1, loopback).use { br ->
-                        val aId = UUID.randomUUID()
-                        val bId = UUID.randomUUID()
+                        val firstNode = UUID.randomUUID()
+                        val secondNode = UUID.randomUUID()
+                        val destination = RoomOwnershipRouting(admissionProductionConfig(
+                            accounts = ids.take(2), nodeA = firstNode, nodeB = secondNode
+                        )).createNode(ids.first().toString())
+                        val aId = if (destination == firstNode) secondNode else firstNode
+                        val bId = destination
                         val lookup: suspend (UUID) -> StoredActivePlayer? = { id ->
                             sessions.firstOrNull { it.userId == id.toString() }?.let { StoredActivePlayer(it.userId, it.displayName, true) }
                         }
@@ -140,9 +267,9 @@ class RoomOwnershipProductionWebSocketTest {
                         val pb = RoomOwnershipPilot.open(cb, b, lookup, wakeups = emptyFlow())
                         val aPort = ar.localPort
                         val bPort = br.localPort
+                        val engine = GameEngine(playerProfileRepository = PostgresPlayerProfileRepository(a))
                         val sa = embeddedServer(Netty, host = "127.0.0.1", port = aPort) {
-                            gameModule(engine = GameEngine(playerProfileRepository = PostgresPlayerProfileRepository(a)),
-                                authService = authA, roomOwnershipPilot = pa)
+                            gameModule(engine = engine, rateLimiter = rateLimiter, authService = authA, roomOwnershipPilot = pa)
                         }
                         val sb = embeddedServer(Netty, host = "127.0.0.1", port = bPort) {
                             ownedWorkerModule(pb)
@@ -151,7 +278,8 @@ class RoomOwnershipProductionWebSocketTest {
                             ar.close(); sa.start(wait = false)
                             br.close(); sb.start(wait = false)
                             HttpClient(OkHttp) { install(WebSockets) }.use { client ->
-                                block(Fixture(client, aPort, bPort, sessions.map { it.accessToken }, ids, PostgresRoomOwnershipRepository(a)))
+                                block(Fixture(client, aPort, sessions.map { it.accessToken }, ids,
+                                    PostgresRoomOwnershipRepository(a), a, bId, engine, pa))
                             }
                         } finally { sb.stop(0, 2000); sa.stop(0, 2000) }
                     } }
@@ -162,8 +290,30 @@ class RoomOwnershipProductionWebSocketTest {
         }
     }
 
-    private data class Fixture(val client: HttpClient, val aPort: Int, val bPort: Int, val tokens: List<String>,
-        val accounts: List<UUID>, val rooms: RoomOwnershipRepository) {
+    private data class Fixture(val client: HttpClient, val aPort: Int, val tokens: List<String>,
+        val accounts: List<UUID>, val rooms: RoomOwnershipRepository, val source: HikariDataSource, val workerId: UUID,
+        val engine: GameEngine, val pilot: RoomOwnershipPilot) {
+        suspend fun awaitDatabaseWaiter(blocker: Int): Int = withTimeout(2_000) {
+            var waiter: Int? = null
+            while (waiter == null) {
+                waiter = source.connection.use { connection ->
+                    connection.prepareStatement("SELECT pid FROM pg_stat_activity WHERE ? = ANY(pg_blocking_pids(pid))").use { statement ->
+                        statement.setInt(1, blocker)
+                        statement.executeQuery().use { if (it.next()) it.getInt(1) else null }
+                    }
+                }
+                if (waiter == null) delay(5)
+            }
+            checkNotNull(waiter)
+        }
+
+        fun createDestination(roomId: UUID): UUID? = source.connection.use { connection ->
+            connection.prepareStatement("SELECT destination_node_id FROM owned_room_create_operations WHERE room_id = ?").use { statement ->
+                statement.setObject(1, roomId)
+                statement.executeQuery().use { if (it.next()) it.getObject(1, UUID::class.java) else null }
+            }
+        }
+
         suspend fun connect(port: Int, token: String, resume: String? = null): Connection {
             val socket = client.webSocketSession("ws://127.0.0.1:$port/game")
             socket.sendMessage(ClientMessage.ConnectAccount(token, resumeToken = resume))
@@ -174,6 +324,19 @@ class RoomOwnershipProductionWebSocketTest {
             return Connection(socket, ready)
         }
     }
+
+    private class CreateGate : RateLimiter {
+        val entered = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        private val delegate = InMemoryRateLimiter()
+
+        override suspend fun consume(bucket: String, key: String, policy: RateLimitPolicy): RateLimitResult {
+            val result = delegate.consume(bucket, key, policy)
+            if (bucket == RateLimitBuckets.CREATE_ROOM_IP && entered.complete(Unit)) release.await()
+            return result
+        }
+    }
+
     private data class Connection(val socket: DefaultClientWebSocketSession, val ready: ServerMessage.SessionReady) {
         suspend fun close() = socket.close()
         suspend fun sendMessage(message: ClientMessage) = socket.sendMessage(message)

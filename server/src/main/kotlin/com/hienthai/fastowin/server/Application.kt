@@ -8,6 +8,11 @@ import com.hienthai.fastowin.server.gifts.*
 import com.hienthai.fastowin.server.compensation.*
 import com.hienthai.fastowin.server.events.*
 import com.hienthai.fastowin.server.maintenance.*
+import com.hienthai.fastowin.server.ownership.AccountGameLane
+import com.hienthai.fastowin.server.ownership.OwnedAdmissionRejected
+import com.hienthai.fastowin.server.ownership.OwnedCreatePreparation
+import com.hienthai.fastowin.server.ownership.OwnedCreateResult
+import com.hienthai.fastowin.server.ownership.PendingOwnedAttempt
 import com.hienthai.fastowin.server.ownership.OwnedRoomReply
 import com.hienthai.fastowin.server.ownership.AdmittedPilotConnection
 import com.hienthai.fastowin.server.ownership.RoomOwnershipPilot
@@ -99,6 +104,7 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
+import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
@@ -256,6 +262,7 @@ internal fun Application.gameModule(
     announcementPushDelivery?.let { startAnnouncementDelivery(announcementService, it) }
 
     val connections = ConcurrentHashMap<String, SocketConnection>()
+    val accountGameLane = AccountGameLane()
     val presenceStore = engine.presenceStore
 
     suspend fun publishPresence(playerId: String, connection: SocketConnection, heartbeat: Boolean = false) {
@@ -295,18 +302,41 @@ internal fun Application.gameModule(
         } else owned
     }
 
-    suspend fun deliver(deliveries: List<Delivery>) {
+    suspend fun deliver(deliveries: List<Delivery>, legacyRecipients: Map<String, SocketConnection>? = null) {
         if (deliveries.isEmpty()) return
+        val targetsByDelivery = deliveries.map { delivery ->
+            val available = legacyRecipients?.takeIf { delivery.message.legacyDeliveryRoomId() != null } ?: connections
+            delivery.recipients?.mapNotNull { id -> available[id]?.let { id to it } }
+                ?: available.entries.map { (id, connection) -> id to connection }
+        }
         val suppressions = engine.suppressionsForProjection()
-        deliveries.forEach { delivery ->
+        deliveries.zip(targetsByDelivery).forEach { (delivery, targets) ->
             val message = sanitizeContent(delivery.message, suppressions)
-            val targets = delivery.recipients?.mapNotNull(connections::get) ?: connections.values.toList()
-            targets.forEach { connection ->
+            val roomId = message.legacyDeliveryRoomId()
+            targets.forEach { (id, connection) ->
                 try {
                     val projected = if (productionOwnership && connection.ownedRoomListings && message is ServerMessage.RoomList) {
                         sanitizeContent(withOwnedRooms(message), suppressions)
                     } else message
-                    connection.send(projected)
+                    connection.send(projected) {
+                        if (connections[id] !== connection) return@send false
+                        if (productionOwnership && roomId != null) {
+                            val account = connection.account
+                            if (account != null) {
+                                val pilot = checkNotNull(roomOwnershipPilot)
+                                val socket = SocketFence(account.userId, checkNotNull(connection.pilotGeneration))
+                                if (!pilot.isCurrent(socket) || connection.ownedRoomListings && pilot.ownedRoom(account.userId) != null) {
+                                    return@send false
+                                }
+                            }
+                            if (message !is ServerMessage.RoomClosed &&
+                                !engine.acceptsLegacyRoomDelivery(id, roomId, message is ServerMessage.GameFinished)
+                            ) {
+                                return@send false
+                            }
+                        }
+                        connections[id] === connection
+                    }
                 } catch (_: Exception) {
                     currentCoroutineContext().ensureActive()
                     // The connection cleanup path will remove stale sockets.
@@ -488,14 +518,23 @@ internal fun Application.gameModule(
             if (result is AuthResult.Success) {
                 // A successful login owns the account from this point forward.
                 // Closing the previous socket makes the old device return to login immediately.
-                val previousConnection = connections[result.session.userId]
+                val playerId = result.session.userId
+                val previousConnection = if (productionOwnership) {
+                    accountGameLane.withAccount(UUID.fromString(playerId)) {
+                        connections[playerId]?.takeIf { connection ->
+                            val account = checkNotNull(connection.account)
+                            val token = checkNotNull(connection.accessToken)
+                            !authService.isSocketSessionActive(account, token)
+                        }?.also { retire(it) }
+                    }
+                } else connections[playerId]
                 if (previousConnection != null) {
                     try {
                         previousConnection.closeForReplacement()
                     } catch (cancelled: CancellationException) {
                         throw cancelled
                     } catch (_: Exception) {
-                        connections.remove(result.session.userId, previousConnection)
+                        if (!productionOwnership) connections.remove(playerId, previousConnection)
                     }
                 }
             }
@@ -743,6 +782,357 @@ internal fun Application.gameModule(
             var registeredConnection: SocketConnection? = null
             var presenceHeartbeat: kotlinx.coroutines.Job? = null
             var lastPresenceRequestAt: Long? = null
+            var connectionToReplace: SocketConnection? = null
+
+            suspend fun connectAndInstall(
+                message: ClientMessage,
+                lane: AccountGameLane.LaneContext? = null,
+                expectedAccountId: UUID? = null
+            ): Boolean {
+                val connected = runCatching {
+                    when (message) {
+                        is ClientMessage.ConnectGuest -> {
+                            if (!productionOwnership && roomOwnershipPilot != null) throw PilotAccountRequiredException()
+                            engine.connectGuest(message.displayName, message.resumeToken, message.acceptedContentTermsVersion)
+                        }
+                        is ClientMessage.ConnectAccount -> {
+                            val account = authService.authenticateAccessToken(message.accessToken)
+                                ?: throw InvalidAccessTokenException()
+                            if (!account.emailVerified) throw UnverifiedEmailException()
+                            val pilot = roomOwnershipPilot
+                            val eligible = pilot?.allows(account) == true
+                            if (productionOwnership) {
+                                if (lane == null || account.userId != expectedAccountId) throw InvalidAccessTokenException()
+                                val productionPilot = checkNotNull(pilot)
+                                if (connections.containsKey(account.userId.toString())) {
+                                    engine.validateAccountResume(account, message.resumeToken)
+                                }
+                                if (engine.moderationService.isBlocked(account.userId.toString())) {
+                                    throw ModerationException(403, "ACCOUNT_BLOCKED", "ACCOUNT_BLOCKED")
+                                }
+                                val binding = productionPilot.bindGameLane(account.userId)
+                                if (!authService.isSocketSessionActive(account, message.accessToken)) {
+                                    throw InvalidAccessTokenException()
+                                }
+                                val ownedReconnect = binding.ownedRoomId != null
+                                if (ownedReconnect && !eligible) throw PilotAccountRequiredException()
+                                if (ownedReconnect && !productionPilot.isAccepting()) throw PilotDrainingException()
+                                if (ownedReconnect && engine.hasActiveGameIntent(account.userId.toString())) {
+                                    throw PilotRecoveryException()
+                                }
+                                val initial = if (ownedReconnect) productionPilot.reconnect(binding.socket) else null
+                                if (initial is OwnedRoomReply.Retryable || initial is OwnedRoomReply.Rejected) {
+                                    throw PilotRecoveryException()
+                                }
+                                val resume = message.resumeToken.takeUnless { ownedReconnect }
+                                engine.connectAccount(account, resume, message.protocolVersion).also {
+                                    pilotSocket = binding.socket
+                                    pilotInitial = initial
+                                    accountAccessToken = message.accessToken
+                                    socketAccount = account
+                                }
+                            } else {
+                                if (pilot != null && !eligible) throw PilotAccountRequiredException()
+                                val resume = message.resumeToken.takeUnless { pilot != null }
+                                engine.connectAccount(account, resume, message.protocolVersion).also {
+                                    if (pilot != null) {
+                                        val admitted = pilot.onConnected(account) ?: throw PilotDrainingException()
+                                        pilotAdmission = admitted
+                                        pilotSocket = admitted.socket
+                                        pilotInitial = admitted.initialReply
+                                    }
+                                    accountAccessToken = message.accessToken
+                                    socketAccount = account
+                                }
+                            }
+                        }
+                        else -> error("Expected a connection message")
+                    }
+                }.getOrElse { error ->
+                    if (error is PilotDrainingException) {
+                        close(CloseReason(CloseReason.Codes.GOING_AWAY, "Room owner draining"))
+                        return false
+                    }
+                    if (error is OwnedAdmissionRejected || error is PilotRecoveryException) {
+                        close(CloseReason(CloseReason.Codes.TRY_AGAIN_LATER, "Room recovery in progress"))
+                        return false
+                    }
+                    if (roomOwnershipPilot != null && error.isPilotStorageUnavailable()) throw error
+                    send(ProtocolJson.encodeToString<ServerMessage>(
+                        when (error) {
+                            is CancellationException -> throw error
+                            is PilotAccountRequiredException -> ServerMessage.Error(
+                                "PILOT_ACCOUNT_REQUIRED", "A pilot account is required."
+                            )
+                            is ModerationException -> ServerMessage.Error(error.code, publicModerationMessage(error.code))
+                            is MaintenanceAdmissionException -> ServerMessage.Error("MAINTENANCE",
+                                com.hienthai.fastowin.localization.LocalizationService(com.hienthai.fastowin.localization.AppLanguage.VIETNAMESE).text(TextKey.MaintenanceDefaultMessage),
+                                messageKey = TextKey.MaintenanceDefaultMessage.name)
+                            is InvalidAccessTokenException -> structuredServerError(
+                                "INVALID_ACCESS_TOKEN",
+                                legacyFallback("Phiên đăng nhập không hợp lệ hoặc đã hết hạn.")
+                            )
+                            is UnverifiedEmailException -> structuredServerError(
+                                "EMAIL_NOT_VERIFIED",
+                                legacyFallback("Vui lòng xác minh email trước khi vào game.")
+                            )
+                            is InvalidResumeTokenException -> structuredServerError(
+                                "INVALID_RESUME_TOKEN",
+                                legacyFallback("Token kết nối lại không hợp lệ.")
+                            )
+                            else -> structuredServerError(
+                                "INVALID_NAME",
+                                error.message ?: legacyFallback("Tên người chơi không hợp lệ.")
+                            )
+                        }
+                    ))
+                    return true
+                }
+                playerId = connected.playerId
+                if (message is ClientMessage.ConnectAccount) {
+                    val id = java.util.UUID.randomUUID()
+                    activityConnectionId = id
+                    activityTracker.connected(id, connected.playerId)
+                }
+                metrics.sessionAuthenticated()
+                playerRateLimitKey = stableRateLimitKey(connected.playerId)
+                val connection = SocketConnection(this, moderationAware,
+                    presenceId = activityConnectionId.takeIf { presenceStore != null },
+                    pilotGeneration = pilotSocket?.generation,
+                    ownedRoomListings = productionOwnership && socketAccount?.let { roomOwnershipPilot.allows(it) } == true,
+                    account = socketAccount,
+                    accessToken = accountAccessToken)
+                registeredConnection = connection
+                if (lane != null) {
+                    lane.register(connection, checkNotNull(pilotSocket))
+                    connectionToReplace = connections.put(connected.playerId, connection)
+                } else {
+                    var replaced: SocketConnection? = null
+                    val installed = connections.compute(connected.playerId) { _, previous ->
+                        if (previous?.pilotGeneration != null && connection.pilotGeneration != null &&
+                            previous.pilotGeneration >= connection.pilotGeneration
+                        ) previous
+                        else {
+                            replaced = previous
+                            connection
+                        }
+                    }
+                    if (installed !== connection) {
+                        connection.closeForReplacement()
+                        return false
+                    }
+                    replaced?.closeForReplacement()
+                }
+                if (connection.presenceId != null) {
+                    publishPresence(connected.playerId, connection)
+                    val account = checkNotNull(socketAccount)
+                    val accessToken = checkNotNull(accountAccessToken)
+                    presenceHeartbeat = launch {
+                        while (isActive) {
+                            delay(20_000)
+                            if (connections[connected.playerId] !== connection) break
+                            val active = try {
+                                authService.isSocketSessionActive(account, accessToken)
+                            } catch (cancelled: CancellationException) {
+                                throw cancelled
+                            } catch (_: Exception) {
+                                // A transient auth storage error cannot authorize another lease.
+                                continue
+                            }
+                            if (!active) {
+                                connection.session.close(CloseReason(CloseReason.Codes.NORMAL, "Account session revoked"))
+                                break
+                            }
+                            publishPresence(connected.playerId, connection, heartbeat = true)
+                        }
+                    }
+                }
+                val initialApplied = pilotInitial as? OwnedRoomReply.Applied
+                val pilotGame = initialApplied?.gameSnapshot()
+                if (pilotSocket != null) {
+                    if (pilotInitial is OwnedRoomReply.Retryable) {
+                        close(CloseReason(CloseReason.Codes.TRY_AGAIN_LATER, "Room recovery in progress"))
+                        return false
+                    }
+                    if (!checkNotNull(roomOwnershipPilot).isCurrent(checkNotNull(pilotSocket))) {
+                        close(CloseReason(CloseReason.Codes.NORMAL, SESSION_REPLACED_CLOSE_REASON))
+                        return false
+                    }
+                }
+                connection.send(
+                    sanitizeContent(ServerMessage.SessionReady(
+                        playerId = connected.playerId,
+                        resumeToken = connected.resumeToken,
+                        currentGame = if (!productionOwnership && roomOwnershipPilot != null) pilotGame
+                            else pilotGame ?: connected.currentGame,
+                        presenceRefreshSupported = connection.presenceId != null
+                    ), engine.suppressionsForProjection())
+                )
+                if (roomOwnershipPilot != null && pilotSocket != null &&
+                    (lane == null || connection.ownedRoomListings)
+                ) {
+                    val socket = checkNotNull(pilotSocket)
+                    val account = checkNotNull(socketAccount)
+                    val accessToken = checkNotNull(accountAccessToken)
+                    roomOwnershipPilot.delivery.register(
+                        socket, initialApplied?.takeIf { pilotGame != null },
+                        onDrain = {
+                            if (!productionOwnership || roomOwnershipPilot.ownedRoom(socket.playerId) != null) {
+                                connection.session.close(CloseReason(CloseReason.Codes.GOING_AWAY, "Room owner draining"))
+                            }
+                        }
+                    ) { outgoing ->
+                        if (connections[connected.playerId] === connection) {
+                            if (authService.isSocketSessionActive(account, accessToken) &&
+                                !engine.moderationService.isBlocked(connected.playerId)
+                            ) {
+                                val sanitized = sanitizeContent(outgoing, engine.suppressionsForProjection())
+                                if (roomOwnershipPilot.isCurrent(socket)) connection.send(sanitized)
+                                else connection.closeForReplacement()
+                            } else connection.session.close(CloseReason(CloseReason.Codes.NORMAL, "Account session revoked"))
+                        }
+                    }
+                    (initialApplied?.publicMessage as? ServerMessage.RoomClosed)?.let { connection.send(it) }
+                    pilotAdmission?.close()
+                    pilotAdmission = null
+                }
+                if (productionOwnership) {
+                    val legacy = engine.roomList()
+                    connection.send(sanitizeContent(if (connection.ownedRoomListings) withOwnedRooms(legacy) else legacy,
+                        engine.suppressionsForProjection()))
+                } else if (roomOwnershipPilot == null) deliver(listOf(Delivery(engine.roomList())))
+                else connection.send(sanitizeContent(roomOwnershipPilot.roomList(), engine.suppressionsForProjection()))
+                return true
+            }
+
+            suspend fun sendPresence(
+                connection: SocketConnection,
+                activePlayerId: String,
+                message: ClientMessage.GetPresence
+            ) {
+                if (connection.presenceId == null || connections[activePlayerId] !== connection ||
+                    !message.requestId.matches(PRESENCE_REQUEST_ID)
+                ) return
+                val now = System.nanoTime()
+                if (lastPresenceRequestAt?.let { now - it < 10_000_000_000L } == true) return
+                lastPresenceRequestAt = now
+                val snapshot = try {
+                    engine.presenceSnapshot(activePlayerId, message)
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (_: Exception) {
+                    null
+                }
+                if (snapshot != null && connections[activePlayerId] === connection) connection.send(snapshot)
+            }
+
+            suspend fun AccountGameLane.LaneContext.dispatchProduction(
+                pilot: RoomOwnershipPilot,
+                connection: SocketConnection,
+                account: AuthenticatedAccount,
+                message: ClientMessage,
+                deferDelivery: (suspend () -> Unit) -> Unit
+            ): CloseReason? {
+                val activePlayerId = account.userId.toString()
+                val replaced = CloseReason(CloseReason.Codes.NORMAL, SESSION_REPLACED_CLOSE_REASON)
+                if (connections[activePlayerId] !== connection || !isCurrent(connection)) return replaced
+                val token = checkNotNull(connection.accessToken)
+                val authenticated = authService.authenticateAccessToken(token)
+                if (authenticated?.userId != account.userId || authenticated.sessionId != account.sessionId) {
+                    connection.send(structuredServerError("INVALID_ACCESS_TOKEN",
+                        legacyFallback("Phiên đăng nhập không hợp lệ hoặc đã hết hạn.")))
+                    return CloseReason(CloseReason.Codes.NORMAL, "Account session revoked")
+                }
+                if (engine.moderationService.isBlocked(activePlayerId)) {
+                    connection.send(ServerMessage.Error("ACCOUNT_BLOCKED", "Account is restricted."))
+                    return CloseReason(CloseReason.Codes.VIOLATED_POLICY, "Account restricted")
+                }
+                val socket = checkNotNull(socket(connection))
+                if (!pilot.isCurrent(socket)) return replaced
+                if (message == ClientMessage.ListRooms) {
+                    val legacy = engine.roomList()
+                    connection.send(sanitizeContent(if (connection.ownedRoomListings) withOwnedRooms(legacy) else legacy,
+                        engine.suppressionsForProjection()))
+                    return null
+                }
+                if (message is ClientMessage.GetPresence) {
+                    sendPresence(connection, activePlayerId, message)
+                    return null
+                }
+                val gameCommand = message.isOwnedRoomCommand() || message.isUnsupportedPilotGameCommand()
+                if (gameCommand) {
+                    val pending = pending()
+                    if (pending is PendingOwnedAttempt.Create && message == pending.request.command) {
+                        pilot.delivery.onCommand(socket) { executeOwnedCreate(pilot, this, pending) }
+                        return null
+                    }
+                    if (pending != null) {
+                        // A lost response can leave a peer transaction running. Fence it before
+                        // allowing any competing intent. A reconnect installs the new subscription.
+                        pilot.bindGameLane(account.userId)
+                        retire(connection)
+                        return CloseReason(CloseReason.Codes.TRY_AGAIN_LATER, "Room recovery in progress")
+                    }
+                    val ownedRoom = pilot.ownedRoom(account.userId)
+                    val targetOwned = (message as? ClientMessage.JoinRoom)?.let { pilot.ownsRoom(it.roomId) } == true
+                    val ownedCreate = message is ClientMessage.CreateRoom && pilot.routesCreate(account, message)
+                    if (targetOwned && !pilot.allows(account)) {
+                        connection.send(structuredServerError("PILOT_ACCOUNT_REQUIRED", "An opted-in account is required."))
+                        return null
+                    }
+                    if (ownedRoom != null && (message is ClientMessage.CreateRoom && !ownedCreate || !targetOwned &&
+                        (message is ClientMessage.JoinRoom || message.isUnsupportedPilotGameCommand()))
+                    ) {
+                        connection.send(structuredServerError("ALREADY_IN_ROOM", "Leave the current room before starting another game."))
+                        return null
+                    }
+                    if (ownedRoom != null || ownedCreate || targetOwned) {
+                        if (engine.hasActiveGameIntent(activePlayerId)) {
+                            connection.send(structuredServerError("ALREADY_IN_ROOM", "Finish the current legacy game before starting another room."))
+                            return null
+                        }
+                        if (!pilot.isAccepting()) {
+                            connection.send(structuredServerError("ROOM_DRAINING", "Room ownership is draining."))
+                            return null
+                        }
+                        if (message is ClientMessage.CreateRoom) {
+                            try {
+                                engine.moderationService.requireContentTerms(activePlayerId)
+                            } catch (failure: ModerationException) {
+                                connection.send(ServerMessage.Error(failure.code, publicModerationMessage(failure.code)))
+                                return null
+                            }
+                        }
+                        pilot.delivery.onCommand(socket, (message as? ClientMessage.SelectNumber)?.requestId) { position ->
+                            when (message) {
+                                is ClientMessage.CreateRoom -> when (val prepared = pilot.prepareOwnedCreate(socket, message)) {
+                                    is OwnedCreatePreparation.Ready -> {
+                                        val attempt = PendingOwnedAttempt.Create(prepared.request)
+                                        begin(attempt)
+                                        executeOwnedCreate(pilot, this, attempt)
+                                    }
+                                    is OwnedCreatePreparation.Existing -> pilot.reconnect(socket)
+                                    is OwnedCreatePreparation.Rejected -> ownedCreatePreparationError(prepared.reason)
+                                }
+                                is ClientMessage.JoinRoom -> {
+                                    val attempt = PendingOwnedAttempt.Join(socket, message)
+                                    begin(attempt)
+                                    val reply = pilot.onMessage(socket, message, position)
+                                    if (reply is OwnedRoomReply.Applied || reply is OwnedRoomReply.Rejected) resolve(attempt)
+                                    reply
+                                }
+                                else -> pilot.onMessage(socket, message, position)
+                            }
+                        }
+                        return null
+                    }
+                }
+                val recipients = if (gameCommand) connections.toMap() else null
+                val deliveries = engine.handle(activePlayerId, message)
+                deferDelivery { deliver(deliveries, recipients) }
+                return null
+            }
+
             try {
                 for (frame in incoming) {
                     val ipMessageLimit = rateLimiter.consume(
@@ -804,187 +1194,27 @@ internal fun Application.gameModule(
                             break
                         }
 
-                        val connected = runCatching {
-                            when (message) {
-                                is ClientMessage.ConnectGuest -> {
-                                    if (!productionOwnership && roomOwnershipPilot != null) throw PilotAccountRequiredException()
-                                    engine.connectGuest(message.displayName, message.resumeToken, message.acceptedContentTermsVersion)
-                                }
-                                is ClientMessage.ConnectAccount -> {
-                                    val account = authService.authenticateAccessToken(message.accessToken)
-                                        ?: throw InvalidAccessTokenException()
-                                    if (!account.emailVerified) throw UnverifiedEmailException()
-                                    val eligible = roomOwnershipPilot?.allows(account) == true
-                                    if (!productionOwnership && roomOwnershipPilot != null && !eligible) throw PilotAccountRequiredException()
-                                    // Only a durable owned membership overrides the backend-local legacy resume token.
-                                    val ownedReconnect = productionOwnership && roomOwnershipPilot?.ownedRoom(account.userId) != null
-                                    if (ownedReconnect && !eligible) throw PilotAccountRequiredException()
-                                    if (ownedReconnect && roomOwnershipPilot?.isAccepting() != true) throw PilotDrainingException()
-                                    val resume = message.resumeToken.takeUnless {
-                                        (!productionOwnership && roomOwnershipPilot != null) || ownedReconnect
-                                    }
-                                    engine.connectAccount(account, resume, message.protocolVersion).also {
-                                        if (ownedReconnect && engine.hasActiveGameIntent(it.playerId)) {
-                                            throw IllegalStateException("Conflicting legacy and owned memberships")
-                                        }
-                                        if (roomOwnershipPilot != null && eligible &&
-                                            (!productionOwnership || roomOwnershipPilot.isAccepting())) {
-                                            val admitted = roomOwnershipPilot.onConnected(account) ?: throw PilotDrainingException()
-                                            pilotAdmission = admitted
-                                            pilotSocket = admitted.socket
-                                            pilotInitial = admitted.initialReply
-                                        }
-                                        accountAccessToken = message.accessToken
-                                        socketAccount = account
-                                    }
-                                }
-                            }
-                        }.getOrElse { error ->
-                            if (error is PilotDrainingException) {
-                                close(CloseReason(CloseReason.Codes.GOING_AWAY, "Room owner draining"))
-                                break
-                            }
-                            if (roomOwnershipPilot != null && error.isPilotStorageUnavailable()) throw error
-                            send(ProtocolJson.encodeToString<ServerMessage>(
-                                when (error) {
-                                    is CancellationException -> throw error
-                                    is PilotAccountRequiredException -> ServerMessage.Error(
-                                        "PILOT_ACCOUNT_REQUIRED", "A pilot account is required."
-                                    )
-                                    is ModerationException -> ServerMessage.Error(error.code, publicModerationMessage(error.code))
-                                    is MaintenanceAdmissionException -> ServerMessage.Error("MAINTENANCE",
-                                        com.hienthai.fastowin.localization.LocalizationService(com.hienthai.fastowin.localization.AppLanguage.VIETNAMESE).text(TextKey.MaintenanceDefaultMessage),
-                                        messageKey = TextKey.MaintenanceDefaultMessage.name)
-                                    is InvalidAccessTokenException -> structuredServerError(
-                                        "INVALID_ACCESS_TOKEN",
-                                        legacyFallback("Phiên đăng nhập không hợp lệ hoặc đã hết hạn.")
-                                    )
-                                    is UnverifiedEmailException -> structuredServerError(
-                                        "EMAIL_NOT_VERIFIED",
-                                        legacyFallback("Vui lòng xác minh email trước khi vào game.")
-                                    )
-                                    is InvalidResumeTokenException -> structuredServerError(
-                                        "INVALID_RESUME_TOKEN",
-                                        legacyFallback("Token kết nối lại không hợp lệ.")
-                                    )
-                                    else -> structuredServerError(
-                                        "INVALID_NAME",
-                                        error.message ?: legacyFallback("Tên người chơi không hợp lệ.")
-                                    )
-                                }
-                            ))
-                            continue
-                        }
-                        playerId = connected.playerId
-                        if (message is ClientMessage.ConnectAccount) {
-                            val id = java.util.UUID.randomUUID()
-                            activityConnectionId = id
-                            activityTracker.connected(id, connected.playerId)
-                        }
-                        metrics.sessionAuthenticated()
-                        playerRateLimitKey = stableRateLimitKey(connected.playerId)
-                        val connection = SocketConnection(this, moderationAware,
-                            presenceId = activityConnectionId.takeIf { presenceStore != null },
-                            pilotGeneration = pilotSocket?.generation,
-                            ownedRoomListings = productionOwnership && socketAccount?.let { roomOwnershipPilot?.allows(it) } == true)
-                        registeredConnection = connection
-                        var replaced: SocketConnection? = null
-                        val installed = connections.compute(connected.playerId) { _, previous ->
-                            if (previous?.pilotGeneration != null && connection.pilotGeneration != null &&
-                                previous.pilotGeneration >= connection.pilotGeneration
-                            ) previous
-                            else {
-                                replaced = previous
-                                connection
-                            }
-                        }
-                        if (installed !== connection) {
-                            connection.closeForReplacement()
-                            break
-                        }
-                        replaced?.closeForReplacement()
-                        if (connection.presenceId != null) {
-                            publishPresence(connected.playerId, connection)
-                            val account = checkNotNull(socketAccount)
-                            val accessToken = checkNotNull(accountAccessToken)
-                            presenceHeartbeat = launch {
-                                while (isActive) {
-                                    delay(20_000)
-                                    if (connections[connected.playerId] !== connection) break
-                                    val active = try {
-                                        authService.isSocketSessionActive(account, accessToken)
-                                    } catch (cancelled: CancellationException) {
-                                        throw cancelled
-                                    } catch (_: Exception) {
-                                        // A transient auth storage error cannot authorize another lease.
-                                        continue
-                                    }
-                                    if (!active) {
-                                        connection.session.close(CloseReason(CloseReason.Codes.NORMAL, "Account session revoked"))
-                                        break
-                                    }
-                                    publishPresence(connected.playerId, connection, heartbeat = true)
+                        val account = if (productionOwnership && message is ClientMessage.ConnectAccount) {
+                            authService.authenticateAccessToken(message.accessToken)
+                        } else null
+                        val keepReading = try {
+                            if (account != null) accountGameLane.withAccount(account.userId) {
+                                connectAndInstall(message, this, account.userId)
+                            } else connectAndInstall(message)
+                        } finally {
+                            connectionToReplace?.let { replacement ->
+                                connectionToReplace = null
+                                kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) {
+                                    runCatching { replacement.closeForReplacement() }
                                 }
                             }
                         }
-                        val initialApplied = pilotInitial as? OwnedRoomReply.Applied
-                        val pilotGame = initialApplied?.gameSnapshot()
-                        if (pilotSocket != null) {
-                            if (pilotInitial is OwnedRoomReply.Retryable) {
-                                close(CloseReason(CloseReason.Codes.TRY_AGAIN_LATER, "Room recovery in progress"))
-                                break
-                            }
-                            if (!checkNotNull(roomOwnershipPilot).isCurrent(checkNotNull(pilotSocket))) {
-                                close(CloseReason(CloseReason.Codes.NORMAL, SESSION_REPLACED_CLOSE_REASON))
-                                break
-                            }
-                        }
-                        connection.send(
-                            sanitizeContent(ServerMessage.SessionReady(
-                                playerId = connected.playerId,
-                                resumeToken = connected.resumeToken,
-                                currentGame = if (!productionOwnership && roomOwnershipPilot != null) pilotGame
-                                    else pilotGame ?: connected.currentGame,
-                                presenceRefreshSupported = connection.presenceId != null
-                            ), engine.suppressionsForProjection())
-                        )
-                        if (roomOwnershipPilot != null && pilotSocket != null) {
-                            val socket = checkNotNull(pilotSocket)
-                            val account = checkNotNull(socketAccount)
-                            val accessToken = checkNotNull(accountAccessToken)
-                            roomOwnershipPilot.delivery.register(
-                                socket, initialApplied?.takeIf { pilotGame != null },
-                                onDrain = {
-                                    if (!productionOwnership || roomOwnershipPilot.ownedRoom(socket.playerId) != null) {
-                                        connection.session.close(CloseReason(CloseReason.Codes.GOING_AWAY, "Room owner draining"))
-                                    }
-                                }
-                            ) { outgoing ->
-                                if (connections[connected.playerId] === connection) {
-                                    if (authService.isSocketSessionActive(account, accessToken) &&
-                                        !engine.moderationService.isBlocked(connected.playerId)
-                                    ) {
-                                        val sanitized = sanitizeContent(outgoing, engine.suppressionsForProjection())
-                                        if (roomOwnershipPilot.isCurrent(socket)) connection.send(sanitized)
-                                        else connection.closeForReplacement()
-                                    } else connection.session.close(CloseReason(CloseReason.Codes.NORMAL, "Account session revoked"))
-                                }
-                            }
-                            (initialApplied?.publicMessage as? ServerMessage.RoomClosed)?.let { connection.send(it) }
-                            pilotAdmission?.close()
-                            pilotAdmission = null
-                        }
-                        if (productionOwnership) {
-                            val legacy = engine.roomList()
-                            connection.send(sanitizeContent(if (connection.ownedRoomListings) withOwnedRooms(legacy) else legacy,
-                                engine.suppressionsForProjection()))
-                        } else if (roomOwnershipPilot == null) deliver(listOf(Delivery(engine.roomList())))
-                        else connection.send(sanitizeContent(roomOwnershipPilot.roomList(), engine.suppressionsForProjection()))
-                        deliver(engine.presenceUpdates(connected.playerId))
+                        if (!keepReading) break
+                        playerId?.let { deliver(engine.presenceUpdates(it)) }
                         continue
                     }
 
-                    val activePlayerId = playerId
+                    val activePlayerId = checkNotNull(playerId)
                     if (message is ClientMessage.GetContentTerms) connections[activePlayerId]
                         ?.takeIf { it.session === this }?.moderationAware = true
                     if (engine.moderationService.isBlocked(activePlayerId)) {
@@ -1027,60 +1257,36 @@ internal fun Application.gameModule(
                         continue
                     }
 
+                    val account = socketAccount
+                    val connection = checkNotNull(registeredConnection)
+                    if (productionOwnership && account != null) {
+                        var deliverAfterDispatch: (suspend () -> Unit)? = null
+                        val reason = accountGameLane.withAccount(account.userId) {
+                            dispatchProduction(checkNotNull(roomOwnershipPilot), connection, account, message) {
+                                deliverAfterDispatch = it
+                            }
+                        }
+                        if (reason != null) {
+                            close(reason)
+                            break
+                        }
+                        deliverAfterDispatch?.invoke()
+                        continue
+                    }
                     val currentAccountToken = accountAccessToken
-                    val sessionActive = currentAccountToken == null ||
-                        authService.authenticateAccessToken(currentAccountToken) != null
-                    if (!sessionActive) {
-                        send(ProtocolJson.encodeToString<ServerMessage>(
-                            structuredServerError(
-                                "INVALID_ACCESS_TOKEN",
-                                legacyFallback("Phiên đăng nhập không hợp lệ hoặc đã hết hạn.")
-                            )
-                        ))
+                    if (currentAccountToken != null && authService.authenticateAccessToken(currentAccountToken) == null) {
+                        send(ProtocolJson.encodeToString<ServerMessage>(structuredServerError("INVALID_ACCESS_TOKEN",
+                            legacyFallback("Phiên đăng nhập không hợp lệ hoặc đã hết hạn."))))
                         close(CloseReason(CloseReason.Codes.NORMAL, "Account session revoked"))
                         break
                     }
-                    if (productionOwnership && roomOwnershipPilot != null) {
-                        val socket = pilotSocket
-                        if (socket != null && !roomOwnershipPilot.isCurrent(socket)) {
-                            close(CloseReason(CloseReason.Codes.NORMAL, SESSION_REPLACED_CLOSE_REASON))
-                            break
-                        }
-                        val ownedRoom = socket?.let { roomOwnershipPilot.ownedRoom(it.playerId) }
+                    if (productionOwnership) {
                         if (message == ClientMessage.ListRooms) {
-                            val legacy = engine.roomList()
-                            registeredConnection?.send(sanitizeContent(
-                                if (registeredConnection?.ownedRoomListings == true) withOwnedRooms(legacy) else legacy,
-                                engine.suppressionsForProjection()))
+                            connection.send(sanitizeContent(engine.roomList(), engine.suppressionsForProjection()))
                             continue
                         }
-                        val targetOwned = (message as? ClientMessage.JoinRoom)?.let { roomOwnershipPilot.ownsRoom(it.roomId) } == true
-                        val ownedCreate = message is ClientMessage.CreateRoom && socketAccount?.let {
-                            roomOwnershipPilot.routesCreate(it, message)
-                        } == true
-                        val gameCommand = message.isOwnedRoomCommand() || message.isUnsupportedPilotGameCommand()
-                        if (targetOwned && socketAccount?.let { roomOwnershipPilot.allows(it) } != true) {
-                            registeredConnection?.send(structuredServerError("PILOT_ACCOUNT_REQUIRED", "An opted-in account is required."))
-                            continue
-                        }
-                        if (ownedRoom != null && gameCommand && (message is ClientMessage.CreateRoom && !ownedCreate || !targetOwned &&
-                            (message is ClientMessage.JoinRoom || message.isUnsupportedPilotGameCommand()))) {
-                            registeredConnection?.send(structuredServerError("ALREADY_IN_ROOM", "Leave the current room before starting another game."))
-                            continue
-                        }
-                        val routeOwned = ownedRoom != null && gameCommand || ownedCreate || targetOwned
-                        if (routeOwned) {
-                            if (engine.hasActiveGameIntent(activePlayerId)) {
-                                registeredConnection?.send(structuredServerError("ALREADY_IN_ROOM", "Finish the current legacy game before starting another room."))
-                                continue
-                            }
-                            if (socket == null || !roomOwnershipPilot.isAccepting()) {
-                                registeredConnection?.send(structuredServerError("ROOM_DRAINING", "Room ownership is draining."))
-                                continue
-                            }
-                            roomOwnershipPilot.delivery.onCommand(socket, (message as? ClientMessage.SelectNumber)?.requestId) { position ->
-                                roomOwnershipPilot.onMessage(socket, message, position)
-                            }
+                        if (message is ClientMessage.JoinRoom && roomOwnershipPilot.ownsRoom(message.roomId)) {
+                            connection.send(structuredServerError("PILOT_ACCOUNT_REQUIRED", "An opted-in account is required."))
                             continue
                         }
                     } else if (roomOwnershipPilot != null) {
@@ -1090,7 +1296,7 @@ internal fun Application.gameModule(
                             break
                         }
                         if (message == ClientMessage.ListRooms) {
-                            registeredConnection?.send(sanitizeContent(roomOwnershipPilot.roomList(), engine.suppressionsForProjection()))
+                            connection.send(sanitizeContent(roomOwnershipPilot.roomList(), engine.suppressionsForProjection()))
                             continue
                         }
                         if (message.isOwnedRoomCommand() || message.isUnsupportedPilotGameCommand()) {
@@ -1101,39 +1307,42 @@ internal fun Application.gameModule(
                         }
                     }
                     if (message is ClientMessage.GetPresence) {
-                        val connection = registeredConnection ?: continue
-                        if (connection.presenceId == null || connections[activePlayerId] !== connection ||
-                            !message.requestId.matches(PRESENCE_REQUEST_ID)) continue
-                        val now = System.nanoTime()
-                        if (lastPresenceRequestAt?.let { now - it < 10_000_000_000L } == true) continue
-                        lastPresenceRequestAt = now
-                        val snapshot = try {
-                            engine.presenceSnapshot(activePlayerId, message)
-                        } catch (cancelled: CancellationException) {
-                            throw cancelled
-                        } catch (_: Exception) {
-                            null
-                        }
-                        if (snapshot != null && connections[activePlayerId] === connection) connection.send(snapshot)
+                        sendPresence(connection, activePlayerId, message)
                         continue
                     }
-                    deliver(engine.handle(activePlayerId, message))
+                    val recipients = if (productionOwnership &&
+                        (message.isOwnedRoomCommand() || message.isUnsupportedPilotGameCommand())
+                    ) connections.toMap() else null
+                    deliver(engine.handle(activePlayerId, message), recipients)
                 }
             } catch (failure: Exception) {
-                if (roomOwnershipPilot == null || !failure.isPilotStorageUnavailable()) throw failure
+                if (roomOwnershipPilot == null ||
+                    failure !is OwnedAdmissionRejected && !failure.isPilotStorageUnavailable()
+                ) throw failure
                 close(CloseReason(CloseReason.Codes.TRY_AGAIN_LATER, "Service temporarily unavailable"))
             } finally {
                 pilotAdmission?.close()
                 metrics.webSocketClosed()
                 kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) {
                     presenceHeartbeat?.cancelAndJoin()
-                    if (roomOwnershipPilot != null) pilotSocket?.let { socket ->
-                        roomOwnershipPilot.delivery.unregister(socket)
-                        roomOwnershipPilot.onDisconnected(socket)
-                    }
                     val connection = registeredConnection
-                    val socketId = connection?.presenceId
+                    val account = socketAccount
                     val id = playerId
+                    suspend fun disconnectOwned(current: Boolean = true) {
+                        if (roomOwnershipPilot != null) pilotSocket?.let { socket ->
+                            roomOwnershipPilot.delivery.unregister(socket)
+                            if (current) roomOwnershipPilot.onDisconnected(socket)
+                        }
+                    }
+                    if (productionOwnership && account != null && connection != null && id != null) {
+                        accountGameLane.withAccount(account.userId) {
+                            val current = connections.remove(id, connection)
+                            retire(connection)
+                            disconnectOwned(current)
+                            if (current) deliver(engine.markDisconnected(id))
+                        }
+                    } else disconnectOwned()
+                    val socketId = connection?.presenceId
                     if (presenceStore != null && connection != null && socketId != null && id != null) {
                         connection.presenceMutex.withLock {
                             connection.presenceClosed = true
@@ -1142,7 +1351,7 @@ internal fun Application.gameModule(
                     }
                     activityConnectionId?.let { activityTracker.disconnected(it) }
                 }
-                playerId?.let { id ->
+                playerId?.takeUnless { productionOwnership && socketAccount != null }?.let { id ->
                     val connection = connections[id]
                     if (connection?.session === this && connections.remove(id, connection)) {
                         deliver(engine.markDisconnected(id))
@@ -1151,6 +1360,57 @@ internal fun Application.gameModule(
             }
         }
     }
+}
+
+private fun ServerMessage.legacyDeliveryRoomId(): String? = when (this) {
+    is ServerMessage.RoomCreated -> game.roomId
+    is ServerMessage.RoomUpdated -> game.roomId
+    is ServerMessage.GameStarted -> game.roomId
+    is ServerMessage.GameStateUpdated -> game.roomId
+    is ServerMessage.GameFinished -> game.roomId
+    is ServerMessage.RoomClosed -> roomId
+    is ServerMessage.RematchStatus -> game.roomId
+    else -> null
+}
+
+private suspend fun executeOwnedCreate(
+    pilot: RoomOwnershipPilot,
+    lane: AccountGameLane.LaneContext,
+    attempt: PendingOwnedAttempt.Create
+): OwnedRoomReply {
+    val request = attempt.request
+    val result = pilot.createOwned(request)
+    val proof = when (result) {
+        is OwnedCreateResult.Created -> result.proof
+        is OwnedCreateResult.Closed -> result.proof
+        is OwnedCreateResult.AttemptRejected, is OwnedCreateResult.Unresolved -> null
+    }
+    if (proof?.matches(request) != true) return ownedCreateRecovering()
+    lane.resolve(attempt)
+    return when (val current = pilot.reconnect(request.socket)) {
+        is OwnedRoomReply.Applied -> {
+            val snapshot = current.gameSnapshot()
+            val created = result is OwnedCreateResult.Created && !result.replayed &&
+                current.roomId == request.roomId && current.publicMessage is ServerMessage.RoomUpdated &&
+                current.epoch == proof.createdEpoch && current.revision == proof.createdRevision
+            current.copy(
+                publicMessage = if (created && snapshot != null) ServerMessage.RoomCreated(snapshot) else current.publicMessage,
+                replayed = true
+            )
+        }
+        is OwnedRoomReply.Rejected -> ownedCreateRecovering()
+        OwnedRoomReply.NoRoom -> OwnedRoomReply.Rejected(structuredServerError("ROOM_NOT_FOUND", "The room is no longer available."))
+        is OwnedRoomReply.Retryable -> current
+    }
+}
+
+private fun ownedCreateRecovering() =
+    OwnedRoomReply.Retryable(structuredServerError("ROOM_RECOVERING", "Room synchronization is in progress."))
+
+private fun ownedCreatePreparationError(reason: String): OwnedRoomReply = when (reason) {
+    "INVALID_CREATE" -> OwnedRoomReply.Rejected(structuredServerError("INVALID_ROOM_NAME", "Enter a valid room name."))
+    "OWNED_ADMISSION_STOPPED" -> OwnedRoomReply.Rejected(structuredServerError("MAINTENANCE", "New room admission is paused."))
+    else -> ownedCreateRecovering()
 }
 
 private fun ApplicationCall.clientRateLimitKey(): String =
@@ -1458,15 +1718,17 @@ private class SocketConnection(
     @Volatile var moderationAware: Boolean = false,
     val presenceId: java.util.UUID? = null,
     val pilotGeneration: Long? = null,
-    val ownedRoomListings: Boolean = false
+    val ownedRoomListings: Boolean = false,
+    val account: AuthenticatedAccount? = null,
+    val accessToken: String? = null
 ) {
     private val sendMutex = Mutex()
     val presenceMutex = Mutex()
     var lastPublishedPresence: com.hienthai.fastowin.protocol.FriendPresence? = null
     var presenceClosed = false
 
-    suspend fun send(message: ServerMessage) = sendMutex.withLock {
-        session.send(ProtocolJson.encodeToString<ServerMessage>(message))
+    suspend fun send(message: ServerMessage, canSend: suspend () -> Boolean = { true }) = sendMutex.withLock {
+        if (canSend()) session.send(ProtocolJson.encodeToString<ServerMessage>(message))
     }
 
     suspend fun closeForReplacement() {
@@ -1477,6 +1739,7 @@ private class SocketConnection(
 private const val SESSION_CLEANUP_INTERVAL_MILLIS = 5_000L
 private class PilotAccountRequiredException : RuntimeException()
 private class PilotDrainingException : RuntimeException()
+private class PilotRecoveryException : RuntimeException()
 private val PRESENCE_REQUEST_ID = Regex("[A-Za-z0-9_-]{1,64}")
 private const val GAME_TIMER_INTERVAL_MILLIS = 250L
 private const val MATCHMAKING_INTERVAL_MILLIS = 1_000L
