@@ -111,7 +111,8 @@ class GameEngine(
             com.hienthai.fastowin.server.avatars.ProfileAvatarRepository(playerProfileRepository),
             publicationAllowed = { moderationService.requireContentTerms(it) },
             contentSuppressed = { id, revision -> moderationService.isSuppressed(UgcTargetType.PLAYER_AVATAR, id, revision) }),
-    internal val presenceStore: PresenceStore? = null
+    internal val presenceStore: PresenceStore? = null,
+    internal val productionPresenceFailClosed: Boolean = false
 ) {
     constructor(nowMillis: () -> Long) : this(nowMillis = nowMillis, eventRewardSource = com.hienthai.fastowin.server.events.NoRewardEventSource)
 
@@ -2077,7 +2078,7 @@ class GameEngine(
     private suspend fun rosterPresence(ids: List<String>, isPresenceRefresh: Boolean): Map<String, FriendPresence>? {
         if (presenceStore != null) {
             val shared = presenceStore.read(ids)
-            if (shared != null || isPresenceRefresh) return shared
+            if (shared != null || isPresenceRefresh || productionPresenceFailClosed) return shared
         }
         return mutex.withLock { ids.associateWith(::presenceOf) }
     }
@@ -2095,8 +2096,8 @@ class GameEngine(
         return ServerMessage.PresenceData(request.requestId, clanId, presence)
     }
 
-    private suspend fun clanInfo(clan: ClanSnapshot): ServerMessage.ClanInfoData =
-        requireNotNull(clanPresenceMessage(clan, isPresenceRefresh = false))
+    private suspend fun clanInfo(clan: ClanSnapshot): ServerMessage.ClanInfoData? =
+        clanPresenceMessage(clan, isPresenceRefresh = false)
 
     private suspend fun clanPresenceMessage(clan: ClanSnapshot, isPresenceRefresh: Boolean): ServerMessage.ClanInfoData? {
         val presence = rosterPresence(clan.members.map { it.userId }, isPresenceRefresh) ?: return null
@@ -4693,7 +4694,7 @@ class GameEngine(
                         setOf(playerId)
                     ))
                     updatedClan?.let {
-                        add(Delivery(clanInfo(it), setOf(clan.ownerId)))
+                        clanInfo(it)?.let { message -> add(Delivery(message, setOf(clan.ownerId))) }
                     }
                     add(Delivery(
                         ServerMessage.NotificationsData(notificationRepository.loadNotifications(clan.ownerId)),
@@ -4793,7 +4794,7 @@ class GameEngine(
                     ))
                     updatedClan?.let {
                         if (approved) addAll(clanMemberUpdate(it))
-                        else add(Delivery(clanInfo(it), setOf(playerId)))
+                        else clanInfo(it)?.let { message -> add(Delivery(message, setOf(playerId))) }
                     }
                     add(Delivery(
                         ServerMessage.NotificationsData(notificationRepository.loadNotifications(command.userId)),
@@ -4831,7 +4832,7 @@ class GameEngine(
     private suspend fun getClanInfo(playerId: String, clanId: String): List<Delivery> {
         val clan = clanRepository.getClanById(clanId)
         return if (clan != null) {
-            listOf(Delivery(clanInfo(clan), setOf(playerId)))
+            clanInfo(clan)?.let { listOf(Delivery(it, setOf(playerId))) } ?: emptyList()
         } else {
             listOf(error(playerId, "CLAN_NOT_FOUND", legacyFallback("Không tìm thấy clan.")))
         }
@@ -4863,7 +4864,7 @@ class GameEngine(
             )
             if (result.status == ClanDonationStatus.APPLIED || result.status == ClanDonationStatus.DUPLICATE) {
                 clanRepository.getClanById(command.clanId)?.let { clan ->
-                    add(Delivery(clanInfo(clan), setOf(playerId)))
+                    clanInfo(clan)?.let { add(Delivery(it, setOf(playerId))) }
                 }
                 addAll(loadProfile(playerId))
             }

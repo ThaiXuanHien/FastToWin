@@ -96,7 +96,8 @@ fun main() {
             rewardedAdAvailability = rewardedAdAvailability,
             storeSandboxEnabled = environment == "dev",
             eventRewardSource = database?.rewardEventRepository ?: com.hienthai.fastowin.server.events.NoRewardEventSource,
-            presenceStore = presenceStore
+            presenceStore = presenceStore,
+            productionPresenceFailClosed = environment == "prod"
         )
         runBlocking {
             seasonLifecycleRepository.maintain()
