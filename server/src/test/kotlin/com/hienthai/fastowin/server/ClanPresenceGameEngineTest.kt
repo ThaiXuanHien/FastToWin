@@ -21,6 +21,34 @@ import kotlin.test.assertTrue
 
 class ClanPresenceGameEngineTest {
     @Test
+    fun `production presence outage does not fabricate friend or clan online state`() = runTest {
+        val owner = UUID.randomUUID().toString()
+        val member = UUID.randomUUID().toString()
+        val clans = MemoryClans(owner, member)
+        val friends = object : FriendRepository by NoOpFriendRepository {
+            override suspend fun load(userId: String) = StoredFriends(
+                friends = listOf(FriendSnapshot(member, "Friend", "FRIEND1"))
+            )
+        }
+        val unavailable = object : PresenceStore {
+            override suspend fun renew(playerId: String, connectionId: UUID, presence: FriendPresence) = true
+            override suspend fun revoke(playerId: String, connectionId: UUID) = true
+            override suspend fun read(playerIds: Collection<String>): Map<String, FriendPresence>? = null
+            override fun close() = Unit
+        }
+        val engine = GameEngine(
+            clanRepository = clans,
+            friendRepository = friends,
+            presenceStore = unavailable,
+            productionPresenceFailClosed = true
+        )
+        engine.connectAccount(account(owner))
+
+        assertTrue(engine.handle(owner, ClientMessage.GetFriends).isEmpty())
+        assertTrue(engine.handle(owner, ClientMessage.GetClanInfo(clans.snapshot.id)).isEmpty())
+    }
+
+    @Test
     fun `authorized friend and clan snapshots read remote presence and fall back only on initial load`() = runTest {
         val owner = UUID.randomUUID().toString()
         val member = UUID.randomUUID().toString()

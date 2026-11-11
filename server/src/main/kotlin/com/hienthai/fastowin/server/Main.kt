@@ -131,7 +131,8 @@ private fun startIngressServer(environment: String, ownershipConfig: RoomOwnersh
             rewardedAdAvailability = rewardedAdAvailability,
             storeSandboxEnabled = environment == "dev",
             eventRewardSource = database?.rewardEventRepository ?: com.hienthai.fastowin.server.events.NoRewardEventSource,
-            presenceStore = presenceStore
+            presenceStore = presenceStore,
+            productionPresenceFailClosed = environment == "prod"
         )
         val ownershipPilot = runBlocking {
             val pilot = ownershipConfig?.let { checkNotNull(database).openRoomOwnershipPilot(it, engine::newIntentAllowed) }
