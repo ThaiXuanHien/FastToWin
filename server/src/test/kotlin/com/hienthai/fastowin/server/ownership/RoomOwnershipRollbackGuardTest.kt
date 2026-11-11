@@ -12,6 +12,8 @@ class RoomOwnershipRollbackGuardTest {
         assertFalse(guard.canRollback(RoomOwnershipDrainReceipt(false, 0, 0)))
         assertFalse(guard.canRollback(RoomOwnershipDrainReceipt(true, 1, 0)))
         assertFalse(guard.canRollback(RoomOwnershipDrainReceipt(true, 0, 1)))
+        assertFalse(guard.canRollback(RoomOwnershipDrainReceipt(true, 0, 0, remainingOpenRooms = 1)))
+        assertFalse(guard.canRollback(RoomOwnershipDrainReceipt(true, 0, 0, storageVerified = false)))
         assertTrue(guard.canRollback(RoomOwnershipDrainReceipt(true, 0, 0)))
     }
 
@@ -21,6 +23,7 @@ class RoomOwnershipRollbackGuardTest {
 
         assertFalse(guard.canRollback(RoomOwnershipDrainReceipt(true, -1, 0)))
         assertFalse(guard.canRollback(RoomOwnershipDrainReceipt(true, 0, -1)))
+        assertFalse(guard.canRollback(RoomOwnershipDrainReceipt(true, 0, 0, remainingOpenRooms = -1)))
     }
 }
 

@@ -22,6 +22,7 @@ internal data class BaselineLatencyReceipt(
     val complete: Boolean,
     val poolAcquire: BaselineLatencySummary,
     val selectRoundTrip: BaselineLatencySummary,
+    // Legacy receipt label: production rehearsal measures an unchanged profile row instead.
     val markerUpdateRoundTrip: BaselineLatencySummary,
     val commitRoundTrip: BaselineLatencySummary,
     val readinessRoundTrip: BaselineLatencySummary,
@@ -61,16 +62,26 @@ internal class BaselineLatencyRecorder(private val nanoTime: () -> Long = System
     )
 }
 
-/** One real WAL-producing transaction, restricted to an unchanged fixture marker. */
-internal fun measureBaselineDatabaseProbe(source: DataSource, fixtureId: UUID, recorder: BaselineLatencyRecorder) {
+/** One WAL-producing transaction on an unchanged fixture marker or a verified production rehearsal profile. */
+internal fun measureBaselineDatabaseProbe(
+    source: DataSource,
+    fixtureId: UUID,
+    recorder: BaselineLatencyRecorder,
+    productionSettings: RoomAcceptanceSettings? = null
+) {
     recorder.measure(BaselineProbeStage.POOL) { source.connection }.use { connection ->
         val previousNetworkTimeout = connection.networkTimeout
         connection.setNetworkTimeout(Runnable::run, 2_500)
         connection.autoCommit = false
         try {
-            connection.createStatement().use { statement ->
-                statement.executeQuery("SELECT fixture_id FROM room_ownership_pilot_fixture WHERE singleton").use { rows ->
-                    check(rows.next() && rows.getObject(1, UUID::class.java) == fixtureId && !rows.next()) { "Probe fixture marker mismatch" }
+            if (productionSettings != null) {
+                check(productionSettings.productionLike && productionSettings.fixtureId == fixtureId)
+                verifyRoomAcceptanceDatabase(connection, productionSettings)
+            } else {
+                connection.createStatement().use { statement ->
+                    statement.executeQuery("SELECT fixture_id FROM room_ownership_pilot_fixture WHERE singleton").use { rows ->
+                        check(rows.next() && rows.getObject(1, UUID::class.java) == fixtureId && !rows.next()) { "Probe fixture marker mismatch" }
+                    }
                 }
             }
             recorder.measure(BaselineProbeStage.SELECT) {
@@ -79,9 +90,16 @@ internal fun measureBaselineDatabaseProbe(source: DataSource, fixtureId: UUID, r
                 }
             }
             recorder.measure(BaselineProbeStage.UPDATE) {
-                connection.prepareStatement("UPDATE room_ownership_pilot_fixture SET fixture_id=fixture_id WHERE singleton AND fixture_id=?").use { statement ->
-                    statement.setObject(1, fixtureId)
-                    check(statement.executeUpdate() == 1) { "Probe fixture marker changed" }
+                if (productionSettings != null) {
+                    connection.prepareStatement("UPDATE profiles SET avatar_url=avatar_url WHERE user_id=?").use { statement ->
+                        statement.setObject(1, productionSettings.accountIds.first())
+                        check(statement.executeUpdate() == 1) { "Probe production rehearsal profile missing" }
+                    }
+                } else {
+                    connection.prepareStatement("UPDATE room_ownership_pilot_fixture SET fixture_id=fixture_id WHERE singleton AND fixture_id=?").use { statement ->
+                        statement.setObject(1, fixtureId)
+                        check(statement.executeUpdate() == 1) { "Probe fixture marker changed" }
+                    }
                 }
             }
             recorder.measure(BaselineProbeStage.COMMIT) { connection.commit() }
@@ -95,9 +113,11 @@ internal fun measureBaselineDatabaseProbe(source: DataSource, fixtureId: UUID, r
 }
 
 internal suspend fun RoomAcceptanceFixture.measureBaselineLatency(recorder: BaselineLatencyRecorder, node: Int = 0) {
-    verifyFixture() // Exact marker and synthetic account allowlist before the write probe.
+    verifyFixture() // Exact database identity/marker policy and synthetic account allowlist before writing.
     repeat(12) {
-        withContext(Dispatchers.IO) { measureBaselineDatabaseProbe(source, settings.fixtureId, recorder) }
+        withContext(Dispatchers.IO) {
+            measureBaselineDatabaseProbe(source, settings.fixtureId, recorder, settings.takeIf { it.productionLike })
+        }
         recorder.measureSuspending(BaselineProbeStage.READY) {
             val response = client.get(settings.urls[node] + "/ready")
             check(response.status == HttpStatusCode.OK && response.bodyAsText() == "READY") { "Probe readiness unavailable" }

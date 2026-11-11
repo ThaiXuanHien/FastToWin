@@ -24,6 +24,23 @@ import kotlin.test.assertTrue
 
 class OwnedRoomEngineTest {
     @Test
+    fun `settlement wakeup keeps its retry hint across SQL failures`() = runBlocking {
+        fixture { f ->
+            val id = f.createPlaying()
+            f.failSettlements()
+            f.a.handle(f.guest, ClientMessage.LeaveRoom(id.toString())).applied()
+            assertNotNull(f.state(id).snapshot.pendingCompletedMatch)
+            f.a.settlePending()
+            assertEquals(0, f.matchCount(id))
+            f.allowSettlements()
+            // No renewal scan or new command: the failed wakeup itself must remain retryable.
+            f.a.settlePending()
+            assertEquals(1, f.matchCount(id))
+            assertNull(f.state(id).snapshot.pendingCompletedMatch)
+        }
+    }
+
+    @Test
     fun `selection precheck omits replay history while locked reads preserve exact replay`() = runBlocking {
         fixture { f ->
             val id = f.createPlaying()

@@ -641,6 +641,14 @@ class GameEngine(
         keys.forEach { (type, id) -> publishMemoryTarget(type, id) }
     }
 
+    /** Production routing must not move an existing room, queue entry or tournament to another engine. */
+    internal suspend fun hasActiveGameIntent(playerId: String): Boolean {
+        restoreActiveRooms()
+        return mutex.withLock {
+            roomFor(playerId) != null || playerId in matchmakingEntries || activeTournamentFor(playerId) != null
+        }
+    }
+
     suspend fun handle(playerId: String, message: ClientMessage): List<Delivery> {
         val deliveries = handleCommand(playerId, message)
         refreshMemoryTargets()

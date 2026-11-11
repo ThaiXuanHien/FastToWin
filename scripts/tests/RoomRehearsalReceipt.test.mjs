@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
-import { gate, readReceipt } from '../read-room-rehearsal-receipt.mjs'
+import { gate, readReceipt, readProductionReceipt } from '../read-room-rehearsal-receipt.mjs'
 
 const manifest = 'c'.repeat(64)
 const jar = '8fff8ae123902032d98a92190b0bff3df87e234f213b25a298f4768c7e40e818'
@@ -14,6 +14,17 @@ function chunks(json, kind) {
 const envelope = (kind, profile, payload) => ({schema:1,manifestSha256:manifest,jarSha256:jar,kind,profile,payload})
 const failure = envelope('failure','fault',{phase:'fault',category:'assertion',completedCases:2,progress:null})
 const read = (receipt, kind=receipt.kind, profile=receipt.profile) => readReceipt(chunks(JSON.stringify(receipt),kind), kind,profile,manifest)
+
+test('production exports bind the supplied artifact and reject fixture namespace or mixed artifacts',()=>{
+    const expectedJar = 'e'.repeat(64)
+    const receipt = {...failure,jarSha256:expectedJar}
+    const bytes = JSON.stringify(receipt)
+    const lines = chunks(bytes,'failure').map(line=>line.replace('FTW_REHEARSAL_','FTW_PRODUCTION_REHEARSAL_'))
+    assert.equal(readProductionReceipt(lines,'failure','fault',manifest,expectedJar).toString(),bytes)
+    assert.throws(()=>readProductionReceipt(lines,'failure','fault',manifest,jar))
+    assert.throws(()=>readReceipt(lines,'failure','fault',manifest))
+    assert.throws(()=>readProductionReceipt([...lines,...chunks(bytes,'failure')],'failure','fault',manifest,expectedJar))
+})
 const load = envelope('load','two-backend',{
     pools:[20,20], seed:73,backendCount:2,concurrentRooms:20,configuredDurationSeconds:600,configuredSelectionsPerRoomPerSecond:5,
     roomSetupSeconds:4,elapsedSeconds:600,selectionCount:60000,selectionsByRoomSlot:Array(20).fill(3000),

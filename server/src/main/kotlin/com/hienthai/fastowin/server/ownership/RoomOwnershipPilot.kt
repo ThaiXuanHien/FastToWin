@@ -53,16 +53,26 @@ internal class RoomOwnershipPilot private constructor(
     private val lastHealthyTick = AtomicLong()
     private val drainMutex = Mutex()
     private val rollbackGuard = RoomOwnershipRollbackGuard()
+    @Volatile
     private var drained = false
 
     fun allows(account: AuthenticatedAccount): Boolean = account.emailVerified && account.userId in config.allowedAccounts
+
+    val isProductionMode: Boolean get() = config.fixtureId == null
+
+    suspend fun ownedRoom(playerId: UUID): UUID? = rooms.lookupRoom(playerId)
+
+    suspend fun ownsRoom(roomId: String): Boolean = parsePilotUuid(roomId)?.let { rooms.findOwner(it) != null } ?: false
+
+    fun routesCreate(account: AuthenticatedAccount, command: ClientMessage.CreateRoom): Boolean =
+        RoomOwnershipRouting(config).route(account, command.gameMode, command.matchType, command.password.isNotBlank()) is RoomOwnershipRoute.Owned
 
     fun isAccepting(): Boolean = admission.accepting
 
     suspend fun isReady(): Boolean {
         if (!isAccepting() || !workerHealthy()) return false
         return try {
-            (config.fixtureId?.let { rooms.fixtureReady(it) } ?: true) && isAccepting() && workerHealthy()
+            (config.fixtureId?.let { rooms.fixtureReady(it) } ?: rooms.schemaReady()) && isAccepting() && workerHealthy()
         } catch (_: SQLException) {
             false
         }
@@ -92,27 +102,40 @@ internal class RoomOwnershipPilot private constructor(
         }
     }
 
+    /** Drain this process for handoff to another owner runtime; this does not authorize legacy rollback. */
     suspend fun beginDrain(): Boolean = drainMutex.withLock {
         if (drained) return true
         admission.beginDrain().await()
         try {
             engine.settlePending()
+            if (rooms.durableSnapshot(instanceId).pendingSettlements != 0) return false
             // Look up durable ownership rather than only the engine cache, including a create with an uncertain reply.
             val owned = rooms.ownedFences(instanceId)
             owned.forEach { rooms.release(it) }
-            val remaining = rooms.ownedFences(instanceId).size
-            val receipt = RoomOwnershipDrainReceipt(
-                drained = true,
-                remainingOwnedLeases = remaining,
-                pendingSettlements = engine.pendingSettlementCount()
-            )
-            if (!rollbackGuard.canRollback(receipt)) return false
+            val remaining = rooms.durableSnapshot(instanceId)
+            if (remaining.remainingOwnedLeases != 0 || remaining.pendingSettlements != 0) return false
         } catch (_: SQLException) {
             return false
         }
         delivery.closeForDrain()
         drained = true
         true
+    }
+
+    /** Call only after stopping admission on every runtime before removing owned routing. */
+    suspend fun canRollback(): Boolean {
+        if (!drained) return false
+        return try {
+            val snapshot = rooms.durableSnapshot()
+            rollbackGuard.canRollback(RoomOwnershipDrainReceipt(
+                drained = drained,
+                remainingOwnedLeases = snapshot.remainingOwnedLeases,
+                pendingSettlements = snapshot.pendingSettlements,
+                remainingOpenRooms = snapshot.remainingOpenRooms
+            ))
+        } catch (_: SQLException) {
+            false
+        }
     }
 
     suspend fun renderMetrics(): String {
@@ -290,7 +313,7 @@ internal class RoomOwnershipPilot private constructor(
             val repository = PostgresRoomOwnershipRepository(dataSource, metrics)
             config.fixtureId?.let { fixtureId ->
                 require(repository.fixtureReady(fixtureId)) { "Room ownership fixture schema or marker is invalid" }
-            }
+            } ?: require(repository.schemaReady()) { "Room ownership schema is invalid" }
             verifyAllowedAccounts(dataSource, config)
             val economy = OwnedMatchEconomy(
                 repository, PostgresPlayQuotaRepository(dataSource), PostgresMatchResultRepository(dataSource), metrics

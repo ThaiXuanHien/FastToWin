@@ -112,8 +112,8 @@ internal suspend fun RoomAcceptanceFixture.verifyPrivateCapabilities(
 }
 
 private fun RoomAcceptanceFixture.postgres(host: String, port: Int) = PGSimpleDataSource().apply {
-    setUrl("jdbc:postgresql://$host:$port/fasttowin_room_pilot")
-    user = "fasttowin_room_pilot"
+    setUrl("jdbc:postgresql://$host:$port/${settings.databaseName}")
+    user = settings.databaseName
     password = settings.databasePassword
     connectTimeout = 2
     socketTimeout = 8

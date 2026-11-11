@@ -41,6 +41,89 @@ import kotlin.test.assertTrue
 
 class RoomOwnershipReadinessTest {
     @Test
+    fun `production startup validates ownership schema without a fixture marker`() = runBlocking {
+        fixture { f ->
+            f.source.connection.use { c -> c.createStatement().use { it.executeUpdate("DELETE FROM room_ownership_pilot_fixture") } }
+            val config = f.productionConfig()
+            assertFalse(f.pilot(config = config).isReady())
+            f.source.connection.use { c -> c.createStatement().use {
+                it.execute("ALTER TABLE room_ownership_pilot_events RENAME COLUMN events TO broken_events")
+            } }
+            assertFailsWith<IllegalArgumentException> { f.pilot(config = config) }
+        }
+    }
+
+    @Test
+    fun `production readiness checks PostgreSQL on every request after a healthy tick`() = runBlocking {
+        fixture { f ->
+            val source = SwitchableDataSource(f.source)
+            val pilot = f.pilot(source, f.productionConfig())
+            val worker = launch { pilot.runWorker() }
+            try {
+                withTimeout(8_000) { while (!pilot.isReady()) delay(10) }
+                source.unavailable.set(true)
+                assertFalse(pilot.isReady())
+                source.unavailable.set(false)
+                assertTrue(pilot.isReady())
+                f.source.connection.use { c -> c.createStatement().use {
+                    it.execute("ALTER TABLE room_ownership_pilot_rooms DROP CONSTRAINT room_ownership_pilot_rooms_pkey CASCADE")
+                } }
+                assertFalse(pilot.isReady())
+            } finally { worker.cancelAndJoin() }
+        }
+    }
+
+    @Test
+    fun `process handoff cannot authorize legacy rollback while any durable room remains`() = runBlocking {
+        fixture { f ->
+            val source = SwitchableDataSource(f.source)
+            val pilot = f.pilot(source)
+            val rooms = PostgresRoomOwnershipRepository(f.source)
+            val host = rooms.bindSocket(f.players.keys.first())
+            val guest = rooms.bindSocket(f.players.keys.last())
+            val created = assertIs<OwnedRoomReply.Applied>(pilot.onMessage(host, CREATE))
+            val id = created.roomId.toString()
+            pilot.onMessage(guest, ClientMessage.JoinRoom(id, "private fixture"))
+            pilot.onMessage(host, ClientMessage.SetReady(id, true))
+            pilot.onMessage(guest, ClientMessage.SetReady(id, true))
+            assertFalse(pilot.canRollback())
+            assertTrue(pilot.beginDrain())
+            assertFalse(pilot.canRollback(), "Released PLAYING work still requires the ownership runtime")
+            val successor = assertNotNull(rooms.claim(created.roomId, UUID.randomUUID()))
+            assertFalse(pilot.canRollback(), "Transferred work is still owned-runtime work")
+            assertIs<FencedResult.Committed>(rooms.withFencedRoom(successor.fence, successor.revision, null) { _, state ->
+                RoomMutation.Change(state.snapshot, close = true)
+            })
+            assertTrue(pilot.canRollback())
+            source.unavailable.set(true)
+            assertFalse(pilot.canRollback(), "A previous empty read cannot authorize rollback during an outage")
+        }
+    }
+
+    @Test
+    fun `drain rejects durable pending completion absent from the engine hint set`() = runBlocking {
+        fixture { f ->
+            val pilot = f.pilot()
+            val rooms = PostgresRoomOwnershipRepository(f.source)
+            val host = rooms.bindSocket(f.players.keys.first())
+            assertIs<OwnedRoomReply.Applied>(pilot.onMessage(host, CREATE))
+            // Simulate an uncertain command reply: durable pending work exists without a local wakeup.
+            f.source.connection.use { c -> c.createStatement().use {
+                it.executeUpdate("UPDATE room_ownership_pilot_rooms SET snapshot = jsonb_set(snapshot, '{pendingCompletedMatch}', '{}'::jsonb)")
+            } }
+            assertFalse(pilot.beginDrain())
+            assertEquals(1, rooms.durableSnapshot().pendingSettlements)
+            assertFalse(pilot.canRollback())
+            assertEquals(1, rooms.durableSnapshot().remainingOwnedLeases, "Failed drain must retain its live lease")
+            f.source.connection.use { c -> c.createStatement().use {
+                it.executeUpdate("UPDATE room_ownership_pilot_rooms SET snapshot = snapshot - 'pendingCompletedMatch', closed_at = clock_timestamp()")
+            } }
+            assertTrue(pilot.beginDrain())
+            assertTrue(pilot.canRollback())
+        }
+    }
+
+    @Test
     fun `a committed completion wakes settlement before the next renewal tick and idle work cannot block drain`() = runBlocking {
         fixture { f ->
             val pilot = f.pilot()
@@ -131,6 +214,7 @@ class RoomOwnershipReadinessTest {
             assertEquals("ROOM_DRAINING", assertIs<OwnedRoomReply.Retryable>(pilot.onMessage(other, CREATE)).publicMessage.code)
             assertFalse(draining.isCompleted)
             assertFalse(close.isCompleted)
+            assertFalse(pilot.canRollback(), "An admitted connection has not finished draining")
 
             finishCreate.complete(Unit)
             val created = assertIs<OwnedRoomReply.Applied>(command.await())
@@ -262,9 +346,15 @@ class RoomOwnershipReadinessTest {
             UUID.randomUUID(), UUID.randomUUID(), URI("http://127.0.0.1:65534"), ByteArray(32) { 7 }, id, players.keys
         )
 
+        // Production parser validation is covered separately; runtime tests keep peer transport local.
+        fun productionConfig(): RoomOwnershipRuntimeConfig = object : RoomOwnershipRuntimeConfig by config() {
+            override val fixtureId: UUID? = null
+            override val acceptanceTraffic = false
+        }
+
         suspend fun pilot(
             dataSource: DataSource = source,
-            config: RoomOwnershipPilotConfig = config(),
+            config: RoomOwnershipRuntimeConfig = config(),
             lookup: suspend (UUID) -> StoredActivePlayer? = { players[it] }
         ) = RoomOwnershipPilot.open(config, dataSource, lookup, wakeups = emptyFlow())
     }

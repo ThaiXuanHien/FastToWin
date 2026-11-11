@@ -153,16 +153,19 @@ internal class OwnedRoomEngine(
     /** A hint only: the periodic recovery scan remains authoritative after any lost wakeup. */
     suspend fun settlePending() {
         for (id in pendingSettlements.toList()) {
-            if (!pendingSettlements.remove(id)) continue
             try {
-                rooms.read(id)?.let { recover(it) }
+                val state = rooms.read(id)
+                if (state == null || state.closed || state.fence.instanceId != instanceId) {
+                    pendingSettlements.remove(id)
+                } else {
+                    remember(state)
+                    recover(state)
+                }
             } catch (_: SQLException) {
-                // The periodic tick retries durable pending completions after storage recovers.
+                // Keep the hint until durable state confirms it has settled or changed owner.
             }
         }
     }
-
-    fun pendingSettlementCount(): Int = pendingSettlements.size
 
     private suspend fun create(socket: SocketFence, message: ClientMessage.CreateRoom): OwnedRoomReply {
         if (message.gameMode != ProtocolGameMode.ORDER || message.matchType != MatchType.CASUAL ||

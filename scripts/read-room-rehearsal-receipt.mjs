@@ -162,6 +162,19 @@ function message(line) {
     return line
 }
 export function readReceipt(lines, kind, profile, manifest) {
+    return readExpectedReceipt(lines, kind, profile, manifest, jar)
+}
+
+export function readProductionReceipt(lines, kind, profile, manifest, expectedJar) {
+    check(/^[a-f0-9]{64}$/.test(expectedJar))
+    const normalized = lines.map(message).map(line => {
+        check(!line.startsWith('FTW_REHEARSAL_'))
+        return line.replace(/^FTW_PRODUCTION_REHEARSAL_/, 'FTW_REHEARSAL_')
+    })
+    return readExpectedReceipt(normalized, kind, profile, manifest, expectedJar)
+}
+
+function readExpectedReceipt(lines, kind, profile, manifest, expectedJar) {
     check(kinds.includes(kind) && ['fault','two-backend'].includes(profile) && /^[0-9a-f]{64}$/.test(manifest))
     const prefix = 'FTW_REHEARSAL_'+kind.toUpperCase()+' '
     const parts = new Map()
@@ -182,7 +195,7 @@ export function readReceipt(lines, kind, profile, manifest) {
     check(bytes.length<=262144 && bytes.toString('base64')===encoded && sha(bytes)===digest)
     const receipt=strictJson(new TextDecoder('utf-8',{fatal:true}).decode(bytes))
     keys(receipt,['schema','kind','profile','jarSha256','manifestSha256','payload'])
-    check(receipt.schema===1 && receipt.kind===kind && receipt.profile===profile && receipt.jarSha256===jar && receipt.manifestSha256===manifest)
+    check(receipt.schema===1 && receipt.kind===kind && receipt.profile===profile && receipt.jarSha256===expectedJar && receipt.manifestSha256===manifest)
     if (kind==='load') { check(profile==='two-backend'); validateLoad(receipt.payload) }
     if (kind==='fault') { check(profile==='fault'); validateFault(receipt.payload) }
     if (kind==='latency') validateLatency(receipt.payload)

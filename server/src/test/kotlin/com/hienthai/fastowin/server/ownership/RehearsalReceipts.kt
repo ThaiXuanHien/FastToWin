@@ -92,11 +92,14 @@ internal fun rehearsalLoadProjection(load: LoadReceipt, operations: List<Pair<St
         "finalBackendMetrics" to Json.encodeToJsonElement(load.finalBackendMetrics.map(::baselineSafeMetrics))))
 }
 
-internal fun emitRehearsalReceipt(manifest: String, profile: String, kind: String, payload: JsonObject): List<String> {
+internal fun emitRehearsalReceipt(
+    manifest: String, profile: String, kind: String, payload: JsonObject,
+    jarSha256: String = REHEARSAL_JAR_SHA
+): List<String> {
     require(manifest.matches(Regex("[0-9a-f]{64}")) && profile in setOf("two-backend","fault") &&
-        kind in setOf("load","fault","latency","failure"))
+        kind in setOf("load","fault","latency","failure") && jarSha256.matches(Regex("[0-9a-f]{64}")))
     val bytes = buildJsonObject {
-        put("schema",1); put("manifestSha256",manifest); put("jarSha256",REHEARSAL_JAR_SHA)
+        put("schema",1); put("manifestSha256",manifest); put("jarSha256",jarSha256)
         put("kind",kind); put("profile",profile); put("payload",payload)
     }.toString().encodeToByteArray()
     require(bytes.size <= 262144)

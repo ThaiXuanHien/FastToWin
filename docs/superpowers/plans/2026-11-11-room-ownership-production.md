@@ -10,6 +10,19 @@
 
 **Spec:** `docs/superpowers/specs/2026-11-07-room-match-ownership-design.md`, `.artifacts/room-cloud-supervised-preflight/capability-v3/production-room-ownership-proposal.md`
 
+## Execution checkpoint, 11 November 2026
+
+This checkpoint supersedes historical signatures, counts and candidate hashes below. The old fixture JAR `8fff8ae…` is not the production candidate. Every new execution binds the packaged application JAR and complete runner dependencies to its own manifest.
+
+- Production routing is now invoked by the real WebSocket handler. Readiness checks schema without requiring a fixture marker. Drain reads durable leases and pending settlements; global rollback additionally requires zero open rooms. The fresh affected PostgreSQL/WebSocket/activity/auth/moderation suite passed 164 tests with no failures, errors or skips and clean fixture removal.
+- The isolated production seeder validates exact run/database identities and emptiness before migration, creates only synthetic accounts, refuses replay, and never deletes existing users. Docker seed smoke `room-prod-4aef64128564` verified 40 accounts, 40 profiles, zero marker rows and zero owned resources after cleanup.
+- Reusable local execution is `scripts/room-production-rehearsal-local.ps1 -Profile Seed|Fault|Load`. Fault/Load use the production runtime and default rate-limit policies, alternating creators and distinct synthetic forwarded source addresses inside an internal Docker network. This does not verify public ingress header sanitization or shared-NAT capacity.
+- Full production-like Fault passed eight cases in `room-pilot-c31dc6c3ae3e`, independently decoded and bound to JAR `f6a1799ef0a1c4653d46cf4ccb8e0d067a9414462c2ab54c44aa8d6c791fc9b6`. Maximum recovery was 15,055 ms; the PostgreSQL-pause case recovered in 3,170 ms. All owned containers, networks, volumes and images were zero after cleanup. Earlier failures exposed the fixture-marker latency probe, the runner's missing writable receipt directory and unbounded production authorization reads. Those remain failed receipts. The latter was reproduced by three real established-connection reply-loss tests before applying a 3-second JDBC network budget to session/moderation reads; all three then passed. This changes the candidate production code, not the running deployment.
+- The 600-second Load `room-pilot-bd207760257d` is currently running against that same application JAR, with independent immutable image IDs and manifest. Its acceptance remains open until complete validated receipts and cleanup are available.
+- Before cloud/production rollout, also close the legacy/owned concurrency seam, define an enforceable backend topology, integrate owned-room presence state, and execute explicit cluster drain/rollback checks. A private second backend still starts legacy restore/timers today; hiding its ingress alone does not isolate that work.
+
+Remaining sequence: accept the fresh local Fault and 600-second Load receipts; implement and test the topology/drain gaps; freeze a concrete new cloud scope; run cloud capability/fault/load/drain/rollback and cleanup; review branch integration and release package; execute the authorized production rollout against the reviewed package.
+
 ## Global Constraints
 
 - The current `pilot` mode remains restricted to `dev` and fixture accounts.

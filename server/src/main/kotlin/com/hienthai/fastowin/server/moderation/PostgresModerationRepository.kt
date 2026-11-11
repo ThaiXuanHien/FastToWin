@@ -3,6 +3,7 @@ package com.hienthai.fastowin.server.moderation
 import com.hienthai.fastowin.protocol.*
 import com.hienthai.fastowin.server.admin.*
 import com.hienthai.fastowin.server.announcements.JdbcNotificationPersistence
+import com.hienthai.fastowin.server.withGameplayReadTimeout
 import java.sql.Connection
 import java.sql.ResultSet
 import java.sql.SQLException
@@ -19,12 +20,14 @@ class PostgresModerationRepository(private val source:DataSource):ModerationRepo
     /** Hot gameplay queries never acquire the admin mutation lock and cannot write to PostgreSQL. */
     override suspend fun <T> read(block:ModerationReadTransaction.()->T):T=withContext(Dispatchers.IO) {
         try { source.connection.use {connection ->
-            connection.autoCommit=false
-            connection.isReadOnly=true
-            try {
-                val result=block(JdbcModerationTransaction(connection))
-                currentCoroutineContext().ensureActive();connection.commit();result
-            } catch(error:Throwable) {connection.rollback();throw error}
+            connection.withGameplayReadTimeout {
+                connection.autoCommit=false
+                connection.isReadOnly=true
+                try {
+                    val result=block(JdbcModerationTransaction(connection))
+                    currentCoroutineContext().ensureActive();connection.commit();result
+                } catch(error:Throwable) {connection.rollback();throw error}
+            }
         }} catch(_:SQLException) {unavailable()}
     }
     override suspend fun <T> transaction(block:ModerationTransaction.()->T):T=withContext(Dispatchers.IO) {

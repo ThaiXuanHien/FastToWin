@@ -1,83 +1,114 @@
 package com.hienthai.fastowin.server.ownership
 
-import com.hienthai.fastowin.server.DatabaseSettings
 import com.hienthai.fastowin.protocol.DEFAULT_MALE_AVATAR_ID
+import com.hienthai.fastowin.server.DatabaseSettings
 import com.hienthai.fastowin.server.PasswordHasher
 import org.flywaydb.core.Flyway
-import java.net.URI
+import org.postgresql.ds.PGSimpleDataSource
+import java.net.InetAddress
 import java.util.UUID
 import javax.sql.DataSource
-import org.postgresql.ds.PGSimpleDataSource
 
+/** Configuration is bound to one disposable staging database before opening a connection. */
 internal class RoomOwnershipProductionSeedSettings private constructor(
     val database: DatabaseSettings,
+    val databaseName: String,
+    val databaseHost: String,
     val accounts: List<UUID>,
     val password: String,
-    val scope: String
+    val runId: UUID,
+    val manifestSha256: String
 ) {
+    val scope = "room-ownership-production"
+
+    fun dataSource(resolve: (String) -> List<InetAddress> = { InetAddress.getAllByName(it).toList() }): PGSimpleDataSource {
+        val pinned = privateAddresses(databaseHost, resolve).sortedBy(InetAddress::getHostAddress).first()
+        return PGSimpleDataSource().apply {
+            setUrl("jdbc:postgresql://" + pinned.socketHost() + ":5432/" + databaseName)
+            user = database.user
+            password = database.password
+            connectTimeout = 4
+            socketTimeout = 15
+        }
+    }
+
     companion object {
         fun fromEnvironment(values: Map<String, String>): RoomOwnershipProductionSeedSettings {
-            require(values["FASTTOWIN_ENV"] == "prod")
-            require(values["FTW_REHEARSAL_SCOPE"] == "room-ownership-production")
-            require(values["FASTTOWIN_ROOM_OWNERSHIP_MODE"] == "production")
-            require(values.keys.none { it.contains("FIXTURE", ignoreCase = true) })
-
-            val url = values["DATABASE_URL"]?.trim().orEmpty()
-            val parsed = runCatching { URI(url.removePrefix("jdbc:")) }.getOrNull()
-            require(parsed?.host?.endsWith(".railway.internal") == true ||
-                parsed?.host == "127.0.0.1" ||
-                parsed?.host == "localhost")
-            val database = requireNotNull(DatabaseSettings.fromEnvironment("prod", values))
-
-            val accounts = values["FASTTOWIN_ROOM_OWNERSHIP_ACCOUNTS"]
-                ?.split(',')
-                ?.map { value -> UUID.fromString(value.trim()) }
-                ?: error("Production rehearsal accounts are required")
+            require(values["RAILWAY_PROJECT_ID"] == STAGING_PROJECT &&
+                values["RAILWAY_ENVIRONMENT_ID"] == STAGING_ENVIRONMENT &&
+                values["RAILWAY_ENVIRONMENT_NAME"] == "staging") { "Unexpected rehearsal environment" }
+            require(values["FASTTOWIN_ENV"] == "prod" &&
+                values["FTW_REHEARSAL_SCOPE"] == "room-ownership-production" &&
+                values["FASTTOWIN_ROOM_OWNERSHIP_MODE"] == "production")
+            require(values.keys.none {
+                it.contains("FIXTURE", ignoreCase = true) || it.startsWith("PG") ||
+                    it in setOf("RAILWAY_TOKEN", "RAILWAY_API_TOKEN", "FASTTOWIN_ROOM_OWNERSHIP_ACCEPTANCE")
+            }) { "Unexpected rehearsal settings" }
+            val runId = requireNotNull(values["FTW_REHEARSAL_ID"]?.let(::parsePilotUuid))
+            val suffix = runId.toString().replace("-", "").take(12)
+            val prefix = values["FTW_REHEARSAL_PREFIX"] ?: "room-prod"
+            require(prefix in setOf("room-prod", "room-pilot"))
+            val run = prefix + "-" + suffix
+            require(values["RAILWAY_SERVICE_NAME"] == run + "-runner")
+            val host = run + "-pg.railway.internal"
+            val database = "room_rehearsal_" + suffix
+            require(values["DATABASE_URL"] == "jdbc:postgresql://" + host + ":5432/" + database &&
+                values["DATABASE_USER"] == database) { "Expected a dedicated rehearsal database" }
+            require(values["DATABASE_PASSWORD"]?.matches(Regex("[a-f0-9]{64}")) == true)
+            val manifest = requireNotNull(values["FTW_REHEARSAL_MANIFEST_SHA256"])
+            require(manifest.matches(Regex("[a-f0-9]{64}")))
+            val accounts = requireNotNull(values["FASTTOWIN_ROOM_OWNERSHIP_ACCOUNTS"])
+                .split(',').map { requireNotNull(parsePilotUuid(it)) }
             require(accounts.size in 2..256 && accounts.toSet().size == accounts.size)
-            val password = values["FASTTOWIN_ROOM_OWNERSHIP_REHEARSAL_PASSWORD"]
-                ?.takeIf { it.length in 16..128 }
-                ?: error("Production rehearsal password is required")
-
+            val password = requireNotNull(values["FASTTOWIN_ROOM_OWNERSHIP_REHEARSAL_PASSWORD"])
+            require(password.matches(Regex("Rehearsal1![a-f0-9]{64}")))
             return RoomOwnershipProductionSeedSettings(
-                database = database,
-                accounts = accounts,
-                password = password,
-                scope = "room-ownership-production"
+                requireNotNull(DatabaseSettings.fromEnvironment("prod", values)), database, host,
+                accounts, password, runId, manifest
             )
         }
     }
 }
 
+/** Holds the initializer lock through preflight, migration and account insertion. */
 internal fun seedRoomOwnershipProductionAccounts(
     dataSource: DataSource,
-    accounts: List<UUID>,
-    password: String
+    settings: RoomOwnershipProductionSeedSettings
 ) {
-    require(accounts.size in 2..256 && accounts.toSet().size == accounts.size)
-    require(password.length in 16..128)
     dataSource.connection.use { connection ->
         connection.autoCommit = false
         try {
-            connection.createStatement().use {
-                it.execute("SELECT pg_catalog.pg_advisory_xact_lock(6075464190125381698)")
-            }
-            Flyway.configure().dataSource(dataSource).defaultSchema("public")
-                .locations("classpath:db/migration").load().migrate()
             connection.createStatement().use { statement ->
-                statement.executeQuery("SELECT EXISTS (SELECT FROM users)").use { rows ->
-                    rows.next()
-                    require(!rows.getBoolean(1)) { "Production rehearsal database already contains accounts" }
+                statement.execute("SELECT pg_catalog.pg_advisory_xact_lock(6075464190125381698)")
+                statement.executeQuery("SELECT current_database(), current_user").use { rows ->
+                    check(rows.next())
+                    require(rows.getString(1) == settings.databaseName &&
+                        rows.getString(2) == settings.database.user) { "Unexpected rehearsal database identity" }
+                }
+                statement.executeQuery("""
+                    SELECT EXISTS (SELECT FROM pg_catalog.pg_namespace
+                        WHERE nspname NOT IN ('public', 'information_schema') AND nspname !~ '^pg_')
+                        OR EXISTS (
+                            SELECT FROM pg_catalog.pg_depend d
+                            JOIN pg_catalog.pg_namespace n ON n.oid = d.refobjid
+                            WHERE d.refclassid = 'pg_catalog.pg_namespace'::pg_catalog.regclass
+                                AND n.nspname = 'public'
+                        )
+                """.trimIndent()).use { rows ->
+                    check(rows.next())
+                    require(!rows.getBoolean(1)) { "Rehearsal database must be empty before migration" }
                 }
             }
-            val hashes = accounts.map { PasswordHasher().hash(password) }
-            connection.prepareStatement(
-                """
+            // Flyway uses its own committed transaction after the dedicated-target checks.
+            Flyway.configure().dataSource(dataSource).defaultSchema("public")
+                .locations("classpath:db/migration").load().migrate()
+            val hashes = settings.accounts.map { PasswordHasher().hash(settings.password) }
+            connection.prepareStatement("""
                 INSERT INTO users
                     (id, account_type, status, email_normalized, password_hash, email_verified_at, created_at, updated_at)
                 VALUES (?, 'REGISTERED', 'ACTIVE', ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-                """.trimIndent()
-            ).use { statement ->
-                accounts.forEachIndexed { index, account ->
+            """.trimIndent()).use { statement ->
+                settings.accounts.forEachIndexed { index, account ->
                     statement.setObject(1, account)
                     statement.setString(2, "room-production-" + (index + 1) + "@example.test")
                     statement.setString(3, hashes[index])
@@ -85,14 +116,12 @@ internal fun seedRoomOwnershipProductionAccounts(
                 }
                 statement.executeBatch()
             }
-            connection.prepareStatement(
-                """
+            connection.prepareStatement("""
                 INSERT INTO profiles
                     (user_id, display_name, player_code, avatar_url, created_at, updated_at)
                 VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-                """.trimIndent()
-            ).use { statement ->
-                accounts.forEachIndexed { index, account ->
+            """.trimIndent()).use { statement ->
+                settings.accounts.forEachIndexed { index, account ->
                     val number = index + 1
                     statement.setObject(1, account)
                     statement.setString(2, "Room Production " + number)
@@ -108,15 +137,4 @@ internal fun seedRoomOwnershipProductionAccounts(
             throw failure
         }
     }
-}
-
-fun main() {
-    val settings = RoomOwnershipProductionSeedSettings.fromEnvironment(System.getenv())
-    val dataSource = PGSimpleDataSource().apply {
-        setUrl(settings.database.url)
-        user = settings.database.user
-        password = settings.database.password
-        connectTimeout = 7
-    }
-    seedRoomOwnershipProductionAccounts(dataSource, settings.accounts, settings.password)
 }

@@ -29,6 +29,40 @@ import kotlin.test.assertTrue
 
 class PostgresRoomOwnershipRepositoryTest {
     @Test
+    fun `ownership schema validation does not require fixture marker and rejects missing keys`() = runBlocking {
+        fixture { f ->
+            assertTrue(f.a.schemaReady())
+            assertFalse(f.a.fixtureReady(UUID.randomUUID()))
+            f.dataSource.connection.use { c -> c.createStatement().use {
+                it.execute("ALTER TABLE room_ownership_pilot_sessions DROP CONSTRAINT room_ownership_pilot_sessions_pkey")
+            } }
+            assertFalse(f.a.schemaReady())
+        }
+    }
+
+    @Test
+    fun `durable rollback snapshot includes expired released transferred and closed pending work`() = runBlocking {
+        fixture { f ->
+            val room = f.createRoom()
+            assertEquals(RoomOwnershipDurableSnapshot(1, 1, 0), f.a.durableSnapshot())
+            assertTrue(f.a.release(room.fence))
+            assertEquals(RoomOwnershipDurableSnapshot(0, 1, 0), f.a.durableSnapshot())
+            assertNotNull(f.b.claim(room.fence.roomId, f.instanceB))
+            assertEquals(RoomOwnershipDurableSnapshot(0, 0, 0), f.a.durableSnapshot(f.instanceA))
+            assertEquals(RoomOwnershipDurableSnapshot(1, 1, 0), f.a.durableSnapshot())
+            f.expire(room.fence.roomId)
+            assertEquals(RoomOwnershipDurableSnapshot(0, 1, 0), f.a.durableSnapshot())
+            f.dataSource.connection.use { c -> c.createStatement().use {
+                it.executeUpdate("""
+                    UPDATE room_ownership_pilot_rooms SET closed_at = clock_timestamp(),
+                        snapshot = jsonb_set(snapshot, '{pendingCompletedMatch}', '{}'::jsonb)
+                """.trimIndent())
+            } }
+            assertEquals(RoomOwnershipDurableSnapshot(0, 0, 1), f.a.durableSnapshot())
+        }
+    }
+
+    @Test
     fun `locked observations combine current generations and database time in one query`() = runBlocking {
         fixture { f ->
             val initial = f.createRoom()

@@ -18,12 +18,23 @@ private val receiptJson = Json { encodeDefaults = true }
 
 internal const val REHEARSAL_JAR_SHA = "8fff8ae123902032d98a92190b0bff3df87e234f213b25a298f4768c7e40e818"
 
+internal interface RehearsalRuntimeSettings {
+    val profile: String
+    val manifestSha: String
+    val deadline: Instant
+    fun endpoints(): Map<String, String>
+    fun acceptance(addresses: Map<String, String>): RoomAcceptanceSettings
+    fun control(addresses: Map<String, String>): SupervisorRoomFaultControl
+}
+
 internal class RailwayRehearsalSettings private constructor(
-    val profile: String, val manifestSha: String, val runName: String, val fixture: UUID,
+    override val profile: String, override val manifestSha: String, val runName: String, val fixture: UUID,
     private val accounts: List<UUID>, private val dbPassword: String, private val password: String,
-    private val hosts: Map<String,String>, private val token: String?, val deadline: Instant
-) {
-    fun endpoints(resolve: (String) -> List<InetAddress> = { InetAddress.getAllByName(it).toList() }): Map<String,String> {
+    private val hosts: Map<String,String>, private val token: String?, override val deadline: Instant
+) : RehearsalRuntimeSettings {
+    override fun endpoints(): Map<String, String> = endpoints { InetAddress.getAllByName(it).toList() }
+
+    fun endpoints(resolve: (String) -> List<InetAddress>): Map<String,String> {
         val resolved = hosts.mapValues { (_, host) -> privateAddresses(host, resolve) }
         require(resolved.values.flatten().distinct().size == resolved.values.sumOf { it.size }) { "Overlapping fixture addresses" }
         return resolved.mapValues { (_, ips) -> ips.sortedBy(InetAddress::getHostAddress).first().socketHost() }
@@ -41,14 +52,14 @@ internal class RailwayRehearsalSettings private constructor(
         seedRoomOwnershipFixture(source, fixture, accounts, password)
     }
 
-    fun acceptance(addresses: Map<String,String>) = RoomAcceptanceSettings(
+    override fun acceptance(addresses: Map<String,String>) = RoomAcceptanceSettings(
         project = runName, composeFiles = null, receipts = Path.of("receipts"),
         urls = listOf("a","b").map { "http://${addresses.getValue(it)}:8080" }, proxyUrls = emptyList(),
         postgresPort = 5432, suite = if (profile == "fault") "Fault" else "Load", backendCount = 2,
         durationSeconds = 600, roomCount = 20, seed = 73, fixtureId = fixture, accountIds = accounts,
         databasePassword = dbPassword, accountPassword = password, databaseHost = addresses.getValue("pg"))
 
-    fun control(addresses: Map<String,String>) = SupervisorRoomFaultControl(fixture.toString(), requireNotNull(token),
+    override fun control(addresses: Map<String,String>) = SupervisorRoomFaultControl(fixture.toString(), requireNotNull(token),
         deadline.toEpochMilli(), PrivateControlTransport(addresses))
 
     companion object {
@@ -147,7 +158,12 @@ fun main(args: Array<String>) {
     if (code != 0) exitProcess(code)
 }
 
-private fun runRehearsal(settings: RailwayRehearsalSettings, out: PrintStream) {
+internal fun runRehearsal(
+    settings: RehearsalRuntimeSettings,
+    out: PrintStream,
+    jarSha256: String = REHEARSAL_JAR_SHA,
+    production: Boolean = false
+) {
     val path = Path.of("receipts")
     Files.createDirectories(path)
     val latency = List(2) { BaselineLatencyRecorder() }
@@ -156,7 +172,9 @@ private fun runRehearsal(settings: RailwayRehearsalSettings, out: PrintStream) {
     val cases = mutableListOf<JsonObject>()
     var progress: BaselineLoadProgress? = null
     fun export(kind: String, payload: JsonObject) {
-        val lines = emitRehearsalReceipt(settings.manifestSha, settings.profile, kind, payload)
+        val lines = emitRehearsalReceipt(settings.manifestSha, settings.profile, kind, payload, jarSha256).map {
+            if (production) it.replaceFirst("FTW_REHEARSAL_", "FTW_PRODUCTION_REHEARSAL_") else it
+        }
         val original = Base64.getDecoder().decode(lines.joinToString("") { it.substringAfterLast(' ') })
         Files.write(path.resolve("rehearsal-$kind.json"), original)
         lines.forEach(out::println)

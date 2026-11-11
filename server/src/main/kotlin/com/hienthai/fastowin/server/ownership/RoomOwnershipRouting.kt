@@ -10,16 +10,18 @@ internal sealed interface RoomOwnershipRoute {
 }
 
 internal class RoomOwnershipRouting(
-    private val policy: RoomOwnershipProductionPolicy
+    private val policy: RoomOwnershipRuntimeConfig
 ) {
     fun route(
         account: AuthenticatedAccount,
         mode: ProtocolGameMode,
-        matchType: MatchType
+        matchType: MatchType,
+        privateRoom: Boolean = true
     ): RoomOwnershipRoute {
-        if (matchType != MatchType.CASUAL || !policy.allows(account, mode)) {
+        if (!privateRoom || matchType != MatchType.CASUAL || !account.emailVerified ||
+            account.userId !in policy.allowedAccounts || !policy.supportsMode(mode)) {
             return RoomOwnershipRoute.Legacy
         }
-        return RoomOwnershipRoute.Owned(policy.routeKey(account.userId))
+        return RoomOwnershipRoute.Owned(account.userId.toString())
     }
 }

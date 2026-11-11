@@ -46,25 +46,52 @@ internal class PostgresRoomOwnershipRepository(
         ) { rows -> check(rows.next()); rows.state() }
     }.also { if (it != null) metrics?.takeover() }
 
+    suspend fun schemaReady(): Boolean = try {
+        transaction { ownershipSchemaReady() }
+    } catch (failure: SQLException) {
+        if (failure.sqlState?.startsWith("42") == true) false else throw failure
+    }
+
     suspend fun fixtureReady(fixtureId: UUID): Boolean = try {
         transaction {
-            // Resolve every column needed by the pilot without reading application rows.
+            if (!ownershipSchemaReady()) return@transaction false
             query(
-                """
-                SELECT r.room_id, r.instance_id, r.owner_epoch, r.revision, r.lease_until,
-                       r.recovery_deadline, r.closed_at, r.snapshot,
-                       m.player_id, m.room_id, s.player_id, s.generation,
-                       e.room_id, e.revision, e.owner_epoch, e.created_at, e.events,
-                       t.match_id, t.room_id, t.completion_sha256, f.singleton, f.fixture_id
-                FROM room_ownership_pilot_rooms r, room_ownership_pilot_memberships m,
-                     room_ownership_pilot_sessions s, room_ownership_pilot_events e,
-                     room_ownership_pilot_settlements t, room_ownership_pilot_fixture f
-                WHERE FALSE
-                """
+                "SELECT singleton, fixture_id FROM room_ownership_pilot_fixture WHERE FALSE"
             ) { true }
-            val keysReady = query(
+            val keyReady = query(
+                """
+                SELECT count(*) = 1
+                FROM pg_constraint c JOIN pg_class t ON t.oid = c.conrelid
+                JOIN pg_namespace n ON n.oid = t.relnamespace
+                WHERE n.nspname = current_schema() AND c.contype = 'p'
+                  AND t.relname = 'room_ownership_pilot_fixture'
+                  AND pg_get_constraintdef(c.oid) = 'PRIMARY KEY (singleton)'
+                """
+            ) { rows -> rows.next() && rows.getBoolean(1) }
+            keyReady && query("SELECT 1 FROM room_ownership_pilot_fixture WHERE singleton AND fixture_id = ?", fixtureId) { it.next() }
+        }
+    } catch (failure: SQLException) {
+        if (failure.sqlState?.startsWith("42") == true) false else throw failure
+    }
+
+    private fun Connection.ownershipSchemaReady(): Boolean {
+        // Resolve every runtime column without relying on a fixture table or application rows.
+        query(
             """
-            SELECT count(*) = 6
+            SELECT r.room_id, r.instance_id, r.owner_epoch, r.revision, r.lease_until,
+                   r.recovery_deadline, r.closed_at, r.snapshot,
+                   m.player_id, m.room_id, s.player_id, s.generation,
+                   e.room_id, e.revision, e.owner_epoch, e.created_at, e.events,
+                   t.match_id, t.room_id, t.completion_sha256
+            FROM room_ownership_pilot_rooms r, room_ownership_pilot_memberships m,
+                 room_ownership_pilot_sessions s, room_ownership_pilot_events e,
+                 room_ownership_pilot_settlements t
+            WHERE FALSE
+            """
+        ) { true }
+        return query(
+            """
+            SELECT count(*) = 5
             FROM pg_constraint c JOIN pg_class t ON t.oid = c.conrelid
             JOIN pg_namespace n ON n.oid = t.relnamespace
             WHERE n.nspname = current_schema() AND c.contype = 'p'
@@ -73,15 +100,29 @@ internal class PostgresRoomOwnershipRepository(
                   ('room_ownership_pilot_memberships', 'PRIMARY KEY (player_id)'),
                   ('room_ownership_pilot_sessions', 'PRIMARY KEY (player_id)'),
                   ('room_ownership_pilot_events', 'PRIMARY KEY (room_id, revision)'),
-                  ('room_ownership_pilot_settlements', 'PRIMARY KEY (match_id)'),
-                  ('room_ownership_pilot_fixture', 'PRIMARY KEY (singleton)')
+                  ('room_ownership_pilot_settlements', 'PRIMARY KEY (match_id)')
               )
             """
-            ) { rows -> rows.next() && rows.getBoolean(1) }
-            keysReady && query("SELECT 1 FROM room_ownership_pilot_fixture WHERE singleton AND fixture_id = ?", fixtureId) { it.next() }
+        ) { rows -> rows.next() && rows.getBoolean(1) }
+    }
+
+    /** One statement snapshot; pending work is counted even in closed rooms or without a local hint. */
+    suspend fun durableSnapshot(instanceId: UUID? = null): RoomOwnershipDurableSnapshot = transaction(singleRead = true) {
+        val scope = if (instanceId == null) "" else "WHERE instance_id = ?"
+        val args = instanceId?.let { arrayOf<Any>(it) } ?: emptyArray()
+        query(
+            """
+            SELECT count(*) FILTER (WHERE closed_at IS NULL AND lease_until > statement_timestamp()),
+                   count(*) FILTER (WHERE closed_at IS NULL),
+                   count(*) FILTER (WHERE snapshot->'pendingCompletedMatch' IS NOT NULL
+                                    AND snapshot->'pendingCompletedMatch' <> 'null'::jsonb)
+            FROM room_ownership_pilot_rooms $scope
+            """,
+            *args
+        ) { rows ->
+            check(rows.next())
+            RoomOwnershipDurableSnapshot(rows.getInt(1), rows.getInt(2), rows.getInt(3))
         }
-    } catch (failure: SQLException) {
-        if (failure.sqlState?.startsWith("42") == true) false else throw failure
     }
 
     suspend fun ownedFences(instanceId: UUID): List<OwnerFence> = transaction(singleRead = true) {

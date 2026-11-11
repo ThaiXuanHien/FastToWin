@@ -280,28 +280,30 @@ class PostgresAuthRepository(private val dataSource: DataSource) : AuthRepositor
         nowMillis: Long
     ): AuthenticatedAccount? = withContext(Dispatchers.IO) {
         dataSource.connection.use { connection ->
-            connection.prepareStatement(
-                """
-                SELECT u.id, u.email_verified_at, p.display_name, s.id AS session_id
-                FROM sessions s
-                JOIN users u ON u.id = s.user_id
-                JOIN profiles p ON p.user_id = u.id
-                WHERE s.access_token_hash = ?
-                  AND s.access_expires_at > ?
-                  AND s.revoked_at IS NULL
-                  AND u.account_type = 'REGISTERED'
-                  AND u.status = 'ACTIVE'
-                """.trimIndent()
-            ).use { statement ->
-                statement.setString(1, accessTokenHash)
-                statement.setTimestamp(2, nowMillis.toTimestamp())
-                statement.executeQuery().use { result ->
-                    if (!result.next()) null else AuthenticatedAccount(
-                        userId = result.getObject("id", UUID::class.java),
-                        displayName = result.getString("display_name"),
-                        sessionId = result.getObject("session_id", UUID::class.java),
-                        emailVerified = result.getTimestamp("email_verified_at") != null
-                    )
+            connection.withGameplayReadTimeout {
+                connection.prepareStatement(
+                    """
+                    SELECT u.id, u.email_verified_at, p.display_name, s.id AS session_id
+                    FROM sessions s
+                    JOIN users u ON u.id = s.user_id
+                    JOIN profiles p ON p.user_id = u.id
+                    WHERE s.access_token_hash = ?
+                      AND s.access_expires_at > ?
+                      AND s.revoked_at IS NULL
+                      AND u.account_type = 'REGISTERED'
+                      AND u.status = 'ACTIVE'
+                    """.trimIndent()
+                ).use { statement ->
+                    statement.setString(1, accessTokenHash)
+                    statement.setTimestamp(2, nowMillis.toTimestamp())
+                    statement.executeQuery().use { result ->
+                        if (!result.next()) null else AuthenticatedAccount(
+                            userId = result.getObject("id", UUID::class.java),
+                            displayName = result.getString("display_name"),
+                            sessionId = result.getObject("session_id", UUID::class.java),
+                            emailVerified = result.getTimestamp("email_verified_at") != null
+                        )
+                    }
                 }
             }
         }
@@ -310,19 +312,21 @@ class PostgresAuthRepository(private val dataSource: DataSource) : AuthRepositor
     override suspend fun isActiveSessionById(userId: UUID, sessionId: UUID, nowMillis: Long): Boolean =
         withContext(Dispatchers.IO) {
             dataSource.connection.use { connection ->
-                connection.prepareStatement(
-                    """
-                    SELECT 1
-                    FROM sessions s JOIN users u ON u.id = s.user_id
-                    WHERE s.id = ? AND s.user_id = ? AND s.revoked_at IS NULL AND s.expires_at > ?
-                      AND s.refresh_token_hash IS NOT NULL AND s.access_token_hash IS NOT NULL
-                      AND u.account_type = 'REGISTERED' AND u.status = 'ACTIVE'
-                    """.trimIndent()
-                ).use { statement ->
-                    statement.setObject(1, sessionId)
-                    statement.setObject(2, userId)
-                    statement.setTimestamp(3, nowMillis.toTimestamp())
-                    statement.executeQuery().use { it.next() }
+                connection.withGameplayReadTimeout {
+                    connection.prepareStatement(
+                        """
+                        SELECT 1
+                        FROM sessions s JOIN users u ON u.id = s.user_id
+                        WHERE s.id = ? AND s.user_id = ? AND s.revoked_at IS NULL AND s.expires_at > ?
+                          AND s.refresh_token_hash IS NOT NULL AND s.access_token_hash IS NOT NULL
+                          AND u.account_type = 'REGISTERED' AND u.status = 'ACTIVE'
+                        """.trimIndent()
+                    ).use { statement ->
+                        statement.setObject(1, sessionId)
+                        statement.setObject(2, userId)
+                        statement.setTimestamp(3, nowMillis.toTimestamp())
+                        statement.executeQuery().use { it.next() }
+                    }
                 }
             }
         }

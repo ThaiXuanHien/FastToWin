@@ -26,14 +26,35 @@ import java.io.EOFException
 import java.util.UUID
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicInteger
 
 internal data class RoomAcceptanceSettings(
     val project: String, val composeFiles: Pair<Path, Path>?, val receipts: Path,
     val urls: List<String>, val proxyUrls: List<String>, val postgresPort: Int,
     val suite: String, val backendCount: Int, val durationSeconds: Int, val roomCount: Int, val seed: Int,
     val fixtureId: UUID, val accountIds: List<UUID>, val databasePassword: String, val accountPassword: String,
-    val databaseHost: String = "127.0.0.1"
+    val databaseHost: String = "127.0.0.1",
+    val productionLike: Boolean = false
 ) {
+    private val runSuffix get() = fixtureId.toString().replace("-", "").take(12)
+    val databaseName get() = if (productionLike) "room_rehearsal_$runSuffix" else "fasttowin_room_pilot"
+    val databasePoolName get() = if (productionLike) "room-acceptance-production-$runSuffix" else "room-acceptance-controller"
+    val emailPrefix get() = if (productionLike) "room-production" else "room-pilot"
+
+    /** Benchmark-only source identities, used solely on the isolated trusted-proxy rehearsal network. */
+    fun syntheticSourceAddress(accountId: String): String? {
+        if (!productionLike) return null
+        val index = accountIds.indexOf(UUID.fromString(accountId))
+        require(index >= 0)
+        return "198.18.${index / 254}.${index % 254 + 1}"
+    }
+
+    fun matchAccountIndices(slot: Int, creationOrdinal: Int): List<Int> {
+        require(slot >= 0 && slot * 2 + 1 < accountIds.size && creationOrdinal >= 0)
+        val first = slot * 2
+        return if (productionLike && creationOrdinal % 2 == 1) listOf(first + 1, first) else listOf(first, first + 1)
+    }
+
     companion object {
         fun fromEnvironment(values: Map<String, String>): RoomAcceptanceSettings {
             fun required(key: String) = requireNotNull(values[key]) { "Missing fixture setting $key" }
@@ -97,6 +118,31 @@ internal data class AcceptanceAccount(val userId: String, val accessToken: Strin
 internal data class SelectionReceipt(val durationMillis: Double, val snapshot: GameSnapshot, val attempts: Int = 1)
 internal class AcceptanceRejected(val code: String) : IllegalStateException("Fixture command rejected with $code")
 
+internal fun verifyRoomAcceptanceDatabase(connection: Connection, settings: RoomAcceptanceSettings) {
+    if (settings.productionLike) {
+        connection.createStatement().use { statement ->
+            statement.executeQuery("SELECT current_database(), current_user").use { rows ->
+                check(rows.next() && rows.getString(1) == settings.databaseName && rows.getString(2) == settings.databaseName) {
+                    "Unexpected production rehearsal database identity"
+                }
+            }
+            statement.executeQuery("SELECT count(*) FROM room_ownership_pilot_fixture").use { rows ->
+                check(rows.next() && rows.getLong(1) == 0L) { "Production rehearsal cannot use a fixture marker" }
+            }
+        }
+    } else {
+        connection.prepareStatement("SELECT fixture_id FROM room_ownership_pilot_fixture WHERE singleton").use {
+            it.executeQuery().use { rows -> check(rows.next() && rows.getObject(1, UUID::class.java) == settings.fixtureId) }
+        }
+    }
+    connection.createStatement().use { statement ->
+        statement.executeQuery("SELECT id FROM users ORDER BY id").use { rows ->
+            val ids = buildSet { while (rows.next()) add(rows.getObject(1, UUID::class.java)) }
+            check(ids == settings.accountIds.toSet()) { "Fixture contains unexpected accounts" }
+        }
+    }
+}
+
 internal class RoomAcceptanceFixture(val settings: RoomAcceptanceSettings, control: RoomFaultControl? = null) : AutoCloseable {
     val faults: RoomFaultControl = control ?: DockerRoomFaultControl(
         { operation, target -> docker(operation, target) }, ::toggleLocalProxy)
@@ -116,16 +162,19 @@ internal class RoomAcceptanceFixture(val settings: RoomAcceptanceSettings, contr
     val durationSeconds get() = settings.durationSeconds
     val roomCount get() = settings.roomCount
     val seed get() = settings.seed
-    val loadRateLimitsDescription = "Synthetic pilot acceptance caps: loginIP512/min; wsConnectIP5000/min; wsIP5000/s; " +
-        "createPlayer1000/min/createIP5000/min; joinPlayer1000/min/joinIP5000/min; selectIP5000/s; selectPlayer20/s; quotaBonus1000."
+    val loadRateLimitsDescription = if (settings.productionLike)
+        "Unchanged production policies; synthetic per-account 198.18.0.0/15 forwarded source identities on the isolated trusted-proxy network; " +
+            "alternating creators within each pair; createPlayer5/min; selectPlayer20/s; quotaBonus1000."
+        else "Synthetic pilot acceptance caps: loginIP512/min; wsConnectIP5000/min; wsIP5000/s; " +
+            "createPlayer1000/min/createIP5000/min; joinPlayer1000/min/joinIP5000/min; selectIP5000/s; selectPlayer20/s; quotaBonus1000."
     val source = HikariDataSource(HikariConfig().apply {
-        jdbcUrl = "jdbc:postgresql://${settings.databaseHost}:${settings.postgresPort}/fasttowin_room_pilot"
-        username = "fasttowin_room_pilot"
+        jdbcUrl = "jdbc:postgresql://${settings.databaseHost}:${settings.postgresPort}/${settings.databaseName}"
+        username = settings.databaseName
         password = settings.databasePassword
         maximumPoolSize = 4
         connectionTimeout = 3_000
         addDataSourceProperty("socketTimeout", "4")
-        poolName = "room-acceptance-controller"
+        poolName = settings.databasePoolName
     })
     val client = HttpClient(OkHttp) {
         followRedirects = false
@@ -134,19 +183,12 @@ internal class RoomAcceptanceFixture(val settings: RoomAcceptanceSettings, contr
     }
     private var cachedAccounts: List<AcceptanceAccount>? = null
     private val ownerNodes = ConcurrentHashMap<UUID, Int>()
+    private val creationOrdinals = ConcurrentHashMap<Int, AtomicInteger>()
     @Volatile var intentionallyUnavailableBackend: Int? = null
 
     suspend fun verifyFixture() = withContext(Dispatchers.IO) {
         withFixtureDatabase { connection ->
-            connection.prepareStatement("SELECT fixture_id FROM room_ownership_pilot_fixture WHERE singleton").use {
-                it.executeQuery().use { rows -> check(rows.next() && rows.getObject(1, UUID::class.java) == settings.fixtureId) }
-            }
-            connection.createStatement().use {
-                it.executeQuery("SELECT id FROM users ORDER BY id").use { rows ->
-                    val ids = buildSet { while (rows.next()) add(rows.getObject(1, UUID::class.java)) }
-                    check(ids == settings.accountIds.toSet()) { "Fixture contains unexpected accounts" }
-                }
-            }
+            verifyRoomAcceptanceDatabase(connection, settings)
         }
     }
 
@@ -174,8 +216,9 @@ internal class RoomAcceptanceFixture(val settings: RoomAcceptanceSettings, contr
         // Called once before the concurrent room producers start.
         return settings.accountIds.mapIndexed { index, id ->
             val response = client.post(settings.urls[0] + "/auth/login") {
+                settings.syntheticSourceAddress(id.toString())?.let { header("X-Forwarded-For", it) }
                 contentType(ContentType.Application.Json)
-                setBody(ProtocolJson.encodeToString(LoginRequest("room-pilot-${index + 1}@example.test", settings.accountPassword, "android")))
+                setBody(ProtocolJson.encodeToString(LoginRequest("${settings.emailPrefix}-${index + 1}@example.test", settings.accountPassword, "android")))
             }
             check(response.status == HttpStatusCode.OK) { "Fixture login failed with ${response.status.value}" }
             val session = ProtocolJson.decodeFromString<AuthSessionResponse>(response.bodyAsText())
@@ -211,7 +254,9 @@ internal class RoomAcceptanceFixture(val settings: RoomAcceptanceSettings, contr
         val users = accounts()
         require(index * 2 + 1 < users.size)
         val backend = index % backendCount
-        val (host, guest) = creationStep("connect_pair") { connectPair(users[index * 2], backend, users[index * 2 + 1], (backend + 1) % backendCount) }
+        val ordinal = creationOrdinals.computeIfAbsent(index) { AtomicInteger() }
+        val pair = settings.matchAccountIndices(index, ordinal.get()).map(users::get)
+        val (host, guest) = creationStep("connect_pair") { connectPair(pair[0], backend, pair[1], (backend + 1) % backendCount) }
         // SessionReady carries an existing room when a previous recycle attempt
         // failed after admission. Keep that id so the cleanup path can release
         // the pair before the next retry; otherwise CreateRoom is rejected while
@@ -224,6 +269,7 @@ internal class RoomAcceptanceFixture(val settings: RoomAcceptanceSettings, contr
             }
             val id = created.game.roomId
             createdRoomId = id
+            ordinal.incrementAndGet()
             creationStep("join_room") {
                 guest.send(ClientMessage.JoinRoom(id, "PrivateAcceptance123!"))
                 host.await(25_000, "host join update") { it is ServerMessage.RoomUpdated && it.game.players.size == 2 }
@@ -236,7 +282,7 @@ internal class RoomAcceptanceFixture(val settings: RoomAcceptanceSettings, contr
                 reply
             }
             ownerNodes[snapshot(id).instanceId] = host.backend
-            if (!start) return AcceptanceMatch(this, listOf(users[index * 2], users[index * 2 + 1]), mutableListOf(host, guest), waiting.game, host.backend)
+            if (!start) return AcceptanceMatch(this, pair, mutableListOf(host, guest), waiting.game, host.backend)
             val (started, other) = creationStep("start_match") {
                 guest.send(ClientMessage.SetReady(id, true))
                 val first = host.await(25_000, "host GameStarted") { it is ServerMessage.GameStarted } as ServerMessage.GameStarted
@@ -244,7 +290,7 @@ internal class RoomAcceptanceFixture(val settings: RoomAcceptanceSettings, contr
                 first to second
             }
             check(started.game == other.game)
-            return AcceptanceMatch(this, listOf(users[index * 2], users[index * 2 + 1]), mutableListOf(host, guest), started.game, host.backend)
+            return AcceptanceMatch(this, pair, mutableListOf(host, guest), started.game, host.backend)
         } catch (failure: Throwable) {
             createdRoomId?.let { roomId ->
                 runCatching { host.send(ClientMessage.LeaveRoom(roomId)) }
@@ -296,7 +342,9 @@ internal class RoomAcceptanceFixture(val settings: RoomAcceptanceSettings, contr
             for (node in (listOf(preferred) + (0 until backendCount)).distinct()) {
                 if (node == intentionallyUnavailableBackend) continue
                 try {
-                    val socket = AcceptanceSocket(client.webSocketSession(settings.urls[node].replace("http:", "ws:") + "/game"), node)
+                    val socket = AcceptanceSocket(client.webSocketSession(settings.urls[node].replace("http:", "ws:") + "/game") {
+                        settings.syntheticSourceAddress(account.userId)?.let { header("X-Forwarded-For", it) }
+                    }, node)
                     try {
                         socket.send(ClientMessage.ConnectAccount(account.accessToken))
                         socket.ready = socket.await(25_000, "SessionReady") { it is ServerMessage.SessionReady } as ServerMessage.SessionReady
